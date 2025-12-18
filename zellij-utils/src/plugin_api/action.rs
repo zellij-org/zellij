@@ -36,8 +36,8 @@ pub use super::generated_api::api::{
         NewPanePlacement as ProtobufNewPanePlacement,
         NewPluginPanePayload,
         NewTabPayload,
-        OverrideLayoutPayload,
         NewTiledPanePayload,
+        OverrideLayoutPayload,
         PaneId as ProtobufPaneId,
         PaneIdAndShouldFloat,
         PaneRun as ProtobufPaneRun,
@@ -721,86 +721,83 @@ impl TryFrom<ProtobufAction> for Action {
                 Some(_) => Err("NextSwapLayout should not have a payload"),
                 None => Ok(Action::NextSwapLayout),
             },
-            Some(ProtobufActionName::OverrideLayout) => {
-                match protobuf_action.optional_payload {
-                    Some(OptionalPayload::OverrideLayoutPayload(payload)) => {
-                        let tiled_layout =
-                            payload.tiled_layout.map(|l| l.try_into()).transpose()?;
+            Some(ProtobufActionName::OverrideLayout) => match protobuf_action.optional_payload {
+                Some(OptionalPayload::OverrideLayoutPayload(payload)) => {
+                    let tiled_layout = payload.tiled_layout.map(|l| l.try_into()).transpose()?;
 
-                        let floating_layouts = payload
-                            .floating_layouts
-                            .into_iter()
-                            .map(|l| l.try_into())
-                            .collect::<Result<Vec<_>, _>>()?;
+                    let floating_layouts = payload
+                        .floating_layouts
+                        .into_iter()
+                        .map(|l| l.try_into())
+                        .collect::<Result<Vec<_>, _>>()?;
 
-                        let swap_tiled_layouts = if payload.swap_tiled_layouts.is_empty() {
+                    let swap_tiled_layouts = if payload.swap_tiled_layouts.is_empty() {
+                        None
+                    } else {
+                        Some(
+                            payload
+                                .swap_tiled_layouts
+                                .into_iter()
+                                .map(|l| l.try_into())
+                                .collect::<Result<Vec<_>, _>>()?,
+                        )
+                    };
+
+                    let swap_floating_layouts = if payload.swap_floating_layouts.is_empty() {
+                        None
+                    } else {
+                        Some(
+                            payload
+                                .swap_floating_layouts
+                                .into_iter()
+                                .map(|l| l.try_into())
+                                .collect::<Result<Vec<_>, _>>()?,
+                        )
+                    };
+
+                    let tab_name = payload.tab_name.filter(|s| !s.is_empty());
+
+                    let cwd = if let Some(cwd_string) = payload.cwd {
+                        if cwd_string.is_empty() {
                             None
                         } else {
-                            Some(
-                                payload
-                                    .swap_tiled_layouts
-                                    .into_iter()
-                                    .map(|l| l.try_into())
-                                    .collect::<Result<Vec<_>, _>>()?,
-                            )
-                        };
+                            Some(PathBuf::from(cwd_string))
+                        }
+                    } else {
+                        None
+                    };
 
-                        let swap_floating_layouts = if payload.swap_floating_layouts.is_empty() {
-                            None
-                        } else {
-                            Some(
-                                payload
-                                    .swap_floating_layouts
-                                    .into_iter()
-                                    .map(|l| l.try_into())
-                                    .collect::<Result<Vec<_>, _>>()?,
-                            )
-                        };
+                    let initial_panes = if payload.initial_panes.is_empty() {
+                        None
+                    } else {
+                        Some(
+                            payload
+                                .initial_panes
+                                .into_iter()
+                                .map(|p| p.try_into())
+                                .collect::<Result<Vec<_>, _>>()?,
+                        )
+                    };
 
-                        let tab_name = payload.tab_name.filter(|s| !s.is_empty());
+                    let first_pane_unblock_condition = payload
+                        .first_pane_unblock_condition
+                        .map(|c| c.try_into())
+                        .transpose()?;
 
-                        let cwd = if let Some(cwd_string) = payload.cwd {
-                            if cwd_string.is_empty() {
-                                None
-                            } else {
-                                Some(PathBuf::from(cwd_string))
-                            }
-                        } else {
-                            None
-                        };
-
-                        let initial_panes = if payload.initial_panes.is_empty() {
-                            None
-                        } else {
-                            Some(
-                                payload
-                                    .initial_panes
-                                    .into_iter()
-                                    .map(|p| p.try_into())
-                                    .collect::<Result<Vec<_>, _>>()?,
-                            )
-                        };
-
-                        let first_pane_unblock_condition = payload
-                            .first_pane_unblock_condition
-                            .map(|c| c.try_into())
-                            .transpose()?;
-
-                        Ok(Action::OverrideLayout {
-                            tiled_layout,
-                            floating_layouts,
-                            swap_tiled_layouts,
-                            swap_floating_layouts,
-                            tab_name,
-                            should_change_focus_to_new_tab: payload.should_change_focus_to_new_tab,
-                            cwd,
-                            initial_panes,
-                            first_pane_unblock_condition,
-                        })
-                    }
-                    Some(_) => Err("Mismatched payload for OverrideLayout"),
-                    None => Err("Missing payload for OverrideLayout"),
-                }
+                    Ok(Action::OverrideLayout {
+                        tiled_layout,
+                        floating_layouts,
+                        swap_tiled_layouts,
+                        swap_floating_layouts,
+                        tab_name,
+                        should_change_focus_to_new_tab: payload.should_change_focus_to_new_tab,
+                        cwd,
+                        initial_panes,
+                        first_pane_unblock_condition,
+                    })
+                },
+                Some(_) => Err("Mismatched payload for OverrideLayout"),
+                None => Err("Missing payload for OverrideLayout"),
             },
             Some(ProtobufActionName::QueryTabNames) => match protobuf_action.optional_payload {
                 Some(_) => Err("QueryTabNames should not have a payload"),
@@ -1598,9 +1595,7 @@ impl TryFrom<Action> for ProtobufAction {
                 initial_panes,
                 first_pane_unblock_condition,
             } => {
-                let protobuf_tiled_layout = tiled_layout
-                    .map(|l| l.try_into())
-                    .transpose()?;
+                let protobuf_tiled_layout = tiled_layout.map(|l| l.try_into()).transpose()?;
 
                 let protobuf_floating_layouts = floating_layouts
                     .into_iter()
@@ -1648,17 +1643,19 @@ impl TryFrom<Action> for ProtobufAction {
 
                 Ok(ProtobufAction {
                     name: ProtobufActionName::OverrideLayout as i32,
-                    optional_payload: Some(OptionalPayload::OverrideLayoutPayload(OverrideLayoutPayload {
-                        tiled_layout: protobuf_tiled_layout,
-                        floating_layouts: protobuf_floating_layouts,
-                        swap_tiled_layouts: protobuf_swap_tiled_layouts,
-                        swap_floating_layouts: protobuf_swap_floating_layouts,
-                        tab_name: tab_name.clone(),
-                        should_change_focus_to_new_tab,
-                        cwd: cwd_string,
-                        initial_panes: protobuf_initial_panes,
-                        first_pane_unblock_condition: protobuf_first_pane_unblock_condition,
-                    })),
+                    optional_payload: Some(OptionalPayload::OverrideLayoutPayload(
+                        OverrideLayoutPayload {
+                            tiled_layout: protobuf_tiled_layout,
+                            floating_layouts: protobuf_floating_layouts,
+                            swap_tiled_layouts: protobuf_swap_tiled_layouts,
+                            swap_floating_layouts: protobuf_swap_floating_layouts,
+                            tab_name: tab_name.clone(),
+                            should_change_focus_to_new_tab,
+                            cwd: cwd_string,
+                            initial_panes: protobuf_initial_panes,
+                            first_pane_unblock_condition: protobuf_first_pane_unblock_condition,
+                        },
+                    )),
                 })
             },
             Action::QueryTabNames => Ok(ProtobufAction {

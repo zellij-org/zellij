@@ -1,7 +1,7 @@
-use crate::tab::layout_applier::LayoutApplier;
 use crate::panes::sixel::SixelImageStore;
 use crate::panes::{FloatingPanes, TiledPanes};
 use crate::panes::{LinkHandler, PaneId};
+use crate::tab::layout_applier::LayoutApplier;
 use crate::{
     os_input_output::{AsyncReader, Pid, ServerOsApi},
     thread_bus::ThreadSenders,
@@ -10,21 +10,21 @@ use crate::{
 use insta::assert_snapshot;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
+use std::fmt::Write;
 use std::os::unix::io::RawFd;
 use std::path::PathBuf;
 use std::rc::Rc;
-use std::fmt::Write;
 
 use interprocess::local_socket::LocalSocketStream;
 use zellij_utils::{
+    channels::{self, SenderWithContext},
     data::{ModeInfo, Palette, Style},
     errors::prelude::*,
     input::command::{RunCommand, TerminalAction},
+    input::layout::RunPluginOrAlias,
     input::layout::{FloatingPaneLayout, Layout, Run, TiledPaneLayout},
     ipc::{ClientToServerMsg, IpcReceiverWithContext, ServerToClientMsg},
     pane_size::{Size, SizeInPixels, Viewport},
-    input::layout::RunPluginOrAlias,
-    channels::{self, SenderWithContext},
 };
 
 #[derive(Clone)]
@@ -164,9 +164,7 @@ fn create_layout_applier_fixtures(
         cols: size.cols,
     }));
 
-
-    let (mock_plugin_sender, _mock_plugin_receiver) =
-        channels::unbounded();
+    let (mock_plugin_sender, _mock_plugin_receiver) = channels::unbounded();
     let mut senders = ThreadSenders::default().silently_fail_on_send();
     senders.replace_to_plugin(SenderWithContext::new(mock_plugin_sender));
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
@@ -378,14 +376,14 @@ fn format_run_instruction(run: &Option<Run>) -> String {
                 s.push_str(&format!(" cwd={:?}", cwd));
             }
             s
-        }
+        },
         Some(Run::Plugin(plugin)) => {
             format!("Plugin({})", plugin.location_string())
-        }
+        },
         Some(Run::Cwd(path)) => format!("Cwd({:?})", path),
         Some(Run::EditFile(path, line, cwd)) => {
             format!("EditFile({:?}, line={:?}, cwd={:?})", path, line, cwd)
-        }
+        },
     }
 }
 
@@ -399,7 +397,10 @@ fn test_apply_empty_layout() {
     let (tiled_layout, floating_layout) = parse_kdl_layout(kdl_layout);
     let terminal_ids = vec![];
 
-    let size = Size { cols: 100, rows: 50 };
+    let size = Size {
+        cols: 100,
+        rows: 50,
+    };
     let (
         viewport,
         senders,
@@ -449,9 +450,9 @@ fn test_apply_empty_layout() {
         tiled_layout,
         floating_layout,
         terminal_ids,
-        vec![],          // new_floating_terminal_ids
-        HashMap::new(),  // new_plugin_ids
-        1,               // client_id
+        vec![],         // new_floating_terminal_ids
+        HashMap::new(), // new_plugin_ids
+        1,              // client_id
     );
 
     assert!(result.is_ok());
@@ -479,7 +480,10 @@ fn test_apply_simple_two_pane_layout() {
     let (tiled_layout, floating_layout) = parse_kdl_layout(kdl_layout);
     let terminal_ids = vec![(1, None), (2, None)];
 
-    let size = Size { cols: 100, rows: 50 };
+    let size = Size {
+        cols: 100,
+        rows: 50,
+    };
     let (
         viewport,
         senders,
@@ -526,7 +530,14 @@ fn test_apply_simple_two_pane_layout() {
     );
 
     applier
-        .apply_layout(tiled_layout, floating_layout, terminal_ids, vec![], HashMap::new(), 1)
+        .apply_layout(
+            tiled_layout,
+            floating_layout,
+            terminal_ids,
+            vec![],
+            HashMap::new(),
+            1,
+        )
         .unwrap();
 
     let snapshot = take_pane_state_snapshot(
@@ -553,7 +564,10 @@ fn test_apply_three_pane_layout() {
     let (tiled_layout, floating_layout) = parse_kdl_layout(kdl_layout);
     let terminal_ids = vec![(1, None), (2, None), (3, None)];
 
-    let size = Size { cols: 100, rows: 50 };
+    let size = Size {
+        cols: 100,
+        rows: 50,
+    };
     let (
         viewport,
         senders,
@@ -600,7 +614,14 @@ fn test_apply_three_pane_layout() {
     );
 
     applier
-        .apply_layout(tiled_layout, floating_layout, terminal_ids, vec![], HashMap::new(), 1)
+        .apply_layout(
+            tiled_layout,
+            floating_layout,
+            terminal_ids,
+            vec![],
+            HashMap::new(),
+            1,
+        )
         .unwrap();
 
     assert_snapshot!(take_pane_state_snapshot(
@@ -626,7 +647,10 @@ fn test_apply_horizontal_split_with_sizes() {
     let (tiled_layout, floating_layout) = parse_kdl_layout(kdl_layout);
     let terminal_ids = vec![(1, None), (2, None)];
 
-    let size = Size { cols: 100, rows: 50 };
+    let size = Size {
+        cols: 100,
+        rows: 50,
+    };
     let (
         viewport,
         senders,
@@ -673,7 +697,14 @@ fn test_apply_horizontal_split_with_sizes() {
     );
 
     applier
-        .apply_layout(tiled_layout, floating_layout, terminal_ids, vec![], HashMap::new(), 1)
+        .apply_layout(
+            tiled_layout,
+            floating_layout,
+            terminal_ids,
+            vec![],
+            HashMap::new(),
+            1,
+        )
         .unwrap();
 
     assert_snapshot!(take_pane_state_snapshot(
@@ -699,7 +730,10 @@ fn test_apply_vertical_split_with_sizes() {
     let (tiled_layout, floating_layout) = parse_kdl_layout(kdl_layout);
     let terminal_ids = vec![(1, None), (2, None)];
 
-    let size = Size { cols: 100, rows: 50 };
+    let size = Size {
+        cols: 100,
+        rows: 50,
+    };
     let (
         viewport,
         senders,
@@ -746,7 +780,14 @@ fn test_apply_vertical_split_with_sizes() {
     );
 
     applier
-        .apply_layout(tiled_layout, floating_layout, terminal_ids, vec![], HashMap::new(), 1)
+        .apply_layout(
+            tiled_layout,
+            floating_layout,
+            terminal_ids,
+            vec![],
+            HashMap::new(),
+            1,
+        )
         .unwrap();
 
     assert_snapshot!(take_pane_state_snapshot(
@@ -825,7 +866,14 @@ fn test_apply_nested_layout() {
     );
 
     applier
-        .apply_layout(tiled_layout, floating_layout, terminal_ids, vec![], HashMap::new(), 1)
+        .apply_layout(
+            tiled_layout,
+            floating_layout,
+            terminal_ids,
+            vec![],
+            HashMap::new(),
+            1,
+        )
         .unwrap();
 
     assert_snapshot!(take_pane_state_snapshot(
@@ -850,7 +898,10 @@ fn test_apply_layout_with_focus() {
     let (tiled_layout, floating_layout) = parse_kdl_layout(kdl_layout);
     let terminal_ids = vec![(1, None), (2, None), (3, None)];
 
-    let size = Size { cols: 100, rows: 50 };
+    let size = Size {
+        cols: 100,
+        rows: 50,
+    };
     let (
         viewport,
         senders,
@@ -897,7 +948,14 @@ fn test_apply_layout_with_focus() {
     );
 
     applier
-        .apply_layout(tiled_layout, floating_layout, terminal_ids, vec![], HashMap::new(), 1)
+        .apply_layout(
+            tiled_layout,
+            floating_layout,
+            terminal_ids,
+            vec![],
+            HashMap::new(),
+            1,
+        )
         .unwrap();
 
     // Snapshot should show FOCUS: Some(Terminal(2))
@@ -925,7 +983,10 @@ fn test_apply_layout_with_commands() {
     let (tiled_layout, floating_layout) = parse_kdl_layout(kdl_layout);
     let terminal_ids = vec![(1, None), (2, None), (3, None)];
 
-    let size = Size { cols: 100, rows: 50 };
+    let size = Size {
+        cols: 100,
+        rows: 50,
+    };
     let (
         viewport,
         senders,
@@ -972,7 +1033,14 @@ fn test_apply_layout_with_commands() {
     );
 
     applier
-        .apply_layout(tiled_layout, floating_layout, terminal_ids, vec![], HashMap::new(), 1)
+        .apply_layout(
+            tiled_layout,
+            floating_layout,
+            terminal_ids,
+            vec![],
+            HashMap::new(),
+            1,
+        )
         .unwrap();
 
     assert_snapshot!(take_pane_state_snapshot(
@@ -997,7 +1065,10 @@ fn test_apply_layout_with_named_panes() {
     let (tiled_layout, floating_layout) = parse_kdl_layout(kdl_layout);
     let terminal_ids = vec![(1, None), (2, None), (3, None)];
 
-    let size = Size { cols: 100, rows: 50 };
+    let size = Size {
+        cols: 100,
+        rows: 50,
+    };
     let (
         viewport,
         senders,
@@ -1044,7 +1115,14 @@ fn test_apply_layout_with_named_panes() {
     );
 
     applier
-        .apply_layout(tiled_layout, floating_layout, terminal_ids, vec![], HashMap::new(), 1)
+        .apply_layout(
+            tiled_layout,
+            floating_layout,
+            terminal_ids,
+            vec![],
+            HashMap::new(),
+            1,
+        )
         .unwrap();
 
     assert_snapshot!(take_pane_state_snapshot(
@@ -1069,7 +1147,10 @@ fn test_apply_layout_with_borderless_panes() {
     let (tiled_layout, floating_layout) = parse_kdl_layout(kdl_layout);
     let terminal_ids = vec![(1, None), (2, None), (3, None)];
 
-    let size = Size { cols: 100, rows: 50 };
+    let size = Size {
+        cols: 100,
+        rows: 50,
+    };
     let (
         viewport,
         senders,
@@ -1116,7 +1197,14 @@ fn test_apply_layout_with_borderless_panes() {
     );
 
     applier
-        .apply_layout(tiled_layout, floating_layout, terminal_ids, vec![], HashMap::new(), 1)
+        .apply_layout(
+            tiled_layout,
+            floating_layout,
+            terminal_ids,
+            vec![],
+            HashMap::new(),
+            1,
+        )
         .unwrap();
 
     // Snapshot should show viewport adjusted for borderless panes
@@ -1150,7 +1238,10 @@ fn test_apply_layout_with_floating_panes() {
     let terminal_ids = vec![(1, None), (2, None)];
     let floating_terminal_ids = vec![(3, None)];
 
-    let size = Size { cols: 100, rows: 50 };
+    let size = Size {
+        cols: 100,
+        rows: 50,
+    };
     let (
         viewport,
         senders,
@@ -1239,7 +1330,10 @@ fn test_apply_layout_with_floating_pane_with_command() {
     let terminal_ids = vec![(1, None)];
     let floating_terminal_ids = vec![(2, None)];
 
-    let size = Size { cols: 100, rows: 50 };
+    let size = Size {
+        cols: 100,
+        rows: 50,
+    };
     let (
         viewport,
         senders,
@@ -1481,7 +1575,14 @@ fn test_reapply_layout_exact_match() {
     );
 
     applier
-        .apply_layout(tiled_layout, floating_layout, terminal_ids, vec![], HashMap::new(), 1)
+        .apply_layout(
+            tiled_layout,
+            floating_layout,
+            terminal_ids,
+            vec![],
+            HashMap::new(),
+            1,
+        )
         .unwrap();
 
     // Now reapply with commands in different positions
@@ -1575,7 +1676,14 @@ fn test_reapply_layout_logical_position_match() {
     );
 
     applier
-        .apply_layout(tiled_layout, floating_layout, terminal_ids, vec![], HashMap::new(), 1)
+        .apply_layout(
+            tiled_layout,
+            floating_layout,
+            terminal_ids,
+            vec![],
+            HashMap::new(),
+            1,
+        )
         .unwrap();
 
     // Reapply DIFFERENT layout - still 3 panes but with different split
@@ -1620,7 +1728,10 @@ fn test_reapply_layout_with_more_positions() {
     let (tiled_layout, floating_layout) = parse_kdl_layout(initial_kdl);
     let terminal_ids = vec![(1, None), (2, None)];
 
-    let size = Size { cols: 100, rows: 50 };
+    let size = Size {
+        cols: 100,
+        rows: 50,
+    };
     let (
         viewport,
         senders,
@@ -1667,7 +1778,14 @@ fn test_reapply_layout_with_more_positions() {
     );
 
     applier
-        .apply_layout(tiled_layout, floating_layout, terminal_ids, vec![], HashMap::new(), 1)
+        .apply_layout(
+            tiled_layout,
+            floating_layout,
+            terminal_ids,
+            vec![],
+            HashMap::new(),
+            1,
+        )
         .unwrap();
 
     // Reapply with 4 positions (but we only have 2 panes)
@@ -1717,7 +1835,10 @@ fn test_reapply_floating_pane_layout() {
     let terminal_ids = vec![(1, None)];
     let floating_terminal_ids = vec![(2, None)];
 
-    let size = Size { cols: 100, rows: 50 };
+    let size = Size {
+        cols: 100,
+        rows: 50,
+    };
     let (
         viewport,
         senders,
@@ -1875,7 +1996,14 @@ fn test_apply_complex_nested_layout() {
     );
 
     applier
-        .apply_layout(tiled_layout, floating_layout, terminal_ids, vec![], HashMap::new(), 1)
+        .apply_layout(
+            tiled_layout,
+            floating_layout,
+            terminal_ids,
+            vec![],
+            HashMap::new(),
+            1,
+        )
         .unwrap();
 
     assert_snapshot!(take_pane_state_snapshot(
@@ -1955,7 +2083,14 @@ fn test_apply_layout_with_stacked_panes() {
     );
 
     applier
-        .apply_layout(tiled_layout, floating_layout, terminal_ids, vec![], HashMap::new(), 1)
+        .apply_layout(
+            tiled_layout,
+            floating_layout,
+            terminal_ids,
+            vec![],
+            HashMap::new(),
+            1,
+        )
         .unwrap();
 
     // Snapshot should show:
@@ -2041,7 +2176,14 @@ fn test_apply_layout_with_multiple_stacks() {
     );
 
     applier
-        .apply_layout(tiled_layout, floating_layout, terminal_ids, vec![], HashMap::new(), 1)
+        .apply_layout(
+            tiled_layout,
+            floating_layout,
+            terminal_ids,
+            vec![],
+            HashMap::new(),
+            1,
+        )
         .unwrap();
 
     // Snapshot should show:
@@ -2077,18 +2219,9 @@ fn test_apply_layout_with_plugin_panes() {
     let mut new_plugin_ids = HashMap::new();
 
     // Create plugin aliases that match the layout
-    let tab_bar_plugin = RunPluginOrAlias::from_url(
-        "zellij:tab-bar",
-        &None,
-        None,
-        None,
-    ).unwrap();
-    let status_bar_plugin = RunPluginOrAlias::from_url(
-        "zellij:status-bar",
-        &None,
-        None,
-        None,
-    ).unwrap();
+    let tab_bar_plugin = RunPluginOrAlias::from_url("zellij:tab-bar", &None, None, None).unwrap();
+    let status_bar_plugin =
+        RunPluginOrAlias::from_url("zellij:status-bar", &None, None, None).unwrap();
 
     new_plugin_ids.insert(tab_bar_plugin, vec![100]);
     new_plugin_ids.insert(status_bar_plugin, vec![101]);
@@ -2143,7 +2276,14 @@ fn test_apply_layout_with_plugin_panes() {
     );
 
     applier
-        .apply_layout(tiled_layout, floating_layout, terminal_ids, vec![], new_plugin_ids, 1)
+        .apply_layout(
+            tiled_layout,
+            floating_layout,
+            terminal_ids,
+            vec![],
+            new_plugin_ids,
+            1,
+        )
         .unwrap();
 
     // Snapshot should show:
@@ -2184,18 +2324,10 @@ fn test_apply_layout_with_mixed_plugin_and_terminal_panes() {
 
     let mut new_plugin_ids = HashMap::new();
 
-    let filebrowser_plugin = RunPluginOrAlias::from_url(
-        "file:///path/to/filebrowser.wasm",
-        &None,
-        None,
-        None,
-    ).unwrap();
-    let compact_bar_plugin = RunPluginOrAlias::from_url(
-        "zellij:compact-bar",
-        &None,
-        None,
-        None,
-    ).unwrap();
+    let filebrowser_plugin =
+        RunPluginOrAlias::from_url("file:///path/to/filebrowser.wasm", &None, None, None).unwrap();
+    let compact_bar_plugin =
+        RunPluginOrAlias::from_url("zellij:compact-bar", &None, None, None).unwrap();
 
     new_plugin_ids.insert(filebrowser_plugin, vec![102]);
     new_plugin_ids.insert(compact_bar_plugin, vec![103]);
@@ -2250,7 +2382,14 @@ fn test_apply_layout_with_mixed_plugin_and_terminal_panes() {
     );
 
     applier
-        .apply_layout(tiled_layout, floating_layout, terminal_ids, vec![], new_plugin_ids, 1)
+        .apply_layout(
+            tiled_layout,
+            floating_layout,
+            terminal_ids,
+            vec![],
+            new_plugin_ids,
+            1,
+        )
         .unwrap();
 
     // Snapshot should show:
@@ -2282,7 +2421,10 @@ fn test_apply_layout_with_missing_plugin_ids() {
     // Don't provide plugin IDs - empty HashMap
     let new_plugin_ids = HashMap::new();
 
-    let size = Size { cols: 100, rows: 50 };
+    let size = Size {
+        cols: 100,
+        rows: 50,
+    };
     let (
         viewport,
         senders,
@@ -2354,7 +2496,10 @@ fn test_apply_layout_with_excess_terminal_ids() {
     // Provide more terminal IDs than needed
     let terminal_ids = vec![(1, None), (2, None), (3, None), (4, None)];
 
-    let size = Size { cols: 100, rows: 50 };
+    let size = Size {
+        cols: 100,
+        rows: 50,
+    };
     let (
         viewport,
         senders,
@@ -2400,7 +2545,14 @@ fn test_apply_layout_with_excess_terminal_ids() {
         None,
     );
 
-    let result = applier.apply_layout(tiled_layout, floating_layout, terminal_ids, vec![], HashMap::new(), 1);
+    let result = applier.apply_layout(
+        tiled_layout,
+        floating_layout,
+        terminal_ids,
+        vec![],
+        HashMap::new(),
+        1,
+    );
 
     assert!(result.is_ok());
 

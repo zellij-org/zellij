@@ -296,7 +296,7 @@ pub enum ScreenInstruction {
     PreviousSwapLayout(ClientId, Option<NotificationEnd>),
     NextSwapLayout(ClientId, Option<NotificationEnd>),
     OverrideLayout(
-        Option<PathBuf>, // cwd
+        Option<PathBuf>,        // cwd
         Option<TerminalAction>, // default_shell
         TiledPaneLayout,
         Vec<FloatingPaneLayout>,
@@ -313,7 +313,7 @@ pub enum ScreenInstruction {
         Vec<(u32, HoldForCommand)>, // new terminal pids
         Vec<(u32, HoldForCommand)>, // new floating pane pids
         HashMap<RunPluginOrAlias, Vec<u32>>,
-        usize,                   // tab_index
+        usize, // tab_index
         ClientId,
         Option<NotificationEnd>,
     ),
@@ -3583,9 +3583,9 @@ fn find_already_running_panes(
         .map(|(_, pane)| pane.invoked_with().clone())
         .collect();
 
-//     log::info!("running_tiled_instructions: {:#?}", running_tiled_instructions);
-//     log::info!("*****");
-//     log::info!("layout_tiled_instructions: {:#?}", layout_tiled_instructions);
+    //     log::info!("running_tiled_instructions: {:#?}", running_tiled_instructions);
+    //     log::info!("*****");
+    //     log::info!("layout_tiled_instructions: {:#?}", layout_tiled_instructions);
 
     let mut tiled_to_ignore = Vec::new();
     for running_instr in running_tiled_instructions {
@@ -3603,8 +3603,8 @@ fn find_already_running_panes(
         .map(|(_, pane)| pane.invoked_with().clone())
         .collect();
 
-//     log::info!("running_floating_instructions: {:#?}", running_floating_instructions);
-//     log::info!("floating_layouts: {:#?}", floating_layouts);
+    //     log::info!("running_floating_instructions: {:#?}", running_floating_instructions);
+    //     log::info!("floating_layouts: {:#?}", floating_layouts);
 
     let mut floating_indices = Vec::new();
     for (idx, floating_layout) in floating_layouts.iter().enumerate() {
@@ -3616,8 +3616,8 @@ fn find_already_running_panes(
             floating_indices.push(idx);
         }
     }
-//     log::info!("tiled_to_ignore: {:#?}", tiled_to_ignore);
-//     log::info!("floating_indices: {:?}", floating_indices);
+    //     log::info!("tiled_to_ignore: {:#?}", tiled_to_ignore);
+    //     log::info!("floating_indices: {:?}", floating_indices);
 
     (tiled_to_ignore, floating_indices)
 }
@@ -5207,9 +5207,12 @@ pub(crate) fn screen_thread_main(
                 let active_tab = match screen.get_active_tab(client_id) {
                     Ok(tab) => tab,
                     Err(_) => {
-                        log::error!("OverrideLayout: No active tab for client_id {:?}", client_id);
+                        log::error!(
+                            "OverrideLayout: No active tab for client_id {:?}",
+                            client_id
+                        );
                         continue;
-                    }
+                    },
                 };
 
                 let (tiled_to_ignore, floating_indices) =
@@ -5220,7 +5223,9 @@ pub(crate) fn screen_thread_main(
                 }
 
                 for idx in floating_indices {
-                    floating_layouts.get_mut(idx).map(|f| f.already_running = true);
+                    floating_layouts
+                        .get_mut(idx)
+                        .map(|f| f.already_running = true);
                 }
 
                 let tab_index = active_tab.index;
@@ -5259,11 +5264,10 @@ pub(crate) fn screen_thread_main(
                         new_floating_pane_pids,
                         plugin_ids,
                         client_id,
-                        None
+                        None,
                     )
                 });
                 screen.render(None);
-
             },
             ScreenInstruction::QueryTabNames(client_id, completion_tx) => {
                 let tab_names = screen

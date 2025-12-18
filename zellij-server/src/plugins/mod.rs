@@ -98,13 +98,13 @@ pub enum PluginInstruction {
         Option<NotificationEnd>,      // completion signal
     ),
     OverrideLayout(
-        Option<PathBuf>, // cwd
+        Option<PathBuf>,        // cwd
         Option<TerminalAction>, // default_shell
         TiledPaneLayout,
         Vec<FloatingPaneLayout>,
         Option<Vec<SwapTiledLayout>>,
         Option<Vec<SwapFloatingLayout>>,
-        usize,                   // tab_index
+        usize, // tab_index
         ClientId,
         Option<NotificationEnd>,
     ),

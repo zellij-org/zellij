@@ -995,45 +995,46 @@ impl Action {
                     .or_else(|| get_layout_dir(find_default_config_dir()));
 
                 // Load layout from URL or file path
-                let (path_to_raw_layout, raw_layout, swap_layouts) =
-                    if let Some(layout_url) = layout.to_str().and_then(|l| {
+                let (path_to_raw_layout, raw_layout, swap_layouts) = if let Some(layout_url) =
+                    layout.to_str().and_then(|l| {
                         if l.starts_with("http://") || l.starts_with("https://") {
                             Some(l)
                         } else {
                             None
                         }
                     }) {
-                        (
-                            layout_url.to_owned(),
-                            Layout::stringified_from_url(layout_url)
-                                .map_err(|e| format!("Failed to load layout from URL: {}", e))?,
-                            None,
-                        )
-                    } else {
-                        Layout::stringified_from_path_or_default(Some(&layout), layout_dir)
-                            .map_err(|e| format!("Failed to load layout: {}", e))?
-                    };
+                    (
+                        layout_url.to_owned(),
+                        Layout::stringified_from_url(layout_url)
+                            .map_err(|e| format!("Failed to load layout from URL: {}", e))?,
+                        None,
+                    )
+                } else {
+                    Layout::stringified_from_path_or_default(Some(&layout), layout_dir)
+                        .map_err(|e| format!("Failed to load layout: {}", e))?
+                };
 
                 // Parse KDL layout
                 let layout = Layout::from_str(
                     &raw_layout,
                     path_to_raw_layout,
                     swap_layouts.as_ref().map(|(f, p)| (f.as_str(), p.as_str())),
-                    None // cwd
-                ).map_err(|e| {
+                    None, // cwd
+                )
+                .map_err(|e| {
                     let stringified_error = match e {
                         ConfigError::KdlError(kdl_error) => {
                             let error = kdl_error.add_src(
                                 layout.as_path().as_os_str().to_string_lossy().to_string(),
-                                String::from(raw_layout)
+                                String::from(raw_layout),
                             );
                             let report: Report = error.into();
                             format!("{:?}", report)
-                        }
+                        },
                         ConfigError::KdlDeserializationError(kdl_error) => {
                             let error_message = kdl_error.to_string();
                             format!("Failed to deserialize KDL layout: {}", error_message)
-                        }
+                        },
                         e => format!("{}", e),
                     };
                     stringified_error
@@ -1055,7 +1056,7 @@ impl Action {
                     initial_panes: None,
                     first_pane_unblock_condition: None,
                 }])
-            }
+            },
             CliAction::QueryTabNames => Ok(vec![Action::QueryTabNames]),
             CliAction::StartOrReloadPlugin { url, configuration } => {
                 let current_dir = get_current_dir();

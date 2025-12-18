@@ -723,19 +723,19 @@ impl From<crate::input::actions::Action>
             MoveTabAction, NewBlockingPaneAction, NewFloatingPaneAction,
             NewFloatingPluginPaneAction, NewInPlacePaneAction, NewInPlacePluginPaneAction,
             NewPaneAction, NewStackedPaneAction, NewTabAction, NewTiledPaneAction,
-            NewTiledPluginPaneAction, NextSwapLayoutAction, NoOpAction, OverrideLayoutAction, PageScrollDownAction,
-            PageScrollUpAction, PaneIdWithPlugin, PaneNameInputAction, PreviousSwapLayoutAction,
-            QueryTabNamesAction, QuitAction, RenamePluginPaneAction, RenameSessionAction,
-            RenameTabAction, RenameTerminalPaneAction, ResizeAction, RunAction, ScrollDownAction,
-            ScrollDownAtAction, ScrollToBottomAction, ScrollToTopAction, ScrollUpAction,
-            ScrollUpAtAction, SearchAction, SearchInputAction, SearchToggleOptionAction,
-            SkipConfirmAction, StackPanesAction, StartOrReloadPluginAction, SwitchFocusAction,
-            SwitchModeForAllClientsAction, SwitchSessionAction, SwitchToModeAction,
-            TabNameInputAction, ToggleActiveSyncTabAction, ToggleFloatingPanesAction,
-            ToggleFocusFullscreenAction, ToggleGroupMarkingAction, ToggleMouseModeAction,
-            TogglePaneEmbedOrFloatingAction, TogglePaneFramesAction, TogglePaneInGroupAction,
-            TogglePanePinnedAction, ToggleTabAction, UndoRenamePaneAction, UndoRenameTabAction,
-            WriteAction, WriteCharsAction,
+            NewTiledPluginPaneAction, NextSwapLayoutAction, NoOpAction, OverrideLayoutAction,
+            PageScrollDownAction, PageScrollUpAction, PaneIdWithPlugin, PaneNameInputAction,
+            PreviousSwapLayoutAction, QueryTabNamesAction, QuitAction, RenamePluginPaneAction,
+            RenameSessionAction, RenameTabAction, RenameTerminalPaneAction, ResizeAction,
+            RunAction, ScrollDownAction, ScrollDownAtAction, ScrollToBottomAction,
+            ScrollToTopAction, ScrollUpAction, ScrollUpAtAction, SearchAction, SearchInputAction,
+            SearchToggleOptionAction, SkipConfirmAction, StackPanesAction,
+            StartOrReloadPluginAction, SwitchFocusAction, SwitchModeForAllClientsAction,
+            SwitchSessionAction, SwitchToModeAction, TabNameInputAction, ToggleActiveSyncTabAction,
+            ToggleFloatingPanesAction, ToggleFocusFullscreenAction, ToggleGroupMarkingAction,
+            ToggleMouseModeAction, TogglePaneEmbedOrFloatingAction, TogglePaneFramesAction,
+            TogglePaneInGroupAction, TogglePanePinnedAction, ToggleTabAction, UndoRenamePaneAction,
+            UndoRenameTabAction, WriteAction, WriteCharsAction,
         };
         use std::collections::HashMap;
 
@@ -1700,58 +1700,64 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                 Ok(crate::input::actions::Action::PreviousSwapLayout)
             },
             ActionType::NextSwapLayout(_) => Ok(crate::input::actions::Action::NextSwapLayout),
-            ActionType::OverrideLayout(override_layout_action) => Ok(crate::input::actions::Action::OverrideLayout {
-                tiled_layout: override_layout_action
-                    .tiled_layout
-                    .map(|l| l.try_into())
-                    .transpose()?,
-                floating_layouts: override_layout_action
-                    .floating_layouts
-                    .into_iter()
-                    .map(|l| l.try_into())
-                    .collect::<Result<Vec<_>>>()?,
-                swap_tiled_layouts: if override_layout_action.swap_tiled_layouts.is_empty() {
-                    None
-                } else {
-                    Some(
-                        override_layout_action
-                            .swap_tiled_layouts
-                            .into_iter()
-                            .map(|l| l.try_into())
-                            .collect::<Result<Vec<_>>>()?,
-                    )
-                },
-                swap_floating_layouts: if override_layout_action.swap_floating_layouts.is_empty() {
-                    None
-                } else {
-                    Some(
-                        override_layout_action
-                            .swap_floating_layouts
-                            .into_iter()
-                            .map(|l| l.try_into())
-                            .collect::<Result<Vec<_>>>()?,
-                    )
-                },
-                tab_name: override_layout_action.tab_name,
-                should_change_focus_to_new_tab: override_layout_action.should_change_focus_to_new_tab,
-                cwd: override_layout_action.cwd.map(PathBuf::from),
-                initial_panes: if override_layout_action.initial_panes.is_empty() {
-                    None
-                } else {
-                    Some(
-                        override_layout_action
-                            .initial_panes
-                            .into_iter()
-                            .map(|p| p.try_into())
-                            .collect::<Result<Vec<_>>>()?,
-                    )
-                },
+            ActionType::OverrideLayout(override_layout_action) => {
+                Ok(crate::input::actions::Action::OverrideLayout {
+                    tiled_layout: override_layout_action
+                        .tiled_layout
+                        .map(|l| l.try_into())
+                        .transpose()?,
+                    floating_layouts: override_layout_action
+                        .floating_layouts
+                        .into_iter()
+                        .map(|l| l.try_into())
+                        .collect::<Result<Vec<_>>>()?,
+                    swap_tiled_layouts: if override_layout_action.swap_tiled_layouts.is_empty() {
+                        None
+                    } else {
+                        Some(
+                            override_layout_action
+                                .swap_tiled_layouts
+                                .into_iter()
+                                .map(|l| l.try_into())
+                                .collect::<Result<Vec<_>>>()?,
+                        )
+                    },
+                    swap_floating_layouts: if override_layout_action
+                        .swap_floating_layouts
+                        .is_empty()
+                    {
+                        None
+                    } else {
+                        Some(
+                            override_layout_action
+                                .swap_floating_layouts
+                                .into_iter()
+                                .map(|l| l.try_into())
+                                .collect::<Result<Vec<_>>>()?,
+                        )
+                    },
+                    tab_name: override_layout_action.tab_name,
+                    should_change_focus_to_new_tab: override_layout_action
+                        .should_change_focus_to_new_tab,
+                    cwd: override_layout_action.cwd.map(PathBuf::from),
+                    initial_panes: if override_layout_action.initial_panes.is_empty() {
+                        None
+                    } else {
+                        Some(
+                            override_layout_action
+                                .initial_panes
+                                .into_iter()
+                                .map(|p| p.try_into())
+                                .collect::<Result<Vec<_>>>()?,
+                        )
+                    },
 
-                first_pane_unblock_condition: override_layout_action
-                    .first_pane_unblock_condition
-                    .map(|c| proto_i32_to_unblock_condition(c))
-                    .transpose()?,
-            }),
+                    first_pane_unblock_condition: override_layout_action
+                        .first_pane_unblock_condition
+                        .map(|c| proto_i32_to_unblock_condition(c))
+                        .transpose()?,
+                })
+            },
             ActionType::QueryTabNames(_) => Ok(crate::input::actions::Action::QueryTabNames),
             ActionType::NewTiledPluginPane(new_tiled_plugin_action) => {
                 Ok(crate::input::actions::Action::NewTiledPluginPane {

@@ -133,7 +133,12 @@ impl<'a> LayoutApplier<'a> {
     ) -> Result<bool> {
         // true => should_show_floating_panes
         let hide_floating_panes = tiled_panes_layout.hide_floating_panes;
-        self.override_tiled_panes_layout_for_existing_panes(&tiled_panes_layout, new_terminal_ids, &mut new_plugin_ids, client_id)?;
+        self.override_tiled_panes_layout_for_existing_panes(
+            &tiled_panes_layout,
+            new_terminal_ids,
+            &mut new_plugin_ids,
+            client_id,
+        )?;
 
         let layout_has_floating_panes = self.override_floating_panes_layout_for_existing_panes(
             &floating_panes_layout,
@@ -217,7 +222,7 @@ impl<'a> LayoutApplier<'a> {
         tiled_panes_layout: &TiledPaneLayout,
         mut new_terminal_ids: Vec<(u32, HoldForCommand)>,
         mut new_plugin_ids: &mut HashMap<RunPluginOrAlias, Vec<u32>>,
-        client_id: ClientId
+        client_id: ClientId,
     ) -> Result<()> {
         // TODO: CONTINUE HERE - test this with:
         // 1. focus
@@ -248,9 +253,7 @@ impl<'a> LayoutApplier<'a> {
 
         // look for exact matches (eg. panes that expect a specific command or plugin to run in them)
         for (layout, position_and_size) in positions_in_layout {
-            match existing_tab_state
-                .find_and_extract_exact_pane_with_same_run(&layout.run)
-            {
+            match existing_tab_state.find_and_extract_exact_pane_with_same_run(&layout.run) {
                 Some(pane) => {
                     pane_applier.apply_position_and_size_to_tiled_pane(
                         pane,
@@ -270,16 +273,15 @@ impl<'a> LayoutApplier<'a> {
             existing_tab_state.remove_pane(&pane_id);
             match pane_id {
                 PaneId::Terminal(_) => {
-                    let _ = self.senders.send_to_pty(PtyInstruction::ClosePane(
-                        pane_id,
-                        None,
-                    ));
-                }
+                    let _ = self
+                        .senders
+                        .send_to_pty(PtyInstruction::ClosePane(pane_id, None));
+                },
                 PaneId::Plugin(plugin_id) => {
-                    let _ = self.senders.send_to_plugin(PluginInstruction::Unload(
-                        plugin_id,
-                    ));
-                }
+                    let _ = self
+                        .senders
+                        .send_to_plugin(PluginInstruction::Unload(plugin_id));
+                },
             }
         }
 
@@ -851,9 +853,8 @@ impl<'a> LayoutApplier<'a> {
         // look for exact matches, first by pane contents and then by logical position
         for floating_pane_layout in positions_in_layout {
             match existing_tab_state
-                .find_and_extract_exact_pane_with_same_run(
-                    &floating_pane_layout.run,
-                ) {
+                .find_and_extract_exact_pane_with_same_run(&floating_pane_layout.run)
+            {
                 Some(pane) => {
                     panes_to_apply.push((pane, floating_pane_layout));
                 },
@@ -863,22 +864,20 @@ impl<'a> LayoutApplier<'a> {
             }
         }
 
-
         let remaining_pane_ids: Vec<PaneId> = existing_tab_state.pane_ids();
         for pane_id in remaining_pane_ids {
             existing_tab_state.remove_pane(&pane_id);
             match pane_id {
                 PaneId::Terminal(_) => {
-                    let _ = self.senders.send_to_pty(PtyInstruction::ClosePane(
-                        pane_id,
-                        None,
-                    ));
-                }
+                    let _ = self
+                        .senders
+                        .send_to_pty(PtyInstruction::ClosePane(pane_id, None));
+                },
                 PaneId::Plugin(plugin_id) => {
-                    let _ = self.senders.send_to_plugin(PluginInstruction::Unload(
-                        plugin_id,
-                    ));
-                }
+                    let _ = self
+                        .senders
+                        .send_to_plugin(PluginInstruction::Unload(plugin_id));
+                },
             }
         }
 
@@ -936,7 +935,6 @@ impl<'a> LayoutApplier<'a> {
         // here we apply positioning on a best-effort basis to any remaining panes we've got (these
         // are panes that exist in the tab state but not in the desired layout)
         pane_applier.finalize_floating_panes_state();
-
 
         if let Some(focused_floating_pane) = focused_floating_pane {
             self.floating_panes
@@ -1085,9 +1083,13 @@ impl ExistingTabState {
         run: &Option<Run>,
     ) -> Option<Box<dyn Pane>> {
         let candidates = self.pane_candidates();
-        let pane_id = candidates
-            .iter()
-            .find_map(|(_pid, p)| if p.invoked_with() == run { Some(p.pid())} else { None });
+        let pane_id = candidates.iter().find_map(|(_pid, p)| {
+            if p.invoked_with() == run {
+                Some(p.pid())
+            } else {
+                None
+            }
+        });
         pane_id.and_then(|p| self.existing_panes.remove(&p))
     }
     pub fn find_and_extract_pane_with_same_logical_position(
