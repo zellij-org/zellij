@@ -209,9 +209,11 @@ impl TryFrom<ProtobufAction> for Action {
                 Some(OptionalPayload::DumpScreenPayload(payload)) => {
                     let file_path = payload.file_path;
                     let include_scrollback = payload.include_scrollback;
+                    let pane_id = payload.pane_id.and_then(|p| p.try_into().ok());
                     Ok(Action::DumpScreen {
                         file_path,
                         include_scrollback,
+                        pane_id,
                     })
                 },
                 _ => Err("Wrong payload for Action::DumpScreen"),
@@ -1143,11 +1145,13 @@ impl TryFrom<Action> for ProtobufAction {
             Action::DumpScreen {
                 file_path,
                 include_scrollback,
+                pane_id,
             } => Ok(ProtobufAction {
                 name: ProtobufActionName::DumpScreen as i32,
                 optional_payload: Some(OptionalPayload::DumpScreenPayload(DumpScreenPayload {
                     file_path,
                     include_scrollback,
+                    pane_id: pane_id.and_then(|p| p.try_into().ok()),
                 })),
             }),
             Action::EditScrollback => Ok(ProtobufAction {
