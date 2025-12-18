@@ -225,20 +225,22 @@ impl<'a> LayoutApplier<'a> {
         client_id: ClientId,
     ) -> Result<()> {
         // TODO: CONTINUE HERE - test this with:
-        // 1. focus
+        // 1. focus - DONE
         //  - focus on floating panes (with/without originally having them)
         //  - focus on tiled panes while floating panes exist
         //  - focus on both
         //  - hide_floating_panes with/without focus
-        // 2. more terminal panes
-        // 3. command panes
-        // 4. editor panes
-        // 5. panes with cwd
-        // 6. all above permutations with existing that should be closed and new that should not
-        // 7. test what happens when the pane the user was focused on is closed
-        // 8. multiple users
-        // 9. multiple users in different tabs
+        // 2. more terminal panes - DONE
+        // 3. command panes - DONE
+        // 4. editor panes - DONE
+        // 5. panes with cwd - DONE
+        // 6. all above permutations with existing that should be closed and new that should not -
+        //    DONE
+        // 7. test what happens when the pane the user was focused on is closed - DONE
+        // 8. multiple users - DONE
+        // 9. multiple users in different tabs - DONE
         // 10. layout with multiple tabs (do we support this?)
+        // 11. cwd from layout or cli
         let positions_in_layout = self.flatten_layout(tiled_panes_layout, false)?;
 
         let mut existing_tab_state = ExistingTabState::new(self.tiled_panes.drain());

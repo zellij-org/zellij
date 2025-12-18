@@ -1015,7 +1015,7 @@ impl Action {
                 };
 
                 // Parse KDL layout
-                let layout = Layout::from_str(
+                let mut layout = Layout::from_str(
                     &raw_layout,
                     path_to_raw_layout,
                     swap_layouts.as_ref().map(|(f, p)| (f.as_str(), p.as_str())),
@@ -1043,14 +1043,25 @@ impl Action {
                 // Extract layout from first tab or use default
                 let swap_tiled_layouts = Some(layout.swap_tiled_layouts.clone());
                 let swap_floating_layouts = Some(layout.swap_floating_layouts.clone());
-                let (tiled_layout, floating_panes_layout) = layout.new_tab();
+                
+                if layout.tabs.len() > 1 {
+                    return Err(format!("This layout has {} tabs, overriding only supports layouts with 0 or 1 tabs.", layout.tabs.len()));
+                }
+
+                let (name, tiled_layout, floating_panes_layout) = if let Some(first_tab) = layout.tabs.get(0).take() {
+                    first_tab.clone()
+                } else {
+                    let name = None;
+                    let (tiled_panes, floating_panes)= layout.new_tab();
+                    (name, tiled_panes, floating_panes)
+                };
 
                 Ok(vec![Action::OverrideLayout {
                     tiled_layout: Some(tiled_layout),
                     floating_layouts: floating_panes_layout,
                     swap_tiled_layouts,
                     swap_floating_layouts,
-                    tab_name: None,
+                    tab_name: name,
                     should_change_focus_to_new_tab: false,
                     cwd: None,
                     initial_panes: None,
