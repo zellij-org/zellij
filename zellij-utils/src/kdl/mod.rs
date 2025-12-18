@@ -540,6 +540,7 @@ impl Action {
             "DumpScreen" => Ok(Action::DumpScreen {
                 file_path: string,
                 include_scrollback: false,
+                pane_id: None,
             }),
             "DumpLayout" => Ok(Action::DumpLayout),
             "NewPane" => {
@@ -691,6 +692,7 @@ impl Action {
             Action::DumpScreen {
                 file_path: file,
                 include_scrollback: _,
+                pane_id: _,
             } => {
                 let mut node = KdlNode::new("DumpScreen");
                 node.push(file.clone());

@@ -823,9 +823,11 @@ impl From<crate::input::actions::Action>
             crate::input::actions::Action::DumpScreen {
                 file_path,
                 include_scrollback,
+                pane_id,
             } => ActionType::DumpScreen(DumpScreenAction {
                 file_path,
                 include_scrollback,
+                pane_id: pane_id.map(|p| p.into()),
             }),
             crate::input::actions::Action::DumpLayout => {
                 ActionType::DumpLayout(DumpLayoutAction {})
@@ -1474,6 +1476,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                 Ok(crate::input::actions::Action::DumpScreen {
                     file_path: dump_screen_action.file_path,
                     include_scrollback: dump_screen_action.include_scrollback,
+                    pane_id: dump_screen_action.pane_id.and_then(|p| p.try_into().ok()),
                 })
             },
             ActionType::DumpLayout(_) => Ok(crate::input::actions::Action::DumpLayout),

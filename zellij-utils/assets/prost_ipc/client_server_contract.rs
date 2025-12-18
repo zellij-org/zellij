@@ -666,6 +666,8 @@ pub struct DumpScreenAction {
     pub file_path: ::prost::alloc::string::String,
     #[prost(bool, tag="2")]
     pub include_scrollback: bool,
+    #[prost(message, optional, tag="3")]
+    pub pane_id: ::core::option::Option<PaneId>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

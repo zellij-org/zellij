@@ -402,12 +402,14 @@ pub(crate) fn route_action(
         Action::DumpScreen {
             file_path,
             include_scrollback,
+            pane_id,
         } => {
             senders
                 .send_to_screen(ScreenInstruction::DumpScreen(
                     file_path,
                     client_id,
                     include_scrollback,
+                    pane_id.map(|p| p.into()),
                     Some(NotificationEnd::new(completion_tx)),
                 ))
                 .with_context(err_context)?;

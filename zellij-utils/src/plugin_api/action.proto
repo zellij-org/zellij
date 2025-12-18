@@ -371,6 +371,7 @@ message WriteCharsPayload {
 message DumpScreenPayload {
   string file_path = 1;
   bool include_scrollback = 2;
+  optional PaneId pane_id = 3;
 }
 
 enum ActionName {
