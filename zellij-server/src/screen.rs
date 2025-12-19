@@ -298,6 +298,7 @@ pub enum ScreenInstruction {
     OverrideLayout(
         Option<PathBuf>,        // cwd
         Option<TerminalAction>, // default_shell
+        Option<String>, // new name for tab
         TiledPaneLayout,
         Vec<FloatingPaneLayout>,
         Option<Vec<SwapTiledLayout>>,
@@ -5197,6 +5198,7 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::OverrideLayout(
                 cwd,
                 default_shell,
+                mut new_tab_name,
                 mut tiled_layout,
                 mut floating_layouts,
                 swap_tiled_layouts,
@@ -5204,7 +5206,7 @@ pub(crate) fn screen_thread_main(
                 client_id,
                 _completion_tx,
             ) => {
-                let active_tab = match screen.get_active_tab(client_id) {
+                let active_tab = match screen.get_active_tab_mut(client_id) {
                     Ok(tab) => tab,
                     Err(_) => {
                         log::error!(
@@ -5214,6 +5216,9 @@ pub(crate) fn screen_thread_main(
                         continue;
                     },
                 };
+                if let Some(name) = new_tab_name.take() {
+                    active_tab.name = name;
+                }
 
                 let (tiled_to_ignore, floating_indices) =
                     find_already_running_panes(&tiled_layout, &floating_layouts, active_tab);
@@ -5267,6 +5272,7 @@ pub(crate) fn screen_thread_main(
                         None,
                     )
                 });
+                screen.log_and_report_session_state()?;
                 screen.render(None);
             },
             ScreenInstruction::QueryTabNames(client_id, completion_tx) => {

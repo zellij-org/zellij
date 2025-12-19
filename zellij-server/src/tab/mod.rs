@@ -1359,7 +1359,6 @@ impl Tab {
         blocking_notification: Option<NotificationEnd>,
     ) -> Result<()> {
         let invoked_with = self.normalize_invoked_with_for_default_shell(invoked_with);
-        log::info!("invoked_with after normalization: {:?}", invoked_with);
         match new_pane_placement {
             NewPanePlacement::NoPreference => self.new_no_preference_pane(
                 pid,

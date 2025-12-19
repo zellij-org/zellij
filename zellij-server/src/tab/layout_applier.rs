@@ -881,7 +881,6 @@ impl<'a> LayoutApplier<'a> {
                 .floating_panes
                 .position_floating_pane_layout(&floating_pane_layout)?;
             let pid_to_focus = if let Some(Run::Plugin(run)) = floating_pane_layout.run.clone() {
-                log::info!("is plugin");
                 self.new_floating_plugin_pane(
                     run,
                     &mut new_plugin_ids,

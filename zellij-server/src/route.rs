@@ -1136,6 +1136,7 @@ pub(crate) fn route_action(
                 .send_to_screen(ScreenInstruction::OverrideLayout(
                     cwd,
                     shell,
+                    tab_name,
                     tiled,
                     floating,
                     swap_tiled,
