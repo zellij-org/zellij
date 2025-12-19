@@ -6,33 +6,29 @@ VIEWPORT: x=0, y=0, cols=100, rows=50
 DISPLAY: cols=100, rows=50
 FOCUS: None
 
-TILED PANES (4)
+TILED PANES (2)
   Terminal(1):
-    geom: x=0, y=0, cols=50, rows=25
+    geom: x=0, y=0, cols=100, rows=25
     logical_position: 0
     run: None
     selectable: true
     title: Pane #1
     borderless: false
 
-  Terminal(2):
-    geom: x=0, y=25, cols=50, rows=25
-    logical_position: 1
-    run: None
-    selectable: true
-    title: Pane #2
-    borderless: false
-
   Terminal(3):
-    geom: x=50, y=25, cols=50, rows=25
+    geom: x=0, y=25, cols=100, rows=25
+    logical_position: 1
     run: None
     selectable: true
     title: Pane #3
     borderless: false
 
-  Terminal(4):
-    geom: x=50, y=0, cols=50, rows=25
+FLOATING PANES (1)
+  Terminal(2):
+    geom: x=15, y=15, cols=45, rows=22
+    logical_position: 0
     run: None
+    pinned: false
     selectable: true
-    title: Pane #4
+    title: Pane #2
     borderless: false

@@ -1,0 +1,24 @@
+---
+source: zellij-server/src/tab/./unit/layout_applier_tests.rs
+expression: "take_pane_state_snapshot(&tiled_panes, &floating_panes, &focus_pane_id,\n&viewport, &display_area,)"
+---
+VIEWPORT: x=0, y=0, cols=120, rows=40
+DISPLAY: cols=120, rows=40
+FOCUS: Some(Terminal(2))
+
+TILED PANES (2)
+  Terminal(1):
+    geom: x=0, y=0, cols=120, rows=20
+    logical_position: 0
+    run: Command(htop)
+    selectable: true
+    title: htop
+    borderless: false
+
+  Terminal(4):
+    geom: x=0, y=20, cols=120, rows=20
+    logical_position: 1
+    run: Command(cargo) args=["check"]
+    selectable: true
+    title: cargo check
+    borderless: false

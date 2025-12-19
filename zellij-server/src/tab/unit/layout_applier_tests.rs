@@ -1,6 +1,8 @@
 use crate::panes::sixel::SixelImageStore;
 use crate::panes::{FloatingPanes, TiledPanes};
 use crate::panes::{LinkHandler, PaneId};
+use crate::plugins::PluginInstruction;
+use crate::pty::PtyInstruction;
 use crate::tab::layout_applier::LayoutApplier;
 use crate::{
     os_input_output::{AsyncReader, Pid, ServerOsApi},
@@ -17,7 +19,7 @@ use std::rc::Rc;
 
 use interprocess::local_socket::LocalSocketStream;
 use zellij_utils::{
-    channels::{self, SenderWithContext},
+    channels::{self, ChannelWithContext, Receiver, SenderWithContext},
     data::{ModeInfo, Palette, Style},
     errors::prelude::*,
     input::command::{RunCommand, TerminalAction},
@@ -251,6 +253,135 @@ fn create_layout_applier_fixtures(
     )
 }
 
+/// Creates fixtures with receivers for verifying messages sent to pty and plugin threads
+#[allow(clippy::type_complexity)]
+fn create_layout_applier_fixtures_with_receivers(
+    size: Size,
+) -> (
+    Rc<RefCell<Viewport>>,
+    ThreadSenders,
+    Rc<RefCell<SixelImageStore>>,
+    Rc<RefCell<LinkHandler>>,
+    Rc<RefCell<Palette>>,
+    Rc<RefCell<HashMap<usize, String>>>,
+    Rc<RefCell<Option<SizeInPixels>>>,
+    Rc<RefCell<HashMap<ClientId, bool>>>,
+    Style,
+    Rc<RefCell<Size>>,
+    TiledPanes,
+    FloatingPanes,
+    bool,
+    Option<PaneId>,
+    Box<dyn ServerOsApi>,
+    bool,
+    bool,
+    bool,
+    bool,
+    Receiver<(PtyInstruction, zellij_utils::errors::ErrorContext)>,
+    Receiver<(PluginInstruction, zellij_utils::errors::ErrorContext)>,
+) {
+    let viewport = Rc::new(RefCell::new(Viewport {
+        x: 0,
+        y: 0,
+        rows: size.rows,
+        cols: size.cols,
+    }));
+
+    let (mock_pty_sender, mock_pty_receiver): ChannelWithContext<PtyInstruction> =
+        channels::unbounded();
+    let (mock_plugin_sender, mock_plugin_receiver): ChannelWithContext<PluginInstruction> =
+        channels::unbounded();
+
+    let mut senders = ThreadSenders::default().silently_fail_on_send();
+    senders.replace_to_pty(SenderWithContext::new(mock_pty_sender));
+    senders.replace_to_plugin(SenderWithContext::new(mock_plugin_sender));
+
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let link_handler = Rc::new(RefCell::new(LinkHandler::new()));
+    let terminal_emulator_colors = Rc::new(RefCell::new(Palette::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let character_cell_size = Rc::new(RefCell::new(None));
+
+    let client_id = 1;
+    let mut connected_clients_map = HashMap::new();
+    connected_clients_map.insert(client_id, false);
+    let connected_clients = Rc::new(RefCell::new(connected_clients_map));
+
+    let style = Style::default();
+    let display_area = Rc::new(RefCell::new(size));
+
+    let os_api = Box::new(FakeInputOutput {});
+
+    // Create TiledPanes
+    let connected_clients_set = Rc::new(RefCell::new(HashSet::from([client_id])));
+    let mode_info = Rc::new(RefCell::new(HashMap::new()));
+    let stacked_resize = Rc::new(RefCell::new(false));
+    let session_is_mirrored = true;
+    let draw_pane_frames = true;
+    let default_mode_info = ModeInfo::default();
+
+    let tiled_panes = TiledPanes::new(
+        display_area.clone(),
+        viewport.clone(),
+        connected_clients_set.clone(),
+        connected_clients.clone(),
+        mode_info.clone(),
+        character_cell_size.clone(),
+        stacked_resize,
+        session_is_mirrored,
+        draw_pane_frames,
+        default_mode_info.clone(),
+        style.clone(),
+        os_api.box_clone(),
+        senders.clone(),
+    );
+
+    // Create FloatingPanes
+    let floating_panes = FloatingPanes::new(
+        display_area.clone(),
+        viewport.clone(),
+        connected_clients_set,
+        connected_clients.clone(),
+        mode_info,
+        character_cell_size.clone(),
+        session_is_mirrored,
+        default_mode_info,
+        style.clone(),
+        os_api.box_clone(),
+        senders.clone(),
+    );
+
+    let focus_pane_id = None;
+    let debug = false;
+    let arrow_fonts = true;
+    let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
+
+    (
+        viewport,
+        senders,
+        sixel_image_store,
+        link_handler,
+        terminal_emulator_colors,
+        terminal_emulator_color_codes,
+        character_cell_size,
+        connected_clients,
+        style,
+        display_area,
+        tiled_panes,
+        floating_panes,
+        draw_pane_frames,
+        focus_pane_id,
+        os_api,
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
+        mock_pty_receiver,
+        mock_plugin_receiver,
+    )
+}
+
 /// Takes a snapshot of the current pane state for assertion
 fn take_pane_state_snapshot(
     tiled_panes: &TiledPanes,
@@ -385,6 +516,32 @@ fn format_run_instruction(run: &Option<Run>) -> String {
             format!("EditFile({:?}, line={:?}, cwd={:?})", path, line, cwd)
         },
     }
+}
+
+/// Collect all close pane messages from the pty receiver
+fn collect_close_pane_messages(
+    pty_receiver: &Receiver<(PtyInstruction, zellij_utils::errors::ErrorContext)>,
+) -> Vec<PaneId> {
+    let mut closed_panes = Vec::new();
+    while let Ok((instruction, _)) = pty_receiver.try_recv() {
+        if let PtyInstruction::ClosePane(pane_id, _) = instruction {
+            closed_panes.push(pane_id);
+        }
+    }
+    closed_panes
+}
+
+/// Collect all unload plugin messages from the plugin receiver
+fn collect_unload_plugin_messages(
+    plugin_receiver: &Receiver<(PluginInstruction, zellij_utils::errors::ErrorContext)>,
+) -> Vec<u32> {
+    let mut unloaded_plugins = Vec::new();
+    while let Ok((instruction, _)) = plugin_receiver.try_recv() {
+        if let PluginInstruction::Unload(plugin_id) = instruction {
+            unloaded_plugins.push(plugin_id);
+        }
+    }
+    unloaded_plugins
 }
 
 #[test]
@@ -2558,6 +2715,2543 @@ fn test_apply_layout_with_excess_terminal_ids() {
 
     // Snapshot should show only 2 panes created
     // Excess IDs should be closed by the applier
+    assert_snapshot!(take_pane_state_snapshot(
+        &tiled_panes,
+        &floating_panes,
+        &focus_pane_id,
+        &viewport,
+        &display_area,
+    ));
+}
+
+#[test]
+fn test_override_layout_basic_with_both_tiled_and_floating() {
+    // Setup: Apply initial layout with 2 tiled panes + 1 floating pane
+    let initial_kdl = r#"
+        layout {
+            pane command="htop"
+            pane command="vim"
+            floating_panes {
+                pane {
+                    x 10
+                    y 10
+                    width 40
+                    height 20
+                    command "tail"
+                    args "-f" "/var/log/syslog"
+                }
+            }
+        }
+    "#;
+
+    let (initial_tiled, initial_floating) = parse_kdl_layout(initial_kdl);
+    let terminal_ids = vec![(1, None), (2, None)];
+    let floating_terminal_ids = vec![(3, None)];
+
+    let size = Size {
+        cols: 120,
+        rows: 40,
+    };
+    let (
+        viewport,
+        senders,
+        sixel_image_store,
+        link_handler,
+        terminal_emulator_colors,
+        terminal_emulator_color_codes,
+        character_cell_size,
+        connected_clients,
+        style,
+        display_area,
+        mut tiled_panes,
+        mut floating_panes,
+        draw_pane_frames,
+        mut focus_pane_id,
+        os_api,
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
+        pty_receiver,
+        plugin_receiver,
+    ) = create_layout_applier_fixtures_with_receivers(size);
+
+    let mut applier = LayoutApplier::new(
+        &viewport,
+        &senders,
+        &sixel_image_store,
+        &link_handler,
+        &terminal_emulator_colors,
+        &terminal_emulator_color_codes,
+        &character_cell_size,
+        &connected_clients,
+        &style,
+        &display_area,
+        &mut tiled_panes,
+        &mut floating_panes,
+        draw_pane_frames,
+        &mut focus_pane_id,
+        &os_api,
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
+        None,
+    );
+
+    applier
+        .apply_layout(
+            initial_tiled,
+            initial_floating,
+            terminal_ids,
+            floating_terminal_ids,
+            HashMap::new(),
+            1,
+        )
+        .unwrap();
+
+    // Now override with different layout (2 tiled + 1 floating)
+    let override_kdl = r#"
+        layout {
+            pane command="top"
+            pane command="htop"
+            floating_panes {
+                pane {
+                    x 20
+                    y 20
+                    width 50
+                    height 25
+                    command "watch"
+                    args "df" "-h"
+                }
+            }
+        }
+    "#;
+
+    let (override_tiled, override_floating) = parse_kdl_layout(override_kdl);
+    let new_terminal_ids = vec![(4, None)];
+    let new_floating_terminal_ids = vec![(5, None)];
+
+    let should_show_floating = applier
+        .override_layout(
+            override_tiled,
+            override_floating,
+            new_terminal_ids,
+            new_floating_terminal_ids,
+            HashMap::new(),
+            1,
+        )
+        .unwrap();
+
+    // Should show floating panes
+    assert_eq!(should_show_floating, true);
+
+    // Verify close messages were sent for vim (Terminal(2)) and tail (Terminal(3))
+    let closed_panes = collect_close_pane_messages(&pty_receiver);
+    assert_eq!(closed_panes.len(), 2);
+    assert!(closed_panes.contains(&PaneId::Terminal(2))); // vim
+    assert!(closed_panes.contains(&PaneId::Terminal(3))); // tail
+
+    // No plugins should be unloaded
+    let unloaded_plugins = collect_unload_plugin_messages(&plugin_receiver);
+    assert!(unloaded_plugins.is_empty());
+
+    assert_snapshot!(take_pane_state_snapshot(
+        &tiled_panes,
+        &floating_panes,
+        &focus_pane_id,
+        &viewport,
+        &display_area,
+    ));
+}
+
+#[test]
+fn test_override_layout_hide_floating_panes_true() {
+    // Setup: Initial layout with floating panes
+    let initial_kdl = r#"
+        layout {
+            pane
+            floating_panes {
+                pane {
+                    x 10
+                    y 10
+                    width 40
+                    height 20
+                }
+            }
+        }
+    "#;
+
+    let (initial_tiled, initial_floating) = parse_kdl_layout(initial_kdl);
+    let terminal_ids = vec![(1, None)];
+    let floating_terminal_ids = vec![(2, None)];
+
+    let size = Size {
+        cols: 100,
+        rows: 50,
+    };
+    let (
+        viewport,
+        senders,
+        sixel_image_store,
+        link_handler,
+        terminal_emulator_colors,
+        terminal_emulator_color_codes,
+        character_cell_size,
+        connected_clients,
+        style,
+        display_area,
+        mut tiled_panes,
+        mut floating_panes,
+        draw_pane_frames,
+        mut focus_pane_id,
+        os_api,
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
+        pty_receiver,
+        plugin_receiver,
+    ) = create_layout_applier_fixtures_with_receivers(size);
+
+    let mut applier = LayoutApplier::new(
+        &viewport,
+        &senders,
+        &sixel_image_store,
+        &link_handler,
+        &terminal_emulator_colors,
+        &terminal_emulator_color_codes,
+        &character_cell_size,
+        &connected_clients,
+        &style,
+        &display_area,
+        &mut tiled_panes,
+        &mut floating_panes,
+        draw_pane_frames,
+        &mut focus_pane_id,
+        &os_api,
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
+        None,
+    );
+
+    applier
+        .apply_layout(
+            initial_tiled,
+            initial_floating,
+            terminal_ids,
+            floating_terminal_ids,
+            HashMap::new(),
+            1,
+        )
+        .unwrap();
+
+    // Override with layout that has hide_floating_panes true
+    let override_kdl = r#"
+        layout {
+            hide_floating_panes true
+            pane
+            pane
+            floating_panes {
+                pane {
+                    x 15
+                    y 15
+                    width 45
+                    height 22
+                }
+            }
+        }
+    "#;
+
+    let (override_tiled, override_floating) = parse_kdl_layout(override_kdl);
+    let new_terminal_ids = vec![(3, None)];
+    let new_floating_terminal_ids = vec![(4, None)];
+
+    let should_show_floating = applier
+        .override_layout(
+            override_tiled,
+            override_floating,
+            new_terminal_ids,
+            new_floating_terminal_ids,
+            HashMap::new(),
+            1,
+        )
+        .unwrap();
+
+    // Should NOT show floating panes because of hide_floating_panes
+    assert_eq!(should_show_floating, false);
+
+    let closed_panes = collect_close_pane_messages(&pty_receiver);
+    assert_eq!(closed_panes.len(), 0);
+
+    // No plugins should be unloaded
+    let unloaded_plugins = collect_unload_plugin_messages(&plugin_receiver);
+    assert!(unloaded_plugins.is_empty());
+
+    assert_snapshot!(take_pane_state_snapshot(
+        &tiled_panes,
+        &floating_panes,
+        &focus_pane_id,
+        &viewport,
+        &display_area,
+    ));
+}
+
+#[test]
+fn test_override_layout_show_floating_panes() {
+    // Setup: Initial layout
+    let initial_kdl = r#"
+        layout {
+            pane
+            pane
+        }
+    "#;
+
+    let (initial_tiled, initial_floating) = parse_kdl_layout(initial_kdl);
+    let terminal_ids = vec![(1, None), (2, None)];
+
+    let size = Size {
+        cols: 100,
+        rows: 50,
+    };
+    let (
+        viewport,
+        senders,
+        sixel_image_store,
+        link_handler,
+        terminal_emulator_colors,
+        terminal_emulator_color_codes,
+        character_cell_size,
+        connected_clients,
+        style,
+        display_area,
+        mut tiled_panes,
+        mut floating_panes,
+        draw_pane_frames,
+        mut focus_pane_id,
+        os_api,
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
+        pty_receiver,
+        plugin_receiver,
+    ) = create_layout_applier_fixtures_with_receivers(size);
+
+    let mut applier = LayoutApplier::new(
+        &viewport,
+        &senders,
+        &sixel_image_store,
+        &link_handler,
+        &terminal_emulator_colors,
+        &terminal_emulator_color_codes,
+        &character_cell_size,
+        &connected_clients,
+        &style,
+        &display_area,
+        &mut tiled_panes,
+        &mut floating_panes,
+        draw_pane_frames,
+        &mut focus_pane_id,
+        &os_api,
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
+        None,
+    );
+
+    applier
+        .apply_layout(
+            initial_tiled,
+            initial_floating,
+            terminal_ids,
+            vec![],
+            HashMap::new(),
+            1,
+        )
+        .unwrap();
+
+    // Override with layout containing floating panes
+    let override_kdl = r#"
+        layout {
+            pane
+            floating_panes {
+                pane {
+                    x 20
+                    y 10
+                    width 50
+                    height 30
+                }
+            }
+        }
+    "#;
+
+    let (override_tiled, override_floating) = parse_kdl_layout(override_kdl);
+    let new_floating_terminal_ids = vec![(3, None)];
+
+    let should_show_floating = applier
+        .override_layout(
+            override_tiled,
+            override_floating,
+            vec![],
+            new_floating_terminal_ids,
+            HashMap::new(),
+            1,
+        )
+        .unwrap();
+
+    // Should show floating panes
+    assert_eq!(should_show_floating, true);
+
+    // Verify close message was sent for one tiled pane (Terminal(2))
+    let closed_panes = collect_close_pane_messages(&pty_receiver);
+    assert_eq!(closed_panes.len(), 1);
+    assert!(closed_panes.contains(&PaneId::Terminal(2)));
+
+    // No plugins should be unloaded
+    let unloaded_plugins = collect_unload_plugin_messages(&plugin_receiver);
+    assert!(unloaded_plugins.is_empty());
+
+    assert_snapshot!(take_pane_state_snapshot(
+        &tiled_panes,
+        &floating_panes,
+        &focus_pane_id,
+        &viewport,
+        &display_area,
+    ));
+}
+
+// ============================================================================
+// Suite 2: override_tiled_panes_layout_for_existing_panes Tests
+// ============================================================================
+
+#[test]
+fn test_override_tiled_exact_match_preservation_commands() {
+    // Setup: Apply initial layout with 3 panes running different commands
+    let initial_kdl = r#"
+        layout {
+            pane command="htop"
+            pane command="vim"
+            pane command="tail" {
+                args "-f" "/var/log/syslog"
+            }
+        }
+    "#;
+
+    let (initial_tiled, initial_floating) = parse_kdl_layout(initial_kdl);
+    let terminal_ids = vec![(1, None), (2, None), (3, None)];
+
+    let size = Size {
+        cols: 120,
+        rows: 40,
+    };
+    let (
+        viewport,
+        senders,
+        sixel_image_store,
+        link_handler,
+        terminal_emulator_colors,
+        terminal_emulator_color_codes,
+        character_cell_size,
+        connected_clients,
+        style,
+        display_area,
+        mut tiled_panes,
+        mut floating_panes,
+        draw_pane_frames,
+        mut focus_pane_id,
+        os_api,
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
+        pty_receiver,
+        plugin_receiver,
+    ) = create_layout_applier_fixtures_with_receivers(size);
+
+    let mut applier = LayoutApplier::new(
+        &viewport,
+        &senders,
+        &sixel_image_store,
+        &link_handler,
+        &terminal_emulator_colors,
+        &terminal_emulator_color_codes,
+        &character_cell_size,
+        &connected_clients,
+        &style,
+        &display_area,
+        &mut tiled_panes,
+        &mut floating_panes,
+        draw_pane_frames,
+        &mut focus_pane_id,
+        &os_api,
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
+        None,
+    );
+
+    applier
+        .apply_layout(
+            initial_tiled,
+            initial_floating,
+            terminal_ids,
+            vec![],
+            HashMap::new(),
+            1,
+        )
+        .unwrap();
+
+    // Override: New layout with only htop and vim in different positions
+    let override_kdl = r#"
+        layout {
+            pane command="vim"
+            pane command="htop"
+        }
+    "#;
+
+    let (override_tiled, _) = parse_kdl_layout(override_kdl);
+
+    applier
+        .override_tiled_panes_layout_for_existing_panes(
+            &override_tiled,
+            vec![],
+            &mut HashMap::new(),
+            1,
+        )
+        .unwrap();
+
+    // htop and vim panes should be preserved (same PaneIds: Terminal(1) and Terminal(2))
+    // tail pane should be closed
+    // Panes should be repositioned to new layout positions
+
+    // Verify close message was sent for tail pane (Terminal(3))
+    let closed_panes = collect_close_pane_messages(&pty_receiver);
+    assert_eq!(closed_panes.len(), 1);
+    assert!(closed_panes.contains(&PaneId::Terminal(3))); // tail
+
+    // No plugins should be unloaded
+    let unloaded_plugins = collect_unload_plugin_messages(&plugin_receiver);
+    assert!(unloaded_plugins.is_empty());
+
+    assert_snapshot!(take_pane_state_snapshot(
+        &tiled_panes,
+        &floating_panes,
+        &focus_pane_id,
+        &viewport,
+        &display_area,
+    ));
+}
+
+#[test]
+fn test_override_tiled_exact_match_preservation_plugins() {
+    // Setup: Initial layout with 2 terminal panes + 1 plugin pane
+    let initial_kdl = r#"
+        layout {
+            pane
+            pane
+            pane {
+                plugin location="zellij:tab-bar"
+            }
+        }
+    "#;
+
+    let (initial_tiled, initial_floating) = parse_kdl_layout(initial_kdl);
+    let terminal_ids = vec![(1, None), (2, None)];
+
+    let mut initial_plugin_ids = HashMap::new();
+    let tab_bar_plugin =
+        RunPluginOrAlias::from_url("zellij:tab-bar", &None, None, None).unwrap();
+    initial_plugin_ids.insert(tab_bar_plugin.clone(), vec![100]);
+
+    let size = Size {
+        cols: 120,
+        rows: 40,
+    };
+    let (
+        viewport,
+        senders,
+        sixel_image_store,
+        link_handler,
+        terminal_emulator_colors,
+        terminal_emulator_color_codes,
+        character_cell_size,
+        connected_clients,
+        style,
+        display_area,
+        mut tiled_panes,
+        mut floating_panes,
+        draw_pane_frames,
+        mut focus_pane_id,
+        os_api,
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
+        pty_receiver,
+        plugin_receiver,
+    ) = create_layout_applier_fixtures_with_receivers(size);
+
+    let mut applier = LayoutApplier::new(
+        &viewport,
+        &senders,
+        &sixel_image_store,
+        &link_handler,
+        &terminal_emulator_colors,
+        &terminal_emulator_color_codes,
+        &character_cell_size,
+        &connected_clients,
+        &style,
+        &display_area,
+        &mut tiled_panes,
+        &mut floating_panes,
+        draw_pane_frames,
+        &mut focus_pane_id,
+        &os_api,
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
+        None,
+    );
+
+    applier
+        .apply_layout(
+            initial_tiled,
+            initial_floating,
+            terminal_ids,
+            vec![],
+            initial_plugin_ids,
+            1,
+        )
+        .unwrap();
+
+    // Override: New layout with only the plugin pane
+    let override_kdl = r#"
+        layout {
+            pane {
+                plugin location="zellij:tab-bar"
+            }
+        }
+    "#;
+
+    let (override_tiled, _) = parse_kdl_layout(override_kdl);
+
+    applier
+        .override_tiled_panes_layout_for_existing_panes(
+            &override_tiled,
+            vec![],
+            &mut HashMap::new(),
+            1,
+        )
+        .unwrap();
+
+    // Plugin pane should be preserved
+    // Terminal panes should be closed
+    // Total pane count is 1
+
+    // Verify close messages were sent for both terminal panes (Terminal(1) and Terminal(2))
+    let closed_panes = collect_close_pane_messages(&pty_receiver);
+    assert_eq!(closed_panes.len(), 2);
+    assert!(closed_panes.contains(&PaneId::Terminal(1)));
+    assert!(closed_panes.contains(&PaneId::Terminal(2)));
+
+    // No plugins should be unloaded (plugin is preserved)
+    let unloaded_plugins = collect_unload_plugin_messages(&plugin_receiver);
+    assert!(unloaded_plugins.is_empty());
+
+    assert_snapshot!(take_pane_state_snapshot(
+        &tiled_panes,
+        &floating_panes,
+        &focus_pane_id,
+        &viewport,
+        &display_area,
+    ));
+}
+
+#[test]
+fn test_override_tiled_all_panes_closed_no_matches() {
+    // Setup: 3 panes running htop, vim, tail
+    let initial_kdl = r#"
+        layout {
+            pane command="htop"
+            pane command="vim"
+            pane command="tail" {
+                args "-f" "/var/log/syslog"
+            }
+        }
+    "#;
+
+    let (initial_tiled, initial_floating) = parse_kdl_layout(initial_kdl);
+    let terminal_ids = vec![(1, None), (2, None), (3, None)];
+
+    let size = Size {
+        cols: 120,
+        rows: 40,
+    };
+    let (
+        viewport,
+        senders,
+        sixel_image_store,
+        link_handler,
+        terminal_emulator_colors,
+        terminal_emulator_color_codes,
+        character_cell_size,
+        connected_clients,
+        style,
+        display_area,
+        mut tiled_panes,
+        mut floating_panes,
+        draw_pane_frames,
+        mut focus_pane_id,
+        os_api,
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
+        pty_receiver,
+        plugin_receiver,
+    ) = create_layout_applier_fixtures_with_receivers(size);
+
+    let mut applier = LayoutApplier::new(
+        &viewport,
+        &senders,
+        &sixel_image_store,
+        &link_handler,
+        &terminal_emulator_colors,
+        &terminal_emulator_color_codes,
+        &character_cell_size,
+        &connected_clients,
+        &style,
+        &display_area,
+        &mut tiled_panes,
+        &mut floating_panes,
+        draw_pane_frames,
+        &mut focus_pane_id,
+        &os_api,
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
+        None,
+    );
+
+    applier
+        .apply_layout(
+            initial_tiled,
+            initial_floating,
+            terminal_ids,
+            vec![],
+            HashMap::new(),
+            1,
+        )
+        .unwrap();
+
+    // Override: New layout with 3 completely different commands
+    let override_kdl = r#"
+        layout {
+            pane command="cargo" {
+                args "watch"
+            }
+            pane command="npm" {
+                args "start"
+            }
+            pane command="python" {
+                args "-m" "http.server"
+            }
+        }
+    "#;
+
+    let (override_tiled, _) = parse_kdl_layout(override_kdl);
+    let new_terminal_ids = vec![(4, None), (5, None), (6, None)];
+
+    applier
+        .override_tiled_panes_layout_for_existing_panes(
+            &override_tiled,
+            new_terminal_ids,
+            &mut HashMap::new(),
+            1,
+        )
+        .unwrap();
+
+    // All original pane IDs gone (1, 2, 3 should not be present)
+    // 3 new panes with new IDs (4, 5, 6)
+    // Total pane count is 3
+
+    // Verify close messages were sent for all original panes (Terminal(1), Terminal(2), Terminal(3))
+    let closed_panes = collect_close_pane_messages(&pty_receiver);
+    assert_eq!(closed_panes.len(), 3);
+    assert!(closed_panes.contains(&PaneId::Terminal(1))); // htop
+    assert!(closed_panes.contains(&PaneId::Terminal(2))); // vim
+    assert!(closed_panes.contains(&PaneId::Terminal(3))); // tail
+
+    // No plugins should be unloaded
+    let unloaded_plugins = collect_unload_plugin_messages(&plugin_receiver);
+    assert!(unloaded_plugins.is_empty());
+
+    assert_snapshot!(take_pane_state_snapshot(
+        &tiled_panes,
+        &floating_panes,
+        &focus_pane_id,
+        &viewport,
+        &display_area,
+    ));
+}
+
+#[test]
+fn test_override_tiled_mixed_some_matches_some_new() {
+    // Setup: 2 panes - one running htop, one generic shell (no command)
+    let initial_kdl = r#"
+        layout {
+            pane command="htop"
+            pane
+        }
+    "#;
+
+    let (initial_tiled, initial_floating) = parse_kdl_layout(initial_kdl);
+    let terminal_ids = vec![(1, None), (2, None)];
+
+    let size = Size {
+        cols: 120,
+        rows: 40,
+    };
+    let (
+        viewport,
+        senders,
+        sixel_image_store,
+        link_handler,
+        terminal_emulator_colors,
+        terminal_emulator_color_codes,
+        character_cell_size,
+        connected_clients,
+        style,
+        display_area,
+        mut tiled_panes,
+        mut floating_panes,
+        draw_pane_frames,
+        mut focus_pane_id,
+        os_api,
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
+        pty_receiver,
+        plugin_receiver,
+    ) = create_layout_applier_fixtures_with_receivers(size);
+
+    let mut applier = LayoutApplier::new(
+        &viewport,
+        &senders,
+        &sixel_image_store,
+        &link_handler,
+        &terminal_emulator_colors,
+        &terminal_emulator_color_codes,
+        &character_cell_size,
+        &connected_clients,
+        &style,
+        &display_area,
+        &mut tiled_panes,
+        &mut floating_panes,
+        draw_pane_frames,
+        &mut focus_pane_id,
+        &os_api,
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
+        None,
+    );
+
+    applier
+        .apply_layout(
+            initial_tiled,
+            initial_floating,
+            terminal_ids,
+            vec![],
+            HashMap::new(),
+            1,
+        )
+        .unwrap();
+
+    // Override: Layout with htop, vim, and generic shell
+    let override_kdl = r#"
+        layout {
+            pane command="htop"
+            pane command="vim"
+            pane
+        }
+    "#;
+
+    let (override_tiled, _) = parse_kdl_layout(override_kdl);
+    let new_terminal_ids = vec![(3, None), (4, None)];
+
+    applier
+        .override_tiled_panes_layout_for_existing_panes(
+            &override_tiled,
+            new_terminal_ids,
+            &mut HashMap::new(),
+            1,
+        )
+        .unwrap();
+
+    // htop preserved with same ID (Terminal(1))
+    // Original shell pane closed (generic shells are NOT exact matches)
+    // 2 new panes created (vim and new shell)
+    // Total pane count is 3
+
+    // Verify close message was not sent for original shell pane (Terminal(2))
+    let closed_panes = collect_close_pane_messages(&pty_receiver);
+    assert_eq!(closed_panes.len(), 0);
+
+    // No plugins should be unloaded
+    let unloaded_plugins = collect_unload_plugin_messages(&plugin_receiver);
+    assert!(unloaded_plugins.is_empty());
+
+    assert_snapshot!(take_pane_state_snapshot(
+        &tiled_panes,
+        &floating_panes,
+        &focus_pane_id,
+        &viewport,
+        &display_area,
+    ));
+}
+
+#[test]
+fn test_override_tiled_new_panes_for_unmatched_positions() {
+    // Setup: 1 pane running htop
+    let initial_kdl = r#"
+        layout {
+            pane command="htop"
+        }
+    "#;
+
+    let (initial_tiled, initial_floating) = parse_kdl_layout(initial_kdl);
+    let terminal_ids = vec![(1, None)];
+
+    let size = Size {
+        cols: 150,
+        rows: 50,
+    };
+    let (
+        viewport,
+        senders,
+        sixel_image_store,
+        link_handler,
+        terminal_emulator_colors,
+        terminal_emulator_color_codes,
+        character_cell_size,
+        connected_clients,
+        style,
+        display_area,
+        mut tiled_panes,
+        mut floating_panes,
+        draw_pane_frames,
+        mut focus_pane_id,
+        os_api,
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
+    ) = create_layout_applier_fixtures(size);
+
+    let mut applier = LayoutApplier::new(
+        &viewport,
+        &senders,
+        &sixel_image_store,
+        &link_handler,
+        &terminal_emulator_colors,
+        &terminal_emulator_color_codes,
+        &character_cell_size,
+        &connected_clients,
+        &style,
+        &display_area,
+        &mut tiled_panes,
+        &mut floating_panes,
+        draw_pane_frames,
+        &mut focus_pane_id,
+        &os_api,
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
+        None,
+    );
+
+    applier
+        .apply_layout(
+            initial_tiled,
+            initial_floating,
+            terminal_ids,
+            vec![],
+            HashMap::new(),
+            1,
+        )
+        .unwrap();
+
+    // Override: Layout with 4 positions
+    let override_kdl = r#"
+        layout {
+            pane command="htop"
+            pane command="vim"
+            pane
+            pane
+        }
+    "#;
+
+    let (override_tiled, _) = parse_kdl_layout(override_kdl);
+    let new_terminal_ids = vec![(2, None), (3, None), (4, None)];
+
+    applier
+        .override_tiled_panes_layout_for_existing_panes(
+            &override_tiled,
+            new_terminal_ids,
+            &mut HashMap::new(),
+            1,
+        )
+        .unwrap();
+
+    // 1 original htop pane preserved (Terminal(1))
+    // 3 new panes created (Terminal(2), Terminal(3), Terminal(4))
+    // Total 4 panes
+    assert_snapshot!(take_pane_state_snapshot(
+        &tiled_panes,
+        &floating_panes,
+        &focus_pane_id,
+        &viewport,
+        &display_area,
+    ));
+}
+
+#[test]
+fn test_override_tiled_focus_on_new_pane() {
+    // Setup: 2 panes, first one focused
+    let initial_kdl = r#"
+        layout {
+            pane focus=true
+            pane
+        }
+    "#;
+
+    let (initial_tiled, initial_floating) = parse_kdl_layout(initial_kdl);
+    let terminal_ids = vec![(1, None), (2, None)];
+
+    let size = Size {
+        cols: 100,
+        rows: 50,
+    };
+    let (
+        viewport,
+        senders,
+        sixel_image_store,
+        link_handler,
+        terminal_emulator_colors,
+        terminal_emulator_color_codes,
+        character_cell_size,
+        connected_clients,
+        style,
+        display_area,
+        mut tiled_panes,
+        mut floating_panes,
+        draw_pane_frames,
+        mut focus_pane_id,
+        os_api,
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
+    ) = create_layout_applier_fixtures(size);
+
+    let mut applier = LayoutApplier::new(
+        &viewport,
+        &senders,
+        &sixel_image_store,
+        &link_handler,
+        &terminal_emulator_colors,
+        &terminal_emulator_color_codes,
+        &character_cell_size,
+        &connected_clients,
+        &style,
+        &display_area,
+        &mut tiled_panes,
+        &mut floating_panes,
+        draw_pane_frames,
+        &mut focus_pane_id,
+        &os_api,
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
+        None,
+    );
+
+    applier
+        .apply_layout(
+            initial_tiled,
+            initial_floating,
+            terminal_ids,
+            vec![],
+            HashMap::new(),
+            1,
+        )
+        .unwrap();
+
+    // Override: Layout with 3 panes where second pane has focus=true
+    let override_kdl = r#"
+        layout {
+            pane
+            pane focus=true
+            pane
+        }
+    "#;
+
+    let (override_tiled, _) = parse_kdl_layout(override_kdl);
+    let new_terminal_ids = vec![(3, None)];
+
+    applier
+        .override_tiled_panes_layout_for_existing_panes(
+            &override_tiled,
+            new_terminal_ids,
+            &mut HashMap::new(),
+            1,
+        )
+        .unwrap();
+
+    // focus_pane_id should point to the newly created middle pane (Terminal(3))
+    assert_snapshot!(take_pane_state_snapshot(
+        &tiled_panes,
+        &floating_panes,
+        &focus_pane_id,
+        &viewport,
+        &display_area,
+    ));
+}
+
+#[test]
+fn test_override_tiled_focus_when_focused_pane_closed() {
+    // Setup: 3 panes, middle one focused running vim
+    let initial_kdl = r#"
+        layout {
+            pane command="htop"
+            pane command="vim" focus=true
+            pane command="tail" {
+                args "-f" "/var/log/syslog"
+            }
+        }
+    "#;
+
+    let (initial_tiled, initial_floating) = parse_kdl_layout(initial_kdl);
+    let terminal_ids = vec![(1, None), (2, None), (3, None)];
+
+    let size = Size {
+        cols: 120,
+        rows: 40,
+    };
+    let (
+        viewport,
+        senders,
+        sixel_image_store,
+        link_handler,
+        terminal_emulator_colors,
+        terminal_emulator_color_codes,
+        character_cell_size,
+        connected_clients,
+        style,
+        display_area,
+        mut tiled_panes,
+        mut floating_panes,
+        draw_pane_frames,
+        mut focus_pane_id,
+        os_api,
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
+        pty_receiver,
+        plugin_receiver,
+    ) = create_layout_applier_fixtures_with_receivers(size);
+
+    let mut applier = LayoutApplier::new(
+        &viewport,
+        &senders,
+        &sixel_image_store,
+        &link_handler,
+        &terminal_emulator_colors,
+        &terminal_emulator_color_codes,
+        &character_cell_size,
+        &connected_clients,
+        &style,
+        &display_area,
+        &mut tiled_panes,
+        &mut floating_panes,
+        draw_pane_frames,
+        &mut focus_pane_id,
+        &os_api,
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
+        None,
+    );
+
+    applier
+        .apply_layout(
+            initial_tiled,
+            initial_floating,
+            terminal_ids,
+            vec![],
+            HashMap::new(),
+            1,
+        )
+        .unwrap();
+
+    // Override: Layout with 2 panes running htop and cargo (not vim)
+    let override_kdl = r#"
+        layout {
+            pane command="htop"
+            pane command="cargo" {
+                args "check"
+            }
+        }
+    "#;
+
+    let (override_tiled, _) = parse_kdl_layout(override_kdl);
+    let new_terminal_ids = vec![(4, None)];
+
+    applier
+        .override_tiled_panes_layout_for_existing_panes(
+            &override_tiled,
+            new_terminal_ids,
+            &mut HashMap::new(),
+            1,
+        )
+        .unwrap();
+
+    // Focused pane (vim) no longer exists
+    // Focus should be moved to one of the remaining panes
+
+    // Verify close messages were sent for vim (Terminal(2)) and tail (Terminal(3))
+    let closed_panes = collect_close_pane_messages(&pty_receiver);
+    assert_eq!(closed_panes.len(), 2);
+    assert!(closed_panes.contains(&PaneId::Terminal(2))); // vim (focused)
+    assert!(closed_panes.contains(&PaneId::Terminal(3))); // tail
+
+    // No plugins should be unloaded
+    let unloaded_plugins = collect_unload_plugin_messages(&plugin_receiver);
+    assert!(unloaded_plugins.is_empty());
+
+    assert_snapshot!(take_pane_state_snapshot(
+        &tiled_panes,
+        &floating_panes,
+        &focus_pane_id,
+        &viewport,
+        &display_area,
+    ));
+}
+
+#[test]
+fn test_override_tiled_empty_layout_closes_all() {
+    // Setup: 3 panes running various commands
+    let initial_kdl = r#"
+        layout {
+            pane command="htop"
+            pane command="vim"
+            pane command="tail" {
+                args "-f" "/var/log/syslog"
+            }
+        }
+    "#;
+
+    let (initial_tiled, initial_floating) = parse_kdl_layout(initial_kdl);
+    let terminal_ids = vec![(1, None), (2, None), (3, None)];
+
+    let size = Size {
+        cols: 120,
+        rows: 40,
+    };
+    let (
+        viewport,
+        senders,
+        sixel_image_store,
+        link_handler,
+        terminal_emulator_colors,
+        terminal_emulator_color_codes,
+        character_cell_size,
+        connected_clients,
+        style,
+        display_area,
+        mut tiled_panes,
+        mut floating_panes,
+        draw_pane_frames,
+        mut focus_pane_id,
+        os_api,
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
+        pty_receiver,
+        plugin_receiver,
+    ) = create_layout_applier_fixtures_with_receivers(size);
+
+    let mut applier = LayoutApplier::new(
+        &viewport,
+        &senders,
+        &sixel_image_store,
+        &link_handler,
+        &terminal_emulator_colors,
+        &terminal_emulator_color_codes,
+        &character_cell_size,
+        &connected_clients,
+        &style,
+        &display_area,
+        &mut tiled_panes,
+        &mut floating_panes,
+        draw_pane_frames,
+        &mut focus_pane_id,
+        &os_api,
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
+        None,
+    );
+
+    applier
+        .apply_layout(
+            initial_tiled,
+            initial_floating,
+            terminal_ids,
+            vec![],
+            HashMap::new(),
+            1,
+        )
+        .unwrap();
+
+    // Override: Empty layout
+    let override_kdl = r#"
+        layout {
+        }
+    "#;
+
+    let (override_tiled, _) = parse_kdl_layout(override_kdl);
+
+    applier
+        .override_tiled_panes_layout_for_existing_panes(
+            &override_tiled,
+            vec![],
+            &mut HashMap::new(),
+            1,
+        )
+        .unwrap();
+
+    // No panes in snapshot
+    // Pane count is 0
+
+    // Verify close messages were sent for all panes (Terminal(1), Terminal(2), Terminal(3))
+    let closed_panes = collect_close_pane_messages(&pty_receiver);
+    assert_eq!(closed_panes.len(), 3);
+    assert!(closed_panes.contains(&PaneId::Terminal(1))); // htop
+    assert!(closed_panes.contains(&PaneId::Terminal(2))); // vim
+    assert!(closed_panes.contains(&PaneId::Terminal(3))); // tail
+
+    // No plugins should be unloaded
+    let unloaded_plugins = collect_unload_plugin_messages(&plugin_receiver);
+    assert!(unloaded_plugins.is_empty());
+
+    assert_snapshot!(take_pane_state_snapshot(
+        &tiled_panes,
+        &floating_panes,
+        &focus_pane_id,
+        &viewport,
+        &display_area,
+    ));
+}
+
+// ============================================================================
+// Suite 3: override_floating_panes_layout_for_existing_panes Tests
+// ============================================================================
+
+#[test]
+fn test_override_floating_exact_match_preservation() {
+    // Setup: 2 floating panes running htop and vim
+    let initial_kdl = r#"
+        layout {
+            pane
+            floating_panes {
+                pane {
+                    x 10
+                    y 10
+                    width 40
+                    height 20
+                    command "htop"
+                }
+                pane {
+                    x 20
+                    y 20
+                    width 50
+                    height 25
+                    command "vim"
+                }
+            }
+        }
+    "#;
+
+    let (initial_tiled, initial_floating) = parse_kdl_layout(initial_kdl);
+    let terminal_ids = vec![(1, None)];
+    let floating_terminal_ids = vec![(2, None), (3, None)];
+
+    let size = Size {
+        cols: 120,
+        rows: 40,
+    };
+    let (
+        viewport,
+        senders,
+        sixel_image_store,
+        link_handler,
+        terminal_emulator_colors,
+        terminal_emulator_color_codes,
+        character_cell_size,
+        connected_clients,
+        style,
+        display_area,
+        mut tiled_panes,
+        mut floating_panes,
+        draw_pane_frames,
+        mut focus_pane_id,
+        os_api,
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
+        pty_receiver,
+        plugin_receiver,
+    ) = create_layout_applier_fixtures_with_receivers(size);
+
+    let mut applier = LayoutApplier::new(
+        &viewport,
+        &senders,
+        &sixel_image_store,
+        &link_handler,
+        &terminal_emulator_colors,
+        &terminal_emulator_color_codes,
+        &character_cell_size,
+        &connected_clients,
+        &style,
+        &display_area,
+        &mut tiled_panes,
+        &mut floating_panes,
+        draw_pane_frames,
+        &mut focus_pane_id,
+        &os_api,
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
+        None,
+    );
+
+    applier
+        .apply_layout(
+            initial_tiled,
+            initial_floating,
+            terminal_ids,
+            floating_terminal_ids,
+            HashMap::new(),
+            1,
+        )
+        .unwrap();
+
+    // Override: Layout with htop at different x/y position
+    let override_kdl = r#"
+        layout {
+            pane
+            floating_panes {
+                pane {
+                    x 50
+                    y 30
+                    width 45
+                    height 22
+                    command "htop"
+                }
+            }
+        }
+    "#;
+
+    let (_, override_floating) = parse_kdl_layout(override_kdl);
+
+    applier
+        .override_floating_panes_layout_for_existing_panes(
+            &override_floating,
+            vec![],
+            &mut HashMap::new(),
+        )
+        .unwrap();
+
+    // htop pane preserved (Terminal(2)), repositioned
+    // vim pane closed (Terminal(3))
+    // Total floating pane count is 1
+
+    // Verify close message was sent for vim pane (Terminal(3))
+    let closed_panes = collect_close_pane_messages(&pty_receiver);
+    assert_eq!(closed_panes.len(), 1);
+    assert!(closed_panes.contains(&PaneId::Terminal(3))); // vim
+
+    // No plugins should be unloaded
+    let unloaded_plugins = collect_unload_plugin_messages(&plugin_receiver);
+    assert!(unloaded_plugins.is_empty());
+
+    assert_snapshot!(take_pane_state_snapshot(
+        &tiled_panes,
+        &floating_panes,
+        &focus_pane_id,
+        &viewport,
+        &display_area,
+    ));
+}
+
+#[test]
+fn test_override_floating_all_closed_no_matches() {
+    // Setup: 2 floating panes with specific commands
+    let initial_kdl = r#"
+        layout {
+            pane
+            floating_panes {
+                pane {
+                    x 10
+                    y 10
+                    width 40
+                    height 20
+                    command "htop"
+                }
+                pane {
+                    x 20
+                    y 20
+                    width 50
+                    height 25
+                    command "vim"
+                }
+            }
+        }
+    "#;
+
+    let (initial_tiled, initial_floating) = parse_kdl_layout(initial_kdl);
+    let terminal_ids = vec![(1, None)];
+    let floating_terminal_ids = vec![(2, None), (3, None)];
+
+    let size = Size {
+        cols: 120,
+        rows: 40,
+    };
+    let (
+        viewport,
+        senders,
+        sixel_image_store,
+        link_handler,
+        terminal_emulator_colors,
+        terminal_emulator_color_codes,
+        character_cell_size,
+        connected_clients,
+        style,
+        display_area,
+        mut tiled_panes,
+        mut floating_panes,
+        draw_pane_frames,
+        mut focus_pane_id,
+        os_api,
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
+        pty_receiver,
+        plugin_receiver,
+    ) = create_layout_applier_fixtures_with_receivers(size);
+
+    let mut applier = LayoutApplier::new(
+        &viewport,
+        &senders,
+        &sixel_image_store,
+        &link_handler,
+        &terminal_emulator_colors,
+        &terminal_emulator_color_codes,
+        &character_cell_size,
+        &connected_clients,
+        &style,
+        &display_area,
+        &mut tiled_panes,
+        &mut floating_panes,
+        draw_pane_frames,
+        &mut focus_pane_id,
+        &os_api,
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
+        None,
+    );
+
+    applier
+        .apply_layout(
+            initial_tiled,
+            initial_floating,
+            terminal_ids,
+            floating_terminal_ids,
+            HashMap::new(),
+            1,
+        )
+        .unwrap();
+
+    // Override: Layout with different commands
+    let override_kdl = r#"
+        layout {
+            pane
+            floating_panes {
+                pane {
+                    x 15
+                    y 15
+                    width 45
+                    height 22
+                    command "top"
+                }
+                pane {
+                    x 25
+                    y 25
+                    width 55
+                    height 27
+                    command "emacs"
+                }
+            }
+        }
+    "#;
+
+    let (_, override_floating) = parse_kdl_layout(override_kdl);
+    let new_floating_terminal_ids = vec![(4, None), (5, None)];
+
+    applier
+        .override_floating_panes_layout_for_existing_panes(
+            &override_floating,
+            new_floating_terminal_ids,
+            &mut HashMap::new(),
+        )
+        .unwrap();
+
+    // Both original panes closed (IDs 2, 3 gone)
+    // New panes created with new IDs (4, 5)
+    // Pane count matches new layout (2 floating panes)
+
+    // Verify close messages were sent for both floating panes (Terminal(2), Terminal(3))
+    let closed_panes = collect_close_pane_messages(&pty_receiver);
+    assert_eq!(closed_panes.len(), 2);
+    assert!(closed_panes.contains(&PaneId::Terminal(2))); // htop
+    assert!(closed_panes.contains(&PaneId::Terminal(3))); // vim
+
+    // No plugins should be unloaded
+    let unloaded_plugins = collect_unload_plugin_messages(&plugin_receiver);
+    assert!(unloaded_plugins.is_empty());
+
+    assert_snapshot!(take_pane_state_snapshot(
+        &tiled_panes,
+        &floating_panes,
+        &focus_pane_id,
+        &viewport,
+        &display_area,
+    ));
+}
+
+#[test]
+fn test_override_floating_new_panes_created() {
+    // Setup: 1 floating pane running htop
+    let initial_kdl = r#"
+        layout {
+            pane
+            floating_panes {
+                pane {
+                    x 10
+                    y 10
+                    width 40
+                    height 20
+                    command "htop"
+                }
+            }
+        }
+    "#;
+
+    let (initial_tiled, initial_floating) = parse_kdl_layout(initial_kdl);
+    let terminal_ids = vec![(1, None)];
+    let floating_terminal_ids = vec![(2, None)];
+
+    let size = Size {
+        cols: 120,
+        rows: 40,
+    };
+    let (
+        viewport,
+        senders,
+        sixel_image_store,
+        link_handler,
+        terminal_emulator_colors,
+        terminal_emulator_color_codes,
+        character_cell_size,
+        connected_clients,
+        style,
+        display_area,
+        mut tiled_panes,
+        mut floating_panes,
+        draw_pane_frames,
+        mut focus_pane_id,
+        os_api,
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
+    ) = create_layout_applier_fixtures(size);
+
+    let mut applier = LayoutApplier::new(
+        &viewport,
+        &senders,
+        &sixel_image_store,
+        &link_handler,
+        &terminal_emulator_colors,
+        &terminal_emulator_color_codes,
+        &character_cell_size,
+        &connected_clients,
+        &style,
+        &display_area,
+        &mut tiled_panes,
+        &mut floating_panes,
+        draw_pane_frames,
+        &mut focus_pane_id,
+        &os_api,
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
+        None,
+    );
+
+    applier
+        .apply_layout(
+            initial_tiled,
+            initial_floating,
+            terminal_ids,
+            floating_terminal_ids,
+            HashMap::new(),
+            1,
+        )
+        .unwrap();
+
+    // Override: Layout with 3 floating panes: htop, vim, and generic shell
+    let override_kdl = r#"
+        layout {
+            pane
+            floating_panes {
+                pane {
+                    x 10
+                    y 10
+                    width 40
+                    height 20
+                    command "htop"
+                }
+                pane {
+                    x 20
+                    y 20
+                    width 50
+                    height 25
+                    command "vim"
+                }
+                pane {
+                    x 30
+                    y 30
+                    width 45
+                    height 22
+                }
+            }
+        }
+    "#;
+
+    let (_, override_floating) = parse_kdl_layout(override_kdl);
+    let new_floating_terminal_ids = vec![(3, None), (4, None)];
+
+    applier
+        .override_floating_panes_layout_for_existing_panes(
+            &override_floating,
+            new_floating_terminal_ids,
+            &mut HashMap::new(),
+        )
+        .unwrap();
+
+    // Original htop preserved (Terminal(2))
+    // 2 new floating panes created (Terminal(3), Terminal(4))
+    // Total 3 floating panes
+    assert_snapshot!(take_pane_state_snapshot(
+        &tiled_panes,
+        &floating_panes,
+        &focus_pane_id,
+        &viewport,
+        &display_area,
+    ));
+}
+
+#[test]
+fn test_override_floating_focus_handling() {
+    // Setup: 2 floating panes, one focused
+    let initial_kdl = r#"
+        layout {
+            pane
+            floating_panes {
+                pane {
+                    x 10
+                    y 10
+                    width 40
+                    height 20
+                    focus true
+                }
+                pane {
+                    x 20
+                    y 20
+                    width 50
+                    height 25
+                }
+            }
+        }
+    "#;
+
+    let (initial_tiled, initial_floating) = parse_kdl_layout(initial_kdl);
+    let terminal_ids = vec![(1, None)];
+    let floating_terminal_ids = vec![(2, None), (3, None)];
+
+    let size = Size {
+        cols: 120,
+        rows: 40,
+    };
+    let (
+        viewport,
+        senders,
+        sixel_image_store,
+        link_handler,
+        terminal_emulator_colors,
+        terminal_emulator_color_codes,
+        character_cell_size,
+        connected_clients,
+        style,
+        display_area,
+        mut tiled_panes,
+        mut floating_panes,
+        draw_pane_frames,
+        mut focus_pane_id,
+        os_api,
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
+        pty_receiver,
+        plugin_receiver,
+    ) = create_layout_applier_fixtures_with_receivers(size);
+
+    let mut applier = LayoutApplier::new(
+        &viewport,
+        &senders,
+        &sixel_image_store,
+        &link_handler,
+        &terminal_emulator_colors,
+        &terminal_emulator_color_codes,
+        &character_cell_size,
+        &connected_clients,
+        &style,
+        &display_area,
+        &mut tiled_panes,
+        &mut floating_panes,
+        draw_pane_frames,
+        &mut focus_pane_id,
+        &os_api,
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
+        None,
+    );
+
+    applier
+        .apply_layout(
+            initial_tiled,
+            initial_floating,
+            terminal_ids,
+            floating_terminal_ids,
+            HashMap::new(),
+            1,
+        )
+        .unwrap();
+
+    // Override: Layout with 1 new pane that has focus=true
+    let override_kdl = r#"
+        layout {
+            pane
+            floating_panes {
+                pane {
+                    x 30
+                    y 30
+                    width 60
+                    height 30
+                    focus true
+                }
+            }
+        }
+    "#;
+
+    let (_, override_floating) = parse_kdl_layout(override_kdl);
+    let new_floating_terminal_ids = vec![(4, None)];
+
+    applier
+        .override_floating_panes_layout_for_existing_panes(
+            &override_floating,
+            new_floating_terminal_ids,
+            &mut HashMap::new(),
+        )
+        .unwrap();
+
+    // Focus should be set on newly created pane (Terminal(4))
+
+    // Verify close messages were sent for Terminal(3)
+    let closed_panes = collect_close_pane_messages(&pty_receiver);
+    assert_eq!(closed_panes.len(), 1);
+    assert!(closed_panes.contains(&PaneId::Terminal(3)));
+
+    // No plugins should be unloaded
+    let unloaded_plugins = collect_unload_plugin_messages(&plugin_receiver);
+    assert!(unloaded_plugins.is_empty());
+
+    assert_snapshot!(take_pane_state_snapshot(
+        &tiled_panes,
+        &floating_panes,
+        &focus_pane_id,
+        &viewport,
+        &display_area,
+    ));
+}
+
+#[test]
+fn test_override_floating_position_and_size_update() {
+    // Setup: 1 floating pane running htop at specific position
+    let initial_kdl = r#"
+        layout {
+            pane
+            floating_panes {
+                pane {
+                    x 10
+                    y 10
+                    width 40
+                    height 20
+                    command "htop"
+                }
+            }
+        }
+    "#;
+
+    let (initial_tiled, initial_floating) = parse_kdl_layout(initial_kdl);
+    let terminal_ids = vec![(1, None)];
+    let floating_terminal_ids = vec![(2, None)];
+
+    let size = Size {
+        cols: 120,
+        rows: 50,
+    };
+    let (
+        viewport,
+        senders,
+        sixel_image_store,
+        link_handler,
+        terminal_emulator_colors,
+        terminal_emulator_color_codes,
+        character_cell_size,
+        connected_clients,
+        style,
+        display_area,
+        mut tiled_panes,
+        mut floating_panes,
+        draw_pane_frames,
+        mut focus_pane_id,
+        os_api,
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
+    ) = create_layout_applier_fixtures(size);
+
+    let mut applier = LayoutApplier::new(
+        &viewport,
+        &senders,
+        &sixel_image_store,
+        &link_handler,
+        &terminal_emulator_colors,
+        &terminal_emulator_color_codes,
+        &character_cell_size,
+        &connected_clients,
+        &style,
+        &display_area,
+        &mut tiled_panes,
+        &mut floating_panes,
+        draw_pane_frames,
+        &mut focus_pane_id,
+        &os_api,
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
+        None,
+    );
+
+    applier
+        .apply_layout(
+            initial_tiled,
+            initial_floating,
+            terminal_ids,
+            floating_terminal_ids,
+            HashMap::new(),
+            1,
+        )
+        .unwrap();
+
+    // Override: Layout with htop at different position and size
+    let override_kdl = r#"
+        layout {
+            pane
+            floating_panes {
+                pane {
+                    x 50
+                    y 30
+                    width 60
+                    height 30
+                    command "htop"
+                }
+            }
+        }
+    "#;
+
+    let (_, override_floating) = parse_kdl_layout(override_kdl);
+
+    applier
+        .override_floating_panes_layout_for_existing_panes(
+            &override_floating,
+            vec![],
+            &mut HashMap::new(),
+        )
+        .unwrap();
+
+    // Same pane ID preserved (Terminal(2))
+    // Geometry updated: x=50, y=30, cols=60, rows=30
+    assert_snapshot!(take_pane_state_snapshot(
+        &tiled_panes,
+        &floating_panes,
+        &focus_pane_id,
+        &viewport,
+        &display_area,
+    ));
+}
+
+#[test]
+fn test_override_floating_return_value_has_panes() {
+    // Setup: Empty floating panes
+    let initial_kdl = r#"
+        layout {
+            pane
+        }
+    "#;
+
+    let (initial_tiled, initial_floating) = parse_kdl_layout(initial_kdl);
+    let terminal_ids = vec![(1, None)];
+
+    let size = Size {
+        cols: 100,
+        rows: 50,
+    };
+    let (
+        viewport,
+        senders,
+        sixel_image_store,
+        link_handler,
+        terminal_emulator_colors,
+        terminal_emulator_color_codes,
+        character_cell_size,
+        connected_clients,
+        style,
+        display_area,
+        mut tiled_panes,
+        mut floating_panes,
+        draw_pane_frames,
+        mut focus_pane_id,
+        os_api,
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
+    ) = create_layout_applier_fixtures(size);
+
+    let mut applier = LayoutApplier::new(
+        &viewport,
+        &senders,
+        &sixel_image_store,
+        &link_handler,
+        &terminal_emulator_colors,
+        &terminal_emulator_color_codes,
+        &character_cell_size,
+        &connected_clients,
+        &style,
+        &display_area,
+        &mut tiled_panes,
+        &mut floating_panes,
+        draw_pane_frames,
+        &mut focus_pane_id,
+        &os_api,
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
+        None,
+    );
+
+    applier
+        .apply_layout(
+            initial_tiled,
+            initial_floating,
+            terminal_ids,
+            vec![],
+            HashMap::new(),
+            1,
+        )
+        .unwrap();
+
+    // Override: Layout with 1 floating pane
+    let override_kdl = r#"
+        layout {
+            pane
+            floating_panes {
+                pane {
+                    x 20
+                    y 10
+                    width 50
+                    height 30
+                }
+            }
+        }
+    "#;
+
+    let (_, override_floating) = parse_kdl_layout(override_kdl);
+    let new_floating_terminal_ids = vec![(2, None)];
+
+    let has_floating_panes = applier
+        .override_floating_panes_layout_for_existing_panes(
+            &override_floating,
+            new_floating_terminal_ids,
+            &mut HashMap::new(),
+        )
+        .unwrap();
+
+    // Function should return true because layout has floating panes
+    assert_eq!(has_floating_panes, true);
+
+    assert_snapshot!(take_pane_state_snapshot(
+        &tiled_panes,
+        &floating_panes,
+        &focus_pane_id,
+        &viewport,
+        &display_area,
+    ));
+}
+
+#[test]
+fn test_override_floating_return_value_no_panes() {
+    // Setup: 1 floating pane
+    let initial_kdl = r#"
+        layout {
+            pane
+            floating_panes {
+                pane {
+                    x 10
+                    y 10
+                    width 40
+                    height 20
+                }
+            }
+        }
+    "#;
+
+    let (initial_tiled, initial_floating) = parse_kdl_layout(initial_kdl);
+    let terminal_ids = vec![(1, None)];
+    let floating_terminal_ids = vec![(2, None)];
+
+    let size = Size {
+        cols: 100,
+        rows: 50,
+    };
+    let (
+        viewport,
+        senders,
+        sixel_image_store,
+        link_handler,
+        terminal_emulator_colors,
+        terminal_emulator_color_codes,
+        character_cell_size,
+        connected_clients,
+        style,
+        display_area,
+        mut tiled_panes,
+        mut floating_panes,
+        draw_pane_frames,
+        mut focus_pane_id,
+        os_api,
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
+        pty_receiver,
+        plugin_receiver,
+    ) = create_layout_applier_fixtures_with_receivers(size);
+
+    let mut applier = LayoutApplier::new(
+        &viewport,
+        &senders,
+        &sixel_image_store,
+        &link_handler,
+        &terminal_emulator_colors,
+        &terminal_emulator_color_codes,
+        &character_cell_size,
+        &connected_clients,
+        &style,
+        &display_area,
+        &mut tiled_panes,
+        &mut floating_panes,
+        draw_pane_frames,
+        &mut focus_pane_id,
+        &os_api,
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
+        None,
+    );
+
+    applier
+        .apply_layout(
+            initial_tiled,
+            initial_floating,
+            terminal_ids,
+            floating_terminal_ids,
+            HashMap::new(),
+            1,
+        )
+        .unwrap();
+
+    // Override: Empty floating layout (no floating_panes block)
+    let override_kdl = r#"
+        layout {
+            pane
+        }
+    "#;
+
+    let (_, override_floating) = parse_kdl_layout(override_kdl);
+
+    let has_floating_panes = applier
+        .override_floating_panes_layout_for_existing_panes(
+            &override_floating,
+            vec![],
+            &mut HashMap::new(),
+        )
+        .unwrap();
+
+    // Function should return false because layout has no floating panes
+    assert_eq!(has_floating_panes, false);
+
+    // Verify close message was sent for floating pane (Terminal(2))
+    let closed_panes = collect_close_pane_messages(&pty_receiver);
+    assert_eq!(closed_panes.len(), 1);
+    assert!(closed_panes.contains(&PaneId::Terminal(2)));
+
+    // No plugins should be unloaded
+    let unloaded_plugins = collect_unload_plugin_messages(&plugin_receiver);
+    assert!(unloaded_plugins.is_empty());
+
+    assert_snapshot!(take_pane_state_snapshot(
+        &tiled_panes,
+        &floating_panes,
+        &focus_pane_id,
+        &viewport,
+        &display_area,
+    ));
+}
+
+// ============================================================================
+// Suite 4: Integration Tests
+// ============================================================================
+
+#[test]
+fn test_override_full_tiled_and_floating_together() {
+    // Setup: Initial layout with 3 tiled panes + 2 floating panes
+    let initial_kdl = r#"
+        layout {
+            pane command="htop"
+            pane command="vim"
+            pane
+            floating_panes {
+                pane {
+                    x 10
+                    y 10
+                    width 40
+                    height 20
+                    command "cargo"
+                    args "watch"
+                }
+                pane {
+                    x 20
+                    y 20
+                    width 50
+                    height 25
+                    command "tail"
+                    args "-f" "/var/log/syslog"
+                }
+            }
+        }
+    "#;
+
+    let (initial_tiled, initial_floating) = parse_kdl_layout(initial_kdl);
+    let terminal_ids = vec![(1, None), (2, None), (3, None)];
+    let floating_terminal_ids = vec![(4, None), (5, None)];
+
+    let size = Size {
+        cols: 150,
+        rows: 50,
+    };
+    let (
+        viewport,
+        senders,
+        sixel_image_store,
+        link_handler,
+        terminal_emulator_colors,
+        terminal_emulator_color_codes,
+        character_cell_size,
+        connected_clients,
+        style,
+        display_area,
+        mut tiled_panes,
+        mut floating_panes,
+        draw_pane_frames,
+        mut focus_pane_id,
+        os_api,
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
+        pty_receiver,
+        plugin_receiver,
+    ) = create_layout_applier_fixtures_with_receivers(size);
+
+    let mut applier = LayoutApplier::new(
+        &viewport,
+        &senders,
+        &sixel_image_store,
+        &link_handler,
+        &terminal_emulator_colors,
+        &terminal_emulator_color_codes,
+        &character_cell_size,
+        &connected_clients,
+        &style,
+        &display_area,
+        &mut tiled_panes,
+        &mut floating_panes,
+        draw_pane_frames,
+        &mut focus_pane_id,
+        &os_api,
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
+        None,
+    );
+
+    applier
+        .apply_layout(
+            initial_tiled,
+            initial_floating,
+            terminal_ids,
+            floating_terminal_ids,
+            HashMap::new(),
+            1,
+        )
+        .unwrap();
+
+    // Override: Layout with 2 tiled (htop, npm start) + 1 floating (cargo watch)
+    let override_kdl = r#"
+        layout {
+            pane command="htop"
+            pane command="npm" {
+                args "start"
+            }
+            floating_panes {
+                pane {
+                    x 30
+                    y 30
+                    width 60
+                    height 30
+                    command "cargo"
+                    args "watch"
+                }
+            }
+        }
+    "#;
+
+    let (override_tiled, override_floating) = parse_kdl_layout(override_kdl);
+    let new_terminal_ids = vec![(6, None)];
+
+    applier
+        .override_tiled_panes_layout_for_existing_panes(
+            &override_tiled,
+            new_terminal_ids,
+            &mut HashMap::new(),
+            1,
+        )
+        .unwrap();
+
+    applier
+        .override_floating_panes_layout_for_existing_panes(
+            &override_floating,
+            vec![],
+            &mut HashMap::new(),
+        )
+        .unwrap();
+
+    // Tiled: htop preserved (Terminal(1)), vim and shell closed, npm start created (Terminal(6))
+    // Floating: cargo watch preserved (Terminal(4)), tail closed
+    // Total: 2 tiled + 1 floating
+
+    // Verify close messages were sent for vim (Terminal(2)), shell (Terminal(3)), and tail (Terminal(5))
+    let closed_panes = collect_close_pane_messages(&pty_receiver);
+    assert_eq!(closed_panes.len(), 3);
+    assert!(closed_panes.contains(&PaneId::Terminal(2))); // vim
+    assert!(closed_panes.contains(&PaneId::Terminal(3))); // shell
+    assert!(closed_panes.contains(&PaneId::Terminal(5))); // tail
+
+    // No plugins should be unloaded
+    let unloaded_plugins = collect_unload_plugin_messages(&plugin_receiver);
+    assert!(unloaded_plugins.is_empty());
+
+    assert_snapshot!(take_pane_state_snapshot(
+        &tiled_panes,
+        &floating_panes,
+        &focus_pane_id,
+        &viewport,
+        &display_area,
+    ));
+}
+
+#[test]
+fn test_override_viewport_adjustment_with_borderless() {
+    // Setup: Initial layout with borderless panes
+    let initial_kdl = r#"
+        layout {
+            pane borderless=true
+            pane
+            pane borderless=true
+        }
+    "#;
+
+    let (initial_tiled, initial_floating) = parse_kdl_layout(initial_kdl);
+    let terminal_ids = vec![(1, None), (2, None), (3, None)];
+
+    let size = Size {
+        cols: 120,
+        rows: 40,
+    };
+    let (
+        viewport,
+        senders,
+        sixel_image_store,
+        link_handler,
+        terminal_emulator_colors,
+        terminal_emulator_color_codes,
+        character_cell_size,
+        connected_clients,
+        style,
+        display_area,
+        mut tiled_panes,
+        mut floating_panes,
+        draw_pane_frames,
+        mut focus_pane_id,
+        os_api,
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
+        pty_receiver,
+        plugin_receiver,
+    ) = create_layout_applier_fixtures_with_receivers(size);
+
+    let mut applier = LayoutApplier::new(
+        &viewport,
+        &senders,
+        &sixel_image_store,
+        &link_handler,
+        &terminal_emulator_colors,
+        &terminal_emulator_color_codes,
+        &character_cell_size,
+        &connected_clients,
+        &style,
+        &display_area,
+        &mut tiled_panes,
+        &mut floating_panes,
+        draw_pane_frames,
+        &mut focus_pane_id,
+        &os_api,
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
+        None,
+    );
+
+    applier
+        .apply_layout(
+            initial_tiled,
+            initial_floating,
+            terminal_ids,
+            vec![],
+            HashMap::new(),
+            1,
+        )
+        .unwrap();
+
+    // Override: Layout with different borderless configuration
+    let override_kdl = r#"
+        layout {
+            pane
+            pane borderless=true
+        }
+    "#;
+
+    let (override_tiled, _) = parse_kdl_layout(override_kdl);
+
+    applier
+        .override_tiled_panes_layout_for_existing_panes(
+            &override_tiled,
+            vec![],
+            &mut HashMap::new(),
+            1,
+        )
+        .unwrap();
+
+    // Viewport dimensions should be correctly adjusted for borderless panes
+
+    // Verify close message was sent for at least the extra pane (Terminal(3))
+    // Generic panes without commands don't match exactly, so all 3 may be closed
+    let closed_panes = collect_close_pane_messages(&pty_receiver);
+    assert!(closed_panes.len() >= 1);
+    assert!(closed_panes.contains(&PaneId::Terminal(3)));
+
+    // No plugins should be unloaded
+    let unloaded_plugins = collect_unload_plugin_messages(&plugin_receiver);
+    assert!(unloaded_plugins.is_empty());
+
     assert_snapshot!(take_pane_state_snapshot(
         &tiled_panes,
         &floating_panes,

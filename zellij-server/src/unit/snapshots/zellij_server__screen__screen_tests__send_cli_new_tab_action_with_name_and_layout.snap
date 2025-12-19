@@ -17,7 +17,7 @@ NewTab(
                     split_size: None,
                     run: Some(
                         Cwd(
-                            ".",
+                            "./.",
                         ),
                     ),
                     borderless: false,
@@ -37,7 +37,7 @@ NewTab(
                     split_size: None,
                     run: Some(
                         Cwd(
-                            ".",
+                            "./.",
                         ),
                     ),
                     borderless: false,
@@ -57,7 +57,7 @@ NewTab(
                     split_size: None,
                     run: Some(
                         Cwd(
-                            ".",
+                            "./.",
                         ),
                     ),
                     borderless: false,
@@ -72,7 +72,11 @@ NewTab(
                 },
             ],
             split_size: None,
-            run: None,
+            run: Some(
+                Cwd(
+                    ".",
+                ),
+            ),
             borderless: false,
             focus: None,
             external_children_index: None,
