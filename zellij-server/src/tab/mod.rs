@@ -1333,6 +1333,20 @@ impl Tab {
         self.set_force_render();
         Ok(())
     }
+    fn normalize_invoked_with_for_default_shell(&self, invoked_with: Option<Run>) -> Option<Run> {
+        let default_shell_run_command = Run::Command(
+            RunCommand {
+                command: self.default_shell.clone(),
+                use_terminal_title: true,
+                ..Default::default()
+            }
+        );
+        if invoked_with == Some(default_shell_run_command) {
+            None
+        } else {
+            invoked_with
+        }
+    }
     pub fn new_pane(
         &mut self,
         pid: PaneId,
@@ -1344,6 +1358,8 @@ impl Tab {
         client_id: Option<ClientId>,
         blocking_notification: Option<NotificationEnd>,
     ) -> Result<()> {
+        let invoked_with = self.normalize_invoked_with_for_default_shell(invoked_with);
+        log::info!("invoked_with after normalization: {:?}", invoked_with);
         match new_pane_placement {
             NewPanePlacement::NoPreference => self.new_no_preference_pane(
                 pid,

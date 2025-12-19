@@ -224,23 +224,6 @@ impl<'a> LayoutApplier<'a> {
         mut new_plugin_ids: &mut HashMap<RunPluginOrAlias, Vec<u32>>,
         client_id: ClientId,
     ) -> Result<()> {
-        // TODO: CONTINUE HERE - test this with:
-        // 1. focus - DONE
-        //  - focus on floating panes (with/without originally having them)
-        //  - focus on tiled panes while floating panes exist
-        //  - focus on both
-        //  - hide_floating_panes with/without focus
-        // 2. more terminal panes - DONE
-        // 3. command panes - DONE
-        // 4. editor panes - DONE
-        // 5. panes with cwd - DONE
-        // 6. all above permutations with existing that should be closed and new that should not -
-        //    DONE
-        // 7. test what happens when the pane the user was focused on is closed - DONE
-        // 8. multiple users - DONE
-        // 9. multiple users in different tabs - DONE
-        // 10. layout with multiple tabs (do we support this?)
-        // 11. cwd from layout or cli
         let positions_in_layout = self.flatten_layout(tiled_panes_layout, false)?;
 
         let mut existing_tab_state = ExistingTabState::new(self.tiled_panes.drain());
@@ -849,16 +832,22 @@ impl<'a> LayoutApplier<'a> {
             logical_position += 1;
         }
         let mut existing_tab_state = ExistingTabState::new(self.floating_panes.drain());
-        let mut panes_to_apply = vec![];
         let mut positions_left = vec![];
 
-        // look for exact matches, first by pane contents and then by logical position
+        let mut pane_applier = PaneApplier::new(
+            &mut self.tiled_panes,
+            &mut self.floating_panes,
+            &self.senders,
+            &self.character_cell_size,
+        );
+        // find already running exact matches
         for floating_pane_layout in positions_in_layout {
             match existing_tab_state
                 .find_and_extract_exact_pane_with_same_run(&floating_pane_layout.run)
             {
                 Some(pane) => {
-                    panes_to_apply.push((pane, floating_pane_layout));
+                    pane_applier
+                        .apply_floating_panes_layout_to_floating_pane(pane, floating_pane_layout)?;
                 },
                 None => {
                     positions_left.push(floating_pane_layout);
@@ -866,6 +855,7 @@ impl<'a> LayoutApplier<'a> {
             }
         }
 
+        // close extraneous panes
         let remaining_pane_ids: Vec<PaneId> = existing_tab_state.pane_ids();
         for pane_id in remaining_pane_ids {
             existing_tab_state.remove_pane(&pane_id);
@@ -883,20 +873,15 @@ impl<'a> LayoutApplier<'a> {
             }
         }
 
-        let floating_panes_layout = floating_panes_layout.iter();
+        // open new panes
         let mut focused_floating_pane = None;
         let mut new_floating_terminal_ids = new_terminal_ids.iter();
-        for floating_pane_layout in floating_panes_layout {
+        for floating_pane_layout in positions_left {
             let position_and_size = self
                 .floating_panes
                 .position_floating_pane_layout(&floating_pane_layout)?;
-            let pid_to_focus = if floating_pane_layout.already_running {
-                self.floating_panes.set_geom_for_pane_with_run(
-                    floating_pane_layout.run.clone(),
-                    position_and_size,
-                );
-                None
-            } else if let Some(Run::Plugin(run)) = floating_pane_layout.run.clone() {
+            let pid_to_focus = if let Some(Run::Plugin(run)) = floating_pane_layout.run.clone() {
+                log::info!("is plugin");
                 self.new_floating_plugin_pane(
                     run,
                     &mut new_plugin_ids,
@@ -908,7 +893,7 @@ impl<'a> LayoutApplier<'a> {
                     pid,
                     hold_for_command,
                     position_and_size,
-                    floating_pane_layout,
+                    &floating_pane_layout,
                 )?
             } else {
                 None
@@ -918,29 +903,14 @@ impl<'a> LayoutApplier<'a> {
             }
         }
 
-        let mut pane_applier = PaneApplier::new(
-            &mut self.tiled_panes,
-            &mut self.floating_panes,
-            &self.senders,
-            &self.character_cell_size,
-        );
-
-        // here we apply positioning to all panes by the order we found them
-        // this is because the positioning decisions themselves rely on this order for geoms that
-        // contain partial positioning information (eg. just x coords with no y or size) or no
-        // positioning information at all
-        for (pane, floating_pane_layout) in panes_to_apply.drain(..) {
-            pane_applier
-                .apply_floating_panes_layout_to_floating_pane(pane, floating_pane_layout)?;
-        }
-
-        // here we apply positioning on a best-effort basis to any remaining panes we've got (these
-        // are panes that exist in the tab state but not in the desired layout)
-        pane_applier.finalize_floating_panes_state();
-
         if let Some(focused_floating_pane) = focused_floating_pane {
             self.floating_panes
                 .focus_pane_for_all_clients(focused_floating_pane);
+        } else {
+            // we do this in case there is no explicitly focused pane in the new layout, so as to
+            // make sure any panes that are already focused have a higher z_index than the ones
+            // added above
+            self.floating_panes.reapply_pane_focus();
         }
 
         // in case focused panes were closed by the override
