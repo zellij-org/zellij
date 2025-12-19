@@ -5252,8 +5252,8 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::OverrideLayoutComplete(
                 tiled_layout,
                 floating_layouts,
-                swap_tiled_layouts,
-                swap_floating_layouts,
+                new_swap_tiled_layouts,
+                new_swap_floating_layouts,
                 new_terminal_pids,
                 new_floating_pane_pids,
                 plugin_ids,
@@ -5265,6 +5265,8 @@ pub(crate) fn screen_thread_main(
                     t.override_layout(
                         tiled_layout,
                         floating_layouts,
+                        new_swap_tiled_layouts,
+                        new_swap_floating_layouts,
                         new_terminal_pids,
                         new_floating_pane_pids,
                         plugin_ids,

@@ -867,14 +867,20 @@ impl Tab {
         &mut self,
         layout: TiledPaneLayout,
         floating_panes_layout: Vec<FloatingPaneLayout>,
+        mut new_swap_tiled_layouts: Option<Vec<SwapTiledLayout>>,
+        mut new_swap_floating_layouts: Option<Vec<SwapFloatingLayout>>,
         new_terminal_ids: Vec<(u32, HoldForCommand)>,
         new_floating_terminal_ids: Vec<(u32, HoldForCommand)>,
         new_plugin_ids: HashMap<RunPluginOrAlias, Vec<u32>>,
         client_id: ClientId,
         blocking_terminal: Option<(u32, NotificationEnd)>,
     ) -> Result<()> {
-        self.swap_layouts
-            .set_base_layout((layout.clone(), floating_panes_layout.clone()));
+        if let Some(new_swap_tiled_layouts) = new_swap_tiled_layouts.take() {
+            self.swap_layouts.set_swap_tiled_layouts(new_swap_tiled_layouts);
+        }
+        if let Some(new_swap_floating_layout) = new_swap_floating_layouts.take() {
+            self.swap_layouts.set_swap_floating_layouts(new_swap_floating_layout);
+        }
         match LayoutApplier::new(
             &self.viewport,
             &self.senders,
