@@ -2242,3 +2242,114 @@ fn env_var_missing() {
     let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None);
     assert!(layout.is_err(), "invalid env var lookup should fail");
 }
+
+#[test]
+fn layout_node_with_tab_name() {
+    let kdl_layout = r#"
+        layout name="my-layout" {
+            pane
+        }
+    "#;
+
+    let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None).unwrap();
+
+    assert_eq!(layout.tabs.len(), 1);
+    assert_eq!(layout.tabs[0].0, Some("my-layout".to_string()));
+}
+
+#[test]
+fn layout_node_with_split_direction() {
+    let kdl_layout = r#"
+        layout split_direction="vertical" {
+            pane
+            pane
+        }
+    "#;
+
+    let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None).unwrap();
+
+    assert_eq!(layout.tabs[0].1.children_split_direction, SplitDirection::Vertical);
+}
+
+#[test]
+fn layout_node_with_hide_floating_panes() {
+    let kdl_layout = r#"
+        layout hide_floating_panes=true {
+            pane
+        }
+    "#;
+
+    let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None).unwrap();
+
+    assert_eq!(layout.tabs[0].1.hide_floating_panes, true);
+}
+
+#[test]
+fn layout_node_with_cwd() {
+    let kdl_layout = r#"
+        layout cwd="/tmp" {
+            pane
+        }
+    "#;
+
+    let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None).unwrap();
+
+    // Verify cwd was applied - check the first pane's run property
+    assert!(layout.tabs.len() > 0);
+    // The cwd should be propagated to children
+    if let Some(Run::Cwd(path)) = &layout.tabs[0].1.children[0].run {
+        assert_eq!(path.to_str(), Some("/tmp"));
+    } else {
+        panic!("Expected cwd to be set on pane");
+    }
+}
+
+#[test]
+fn layout_node_with_multiple_tab_properties() {
+    let kdl_layout = r#"
+        layout name="test" split_direction="vertical" hide_floating_panes=true {
+            pane
+            pane
+        }
+    "#;
+
+    let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None).unwrap();
+
+    assert_eq!(layout.tabs[0].0, Some("test".to_string()));
+    assert_eq!(layout.tabs[0].1.children_split_direction, SplitDirection::Vertical);
+    assert_eq!(layout.tabs[0].1.hide_floating_panes, true);
+}
+
+#[test]
+fn layout_node_with_tab_properties_and_explicit_tabs_errors() {
+    let kdl_layout = r#"
+        layout name="test" {
+            tab {
+                pane
+            }
+        }
+    "#;
+
+    let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None);
+
+    assert!(layout.is_err());
+    let error_message = format!("{:?}", layout.unwrap_err());
+    assert!(error_message.contains("Tab properties on the layout node can only be used when there are no explicit tab nodes"));
+}
+
+#[test]
+fn layout_node_with_name_and_only_floating_panes() {
+    let kdl_layout = r#"
+        layout name="floating-only" {
+            floating_panes {
+                pane
+            }
+        }
+    "#;
+
+    let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None).unwrap();
+
+    // Verify the tab name was applied
+    assert_eq!(layout.tabs.len(), 1);
+    assert_eq!(layout.tabs[0].0, Some("floating-only".to_string()));
+}

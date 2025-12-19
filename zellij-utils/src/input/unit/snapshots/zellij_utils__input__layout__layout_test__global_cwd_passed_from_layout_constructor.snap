@@ -63,7 +63,11 @@ Layout {
                     },
                 ],
                 split_size: None,
-                run: None,
+                run: Some(
+                    Cwd(
+                        "/tmp",
+                    ),
+                ),
                 borderless: false,
                 focus: None,
                 external_children_index: None,
