@@ -2242,3 +2242,79 @@ fn env_var_missing() {
     let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None);
     assert!(layout.is_err(), "invalid env var lookup should fail");
 }
+
+#[test]
+fn from_layout_info_resolves_relative_path_from_cwd() {
+    use crate::data::LayoutInfo;
+    use std::env;
+    use std::fs;
+
+    let temp_dir = env::temp_dir().join("zellij_test_layout_info_relative");
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).unwrap();
+
+    let layout_content = r#"
+layout {
+    pane
+    pane
+}
+"#;
+    let layout_file = temp_dir.join("test-layout.kdl");
+    fs::write(&layout_file, layout_content).unwrap();
+
+    let original_cwd = env::current_dir().unwrap();
+    env::set_current_dir(&temp_dir).unwrap();
+
+    let layout_info = LayoutInfo::File("./test-layout.kdl".to_string());
+    let layout_dir = Some(std::path::PathBuf::from("/some/other/layout/dir"));
+
+    let result = Layout::from_layout_info(&layout_dir, layout_info);
+
+    env::set_current_dir(&original_cwd).unwrap();
+    let _ = fs::remove_dir_all(&temp_dir);
+
+    assert!(
+        result.is_ok(),
+        "Relative path should resolve from CWD: {:?}",
+        result.err()
+    );
+
+    let layout = result.unwrap();
+    if let Some((tiled_panes, _)) = &layout.template {
+        assert_eq!(tiled_panes.children.len(), 2);
+    } else {
+        panic!("Expected layout template");
+    }
+}
+
+#[test]
+fn from_layout_info_handles_absolute_path() {
+    use crate::data::LayoutInfo;
+    use std::env;
+    use std::fs;
+
+    let temp_dir = env::temp_dir().join("zellij_test_layout_info_absolute");
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).unwrap();
+
+    let layout_content = r#"
+layout {
+    pane
+}
+"#;
+    let layout_file = temp_dir.join("absolute-layout.kdl");
+    fs::write(&layout_file, layout_content).unwrap();
+
+    let layout_info = LayoutInfo::File(layout_file.display().to_string());
+    let layout_dir = Some(std::path::PathBuf::from("/some/other/layout/dir"));
+
+    let result = Layout::from_layout_info(&layout_dir, layout_info);
+
+    let _ = fs::remove_dir_all(&temp_dir);
+
+    assert!(
+        result.is_ok(),
+        "Absolute path should work: {:?}",
+        result.err()
+    );
+}
