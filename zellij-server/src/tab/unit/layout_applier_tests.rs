@@ -3221,6 +3221,7 @@ fn test_override_tiled_exact_match_preservation_commands() {
             &override_tiled,
             vec![],
             &mut HashMap::new(),
+            false,
             1,
         )
         .unwrap();
@@ -3346,6 +3347,7 @@ fn test_override_tiled_exact_match_preservation_plugins() {
             &override_tiled,
             vec![],
             &mut HashMap::new(),
+            false,
             1,
         )
         .unwrap();
@@ -3474,6 +3476,7 @@ fn test_override_tiled_all_panes_closed_no_matches() {
             &override_tiled,
             new_terminal_ids,
             &mut HashMap::new(),
+            false,
             1,
         )
         .unwrap();
@@ -3594,6 +3597,7 @@ fn test_override_tiled_mixed_some_matches_some_new() {
             &override_tiled,
             new_terminal_ids,
             &mut HashMap::new(),
+            false,
             1,
         )
         .unwrap();
@@ -3710,6 +3714,7 @@ fn test_override_tiled_new_panes_for_unmatched_positions() {
             &override_tiled,
             new_terminal_ids,
             &mut HashMap::new(),
+            false,
             1,
         )
         .unwrap();
@@ -3816,6 +3821,7 @@ fn test_override_tiled_focus_on_new_pane() {
             &override_tiled,
             new_terminal_ids,
             &mut HashMap::new(),
+            false,
             1,
         )
         .unwrap();
@@ -3926,6 +3932,7 @@ fn test_override_tiled_focus_when_focused_pane_closed() {
             &override_tiled,
             new_terminal_ids,
             &mut HashMap::new(),
+            false,
             1,
         )
         .unwrap();
@@ -4043,6 +4050,7 @@ fn test_override_tiled_empty_layout_closes_all() {
             &override_tiled,
             vec![],
             &mut HashMap::new(),
+            false,
             1,
         )
         .unwrap();
@@ -4188,6 +4196,7 @@ fn test_override_floating_exact_match_preservation() {
             &override_floating,
             vec![],
             &mut HashMap::new(),
+            false,
         )
         .unwrap();
 
@@ -4335,6 +4344,7 @@ fn test_override_floating_all_closed_no_matches() {
             &override_floating,
             new_floating_terminal_ids,
             &mut HashMap::new(),
+            false,
         )
         .unwrap();
 
@@ -4480,6 +4490,7 @@ fn test_override_floating_new_panes_created() {
             &override_floating,
             new_floating_terminal_ids,
             &mut HashMap::new(),
+            false,
         )
         .unwrap();
 
@@ -4609,6 +4620,7 @@ fn test_override_floating_focus_handling() {
             &override_floating,
             new_floating_terminal_ids,
             &mut HashMap::new(),
+            false,
         )
         .unwrap();
 
@@ -4737,6 +4749,7 @@ fn test_override_floating_position_and_size_update() {
             &override_floating,
             vec![],
             &mut HashMap::new(),
+            false,
         )
         .unwrap();
 
@@ -4846,6 +4859,7 @@ fn test_override_floating_return_value_has_panes() {
             &override_floating,
             new_floating_terminal_ids,
             &mut HashMap::new(),
+            false,
         )
         .unwrap();
 
@@ -4958,6 +4972,7 @@ fn test_override_floating_return_value_no_panes() {
             &override_floating,
             vec![],
             &mut HashMap::new(),
+            false,
         )
         .unwrap();
 
@@ -5109,6 +5124,7 @@ fn test_override_full_tiled_and_floating_together() {
             &override_tiled,
             new_terminal_ids,
             &mut HashMap::new(),
+            false,
             1,
         )
         .unwrap();
@@ -5118,6 +5134,7 @@ fn test_override_full_tiled_and_floating_together() {
             &override_floating,
             vec![],
             &mut HashMap::new(),
+            false,
         )
         .unwrap();
 
@@ -5236,6 +5253,7 @@ fn test_override_viewport_adjustment_with_borderless() {
             &override_tiled,
             vec![],
             &mut HashMap::new(),
+            false,
             1,
         )
         .unwrap();

@@ -178,6 +178,13 @@ impl TiledPanes {
         let should_relayout = true;
         self.add_pane(pane_id, pane, should_relayout, client_id);
     }
+    pub fn set_pane_logical_position(&mut self, pane_id: PaneId, logical_position: usize) {
+        if let Some(pane) = self.panes.get_mut(&pane_id) {
+            let mut position_and_size = pane.position_and_size();
+            position_and_size.logical_position = Some(logical_position);
+            pane.set_geom(position_and_size);
+        }
+    }
     pub fn insert_pane_without_relayout(
         &mut self,
         pane_id: PaneId,
@@ -1219,6 +1226,10 @@ impl TiledPanes {
     fn display_area_changed(&self, new_screen_size: Size) -> bool {
         let display_area = self.display_area.borrow();
         new_screen_size.rows != display_area.rows || new_screen_size.cols != display_area.cols
+    }
+    pub fn force_resize(&mut self) { // TODO: better name
+        let display_area = self.display_area.borrow().clone();
+        self.resize(display_area);
     }
     pub fn resize(&mut self, new_screen_size: Size) {
         // this is blocked out to appease the borrow checker
