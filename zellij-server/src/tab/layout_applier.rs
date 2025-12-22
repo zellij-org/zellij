@@ -130,6 +130,7 @@ impl<'a> LayoutApplier<'a> {
         new_floating_terminal_ids: Vec<(u32, HoldForCommand)>,
         mut new_plugin_ids: HashMap<RunPluginOrAlias, Vec<u32>>,
         retain_existing_terminal_panes: bool,
+        retain_existing_plugin_panes: bool,
         client_id: ClientId,
     ) -> Result<bool> {
         // true => should_show_floating_panes
@@ -139,6 +140,7 @@ impl<'a> LayoutApplier<'a> {
             new_terminal_ids,
             &mut new_plugin_ids,
             retain_existing_terminal_panes,
+            retain_existing_plugin_panes,
             client_id,
         )?;
 
@@ -147,6 +149,7 @@ impl<'a> LayoutApplier<'a> {
             new_floating_terminal_ids,
             &mut new_plugin_ids,
             retain_existing_terminal_panes,
+            retain_existing_plugin_panes,
         )?;
         let should_show_floating_panes = layout_has_floating_panes && !hide_floating_panes;
         return Ok(should_show_floating_panes);
@@ -227,6 +230,7 @@ impl<'a> LayoutApplier<'a> {
         mut new_terminal_ids: Vec<(u32, HoldForCommand)>,
         mut new_plugin_ids: &mut HashMap<RunPluginOrAlias, Vec<u32>>,
         retain_existing_terminal_panes: bool,
+        retain_existing_plugin_panes: bool,
         client_id: ClientId,
     ) -> Result<()> {
         let positions_in_layout = self.flatten_layout(tiled_panes_layout, false)?;
@@ -266,6 +270,9 @@ impl<'a> LayoutApplier<'a> {
             if retain_existing_terminal_panes && matches!(pane_id, PaneId::Terminal(_)) {
                 continue;
             }
+            if retain_existing_plugin_panes && matches!(pane_id, PaneId::Plugin(_)) {
+                continue;
+            }
             existing_tab_state.remove_pane(&pane_id);
             match pane_id {
                 PaneId::Terminal(_) => {
@@ -295,7 +302,7 @@ impl<'a> LayoutApplier<'a> {
             &self.senders,
             &self.character_cell_size,
         );
-        if retain_existing_terminal_panes {
+        if retain_existing_terminal_panes || retain_existing_plugin_panes {
             pane_applier.handle_remaining_tiled_pane_ids(remaining_pane_ids, existing_tab_state, last_logical_position, Some(client_id));
         }
 
@@ -851,6 +858,7 @@ impl<'a> LayoutApplier<'a> {
         new_terminal_ids: Vec<(u32, HoldForCommand)>,
         mut new_plugin_ids: &mut HashMap<RunPluginOrAlias, Vec<u32>>,
         retain_existing_terminal_panes: bool,
+        retain_existing_plugin_panes: bool,
     ) -> Result<bool> {
         let layout_has_floating_panes = !floating_panes_layout.is_empty();
         let mut positions_in_layout = floating_panes_layout.clone();
@@ -888,6 +896,9 @@ impl<'a> LayoutApplier<'a> {
         let remaining_pane_ids: Vec<PaneId> = existing_tab_state.pane_ids();
         for pane_id in remaining_pane_ids {
             if retain_existing_terminal_panes && matches!(pane_id, PaneId::Terminal(_)) {
+                continue;
+            }
+            if retain_existing_plugin_panes && matches!(pane_id, PaneId::Plugin(_)) {
                 continue;
             }
             existing_tab_state.remove_pane(&pane_id);

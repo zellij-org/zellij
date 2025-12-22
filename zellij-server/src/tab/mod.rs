@@ -873,15 +873,14 @@ impl Tab {
         new_floating_terminal_ids: Vec<(u32, HoldForCommand)>,
         new_plugin_ids: HashMap<RunPluginOrAlias, Vec<u32>>,
         retain_existing_terminal_panes: bool,
+        retain_existing_plugin_panes: bool,
         client_id: ClientId,
         blocking_terminal: Option<(u32, NotificationEnd)>,
     ) -> Result<()> {
-        if let Some(new_swap_tiled_layouts) = new_swap_tiled_layouts.take() {
-            self.swap_layouts.set_swap_tiled_layouts(new_swap_tiled_layouts);
-        }
-        if let Some(new_swap_floating_layout) = new_swap_floating_layouts.take() {
-            self.swap_layouts.set_swap_floating_layouts(new_swap_floating_layout);
-        }
+        let new_swap_tiled_layouts = new_swap_tiled_layouts.take().unwrap_or_else(|| vec![]);
+        let new_swap_floating_layouts = new_swap_floating_layouts.take().unwrap_or_else(|| vec![]);
+        self.swap_layouts.set_swap_tiled_layouts(new_swap_tiled_layouts);
+        self.swap_layouts.set_swap_floating_layouts(new_swap_floating_layouts);
         match LayoutApplier::new(
             &self.viewport,
             &self.senders,
@@ -911,6 +910,7 @@ impl Tab {
             new_floating_terminal_ids,
             new_plugin_ids,
             retain_existing_terminal_panes,
+            retain_existing_plugin_panes,
             client_id,
         ) {
             Ok(should_show_floating_panes) => {

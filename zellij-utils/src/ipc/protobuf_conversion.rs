@@ -1108,6 +1108,7 @@ impl From<crate::input::actions::Action>
                 initial_panes,
                 first_pane_unblock_condition,
                 retain_existing_terminal_panes,
+                retain_existing_plugin_panes,
             } => ActionType::OverrideLayout(OverrideLayoutAction {
                 tiled_layout: tiled_layout.map(|l| l.into()),
                 floating_layouts: floating_layouts.into_iter().map(|l| l.into()).collect(),
@@ -1126,6 +1127,7 @@ impl From<crate::input::actions::Action>
                 first_pane_unblock_condition: first_pane_unblock_condition
                     .map(|c| unblock_condition_to_proto_i32(c)),
                 retain_existing_terminal_panes,
+                retain_existing_plugin_panes,
             }),
             crate::input::actions::Action::QueryTabNames => {
                 ActionType::QueryTabNames(QueryTabNamesAction {})
@@ -1759,6 +1761,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                         .map(|c| proto_i32_to_unblock_condition(c))
                         .transpose()?,
                     retain_existing_terminal_panes: override_layout_action.retain_existing_terminal_panes,
+                    retain_existing_plugin_panes: override_layout_action.retain_existing_plugin_panes,
                 })
             },
             ActionType::QueryTabNames(_) => Ok(crate::input::actions::Action::QueryTabNames),

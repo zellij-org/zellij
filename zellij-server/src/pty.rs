@@ -86,6 +86,7 @@ pub enum PtyInstruction {
         Option<Vec<SwapTiledLayout>>,
         Option<Vec<SwapFloatingLayout>>,
         bool,                                // retain_existing_terminal_panes
+        bool,                                // retain_existing_plugin_panes
         usize,                               // tab_index
         HashMap<RunPluginOrAlias, Vec<u32>>, // plugin_ids
         ClientId,
@@ -500,25 +501,13 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                 swap_tiled_layouts,
                 swap_floating_layouts,
                 retain_existing_terminal_panes,
+                retain_existing_plugin_panes,
                 tab_index,
                 plugin_ids,
                 client_id,
                 completion_tx,
             ) => {
                 let err_context = || "failed to override layout";
-                //         cwd: Option<PathBuf>,
-                //         layout: TiledPaneLayout,
-                //         floating_panes_layout: Vec<FloatingPaneLayout>,
-                //         default_shell: Option<TerminalAction>,
-                //         plugin_ids: HashMap<RunPluginOrAlias, Vec<u32>>,
-                //         initial_panes: Option<Vec<CommandOrPlugin>>,
-                //         tab_index: usize,
-                //         block_on_first_terminal: bool,
-                //         should_change_focus_to_new_tab: bool,
-                //         client_id_and_is_web_client: (ClientId, bool),
-                //         swap_tiled_layouts: Option<Vec<SwapTiledLayout>>,
-                //         swap_floating_layouts: Option<Vec<SwapFloatingLayout>>,
-                //         completion_tx: Option<NotificationEnd>,
 
                 let initial_panes = None; // TODO: support this?
                 let block_on_first_terminal = false; // TODO: support this?
@@ -536,99 +525,10 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     swap_tiled_layouts,
                     swap_floating_layouts,
                     retain_existing_terminal_panes,
+                    retain_existing_plugin_panes,
                     completion_tx,
                 )
                 .with_context(err_context)?;
-
-                //                 let err_context = || "failed to handle override layout";
-                //
-                //                 // Extract run instructions from tiled layout
-                //                 let extracted_run_instructions = tiled_layout.extract_run_instructions();
-                //
-                //                 // Extract run instructions from floating layouts (excluding already_running)
-                //                 let extracted_floating_run_instructions = floating_layouts
-                //                     .iter()
-                //                     .filter(|f| !f.already_running)
-                //                     .map(|f| f.run.clone());
-                //
-                //                 let mut new_pane_pids: Vec<(u32, bool, Option<RunCommand>, Result<RawFd>)> = vec![];
-                //                 let mut new_floating_pane_pids: Vec<(u32, bool, Option<RunCommand>, Result<RawFd>)> = vec![];
-                //
-                //                 let default_shell = pty.get_default_terminal(None, None);
-                //
-                //                 // Spawn terminals for tiled panes
-                //                 for run_instruction in extracted_run_instructions {
-                //                     if let Some(new_pane_data) =
-                //                         pty.apply_run_instruction(run_instruction, default_shell.clone())?
-                //                     {
-                //                         new_pane_pids.push(new_pane_data);
-                //                     }
-                //                 }
-                //
-                //                 // Spawn terminals for floating panes
-                //                 for run_instruction in extracted_floating_run_instructions {
-                //                     if let Some(new_pane_data) =
-                //                         pty.apply_run_instruction(run_instruction, default_shell.clone())?
-                //                     {
-                //                         new_floating_pane_pids.push(new_pane_data);
-                //                     }
-                //                 }
-                //
-                //                 // Convert to the format expected by ScreenInstruction
-                //                 let new_tab_pane_ids: Vec<(u32, Option<RunCommand>)> = new_pane_pids
-                //                     .iter()
-                //                     .map(|(terminal_id, starts_held, run_command, _)| {
-                //                         if *starts_held {
-                //                             (*terminal_id, run_command.clone())
-                //                         } else {
-                //                             (*terminal_id, None)
-                //                         }
-                //                     })
-                //                     .collect();
-                //
-                //                 let new_tab_floating_pane_ids: Vec<(u32, Option<RunCommand>)> = new_floating_pane_pids
-                //                     .iter()
-                //                     .map(|(terminal_id, starts_held, run_command, _)| {
-                //                         if *starts_held {
-                //                             (*terminal_id, run_command.clone())
-                //                         } else {
-                //                             (*terminal_id, None)
-                //                         }
-                //                     })
-                //                     .collect();
-                //
-                //                 // Send back to screen
-                //                 pty.bus
-                //                     .senders
-                //                     .send_to_screen(ScreenInstruction::OverrideLayoutComplete(
-                //                         tiled_layout,
-                //                         floating_layouts,
-                //                         swap_tiled_layouts,
-                //                         swap_floating_layouts,
-                //                         new_tab_pane_ids,
-                //                         new_tab_floating_pane_ids,
-                //                         plugin_ids,
-                //                         tab_index,
-                //                         client_id,
-                //                         completion_tx,
-                //                     ))
-                //                     .with_context(err_context)?;
-                //
-                //                 // Start the terminals
-                //                 let mut terminals_to_start = vec![];
-                //                 terminals_to_start.append(&mut new_pane_pids);
-                //                 terminals_to_start.append(&mut new_floating_pane_pids);
-                //
-                //                 for (terminal_id, _starts_held, _run_command, pid) in terminals_to_start {
-                //                     match pid {
-                //                         Ok(pid) => {
-                //                             pty.id_to_child_pid.insert(terminal_id, pid);
-                //                         },
-                //                         Err(err) => {
-                //                             log::error!("Failed to spawn terminal for override layout: {:?}", err);
-                //                         },
-                //                     }
-                //                 }
             },
             PtyInstruction::ClosePane(id, _completion_tx) => {
                 pty.close_pane(id)
@@ -1369,6 +1269,7 @@ impl Pty {
         swap_tiled_layouts: Option<Vec<SwapTiledLayout>>,
         swap_floating_layouts: Option<Vec<SwapFloatingLayout>>,
         retain_existing_terminal_panes: bool,
+        retain_existing_plugin_panes: bool,
         completion_tx: Option<NotificationEnd>,
     ) -> Result<()> {
         let err_context = || format!("failed to spawn terminals for layout for");
@@ -1515,6 +1416,7 @@ impl Pty {
                 new_tab_floating_pane_ids,
                 plugin_ids,
                 retain_existing_terminal_panes,
+                retain_existing_plugin_panes,
                 tab_index,
                 client_id,
                 completion_tx,

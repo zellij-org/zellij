@@ -361,6 +361,7 @@ pub enum Action {
         initial_panes: Option<Vec<CommandOrPlugin>>,
         first_pane_unblock_condition: Option<UnblockCondition>,
         retain_existing_terminal_panes: bool,
+        retain_existing_plugin_panes: bool,
     },
     /// Query all tab names
     QueryTabNames,
@@ -987,7 +988,7 @@ impl Action {
             },
             CliAction::PreviousSwapLayout => Ok(vec![Action::PreviousSwapLayout]),
             CliAction::NextSwapLayout => Ok(vec![Action::NextSwapLayout]),
-            CliAction::OverrideLayout { layout, layout_dir, retain_existing_terminal_panes } => {
+            CliAction::OverrideLayout { layout, layout_dir, retain_existing_terminal_panes, retain_existing_plugin_panes } => {
                 let _current_dir = get_current_dir();
 
                 // Determine layout_dir: CLI arg > config > default
@@ -1068,6 +1069,7 @@ impl Action {
                     initial_panes: None,
                     first_pane_unblock_condition: None,
                     retain_existing_terminal_panes: retain_existing_terminal_panes.unwrap_or(false),
+                    retain_existing_plugin_panes: retain_existing_plugin_panes.unwrap_or(false),
                 }])
             },
             CliAction::QueryTabNames => Ok(vec![Action::QueryTabNames]),

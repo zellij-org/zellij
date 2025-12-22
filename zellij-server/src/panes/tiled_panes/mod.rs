@@ -2650,6 +2650,7 @@ impl TiledPanes {
         self.active_panes.focus_all_panes(&mut self.panes);
     }
     pub fn drain(&mut self) -> BTreeMap<PaneId, Box<dyn Pane>> {
+        self.unset_fullscreen();
         match self.panes.iter().next().map(|(pid, _p)| *pid) {
             Some(first_pid) => self.panes.split_off(&first_pid),
             None => BTreeMap::new(),

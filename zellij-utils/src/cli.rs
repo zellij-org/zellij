@@ -943,9 +943,13 @@ pub enum CliAction {
         #[clap(long, value_parser)]
         layout_dir: Option<PathBuf>,
 
-        /// Retain existing terminal panes when overriding layout (default: true)
-        #[clap(long)]
+        /// Retain existing terminal panes that do not fit in the layout (default: false)
+        #[clap(long, takes_value(false))]
         retain_existing_terminal_panes: Option<bool>,
+
+        /// Retain existing plugin panes that do not fit with the layout default: false)
+        #[clap(long, takes_value(false))]
+        retain_existing_plugin_panes: Option<bool>,
     },
     /// Query all tab names
     QueryTabNames,

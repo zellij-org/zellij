@@ -105,6 +105,7 @@ pub enum PluginInstruction {
         Option<Vec<SwapTiledLayout>>,
         Option<Vec<SwapFloatingLayout>>,
         bool,                   // retain_existing_terminal_panes
+        bool,                   // retain_existing_plugin_panes
         usize,                  // tab_index
         ClientId,
         Option<NotificationEnd>,
@@ -590,6 +591,7 @@ pub(crate) fn plugin_thread_main(
                 swap_tiled_layouts,
                 swap_floating_layouts,
                 retain_existing_terminal_panes,
+                retain_existing_plugin_panes,
                 tab_index,
                 client_id,
                 completion_tx,
@@ -658,6 +660,7 @@ pub(crate) fn plugin_thread_main(
                     swap_tiled_layouts,
                     swap_floating_layouts,
                     retain_existing_terminal_panes,
+                    retain_existing_plugin_panes,
                     tab_index,
                     plugin_ids,
                     client_id,

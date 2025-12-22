@@ -278,6 +278,8 @@ pub struct OverrideLayoutPayload {
     pub first_pane_unblock_condition: ::core::option::Option<i32>,
     #[prost(bool, tag="10")]
     pub retain_existing_terminal_panes: bool,
+    #[prost(bool, tag="11")]
+    pub retain_existing_plugin_panes: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
