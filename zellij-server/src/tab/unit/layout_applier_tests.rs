@@ -6147,3 +6147,813 @@ fn test_override_retain_terminal_but_close_plugin_panes() {
         &display_area,
     ));
 }
+
+#[test]
+fn test_override_tiled_retain_plugin_panes_partial_match() {
+    // Verify that when retain_existing_plugin_panes = true, plugin panes that don't match
+    // the new layout are retained instead of being closed
+    let initial_kdl = r#"
+        layout {
+            pane
+            pane {
+                plugin location="zellij:tab-bar"
+            }
+            pane {
+                plugin location="zellij:status-bar"
+            }
+            pane {
+                plugin location="file:///path/to/custom.wasm"
+            }
+        }
+    "#;
+
+    let (initial_tiled, initial_floating) = parse_kdl_layout(initial_kdl);
+
+    let terminal_ids = vec![(1, None)];
+
+    let mut initial_plugin_ids = HashMap::new();
+    let tab_bar = RunPluginOrAlias::from_url("zellij:tab-bar", &None, None, None).unwrap();
+    let status_bar = RunPluginOrAlias::from_url("zellij:status-bar", &None, None, None).unwrap();
+    let custom = RunPluginOrAlias::from_url("file:///path/to/custom.wasm", &None, None, None).unwrap();
+    initial_plugin_ids.insert(tab_bar, vec![100]);
+    initial_plugin_ids.insert(status_bar, vec![101]);
+    initial_plugin_ids.insert(custom, vec![102]);
+
+    let size = Size { cols: 120, rows: 40 };
+    let (
+        viewport,
+        senders,
+        sixel_image_store,
+        link_handler,
+        terminal_emulator_colors,
+        terminal_emulator_color_codes,
+        character_cell_size,
+        connected_clients,
+        style,
+        display_area,
+        mut tiled_panes,
+        mut floating_panes,
+        draw_pane_frames,
+        mut focus_pane_id,
+        os_api,
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
+        pty_receiver,
+        plugin_receiver,
+    ) = create_layout_applier_fixtures_with_receivers(size);
+
+    let mut applier = LayoutApplier::new(
+        &viewport,
+        &senders,
+        &sixel_image_store,
+        &link_handler,
+        &terminal_emulator_colors,
+        &terminal_emulator_color_codes,
+        &character_cell_size,
+        &connected_clients,
+        &style,
+        &display_area,
+        &mut tiled_panes,
+        &mut floating_panes,
+        draw_pane_frames,
+        &mut focus_pane_id,
+        &os_api,
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
+        None,
+    );
+
+    applier
+        .apply_layout(
+            initial_tiled,
+            initial_floating,
+            terminal_ids,
+            vec![],
+            initial_plugin_ids,
+            1,
+        )
+        .unwrap();
+
+    let override_kdl = r#"
+        layout {
+            pane
+            pane {
+                plugin location="zellij:tab-bar"
+            }
+            pane {
+                plugin location="zellij:status-bar"
+            }
+        }
+    "#;
+
+    let (override_tiled, _) = parse_kdl_layout(override_kdl);
+
+    applier
+        .override_tiled_panes_layout_for_existing_panes(
+            &override_tiled,
+            vec![],
+            &mut HashMap::new(),
+            false,
+            true,
+            1,
+        )
+        .unwrap();
+
+    // Verify NO plugin panes were unloaded
+    let unloaded_plugins = collect_unload_plugin_messages(&plugin_receiver);
+    assert_eq!(unloaded_plugins.len(), 0, "No plugin panes should be unloaded when retain_existing_plugin_panes is true");
+
+    // No terminals should be closed
+    let closed_panes = collect_close_pane_messages(&pty_receiver);
+    assert!(closed_panes.is_empty());
+
+    // All 4 panes should exist (1 terminal + 3 plugins)
+    assert_eq!(tiled_panes.visible_panes_count(), 4, "All plugin panes should be retained");
+}
+
+#[test]
+fn test_override_tiled_retain_plugin_panes_no_matches() {
+    // When NO plugins match the new layout, all original plugins are retained AND new plugins are created
+    let initial_kdl = r#"
+        layout {
+            pane
+            pane {
+                plugin location="zellij:tab-bar"
+            }
+            pane {
+                plugin location="zellij:status-bar"
+            }
+            pane {
+                plugin location="zellij:compact-bar"
+            }
+        }
+    "#;
+
+    let (initial_tiled, initial_floating) = parse_kdl_layout(initial_kdl);
+
+    let terminal_ids = vec![(1, None)];
+
+    let mut initial_plugin_ids = HashMap::new();
+    let tab_bar = RunPluginOrAlias::from_url("zellij:tab-bar", &None, None, None).unwrap();
+    let status_bar = RunPluginOrAlias::from_url("zellij:status-bar", &None, None, None).unwrap();
+    let compact_bar = RunPluginOrAlias::from_url("zellij:compact-bar", &None, None, None).unwrap();
+    initial_plugin_ids.insert(tab_bar, vec![100]);
+    initial_plugin_ids.insert(status_bar, vec![101]);
+    initial_plugin_ids.insert(compact_bar, vec![102]);
+
+    let size = Size { cols: 120, rows: 40 };
+    let (
+        viewport,
+        senders,
+        sixel_image_store,
+        link_handler,
+        terminal_emulator_colors,
+        terminal_emulator_color_codes,
+        character_cell_size,
+        connected_clients,
+        style,
+        display_area,
+        mut tiled_panes,
+        mut floating_panes,
+        draw_pane_frames,
+        mut focus_pane_id,
+        os_api,
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
+        pty_receiver,
+        plugin_receiver,
+    ) = create_layout_applier_fixtures_with_receivers(size);
+
+    let mut applier = LayoutApplier::new(
+        &viewport,
+        &senders,
+        &sixel_image_store,
+        &link_handler,
+        &terminal_emulator_colors,
+        &terminal_emulator_color_codes,
+        &character_cell_size,
+        &connected_clients,
+        &style,
+        &display_area,
+        &mut tiled_panes,
+        &mut floating_panes,
+        draw_pane_frames,
+        &mut focus_pane_id,
+        &os_api,
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
+        None,
+    );
+
+    applier
+        .apply_layout(
+            initial_tiled,
+            initial_floating,
+            terminal_ids,
+            vec![],
+            initial_plugin_ids,
+            1,
+        )
+        .unwrap();
+
+    let override_kdl = r#"
+        layout {
+            pane
+            pane {
+                plugin location="file:///path/to/plugin1.wasm"
+            }
+            pane {
+                plugin location="file:///path/to/plugin2.wasm"
+            }
+            pane {
+                plugin location="file:///path/to/plugin3.wasm"
+            }
+        }
+    "#;
+
+    let (override_tiled, _) = parse_kdl_layout(override_kdl);
+
+    let mut override_plugin_ids = HashMap::new();
+    let plugin1 = RunPluginOrAlias::from_url("file:///path/to/plugin1.wasm", &None, None, None).unwrap();
+    let plugin2 = RunPluginOrAlias::from_url("file:///path/to/plugin2.wasm", &None, None, None).unwrap();
+    let plugin3 = RunPluginOrAlias::from_url("file:///path/to/plugin3.wasm", &None, None, None).unwrap();
+    override_plugin_ids.insert(plugin1, vec![103]);
+    override_plugin_ids.insert(plugin2, vec![104]);
+    override_plugin_ids.insert(plugin3, vec![105]);
+
+    applier
+        .override_tiled_panes_layout_for_existing_panes(
+            &override_tiled,
+            vec![],
+            &mut override_plugin_ids,
+            false,
+            true,
+            1,
+        )
+        .unwrap();
+
+    // Verify NO plugin panes were unloaded
+    let unloaded_plugins = collect_unload_plugin_messages(&plugin_receiver);
+    assert_eq!(unloaded_plugins.len(), 0, "No plugin panes should be unloaded when retain_existing_plugin_panes is true");
+
+    // Total: 1 terminal + 6 plugins (3 original + 3 new)
+    assert_eq!(tiled_panes.visible_panes_count(), 7, "All original plugins retained and new plugins created");
+}
+
+#[test]
+fn test_override_floating_retain_plugin_panes_partial_match() {
+    // Floating plugin panes that don't match the new layout are retained
+    let initial_kdl = r#"
+        layout {
+            pane
+            floating_panes {
+                pane {
+                    x 10
+                    y 10
+                    width 40
+                    height 20
+                    plugin location="zellij:tab-bar"
+                }
+                pane {
+                    x 20
+                    y 20
+                    width 50
+                    height 25
+                    plugin location="zellij:status-bar"
+                }
+            }
+        }
+    "#;
+
+    let (initial_tiled, initial_floating) = parse_kdl_layout(initial_kdl);
+
+    let terminal_ids = vec![(1, None)];
+
+    let mut initial_plugin_ids = HashMap::new();
+    let tab_bar = RunPluginOrAlias::from_url("zellij:tab-bar", &None, None, None).unwrap();
+    let status_bar = RunPluginOrAlias::from_url("zellij:status-bar", &None, None, None).unwrap();
+    initial_plugin_ids.insert(tab_bar, vec![100]);
+    initial_plugin_ids.insert(status_bar, vec![101]);
+
+    let size = Size { cols: 120, rows: 40 };
+    let (
+        viewport,
+        senders,
+        sixel_image_store,
+        link_handler,
+        terminal_emulator_colors,
+        terminal_emulator_color_codes,
+        character_cell_size,
+        connected_clients,
+        style,
+        display_area,
+        mut tiled_panes,
+        mut floating_panes,
+        draw_pane_frames,
+        mut focus_pane_id,
+        os_api,
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
+        pty_receiver,
+        plugin_receiver,
+    ) = create_layout_applier_fixtures_with_receivers(size);
+
+    let mut applier = LayoutApplier::new(
+        &viewport,
+        &senders,
+        &sixel_image_store,
+        &link_handler,
+        &terminal_emulator_colors,
+        &terminal_emulator_color_codes,
+        &character_cell_size,
+        &connected_clients,
+        &style,
+        &display_area,
+        &mut tiled_panes,
+        &mut floating_panes,
+        draw_pane_frames,
+        &mut focus_pane_id,
+        &os_api,
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
+        None,
+    );
+
+    applier
+        .apply_layout(
+            initial_tiled,
+            initial_floating,
+            terminal_ids,
+            vec![],
+            initial_plugin_ids,
+            1,
+        )
+        .unwrap();
+
+    let override_kdl = r#"
+        layout {
+            pane
+            floating_panes {
+                pane {
+                    x 15
+                    y 15
+                    width 45
+                    height 22
+                    plugin location="zellij:tab-bar"
+                }
+            }
+        }
+    "#;
+
+    let (_, override_floating) = parse_kdl_layout(override_kdl);
+
+    applier
+        .override_floating_panes_layout_for_existing_panes(
+            &override_floating,
+            vec![],
+            &mut HashMap::new(),
+            false,
+            true,
+        )
+        .unwrap();
+
+    // Verify NO plugin panes were unloaded
+    let unloaded_plugins = collect_unload_plugin_messages(&plugin_receiver);
+    assert_eq!(unloaded_plugins.len(), 0, "No floating plugin panes should be unloaded when retain_existing_plugin_panes is true");
+
+    // No terminals should be closed
+    let closed_panes = collect_close_pane_messages(&pty_receiver);
+    assert!(closed_panes.is_empty());
+
+    // Both floating plugins should still exist
+    assert_eq!(floating_panes.visible_panes_count(), 2, "Both floating plugin panes should be retained");
+
+    // Verify tiled pane exists
+    assert_eq!(tiled_panes.visible_panes_count(), 1);
+}
+
+#[test]
+fn test_override_floating_retain_plugin_panes_no_matches() {
+    // All original floating plugins are retained AND new floating plugins are created when there are no matches
+    let initial_kdl = r#"
+        layout {
+            pane
+            floating_panes {
+                pane {
+                    x 10
+                    y 10
+                    width 40
+                    height 20
+                    plugin location="zellij:tab-bar"
+                }
+                pane {
+                    x 20
+                    y 20
+                    width 50
+                    height 25
+                    plugin location="zellij:status-bar"
+                }
+            }
+        }
+    "#;
+
+    let (initial_tiled, initial_floating) = parse_kdl_layout(initial_kdl);
+
+    let terminal_ids = vec![(1, None)];
+
+    let mut initial_plugin_ids = HashMap::new();
+    let tab_bar = RunPluginOrAlias::from_url("zellij:tab-bar", &None, None, None).unwrap();
+    let status_bar = RunPluginOrAlias::from_url("zellij:status-bar", &None, None, None).unwrap();
+    initial_plugin_ids.insert(tab_bar, vec![100]);
+    initial_plugin_ids.insert(status_bar, vec![101]);
+
+    let size = Size { cols: 120, rows: 40 };
+    let (
+        viewport,
+        senders,
+        sixel_image_store,
+        link_handler,
+        terminal_emulator_colors,
+        terminal_emulator_color_codes,
+        character_cell_size,
+        connected_clients,
+        style,
+        display_area,
+        mut tiled_panes,
+        mut floating_panes,
+        draw_pane_frames,
+        mut focus_pane_id,
+        os_api,
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
+        pty_receiver,
+        plugin_receiver,
+    ) = create_layout_applier_fixtures_with_receivers(size);
+
+    let mut applier = LayoutApplier::new(
+        &viewport,
+        &senders,
+        &sixel_image_store,
+        &link_handler,
+        &terminal_emulator_colors,
+        &terminal_emulator_color_codes,
+        &character_cell_size,
+        &connected_clients,
+        &style,
+        &display_area,
+        &mut tiled_panes,
+        &mut floating_panes,
+        draw_pane_frames,
+        &mut focus_pane_id,
+        &os_api,
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
+        None,
+    );
+
+    applier
+        .apply_layout(
+            initial_tiled,
+            initial_floating,
+            terminal_ids,
+            vec![],
+            initial_plugin_ids,
+            1,
+        )
+        .unwrap();
+
+    let override_kdl = r#"
+        layout {
+            pane
+            floating_panes {
+                pane {
+                    x 15
+                    y 15
+                    width 45
+                    height 22
+                    plugin location="file:///path/to/plugin1.wasm"
+                }
+                pane {
+                    x 25
+                    y 25
+                    width 55
+                    height 27
+                    plugin location="file:///path/to/plugin2.wasm"
+                }
+            }
+        }
+    "#;
+
+    let (_, override_floating) = parse_kdl_layout(override_kdl);
+
+    let mut override_plugin_ids = HashMap::new();
+    let plugin1 = RunPluginOrAlias::from_url("file:///path/to/plugin1.wasm", &None, None, None).unwrap();
+    let plugin2 = RunPluginOrAlias::from_url("file:///path/to/plugin2.wasm", &None, None, None).unwrap();
+    override_plugin_ids.insert(plugin1, vec![102]);
+    override_plugin_ids.insert(plugin2, vec![103]);
+
+    applier
+        .override_floating_panes_layout_for_existing_panes(
+            &override_floating,
+            vec![],
+            &mut override_plugin_ids,
+            false,
+            true,
+        )
+        .unwrap();
+
+    // Verify NO plugin panes were unloaded
+    let unloaded_plugins = collect_unload_plugin_messages(&plugin_receiver);
+    assert_eq!(unloaded_plugins.len(), 0, "No floating plugin panes should be unloaded when retain_existing_plugin_panes is true");
+
+    // Total: 4 floating plugins (2 original + 2 new)
+    assert_eq!(floating_panes.visible_panes_count(), 4, "All original floating plugins retained and new plugins created");
+
+    // 1 tiled terminal pane
+    assert_eq!(tiled_panes.visible_panes_count(), 1);
+}
+
+#[test]
+fn test_override_mixed_retain_plugin_panes_both_tiled_and_floating() {
+    // Both tiled and floating plugin panes are retained when the flag is true
+    let initial_kdl = r#"
+        layout {
+            pane command="htop"
+            pane command="vim"
+            pane {
+                plugin location="zellij:tab-bar"
+            }
+            floating_panes {
+                pane {
+                    x 10
+                    y 10
+                    width 40
+                    height 20
+                    plugin location="zellij:status-bar"
+                }
+            }
+        }
+    "#;
+
+    let (initial_tiled, initial_floating) = parse_kdl_layout(initial_kdl);
+
+    let terminal_ids = vec![(1, None), (2, None)];
+
+    let mut initial_plugin_ids = HashMap::new();
+    let tab_bar = RunPluginOrAlias::from_url("zellij:tab-bar", &None, None, None).unwrap();
+    let status_bar = RunPluginOrAlias::from_url("zellij:status-bar", &None, None, None).unwrap();
+    initial_plugin_ids.insert(tab_bar, vec![100]);
+    initial_plugin_ids.insert(status_bar, vec![101]);
+
+    let size = Size { cols: 120, rows: 40 };
+    let (
+        viewport,
+        senders,
+        sixel_image_store,
+        link_handler,
+        terminal_emulator_colors,
+        terminal_emulator_color_codes,
+        character_cell_size,
+        connected_clients,
+        style,
+        display_area,
+        mut tiled_panes,
+        mut floating_panes,
+        draw_pane_frames,
+        mut focus_pane_id,
+        os_api,
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
+        pty_receiver,
+        plugin_receiver,
+    ) = create_layout_applier_fixtures_with_receivers(size);
+
+    let mut applier = LayoutApplier::new(
+        &viewport,
+        &senders,
+        &sixel_image_store,
+        &link_handler,
+        &terminal_emulator_colors,
+        &terminal_emulator_color_codes,
+        &character_cell_size,
+        &connected_clients,
+        &style,
+        &display_area,
+        &mut tiled_panes,
+        &mut floating_panes,
+        draw_pane_frames,
+        &mut focus_pane_id,
+        &os_api,
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
+        None,
+    );
+
+    applier
+        .apply_layout(
+            initial_tiled,
+            initial_floating,
+            terminal_ids,
+            vec![],
+            initial_plugin_ids,
+            1,
+        )
+        .unwrap();
+
+    let override_kdl = r#"
+        layout {
+            pane command="htop"
+            pane {
+                plugin location="zellij:tab-bar"
+            }
+            pane {
+                plugin location="zellij:compact-bar"
+            }
+            floating_panes {
+                pane {
+                    x 20
+                    y 20
+                    width 50
+                    height 25
+                    plugin location="file:///path/to/custom.wasm"
+                }
+            }
+        }
+    "#;
+
+    let (override_tiled, override_floating) = parse_kdl_layout(override_kdl);
+
+    let mut override_plugin_ids = HashMap::new();
+    let compact_bar = RunPluginOrAlias::from_url("zellij:compact-bar", &None, None, None).unwrap();
+    let custom = RunPluginOrAlias::from_url("file:///path/to/custom.wasm", &None, None, None).unwrap();
+    override_plugin_ids.insert(compact_bar, vec![102]);
+    override_plugin_ids.insert(custom, vec![103]);
+
+    let retain_existing_terminal_panes = false;
+    let retain_existing_plugin_panes = true;
+    applier
+        .override_layout(
+            override_tiled,
+            override_floating,
+            vec![],
+            vec![],
+            override_plugin_ids,
+            retain_existing_terminal_panes,
+            retain_existing_plugin_panes,
+            1,
+        )
+        .unwrap();
+
+    // Verify NO plugin panes were unloaded
+    let unloaded_plugins = collect_unload_plugin_messages(&plugin_receiver);
+    assert_eq!(unloaded_plugins.len(), 0, "No plugin panes should be unloaded when retain_existing_plugin_panes is true");
+
+    // vim terminal should be closed (doesn't match layout)
+    let closed_panes = collect_close_pane_messages(&pty_receiver);
+    assert_eq!(closed_panes.len(), 1, "vim terminal should be closed");
+    assert!(closed_panes.contains(&PaneId::Terminal(2)), "Terminal(2) (vim) should be closed");
+
+    // Verify plugins exist (exact counts may vary based on where retained panes land)
+    assert!(tiled_panes.visible_panes_count() >= 2, "At least htop and matched plugins");
+    assert!(floating_panes.visible_panes_count() >= 1, "At least one floating plugin");
+}
+
+#[test]
+fn test_override_retain_plugin_but_close_terminal_panes() {
+    // Verify that retain_existing_plugin_panes = true ONLY affects plugin panes; terminals are still closed normally
+    let initial_kdl = r#"
+        layout {
+            pane command="htop"
+            pane command="vim"
+            pane {
+                plugin location="zellij:tab-bar"
+            }
+        }
+    "#;
+
+    let (initial_tiled, initial_floating) = parse_kdl_layout(initial_kdl);
+
+    let terminal_ids = vec![(1, None), (2, None)];
+
+    let mut initial_plugin_ids = HashMap::new();
+    let tab_bar = RunPluginOrAlias::from_url("zellij:tab-bar", &None, None, None).unwrap();
+    initial_plugin_ids.insert(tab_bar, vec![100]);
+
+    let size = Size { cols: 120, rows: 40 };
+    let (
+        viewport,
+        senders,
+        sixel_image_store,
+        link_handler,
+        terminal_emulator_colors,
+        terminal_emulator_color_codes,
+        character_cell_size,
+        connected_clients,
+        style,
+        display_area,
+        mut tiled_panes,
+        mut floating_panes,
+        draw_pane_frames,
+        mut focus_pane_id,
+        os_api,
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
+        pty_receiver,
+        plugin_receiver,
+    ) = create_layout_applier_fixtures_with_receivers(size);
+
+    let mut applier = LayoutApplier::new(
+        &viewport,
+        &senders,
+        &sixel_image_store,
+        &link_handler,
+        &terminal_emulator_colors,
+        &terminal_emulator_color_codes,
+        &character_cell_size,
+        &connected_clients,
+        &style,
+        &display_area,
+        &mut tiled_panes,
+        &mut floating_panes,
+        draw_pane_frames,
+        &mut focus_pane_id,
+        &os_api,
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
+        None,
+    );
+
+    applier
+        .apply_layout(
+            initial_tiled,
+            initial_floating,
+            terminal_ids,
+            vec![],
+            initial_plugin_ids,
+            1,
+        )
+        .unwrap();
+
+    let override_kdl = r#"
+        layout {
+            pane command="htop"
+        }
+    "#;
+
+    let (override_tiled, _) = parse_kdl_layout(override_kdl);
+
+    applier
+        .override_tiled_panes_layout_for_existing_panes(
+            &override_tiled,
+            vec![],
+            &mut HashMap::new(),
+            false,
+            true,
+            1,
+        )
+        .unwrap();
+
+    // vim terminal should be closed
+    let closed_panes = collect_close_pane_messages(&pty_receiver);
+    assert_eq!(closed_panes.len(), 1, "Terminal pane should be closed even with retain_existing_plugin_panes");
+    assert!(closed_panes.contains(&PaneId::Terminal(2)), "vim (Terminal(2)) should be closed");
+
+    // Plugin should NOT be unloaded
+    let unloaded_plugins = collect_unload_plugin_messages(&plugin_receiver);
+    assert_eq!(unloaded_plugins.len(), 0, "No plugin panes should be unloaded");
+
+    // Final panes: htop + tab-bar = 2
+    assert_eq!(tiled_panes.visible_panes_count(), 2, "htop and tab-bar should remain");
+
+    assert_snapshot!(take_pane_state_snapshot(
+        &tiled_panes,
+        &floating_panes,
+        &focus_pane_id,
+        &viewport,
+        &display_area,
+    ));
+}
