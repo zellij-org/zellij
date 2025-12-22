@@ -1723,6 +1723,120 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                     })
                 }
             },
+            "OverrideLayout" => {
+                let command_metadata = action_children.iter().next();
+                if command_metadata.is_none() {
+                    return Ok(Action::OverrideLayout {
+                        tiled_layout: None,
+                        floating_layouts: vec![],
+                        swap_tiled_layouts: None,
+                        swap_floating_layouts: None,
+                        tab_name: None,
+                        should_change_focus_to_new_tab: true,
+                        cwd: None,
+                        initial_panes: None,
+                        first_pane_unblock_condition: None,
+                        retain_existing_terminal_panes: false,
+                        retain_existing_plugin_panes: false,
+                    });
+                }
+
+                let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+
+                let layout = command_metadata
+                    .and_then(|c_m| kdl_child_string_value_for_entry(c_m, "layout"))
+                    .map(|layout_string| PathBuf::from(layout_string))
+                    .or_else(|| config_options.default_layout.clone());
+                let cwd = command_metadata
+                    .and_then(|c_m| kdl_child_string_value_for_entry(c_m, "cwd"))
+                    .map(|cwd_string| PathBuf::from(cwd_string))
+                    .map(|cwd| current_dir.join(cwd));
+                let name = command_metadata
+                    .and_then(|c_m| kdl_child_string_value_for_entry(c_m, "name"))
+                    .map(|name_string| name_string.to_string());
+                let retain_existing_terminal_panes = command_metadata
+                    .and_then(|c_m| kdl_child_bool_value_for_entry(c_m, "retain_existing_terminal_panes"))
+                    .unwrap_or(false);
+                let retain_existing_plugin_panes = command_metadata
+                    .and_then(|c_m| kdl_child_bool_value_for_entry(c_m, "retain_existing_plugin_panes"))
+                    .unwrap_or(false);
+
+                let layout_dir = config_options
+                    .layout_dir
+                    .clone()
+                    .or_else(|| get_layout_dir(find_default_config_dir()));
+                let (path_to_raw_layout, raw_layout, swap_layouts) =
+                    Layout::stringified_from_path_or_default(layout.as_ref(), layout_dir).map_err(
+                        |e| {
+                            ConfigError::new_kdl_error(
+                                format!("Failed to load layout: {}", e),
+                                kdl_action.span().offset(),
+                                kdl_action.span().len(),
+                            )
+                        },
+                    )?;
+
+                let layout = Layout::from_str(
+                    &raw_layout,
+                    path_to_raw_layout,
+                    swap_layouts.as_ref().map(|(f, p)| (f.as_str(), p.as_str())),
+                    cwd.clone(),
+                )
+                .map_err(|e| {
+                    ConfigError::new_kdl_error(
+                        format!("Failed to load layout: {}", e),
+                        kdl_action.span().offset(),
+                        kdl_action.span().len(),
+                    )
+                })?;
+
+                let swap_tiled_layouts = Some(layout.swap_tiled_layouts.clone());
+                let swap_floating_layouts = Some(layout.swap_floating_layouts.clone());
+
+                let mut tabs = layout.tabs();
+                if tabs.len() > 1 {
+                    return Err(ConfigError::new_kdl_error(
+                        "Tab layout cannot itself have tabs".to_string(),
+                        kdl_action.span().offset(),
+                        kdl_action.span().len(),
+                    ));
+                } else if !tabs.is_empty() {
+                    let (tab_name, layout, floating_panes_layout) = tabs.drain(..).next().unwrap();
+                    let name = tab_name.or(name);
+                    let should_change_focus_to_new_tab = layout.focus.unwrap_or(true);
+
+                    Ok(Action::OverrideLayout {
+                        tiled_layout: Some(layout),
+                        floating_layouts: floating_panes_layout,
+                        swap_tiled_layouts,
+                        swap_floating_layouts,
+                        tab_name: name,
+                        should_change_focus_to_new_tab,
+                        cwd,
+                        initial_panes: None,
+                        first_pane_unblock_condition: None,
+                        retain_existing_terminal_panes,
+                        retain_existing_plugin_panes,
+                    })
+                } else {
+                    let (layout, floating_panes_layout) = layout.new_tab();
+                    let should_change_focus_to_new_tab = layout.focus.unwrap_or(true);
+
+                    Ok(Action::OverrideLayout {
+                        tiled_layout: Some(layout),
+                        floating_layouts: floating_panes_layout,
+                        swap_tiled_layouts,
+                        swap_floating_layouts,
+                        tab_name: name,
+                        should_change_focus_to_new_tab,
+                        cwd,
+                        initial_panes: None,
+                        first_pane_unblock_condition: None,
+                        retain_existing_terminal_panes,
+                        retain_existing_plugin_panes,
+                    })
+                }
+            },
             "GoToTab" => parse_kdl_action_u8_arguments!(action_name, action_arguments, kdl_action),
             "TabNameInput" => {
                 parse_kdl_action_u8_arguments!(action_name, action_arguments, kdl_action)
