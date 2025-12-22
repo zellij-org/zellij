@@ -216,6 +216,7 @@ impl<'a> LayoutApplier<'a> {
 
         LayoutApplier::offset_viewport(
             self.viewport.clone(),
+            self.display_area.clone(),
             self.tiled_panes,
             self.draw_pane_frames,
         );
@@ -310,10 +311,9 @@ impl<'a> LayoutApplier<'a> {
         // in case focused panes were closed by the override
         self.tiled_panes.move_client_focus_to_existing_panes();
 
-        // self.tiled_panes.force_resize(); // TODO: better if works
-
         LayoutApplier::offset_viewport(
             self.viewport.clone(),
+            self.display_area.clone(),
             self.tiled_panes,
             self.draw_pane_frames,
         );
@@ -971,9 +971,15 @@ impl<'a> LayoutApplier<'a> {
     }
     pub fn offset_viewport(
         viewport: Rc<RefCell<Viewport>>,
+        display_area: Rc<RefCell<Size>>,
         tiled_panes: &mut TiledPanes,
         draw_pane_frames: bool,
     ) {
+        {
+            // reset viewport before reapplying offset
+            let mut viewport = viewport.borrow_mut();
+            *viewport = (*display_area.borrow()).into();
+        }
         let boundary_geoms = tiled_panes.non_selectable_pane_geoms_inside_viewport();
         {
             // curly braces here is so that we free viewport immediately when we're done
@@ -1023,6 +1029,7 @@ impl<'a> LayoutApplier<'a> {
         self.resize_whole_tab(display_area).context(err_context)?;
         LayoutApplier::offset_viewport(
             self.viewport.clone(),
+            self.display_area.clone(),
             self.tiled_panes,
             self.draw_pane_frames,
         );

@@ -932,6 +932,15 @@ impl Tab {
 
                 self.tiled_panes.reapply_pane_frames();
                 self.is_pending = false;
+
+                LayoutApplier::offset_viewport(
+                    self.viewport.clone(),
+                    self.display_area.clone(),
+                    &mut self.tiled_panes,
+                    self.draw_pane_frames,
+                );
+
+
                 self.apply_buffered_instructions().non_fatal();
             },
             Err(e) => {
@@ -3505,6 +3514,7 @@ impl Tab {
         // outside the viewport (a ui-pane, eg. the status-bar and tab-bar) and need to adjust for it
         LayoutApplier::offset_viewport(
             self.viewport.clone(),
+            self.display_area.clone(),
             &mut self.tiled_panes,
             self.draw_pane_frames,
         );

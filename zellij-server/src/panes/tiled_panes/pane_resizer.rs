@@ -47,8 +47,6 @@ impl<'a> PaneResizer<'a> {
     }
 
     pub fn layout(&mut self, direction: SplitDirection, space: usize) -> Result<()> {
-        log::info!("*** LAYOUT BEGIN ***");
-        self.log_panes();
         self.solver.reset();
         let grid = self
             .solve(direction, space)
@@ -116,7 +114,6 @@ impl<'a> PaneResizer<'a> {
         let mut finalised = Vec::new();
         for spans in &mut grid {
             let rounded_size: isize = spans.iter().map(|s| rounded_sizes[&s.size_var]).sum();
-            self.log_spans_if_rounded_sizes_smaller_than_1(&spans, &rounded_sizes, "beginning");
             let mut error = space as isize - rounded_size;
             let mut flex_spans: Vec<_> = spans
                 .iter_mut()
@@ -164,7 +161,6 @@ impl<'a> PaneResizer<'a> {
 //                 // error -= error.signum();
 //                 error -= modified;
 //             }
-            self.log_spans_if_rounded_sizes_smaller_than_1(&spans, &rounded_sizes, "end");
             finalised.extend(spans.iter().map(|s| s.pid));
         }
 
