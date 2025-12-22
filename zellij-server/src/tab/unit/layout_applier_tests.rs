@@ -2832,6 +2832,7 @@ fn test_override_layout_basic_with_both_tiled_and_floating() {
     let new_terminal_ids = vec![(4, None)];
     let new_floating_terminal_ids = vec![(5, None)];
 
+    let retain_existing_terminal_panes = false;
     let should_show_floating = applier
         .override_layout(
             override_tiled,
@@ -2839,6 +2840,7 @@ fn test_override_layout_basic_with_both_tiled_and_floating() {
             new_terminal_ids,
             new_floating_terminal_ids,
             HashMap::new(),
+            retain_existing_terminal_panes,
             1,
         )
         .unwrap();
@@ -2969,6 +2971,7 @@ fn test_override_layout_hide_floating_panes_true() {
     let new_terminal_ids = vec![(3, None)];
     let new_floating_terminal_ids = vec![(4, None)];
 
+    let retain_existing_terminal_panes = false;
     let should_show_floating = applier
         .override_layout(
             override_tiled,
@@ -2976,6 +2979,7 @@ fn test_override_layout_hide_floating_panes_true() {
             new_terminal_ids,
             new_floating_terminal_ids,
             HashMap::new(),
+            retain_existing_terminal_panes,
             1,
         )
         .unwrap();
@@ -3092,6 +3096,7 @@ fn test_override_layout_show_floating_panes() {
     let (override_tiled, override_floating) = parse_kdl_layout(override_kdl);
     let new_floating_terminal_ids = vec![(3, None)];
 
+    let retain_existing_terminal_panes = false;
     let should_show_floating = applier
         .override_layout(
             override_tiled,
@@ -3099,6 +3104,7 @@ fn test_override_layout_show_floating_panes() {
             vec![],
             new_floating_terminal_ids,
             HashMap::new(),
+            retain_existing_terminal_panes,
             1,
         )
         .unwrap();

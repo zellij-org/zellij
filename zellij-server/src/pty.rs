@@ -85,6 +85,7 @@ pub enum PtyInstruction {
         Vec<FloatingPaneLayout>,
         Option<Vec<SwapTiledLayout>>,
         Option<Vec<SwapFloatingLayout>>,
+        bool,                                // retain_existing_terminal_panes
         usize,                               // tab_index
         HashMap<RunPluginOrAlias, Vec<u32>>, // plugin_ids
         ClientId,
@@ -498,6 +499,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                 floating_panes_layout,
                 swap_tiled_layouts,
                 swap_floating_layouts,
+                retain_existing_terminal_panes,
                 tab_index,
                 plugin_ids,
                 client_id,
@@ -533,6 +535,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     client_id,
                     swap_tiled_layouts,
                     swap_floating_layouts,
+                    retain_existing_terminal_panes,
                     completion_tx,
                 )
                 .with_context(err_context)?;
@@ -1365,6 +1368,7 @@ impl Pty {
         client_id: ClientId,
         swap_tiled_layouts: Option<Vec<SwapTiledLayout>>,
         swap_floating_layouts: Option<Vec<SwapFloatingLayout>>,
+        retain_existing_terminal_panes: bool,
         completion_tx: Option<NotificationEnd>,
     ) -> Result<()> {
         let err_context = || format!("failed to spawn terminals for layout for");
@@ -1510,6 +1514,7 @@ impl Pty {
                 new_tab_pane_ids,
                 new_tab_floating_pane_ids,
                 plugin_ids,
+                retain_existing_terminal_panes,
                 tab_index,
                 client_id,
                 completion_tx,

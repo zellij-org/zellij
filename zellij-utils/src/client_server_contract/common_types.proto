@@ -282,6 +282,7 @@ message OverrideLayoutAction {
   optional string cwd = 7;
   repeated CommandOrPlugin initial_panes = 8;
   optional UnblockCondition first_pane_unblock_condition = 9;
+  bool retain_existing_terminal_panes = 10;
 }
 message QueryTabNamesAction {}
 message BreakPaneAction {}

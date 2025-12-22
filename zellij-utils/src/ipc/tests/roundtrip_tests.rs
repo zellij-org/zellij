@@ -2063,6 +2063,7 @@ fn test_client_messages() {
             cwd: None,
             initial_panes: None,
             first_pane_unblock_condition: None,
+            retain_existing_terminal_panes: false,
         },
         terminal_id: Some(1),
         client_id: Some(100),

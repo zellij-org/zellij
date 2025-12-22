@@ -276,6 +276,8 @@ pub struct OverrideLayoutPayload {
     pub initial_panes: ::prost::alloc::vec::Vec<CommandOrPlugin>,
     #[prost(enumeration="UnblockCondition", optional, tag="9")]
     pub first_pane_unblock_condition: ::core::option::Option<i32>,
+    #[prost(bool, tag="10")]
+    pub retain_existing_terminal_panes: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

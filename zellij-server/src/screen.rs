@@ -303,6 +303,7 @@ pub enum ScreenInstruction {
         Vec<FloatingPaneLayout>,
         Option<Vec<SwapTiledLayout>>,
         Option<Vec<SwapFloatingLayout>>,
+        bool,                   // retain_existing_terminal_panes
         ClientId,
         Option<NotificationEnd>,
     ),
@@ -314,7 +315,8 @@ pub enum ScreenInstruction {
         Vec<(u32, HoldForCommand)>, // new terminal pids
         Vec<(u32, HoldForCommand)>, // new floating pane pids
         HashMap<RunPluginOrAlias, Vec<u32>>,
-        usize, // tab_index
+        bool,                       // retain_existing_terminal_panes
+        usize,                      // tab_index
         ClientId,
         Option<NotificationEnd>,
     ),
@@ -5203,6 +5205,7 @@ pub(crate) fn screen_thread_main(
                 mut floating_layouts,
                 swap_tiled_layouts,
                 swap_floating_layouts,
+                retain_existing_terminal_panes,
                 client_id,
                 _completion_tx,
             ) => {
@@ -5244,6 +5247,7 @@ pub(crate) fn screen_thread_main(
                         floating_layouts,
                         swap_tiled_layouts,
                         swap_floating_layouts,
+                        retain_existing_terminal_panes,
                         tab_index,
                         client_id,
                         _completion_tx,
@@ -5257,6 +5261,7 @@ pub(crate) fn screen_thread_main(
                 new_terminal_pids,
                 new_floating_pane_pids,
                 plugin_ids,
+                retain_existing_terminal_panes,
                 tab_index,
                 client_id,
                 completion_tx,
@@ -5270,6 +5275,7 @@ pub(crate) fn screen_thread_main(
                         new_terminal_pids,
                         new_floating_pane_pids,
                         plugin_ids,
+                        retain_existing_terminal_panes,
                         client_id,
                         None,
                     )

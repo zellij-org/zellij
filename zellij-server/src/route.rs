@@ -1123,6 +1123,7 @@ pub(crate) fn route_action(
             tab_name,
             initial_panes,
             first_pane_unblock_condition,
+            retain_existing_terminal_panes,
             ..
         } => {
             // Extract required layout fields, use defaults if None
@@ -1141,6 +1142,7 @@ pub(crate) fn route_action(
                     floating,
                     swap_tiled,
                     swap_floating,
+                    retain_existing_terminal_panes,
                     client_id,
                     Some(NotificationEnd::new(completion_tx)),
                 ))

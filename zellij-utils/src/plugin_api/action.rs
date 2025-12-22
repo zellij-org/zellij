@@ -794,6 +794,7 @@ impl TryFrom<ProtobufAction> for Action {
                         cwd,
                         initial_panes,
                         first_pane_unblock_condition,
+                        retain_existing_terminal_panes: payload.retain_existing_terminal_panes,
                     })
                 },
                 Some(_) => Err("Mismatched payload for OverrideLayout"),
@@ -1594,6 +1595,7 @@ impl TryFrom<Action> for ProtobufAction {
                 cwd,
                 initial_panes,
                 first_pane_unblock_condition,
+                retain_existing_terminal_panes,
             } => {
                 let protobuf_tiled_layout = tiled_layout.map(|l| l.try_into()).transpose()?;
 
@@ -1654,6 +1656,7 @@ impl TryFrom<Action> for ProtobufAction {
                             cwd: cwd_string,
                             initial_panes: protobuf_initial_panes,
                             first_pane_unblock_condition: protobuf_first_pane_unblock_condition,
+                            retain_existing_terminal_panes,
                         },
                     )),
                 })

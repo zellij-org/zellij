@@ -942,6 +942,10 @@ pub enum CliAction {
         /// Default folder to look for layouts
         #[clap(long, value_parser)]
         layout_dir: Option<PathBuf>,
+
+        /// Retain existing terminal panes when overriding layout (default: true)
+        #[clap(long)]
+        retain_existing_terminal_panes: Option<bool>,
     },
     /// Query all tab names
     QueryTabNames,
