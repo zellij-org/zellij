@@ -80,32 +80,14 @@ impl<'a> PaneResizer<'a> {
         Ok(grid)
     }
 
-    fn log_spans(&self, spans: &Vec<Span>, rounded_sizes: &HashMap<Variable, isize>) {
-        log::info!("{:#?}", spans.iter().map(|s| format!("{:?} ({:?}) -> pos: {:?}, size: {:?}, rounded_size: {:?}", s.pid, s.direction, s.pos, s.size, rounded_sizes.get(&s.size_var))));
-    }
-    fn log_spans_if_rounded_sizes_smaller_than_1(&self, spans: &Vec<Span>, rounded_sizes: &HashMap<Variable, isize>, text: &str) {
-        let rounded_sizes_smaller_than_1 = rounded_sizes.iter().any(|(v, i)| *i < 1);
-        if rounded_sizes_smaller_than_1 {
-            log::info!("{}", text);
-            log::info!("{:#?}", spans.iter().map(|s| format!("{:?} ({:?}) -> pos: {:?}, size: {:?}, rounded_size: {:?}", s.pid, s.direction, s.pos, s.size, rounded_sizes.get(&s.size_var)))
-                .collect::<Vec<_>>());
-        }
-    }
-    fn discretize_spans(&mut self, mut grid: Grid, space: usize) -> Result<Vec<Span>> {
+    fn discretize_spans(&mut self, mut grid: Grid, space: usize) -> Result<Vec<Span>, String> {
         let mut rounded_sizes: HashMap<_, _> = grid
             .iter()
             .flatten()
             .map(|s| {
-//                 let rounded = stable_round(self.solver.get_value(s.size_var));
-//                 let val = if rounded < 1.0 {
-//                     1.0
-//                 } else {
-//                     rounded
-//                 };
                 (
                     s.size_var,
-                    // stable_round(self.solver.get_value(s.size_var)) as isize,
-                    self.solver.get_value(s.size_var).floor() as isize,
+                    stable_round(self.solver.get_value(s.size_var)) as isize,
                 )
             })
             .collect();
@@ -120,47 +102,15 @@ impl<'a> PaneResizer<'a> {
                 .filter(|s| !s.size.is_fixed() && !finalised.contains(&s.pid))
                 .collect();
             flex_spans.sort_by_key(|s| rounded_sizes[&s.size_var]);
-
+            if error < 0 {
+                flex_spans.reverse();
+            }
             for span in flex_spans {
-                if error == 0 {
-                    break;
-                }
-                let Some(modified) = rounded_sizes.get(&span.size_var) else {
-                    continue;
-                };
-//                 rounded_sizes
-//                     .entry(span.size_var)
-//                     .and_modify(|s| *s += error.signum());
                 rounded_sizes
-                    .insert(span.size_var, modified + 1);
-                // error -= error.signum();
-                error -= 1;
+                    .entry(span.size_var)
+                    .and_modify(|s| *s += error.signum());
+                error -= error.signum();
             }
-            if error > 0 {
-                log::error!("Failed to discretize panes");
-            }
-
-
-//             if error < 0 {
-//                 flex_spans.reverse();
-//             }
-//             for span in flex_spans {
-//                 let Some(modified) = rounded_sizes.get(&span.size_var) else {
-//                     continue;
-//                 };
-//                 let modified = if modified + error.signum() < 1 {
-//                     1
-//                 } else {
-//                     modified + error.signum()
-//                 };
-// //                 rounded_sizes
-// //                     .entry(span.size_var)
-// //                     .and_modify(|s| *s += error.signum());
-//                 rounded_sizes
-//                     .insert(span.size_var, modified);
-//                 // error -= error.signum();
-//                 error -= modified;
-//             }
             finalised.extend(spans.iter().map(|s| s.pid));
         }
 
@@ -171,8 +121,7 @@ impl<'a> PaneResizer<'a> {
                 span.pos = offset;
                 let sz = rounded_sizes[&span.size_var];
                 if sz < 1 {
-                    // return Err("Ran out of room for spans".into());
-                    return Err(ZellijError::RanOutOfRoomForSpans).with_context(|| "Failed to discretize panse");
+                    return Err("Ran out of room for spans".into());
                 }
                 span.size.set_inner(sz as usize);
                 offset += span.size.as_usize();
@@ -355,10 +304,6 @@ impl<'a> PaneResizer<'a> {
                 size_var,
             }),
         }
-    }
-    fn log_panes(&self) {
-        let panes = self.panes.borrow();
-        log::info!("{:#?}", panes.iter().map(|(p_id, p)| (*p_id, p.position_and_size())).collect::<Vec<_>>());
     }
 }
 
