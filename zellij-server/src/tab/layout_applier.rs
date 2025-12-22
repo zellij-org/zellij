@@ -211,7 +211,7 @@ impl<'a> LayoutApplier<'a> {
         // add the rest of the panes where tiled_panes finds room for them (eg. if the layout had
         // less panes than we've got in our state)
         let remaining_pane_ids: Vec<PaneId> = existing_tab_state.pane_ids();
-        pane_applier.handle_remaining_tiled_pane_ids(remaining_pane_ids, existing_tab_state, None);
+        pane_applier.handle_remaining_tiled_pane_ids(remaining_pane_ids, existing_tab_state, None, None);
         pane_applier.finalize_tiled_state();
 
         LayoutApplier::offset_viewport(
@@ -259,7 +259,6 @@ impl<'a> LayoutApplier<'a> {
                 },
             }
         }
-        // pane_applier.finalize_tiled_state();
 
         let remaining_pane_ids: Vec<PaneId> = existing_tab_state.pane_ids();
 
@@ -281,19 +280,27 @@ impl<'a> LayoutApplier<'a> {
                 },
             }
         }
-//         } else {
-//             pane_applier.handle_remaining_tiled_pane_ids(remaining_pane_ids, existing_tab_state);
-//         }
-        if retain_existing_terminal_panes {
-            pane_applier.handle_remaining_tiled_pane_ids(remaining_pane_ids, existing_tab_state, last_logical_position);
-        }
-        pane_applier.finalize_tiled_state();
 
         let focus_pane_id = self.position_new_panes(
             &mut new_terminal_ids,
             &mut new_plugin_ids,
             &mut positions_left_without_exact_matches,
         )?;
+
+        // we do this because we have to add the remaining tiled pane ids only after positioning
+        // the new panes, otherwise the layout might get borked
+        let mut pane_applier = PaneApplier::new(
+            &mut self.tiled_panes,
+            &mut self.floating_panes,
+            &self.senders,
+            &self.character_cell_size,
+        );
+        if retain_existing_terminal_panes {
+            pane_applier.handle_remaining_tiled_pane_ids(remaining_pane_ids, existing_tab_state, last_logical_position, Some(client_id));
+        }
+
+        pane_applier.finalize_tiled_state();
+
 
         if let Some(pane_id) = focus_pane_id {
             *self.focus_pane_id = Some(pane_id);
@@ -303,7 +310,7 @@ impl<'a> LayoutApplier<'a> {
         // in case focused panes were closed by the override
         self.tiled_panes.move_client_focus_to_existing_panes();
 
-        self.tiled_panes.force_resize(); // TODO: better if works
+        // self.tiled_panes.force_resize(); // TODO: better if works
 
         LayoutApplier::offset_viewport(
             self.viewport.clone(),
@@ -1262,10 +1269,11 @@ impl<'a> PaneApplier<'a> {
         remaining_pane_ids: Vec<PaneId>,
         mut existing_tab_state: ExistingTabState,
         mut last_logical_position: Option<usize>,
+        client_id: Option<ClientId>,
     ) {
         for pane_id in remaining_pane_ids {
             if let Some(pane) = existing_tab_state.remove_pane(&pane_id) {
-                self.tiled_panes.insert_pane(pane.pid(), pane, None);
+                self.tiled_panes.insert_pane(pane.pid(), pane, client_id);
                 if let Some(l) = last_logical_position.take() {
                     self.tiled_panes.set_pane_logical_position(pane_id, l);
                     last_logical_position = Some(l + 1);

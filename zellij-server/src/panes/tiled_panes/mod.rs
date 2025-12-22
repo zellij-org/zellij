@@ -1231,7 +1231,91 @@ impl TiledPanes {
         let display_area = self.display_area.borrow().clone();
         self.resize(display_area);
     }
+
     pub fn resize(&mut self, new_screen_size: Size) {
+        {
+            if self.display_area_changed(new_screen_size) {
+                self.clear_tombstones();
+            }
+            let mut display_area = self.display_area.borrow_mut();
+            let mut viewport = self.viewport.borrow_mut();
+            let Size { rows, cols } = new_screen_size;
+            let mut pane_grid = TiledPaneGrid::new(
+                &mut self.panes,
+                &self.panes_to_hide,
+                *display_area,
+                *viewport,
+            );
+
+            let resize_horizontally = |pane_grid: &mut TiledPaneGrid,
+                                       display_area: &mut Size,
+                                       viewport: &mut Viewport,
+                                       cols: usize| -> bool {
+                match pane_grid.layout(SplitDirection::Horizontal, cols) {
+                    Ok(_) => {
+                        let column_difference = cols as isize - display_area.cols as isize;
+                        viewport.cols = (viewport.cols as isize + column_difference) as usize;
+                        display_area.cols = cols;
+                        true
+                    },
+                    Err(e) => match e.downcast_ref::<ZellijError>() {
+                        Some(ZellijError::PaneSizeUnchanged) => {true},
+                        _ => {
+                            false
+//                             display_area.cols = cols;
+//                             Err::<(), _>(anyError::msg(e))
+//                                 .context("failed to resize tab horizontally")
+//                                 .non_fatal();
+                        },
+                    },
+                }
+            };
+
+            let resize_vertically = |pane_grid: &mut TiledPaneGrid,
+                                     display_area: &mut Size,
+                                     viewport: &mut Viewport,
+                                     rows: usize| -> bool {
+                match pane_grid.layout(SplitDirection::Vertical, rows) {
+                    Ok(_) => {
+                        let row_difference = rows as isize - display_area.rows as isize;
+                        viewport.rows = (viewport.rows as isize + row_difference) as usize;
+                        display_area.rows = rows;
+                        true
+                    },
+                    Err(e) => match e.downcast_ref::<ZellijError>() {
+                        Some(ZellijError::PaneSizeUnchanged) => {true},
+                        _ => {
+                            false
+//                             display_area.rows = rows;
+//                             Err::<(), _>(anyError::msg(e))
+//                                 .context("failed to resize tab vertically")
+//                                 .non_fatal();
+                        },
+                    },
+                }
+            };
+
+            let successfully_resized_horizontally = resize_horizontally(&mut pane_grid, &mut display_area, &mut viewport, cols);
+            if successfully_resized_horizontally {
+                resize_vertically(&mut pane_grid, &mut display_area, &mut viewport, rows);
+            } else {
+                log::warn!("Failed to resize horizontally, attempting to first resize vertically");
+                let successfully_resized_vertically = resize_vertically(&mut pane_grid, &mut display_area, &mut viewport, rows);
+                if successfully_resized_vertically {
+                    resize_horizontally(&mut pane_grid, &mut display_area, &mut viewport, cols);
+                } else {
+                    log::error!("Failed to resize vertically, will not attempt again.");
+                }
+            }
+            display_area.rows = rows;
+            display_area.cols = cols;
+        }
+        self.set_pane_frames(self.draw_pane_frames);
+    }
+
+
+
+    pub fn resize_old(&mut self, new_screen_size: Size) {
         // this is blocked out to appease the borrow checker
         {
             if self.display_area_changed(new_screen_size) {

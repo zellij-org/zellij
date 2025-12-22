@@ -639,6 +639,9 @@ open an issue on GitHub:
 
     #[error("The plugin does not exist")]
     PluginDoesNotExist,
+
+    #[error("Ran out of room for spans")]
+    RanOutOfRoomForSpans,
 }
 
 #[cfg(not(target_family = "wasm"))]

@@ -919,6 +919,17 @@ impl Tab {
                     self.toggle_floating_panes(Some(client_id), None, None)
                         .non_fatal();
                 }
+
+                // this is essentially another pass of the layout applier
+                // we do this because the layout applier does not know about swap layouts, and in
+                // this case we might have had to re-add existing panes that were not in the
+                // overridden layout (eg. if we had more panes than were in the layout). In such a
+                // case, we would like to make sure these extra panes fit the current swap layout
+                self.swap_layouts.set_is_tiled_damaged();
+                self.swap_layouts.set_is_floating_damaged();
+                let _ = self.relayout_tiled_panes(false);
+                let _ = self.relayout_floating_panes(false);
+
                 self.tiled_panes.reapply_pane_frames();
                 self.is_pending = false;
                 self.apply_buffered_instructions().non_fatal();
