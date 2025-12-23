@@ -3588,10 +3588,6 @@ fn find_already_running_panes(
         .map(|(_, pane)| pane.invoked_with().clone())
         .collect();
 
-    //     log::info!("running_tiled_instructions: {:#?}", running_tiled_instructions);
-    //     log::info!("*****");
-    //     log::info!("layout_tiled_instructions: {:#?}", layout_tiled_instructions);
-
     let mut tiled_to_ignore = Vec::new();
     for running_instr in running_tiled_instructions {
         if let Some(pos) = layout_tiled_instructions
@@ -3608,9 +3604,6 @@ fn find_already_running_panes(
         .map(|(_, pane)| pane.invoked_with().clone())
         .collect();
 
-    //     log::info!("running_floating_instructions: {:#?}", running_floating_instructions);
-    //     log::info!("floating_layouts: {:#?}", floating_layouts);
-
     let mut floating_indices = Vec::new();
     for (idx, floating_layout) in floating_layouts.iter().enumerate() {
         if let Some(pos) = running_floating_instructions
@@ -3621,8 +3614,6 @@ fn find_already_running_panes(
             floating_indices.push(idx);
         }
     }
-    //     log::info!("tiled_to_ignore: {:#?}", tiled_to_ignore);
-    //     log::info!("floating_indices: {:?}", floating_indices);
 
     (tiled_to_ignore, floating_indices)
 }

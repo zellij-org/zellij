@@ -1228,7 +1228,6 @@ impl TiledPanes {
         new_screen_size.rows != display_area.rows || new_screen_size.cols != display_area.cols
     }
     pub fn force_resize(&mut self) {
-        // TODO: better name
         let display_area = self.display_area.borrow().clone();
         self.resize(display_area);
     }
@@ -1264,10 +1263,6 @@ impl TiledPanes {
                         Some(ZellijError::PaneSizeUnchanged) => true,
                         _ => {
                             false
-                            //                             display_area.cols = cols;
-                            //                             Err::<(), _>(anyError::msg(e))
-                            //                                 .context("failed to resize tab horizontally")
-                            //                                 .non_fatal();
                         },
                     },
                 }
@@ -1289,10 +1284,6 @@ impl TiledPanes {
                         Some(ZellijError::PaneSizeUnchanged) => true,
                         _ => {
                             false
-                            //                             display_area.rows = rows;
-                            //                             Err::<(), _>(anyError::msg(e))
-                            //                                 .context("failed to resize tab vertically")
-                            //                                 .non_fatal();
                         },
                     },
                 }
@@ -1314,60 +1305,6 @@ impl TiledPanes {
             }
             display_area.rows = rows;
             display_area.cols = cols;
-        }
-        self.set_pane_frames(self.draw_pane_frames);
-    }
-
-    pub fn resize_old(&mut self, new_screen_size: Size) {
-        // this is blocked out to appease the borrow checker
-        {
-            if self.display_area_changed(new_screen_size) {
-                self.clear_tombstones();
-            }
-            let mut display_area = self.display_area.borrow_mut();
-            let mut viewport = self.viewport.borrow_mut();
-            let Size { rows, cols } = new_screen_size;
-            let mut pane_grid = TiledPaneGrid::new(
-                &mut self.panes,
-                &self.panes_to_hide,
-                *display_area,
-                *viewport,
-            );
-            match pane_grid.layout(SplitDirection::Horizontal, cols) {
-                Ok(_) => {
-                    let column_difference = cols as isize - display_area.cols as isize;
-                    // FIXME: Should the viewport be an Offset?
-                    viewport.cols = (viewport.cols as isize + column_difference) as usize;
-                    display_area.cols = cols;
-                },
-                Err(e) => match e.downcast_ref::<ZellijError>() {
-                    Some(ZellijError::PaneSizeUnchanged) => {}, // ignore unchanged layout
-                    _ => {
-                        // display area still changed, even if we had an error
-                        display_area.cols = cols;
-                        Err::<(), _>(anyError::msg(e))
-                            .context("failed to resize tab horizontally")
-                            .non_fatal();
-                    },
-                },
-            };
-            match pane_grid.layout(SplitDirection::Vertical, rows) {
-                Ok(_) => {
-                    let row_difference = rows as isize - display_area.rows as isize;
-                    viewport.rows = (viewport.rows as isize + row_difference) as usize;
-                    display_area.rows = rows;
-                },
-                Err(e) => match e.downcast_ref::<ZellijError>() {
-                    Some(ZellijError::PaneSizeUnchanged) => {}, // ignore unchanged layout
-                    _ => {
-                        // display area still changed, even if we had an error
-                        display_area.rows = rows;
-                        Err::<(), _>(anyError::msg(e))
-                            .context("failed to resize tab vertically")
-                            .non_fatal();
-                    },
-                },
-            };
         }
         self.set_pane_frames(self.draw_pane_frames);
     }

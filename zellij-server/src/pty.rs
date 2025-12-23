@@ -1351,38 +1351,6 @@ impl Pty {
             })
             .collect();
 
-        //         // Track the first terminal_id if blocking is requested
-        //         let first_initial_pane_terminal_id = if block_on_first_terminal && !new_pane_pids.is_empty()
-        //         {
-        //             Some(new_pane_pids[0].0)
-        //         } else {
-        //             None
-        //         };
-
-        //         // Prepare blocking_terminal for ApplyLayout
-        //         let (direct_completion_tx, blocking_terminal) =
-        //             if let Some(terminal_id) = first_initial_pane_terminal_id {
-        //                 (None, completion_tx.map(|tx| (terminal_id, tx)))
-        //             } else {
-        //                 (completion_tx, None)
-        //             };
-
-        //         self.bus
-        //             .senders
-        //             .send_to_screen(ScreenInstruction::ApplyLayout(
-        //                 layout,
-        //                 floating_panes_layout,
-        //                 new_tab_pane_ids.clone(),
-        //                 new_tab_floating_pane_ids.clone(),
-        //                 plugin_ids,
-        //                 tab_index,
-        //                 should_change_focus_to_new_tab,
-        //                 (client_id, is_web_client),
-        //                 direct_completion_tx,
-        //                 blocking_terminal,
-        //             ))
-        //             .with_context(err_context)?;
-
         self.bus
             .senders
             .send_to_screen(ScreenInstruction::OverrideLayoutComplete(
