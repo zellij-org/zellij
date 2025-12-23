@@ -509,18 +509,13 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
             ) => {
                 let err_context = || "failed to override layout";
 
-                let initial_panes = None; // TODO: support this?
-                let block_on_first_terminal = false; // TODO: support this?
-
                 pty.spawn_terminals_for_layout_override(
                     cwd,
                     tiled_layout,
                     floating_panes_layout,
                     default_shell,
                     plugin_ids,
-                    initial_panes,
                     tab_index,
-                    block_on_first_terminal,
                     client_id,
                     swap_tiled_layouts,
                     swap_floating_layouts,
@@ -1262,9 +1257,7 @@ impl Pty {
         floating_panes_layout: Vec<FloatingPaneLayout>,
         default_shell: Option<TerminalAction>,
         plugin_ids: HashMap<RunPluginOrAlias, Vec<u32>>,
-        initial_panes: Option<Vec<CommandOrPlugin>>,
         tab_index: usize,
-        block_on_first_terminal: bool,
         client_id: ClientId,
         swap_tiled_layouts: Option<Vec<SwapTiledLayout>>,
         swap_floating_layouts: Option<Vec<SwapFloatingLayout>>,
@@ -1277,21 +1270,6 @@ impl Pty {
         let mut default_shell =
             default_shell.unwrap_or_else(|| self.get_default_terminal(cwd, None));
         self.fill_cwd(&mut default_shell, client_id);
-
-        // Match initial_panes commands to empty slots in the layout
-        let mut layout = layout;
-        if let Some(ref initial_panes_vec) = initial_panes {
-            for initial_pane in initial_panes_vec.iter() {
-                if let CommandOrPlugin::Command(run_command_action) = initial_pane {
-                    let run_command: RunCommand = run_command_action.clone().into();
-                    if !layout.replace_next_empty_slot_with_run(Run::Command(run_command)) {
-                        log::warn!("More initial_panes provided than empty slots available");
-                        break;
-                    }
-                }
-                // Skip CommandOrPlugin::Plugin entries (already handled by plugin thread)
-            }
-        }
 
         let extracted_run_instructions = layout.extract_run_instructions();
         let extracted_floating_run_instructions = floating_panes_layout

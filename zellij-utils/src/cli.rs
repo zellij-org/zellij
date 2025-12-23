@@ -944,12 +944,12 @@ pub enum CliAction {
         layout_dir: Option<PathBuf>,
 
         /// Retain existing terminal panes that do not fit in the layout (default: false)
-        #[clap(long, takes_value(false))]
-        retain_existing_terminal_panes: Option<bool>,
+        #[clap(long, takes_value(false), default_value("false"))]
+        retain_existing_terminal_panes: bool,
 
         /// Retain existing plugin panes that do not fit with the layout default: false)
-        #[clap(long, takes_value(false))]
-        retain_existing_plugin_panes: Option<bool>,
+        #[clap(long, takes_value(false), default_value("false"))]
+        retain_existing_plugin_panes: bool,
     },
     /// Query all tab names
     QueryTabNames,

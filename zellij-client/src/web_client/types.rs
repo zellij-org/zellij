@@ -9,9 +9,8 @@ use crate::os_input_output::ClientOsApi;
 use crate::web_client::session_management::spawn_new_session;
 use std::path::PathBuf;
 use zellij_utils::{
-    data::LayoutInfo,
     input::{config::Config, options::Options},
-    ipc::{ClientAttributes, ClientToServerMsg},
+    ipc::ClientToServerMsg,
 };
 
 pub trait ClientOsApiFactory: Send + Sync + std::fmt::Debug {

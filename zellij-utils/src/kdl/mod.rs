@@ -1732,10 +1732,6 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                         swap_tiled_layouts: None,
                         swap_floating_layouts: None,
                         tab_name: None,
-                        should_change_focus_to_new_tab: true,
-                        cwd: None,
-                        initial_panes: None,
-                        first_pane_unblock_condition: None,
                         retain_existing_terminal_panes: false,
                         retain_existing_plugin_panes: false,
                     });
@@ -1807,7 +1803,6 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 } else if !tabs.is_empty() {
                     let (tab_name, layout, floating_panes_layout) = tabs.drain(..).next().unwrap();
                     let name = tab_name.or(name);
-                    let should_change_focus_to_new_tab = layout.focus.unwrap_or(true);
 
                     Ok(Action::OverrideLayout {
                         tiled_layout: Some(layout),
@@ -1815,16 +1810,11 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                         swap_tiled_layouts,
                         swap_floating_layouts,
                         tab_name: name,
-                        should_change_focus_to_new_tab,
-                        cwd,
-                        initial_panes: None,
-                        first_pane_unblock_condition: None,
                         retain_existing_terminal_panes,
                         retain_existing_plugin_panes,
                     })
                 } else {
                     let (layout, floating_panes_layout) = layout.new_tab();
-                    let should_change_focus_to_new_tab = layout.focus.unwrap_or(true);
 
                     Ok(Action::OverrideLayout {
                         tiled_layout: Some(layout),
@@ -1832,10 +1822,6 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                         swap_tiled_layouts,
                         swap_floating_layouts,
                         tab_name: name,
-                        should_change_focus_to_new_tab,
-                        cwd,
-                        initial_panes: None,
-                        first_pane_unblock_condition: None,
                         retain_existing_terminal_panes,
                         retain_existing_plugin_panes,
                     })

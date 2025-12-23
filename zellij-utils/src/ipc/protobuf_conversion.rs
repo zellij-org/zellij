@@ -1103,10 +1103,6 @@ impl From<crate::input::actions::Action>
                 swap_tiled_layouts,
                 swap_floating_layouts,
                 tab_name,
-                should_change_focus_to_new_tab,
-                cwd,
-                initial_panes,
-                first_pane_unblock_condition,
                 retain_existing_terminal_panes,
                 retain_existing_plugin_panes,
             } => ActionType::OverrideLayout(OverrideLayoutAction {
@@ -1119,13 +1115,6 @@ impl From<crate::input::actions::Action>
                     .map(|layouts| layouts.into_iter().map(|l| l.into()).collect())
                     .unwrap_or_default(),
                 tab_name,
-                should_change_focus_to_new_tab,
-                cwd: cwd.map(|p| p.to_string_lossy().to_string()),
-                initial_panes: initial_panes
-                    .map(|panes| panes.into_iter().map(|p| p.into()).collect())
-                    .unwrap_or_default(),
-                first_pane_unblock_condition: first_pane_unblock_condition
-                    .map(|c| unblock_condition_to_proto_i32(c)),
                 retain_existing_terminal_panes,
                 retain_existing_plugin_panes,
             }),
@@ -1741,25 +1730,6 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                         )
                     },
                     tab_name: override_layout_action.tab_name,
-                    should_change_focus_to_new_tab: override_layout_action
-                        .should_change_focus_to_new_tab,
-                    cwd: override_layout_action.cwd.map(PathBuf::from),
-                    initial_panes: if override_layout_action.initial_panes.is_empty() {
-                        None
-                    } else {
-                        Some(
-                            override_layout_action
-                                .initial_panes
-                                .into_iter()
-                                .map(|p| p.try_into())
-                                .collect::<Result<Vec<_>>>()?,
-                        )
-                    },
-
-                    first_pane_unblock_condition: override_layout_action
-                        .first_pane_unblock_condition
-                        .map(|c| proto_i32_to_unblock_condition(c))
-                        .transpose()?,
                     retain_existing_terminal_panes: override_layout_action
                         .retain_existing_terminal_panes,
                     retain_existing_plugin_panes: override_layout_action

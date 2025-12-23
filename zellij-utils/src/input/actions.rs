@@ -356,10 +356,6 @@ pub enum Action {
         swap_tiled_layouts: Option<Vec<SwapTiledLayout>>,
         swap_floating_layouts: Option<Vec<SwapFloatingLayout>>,
         tab_name: Option<String>,
-        should_change_focus_to_new_tab: bool,
-        cwd: Option<PathBuf>,
-        initial_panes: Option<Vec<CommandOrPlugin>>,
-        first_pane_unblock_condition: Option<UnblockCondition>,
         retain_existing_terminal_panes: bool,
         retain_existing_plugin_panes: bool,
     },
@@ -1022,7 +1018,7 @@ impl Action {
                 };
 
                 // Parse KDL layout
-                let mut layout = Layout::from_str(
+                let layout = Layout::from_str(
                     &raw_layout,
                     path_to_raw_layout,
                     swap_layouts.as_ref().map(|(f, p)| (f.as_str(), p.as_str())),
@@ -1070,12 +1066,8 @@ impl Action {
                     swap_tiled_layouts,
                     swap_floating_layouts,
                     tab_name: name,
-                    should_change_focus_to_new_tab: false,
-                    cwd: None,
-                    initial_panes: None,
-                    first_pane_unblock_condition: None,
-                    retain_existing_terminal_panes: retain_existing_terminal_panes.unwrap_or(false),
-                    retain_existing_plugin_panes: retain_existing_plugin_panes.unwrap_or(false),
+                    retain_existing_terminal_panes,
+                    retain_existing_plugin_panes,
                 }])
             },
             CliAction::QueryTabNames => Ok(vec![Action::QueryTabNames]),

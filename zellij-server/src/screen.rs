@@ -5287,7 +5287,8 @@ pub(crate) fn screen_thread_main(
                     )
                 });
                 screen.log_and_report_session_state()?;
-                screen.render(None);
+                let _ = screen.render(None);
+                drop(completion_tx); // action ends here, notify the action initiator
             },
             ScreenInstruction::QueryTabNames(client_id, completion_tx) => {
                 let tab_names = screen

@@ -478,16 +478,8 @@ pub struct OverrideLayoutAction {
     #[prost(string, optional, tag="5")]
     pub tab_name: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(bool, tag="6")]
-    pub should_change_focus_to_new_tab: bool,
-    #[prost(string, optional, tag="7")]
-    pub cwd: ::core::option::Option<::prost::alloc::string::String>,
-    #[prost(message, repeated, tag="8")]
-    pub initial_panes: ::prost::alloc::vec::Vec<CommandOrPlugin>,
-    #[prost(enumeration="UnblockCondition", optional, tag="9")]
-    pub first_pane_unblock_condition: ::core::option::Option<i32>,
-    #[prost(bool, tag="10")]
     pub retain_existing_terminal_panes: bool,
-    #[prost(bool, tag="11")]
+    #[prost(bool, tag="7")]
     pub retain_existing_plugin_panes: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
