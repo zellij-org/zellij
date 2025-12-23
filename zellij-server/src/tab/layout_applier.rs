@@ -277,7 +277,7 @@ impl<'a> LayoutApplier<'a> {
             retain_existing_plugin_panes,
         );
 
-        let focus_pane_id = self.position_new_panes(
+        let (focus_pane_id, pane_ids_expanded_in_stack) = self.position_new_panes(
             &mut new_terminal_ids,
             &mut new_plugin_ids,
             &mut positions_left_without_exact_matches,
@@ -309,6 +309,10 @@ impl<'a> LayoutApplier<'a> {
 
         // in case focused panes were closed by the override
         self.tiled_panes.move_client_focus_to_existing_panes();
+
+        for pane_id in &pane_ids_expanded_in_stack {
+            self.tiled_panes.expand_pane_in_stack(*pane_id);
+        }
 
         LayoutApplier::offset_viewport(
             self.viewport.clone(),
@@ -399,7 +403,7 @@ impl<'a> LayoutApplier<'a> {
             &layout.run_instructions_to_ignore,
             &mut positions_in_layout,
         );
-        let focus_pane_id = self.position_new_panes(
+        let (focus_pane_id, pane_ids_expanded_in_stack) = self.position_new_panes(
             &mut new_terminal_ids,
             &mut new_plugin_ids,
             &mut positions_in_layout,
@@ -408,9 +412,10 @@ impl<'a> LayoutApplier<'a> {
             run_instructions_without_a_location,
             &mut new_terminal_ids,
         );
-        // TODO: we should also make sure to expand panes in stack here, we only do this on
-        // reapplication (which happens anyway in all user paths, but for order's sake should also
-        // happen here)
+
+        for pane_id in &pane_ids_expanded_in_stack {
+            self.tiled_panes.expand_pane_in_stack(*pane_id);
+        }
 
         self.adjust_viewport().with_context(err_context)?;
         self.set_focused_tiled_pane(focus_pane_id, client_id);
@@ -448,9 +453,12 @@ impl<'a> LayoutApplier<'a> {
         new_terminal_ids: &mut Vec<(u32, HoldForCommand)>,
         new_plugin_ids: &mut HashMap<RunPluginOrAlias, Vec<u32>>,
         positions_in_layout: &mut Vec<(TiledPaneLayout, PaneGeom)>,
-    ) -> Result<Option<PaneId>> {
+    ) -> Result<(Option<PaneId>, Vec<PaneId>)> {
+        // returns: optional pane id to focus, pane ids
+        // expanded in stack
         // here we open new panes for each run instruction in the layout with the details
         // we got from the plugin thread and pty thread
+        let mut pane_ids_expanded_in_stack = vec![];
         let mut focus_pane_id: Option<PaneId> = None;
         let mut set_focus_pane_id = |layout: &TiledPaneLayout, pane_id: PaneId| {
             if layout.focus.unwrap_or(false) && focus_pane_id.is_none() {
@@ -461,15 +469,21 @@ impl<'a> LayoutApplier<'a> {
             if let Some(Run::Plugin(run)) = layout.run.clone() {
                 let pid =
                     self.new_tiled_plugin_pane(run, new_plugin_ids, &position_and_size, &layout)?;
+                if layout.is_expanded_in_stack {
+                    pane_ids_expanded_in_stack.push(PaneId::Terminal(pid));
+                }
                 set_focus_pane_id(&layout, PaneId::Plugin(pid));
             } else if !new_terminal_ids.is_empty() {
                 // there are still panes left to fill, use the pids we received in this method
                 let (pid, hold_for_command) = new_terminal_ids.remove(0);
                 self.new_terminal_pane(pid, &hold_for_command, &position_and_size, &layout)?;
+                if layout.is_expanded_in_stack {
+                    pane_ids_expanded_in_stack.push(PaneId::Terminal(pid));
+                }
                 set_focus_pane_id(&layout, PaneId::Terminal(pid));
             }
         }
-        Ok(focus_pane_id)
+        Ok((focus_pane_id, pane_ids_expanded_in_stack))
     }
     fn handle_run_instructions_without_a_location(
         &mut self,

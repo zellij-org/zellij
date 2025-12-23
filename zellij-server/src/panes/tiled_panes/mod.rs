@@ -1261,9 +1261,7 @@ impl TiledPanes {
                     },
                     Err(e) => match e.downcast_ref::<ZellijError>() {
                         Some(ZellijError::PaneSizeUnchanged) => true,
-                        _ => {
-                            false
-                        },
+                        _ => false,
                     },
                 }
             };
@@ -1282,9 +1280,7 @@ impl TiledPanes {
                     },
                     Err(e) => match e.downcast_ref::<ZellijError>() {
                         Some(ZellijError::PaneSizeUnchanged) => true,
-                        _ => {
-                            false
-                        },
+                        _ => false,
                     },
                 }
             };
