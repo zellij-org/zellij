@@ -571,7 +571,7 @@ pub(crate) fn plugin_thread_main(
                             },
                             Err(e) => {
                                 log::error!("Failed to load plugin: {}", e);
-                            }
+                            },
                         }
                     }
                 }
@@ -658,7 +658,7 @@ pub(crate) fn plugin_thread_main(
                             },
                             Err(e) => {
                                 log::error!("Failed to load plugin: {}", e);
-                            }
+                            },
                         }
                     }
                 }
