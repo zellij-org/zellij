@@ -63,3 +63,4 @@ web_server_capability = [
     "dep:tower-http",
     "zellij-utils/web_server_capability",
 ]
+dangerously_expose_webserver = []

@@ -162,6 +162,10 @@ pub struct AppState {
     pub session_manager: Arc<dyn SessionManager>,
     pub client_os_api_factory: Arc<dyn ClientOsApiFactory>,
     pub is_https: bool,
+    #[cfg(feature = "dangerously_expose_webserver")]
+    pub dangerously_expose_webserver: bool,
+    #[cfg(feature = "dangerously_expose_webserver")]
+    pub dangerously_expose_webserver_read_only: bool,
 }
 
 #[derive(Serialize)]
