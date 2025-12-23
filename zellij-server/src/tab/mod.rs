@@ -859,6 +859,9 @@ impl Tab {
                 // we should still be able to properly recover from this with a useful error
                 // message though
                 log::error!("Failed to apply layout: {}", e);
+                self.tiled_panes.reapply_pane_frames();
+                self.is_pending = false;
+                self.apply_buffered_instructions().non_fatal();
             },
         }
         Ok(())

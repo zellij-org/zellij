@@ -555,18 +555,24 @@ pub(crate) fn plugin_thread_main(
                             .get_initial_cwd()
                             .or_else(|| cwd.clone());
                         let skip_cache = false;
-                        let (plugin_id, _client_id) = wasm_bridge.load_plugin(
+                        match wasm_bridge.load_plugin(
                             &run_plugin,
                             Some(tab_index),
                             size,
                             cwd,
                             skip_cache,
                             Some(client_id),
-                        )?;
-                        plugin_ids
-                            .entry(run_plugin_or_alias.clone())
-                            .or_default()
-                            .push(plugin_id);
+                        ) {
+                            Ok((plugin_id, _client_id)) => {
+                                plugin_ids
+                                    .entry(run_plugin_or_alias.clone())
+                                    .or_default()
+                                    .push(plugin_id);
+                            },
+                            Err(e) => {
+                                log::error!("Failed to load plugin: {}", e);
+                            }
+                        }
                     }
                 }
                 drop(bus.senders.send_to_pty(PtyInstruction::NewTab(
@@ -636,18 +642,24 @@ pub(crate) fn plugin_thread_main(
                         let run_plugin = run_plugin_or_alias.get_run_plugin();
                         let cwd = run_plugin_or_alias.get_initial_cwd();
                         let skip_cache = false;
-                        let (plugin_id, _client_id) = wasm_bridge.load_plugin(
+                        match wasm_bridge.load_plugin(
                             &run_plugin,
                             Some(tab_index),
                             size,
                             cwd,
                             skip_cache,
                             Some(client_id),
-                        )?;
-                        plugin_ids
-                            .entry(run_plugin_or_alias.clone())
-                            .or_default()
-                            .push(plugin_id);
+                        ) {
+                            Ok((plugin_id, _client_id)) => {
+                                plugin_ids
+                                    .entry(run_plugin_or_alias.clone())
+                                    .or_default()
+                                    .push(plugin_id);
+                            },
+                            Err(e) => {
+                                log::error!("Failed to load plugin: {}", e);
+                            }
+                        }
                     }
                 }
 
