@@ -990,8 +990,6 @@ impl Action {
                 retain_existing_terminal_panes,
                 retain_existing_plugin_panes,
             } => {
-                let _current_dir = get_current_dir();
-
                 // Determine layout_dir: CLI arg > config > default
                 let layout_dir = layout_dir
                     .or_else(|| config.and_then(|c| c.options.layout_dir))
