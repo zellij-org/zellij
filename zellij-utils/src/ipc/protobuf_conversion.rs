@@ -1760,8 +1760,10 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                         .first_pane_unblock_condition
                         .map(|c| proto_i32_to_unblock_condition(c))
                         .transpose()?,
-                    retain_existing_terminal_panes: override_layout_action.retain_existing_terminal_panes,
-                    retain_existing_plugin_panes: override_layout_action.retain_existing_plugin_panes,
+                    retain_existing_terminal_panes: override_layout_action
+                        .retain_existing_terminal_panes,
+                    retain_existing_plugin_panes: override_layout_action
+                        .retain_existing_plugin_panes,
                 })
             },
             ActionType::QueryTabNames(_) => Ok(crate::input::actions::Action::QueryTabNames),

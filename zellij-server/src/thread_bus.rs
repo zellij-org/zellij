@@ -144,10 +144,7 @@ impl ThreadSenders {
         self.to_pty_writer.replace(new_pty_writer);
     }
     #[allow(unused)]
-    pub fn replace_to_pty(
-        &mut self,
-        new_pty: SenderWithContext<PtyInstruction>,
-    ) {
+    pub fn replace_to_pty(&mut self, new_pty: SenderWithContext<PtyInstruction>) {
         // this is mostly used for the tests, see struct
         self.to_pty.replace(new_pty);
     }

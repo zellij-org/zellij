@@ -213,7 +213,12 @@ impl<'a> LayoutApplier<'a> {
         // add the rest of the panes where tiled_panes finds room for them (eg. if the layout had
         // less panes than we've got in our state)
         let remaining_pane_ids: Vec<PaneId> = existing_tab_state.pane_ids();
-        pane_applier.handle_remaining_tiled_pane_ids(remaining_pane_ids, existing_tab_state, None, None);
+        pane_applier.handle_remaining_tiled_pane_ids(
+            remaining_pane_ids,
+            existing_tab_state,
+            None,
+            None,
+        );
         pane_applier.finalize_tiled_state();
 
         LayoutApplier::offset_viewport(
@@ -287,11 +292,15 @@ impl<'a> LayoutApplier<'a> {
             &self.character_cell_size,
         );
         if retain_existing_terminal_panes || retain_existing_plugin_panes {
-            pane_applier.handle_remaining_tiled_pane_ids(remaining_pane_ids, existing_tab_state, last_logical_position, Some(client_id));
+            pane_applier.handle_remaining_tiled_pane_ids(
+                remaining_pane_ids,
+                existing_tab_state,
+                last_logical_position,
+                Some(client_id),
+            );
         }
 
         pane_applier.finalize_tiled_state();
-
 
         if let Some(pane_id) = focus_pane_id {
             *self.focus_pane_id = Some(pane_id);
@@ -309,35 +318,35 @@ impl<'a> LayoutApplier<'a> {
         );
         Ok(())
     }
-      fn close_non_retained_panes(
-          &self,
-          existing_tab_state: &mut ExistingTabState,
-          remaining_pane_ids: &[PaneId],
-          retain_existing_terminal_panes: bool,
-          retain_existing_plugin_panes: bool,
-      ) {
-          for pane_id in remaining_pane_ids {
-              if retain_existing_terminal_panes && matches!(pane_id, PaneId::Terminal(_)) {
-                  continue;
-              }
-              if retain_existing_plugin_panes && matches!(pane_id, PaneId::Plugin(_)) {
-                  continue;
-              }
-              existing_tab_state.remove_pane(pane_id);
-              match pane_id {
-                  PaneId::Terminal(_) => {
-                      let _ = self
-                          .senders
-                          .send_to_pty(PtyInstruction::ClosePane(*pane_id, None));
-                  },
-                  PaneId::Plugin(plugin_id) => {
-                      let _ = self
-                          .senders
-                          .send_to_plugin(PluginInstruction::Unload(*plugin_id));
-                  },
-              }
-          }
-      }
+    fn close_non_retained_panes(
+        &self,
+        existing_tab_state: &mut ExistingTabState,
+        remaining_pane_ids: &[PaneId],
+        retain_existing_terminal_panes: bool,
+        retain_existing_plugin_panes: bool,
+    ) {
+        for pane_id in remaining_pane_ids {
+            if retain_existing_terminal_panes && matches!(pane_id, PaneId::Terminal(_)) {
+                continue;
+            }
+            if retain_existing_plugin_panes && matches!(pane_id, PaneId::Plugin(_)) {
+                continue;
+            }
+            existing_tab_state.remove_pane(pane_id);
+            match pane_id {
+                PaneId::Terminal(_) => {
+                    let _ = self
+                        .senders
+                        .send_to_pty(PtyInstruction::ClosePane(*pane_id, None));
+                },
+                PaneId::Plugin(plugin_id) => {
+                    let _ = self
+                        .senders
+                        .send_to_plugin(PluginInstruction::Unload(*plugin_id));
+                },
+            }
+        }
+    }
     fn flatten_layout(
         &self,
         layout: &TiledPaneLayout,
@@ -951,7 +960,6 @@ impl<'a> LayoutApplier<'a> {
             &self.character_cell_size,
         );
         pane_applier.handle_remaining_floating_pane_ids(existing_tab_state, logical_position);
-
 
         if let Some(focused_floating_pane) = focused_floating_pane {
             self.floating_panes

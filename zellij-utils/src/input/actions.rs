@@ -988,7 +988,12 @@ impl Action {
             },
             CliAction::PreviousSwapLayout => Ok(vec![Action::PreviousSwapLayout]),
             CliAction::NextSwapLayout => Ok(vec![Action::NextSwapLayout]),
-            CliAction::OverrideLayout { layout, layout_dir, retain_existing_terminal_panes, retain_existing_plugin_panes } => {
+            CliAction::OverrideLayout {
+                layout,
+                layout_dir,
+                retain_existing_terminal_panes,
+                retain_existing_plugin_panes,
+            } => {
                 let _current_dir = get_current_dir();
 
                 // Determine layout_dir: CLI arg > config > default
@@ -1045,18 +1050,19 @@ impl Action {
                 // Extract layout from first tab or use default
                 let swap_tiled_layouts = Some(layout.swap_tiled_layouts.clone());
                 let swap_floating_layouts = Some(layout.swap_floating_layouts.clone());
-                
+
                 if layout.tabs.len() > 1 {
                     return Err(format!("This layout has {} tabs, overriding only supports layouts with 0 or 1 tabs.", layout.tabs.len()));
                 }
 
-                let (name, tiled_layout, floating_panes_layout) = if let Some(first_tab) = layout.tabs.get(0).take() {
-                    first_tab.clone()
-                } else {
-                    let name = None;
-                    let (tiled_panes, floating_panes)= layout.new_tab();
-                    (name, tiled_panes, floating_panes)
-                };
+                let (name, tiled_layout, floating_panes_layout) =
+                    if let Some(first_tab) = layout.tabs.get(0).take() {
+                        first_tab.clone()
+                    } else {
+                        let name = None;
+                        let (tiled_panes, floating_panes) = layout.new_tab();
+                        (name, tiled_panes, floating_panes)
+                    };
 
                 Ok(vec![Action::OverrideLayout {
                     tiled_layout: Some(tiled_layout),

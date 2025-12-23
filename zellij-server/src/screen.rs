@@ -298,13 +298,13 @@ pub enum ScreenInstruction {
     OverrideLayout(
         Option<PathBuf>,        // cwd
         Option<TerminalAction>, // default_shell
-        Option<String>, // new name for tab
+        Option<String>,         // new name for tab
         TiledPaneLayout,
         Vec<FloatingPaneLayout>,
         Option<Vec<SwapTiledLayout>>,
         Option<Vec<SwapFloatingLayout>>,
-        bool,                   // retain_existing_terminal_panes
-        bool,                   // retain_existing_plugin_panes
+        bool, // retain_existing_terminal_panes
+        bool, // retain_existing_plugin_panes
         ClientId,
         Option<NotificationEnd>,
     ),
@@ -316,9 +316,9 @@ pub enum ScreenInstruction {
         Vec<(u32, HoldForCommand)>, // new terminal pids
         Vec<(u32, HoldForCommand)>, // new floating pane pids
         HashMap<RunPluginOrAlias, Vec<u32>>,
-        bool,                       // retain_existing_terminal_panes
-        bool,                       // retain_existing_plugin_panes
-        usize,                      // tab_index
+        bool,  // retain_existing_terminal_panes
+        bool,  // retain_existing_plugin_panes
+        usize, // tab_index
         ClientId,
         Option<NotificationEnd>,
     ),

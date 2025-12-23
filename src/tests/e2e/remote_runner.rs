@@ -423,7 +423,11 @@ impl RemoteTerminal {
         let mut channel = self.channel.lock().unwrap();
         channel
             .write_all(
-                format!("{} action {}", ZELLIJ_EXECUTABLE_LOCATION, action_and_arguments).as_bytes(),
+                format!(
+                    "{} action {}",
+                    ZELLIJ_EXECUTABLE_LOCATION, action_and_arguments
+                )
+                .as_bytes(),
             )
             .unwrap();
         channel.flush().unwrap();

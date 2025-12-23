@@ -1227,7 +1227,8 @@ impl TiledPanes {
         let display_area = self.display_area.borrow();
         new_screen_size.rows != display_area.rows || new_screen_size.cols != display_area.cols
     }
-    pub fn force_resize(&mut self) { // TODO: better name
+    pub fn force_resize(&mut self) {
+        // TODO: better name
         let display_area = self.display_area.borrow().clone();
         self.resize(display_area);
     }
@@ -1250,7 +1251,8 @@ impl TiledPanes {
             let resize_horizontally = |pane_grid: &mut TiledPaneGrid,
                                        display_area: &mut Size,
                                        viewport: &mut Viewport,
-                                       cols: usize| -> bool {
+                                       cols: usize|
+             -> bool {
                 match pane_grid.layout(SplitDirection::Horizontal, cols) {
                     Ok(_) => {
                         let column_difference = cols as isize - display_area.cols as isize;
@@ -1259,13 +1261,13 @@ impl TiledPanes {
                         true
                     },
                     Err(e) => match e.downcast_ref::<ZellijError>() {
-                        Some(ZellijError::PaneSizeUnchanged) => {true},
+                        Some(ZellijError::PaneSizeUnchanged) => true,
                         _ => {
                             false
-//                             display_area.cols = cols;
-//                             Err::<(), _>(anyError::msg(e))
-//                                 .context("failed to resize tab horizontally")
-//                                 .non_fatal();
+                            //                             display_area.cols = cols;
+                            //                             Err::<(), _>(anyError::msg(e))
+                            //                                 .context("failed to resize tab horizontally")
+                            //                                 .non_fatal();
                         },
                     },
                 }
@@ -1274,7 +1276,8 @@ impl TiledPanes {
             let resize_vertically = |pane_grid: &mut TiledPaneGrid,
                                      display_area: &mut Size,
                                      viewport: &mut Viewport,
-                                     rows: usize| -> bool {
+                                     rows: usize|
+             -> bool {
                 match pane_grid.layout(SplitDirection::Vertical, rows) {
                     Ok(_) => {
                         let row_difference = rows as isize - display_area.rows as isize;
@@ -1283,24 +1286,26 @@ impl TiledPanes {
                         true
                     },
                     Err(e) => match e.downcast_ref::<ZellijError>() {
-                        Some(ZellijError::PaneSizeUnchanged) => {true},
+                        Some(ZellijError::PaneSizeUnchanged) => true,
                         _ => {
                             false
-//                             display_area.rows = rows;
-//                             Err::<(), _>(anyError::msg(e))
-//                                 .context("failed to resize tab vertically")
-//                                 .non_fatal();
+                            //                             display_area.rows = rows;
+                            //                             Err::<(), _>(anyError::msg(e))
+                            //                                 .context("failed to resize tab vertically")
+                            //                                 .non_fatal();
                         },
                     },
                 }
             };
 
-            let successfully_resized_horizontally = resize_horizontally(&mut pane_grid, &mut display_area, &mut viewport, cols);
+            let successfully_resized_horizontally =
+                resize_horizontally(&mut pane_grid, &mut display_area, &mut viewport, cols);
             if successfully_resized_horizontally {
                 resize_vertically(&mut pane_grid, &mut display_area, &mut viewport, rows);
             } else {
                 log::warn!("Failed to resize horizontally, attempting to first resize vertically");
-                let successfully_resized_vertically = resize_vertically(&mut pane_grid, &mut display_area, &mut viewport, rows);
+                let successfully_resized_vertically =
+                    resize_vertically(&mut pane_grid, &mut display_area, &mut viewport, rows);
                 if successfully_resized_vertically {
                     resize_horizontally(&mut pane_grid, &mut display_area, &mut viewport, cols);
                 } else {
@@ -1312,8 +1317,6 @@ impl TiledPanes {
         }
         self.set_pane_frames(self.draw_pane_frames);
     }
-
-
 
     pub fn resize_old(&mut self, new_screen_size: Size) {
         // this is blocked out to appease the borrow checker

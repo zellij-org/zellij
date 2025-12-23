@@ -3278,8 +3278,7 @@ fn test_override_tiled_exact_match_preservation_plugins() {
     let terminal_ids = vec![(1, None), (2, None)];
 
     let mut initial_plugin_ids = HashMap::new();
-    let tab_bar_plugin =
-        RunPluginOrAlias::from_url("zellij:tab-bar", &None, None, None).unwrap();
+    let tab_bar_plugin = RunPluginOrAlias::from_url("zellij:tab-bar", &None, None, None).unwrap();
     initial_plugin_ids.insert(tab_bar_plugin.clone(), vec![100]);
 
     let size = Size {
@@ -5419,14 +5418,22 @@ fn test_override_tiled_retain_terminal_panes_partial_match() {
 
     // Verify NO close messages were sent
     let closed_panes = collect_close_pane_messages(&pty_receiver);
-    assert_eq!(closed_panes.len(), 0, "No terminal panes should be closed when retain_existing_terminal_panes is true");
+    assert_eq!(
+        closed_panes.len(),
+        0,
+        "No terminal panes should be closed when retain_existing_terminal_panes is true"
+    );
 
     // No plugins should be unloaded
     let unloaded_plugins = collect_unload_plugin_messages(&plugin_receiver);
     assert!(unloaded_plugins.is_empty());
 
     // All 3 original terminals should still exist
-    assert_eq!(tiled_panes.visible_panes_count(), 3, "All 3 terminal panes should be retained");
+    assert_eq!(
+        tiled_panes.visible_panes_count(),
+        3,
+        "All 3 terminal panes should be retained"
+    );
 
     // we're not asserting a snapshot here because adding panes uses unstable sorting and so the
     // test would be flaky
@@ -5544,18 +5551,25 @@ fn test_override_tiled_retain_terminal_panes_no_matches() {
 
     // Verify NO close messages were sent
     let closed_panes = collect_close_pane_messages(&pty_receiver);
-    assert_eq!(closed_panes.len(), 0, "No terminal panes should be closed when retain_existing_terminal_panes is true");
+    assert_eq!(
+        closed_panes.len(),
+        0,
+        "No terminal panes should be closed when retain_existing_terminal_panes is true"
+    );
 
     // No plugins should be unloaded
     let unloaded_plugins = collect_unload_plugin_messages(&plugin_receiver);
     assert!(unloaded_plugins.is_empty());
 
     // Should have 6 total panes (3 original + 3 new)
-    assert_eq!(tiled_panes.visible_panes_count(), 6, "Should have 6 terminal panes (3 original + 3 new)");
+    assert_eq!(
+        tiled_panes.visible_panes_count(),
+        6,
+        "Should have 6 terminal panes (3 original + 3 new)"
+    );
 
     // we're not asserting a snapshot here because adding panes uses unstable sorting and so the
     // test would be flaky
-
 }
 
 #[test]
@@ -5688,14 +5702,22 @@ fn test_override_floating_retain_terminal_panes_partial_match() {
 
     // Verify NO close messages were sent
     let closed_panes = collect_close_pane_messages(&pty_receiver);
-    assert_eq!(closed_panes.len(), 0, "No terminal panes should be closed when retain_existing_terminal_panes is true");
+    assert_eq!(
+        closed_panes.len(),
+        0,
+        "No terminal panes should be closed when retain_existing_terminal_panes is true"
+    );
 
     // No plugins should be unloaded
     let unloaded_plugins = collect_unload_plugin_messages(&plugin_receiver);
     assert!(unloaded_plugins.is_empty());
 
     // Both floating panes should still exist
-    assert_eq!(floating_panes.visible_panes_count(), 2, "Both floating terminal panes should be retained");
+    assert_eq!(
+        floating_panes.visible_panes_count(),
+        2,
+        "Both floating terminal panes should be retained"
+    );
 
     assert_snapshot!(take_pane_state_snapshot(
         &tiled_panes,
@@ -5844,14 +5866,22 @@ fn test_override_floating_retain_terminal_panes_no_matches() {
 
     // Verify NO close messages were sent
     let closed_panes = collect_close_pane_messages(&pty_receiver);
-    assert_eq!(closed_panes.len(), 0, "No terminal panes should be closed when retain_existing_terminal_panes is true");
+    assert_eq!(
+        closed_panes.len(),
+        0,
+        "No terminal panes should be closed when retain_existing_terminal_panes is true"
+    );
 
     // No plugins should be unloaded
     let unloaded_plugins = collect_unload_plugin_messages(&plugin_receiver);
     assert!(unloaded_plugins.is_empty());
 
     // Should have 4 floating panes (2 original + 2 new)
-    assert_eq!(floating_panes.visible_panes_count(), 4, "Should have 4 floating panes (2 original + 2 new)");
+    assert_eq!(
+        floating_panes.visible_panes_count(),
+        4,
+        "Should have 4 floating panes (2 original + 2 new)"
+    );
 
     assert_snapshot!(take_pane_state_snapshot(
         &tiled_panes,
@@ -6000,17 +6030,29 @@ fn test_override_mixed_retain_terminal_panes_both_tiled_and_floating() {
 
     // Verify NO close messages were sent
     let closed_panes = collect_close_pane_messages(&pty_receiver);
-    assert_eq!(closed_panes.len(), 0, "No terminal panes should be closed when retain_existing_terminal_panes is true");
+    assert_eq!(
+        closed_panes.len(),
+        0,
+        "No terminal panes should be closed when retain_existing_terminal_panes is true"
+    );
 
     // No plugins should be unloaded
     let unloaded_plugins = collect_unload_plugin_messages(&plugin_receiver);
     assert!(unloaded_plugins.is_empty());
 
     // Check tiled pane count (3 original + 1 new = 4)
-    assert_eq!(tiled_panes.visible_panes_count(), 4, "Should have 4 tiled panes (3 original + 1 new)");
+    assert_eq!(
+        tiled_panes.visible_panes_count(),
+        4,
+        "Should have 4 tiled panes (3 original + 1 new)"
+    );
 
     // Check floating pane count (1 original + 1 new = 2)
-    assert_eq!(floating_panes.visible_panes_count(), 2, "Should have 2 floating panes (1 original + 1 new)");
+    assert_eq!(
+        floating_panes.visible_panes_count(),
+        2,
+        "Should have 2 floating panes (1 original + 1 new)"
+    );
 
     // we're not asserting a snapshot here because adding panes uses unstable sorting and so the
     // test would be flaky
@@ -6035,8 +6077,7 @@ fn test_override_retain_terminal_but_close_plugin_panes() {
     let terminal_ids = vec![(1, None), (2, None)];
 
     let mut initial_plugin_ids = HashMap::new();
-    let tab_bar_plugin =
-        RunPluginOrAlias::from_url("zellij:tab-bar", &None, None, None).unwrap();
+    let tab_bar_plugin = RunPluginOrAlias::from_url("zellij:tab-bar", &None, None, None).unwrap();
     initial_plugin_ids.insert(tab_bar_plugin.clone(), vec![100]);
 
     let size = Size {
@@ -6129,15 +6170,30 @@ fn test_override_retain_terminal_but_close_plugin_panes() {
 
     // No terminal panes should be closed
     let closed_panes = collect_close_pane_messages(&pty_receiver);
-    assert_eq!(closed_panes.len(), 0, "No terminal panes should be closed when retain_existing_terminal_panes is true");
+    assert_eq!(
+        closed_panes.len(),
+        0,
+        "No terminal panes should be closed when retain_existing_terminal_panes is true"
+    );
 
     // Plugin pane should be unloaded
     let unloaded_plugins = collect_unload_plugin_messages(&plugin_receiver);
-    assert_eq!(unloaded_plugins.len(), 1, "Plugin pane should be unloaded even with retain_existing_terminal_panes");
-    assert!(unloaded_plugins.contains(&100), "Tab-bar plugin (100) should be unloaded");
+    assert_eq!(
+        unloaded_plugins.len(),
+        1,
+        "Plugin pane should be unloaded even with retain_existing_terminal_panes"
+    );
+    assert!(
+        unloaded_plugins.contains(&100),
+        "Tab-bar plugin (100) should be unloaded"
+    );
 
     // Both terminals should exist
-    assert_eq!(tiled_panes.visible_panes_count(), 2, "Both terminal panes should be retained");
+    assert_eq!(
+        tiled_panes.visible_panes_count(),
+        2,
+        "Both terminal panes should be retained"
+    );
 
     assert_snapshot!(take_pane_state_snapshot(
         &tiled_panes,
@@ -6174,12 +6230,16 @@ fn test_override_tiled_retain_plugin_panes_partial_match() {
     let mut initial_plugin_ids = HashMap::new();
     let tab_bar = RunPluginOrAlias::from_url("zellij:tab-bar", &None, None, None).unwrap();
     let status_bar = RunPluginOrAlias::from_url("zellij:status-bar", &None, None, None).unwrap();
-    let custom = RunPluginOrAlias::from_url("file:///path/to/custom.wasm", &None, None, None).unwrap();
+    let custom =
+        RunPluginOrAlias::from_url("file:///path/to/custom.wasm", &None, None, None).unwrap();
     initial_plugin_ids.insert(tab_bar, vec![100]);
     initial_plugin_ids.insert(status_bar, vec![101]);
     initial_plugin_ids.insert(custom, vec![102]);
 
-    let size = Size { cols: 120, rows: 40 };
+    let size = Size {
+        cols: 120,
+        rows: 40,
+    };
     let (
         viewport,
         senders,
@@ -6265,14 +6325,22 @@ fn test_override_tiled_retain_plugin_panes_partial_match() {
 
     // Verify NO plugin panes were unloaded
     let unloaded_plugins = collect_unload_plugin_messages(&plugin_receiver);
-    assert_eq!(unloaded_plugins.len(), 0, "No plugin panes should be unloaded when retain_existing_plugin_panes is true");
+    assert_eq!(
+        unloaded_plugins.len(),
+        0,
+        "No plugin panes should be unloaded when retain_existing_plugin_panes is true"
+    );
 
     // No terminals should be closed
     let closed_panes = collect_close_pane_messages(&pty_receiver);
     assert!(closed_panes.is_empty());
 
     // All 4 panes should exist (1 terminal + 3 plugins)
-    assert_eq!(tiled_panes.visible_panes_count(), 4, "All plugin panes should be retained");
+    assert_eq!(
+        tiled_panes.visible_panes_count(),
+        4,
+        "All plugin panes should be retained"
+    );
 }
 
 #[test]
@@ -6305,7 +6373,10 @@ fn test_override_tiled_retain_plugin_panes_no_matches() {
     initial_plugin_ids.insert(status_bar, vec![101]);
     initial_plugin_ids.insert(compact_bar, vec![102]);
 
-    let size = Size { cols: 120, rows: 40 };
+    let size = Size {
+        cols: 120,
+        rows: 40,
+    };
     let (
         viewport,
         senders,
@@ -6382,9 +6453,12 @@ fn test_override_tiled_retain_plugin_panes_no_matches() {
     let (override_tiled, _) = parse_kdl_layout(override_kdl);
 
     let mut override_plugin_ids = HashMap::new();
-    let plugin1 = RunPluginOrAlias::from_url("file:///path/to/plugin1.wasm", &None, None, None).unwrap();
-    let plugin2 = RunPluginOrAlias::from_url("file:///path/to/plugin2.wasm", &None, None, None).unwrap();
-    let plugin3 = RunPluginOrAlias::from_url("file:///path/to/plugin3.wasm", &None, None, None).unwrap();
+    let plugin1 =
+        RunPluginOrAlias::from_url("file:///path/to/plugin1.wasm", &None, None, None).unwrap();
+    let plugin2 =
+        RunPluginOrAlias::from_url("file:///path/to/plugin2.wasm", &None, None, None).unwrap();
+    let plugin3 =
+        RunPluginOrAlias::from_url("file:///path/to/plugin3.wasm", &None, None, None).unwrap();
     override_plugin_ids.insert(plugin1, vec![103]);
     override_plugin_ids.insert(plugin2, vec![104]);
     override_plugin_ids.insert(plugin3, vec![105]);
@@ -6402,10 +6476,18 @@ fn test_override_tiled_retain_plugin_panes_no_matches() {
 
     // Verify NO plugin panes were unloaded
     let unloaded_plugins = collect_unload_plugin_messages(&plugin_receiver);
-    assert_eq!(unloaded_plugins.len(), 0, "No plugin panes should be unloaded when retain_existing_plugin_panes is true");
+    assert_eq!(
+        unloaded_plugins.len(),
+        0,
+        "No plugin panes should be unloaded when retain_existing_plugin_panes is true"
+    );
 
     // Total: 1 terminal + 6 plugins (3 original + 3 new)
-    assert_eq!(tiled_panes.visible_panes_count(), 7, "All original plugins retained and new plugins created");
+    assert_eq!(
+        tiled_panes.visible_panes_count(),
+        7,
+        "All original plugins retained and new plugins created"
+    );
 }
 
 #[test]
@@ -6443,7 +6525,10 @@ fn test_override_floating_retain_plugin_panes_partial_match() {
     initial_plugin_ids.insert(tab_bar, vec![100]);
     initial_plugin_ids.insert(status_bar, vec![101]);
 
-    let size = Size { cols: 120, rows: 40 };
+    let size = Size {
+        cols: 120,
+        rows: 40,
+    };
     let (
         viewport,
         senders,
@@ -6531,14 +6616,22 @@ fn test_override_floating_retain_plugin_panes_partial_match() {
 
     // Verify NO plugin panes were unloaded
     let unloaded_plugins = collect_unload_plugin_messages(&plugin_receiver);
-    assert_eq!(unloaded_plugins.len(), 0, "No floating plugin panes should be unloaded when retain_existing_plugin_panes is true");
+    assert_eq!(
+        unloaded_plugins.len(),
+        0,
+        "No floating plugin panes should be unloaded when retain_existing_plugin_panes is true"
+    );
 
     // No terminals should be closed
     let closed_panes = collect_close_pane_messages(&pty_receiver);
     assert!(closed_panes.is_empty());
 
     // Both floating plugins should still exist
-    assert_eq!(floating_panes.visible_panes_count(), 2, "Both floating plugin panes should be retained");
+    assert_eq!(
+        floating_panes.visible_panes_count(),
+        2,
+        "Both floating plugin panes should be retained"
+    );
 
     // Verify tiled pane exists
     assert_eq!(tiled_panes.visible_panes_count(), 1);
@@ -6579,7 +6672,10 @@ fn test_override_floating_retain_plugin_panes_no_matches() {
     initial_plugin_ids.insert(tab_bar, vec![100]);
     initial_plugin_ids.insert(status_bar, vec![101]);
 
-    let size = Size { cols: 120, rows: 40 };
+    let size = Size {
+        cols: 120,
+        rows: 40,
+    };
     let (
         viewport,
         senders,
@@ -6663,8 +6759,10 @@ fn test_override_floating_retain_plugin_panes_no_matches() {
     let (_, override_floating) = parse_kdl_layout(override_kdl);
 
     let mut override_plugin_ids = HashMap::new();
-    let plugin1 = RunPluginOrAlias::from_url("file:///path/to/plugin1.wasm", &None, None, None).unwrap();
-    let plugin2 = RunPluginOrAlias::from_url("file:///path/to/plugin2.wasm", &None, None, None).unwrap();
+    let plugin1 =
+        RunPluginOrAlias::from_url("file:///path/to/plugin1.wasm", &None, None, None).unwrap();
+    let plugin2 =
+        RunPluginOrAlias::from_url("file:///path/to/plugin2.wasm", &None, None, None).unwrap();
     override_plugin_ids.insert(plugin1, vec![102]);
     override_plugin_ids.insert(plugin2, vec![103]);
 
@@ -6680,10 +6778,18 @@ fn test_override_floating_retain_plugin_panes_no_matches() {
 
     // Verify NO plugin panes were unloaded
     let unloaded_plugins = collect_unload_plugin_messages(&plugin_receiver);
-    assert_eq!(unloaded_plugins.len(), 0, "No floating plugin panes should be unloaded when retain_existing_plugin_panes is true");
+    assert_eq!(
+        unloaded_plugins.len(),
+        0,
+        "No floating plugin panes should be unloaded when retain_existing_plugin_panes is true"
+    );
 
     // Total: 4 floating plugins (2 original + 2 new)
-    assert_eq!(floating_panes.visible_panes_count(), 4, "All original floating plugins retained and new plugins created");
+    assert_eq!(
+        floating_panes.visible_panes_count(),
+        4,
+        "All original floating plugins retained and new plugins created"
+    );
 
     // 1 tiled terminal pane
     assert_eq!(tiled_panes.visible_panes_count(), 1);
@@ -6721,7 +6827,10 @@ fn test_override_mixed_retain_plugin_panes_both_tiled_and_floating() {
     initial_plugin_ids.insert(tab_bar, vec![100]);
     initial_plugin_ids.insert(status_bar, vec![101]);
 
-    let size = Size { cols: 120, rows: 40 };
+    let size = Size {
+        cols: 120,
+        rows: 40,
+    };
     let (
         viewport,
         senders,
@@ -6805,7 +6914,8 @@ fn test_override_mixed_retain_plugin_panes_both_tiled_and_floating() {
 
     let mut override_plugin_ids = HashMap::new();
     let compact_bar = RunPluginOrAlias::from_url("zellij:compact-bar", &None, None, None).unwrap();
-    let custom = RunPluginOrAlias::from_url("file:///path/to/custom.wasm", &None, None, None).unwrap();
+    let custom =
+        RunPluginOrAlias::from_url("file:///path/to/custom.wasm", &None, None, None).unwrap();
     override_plugin_ids.insert(compact_bar, vec![102]);
     override_plugin_ids.insert(custom, vec![103]);
 
@@ -6826,16 +6936,29 @@ fn test_override_mixed_retain_plugin_panes_both_tiled_and_floating() {
 
     // Verify NO plugin panes were unloaded
     let unloaded_plugins = collect_unload_plugin_messages(&plugin_receiver);
-    assert_eq!(unloaded_plugins.len(), 0, "No plugin panes should be unloaded when retain_existing_plugin_panes is true");
+    assert_eq!(
+        unloaded_plugins.len(),
+        0,
+        "No plugin panes should be unloaded when retain_existing_plugin_panes is true"
+    );
 
     // vim terminal should be closed (doesn't match layout)
     let closed_panes = collect_close_pane_messages(&pty_receiver);
     assert_eq!(closed_panes.len(), 1, "vim terminal should be closed");
-    assert!(closed_panes.contains(&PaneId::Terminal(2)), "Terminal(2) (vim) should be closed");
+    assert!(
+        closed_panes.contains(&PaneId::Terminal(2)),
+        "Terminal(2) (vim) should be closed"
+    );
 
     // Verify plugins exist (exact counts may vary based on where retained panes land)
-    assert!(tiled_panes.visible_panes_count() >= 2, "At least htop and matched plugins");
-    assert!(floating_panes.visible_panes_count() >= 1, "At least one floating plugin");
+    assert!(
+        tiled_panes.visible_panes_count() >= 2,
+        "At least htop and matched plugins"
+    );
+    assert!(
+        floating_panes.visible_panes_count() >= 1,
+        "At least one floating plugin"
+    );
 }
 
 #[test]
@@ -6859,7 +6982,10 @@ fn test_override_retain_plugin_but_close_terminal_panes() {
     let tab_bar = RunPluginOrAlias::from_url("zellij:tab-bar", &None, None, None).unwrap();
     initial_plugin_ids.insert(tab_bar, vec![100]);
 
-    let size = Size { cols: 120, rows: 40 };
+    let size = Size {
+        cols: 120,
+        rows: 40,
+    };
     let (
         viewport,
         senders,
@@ -6939,15 +7065,30 @@ fn test_override_retain_plugin_but_close_terminal_panes() {
 
     // vim terminal should be closed
     let closed_panes = collect_close_pane_messages(&pty_receiver);
-    assert_eq!(closed_panes.len(), 1, "Terminal pane should be closed even with retain_existing_plugin_panes");
-    assert!(closed_panes.contains(&PaneId::Terminal(2)), "vim (Terminal(2)) should be closed");
+    assert_eq!(
+        closed_panes.len(),
+        1,
+        "Terminal pane should be closed even with retain_existing_plugin_panes"
+    );
+    assert!(
+        closed_panes.contains(&PaneId::Terminal(2)),
+        "vim (Terminal(2)) should be closed"
+    );
 
     // Plugin should NOT be unloaded
     let unloaded_plugins = collect_unload_plugin_messages(&plugin_receiver);
-    assert_eq!(unloaded_plugins.len(), 0, "No plugin panes should be unloaded");
+    assert_eq!(
+        unloaded_plugins.len(),
+        0,
+        "No plugin panes should be unloaded"
+    );
 
     // Final panes: htop + tab-bar = 2
-    assert_eq!(tiled_panes.visible_panes_count(), 2, "htop and tab-bar should remain");
+    assert_eq!(
+        tiled_panes.visible_panes_count(),
+        2,
+        "htop and tab-bar should remain"
+    );
 
     assert_snapshot!(take_pane_state_snapshot(
         &tiled_panes,

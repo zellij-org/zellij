@@ -104,9 +104,9 @@ pub enum PluginInstruction {
         Vec<FloatingPaneLayout>,
         Option<Vec<SwapTiledLayout>>,
         Option<Vec<SwapFloatingLayout>>,
-        bool,                   // retain_existing_terminal_panes
-        bool,                   // retain_existing_plugin_panes
-        usize,                  // tab_index
+        bool,  // retain_existing_terminal_panes
+        bool,  // retain_existing_plugin_panes
+        usize, // tab_index
         ClientId,
         Option<NotificationEnd>,
     ),

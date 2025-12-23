@@ -879,8 +879,10 @@ impl Tab {
     ) -> Result<()> {
         let new_swap_tiled_layouts = new_swap_tiled_layouts.take().unwrap_or_else(|| vec![]);
         let new_swap_floating_layouts = new_swap_floating_layouts.take().unwrap_or_else(|| vec![]);
-        self.swap_layouts.set_swap_tiled_layouts(new_swap_tiled_layouts);
-        self.swap_layouts.set_swap_floating_layouts(new_swap_floating_layouts);
+        self.swap_layouts
+            .set_swap_tiled_layouts(new_swap_tiled_layouts);
+        self.swap_layouts
+            .set_swap_floating_layouts(new_swap_floating_layouts);
         match LayoutApplier::new(
             &self.viewport,
             &self.senders,
@@ -941,7 +943,6 @@ impl Tab {
                     &mut self.tiled_panes,
                     self.draw_pane_frames,
                 );
-
 
                 self.apply_buffered_instructions().non_fatal();
             },
@@ -1362,13 +1363,11 @@ impl Tab {
         Ok(())
     }
     fn normalize_invoked_with_for_default_shell(&self, invoked_with: Option<Run>) -> Option<Run> {
-        let default_shell_run_command = Run::Command(
-            RunCommand {
-                command: self.default_shell.clone(),
-                use_terminal_title: true,
-                ..Default::default()
-            }
-        );
+        let default_shell_run_command = Run::Command(RunCommand {
+            command: self.default_shell.clone(),
+            use_terminal_title: true,
+            ..Default::default()
+        });
         if invoked_with == Some(default_shell_run_command) {
             None
         } else {

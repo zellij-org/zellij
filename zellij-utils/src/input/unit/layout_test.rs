@@ -2268,7 +2268,10 @@ fn layout_node_with_split_direction() {
 
     let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None).unwrap();
 
-    assert_eq!(layout.tabs[0].1.children_split_direction, SplitDirection::Vertical);
+    assert_eq!(
+        layout.tabs[0].1.children_split_direction,
+        SplitDirection::Vertical
+    );
 }
 
 #[test]
@@ -2316,7 +2319,10 @@ fn layout_node_with_multiple_tab_properties() {
     let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None).unwrap();
 
     assert_eq!(layout.tabs[0].0, Some("test".to_string()));
-    assert_eq!(layout.tabs[0].1.children_split_direction, SplitDirection::Vertical);
+    assert_eq!(
+        layout.tabs[0].1.children_split_direction,
+        SplitDirection::Vertical
+    );
     assert_eq!(layout.tabs[0].1.hide_floating_panes, true);
 }
 
@@ -2334,7 +2340,9 @@ fn layout_node_with_tab_properties_and_explicit_tabs_errors() {
 
     assert!(layout.is_err());
     let error_message = format!("{:?}", layout.unwrap_err());
-    assert!(error_message.contains("Tab properties on the layout node can only be used when there are no explicit tab nodes"));
+    assert!(error_message.contains(
+        "Tab properties on the layout node can only be used when there are no explicit tab nodes"
+    ));
 }
 
 #[test]

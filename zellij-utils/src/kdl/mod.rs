@@ -1755,10 +1755,14 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                     .and_then(|c_m| kdl_child_string_value_for_entry(c_m, "name"))
                     .map(|name_string| name_string.to_string());
                 let retain_existing_terminal_panes = command_metadata
-                    .and_then(|c_m| kdl_child_bool_value_for_entry(c_m, "retain_existing_terminal_panes"))
+                    .and_then(|c_m| {
+                        kdl_child_bool_value_for_entry(c_m, "retain_existing_terminal_panes")
+                    })
                     .unwrap_or(false);
                 let retain_existing_plugin_panes = command_metadata
-                    .and_then(|c_m| kdl_child_bool_value_for_entry(c_m, "retain_existing_plugin_panes"))
+                    .and_then(|c_m| {
+                        kdl_child_bool_value_for_entry(c_m, "retain_existing_plugin_panes")
+                    })
                     .unwrap_or(false);
 
                 let layout_dir = config_options
