@@ -859,6 +859,102 @@ impl Tab {
                 // we should still be able to properly recover from this with a useful error
                 // message though
                 log::error!("Failed to apply layout: {}", e);
+                self.tiled_panes.reapply_pane_frames();
+                self.is_pending = false;
+                self.apply_buffered_instructions().non_fatal();
+            },
+        }
+        Ok(())
+    }
+    pub fn override_layout(
+        &mut self,
+        layout: TiledPaneLayout,
+        floating_panes_layout: Vec<FloatingPaneLayout>,
+        mut new_swap_tiled_layouts: Option<Vec<SwapTiledLayout>>,
+        mut new_swap_floating_layouts: Option<Vec<SwapFloatingLayout>>,
+        new_terminal_ids: Vec<(u32, HoldForCommand)>,
+        new_floating_terminal_ids: Vec<(u32, HoldForCommand)>,
+        new_plugin_ids: HashMap<RunPluginOrAlias, Vec<u32>>,
+        retain_existing_terminal_panes: bool,
+        retain_existing_plugin_panes: bool,
+        client_id: ClientId,
+        blocking_terminal: Option<(u32, NotificationEnd)>,
+    ) -> Result<()> {
+        let new_swap_tiled_layouts = new_swap_tiled_layouts.take().unwrap_or_else(|| vec![]);
+        let new_swap_floating_layouts = new_swap_floating_layouts.take().unwrap_or_else(|| vec![]);
+        self.swap_layouts
+            .set_swap_tiled_layouts(new_swap_tiled_layouts);
+        self.swap_layouts
+            .set_swap_floating_layouts(new_swap_floating_layouts);
+        match LayoutApplier::new(
+            &self.viewport,
+            &self.senders,
+            &self.sixel_image_store,
+            &self.link_handler,
+            &self.terminal_emulator_colors,
+            &self.terminal_emulator_color_codes,
+            &self.character_cell_size,
+            &self.connected_clients_in_app,
+            &self.style,
+            &self.display_area,
+            &mut self.tiled_panes,
+            &mut self.floating_panes,
+            self.draw_pane_frames,
+            &mut self.focus_pane_id,
+            &self.os_api,
+            self.debug,
+            self.arrow_fonts,
+            self.styled_underlines,
+            self.explicitly_disable_kitty_keyboard_protocol,
+            blocking_terminal,
+        )
+        .override_layout(
+            layout,
+            floating_panes_layout,
+            new_terminal_ids,
+            new_floating_terminal_ids,
+            new_plugin_ids,
+            retain_existing_terminal_panes,
+            retain_existing_plugin_panes,
+            client_id,
+        ) {
+            Ok(should_show_floating_panes) => {
+                if should_show_floating_panes && !self.floating_panes.panes_are_visible() {
+                    self.toggle_floating_panes(Some(client_id), None, None)
+                        .non_fatal();
+                } else if !should_show_floating_panes && self.floating_panes.panes_are_visible() {
+                    self.toggle_floating_panes(Some(client_id), None, None)
+                        .non_fatal();
+                }
+
+                // this is essentially another pass of the layout applier
+                // we do this because the layout applier does not know about swap layouts, and in
+                // this case we might have had to re-add existing panes that were not in the
+                // overridden layout (eg. if we had more panes than were in the layout). In such a
+                // case, we would like to make sure these extra panes fit the current swap layout
+                self.swap_layouts.set_is_tiled_damaged();
+                self.swap_layouts.set_is_floating_damaged();
+                let _ = self.relayout_tiled_panes(false);
+                let _ = self.relayout_floating_panes(false);
+
+                self.tiled_panes.reapply_pane_frames();
+                self.is_pending = false;
+
+                LayoutApplier::offset_viewport(
+                    self.viewport.clone(),
+                    self.display_area.clone(),
+                    &mut self.tiled_panes,
+                    self.draw_pane_frames,
+                );
+
+                self.apply_buffered_instructions().non_fatal();
+            },
+            Err(e) => {
+                // TODO: this should only happen due to an erroneous layout created by user
+                // configuration that was somehow not caught in our KDL layout parser
+                // we should still be able to properly recover from this with a useful error
+                // message though
+                log::error!("Failed to apply layout: {}", e);
             },
         }
         Ok(())
@@ -1269,6 +1365,18 @@ impl Tab {
         self.set_force_render();
         Ok(())
     }
+    fn normalize_invoked_with_for_default_shell(&self, invoked_with: Option<Run>) -> Option<Run> {
+        let default_shell_run_command = Run::Command(RunCommand {
+            command: self.default_shell.clone(),
+            use_terminal_title: true,
+            ..Default::default()
+        });
+        if invoked_with == Some(default_shell_run_command) {
+            None
+        } else {
+            invoked_with
+        }
+    }
     pub fn new_pane(
         &mut self,
         pid: PaneId,
@@ -1280,6 +1388,7 @@ impl Tab {
         client_id: Option<ClientId>,
         blocking_notification: Option<NotificationEnd>,
     ) -> Result<()> {
+        let invoked_with = self.normalize_invoked_with_for_default_shell(invoked_with);
         match new_pane_placement {
             NewPanePlacement::NoPreference => self.new_no_preference_pane(
                 pid,
@@ -3409,6 +3518,7 @@ impl Tab {
         // outside the viewport (a ui-pane, eg. the status-bar and tab-bar) and need to adjust for it
         LayoutApplier::offset_viewport(
             self.viewport.clone(),
+            self.display_area.clone(),
             &mut self.tiled_panes,
             self.draw_pane_frames,
         );
@@ -5745,3 +5855,7 @@ mod tab_tests;
 #[cfg(test)]
 #[path = "./unit/tab_integration_tests.rs"]
 mod tab_integration_tests;
+
+#[cfg(test)]
+#[path = "./unit/layout_applier_tests.rs"]
+mod layout_applier_tests;

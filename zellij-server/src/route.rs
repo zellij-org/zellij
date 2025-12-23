@@ -28,7 +28,7 @@ use zellij_utils::{
         command::TerminalAction,
         get_mode_info,
         keybinds::Keybinds,
-        layout::Layout,
+        layout::{Layout, TiledPaneLayout},
     },
     ipc::{
         ClientAttributes, ClientToServerMsg, ExitReason, IpcReceiverWithContext, ServerToClientMsg,
@@ -1109,6 +1109,39 @@ pub(crate) fn route_action(
         Action::NextSwapLayout => {
             senders
                 .send_to_screen(ScreenInstruction::NextSwapLayout(
+                    client_id,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
+        Action::OverrideLayout {
+            tiled_layout,
+            floating_layouts,
+            swap_tiled_layouts,
+            swap_floating_layouts,
+            tab_name,
+            retain_existing_terminal_panes,
+            retain_existing_plugin_panes,
+        } => {
+            // Extract required layout fields, use defaults if None
+            let cwd = None;
+            let shell = default_shell.clone();
+            let tiled = tiled_layout.unwrap_or_else(|| TiledPaneLayout::default());
+            let floating = floating_layouts;
+            let swap_tiled = swap_tiled_layouts;
+            let swap_floating = swap_floating_layouts;
+
+            senders
+                .send_to_screen(ScreenInstruction::OverrideLayout(
+                    cwd,
+                    shell,
+                    tab_name,
+                    tiled,
+                    floating,
+                    swap_tiled,
+                    swap_floating,
+                    retain_existing_terminal_panes,
+                    retain_existing_plugin_panes,
                     client_id,
                     Some(NotificationEnd::new(completion_tx)),
                 ))

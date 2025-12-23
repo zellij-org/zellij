@@ -2646,6 +2646,7 @@ pub fn pin_floating_panes() {
     let last_snapshot = account_for_races_in_snapshot(last_snapshot);
     assert_snapshot!(last_snapshot);
 }
+
 #[test]
 #[ignore]
 pub fn watcher_client_functionality() {
@@ -2848,4 +2849,52 @@ pub fn watcher_client_functionality() {
     let watcher_snapshot = account_for_races_in_snapshot(watcher_snapshot);
     assert_snapshot!(main_client_snapshot);
     assert_snapshot!(watcher_snapshot);
+}
+
+#[test]
+#[ignore]
+pub fn override_layout_from_default_to_compact() {
+    let fake_win_size = Size {
+        cols: 120,
+        rows: 24,
+    };
+    let mut test_attempts = 10;
+    let last_snapshot = loop {
+        RemoteRunner::kill_running_sessions(fake_win_size);
+
+        let mut runner = RemoteRunner::new(fake_win_size)
+            .add_step(Step {
+                name: "Wait for default layout to load",
+                instruction: |remote_terminal: RemoteTerminal| -> bool {
+                    remote_terminal.status_bar_appears()
+                },
+            })
+            .add_step(Step {
+                name: "Override to compact layout",
+                instruction: |mut remote_terminal: RemoteTerminal| -> bool {
+                    remote_terminal.run_zellij_action("override-layout compact");
+                    std::thread::sleep(std::time::Duration::from_millis(500));
+                    remote_terminal.send_key(&ENTER);
+                    true
+                },
+            });
+
+        runner.run_all_steps();
+        let last_snapshot = runner.take_snapshot_after(Step {
+            name: "Wait for compact layout to appear",
+            instruction: |remote_terminal: RemoteTerminal| -> bool {
+                remote_terminal.snapshot_contains("NORMAL")
+            },
+        });
+
+        if runner.test_timed_out && test_attempts > 0 {
+            test_attempts -= 1;
+            continue;
+        } else {
+            break last_snapshot;
+        }
+    };
+
+    let last_snapshot = account_for_races_in_snapshot(last_snapshot);
+    assert_snapshot!(last_snapshot);
 }

@@ -25,7 +25,10 @@ use zellij_utils::{
     errors::{ContextType, PtyContext},
     input::{
         command::{OpenFilePayload, RunCommand, TerminalAction},
-        layout::{FloatingPaneLayout, Layout, Run, RunPluginOrAlias, TiledPaneLayout},
+        layout::{
+            FloatingPaneLayout, Layout, Run, RunPluginOrAlias, SwapFloatingLayout, SwapTiledLayout,
+            TiledPaneLayout,
+        },
     },
     pane_size::Size,
     session_serialization,
@@ -75,6 +78,20 @@ pub enum PtyInstruction {
         (ClientId, bool),                    // bool -> is_web_client
         Option<NotificationEnd>,             // completion signal
     ), // the String is the tab name
+    OverrideLayout(
+        Option<PathBuf>,        // CWD
+        Option<TerminalAction>, // Default Shell
+        TiledPaneLayout,
+        Vec<FloatingPaneLayout>,
+        Option<Vec<SwapTiledLayout>>,
+        Option<Vec<SwapFloatingLayout>>,
+        bool,                                // retain_existing_terminal_panes
+        bool,                                // retain_existing_plugin_panes
+        usize,                               // tab_index
+        HashMap<RunPluginOrAlias, Vec<u32>>, // plugin_ids
+        ClientId,
+        Option<NotificationEnd>,
+    ),
     ClosePane(PaneId, Option<NotificationEnd>),
     CloseTab(Vec<PaneId>),
     ReRunCommandInPane(PaneId, RunCommand, Option<NotificationEnd>),
@@ -137,6 +154,7 @@ impl From<&PtyInstruction> for PtyContext {
             PtyInstruction::ClosePane(..) => PtyContext::ClosePane,
             PtyInstruction::CloseTab(_) => PtyContext::CloseTab,
             PtyInstruction::NewTab(..) => PtyContext::NewTab,
+            PtyInstruction::OverrideLayout(..) => PtyContext::OverrideLayout,
             PtyInstruction::ReRunCommandInPane(..) => PtyContext::ReRunCommandInPane,
             PtyInstruction::DropToShellInPane { .. } => PtyContext::DropToShellInPane,
             PtyInstruction::SpawnInPlaceTerminal(..) => PtyContext::SpawnInPlaceTerminal,
@@ -471,6 +489,38 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     block_on_first_terminal,
                     should_change_focus_to_new_tab,
                     client_id_and_is_web_client,
+                    completion_tx,
+                )
+                .with_context(err_context)?;
+            },
+            PtyInstruction::OverrideLayout(
+                cwd,
+                default_shell,
+                tiled_layout,
+                floating_panes_layout,
+                swap_tiled_layouts,
+                swap_floating_layouts,
+                retain_existing_terminal_panes,
+                retain_existing_plugin_panes,
+                tab_index,
+                plugin_ids,
+                client_id,
+                completion_tx,
+            ) => {
+                let err_context = || "failed to override layout";
+
+                pty.spawn_terminals_for_layout_override(
+                    cwd,
+                    tiled_layout,
+                    floating_panes_layout,
+                    default_shell,
+                    plugin_ids,
+                    tab_index,
+                    client_id,
+                    swap_tiled_layouts,
+                    swap_floating_layouts,
+                    retain_existing_terminal_panes,
+                    retain_existing_plugin_panes,
                     completion_tx,
                 )
                 .with_context(err_context)?;
@@ -1200,6 +1250,187 @@ impl Pty {
         }
         Ok(())
     }
+    pub fn spawn_terminals_for_layout_override(
+        &mut self,
+        cwd: Option<PathBuf>,
+        layout: TiledPaneLayout,
+        floating_panes_layout: Vec<FloatingPaneLayout>,
+        default_shell: Option<TerminalAction>,
+        plugin_ids: HashMap<RunPluginOrAlias, Vec<u32>>,
+        tab_index: usize,
+        client_id: ClientId,
+        swap_tiled_layouts: Option<Vec<SwapTiledLayout>>,
+        swap_floating_layouts: Option<Vec<SwapFloatingLayout>>,
+        retain_existing_terminal_panes: bool,
+        retain_existing_plugin_panes: bool,
+        completion_tx: Option<NotificationEnd>,
+    ) -> Result<()> {
+        let err_context = || format!("failed to spawn terminals for layout for");
+
+        let mut default_shell =
+            default_shell.unwrap_or_else(|| self.get_default_terminal(cwd, None));
+        self.fill_cwd(&mut default_shell, client_id);
+
+        let extracted_run_instructions = layout.extract_run_instructions();
+        let extracted_floating_run_instructions = floating_panes_layout
+            .iter()
+            .filter(|f| !f.already_running)
+            .map(|f| f.run.clone());
+        let mut new_pane_pids: Vec<(u32, bool, Option<RunCommand>, Result<RawFd>)> = vec![]; // (terminal_id,
+                                                                                             // starts_held,
+                                                                                             // run_command,
+                                                                                             // file_descriptor)
+
+        let mut new_floating_panes_pids: Vec<(u32, bool, Option<RunCommand>, Result<RawFd>)> =
+            vec![]; // same
+                    // as
+                    // new_pane_pids
+
+        let mut originating_plugins_to_inform = vec![];
+
+        for run_instruction in extracted_run_instructions {
+            let originating_plugin = run_instruction.as_ref().and_then(|r| {
+                if let Run::Command(run_command) = r {
+                    run_command.originating_plugin.clone()
+                } else {
+                    None
+                }
+            });
+            let mut terminal_id = None;
+            if let Some(new_pane_data) =
+                self.apply_run_instruction(run_instruction, default_shell.clone())?
+            {
+                terminal_id = Some(new_pane_data.0);
+                new_pane_pids.push(new_pane_data);
+            }
+            if let (Some(originating_plugin), Some(terminal_id)) = (originating_plugin, terminal_id)
+            {
+                originating_plugins_to_inform.push((terminal_id, originating_plugin));
+            }
+        }
+        for run_instruction in extracted_floating_run_instructions {
+            let originating_plugin = run_instruction.as_ref().and_then(|r| {
+                if let Run::Command(run_command) = r {
+                    run_command.originating_plugin.clone()
+                } else {
+                    None
+                }
+            });
+            let mut terminal_id = None;
+            if let Some(new_pane_data) =
+                self.apply_run_instruction(run_instruction, default_shell.clone())?
+            {
+                terminal_id = Some(new_pane_data.0);
+                new_floating_panes_pids.push(new_pane_data);
+            }
+            if let (Some(originating_plugin), Some(terminal_id)) = (originating_plugin, terminal_id)
+            {
+                originating_plugins_to_inform.push((terminal_id, originating_plugin));
+            }
+        }
+
+        // Option<RunCommand> should only be Some if the pane starts held
+        let new_tab_pane_ids: Vec<(u32, Option<RunCommand>)> = new_pane_pids
+            .iter()
+            .map(|(terminal_id, starts_held, run_command, _)| {
+                if *starts_held {
+                    (*terminal_id, run_command.clone())
+                } else {
+                    (*terminal_id, None)
+                }
+            })
+            .collect();
+        let new_tab_floating_pane_ids: Vec<(u32, Option<RunCommand>)> = new_floating_panes_pids
+            .iter()
+            .map(|(terminal_id, starts_held, run_command, _)| {
+                if *starts_held {
+                    (*terminal_id, run_command.clone())
+                } else {
+                    (*terminal_id, None)
+                }
+            })
+            .collect();
+
+        self.bus
+            .senders
+            .send_to_screen(ScreenInstruction::OverrideLayoutComplete(
+                layout,
+                floating_panes_layout,
+                swap_tiled_layouts,
+                swap_floating_layouts,
+                new_tab_pane_ids,
+                new_tab_floating_pane_ids,
+                plugin_ids,
+                retain_existing_terminal_panes,
+                retain_existing_plugin_panes,
+                tab_index,
+                client_id,
+                completion_tx,
+            ))
+            .with_context(err_context)?;
+
+        let mut terminals_to_start = vec![];
+
+        terminals_to_start.append(&mut new_pane_pids);
+        terminals_to_start.append(&mut new_floating_panes_pids);
+        for (terminal_id, starts_held, run_command, pid_primary) in terminals_to_start {
+            if starts_held {
+                // we do not run a command or start listening for bytes on held panes
+                continue;
+            }
+            match pid_primary {
+                Ok(pid_primary) => {
+                    let terminal_bytes = task::spawn({
+                        let senders = self.bus.senders.clone();
+                        let os_input = self
+                            .bus
+                            .os_input
+                            .as_ref()
+                            .with_context(err_context)?
+                            .clone();
+                        let debug_to_file = self.debug_to_file;
+                        async move {
+                            TerminalBytes::new(
+                                pid_primary,
+                                senders,
+                                os_input,
+                                debug_to_file,
+                                terminal_id,
+                            )
+                            .listen()
+                            .await
+                            .context("failed to spawn terminals for layout")
+                            .fatal();
+                        }
+                    });
+                    self.task_handles.insert(terminal_id, terminal_bytes);
+                },
+                _ => match run_command {
+                    Some(run_command) => {
+                        if run_command.hold_on_close {
+                            send_command_not_found_to_screen(
+                                self.bus.senders.clone(),
+                                terminal_id,
+                                run_command.clone(),
+                            )
+                            .with_context(err_context)?;
+                        } else {
+                            self.close_pane(PaneId::Terminal(terminal_id))
+                                .with_context(err_context)?;
+                        }
+                    },
+                    None => {
+                        self.close_pane(PaneId::Terminal(terminal_id))
+                            .with_context(err_context)?;
+                    },
+                },
+            }
+        }
+        for (terminal_id, originating_plugin) in originating_plugins_to_inform {
+            self.inform_originating_plugin_of_open(terminal_id, originating_plugin);
+        }
+        Ok(())
+    }
     fn inform_originating_plugin_of_open(
         &mut self,
         terminal_id: u32,
@@ -1552,7 +1783,6 @@ impl Pty {
         &mut self,
         session_layout_metadata: &mut SessionLayoutMetadata,
     ) {
-        log::info!("populate_session_layout_metadata");
         let terminal_ids = session_layout_metadata.all_terminal_ids();
         let mut terminal_ids_to_commands: HashMap<u32, Vec<String>> = HashMap::new();
         let mut terminal_ids_to_cwds: HashMap<u32, PathBuf> = HashMap::new();

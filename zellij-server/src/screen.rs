@@ -295,6 +295,33 @@ pub enum ScreenInstruction {
     ClearPaneFrameColorOverride(Vec<PaneId>),
     PreviousSwapLayout(ClientId, Option<NotificationEnd>),
     NextSwapLayout(ClientId, Option<NotificationEnd>),
+    OverrideLayout(
+        Option<PathBuf>,        // cwd
+        Option<TerminalAction>, // default_shell
+        Option<String>,         // new name for tab
+        TiledPaneLayout,
+        Vec<FloatingPaneLayout>,
+        Option<Vec<SwapTiledLayout>>,
+        Option<Vec<SwapFloatingLayout>>,
+        bool, // retain_existing_terminal_panes
+        bool, // retain_existing_plugin_panes
+        ClientId,
+        Option<NotificationEnd>,
+    ),
+    OverrideLayoutComplete(
+        TiledPaneLayout,
+        Vec<FloatingPaneLayout>,
+        Option<Vec<SwapTiledLayout>>,
+        Option<Vec<SwapFloatingLayout>>,
+        Vec<(u32, HoldForCommand)>, // new terminal pids
+        Vec<(u32, HoldForCommand)>, // new floating pane pids
+        HashMap<RunPluginOrAlias, Vec<u32>>,
+        bool,  // retain_existing_terminal_panes
+        bool,  // retain_existing_plugin_panes
+        usize, // tab_index
+        ClientId,
+        Option<NotificationEnd>,
+    ),
     QueryTabNames(ClientId, Option<NotificationEnd>),
     NewTiledPluginPane(
         RunPluginOrAlias,
@@ -610,6 +637,8 @@ impl From<&ScreenInstruction> for ScreenContext {
             },
             ScreenInstruction::PreviousSwapLayout(..) => ScreenContext::PreviousSwapLayout,
             ScreenInstruction::NextSwapLayout(..) => ScreenContext::NextSwapLayout,
+            ScreenInstruction::OverrideLayout(..) => ScreenContext::OverrideLayout,
+            ScreenInstruction::OverrideLayoutComplete(..) => ScreenContext::OverrideLayoutComplete,
             ScreenInstruction::QueryTabNames(..) => ScreenContext::QueryTabNames,
             ScreenInstruction::NewTiledPluginPane(..) => ScreenContext::NewTiledPluginPane,
             ScreenInstruction::NewFloatingPluginPane(..) => ScreenContext::NewFloatingPluginPane,
@@ -3548,6 +3577,47 @@ fn get_default_editor() -> Option<PathBuf> {
     None
 }
 
+fn find_already_running_panes(
+    tiled_layout: &TiledPaneLayout,
+    floating_layouts: &[FloatingPaneLayout],
+    active_tab: &Tab,
+) -> (Vec<Option<Run>>, Vec<usize>) {
+    let mut layout_tiled_instructions = tiled_layout.extract_run_instructions();
+    let running_tiled_instructions: Vec<Option<Run>> = active_tab
+        .get_tiled_panes()
+        .map(|(_, pane)| pane.invoked_with().clone())
+        .collect();
+
+    let mut tiled_to_ignore = Vec::new();
+    for running_instr in running_tiled_instructions {
+        if let Some(pos) = layout_tiled_instructions
+            .iter()
+            .position(|layout_instr| layout_instr == &running_instr)
+        {
+            layout_tiled_instructions.remove(pos);
+            tiled_to_ignore.push(running_instr);
+        }
+    }
+
+    let mut running_floating_instructions: Vec<Option<Run>> = active_tab
+        .get_floating_panes()
+        .map(|(_, pane)| pane.invoked_with().clone())
+        .collect();
+
+    let mut floating_indices = Vec::new();
+    for (idx, floating_layout) in floating_layouts.iter().enumerate() {
+        if let Some(pos) = running_floating_instructions
+            .iter()
+            .position(|instr| instr == &floating_layout.run)
+        {
+            running_floating_instructions.remove(pos);
+            floating_indices.push(idx);
+        }
+    }
+
+    (tiled_to_ignore, floating_indices)
+}
+
 // The box is here in order to make the
 // NewClient enum smaller
 #[allow(clippy::boxed_local)]
@@ -5119,6 +5189,97 @@ pub(crate) fn screen_thread_main(
                 );
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
+            },
+            ScreenInstruction::OverrideLayout(
+                cwd,
+                default_shell,
+                mut new_tab_name,
+                mut tiled_layout,
+                mut floating_layouts,
+                swap_tiled_layouts,
+                swap_floating_layouts,
+                retain_existing_terminal_panes,
+                retain_existing_plugin_panes,
+                client_id,
+                _completion_tx,
+            ) => {
+                let active_tab = match screen.get_active_tab_mut(client_id) {
+                    Ok(tab) => tab,
+                    Err(_) => {
+                        log::error!(
+                            "OverrideLayout: No active tab for client_id {:?}",
+                            client_id
+                        );
+                        continue;
+                    },
+                };
+                if let Some(name) = new_tab_name.take() {
+                    active_tab.name = name;
+                }
+
+                let (tiled_to_ignore, floating_indices) =
+                    find_already_running_panes(&tiled_layout, &floating_layouts, active_tab);
+
+                for run_instruction in tiled_to_ignore {
+                    tiled_layout.ignore_run_instruction(run_instruction);
+                }
+
+                for idx in floating_indices {
+                    floating_layouts
+                        .get_mut(idx)
+                        .map(|f| f.already_running = true);
+                }
+
+                let tab_index = active_tab.index;
+                screen
+                    .bus
+                    .senders
+                    .send_to_plugin(PluginInstruction::OverrideLayout(
+                        cwd,
+                        default_shell,
+                        tiled_layout,
+                        floating_layouts,
+                        swap_tiled_layouts,
+                        swap_floating_layouts,
+                        retain_existing_terminal_panes,
+                        retain_existing_plugin_panes,
+                        tab_index,
+                        client_id,
+                        _completion_tx,
+                    ))?;
+            },
+            ScreenInstruction::OverrideLayoutComplete(
+                tiled_layout,
+                floating_layouts,
+                new_swap_tiled_layouts,
+                new_swap_floating_layouts,
+                new_terminal_pids,
+                new_floating_pane_pids,
+                plugin_ids,
+                retain_existing_terminal_panes,
+                retain_existing_plugin_panes,
+                tab_index,
+                client_id,
+                completion_tx,
+            ) => {
+                screen.tabs.get_mut(&tab_index).map(|t| {
+                    t.override_layout(
+                        tiled_layout,
+                        floating_layouts,
+                        new_swap_tiled_layouts,
+                        new_swap_floating_layouts,
+                        new_terminal_pids,
+                        new_floating_pane_pids,
+                        plugin_ids,
+                        retain_existing_terminal_panes,
+                        retain_existing_plugin_panes,
+                        client_id,
+                        None,
+                    )
+                });
+                screen.log_and_report_session_state()?;
+                let _ = screen.render(None);
+                drop(completion_tx); // action ends here, notify the action initiator
             },
             ScreenInstruction::QueryTabNames(client_id, completion_tx) => {
                 let tab_names = screen

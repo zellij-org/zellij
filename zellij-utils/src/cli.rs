@@ -933,6 +933,24 @@ pub enum CliAction {
     },
     PreviousSwapLayout,
     NextSwapLayout,
+    /// Override the layout of the active tab
+    OverrideLayout {
+        /// Path to the layout file
+        #[clap(value_parser)]
+        layout: PathBuf,
+
+        /// Default folder to look for layouts
+        #[clap(long, value_parser)]
+        layout_dir: Option<PathBuf>,
+
+        /// Retain existing terminal panes that do not fit in the layout (default: false)
+        #[clap(long, value_parser, takes_value(false), default_value("false"))]
+        retain_existing_terminal_panes: bool,
+
+        /// Retain existing plugin panes that do not fit with the layout default: false)
+        #[clap(long, value_parser, takes_value(false), default_value("false"))]
+        retain_existing_plugin_panes: bool,
+    },
     /// Query all tab names
     QueryTabNames,
     StartOrReloadPlugin {

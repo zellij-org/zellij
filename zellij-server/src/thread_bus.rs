@@ -143,6 +143,11 @@ impl ThreadSenders {
         // this is mostly used for the tests, see struct
         self.to_pty_writer.replace(new_pty_writer);
     }
+    #[allow(unused)]
+    pub fn replace_to_pty(&mut self, new_pty: SenderWithContext<PtyInstruction>) {
+        // this is mostly used for the tests, see struct
+        self.to_pty.replace(new_pty);
+    }
 
     #[allow(unused)]
     pub fn replace_to_plugin(&mut self, new_to_plugin: SenderWithContext<PluginInstruction>) {

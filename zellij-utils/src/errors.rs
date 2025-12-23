@@ -324,6 +324,8 @@ pub enum ScreenContext {
     ClearPaneFrameColorOverride,
     PreviousSwapLayout,
     NextSwapLayout,
+    OverrideLayout,
+    OverrideLayoutComplete,
     QueryTabNames,
     NewTiledPluginPane,
     StartOrReloadPluginPane,
@@ -405,6 +407,7 @@ pub enum PtyContext {
     UpdateActivePane,
     GoToTab,
     NewTab,
+    OverrideLayout,
     ClosePane,
     CloseTab,
     ReRunCommandInPane,
@@ -440,6 +443,7 @@ pub enum PluginContext {
     AddClient,
     RemoveClient,
     NewTab,
+    OverrideLayout,
     ApplyCachedEvents,
     ApplyCachedWorkerMessages,
     PostMessageToPluginWorker,
@@ -635,6 +639,9 @@ open an issue on GitHub:
 
     #[error("The plugin does not exist")]
     PluginDoesNotExist,
+
+    #[error("Ran out of room for spans")]
+    RanOutOfRoomForSpans,
 }
 
 #[cfg(not(target_family = "wasm"))]

@@ -39,7 +39,10 @@ use zellij_utils::{
         actions::Action,
         command::TerminalAction,
         keybinds::Keybinds,
-        layout::{FloatingPaneLayout, Layout, Run, RunPlugin, RunPluginOrAlias, TiledPaneLayout},
+        layout::{
+            FloatingPaneLayout, Layout, Run, RunPlugin, RunPluginOrAlias, SwapFloatingLayout,
+            SwapTiledLayout, TiledPaneLayout,
+        },
         plugins::PluginAliases,
     },
     ipc::ClientAttributes,
@@ -93,6 +96,19 @@ pub enum PluginInstruction {
         bool,                         // should change focus to new tab
         (ClientId, bool),             // bool -> is_web_client
         Option<NotificationEnd>,      // completion signal
+    ),
+    OverrideLayout(
+        Option<PathBuf>,        // cwd
+        Option<TerminalAction>, // default_shell
+        TiledPaneLayout,
+        Vec<FloatingPaneLayout>,
+        Option<Vec<SwapTiledLayout>>,
+        Option<Vec<SwapFloatingLayout>>,
+        bool,  // retain_existing_terminal_panes
+        bool,  // retain_existing_plugin_panes
+        usize, // tab_index
+        ClientId,
+        Option<NotificationEnd>,
     ),
     ApplyCachedEvents {
         plugin_ids: Vec<PluginId>,
@@ -201,6 +217,7 @@ impl From<&PluginInstruction> for PluginContext {
             PluginInstruction::AddClient(_) => PluginContext::AddClient,
             PluginInstruction::RemoveClient(_) => PluginContext::RemoveClient,
             PluginInstruction::NewTab(..) => PluginContext::NewTab,
+            PluginInstruction::OverrideLayout(..) => PluginContext::OverrideLayout,
             PluginInstruction::ApplyCachedEvents { .. } => PluginContext::ApplyCachedEvents,
             PluginInstruction::ApplyCachedWorkerMessages(..) => {
                 PluginContext::ApplyCachedWorkerMessages
@@ -538,18 +555,24 @@ pub(crate) fn plugin_thread_main(
                             .get_initial_cwd()
                             .or_else(|| cwd.clone());
                         let skip_cache = false;
-                        let (plugin_id, _client_id) = wasm_bridge.load_plugin(
+                        match wasm_bridge.load_plugin(
                             &run_plugin,
                             Some(tab_index),
                             size,
                             cwd,
                             skip_cache,
                             Some(client_id),
-                        )?;
-                        plugin_ids
-                            .entry(run_plugin_or_alias.clone())
-                            .or_default()
-                            .push(plugin_id);
+                        ) {
+                            Ok((plugin_id, _client_id)) => {
+                                plugin_ids
+                                    .entry(run_plugin_or_alias.clone())
+                                    .or_default()
+                                    .push(plugin_id);
+                            },
+                            Err(e) => {
+                                log::error!("Failed to load plugin: {}", e);
+                            },
+                        }
                     }
                 }
                 drop(bus.senders.send_to_pty(PtyInstruction::NewTab(
@@ -563,6 +586,96 @@ pub(crate) fn plugin_thread_main(
                     block_on_first_terminal,
                     should_change_focus_to_new_tab,
                     (client_id, is_web_client),
+                    completion_tx,
+                )));
+            },
+            PluginInstruction::OverrideLayout(
+                cwd,
+                default_shell,
+                mut tiled_layout,
+                mut floating_layouts,
+                swap_tiled_layouts,
+                swap_floating_layouts,
+                retain_existing_terminal_panes,
+                retain_existing_plugin_panes,
+                tab_index,
+                client_id,
+                completion_tx,
+            ) => {
+                // Prefer connected clients to avoid opening plugins in background for CLI clients
+                let client_id = if wasm_bridge.client_is_connected(&client_id) {
+                    client_id
+                } else if let Some(first_client_id) = wasm_bridge.get_first_client_id() {
+                    first_client_id
+                } else {
+                    client_id
+                };
+
+                let mut plugin_ids: HashMap<RunPluginOrAlias, Vec<PluginId>> = HashMap::new();
+
+                // Populate plugin aliases in layouts
+                tiled_layout.populate_plugin_aliases_in_layout(&plugin_aliases);
+                floating_layouts.iter_mut().for_each(|f| {
+                    f.run
+                        .as_mut()
+                        .map(|f| f.populate_run_plugin_if_needed(&plugin_aliases));
+                });
+
+                // Extract run instructions from tiled layout
+                let extracted_run_instructions = tiled_layout.extract_run_instructions();
+
+                // Extract run instructions from floating layouts (excluding already_running)
+                let extracted_floating_plugins: Vec<Option<Run>> = floating_layouts
+                    .iter()
+                    .filter(|f| !f.already_running)
+                    .map(|f| f.run.clone())
+                    .collect();
+
+                // Combine all run instructions
+                let mut all_run_instructions = extracted_run_instructions;
+                all_run_instructions.extend(extracted_floating_plugins);
+
+                // Load plugins for all Run::Plugin instructions
+                let size = Size::default();
+                for run_instruction in all_run_instructions {
+                    if let Some(Run::Plugin(run_plugin_or_alias)) = run_instruction {
+                        let run_plugin = run_plugin_or_alias.get_run_plugin();
+                        let cwd = run_plugin_or_alias.get_initial_cwd();
+                        let skip_cache = false;
+                        match wasm_bridge.load_plugin(
+                            &run_plugin,
+                            Some(tab_index),
+                            size,
+                            cwd,
+                            skip_cache,
+                            Some(client_id),
+                        ) {
+                            Ok((plugin_id, _client_id)) => {
+                                plugin_ids
+                                    .entry(run_plugin_or_alias.clone())
+                                    .or_default()
+                                    .push(plugin_id);
+                            },
+                            Err(e) => {
+                                log::error!("Failed to load plugin: {}", e);
+                            },
+                        }
+                    }
+                }
+
+                // Send to pty thread
+                drop(bus.senders.send_to_pty(PtyInstruction::OverrideLayout(
+                    cwd,
+                    default_shell,
+                    tiled_layout,
+                    floating_layouts,
+                    swap_tiled_layouts,
+                    swap_floating_layouts,
+                    retain_existing_terminal_panes,
+                    retain_existing_plugin_panes,
+                    tab_index,
+                    plugin_ids,
+                    client_id,
                     completion_tx,
                 )));
             },

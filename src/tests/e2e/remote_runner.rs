@@ -419,6 +419,19 @@ impl RemoteTerminal {
         channel.flush().unwrap();
         std::thread::sleep(std::time::Duration::from_secs(1)); // wait until Zellij stops parsing startup ANSI codes from the terminal STDIN
     }
+    pub fn run_zellij_action(&mut self, action_and_arguments: &str) {
+        let mut channel = self.channel.lock().unwrap();
+        channel
+            .write_all(
+                format!(
+                    "{} action {}",
+                    ZELLIJ_EXECUTABLE_LOCATION, action_and_arguments
+                )
+                .as_bytes(),
+            )
+            .unwrap();
+        channel.flush().unwrap();
+    }
     pub fn send_command_through_the_cli(&mut self, command: &str) {
         let mut channel = self.channel.lock().unwrap();
         channel

@@ -162,6 +162,16 @@ message NewTabPayload {
   optional UnblockCondition first_pane_unblock_condition = 9;
 }
 
+message OverrideLayoutPayload {
+  optional TiledPaneLayout tiled_layout = 1;
+  repeated FloatingPaneLayout floating_layouts = 2;
+  repeated SwapTiledLayout swap_tiled_layouts = 3;
+  repeated SwapFloatingLayout swap_floating_layouts = 4;
+  optional string tab_name = 5;
+  bool retain_existing_terminal_panes = 10;
+  bool retain_existing_plugin_panes = 11;
+}
+
 message Action {
   ActionName name = 1;
   oneof optional_payload {
@@ -213,6 +223,7 @@ message Action {
     NewBlockingPanePayload new_blocking_pane_payload = 50;
     NewTabPayload new_tab_payload = 51;
     NewInPlacePanePayload new_in_place_pane_payload = 52;
+    OverrideLayoutPayload override_layout_payload = 53;
   }
 }
 
@@ -429,6 +440,7 @@ enum ActionName {
     SwitchSession = 90;
     NewBlockingPane = 91;
     NewInPlacePane = 92;
+    OverrideLayout = 93;
 }
 
 message Position {

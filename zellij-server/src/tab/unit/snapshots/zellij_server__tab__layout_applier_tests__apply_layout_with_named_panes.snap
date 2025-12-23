@@ -1,0 +1,32 @@
+---
+source: zellij-server/src/tab/./unit/layout_applier_tests.rs
+expression: "take_pane_state_snapshot(&tiled_panes, &floating_panes, &focus_pane_id,\n&viewport, &display_area,)"
+---
+VIEWPORT: x=0, y=0, cols=100, rows=50
+DISPLAY: cols=100, rows=50
+FOCUS: None
+
+TILED PANES (3)
+  Terminal(1):
+    geom: x=0, y=0, cols=100, rows=17
+    logical_position: 0
+    run: None
+    selectable: true
+    title: editor
+    borderless: false
+
+  Terminal(2):
+    geom: x=0, y=17, cols=100, rows=17
+    logical_position: 1
+    run: None
+    selectable: true
+    title: terminal
+    borderless: false
+
+  Terminal(3):
+    geom: x=0, y=34, cols=100, rows=16
+    logical_position: 2
+    run: None
+    selectable: true
+    title: logs
+    borderless: false

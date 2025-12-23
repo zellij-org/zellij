@@ -37,6 +37,7 @@ pub use super::generated_api::api::{
         NewPluginPanePayload,
         NewTabPayload,
         NewTiledPanePayload,
+        OverrideLayoutPayload,
         PaneId as ProtobufPaneId,
         PaneIdAndShouldFloat,
         PaneRun as ProtobufPaneRun,
@@ -719,6 +720,55 @@ impl TryFrom<ProtobufAction> for Action {
             Some(ProtobufActionName::NextSwapLayout) => match protobuf_action.optional_payload {
                 Some(_) => Err("NextSwapLayout should not have a payload"),
                 None => Ok(Action::NextSwapLayout),
+            },
+            Some(ProtobufActionName::OverrideLayout) => match protobuf_action.optional_payload {
+                Some(OptionalPayload::OverrideLayoutPayload(payload)) => {
+                    let tiled_layout = payload.tiled_layout.map(|l| l.try_into()).transpose()?;
+
+                    let floating_layouts = payload
+                        .floating_layouts
+                        .into_iter()
+                        .map(|l| l.try_into())
+                        .collect::<Result<Vec<_>, _>>()?;
+
+                    let swap_tiled_layouts = if payload.swap_tiled_layouts.is_empty() {
+                        None
+                    } else {
+                        Some(
+                            payload
+                                .swap_tiled_layouts
+                                .into_iter()
+                                .map(|l| l.try_into())
+                                .collect::<Result<Vec<_>, _>>()?,
+                        )
+                    };
+
+                    let swap_floating_layouts = if payload.swap_floating_layouts.is_empty() {
+                        None
+                    } else {
+                        Some(
+                            payload
+                                .swap_floating_layouts
+                                .into_iter()
+                                .map(|l| l.try_into())
+                                .collect::<Result<Vec<_>, _>>()?,
+                        )
+                    };
+
+                    let tab_name = payload.tab_name.filter(|s| !s.is_empty());
+
+                    Ok(Action::OverrideLayout {
+                        tiled_layout,
+                        floating_layouts,
+                        swap_tiled_layouts,
+                        swap_floating_layouts,
+                        tab_name,
+                        retain_existing_terminal_panes: payload.retain_existing_terminal_panes,
+                        retain_existing_plugin_panes: payload.retain_existing_plugin_panes,
+                    })
+                },
+                Some(_) => Err("Mismatched payload for OverrideLayout"),
+                None => Err("Missing payload for OverrideLayout"),
             },
             Some(ProtobufActionName::QueryTabNames) => match protobuf_action.optional_payload {
                 Some(_) => Err("QueryTabNames should not have a payload"),
@@ -1505,6 +1555,57 @@ impl TryFrom<Action> for ProtobufAction {
                 name: ProtobufActionName::NextSwapLayout as i32,
                 optional_payload: None,
             }),
+            Action::OverrideLayout {
+                tiled_layout,
+                floating_layouts,
+                swap_tiled_layouts,
+                swap_floating_layouts,
+                tab_name,
+                retain_existing_terminal_panes,
+                retain_existing_plugin_panes,
+            } => {
+                let protobuf_tiled_layout = tiled_layout.map(|l| l.try_into()).transpose()?;
+
+                let protobuf_floating_layouts = floating_layouts
+                    .into_iter()
+                    .map(|l| l.try_into())
+                    .collect::<Result<Vec<_>, _>>()?;
+
+                let protobuf_swap_tiled_layouts = swap_tiled_layouts
+                    .map(|layouts| {
+                        layouts
+                            .into_iter()
+                            .map(|l| l.try_into())
+                            .collect::<Result<Vec<_>, _>>()
+                    })
+                    .transpose()?
+                    .unwrap_or_default();
+
+                let protobuf_swap_floating_layouts = swap_floating_layouts
+                    .map(|layouts| {
+                        layouts
+                            .into_iter()
+                            .map(|l| l.try_into())
+                            .collect::<Result<Vec<_>, _>>()
+                    })
+                    .transpose()?
+                    .unwrap_or_default();
+
+                Ok(ProtobufAction {
+                    name: ProtobufActionName::OverrideLayout as i32,
+                    optional_payload: Some(OptionalPayload::OverrideLayoutPayload(
+                        OverrideLayoutPayload {
+                            tiled_layout: protobuf_tiled_layout,
+                            floating_layouts: protobuf_floating_layouts,
+                            swap_tiled_layouts: protobuf_swap_tiled_layouts,
+                            swap_floating_layouts: protobuf_swap_floating_layouts,
+                            tab_name: tab_name.clone(),
+                            retain_existing_terminal_panes,
+                            retain_existing_plugin_panes,
+                        },
+                    )),
+                })
+            },
             Action::QueryTabNames => Ok(ProtobufAction {
                 name: ProtobufActionName::QueryTabNames as i32,
                 optional_payload: None,

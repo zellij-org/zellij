@@ -15,7 +15,7 @@ use zellij_utils::{
     data::Style,
     input::{config::Config, options::Options},
     ipc::{ClientToServerMsg, ExitReason, ServerToClientMsg},
-    sessions::{generate_unique_session_name, session_exists},
+    sessions::generate_unique_session_name,
     setup::Setup,
 };
 

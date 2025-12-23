@@ -349,6 +349,16 @@ pub enum Action {
     ToggleMouseMode,
     PreviousSwapLayout,
     NextSwapLayout,
+    /// Override the layout of the active tab
+    OverrideLayout {
+        tiled_layout: Option<TiledPaneLayout>,
+        floating_layouts: Vec<FloatingPaneLayout>,
+        swap_tiled_layouts: Option<Vec<SwapTiledLayout>>,
+        swap_floating_layouts: Option<Vec<SwapFloatingLayout>>,
+        tab_name: Option<String>,
+        retain_existing_terminal_panes: bool,
+        retain_existing_plugin_panes: bool,
+    },
     /// Query all tab names
     QueryTabNames,
     /// Open a new tiled (embedded, non-floating) plugin pane
@@ -473,6 +483,7 @@ impl Action {
             (Action::NewTab { .. }, Action::NewTab { .. }) => true,
             (Action::LaunchOrFocusPlugin { .. }, Action::LaunchOrFocusPlugin { .. }) => true,
             (Action::LaunchPlugin { .. }, Action::LaunchPlugin { .. }) => true,
+            (Action::OverrideLayout { .. }, Action::OverrideLayout { .. }) => true,
             _ => self == other_action,
         }
     }
@@ -973,6 +984,90 @@ impl Action {
             },
             CliAction::PreviousSwapLayout => Ok(vec![Action::PreviousSwapLayout]),
             CliAction::NextSwapLayout => Ok(vec![Action::NextSwapLayout]),
+            CliAction::OverrideLayout {
+                layout,
+                layout_dir,
+                retain_existing_terminal_panes,
+                retain_existing_plugin_panes,
+            } => {
+                // Determine layout_dir: CLI arg > config > default
+                let layout_dir = layout_dir
+                    .or_else(|| config.and_then(|c| c.options.layout_dir))
+                    .or_else(|| get_layout_dir(find_default_config_dir()));
+
+                // Load layout from URL or file path
+                let (path_to_raw_layout, raw_layout, swap_layouts) = if let Some(layout_url) =
+                    layout.to_str().and_then(|l| {
+                        if l.starts_with("http://") || l.starts_with("https://") {
+                            Some(l)
+                        } else {
+                            None
+                        }
+                    }) {
+                    (
+                        layout_url.to_owned(),
+                        Layout::stringified_from_url(layout_url)
+                            .map_err(|e| format!("Failed to load layout from URL: {}", e))?,
+                        None,
+                    )
+                } else {
+                    Layout::stringified_from_path_or_default(Some(&layout), layout_dir)
+                        .map_err(|e| format!("Failed to load layout: {}", e))?
+                };
+
+                // Parse KDL layout
+                let layout = Layout::from_str(
+                    &raw_layout,
+                    path_to_raw_layout,
+                    swap_layouts.as_ref().map(|(f, p)| (f.as_str(), p.as_str())),
+                    None, // cwd
+                )
+                .map_err(|e| {
+                    let stringified_error = match e {
+                        ConfigError::KdlError(kdl_error) => {
+                            let error = kdl_error.add_src(
+                                layout.as_path().as_os_str().to_string_lossy().to_string(),
+                                String::from(raw_layout),
+                            );
+                            let report: Report = error.into();
+                            format!("{:?}", report)
+                        },
+                        ConfigError::KdlDeserializationError(kdl_error) => {
+                            let error_message = kdl_error.to_string();
+                            format!("Failed to deserialize KDL layout: {}", error_message)
+                        },
+                        e => format!("{}", e),
+                    };
+                    stringified_error
+                })?;
+
+                // Extract layout from first tab or use default
+                let swap_tiled_layouts = Some(layout.swap_tiled_layouts.clone());
+                let swap_floating_layouts = Some(layout.swap_floating_layouts.clone());
+
+                if layout.tabs.len() > 1 {
+                    return Err(format!("This layout has {} tabs, overriding only supports layouts with 0 or 1 tabs.", layout.tabs.len()));
+                }
+
+                let (name, tiled_layout, floating_panes_layout) =
+                    if let Some(first_tab) = layout.tabs.get(0).take() {
+                        first_tab.clone()
+                    } else {
+                        let name = None;
+                        let (tiled_panes, floating_panes) = layout.new_tab();
+                        (name, tiled_panes, floating_panes)
+                    };
+
+                Ok(vec![Action::OverrideLayout {
+                    tiled_layout: Some(tiled_layout),
+                    floating_layouts: floating_panes_layout,
+                    swap_tiled_layouts,
+                    swap_floating_layouts,
+                    tab_name: name,
+                    retain_existing_terminal_panes,
+                    retain_existing_plugin_panes,
+                }])
+            },
             CliAction::QueryTabNames => Ok(vec![Action::QueryTabNames]),
             CliAction::StartOrReloadPlugin { url, configuration } => {
                 let current_dir = get_current_dir();
