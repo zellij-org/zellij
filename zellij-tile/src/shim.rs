@@ -10,9 +10,9 @@ use zellij_utils::input::actions::Action;
 pub use zellij_utils::plugin_api;
 use zellij_utils::plugin_api::event::ProtobufPaneScrollbackResponse;
 use zellij_utils::plugin_api::plugin_command::{
-    CreateTokenResponse, ListTokensResponse, ProtobufGetPanePidResponse, ProtobufPluginCommand,
-    ProtobufSaveLayoutResponse, RenameWebTokenResponse, RevokeAllWebTokensResponse,
-    RevokeTokenResponse,
+    CreateTokenResponse, ListTokensResponse, ProtobufDeleteLayoutResponse,
+    ProtobufGetPanePidResponse, ProtobufPluginCommand, ProtobufSaveLayoutResponse,
+    RenameWebTokenResponse, RevokeAllWebTokensResponse, RevokeTokenResponse,
 };
 use zellij_utils::plugin_api::plugin_ids::{ProtobufPluginIds, ProtobufZellijVersion};
 
@@ -1228,6 +1228,60 @@ pub fn save_layout<S: AsRef<str>>(layout_name: S, layout_kdl: S, overwrite: bool
     match response {
         SaveLayoutResponse::Ok(_) => Ok(()),
         SaveLayoutResponse::Err(error_msg) => Err(error_msg),
+    }
+}
+
+/// Delete a layout from the user's layout directory.
+///
+/// # Arguments
+///
+/// * `layout_name` - The name of the layout file to delete (without the `.kdl` extension).
+///                   Layout names are sanitized server-side to prevent directory traversal.
+///
+/// # Returns
+///
+/// * `Ok(())` - The layout was successfully deleted
+/// * `Err(String)` - An error occurred with a descriptive message (e.g., file not found, permission denied)
+///
+/// # Permissions
+///
+/// Requires the `ChangeApplicationState` permission.
+///
+/// # Examples
+///
+/// ```no_run
+/// use zellij_tile::prelude::*;
+///
+/// // Delete a layout named "my-layout"
+/// match delete_layout("my-layout") {
+///     Ok(_) => eprintln!("Layout deleted successfully"),
+///     Err(e) => eprintln!("Failed to delete layout: {}", e),
+/// }
+/// ```
+pub fn delete_layout<S: AsRef<str>>(layout_name: S) -> Result<(), String> {
+    let plugin_command = PluginCommand::DeleteLayout {
+        layout_name: layout_name.as_ref().to_owned(),
+    };
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+
+    // Read response from stdin
+    let response_bytes =
+        bytes_from_stdin().map_err(|e| format!("Failed to read response from stdin: {:?}", e))?;
+
+    // Decode protobuf response
+    let protobuf_response = ProtobufDeleteLayoutResponse::decode(response_bytes.as_slice())
+        .map_err(|e| format!("Failed to decode protobuf response: {}", e))?;
+
+    // Convert to Rust type
+    let response = DeleteLayoutResponse::try_from(protobuf_response)
+        .map_err(|e| format!("Failed to convert protobuf response: {}", e))?;
+
+    // Convert Result enum to actual Result type
+    match response {
+        DeleteLayoutResponse::Ok(_) => Ok(()),
+        DeleteLayoutResponse::Err(error_msg) => Err(error_msg),
     }
 }
 

@@ -21,7 +21,8 @@ pub use super::generated_api::api::{
         MovePayload, NewPluginArgs as ProtobufNewPluginArgs, NewTabPayload,
         NewTabsWithLayoutInfoPayload, OverrideLayoutPayload, SaveLayoutPayload,
         SaveLayoutResponse as ProtobufSaveLayoutResponse, save_layout_response,
-        OpenCommandPaneFloatingNearPluginPayload,
+        DeleteLayoutPayload, DeleteLayoutResponse as ProtobufDeleteLayoutResponse,
+        delete_layout_response, OpenCommandPaneFloatingNearPluginPayload,
         OpenCommandPaneInPlaceOfPluginPayload, OpenCommandPaneNearPluginPayload,
         OpenCommandPanePayload, OpenFileFloatingNearPluginPayload, OpenFileInPlaceOfPluginPayload,
         OpenFileNearPluginPayload, OpenFilePayload, OpenTerminalFloatingNearPluginPayload,
@@ -46,9 +47,9 @@ pub use super::generated_api::api::{
 };
 
 use crate::data::{
-    ConnectToSession, FloatingPaneCoordinates, GetPanePidResponse, HttpVerb, InputMode,
-    KeyWithModifier, MessageToPlugin, NewPluginArgs, PaneId, PermissionType, PluginCommand,
-    SaveLayoutResponse,
+    ConnectToSession, DeleteLayoutResponse, FloatingPaneCoordinates, GetPanePidResponse,
+    HttpVerb, InputMode, KeyWithModifier, MessageToPlugin, NewPluginArgs, PaneId, PermissionType,
+    PluginCommand, SaveLayoutResponse,
 };
 use crate::input::actions::Action;
 use crate::input::layout::SplitSize;
@@ -249,6 +250,32 @@ impl From<SaveLayoutResponse> for ProtobufSaveLayoutResponse {
             },
             SaveLayoutResponse::Err(error) => ProtobufSaveLayoutResponse {
                 result: Some(save_layout_response::Result::Error(error)),
+            },
+        }
+    }
+}
+
+impl TryFrom<ProtobufDeleteLayoutResponse> for DeleteLayoutResponse {
+    type Error = &'static str;
+    fn try_from(protobuf_response: ProtobufDeleteLayoutResponse) -> Result<Self, &'static str> {
+        match protobuf_response.result {
+            Some(delete_layout_response::Result::Success(_)) => Ok(DeleteLayoutResponse::Ok(())),
+            Some(delete_layout_response::Result::Error(error)) => {
+                Ok(DeleteLayoutResponse::Err(error))
+            },
+            None => Err("Empty DeleteLayoutResponse"),
+        }
+    }
+}
+
+impl From<DeleteLayoutResponse> for ProtobufDeleteLayoutResponse {
+    fn from(response: DeleteLayoutResponse) -> Self {
+        match response {
+            DeleteLayoutResponse::Ok(_) => ProtobufDeleteLayoutResponse {
+                result: Some(delete_layout_response::Result::Success(true)),
+            },
+            DeleteLayoutResponse::Err(error) => ProtobufDeleteLayoutResponse {
+                result: Some(delete_layout_response::Result::Error(error)),
             },
         }
     }
@@ -1272,6 +1299,14 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                     })
                 },
                 _ => Err("Mismatched payload for SaveLayout"),
+            },
+            Some(CommandName::DeleteLayout) => match protobuf_plugin_command.payload {
+                Some(Payload::DeleteLayoutPayload(delete_layout_payload)) => {
+                    Ok(PluginCommand::DeleteLayout {
+                        layout_name: delete_layout_payload.layout_name,
+                    })
+                },
+                _ => Err("Mismatched payload for DeleteLayout"),
             },
             Some(CommandName::MovePaneWithPaneId) => match protobuf_plugin_command.payload {
                 Some(Payload::MovePaneWithPaneIdPayload(move_pane_with_pane_id_payload)) => {
@@ -2632,6 +2667,12 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     layout_name,
                     layout_kdl,
                     overwrite,
+                })),
+            }),
+            PluginCommand::DeleteLayout { layout_name } => Ok(ProtobufPluginCommand {
+                name: CommandName::DeleteLayout as i32,
+                payload: Some(Payload::DeleteLayoutPayload(DeleteLayoutPayload {
+                    layout_name,
                 })),
             }),
             PluginCommand::MovePaneWithPaneId(pane_id) => Ok(ProtobufPluginCommand {

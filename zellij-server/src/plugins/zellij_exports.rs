@@ -20,10 +20,10 @@ use std::{
 };
 use wasmi::{Caller, Linker};
 use zellij_utils::data::{
-    CommandType, ConnectToSession, Event, FloatingPaneCoordinates, GetPanePidResponse, HttpVerb,
-    KeyWithModifier, LayoutInfo, MessageToPlugin, NewPanePlacement, OriginatingPlugin,
-    PaneScrollbackResponse, PermissionStatus, PermissionType, PluginPermission,
-    SaveLayoutResponse,
+    CommandType, ConnectToSession, DeleteLayoutResponse, Event, FloatingPaneCoordinates,
+    GetPanePidResponse, HttpVerb, KeyWithModifier, LayoutInfo, MessageToPlugin,
+    NewPanePlacement, OriginatingPlugin, PaneScrollbackResponse, PermissionStatus,
+    PermissionType, PluginPermission, SaveLayoutResponse,
 };
 use zellij_utils::input::permission::PermissionCache;
 use zellij_utils::ipc::{ClientToServerMsg, IpcSenderWithContext};
@@ -53,7 +53,8 @@ use zellij_utils::{
     plugin_api::{
         event::ProtobufPaneScrollbackResponse,
         plugin_command::{
-            ProtobufGetPanePidResponse, ProtobufPluginCommand, ProtobufSaveLayoutResponse,
+            ProtobufDeleteLayoutResponse, ProtobufGetPanePidResponse, ProtobufPluginCommand,
+            ProtobufSaveLayoutResponse,
         },
         plugin_ids::{ProtobufPluginIds, ProtobufZellijVersion},
     },
@@ -205,6 +206,7 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                         layout_kdl,
                         overwrite,
                     } => save_layout(env, layout_name, layout_kdl, overwrite),
+                    PluginCommand::DeleteLayout { layout_name } => delete_layout(env, layout_name),
                     PluginCommand::NewTab { name, cwd } => new_tab(env, name, cwd),
                     PluginCommand::GoToNextTab => go_to_next_tab(env),
                     PluginCommand::GoToPreviousTab => go_to_previous_tab(env),
@@ -2585,6 +2587,46 @@ fn try_save_layout(
     Ok(())
 }
 
+fn delete_layout(env: &PluginEnv, layout_name: String) {
+    let err_context = || format!("Failed to delete layout '{}'", layout_name);
+
+    let response = try_delete_layout(env, &layout_name)
+        .map(|_| DeleteLayoutResponse::Ok(()))
+        .unwrap_or_else(|e| DeleteLayoutResponse::Err(e));
+
+    let protobuf_response: ProtobufDeleteLayoutResponse = response.into();
+    let serialized = protobuf_response.encode_to_vec();
+    wasi_write_object(env, &serialized)
+        .with_context(err_context)
+        .non_fatal();
+}
+
+fn try_delete_layout(env: &PluginEnv, layout_name: &str) -> Result<(), String> {
+    // Sanitize the layout name to prevent directory traversal
+    let safe_name = sanitize_layout_name(layout_name)
+        .map_err(|e| format!("Invalid layout name: {}", e))?;
+
+    // Get the layout directory from PluginEnv
+    let layout_dir = env
+        .layout_dir
+        .as_ref()
+        .ok_or_else(|| "Layout directory not configured".to_string())?;
+
+    // Construct the full file path
+    let file_path = layout_dir.join(format!("{}.kdl", safe_name));
+
+    // Check if the file exists
+    if !file_path.exists() {
+        return Err(format!("Layout '{}' not found", safe_name));
+    }
+
+    // Delete the file
+    std::fs::remove_file(&file_path)
+        .map_err(|e| format!("Failed to delete layout file: {}", e))?;
+
+    Ok(())
+}
+
 /// Sanitize layout name to prevent path traversal and invalid filenames
 /// Returns the sanitized name or an error message
 fn sanitize_layout_name(name: &str) -> Result<String, String> {
@@ -3277,7 +3319,8 @@ fn check_command_permission(
         | PluginCommand::SendSigintToPaneId(..)
         | PluginCommand::SendSigkillToPaneId(..)
         | PluginCommand::OverrideLayout(..)
-        | PluginCommand::SaveLayout { .. } => PermissionType::ChangeApplicationState,
+        | PluginCommand::SaveLayout { .. }
+        | PluginCommand::DeleteLayout { .. } => PermissionType::ChangeApplicationState,
         PluginCommand::UnblockCliPipeInput(..)
         | PluginCommand::BlockCliPipeInput(..)
         | PluginCommand::CliPipeOutput(..) => PermissionType::ReadCliPipes,

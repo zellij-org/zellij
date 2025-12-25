@@ -168,6 +168,7 @@ enum CommandName {
   GetPanePid = 173;
   OverrideLayout = 174;
   SaveLayout = 175;
+  DeleteLayout = 176;
 }
 
 message PluginCommand {
@@ -284,6 +285,7 @@ message PluginCommand {
     GetPanePidPayload get_pane_pid_payload = 123;
     OverrideLayoutPayload override_layout_payload = 124;
     SaveLayoutPayload save_layout_payload = 125;
+    DeleteLayoutPayload delete_layout_payload = 126;
   }
 }
 
@@ -767,6 +769,13 @@ message SaveLayoutResponse {
   }
 }
 
+message DeleteLayoutResponse {
+  oneof result {
+    bool success = 1;
+    string error = 2;
+  }
+}
+
 message OverrideLayoutPayload {
   event.LayoutInfo layout_info = 1;
   repeated ContextItem context = 2;
@@ -778,4 +787,8 @@ message SaveLayoutPayload {
   string layout_name = 1;
   string layout_kdl = 2;
   bool overwrite = 3;
+}
+
+message DeleteLayoutPayload {
+  string layout_name = 1;
 }

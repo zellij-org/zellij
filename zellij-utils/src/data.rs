@@ -2315,6 +2315,12 @@ pub enum SaveLayoutResponse {
     Err(String),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DeleteLayoutResponse {
+    Ok(()),
+    Err(String),
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SelectedText {
     pub start: Position,
@@ -3132,5 +3138,8 @@ pub enum PluginCommand {
         layout_name: String,
         layout_kdl: String,
         overwrite: bool,
+    },
+    DeleteLayout {
+        layout_name: String,
     },
 }
