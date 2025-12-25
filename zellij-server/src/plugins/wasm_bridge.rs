@@ -1933,6 +1933,7 @@ fn check_event_permission(
         | Event::FailedToWriteConfigToDisk(..)
         | Event::CommandPaneReRun(..)
         | Event::CwdChanged(..)
+        | Event::AvailableLayoutInfo(..)
         | Event::InputReceived => PermissionType::ReadApplicationState,
         Event::WebServerStatus(..) => PermissionType::StartWebServer,
         Event::PaneRenderReport(..) => PermissionType::ReadPaneContents,

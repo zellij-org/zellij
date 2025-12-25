@@ -1202,10 +1202,10 @@ pub fn get_pane_pid(pane_id: PaneId) -> Result<i32, String> {
 /// # Returns
 /// * `Ok(())` - Layout was successfully validated and saved
 /// * `Err(String)` - Error message (parse error, I/O error, file exists, etc.)
-pub fn save_layout(layout_name: String, layout_kdl: String, overwrite: bool) -> Result<(), String> {
+pub fn save_layout<S: AsRef<str>>(layout_name: S, layout_kdl: S, overwrite: bool) -> Result<(), String> {
     let plugin_command = PluginCommand::SaveLayout {
-        layout_name,
-        layout_kdl,
+        layout_name: layout_name.as_ref().to_owned(),
+        layout_kdl: layout_kdl.as_ref().to_owned(),
         overwrite,
     };
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
