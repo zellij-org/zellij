@@ -1049,14 +1049,13 @@ impl Action {
                     return Err(format!("This layout has {} tabs, overriding only supports layouts with 0 or 1 tabs.", layout.tabs.len()));
                 }
 
-                let (name, tiled_layout, floating_panes_layout) =
-                    if let Some(first_tab) = layout.tabs.get(0).take() {
-                        first_tab.clone()
-                    } else {
-                        let name = None;
-                        let (tiled_panes, floating_panes) = layout.new_tab();
-                        (name, tiled_panes, floating_panes)
-                    };
+                let (name, tiled_layout, floating_panes_layout) = if let Some(first_tab) = layout.tabs.get(0).take() {
+                    first_tab.clone()
+                } else {
+                    let name = None;
+                    let (tiled_panes, floating_panes) = layout.new_tab();
+                    (name, tiled_panes, floating_panes)
+                };
 
                 Ok(vec![Action::OverrideLayout {
                     tiled_layout: Some(tiled_layout),

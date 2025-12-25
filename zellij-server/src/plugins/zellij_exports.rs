@@ -184,6 +184,18 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::NewTabsWithLayoutInfo(layout_info) => {
                         new_tabs_with_layout_info(env, layout_info)?
                     },
+                    PluginCommand::OverrideLayout(
+                        layout_info,
+                        retain_existing_terminal_panes,
+                        retain_existing_plugin_panes,
+                        context,
+                    ) => override_layout(
+                        env,
+                        layout_info,
+                        retain_existing_terminal_panes,
+                        retain_existing_plugin_panes,
+                        context,
+                    )?,
                     PluginCommand::NewTab { name, cwd } => new_tab(env, name, cwd),
                     PluginCommand::GoToNextTab => go_to_next_tab(env),
                     PluginCommand::GoToPreviousTab => go_to_previous_tab(env),
@@ -2935,6 +2947,46 @@ fn replace_pane_with_existing_pane(
         ));
 }
 
+fn override_layout(
+    env: &mut PluginEnv,
+    layout_info: LayoutInfo,
+    retain_existing_terminal_panes: bool,
+    retain_existing_plugin_panes: bool,
+    context: BTreeMap<String, String>,
+) -> Result<()> {
+    let layout = Layout::from_layout_info(&env.layout_dir, layout_info)
+        .map_err(|e| anyhow!("Failed to parse layout: {:?}", e))?;
+
+    // Extract layout from first tab or use default
+    let swap_tiled_layouts = Some(layout.swap_tiled_layouts.clone());
+    let swap_floating_layouts = Some(layout.swap_floating_layouts.clone());
+
+    if layout.tabs.len() > 1 {
+        log::error!("This layout has {} tabs, overriding only supports layouts with 0 or 1 tabs.", layout.tabs.len());
+        return Ok(());
+    }
+
+    let (name, tiled_layout, floating_panes_layout) = if let Some(first_tab) = layout.tabs.get(0).take() {
+        first_tab.clone()
+    } else {
+        let name = None;
+        let (tiled_panes, floating_panes) = layout.new_tab();
+        (name, tiled_panes, floating_panes)
+    };
+
+    let action = Action::OverrideLayout {
+        tiled_layout: Some(tiled_layout),
+        floating_layouts: floating_panes_layout,
+        swap_tiled_layouts,
+        swap_floating_layouts,
+        tab_name: name,
+        retain_existing_terminal_panes,
+        retain_existing_plugin_panes,
+    };
+    run_action(env, action, context);
+    Ok(())
+}
+
 // Custom panic handler for plugins.
 //
 // This is called when a panic occurs in a plugin. Since most panics will likely originate in the
@@ -3105,7 +3157,8 @@ fn check_command_permission(
         | PluginCommand::ReplacePaneWithExistingPane(..)
         | PluginCommand::KillSessions(..)
         | PluginCommand::SendSigintToPaneId(..)
-        | PluginCommand::SendSigkillToPaneId(..) => PermissionType::ChangeApplicationState,
+        | PluginCommand::SendSigkillToPaneId(..)
+        | PluginCommand::OverrideLayout(..) => PermissionType::ChangeApplicationState,
         PluginCommand::UnblockCliPipeInput(..)
         | PluginCommand::BlockCliPipeInput(..)
         | PluginCommand::CliPipeOutput(..) => PermissionType::ReadCliPipes,

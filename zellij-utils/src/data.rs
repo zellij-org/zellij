@@ -2,7 +2,7 @@ use crate::home::default_layout_dir;
 use crate::input::actions::{Action, RunCommandAction};
 use crate::input::config::ConversionError;
 use crate::input::keybinds::Keybinds;
-use crate::input::layout::{RunPlugin, RunPluginOrAlias, SplitSize};
+use crate::input::layout::{Layout, RunPlugin, RunPluginOrAlias, SplitSize};
 use crate::pane_size::PaneGeom;
 use crate::position::Position;
 use crate::shared::{colors as default_colors, eightbit_to_rgb};
@@ -1717,16 +1717,208 @@ impl From<RunPlugin> for PluginInfo {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub enum LayoutInfo {
     BuiltIn(String),
-    File(String),
+    File(String, LayoutMetadata),
     Url(String),
     Stringified(String),
+}
+
+impl AsRef<LayoutInfo> for LayoutInfo {
+    fn as_ref(&self) -> &LayoutInfo {
+        self
+    }
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct LayoutMetadata {
+    pub tabs: Vec<TabMetadata>,
+    pub creation_time: String,
+    pub update_time: String,
+}
+
+impl From<&PathBuf> for LayoutMetadata {
+    fn from(path: &PathBuf) -> LayoutMetadata {
+        match Layout::stringified_from_path(path) {
+            Ok((path_str, stringified_layout, _swap_layouts)) => {
+                match Layout::from_kdl(&stringified_layout, Some(path_str), None, None) {
+                    Ok(layout) => {
+                        let layout_tabs = layout.tabs();
+                        let tabs = if layout_tabs.is_empty() {
+                            let (tiled_pane_layout, floating_pane_layout) = layout.new_tab();
+                            vec![TabMetadata::from(&(None, tiled_pane_layout, floating_pane_layout))]
+                        } else {
+                            layout
+                                .tabs()
+                                .into_iter()
+                                .map(|tab| TabMetadata::from(&tab))
+                                .collect()
+                        };
+
+                        // Get file metadata for creation and modification times as Unix epochs
+                        let (creation_time, update_time) = LayoutMetadata::creation_and_update_times(&path);
+
+                        LayoutMetadata {
+                            tabs,
+                            creation_time,
+                            update_time,
+                        }
+                    },
+                    Err(e) => {
+                        log::error!("Failed to parse layout: {}", e);
+                        LayoutMetadata::default()
+                    }
+                }
+            },
+            Err(e) => {
+                log::error!("Failed to read layout file: {}", e);
+                LayoutMetadata::default()
+            }
+        }
+    }
+}
+
+impl LayoutMetadata {
+    fn creation_and_update_times(path: &PathBuf) -> (String, String) {
+        // (creation_time, update_time) returns stringified unix epoch
+        match std::fs::metadata(path) {
+            Ok(metadata) => {
+                let creation_time = metadata
+                    .created()
+                    .ok()
+                    .and_then(|t| {
+                        t.duration_since(std::time::UNIX_EPOCH)
+                            .ok()
+                            .map(|d| d.as_secs().to_string())
+                    })
+                    .unwrap_or_default();
+
+                let update_time = metadata
+                    .modified()
+                    .ok()
+                    .and_then(|t| {
+                        t.duration_since(std::time::UNIX_EPOCH)
+                            .ok()
+                            .map(|d| d.as_secs().to_string())
+                    })
+                    .unwrap_or_default();
+
+                (creation_time, update_time)
+            },
+            Err(_) => (String::new(), String::new()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct TabMetadata {
+    pub panes: Vec<PaneMetadata>,
+}
+
+impl From<&(Option<String>, crate::input::layout::TiledPaneLayout, Vec<crate::input::layout::FloatingPaneLayout>)> for TabMetadata {
+    fn from(tab: &(Option<String>, crate::input::layout::TiledPaneLayout, Vec<crate::input::layout::FloatingPaneLayout>)) -> Self {
+        let (_tab_name, tiled_pane_layout, floating_panes) = tab;
+
+        // Collect panes from tiled layout (only leaf nodes are real panes)
+        let mut panes = Vec::new();
+        collect_leaf_panes(&tiled_pane_layout, &mut panes);
+
+        // Collect panes from floating panes
+        for floating_pane in floating_panes {
+            panes.push(PaneMetadata::from(floating_pane));
+        }
+
+        TabMetadata { panes }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct PaneMetadata {
+    pub name: Option<String>,
+}
+
+impl From<&crate::input::layout::TiledPaneLayout> for PaneMetadata {
+    fn from(pane: &crate::input::layout::TiledPaneLayout) -> Self {
+        use crate::input::layout::Run;
+
+        // Try to get the name from the pane's name field first
+        let name = if let Some(ref name) = pane.name {
+            Some(name.clone())
+        } else if let Some(ref run) = pane.run {
+            // If no explicit name, glean it from the run configuration
+            match run {
+                Run::Command(cmd) => {
+                    // Use the command name
+                    Some(cmd.command.to_string_lossy().to_string())
+                },
+                Run::EditFile(path, _line, _cwd) => {
+                    // Use the file name
+                    path.file_name()
+                        .map(|n| n.to_string_lossy().to_string())
+                },
+                Run::Plugin(plugin) => {
+                    // Use the plugin location string
+                    Some(plugin.location_string())
+                },
+                Run::Cwd(_) => None,
+            }
+        } else {
+            None
+        };
+
+        PaneMetadata { name }
+    }
+}
+
+impl From<&crate::input::layout::FloatingPaneLayout> for PaneMetadata {
+    fn from(pane: &crate::input::layout::FloatingPaneLayout) -> Self {
+        use crate::input::layout::Run;
+
+        // Try to get the name from the pane's name field first
+        let name = if let Some(ref name) = pane.name {
+            Some(name.clone())
+        } else if let Some(ref run) = pane.run {
+            // If no explicit name, glean it from the run configuration
+            match run {
+                Run::Command(cmd) => {
+                    // Use the command name
+                    Some(cmd.command.to_string_lossy().to_string())
+                },
+                Run::EditFile(path, _line, _cwd) => {
+                    // Use the file name
+                    path.file_name()
+                        .map(|n| n.to_string_lossy().to_string())
+                },
+                Run::Plugin(plugin) => {
+                    // Use the plugin location string
+                    Some(plugin.location_string())
+                },
+                Run::Cwd(_) => None,
+            }
+        } else {
+            None
+        };
+
+        PaneMetadata { name }
+    }
+}
+
+// Helper function to recursively collect leaf panes from TiledPaneLayout
+fn collect_leaf_panes(pane: &crate::input::layout::TiledPaneLayout, result: &mut Vec<PaneMetadata>) {
+    if pane.children.is_empty() {
+        // This is a leaf node (actual pane)
+        result.push(PaneMetadata::from(pane));
+    } else {
+        // This is a container, recurse into children
+        for child in &pane.children {
+            collect_leaf_panes(child, result);
+        }
+    }
 }
 
 impl LayoutInfo {
     pub fn name(&self) -> &str {
         match self {
             LayoutInfo::BuiltIn(name) => &name,
-            LayoutInfo::File(name) => &name,
+            LayoutInfo::File(name, _) => &name,
             LayoutInfo::Url(url) => &url,
             LayoutInfo::Stringified(layout) => &layout,
         }
@@ -1734,7 +1926,7 @@ impl LayoutInfo {
     pub fn is_builtin(&self) -> bool {
         match self {
             LayoutInfo::BuiltIn(_name) => true,
-            LayoutInfo::File(_name) => false,
+            LayoutInfo::File(_name, _) => false,
             LayoutInfo::Url(_url) => false,
             LayoutInfo::Stringified(_stringified) => false,
         }
@@ -1753,8 +1945,11 @@ impl LayoutInfo {
                     else {
                         return None;
                     };
+                    let file_path = layout_dir.join(layout_path);
                     Some(LayoutInfo::File(
-                        layout_dir.join(layout_path).display().to_string(),
+                        // layout_dir.join(layout_path).display().to_string(),
+                        file_path.display().to_string(),
+                        LayoutMetadata::from(&file_path)
                     ))
                 } else if layout_path.starts_with("http://") || layout_path.starts_with("https://")
                 {
@@ -2391,7 +2586,7 @@ pub struct ConnectToSession {
 
 impl ConnectToSession {
     pub fn apply_layout_dir(&mut self, layout_dir: &PathBuf) {
-        if let Some(LayoutInfo::File(file_path)) = self.layout.as_mut() {
+        if let Some(LayoutInfo::File(file_path, _layout_metadata)) = self.layout.as_mut() {
             *file_path = Path::join(layout_dir, &file_path)
                 .to_string_lossy()
                 .to_string();
@@ -2920,4 +3115,10 @@ pub enum PluginCommand {
     // suppress_replaced_pane)
     RunAction(Action, BTreeMap<String, String>),
     CopyToClipboard(String), // text to copy
+    OverrideLayout(
+        LayoutInfo,
+        bool,                      // retain_existing_terminal_panes
+        bool,                      // retain_existing_plugin_panes
+        BTreeMap<String, String>, // context
+    ),
 }

@@ -318,6 +318,22 @@ message PluginInfo {
 message LayoutInfo {
   string name = 1;
   string source = 2;
+  optional LayoutMetadata layout_metadata = 5;
+}
+
+message LayoutMetadata {
+  repeated TabMetadata tabs = 1;
+  string creation_time = 2;
+  string update_time = 3;
+
+}
+
+message TabMetadata {
+  repeated PaneMetadata pane_metadata = 1;
+}
+
+message PaneMetadata {
+  optional string name = 1;
 }
 
 message ResurrectableSession {

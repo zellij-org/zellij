@@ -19,7 +19,7 @@ pub use super::generated_api::api::{
         KeyToRebind, KeyToUnbind, KillSessionsPayload, ListTokensResponse, LoadNewPluginPayload,
         MessageToPluginPayload, MovePaneWithPaneIdInDirectionPayload, MovePaneWithPaneIdPayload,
         MovePayload, NewPluginArgs as ProtobufNewPluginArgs, NewTabPayload,
-        NewTabsWithLayoutInfoPayload, OpenCommandPaneFloatingNearPluginPayload,
+        NewTabsWithLayoutInfoPayload, OverrideLayoutPayload, OpenCommandPaneFloatingNearPluginPayload,
         OpenCommandPaneInPlaceOfPluginPayload, OpenCommandPaneNearPluginPayload,
         OpenCommandPanePayload, OpenFileFloatingNearPluginPayload, OpenFileInPlaceOfPluginPayload,
         OpenFileNearPluginPayload, OpenFilePayload, OpenTerminalFloatingNearPluginPayload,
@@ -1214,6 +1214,27 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                     }
                 },
                 _ => Err("Mismatched payload for GetPanePid"),
+            },
+            Some(CommandName::OverrideLayout) => match protobuf_plugin_command.payload {
+                Some(Payload::OverrideLayoutPayload(override_layout_payload)) => {
+                    let layout_info = override_layout_payload
+                        .layout_info
+                        .ok_or("OverrideLayout missing layout_info")?
+                        .try_into()
+                        .map_err(|_| "Failed to parse LayoutInfo")?;
+                    let context = override_layout_payload
+                        .context
+                        .into_iter()
+                        .map(|c| (c.name, c.value))
+                        .collect();
+                    Ok(PluginCommand::OverrideLayout(
+                        layout_info,
+                        override_layout_payload.retain_existing_terminal_panes,
+                        override_layout_payload.retain_existing_plugin_panes,
+                        context,
+                    ))
+                },
+                _ => Err("Mismatched payload for OverrideLayout"),
             },
             Some(CommandName::MovePaneWithPaneId) => match protobuf_plugin_command.payload {
                 Some(Payload::MovePaneWithPaneIdPayload(move_pane_with_pane_id_payload)) => {
@@ -2544,6 +2565,25 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                 payload: Some(Payload::GetPanePidPayload(GetPanePidPayload {
                     pane_id: Some(pane_id.try_into()?),
                 })),
+            }),
+            PluginCommand::OverrideLayout(
+                layout_info,
+                retain_existing_terminal_panes,
+                retain_existing_plugin_panes,
+                context,
+            ) => Ok(ProtobufPluginCommand {
+                name: CommandName::OverrideLayout as i32,
+                payload: Some(Payload::OverrideLayoutPayload(
+                    OverrideLayoutPayload {
+                        layout_info: layout_info.try_into().ok(),
+                        context: context
+                            .into_iter()
+                            .map(|(name, value)| ContextItem { name, value })
+                            .collect(),
+                        retain_existing_terminal_panes,
+                        retain_existing_plugin_panes,
+                    },
+                )),
             }),
             PluginCommand::MovePaneWithPaneId(pane_id) => Ok(ProtobufPluginCommand {
                 name: CommandName::MovePaneWithPaneId as i32,

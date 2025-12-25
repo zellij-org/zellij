@@ -9,15 +9,17 @@ pub use super::generated_api::api::{
         Event as ProtobufEvent, EventNameList as ProtobufEventNameList,
         EventType as ProtobufEventType, FileMetadata as ProtobufFileMetadata,
         InputModeKeybinds as ProtobufInputModeKeybinds, KeyBind as ProtobufKeyBind,
-        LayoutInfo as ProtobufLayoutInfo, ModeUpdatePayload as ProtobufModeUpdatePayload,
-        PaneContents as ProtobufPaneContents, PaneContentsEntry as ProtobufPaneContentsEntry,
-        PaneId as ProtobufPaneId, PaneInfo as ProtobufPaneInfo,
-        PaneManifest as ProtobufPaneManifest,
+        LayoutInfo as ProtobufLayoutInfo, LayoutMetadata as ProtobufLayoutMetadata,
+        ModeUpdatePayload as ProtobufModeUpdatePayload, PaneContents as ProtobufPaneContents,
+        PaneContentsEntry as ProtobufPaneContentsEntry, PaneId as ProtobufPaneId,
+        PaneInfo as ProtobufPaneInfo, PaneManifest as ProtobufPaneManifest,
+        PaneMetadata as ProtobufPaneMetadata,
         PaneRenderReportPayload as ProtobufPaneRenderReportPayload,
         PaneScrollbackResponse as ProtobufPaneScrollbackResponse, PaneType as ProtobufPaneType,
         PluginInfo as ProtobufPluginInfo, ResurrectableSession as ProtobufResurrectableSession,
         SelectedText as ProtobufSelectedText, SessionManifest as ProtobufSessionManifest,
-        TabInfo as ProtobufTabInfo, UserActionPayload as ProtobufUserActionPayload,
+        TabInfo as ProtobufTabInfo, TabMetadata as ProtobufTabMetadata,
+        UserActionPayload as ProtobufUserActionPayload,
         WebServerStatusPayload as ProtobufWebServerStatusPayload, WebSharing as ProtobufWebSharing,
         *,
     },
@@ -28,9 +30,10 @@ pub use super::generated_api::api::{
 #[allow(hidden_glob_reexports)]
 use crate::data::{
     ClientId, ClientInfo, CopyDestination, Event, EventType, FileMetadata, InputMode,
-    KeyWithModifier, LayoutInfo, ModeInfo, Mouse, PaneContents, PaneId, PaneInfo, PaneManifest,
-    PaneScrollbackResponse, PermissionStatus, PluginCapabilities, PluginInfo, SelectedText,
-    SessionInfo, Style, TabInfo, WebServerStatus, WebSharing,
+    KeyWithModifier, LayoutInfo, LayoutMetadata, ModeInfo, Mouse, PaneContents, PaneId, PaneInfo,
+    PaneManifest, PaneMetadata, PaneScrollbackResponse, PermissionStatus, PluginCapabilities,
+    PluginInfo, SelectedText, SessionInfo, Style, TabInfo, TabMetadata, WebServerStatus,
+    WebSharing,
 };
 
 use crate::errors::prelude::*;
@@ -1078,21 +1081,25 @@ impl TryFrom<LayoutInfo> for ProtobufLayoutInfo {
     type Error = &'static str;
     fn try_from(layout_info: LayoutInfo) -> Result<Self, &'static str> {
         match layout_info {
-            LayoutInfo::File(name) => Ok(ProtobufLayoutInfo {
+            LayoutInfo::File(name, layout_metadata) => Ok(ProtobufLayoutInfo {
                 source: "file".to_owned(),
                 name,
+                layout_metadata: Some(layout_metadata.try_into()?),
             }),
             LayoutInfo::BuiltIn(name) => Ok(ProtobufLayoutInfo {
                 source: "built-in".to_owned(),
                 name,
+                layout_metadata: None,
             }),
             LayoutInfo::Url(name) => Ok(ProtobufLayoutInfo {
                 source: "url".to_owned(),
                 name,
+                layout_metadata: None,
             }),
             LayoutInfo::Stringified(stringified_layout) => Ok(ProtobufLayoutInfo {
                 source: "stringified".to_owned(),
                 name: stringified_layout.clone(),
+                layout_metadata: None,
             }),
         }
     }
@@ -1102,12 +1109,91 @@ impl TryFrom<ProtobufLayoutInfo> for LayoutInfo {
     type Error = &'static str;
     fn try_from(protobuf_layout_info: ProtobufLayoutInfo) -> Result<Self, &'static str> {
         match protobuf_layout_info.source.as_str() {
-            "file" => Ok(LayoutInfo::File(protobuf_layout_info.name)),
+            "file" => {
+                let layout_metadata = protobuf_layout_info
+                    .layout_metadata
+                    .map(|m| m.try_into())
+                    .transpose()?
+                    .unwrap_or_default();
+                Ok(LayoutInfo::File(protobuf_layout_info.name, layout_metadata))
+            },
             "built-in" => Ok(LayoutInfo::BuiltIn(protobuf_layout_info.name)),
             "url" => Ok(LayoutInfo::Url(protobuf_layout_info.name)),
             "stringified" => Ok(LayoutInfo::Stringified(protobuf_layout_info.name)),
             _ => Err("Unknown source for layout"),
         }
+    }
+}
+
+impl TryFrom<ProtobufLayoutMetadata> for LayoutMetadata {
+    type Error = &'static str;
+    fn try_from(protobuf_metadata: ProtobufLayoutMetadata) -> Result<Self, &'static str> {
+        let tabs = protobuf_metadata
+            .tabs
+            .into_iter()
+            .map(|t| t.try_into())
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(LayoutMetadata {
+            tabs,
+            creation_time: protobuf_metadata.creation_time,
+            update_time: protobuf_metadata.update_time,
+        })
+    }
+}
+
+impl TryFrom<LayoutMetadata> for ProtobufLayoutMetadata {
+    type Error = &'static str;
+    fn try_from(metadata: LayoutMetadata) -> Result<Self, &'static str> {
+        let tabs = metadata
+            .tabs
+            .into_iter()
+            .map(|t| t.try_into())
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(ProtobufLayoutMetadata {
+            tabs,
+            creation_time: metadata.creation_time,
+            update_time: metadata.update_time,
+        })
+    }
+}
+
+impl TryFrom<ProtobufTabMetadata> for TabMetadata {
+    type Error = &'static str;
+    fn try_from(protobuf_metadata: ProtobufTabMetadata) -> Result<Self, &'static str> {
+        let panes = protobuf_metadata
+            .pane_metadata
+            .into_iter()
+            .map(|p| p.try_into())
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(TabMetadata { panes })
+    }
+}
+
+impl TryFrom<TabMetadata> for ProtobufTabMetadata {
+    type Error = &'static str;
+    fn try_from(metadata: TabMetadata) -> Result<Self, &'static str> {
+        let pane_metadata = metadata
+            .panes
+            .into_iter()
+            .map(|p| p.try_into())
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(ProtobufTabMetadata { pane_metadata })
+    }
+}
+
+impl TryFrom<ProtobufPaneMetadata> for PaneMetadata {
+    type Error = &'static str;
+    fn try_from(protobuf_metadata: ProtobufPaneMetadata) -> Result<Self, &'static str> {
+        Ok(PaneMetadata {
+            name: protobuf_metadata.name,
+        })
+    }
+}
+
+impl TryFrom<PaneMetadata> for ProtobufPaneMetadata {
+    type Error = &'static str;
+    fn try_from(metadata: PaneMetadata) -> Result<Self, &'static str> {
+        Ok(ProtobufPaneMetadata { name: metadata.name })
     }
 }
 

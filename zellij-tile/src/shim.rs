@@ -1641,6 +1641,23 @@ pub fn get_focused_pane(tab_position: usize, pane_manifest: &PaneManifest) -> Op
     None
 }
 
+pub fn override_layout<L: AsRef<LayoutInfo>>(
+    layout_info: L,
+    retain_existing_terminal_panes: bool,
+    retain_existing_plugin_panes: bool,
+    context: BTreeMap<String, String>,
+) {
+    let plugin_command = PluginCommand::OverrideLayout(
+        layout_info.as_ref().clone(),
+        retain_existing_terminal_panes,
+        retain_existing_plugin_panes,
+        context
+    );
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 // Internal Functions
 
 #[doc(hidden)]

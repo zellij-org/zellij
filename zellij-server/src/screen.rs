@@ -2091,6 +2091,7 @@ impl Screen {
             Layout::list_available_layouts(self.layout_dir.clone(), &self.default_layout_name);
         #[cfg(test)]
         let available_layouts = vec![];
+        log::info!("available_layouts in screen: {:#?}", available_layouts);
         let session_info = SessionInfo {
             name: self.session_name.clone(),
             tabs: tab_infos,

@@ -391,6 +391,30 @@ pub struct LayoutInfo {
     pub name: ::prost::alloc::string::String,
     #[prost(string, tag="2")]
     pub source: ::prost::alloc::string::String,
+    #[prost(message, optional, tag="5")]
+    pub layout_metadata: ::core::option::Option<LayoutMetadata>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct LayoutMetadata {
+    #[prost(message, repeated, tag="1")]
+    pub tabs: ::prost::alloc::vec::Vec<TabMetadata>,
+    #[prost(string, tag="2")]
+    pub creation_time: ::prost::alloc::string::String,
+    #[prost(string, tag="3")]
+    pub update_time: ::prost::alloc::string::String,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct TabMetadata {
+    #[prost(message, repeated, tag="1")]
+    pub pane_metadata: ::prost::alloc::vec::Vec<PaneMetadata>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PaneMetadata {
+    #[prost(string, optional, tag="1")]
+    pub name: ::core::option::Option<::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

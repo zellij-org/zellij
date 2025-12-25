@@ -11,7 +11,7 @@
 #[cfg(not(target_family = "wasm"))]
 use crate::downloader::Downloader;
 use crate::{
-    data::{Direction, LayoutInfo},
+    data::{Direction, LayoutInfo, LayoutMetadata},
     home::{default_layout_dir, find_default_config_dir},
     input::{
         command::RunCommand,
@@ -1193,11 +1193,11 @@ impl Layout {
         let mut available_layouts = layout_dir
             .clone()
             .or_else(|| default_layout_dir())
-            .and_then(|layout_dir| match std::fs::read_dir(layout_dir) {
-                Ok(layout_files) => Some(layout_files),
+            .and_then(|layout_dir| match std::fs::read_dir(&layout_dir) {
+                Ok(layout_files) => Some((layout_files, layout_dir)),
                 Err(_) => None,
             })
-            .map(|layout_files| {
+            .map(|(layout_files, layout_dir)| {
                 let mut available_layouts = vec![];
                 for file in layout_files {
                     if let Ok(file) = file {
@@ -1206,13 +1206,19 @@ impl Layout {
                         {
                             if Layout::from_path_or_default_without_config(
                                 Some(&file.path()),
-                                layout_dir.clone(),
+                                Some(layout_dir.clone()),
                             )
                             .is_ok()
                             {
                                 if let Some(file_name) = file.path().file_stem() {
+                                    let file_path = layout_dir.join(file.path()); // TODO: do we
+                                                                                  // need
+                                                                                  // file_stem()
+                                                                                  // here too?
+                                    log::info!("creating LayoutMetadata from: {:?}", file_path);
                                     available_layouts.push(LayoutInfo::File(
                                         file_name.to_string_lossy().to_string(),
+                                        LayoutMetadata::from(&file_path)
                                     ))
                                 }
                             }
@@ -1250,7 +1256,7 @@ impl Layout {
     ) -> Result<Layout, ConfigError> {
         let mut should_start_layout_commands_suspended = false;
         let (path_to_raw_layout, raw_layout, raw_swap_layouts) = match layout_info {
-            LayoutInfo::File(layout_name_without_extension) => {
+            LayoutInfo::File(layout_name_without_extension, _layout_metadata) => {
                 let layout_dir = layout_dir.clone().or_else(|| default_layout_dir());
                 let (path_to_layout, stringified_layout, swap_layouts) =
                     Self::stringified_from_dir(
@@ -1293,7 +1299,7 @@ impl Layout {
     ) -> Result<(Layout, Config), ConfigError> {
         let mut should_start_layout_commands_suspended = false;
         let (path_to_raw_layout, raw_layout, raw_swap_layouts) = match layout_info {
-            LayoutInfo::File(layout_name_without_extension) => {
+            LayoutInfo::File(layout_name_without_extension, _layout_metadata) => {
                 let layout_dir = layout_dir.clone().or_else(|| default_layout_dir());
                 let (path_to_layout, stringified_layout, swap_layouts) =
                     Self::stringified_from_dir(
@@ -1370,6 +1376,20 @@ impl Layout {
         // silently fail - this should not happen in plugins and legacy architecture is hard
         let raw_layout = String::new();
         Ok(raw_layout)
+    }
+    pub fn from_path_without_config(
+        layout_path: &PathBuf,
+    ) -> Result<Layout, ConfigError> {
+        // (path_to_layout as String, stringified_layout, Option<path_to_swap_layout as String, stringified_swap_layout>)
+        let (path_to_layout, raw_layout, raw_swap_layouts) = Layout::stringified_from_path(layout_path)?;
+        Layout::from_kdl(
+            &raw_layout,
+            Some(path_to_layout),
+            raw_swap_layouts
+                .as_ref()
+                .map(|(r, f)| (r.as_str(), f.as_str())),
+            None,
+        )
     }
     pub fn from_path_or_default(
         layout_path: Option<&PathBuf>,

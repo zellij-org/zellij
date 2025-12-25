@@ -2,7 +2,7 @@ mod kdl_layout_parser;
 use crate::data::{
     BareKey, Direction, FloatingPaneCoordinates, InputMode, KeyWithModifier, LayoutInfo,
     MultiplayerColors, Palette, PaletteColor, PaneId, PaneInfo, PaneManifest, PermissionType,
-    Resize, SessionInfo, StyleDeclaration, Styling, TabInfo, WebSharing, DEFAULT_STYLES,
+    Resize, SessionInfo, StyleDeclaration, Styling, TabInfo, WebSharing, LayoutMetadata, DEFAULT_STYLES,
 };
 use crate::envs::EnvironmentVariables;
 use crate::home::{find_default_config_dir, get_layout_dir};
@@ -5154,7 +5154,7 @@ impl SessionInfo {
                         match layout_source {
                             Some(layout_source) => match layout_source {
                                 "built-in" => Some(LayoutInfo::BuiltIn(layout_name)),
-                                "file" => Some(LayoutInfo::File(layout_name)),
+                                "file" => Some(LayoutInfo::File(layout_name, LayoutMetadata::default())),
                                 _ => None,
                             },
                             None => None,
@@ -5288,7 +5288,7 @@ impl SessionInfo {
         let mut available_layouts_children = KdlDocument::new();
         for layout_info in &self.available_layouts {
             let (layout_name, layout_source) = match layout_info {
-                LayoutInfo::File(name) => (name.clone(), "file"),
+                LayoutInfo::File(name, _layout_metadata) => (name.clone(), "file"),
                 LayoutInfo::BuiltIn(name) => (name.clone(), "built-in"),
                 LayoutInfo::Url(url) => (url.clone(), "url"),
                 LayoutInfo::Stringified(_stringified) => ("stringified-layout".to_owned(), "N/A"),
@@ -5906,9 +5906,9 @@ fn serialize_and_deserialize_session_info_with_data() {
         connected_clients: 2,
         is_current_session: false,
         available_layouts: vec![
-            LayoutInfo::File("layout1".to_owned()),
-            LayoutInfo::BuiltIn("layout2".to_owned()),
-            LayoutInfo::File("layout3".to_owned()),
+            LayoutInfo::File("layout1".to_owned(), LayoutMetadata::default()),
+            LayoutInfo::BuiltIn("layout2".to_owned(), LayoutMetadata::default()),
+            LayoutInfo::File("layout3".to_owned(), LayoutMetadata::default()),
         ],
         plugins: Default::default(),
         web_client_count: 2,
