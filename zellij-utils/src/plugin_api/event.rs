@@ -2,7 +2,9 @@ pub use super::generated_api::api::{
     action::{Action as ProtobufAction, Position as ProtobufPosition},
     event::{
         event::Payload as ProtobufEventPayload, pane_scrollback_response,
-        ActionCompletePayload as ProtobufActionCompletePayload, ClientInfo as ProtobufClientInfo,
+        ActionCompletePayload as ProtobufActionCompletePayload,
+        AvailableLayoutInfoPayload as ProtobufAvailableLayoutInfoPayload,
+        ClientInfo as ProtobufClientInfo,
         ClientPaneHistory as ProtobufClientPaneHistory,
         ClientTabHistory as ProtobufClientTabHistory, ContextItem as ProtobufContextItem,
         CopyDestination as ProtobufCopyDestination, CwdChangedPayload as ProtobufCwdChangedPayload,
@@ -461,6 +463,18 @@ impl TryFrom<ProtobufEvent> for Event {
                 },
                 _ => Err("Malformed payload for the CwdChanged Event"),
             },
+            Some(ProtobufEventType::AvailableLayoutInfo) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::AvailableLayoutInfoPayload(
+                    available_layout_info_payload,
+                )) => {
+                    let mut available_layouts: Vec<LayoutInfo> = vec![];
+                    for protobuf_layout_info in available_layout_info_payload.available_layouts {
+                        available_layouts.push(LayoutInfo::try_from(protobuf_layout_info)?);
+                    }
+                    Ok(Event::AvailableLayoutInfo(available_layouts))
+                },
+                _ => Err("Malformed payload for the AvailableLayoutInfo Event"),
+            },
             None => Err("Unknown Protobuf Event"),
         }
     }
@@ -911,6 +925,21 @@ impl TryFrom<Event> for ProtobufEvent {
                 Ok(ProtobufEvent {
                     name: ProtobufEventType::CwdChanged as i32,
                     payload: Some(event::Payload::CwdChangedPayload(cwd_changed_payload)),
+                })
+            },
+            Event::AvailableLayoutInfo(available_layouts) => {
+                let mut protobuf_available_layouts = vec![];
+                for layout_info in available_layouts {
+                    protobuf_available_layouts.push(layout_info.try_into()?);
+                }
+                let available_layout_info_payload = ProtobufAvailableLayoutInfoPayload {
+                    available_layouts: protobuf_available_layouts,
+                };
+                Ok(ProtobufEvent {
+                    name: ProtobufEventType::AvailableLayoutInfo as i32,
+                    payload: Some(event::Payload::AvailableLayoutInfoPayload(
+                        available_layout_info_payload,
+                    )),
                 })
             },
         }
@@ -1706,6 +1735,7 @@ impl TryFrom<ProtobufEventType> for EventType {
             ProtobufEventType::UserAction => EventType::UserAction,
             ProtobufEventType::ActionComplete => EventType::ActionComplete,
             ProtobufEventType::CwdChanged => EventType::CwdChanged,
+            ProtobufEventType::AvailableLayoutInfo => EventType::AvailableLayoutInfo,
         })
     }
 }
@@ -1753,6 +1783,7 @@ impl TryFrom<EventType> for ProtobufEventType {
             EventType::UserAction => ProtobufEventType::UserAction,
             EventType::ActionComplete => ProtobufEventType::ActionComplete,
             EventType::CwdChanged => ProtobufEventType::CwdChanged,
+            EventType::AvailableLayoutInfo => ProtobufEventType::AvailableLayoutInfo,
         })
     }
 }

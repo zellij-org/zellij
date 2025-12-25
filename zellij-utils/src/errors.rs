@@ -470,6 +470,7 @@ pub enum PluginContext {
     PaneRenderReport,
     UserInput,
     LayoutListUpdate,
+    RequestStateUpdateForPlugin,
 }
 
 /// Stack call representations corresponding to the different types of [`ClientInstruction`]s.

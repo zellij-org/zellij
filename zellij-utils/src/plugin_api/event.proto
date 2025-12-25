@@ -62,6 +62,7 @@ enum EventType {
     UserAction = 37;
     ActionComplete = 38;
     CwdChanged = 39;
+    AvailableLayoutInfo = 40;
 }
 
 message EventNameList {
@@ -103,6 +104,7 @@ message Event {
     UserActionPayload user_action_payload = 31;
     ActionCompletePayload action_complete_payload = 32;
     CwdChangedPayload cwd_changed_payload = 33;
+    AvailableLayoutInfoPayload available_layout_info_payload = 34;
   }
 }
 
@@ -200,6 +202,10 @@ message EditPaneExitedPayload {
 message SessionUpdatePayload {
   repeated SessionManifest session_manifests = 1;
   repeated ResurrectableSession resurrectable_sessions = 2;
+}
+
+message AvailableLayoutInfoPayload {
+  repeated LayoutInfo available_layouts = 1;
 }
 
 message RunCommandResultPayload {

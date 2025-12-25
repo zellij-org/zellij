@@ -201,6 +201,7 @@ pub enum PluginInstruction {
         cli_client_id: Option<ClientId>,
     },
     LayoutListUpdate(Vec<LayoutInfo>),
+    RequestStateUpdateForPlugin(PluginId),
     Exit,
 }
 
@@ -254,6 +255,7 @@ impl From<&PluginInstruction> for PluginContext {
             PluginInstruction::PaneRenderReport(..) => PluginContext::PaneRenderReport,
             PluginInstruction::UserInput { .. } => PluginContext::UserInput,
             PluginInstruction::LayoutListUpdate(..) => PluginContext::LayoutListUpdate,
+            PluginInstruction::RequestStateUpdateForPlugin(..) => PluginContext::RequestStateUpdateForPlugin,
         }
     }
 }
@@ -1159,6 +1161,9 @@ pub(crate) fn plugin_thread_main(
             PluginInstruction::LayoutListUpdate(layouts) => {
                 wasm_bridge.update_available_layouts(layouts);
             },
+            PluginInstruction::RequestStateUpdateForPlugin(plugin_id) => {
+                wasm_bridge.state_update_for_plugin(plugin_id);
+            }
             PluginInstruction::Exit => {
                 break;
             },

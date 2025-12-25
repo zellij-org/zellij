@@ -1847,7 +1847,26 @@ impl WasmBridge {
     }
     pub fn update_available_layouts(&mut self, layouts: Vec<LayoutInfo>) {
         log::info!("update available_layouts to: {:#?}", layouts);
-        self.available_layouts = layouts;
+
+        // Diff with existing layouts
+        if self.available_layouts != layouts {
+            // Update the stored layouts
+            self.available_layouts = layouts.clone();
+
+            // Notify all plugins of the change
+            let _ = self.senders.send_to_plugin(PluginInstruction::Update(vec![(
+                None,  // Broadcast to all plugins
+                None,  // Broadcast to all clients
+                Event::AvailableLayoutInfo(layouts),
+            )]));
+        }
+    }
+    pub fn state_update_for_plugin(&self, plugin_id: PluginId) {
+        let _ = self.senders.send_to_plugin(PluginInstruction::Update(vec![(
+            Some(plugin_id),
+            None,
+            Event::AvailableLayoutInfo(self.available_layouts.clone()),
+        )]));
     }
 }
 
@@ -1859,6 +1878,7 @@ fn handle_plugin_successful_loading(
     let _ = senders.send_to_background_jobs(BackgroundJob::StopPluginLoadingAnimation(plugin_id));
     let _ = senders.send_to_screen(ScreenInstruction::RequestStateUpdateForPlugins);
     let _ = senders.send_to_background_jobs(BackgroundJob::ReportPluginList(plugin_list));
+    let _ = senders.send_to_plugin(PluginInstruction::RequestStateUpdateForPlugin(plugin_id));
 }
 
 fn handle_plugin_loading_failure(

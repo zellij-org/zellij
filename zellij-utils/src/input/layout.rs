@@ -1215,7 +1215,6 @@ impl Layout {
                                                                                   // need
                                                                                   // file_stem()
                                                                                   // here too?
-                                    log::info!("creating LayoutMetadata from: {:?}", file_path);
                                     available_layouts.push(LayoutInfo::File(
                                         file_name.to_string_lossy().to_string(),
                                         LayoutMetadata::from(&file_path)
