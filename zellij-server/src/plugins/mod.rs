@@ -31,7 +31,7 @@ use async_std::{channel, future::timeout, task};
 use zellij_utils::{
     data::{
         ClientInfo, CommandOrPlugin, Event, EventType, FloatingPaneCoordinates, InputMode,
-        MessageToPlugin, PermissionStatus, PermissionType, PipeMessage, PipeSource,
+        LayoutInfo, MessageToPlugin, PermissionStatus, PermissionType, PipeMessage, PipeSource,
         PluginCapabilities, WebServerStatus,
     },
     errors::{prelude::*, ContextType, PluginContext},
@@ -200,6 +200,7 @@ pub enum PluginInstruction {
         terminal_id: Option<u32>,
         cli_client_id: Option<ClientId>,
     },
+    LayoutListUpdate(Vec<LayoutInfo>),
     Exit,
 }
 
@@ -252,6 +253,7 @@ impl From<&PluginInstruction> for PluginContext {
             PluginInstruction::FailedToStartWebServer(..) => PluginContext::FailedToStartWebServer,
             PluginInstruction::PaneRenderReport(..) => PluginContext::PaneRenderReport,
             PluginInstruction::UserInput { .. } => PluginContext::UserInput,
+            PluginInstruction::LayoutListUpdate(..) => PluginContext::LayoutListUpdate,
         }
     }
 }
@@ -262,6 +264,7 @@ pub(crate) fn plugin_thread_main(
     data_dir: PathBuf,
     mut layout: Box<Layout>,
     layout_dir: Option<PathBuf>,
+    available_layouts: Vec<LayoutInfo>,
     path_to_default_shell: PathBuf,
     zellij_cwd: PathBuf,
     capabilities: PluginCapabilities,
@@ -297,6 +300,7 @@ pub(crate) fn plugin_thread_main(
         default_shell,
         layout.clone(),
         layout_dir,
+        available_layouts,
         default_mode,
         default_keybinds,
     );
@@ -1151,6 +1155,9 @@ pub(crate) fn plugin_thread_main(
                     Event::UserAction(action, client_id, terminal_id, cli_client_id),
                 )];
                 wasm_bridge.update_plugins(updates, shutdown_send.clone())?;
+            },
+            PluginInstruction::LayoutListUpdate(layouts) => {
+                wasm_bridge.update_available_layouts(layouts);
             },
             PluginInstruction::Exit => {
                 break;

@@ -23,8 +23,8 @@ use url::Url;
 use wasmi::{Engine, Module};
 use zellij_utils::consts::{ZELLIJ_CACHE_DIR, ZELLIJ_SESSION_CACHE_DIR, ZELLIJ_TMP_DIR};
 use zellij_utils::data::{
-    FloatingPaneCoordinates, InputMode, PaneContents, PaneRenderReport, PermissionStatus,
-    PermissionType, PipeMessage, PipeSource,
+    FloatingPaneCoordinates, InputMode, LayoutInfo, PaneContents, PaneRenderReport,
+    PermissionStatus, PermissionType, PipeMessage, PipeSource,
 };
 use zellij_utils::downloader::Downloader;
 use zellij_utils::input::keybinds::Keybinds;
@@ -179,6 +179,7 @@ pub struct WasmBridge {
         HashMap<RunPluginLocation, HashMap<PluginUserConfiguration, Vec<(PluginId, ClientId)>>>,
     pending_pipes: PendingPipes,
     layout_dir: Option<PathBuf>,
+    available_layouts: Vec<LayoutInfo>,
     default_mode: InputMode,
     default_keybinds: Keybinds,
     keybinds: HashMap<ClientId, Keybinds>,
@@ -199,6 +200,7 @@ impl WasmBridge {
         default_shell: Option<TerminalAction>,
         default_layout: Box<Layout>,
         layout_dir: Option<PathBuf>,
+        available_layouts: Vec<LayoutInfo>,
         default_mode: InputMode,
         default_keybinds: Keybinds,
     ) -> Self {
@@ -240,6 +242,7 @@ impl WasmBridge {
             cached_plugin_map: HashMap::new(),
             pending_pipes: Default::default(),
             layout_dir,
+            available_layouts,
             default_mode,
             default_keybinds,
             keybinds: HashMap::new(),
@@ -1841,6 +1844,10 @@ impl WasmBridge {
             .iter()
             .next()
             .copied()
+    }
+    pub fn update_available_layouts(&mut self, layouts: Vec<LayoutInfo>) {
+        log::info!("update available_layouts to: {:#?}", layouts);
+        self.available_layouts = layouts;
     }
 }
 

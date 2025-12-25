@@ -1,4 +1,4 @@
-use crate::data::Styling;
+use crate::data::{LayoutInfo, Styling};
 use miette::{Diagnostic, LabeledSpan, NamedSource, SourceCode};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -477,6 +477,70 @@ where
         }
 
         while !config_file_path.exists() {
+            tokio::time::sleep(Duration::from_secs(3)).await;
+        }
+    }
+}
+
+#[cfg(not(target_family = "wasm"))]
+pub async fn watch_layout_dir_changes<F, Fut>(
+    layout_dir: PathBuf,
+    default_layout_name: Option<String>,
+    on_layout_change: F,
+)
+where
+    F: Fn(Vec<LayoutInfo>) -> Fut + Send + 'static,
+    Fut: std::future::Future<Output = ()> + Send,
+{
+    use crate::input::layout::Layout;
+    use notify::{self, Config as WatcherConfig, Event, PollWatcher, RecursiveMode, Watcher};
+    use std::time::Duration;
+    use tokio::sync::mpsc;
+
+    loop {
+        if layout_dir.exists() {
+            let (tx, mut rx) = mpsc::unbounded_channel();
+
+            let mut watcher = match PollWatcher::new(
+                move |res: Result<Event, notify::Error>| {
+                    let _ = tx.send(res);
+                },
+                WatcherConfig::default().with_poll_interval(Duration::from_secs(1)),
+            ) {
+                Ok(watcher) => watcher,
+                Err(_) => break,
+            };
+
+            if watcher
+                .watch(&layout_dir, RecursiveMode::Recursive)
+                .is_err()
+            {
+                break;
+            }
+
+            while let Some(event_result) = rx.recv().await {
+                match event_result {
+                    Ok(event) => {
+                        if event.kind.is_remove() || event.kind.is_create() || event.kind.is_modify() {
+                            tokio::time::sleep(Duration::from_millis(100)).await;
+
+                            if !layout_dir.exists() {
+                                break;
+                            }
+
+                            let layouts = Layout::list_available_layouts(
+                                Some(layout_dir.clone()),
+                                &default_layout_name,
+                            );
+                            on_layout_change(layouts).await;
+                        }
+                    },
+                    Err(_) => break,
+                }
+            }
+        }
+
+        while !layout_dir.exists() {
             tokio::time::sleep(Duration::from_secs(3)).await;
         }
     }
