@@ -5223,6 +5223,7 @@ dependencies = [
  "insta",
  "interprocess",
  "isahc",
+ "kdl",
  "lazy_static",
  "libc",
  "log",

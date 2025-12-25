@@ -79,6 +79,7 @@ dialoguer = { version = "0.10.4", default-features = false, features = ["passwor
 humantime = { version = "2.1.0", default-features = false }
 interprocess = { version = "1.2.1", default-features = false }
 isahc = { version = "1.7.2", default-features = false, features = ["http2", "text-decoding"] }
+kdl = { version = "4.5.0", default-features = false, features = ["span"] }
 lazy_static = { version = "1.4.0", default-features = false }
 libc = { version = "0.2", default-features = false, features = ["std"] }
 log = { version = "0.4.17", default-features = false }

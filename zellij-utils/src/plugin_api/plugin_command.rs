@@ -19,7 +19,9 @@ pub use super::generated_api::api::{
         KeyToRebind, KeyToUnbind, KillSessionsPayload, ListTokensResponse, LoadNewPluginPayload,
         MessageToPluginPayload, MovePaneWithPaneIdInDirectionPayload, MovePaneWithPaneIdPayload,
         MovePayload, NewPluginArgs as ProtobufNewPluginArgs, NewTabPayload,
-        NewTabsWithLayoutInfoPayload, OverrideLayoutPayload, OpenCommandPaneFloatingNearPluginPayload,
+        NewTabsWithLayoutInfoPayload, OverrideLayoutPayload, SaveLayoutPayload,
+        SaveLayoutResponse as ProtobufSaveLayoutResponse, save_layout_response,
+        OpenCommandPaneFloatingNearPluginPayload,
         OpenCommandPaneInPlaceOfPluginPayload, OpenCommandPaneNearPluginPayload,
         OpenCommandPanePayload, OpenFileFloatingNearPluginPayload, OpenFileInPlaceOfPluginPayload,
         OpenFileNearPluginPayload, OpenFilePayload, OpenTerminalFloatingNearPluginPayload,
@@ -46,6 +48,7 @@ pub use super::generated_api::api::{
 use crate::data::{
     ConnectToSession, FloatingPaneCoordinates, GetPanePidResponse, HttpVerb, InputMode,
     KeyWithModifier, MessageToPlugin, NewPluginArgs, PaneId, PermissionType, PluginCommand,
+    SaveLayoutResponse,
 };
 use crate::input::actions::Action;
 use crate::input::layout::SplitSize;
@@ -222,6 +225,30 @@ impl From<GetPanePidResponse> for ProtobufGetPanePidResponse {
             },
             GetPanePidResponse::Err(error) => ProtobufGetPanePidResponse {
                 result: Some(get_pane_pid_response::Result::Error(error)),
+            },
+        }
+    }
+}
+
+impl TryFrom<ProtobufSaveLayoutResponse> for SaveLayoutResponse {
+    type Error = &'static str;
+    fn try_from(protobuf_response: ProtobufSaveLayoutResponse) -> Result<Self, &'static str> {
+        match protobuf_response.result {
+            Some(save_layout_response::Result::Success(_)) => Ok(SaveLayoutResponse::Ok(())),
+            Some(save_layout_response::Result::Error(error)) => Ok(SaveLayoutResponse::Err(error)),
+            None => Err("Empty SaveLayoutResponse"),
+        }
+    }
+}
+
+impl From<SaveLayoutResponse> for ProtobufSaveLayoutResponse {
+    fn from(response: SaveLayoutResponse) -> Self {
+        match response {
+            SaveLayoutResponse::Ok(_) => ProtobufSaveLayoutResponse {
+                result: Some(save_layout_response::Result::Success(true)),
+            },
+            SaveLayoutResponse::Err(error) => ProtobufSaveLayoutResponse {
+                result: Some(save_layout_response::Result::Error(error)),
             },
         }
     }
@@ -1235,6 +1262,16 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                     ))
                 },
                 _ => Err("Mismatched payload for OverrideLayout"),
+            },
+            Some(CommandName::SaveLayout) => match protobuf_plugin_command.payload {
+                Some(Payload::SaveLayoutPayload(save_layout_payload)) => {
+                    Ok(PluginCommand::SaveLayout {
+                        layout_name: save_layout_payload.layout_name,
+                        layout_kdl: save_layout_payload.layout_kdl,
+                        overwrite: save_layout_payload.overwrite,
+                    })
+                },
+                _ => Err("Mismatched payload for SaveLayout"),
             },
             Some(CommandName::MovePaneWithPaneId) => match protobuf_plugin_command.payload {
                 Some(Payload::MovePaneWithPaneIdPayload(move_pane_with_pane_id_payload)) => {
@@ -2584,6 +2621,18 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                         retain_existing_plugin_panes,
                     },
                 )),
+            }),
+            PluginCommand::SaveLayout {
+                layout_name,
+                layout_kdl,
+                overwrite,
+            } => Ok(ProtobufPluginCommand {
+                name: CommandName::SaveLayout as i32,
+                payload: Some(Payload::SaveLayoutPayload(SaveLayoutPayload {
+                    layout_name,
+                    layout_kdl,
+                    overwrite,
+                })),
             }),
             PluginCommand::MovePaneWithPaneId(pane_id) => Ok(ProtobufPluginCommand {
                 name: CommandName::MovePaneWithPaneId as i32,

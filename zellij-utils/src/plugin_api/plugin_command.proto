@@ -167,6 +167,7 @@ enum CommandName {
   SendSigkillToPaneId = 172;
   GetPanePid = 173;
   OverrideLayout = 174;
+  SaveLayout = 175;
 }
 
 message PluginCommand {
@@ -282,6 +283,7 @@ message PluginCommand {
     PaneId send_sigkill_to_pane_id_payload = 122;
     GetPanePidPayload get_pane_pid_payload = 123;
     OverrideLayoutPayload override_layout_payload = 124;
+    SaveLayoutPayload save_layout_payload = 125;
   }
 }
 
@@ -758,9 +760,22 @@ message GetPanePidResponse {
   }
 }
 
+message SaveLayoutResponse {
+  oneof result {
+    bool success = 1;
+    string error = 2;
+  }
+}
+
 message OverrideLayoutPayload {
   event.LayoutInfo layout_info = 1;
   repeated ContextItem context = 2;
   bool retain_existing_terminal_panes = 3;
   bool retain_existing_plugin_panes = 4;
+}
+
+message SaveLayoutPayload {
+  string layout_name = 1;
+  string layout_kdl = 2;
+  bool overwrite = 3;
 }

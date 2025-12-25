@@ -2309,6 +2309,12 @@ pub enum GetPanePidResponse {
     Err(String),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SaveLayoutResponse {
+    Ok(()),
+    Err(String),
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SelectedText {
     pub start: Position,
@@ -3122,4 +3128,9 @@ pub enum PluginCommand {
         bool,                      // retain_existing_plugin_panes
         BTreeMap<String, String>, // context
     ),
+    SaveLayout {
+        layout_name: String,
+        layout_kdl: String,
+        overwrite: bool,
+    },
 }

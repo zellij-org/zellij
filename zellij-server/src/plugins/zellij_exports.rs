@@ -23,6 +23,7 @@ use zellij_utils::data::{
     CommandType, ConnectToSession, Event, FloatingPaneCoordinates, GetPanePidResponse, HttpVerb,
     KeyWithModifier, LayoutInfo, MessageToPlugin, NewPanePlacement, OriginatingPlugin,
     PaneScrollbackResponse, PermissionStatus, PermissionType, PluginPermission,
+    SaveLayoutResponse,
 };
 use zellij_utils::input::permission::PermissionCache;
 use zellij_utils::ipc::{ClientToServerMsg, IpcSenderWithContext};
@@ -33,6 +34,7 @@ use zellij_utils::web_authentication_tokens::{
 #[cfg(feature = "web_server_capability")]
 use zellij_utils::web_server_commands::shutdown_all_webserver_instances;
 
+use kdl::KdlDocument;
 use crate::{panes::PaneId, screen::ScreenInstruction};
 
 use prost::Message;
@@ -50,7 +52,9 @@ use zellij_utils::{
     },
     plugin_api::{
         event::ProtobufPaneScrollbackResponse,
-        plugin_command::{ProtobufGetPanePidResponse, ProtobufPluginCommand},
+        plugin_command::{
+            ProtobufGetPanePidResponse, ProtobufPluginCommand, ProtobufSaveLayoutResponse,
+        },
         plugin_ids::{ProtobufPluginIds, ProtobufZellijVersion},
     },
 };
@@ -196,6 +200,11 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                         retain_existing_plugin_panes,
                         context,
                     )?,
+                    PluginCommand::SaveLayout {
+                        layout_name,
+                        layout_kdl,
+                        overwrite,
+                    } => save_layout(env, layout_name, layout_kdl, overwrite),
                     PluginCommand::NewTab { name, cwd } => new_tab(env, name, cwd),
                     PluginCommand::GoToNextTab => go_to_next_tab(env),
                     PluginCommand::GoToPreviousTab => go_to_previous_tab(env),
@@ -2505,6 +2514,124 @@ fn get_pane_pid(env: &PluginEnv, pane_id: PaneId) {
         .non_fatal();
 }
 
+fn save_layout(env: &PluginEnv, layout_name: String, layout_kdl: String, overwrite: bool) {
+    let err_context = || format!("Failed to save layout '{}'", layout_name);
+
+    // Step 1: Sanitize layout name for path traversal and invalid characters
+    let sanitized_name = sanitize_layout_name(&layout_name);
+    let response = match sanitized_name {
+        Err(err) => SaveLayoutResponse::Err(err),
+        Ok(safe_name) => {
+            // Step 2: Validate the layout by parsing it
+            let parse_result = Layout::from_kdl(
+                &layout_kdl,
+                Some(format!("{}.kdl", safe_name)),
+                None, // No swap layouts
+                None, // No cwd override
+            );
+
+            match parse_result {
+                Err(config_error) => {
+                    // Return detailed parse error to plugin
+                    SaveLayoutResponse::Err(format!("Invalid layout KDL: {:?}", config_error))
+                },
+                Ok(validated_layout) => {
+                    // Step 3: Get layout_dir from PluginEnv
+                    match &env.layout_dir {
+                        None => SaveLayoutResponse::Err(
+                            "Layout directory not configured".to_string(),
+                        ),
+                        Some(layout_dir) => {
+                            // Step 4: Create file path
+                            let file_path = layout_dir.join(format!("{}.kdl", safe_name));
+
+                            // Step 5: Check if file exists when overwrite=false
+                            if file_path.exists() && !overwrite {
+                                SaveLayoutResponse::Err(format!(
+                                    "Layout file '{}' already exists. Use overwrite flag to replace it.",
+                                    safe_name
+                                ))
+                            } else {
+                                // Step 6: Ensure layout directory exists
+                                if let Err(e) = std::fs::create_dir_all(layout_dir) {
+                                    SaveLayoutResponse::Err(format!(
+                                        "Failed to create layout directory: {}",
+                                        e
+                                    ))
+                                } else {
+                                    // Step 7: Write to disk
+                                    let mut parsed_layout: KdlDocument = layout_kdl.parse().unwrap(); // unwrap
+                                                                                                  // should
+                                                                                                  // be
+                                                                                                  // safe,
+                                                                                                  // but
+                                                                                                  // let's
+                                                                                                  // do
+                                                                                                  // it
+                                                                                                  // nicer
+                                    parsed_layout.fmt();
+                                    match std::fs::write(&file_path, &parsed_layout.to_string()) {
+                                        Ok(_) => SaveLayoutResponse::Ok(()),
+                                        Err(io_error) => SaveLayoutResponse::Err(format!(
+                                            "Failed to write layout file: {}",
+                                            io_error
+                                        )),
+                                    }
+                                }
+                            }
+                        },
+                    }
+                },
+            }
+        },
+    };
+
+    // Step 8: Serialize and send response back to plugin
+    let protobuf_response = ProtobufSaveLayoutResponse::from(response);
+    let serialized = protobuf_response.encode_to_vec();
+    wasi_write_object(env, &serialized)
+        .with_context(err_context)
+        .non_fatal();
+}
+
+/// Sanitize layout name to prevent path traversal and invalid filenames
+/// Returns the sanitized name or an error message
+fn sanitize_layout_name(name: &str) -> Result<String, String> {
+    // Check for empty name
+    if name.is_empty() {
+        return Err("Layout name cannot be empty".to_string());
+    }
+
+    // Check for path separators (prevent directory traversal)
+    if name.contains('/') || name.contains('\\') {
+        return Err("Layout name cannot contain path separators".to_string());
+    }
+
+    // Check for parent directory references
+    if name.contains("..") {
+        return Err("Layout name cannot contain '..'".to_string());
+    }
+
+    // Check length (most filesystems have 255 char limit, leave room for .kdl)
+    if name.len() > 250 {
+        return Err("Layout name too long (max 250 characters)".to_string());
+    }
+
+    // Only allow alphanumeric, hyphens, underscores, and spaces
+    let valid_chars = name.chars().all(|c| {
+        c.is_alphanumeric() || c == '-' || c == '_' || c == ' '
+    });
+
+    if !valid_chars {
+        return Err(
+            "Layout name can only contain letters, numbers, hyphens, underscores, and spaces"
+                .to_string(),
+        );
+    }
+
+    Ok(name.to_string())
+}
+
 fn move_pane_with_pane_id(env: &PluginEnv, pane_id: PaneId) {
     let _ = env
         .senders
@@ -3158,7 +3285,8 @@ fn check_command_permission(
         | PluginCommand::KillSessions(..)
         | PluginCommand::SendSigintToPaneId(..)
         | PluginCommand::SendSigkillToPaneId(..)
-        | PluginCommand::OverrideLayout(..) => PermissionType::ChangeApplicationState,
+        | PluginCommand::OverrideLayout(..)
+        | PluginCommand::SaveLayout { .. } => PermissionType::ChangeApplicationState,
         PluginCommand::UnblockCliPipeInput(..)
         | PluginCommand::BlockCliPipeInput(..)
         | PluginCommand::CliPipeOutput(..) => PermissionType::ReadCliPipes,

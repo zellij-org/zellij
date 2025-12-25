@@ -11,7 +11,8 @@ pub use zellij_utils::plugin_api;
 use zellij_utils::plugin_api::event::ProtobufPaneScrollbackResponse;
 use zellij_utils::plugin_api::plugin_command::{
     CreateTokenResponse, ListTokensResponse, ProtobufGetPanePidResponse, ProtobufPluginCommand,
-    RenameWebTokenResponse, RevokeAllWebTokensResponse, RevokeTokenResponse,
+    ProtobufSaveLayoutResponse, RenameWebTokenResponse, RevokeAllWebTokensResponse,
+    RevokeTokenResponse,
 };
 use zellij_utils::plugin_api::plugin_ids::{ProtobufPluginIds, ProtobufZellijVersion};
 
@@ -1188,6 +1189,45 @@ pub fn get_pane_pid(pane_id: PaneId) -> Result<i32, String> {
     match response {
         GetPanePidResponse::Ok(pid) => Ok(pid),
         GetPanePidResponse::Err(error_msg) => Err(error_msg),
+    }
+}
+
+/// Save a layout to the user's layout directory
+///
+/// # Arguments
+/// * `layout_name` - Name of the layout file (without .kdl extension)
+/// * `layout_kdl` - KDL string representing the layout
+/// * `overwrite` - Whether to overwrite if the file already exists
+///
+/// # Returns
+/// * `Ok(())` - Layout was successfully validated and saved
+/// * `Err(String)` - Error message (parse error, I/O error, file exists, etc.)
+pub fn save_layout(layout_name: String, layout_kdl: String, overwrite: bool) -> Result<(), String> {
+    let plugin_command = PluginCommand::SaveLayout {
+        layout_name,
+        layout_kdl,
+        overwrite,
+    };
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+
+    // Read response from stdin
+    let response_bytes =
+        bytes_from_stdin().map_err(|e| format!("Failed to read response from stdin: {:?}", e))?;
+
+    // Decode protobuf response
+    let protobuf_response = ProtobufSaveLayoutResponse::decode(response_bytes.as_slice())
+        .map_err(|e| format!("Failed to decode protobuf response: {}", e))?;
+
+    // Convert to Rust type
+    let response = SaveLayoutResponse::try_from(protobuf_response)
+        .map_err(|e| format!("Failed to convert protobuf response: {}", e))?;
+
+    // Convert Result enum to actual Result type
+    match response {
+        SaveLayoutResponse::Ok(_) => Ok(()),
+        SaveLayoutResponse::Err(error_msg) => Err(error_msg),
     }
 }
 

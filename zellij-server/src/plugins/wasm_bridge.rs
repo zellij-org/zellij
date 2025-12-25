@@ -1327,6 +1327,7 @@ impl WasmBridge {
         keybinds: Option<Keybinds>,
         default_mode: Option<InputMode>,
         default_shell: Option<TerminalAction>,
+        layout_dir: Option<PathBuf>,
     ) -> Result<()> {
         let plugins_to_reconfigure: Vec<(PluginId, Arc<Mutex<RunningPlugin>>)> = self
             .plugin_map
@@ -1350,11 +1351,13 @@ impl WasmBridge {
             self.keybinds.insert(client_id, keybinds.clone());
         }
         self.default_shell = default_shell.clone();
+        self.layout_dir = layout_dir.clone();
         for (plugin_id, running_plugin) in plugins_to_reconfigure {
             self.plugin_executor.execute_for_plugin(plugin_id, {
                 let running_plugin = running_plugin.clone();
                 let keybinds = keybinds.clone();
                 let default_shell = default_shell.clone();
+                let layout_dir = layout_dir.clone();
                 move |_senders,
                       _plugin_map,
                       _connected_clients,
@@ -1369,6 +1372,7 @@ impl WasmBridge {
                         running_plugin.update_default_mode(default_mode);
                     }
                     running_plugin.update_default_shell(default_shell);
+                    running_plugin.update_layout_dir(layout_dir);
                 }
             });
         }

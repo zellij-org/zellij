@@ -183,6 +183,7 @@ pub enum PluginInstruction {
         keybinds: Option<Keybinds>,
         default_mode: Option<InputMode>,
         default_shell: Option<TerminalAction>,
+        layout_dir: Option<PathBuf>,
         was_written_to_disk: bool,
     },
     FailedToWriteConfigToDisk {
@@ -1082,10 +1083,11 @@ pub(crate) fn plugin_thread_main(
                 keybinds,
                 default_mode,
                 default_shell,
+                layout_dir,
                 was_written_to_disk,
             } => {
                 wasm_bridge
-                    .reconfigure(client_id, keybinds, default_mode, default_shell)
+                    .reconfigure(client_id, keybinds, default_mode, default_shell, layout_dir)
                     .non_fatal();
                 // TODO: notify plugins that this happened so that they can eg. rebind temporary keys that
                 // were lost
