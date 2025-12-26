@@ -138,6 +138,8 @@ pub enum ClientToServerMsg {
     FailedToStartWebServer {
         error: String,
     },
+    FocusGained,
+    FocusLost,
 }
 
 // Types of messages sent from the server to the client

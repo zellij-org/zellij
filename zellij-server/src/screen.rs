@@ -501,6 +501,8 @@ pub enum ScreenInstruction {
     RemoveWatcherClient(ClientId),
     SetFollowedClient(ClientId),
     WatcherTerminalResize(ClientId, Size),
+    ClientGainedFocus(ClientId),
+    ClientLostFocus(ClientId),
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -743,6 +745,8 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::RemoveWatcherClient(..) => ScreenContext::RemoveWatcherClient,
             ScreenInstruction::SetFollowedClient(..) => ScreenContext::SetFollowedClient,
             ScreenInstruction::WatcherTerminalResize(..) => ScreenContext::WatcherTerminalResize, // NEW
+            ScreenInstruction::ClientGainedFocus(..) => ScreenContext::ClientGainedFocus,
+            ScreenInstruction::ClientLostFocus(..) => ScreenContext::ClientLostFocus,
         }
     }
 }
@@ -922,6 +926,8 @@ pub(crate) struct Screen {
     render_blocker: RenderBlocker,
     watcher_clients: HashMap<ClientId, WatcherState>,
     followed_client_id: Option<ClientId>,
+    tty_focused_panes: HashSet<PaneId>,
+    tty_focused_clients: HashSet<ClientId>,
 }
 
 impl Screen {
@@ -1007,7 +1013,44 @@ impl Screen {
             render_blocker: RenderBlocker::new(100),
             watcher_clients: HashMap::new(),
             followed_client_id: None,
+            tty_focused_panes: HashSet::new(),
+            tty_focused_clients: HashSet::new(),
         }
+    }
+
+    fn update_tty_focused_panes(&mut self) {
+        let mut new_focused_panes = HashSet::new();
+
+        for (client_id, tab_index) in &self.active_tab_indices {
+            // Only consider clients whose terminal is focused
+            if !self.tty_focused_clients.contains(client_id) {
+                continue;
+            }
+
+            if let Some(tab) = self.tabs.get(tab_index) {
+                if let Some(pane_id) = tab.get_active_pane_id(*client_id) {
+                    new_focused_panes.insert(pane_id);
+                }
+            }
+        }
+
+        let old_focused_panes = &self.tty_focused_panes;
+
+        // Panes that lost focus
+        for &pane_id in old_focused_panes.difference(&new_focused_panes) {
+            for tab in self.tabs.values_mut() {
+                tab.send_pane_tty_unfocus(pane_id);
+            }
+        }
+
+        // Panes that gained focus
+        for &pane_id in new_focused_panes.difference(old_focused_panes) {
+            for tab in self.tabs.values_mut() {
+                tab.send_pane_tty_focus(pane_id);
+            }
+        }
+
+        self.tty_focused_panes = new_focused_panes;
     }
 
     /// Returns the index where a new [`Tab`] should be created in this [`Screen`].
@@ -1900,6 +1943,7 @@ impl Screen {
             .borrow_mut()
             .insert(client_id, is_web_client);
         self.tab_history.insert(client_id, tab_history);
+        self.tty_focused_clients.insert(client_id);
         self.tabs
             .get_mut(&tab_index)
             .with_context(|| err_context(tab_index))?
@@ -1939,6 +1983,7 @@ impl Screen {
         if self.tab_history.contains_key(&client_id) {
             self.tab_history.remove(&client_id);
         }
+        self.tty_focused_clients.remove(&client_id);
         self.connected_clients.borrow_mut().remove(&client_id);
         self.log_and_report_session_state()
             .with_context(err_context)
@@ -6484,7 +6529,14 @@ pub(crate) fn screen_thread_main(
                 screen.set_watcher_size(client_id, size);
                 screen.render(None)?;
             },
+            ScreenInstruction::ClientGainedFocus(client_id) => {
+                screen.tty_focused_clients.insert(client_id);
+            },
+            ScreenInstruction::ClientLostFocus(client_id) => {
+                screen.tty_focused_clients.remove(&client_id);
+            },
         }
+        screen.update_tty_focused_panes();
     }
     Ok(())
 }
