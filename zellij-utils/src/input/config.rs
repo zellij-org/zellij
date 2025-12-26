@@ -1,4 +1,4 @@
-use crate::data::{LayoutInfo, Styling};
+use crate::data::{LayoutInfo, LayoutWithError, Styling};
 use miette::{Diagnostic, LabeledSpan, NamedSource, SourceCode};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -36,14 +36,39 @@ pub struct Config {
     pub web_client: WebClientConfig,
 }
 
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Serialize, Deserialize)]
 pub struct KdlError {
     pub error_message: String,
+    #[serde(skip)]
     pub src: Option<NamedSource>,
     pub offset: Option<usize>,
     pub len: Option<usize>,
     pub help_message: Option<String>,
 }
+
+impl Clone for KdlError {
+    fn clone(&self) -> Self {
+        KdlError {
+            error_message: self.error_message.clone(),
+            src: None, // NamedSource doesn't implement Clone, so we skip it
+            offset: self.offset,
+            len: self.len,
+            help_message: self.help_message.clone(),
+        }
+    }
+}
+
+impl PartialEq for KdlError {
+    fn eq(&self, other: &Self) -> bool {
+        // Compare everything except src (which doesn't implement PartialEq)
+        self.error_message == other.error_message
+            && self.offset == other.offset
+            && self.len == other.len
+            && self.help_message == other.help_message
+    }
+}
+
+impl Eq for KdlError {}
 
 impl KdlError {
     pub fn add_src(mut self, src_name: String, src_input: String) -> Self {
@@ -489,7 +514,7 @@ pub async fn watch_layout_dir_changes<F, Fut>(
     on_layout_change: F,
 )
 where
-    F: Fn(Vec<LayoutInfo>) -> Fut + Send + 'static,
+    F: Fn(Vec<LayoutInfo>, Vec<LayoutWithError>) -> Fut + Send + 'static,
     Fut: std::future::Future<Output = ()> + Send,
 {
     use crate::input::layout::Layout;
@@ -528,11 +553,11 @@ where
                                 break;
                             }
 
-                            let layouts = Layout::list_available_layouts(
+                            let (layouts, layout_errors) = Layout::list_available_layouts(
                                 Some(layout_dir.clone()),
                                 &default_layout_name,
                             );
-                            on_layout_change(layouts).await;
+                            on_layout_change(layouts, layout_errors).await;
                         }
                     },
                     Err(_) => break,

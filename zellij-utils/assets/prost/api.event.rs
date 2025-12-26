@@ -223,6 +223,8 @@ pub struct SessionUpdatePayload {
 pub struct AvailableLayoutInfoPayload {
     #[prost(message, repeated, tag="1")]
     pub available_layouts: ::prost::alloc::vec::Vec<LayoutInfo>,
+    #[prost(message, repeated, tag="2")]
+    pub layouts_with_errors: ::prost::alloc::vec::Vec<LayoutWithError>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -401,6 +403,58 @@ pub struct LayoutInfo {
     pub source: ::prost::alloc::string::String,
     #[prost(message, optional, tag="5")]
     pub layout_metadata: ::core::option::Option<LayoutMetadata>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct LayoutWithError {
+    #[prost(string, tag="1")]
+    pub layout_name: ::prost::alloc::string::String,
+    #[prost(message, optional, tag="2")]
+    pub error: ::core::option::Option<LayoutParsingError>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct LayoutParsingError {
+    #[prost(oneof="layout_parsing_error::ErrorType", tags="1, 2")]
+    pub error_type: ::core::option::Option<layout_parsing_error::ErrorType>,
+}
+/// Nested message and enum types in `LayoutParsingError`.
+pub mod layout_parsing_error {
+    #[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum ErrorType {
+        #[prost(message, tag="1")]
+        KdlError(super::KdlErrorVariant),
+        #[prost(message, tag="2")]
+        SyntaxError(super::SyntaxError),
+    }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct KdlErrorVariant {
+    #[prost(message, optional, tag="1")]
+    pub kdl_error: ::core::option::Option<KdlError>,
+    #[prost(string, tag="2")]
+    pub file_name: ::prost::alloc::string::String,
+    #[prost(string, tag="3")]
+    pub source_code: ::prost::alloc::string::String,
+}
+/// Empty message, just a marker
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SyntaxError {
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct KdlError {
+    #[prost(string, tag="1")]
+    pub error_message: ::prost::alloc::string::String,
+    #[prost(uint64, optional, tag="2")]
+    pub offset: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag="3")]
+    pub len: ::core::option::Option<u64>,
+    #[prost(string, optional, tag="4")]
+    pub help_message: ::core::option::Option<::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

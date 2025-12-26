@@ -206,6 +206,7 @@ message SessionUpdatePayload {
 
 message AvailableLayoutInfoPayload {
   repeated LayoutInfo available_layouts = 1;
+  repeated LayoutWithError layouts_with_errors = 2;
 }
 
 message RunCommandResultPayload {
@@ -325,6 +326,35 @@ message LayoutInfo {
   string name = 1;
   string source = 2;
   optional LayoutMetadata layout_metadata = 5;
+}
+
+message LayoutWithError {
+  string layout_name = 1;
+  LayoutParsingError error = 2;
+}
+
+message LayoutParsingError {
+  oneof error_type {
+    KdlErrorVariant kdl_error = 1;
+    SyntaxError syntax_error = 2;
+  }
+}
+
+message KdlErrorVariant {
+  KdlError kdl_error = 1;
+  string file_name = 2;
+  string source_code = 3;
+}
+
+message SyntaxError {
+  // Empty message, just a marker
+}
+
+message KdlError {
+  string error_message = 1;
+  optional uint64 offset = 2;
+  optional uint64 len = 3;
+  optional string help_message = 4;
 }
 
 message LayoutMetadata {

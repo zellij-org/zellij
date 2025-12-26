@@ -11,7 +11,7 @@
 #[cfg(not(target_family = "wasm"))]
 use crate::downloader::Downloader;
 use crate::{
-    data::{Direction, LayoutInfo, LayoutMetadata},
+    data::{Direction, LayoutInfo, LayoutMetadata, LayoutWithError, LayoutParsingError},
     home::{default_layout_dir, find_default_config_dir},
     input::{
         command::RunCommand,
@@ -1189,8 +1189,8 @@ impl Layout {
     pub fn list_available_layouts(
         layout_dir: Option<PathBuf>,
         default_layout_name: &Option<String>,
-    ) -> Vec<LayoutInfo> {
-        let mut available_layouts = layout_dir
+    ) -> (Vec<LayoutInfo>, Vec<LayoutWithError>) {
+        let (mut available_layouts, layouts_with_errors) = layout_dir
             .clone()
             .or_else(|| default_layout_dir())
             .and_then(|layout_dir| match std::fs::read_dir(&layout_dir) {
@@ -1199,34 +1199,62 @@ impl Layout {
             })
             .map(|(layout_files, layout_dir)| {
                 let mut available_layouts = vec![];
+                let mut layouts_with_errors = vec![];
                 for file in layout_files {
                     if let Ok(file) = file {
                         if file.path().extension().map(|e| e.to_ascii_lowercase())
                             == Some(std::ffi::OsString::from("kdl"))
                         {
-                            if Layout::from_path_or_default_without_config(
+                            let layout_name = file
+                                .path()
+                                .file_stem()
+                                .and_then(|f| f.to_str())
+                                .map(|f| f.to_string())
+                                .unwrap_or_default();
+
+                            match Layout::from_path_or_default_without_config(
                                 Some(&file.path()),
                                 Some(layout_dir.clone()),
-                            )
-                            .is_ok()
-                            {
-                                if let Some(file_name) = file.path().file_stem() {
+                            ) {
+                                Ok(_layout) => {
                                     let file_path = layout_dir.join(file.path()); // TODO: do we
                                                                                   // need
                                                                                   // file_stem()
                                                                                   // here too?
                                     available_layouts.push(LayoutInfo::File(
-                                        file_name.to_string_lossy().to_string(),
+                                        layout_name,
                                         LayoutMetadata::from(&file_path)
                                     ))
+                                }
+                                Err(config_error) => {
+                                    let file_path = file.path();
+                                    let file_name = file_path
+                                        .to_str()
+                                        .unwrap_or("unknown")
+                                        .to_string();
+                                    let source_code = std::fs::read_to_string(&file_path)
+                                        .unwrap_or_default();
+
+                                    let error = match config_error {
+                                        ConfigError::KdlError(kdl_err) => LayoutParsingError::KdlError {
+                                            kdl_error: kdl_err,
+                                            file_name,
+                                            source_code,
+                                        },
+                                        _ => LayoutParsingError::SyntaxError,
+                                    };
+                                    layouts_with_errors.push(LayoutWithError {
+                                        layout_name,
+                                        error,
+                                    });
                                 }
                             }
                         }
                     }
                 }
-                available_layouts
+                (available_layouts, layouts_with_errors)
             })
-            .unwrap_or_else(Default::default);
+            .unwrap_or_else(|| (Default::default(), Default::default()));
         let default_layout_name = default_layout_name
             .as_ref()
             .map(|d| d.as_str())
@@ -1247,7 +1275,7 @@ impl Layout {
                 a_name.cmp(&b_name)
             }
         });
-        available_layouts
+        (available_layouts, layouts_with_errors)
     }
     pub fn from_layout_info(
         layout_dir: &Option<PathBuf>,

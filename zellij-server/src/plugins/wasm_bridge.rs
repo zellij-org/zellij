@@ -23,7 +23,7 @@ use url::Url;
 use wasmi::{Engine, Module};
 use zellij_utils::consts::{ZELLIJ_CACHE_DIR, ZELLIJ_SESSION_CACHE_DIR, ZELLIJ_TMP_DIR};
 use zellij_utils::data::{
-    FloatingPaneCoordinates, InputMode, LayoutInfo, PaneContents, PaneRenderReport,
+    FloatingPaneCoordinates, InputMode, LayoutInfo, LayoutWithError, PaneContents, PaneRenderReport,
     PermissionStatus, PermissionType, PipeMessage, PipeSource,
 };
 use zellij_utils::downloader::Downloader;
@@ -180,6 +180,7 @@ pub struct WasmBridge {
     pending_pipes: PendingPipes,
     layout_dir: Option<PathBuf>,
     available_layouts: Vec<LayoutInfo>,
+    available_layout_errors: Vec<LayoutWithError>,
     default_mode: InputMode,
     default_keybinds: Keybinds,
     keybinds: HashMap<ClientId, Keybinds>,
@@ -201,6 +202,7 @@ impl WasmBridge {
         default_layout: Box<Layout>,
         layout_dir: Option<PathBuf>,
         available_layouts: Vec<LayoutInfo>,
+        available_layout_errors: Vec<LayoutWithError>,
         default_mode: InputMode,
         default_keybinds: Keybinds,
     ) -> Self {
@@ -243,6 +245,7 @@ impl WasmBridge {
             pending_pipes: Default::default(),
             layout_dir,
             available_layouts,
+            available_layout_errors,
             default_mode,
             default_keybinds,
             keybinds: HashMap::new(),
@@ -1849,19 +1852,20 @@ impl WasmBridge {
             .next()
             .copied()
     }
-    pub fn update_available_layouts(&mut self, layouts: Vec<LayoutInfo>) {
+    pub fn update_available_layouts(&mut self, layouts: Vec<LayoutInfo>, errors: Vec<LayoutWithError>) {
         log::info!("update available_layouts to: {:#?}", layouts);
 
         // Diff with existing layouts
-        if self.available_layouts != layouts {
+        if self.available_layouts != layouts || self.available_layout_errors != errors {
             // Update the stored layouts
             self.available_layouts = layouts.clone();
+            self.available_layout_errors = errors.clone();
 
             // Notify all plugins of the change
             let _ = self.senders.send_to_plugin(PluginInstruction::Update(vec![(
                 None,  // Broadcast to all plugins
                 None,  // Broadcast to all clients
-                Event::AvailableLayoutInfo(layouts),
+                Event::AvailableLayoutInfo(layouts, errors),
             )]));
         }
     }
@@ -1869,7 +1873,7 @@ impl WasmBridge {
         let _ = self.senders.send_to_plugin(PluginInstruction::Update(vec![(
             Some(plugin_id),
             None,
-            Event::AvailableLayoutInfo(self.available_layouts.clone()),
+            Event::AvailableLayoutInfo(self.available_layouts.clone(), self.available_layout_errors.clone()),
         )]));
     }
 }

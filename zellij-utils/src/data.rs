@@ -1,6 +1,6 @@
 use crate::home::default_layout_dir;
 use crate::input::actions::{Action, RunCommandAction};
-use crate::input::config::ConversionError;
+use crate::input::config::{ConversionError, KdlError};
 use crate::input::keybinds::Keybinds;
 use crate::input::layout::{Layout, RunPlugin, RunPluginOrAlias, SplitSize};
 use crate::pane_size::PaneGeom;
@@ -996,7 +996,7 @@ pub enum Event {
     PaneRenderReport(HashMap<PaneId, PaneContents>),
     ActionComplete(Action, Option<PaneId>, BTreeMap<String, String>), // Action, pane_id, context
     CwdChanged(PaneId, PathBuf, Vec<ClientId>), // pane_id, cwd, focused_client_ids
-    AvailableLayoutInfo(Vec<LayoutInfo>),
+    AvailableLayoutInfo(Vec<LayoutInfo>, Vec<LayoutWithError>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, EnumDiscriminants, Display, Serialize, Deserialize)]
@@ -1721,6 +1721,23 @@ pub enum LayoutInfo {
     File(String, LayoutMetadata),
     Url(String),
     Stringified(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct LayoutWithError {
+    pub layout_name: String,
+    pub error: LayoutParsingError
+
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub enum LayoutParsingError {
+    KdlError {
+        kdl_error: KdlError,
+        file_name: String,
+        source_code: String,
+    },
+    SyntaxError,
 }
 
 impl AsRef<LayoutInfo> for LayoutInfo {

@@ -51,7 +51,7 @@ use zellij_utils::{
         DEFAULT_SCROLL_BUFFER_SIZE, SCROLL_BUFFER_SIZE, ZELLIJ_SEEN_RELEASE_NOTES_CACHE_FILE,
     },
     data::{
-        ConnectToSession, Event, InputMode, KeyWithModifier, LayoutInfo, PluginCapabilities, Style,
+        ConnectToSession, Event, InputMode, KeyWithModifier, LayoutInfo, LayoutWithError, PluginCapabilities, Style,
         WebSharing,
     },
     errors::{prelude::*, ContextType, ErrorInstruction, FatalError, ServerContext},
@@ -1783,7 +1783,7 @@ fn init_session(
 
     let zellij_cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
 
-    let available_layouts = get_available_layouts(&config_options);
+    let (available_layouts, available_layout_errors) = get_available_layouts(&config_options);
 
     let plugin_thread = thread::Builder::new()
         .name("wasm".to_string())
@@ -1814,6 +1814,7 @@ fn init_session(
                     layout,
                     layout_dir,
                     available_layouts,
+                    available_layout_errors,
                     path_to_default_shell,
                     zellij_cwd,
                     capabilities,
@@ -2020,10 +2021,10 @@ fn report_changes_in_layout_dir(
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async move {
             let to_plugin = to_plugin.clone();
-            watch_layout_dir_changes(layout_dir, default_layout_name, move |new_layouts| {
+            watch_layout_dir_changes(layout_dir, default_layout_name, move |new_layouts, layout_errors| {
                 let to_plugin = to_plugin.clone();
                 async move {
-                    let _ = to_plugin.send(PluginInstruction::LayoutListUpdate(new_layouts));
+                    let _ = to_plugin.send(PluginInstruction::LayoutListUpdate(new_layouts, layout_errors));
                 }
             })
             .await;
@@ -2122,7 +2123,7 @@ pub fn get_engine() -> Engine {
 }
 
 // TODO: move elsewhere
-fn get_available_layouts(config_options: &Options) -> Vec<LayoutInfo> {
+fn get_available_layouts(config_options: &Options) -> (Vec<LayoutInfo>, Vec<LayoutWithError>) {
     let layout_dir = config_options.layout_dir.clone().or_else(|| default_layout_dir());
     let default_layout_name = config_options
         .default_layout

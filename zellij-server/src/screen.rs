@@ -2087,7 +2087,7 @@ impl Screen {
         // because this is mostly about HD access - it does however throw off the timing in the
         // tests and causes them to flake, which is why we skip it here
         #[cfg(not(test))]
-        let available_layouts =
+        let (available_layouts, _layout_errors) =
             Layout::list_available_layouts(self.layout_dir.clone(), &self.default_layout_name);
         #[cfg(test)]
         let available_layouts = vec![];

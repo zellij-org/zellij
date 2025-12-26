@@ -31,7 +31,7 @@ use async_std::{channel, future::timeout, task};
 use zellij_utils::{
     data::{
         ClientInfo, CommandOrPlugin, Event, EventType, FloatingPaneCoordinates, InputMode,
-        LayoutInfo, MessageToPlugin, PermissionStatus, PermissionType, PipeMessage, PipeSource,
+        LayoutInfo, LayoutWithError, MessageToPlugin, PermissionStatus, PermissionType, PipeMessage, PipeSource,
         PluginCapabilities, WebServerStatus,
     },
     errors::{prelude::*, ContextType, PluginContext},
@@ -201,7 +201,7 @@ pub enum PluginInstruction {
         terminal_id: Option<u32>,
         cli_client_id: Option<ClientId>,
     },
-    LayoutListUpdate(Vec<LayoutInfo>),
+    LayoutListUpdate(Vec<LayoutInfo>, Vec<LayoutWithError>),
     RequestStateUpdateForPlugin(PluginId),
     Exit,
 }
@@ -268,6 +268,7 @@ pub(crate) fn plugin_thread_main(
     mut layout: Box<Layout>,
     layout_dir: Option<PathBuf>,
     available_layouts: Vec<LayoutInfo>,
+    available_layout_errors: Vec<LayoutWithError>,
     path_to_default_shell: PathBuf,
     zellij_cwd: PathBuf,
     capabilities: PluginCapabilities,
@@ -304,6 +305,7 @@ pub(crate) fn plugin_thread_main(
         layout.clone(),
         layout_dir,
         available_layouts,
+        available_layout_errors,
         default_mode,
         default_keybinds,
     );
@@ -1160,8 +1162,8 @@ pub(crate) fn plugin_thread_main(
                 )];
                 wasm_bridge.update_plugins(updates, shutdown_send.clone())?;
             },
-            PluginInstruction::LayoutListUpdate(layouts) => {
-                wasm_bridge.update_available_layouts(layouts);
+            PluginInstruction::LayoutListUpdate(layouts, errors) => {
+                wasm_bridge.update_available_layouts(layouts, errors);
             },
             PluginInstruction::RequestStateUpdateForPlugin(plugin_id) => {
                 wasm_bridge.state_update_for_plugin(plugin_id);
