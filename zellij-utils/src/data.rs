@@ -2321,6 +2321,12 @@ pub enum DeleteLayoutResponse {
     Err(String),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum EditLayoutResponse {
+    Ok(()),
+    Err(String),
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SelectedText {
     pub start: Position,

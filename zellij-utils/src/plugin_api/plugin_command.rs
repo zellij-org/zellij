@@ -22,7 +22,8 @@ pub use super::generated_api::api::{
         NewTabsWithLayoutInfoPayload, OverrideLayoutPayload, SaveLayoutPayload,
         SaveLayoutResponse as ProtobufSaveLayoutResponse, save_layout_response,
         DeleteLayoutPayload, DeleteLayoutResponse as ProtobufDeleteLayoutResponse,
-        delete_layout_response, EditLayoutPayload, OpenCommandPaneFloatingNearPluginPayload,
+        delete_layout_response, EditLayoutPayload, EditLayoutResponse as ProtobufEditLayoutResponse,
+        edit_layout_response, OpenCommandPaneFloatingNearPluginPayload,
         OpenCommandPaneInPlaceOfPluginPayload, OpenCommandPaneNearPluginPayload,
         OpenCommandPanePayload, OpenFileFloatingNearPluginPayload, OpenFileInPlaceOfPluginPayload,
         OpenFileNearPluginPayload, OpenFilePayload, OpenTerminalFloatingNearPluginPayload,
@@ -47,7 +48,7 @@ pub use super::generated_api::api::{
 };
 
 use crate::data::{
-    ConnectToSession, DeleteLayoutResponse, FloatingPaneCoordinates, GetPanePidResponse,
+    ConnectToSession, DeleteLayoutResponse, EditLayoutResponse, FloatingPaneCoordinates, GetPanePidResponse,
     HttpVerb, InputMode, KeyWithModifier, MessageToPlugin, NewPluginArgs, PaneId, PermissionType,
     PluginCommand, SaveLayoutResponse,
 };
@@ -276,6 +277,32 @@ impl From<DeleteLayoutResponse> for ProtobufDeleteLayoutResponse {
             },
             DeleteLayoutResponse::Err(error) => ProtobufDeleteLayoutResponse {
                 result: Some(delete_layout_response::Result::Error(error)),
+            },
+        }
+    }
+}
+
+impl TryFrom<ProtobufEditLayoutResponse> for EditLayoutResponse {
+    type Error = &'static str;
+    fn try_from(protobuf_response: ProtobufEditLayoutResponse) -> Result<Self, &'static str> {
+        match protobuf_response.result {
+            Some(edit_layout_response::Result::Success(_)) => Ok(EditLayoutResponse::Ok(())),
+            Some(edit_layout_response::Result::Error(error)) => {
+                Ok(EditLayoutResponse::Err(error))
+            },
+            None => Err("Empty EditLayoutResponse"),
+        }
+    }
+}
+
+impl From<EditLayoutResponse> for ProtobufEditLayoutResponse {
+    fn from(response: EditLayoutResponse) -> Self {
+        match response {
+            EditLayoutResponse::Ok(_) => ProtobufEditLayoutResponse {
+                result: Some(edit_layout_response::Result::Success(true)),
+            },
+            EditLayoutResponse::Err(error) => ProtobufEditLayoutResponse {
+                result: Some(edit_layout_response::Result::Error(error)),
             },
         }
     }

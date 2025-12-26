@@ -11,8 +11,9 @@ pub use zellij_utils::plugin_api;
 use zellij_utils::plugin_api::event::ProtobufPaneScrollbackResponse;
 use zellij_utils::plugin_api::plugin_command::{
     CreateTokenResponse, ListTokensResponse, ProtobufDeleteLayoutResponse,
-    ProtobufGetPanePidResponse, ProtobufPluginCommand, ProtobufSaveLayoutResponse,
-    RenameWebTokenResponse, RevokeAllWebTokensResponse, RevokeTokenResponse,
+    ProtobufEditLayoutResponse, ProtobufGetPanePidResponse, ProtobufPluginCommand,
+    ProtobufSaveLayoutResponse, RenameWebTokenResponse, RevokeAllWebTokensResponse,
+    RevokeTokenResponse,
 };
 use zellij_utils::plugin_api::plugin_ids::{ProtobufPluginIds, ProtobufZellijVersion};
 
@@ -1286,7 +1287,7 @@ pub fn delete_layout<S: AsRef<str>>(layout_name: S) -> Result<(), String> {
 }
 
 /// Opens a layout file in the user's default `$EDITOR`
-pub fn edit_layout<S: AsRef<str>>(layout_name: S, context: BTreeMap<String, String>) {
+pub fn edit_layout<S: AsRef<str>>(layout_name: S, context: BTreeMap<String, String>) -> Result<(), String> {
     let layout_name = layout_name.as_ref().to_owned();
     let plugin_command = PluginCommand::EditLayout {
         layout_name,
@@ -1295,6 +1296,24 @@ pub fn edit_layout<S: AsRef<str>>(layout_name: S, context: BTreeMap<String, Stri
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
+
+    // Read response from stdin
+    let response_bytes =
+        bytes_from_stdin().map_err(|e| format!("Failed to read response from stdin: {:?}", e))?;
+
+    // Decode protobuf response
+    let protobuf_response = ProtobufEditLayoutResponse::decode(response_bytes.as_slice())
+        .map_err(|e| format!("Failed to decode protobuf response: {}", e))?;
+
+    // Convert to Rust type
+    let response = EditLayoutResponse::try_from(protobuf_response)
+        .map_err(|e| format!("Failed to convert protobuf response: {}", e))?;
+
+    // Convert Result enum to actual Result type
+    match response {
+        EditLayoutResponse::Ok(_) => Ok(()),
+        EditLayoutResponse::Err(error_msg) => Err(error_msg),
+    }
 }
 
 /// Switch the position of the pane with this id with a different pane

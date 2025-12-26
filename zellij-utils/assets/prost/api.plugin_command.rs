@@ -1014,6 +1014,23 @@ pub mod delete_layout_response {
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EditLayoutResponse {
+    #[prost(oneof="edit_layout_response::Result", tags="1, 2")]
+    pub result: ::core::option::Option<edit_layout_response::Result>,
+}
+/// Nested message and enum types in `EditLayoutResponse`.
+pub mod edit_layout_response {
+    #[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Result {
+        #[prost(bool, tag="1")]
+        Success(bool),
+        #[prost(string, tag="2")]
+        Error(::prost::alloc::string::String),
+    }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct OverrideLayoutPayload {
     #[prost(message, optional, tag="1")]
     pub layout_info: ::core::option::Option<super::event::LayoutInfo>,

@@ -20,10 +20,10 @@ use std::{
 };
 use wasmi::{Caller, Linker};
 use zellij_utils::data::{
-    CommandType, ConnectToSession, DeleteLayoutResponse, Event, FloatingPaneCoordinates,
-    GetPanePidResponse, HttpVerb, KeyWithModifier, LayoutInfo, MessageToPlugin,
-    NewPanePlacement, OriginatingPlugin, PaneScrollbackResponse, PermissionStatus,
-    PermissionType, PluginPermission, SaveLayoutResponse,
+    CommandType, ConnectToSession, DeleteLayoutResponse, EditLayoutResponse, Event,
+    FloatingPaneCoordinates, GetPanePidResponse, HttpVerb, KeyWithModifier, LayoutInfo,
+    MessageToPlugin, NewPanePlacement, OriginatingPlugin, PaneScrollbackResponse,
+    PermissionStatus, PermissionType, PluginPermission, SaveLayoutResponse,
 };
 use zellij_utils::input::permission::PermissionCache;
 use zellij_utils::ipc::{ClientToServerMsg, IpcSenderWithContext};
@@ -53,8 +53,8 @@ use zellij_utils::{
     plugin_api::{
         event::ProtobufPaneScrollbackResponse,
         plugin_command::{
-            ProtobufDeleteLayoutResponse, ProtobufGetPanePidResponse, ProtobufPluginCommand,
-            ProtobufSaveLayoutResponse,
+            ProtobufDeleteLayoutResponse, ProtobufEditLayoutResponse,
+            ProtobufGetPanePidResponse, ProtobufPluginCommand, ProtobufSaveLayoutResponse,
         },
         plugin_ids::{ProtobufPluginIds, ProtobufZellijVersion},
     },
@@ -2632,25 +2632,29 @@ fn try_delete_layout(env: &PluginEnv, layout_name: &str) -> Result<(), String> {
 }
 
 fn edit_layout(env: &PluginEnv, layout_name: String, context: BTreeMap<String, String>) {
-    let error_msg = || format!("failed to edit layout '{}' in plugin {}", layout_name, env.name());
+    let err_context = || format!("Failed to edit layout '{}'", layout_name);
 
+    let response = try_edit_layout(env, &layout_name, context)
+        .map(|_| EditLayoutResponse::Ok(()))
+        .unwrap_or_else(|e| EditLayoutResponse::Err(e));
+
+    let protobuf_response: ProtobufEditLayoutResponse = response.into();
+    let serialized = protobuf_response.encode_to_vec();
+    wasi_write_object(env, &serialized)
+        .with_context(err_context)
+        .non_fatal();
+}
+
+fn try_edit_layout(env: &PluginEnv, layout_name: &str, context: BTreeMap<String, String>) -> Result<(), String> {
     // Sanitize the layout name to prevent directory traversal
-    let safe_name = match sanitize_layout_name(&layout_name) {
-        Ok(name) => name,
-        Err(e) => {
-            log::error!("Invalid layout name '{}': {}", layout_name, e);
-            return;
-        }
-    };
+    let safe_name = sanitize_layout_name(layout_name)
+        .map_err(|e| format!("Invalid layout name: {}", e))?;
 
     // Get the layout directory from PluginEnv
-    let layout_dir = match env.layout_dir.as_ref() {
-        Some(dir) => dir,
-        None => {
-            log::error!("Layout directory not configured");
-            return;
-        }
-    };
+    let layout_dir = env
+        .layout_dir
+        .as_ref()
+        .ok_or_else(|| "Layout directory not configured".to_string())?;
 
     // Construct the full file path
     let file_path = layout_dir.join(format!("{}.kdl", safe_name));
@@ -2662,11 +2666,7 @@ fn edit_layout(env: &PluginEnv, layout_name: String, context: BTreeMap<String, S
         cwd: Some(layout_dir.clone()),
     };
 
-    // Use the same pattern as open_file - create an Action::EditFile
-    let floating = false;
-    let in_place = true;
-    let start_suppressed = false;
-
+    // Create an Action::EditFile
     let action = Action::EditFile {
         payload: OpenFilePayload::new(
             file_to_open.path,
@@ -2676,14 +2676,31 @@ fn edit_layout(env: &PluginEnv, layout_name: String, context: BTreeMap<String, S
             OriginatingPlugin::new(env.plugin_id, env.client_id, context),
         ),
         direction: None,
-        floating,
-        in_place,
-        start_suppressed,
+        floating: false,
+        in_place: true,
+        start_suppressed: false,
         coordinates: None,
         near_current_pane: true,
     };
 
-    apply_action!(action, error_msg, env);
+    // Route the action - this is fallible
+    route_action(
+        action,
+        env.client_id,
+        None,
+        Some(PaneId::Plugin(env.plugin_id)),
+        env.senders.clone(),
+        env.capabilities.clone(),
+        env.client_attributes.clone(),
+        env.default_shell.clone(),
+        env.default_layout.clone(),
+        None,
+        env.keybinds.clone(),
+        env.default_mode.clone(),
+        None,
+    )
+    .map(|_| ())
+    .map_err(|e| format!("Failed to route edit action: {:?}", e))
 }
 
 /// Sanitize layout name to prevent path traversal and invalid filenames
