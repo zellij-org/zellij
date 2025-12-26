@@ -22,7 +22,7 @@ pub use super::generated_api::api::{
         NewTabsWithLayoutInfoPayload, OverrideLayoutPayload, SaveLayoutPayload,
         SaveLayoutResponse as ProtobufSaveLayoutResponse, save_layout_response,
         DeleteLayoutPayload, DeleteLayoutResponse as ProtobufDeleteLayoutResponse,
-        delete_layout_response, OpenCommandPaneFloatingNearPluginPayload,
+        delete_layout_response, EditLayoutPayload, OpenCommandPaneFloatingNearPluginPayload,
         OpenCommandPaneInPlaceOfPluginPayload, OpenCommandPaneNearPluginPayload,
         OpenCommandPanePayload, OpenFileFloatingNearPluginPayload, OpenFileInPlaceOfPluginPayload,
         OpenFileNearPluginPayload, OpenFilePayload, OpenTerminalFloatingNearPluginPayload,
@@ -1307,6 +1307,21 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                     })
                 },
                 _ => Err("Mismatched payload for DeleteLayout"),
+            },
+            Some(CommandName::EditLayout) => match protobuf_plugin_command.payload {
+                Some(Payload::EditLayoutPayload(edit_layout_payload)) => {
+                    let layout_name = edit_layout_payload.layout_name;
+                    let context: BTreeMap<String, String> = edit_layout_payload
+                        .context
+                        .into_iter()
+                        .map(|e| (e.name, e.value))
+                        .collect();
+                    Ok(PluginCommand::EditLayout {
+                        layout_name,
+                        context,
+                    })
+                },
+                _ => Err("Mismatched payload for EditLayout"),
             },
             Some(CommandName::MovePaneWithPaneId) => match protobuf_plugin_command.payload {
                 Some(Payload::MovePaneWithPaneIdPayload(move_pane_with_pane_id_payload)) => {
@@ -2675,6 +2690,22 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     layout_name,
                 })),
             }),
+            PluginCommand::EditLayout {
+                layout_name,
+                context,
+            } => {
+                let context: Vec<_> = context
+                    .into_iter()
+                    .map(|(name, value)| ContextItem { name, value })
+                    .collect();
+                Ok(ProtobufPluginCommand {
+                    name: CommandName::EditLayout as i32,
+                    payload: Some(Payload::EditLayoutPayload(EditLayoutPayload {
+                        layout_name,
+                        context,
+                    })),
+                })
+            },
             PluginCommand::MovePaneWithPaneId(pane_id) => Ok(ProtobufPluginCommand {
                 name: CommandName::MovePaneWithPaneId as i32,
                 payload: Some(Payload::MovePaneWithPaneIdPayload(

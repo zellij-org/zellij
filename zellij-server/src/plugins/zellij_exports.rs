@@ -207,6 +207,10 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                         overwrite,
                     } => save_layout(env, layout_name, layout_kdl, overwrite),
                     PluginCommand::DeleteLayout { layout_name } => delete_layout(env, layout_name),
+                    PluginCommand::EditLayout {
+                        layout_name,
+                        context,
+                    } => edit_layout(env, layout_name, context),
                     PluginCommand::NewTab { name, cwd } => new_tab(env, name, cwd),
                     PluginCommand::GoToNextTab => go_to_next_tab(env),
                     PluginCommand::GoToPreviousTab => go_to_previous_tab(env),
@@ -2627,6 +2631,61 @@ fn try_delete_layout(env: &PluginEnv, layout_name: &str) -> Result<(), String> {
     Ok(())
 }
 
+fn edit_layout(env: &PluginEnv, layout_name: String, context: BTreeMap<String, String>) {
+    let error_msg = || format!("failed to edit layout '{}' in plugin {}", layout_name, env.name());
+
+    // Sanitize the layout name to prevent directory traversal
+    let safe_name = match sanitize_layout_name(&layout_name) {
+        Ok(name) => name,
+        Err(e) => {
+            log::error!("Invalid layout name '{}': {}", layout_name, e);
+            return;
+        }
+    };
+
+    // Get the layout directory from PluginEnv
+    let layout_dir = match env.layout_dir.as_ref() {
+        Some(dir) => dir,
+        None => {
+            log::error!("Layout directory not configured");
+            return;
+        }
+    };
+
+    // Construct the full file path
+    let file_path = layout_dir.join(format!("{}.kdl", safe_name));
+
+    // Create FileToOpen for the layout file
+    let file_to_open = FileToOpen {
+        path: file_path,
+        line_number: None,
+        cwd: Some(layout_dir.clone()),
+    };
+
+    // Use the same pattern as open_file - create an Action::EditFile
+    let floating = false;
+    let in_place = true;
+    let start_suppressed = false;
+
+    let action = Action::EditFile {
+        payload: OpenFilePayload::new(
+            file_to_open.path,
+            file_to_open.line_number,
+            file_to_open.cwd,
+        ).with_originating_plugin(
+            OriginatingPlugin::new(env.plugin_id, env.client_id, context),
+        ),
+        direction: None,
+        floating,
+        in_place,
+        start_suppressed,
+        coordinates: None,
+        near_current_pane: true,
+    };
+
+    apply_action!(action, error_msg, env);
+}
+
 /// Sanitize layout name to prevent path traversal and invalid filenames
 /// Returns the sanitized name or an error message
 fn sanitize_layout_name(name: &str) -> Result<String, String> {
@@ -3320,7 +3379,8 @@ fn check_command_permission(
         | PluginCommand::SendSigkillToPaneId(..)
         | PluginCommand::OverrideLayout(..)
         | PluginCommand::SaveLayout { .. }
-        | PluginCommand::DeleteLayout { .. } => PermissionType::ChangeApplicationState,
+        | PluginCommand::DeleteLayout { .. }
+        | PluginCommand::EditLayout { .. } => PermissionType::ChangeApplicationState,
         PluginCommand::UnblockCliPipeInput(..)
         | PluginCommand::BlockCliPipeInput(..)
         | PluginCommand::CliPipeOutput(..) => PermissionType::ReadCliPipes,

@@ -3142,4 +3142,8 @@ pub enum PluginCommand {
     DeleteLayout {
         layout_name: String,
     },
+    EditLayout {
+        layout_name: String,
+        context: Context,
+    },
 }

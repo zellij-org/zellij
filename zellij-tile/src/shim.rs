@@ -1285,6 +1285,18 @@ pub fn delete_layout<S: AsRef<str>>(layout_name: S) -> Result<(), String> {
     }
 }
 
+/// Opens a layout file in the user's default `$EDITOR`
+pub fn edit_layout<S: AsRef<str>>(layout_name: S, context: BTreeMap<String, String>) {
+    let layout_name = layout_name.as_ref().to_owned();
+    let plugin_command = PluginCommand::EditLayout {
+        layout_name,
+        context,
+    };
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 /// Switch the position of the pane with this id with a different pane
 pub fn move_pane_with_pane_id(pane_id: PaneId) {
     let plugin_command = PluginCommand::MovePaneWithPaneId(pane_id);

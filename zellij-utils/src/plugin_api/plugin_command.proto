@@ -169,6 +169,7 @@ enum CommandName {
   OverrideLayout = 174;
   SaveLayout = 175;
   DeleteLayout = 176;
+  EditLayout = 177;
 }
 
 message PluginCommand {
@@ -286,6 +287,7 @@ message PluginCommand {
     OverrideLayoutPayload override_layout_payload = 124;
     SaveLayoutPayload save_layout_payload = 125;
     DeleteLayoutPayload delete_layout_payload = 126;
+    EditLayoutPayload edit_layout_payload = 127;
   }
 }
 
@@ -791,4 +793,9 @@ message SaveLayoutPayload {
 
 message DeleteLayoutPayload {
   string layout_name = 1;
+}
+
+message EditLayoutPayload {
+  string layout_name = 1;
+  repeated ContextItem context = 2;
 }
