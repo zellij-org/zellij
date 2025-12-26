@@ -11,9 +11,10 @@ pub use zellij_utils::plugin_api;
 use zellij_utils::plugin_api::event::ProtobufPaneScrollbackResponse;
 use zellij_utils::plugin_api::plugin_command::{
     CreateTokenResponse, ListTokensResponse, ProtobufDeleteLayoutResponse,
-    ProtobufEditLayoutResponse, ProtobufGenerateRandomNameResponse, ProtobufGetPanePidResponse,
+    ProtobufDumpLayoutResponse, ProtobufEditLayoutResponse,
+    ProtobufGenerateRandomNameResponse, ProtobufGetPanePidResponse,
     ProtobufPluginCommand, ProtobufSaveLayoutResponse, RenameWebTokenResponse,
-    RevokeAllWebTokensResponse, RevokeTokenResponse,
+    RevokeAllWebTokensResponse, RevokeTokenResponse, dump_layout_response,
 };
 use zellij_utils::plugin_api::plugin_ids::{ProtobufPluginIds, ProtobufZellijVersion};
 
@@ -105,6 +106,36 @@ pub fn generate_random_name() -> String {
         ProtobufGenerateRandomNameResponse::decode(bytes_from_stdin().unwrap().as_slice())
             .unwrap();
     response.name
+}
+
+/// Dumps a layout by name and returns its KDL content as a String
+///
+/// Supports both built-in layouts (eg. "default", "compact", "welcome")
+/// and custom layouts from the plugin's layout directory.
+pub fn dump_layout(layout_name: &str) -> Result<String, String> {
+    // Create the plugin command with the layout name
+    let plugin_command = PluginCommand::DumpLayout(layout_name.to_string());
+
+    // Convert to protobuf and encode
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+
+    // Call the host function (blocks until response)
+    unsafe { host_run_plugin_command() };
+
+    // Read and decode the response
+    let response_bytes = bytes_from_stdin()
+        .map_err(|e| format!("Failed to read response from stdin: {:?}", e))?;
+
+    let protobuf_response = ProtobufDumpLayoutResponse::decode(response_bytes.as_slice())
+        .map_err(|e| format!("Failed to decode protobuf response: {}", e))?;
+
+    // Extract result from the oneof field
+    match protobuf_response.result {
+        Some(dump_layout_response::Result::LayoutContent(content)) => Ok(content),
+        Some(dump_layout_response::Result::Error(error)) => Err(error),
+        None => Err("Server returned empty response".to_string()),
+    }
 }
 
 // Host Functions

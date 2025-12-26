@@ -14,6 +14,8 @@ pub use super::generated_api::api::{
         FixedOrPercentValue as ProtobufFixedOrPercentValue, FloatMultiplePanesPayload,
         FloatingPaneCoordinates as ProtobufFloatingPaneCoordinates,
         GenerateRandomNamePayload, GenerateRandomNameResponse as ProtobufGenerateRandomNameResponse,
+        DumpLayoutPayload, DumpLayoutResponse as ProtobufDumpLayoutResponse,
+        dump_layout_response,
         GenerateWebLoginTokenPayload,
         GetPanePidPayload, GetPanePidResponse as ProtobufGetPanePidResponse,
         GetPaneScrollbackPayload, GroupAndUngroupPanesPayload, HidePaneWithIdPayload,
@@ -1985,6 +1987,12 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
             Some(CommandName::GenerateRandomName) => {
                 Ok(PluginCommand::GenerateRandomName)
             },
+            Some(CommandName::DumpLayout) => match protobuf_plugin_command.payload {
+                Some(Payload::DumpLayoutPayload(payload)) => {
+                    Ok(PluginCommand::DumpLayout(payload.layout_name))
+                },
+                _ => Err("Mismatched payload for DumpLayout"),
+            },
             None => Err("Unrecognized plugin command"),
         }
     }
@@ -3271,6 +3279,12 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                 payload: Some(Payload::GenerateRandomNamePayload(
                     GenerateRandomNamePayload {}
                 )),
+            }),
+            PluginCommand::DumpLayout(layout_name) => Ok(ProtobufPluginCommand {
+                name: CommandName::DumpLayout as i32,
+                payload: Some(Payload::DumpLayoutPayload(DumpLayoutPayload {
+                    layout_name,
+                })),
             }),
         }
     }

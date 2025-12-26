@@ -171,6 +171,7 @@ enum CommandName {
   DeleteLayout = 176;
   EditLayout = 177;
   GenerateRandomName = 178;
+  DumpLayout = 179;
 }
 
 message PluginCommand {
@@ -290,6 +291,7 @@ message PluginCommand {
     DeleteLayoutPayload delete_layout_payload = 126;
     EditLayoutPayload edit_layout_payload = 127;
     GenerateRandomNamePayload generate_random_name_payload = 128;
+    DumpLayoutPayload dump_layout_payload = 129;
   }
 }
 
@@ -814,3 +816,14 @@ message EditLayoutPayload {
 }
 
 message GenerateRandomNamePayload {}
+
+message DumpLayoutPayload {
+  string layout_name = 1;
+}
+
+message DumpLayoutResponse {
+  oneof result {
+    string layout_content = 1;
+    string error = 2;
+  }
+}

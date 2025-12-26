@@ -3170,4 +3170,5 @@ pub enum PluginCommand {
         context: Context,
     },
     GenerateRandomName,
+    DumpLayout(String),
 }

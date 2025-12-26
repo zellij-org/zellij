@@ -54,9 +54,10 @@ use zellij_utils::{
     plugin_api::{
         event::ProtobufPaneScrollbackResponse,
         plugin_command::{
-            ProtobufDeleteLayoutResponse, ProtobufEditLayoutResponse,
-            ProtobufGenerateRandomNameResponse, ProtobufGetPanePidResponse,
-            ProtobufPluginCommand, ProtobufSaveLayoutResponse,
+            ProtobufDeleteLayoutResponse, ProtobufDumpLayoutResponse,
+            ProtobufEditLayoutResponse, ProtobufGenerateRandomNameResponse,
+            ProtobufGetPanePidResponse, ProtobufPluginCommand,
+            ProtobufSaveLayoutResponse, dump_layout_response,
         },
         plugin_ids::{ProtobufPluginIds, ProtobufZellijVersion},
     },
@@ -115,6 +116,7 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::GetPluginIds => get_plugin_ids(env),
                     PluginCommand::GetZellijVersion => get_zellij_version(env),
                     PluginCommand::GenerateRandomName => generate_random_name(env),
+                    PluginCommand::DumpLayout(layout_name) => dump_layout(env, layout_name),
                     PluginCommand::OpenFile(file_to_open, context) => {
                         open_file(env, file_to_open, context)
                     },
@@ -755,6 +757,29 @@ fn generate_random_name(env: &PluginEnv) {
                 "failed to send generated random name to plugin {}",
                 env.name()
             )
+        })
+        .non_fatal();
+}
+
+fn dump_layout(env: &PluginEnv, layout_name: String) {
+    let layout_path = PathBuf::from(&layout_name);
+
+    let response = match Layout::stringified_from_dir(&layout_path, env.layout_dir.as_ref()) {
+        Ok((_, layout_content, _)) => {
+            ProtobufDumpLayoutResponse {
+                result: Some(dump_layout_response::Result::LayoutContent(layout_content)),
+            }
+        },
+        Err(e) => {
+            ProtobufDumpLayoutResponse {
+                result: Some(dump_layout_response::Result::Error(e.to_string())),
+            }
+        },
+    };
+
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| {
+            format!("failed to send layout dump to plugin {}", env.name())
         })
         .non_fatal();
 }
@@ -3422,7 +3447,8 @@ fn check_command_permission(
         PluginCommand::ListClients
         | PluginCommand::DumpSessionLayout
         | PluginCommand::GetPanePid { .. }
-        | PluginCommand::GenerateRandomName => PermissionType::ReadApplicationState,
+        | PluginCommand::GenerateRandomName
+        | PluginCommand::DumpLayout(..) => PermissionType::ReadApplicationState,
         PluginCommand::RebindKeys { .. } | PluginCommand::Reconfigure(..) => {
             PermissionType::Reconfigure
         },
