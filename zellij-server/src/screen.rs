@@ -1933,12 +1933,10 @@ impl Screen {
                 tab.visible(false).with_context(err_context)?;
             }
         }
-        if self.active_tab_indices.contains_key(&client_id) {
+        if self.active_tab_indices.len() > 1 {
             self.active_tab_indices.remove(&client_id);
         }
-        if self.tab_history.contains_key(&client_id) {
-            self.tab_history.remove(&client_id);
-        }
+        self.tab_history.remove(&client_id);
         self.connected_clients.borrow_mut().remove(&client_id);
         self.log_and_report_session_state()
             .with_context(err_context)

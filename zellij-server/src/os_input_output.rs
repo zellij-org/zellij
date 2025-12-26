@@ -740,9 +740,7 @@ impl ServerOsApi for ServerOsInputOutput {
             .lock()
             .to_anyhow()
             .with_context(|| format!("failed to remove client {client_id}"))?;
-        if client_senders.contains_key(&client_id) {
-            client_senders.remove(&client_id);
-        }
+        client_senders.remove(&client_id);
         Ok(())
     }
 
