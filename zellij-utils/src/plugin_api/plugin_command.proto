@@ -170,6 +170,7 @@ enum CommandName {
   SaveLayout = 175;
   DeleteLayout = 176;
   EditLayout = 177;
+  GenerateRandomName = 178;
 }
 
 message PluginCommand {
@@ -288,6 +289,7 @@ message PluginCommand {
     SaveLayoutPayload save_layout_payload = 125;
     DeleteLayoutPayload delete_layout_payload = 126;
     EditLayoutPayload edit_layout_payload = 127;
+    GenerateRandomNamePayload generate_random_name_payload = 128;
   }
 }
 
@@ -785,6 +787,10 @@ message EditLayoutResponse {
   }
 }
 
+message GenerateRandomNameResponse {
+  string name = 1;
+}
+
 message OverrideLayoutPayload {
   event.LayoutInfo layout_info = 1;
   repeated ContextItem context = 2;
@@ -806,3 +812,5 @@ message EditLayoutPayload {
   string layout_name = 1;
   repeated ContextItem context = 2;
 }
+
+message GenerateRandomNamePayload {}

@@ -11,9 +11,9 @@ pub use zellij_utils::plugin_api;
 use zellij_utils::plugin_api::event::ProtobufPaneScrollbackResponse;
 use zellij_utils::plugin_api::plugin_command::{
     CreateTokenResponse, ListTokensResponse, ProtobufDeleteLayoutResponse,
-    ProtobufEditLayoutResponse, ProtobufGetPanePidResponse, ProtobufPluginCommand,
-    ProtobufSaveLayoutResponse, RenameWebTokenResponse, RevokeAllWebTokensResponse,
-    RevokeTokenResponse,
+    ProtobufEditLayoutResponse, ProtobufGenerateRandomNameResponse, ProtobufGetPanePidResponse,
+    ProtobufPluginCommand, ProtobufSaveLayoutResponse, RenameWebTokenResponse,
+    RevokeAllWebTokensResponse, RevokeTokenResponse,
 };
 use zellij_utils::plugin_api::plugin_ids::{ProtobufPluginIds, ProtobufZellijVersion};
 
@@ -89,6 +89,22 @@ pub fn get_zellij_version() -> String {
     let protobuf_zellij_version =
         ProtobufZellijVersion::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
     protobuf_zellij_version.version
+}
+
+/// Generates a random human-readable name using Zellij's curated word lists.
+/// Returns a name in the format AdjectiveNoun (e.g., "BraveRustacean", "ZippyWeasel").
+///
+/// This uses the same word lists as session name generation, providing
+/// approximately 4,096 unique combinations.
+pub fn generate_random_name() -> String {
+    let plugin_command = PluginCommand::GenerateRandomName;
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+    let response =
+        ProtobufGenerateRandomNameResponse::decode(bytes_from_stdin().unwrap().as_slice())
+            .unwrap();
+    response.name
 }
 
 // Host Functions

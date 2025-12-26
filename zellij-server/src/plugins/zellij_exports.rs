@@ -26,6 +26,7 @@ use zellij_utils::data::{
     PermissionStatus, PermissionType, PluginPermission, SaveLayoutResponse,
 };
 use zellij_utils::input::permission::PermissionCache;
+use zellij_utils::sessions::generate_random_name as generate_random_name_impl;
 use zellij_utils::ipc::{ClientToServerMsg, IpcSenderWithContext};
 #[cfg(feature = "web_server_capability")]
 use zellij_utils::web_authentication_tokens::{
@@ -54,7 +55,8 @@ use zellij_utils::{
         event::ProtobufPaneScrollbackResponse,
         plugin_command::{
             ProtobufDeleteLayoutResponse, ProtobufEditLayoutResponse,
-            ProtobufGetPanePidResponse, ProtobufPluginCommand, ProtobufSaveLayoutResponse,
+            ProtobufGenerateRandomNameResponse, ProtobufGetPanePidResponse,
+            ProtobufPluginCommand, ProtobufSaveLayoutResponse,
         },
         plugin_ids::{ProtobufPluginIds, ProtobufZellijVersion},
     },
@@ -112,6 +114,7 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::ShowCursor(cursor_position) => show_cursor(env, cursor_position),
                     PluginCommand::GetPluginIds => get_plugin_ids(env),
                     PluginCommand::GetZellijVersion => get_zellij_version(env),
+                    PluginCommand::GenerateRandomName => generate_random_name(env),
                     PluginCommand::OpenFile(file_to_open, context) => {
                         open_file(env, file_to_open, context)
                     },
@@ -736,6 +739,20 @@ fn get_zellij_version(env: &PluginEnv) {
         .with_context(|| {
             format!(
                 "failed to request zellij version from host for plugin {}",
+                env.name()
+            )
+        })
+        .non_fatal();
+}
+
+fn generate_random_name(env: &PluginEnv) {
+
+    let name = generate_random_name_impl();
+    let response = ProtobufGenerateRandomNameResponse { name };
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| {
+            format!(
+                "failed to send generated random name to plugin {}",
                 env.name()
             )
         })
@@ -3404,7 +3421,8 @@ fn check_command_permission(
         PluginCommand::MessageToPlugin(..) => PermissionType::MessageAndLaunchOtherPlugins,
         PluginCommand::ListClients
         | PluginCommand::DumpSessionLayout
-        | PluginCommand::GetPanePid { .. } => PermissionType::ReadApplicationState,
+        | PluginCommand::GetPanePid { .. }
+        | PluginCommand::GenerateRandomName => PermissionType::ReadApplicationState,
         PluginCommand::RebindKeys { .. } | PluginCommand::Reconfigure(..) => {
             PermissionType::Reconfigure
         },

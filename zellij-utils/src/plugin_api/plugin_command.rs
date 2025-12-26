@@ -12,7 +12,9 @@ pub use super::generated_api::api::{
         EmbedMultiplePanesPayload, EnvVariable, ExecCmdPayload,
         FixedOrPercent as ProtobufFixedOrPercent,
         FixedOrPercentValue as ProtobufFixedOrPercentValue, FloatMultiplePanesPayload,
-        FloatingPaneCoordinates as ProtobufFloatingPaneCoordinates, GenerateWebLoginTokenPayload,
+        FloatingPaneCoordinates as ProtobufFloatingPaneCoordinates,
+        GenerateRandomNamePayload, GenerateRandomNameResponse as ProtobufGenerateRandomNameResponse,
+        GenerateWebLoginTokenPayload,
         GetPanePidPayload, GetPanePidResponse as ProtobufGetPanePidResponse,
         GetPaneScrollbackPayload, GroupAndUngroupPanesPayload, HidePaneWithIdPayload,
         HighlightAndUnhighlightPanesPayload, HttpVerb as ProtobufHttpVerb, IdAndNewName,
@@ -1980,6 +1982,9 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 },
                 _ => Err("Mismatched payload for CopyToClipboard"),
             },
+            Some(CommandName::GenerateRandomName) => {
+                Ok(PluginCommand::GenerateRandomName)
+            },
             None => Err("Unrecognized plugin command"),
         }
     }
@@ -3260,6 +3265,12 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                 payload: Some(Payload::CopyToClipboardPayload(CopyToClipboardPayload {
                     text,
                 })),
+            }),
+            PluginCommand::GenerateRandomName => Ok(ProtobufPluginCommand {
+                name: CommandName::GenerateRandomName as i32,
+                payload: Some(Payload::GenerateRandomNamePayload(
+                    GenerateRandomNamePayload {}
+                )),
             }),
         }
     }

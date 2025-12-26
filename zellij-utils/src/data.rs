@@ -3169,4 +3169,5 @@ pub enum PluginCommand {
         layout_name: String,
         context: Context,
     },
+    GenerateRandomName,
 }
