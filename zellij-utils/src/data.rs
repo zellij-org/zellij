@@ -3171,4 +3171,5 @@ pub enum PluginCommand {
     },
     GenerateRandomName,
     DumpLayout(String),
+    ParseLayout(String), // String contains raw KDL layout
 }

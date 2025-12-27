@@ -17,6 +17,8 @@ pub use super::generated_api::api::{
         DumpLayoutPayload, DumpLayoutResponse as ProtobufDumpLayoutResponse,
         dump_layout_response, DumpSessionLayoutResponse as ProtobufDumpSessionLayoutResponse,
         dump_session_layout_response,
+        ParseLayoutPayload, ParseLayoutResponse as ProtobufParseLayoutResponse,
+        parse_layout_response,
         GenerateWebLoginTokenPayload,
         GetPanePidPayload, GetPanePidResponse as ProtobufGetPanePidResponse,
         GetPaneScrollbackPayload, GroupAndUngroupPanesPayload, HidePaneWithIdPayload,
@@ -1994,6 +1996,12 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 },
                 _ => Err("Mismatched payload for DumpLayout"),
             },
+            Some(CommandName::ParseLayout) => match protobuf_plugin_command.payload {
+                Some(Payload::ParseLayoutPayload(payload)) => {
+                    Ok(PluginCommand::ParseLayout(payload.layout_string))
+                },
+                _ => Err("Mismatched payload for ParseLayout"),
+            },
             None => Err("Unrecognized plugin command"),
         }
     }
@@ -3285,6 +3293,12 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                 name: CommandName::DumpLayout as i32,
                 payload: Some(Payload::DumpLayoutPayload(DumpLayoutPayload {
                     layout_name,
+                })),
+            }),
+            PluginCommand::ParseLayout(layout_string) => Ok(ProtobufPluginCommand {
+                name: CommandName::ParseLayout as i32,
+                payload: Some(Payload::ParseLayoutPayload(ParseLayoutPayload {
+                    layout_string,
                 })),
             }),
         }

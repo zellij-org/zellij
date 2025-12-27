@@ -172,6 +172,7 @@ enum CommandName {
   EditLayout = 177;
   GenerateRandomName = 178;
   DumpLayout = 179;
+  ParseLayout = 180;
 }
 
 message PluginCommand {
@@ -292,6 +293,7 @@ message PluginCommand {
     EditLayoutPayload edit_layout_payload = 127;
     GenerateRandomNamePayload generate_random_name_payload = 128;
     DumpLayoutPayload dump_layout_payload = 129;
+    ParseLayoutPayload parse_layout_payload = 130;
   }
 }
 
@@ -834,4 +836,15 @@ message DumpSessionLayoutResponse {
     string error = 2;
   }
   optional api.event.LayoutMetadata metadata = 3;
+}
+
+message ParseLayoutPayload {
+  string layout_string = 1;
+}
+
+message ParseLayoutResponse {
+  oneof result {
+    api.event.LayoutMetadata metadata = 1;
+    api.event.LayoutParsingError error = 2;
+  }
 }

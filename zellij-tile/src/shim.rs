@@ -16,6 +16,7 @@ use zellij_utils::plugin_api::plugin_command::{
     ProtobufGetPanePidResponse, ProtobufPluginCommand, ProtobufSaveLayoutResponse,
     RenameWebTokenResponse, RevokeAllWebTokensResponse, RevokeTokenResponse,
     dump_layout_response, dump_session_layout_response,
+    ProtobufParseLayoutResponse, parse_layout_response,
 };
 use zellij_utils::plugin_api::plugin_ids::{ProtobufPluginIds, ProtobufZellijVersion};
 
@@ -1083,6 +1084,57 @@ pub fn dump_session_layout() -> Result<(String, Option<LayoutMetadata>), String>
         },
         Some(dump_session_layout_response::Result::Error(error)) => Err(error),
         None => Err("Server returned empty response".to_string()),
+    }
+}
+
+/// Parses a KDL layout string and returns LayoutMetadata
+///
+/// Takes a stringified KDL layout and returns metadata about its structure
+/// (tabs, panes, creation/update times) without actually creating the layout.
+///
+/// # Arguments
+/// * `layout_string` - Raw KDL layout content as a string
+///
+/// # Returns
+/// * `Ok(LayoutMetadata)` - Parsed layout metadata on success
+/// * `Err(LayoutParsingError)` - Detailed parsing error with diagnostic info on failure
+///
+/// # Example
+/// ```no_run
+/// let kdl = r#"
+///     layout {
+///         pane
+///         pane
+///     }
+/// "#;
+/// match parse_layout(kdl) {
+///     Ok(metadata) => println!("Found {} tabs", metadata.tabs.len()),
+///     Err(e) => eprintln!("Parse error: {:?}", e),
+/// }
+/// ```
+pub fn parse_layout(layout_string: &str) -> Result<LayoutMetadata, LayoutParsingError> {
+    let plugin_command = PluginCommand::ParseLayout(layout_string.to_string());
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+
+    unsafe { host_run_plugin_command() };
+
+    let response_bytes = bytes_from_stdin()
+        .map_err(|_| LayoutParsingError::SyntaxError)?;
+
+    let protobuf_response = ProtobufParseLayoutResponse::decode(response_bytes.as_slice())
+        .map_err(|_| LayoutParsingError::SyntaxError)?;
+
+    match protobuf_response.result {
+        Some(parse_layout_response::Result::Metadata(metadata)) => {
+            metadata.try_into()
+                .map_err(|_| LayoutParsingError::SyntaxError)
+        },
+        Some(parse_layout_response::Result::Error(error)) => {
+            Err(error.try_into()
+                .map_err(|_| LayoutParsingError::SyntaxError)?)
+        },
+        None => Err(LayoutParsingError::SyntaxError),
     }
 }
 

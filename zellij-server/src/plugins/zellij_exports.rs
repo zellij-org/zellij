@@ -22,8 +22,9 @@ use wasmi::{Caller, Linker};
 use zellij_utils::data::{
     CommandType, ConnectToSession, DeleteLayoutResponse, EditLayoutResponse, Event,
     FloatingPaneCoordinates, GetPanePidResponse, HttpVerb, KeyWithModifier, LayoutInfo,
-    MessageToPlugin, NewPanePlacement, OriginatingPlugin, PaneScrollbackResponse,
-    PermissionStatus, PermissionType, PluginPermission, SaveLayoutResponse,
+    LayoutMetadata, LayoutParsingError, MessageToPlugin, NewPanePlacement, OriginatingPlugin,
+    PaneScrollbackResponse, PermissionStatus, PermissionType, PluginPermission,
+    SaveLayoutResponse, TabMetadata,
 };
 use zellij_utils::input::permission::PermissionCache;
 use zellij_utils::sessions::generate_random_name as generate_random_name_impl;
@@ -49,16 +50,21 @@ use zellij_utils::{
     input::{
         actions::Action,
         command::{OpenFilePayload, RunCommand, RunCommandAction, TerminalAction},
+        config::ConfigError,
         layout::{Layout, RunPluginOrAlias},
     },
     plugin_api::{
-        event::ProtobufPaneScrollbackResponse,
+        event::{
+            ProtobufPaneScrollbackResponse, ProtobufLayoutParsingError,
+            layout_parsing_error::ErrorType as ProtobufLayoutParsingErrorType,
+            ProtobufSyntaxError,
+        },
         plugin_command::{
             ProtobufDeleteLayoutResponse, ProtobufDumpLayoutResponse,
             ProtobufDumpSessionLayoutResponse, ProtobufEditLayoutResponse,
             ProtobufGenerateRandomNameResponse, ProtobufGetPanePidResponse,
             ProtobufPluginCommand, ProtobufSaveLayoutResponse, dump_layout_response,
-            dump_session_layout_response,
+            dump_session_layout_response, ProtobufParseLayoutResponse, parse_layout_response,
         },
         plugin_ids::{ProtobufPluginIds, ProtobufZellijVersion},
     },
@@ -118,6 +124,7 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::GetZellijVersion => get_zellij_version(env),
                     PluginCommand::GenerateRandomName => generate_random_name(env),
                     PluginCommand::DumpLayout(layout_name) => dump_layout(env, layout_name),
+                    PluginCommand::ParseLayout(layout_string) => parse_layout(env, layout_string),
                     PluginCommand::OpenFile(file_to_open, context) => {
                         open_file(env, file_to_open, context)
                     },
@@ -781,6 +788,108 @@ fn dump_layout(env: &PluginEnv, layout_name: String) {
     wasi_write_object(env, &response.encode_to_vec())
         .with_context(|| {
             format!("failed to send layout dump to plugin {}", env.name())
+        })
+        .non_fatal();
+}
+
+fn parse_layout(env: &PluginEnv, layout_string: String) {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    // Parse the KDL layout - same parameters as list_available_layouts in layout.rs:1260
+    let parse_result = Layout::from_kdl(
+        &layout_string,
+        Some("parse_layout_api".to_string()),  // file_name for error reporting
+        None, // no swap layouts
+        None, // no cwd
+    );
+
+    let response = match parse_result {
+        Ok(layout) => {
+            // Extract tabs from layout
+            // This logic matches LayoutMetadata::from in data.rs:1762-1772
+            let layout_tabs = layout.tabs();
+            let tabs = if layout_tabs.is_empty() {
+                // Use default template if no explicit tabs defined
+                let (tiled_pane_layout, floating_pane_layout) = layout.new_tab();
+                vec![TabMetadata::from(&(None, tiled_pane_layout, floating_pane_layout))]
+            } else {
+                layout
+                    .tabs()
+                    .into_iter()
+                    .map(|tab| TabMetadata::from(&tab))
+                    .collect()
+            };
+
+            // Get current time as Unix epoch timestamp
+            let current_time = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs()
+                .to_string();
+
+            let layout_metadata = LayoutMetadata {
+                tabs,
+                creation_time: current_time.clone(),
+                update_time: current_time,
+            };
+
+            // Convert LayoutMetadata to protobuf
+            match layout_metadata.try_into() {
+                Ok(protobuf_metadata) => ProtobufParseLayoutResponse {
+                    result: Some(parse_layout_response::Result::Metadata(protobuf_metadata)),
+                },
+                Err(e) => {
+                    log::error!("Failed to convert metadata to protobuf: {}", e);
+                    // Fallback to SyntaxError if conversion fails
+                    let error = LayoutParsingError::SyntaxError;
+                    let protobuf_error = error.try_into()
+                        .unwrap_or_else(|_| ProtobufLayoutParsingError {
+                            error_type: Some(ProtobufLayoutParsingErrorType::SyntaxError(
+                                ProtobufSyntaxError {}
+                            )),
+                        });
+                    ProtobufParseLayoutResponse {
+                        result: Some(parse_layout_response::Result::Error(protobuf_error)),
+                    }
+                },
+            }
+        },
+        Err(config_error) => {
+            // Build LayoutParsingError following list_available_layouts pattern
+            // See zellij-utils/src/input/layout.rs:1238-1245
+            let file_name = "parse_layout_api".to_string();
+            let source_code = layout_string;
+
+            let error = match config_error {
+                ConfigError::KdlError(kdl_err) => LayoutParsingError::KdlError {
+                    kdl_error: kdl_err,
+                    file_name,
+                    source_code,
+                },
+                _ => LayoutParsingError::SyntaxError,
+            };
+
+            // Convert LayoutParsingError to protobuf
+            // TryFrom is implemented in zellij-utils/src/plugin_api/event.rs:1293-1314
+            let protobuf_error = error.try_into()
+                .unwrap_or_else(|e| {
+                    log::error!("Failed to convert error to protobuf: {}", e);
+                    ProtobufLayoutParsingError {
+                        error_type: Some(ProtobufLayoutParsingErrorType::SyntaxError(
+                            ProtobufSyntaxError {}
+                        )),
+                    }
+                });
+
+            ProtobufParseLayoutResponse {
+                result: Some(parse_layout_response::Result::Error(protobuf_error)),
+            }
+        },
+    };
+
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| {
+            format!("failed to send parse layout response to plugin {}", env.name())
         })
         .non_fatal();
 }
@@ -3510,7 +3619,8 @@ fn check_command_permission(
         | PluginCommand::DumpSessionLayout
         | PluginCommand::GetPanePid { .. }
         | PluginCommand::GenerateRandomName
-        | PluginCommand::DumpLayout(..) => PermissionType::ReadApplicationState,
+        | PluginCommand::DumpLayout(..)
+        | PluginCommand::ParseLayout(..) => PermissionType::ReadApplicationState,
         PluginCommand::RebindKeys { .. } | PluginCommand::Reconfigure(..) => {
             PermissionType::Reconfigure
         },
