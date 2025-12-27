@@ -11,10 +11,11 @@ pub use zellij_utils::plugin_api;
 use zellij_utils::plugin_api::event::ProtobufPaneScrollbackResponse;
 use zellij_utils::plugin_api::plugin_command::{
     CreateTokenResponse, ListTokensResponse, ProtobufDeleteLayoutResponse,
-    ProtobufDumpLayoutResponse, ProtobufEditLayoutResponse,
-    ProtobufGenerateRandomNameResponse, ProtobufGetPanePidResponse,
-    ProtobufPluginCommand, ProtobufSaveLayoutResponse, RenameWebTokenResponse,
-    RevokeAllWebTokensResponse, RevokeTokenResponse, dump_layout_response,
+    ProtobufDumpLayoutResponse, ProtobufDumpSessionLayoutResponse,
+    ProtobufEditLayoutResponse, ProtobufGenerateRandomNameResponse,
+    ProtobufGetPanePidResponse, ProtobufPluginCommand, ProtobufSaveLayoutResponse,
+    RenameWebTokenResponse, RevokeAllWebTokensResponse, RevokeTokenResponse,
+    dump_layout_response, dump_session_layout_response,
 };
 use zellij_utils::plugin_api::plugin_ids::{ProtobufPluginIds, ProtobufZellijVersion};
 
@@ -1058,12 +1059,31 @@ pub fn watch_filesystem() {
     unsafe { host_run_plugin_command() };
 }
 
-/// Get the serialized session layout in KDL format as a CustomMessage Event
-pub fn dump_session_layout() {
+/// Get the serialized session layout in KDL format synchronously
+/// note: this removes the requesting plugin from the dumped layout
+pub fn dump_session_layout() -> Result<(String, Option<LayoutMetadata>), String> {
     let plugin_command = PluginCommand::DumpSessionLayout;
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+
     unsafe { host_run_plugin_command() };
+
+    let response_bytes = bytes_from_stdin()
+        .map_err(|e| format!("Failed to read response from stdin: {:?}", e))?;
+    let protobuf_response = ProtobufDumpSessionLayoutResponse::decode(response_bytes.as_slice())
+        .map_err(|e| format!("Failed to decode protobuf response: {}", e))?;
+
+    // Extract metadata if present
+    let metadata = protobuf_response.metadata
+        .and_then(|pb_metadata| pb_metadata.try_into().ok());
+
+    match protobuf_response.result {
+        Some(dump_session_layout_response::Result::LayoutContent(content)) => {
+            Ok((content, metadata))
+        },
+        Some(dump_session_layout_response::Result::Error(error)) => Err(error),
+        None => Err("Server returned empty response".to_string()),
+    }
 }
 
 /// Get a list of clients, their focused pane and running command or focused plugin back as an

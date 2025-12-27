@@ -827,3 +827,11 @@ message DumpLayoutResponse {
     string error = 2;
   }
 }
+
+message DumpSessionLayoutResponse {
+  oneof result {
+    string layout_content = 1;
+    string error = 2;
+  }
+  optional api.event.LayoutMetadata metadata = 3;
+}

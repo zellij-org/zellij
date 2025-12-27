@@ -55,9 +55,10 @@ use zellij_utils::{
         event::ProtobufPaneScrollbackResponse,
         plugin_command::{
             ProtobufDeleteLayoutResponse, ProtobufDumpLayoutResponse,
-            ProtobufEditLayoutResponse, ProtobufGenerateRandomNameResponse,
-            ProtobufGetPanePidResponse, ProtobufPluginCommand,
-            ProtobufSaveLayoutResponse, dump_layout_response,
+            ProtobufDumpSessionLayoutResponse, ProtobufEditLayoutResponse,
+            ProtobufGenerateRandomNameResponse, ProtobufGetPanePidResponse,
+            ProtobufPluginCommand, ProtobufSaveLayoutResponse, dump_layout_response,
+            dump_session_layout_response,
         },
         plugin_ids::{ProtobufPluginIds, ProtobufZellijVersion},
     },
@@ -2264,12 +2265,73 @@ fn watch_filesystem(env: &PluginEnv) {
         .map(|sender| sender.send(PluginInstruction::WatchFilesystem));
 }
 
+// note this removes the requesting plugin
 fn dump_session_layout(env: &PluginEnv) {
-    let _ = env
+    use crate::plugins::DumpSessionLayoutResponse;
+
+    // Create oneshot channel for response
+    let (response_sender, response_receiver) = crossbeam::channel::bounded(1);
+
+    // Send request to screen thread
+    let send_result = env
         .senders
-        .to_screen
-        .as_ref()
-        .map(|sender| sender.send(ScreenInstruction::DumpLayoutToPlugin(env.plugin_id)));
+        .send_to_screen(ScreenInstruction::DumpLayoutToPlugin {
+            plugin_id: env.plugin_id,
+            response_channel: response_sender,
+        });
+
+    if let Err(e) = send_result {
+        let error_response = ProtobufDumpSessionLayoutResponse {
+            result: Some(dump_session_layout_response::Result::Error(
+                format!("Failed to send dump layout request: {}", e)
+            )),
+            metadata: None,
+        };
+        let _ = wasi_write_object(env, &error_response.encode_to_vec());
+        return;
+    }
+
+    // Wait for response with 1 second timeout
+    let response: DumpSessionLayoutResponse = match response_receiver.recv_timeout(Duration::from_secs(1)) {
+        Ok(resp) => resp,
+        Err(e) => {
+            let error_response = ProtobufDumpSessionLayoutResponse {
+                result: Some(dump_session_layout_response::Result::Error(
+                    format!("Timeout waiting for session layout: {}", e)
+                )),
+                metadata: None,
+            };
+            let _ = wasi_write_object(env, &error_response.encode_to_vec());
+            return;
+        }
+    };
+
+    // Convert LayoutMetadata to protobuf
+    let protobuf_metadata = response.metadata.and_then(|metadata| {
+        match metadata.try_into() {
+            Ok(pb) => Some(pb),
+            Err(e) => {
+                log::error!("Failed to convert LayoutMetadata to protobuf: {}", e);
+                None
+            }
+        }
+    });
+
+    // Build protobuf response
+    let protobuf_response = match response.layout_result {
+        Ok(layout_content) => ProtobufDumpSessionLayoutResponse {
+            result: Some(dump_session_layout_response::Result::LayoutContent(layout_content)),
+            metadata: protobuf_metadata,
+        },
+        Err(error) => ProtobufDumpSessionLayoutResponse {
+            result: Some(dump_session_layout_response::Result::Error(error)),
+            metadata: None,
+        },
+    };
+
+    // Write response back to plugin via WASI pipe
+    let _ = wasi_write_object(env, &protobuf_response.encode_to_vec())
+        .with_context(|| format!("failed to send session layout to plugin {}", env.name()));
 }
 
 fn list_clients(env: &PluginEnv) {

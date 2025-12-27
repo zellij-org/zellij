@@ -47,7 +47,7 @@ use crate::{
     output::Output,
     panes::sixel::SixelImageStore,
     panes::PaneId,
-    plugins::{PluginId, PluginInstruction, PluginRenderAsset},
+    plugins::{DumpSessionLayoutResponse, PluginId, PluginInstruction, PluginRenderAsset},
     pty::{get_default_shell, ClientTabIndexOrPaneId, PtyInstruction, VteBytes},
     tab::{SuppressedPanes, Tab},
     thread_bus::Bus,
@@ -192,7 +192,10 @@ pub enum ScreenInstruction {
     DumpScreen(String, ClientId, bool, Option<NotificationEnd>),
     DumpLayout(Option<PathBuf>, ClientId, Option<NotificationEnd>), // PathBuf is the default configured
     // shell
-    DumpLayoutToPlugin(PluginId),
+    DumpLayoutToPlugin {
+        plugin_id: PluginId,
+        response_channel: crossbeam::channel::Sender<DumpSessionLayoutResponse>,
+    },
     EditScrollback(ClientId, Option<NotificationEnd>),
     GetPaneScrollback {
         pane_id: PaneId,
@@ -564,7 +567,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::ClearScreen(..) => ScreenContext::ClearScreen,
             ScreenInstruction::DumpScreen(..) => ScreenContext::DumpScreen,
             ScreenInstruction::DumpLayout(..) => ScreenContext::DumpLayout,
-            ScreenInstruction::DumpLayoutToPlugin(..) => ScreenContext::DumpLayoutToPlugin,
+            ScreenInstruction::DumpLayoutToPlugin { .. } => ScreenContext::DumpLayoutToPlugin,
             ScreenInstruction::EditScrollback(..) => ScreenContext::EditScrollback,
             ScreenInstruction::GetPaneScrollback { .. } => ScreenContext::GetPaneScrollback,
             ScreenInstruction::ScrollUp(..) => ScreenContext::ScrollUp,
@@ -4212,17 +4215,18 @@ pub(crate) fn screen_thread_main(
                     ))
                     .with_context(err_context)?;
             },
-            ScreenInstruction::DumpLayoutToPlugin(plugin_id) => {
+            ScreenInstruction::DumpLayoutToPlugin { plugin_id, response_channel } => {
                 let err_context = || format!("Failed to dump layout");
                 let session_layout_metadata =
                     screen.get_layout_metadata(Some(screen.default_shell.clone()));
                 screen
                     .bus
                     .senders
-                    .send_to_pty(PtyInstruction::DumpLayoutToPlugin(
+                    .send_to_pty(PtyInstruction::DumpLayoutToPlugin {
                         session_layout_metadata,
                         plugin_id,
-                    ))
+                        response_channel,
+                    })
                     .with_context(err_context)
                     .non_fatal();
             },

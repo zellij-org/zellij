@@ -1102,6 +1102,25 @@ pub mod dump_layout_response {
         Error(::prost::alloc::string::String),
     }
 }
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct DumpSessionLayoutResponse {
+    #[prost(message, optional, tag="3")]
+    pub metadata: ::core::option::Option<super::event::LayoutMetadata>,
+    #[prost(oneof="dump_session_layout_response::Result", tags="1, 2")]
+    pub result: ::core::option::Option<dump_session_layout_response::Result>,
+}
+/// Nested message and enum types in `DumpSessionLayoutResponse`.
+pub mod dump_session_layout_response {
+    #[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Result {
+        #[prost(string, tag="1")]
+        LayoutContent(::prost::alloc::string::String),
+        #[prost(string, tag="2")]
+        Error(::prost::alloc::string::String),
+    }
+}
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
 pub enum CommandName {

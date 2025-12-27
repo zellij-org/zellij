@@ -3,7 +3,7 @@ use crate::route::NotificationEnd;
 use crate::terminal_bytes::TerminalBytes;
 use crate::{
     panes::PaneId,
-    plugins::{PluginId, PluginInstruction},
+    plugins::{DumpSessionLayoutResponse, PluginId, PluginInstruction},
     screen::ScreenInstruction,
     session_layout_metadata::SessionLayoutMetadata,
     thread_bus::{Bus, ThreadSenders},
@@ -109,7 +109,11 @@ pub enum PtyInstruction {
         Option<NotificationEnd>, // completion signal
     ), // String is an optional pane name
     DumpLayout(SessionLayoutMetadata, ClientId, Option<NotificationEnd>),
-    DumpLayoutToPlugin(SessionLayoutMetadata, PluginId),
+    DumpLayoutToPlugin {
+        session_layout_metadata: SessionLayoutMetadata,
+        plugin_id: PluginId,
+        response_channel: crossbeam::channel::Sender<DumpSessionLayoutResponse>,
+    },
     LogLayoutToHd(SessionLayoutMetadata),
     FillPluginCwd(
         Option<bool>,   // should float
@@ -159,7 +163,7 @@ impl From<&PtyInstruction> for PtyContext {
             PtyInstruction::DropToShellInPane { .. } => PtyContext::DropToShellInPane,
             PtyInstruction::SpawnInPlaceTerminal(..) => PtyContext::SpawnInPlaceTerminal,
             PtyInstruction::DumpLayout(..) => PtyContext::DumpLayout,
-            PtyInstruction::DumpLayoutToPlugin(..) => PtyContext::DumpLayoutToPlugin,
+            PtyInstruction::DumpLayoutToPlugin { .. } => PtyContext::DumpLayoutToPlugin,
             PtyInstruction::LogLayoutToHd(..) => PtyContext::LogLayoutToHd,
             PtyInstruction::FillPluginCwd(..) => PtyContext::FillPluginCwd,
             PtyInstruction::ListClientsMetadata(..) => PtyContext::ListClientsMetadata,
@@ -682,15 +686,16 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     .with_context(err_context)
                     .non_fatal();
             },
-            PtyInstruction::DumpLayoutToPlugin(mut session_layout_metadata, plugin_id) => {
+            PtyInstruction::DumpLayoutToPlugin { mut session_layout_metadata, plugin_id, response_channel } => {
                 let err_context = || format!("Failed to dump layout");
                 pty.populate_session_layout_metadata(&mut session_layout_metadata);
                 pty.bus
                     .senders
-                    .send_to_plugin(PluginInstruction::DumpLayoutToPlugin(
+                    .send_to_plugin(PluginInstruction::DumpLayoutToPlugin {
                         session_layout_metadata,
                         plugin_id,
-                    ))
+                        response_channel,
+                    })
                     .with_context(err_context)
                     .non_fatal();
             },

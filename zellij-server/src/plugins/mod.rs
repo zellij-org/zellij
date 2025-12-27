@@ -53,6 +53,12 @@ use zellij_utils::{
 pub type PluginId = u32;
 
 #[derive(Clone, Debug)]
+pub struct DumpSessionLayoutResponse {
+    pub layout_result: Result<String, String>,
+    pub metadata: Option<zellij_utils::data::LayoutMetadata>,
+}
+
+#[derive(Clone, Debug)]
 pub enum PluginInstruction {
     Load(
         Option<bool>,   // should float
@@ -140,7 +146,11 @@ pub enum PluginInstruction {
     ),
     DumpLayout(SessionLayoutMetadata, ClientId, Option<NotificationEnd>),
     ListClientsMetadata(SessionLayoutMetadata, ClientId, Option<NotificationEnd>),
-    DumpLayoutToPlugin(SessionLayoutMetadata, PluginId),
+    DumpLayoutToPlugin {
+        session_layout_metadata: SessionLayoutMetadata,
+        plugin_id: PluginId,
+        response_channel: crossbeam::channel::Sender<DumpSessionLayoutResponse>,
+    },
     LogLayoutToHd(SessionLayoutMetadata),
     CliPipe {
         pipe_id: String,
@@ -244,7 +254,7 @@ impl From<&PluginInstruction> for PluginContext {
             PluginInstruction::UnblockCliPipes { .. } => PluginContext::UnblockCliPipes,
             PluginInstruction::WatchFilesystem => PluginContext::WatchFilesystem,
             PluginInstruction::KeybindPipe { .. } => PluginContext::KeybindPipe,
-            PluginInstruction::DumpLayoutToPlugin(..) => PluginContext::DumpLayoutToPlugin,
+            PluginInstruction::DumpLayoutToPlugin { .. } => PluginContext::DumpLayoutToPlugin,
             PluginInstruction::Reconfigure { .. } => PluginContext::Reconfigure,
             PluginInstruction::FailedToWriteConfigToDisk { .. } => {
                 PluginContext::FailedToWriteConfigToDisk
@@ -765,6 +775,7 @@ pub(crate) fn plugin_thread_main(
                     &mut session_layout_metadata,
                     &wasm_bridge,
                     &plugin_aliases,
+                    None,
                 );
                 drop(bus.senders.send_to_pty(PtyInstruction::DumpLayout(
                     session_layout_metadata,
@@ -781,6 +792,7 @@ pub(crate) fn plugin_thread_main(
                     &mut session_layout_metadata,
                     &wasm_bridge,
                     &plugin_aliases,
+                    None,
                 );
                 drop(bus.senders.send_to_pty(PtyInstruction::ListClientsMetadata(
                     session_layout_metadata,
@@ -788,16 +800,33 @@ pub(crate) fn plugin_thread_main(
                     completion_tx,
                 )));
             },
-            PluginInstruction::DumpLayoutToPlugin(mut session_layout_metadata, plugin_id) => {
+            PluginInstruction::DumpLayoutToPlugin {
+                mut session_layout_metadata,
+                plugin_id,
+                response_channel
+            } => {
                 populate_session_layout_metadata(
                     &mut session_layout_metadata,
                     &wasm_bridge,
                     &plugin_aliases,
+                    Some(plugin_id),
                 );
+
+                let layout_metadata = session_layout_metadata.to_layout_metadata();
+
                 match session_serialization::serialize_session_layout(
                     session_layout_metadata.into(),
                 ) {
                     Ok((layout, _pane_contents)) => {
+                        // send synchronous response
+                        let response = DumpSessionLayoutResponse {
+                            layout_result: Ok(layout.clone()),
+                            metadata: Some(layout_metadata),
+                        };
+                        let _ = response_channel.send(response);
+
+                        // send CustomMessage to plugin (backwards compatibility, should get rid of
+                        // this on API version upgrade)
                         let updates = vec![(
                             Some(plugin_id),
                             None,
@@ -806,16 +835,20 @@ pub(crate) fn plugin_thread_main(
                         wasm_bridge.update_plugins(updates, shutdown_send.clone())?;
                     },
                     Err(e) => {
+                        let error_msg = format!("{}", e);
+                        let response = DumpSessionLayoutResponse {
+                            layout_result: Err(error_msg.clone()),
+                            metadata: None,
+                        };
+                        let _ = response_channel.send(response);
+
                         let updates = vec![(
                             Some(plugin_id),
                             None,
-                            Event::CustomMessage(
-                                "session_layout_error".to_owned(),
-                                format!("{}", e),
-                            ),
+                            Event::CustomMessage("session_layout_error".to_owned(), error_msg),
                         )];
                         wasm_bridge.update_plugins(updates, shutdown_send.clone())?;
-                    },
+                    }
                 }
             },
             PluginInstruction::ListClientsToPlugin(
@@ -827,6 +860,7 @@ pub(crate) fn plugin_thread_main(
                     &mut session_layout_metadata,
                     &wasm_bridge,
                     &plugin_aliases,
+                    Some(plugin_id),
                 );
                 let mut clients_metadata = session_layout_metadata.all_clients_metadata();
                 let mut client_list_for_plugin = vec![];
@@ -852,6 +886,7 @@ pub(crate) fn plugin_thread_main(
                     &mut session_layout_metadata,
                     &wasm_bridge,
                     &plugin_aliases,
+                    None,
                 );
                 drop(
                     bus.senders
@@ -1204,7 +1239,13 @@ fn populate_session_layout_metadata(
     session_layout_metadata: &mut SessionLayoutMetadata,
     wasm_bridge: &WasmBridge,
     plugin_aliases: &PluginAliases,
+    exclude_plugin_id: Option<u32>,
 ) {
+    // Remove the requesting plugin from the layout to prevent deadlock
+    if let Some(plugin_id) = exclude_plugin_id {
+        session_layout_metadata.remove_plugin_from_layout(plugin_id);
+    }
+
     let plugin_ids = session_layout_metadata.all_plugin_ids();
     let mut plugin_ids_to_cmds: HashMap<u32, RunPlugin> = HashMap::new();
     for plugin_id in plugin_ids {
