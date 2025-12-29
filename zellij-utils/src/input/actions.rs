@@ -174,6 +174,12 @@ pub enum Action {
         file_path: String,
         include_scrollback: bool,
     },
+    /// Dumps a specific pane to a file
+    DumpScreenForPaneId {
+        file_path: String,
+        include_scrollback: bool,
+        pane_id: PaneId,
+    },
     /// Dumps
     DumpLayout,
     /// Save the current session state to disk
@@ -268,6 +274,7 @@ pub enum Action {
         command: Option<RunCommandAction>,
         pane_name: Option<String>,
         near_current_pane: bool,
+        stack_with_pane_id: Option<PaneId>,
     },
     /// Embed focused pane in tab if floating or float focused pane if embedded
     TogglePaneEmbedOrFloating,
@@ -576,7 +583,7 @@ impl Action {
                             },
                             Err(_e) => {
                                 Err(format!(
-                                    "Malformed pane id: {}, expecting either a bare integer (eg. 1), a terminal pane id (eg. terminal_1) or a plugin pane id (eg. plugin_1)",
+                                    "Malformed pane id: {}, expecting either a bare integer (eg. 1), a terminal pane id (eg. terminal_1) or a plugin pane id (eg. terminal_1) or a plugin pane id (eg. plugin_1)",
                                     pane_id_str
                                 ))
                             }
@@ -661,6 +668,24 @@ impl Action {
             },
             CliAction::FocusNextPane => Ok(vec![Action::FocusNextPane]),
             CliAction::FocusPreviousPane => Ok(vec![Action::FocusPreviousPane]),
+            CliAction::FocusPaneById { pane_id } => {
+                match PaneId::from_str(&pane_id) {
+                    Ok(PaneId::Terminal(id)) => Ok(vec![Action::FocusTerminalPaneWithId {
+                        pane_id: id,
+                        should_float_if_hidden: false,
+                        should_be_in_place_if_hidden: false,
+                    }]),
+                    Ok(PaneId::Plugin(id)) => Ok(vec![Action::FocusPluginPaneWithId {
+                        pane_id: id,
+                        should_float_if_hidden: false,
+                        should_be_in_place_if_hidden: false,
+                    }]),
+                    Err(_e) => Err(format!(
+                        "Malformed pane id: {}, expecting either a bare integer (eg. 1), a terminal pane id (eg. terminal_1) or a plugin pane id (eg. plugin_1)",
+                        pane_id
+                    )),
+                }
+            },
             CliAction::MoveFocus { direction } => Ok(vec![Action::MoveFocus { direction }]),
             CliAction::MoveFocusOrTab { direction } => {
                 Ok(vec![Action::MoveFocusOrTab { direction }])
@@ -669,10 +694,26 @@ impl Action {
             CliAction::MovePaneBackwards => Ok(vec![Action::MovePaneBackwards]),
             CliAction::MoveTab { direction } => Ok(vec![Action::MoveTab { direction }]),
             CliAction::Clear => Ok(vec![Action::ClearScreen]),
-            CliAction::DumpScreen { path, full } => Ok(vec![Action::DumpScreen {
-                file_path: path.as_os_str().to_string_lossy().into(),
-                include_scrollback: full,
-            }]),
+            CliAction::DumpScreen { path, full, pane_id } => {
+                if let Some(pane_id_str) = pane_id {
+                    match PaneId::from_str(&pane_id_str) {
+                        Ok(pane_id) => Ok(vec![Action::DumpScreenForPaneId {
+                            file_path: path.as_os_str().to_string_lossy().into(),
+                            include_scrollback: full,
+                            pane_id,
+                        }]),
+                        Err(_e) => Err(format!(
+                            "Malformed pane id: {}, expecting either a bare integer (eg. 1), a terminal pane id (eg. terminal_1) or a plugin pane id (eg. plugin_1)",
+                            pane_id_str
+                        )),
+                    }
+                } else {
+                    Ok(vec![Action::DumpScreen {
+                        file_path: path.as_os_str().to_string_lossy().into(),
+                        include_scrollback: full,
+                    }])
+                }
+            },
             CliAction::DumpLayout => Ok(vec![Action::DumpLayout]),
             CliAction::SaveSession => Ok(vec![Action::SaveSession]),
             CliAction::EditScrollback => Ok(vec![Action::EditScrollback]),
@@ -706,6 +747,7 @@ impl Action {
                 height,
                 pinned,
                 stacked,
+                stack_with,
                 blocking,
                 unblock_condition,
                 near_current_pane,
@@ -753,8 +795,11 @@ impl Action {
                             borderless,
                         }
                     } else if stacked {
+                        let stack_pane_id = stack_with.as_ref().and_then(|id| {
+                            PaneId::from_str(id).ok()
+                        });
                         NewPanePlacement::Stacked {
-                            pane_id_to_stack_under: None,
+                            pane_id_to_stack_under: stack_pane_id,
                             borderless,
                         }
                     } else {
@@ -857,10 +902,14 @@ impl Action {
                             close_replaced_pane,
                         }])
                     } else if stacked {
+                        let stack_with_pane_id = stack_with.as_ref().and_then(|id| {
+                            PaneId::from_str(id).ok()
+                        });
                         Ok(vec![Action::NewStackedPane {
                             command: Some(run_command_action),
                             pane_name: name,
                             near_current_pane,
+                            stack_with_pane_id,
                         }])
                     } else {
                         Ok(vec![Action::NewTiledPane {
@@ -890,10 +939,14 @@ impl Action {
                             close_replaced_pane,
                         }])
                     } else if stacked {
+                        let stack_with_pane_id = stack_with.as_ref().and_then(|id| {
+                            PaneId::from_str(id).ok()
+                        });
                         Ok(vec![Action::NewStackedPane {
                             command: None,
                             pane_name: name,
                             near_current_pane,
+                            stack_with_pane_id,
                         }])
                     } else {
                         Ok(vec![Action::NewTiledPane {
@@ -955,7 +1008,20 @@ impl Action {
             CliAction::HideFloatingPanes { tab_id } => {
                 Ok(vec![Action::HideFloatingPanes { tab_id }])
             },
-            CliAction::ClosePane => Ok(vec![Action::CloseFocus]),
+            CliAction::ClosePane { pane_id } => {
+                if let Some(pane_id_str) = pane_id {
+                    match PaneId::from_str(&pane_id_str) {
+                        Ok(PaneId::Terminal(id)) => Ok(vec![Action::CloseTerminalPane { pane_id: id }]),
+                        Ok(PaneId::Plugin(id)) => Ok(vec![Action::ClosePluginPane { pane_id: id }]),
+                        Err(_e) => Err(format!(
+                            "Malformed pane id: {}, expecting either a bare integer (eg. 1), a terminal pane id (eg. terminal_1) or a plugin pane id (eg. plugin_1)",
+                            pane_id_str
+                        )),
+                    }
+                } else {
+                    Ok(vec![Action::CloseFocus])
+                }
+            },
             CliAction::RenamePane { name, pane_id } => {
                 if let Some(pane_id_str) = pane_id {
                     match PaneId::from_str(&pane_id_str) {

@@ -299,6 +299,7 @@ pub enum ScreenInstruction {
     Exit,
     ClearScreen(ClientId, Option<NotificationEnd>),
     DumpScreen(String, ClientId, bool, Option<NotificationEnd>),
+    DumpScreenForPaneId(String, bool, PaneId, Option<NotificationEnd>),
     DumpLayout(Option<PathBuf>, ClientId, Option<NotificationEnd>), // PathBuf is the default configured
     // shell
     SaveSession(ClientId, Option<NotificationEnd>),
@@ -726,6 +727,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::Exit => ScreenContext::Exit,
             ScreenInstruction::ClearScreen(..) => ScreenContext::ClearScreen,
             ScreenInstruction::DumpScreen(..) => ScreenContext::DumpScreen,
+            ScreenInstruction::DumpScreenForPaneId(..) => ScreenContext::DumpScreenForPaneId,
             ScreenInstruction::DumpLayout(..) => ScreenContext::DumpLayout,
             ScreenInstruction::SaveSession(..) => ScreenContext::SaveSession,
             ScreenInstruction::DumpLayoutToPlugin { .. } => ScreenContext::DumpLayoutToPlugin,
@@ -4703,6 +4705,21 @@ pub(crate) fn screen_thread_main(
                     ),
                     ?
                 );
+                screen.render(None)?;
+            },
+            ScreenInstruction::DumpScreenForPaneId(
+                file,
+                full,
+                pane_id,
+                _completion_tx,
+            ) => {
+                let all_tabs = screen.get_tabs_mut();
+                for tab in all_tabs.values_mut() {
+                    if tab.has_pane_with_pid(&pane_id) {
+                        tab.dump_terminal_screen(Some(file), pane_id, full).non_fatal();
+                        break;
+                    }
+                }
                 screen.render(None)?;
             },
             ScreenInstruction::DumpLayout(default_shell, client_id, completion_tx) => {

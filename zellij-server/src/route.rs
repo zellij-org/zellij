@@ -412,6 +412,20 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
         },
+        Action::DumpScreenForPaneId {
+            file_path,
+            include_scrollback,
+            pane_id,
+        } => {
+            senders
+                .send_to_screen(ScreenInstruction::DumpScreenForPaneId(
+                    file_path,
+                    include_scrollback,
+                    pane_id.into(),
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
         Action::DumpLayout => {
             let default_shell = match default_shell {
                 Some(TerminalAction::RunCommand(run_command)) => Some(run_command.command),
@@ -779,44 +793,64 @@ pub(crate) fn route_action(
             command: run_command,
             pane_name: name,
             near_current_pane,
+            stack_with_pane_id,
         } => {
             let run_cmd = run_command
                 .map(|cmd| TerminalAction::RunCommand(cmd.into()))
                 .or_else(|| default_shell.clone());
 
-            match pane_id {
-                Some(pane_id) if near_current_pane => {
-                    senders
-                        .send_to_pty(PtyInstruction::SpawnTerminal(
-                            run_cmd,
-                            name,
-                            NewPanePlacement::Stacked {
-                                pane_id_to_stack_under: Some(pane_id.into()),
-                                borderless: None,
-                            },
-                            false,
-                            ClientTabIndexOrPaneId::PaneId(pane_id),
-                            Some(NotificationEnd::new(completion_tx)),
-                            false, // set_blocking
-                        ))
-                        .with_context(err_context)?;
-                },
-                _ => {
-                    senders
-                        .send_to_pty(PtyInstruction::SpawnTerminal(
-                            run_cmd,
-                            name,
-                            NewPanePlacement::Stacked {
-                                pane_id_to_stack_under: None,
-                                borderless: None,
-                            },
-                            false,
-                            ClientTabIndexOrPaneId::ClientId(client_id),
-                            Some(NotificationEnd::new(completion_tx)),
-                            false, // set_blocking
-                        ))
-                        .with_context(err_context)?;
-                },
+            // If stack_with_pane_id is provided, use it to determine which pane to stack with
+            // Otherwise fall back to near_current_pane behavior
+            if let Some(target_pane_id) = stack_with_pane_id {
+                senders
+                    .send_to_pty(PtyInstruction::SpawnTerminal(
+                        run_cmd,
+                        name,
+                        NewPanePlacement::Stacked {
+                            pane_id_to_stack_under: Some(target_pane_id),
+                            borderless: None,
+                        },
+                        false,
+                        ClientTabIndexOrPaneId::PaneId(target_pane_id.into()),
+                        Some(NotificationEnd::new(completion_tx)),
+                        false, // set_blocking
+                    ))
+                    .with_context(err_context)?;
+            } else {
+                match pane_id {
+                    Some(pane_id) if near_current_pane => {
+                        senders
+                            .send_to_pty(PtyInstruction::SpawnTerminal(
+                                run_cmd,
+                                name,
+                                NewPanePlacement::Stacked {
+                                    pane_id_to_stack_under: Some(pane_id.into()),
+                                    borderless: None,
+                                },
+                                false,
+                                ClientTabIndexOrPaneId::PaneId(pane_id),
+                                Some(NotificationEnd::new(completion_tx)),
+                                false, // set_blocking
+                            ))
+                            .with_context(err_context)?;
+                    },
+                    _ => {
+                        senders
+                            .send_to_pty(PtyInstruction::SpawnTerminal(
+                                run_cmd,
+                                name,
+                                NewPanePlacement::Stacked {
+                                    pane_id_to_stack_under: None,
+                                    borderless: None,
+                                },
+                                false,
+                                ClientTabIndexOrPaneId::ClientId(client_id),
+                                Some(NotificationEnd::new(completion_tx)),
+                                false, // set_blocking
+                            ))
+                            .with_context(err_context)?;
+                    },
+                }
             }
         },
         Action::NewTiledPane {
