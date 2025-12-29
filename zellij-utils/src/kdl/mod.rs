@@ -553,6 +553,7 @@ impl Action {
                         command: None,
                         pane_name: None,
                         near_current_pane: false,
+                        stack_with_pane_id: None,
                     });
                 } else {
                     let direction = Direction::from_str(string.as_str()).map_err(|_| {
@@ -990,6 +991,7 @@ impl Action {
                 command: run_command_action,
                 pane_name: name,
                 near_current_pane: _,
+                stack_with_pane_id: _,
             } => match run_command_action {
                 Some(run_command_action) => {
                     let mut node = KdlNode::new("Run");
@@ -1937,6 +1939,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                         command: Some(run_command_action),
                         pane_name: name,
                         near_current_pane: false,
+                        stack_with_pane_id: None,
                     })
                 } else {
                     Ok(Action::NewTiledPane {

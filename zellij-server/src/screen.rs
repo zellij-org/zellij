@@ -289,6 +289,7 @@ pub enum ScreenInstruction {
     Exit,
     ClearScreen(ClientId, Option<NotificationEnd>),
     DumpScreen(String, ClientId, bool, Option<NotificationEnd>),
+    DumpScreenForPaneId(String, bool, PaneId, Option<NotificationEnd>),
     DumpLayout(Option<PathBuf>, ClientId, Option<NotificationEnd>), // PathBuf is the default configured
     // shell
     SaveSession(ClientId, Option<NotificationEnd>),
@@ -425,6 +426,7 @@ pub enum ScreenInstruction {
         Option<NotificationEnd>,
     ),
     QueryTabNames(ClientId, Option<NotificationEnd>),
+    ListPanes(ClientId, Option<NotificationEnd>),
     NewTiledPluginPane(
         RunPluginOrAlias,
         Option<String>,
@@ -669,6 +671,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::Exit => ScreenContext::Exit,
             ScreenInstruction::ClearScreen(..) => ScreenContext::ClearScreen,
             ScreenInstruction::DumpScreen(..) => ScreenContext::DumpScreen,
+            ScreenInstruction::DumpScreenForPaneId(..) => ScreenContext::DumpScreenForPaneId,
             ScreenInstruction::DumpLayout(..) => ScreenContext::DumpLayout,
             ScreenInstruction::SaveSession(..) => ScreenContext::SaveSession,
             ScreenInstruction::DumpLayoutToPlugin { .. } => ScreenContext::DumpLayoutToPlugin,
@@ -748,6 +751,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::OverrideLayout(..) => ScreenContext::OverrideLayout,
             ScreenInstruction::OverrideLayoutComplete(..) => ScreenContext::OverrideLayoutComplete,
             ScreenInstruction::QueryTabNames(..) => ScreenContext::QueryTabNames,
+            ScreenInstruction::ListPanes(..) => ScreenContext::ListPanes,
             ScreenInstruction::NewTiledPluginPane(..) => ScreenContext::NewTiledPluginPane,
             ScreenInstruction::NewFloatingPluginPane(..) => ScreenContext::NewFloatingPluginPane,
             ScreenInstruction::StartOrReloadPluginPane(..) => {
@@ -4420,6 +4424,21 @@ pub(crate) fn screen_thread_main(
                 );
                 screen.render(None)?;
             },
+            ScreenInstruction::DumpScreenForPaneId(
+                file,
+                full,
+                pane_id,
+                _completion_tx,
+            ) => {
+                let all_tabs = screen.get_tabs_mut();
+                for tab in all_tabs.values_mut() {
+                    if tab.has_pane_with_pid(&pane_id) {
+                        tab.dump_terminal_screen(Some(file), pane_id, full).non_fatal();
+                        break;
+                    }
+                }
+                screen.render(None)?;
+            },
             ScreenInstruction::DumpLayout(default_shell, client_id, completion_tx) => {
                 let err_context = || format!("Failed to dump layout");
                 let session_layout_metadata = screen.get_layout_metadata(default_shell, None);
@@ -5678,6 +5697,16 @@ pub(crate) fn screen_thread_main(
                     .collect::<Vec<String>>();
                 screen.bus.senders.send_to_server(ServerInstruction::Log(
                     tab_names,
+                    client_id,
+                    completion_tx,
+                ))?;
+            },
+            ScreenInstruction::ListPanes(client_id, completion_tx) => {
+                let pane_manifest = screen.generate_and_report_pane_state()?;
+                let json = serde_json::to_string_pretty(&pane_manifest)
+                    .unwrap_or_else(|e| format!("{{\"error\": \"{}\"}}", e));
+                screen.bus.senders.send_to_server(ServerInstruction::Log(
+                    vec![json],
                     client_id,
                     completion_tx,
                 ))?;
