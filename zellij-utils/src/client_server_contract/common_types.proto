@@ -230,6 +230,9 @@ message Action {
     SwitchSessionAction switch_session = 92;
     NewBlockingPaneAction new_blocking_pane = 93;
     OverrideLayoutAction override_layout = 94;
+    WriteCharsToPaneIdAction write_chars_to_pane_id = 95;
+    ListPanesAction list_panes = 96;
+    DumpScreenForPaneIdAction dump_screen_for_pane_id = 97;
   }
 }
 
@@ -289,6 +292,7 @@ message ListClientsAction {}
 message TogglePanePinnedAction {}
 message TogglePaneInGroupAction {}
 message ToggleGroupMarkingAction {}
+message ListPanesAction {}
 
 // Complex action types (with data)
 message WriteAction {
@@ -299,6 +303,11 @@ message WriteAction {
 
 message WriteCharsAction {
   string chars = 1;
+}
+
+message WriteCharsToPaneIdAction {
+  string chars = 1;
+  PaneId pane_id = 2;
 }
 
 message SwitchToModeAction {
@@ -329,6 +338,12 @@ message MovePaneAction {
 message DumpScreenAction {
   string file_path = 1;
   bool include_scrollback = 2;
+}
+
+message DumpScreenForPaneIdAction {
+  string file_path = 1;
+  bool include_scrollback = 2;
+  PaneId pane_id = 3;
 }
 
 message ScrollUpAtAction {

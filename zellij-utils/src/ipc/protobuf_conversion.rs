@@ -714,11 +714,13 @@ impl From<crate::input::actions::Action>
             ChangeFloatingPaneCoordinatesAction, ClearScreenAction, CliPipeAction,
             CloseFocusAction, ClosePluginPaneAction, CloseTabAction, CloseTerminalPaneAction,
             ConfirmAction, CopyAction, DenyAction, DetachAction, DumpLayoutAction,
-            DumpScreenAction, EditFileAction, EditScrollbackAction, FocusNextPaneAction,
+            DumpScreenAction, DumpScreenForPaneIdAction, EditFileAction, EditScrollbackAction,
+            FocusNextPaneAction,
             FocusPluginPaneWithIdAction, FocusPreviousPaneAction, FocusTerminalPaneWithIdAction,
             GoToNextTabAction, GoToPreviousTabAction, GoToTabAction, GoToTabNameAction,
             HalfPageScrollDownAction, HalfPageScrollUpAction, KeybindPipeAction,
-            LaunchOrFocusPluginAction, LaunchPluginAction, ListClientsAction, MouseEventAction,
+            LaunchOrFocusPluginAction, LaunchPluginAction, ListClientsAction, ListPanesAction,
+            MouseEventAction,
             MoveFocusAction, MoveFocusOrTabAction, MovePaneAction, MovePaneBackwardsAction,
             MoveTabAction, NewBlockingPaneAction, NewFloatingPaneAction,
             NewFloatingPluginPaneAction, NewInPlacePaneAction, NewInPlacePluginPaneAction,
@@ -735,7 +737,7 @@ impl From<crate::input::actions::Action>
             ToggleFloatingPanesAction, ToggleFocusFullscreenAction, ToggleGroupMarkingAction,
             ToggleMouseModeAction, TogglePaneEmbedOrFloatingAction, TogglePaneFramesAction,
             TogglePaneInGroupAction, TogglePanePinnedAction, ToggleTabAction, UndoRenamePaneAction,
-            UndoRenameTabAction, WriteAction, WriteCharsAction,
+            UndoRenameTabAction, WriteAction, WriteCharsAction, WriteCharsToPaneIdAction,
         };
         use std::collections::HashMap;
 
@@ -752,6 +754,12 @@ impl From<crate::input::actions::Action>
             }),
             crate::input::actions::Action::WriteChars { chars } => {
                 ActionType::WriteChars(WriteCharsAction { chars })
+            },
+            crate::input::actions::Action::WriteCharsToPaneId { chars, pane_id } => {
+                ActionType::WriteCharsToPaneId(WriteCharsToPaneIdAction {
+                    chars,
+                    pane_id: Some(pane_id.into()),
+                })
             },
             crate::input::actions::Action::SwitchToMode { input_mode } => {
                 ActionType::SwitchToMode(SwitchToModeAction {
@@ -805,6 +813,15 @@ impl From<crate::input::actions::Action>
             } => ActionType::DumpScreen(DumpScreenAction {
                 file_path,
                 include_scrollback,
+            }),
+            crate::input::actions::Action::DumpScreenForPaneId {
+                file_path,
+                include_scrollback,
+                pane_id,
+            } => ActionType::DumpScreenForPaneId(DumpScreenForPaneIdAction {
+                file_path,
+                include_scrollback,
+                pane_id: Some(pane_id.into()),
             }),
             crate::input::actions::Action::DumpLayout => {
                 ActionType::DumpLayout(DumpLayoutAction {})
@@ -919,6 +936,7 @@ impl From<crate::input::actions::Action>
                 command,
                 pane_name,
                 near_current_pane,
+                stack_with_pane_id: _,
             } => ActionType::NewStackedPane(NewStackedPaneAction {
                 command: command.map(|c| c.into()),
                 pane_name,
@@ -1120,6 +1138,9 @@ impl From<crate::input::actions::Action>
             }),
             crate::input::actions::Action::QueryTabNames => {
                 ActionType::QueryTabNames(QueryTabNamesAction {})
+            },
+            crate::input::actions::Action::ListPanes => {
+                ActionType::ListPanes(ListPanesAction {})
             },
             crate::input::actions::Action::NewTiledPluginPane {
                 plugin,
@@ -1333,6 +1354,15 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                     chars: write_chars_action.chars,
                 })
             },
+            ActionType::WriteCharsToPaneId(write_chars_action) => {
+                match write_chars_action.pane_id {
+                    Some(pane_id) => Ok(crate::input::actions::Action::WriteCharsToPaneId {
+                        chars: write_chars_action.chars,
+                        pane_id: pane_id.try_into()?,
+                    }),
+                    None => Err(anyhow!("WriteCharsToPaneId missing pane_id")),
+                }
+            },
             ActionType::SwitchToMode(switch_mode_action) => {
                 Ok(crate::input::actions::Action::SwitchToMode {
                     input_mode: proto_i32_to_input_mode(switch_mode_action.input_mode)?,
@@ -1380,6 +1410,16 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                     file_path: dump_screen_action.file_path,
                     include_scrollback: dump_screen_action.include_scrollback,
                 })
+            },
+            ActionType::DumpScreenForPaneId(dump_screen_action) => {
+                match dump_screen_action.pane_id {
+                    Some(pane_id) => Ok(crate::input::actions::Action::DumpScreenForPaneId {
+                        file_path: dump_screen_action.file_path,
+                        include_scrollback: dump_screen_action.include_scrollback,
+                        pane_id: pane_id.try_into()?,
+                    }),
+                    None => Err(anyhow!("DumpScreenForPaneId missing pane_id")),
+                }
             },
             ActionType::DumpLayout(_) => Ok(crate::input::actions::Action::DumpLayout),
             ActionType::EditScrollback(_) => Ok(crate::input::actions::Action::EditScrollback),
@@ -1489,6 +1529,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                         .transpose()?,
                     pane_name: new_stacked_action.pane_name,
                     near_current_pane: new_stacked_action.near_current_pane,
+                    stack_with_pane_id: None,
                 })
             },
             ActionType::NewBlockingPane(new_blocking_action) => {
@@ -1737,6 +1778,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                 })
             },
             ActionType::QueryTabNames(_) => Ok(crate::input::actions::Action::QueryTabNames),
+            ActionType::ListPanes(_) => Ok(crate::input::actions::Action::ListPanes),
             ActionType::NewTiledPluginPane(new_tiled_plugin_action) => {
                 Ok(crate::input::actions::Action::NewTiledPluginPane {
                     plugin: new_tiled_plugin_action
