@@ -2339,6 +2339,12 @@ pub enum DeleteLayoutResponse {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RenameLayoutResponse {
+    Ok(()),
+    Err(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum EditLayoutResponse {
     Ok(()),
     Err(String),
@@ -3164,6 +3170,10 @@ pub enum PluginCommand {
     },
     DeleteLayout {
         layout_name: String,
+    },
+    RenameLayout {
+        old_layout_name: String,
+        new_layout_name: String,
     },
     EditLayout {
         layout_name: String,

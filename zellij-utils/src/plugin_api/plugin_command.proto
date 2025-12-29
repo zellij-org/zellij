@@ -173,6 +173,7 @@ enum CommandName {
   GenerateRandomName = 178;
   DumpLayout = 179;
   ParseLayout = 180;
+  RenameLayout = 181;
 }
 
 message PluginCommand {
@@ -294,6 +295,7 @@ message PluginCommand {
     GenerateRandomNamePayload generate_random_name_payload = 128;
     DumpLayoutPayload dump_layout_payload = 129;
     ParseLayoutPayload parse_layout_payload = 130;
+    RenameLayoutPayload rename_layout_payload = 131;
   }
 }
 
@@ -846,5 +848,17 @@ message ParseLayoutResponse {
   oneof result {
     api.event.LayoutMetadata metadata = 1;
     api.event.LayoutParsingError error = 2;
+  }
+}
+
+message RenameLayoutPayload {
+  string old_layout_name = 1;
+  string new_layout_name = 2;
+}
+
+message RenameLayoutResponse {
+  oneof result {
+    bool success = 1;
+    string error = 2;
   }
 }

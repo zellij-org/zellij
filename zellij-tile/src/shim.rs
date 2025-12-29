@@ -11,7 +11,7 @@ pub use zellij_utils::plugin_api;
 use zellij_utils::plugin_api::event::ProtobufPaneScrollbackResponse;
 use zellij_utils::plugin_api::plugin_command::{
     CreateTokenResponse, ListTokensResponse, ProtobufDeleteLayoutResponse,
-    ProtobufDumpLayoutResponse, ProtobufDumpSessionLayoutResponse,
+    ProtobufRenameLayoutResponse, ProtobufDumpLayoutResponse, ProtobufDumpSessionLayoutResponse,
     ProtobufEditLayoutResponse, ProtobufGenerateRandomNameResponse,
     ProtobufGetPanePidResponse, ProtobufPluginCommand, ProtobufSaveLayoutResponse,
     RenameWebTokenResponse, RevokeAllWebTokensResponse, RevokeTokenResponse,
@@ -1402,6 +1402,67 @@ pub fn delete_layout<S: AsRef<str>>(layout_name: S) -> Result<(), String> {
     match response {
         DeleteLayoutResponse::Ok(_) => Ok(()),
         DeleteLayoutResponse::Err(error_msg) => Err(error_msg),
+    }
+}
+
+/// Rename a layout file in the user's layout directory
+///
+/// # Arguments
+/// * `old_layout_name` - Current name of the layout (without .kdl extension)
+/// * `new_layout_name` - New name for the layout (without .kdl extension)
+///
+/// # Returns
+/// * `Ok(())` - Layout was successfully renamed
+/// * `Err(String)` - Error message describing what went wrong
+///
+/// # Error Cases
+/// * Old layout name is invalid (empty, contains path separators, etc.)
+/// * New layout name is invalid
+/// * Source layout file doesn't exist
+/// * Target layout file already exists (no overwrite)
+/// * Layout directory not found
+/// * File system error during rename operation
+///
+/// # Permissions
+///
+/// Requires the `ChangeApplicationState` permission.
+///
+/// # Examples
+///
+/// ```no_run
+/// use zellij_tile::prelude::*;
+///
+/// // Rename a layout from "old-name" to "new-name"
+/// match rename_layout("old-name", "new-name") {
+///     Ok(_) => eprintln!("Layout renamed successfully"),
+///     Err(e) => eprintln!("Failed to rename layout: {}", e),
+/// }
+/// ```
+pub fn rename_layout(old_layout_name: impl Into<String>, new_layout_name: impl Into<String>) -> Result<(), String> {
+    let plugin_command = PluginCommand::RenameLayout {
+        old_layout_name: old_layout_name.into(),
+        new_layout_name: new_layout_name.into(),
+    };
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+
+    // Read response from stdin
+    let response_bytes =
+        bytes_from_stdin().map_err(|e| format!("Failed to read response from stdin: {:?}", e))?;
+
+    // Decode protobuf response
+    let protobuf_response = ProtobufRenameLayoutResponse::decode(response_bytes.as_slice())
+        .map_err(|e| format!("Failed to decode protobuf response: {}", e))?;
+
+    // Convert to native response type
+    let response: RenameLayoutResponse = protobuf_response
+        .try_into()
+        .map_err(|e| format!("Failed to convert protobuf response: {}", e))?;
+
+    match response {
+        RenameLayoutResponse::Ok(_) => Ok(()),
+        RenameLayoutResponse::Err(error_msg) => Err(error_msg),
     }
 }
 

@@ -29,7 +29,8 @@ pub use super::generated_api::api::{
         NewTabsWithLayoutInfoPayload, OverrideLayoutPayload, SaveLayoutPayload,
         SaveLayoutResponse as ProtobufSaveLayoutResponse, save_layout_response,
         DeleteLayoutPayload, DeleteLayoutResponse as ProtobufDeleteLayoutResponse,
-        delete_layout_response, EditLayoutPayload, EditLayoutResponse as ProtobufEditLayoutResponse,
+        delete_layout_response, RenameLayoutPayload, RenameLayoutResponse as ProtobufRenameLayoutResponse,
+        rename_layout_response, EditLayoutPayload, EditLayoutResponse as ProtobufEditLayoutResponse,
         edit_layout_response, OpenCommandPaneFloatingNearPluginPayload,
         OpenCommandPaneInPlaceOfPluginPayload, OpenCommandPaneNearPluginPayload,
         OpenCommandPanePayload, OpenFileFloatingNearPluginPayload, OpenFileInPlaceOfPluginPayload,
@@ -55,7 +56,7 @@ pub use super::generated_api::api::{
 };
 
 use crate::data::{
-    ConnectToSession, DeleteLayoutResponse, EditLayoutResponse, FloatingPaneCoordinates, GetPanePidResponse,
+    ConnectToSession, DeleteLayoutResponse, RenameLayoutResponse, EditLayoutResponse, FloatingPaneCoordinates, GetPanePidResponse,
     HttpVerb, InputMode, KeyWithModifier, MessageToPlugin, NewPluginArgs, PaneId, PermissionType,
     PluginCommand, SaveLayoutResponse,
 };
@@ -284,6 +285,32 @@ impl From<DeleteLayoutResponse> for ProtobufDeleteLayoutResponse {
             },
             DeleteLayoutResponse::Err(error) => ProtobufDeleteLayoutResponse {
                 result: Some(delete_layout_response::Result::Error(error)),
+            },
+        }
+    }
+}
+
+impl TryFrom<ProtobufRenameLayoutResponse> for RenameLayoutResponse {
+    type Error = &'static str;
+    fn try_from(protobuf_response: ProtobufRenameLayoutResponse) -> Result<Self, &'static str> {
+        match protobuf_response.result {
+            Some(rename_layout_response::Result::Success(_)) => Ok(RenameLayoutResponse::Ok(())),
+            Some(rename_layout_response::Result::Error(error)) => {
+                Ok(RenameLayoutResponse::Err(error))
+            },
+            None => Err("Empty RenameLayoutResponse"),
+        }
+    }
+}
+
+impl From<RenameLayoutResponse> for ProtobufRenameLayoutResponse {
+    fn from(response: RenameLayoutResponse) -> Self {
+        match response {
+            RenameLayoutResponse::Ok(_) => ProtobufRenameLayoutResponse {
+                result: Some(rename_layout_response::Result::Success(true)),
+            },
+            RenameLayoutResponse::Err(error) => ProtobufRenameLayoutResponse {
+                result: Some(rename_layout_response::Result::Error(error)),
             },
         }
     }
@@ -1341,6 +1368,15 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                     })
                 },
                 _ => Err("Mismatched payload for DeleteLayout"),
+            },
+            Some(CommandName::RenameLayout) => match protobuf_plugin_command.payload {
+                Some(Payload::RenameLayoutPayload(rename_layout_payload)) => {
+                    Ok(PluginCommand::RenameLayout {
+                        old_layout_name: rename_layout_payload.old_layout_name,
+                        new_layout_name: rename_layout_payload.new_layout_name,
+                    })
+                },
+                _ => Err("Mismatched payload for RenameLayout"),
             },
             Some(CommandName::EditLayout) => match protobuf_plugin_command.payload {
                 Some(Payload::EditLayoutPayload(edit_layout_payload)) => {
@@ -2737,6 +2773,16 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                 name: CommandName::DeleteLayout as i32,
                 payload: Some(Payload::DeleteLayoutPayload(DeleteLayoutPayload {
                     layout_name,
+                })),
+            }),
+            PluginCommand::RenameLayout {
+                old_layout_name,
+                new_layout_name,
+            } => Ok(ProtobufPluginCommand {
+                name: CommandName::RenameLayout as i32,
+                payload: Some(Payload::RenameLayoutPayload(RenameLayoutPayload {
+                    old_layout_name,
+                    new_layout_name,
                 })),
             }),
             PluginCommand::EditLayout {

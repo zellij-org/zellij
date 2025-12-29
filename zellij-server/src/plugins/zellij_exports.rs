@@ -20,7 +20,7 @@ use std::{
 };
 use wasmi::{Caller, Linker};
 use zellij_utils::data::{
-    CommandType, ConnectToSession, DeleteLayoutResponse, EditLayoutResponse, Event,
+    CommandType, ConnectToSession, DeleteLayoutResponse, RenameLayoutResponse, EditLayoutResponse, Event,
     FloatingPaneCoordinates, GetPanePidResponse, HttpVerb, KeyWithModifier, LayoutInfo,
     LayoutMetadata, LayoutParsingError, MessageToPlugin, NewPanePlacement, OriginatingPlugin,
     PaneScrollbackResponse, PermissionStatus, PermissionType, PluginPermission,
@@ -61,7 +61,8 @@ use zellij_utils::{
             ProtobufSyntaxError,
         },
         plugin_command::{
-            ProtobufDeleteLayoutResponse, ProtobufDumpLayoutResponse,
+            ProtobufDeleteLayoutResponse, ProtobufRenameLayoutResponse,
+            ProtobufDumpLayoutResponse,
             ProtobufDumpSessionLayoutResponse, ProtobufEditLayoutResponse,
             ProtobufGenerateRandomNameResponse, ProtobufGetPanePidResponse,
             ProtobufPluginCommand, ProtobufSaveLayoutResponse, dump_layout_response,
@@ -221,6 +222,10 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                         overwrite,
                     } => save_layout(env, layout_name, layout_kdl, overwrite),
                     PluginCommand::DeleteLayout { layout_name } => delete_layout(env, layout_name),
+                    PluginCommand::RenameLayout {
+                        old_layout_name,
+                        new_layout_name,
+                    } => rename_layout(env, old_layout_name, new_layout_name),
                     PluginCommand::EditLayout {
                         layout_name,
                         context,
@@ -2824,6 +2829,20 @@ fn delete_layout(env: &PluginEnv, layout_name: String) {
         .non_fatal();
 }
 
+fn rename_layout(env: &PluginEnv, old_layout_name: String, new_layout_name: String) {
+    let err_context = || format!("Failed to rename layout '{}' to '{}'", old_layout_name, new_layout_name);
+
+    let response = try_rename_layout(env, &old_layout_name, &new_layout_name)
+        .map(|_| RenameLayoutResponse::Ok(()))
+        .unwrap_or_else(|e| RenameLayoutResponse::Err(e));
+
+    let protobuf_response: ProtobufRenameLayoutResponse = response.into();
+    let serialized = protobuf_response.encode_to_vec();
+    wasi_write_object(env, &serialized)
+        .with_context(err_context)
+        .non_fatal();
+}
+
 fn try_delete_layout(env: &PluginEnv, layout_name: &str) -> Result<(), String> {
     // Sanitize the layout name to prevent directory traversal
     let safe_name = sanitize_layout_name(layout_name)
@@ -2847,6 +2866,49 @@ fn try_delete_layout(env: &PluginEnv, layout_name: &str) -> Result<(), String> {
     // Delete the file
     std::fs::remove_file(&file_path)
         .map_err(|e| format!("Failed to delete layout file: {}", e))?;
+
+    Ok(())
+}
+
+fn try_rename_layout(
+    env: &PluginEnv,
+    old_layout_name: &str,
+    new_layout_name: &str,
+) -> Result<(), String> {
+    // Step 1: Sanitize both layout names
+    let safe_old_name = sanitize_layout_name(old_layout_name)
+        .map_err(|e| format!("Invalid old layout name: {}", e))?;
+
+    let safe_new_name = sanitize_layout_name(new_layout_name)
+        .map_err(|e| format!("Invalid new layout name: {}", e))?;
+
+    // Step 2: Get layout directory from PluginEnv
+    let layout_dir = env
+        .layout_dir
+        .clone()
+        .or_else(default_layout_dir)
+        .ok_or_else(|| "Layout directory not found".to_string())?;
+
+    // Step 3: Construct file paths
+    let old_file_path = layout_dir.join(format!("{}.kdl", safe_old_name));
+    let new_file_path = layout_dir.join(format!("{}.kdl", safe_new_name));
+
+    // Step 4: Check if source file exists
+    if !old_file_path.exists() {
+        return Err(format!("Layout '{}' not found", safe_old_name));
+    }
+
+    // Step 5: Check if target file already exists (fail if it does - no overwrite)
+    if new_file_path.exists() {
+        return Err(format!(
+            "Layout '{}' already exists. Cannot rename '{}' to existing layout name.",
+            safe_new_name, safe_old_name
+        ));
+    }
+
+    // Step 6: Rename the file
+    std::fs::rename(&old_file_path, &new_file_path)
+        .map_err(|e| format!("Failed to rename layout file: {}", e))?;
 
     Ok(())
 }
@@ -3618,6 +3680,7 @@ fn check_command_permission(
         | PluginCommand::OverrideLayout(..)
         | PluginCommand::SaveLayout { .. }
         | PluginCommand::DeleteLayout { .. }
+        | PluginCommand::RenameLayout { .. }
         | PluginCommand::EditLayout { .. } => PermissionType::ChangeApplicationState,
         PluginCommand::UnblockCliPipeInput(..)
         | PluginCommand::BlockCliPipeInput(..)
