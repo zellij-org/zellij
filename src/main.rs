@@ -40,6 +40,7 @@ fn main() {
             height,
             pinned,
             stacked,
+            stack_with,
             blocking,
             block_until_exit_success,
             block_until_exit_failure,
@@ -79,6 +80,7 @@ fn main() {
                 height,
                 pinned,
                 stacked,
+                stack_with,
                 blocking,
                 unblock_condition,
                 near_current_pane,
@@ -101,6 +103,7 @@ fn main() {
         {
             let cwd = None;
             let stacked = false;
+            let stack_with = None;
             let blocking = false;
             let unblock_condition = None;
             let command_cli_action = CliAction::NewPane {
@@ -121,6 +124,7 @@ fn main() {
                 height,
                 pinned,
                 stacked,
+                stack_with,
                 blocking,
                 unblock_condition,
                 near_current_pane: false,
