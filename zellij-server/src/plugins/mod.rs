@@ -19,7 +19,7 @@ use wasmi::Engine;
 
 use crate::panes::PaneId;
 use crate::route::NotificationEnd;
-use crate::screen::ScreenInstruction;
+use crate::screen::{ScreenInstruction, TabLayoutInfo};
 use crate::session_layout_metadata::SessionLayoutMetadata;
 use crate::{pty::PtyInstruction, thread_bus::Bus, ClientId, ServerInstruction};
 use zellij_utils::data::PaneRenderReport;
@@ -40,8 +40,7 @@ use zellij_utils::{
         command::TerminalAction,
         keybinds::Keybinds,
         layout::{
-            FloatingPaneLayout, Layout, Run, RunPlugin, RunPluginOrAlias, SwapFloatingLayout,
-            SwapTiledLayout, TiledPaneLayout,
+            FloatingPaneLayout, Layout, Run, RunPlugin, RunPluginOrAlias, TiledPaneLayout,
         },
         plugins::PluginAliases,
     },
@@ -106,13 +105,9 @@ pub enum PluginInstruction {
     OverrideLayout(
         Option<PathBuf>,        // cwd
         Option<TerminalAction>, // default_shell
-        TiledPaneLayout,
-        Vec<FloatingPaneLayout>,
-        Option<Vec<SwapTiledLayout>>,
-        Option<Vec<SwapFloatingLayout>>,
-        bool,  // retain_existing_terminal_panes
-        bool,  // retain_existing_plugin_panes
-        usize, // tab_index
+        Vec<TabLayoutInfo>,     // layouts for each tab
+        bool,                   // retain_existing_terminal_panes
+        bool,                   // retain_existing_plugin_panes
         ClientId,
         Option<NotificationEnd>,
     ),
@@ -611,17 +606,13 @@ pub(crate) fn plugin_thread_main(
             PluginInstruction::OverrideLayout(
                 cwd,
                 default_shell,
-                mut tiled_layout,
-                mut floating_layouts,
-                swap_tiled_layouts,
-                swap_floating_layouts,
+                tab_layouts,
                 retain_existing_terminal_panes,
                 retain_existing_plugin_panes,
-                tab_index,
                 client_id,
                 completion_tx,
             ) => {
-                // Prefer connected clients to avoid opening plugins in background for CLI clients
+                // 1. Prefer connected clients over CLI clients
                 let client_id = if wasm_bridge.client_is_connected(&client_id) {
                     client_id
                 } else if let Some(first_client_id) = wasm_bridge.get_first_client_id() {
@@ -630,70 +621,74 @@ pub(crate) fn plugin_thread_main(
                     client_id
                 };
 
-                let mut plugin_ids: HashMap<RunPluginOrAlias, Vec<PluginId>> = HashMap::new();
+                // 2. Process each tab layout
+                let mut tab_layouts_with_plugin_ids = Vec::new();
 
-                // Populate plugin aliases in layouts
-                tiled_layout.populate_plugin_aliases_in_layout(&plugin_aliases);
-                floating_layouts.iter_mut().for_each(|f| {
-                    f.run
-                        .as_mut()
-                        .map(|f| f.populate_run_plugin_if_needed(&plugin_aliases));
-                });
+                for mut tab_layout_info in tab_layouts {
+                    // Populate plugin aliases in layouts
+                    tab_layout_info.tiled_layout.populate_plugin_aliases_in_layout(&plugin_aliases);
+                    tab_layout_info.floating_layouts.iter_mut().for_each(|f| {
+                        f.run
+                            .as_mut()
+                            .map(|r| r.populate_run_plugin_if_needed(&plugin_aliases));
+                    });
 
-                // Extract run instructions from tiled layout
-                let extracted_run_instructions = tiled_layout.extract_run_instructions();
+                    // Extract run instructions from tiled layout
+                    let extracted_run_instructions = tab_layout_info.tiled_layout.extract_run_instructions();
 
-                // Extract run instructions from floating layouts (excluding already_running)
-                let extracted_floating_plugins: Vec<Option<Run>> = floating_layouts
-                    .iter()
-                    .filter(|f| !f.already_running)
-                    .map(|f| f.run.clone())
-                    .collect();
+                    // Extract run instructions from floating layouts (excluding already_running)
+                    let extracted_floating_plugins: Vec<Option<Run>> = tab_layout_info.floating_layouts
+                        .iter()
+                        .filter(|f| !f.already_running)
+                        .map(|f| f.run.clone())
+                        .collect();
 
-                // Combine all run instructions
-                let mut all_run_instructions = extracted_run_instructions;
-                all_run_instructions.extend(extracted_floating_plugins);
+                    // Combine all run instructions
+                    let mut all_run_instructions = extracted_run_instructions;
+                    all_run_instructions.extend(extracted_floating_plugins);
 
-                // Load plugins for all Run::Plugin instructions
-                let size = Size::default();
-                for run_instruction in all_run_instructions {
-                    if let Some(Run::Plugin(run_plugin_or_alias)) = run_instruction {
-                        let run_plugin = run_plugin_or_alias.get_run_plugin();
-                        let cwd = run_plugin_or_alias.get_initial_cwd();
-                        let skip_cache = false;
-                        match wasm_bridge.load_plugin(
-                            &run_plugin,
-                            Some(tab_index),
-                            size,
-                            cwd,
-                            skip_cache,
-                            Some(client_id),
-                        ) {
-                            Ok((plugin_id, _client_id)) => {
-                                plugin_ids
-                                    .entry(run_plugin_or_alias.clone())
-                                    .or_default()
-                                    .push(plugin_id);
-                            },
-                            Err(e) => {
-                                log::error!("Failed to load plugin: {}", e);
-                            },
+                    // Load plugins for all Run::Plugin instructions
+                    let mut plugin_ids: HashMap<RunPluginOrAlias, Vec<PluginId>> = HashMap::new();
+                    let size = Size::default();
+
+                    for run_instruction in all_run_instructions {
+                        if let Some(Run::Plugin(run_plugin_or_alias)) = run_instruction {
+                            let run_plugin = run_plugin_or_alias.get_run_plugin();
+                            let cwd = run_plugin_or_alias.get_initial_cwd();
+                            let skip_cache = false;
+
+                            match wasm_bridge.load_plugin(
+                                &run_plugin,
+                                Some(tab_layout_info.tab_index),
+                                size,
+                                cwd,
+                                skip_cache,
+                                Some(client_id),
+                            ) {
+                                Ok((plugin_id, _client_id)) => {
+                                    plugin_ids
+                                        .entry(run_plugin_or_alias.clone())
+                                        .or_default()
+                                        .push(plugin_id);
+                                },
+                                Err(e) => {
+                                    log::error!("Failed to load plugin: {}", e);
+                                },
+                            }
                         }
                     }
+
+                    // Pair this tab's layout with its plugin IDs
+                    tab_layouts_with_plugin_ids.push((tab_layout_info, plugin_ids));
                 }
 
-                // Send to pty thread
+                // 3. Send to pty thread with all tab layouts and their plugin IDs
                 drop(bus.senders.send_to_pty(PtyInstruction::OverrideLayout(
                     cwd,
                     default_shell,
-                    tiled_layout,
-                    floating_layouts,
-                    swap_tiled_layouts,
-                    swap_floating_layouts,
+                    tab_layouts_with_plugin_ids,
                     retain_existing_terminal_panes,
                     retain_existing_plugin_panes,
-                    tab_index,
-                    plugin_ids,
                     client_id,
                     completion_tx,
                 )));

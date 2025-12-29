@@ -9,7 +9,7 @@ use crate::{
     panes::PaneId,
     plugins::PluginInstruction,
     pty::{ClientTabIndexOrPaneId, PtyInstruction},
-    screen::ScreenInstruction,
+    screen::{ScreenInstruction, TabLayoutInfo},
     ServerInstruction, SessionMetaData, SessionState,
 };
 use std::thread;
@@ -1131,15 +1131,23 @@ pub(crate) fn route_action(
             let swap_tiled = swap_tiled_layouts;
             let swap_floating = swap_floating_layouts;
 
+            // Treat the Action as overriding the first tab (tab index 0)
+            let tab_layouts = vec![
+                TabLayoutInfo {
+                    tab_index: 0,
+                    tab_name,
+                    tiled_layout: tiled,
+                    floating_layouts: floating,
+                    swap_tiled_layouts: swap_tiled,
+                    swap_floating_layouts: swap_floating,
+                }
+            ];
+
             senders
                 .send_to_screen(ScreenInstruction::OverrideLayout(
                     cwd,
                     shell,
-                    tab_name,
-                    tiled,
-                    floating,
-                    swap_tiled,
-                    swap_floating,
+                    tab_layouts,
                     retain_existing_terminal_panes,
                     retain_existing_plugin_panes,
                     client_id,

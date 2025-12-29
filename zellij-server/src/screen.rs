@@ -142,6 +142,30 @@ macro_rules! active_tab_and_connected_client_id {
 type InitialTitle = String;
 type HoldForCommand = Option<RunCommand>;
 
+/// Layout configuration for a single tab in multi-tab override
+#[derive(Debug, Clone)]
+pub struct TabLayoutInfo {
+    pub tab_index: usize,
+    pub tab_name: Option<String>,
+    pub tiled_layout: TiledPaneLayout,
+    pub floating_layouts: Vec<FloatingPaneLayout>,
+    pub swap_tiled_layouts: Option<Vec<SwapTiledLayout>>,
+    pub swap_floating_layouts: Option<Vec<SwapFloatingLayout>>,
+}
+
+/// Result of overriding a single tab's layout
+#[derive(Debug, Clone)]
+pub struct TabOverrideResult {
+    pub tab_index: usize,
+    pub tiled_layout: TiledPaneLayout,
+    pub floating_layouts: Vec<FloatingPaneLayout>,
+    pub swap_tiled_layouts: Option<Vec<SwapTiledLayout>>,
+    pub swap_floating_layouts: Option<Vec<SwapFloatingLayout>>,
+    pub new_terminal_pids: Vec<(u32, HoldForCommand)>,
+    pub new_floating_pane_pids: Vec<(u32, HoldForCommand)>,
+    pub plugin_ids: HashMap<RunPluginOrAlias, Vec<u32>>,
+}
+
 /// Instructions that can be sent to the [`Screen`].
 #[derive(Debug, Clone)]
 pub enum ScreenInstruction {
@@ -299,29 +323,18 @@ pub enum ScreenInstruction {
     PreviousSwapLayout(ClientId, Option<NotificationEnd>),
     NextSwapLayout(ClientId, Option<NotificationEnd>),
     OverrideLayout(
-        Option<PathBuf>,        // cwd
-        Option<TerminalAction>, // default_shell
-        Option<String>,         // new name for tab
-        TiledPaneLayout,
-        Vec<FloatingPaneLayout>,
-        Option<Vec<SwapTiledLayout>>,
-        Option<Vec<SwapFloatingLayout>>,
-        bool, // retain_existing_terminal_panes
-        bool, // retain_existing_plugin_panes
+        Option<PathBuf>,        // cwd (applies to all tabs)
+        Option<TerminalAction>, // default_shell (applies to all tabs)
+        Vec<TabLayoutInfo>,     // layouts for each tab to override
+        bool,                   // retain_existing_terminal_panes
+        bool,                   // retain_existing_plugin_panes
         ClientId,
         Option<NotificationEnd>,
     ),
     OverrideLayoutComplete(
-        TiledPaneLayout,
-        Vec<FloatingPaneLayout>,
-        Option<Vec<SwapTiledLayout>>,
-        Option<Vec<SwapFloatingLayout>>,
-        Vec<(u32, HoldForCommand)>, // new terminal pids
-        Vec<(u32, HoldForCommand)>, // new floating pane pids
-        HashMap<RunPluginOrAlias, Vec<u32>>,
-        bool,  // retain_existing_terminal_panes
-        bool,  // retain_existing_plugin_panes
-        usize, // tab_index
+        Vec<TabOverrideResult>, // results for each tab
+        bool,                   // retain_existing_terminal_panes
+        bool,                   // retain_existing_plugin_panes
         ClientId,
         Option<NotificationEnd>,
     ),
@@ -5197,90 +5210,122 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::OverrideLayout(
                 cwd,
                 default_shell,
-                mut new_tab_name,
-                mut tiled_layout,
-                mut floating_layouts,
-                swap_tiled_layouts,
-                swap_floating_layouts,
+                tab_layouts,
                 retain_existing_terminal_panes,
                 retain_existing_plugin_panes,
                 client_id,
                 _completion_tx,
             ) => {
-                let active_tab = match screen.get_active_tab_mut(client_id) {
-                    Ok(tab) => tab,
-                    Err(_) => {
-                        log::error!(
-                            "OverrideLayout: No active tab for client_id {:?}",
-                            client_id
-                        );
-                        continue;
-                    },
-                };
-                if let Some(name) = new_tab_name.take() {
-                    active_tab.name = name;
+                // 1. Determine which tabs to close (exist but not in layout)
+                let existing_tab_indices: HashSet<usize> = screen.tabs.keys().copied().collect();
+                let layout_tab_indices: HashSet<usize> = tab_layouts
+                    .iter()
+                    .map(|tl| tl.tab_index)
+                    .collect();
+                let tabs_to_close: Vec<usize> = existing_tab_indices
+                    .difference(&layout_tab_indices)
+                    .copied()
+                    .collect();
+
+                // 2. Process each tab layout
+                let mut processed_tab_layouts = Vec::new();
+
+                for mut tab_layout_info in tab_layouts {
+                    // Get the tab by index
+                    let tab = match screen.tabs.get_mut(&tab_layout_info.tab_index) {
+                        Some(t) => t,
+                        None => {
+                            log::error!(
+                                "OverrideLayout: Tab index {} not found, skipping",
+                                tab_layout_info.tab_index
+                            );
+                            continue;
+                        }
+                    };
+
+                    // Set the tab name if provided
+                    if let Some(name) = tab_layout_info.tab_name.take() {
+                        tab.name = name;
+                    }
+
+                    // Find already-running panes for this tab
+                    let (tiled_to_ignore, floating_indices) = find_already_running_panes(
+                        &tab_layout_info.tiled_layout,
+                        &tab_layout_info.floating_layouts,
+                        tab,
+                    );
+
+                    // Mark run instructions to ignore (prevents re-spawning)
+                    for run_instruction in tiled_to_ignore {
+                        tab_layout_info.tiled_layout.ignore_run_instruction(run_instruction);
+                    }
+
+                    for idx in floating_indices {
+                        tab_layout_info.floating_layouts
+                            .get_mut(idx)
+                            .map(|f| f.already_running = true);
+                    }
+
+                    processed_tab_layouts.push(tab_layout_info);
                 }
 
-                let (tiled_to_ignore, floating_indices) =
-                    find_already_running_panes(&tiled_layout, &floating_layouts, active_tab);
-
-                for run_instruction in tiled_to_ignore {
-                    tiled_layout.ignore_run_instruction(run_instruction);
-                }
-
-                for idx in floating_indices {
-                    floating_layouts
-                        .get_mut(idx)
-                        .map(|f| f.already_running = true);
-                }
-
-                let tab_index = active_tab.index;
+                // 3. Send to plugin thread with all tab layouts
                 screen
                     .bus
                     .senders
                     .send_to_plugin(PluginInstruction::OverrideLayout(
                         cwd,
                         default_shell,
-                        tiled_layout,
-                        floating_layouts,
-                        swap_tiled_layouts,
-                        swap_floating_layouts,
+                        processed_tab_layouts,
                         retain_existing_terminal_panes,
                         retain_existing_plugin_panes,
-                        tab_index,
                         client_id,
                         _completion_tx,
                     ))?;
+
+                // 4. Close tabs that aren't in the layout
+                for tab_index in tabs_to_close {
+                    screen.close_tab_at_index(tab_index)?;
+                }
             },
             ScreenInstruction::OverrideLayoutComplete(
-                tiled_layout,
-                floating_layouts,
-                new_swap_tiled_layouts,
-                new_swap_floating_layouts,
-                new_terminal_pids,
-                new_floating_pane_pids,
-                plugin_ids,
+                tab_results,
                 retain_existing_terminal_panes,
                 retain_existing_plugin_panes,
-                tab_index,
                 client_id,
                 completion_tx,
             ) => {
-                screen.tabs.get_mut(&tab_index).map(|t| {
-                    t.override_layout(
-                        tiled_layout,
-                        floating_layouts,
-                        new_swap_tiled_layouts,
-                        new_swap_floating_layouts,
-                        new_terminal_pids,
-                        new_floating_pane_pids,
-                        plugin_ids,
-                        retain_existing_terminal_panes,
-                        retain_existing_plugin_panes,
-                        client_id,
-                        None,
-                    )
-                });
+                // Process each tab result
+                for tab_result in tab_results {
+                    if let Some(tab) = screen.tabs.get_mut(&tab_result.tab_index) {
+                        if let Err(e) = tab.override_layout(
+                            tab_result.tiled_layout,
+                            tab_result.floating_layouts,
+                            tab_result.swap_tiled_layouts,
+                            tab_result.swap_floating_layouts,
+                            tab_result.new_terminal_pids,
+                            tab_result.new_floating_pane_pids,
+                            tab_result.plugin_ids,
+                            retain_existing_terminal_panes,
+                            retain_existing_plugin_panes,
+                            client_id,
+                            None,
+                        ) {
+                            log::error!(
+                                "Failed to override layout for tab {}: {:?}",
+                                tab_result.tab_index,
+                                e
+                            );
+                        }
+                    } else {
+                        log::error!(
+                            "Tab {} not found during override completion",
+                            tab_result.tab_index
+                        );
+                    }
+                }
+
+                // Single render and log after all tabs are updated (performance optimization)
                 screen.log_and_report_session_state()?;
                 let _ = screen.render(None);
                 drop(completion_tx); // action ends here, notify the action initiator
