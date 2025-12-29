@@ -490,8 +490,8 @@ pub fn new_tabs_with_layout(layout: &str) {
 }
 
 /// Provide a LayoutInfo to be applied to the current session in a new tab. If the layout has multiple tabs, they will all be opened.
-pub fn new_tabs_with_layout_info(layout_info: LayoutInfo) {
-    let plugin_command = PluginCommand::NewTabsWithLayoutInfo(layout_info);
+pub fn new_tabs_with_layout_info<L: AsRef<LayoutInfo>>(layout_info: L) {
+    let plugin_command = PluginCommand::NewTabsWithLayoutInfo(layout_info.as_ref().clone());
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };

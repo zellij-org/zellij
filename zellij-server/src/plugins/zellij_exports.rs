@@ -26,6 +26,7 @@ use zellij_utils::data::{
     PaneScrollbackResponse, PermissionStatus, PermissionType, PluginPermission,
     SaveLayoutResponse, TabMetadata,
 };
+use zellij_utils::home::default_layout_dir;
 use zellij_utils::input::permission::PermissionCache;
 use zellij_utils::sessions::generate_random_name as generate_random_name_impl;
 use zellij_utils::ipc::{ClientToServerMsg, IpcSenderWithContext};
@@ -772,7 +773,11 @@ fn generate_random_name(env: &PluginEnv) {
 fn dump_layout(env: &PluginEnv, layout_name: String) {
     let layout_path = PathBuf::from(&layout_name);
 
-    let response = match Layout::stringified_from_dir(&layout_path, env.layout_dir.as_ref()) {
+    let layout_dir = env
+        .layout_dir
+        .clone()
+        .or_else(default_layout_dir);
+    let response = match Layout::stringified_from_dir(&layout_path, layout_dir.as_ref()) {
         Ok((_, layout_content, _)) => {
             ProtobufDumpLayoutResponse {
                 result: Some(dump_layout_response::Result::LayoutContent(layout_content)),
@@ -2769,8 +2774,9 @@ fn try_save_layout(
     // Step 3: Get layout_dir from PluginEnv
     let layout_dir = env
         .layout_dir
-        .as_ref()
-        .ok_or_else(|| "Layout directory not configured".to_string())?;
+        .clone()
+        .or_else(default_layout_dir)
+        .ok_or_else(|| "Layout directory not found".to_string())?;
 
     // Step 4: Create file path
     let file_path = layout_dir.join(format!("{}.kdl", safe_name));
@@ -2826,8 +2832,9 @@ fn try_delete_layout(env: &PluginEnv, layout_name: &str) -> Result<(), String> {
     // Get the layout directory from PluginEnv
     let layout_dir = env
         .layout_dir
-        .as_ref()
-        .ok_or_else(|| "Layout directory not configured".to_string())?;
+        .clone()
+        .or_else(default_layout_dir)
+        .ok_or_else(|| "Layout directory not found".to_string())?;
 
     // Construct the full file path
     let file_path = layout_dir.join(format!("{}.kdl", safe_name));
@@ -2866,8 +2873,9 @@ fn try_edit_layout(env: &PluginEnv, layout_name: &str, context: BTreeMap<String,
     // Get the layout directory from PluginEnv
     let layout_dir = env
         .layout_dir
-        .as_ref()
-        .ok_or_else(|| "Layout directory not configured".to_string())?;
+        .clone()
+        .or_else(default_layout_dir)
+        .ok_or_else(|| "Layout directory not found".to_string())?;
 
     // Construct the full file path
     let file_path = layout_dir.join(format!("{}.kdl", safe_name));
