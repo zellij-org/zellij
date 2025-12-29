@@ -921,9 +921,12 @@ pub enum CliAction {
     },
     /// Close the focused pane.
     ClosePane,
-    /// Renames the focused pane
+    /// Renames the focused pane, or a specific pane if --pane-id is provided
     RenamePane {
         name: String,
+        /// The pane id to rename (eg. terminal_1, plugin_2, or bare integer for terminals)
+        #[clap(short = 'p', long, value_parser)]
+        pane_id: Option<String>,
     },
     /// Remove a previously set pane name
     UndoRenamePane,

@@ -956,12 +956,31 @@ impl Action {
                 Ok(vec![Action::HideFloatingPanes { tab_id }])
             },
             CliAction::ClosePane => Ok(vec![Action::CloseFocus]),
-            CliAction::RenamePane { name } => Ok(vec![
-                Action::UndoRenamePane,
-                Action::PaneNameInput {
-                    input: name.as_bytes().to_vec(),
-                },
-            ]),
+            CliAction::RenamePane { name, pane_id } => {
+                if let Some(pane_id_str) = pane_id {
+                    match PaneId::from_str(&pane_id_str) {
+                        Ok(PaneId::Terminal(id)) => Ok(vec![Action::RenameTerminalPane {
+                            pane_id: id,
+                            name: name.as_bytes().to_vec(),
+                        }]),
+                        Ok(PaneId::Plugin(id)) => Ok(vec![Action::RenamePluginPane {
+                            pane_id: id,
+                            name: name.as_bytes().to_vec(),
+                        }]),
+                        Err(_e) => Err(format!(
+                            "Malformed pane id: {}, expecting either a bare integer (eg. 1), a terminal pane id (eg. terminal_1) or a plugin pane id (eg. plugin_1)",
+                            pane_id_str
+                        )),
+                    }
+                } else {
+                    Ok(vec![
+                        Action::UndoRenamePane,
+                        Action::PaneNameInput {
+                            input: name.as_bytes().to_vec(),
+                        },
+                    ])
+                }
+            },
             CliAction::UndoRenamePane => Ok(vec![Action::UndoRenamePane]),
             CliAction::GoToNextTab => Ok(vec![Action::GoToNextTab]),
             CliAction::GoToPreviousTab => Ok(vec![Action::GoToPreviousTab]),
