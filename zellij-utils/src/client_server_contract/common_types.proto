@@ -447,6 +447,7 @@ message NewStackedPaneAction {
   optional RunCommandAction command = 1;
   optional string pane_name = 2;
   bool near_current_pane = 3;
+  optional PaneId stack_with_pane_id = 4;
 }
 
 message NewBlockingPaneAction {

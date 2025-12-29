@@ -788,6 +788,8 @@ pub struct NewStackedPaneAction {
     pub pane_name: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(bool, tag="3")]
     pub near_current_pane: bool,
+    #[prost(message, optional, tag="4")]
+    pub stack_with_pane_id: ::core::option::Option<PaneId>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

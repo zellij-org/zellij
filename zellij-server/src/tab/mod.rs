@@ -5033,8 +5033,8 @@ impl Tab {
         self.tiled_panes
             .add_pane_to_stack_of_pane_id(pane_id, pane, root_pane_id);
         self.set_should_clear_display_before_rendering();
-        self.tiled_panes.expand_pane_in_stack(pane_id); // so that it will get focused by all
-                                                        // clients
+        // Expand the root pane (target) so new pane stays BEHIND it, not in front
+        self.tiled_panes.expand_pane_in_stack(root_pane_id);
         self.swap_layouts.set_is_tiled_damaged();
         Ok(())
     }

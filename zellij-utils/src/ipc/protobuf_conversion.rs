@@ -958,11 +958,12 @@ impl From<crate::input::actions::Action>
                 command,
                 pane_name,
                 near_current_pane,
-                stack_with_pane_id: _,
+                stack_with_pane_id,
             } => ActionType::NewStackedPane(NewStackedPaneAction {
                 command: command.map(|c| c.into()),
                 pane_name,
                 near_current_pane,
+                stack_with_pane_id: stack_with_pane_id.map(|p| p.into()),
             }),
             crate::input::actions::Action::NewBlockingPane {
                 placement,
@@ -1627,7 +1628,9 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                         .transpose()?,
                     pane_name: new_stacked_action.pane_name,
                     near_current_pane: new_stacked_action.near_current_pane,
-                    stack_with_pane_id: None,
+                    stack_with_pane_id: new_stacked_action
+                        .stack_with_pane_id
+                        .and_then(|p| p.try_into().ok()),
                 })
             },
             ActionType::NewBlockingPane(new_blocking_action) => {

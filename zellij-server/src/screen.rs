@@ -4302,6 +4302,7 @@ pub(crate) fn screen_thread_main(
 
                 match client_or_tab_index {
                     ClientTabIndexOrPaneId::ClientId(client_id) => {
+                        log::info!("DEBUG: NewPane with ClientId: {:?}, new_pane_placement: {:?}", client_id, new_pane_placement);
                         active_tab_and_connected_client_id_with_first_tab_fallback!(screen, client_id, |tab: &mut Tab, client_id: Option<ClientId>| {
                             tab.new_pane(pid,
                                initial_pane_title,
@@ -4348,10 +4349,12 @@ pub(crate) fn screen_thread_main(
                         }
                     },
                     ClientTabIndexOrPaneId::PaneId(pane_id) => {
+                        log::info!("DEBUG: NewPane with PaneId target: {:?}, new_pane_placement: {:?}", pane_id, new_pane_placement);
                         let mut found = false;
                         let all_tabs = screen.get_tabs_mut();
                         let should_focus_pane = false;
                         for tab in all_tabs.values_mut() {
+                            log::info!("DEBUG: Checking tab for pane {:?}, has_pane={}", pane_id, tab.has_pane_with_pid(&pane_id));
                             if tab.has_pane_with_pid(&pane_id) {
                                 tab.new_pane(
                                     pid,
