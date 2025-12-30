@@ -3,7 +3,7 @@
 pub use super::command::{OpenFilePayload, RunCommandAction};
 use super::layout::{
     FloatingPaneLayout, Layout, PluginAlias, RunPlugin, RunPluginLocation, RunPluginOrAlias,
-    SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
+    SwapFloatingLayout, SwapTiledLayout, TabLayoutInfo, TiledPaneLayout,
 };
 use crate::cli::CliAction;
 use crate::data::{
@@ -351,11 +351,7 @@ pub enum Action {
     NextSwapLayout,
     /// Override the layout of the active tab
     OverrideLayout {
-        tiled_layout: Option<TiledPaneLayout>,
-        floating_layouts: Vec<FloatingPaneLayout>,
-        swap_tiled_layouts: Option<Vec<SwapTiledLayout>>,
-        swap_floating_layouts: Option<Vec<SwapFloatingLayout>>,
-        tab_name: Option<String>,
+        tabs: Vec<TabLayoutInfo>,
         retain_existing_terminal_panes: bool,
         retain_existing_plugin_panes: bool,
     },
@@ -1041,28 +1037,38 @@ impl Action {
                     stringified_error
                 })?;
 
-                // Extract layout from first tab or use default
-                let swap_tiled_layouts = Some(layout.swap_tiled_layouts.clone());
-                let swap_floating_layouts = Some(layout.swap_floating_layouts.clone());
+                // Convert all tabs to Vec<TabLayoutInfo>
+                let tabs: Vec<TabLayoutInfo> = layout
+                    .tabs
+                    .iter()
+                    .enumerate()
+                    .map(|(index, (tab_name, tiled, floating))| TabLayoutInfo {
+                        tab_index: index,
+                        tab_name: tab_name.clone(),
+                        tiled_layout: tiled.clone(),
+                        floating_layouts: floating.clone(),
+                        swap_tiled_layouts: Some(layout.swap_tiled_layouts.clone()),
+                        swap_floating_layouts: Some(layout.swap_floating_layouts.clone()),
+                    })
+                    .collect();
 
-                if layout.tabs.len() > 1 {
-                    return Err(format!("This layout has {} tabs, overriding only supports layouts with 0 or 1 tabs.", layout.tabs.len()));
-                }
-
-                let (name, tiled_layout, floating_panes_layout) = if let Some(first_tab) = layout.tabs.get(0).take() {
-                    first_tab.clone()
+                // If no tabs, create default tab
+                let tabs = if tabs.is_empty() {
+                    let (tiled, floating) = layout.new_tab();
+                    vec![TabLayoutInfo {
+                        tab_index: 0,
+                        tab_name: None,
+                        tiled_layout: tiled,
+                        floating_layouts: floating,
+                        swap_tiled_layouts: Some(layout.swap_tiled_layouts),
+                        swap_floating_layouts: Some(layout.swap_floating_layouts),
+                    }]
                 } else {
-                    let name = None;
-                    let (tiled_panes, floating_panes) = layout.new_tab();
-                    (name, tiled_panes, floating_panes)
+                    tabs
                 };
 
                 Ok(vec![Action::OverrideLayout {
-                    tiled_layout: Some(tiled_layout),
-                    floating_layouts: floating_panes_layout,
-                    swap_tiled_layouts,
-                    swap_floating_layouts,
-                    tab_name: name,
+                    tabs,
                     retain_existing_terminal_panes,
                     retain_existing_plugin_panes,
                 }])

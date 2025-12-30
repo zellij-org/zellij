@@ -9,7 +9,7 @@ use crate::home::{find_default_config_dir, get_layout_dir};
 use crate::input::config::{Config, ConfigError, KdlError};
 use crate::input::keybinds::Keybinds;
 use crate::input::layout::{
-    Layout, PluginUserConfiguration, RunPlugin, RunPluginOrAlias, SplitSize,
+    Layout, PluginUserConfiguration, RunPlugin, RunPluginOrAlias, SplitSize, TabLayoutInfo,
 };
 use crate::input::options::{Clipboard, OnForceClose, Options};
 use crate::input::permission::{GrantedPermission, PermissionCache};
@@ -1727,11 +1727,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 let command_metadata = action_children.iter().next();
                 if command_metadata.is_none() {
                     return Ok(Action::OverrideLayout {
-                        tiled_layout: None,
-                        floating_layouts: vec![],
-                        swap_tiled_layouts: None,
-                        swap_floating_layouts: None,
-                        tab_name: None,
+                        tabs: vec![],
                         retain_existing_terminal_panes: false,
                         retain_existing_plugin_panes: false,
                     });
@@ -1804,24 +1800,34 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                     let (tab_name, layout, floating_panes_layout) = tabs.drain(..).next().unwrap();
                     let name = tab_name.or(name);
 
-                    Ok(Action::OverrideLayout {
-                        tiled_layout: Some(layout),
+                    let tab_layout_info = TabLayoutInfo {
+                        tab_index: 0,
+                        tab_name: name,
+                        tiled_layout: layout,
                         floating_layouts: floating_panes_layout,
                         swap_tiled_layouts,
                         swap_floating_layouts,
-                        tab_name: name,
+                    };
+
+                    Ok(Action::OverrideLayout {
+                        tabs: vec![tab_layout_info],
                         retain_existing_terminal_panes,
                         retain_existing_plugin_panes,
                     })
                 } else {
                     let (layout, floating_panes_layout) = layout.new_tab();
 
-                    Ok(Action::OverrideLayout {
-                        tiled_layout: Some(layout),
+                    let tab_layout_info = TabLayoutInfo {
+                        tab_index: 0,
+                        tab_name: name,
+                        tiled_layout: layout,
                         floating_layouts: floating_panes_layout,
                         swap_tiled_layouts,
                         swap_floating_layouts,
-                        tab_name: name,
+                    };
+
+                    Ok(Action::OverrideLayout {
+                        tabs: vec![tab_layout_info],
                         retain_existing_terminal_panes,
                         retain_existing_plugin_panes,
                     })

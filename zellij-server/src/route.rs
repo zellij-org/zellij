@@ -9,7 +9,7 @@ use crate::{
     panes::PaneId,
     plugins::PluginInstruction,
     pty::{ClientTabIndexOrPaneId, PtyInstruction},
-    screen::{ScreenInstruction, TabLayoutInfo},
+    screen::ScreenInstruction,
     ServerInstruction, SessionMetaData, SessionState,
 };
 use std::thread;
@@ -28,7 +28,7 @@ use zellij_utils::{
         command::TerminalAction,
         get_mode_info,
         keybinds::Keybinds,
-        layout::{Layout, TiledPaneLayout},
+        layout::Layout,
     },
     ipc::{
         ClientAttributes, ClientToServerMsg, ExitReason, IpcReceiverWithContext, ServerToClientMsg,
@@ -1115,39 +1115,18 @@ pub(crate) fn route_action(
                 .with_context(err_context)?;
         },
         Action::OverrideLayout {
-            tiled_layout,
-            floating_layouts,
-            swap_tiled_layouts,
-            swap_floating_layouts,
-            tab_name,
+            tabs,
             retain_existing_terminal_panes,
             retain_existing_plugin_panes,
         } => {
-            // Extract required layout fields, use defaults if None
             let cwd = None;
             let shell = default_shell.clone();
-            let tiled = tiled_layout.unwrap_or_else(|| TiledPaneLayout::default());
-            let floating = floating_layouts;
-            let swap_tiled = swap_tiled_layouts;
-            let swap_floating = swap_floating_layouts;
-
-            // Treat the Action as overriding the first tab (tab index 0)
-            let tab_layouts = vec![
-                TabLayoutInfo {
-                    tab_index: 0,
-                    tab_name,
-                    tiled_layout: tiled,
-                    floating_layouts: floating,
-                    swap_tiled_layouts: swap_tiled,
-                    swap_floating_layouts: swap_floating,
-                }
-            ];
 
             senders
                 .send_to_screen(ScreenInstruction::OverrideLayout(
                     cwd,
                     shell,
-                    tab_layouts,
+                    tabs,
                     retain_existing_terminal_panes,
                     retain_existing_plugin_panes,
                     client_id,

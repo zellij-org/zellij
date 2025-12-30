@@ -681,6 +681,17 @@ pub struct Layout {
     pub swap_floating_layouts: Vec<SwapFloatingLayout>,
 }
 
+/// Layout configuration for a single tab in multi-tab override
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+pub struct TabLayoutInfo {
+    pub tab_index: usize,
+    pub tab_name: Option<String>,
+    pub tiled_layout: TiledPaneLayout,
+    pub floating_layouts: Vec<FloatingPaneLayout>,
+    pub swap_tiled_layouts: Option<Vec<SwapTiledLayout>>,
+    pub swap_floating_layouts: Option<Vec<SwapFloatingLayout>>,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub enum PercentOrFixed {
     Percent(usize), // 1 to 100

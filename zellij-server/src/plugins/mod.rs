@@ -19,7 +19,8 @@ use wasmi::Engine;
 
 use crate::panes::PaneId;
 use crate::route::NotificationEnd;
-use crate::screen::{ScreenInstruction, TabLayoutInfo};
+use crate::screen::ScreenInstruction;
+use zellij_utils::input::layout::TabLayoutInfo;
 use crate::session_layout_metadata::SessionLayoutMetadata;
 use crate::{pty::PtyInstruction, thread_bus::Bus, ClientId, ServerInstruction};
 use zellij_utils::data::PaneRenderReport;

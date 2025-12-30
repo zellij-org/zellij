@@ -30,7 +30,7 @@ use zellij_utils::{
     input::command::TerminalAction,
     input::layout::{
         FloatingPaneLayout, Layout, Run, RunPluginOrAlias, SplitSize, SwapFloatingLayout,
-        SwapTiledLayout, TiledPaneLayout,
+        SwapTiledLayout, TabLayoutInfo, TiledPaneLayout,
     },
     position::Position,
 };
@@ -142,21 +142,11 @@ macro_rules! active_tab_and_connected_client_id {
 type InitialTitle = String;
 type HoldForCommand = Option<RunCommand>;
 
-/// Layout configuration for a single tab in multi-tab override
-#[derive(Debug, Clone)]
-pub struct TabLayoutInfo {
-    pub tab_index: usize,
-    pub tab_name: Option<String>,
-    pub tiled_layout: TiledPaneLayout,
-    pub floating_layouts: Vec<FloatingPaneLayout>,
-    pub swap_tiled_layouts: Option<Vec<SwapTiledLayout>>,
-    pub swap_floating_layouts: Option<Vec<SwapFloatingLayout>>,
-}
-
 /// Result of overriding a single tab's layout
 #[derive(Debug, Clone)]
 pub struct TabOverrideResult {
     pub tab_index: usize,
+    pub tab_name: Option<String>,
     pub tiled_layout: TiledPaneLayout,
     pub floating_layouts: Vec<FloatingPaneLayout>,
     pub swap_tiled_layouts: Option<Vec<SwapTiledLayout>>,
@@ -5214,7 +5204,7 @@ pub(crate) fn screen_thread_main(
                 retain_existing_terminal_panes,
                 retain_existing_plugin_panes,
                 client_id,
-                _completion_tx,
+                completion_tx,
             ) => {
                 // 1. Determine which tabs to close (exist but not in layout)
                 let existing_tab_indices: HashSet<usize> = screen.tabs.keys().copied().collect();
@@ -5235,10 +5225,8 @@ pub(crate) fn screen_thread_main(
                     let tab = match screen.tabs.get_mut(&tab_layout_info.tab_index) {
                         Some(t) => t,
                         None => {
-                            log::error!(
-                                "OverrideLayout: Tab index {} not found, skipping",
-                                tab_layout_info.tab_index
-                            );
+                            // no corresponding tab exists, we'll create it
+                            processed_tab_layouts.push(tab_layout_info);
                             continue;
                         }
                     };
@@ -5280,7 +5268,7 @@ pub(crate) fn screen_thread_main(
                         retain_existing_terminal_panes,
                         retain_existing_plugin_panes,
                         client_id,
-                        _completion_tx,
+                        completion_tx,
                     ))?;
 
                 // 4. Close tabs that aren't in the layout
@@ -5301,8 +5289,8 @@ pub(crate) fn screen_thread_main(
                         if let Err(e) = tab.override_layout(
                             tab_result.tiled_layout,
                             tab_result.floating_layouts,
-                            tab_result.swap_tiled_layouts,
-                            tab_result.swap_floating_layouts,
+                            tab_result.swap_tiled_layouts.clone(),
+                            tab_result.swap_floating_layouts.clone(),
                             tab_result.new_terminal_pids,
                             tab_result.new_floating_pane_pids,
                             tab_result.plugin_ids,
@@ -5318,11 +5306,56 @@ pub(crate) fn screen_thread_main(
                             );
                         }
                     } else {
-                        log::error!(
-                            "Tab {} not found during override completion",
-                            tab_result.tab_index
+                        // Tab doesn't exist - create it
+                        let swap_layouts = (
+                            tab_result.swap_tiled_layouts.clone().unwrap_or_default(),
+                            tab_result.swap_floating_layouts.clone().unwrap_or_default(),
                         );
+                        if let Err(e) = screen.new_tab(
+                            tab_result.tab_index,
+                            swap_layouts,
+                            tab_result.tab_name.clone(),
+                            None,
+                        ) {
+                            log::error!(
+                                "Failed to create new tab {} during override completion: {:?}",
+                                tab_result.tab_index,
+                                e
+                            );
+                            continue;
+                        }
+
+                        // Now override the newly created tab's layout
+                        if let Some(tab) = screen.tabs.get_mut(&tab_result.tab_index) {
+                            if let Err(e) = tab.override_layout(
+                                tab_result.tiled_layout,
+                                tab_result.floating_layouts,
+                                tab_result.swap_tiled_layouts,
+                                tab_result.swap_floating_layouts,
+                                tab_result.new_terminal_pids,
+                                tab_result.new_floating_pane_pids,
+                                tab_result.plugin_ids,
+                                retain_existing_terminal_panes,
+                                retain_existing_plugin_panes,
+                                client_id,
+                                None,
+                            ) {
+                                log::error!(
+                                    "Failed to override layout for new tab {}: {:?}",
+                                    tab_result.tab_index,
+                                    e
+                                );
+                            }
+                        }
                     }
+                }
+
+                for event in pending_events_waiting_for_client.drain(..) {
+                    screen.bus.senders.send_to_screen(event).non_fatal();
+                }
+
+                for event in pending_events_waiting_for_tab.drain(..) {
+                    screen.bus.senders.send_to_screen(event).non_fatal();
                 }
 
                 // Single render and log after all tabs are updated (performance optimization)

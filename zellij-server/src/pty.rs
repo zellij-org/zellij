@@ -4,7 +4,7 @@ use crate::terminal_bytes::TerminalBytes;
 use crate::{
     panes::PaneId,
     plugins::{DumpSessionLayoutResponse, PluginId, PluginInstruction},
-    screen::{ScreenInstruction, TabLayoutInfo, TabOverrideResult},
+    screen::{ScreenInstruction, TabOverrideResult},
     session_layout_metadata::SessionLayoutMetadata,
     thread_bus::{Bus, ThreadSenders},
     ClientId, ServerInstruction,
@@ -27,7 +27,7 @@ use zellij_utils::{
         command::{OpenFilePayload, RunCommand, TerminalAction},
         layout::{
             FloatingPaneLayout, Layout, Run, RunPluginOrAlias, SwapFloatingLayout, SwapTiledLayout,
-            TiledPaneLayout,
+            TabLayoutInfo, TiledPaneLayout,
         },
     },
     pane_size::Size,
@@ -514,6 +514,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                         default_shell.clone(),
                         plugin_ids,
                         tab_layout_info.tab_index,
+                        tab_layout_info.tab_name,
                         client_id,
                         tab_layout_info.swap_tiled_layouts,
                         tab_layout_info.swap_floating_layouts,
@@ -1278,6 +1279,7 @@ impl Pty {
         default_shell: Option<TerminalAction>,
         plugin_ids: HashMap<RunPluginOrAlias, Vec<u32>>,
         tab_index: usize,
+        tab_name: Option<String>,
         client_id: ClientId,
         swap_tiled_layouts: Option<Vec<SwapTiledLayout>>,
         swap_floating_layouts: Option<Vec<SwapFloatingLayout>>,
@@ -1372,6 +1374,7 @@ impl Pty {
 
         let tab_result = TabOverrideResult {
             tab_index,
+            tab_name,
             tiled_layout: layout,
             floating_layouts: floating_panes_layout,
             swap_tiled_layouts,

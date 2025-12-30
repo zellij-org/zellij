@@ -162,14 +162,19 @@ message NewTabPayload {
   optional UnblockCondition first_pane_unblock_condition = 9;
 }
 
+message TabLayoutInfo {
+  uint32 tab_index = 1;
+  optional string tab_name = 2;
+  TiledPaneLayout tiled_layout = 3;
+  repeated FloatingPaneLayout floating_layouts = 4;
+  repeated SwapTiledLayout swap_tiled_layouts = 5;
+  repeated SwapFloatingLayout swap_floating_layouts = 6;
+}
+
 message OverrideLayoutPayload {
-  optional TiledPaneLayout tiled_layout = 1;
-  repeated FloatingPaneLayout floating_layouts = 2;
-  repeated SwapTiledLayout swap_tiled_layouts = 3;
-  repeated SwapFloatingLayout swap_floating_layouts = 4;
-  optional string tab_name = 5;
-  bool retain_existing_terminal_panes = 10;
-  bool retain_existing_plugin_panes = 11;
+  repeated TabLayoutInfo tabs = 1;
+  bool retain_existing_terminal_panes = 2;
+  bool retain_existing_plugin_panes = 3;
 }
 
 message Action {
