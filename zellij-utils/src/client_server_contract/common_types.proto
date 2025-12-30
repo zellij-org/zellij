@@ -285,6 +285,7 @@ message OverrideLayoutAction {
   repeated TabLayoutInfo tabs = 1;
   bool retain_existing_terminal_panes = 2;
   bool retain_existing_plugin_panes = 3;
+  bool apply_only_to_active_tab = 4;
 }
 message QueryTabNamesAction {}
 message BreakPaneAction {}

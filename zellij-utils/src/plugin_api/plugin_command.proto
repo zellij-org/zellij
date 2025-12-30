@@ -802,6 +802,7 @@ message OverrideLayoutPayload {
   repeated ContextItem context = 2;
   bool retain_existing_terminal_panes = 3;
   bool retain_existing_plugin_panes = 4;
+  bool apply_only_to_active_tab = 5;
 }
 
 message SaveLayoutPayload {

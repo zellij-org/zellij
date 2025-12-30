@@ -950,6 +950,11 @@ pub enum CliAction {
         /// Retain existing plugin panes that do not fit with the layout default: false)
         #[clap(long, value_parser, takes_value(false), default_value("false"))]
         retain_existing_plugin_panes: bool,
+
+        /// Only apply the layout to the active tab (uses just the first layout tab if it has
+        /// multiple)
+        #[clap(long, value_parser, takes_value(false), default_value("false"))]
+        apply_only_to_active_tab: bool,
     },
     /// Query all tab names
     QueryTabNames,

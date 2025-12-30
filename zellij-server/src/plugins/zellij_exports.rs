@@ -208,12 +208,14 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                         layout_info,
                         retain_existing_terminal_panes,
                         retain_existing_plugin_panes,
+                        apply_only_to_active_tab,
                         context,
                     ) => override_layout(
                         env,
                         layout_info,
                         retain_existing_terminal_panes,
                         retain_existing_plugin_panes,
+                        apply_only_to_active_tab,
                         context,
                     )?,
                     PluginCommand::SaveLayout {
@@ -3471,6 +3473,7 @@ fn override_layout(
     layout_info: LayoutInfo,
     retain_existing_terminal_panes: bool,
     retain_existing_plugin_panes: bool,
+    apply_only_to_active_tab: bool,
     context: BTreeMap<String, String>,
 ) -> Result<()> {
     let layout = Layout::from_layout_info(&env.layout_dir, layout_info)
@@ -3510,6 +3513,7 @@ fn override_layout(
         tabs,
         retain_existing_terminal_panes,
         retain_existing_plugin_panes,
+        apply_only_to_active_tab,
     };
     run_action(env, action, context);
     Ok(())

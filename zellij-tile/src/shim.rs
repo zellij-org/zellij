@@ -1950,12 +1950,14 @@ pub fn override_layout<L: AsRef<LayoutInfo>>(
     layout_info: L,
     retain_existing_terminal_panes: bool,
     retain_existing_plugin_panes: bool,
+    apply_only_to_active_tab: bool,
     context: BTreeMap<String, String>,
 ) {
     let plugin_command = PluginCommand::OverrideLayout(
         layout_info.as_ref().clone(),
         retain_existing_terminal_panes,
         retain_existing_plugin_panes,
+        apply_only_to_active_tab,
         context
     );
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();

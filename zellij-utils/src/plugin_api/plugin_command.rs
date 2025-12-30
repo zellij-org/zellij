@@ -1346,6 +1346,7 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                         layout_info,
                         override_layout_payload.retain_existing_terminal_panes,
                         override_layout_payload.retain_existing_plugin_panes,
+                        override_layout_payload.apply_only_to_active_tab,
                         context,
                     ))
                 },
@@ -2742,6 +2743,7 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                 layout_info,
                 retain_existing_terminal_panes,
                 retain_existing_plugin_panes,
+                apply_only_to_active_tab,
                 context,
             ) => Ok(ProtobufPluginCommand {
                 name: CommandName::OverrideLayout as i32,
@@ -2754,6 +2756,7 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                             .collect(),
                         retain_existing_terminal_panes,
                         retain_existing_plugin_panes,
+                        apply_only_to_active_tab,
                     },
                 )),
             }),

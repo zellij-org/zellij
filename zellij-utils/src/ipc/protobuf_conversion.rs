@@ -1102,10 +1102,12 @@ impl From<crate::input::actions::Action>
                 tabs,
                 retain_existing_terminal_panes,
                 retain_existing_plugin_panes,
+                apply_only_to_active_tab,
             } => ActionType::OverrideLayout(OverrideLayoutAction {
                 tabs: tabs.into_iter().map(|t| t.into()).collect(),
                 retain_existing_terminal_panes,
                 retain_existing_plugin_panes,
+                apply_only_to_active_tab,
             }),
             crate::input::actions::Action::QueryTabNames => {
                 ActionType::QueryTabNames(QueryTabNamesAction {})
@@ -1693,6 +1695,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                         .retain_existing_terminal_panes,
                     retain_existing_plugin_panes: override_layout_action
                         .retain_existing_plugin_panes,
+                    apply_only_to_active_tab: override_layout_action.apply_only_to_active_tab,
                 })
             },
             ActionType::QueryTabNames(_) => Ok(crate::input::actions::Action::QueryTabNames),

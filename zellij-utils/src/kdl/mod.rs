@@ -1730,6 +1730,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                         tabs: vec![],
                         retain_existing_terminal_panes: false,
                         retain_existing_plugin_panes: false,
+                        apply_only_to_active_tab: false,
                     });
                 }
 
@@ -1754,6 +1755,11 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 let retain_existing_plugin_panes = command_metadata
                     .and_then(|c_m| {
                         kdl_child_bool_value_for_entry(c_m, "retain_existing_plugin_panes")
+                    })
+                    .unwrap_or(false);
+                let apply_only_to_active_tab = command_metadata
+                    .and_then(|c_m| {
+                        kdl_child_bool_value_for_entry(c_m, "apply_only_to_active_tab")
                     })
                     .unwrap_or(false);
 
@@ -1813,6 +1819,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                         tabs: vec![tab_layout_info],
                         retain_existing_terminal_panes,
                         retain_existing_plugin_panes,
+                        apply_only_to_active_tab,
                     })
                 } else {
                     let (layout, floating_panes_layout) = layout.new_tab();
@@ -1830,6 +1837,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                         tabs: vec![tab_layout_info],
                         retain_existing_terminal_panes,
                         retain_existing_plugin_panes,
+                        apply_only_to_active_tab,
                     })
                 }
             },

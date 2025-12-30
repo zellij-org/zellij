@@ -354,6 +354,7 @@ pub enum Action {
         tabs: Vec<TabLayoutInfo>,
         retain_existing_terminal_panes: bool,
         retain_existing_plugin_panes: bool,
+        apply_only_to_active_tab: bool,
     },
     /// Query all tab names
     QueryTabNames,
@@ -985,6 +986,7 @@ impl Action {
                 layout_dir,
                 retain_existing_terminal_panes,
                 retain_existing_plugin_panes,
+                apply_only_to_active_tab,
             } => {
                 // Determine layout_dir: CLI arg > config > default
                 let layout_dir = layout_dir
@@ -1071,6 +1073,7 @@ impl Action {
                     tabs,
                     retain_existing_terminal_panes,
                     retain_existing_plugin_panes,
+                    apply_only_to_active_tab,
                 }])
             },
             CliAction::QueryTabNames => Ok(vec![Action::QueryTabNames]),

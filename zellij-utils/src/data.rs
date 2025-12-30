@@ -3161,7 +3161,8 @@ pub enum PluginCommand {
         LayoutInfo,
         bool,                      // retain_existing_terminal_panes
         bool,                      // retain_existing_plugin_panes
-        BTreeMap<String, String>, // context
+        bool,                      // apply_only_to_active_tab,
+        BTreeMap<String, String>,  // context
     ),
     SaveLayout {
         layout_name: String,

@@ -489,6 +489,8 @@ pub struct OverrideLayoutAction {
     pub retain_existing_terminal_panes: bool,
     #[prost(bool, tag="3")]
     pub retain_existing_plugin_panes: bool,
+    #[prost(bool, tag="4")]
+    pub apply_only_to_active_tab: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
