@@ -1069,6 +1069,8 @@ pub struct PaneMetadata {
     pub name: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(bool, tag="2")]
     pub is_plugin: bool,
+    #[prost(bool, tag="3")]
+    pub is_builtin_plugin: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

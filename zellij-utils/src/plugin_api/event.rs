@@ -1243,6 +1243,7 @@ impl TryFrom<ProtobufPaneMetadata> for PaneMetadata {
         Ok(PaneMetadata {
             name: protobuf_metadata.name,
             is_plugin: protobuf_metadata.is_plugin,
+            is_builtin_plugin: protobuf_metadata.is_builtin_plugin,
         })
     }
 }
@@ -1253,6 +1254,7 @@ impl TryFrom<PaneMetadata> for ProtobufPaneMetadata {
         Ok(ProtobufPaneMetadata {
             name: metadata.name,
             is_plugin: metadata.is_plugin,
+            is_builtin_plugin: metadata.is_builtin_plugin,
         })
     }
 }

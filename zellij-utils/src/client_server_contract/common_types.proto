@@ -659,6 +659,7 @@ message TabMetadata {
 message PaneMetadata {
   optional string name = 1;
   bool is_plugin = 2;
+  bool is_builtin_plugin = 3;
 }
 
 message ConnectToSession {

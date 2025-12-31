@@ -481,6 +481,8 @@ impl PaneLayoutMetadata {
         }
     }
     fn to_pane_metadata(&self) -> PaneMetadata {
+        use zellij_utils::input::layout::RunPluginLocation;
+
         // Try to extract a meaningful name from the pane
         // Priority: explicit title > command name > file name > plugin location
         let name = self.title.clone().or_else(|| {
@@ -503,7 +505,27 @@ impl PaneLayoutMetadata {
 
         let is_plugin = matches!(self.id, PaneId::Plugin(_));
 
-        PaneMetadata { name, is_plugin }
+        // Detect if this is a builtin plugin
+        let is_builtin_plugin = self.run.as_ref()
+            .and_then(|run| match run {
+                Run::Plugin(plugin) => {
+                    use zellij_utils::input::layout::RunPluginOrAlias;
+                    Some(match plugin {
+                        RunPluginOrAlias::RunPlugin(run_plugin) => {
+                            matches!(run_plugin.location, RunPluginLocation::Zellij(_))
+                        },
+                        RunPluginOrAlias::Alias(_) => false,
+                    })
+                },
+                _ => None,
+            })
+            .unwrap_or(false);
+
+        PaneMetadata {
+            name,
+            is_plugin,
+            is_builtin_plugin,
+        }
     }
 }
 

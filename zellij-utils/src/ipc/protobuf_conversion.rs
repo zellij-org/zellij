@@ -2092,6 +2092,7 @@ impl From<crate::data::PaneMetadata> for ProtoPaneMetadata {
         ProtoPaneMetadata {
             name: metadata.name,
             is_plugin: metadata.is_plugin,
+            is_builtin_plugin: metadata.is_builtin_plugin,
         }
     }
 }
@@ -2102,6 +2103,7 @@ impl TryFrom<ProtoPaneMetadata> for crate::data::PaneMetadata {
         Ok(crate::data::PaneMetadata {
             name: proto_metadata.name,
             is_plugin: proto_metadata.is_plugin,
+            is_builtin_plugin: proto_metadata.is_builtin_plugin,
         })
     }
 }

@@ -1856,13 +1856,16 @@ impl From<&(Option<String>, crate::input::layout::TiledPaneLayout, Vec<crate::in
 pub struct PaneMetadata {
     pub name: Option<String>,
     pub is_plugin: bool,
+    pub is_builtin_plugin: bool,
 }
 
 impl From<&crate::input::layout::TiledPaneLayout> for PaneMetadata {
     fn from(pane: &crate::input::layout::TiledPaneLayout) -> Self {
         use crate::input::layout::Run;
+        use crate::input::layout::RunPluginLocation;
 
         let mut is_plugin = false;
+        let mut is_builtin_plugin = false;
 
         // Try to get the name from the pane's name field first
         let name = if let Some(ref name) = pane.name {
@@ -1881,6 +1884,12 @@ impl From<&crate::input::layout::TiledPaneLayout> for PaneMetadata {
                 },
                 Run::Plugin(plugin) => {
                     is_plugin = true;
+                    is_builtin_plugin = match plugin {
+                        crate::input::layout::RunPluginOrAlias::RunPlugin(run_plugin) => {
+                            matches!(run_plugin.location, RunPluginLocation::Zellij(_))
+                        },
+                        crate::input::layout::RunPluginOrAlias::Alias(_) => false,
+                    };
                     // Use the plugin location string
                     Some(plugin.location_string())
                 },
@@ -1890,15 +1899,21 @@ impl From<&crate::input::layout::TiledPaneLayout> for PaneMetadata {
             None
         };
 
-        PaneMetadata { name, is_plugin }
+        PaneMetadata {
+            name,
+            is_plugin,
+            is_builtin_plugin,
+        }
     }
 }
 
 impl From<&crate::input::layout::FloatingPaneLayout> for PaneMetadata {
     fn from(pane: &crate::input::layout::FloatingPaneLayout) -> Self {
         use crate::input::layout::Run;
+        use crate::input::layout::RunPluginLocation;
 
         let mut is_plugin = false;
+        let mut is_builtin_plugin = false;
 
         // Try to get the name from the pane's name field first
         let name = if let Some(ref name) = pane.name {
@@ -1917,6 +1932,12 @@ impl From<&crate::input::layout::FloatingPaneLayout> for PaneMetadata {
                 },
                 Run::Plugin(plugin) => {
                     is_plugin = true;
+                    is_builtin_plugin = match plugin {
+                        crate::input::layout::RunPluginOrAlias::RunPlugin(run_plugin) => {
+                            matches!(run_plugin.location, RunPluginLocation::Zellij(_))
+                        },
+                        crate::input::layout::RunPluginOrAlias::Alias(_) => false,
+                    };
                     // Use the plugin location string
                     Some(plugin.location_string())
                 },
@@ -1926,7 +1947,11 @@ impl From<&crate::input::layout::FloatingPaneLayout> for PaneMetadata {
             None
         };
 
-        PaneMetadata { name, is_plugin }
+        PaneMetadata {
+            name,
+            is_plugin,
+            is_builtin_plugin,
+        }
     }
 }
 
