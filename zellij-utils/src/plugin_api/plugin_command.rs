@@ -19,6 +19,7 @@ pub use super::generated_api::api::{
         dump_session_layout_response,
         ParseLayoutPayload, ParseLayoutResponse as ProtobufParseLayoutResponse,
         parse_layout_response,
+        GetLayoutDirPayload, GetLayoutDirResponse as ProtobufGetLayoutDirResponse,
         GenerateWebLoginTokenPayload,
         GetPanePidPayload, GetPanePidResponse as ProtobufGetPanePidResponse,
         GetPaneScrollbackPayload, GroupAndUngroupPanesPayload, HidePaneWithIdPayload,
@@ -2039,6 +2040,9 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 },
                 _ => Err("Mismatched payload for ParseLayout"),
             },
+            Some(CommandName::GetLayoutDir) => {
+                Ok(PluginCommand::GetLayoutDir)
+            },
             None => Err("Unrecognized plugin command"),
         }
     }
@@ -3349,6 +3353,12 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                 payload: Some(Payload::ParseLayoutPayload(ParseLayoutPayload {
                     layout_string,
                 })),
+            }),
+            PluginCommand::GetLayoutDir => Ok(ProtobufPluginCommand {
+                name: CommandName::GetLayoutDir as i32,
+                payload: Some(Payload::GetLayoutDirPayload(
+                    GetLayoutDirPayload {}
+                )),
             }),
         }
     }

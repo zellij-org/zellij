@@ -3,7 +3,7 @@
 pub struct PluginCommand {
     #[prost(enumeration="CommandName", tag="1")]
     pub name: i32,
-    #[prost(oneof="plugin_command::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131")]
+    #[prost(oneof="plugin_command::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132")]
     pub payload: ::core::option::Option<plugin_command::Payload>,
 }
 /// Nested message and enum types in `PluginCommand`.
@@ -245,6 +245,8 @@ pub mod plugin_command {
         ParseLayoutPayload(super::ParseLayoutPayload),
         #[prost(message, tag="131")]
         RenameLayoutPayload(super::RenameLayoutPayload),
+        #[prost(message, tag="132")]
+        GetLayoutDirPayload(super::GetLayoutDirPayload),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -1175,6 +1177,16 @@ pub mod rename_layout_response {
         Error(::prost::alloc::string::String),
     }
 }
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetLayoutDirPayload {
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetLayoutDirResponse {
+    #[prost(string, tag="1")]
+    pub layout_dir: ::prost::alloc::string::String,
+}
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
 pub enum CommandName {
@@ -1339,6 +1351,7 @@ pub enum CommandName {
     DumpLayout = 179,
     ParseLayout = 180,
     RenameLayout = 181,
+    GetLayoutDir = 182,
 }
 impl CommandName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -1508,6 +1521,7 @@ impl CommandName {
             CommandName::DumpLayout => "DumpLayout",
             CommandName::ParseLayout => "ParseLayout",
             CommandName::RenameLayout => "RenameLayout",
+            CommandName::GetLayoutDir => "GetLayoutDir",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -1674,6 +1688,7 @@ impl CommandName {
             "DumpLayout" => Some(Self::DumpLayout),
             "ParseLayout" => Some(Self::ParseLayout),
             "RenameLayout" => Some(Self::RenameLayout),
+            "GetLayoutDir" => Some(Self::GetLayoutDir),
             _ => None,
         }
     }

@@ -1853,7 +1853,6 @@ impl WasmBridge {
             .copied()
     }
     pub fn update_available_layouts(&mut self, layouts: Vec<LayoutInfo>, errors: Vec<LayoutWithError>) {
-        log::info!("update available_layouts to: {:#?}", layouts);
 
         // Diff with existing layouts
         if self.available_layouts != layouts || self.available_layout_errors != errors {

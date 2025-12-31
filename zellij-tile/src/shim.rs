@@ -11,11 +11,11 @@ pub use zellij_utils::plugin_api;
 use zellij_utils::plugin_api::event::ProtobufPaneScrollbackResponse;
 use zellij_utils::plugin_api::plugin_command::{
     CreateTokenResponse, ListTokensResponse, ProtobufDeleteLayoutResponse,
-    ProtobufRenameLayoutResponse, ProtobufDumpLayoutResponse, ProtobufDumpSessionLayoutResponse,
-    ProtobufEditLayoutResponse, ProtobufGenerateRandomNameResponse,
-    ProtobufGetPanePidResponse, ProtobufPluginCommand, ProtobufSaveLayoutResponse,
-    RenameWebTokenResponse, RevokeAllWebTokensResponse, RevokeTokenResponse,
-    dump_layout_response, dump_session_layout_response,
+    ProtobufRenameLayoutResponse, ProtobufDumpLayoutResponse, ProtobufGetLayoutDirResponse,
+    ProtobufDumpSessionLayoutResponse, ProtobufEditLayoutResponse,
+    ProtobufGenerateRandomNameResponse, ProtobufGetPanePidResponse, ProtobufPluginCommand,
+    ProtobufSaveLayoutResponse, RenameWebTokenResponse, RevokeAllWebTokensResponse,
+    RevokeTokenResponse, dump_layout_response, dump_session_layout_response,
     ProtobufParseLayoutResponse, parse_layout_response,
 };
 use zellij_utils::plugin_api::plugin_ids::{ProtobufPluginIds, ProtobufZellijVersion};
@@ -138,6 +138,28 @@ pub fn dump_layout(layout_name: &str) -> Result<String, String> {
         Some(dump_layout_response::Result::Error(error)) => Err(error),
         None => Err("Server returned empty response".to_string()),
     }
+}
+
+/// Returns the path to the layout directory.
+///
+/// This is the directory where Zellij looks for layout files. It can be:
+/// - The directory specified via CLI `--layout-dir` flag
+/// - The directory specified in the config file
+/// - The directory specified via ZELLIJ_LAYOUT_DIR env var
+/// - The default: `~/.config/zellij/layouts`
+///
+/// # Returns
+/// A String containing the absolute path to the layout directory.
+/// Returns an empty string if the layout directory cannot be determined (rare edge case).
+pub fn get_layout_dir() -> String {
+    let plugin_command = PluginCommand::GetLayoutDir;
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+    let response =
+        ProtobufGetLayoutDirResponse::decode(bytes_from_stdin().unwrap().as_slice())
+            .unwrap();
+    response.layout_dir
 }
 
 // Host Functions

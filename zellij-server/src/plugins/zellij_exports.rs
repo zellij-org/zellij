@@ -62,7 +62,7 @@ use zellij_utils::{
         },
         plugin_command::{
             ProtobufDeleteLayoutResponse, ProtobufRenameLayoutResponse,
-            ProtobufDumpLayoutResponse,
+            ProtobufDumpLayoutResponse, ProtobufGetLayoutDirResponse,
             ProtobufDumpSessionLayoutResponse, ProtobufEditLayoutResponse,
             ProtobufGenerateRandomNameResponse, ProtobufGetPanePidResponse,
             ProtobufPluginCommand, ProtobufSaveLayoutResponse, dump_layout_response,
@@ -127,6 +127,7 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::GenerateRandomName => generate_random_name(env),
                     PluginCommand::DumpLayout(layout_name) => dump_layout(env, layout_name),
                     PluginCommand::ParseLayout(layout_string) => parse_layout(env, layout_string),
+                    PluginCommand::GetLayoutDir => get_layout_dir(env),
                     PluginCommand::OpenFile(file_to_open, context) => {
                         open_file(env, file_to_open, context)
                     },
@@ -800,6 +801,29 @@ fn dump_layout(env: &PluginEnv, layout_name: String) {
     wasi_write_object(env, &response.encode_to_vec())
         .with_context(|| {
             format!("failed to send layout dump to plugin {}", env.name())
+        })
+        .non_fatal();
+}
+
+fn get_layout_dir(env: &PluginEnv) {
+    // Get layout dir from env or fall back to default
+    let layout_dir = env
+        .layout_dir
+        .clone()
+        .or_else(default_layout_dir);
+
+    // Convert PathBuf to String
+    let layout_dir_string = layout_dir
+        .and_then(|path| path.to_str().map(|s| s.to_string()))
+        .unwrap_or_else(|| String::from(""));
+
+    let response = ProtobufGetLayoutDirResponse {
+        layout_dir: layout_dir_string,
+    };
+
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| {
+            format!("failed to send layout dir to plugin {}", env.name())
         })
         .non_fatal();
 }
@@ -3703,6 +3727,7 @@ fn check_command_permission(
         | PluginCommand::DumpSessionLayout
         | PluginCommand::GetPanePid { .. }
         | PluginCommand::GenerateRandomName
+        | PluginCommand::GetLayoutDir
         | PluginCommand::DumpLayout(..)
         | PluginCommand::ParseLayout(..) => PermissionType::ReadApplicationState,
         PluginCommand::RebindKeys { .. } | PluginCommand::Reconfigure(..) => {
