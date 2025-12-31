@@ -414,7 +414,10 @@ impl TabLayoutMetadata {
             panes.push(pane.to_pane_metadata());
         }
 
-        TabMetadata { panes }
+        TabMetadata {
+            panes,
+            name: self.name.clone(),
+        }
     }
 }
 
@@ -498,7 +501,9 @@ impl PaneLayoutMetadata {
             })
         });
 
-        PaneMetadata { name }
+        let is_plugin = matches!(self.id, PaneId::Plugin(_));
+
+        PaneMetadata { name, is_plugin }
     }
 }
 

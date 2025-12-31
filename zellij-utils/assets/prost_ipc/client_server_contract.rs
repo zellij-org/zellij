@@ -1059,12 +1059,16 @@ pub struct LayoutMetadata {
 pub struct TabMetadata {
     #[prost(message, repeated, tag="1")]
     pub pane_metadata: ::prost::alloc::vec::Vec<PaneMetadata>,
+    #[prost(string, optional, tag="2")]
+    pub name: ::core::option::Option<::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct PaneMetadata {
     #[prost(string, optional, tag="1")]
     pub name: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(bool, tag="2")]
+    pub is_plugin: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

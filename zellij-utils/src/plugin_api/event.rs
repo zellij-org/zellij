@@ -1215,7 +1215,10 @@ impl TryFrom<ProtobufTabMetadata> for TabMetadata {
             .into_iter()
             .map(|p| p.try_into())
             .collect::<Result<Vec<_>, _>>()?;
-        Ok(TabMetadata { panes })
+        Ok(TabMetadata {
+            panes,
+            name: protobuf_metadata.name,
+        })
     }
 }
 
@@ -1227,7 +1230,10 @@ impl TryFrom<TabMetadata> for ProtobufTabMetadata {
             .into_iter()
             .map(|p| p.try_into())
             .collect::<Result<Vec<_>, _>>()?;
-        Ok(ProtobufTabMetadata { pane_metadata })
+        Ok(ProtobufTabMetadata {
+            pane_metadata,
+            name: metadata.name,
+        })
     }
 }
 
@@ -1236,6 +1242,7 @@ impl TryFrom<ProtobufPaneMetadata> for PaneMetadata {
     fn try_from(protobuf_metadata: ProtobufPaneMetadata) -> Result<Self, &'static str> {
         Ok(PaneMetadata {
             name: protobuf_metadata.name,
+            is_plugin: protobuf_metadata.is_plugin,
         })
     }
 }
@@ -1243,7 +1250,10 @@ impl TryFrom<ProtobufPaneMetadata> for PaneMetadata {
 impl TryFrom<PaneMetadata> for ProtobufPaneMetadata {
     type Error = &'static str;
     fn try_from(metadata: PaneMetadata) -> Result<Self, &'static str> {
-        Ok(ProtobufPaneMetadata { name: metadata.name })
+        Ok(ProtobufPaneMetadata {
+            name: metadata.name,
+            is_plugin: metadata.is_plugin,
+        })
     }
 }
 

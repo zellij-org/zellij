@@ -1829,11 +1829,12 @@ impl LayoutMetadata {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct TabMetadata {
     pub panes: Vec<PaneMetadata>,
+    pub name: Option<String>,
 }
 
 impl From<&(Option<String>, crate::input::layout::TiledPaneLayout, Vec<crate::input::layout::FloatingPaneLayout>)> for TabMetadata {
     fn from(tab: &(Option<String>, crate::input::layout::TiledPaneLayout, Vec<crate::input::layout::FloatingPaneLayout>)) -> Self {
-        let (_tab_name, tiled_pane_layout, floating_panes) = tab;
+        let (tab_name, tiled_pane_layout, floating_panes) = tab;
 
         // Collect panes from tiled layout (only leaf nodes are real panes)
         let mut panes = Vec::new();
@@ -1844,18 +1845,24 @@ impl From<&(Option<String>, crate::input::layout::TiledPaneLayout, Vec<crate::in
             panes.push(PaneMetadata::from(floating_pane));
         }
 
-        TabMetadata { panes }
+        TabMetadata {
+            panes,
+            name: tab_name.clone(),
+        }
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct PaneMetadata {
     pub name: Option<String>,
+    pub is_plugin: bool,
 }
 
 impl From<&crate::input::layout::TiledPaneLayout> for PaneMetadata {
     fn from(pane: &crate::input::layout::TiledPaneLayout) -> Self {
         use crate::input::layout::Run;
+
+        let mut is_plugin = false;
 
         // Try to get the name from the pane's name field first
         let name = if let Some(ref name) = pane.name {
@@ -1873,6 +1880,7 @@ impl From<&crate::input::layout::TiledPaneLayout> for PaneMetadata {
                         .map(|n| n.to_string_lossy().to_string())
                 },
                 Run::Plugin(plugin) => {
+                    is_plugin = true;
                     // Use the plugin location string
                     Some(plugin.location_string())
                 },
@@ -1882,7 +1890,7 @@ impl From<&crate::input::layout::TiledPaneLayout> for PaneMetadata {
             None
         };
 
-        PaneMetadata { name }
+        PaneMetadata { name, is_plugin }
     }
 }
 
@@ -1890,6 +1898,8 @@ impl From<&crate::input::layout::FloatingPaneLayout> for PaneMetadata {
     fn from(pane: &crate::input::layout::FloatingPaneLayout) -> Self {
         use crate::input::layout::Run;
 
+        let mut is_plugin = false;
+
         // Try to get the name from the pane's name field first
         let name = if let Some(ref name) = pane.name {
             Some(name.clone())
@@ -1906,6 +1916,7 @@ impl From<&crate::input::layout::FloatingPaneLayout> for PaneMetadata {
                         .map(|n| n.to_string_lossy().to_string())
                 },
                 Run::Plugin(plugin) => {
+                    is_plugin = true;
                     // Use the plugin location string
                     Some(plugin.location_string())
                 },
@@ -1915,7 +1926,7 @@ impl From<&crate::input::layout::FloatingPaneLayout> for PaneMetadata {
             None
         };
 
-        PaneMetadata { name }
+        PaneMetadata { name, is_plugin }
     }
 }
 

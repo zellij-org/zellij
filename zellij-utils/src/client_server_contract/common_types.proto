@@ -653,10 +653,12 @@ message LayoutMetadata {
 
 message TabMetadata {
   repeated PaneMetadata pane_metadata = 1;
+  optional string name = 2;
 }
 
 message PaneMetadata {
   optional string name = 1;
+  bool is_plugin = 2;
 }
 
 message ConnectToSession {

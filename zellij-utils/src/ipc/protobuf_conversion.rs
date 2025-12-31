@@ -2067,6 +2067,7 @@ impl From<crate::data::TabMetadata> for ProtoTabMetadata {
     fn from(metadata: crate::data::TabMetadata) -> Self {
         ProtoTabMetadata {
             pane_metadata: metadata.panes.into_iter().map(|p| p.into()).collect(),
+            name: metadata.name,
         }
     }
 }
@@ -2079,7 +2080,10 @@ impl TryFrom<ProtoTabMetadata> for crate::data::TabMetadata {
             .into_iter()
             .map(|p| p.try_into())
             .collect::<Result<Vec<_>>>()?;
-        Ok(crate::data::TabMetadata { panes })
+        Ok(crate::data::TabMetadata {
+            panes,
+            name: proto_metadata.name,
+        })
     }
 }
 
@@ -2087,6 +2091,7 @@ impl From<crate::data::PaneMetadata> for ProtoPaneMetadata {
     fn from(metadata: crate::data::PaneMetadata) -> Self {
         ProtoPaneMetadata {
             name: metadata.name,
+            is_plugin: metadata.is_plugin,
         }
     }
 }
@@ -2096,6 +2101,7 @@ impl TryFrom<ProtoPaneMetadata> for crate::data::PaneMetadata {
     fn try_from(proto_metadata: ProtoPaneMetadata) -> Result<Self> {
         Ok(crate::data::PaneMetadata {
             name: proto_metadata.name,
+            is_plugin: proto_metadata.is_plugin,
         })
     }
 }
