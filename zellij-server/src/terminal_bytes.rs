@@ -58,7 +58,10 @@ impl TerminalBytes {
             match self.async_reader.read(&mut buf).await {
                 Ok(0) => break, // EOF
                 Err(err) => {
-                    log::error!("{}", err);
+                    log::error!(
+                        "Error reading bytes from pane (was the pane closed?), {}",
+                        err
+                    );
                     break;
                 },
                 Ok(n_bytes) => {
