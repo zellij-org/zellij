@@ -229,6 +229,11 @@ impl RunPluginOrAlias {
             },
         }
     }
+    pub fn is_builtin_plugin(&self) -> bool {
+        self.get_run_plugin().map(|r| {
+            matches!(r.location, RunPluginLocation::Zellij(_))
+        }).unwrap_or(false);
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]

@@ -1884,13 +1884,7 @@ impl From<&crate::input::layout::TiledPaneLayout> for PaneMetadata {
                 },
                 Run::Plugin(plugin) => {
                     is_plugin = true;
-                    is_builtin_plugin = match plugin {
-                        crate::input::layout::RunPluginOrAlias::RunPlugin(run_plugin) => {
-                            matches!(run_plugin.location, RunPluginLocation::Zellij(_))
-                        },
-                        crate::input::layout::RunPluginOrAlias::Alias(_) => false,
-                    };
-                    // Use the plugin location string
+                    is_builtin_plugin = plugin.is_builtin_plugin();
                     Some(plugin.location_string())
                 },
                 Run::Cwd(_) => None,

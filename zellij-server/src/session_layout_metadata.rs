@@ -507,17 +507,9 @@ impl PaneLayoutMetadata {
 
         // Detect if this is a builtin plugin
         let is_builtin_plugin = self.run.as_ref()
-            .and_then(|run| match run {
-                Run::Plugin(plugin) => {
-                    use zellij_utils::input::layout::RunPluginOrAlias;
-                    Some(match plugin {
-                        RunPluginOrAlias::RunPlugin(run_plugin) => {
-                            matches!(run_plugin.location, RunPluginLocation::Zellij(_))
-                        },
-                        RunPluginOrAlias::Alias(_) => false,
-                    })
-                },
-                _ => None,
+            .map(|run| match run {
+                Run::Plugin(plugin) => plugin.is_builtin_plugin(),
+                _ => false
             })
             .unwrap_or(false);
 
