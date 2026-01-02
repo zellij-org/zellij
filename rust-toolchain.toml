@@ -1,7 +1,7 @@
 # This file is updated by `update-toolchain.sh`
 [toolchain]
 # NOTE: When updating this, modify `rust-version` in `Cargo.toml` accordingly
-channel = "1.90.0"
+channel = "1.92.0"
 components = ["rustfmt", "clippy"]
 # NOTE: Change this with care, this is also used by the CI pipeline
 targets = ["wasm32-wasip1", "x86_64-unknown-linux-musl"]
