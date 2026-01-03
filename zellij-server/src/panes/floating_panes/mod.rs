@@ -1287,4 +1287,13 @@ impl FloatingPanes {
             .map(|p| p.position_and_size().is_pinned)
             .unwrap_or(false)
     }
+    pub fn drain_pending_bells(&mut self) -> bool {
+        let mut has_bell = false;
+        for pane in self.panes.values_mut() {
+            if pane.drain_pending_bell() {
+                has_bell = true;
+            }
+        }
+        has_bell
+    }
 }

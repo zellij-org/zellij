@@ -276,6 +276,8 @@ pub(crate) struct Tab {
     // is brought online
     web_server_ip: IpAddr,
     web_server_port: u16,
+    // Whether this tab has a pending bell notification that should be displayed visually
+    pub has_pending_bell_notification: bool,
 }
 
 // FIXME: Use a struct that has a pane_type enum, to reduce all of the duplication
@@ -454,6 +456,11 @@ pub trait Pane {
     }
     fn drain_clipboard_update(&mut self) -> Option<String> {
         None
+    }
+    fn drain_pending_bell(&mut self) -> bool {
+        // Returns true if a bell was pending and drains it
+        // Only terminal panes have bells, so default is false
+        false
     }
     fn render_full_viewport(&mut self) {}
     fn relative_position(&self, position_on_screen: &Position) -> Position {
@@ -799,6 +806,7 @@ impl Tab {
             connected_clients_in_app,
             web_server_ip,
             web_server_port,
+            has_pending_bell_notification: false,
         }
     }
 
@@ -5950,6 +5958,33 @@ impl Tab {
         self.get_pane_with_id(pane_id)
             .map(|p| p.position_and_size().stacked.is_some())
             .unwrap_or(false)
+    }
+    /// Drains pending bells from all panes in this tab (tiled, floating, and suppressed).
+    /// Returns true if any pane had a pending bell.
+    /// Also sets has_pending_bell_notification to true if a bell was found.
+    pub fn drain_pending_bells(&mut self) -> bool {
+        let mut has_bell = false;
+        if self.tiled_panes.drain_pending_bells() {
+            has_bell = true;
+        }
+        if self.floating_panes.drain_pending_bells() {
+            has_bell = true;
+        }
+        // Also check suppressed panes (e.g., scrollback editors)
+        for (_pane_id, (_is_scrollback, pane)) in self.suppressed_panes.iter_mut() {
+            if pane.drain_pending_bell() {
+                has_bell = true;
+            }
+        }
+        if has_bell {
+            self.has_pending_bell_notification = true;
+        }
+        has_bell
+    }
+
+    /// Clears the pending bell notification flag. Should be called when the tab becomes active.
+    pub fn clear_pending_bell_notification(&mut self) {
+        self.has_pending_bell_notification = false;
     }
 }
 

@@ -428,6 +428,7 @@ message TabInfo {
     uint32 display_area_columns = 14;
     uint32 selectable_tiled_panes_count = 15;
     uint32 selectable_floating_panes_count = 16;
+    bool has_bell = 17;
 }
 
 message ModeUpdatePayload {

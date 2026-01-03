@@ -102,6 +102,10 @@ pub fn tab_style(
     } else if tab.is_sync_panes_active {
         tabname.push_str(" (SYNC)");
     }
+    // Show bell indicator for inactive tabs with pending bell notifications
+    if tab.has_bell && !tab.active {
+        tabname.push_str(" *");
+    }
     // we only color alternate tabs differently if we can't use the arrow fonts to separate them
     if !capabilities.arrow_fonts {
         is_alternate_tab = false;

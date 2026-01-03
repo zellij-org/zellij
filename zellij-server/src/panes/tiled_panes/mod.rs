@@ -2729,6 +2729,15 @@ impl TiledPanes {
         );
         pane_grid.next_selectable_pane_id_to_the_right(&pane_id)
     }
+    pub fn drain_pending_bells(&mut self) -> bool {
+        let mut has_bell = false;
+        for pane in self.panes.values_mut() {
+            if pane.drain_pending_bell() {
+                has_bell = true;
+            }
+        }
+        has_bell
+    }
 }
 
 #[allow(clippy::borrowed_box)]
