@@ -1363,6 +1363,7 @@ impl TryFrom<ProtobufTabInfo> for TabInfo {
             selectable_tiled_panes_count: protobuf_tab_info.selectable_tiled_panes_count as usize,
             selectable_floating_panes_count: protobuf_tab_info.selectable_floating_panes_count
                 as usize,
+            has_bell: protobuf_tab_info.has_bell,
         })
     }
 }
@@ -1391,6 +1392,7 @@ impl TryFrom<TabInfo> for ProtobufTabInfo {
             display_area_columns: tab_info.display_area_columns as u32,
             selectable_tiled_panes_count: tab_info.selectable_tiled_panes_count as u32,
             selectable_floating_panes_count: tab_info.selectable_floating_panes_count as u32,
+            has_bell: tab_info.has_bell,
         })
     }
 }
@@ -1874,6 +1876,7 @@ fn serialize_tab_update_event_with_non_default_values() {
             display_area_columns: 10,
             selectable_tiled_panes_count: 10,
             selectable_floating_panes_count: 10,
+            has_bell: false,
         },
         TabInfo {
             position: 1,
@@ -1892,6 +1895,7 @@ fn serialize_tab_update_event_with_non_default_values() {
             display_area_columns: 10,
             selectable_tiled_panes_count: 10,
             selectable_floating_panes_count: 10,
+            has_bell: false,
         },
         TabInfo::default(),
     ]);
@@ -1900,6 +1904,51 @@ fn serialize_tab_update_event_with_non_default_values() {
     let deserialized_protobuf_event: ProtobufEvent =
         Message::decode(serialized_protobuf_event.as_slice()).unwrap();
     let deserialized_event: Event = deserialized_protobuf_event.try_into().unwrap();
+    assert_eq!(
+        tab_update_event, deserialized_event,
+        "Event properly serialized/deserialized without change"
+    );
+}
+
+#[test]
+fn serialize_tab_update_event_with_has_bell_true() {
+    use prost::Message;
+    let tab_update_event = Event::TabUpdate(vec![TabInfo {
+        position: 0,
+        name: "Tab with bell".to_owned(),
+        active: false,
+        panes_to_hide: 0,
+        is_fullscreen_active: false,
+        is_sync_panes_active: false,
+        are_floating_panes_visible: false,
+        other_focused_clients: vec![],
+        active_swap_layout_name: None,
+        is_swap_layout_dirty: false,
+        viewport_rows: 10,
+        viewport_columns: 10,
+        display_area_rows: 10,
+        display_area_columns: 10,
+        selectable_tiled_panes_count: 1,
+        selectable_floating_panes_count: 0,
+        has_bell: true, // This is the key field we're testing
+    }]);
+    let protobuf_event: ProtobufEvent = tab_update_event.clone().try_into().unwrap();
+    let serialized_protobuf_event = protobuf_event.encode_to_vec();
+    let deserialized_protobuf_event: ProtobufEvent =
+        Message::decode(serialized_protobuf_event.as_slice()).unwrap();
+    let deserialized_event: Event = deserialized_protobuf_event.try_into().unwrap();
+
+    // Verify the round-trip preserves has_bell
+    if let Event::TabUpdate(tabs) = &deserialized_event {
+        assert_eq!(tabs.len(), 1, "Should have one tab");
+        assert_eq!(
+            tabs[0].has_bell, true,
+            "has_bell should be true after protobuf round-trip"
+        );
+    } else {
+        panic!("Expected TabUpdate event");
+    }
+
     assert_eq!(
         tab_update_event, deserialized_event,
         "Event properly serialized/deserialized without change"
@@ -2165,6 +2214,7 @@ fn serialize_session_update_event_with_non_default_values() {
             display_area_columns: 10,
             selectable_tiled_panes_count: 10,
             selectable_floating_panes_count: 10,
+            has_bell: false,
         },
         TabInfo {
             position: 1,
@@ -2183,6 +2233,7 @@ fn serialize_session_update_event_with_non_default_values() {
             display_area_columns: 10,
             selectable_tiled_panes_count: 10,
             selectable_floating_panes_count: 10,
+            has_bell: false,
         },
         TabInfo::default(),
     ];
