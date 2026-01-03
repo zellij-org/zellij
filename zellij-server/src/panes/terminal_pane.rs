@@ -565,6 +565,15 @@ impl Pane for TerminalPane {
         self.grid.pending_clipboard_update.take()
     }
 
+    fn drain_pending_bell(&mut self) -> bool {
+        if self.grid.ring_bell {
+            self.grid.ring_bell = false;
+            true
+        } else {
+            false
+        }
+    }
+
     fn start_selection(&mut self, start: &Position, _client_id: ClientId) {
         self.grid.start_selection(start);
         self.set_should_render(true);
