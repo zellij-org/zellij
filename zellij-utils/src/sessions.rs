@@ -428,17 +428,22 @@ pub fn assert_dead_session(name: &str, force: bool) {
     process::exit(1);
 }
 
-pub fn assert_session_ne(name: &str) {
+pub fn validate_session_name(name: &str) -> Option<&'static str> {
     if name.trim().is_empty() {
-        eprintln!("Session name cannot be empty. Please provide a specific session name.");
-        process::exit(1);
+        return Some("Session name cannot be empty. Please provide a specific session name.");
     }
     if name == "." || name == ".." {
-        eprintln!("Invalid session name: \"{}\".", name);
-        process::exit(1);
+        return Some("Invalid session name.");
     }
     if name.contains('/') {
-        eprintln!("Session name cannot contain '/'.");
+        return Some("Session name cannot contain '/'.");
+    }
+    None
+}
+
+pub fn assert_session_ne(name: &str) {
+    if let Some(error_msg) = validate_session_name(name) {
+        eprintln!("{}", error_msg);
         process::exit(1);
     }
 
