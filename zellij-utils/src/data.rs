@@ -3096,7 +3096,9 @@ pub enum PluginCommand {
     KillSessions(Vec<String>), // one or more session names
     ScanHostFolder(PathBuf),   // TODO: rename to ScanHostFolder
     WatchFilesystem,
-    DumpSessionLayout,
+    DumpSessionLayout {
+        tab_index: Option<usize>,
+    },
     CloseSelf,
     NewTabsWithLayoutInfo(LayoutInfo),
     Reconfigure(String, bool), // String -> stringified configuration, bool -> save configuration

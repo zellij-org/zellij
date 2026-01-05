@@ -298,12 +298,17 @@ message PluginCommand {
     ParseLayoutPayload parse_layout_payload = 130;
     RenameLayoutPayload rename_layout_payload = 131;
     GetLayoutDirPayload get_layout_dir_payload = 132;
+    DumpSessionLayoutPayload dump_session_layout_payload = 133;
   }
 }
 
 message NewTabPayload {
   optional string name = 1;
   optional string cwd = 2;
+}
+
+message DumpSessionLayoutPayload {
+  optional uint32 tab_index = 1;
 }
 
 message RunActionPayload {

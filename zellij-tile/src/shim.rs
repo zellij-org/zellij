@@ -1085,7 +1085,17 @@ pub fn watch_filesystem() {
 /// Get the serialized session layout in KDL format synchronously
 /// note: this removes the requesting plugin from the dumped layout
 pub fn dump_session_layout() -> Result<(String, Option<LayoutMetadata>), String> {
-    let plugin_command = PluginCommand::DumpSessionLayout;
+    dump_session_layout_impl(None)
+}
+
+/// Get the serialized layout for a specific tab in KDL format synchronously
+/// note: this removes the requesting plugin from the dumped layout
+pub fn dump_session_layout_for_tab(tab_index: usize) -> Result<(String, Option<LayoutMetadata>), String> {
+    dump_session_layout_impl(Some(tab_index))
+}
+
+fn dump_session_layout_impl(tab_index: Option<usize>) -> Result<(String, Option<LayoutMetadata>), String> {
+    let plugin_command = PluginCommand::DumpSessionLayout { tab_index };
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
 

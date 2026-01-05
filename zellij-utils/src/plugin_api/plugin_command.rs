@@ -31,7 +31,7 @@ pub use super::generated_api::api::{
         SaveLayoutResponse as ProtobufSaveLayoutResponse, save_layout_response,
         DeleteLayoutPayload, DeleteLayoutResponse as ProtobufDeleteLayoutResponse,
         delete_layout_response, RenameLayoutPayload, RenameLayoutResponse as ProtobufRenameLayoutResponse,
-        rename_layout_response, EditLayoutPayload, EditLayoutResponse as ProtobufEditLayoutResponse,
+        rename_layout_response, DumpSessionLayoutPayload, EditLayoutPayload, EditLayoutResponse as ProtobufEditLayoutResponse,
         edit_layout_response, OpenCommandPaneFloatingNearPluginPayload,
         OpenCommandPaneInPlaceOfPluginPayload, OpenCommandPaneNearPluginPayload,
         OpenCommandPanePayload, OpenFileFloatingNearPluginPayload, OpenFileInPlaceOfPluginPayload,
@@ -1163,8 +1163,15 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 None => Ok(PluginCommand::WatchFilesystem),
             },
             Some(CommandName::DumpSessionLayout) => match protobuf_plugin_command.payload {
-                Some(_) => Err("DumpSessionLayout should have no payload, found a payload"),
-                None => Ok(PluginCommand::DumpSessionLayout),
+                Some(Payload::DumpSessionLayoutPayload(payload)) => {
+                    Ok(PluginCommand::DumpSessionLayout {
+                        tab_index: payload.tab_index.map(|i| i as usize),
+                    })
+                },
+                None => Ok(PluginCommand::DumpSessionLayout {
+                    tab_index: None,
+                }),
+                _ => Err("Mismatched payload for DumpSessionLayout"),
             },
             Some(CommandName::CloseSelf) => match protobuf_plugin_command.payload {
                 Some(_) => Err("CloseSelf should have no payload, found a payload"),
@@ -2615,9 +2622,13 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                 name: CommandName::WatchFilesystem as i32,
                 payload: None,
             }),
-            PluginCommand::DumpSessionLayout => Ok(ProtobufPluginCommand {
+            PluginCommand::DumpSessionLayout { tab_index } => Ok(ProtobufPluginCommand {
                 name: CommandName::DumpSessionLayout as i32,
-                payload: None,
+                payload: tab_index.map(|idx| Payload::DumpSessionLayoutPayload(
+                    DumpSessionLayoutPayload {
+                        tab_index: Some(idx as u32),
+                    }
+                )),
             }),
             PluginCommand::CloseSelf => Ok(ProtobufPluginCommand {
                 name: CommandName::CloseSelf as i32,

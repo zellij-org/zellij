@@ -208,6 +208,7 @@ pub enum ScreenInstruction {
     // shell
     DumpLayoutToPlugin {
         plugin_id: PluginId,
+        tab_index: Option<usize>,
         response_channel: crossbeam::channel::Sender<DumpSessionLayoutResponse>,
     },
     EditScrollback(ClientId, Option<NotificationEnd>),
@@ -2142,7 +2143,7 @@ impl Screen {
     }
     fn dump_layout_to_hd(&mut self) -> Result<()> {
         let err_context = || format!("Failed to log and report session state");
-        let session_layout_metadata = self.get_layout_metadata(Some(self.default_shell.clone()));
+        let session_layout_metadata = self.get_layout_metadata(Some(self.default_shell.clone()), None);
         self.bus
             .senders
             .send_to_plugin(PluginInstruction::LogLayoutToHd(session_layout_metadata))
@@ -3303,7 +3304,11 @@ impl Screen {
         }
         Ok(())
     }
-    fn get_layout_metadata(&self, default_shell: Option<PathBuf>) -> SessionLayoutMetadata {
+    fn get_layout_metadata(
+        &self,
+        default_shell: Option<PathBuf>,
+        tab_index: Option<usize>,
+    ) -> SessionLayoutMetadata {
         let mut session_layout_metadata = SessionLayoutMetadata::new(self.default_layout.clone());
         if let Some(default_shell) = default_shell {
             session_layout_metadata.update_default_shell(default_shell);
@@ -3312,7 +3317,12 @@ impl Screen {
         let active_tab_index =
             first_client_id.and_then(|client_id| self.active_tab_indices.get(&client_id));
 
-        for (tab_index, tab) in self.tabs.iter() {
+        // Filter tabs based on optional tab_index parameter
+        let tabs_to_process: Vec<_> = self.tabs.iter()
+            .filter(|(idx, _)| tab_index.map_or(true, |target| **idx == target))
+            .collect();
+
+        for (tab_index, tab) in tabs_to_process {
             let tab_is_focused = active_tab_index == Some(&tab_index);
             let hide_floating_panes = !tab.are_floating_panes_visible();
             let mut suppressed_panes = HashMap::new();
@@ -4195,7 +4205,7 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::DumpLayout(default_shell, client_id, completion_tx) => {
                 let err_context = || format!("Failed to dump layout");
-                let session_layout_metadata = screen.get_layout_metadata(default_shell);
+                let session_layout_metadata = screen.get_layout_metadata(default_shell, None);
                 screen
                     .bus
                     .senders
@@ -4208,7 +4218,7 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::ListClientsMetadata(default_shell, client_id, completion_tx) => {
                 let err_context = || format!("Failed to dump layout");
-                let session_layout_metadata = screen.get_layout_metadata(default_shell);
+                let session_layout_metadata = screen.get_layout_metadata(default_shell, None);
                 screen
                     .bus
                     .senders
@@ -4219,10 +4229,12 @@ pub(crate) fn screen_thread_main(
                     ))
                     .with_context(err_context)?;
             },
-            ScreenInstruction::DumpLayoutToPlugin { plugin_id, response_channel } => {
+            ScreenInstruction::DumpLayoutToPlugin { plugin_id, tab_index, response_channel } => {
                 let err_context = || format!("Failed to dump layout");
-                let session_layout_metadata =
-                    screen.get_layout_metadata(Some(screen.default_shell.clone()));
+                let session_layout_metadata = screen.get_layout_metadata(
+                    Some(screen.default_shell.clone()),
+                    tab_index,
+                );
                 screen
                     .bus
                     .senders
@@ -4237,7 +4249,7 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::ListClientsToPlugin(plugin_id, client_id) => {
                 let err_context = || format!("Failed to dump layout");
                 let session_layout_metadata =
-                    screen.get_layout_metadata(Some(screen.default_shell.clone()));
+                    screen.get_layout_metadata(Some(screen.default_shell.clone()), None);
                 screen
                     .bus
                     .senders

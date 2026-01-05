@@ -374,7 +374,7 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                         scan_host_folder(env, folder_to_scan)
                     },
                     PluginCommand::WatchFilesystem => watch_filesystem(env),
-                    PluginCommand::DumpSessionLayout => dump_session_layout(env),
+                    PluginCommand::DumpSessionLayout { tab_index } => dump_session_layout(env, tab_index),
                     PluginCommand::CloseSelf => close_self(env),
                     PluginCommand::Reconfigure(new_config, write_config_to_disk) => {
                         reconfigure(env, new_config, write_config_to_disk)?
@@ -2411,7 +2411,7 @@ fn watch_filesystem(env: &PluginEnv) {
 }
 
 // note this removes the requesting plugin
-fn dump_session_layout(env: &PluginEnv) {
+fn dump_session_layout(env: &PluginEnv, tab_index: Option<usize>) {
     use crate::plugins::DumpSessionLayoutResponse;
 
     // Create oneshot channel for response
@@ -2422,6 +2422,7 @@ fn dump_session_layout(env: &PluginEnv) {
         .senders
         .send_to_screen(ScreenInstruction::DumpLayoutToPlugin {
             plugin_id: env.plugin_id,
+            tab_index,
             response_channel: response_sender,
         });
 
@@ -3724,7 +3725,7 @@ fn check_command_permission(
         | PluginCommand::CliPipeOutput(..) => PermissionType::ReadCliPipes,
         PluginCommand::MessageToPlugin(..) => PermissionType::MessageAndLaunchOtherPlugins,
         PluginCommand::ListClients
-        | PluginCommand::DumpSessionLayout
+        | PluginCommand::DumpSessionLayout { .. }
         | PluginCommand::GetPanePid { .. }
         | PluginCommand::GenerateRandomName
         | PluginCommand::GetLayoutDir
