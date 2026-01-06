@@ -353,6 +353,7 @@ pub enum ScreenContext {
     SerializeLayoutForResurrection,
     RenameSession,
     DumpLayoutToPlugin,
+    GetFocusedPaneInfo,
     ListClientsMetadata,
     Reconfigure,
     RerunCommandPane,

@@ -21,7 +21,7 @@ use std::{
 use wasmi::{Caller, Linker};
 use zellij_utils::data::{
     CommandType, ConnectToSession, DeleteLayoutResponse, RenameLayoutResponse, EditLayoutResponse, Event,
-    FloatingPaneCoordinates, GetPanePidResponse, HttpVerb, KeyWithModifier, LayoutInfo,
+    FloatingPaneCoordinates, GetPanePidResponse, GetFocusedPaneInfoResponse, HttpVerb, KeyWithModifier, LayoutInfo,
     LayoutMetadata, LayoutParsingError, MessageToPlugin, NewPanePlacement, OriginatingPlugin,
     PaneScrollbackResponse, PermissionStatus, PermissionType, PluginPermission,
     SaveLayoutResponse, TabMetadata,
@@ -65,6 +65,7 @@ use zellij_utils::{
             ProtobufDumpLayoutResponse, ProtobufGetLayoutDirResponse,
             ProtobufDumpSessionLayoutResponse, ProtobufEditLayoutResponse,
             ProtobufGenerateRandomNameResponse, ProtobufGetPanePidResponse,
+            ProtobufGetFocusedPaneInfoResponse,
             ProtobufPluginCommand, ProtobufSaveLayoutResponse, dump_layout_response,
             dump_session_layout_response, ProtobufParseLayoutResponse, parse_layout_response,
         },
@@ -128,6 +129,7 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::DumpLayout(layout_name) => dump_layout(env, layout_name),
                     PluginCommand::ParseLayout(layout_string) => parse_layout(env, layout_string),
                     PluginCommand::GetLayoutDir => get_layout_dir(env),
+                    PluginCommand::GetFocusedPaneInfo => get_focused_pane_info(env),
                     PluginCommand::OpenFile(file_to_open, context) => {
                         open_file(env, file_to_open, context)
                     },
@@ -825,6 +827,59 @@ fn get_layout_dir(env: &PluginEnv) {
         .with_context(|| {
             format!("failed to send layout dir to plugin {}", env.name())
         })
+        .non_fatal();
+}
+
+fn get_focused_pane_info(env: &PluginEnv) {
+    use crossbeam::channel::RecvTimeoutError;
+    use std::time::Duration;
+
+    let err_context = || {
+        format!(
+            "failed to get focused pane info for client {:?} from plugin {}",
+            env.client_id,
+            env.name()
+        )
+    };
+
+    // Create oneshot channel for response
+    let (response_sender, response_receiver) = crossbeam::channel::bounded(1);
+
+    // Send request to screen thread
+    env.senders
+        .send_to_screen(ScreenInstruction::GetFocusedPaneInfo {
+            client_id: env.client_id,
+            response_channel: response_sender,
+        })
+        .with_context(err_context)
+        .non_fatal();
+
+    // Block waiting for response with 100ms timeout
+    let response = match response_receiver.recv_timeout(Duration::from_millis(100)) {
+        Ok(response) => response,
+        Err(RecvTimeoutError::Timeout) => {
+            log::error!(
+                "GetFocusedPaneInfo timed out for plugin {} for client {:?}",
+                env.plugin_id,
+                env.client_id
+            );
+            GetFocusedPaneInfoResponse::Err("Timeout retrieving focused pane info".to_string())
+        },
+        Err(RecvTimeoutError::Disconnected) => {
+            log::error!(
+                "GetFocusedPaneInfo channel disconnected for plugin {}",
+                env.plugin_id
+            );
+            GetFocusedPaneInfoResponse::Err(
+                "Channel disconnected while retrieving focused pane info".to_string()
+            )
+        },
+    };
+
+    // Convert to protobuf and write response back to plugin
+    let protobuf_response = ProtobufGetFocusedPaneInfoResponse::from(response);
+    wasi_write_object(env, &protobuf_response.encode_to_vec())
+        .with_context(err_context)
         .non_fatal();
 }
 
@@ -3729,6 +3784,7 @@ fn check_command_permission(
         | PluginCommand::GetPanePid { .. }
         | PluginCommand::GenerateRandomName
         | PluginCommand::GetLayoutDir
+        | PluginCommand::GetFocusedPaneInfo
         | PluginCommand::DumpLayout(..)
         | PluginCommand::ParseLayout(..) => PermissionType::ReadApplicationState,
         PluginCommand::RebindKeys { .. } | PluginCommand::Reconfigure(..) => {

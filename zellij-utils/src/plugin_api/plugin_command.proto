@@ -175,6 +175,7 @@ enum CommandName {
   ParseLayout = 180;
   RenameLayout = 181;
   GetLayoutDir = 182;
+  GetFocusedPaneInfo = 183;
 }
 
 message PluginCommand {
@@ -299,6 +300,7 @@ message PluginCommand {
     RenameLayoutPayload rename_layout_payload = 131;
     GetLayoutDirPayload get_layout_dir_payload = 132;
     DumpSessionLayoutPayload dump_session_layout_payload = 133;
+    GetFocusedPaneInfoPayload get_focused_pane_info_payload = 134;
   }
 }
 
@@ -875,4 +877,18 @@ message GetLayoutDirPayload {}
 
 message GetLayoutDirResponse {
   string layout_dir = 1;
+}
+
+message GetFocusedPaneInfoPayload {}
+
+message GetFocusedPaneInfoResponse {
+  oneof result {
+    FocusedPaneInfo focused_pane_info = 1;
+    string error = 2;
+  }
+}
+
+message FocusedPaneInfo {
+  uint32 focused_tab_index = 1;
+  PaneId focused_pane_id = 2;
 }

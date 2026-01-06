@@ -12,7 +12,7 @@ use crate::route::NotificationEnd;
 
 use log::{debug, warn};
 use zellij_utils::data::{
-    CommandOrPlugin, Direction, FloatingPaneCoordinates, KeyWithModifier, NewPanePlacement,
+    CommandOrPlugin, Direction, FloatingPaneCoordinates, GetFocusedPaneInfoResponse, KeyWithModifier, NewPanePlacement,
     PaneContents, PaneManifest, PaneScrollbackResponse, PluginPermission, Resize, ResizeStrategy,
     SessionInfo, Styling, WebSharing,
 };
@@ -210,6 +210,10 @@ pub enum ScreenInstruction {
         plugin_id: PluginId,
         tab_index: Option<usize>,
         response_channel: crossbeam::channel::Sender<DumpSessionLayoutResponse>,
+    },
+    GetFocusedPaneInfo {
+        client_id: ClientId,
+        response_channel: crossbeam::channel::Sender<GetFocusedPaneInfoResponse>,
     },
     EditScrollback(ClientId, Option<NotificationEnd>),
     GetPaneScrollback {
@@ -573,6 +577,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::DumpScreen(..) => ScreenContext::DumpScreen,
             ScreenInstruction::DumpLayout(..) => ScreenContext::DumpLayout,
             ScreenInstruction::DumpLayoutToPlugin { .. } => ScreenContext::DumpLayoutToPlugin,
+            ScreenInstruction::GetFocusedPaneInfo { .. } => ScreenContext::GetFocusedPaneInfo,
             ScreenInstruction::EditScrollback(..) => ScreenContext::EditScrollback,
             ScreenInstruction::GetPaneScrollback { .. } => ScreenContext::GetPaneScrollback,
             ScreenInstruction::ScrollUp(..) => ScreenContext::ScrollUp,
@@ -4245,6 +4250,25 @@ pub(crate) fn screen_thread_main(
                     })
                     .with_context(err_context)
                     .non_fatal();
+            },
+            ScreenInstruction::GetFocusedPaneInfo { client_id, response_channel } => {
+                let response = match screen.active_tab_indices.get(&client_id) {
+                    Some(&focused_tab_index) => {
+                        match screen.get_active_pane_id(&client_id) {
+                            Some(focused_pane_id) => GetFocusedPaneInfoResponse::Ok {
+                                tab_index: focused_tab_index,
+                                pane_id: focused_pane_id.into(),
+                            },
+                            None => GetFocusedPaneInfoResponse::Err(
+                                format!("No active pane found for client {:?}", client_id)
+                            ),
+                        }
+                    },
+                    None => GetFocusedPaneInfoResponse::Err(
+                        format!("Client {:?} not found in active_tab_indices", client_id)
+                    ),
+                };
+                let _ = response_channel.send(response);
             },
             ScreenInstruction::ListClientsToPlugin(plugin_id, client_id) => {
                 let err_context = || format!("Failed to dump layout");

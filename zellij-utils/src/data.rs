@@ -2356,6 +2356,12 @@ pub enum GetPanePidResponse {
     Err(String),
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum GetFocusedPaneInfoResponse {
+    Ok { tab_index: usize, pane_id: PaneId },
+    Err(String),
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SaveLayoutResponse {
     Ok(()),
@@ -3216,4 +3222,5 @@ pub enum PluginCommand {
     DumpLayout(String),
     ParseLayout(String), // String contains raw KDL layout
     GetLayoutDir,
+    GetFocusedPaneInfo,
 }

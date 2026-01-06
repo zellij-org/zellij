@@ -16,7 +16,7 @@ use zellij_utils::plugin_api::plugin_command::{
     ProtobufGenerateRandomNameResponse, ProtobufGetPanePidResponse, ProtobufPluginCommand,
     ProtobufSaveLayoutResponse, RenameWebTokenResponse, RevokeAllWebTokensResponse,
     RevokeTokenResponse, dump_layout_response, dump_session_layout_response,
-    ProtobufParseLayoutResponse, parse_layout_response,
+    ProtobufParseLayoutResponse, ProtobufGetFocusedPaneInfoResponse, parse_layout_response, get_focused_pane_info_response, ProtobufPaneType,
 };
 use zellij_utils::plugin_api::plugin_ids::{ProtobufPluginIds, ProtobufZellijVersion};
 
@@ -160,6 +160,50 @@ pub fn get_layout_dir() -> String {
         ProtobufGetLayoutDirResponse::decode(bytes_from_stdin().unwrap().as_slice())
             .unwrap();
     response.layout_dir
+}
+
+/// Returns the focused pane ID and tab index for the client associated with this plugin.
+///
+/// # Returns
+/// `Result` containing a tuple of `(focused_tab_index, focused_pane_id)` on success,
+/// or an error message string on failure.
+///
+/// # Example
+/// ```no_run
+/// match get_focused_pane_info() {
+///     Ok((tab_index, pane_id)) => {
+///         // Use the focused tab index and pane ID
+///     },
+///     Err(e) => eprintln!("Error getting focused pane info: {}", e),
+/// }
+/// ```
+pub fn get_focused_pane_info() -> Result<(usize, PaneId), String> {
+    let plugin_command = PluginCommand::GetFocusedPaneInfo;
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+
+    let protobuf_response = ProtobufGetFocusedPaneInfoResponse::decode(
+        bytes_from_stdin().unwrap().as_slice()
+    )
+    .unwrap();
+
+    match protobuf_response.result {
+        Some(get_focused_pane_info_response::Result::FocusedPaneInfo(info)) => {
+            let tab_index = info.focused_tab_index as usize;
+            match info.focused_pane_id {
+                Some(pb_pane_id) => {
+                    match pb_pane_id.try_into() {
+                        Ok(pane_id) => Ok((tab_index, pane_id)),
+                        Err(_) => Err("Invalid pane_id in response".to_string()),
+                    }
+                }
+                None => Err("Missing pane_id in response".to_string()),
+            }
+        },
+        Some(get_focused_pane_info_response::Result::Error(err)) => Err(err),
+        None => Err("Empty response from host".to_string()),
+    }
 }
 
 // Host Functions

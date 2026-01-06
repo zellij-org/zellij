@@ -3,7 +3,7 @@ pub use super::generated_api::api::{
     event::{EventNameList as ProtobufEventNameList, Header},
     input_mode::InputMode as ProtobufInputMode,
     plugin_command::{
-        get_pane_pid_response, plugin_command::Payload, BreakPanesToNewTabPayload,
+        get_pane_pid_response, get_focused_pane_info_response, plugin_command::Payload, BreakPanesToNewTabPayload,
         BreakPanesToTabWithIndexPayload, ChangeFloatingPanesCoordinatesPayload,
         ChangeHostFolderPayload, ClearScreenForPaneIdPayload, CliPipeOutputPayload,
         CloseMultiplePanesPayload, CloseTabWithIndexPayload, CommandName, ContextItem,
@@ -20,6 +20,8 @@ pub use super::generated_api::api::{
         ParseLayoutPayload, ParseLayoutResponse as ProtobufParseLayoutResponse,
         parse_layout_response,
         GetLayoutDirPayload, GetLayoutDirResponse as ProtobufGetLayoutDirResponse,
+        GetFocusedPaneInfoPayload, GetFocusedPaneInfoResponse as ProtobufGetFocusedPaneInfoResponse,
+        FocusedPaneInfo,
         GenerateWebLoginTokenPayload,
         GetPanePidPayload, GetPanePidResponse as ProtobufGetPanePidResponse,
         GetPaneScrollbackPayload, GroupAndUngroupPanesPayload, HidePaneWithIdPayload,
@@ -58,7 +60,7 @@ pub use super::generated_api::api::{
 
 use crate::data::{
     ConnectToSession, DeleteLayoutResponse, RenameLayoutResponse, EditLayoutResponse, FloatingPaneCoordinates, GetPanePidResponse,
-    HttpVerb, InputMode, KeyWithModifier, MessageToPlugin, NewPluginArgs, PaneId, PermissionType,
+    GetFocusedPaneInfoResponse, HttpVerb, InputMode, KeyWithModifier, MessageToPlugin, NewPluginArgs, PaneId, PermissionType,
     PluginCommand, SaveLayoutResponse,
 };
 use crate::input::actions::Action;
@@ -236,6 +238,37 @@ impl From<GetPanePidResponse> for ProtobufGetPanePidResponse {
             },
             GetPanePidResponse::Err(error) => ProtobufGetPanePidResponse {
                 result: Some(get_pane_pid_response::Result::Error(error)),
+            },
+        }
+    }
+}
+
+impl From<GetFocusedPaneInfoResponse> for ProtobufGetFocusedPaneInfoResponse {
+    fn from(response: GetFocusedPaneInfoResponse) -> Self {
+        match response {
+            GetFocusedPaneInfoResponse::Ok { tab_index, pane_id } => {
+                let protobuf_pane_id = ProtobufPaneId {
+                    pane_type: match pane_id {
+                        PaneId::Terminal(_) => ProtobufPaneType::Terminal as i32,
+                        PaneId::Plugin(_) => ProtobufPaneType::Plugin as i32,
+                    },
+                    id: match pane_id {
+                        PaneId::Terminal(id) | PaneId::Plugin(id) => id,
+                    },
+                };
+                ProtobufGetFocusedPaneInfoResponse {
+                    result: Some(get_focused_pane_info_response::Result::FocusedPaneInfo(
+                        FocusedPaneInfo {
+                            focused_tab_index: tab_index as u32,
+                            focused_pane_id: Some(protobuf_pane_id),
+                        }
+                    )),
+                }
+            },
+            GetFocusedPaneInfoResponse::Err(err) => {
+                ProtobufGetFocusedPaneInfoResponse {
+                    result: Some(get_focused_pane_info_response::Result::Error(err)),
+                }
             },
         }
     }
@@ -2050,6 +2083,9 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
             Some(CommandName::GetLayoutDir) => {
                 Ok(PluginCommand::GetLayoutDir)
             },
+            Some(CommandName::GetFocusedPaneInfo) => {
+                Ok(PluginCommand::GetFocusedPaneInfo)
+            },
             None => Err("Unrecognized plugin command"),
         }
     }
@@ -3369,6 +3405,12 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                 name: CommandName::GetLayoutDir as i32,
                 payload: Some(Payload::GetLayoutDirPayload(
                     GetLayoutDirPayload {}
+                )),
+            }),
+            PluginCommand::GetFocusedPaneInfo => Ok(ProtobufPluginCommand {
+                name: CommandName::GetFocusedPaneInfo as i32,
+                payload: Some(Payload::GetFocusedPaneInfoPayload(
+                    GetFocusedPaneInfoPayload {}
                 )),
             }),
         }
