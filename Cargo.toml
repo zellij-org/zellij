@@ -81,7 +81,7 @@ interprocess = { version = "1.2.1", default-features = false }
 isahc = { version = "1.7.2", default-features = false, features = ["http2", "text-decoding"] }
 lazy_static = { version = "1.4.0", default-features = false }
 libc = { version = "0.2", default-features = false, features = ["std"] }
-log = { version = "0.4.17", default-features = false }
+log = { version = "0.4.29", default-features = false }
 miette = { version = "5.7.0", default-features = false, features = ["fancy"] }
 nix = { version = "0.23.1", default-features = false }
 notify-debouncer-full = { version = "0.3.1", default-features = false }
