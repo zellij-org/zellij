@@ -1,4 +1,4 @@
-use crate::data::{LayoutInfo, LayoutWithError, Styling};
+use crate::data::Styling;
 use miette::{Diagnostic, LabeledSpan, NamedSource, SourceCode};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;

@@ -16,7 +16,7 @@ use zellij_utils::plugin_api::plugin_command::{
     ProtobufGenerateRandomNameResponse, ProtobufGetPanePidResponse, ProtobufPluginCommand,
     ProtobufSaveLayoutResponse, RenameWebTokenResponse, RevokeAllWebTokensResponse,
     RevokeTokenResponse, dump_layout_response, dump_session_layout_response,
-    ProtobufParseLayoutResponse, ProtobufGetFocusedPaneInfoResponse, parse_layout_response, get_focused_pane_info_response, ProtobufPaneType,
+    ProtobufParseLayoutResponse, ProtobufGetFocusedPaneInfoResponse, parse_layout_response, get_focused_pane_info_response,
 };
 use zellij_utils::plugin_api::plugin_ids::{ProtobufPluginIds, ProtobufZellijVersion};
 

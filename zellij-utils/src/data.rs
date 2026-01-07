@@ -2,7 +2,7 @@ use crate::home::default_layout_dir;
 use crate::input::actions::{Action, RunCommandAction};
 use crate::input::config::{ConversionError, KdlError};
 use crate::input::keybinds::Keybinds;
-use crate::input::layout::{Layout, RunPlugin, RunPluginOrAlias, SplitSize};
+use crate::input::layout::{Layout, RunPlugin, RunPluginOrAlias, SplitSize, Run, RunPluginLocation};
 use crate::pane_size::PaneGeom;
 use crate::position::Position;
 use crate::shared::{colors as default_colors, eightbit_to_rgb};
@@ -17,6 +17,8 @@ use std::str::{self, FromStr};
 use std::time::Duration;
 use strum_macros::{Display, EnumDiscriminants, EnumIter, EnumString};
 use unicode_width::UnicodeWidthChar;
+use std::hash::{Hash, Hasher};
+
 
 #[cfg(not(target_family = "wasm"))]
 use termwiz::{
@@ -1861,8 +1863,6 @@ pub struct PaneMetadata {
 
 impl From<&crate::input::layout::TiledPaneLayout> for PaneMetadata {
     fn from(pane: &crate::input::layout::TiledPaneLayout) -> Self {
-        use crate::input::layout::Run;
-        use crate::input::layout::RunPluginLocation;
 
         let mut is_plugin = false;
         let mut is_builtin_plugin = false;
@@ -1903,8 +1903,6 @@ impl From<&crate::input::layout::TiledPaneLayout> for PaneMetadata {
 
 impl From<&crate::input::layout::FloatingPaneLayout> for PaneMetadata {
     fn from(pane: &crate::input::layout::FloatingPaneLayout) -> Self {
-        use crate::input::layout::Run;
-        use crate::input::layout::RunPluginLocation;
 
         let mut is_plugin = false;
         let mut is_builtin_plugin = false;
@@ -2010,8 +2008,6 @@ impl LayoutInfo {
         }
     }
 }
-
-use std::hash::{Hash, Hasher};
 
 #[allow(clippy::derive_hash_xor_eq)]
 impl Hash for SessionInfo {

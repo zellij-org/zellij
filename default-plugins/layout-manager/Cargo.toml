@@ -1,0 +1,12 @@
+[package]
+name = "layout-manager"
+version = "0.1.0"
+authors = ["Aram Drevekenin <aram@poor.dev>"]
+edition = "2018"
+
+[dependencies]
+zellij-tile = { path = "../../zellij-tile" }
+miette = { version = "5.7.0", features = ["fancy"] }
+strip-ansi-escapes = "0.2"
+unicode-width = "0.1"
+fuzzy-matcher = "0.3"
