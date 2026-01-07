@@ -6,6 +6,70 @@ use std::sync::{Arc, Mutex};
 use termwiz::input::{InputEvent, InputParser, MouseButtons};
 use zellij_utils::channels::SenderWithContext;
 
+enum FocusSequenceState {
+    Idle,
+    SawEsc,
+    SawEscBracket,
+}
+
+fn filter_focus_sequences(
+    bytes: &[u8],
+    focus_state: &mut FocusSequenceState,
+    send_input_instructions: &SenderWithContext<InputInstruction>,
+) -> Vec<u8> {
+    let mut filtered = Vec::with_capacity(bytes.len());
+
+    for &byte in bytes.iter() {
+        match focus_state {
+            FocusSequenceState::Idle => {
+                if byte == 0x1b {
+                    // possible start of ESC [ I / ESC [ O
+                    *focus_state = FocusSequenceState::SawEsc;
+                } else {
+                    filtered.push(byte);
+                }
+            },
+            FocusSequenceState::SawEsc => {
+                if byte == b'[' {
+                    *focus_state = FocusSequenceState::SawEscBracket;
+                } else {
+                    // not a focus sequence, pass through the ESC and this byte
+                    filtered.push(0x1b);
+                    filtered.push(byte);
+                    *focus_state = FocusSequenceState::Idle;
+                }
+            },
+            FocusSequenceState::SawEscBracket => {
+                match byte {
+                    b'I' => {
+                        // ESC [ I, emit FocusGained
+                        send_input_instructions
+                            .send(InputInstruction::FocusGained)
+                            .unwrap();
+                        *focus_state = FocusSequenceState::Idle;
+                    },
+                    b'O' => {
+                        // ESC [ O, emit FocusLost
+                        send_input_instructions
+                            .send(InputInstruction::FocusLost)
+                            .unwrap();
+                        *focus_state = FocusSequenceState::Idle;
+                    },
+                    _ => {
+                        // ESC [ <something else>, pass through
+                        filtered.push(0x1b);
+                        filtered.push(b'[');
+                        filtered.push(byte);
+                        *focus_state = FocusSequenceState::Idle;
+                    },
+                }
+            },
+        }
+    }
+
+    filtered
+}
+
 fn send_done_parsing_after_query_timeout(
     send_input_instructions: SenderWithContext<InputInstruction>,
     query_duration: u64,
@@ -27,6 +91,7 @@ pub(crate) fn stdin_loop(
     explicitly_disable_kitty_keyboard_protocol: bool,
 ) {
     let mut holding_mouse = false;
+    let mut focus_state = FocusSequenceState::Idle;
     let mut input_parser = InputParser::new();
     let mut current_buffer = vec![];
     {
@@ -86,12 +151,17 @@ pub(crate) fn stdin_loop(
                         .unwrap()
                         .write_cache(ansi_stdin_events.drain(..).collect());
                 }
-                current_buffer.append(&mut buf.to_vec());
+
+                // filter focus sequences out of the stream and emit focus instructions
+                let filtered_buf =
+                    filter_focus_sequences(&buf, &mut focus_state, &send_input_instructions);
+
+                current_buffer.extend_from_slice(&filtered_buf);
 
                 if !explicitly_disable_kitty_keyboard_protocol {
                     // first we try to parse with the KittyKeyboardParser
                     // if we fail, we try to parse normally
-                    match KittyKeyboardParser::new().parse(&buf) {
+                    match KittyKeyboardParser::new().parse(&filtered_buf) {
                         Some(key_with_modifier) => {
                             send_input_instructions
                                 .send(InputInstruction::KeyWithModifierEvent(
@@ -108,7 +178,7 @@ pub(crate) fn stdin_loop(
                 let maybe_more = false; // read_from_stdin should (hopefully) always empty the STDIN buffer completely
                 let mut events = vec![];
                 input_parser.parse(
-                    &buf,
+                    &filtered_buf,
                     |input_event: InputEvent| {
                         events.push(input_event);
                     },
