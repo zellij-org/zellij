@@ -1,4 +1,8 @@
 use crate::data::Styling;
+
+#[cfg(not(target_family = "wasm"))]
+use crate::data::{LayoutInfo, LayoutWithError};
+
 use miette::{Diagnostic, LabeledSpan, NamedSource, SourceCode};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
