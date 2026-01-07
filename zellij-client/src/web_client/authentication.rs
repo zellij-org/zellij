@@ -1,11 +1,21 @@
 use crate::web_client::utils::parse_cookies;
+use crate::web_client::types::AppState;
 use axum::body::Body;
 use axum::http::header::SET_COOKIE;
-use axum::{extract::Request, http::StatusCode, middleware::Next, response::Response};
+use axum::{extract::{Request, State}, http::StatusCode, middleware::Next, response::Response};
 use axum_extra::extract::cookie::{Cookie, SameSite};
 use zellij_utils::web_authentication_tokens::{is_session_token_read_only, validate_session_token};
 
-pub async fn auth_middleware(request: Request, next: Next) -> Result<Response, StatusCode> {
+pub async fn auth_middleware(State(_state): State<AppState>, request: Request, next: Next) -> Result<Response, StatusCode> {
+    #[cfg(feature = "dangerously_expose_webserver")]
+    if _state.dangerously_expose_webserver || _state.dangerously_expose_webserver_read_only {
+        let is_read_only = _state.dangerously_expose_webserver_read_only;
+        // Store in request extensions for downstream handlers
+        let mut request = request;
+        request.extensions_mut().insert(is_read_only);
+        let response = next.run(request).await;
+        return Ok(response);
+    }
     let cookies = parse_cookies(&request);
 
     let session_token = match cookies.get("session_token") {
