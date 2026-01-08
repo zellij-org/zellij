@@ -614,6 +614,17 @@ impl KeyWithModifier {
         }
         true
     }
+    pub fn has_only_modifiers(&self, modifiers: &[KeyModifier]) -> bool {
+        for modifier in modifiers {
+            if !self.key_modifiers.contains(modifier) {
+                return false;
+            }
+        }
+        if self.key_modifiers.len() != modifiers.len() {
+            return false
+        }
+        true
+    }
 }
 
 #[derive(Eq, Clone, Copy, Debug, PartialEq, Hash, Deserialize, Serialize, PartialOrd, Ord)]

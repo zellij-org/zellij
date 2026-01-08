@@ -1,0 +1,45 @@
+---
+source: zellij-server/src/plugins/./unit/plugin_tests.rs
+expression: "format!(\"{:#?}\",\nspawn_terminal_instruction).replace(&format!(\"{}\",\ntemp_layout_folder.path().display().to_string()), \"LAYOUT_FOLDER_PATH\")"
+---
+Some(
+    SpawnInPlaceTerminal(
+        Some(
+            OpenFile(
+                OpenFilePayload {
+                    path: "LAYOUT_FOLDER_PATH/test_layout2.kdl",
+                    line_number: None,
+                    cwd: Some(
+                        "LAYOUT_FOLDER_PATH",
+                    ),
+                    originating_plugin: Some(
+                        OriginatingPlugin {
+                            plugin_id: 0,
+                            client_id: 1,
+                            context: {
+                                "test_key": "test_value",
+                            },
+                        },
+                    ),
+                },
+            ),
+        ),
+        Some(
+            "Editing: LAYOUT_FOLDER_PATH/test_layout2.kdl",
+        ),
+        false,
+        PaneId(
+            Plugin(
+                0,
+            ),
+        ),
+        Some(
+            NotificationEnd {
+                channel: None,
+                exit_status: None,
+                unblock_condition: None,
+                affected_pane_id: None,
+            },
+        ),
+    ),
+)
