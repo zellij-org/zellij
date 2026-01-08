@@ -945,47 +945,51 @@ impl Pty {
         }
     }
     fn fill_cwd(&self, terminal_action: &mut TerminalAction, client_id: ClientId) {
-        if let TerminalAction::RunCommand(run_command) = terminal_action {
-            if run_command.cwd.is_none() {
-                run_command.cwd = self
-                    .active_panes
-                    .get(&client_id)
-                    .and_then(|pane| match pane {
-                        PaneId::Plugin(plugin_id) => self.plugin_cwds.get(plugin_id).cloned(),
-                        PaneId::Terminal(id) => {
-                            // Try to get CWD from OS, fall back to cached value
-                            self.id_to_child_pid
-                                .get(id)
-                                .and_then(|&pid| {
-                                    self.bus
-                                        .os_input
-                                        .as_ref()
-                                        .and_then(|input| input.get_cwd(pid))
-                                })
-                                .or_else(|| self.terminal_cwds.get(id).cloned())
-                        },
-                    })
-            };
+        let cwd = match terminal_action {
+            TerminalAction::RunCommand(run_command) => &mut run_command.cwd,
+            TerminalAction::OpenFile(payload) => &mut payload.cwd,
         };
-    }
-    fn fill_cwd_from_pane_id(&self, terminal_action: &mut TerminalAction, pane_id: &PaneId) {
-        if let TerminalAction::RunCommand(run_command) = terminal_action {
-            if run_command.cwd.is_none() {
-                run_command.cwd = match pane_id {
-                    PaneId::Terminal(terminal_pane_id) => {
+        if cwd.is_none() {
+            *cwd = self
+                .active_panes
+                .get(&client_id)
+                .and_then(|pane| match pane {
+                    PaneId::Plugin(plugin_id) => self.plugin_cwds.get(plugin_id).cloned(),
+                    PaneId::Terminal(id) => {
                         // Try to get CWD from OS, fall back to cached value
                         self.id_to_child_pid
-                            .get(terminal_pane_id)
+                            .get(id)
                             .and_then(|&pid| {
                                 self.bus
                                     .os_input
                                     .as_ref()
                                     .and_then(|input| input.get_cwd(pid))
                             })
-                            .or_else(|| self.terminal_cwds.get(terminal_pane_id).cloned())
+                            .or_else(|| self.terminal_cwds.get(id).cloned())
                     },
-                    PaneId::Plugin(plugin_id) => self.plugin_cwds.get(plugin_id).cloned(),
-                };
+                })
+        };
+    }
+    fn fill_cwd_from_pane_id(&self, terminal_action: &mut TerminalAction, pane_id: &PaneId) {
+        let cwd = match terminal_action {
+            TerminalAction::RunCommand(run_command) => &mut run_command.cwd,
+            TerminalAction::OpenFile(payload) => &mut payload.cwd,
+        };
+        if cwd.is_none() {
+            *cwd = match pane_id {
+                PaneId::Terminal(terminal_pane_id) => {
+                    // Try to get CWD from OS, fall back to cached value
+                    self.id_to_child_pid
+                        .get(terminal_pane_id)
+                        .and_then(|&pid| {
+                            self.bus
+                                .os_input
+                                .as_ref()
+                                .and_then(|input| input.get_cwd(pid))
+                        })
+                        .or_else(|| self.terminal_cwds.get(terminal_pane_id).cloned())
+                },
+                PaneId::Plugin(plugin_id) => self.plugin_cwds.get(plugin_id).cloned(),
             };
         };
     }
