@@ -5921,7 +5921,7 @@ fn serialize_and_deserialize_session_info_with_data() {
         is_current_session: false,
         available_layouts: vec![
             LayoutInfo::File("layout1".to_owned(), LayoutMetadata::default()),
-            LayoutInfo::BuiltIn("layout2".to_owned(), LayoutMetadata::default()),
+            LayoutInfo::BuiltIn("layout2".to_owned()),
             LayoutInfo::File("layout3".to_owned(), LayoutMetadata::default()),
         ],
         plugins: Default::default(),

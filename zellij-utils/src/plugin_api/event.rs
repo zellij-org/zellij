@@ -2511,9 +2511,9 @@ fn serialize_session_update_event_with_non_default_values() {
         connected_clients: 2,
         is_current_session: true,
         available_layouts: vec![
-            LayoutInfo::File("layout 1".to_owned()),
+            LayoutInfo::File("layout 1".to_owned(), LayoutMetadata { tabs: vec![], creation_time: "0".to_owned(), update_time: "0".to_owned() }),
             LayoutInfo::BuiltIn("layout2".to_owned()),
-            LayoutInfo::File("layout3".to_owned()),
+            LayoutInfo::File("layout3".to_owned(), LayoutMetadata { tabs: vec![], creation_time: "0".to_owned(), update_time: "0".to_owned() }),
         ],
         plugins,
         web_clients_allowed: false,
@@ -2530,9 +2530,9 @@ fn serialize_session_update_event_with_non_default_values() {
         connected_clients: 0,
         is_current_session: false,
         available_layouts: vec![
-            LayoutInfo::File("layout 1".to_owned()),
+            LayoutInfo::File("layout 1".to_owned(), LayoutMetadata { tabs: vec![], creation_time: "0".to_owned(), update_time: "0".to_owned() }),
             LayoutInfo::BuiltIn("layout2".to_owned()),
-            LayoutInfo::File("layout3".to_owned()),
+            LayoutInfo::File("layout3".to_owned(), LayoutMetadata { tabs: vec![], creation_time: "0".to_owned(), update_time: "0".to_owned() }),
         ],
         plugins: Default::default(),
         web_clients_allowed: false,

@@ -163,20 +163,6 @@ pub fn get_layout_dir() -> String {
 }
 
 /// Returns the focused pane ID and tab index for the client associated with this plugin.
-///
-/// # Returns
-/// `Result` containing a tuple of `(focused_tab_index, focused_pane_id)` on success,
-/// or an error message string on failure.
-///
-/// # Example
-/// ```no_run
-/// match get_focused_pane_info() {
-///     Ok((tab_index, pane_id)) => {
-///         // Use the focused tab index and pane ID
-///     },
-///     Err(e) => eprintln!("Error getting focused pane info: {}", e),
-/// }
-/// ```
 pub fn get_focused_pane_info() -> Result<(usize, PaneId), String> {
     let plugin_command = PluginCommand::GetFocusedPaneInfo;
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
@@ -1164,30 +1150,6 @@ fn dump_session_layout_impl(tab_index: Option<usize>) -> Result<(String, Option<
 }
 
 /// Parses a KDL layout string and returns LayoutMetadata
-///
-/// Takes a stringified KDL layout and returns metadata about its structure
-/// (tabs, panes, creation/update times) without actually creating the layout.
-///
-/// # Arguments
-/// * `layout_string` - Raw KDL layout content as a string
-///
-/// # Returns
-/// * `Ok(LayoutMetadata)` - Parsed layout metadata on success
-/// * `Err(LayoutParsingError)` - Detailed parsing error with diagnostic info on failure
-///
-/// # Example
-/// ```no_run
-/// let kdl = r#"
-///     layout {
-///         pane
-///         pane
-///     }
-/// "#;
-/// match parse_layout(kdl) {
-///     Ok(metadata) => println!("Found {} tabs", metadata.tabs.len()),
-///     Err(e) => eprintln!("Parse error: {:?}", e),
-/// }
-/// ```
 pub fn parse_layout(layout_string: &str) -> Result<LayoutMetadata, LayoutParsingError> {
     let plugin_command = PluginCommand::ParseLayout(layout_string.to_string());
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();

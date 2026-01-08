@@ -4326,6 +4326,36 @@ Config {
                 bare_key: Char(
                     'l',
                 ),
+                key_modifiers: {},
+            }: [
+                LaunchOrFocusPlugin {
+                    plugin: RunPlugin(
+                        RunPlugin {
+                            _allow_exec_host_cmd: false,
+                            location: Zellij(
+                                PluginTag(
+                                    "layout-manager",
+                                ),
+                            ),
+                            configuration: PluginUserConfiguration(
+                                {},
+                            ),
+                            initial_cwd: None,
+                        },
+                    ),
+                    should_float: true,
+                    move_to_focused_tab: true,
+                    should_open_in_place: false,
+                    skip_cache: false,
+                },
+                SwitchToMode {
+                    input_mode: Normal,
+                },
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'l',
+                ),
                 key_modifiers: {
                     Alt,
                 },
