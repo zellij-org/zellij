@@ -138,7 +138,7 @@ pub enum PluginInstruction {
         PermissionStatus,
         Option<PathBuf>,
     ),
-    DumpLayout(SessionLayoutMetadata, ClientId, Option<NotificationEnd>),
+    DumpLayout(SessionLayoutMetadata, ClientId, bool, Option<NotificationEnd>), // bool is with_ids
     ListClientsMetadata(SessionLayoutMetadata, ClientId, Option<NotificationEnd>),
     DumpLayoutToPlugin(SessionLayoutMetadata, PluginId),
     LogLayoutToHd(SessionLayoutMetadata),
@@ -750,6 +750,7 @@ pub(crate) fn plugin_thread_main(
             PluginInstruction::DumpLayout(
                 mut session_layout_metadata,
                 client_id,
+                with_ids,
                 completion_tx,
             ) => {
                 populate_session_layout_metadata(
@@ -760,6 +761,7 @@ pub(crate) fn plugin_thread_main(
                 drop(bus.senders.send_to_pty(PtyInstruction::DumpLayout(
                     session_layout_metadata,
                     client_id,
+                    with_ids,
                     completion_tx,
                 )));
             },
@@ -787,6 +789,7 @@ pub(crate) fn plugin_thread_main(
                 );
                 match session_serialization::serialize_session_layout(
                     session_layout_metadata.into(),
+                    false, // don't include IDs for plugin dumps
                 ) {
                     Ok((layout, _pane_contents)) => {
                         let updates = vec![(
