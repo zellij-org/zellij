@@ -1381,7 +1381,9 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                     include_scrollback: dump_screen_action.include_scrollback,
                 })
             },
-            ActionType::DumpLayout(action) => Ok(crate::input::actions::Action::DumpLayout { with_ids: action.with_ids }),
+            ActionType::DumpLayout(action) => Ok(crate::input::actions::Action::DumpLayout {
+                with_ids: action.with_ids,
+            }),
             ActionType::EditScrollback(_) => Ok(crate::input::actions::Action::EditScrollback),
             ActionType::ScrollUp(_) => Ok(crate::input::actions::Action::ScrollUp),
             ActionType::ScrollUpAt(scroll_action) => {
@@ -1920,9 +1922,9 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
             ActionType::ToggleGroupMarking(_) => {
                 Ok(crate::input::actions::Action::ToggleGroupMarking)
             },
-            ActionType::RenameTabByName(_) => {
-                Err(anyhow!("RenameTabByName is deprecated, use RenameTab with tab_index instead"))
-            },
+            ActionType::RenameTabByName(_) => Err(anyhow!(
+                "RenameTabByName is deprecated, use RenameTab with tab_index instead"
+            )),
         }
     }
 }

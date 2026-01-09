@@ -1,6 +1,6 @@
 ---
 source: zellij-utils/src/input/./unit/layout_test.rs
-assertion_line: 846
+assertion_line: 844
 expression: "format!(\"{:#?}\", layout)"
 ---
 Layout {
@@ -28,6 +28,8 @@ Layout {
                         run_instructions_to_ignore: [],
                         hide_floating_panes: false,
                         pane_initial_contents: None,
+                        pane_id: None,
+                        is_plugin: None,
                     },
                     TiledPaneLayout {
                         children_split_direction: Horizontal,
@@ -44,6 +46,8 @@ Layout {
                         run_instructions_to_ignore: [],
                         hide_floating_panes: false,
                         pane_initial_contents: None,
+                        pane_id: None,
+                        is_plugin: None,
                     },
                 ],
                 split_size: None,
@@ -57,6 +61,8 @@ Layout {
                 run_instructions_to_ignore: [],
                 hide_floating_panes: false,
                 pane_initial_contents: None,
+                pane_id: None,
+                is_plugin: None,
             },
             [],
         ),
@@ -83,6 +89,8 @@ Layout {
                         run_instructions_to_ignore: [],
                         hide_floating_panes: false,
                         pane_initial_contents: None,
+                        pane_id: None,
+                        is_plugin: None,
                     },
                     TiledPaneLayout {
                         children_split_direction: Horizontal,
@@ -99,6 +107,8 @@ Layout {
                         run_instructions_to_ignore: [],
                         hide_floating_panes: false,
                         pane_initial_contents: None,
+                        pane_id: None,
+                        is_plugin: None,
                     },
                 ],
                 split_size: None,
@@ -112,6 +122,8 @@ Layout {
                 run_instructions_to_ignore: [],
                 hide_floating_panes: false,
                 pane_initial_contents: None,
+                pane_id: None,
+                is_plugin: None,
             },
             [],
         ),
@@ -132,6 +144,8 @@ Layout {
                 run_instructions_to_ignore: [],
                 hide_floating_panes: false,
                 pane_initial_contents: None,
+                pane_id: None,
+                is_plugin: None,
             },
             [],
         ),
@@ -162,6 +176,8 @@ Layout {
                                 run_instructions_to_ignore: [],
                                 hide_floating_panes: false,
                                 pane_initial_contents: None,
+                                pane_id: None,
+                                is_plugin: None,
                             },
                             TiledPaneLayout {
                                 children_split_direction: Horizontal,
@@ -178,6 +194,8 @@ Layout {
                                 run_instructions_to_ignore: [],
                                 hide_floating_panes: false,
                                 pane_initial_contents: None,
+                                pane_id: None,
+                                is_plugin: None,
                             },
                         ],
                         split_size: None,
@@ -191,6 +209,8 @@ Layout {
                         run_instructions_to_ignore: [],
                         hide_floating_panes: false,
                         pane_initial_contents: None,
+                        pane_id: None,
+                        is_plugin: None,
                     },
                 ],
                 split_size: None,
@@ -204,6 +224,8 @@ Layout {
                 run_instructions_to_ignore: [],
                 hide_floating_panes: false,
                 pane_initial_contents: None,
+                pane_id: None,
+                is_plugin: None,
             },
             [],
         ),

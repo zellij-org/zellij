@@ -108,7 +108,12 @@ pub enum PtyInstruction {
         ClientTabIndexOrPaneId,
         Option<NotificationEnd>, // completion signal
     ), // String is an optional pane name
-    DumpLayout(SessionLayoutMetadata, ClientId, bool, Option<NotificationEnd>), // bool is with_ids
+    DumpLayout(
+        SessionLayoutMetadata,
+        ClientId,
+        bool,
+        Option<NotificationEnd>,
+    ), // bool is with_ids
     DumpLayoutToPlugin(SessionLayoutMetadata, PluginId),
     LogLayoutToHd(SessionLayoutMetadata),
     FillPluginCwd(
@@ -632,7 +637,12 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     },
                 }
             },
-            PtyInstruction::DumpLayout(mut session_layout_metadata, client_id, with_ids, completion_tx) => {
+            PtyInstruction::DumpLayout(
+                mut session_layout_metadata,
+                client_id,
+                with_ids,
+                completion_tx,
+            ) => {
                 let err_context = || format!("Failed to dump layout");
                 pty.populate_session_layout_metadata(&mut session_layout_metadata);
                 match session_serialization::serialize_session_layout(

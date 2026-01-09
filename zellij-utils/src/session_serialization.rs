@@ -112,9 +112,10 @@ fn serialize_tab(
                 .push(KdlEntry::new_prop("name", tab_name));
             if with_ids {
                 if let Some(idx) = tab_index {
-                    serialized_tab
-                        .entries_mut()
-                        .push(KdlEntry::new_prop("tab_index", KdlValue::Base10(idx as i64)));
+                    serialized_tab.entries_mut().push(KdlEntry::new_prop(
+                        "tab_index",
+                        KdlValue::Base10(idx as i64),
+                    ));
                 }
             }
             if is_focused {
@@ -155,7 +156,8 @@ fn serialize_tiled_and_floating_panes(
 ) {
     for tiled_pane_layout in tiled_panes {
         let ignore_size = false;
-        let tiled_pane_node = serialize_tiled_pane(tiled_pane_layout, ignore_size, pane_contents, with_ids);
+        let tiled_pane_node =
+            serialize_tiled_pane(tiled_pane_layout, ignore_size, pane_contents, with_ids);
         serialized_tab_children.nodes_mut().push(tiled_pane_node);
     }
     if !floating_panes_layout.is_empty() {
@@ -234,7 +236,8 @@ fn serialize_tiled_pane(
                     .push(KdlNode::new("children"));
             } else {
                 let ignore_size = layout.children_are_stacked;
-                let child_pane_node = serialize_tiled_pane(&pane, ignore_size, pane_contents, with_ids);
+                let child_pane_node =
+                    serialize_tiled_pane(&pane, ignore_size, pane_contents, with_ids);
                 tiled_pane_node_children.nodes_mut().push(child_pane_node);
             }
         }
@@ -761,7 +764,16 @@ fn tiled_pane_layout_from_manifest(
     manifest: Option<&PaneLayoutManifest>,
     split_size: Option<SplitSize>,
 ) -> TiledPaneLayout {
-    let (run, borderless, is_expanded_in_stack, name, focus, pane_initial_contents, pane_id, is_plugin) = manifest
+    let (
+        run,
+        borderless,
+        is_expanded_in_stack,
+        name,
+        focus,
+        pane_initial_contents,
+        pane_id,
+        is_plugin,
+    ) = manifest
         .map(|g| {
             let mut run = g.run.clone();
             if let Some(cwd) = &g.cwd {
@@ -2287,11 +2299,35 @@ mod tests {
 
         // With with_ids, pane_id and tab_index SHOULD appear
         let kdl_with = serialize_session_layout(global_layout_manifest, true).unwrap();
-        assert!(kdl_with.0.contains("pane_id=1"), "Should contain pane_id=1, got: {}", kdl_with.0);
-        assert!(kdl_with.0.contains("pane_id=2"), "Should contain pane_id=2, got: {}", kdl_with.0);
-        assert!(kdl_with.0.contains("pane_id=3"), "Should contain pane_id=3, got: {}", kdl_with.0);
-        assert!(kdl_with.0.contains("tab_index=0"), "Should contain tab_index=0, got: {}", kdl_with.0);
-        assert!(kdl_with.0.contains("is_plugin=true"), "Should contain is_plugin=true, got: {}", kdl_with.0);
-        assert!(kdl_with.0.contains("is_plugin=false"), "Should contain is_plugin=false, got: {}", kdl_with.0);
+        assert!(
+            kdl_with.0.contains("pane_id=1"),
+            "Should contain pane_id=1, got: {}",
+            kdl_with.0
+        );
+        assert!(
+            kdl_with.0.contains("pane_id=2"),
+            "Should contain pane_id=2, got: {}",
+            kdl_with.0
+        );
+        assert!(
+            kdl_with.0.contains("pane_id=3"),
+            "Should contain pane_id=3, got: {}",
+            kdl_with.0
+        );
+        assert!(
+            kdl_with.0.contains("tab_index=0"),
+            "Should contain tab_index=0, got: {}",
+            kdl_with.0
+        );
+        assert!(
+            kdl_with.0.contains("is_plugin=true"),
+            "Should contain is_plugin=true, got: {}",
+            kdl_with.0
+        );
+        assert!(
+            kdl_with.0.contains("is_plugin=false"),
+            "Should contain is_plugin=false, got: {}",
+            kdl_with.0
+        );
     }
 }
