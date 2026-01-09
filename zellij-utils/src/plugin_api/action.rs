@@ -1825,7 +1825,7 @@ impl TryFrom<Action> for ProtobufAction {
             }
             | Action::Deny
             | Action::Copy
-            | Action::DumpLayout
+            | Action::DumpLayout { .. }
             | Action::CliPipe { .. }
             | Action::ListClients
             | Action::StackPanes { pane_ids: _ }
@@ -2778,6 +2778,8 @@ impl TryFrom<ProtobufTiledPaneLayout> for TiledPaneLayout {
             run_instructions_to_ignore,
             hide_floating_panes: protobuf.hide_floating_panes,
             pane_initial_contents: protobuf.pane_initial_contents,
+            pane_id: None,
+            is_plugin: None,
         })
     }
 }
@@ -2833,6 +2835,8 @@ impl TryFrom<ProtobufFloatingPaneLayout> for FloatingPaneLayout {
             already_running: protobuf.already_running,
             pane_initial_contents: protobuf.pane_initial_contents,
             logical_position: protobuf.logical_position.map(|p| p as usize),
+            pane_id: None,
+            is_plugin: None,
         })
     }
 }

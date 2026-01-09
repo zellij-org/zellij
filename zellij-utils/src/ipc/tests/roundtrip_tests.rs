@@ -886,7 +886,13 @@ fn test_client_messages() {
         is_cli_client: true,
     });
     test_client_roundtrip!(ClientToServerMsg::Action {
-        action: Action::DumpLayout,
+        action: Action::DumpLayout { with_ids: false },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::DumpLayout { with_ids: true },
         terminal_id: Some(1),
         client_id: Some(100),
         is_cli_client: true,
@@ -1949,6 +1955,8 @@ fn test_client_messages() {
                     already_running: true,
                     pane_initial_contents: Some("pane_initial_contents".to_owned()),
                     logical_position: Some(15),
+                    pane_id: None,
+                    is_plugin: None,
                 },
                 FloatingPaneLayout {
                     name: Some("third floating layout".to_owned()),

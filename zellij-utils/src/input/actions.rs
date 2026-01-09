@@ -164,8 +164,10 @@ pub enum Action {
         file_path: String,
         include_scrollback: bool,
     },
-    /// Dumps
-    DumpLayout,
+    /// Dumps layout to stdout
+    DumpLayout {
+        with_ids: bool,
+    },
     /// Scroll up in focus pane.
     EditScrollback,
     ScrollUp,
@@ -517,7 +519,7 @@ impl Action {
                 file_path: path.as_os_str().to_string_lossy().into(),
                 include_scrollback: full,
             }]),
-            CliAction::DumpLayout => Ok(vec![Action::DumpLayout]),
+            CliAction::DumpLayout { with_ids } => Ok(vec![Action::DumpLayout { with_ids }]),
             CliAction::EditScrollback => Ok(vec![Action::EditScrollback]),
             CliAction::ScrollUp => Ok(vec![Action::ScrollUp]),
             CliAction::ScrollDown => Ok(vec![Action::ScrollDown]),
@@ -770,12 +772,21 @@ impl Action {
             CliAction::TogglePaneEmbedOrFloating => Ok(vec![Action::TogglePaneEmbedOrFloating]),
             CliAction::ToggleFloatingPanes => Ok(vec![Action::ToggleFloatingPanes]),
             CliAction::ClosePane => Ok(vec![Action::CloseFocus]),
-            CliAction::RenamePane { name } => Ok(vec![
-                Action::UndoRenamePane,
-                Action::PaneNameInput {
-                    input: name.as_bytes().to_vec(),
-                },
-            ]),
+            CliAction::RenamePane { name, pane_id } => {
+                if let Some(pane_id) = pane_id {
+                    Ok(vec![Action::RenameTerminalPane {
+                        pane_id,
+                        name: name.as_bytes().to_vec(),
+                    }])
+                } else {
+                    Ok(vec![
+                        Action::UndoRenamePane,
+                        Action::PaneNameInput {
+                            input: name.as_bytes().to_vec(),
+                        },
+                    ])
+                }
+            },
             CliAction::UndoRenamePane => Ok(vec![Action::UndoRenamePane]),
             CliAction::GoToNextTab => Ok(vec![Action::GoToNextTab]),
             CliAction::GoToPreviousTab => Ok(vec![Action::GoToPreviousTab]),
@@ -784,12 +795,21 @@ impl Action {
             CliAction::GoToTabName { name, create } => {
                 Ok(vec![Action::GoToTabName { name, create }])
             },
-            CliAction::RenameTab { name } => Ok(vec![
-                Action::TabNameInput { input: vec![0] },
-                Action::TabNameInput {
-                    input: name.as_bytes().to_vec(),
-                },
-            ]),
+            CliAction::RenameTab { name, tab_index } => {
+                if let Some(tab_index) = tab_index {
+                    Ok(vec![Action::RenameTab {
+                        tab_index,
+                        name: name.as_bytes().to_vec(),
+                    }])
+                } else {
+                    Ok(vec![
+                        Action::TabNameInput { input: vec![0] },
+                        Action::TabNameInput {
+                            input: name.as_bytes().to_vec(),
+                        },
+                    ])
+                }
+            },
             CliAction::UndoRenameTab => Ok(vec![Action::UndoRenameTab]),
             CliAction::NewTab {
                 name,

@@ -341,7 +341,12 @@ impl Into<GlobalLayoutManifest> for SessionLayoutMetadata {
             tabs: self
                 .tabs
                 .into_iter()
-                .map(|t| (t.name.clone().unwrap_or_default(), t.into()))
+                .enumerate()
+                .map(|(index, t)| {
+                    let mut tab_manifest: TabLayoutManifest = t.clone().into();
+                    tab_manifest.tab_index = Some(index);
+                    (t.name.clone().unwrap_or_default(), tab_manifest)
+                })
                 .collect(),
         }
     }
@@ -354,12 +359,17 @@ impl Into<TabLayoutManifest> for TabLayoutMetadata {
             floating_panes: self.floating_panes.into_iter().map(|t| t.into()).collect(),
             is_focused: self.is_focused,
             hide_floating_panes: self.hide_floating_panes,
+            tab_index: None, // Set later in GlobalLayoutManifest conversion
         }
     }
 }
 
 impl Into<PaneLayoutManifest> for PaneLayoutMetadata {
     fn into(self) -> PaneLayoutManifest {
+        let (pane_id, is_plugin) = match self.id {
+            PaneId::Terminal(id) => (Some(id), Some(false)),
+            PaneId::Plugin(id) => (Some(id), Some(true)),
+        };
         PaneLayoutManifest {
             geom: self.geom,
             run: self.run,
@@ -368,6 +378,8 @@ impl Into<PaneLayoutManifest> for PaneLayoutMetadata {
             title: self.title,
             is_focused: self.is_focused,
             pane_contents: self.pane_contents,
+            pane_id,
+            is_plugin,
         }
     }
 }
