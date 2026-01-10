@@ -31,7 +31,7 @@ use crate::ui::{loading_indication::LoadingIndication, pane_boundaries_frame::Fr
 use layout_applier::LayoutApplier;
 use swap_layouts::SwapLayouts;
 
-use self::clipboard::ClipboardProvider;
+use self::clipboard::{ClipboardProvider, resolve_auto_copy_command};
 use crate::route::NotificationEnd;
 use crate::{
     os_input_output::ServerOsApi,
@@ -739,8 +739,15 @@ impl Tab {
             senders.clone(),
         );
 
-        let clipboard_provider = match copy_options.command {
-            Some(command) => ClipboardProvider::Command(CopyCommand::new(command)),
+        let clipboard_provider = match copy_options.command.as_deref() {
+            Some("auto") => {
+                // Resolve auto mode: use xclip if X11 available, otherwise OSC52
+                match resolve_auto_copy_command() {
+                    Some(command) => ClipboardProvider::Command(CopyCommand::new(command)),
+                    None => ClipboardProvider::Osc52(copy_options.clipboard),
+                }
+            },
+            Some(command) => ClipboardProvider::Command(CopyCommand::new(command.to_string())),
             None => ClipboardProvider::Osc52(copy_options.clipboard),
         };
         let swap_layouts = SwapLayouts::new(swap_layouts, display_area.clone());
@@ -5618,8 +5625,15 @@ impl Tab {
         }
     }
     pub fn update_copy_options(&mut self, copy_options: &CopyOptions) {
-        self.clipboard_provider = match &copy_options.command {
-            Some(command) => ClipboardProvider::Command(CopyCommand::new(command.clone())),
+        self.clipboard_provider = match copy_options.command.as_deref() {
+            Some("auto") => {
+                // Resolve auto mode: use xclip if X11 available, otherwise OSC52
+                match resolve_auto_copy_command() {
+                    Some(command) => ClipboardProvider::Command(CopyCommand::new(command)),
+                    None => ClipboardProvider::Osc52(copy_options.clipboard),
+                }
+            },
+            Some(command) => ClipboardProvider::Command(CopyCommand::new(command.to_string())),
             None => ClipboardProvider::Osc52(copy_options.clipboard),
         };
         self.copy_on_select = copy_options.copy_on_select;

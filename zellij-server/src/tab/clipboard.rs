@@ -10,6 +10,25 @@ pub(crate) enum ClipboardProvider {
     Osc52(Clipboard),
 }
 
+/// Resolve the copy command for "auto" mode
+/// Returns None if should use OSC52, Some(command) if should use command
+pub(crate) fn resolve_auto_copy_command() -> Option<String> {
+    // Check if DISPLAY environment variable is set (X11)
+    if std::env::var("DISPLAY").is_ok() {
+        // Check if xclip is available
+        if std::process::Command::new("xclip")
+            .arg("-version")
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .is_ok()
+        {
+            return Some("xclip -selection clipboard".to_string());
+        }
+    }
+    None
+}
+
 impl ClipboardProvider {
     pub(crate) fn set_content(
         &self,
