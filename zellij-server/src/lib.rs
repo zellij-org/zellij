@@ -1800,7 +1800,6 @@ fn init_session(
             let client_attributes = client_attributes.clone();
             let default_shell = default_shell.clone();
             let capabilities = capabilities.clone();
-            let layout_dir = config_options.layout_dir.clone();
             let background_plugins = config.background_plugins.clone();
             move || {
                 plugin_thread_main(
@@ -1808,7 +1807,6 @@ fn init_session(
                     engine,
                     data_dir,
                     layout,
-                    layout_dir,
                     path_to_default_shell,
                     zellij_cwd,
                     capabilities,
