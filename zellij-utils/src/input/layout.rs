@@ -1291,19 +1291,14 @@ impl Layout {
         });
         (available_layouts, layouts_with_errors)
     }
-    pub fn from_layout_info(
-        layout_dir: &Option<PathBuf>,
-        layout_info: LayoutInfo,
-    ) -> Result<Layout, ConfigError> {
+    pub fn from_layout_info(layout_info: LayoutInfo) -> Result<Layout, ConfigError> {
         let mut should_start_layout_commands_suspended = false;
         let (path_to_raw_layout, raw_layout, raw_swap_layouts) = match layout_info {
-            LayoutInfo::File(layout_name_without_extension, _layout_metadata) => {
-                let layout_dir = layout_dir.clone().or_else(|| default_layout_dir());
+LayoutInfo::File(layout_path_str, _layout_metadata) => {
+                // Path resolution (relative to CWD or layout_dir) is done by the caller
+                let layout_path = PathBuf::from(&layout_path_str);
                 let (path_to_layout, stringified_layout, swap_layouts) =
-                    Self::stringified_from_dir(
-                        &PathBuf::from(layout_name_without_extension),
-                        layout_dir.as_ref(),
-                    )?;
+                    Self::stringified_from_path(&layout_path)?;
                 (Some(path_to_layout), stringified_layout, swap_layouts)
             },
             LayoutInfo::BuiltIn(layout_name) => {
@@ -1334,19 +1329,16 @@ impl Layout {
         layout
     }
     pub fn from_layout_info_with_config(
-        layout_dir: &Option<PathBuf>,
         layout_info: &LayoutInfo,
         config: Option<Config>,
     ) -> Result<(Layout, Config), ConfigError> {
         let mut should_start_layout_commands_suspended = false;
         let (path_to_raw_layout, raw_layout, raw_swap_layouts) = match layout_info {
-            LayoutInfo::File(layout_name_without_extension, _layout_metadata) => {
-                let layout_dir = layout_dir.clone().or_else(|| default_layout_dir());
+LayoutInfo::File(layout_path_str, _layout_metadata) => {
+                // Path resolution (relative to CWD or layout_dir) is done by the caller
+                let layout_path = PathBuf::from(&layout_path_str);
                 let (path_to_layout, stringified_layout, swap_layouts) =
-                    Self::stringified_from_dir(
-                        &PathBuf::from(layout_name_without_extension),
-                        layout_dir.as_ref(),
-                    )?;
+                    Self::stringified_from_path(&layout_path)?;
                 (Some(path_to_layout), stringified_layout, swap_layouts)
             },
             LayoutInfo::BuiltIn(layout_name) => {

@@ -39,23 +39,12 @@ impl CliAssets {
             }
         };
 
-        let (mut layout, mut config_with_merged_layout_opts) = {
-            let layout_dir = self
-                .configuration_options
-                .as_ref()
-                .and_then(|e| e.layout_dir.clone())
-                .or_else(|| config.options.layout_dir.clone())
-                .or_else(|| {
-                    self.config_dir
-                        .clone()
-                        .or_else(find_default_config_dir)
-                        .map(|dir| dir.join("layouts"))
-                });
-            self.layout.as_ref().and_then(|layout_info| {
-                Layout::from_layout_info_with_config(&layout_dir, layout_info, Some(config.clone()))
-                    .ok()
+        let (mut layout, mut config_with_merged_layout_opts) = self
+            .layout
+            .as_ref()
+            .and_then(|layout_info| {
+                Layout::from_layout_info_with_config(layout_info, Some(config.clone())).ok()
             })
-        }
         .map(|(layout, config)| (layout, config))
         .unwrap_or_else(|| (Layout::default_layout_asset(), config));
 

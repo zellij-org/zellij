@@ -2361,3 +2361,71 @@ fn layout_node_with_name_and_only_floating_panes() {
     assert_eq!(layout.tabs.len(), 1);
     assert_eq!(layout.tabs[0].0, Some("floating-only".to_string()));
 }
+
+#[test]
+fn from_layout_info_resolves_relative_path_from_cwd() {
+    use crate::data::LayoutInfo;
+    use std::env;
+    use std::fs;
+
+    let temp_dir = env::temp_dir().join("zellij_test_layout_info_relative");
+    if temp_dir.exists() {
+        fs::remove_dir_all(&temp_dir).unwrap();
+    }
+    fs::create_dir_all(&temp_dir).unwrap();
+
+    let layout_content = r#"
+layout {
+    pane
+    pane
+}
+"#;
+    let layout_file = temp_dir.join("test-layout.kdl");
+    fs::write(&layout_file, layout_content).unwrap();
+
+    env::set_current_dir(&temp_dir).unwrap();
+
+    let layout_info = LayoutInfo::File("./test-layout.kdl".to_string());
+
+    let layout = Layout::from_layout_info(layout_info).expect("Failed to load layout");
+
+    fs::remove_dir_all(&temp_dir).unwrap();
+
+    if let Some((tiled_panes, _)) = &layout.template {
+        assert_eq!(tiled_panes.children.len(), 2);
+    } else {
+        panic!("Expected layout template");
+    }
+}
+
+#[test]
+fn from_layout_info_handles_absolute_path() {
+    use crate::data::LayoutInfo;
+    use std::fs;
+
+    let temp_dir = std::env::temp_dir().join("zellij_test_layout_info_absolute");
+    if temp_dir.exists() {
+        fs::remove_dir_all(&temp_dir).unwrap();
+    }
+    fs::create_dir_all(&temp_dir).unwrap();
+
+    let layout_content = r#"
+layout {
+    pane
+}
+"#;
+    let layout_file = temp_dir.join("absolute-layout.kdl");
+    fs::write(&layout_file, layout_content).unwrap();
+
+    let layout_info = LayoutInfo::File(layout_file.display().to_string());
+
+    let layout = Layout::from_layout_info(layout_info).expect("Failed to load layout");
+
+    fs::remove_dir_all(&temp_dir).unwrap();
+
+    if let Some((tiled_panes, _)) = &layout.template {
+        assert_eq!(tiled_panes.children.len(), 1);
+    } else {
+        panic!("Expected layout template");
+    }
+}

@@ -2004,13 +2004,19 @@ impl LayoutInfo {
             LayoutInfo::Stringified(_stringified) => false,
         }
     }
+    /// Create LayoutInfo from a config file's `default_layout` setting.
+    /// File paths are resolved relative to `layout_dir`.
     pub fn from_config(
         layout_dir: &Option<PathBuf>,
         layout_path: &Option<PathBuf>,
     ) -> Option<Self> {
         match layout_path {
             Some(layout_path) => {
-                if layout_path.extension().is_some() || layout_path.components().count() > 1 {
+                let path_str = layout_path.to_string_lossy();
+                if path_str.starts_with("http://") || path_str.starts_with("https://") {
+                    Some(LayoutInfo::Url(path_str.into_owned()))
+                } else if layout_path.extension().is_some() || layout_path.components().count() > 1
+                {
                     let Some(layout_dir) = layout_dir
                         .as_ref()
                         .map(|l| l.clone())
@@ -2024,14 +2030,24 @@ impl LayoutInfo {
                         file_path.display().to_string(),
                         LayoutMetadata::from(&file_path),
                     ))
-                } else if layout_path.starts_with("http://") || layout_path.starts_with("https://")
-                {
-                    Some(LayoutInfo::Url(layout_path.display().to_string()))
                 } else {
                     Some(LayoutInfo::BuiltIn(layout_path.display().to_string()))
                 }
             },
             None => None,
+        }
+    }
+
+    /// Create LayoutInfo from a CLI `--layout` argument.
+    /// File paths are resolved relative to the current working directory.
+    pub fn from_cli_arg(layout_path: &PathBuf) -> Self {
+        let path_str = layout_path.to_string_lossy();
+        if path_str.starts_with("http://") || path_str.starts_with("https://") {
+            LayoutInfo::Url(path_str.into_owned())
+        } else if layout_path.extension().is_some() || layout_path.components().count() > 1 {
+            LayoutInfo::File(layout_path.display().to_string(), LayoutMetadata::default())
+        } else {
+            LayoutInfo::BuiltIn(layout_path.display().to_string())
         }
     }
 }
@@ -3246,4 +3262,123 @@ pub enum PluginCommand {
     ParseLayout(String), // String contains raw KDL layout
     GetLayoutDir,
     GetFocusedPaneInfo,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    mod layout_info {
+        use super::*;
+
+        // from_config: resolves paths relative to layout_dir (for config's default_layout)
+
+        #[test]
+        fn from_config_resolves_relative_to_layout_dir() {
+            let layout_dir = Some(PathBuf::from("/home/user/.config/zellij/layouts"));
+            let layout_path = Some(PathBuf::from("my-layout.kdl"));
+
+            let result = LayoutInfo::from_config(&layout_dir, &layout_path);
+
+            assert_eq!(
+                result.unwrap().name(),
+                "/home/user/.config/zellij/layouts/my-layout.kdl"
+            );
+        }
+
+        #[test]
+        fn from_config_resolves_subdir_relative_to_layout_dir() {
+            let layout_dir = Some(PathBuf::from("/home/user/.config/zellij/layouts"));
+            let layout_path = Some(PathBuf::from("subdir/my-layout.kdl"));
+
+            let result = LayoutInfo::from_config(&layout_dir, &layout_path);
+
+            assert_eq!(
+                result.unwrap().name(),
+                "/home/user/.config/zellij/layouts/subdir/my-layout.kdl"
+            );
+        }
+
+        #[test]
+        fn from_config_preserves_absolute_path() {
+            let layout_dir = Some(PathBuf::from("/home/user/.config/zellij/layouts"));
+            let layout_path = Some(PathBuf::from("/absolute/path/to/my-layout.kdl"));
+
+            let result = LayoutInfo::from_config(&layout_dir, &layout_path);
+
+            // PathBuf::join with absolute path returns the absolute path
+            assert_eq!(result.unwrap().name(), "/absolute/path/to/my-layout.kdl");
+        }
+
+        #[test]
+        fn from_config_simple_name_is_builtin() {
+            let layout_dir = Some(PathBuf::from("/home/user/.config/zellij/layouts"));
+            let layout_path = Some(PathBuf::from("default"));
+
+            let result = LayoutInfo::from_config(&layout_dir, &layout_path);
+
+            assert!(matches!(result, Some(LayoutInfo::BuiltIn(name)) if name == "default"));
+        }
+
+        #[test]
+        fn from_config_recognizes_url() {
+            let layout_dir = Some(PathBuf::from("/home/user/.config/zellij/layouts"));
+            let layout_path = Some(PathBuf::from("https://example.com/layout.kdl"));
+
+            let result = LayoutInfo::from_config(&layout_dir, &layout_path);
+
+            assert!(
+                matches!(result, Some(LayoutInfo::Url(url)) if url == "https://example.com/layout.kdl")
+            );
+        }
+
+        // from_cli_arg: paths are relative to CWD (for CLI --layout argument)
+
+        #[test]
+        fn from_cli_arg_with_extension_is_file() {
+            let layout_path = PathBuf::from("my-layout.kdl");
+
+            let result = LayoutInfo::from_cli_arg(&layout_path);
+
+            assert!(matches!(result, LayoutInfo::File(path) if path == "my-layout.kdl"));
+        }
+
+        #[test]
+        fn from_cli_arg_with_dot_slash_is_file() {
+            let layout_path = PathBuf::from("./my-layout.kdl");
+
+            let result = LayoutInfo::from_cli_arg(&layout_path);
+
+            assert!(matches!(result, LayoutInfo::File(path) if path == "./my-layout.kdl"));
+        }
+
+        #[test]
+        fn from_cli_arg_with_subdir_is_file() {
+            let layout_path = PathBuf::from("subdir/my-layout.kdl");
+
+            let result = LayoutInfo::from_cli_arg(&layout_path);
+
+            assert!(matches!(result, LayoutInfo::File(path) if path == "subdir/my-layout.kdl"));
+        }
+
+        #[test]
+        fn from_cli_arg_simple_name_is_builtin() {
+            let layout_path = PathBuf::from("default");
+
+            let result = LayoutInfo::from_cli_arg(&layout_path);
+
+            assert!(matches!(result, LayoutInfo::BuiltIn(name) if name == "default"));
+        }
+
+        #[test]
+        fn from_cli_arg_recognizes_url() {
+            let layout_path = PathBuf::from("https://example.com/layout.kdl");
+
+            let result = LayoutInfo::from_cli_arg(&layout_path);
+
+            assert!(
+                matches!(result, LayoutInfo::Url(url) if url == "https://example.com/layout.kdl")
+            );
+        }
+    }
 }

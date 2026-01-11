@@ -646,9 +646,7 @@ pub fn start_client(
                 layout: cli_args
                     .layout
                     .as_ref()
-                    .and_then(|l| {
-                        LayoutInfo::from_config(&config_options.layout_dir, &Some(l.clone()))
-                    })
+                    .map(|l| LayoutInfo::from_cli_arg(l))
                     .or_else(|| {
                         LayoutInfo::from_config(
                             &config_options.layout_dir,
@@ -740,9 +738,7 @@ pub fn start_client(
                     cli_args
                         .layout
                         .as_ref()
-                        .and_then(|l| {
-                            LayoutInfo::from_config(&config_options.layout_dir, &Some(l.clone()))
-                        })
+                        .map(|l| LayoutInfo::from_cli_arg(l))
                         .or_else(|| {
                             LayoutInfo::from_config(
                                 &config_options.layout_dir,
@@ -1176,9 +1172,7 @@ pub fn start_server_detached(
                     cli_args
                         .layout
                         .as_ref()
-                        .and_then(|l| {
-                            LayoutInfo::from_config(&config_options.layout_dir, &Some(l.clone()))
-                        })
+                        .map(|l| LayoutInfo::from_cli_arg(l))
                         .or_else(|| {
                             LayoutInfo::from_config(
                                 &config_options.layout_dir,
