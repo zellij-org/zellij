@@ -1649,7 +1649,7 @@ fn new_tabs_with_layout(env: &PluginEnv, raw_layout: &str) -> Result<()> {
 
 fn new_tabs_with_layout_info(env: &PluginEnv, layout_info: LayoutInfo) -> Result<()> {
     // TODO: cwd
-    let layout = Layout::from_layout_info(&env.layout_dir, layout_info)
+    let layout = Layout::from_layout_info(layout_info)
         .map_err(|e| anyhow!("Failed to parse layout: {:?}", e))?;
     apply_layout(env, layout);
     Ok(())
