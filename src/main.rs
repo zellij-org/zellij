@@ -219,19 +219,19 @@ fn main() {
         commands::watch_session(session_name.clone(), opts);
     } else if let Some(Command::Sessions(Sessions::KillAllSessions { yes })) = opts.command {
         commands::kill_all_sessions(yes);
-    } else if let Some(Command::Sessions(Sessions::KillSession { ref target_session })) =
+    } else if let Some(Command::Sessions(Sessions::KillSession { ref target_sessions })) =
         opts.command
     {
-        commands::kill_session(target_session);
+        commands::kill_session(target_sessions);
     } else if let Some(Command::Sessions(Sessions::DeleteAllSessions { yes, force })) = opts.command
     {
         commands::delete_all_sessions(yes, force);
     } else if let Some(Command::Sessions(Sessions::DeleteSession {
-        ref target_session,
+        ref target_sessions,
         force,
     })) = opts.command
     {
-        commands::delete_session(target_session, force);
+        commands::delete_session(target_sessions, force);
     } else if let Some(path) = opts.server {
         commands::start_server(path, opts.debug);
     } else if let Some(layout) = &opts.layout {
