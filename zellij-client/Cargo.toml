@@ -27,7 +27,7 @@ interprocess = { workspace = true }
 lazy_static = { workspace = true }
 libc = { workspace = true }
 log = { workspace = true }
-mio = { version = "0.7.11", default-features = false, features = ['os-ext'] }
+mio = { version = "0.8.11", default-features = false, features = ['os-ext'] }
 nix = { workspace = true }
 notify = { workspace = true }
 regex = { workspace = true }
