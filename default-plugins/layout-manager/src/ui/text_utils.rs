@@ -1,6 +1,6 @@
-use zellij_tile::prelude::*;
-use unicode_width::UnicodeWidthStr;
 use crate::DisplayLayout;
+use unicode_width::UnicodeWidthStr;
+use zellij_tile::prelude::*;
 
 pub fn truncate_with_ellipsis(text: &str, max_width: usize) -> String {
     if max_width == 0 {
@@ -25,10 +25,24 @@ pub fn truncate_with_ellipsis_start(text: &str, max_width: usize) -> String {
         return text.to_string();
     }
     if max_width <= 3 {
-        return text.chars().rev().take(max_width).collect::<Vec<_>>().into_iter().rev().collect();
+        return text
+            .chars()
+            .rev()
+            .take(max_width)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect();
     }
     let truncate_at = max_width.saturating_sub(3);
-    let suffix: String = text.chars().rev().take(truncate_at).collect::<Vec<_>>().into_iter().rev().collect();
+    let suffix: String = text
+        .chars()
+        .rev()
+        .take(truncate_at)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect();
     format!("...{}", suffix)
 }
 
@@ -130,19 +144,17 @@ pub fn wrap_text_to_width(text: &str, max_width: usize) -> Vec<String> {
 
 pub fn get_layout_display_info(layout: &DisplayLayout) -> (String, Option<&LayoutMetadata>) {
     match layout {
-        DisplayLayout::Valid(info) => {
-            match info {
-                LayoutInfo::BuiltIn(name) => (name.clone(), None),
-                LayoutInfo::File(path, metadata) => {
-                    let name = path.split('/').last().unwrap_or(path).to_string();
-                    (name, Some(metadata))
-                },
-                LayoutInfo::Url(url) => {
-                    let name = url.split('/').last().unwrap_or(url).to_string();
-                    (name, None)
-                },
-                LayoutInfo::Stringified(_) => ("raw".to_string(), None),
-            }
+        DisplayLayout::Valid(info) => match info {
+            LayoutInfo::BuiltIn(name) => (name.clone(), None),
+            LayoutInfo::File(path, metadata) => {
+                let name = path.split('/').last().unwrap_or(path).to_string();
+                (name, Some(metadata))
+            },
+            LayoutInfo::Url(url) => {
+                let name = url.split('/').last().unwrap_or(url).to_string();
+                (name, None)
+            },
+            LayoutInfo::Stringified(_) => ("raw".to_string(), None),
         },
         DisplayLayout::Error { name, .. } => (name.clone(), None),
     }

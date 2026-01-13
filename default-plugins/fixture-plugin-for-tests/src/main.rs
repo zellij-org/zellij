@@ -112,9 +112,7 @@ impl ZellijPlugin for State {
                     let direction = Direction::Left;
                     resize_focused_pane_with_direction(resize, direction);
                 },
-                BareKey::Char('h') if key.has_no_modifiers() => { 
-                    focus_next_pane()
-                }
+                BareKey::Char('h') if key.has_no_modifiers() => focus_next_pane(),
                 BareKey::Char('i') if key.has_no_modifiers() => focus_previous_pane(),
                 BareKey::Char('j') if key.has_no_modifiers() => {
                     let direction = Direction::Left;
@@ -159,7 +157,9 @@ impl ZellijPlugin for State {
                 BareKey::Char('a') if key.has_only_modifiers(&[KeyModifier::Ctrl]) => {
                     previous_swap_layout()
                 },
-                BareKey::Char('b') if key.has_only_modifiers(&[KeyModifier::Ctrl]) => next_swap_layout(),
+                BareKey::Char('b') if key.has_only_modifiers(&[KeyModifier::Ctrl]) => {
+                    next_swap_layout()
+                },
                 BareKey::Char('c') if key.has_only_modifiers(&[KeyModifier::Ctrl]) => {
                     let tab_name = "my tab name";
                     go_to_tab_name(tab_name)
@@ -588,7 +588,9 @@ impl ZellijPlugin for State {
                     // Test send_sigkill_to_pane_id
                     send_sigkill_to_pane_id(PaneId::Terminal(1));
                 },
-                BareKey::Char('a') if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Shift]) => {
+                BareKey::Char('a')
+                    if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Shift]) =>
+                {
                     let name = generate_random_name();
                     if !name.is_empty() {
                         self.explicit_string_to_render = Some(format!("Generated name"));
@@ -596,50 +598,100 @@ impl ZellijPlugin for State {
                         self.explicit_string_to_render = Some(format!("Error: got empty name"));
                     }
                 },
-                BareKey::Char('b') if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Shift]) => {
+                BareKey::Char('b')
+                    if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Shift]) =>
+                {
                     match dump_layout("default") {
-                        Ok(kdl) => self.explicit_string_to_render = Some(format!("Layout dump success: {}", kdl)),
-                        Err(e) => self.explicit_string_to_render = Some(format!("Layout dump error: {}", e))
+                        Ok(kdl) => {
+                            self.explicit_string_to_render =
+                                Some(format!("Layout dump success: {}", kdl))
+                        },
+                        Err(e) => {
+                            self.explicit_string_to_render =
+                                Some(format!("Layout dump error: {}", e))
+                        },
                     }
                 },
-                BareKey::Char('c') if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Shift]) => {
+                BareKey::Char('c')
+                    if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Shift]) =>
+                {
                     // Test dump_layout() - not found case
                     match dump_layout("nonexistent_layout_xyz") {
-                        Ok(kdl) => self.explicit_string_to_render = Some(format!("Layout dump success: {}", kdl)),
-                        Err(e) => self.explicit_string_to_render = Some(format!("Layout dump error: {}", e))
+                        Ok(kdl) => {
+                            self.explicit_string_to_render =
+                                Some(format!("Layout dump success: {}", kdl))
+                        },
+                        Err(e) => {
+                            self.explicit_string_to_render =
+                                Some(format!("Layout dump error: {}", e))
+                        },
                     }
                 },
-                BareKey::Char('d') if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Shift]) => {
+                BareKey::Char('d')
+                    if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Shift]) =>
+                {
                     // Test get_layout_dir()
                     let dir = get_layout_dir();
                     if !dir.is_empty() {
                         self.explicit_string_to_render = Some(format!("Got layout folder"));
                     } else {
-                        self.explicit_string_to_render = Some(format!("Error: Got empty layout folder!"));
+                        self.explicit_string_to_render =
+                            Some(format!("Error: Got empty layout folder!"));
                     }
                 },
-                BareKey::Char('e') if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Shift]) => {
+                BareKey::Char('e')
+                    if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Shift]) =>
+                {
                     // Test get_focused_pane_info()
                     match get_focused_pane_info() {
-                        Ok((tab_index, pane_id)) => println!("Focused pane: tab={}, pane={:?}", tab_index, pane_id),
-                        Err(e) => self.explicit_string_to_render = Some(format!("Focused pane error: {}", e))
+                        Ok((tab_index, pane_id)) => {
+                            println!("Focused pane: tab={}, pane={:?}", tab_index, pane_id)
+                        },
+                        Err(e) => {
+                            self.explicit_string_to_render =
+                                Some(format!("Focused pane error: {}", e))
+                        },
                     }
                 },
-                BareKey::Char('f') if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Shift]) => {
+                BareKey::Char('f')
+                    if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Shift]) =>
+                {
                     // Test dump_session_layout()
                     match dump_session_layout() {
-                        Ok((kdl, metadata)) => self.explicit_string_to_render = Some(format!("Session layout: {} tabs, metadata: {:?}", kdl.len(), metadata)),
-                        Err(e) => self.explicit_string_to_render = Some(format!("Session layout error: {}", e))
+                        Ok((kdl, metadata)) => {
+                            self.explicit_string_to_render = Some(format!(
+                                "Session layout: {} tabs, metadata: {:?}",
+                                kdl.len(),
+                                metadata
+                            ))
+                        },
+                        Err(e) => {
+                            self.explicit_string_to_render =
+                                Some(format!("Session layout error: {}", e))
+                        },
                     }
                 },
-                BareKey::Char('g') if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Shift]) => {
+                BareKey::Char('g')
+                    if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Shift]) =>
+                {
                     // Test dump_session_layout_for_tab()
                     match dump_session_layout_for_tab(0) {
-                        Ok((kdl, metadata)) => self.explicit_string_to_render = Some(format!("Tab 0 layout: {} bytes, metadata: {:?}", kdl.len(), metadata)),
-                        Err(e) => self.explicit_string_to_render = Some(format!("Tab layout error: {}", e))
+                        Ok((kdl, metadata)) => {
+                            self.explicit_string_to_render = Some(format!(
+                                "Tab 0 layout: {} bytes, metadata: {:?}",
+                                kdl.len(),
+                                metadata
+                            ))
+                        },
+                        Err(e) => {
+                            self.explicit_string_to_render =
+                                Some(format!("Tab layout error: {}", e))
+                        },
                     }
                 },
-                BareKey::Char('h') if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Shift]) => {
+                BareKey::Char('h')
+                    if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Shift]) =>
+                {
                     // Test parse_layout() - valid KDL
                     let valid_kdl = "layout { tab { pane; }; }";
                     match parse_layout(valid_kdl) {
@@ -647,102 +699,190 @@ impl ZellijPlugin for State {
                             if metadata.tabs.len() == 1 {
                                 self.explicit_string_to_render = Some(format!("Parse success"));
                             } else {
-                                self.explicit_string_to_render = Some(format!("Parse failure: got wrong metadata"));
+                                self.explicit_string_to_render =
+                                    Some(format!("Parse failure: got wrong metadata"));
                             }
-                        }
-                        Err(e) => self.explicit_string_to_render = Some(format!("Parse error: {:?}", e)),
+                        },
+                        Err(e) => {
+                            self.explicit_string_to_render = Some(format!("Parse error: {:?}", e))
+                        },
                     }
                 },
-                BareKey::Char('i') if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Shift]) => {
+                BareKey::Char('i')
+                    if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Shift]) =>
+                {
                     // Test parse_layout() - invalid KDL
                     let invalid_kdl = "layout { this is not valid kdl }";
                     match parse_layout(invalid_kdl) {
-                        Ok(metadata) => self.explicit_string_to_render = Some(format!("Parse success: {:?}", metadata)),
-                        Err(e) => self.explicit_string_to_render = Some(format!("Parse error: {:?}", e))
+                        Ok(metadata) => {
+                            self.explicit_string_to_render =
+                                Some(format!("Parse success: {:?}", metadata))
+                        },
+                        Err(e) => {
+                            self.explicit_string_to_render = Some(format!("Parse error: {:?}", e))
+                        },
                     }
                 },
-                BareKey::Char('a') if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Alt]) => {
+                BareKey::Char('a')
+                    if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Alt]) =>
+                {
                     let test_kdl = "layout { tab { pane; }; }";
                     match save_layout("test_layout", test_kdl, false) {
-                        Ok(_) => self.explicit_string_to_render = Some(format!("Save layout success")),
-                        Err(e) => self.explicit_string_to_render = Some(format!("Save layout error: {}", e))
+                        Ok(_) => {
+                            self.explicit_string_to_render = Some(format!("Save layout success"))
+                        },
+                        Err(e) => {
+                            self.explicit_string_to_render =
+                                Some(format!("Save layout error: {}", e))
+                        },
                     }
                 },
-                BareKey::Char('b') if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Alt]) => {
+                BareKey::Char('b')
+                    if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Alt]) =>
+                {
                     let test_kdl = "layout { tab { pane; }; }";
                     match save_layout("test_layout", test_kdl, false) {
-                        Ok(_) => self.explicit_string_to_render = Some(format!("Save layout success")),
-                        Err(e) => self.explicit_string_to_render = Some(format!("Save layout error: {}", e))
+                        Ok(_) => {
+                            self.explicit_string_to_render = Some(format!("Save layout success"))
+                        },
+                        Err(e) => {
+                            self.explicit_string_to_render =
+                                Some(format!("Save layout error: {}", e))
+                        },
                     }
                 },
-                BareKey::Char('c') if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Alt]) => {
+                BareKey::Char('c')
+                    if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Alt]) =>
+                {
                     let test_kdl = "layout { tab { pane; pane; }; }";
                     match save_layout("test_layout2", test_kdl, true) {
-                        Ok(_) => self.explicit_string_to_render = Some(format!("Save layout with overwrite success")),
-                        Err(e) => self.explicit_string_to_render = Some(format!("Save layout with overwrite error: {}", e))
+                        Ok(_) => {
+                            self.explicit_string_to_render =
+                                Some(format!("Save layout with overwrite success"))
+                        },
+                        Err(e) => {
+                            self.explicit_string_to_render =
+                                Some(format!("Save layout with overwrite error: {}", e))
+                        },
                     }
                 },
-                BareKey::Char('d') if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Alt]) => {
+                BareKey::Char('d')
+                    if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Alt]) =>
+                {
                     // Test save_layout() - invalid KDL
                     let invalid_kdl = "not valid kdl at all";
                     match save_layout("invalid_layout", invalid_kdl, false) {
-                        Ok(_) => self.explicit_string_to_render = Some(format!("Save invalid layout success")),
-                        Err(e) => self.explicit_string_to_render = Some(format!("Save invalid layout error: {}", e))
+                        Ok(_) => {
+                            self.explicit_string_to_render =
+                                Some(format!("Save invalid layout success"))
+                        },
+                        Err(e) => {
+                            self.explicit_string_to_render =
+                                Some(format!("Save invalid layout error: {}", e))
+                        },
                     }
                 },
-                BareKey::Char('e') if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Alt]) => {
+                BareKey::Char('e')
+                    if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Alt]) =>
+                {
                     match rename_layout("test_layout", "renamed_layout") {
-                        Ok(_) => self.explicit_string_to_render = Some(format!("Rename layout success")),
-                        Err(e) => self.explicit_string_to_render = Some(format!("Rename layout error: {}", e))
+                        Ok(_) => {
+                            self.explicit_string_to_render = Some(format!("Rename layout success"))
+                        },
+                        Err(e) => {
+                            self.explicit_string_to_render =
+                                Some(format!("Rename layout error: {}", e))
+                        },
                     }
                 },
-                BareKey::Char('f') if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Alt]) => {
+                BareKey::Char('f')
+                    if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Alt]) =>
+                {
                     // Test rename_layout() - not found case
                     match rename_layout("nonexistent_layout", "new_name") {
-                        Ok(_) => self.explicit_string_to_render = Some(format!("Rename nonexistent layout success")),
-                        Err(e) => self.explicit_string_to_render = Some(format!("Rename nonexistent layout error: {}", e))
+                        Ok(_) => {
+                            self.explicit_string_to_render =
+                                Some(format!("Rename nonexistent layout success"))
+                        },
+                        Err(e) => {
+                            self.explicit_string_to_render =
+                                Some(format!("Rename nonexistent layout error: {}", e))
+                        },
                     }
                 },
-                BareKey::Char('g') if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Alt]) => {
+                BareKey::Char('g')
+                    if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Alt]) =>
+                {
                     // Test delete_layout() - success case
                     match delete_layout("renamed_layout") {
-                        Ok(_) => self.explicit_string_to_render = Some(format!("Delete layout success")),
-                        Err(e) => self.explicit_string_to_render = Some(format!("Delete layout error: {}", e))
+                        Ok(_) => {
+                            self.explicit_string_to_render = Some(format!("Delete layout success"))
+                        },
+                        Err(e) => {
+                            self.explicit_string_to_render =
+                                Some(format!("Delete layout error: {}", e))
+                        },
                     }
                 },
-                BareKey::Char('h') if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Alt]) => {
+                BareKey::Char('h')
+                    if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Alt]) =>
+                {
                     // Test delete_layout() - not found case
                     match delete_layout("nonexistent_layout") {
-                        Ok(_) => self.explicit_string_to_render = Some(format!("Delete nonexistent layout success")),
-                        Err(e) => self.explicit_string_to_render = Some(format!("Delete nonexistent layout error: {}", e)),
+                        Ok(_) => {
+                            self.explicit_string_to_render =
+                                Some(format!("Delete nonexistent layout success"))
+                        },
+                        Err(e) => {
+                            self.explicit_string_to_render =
+                                Some(format!("Delete nonexistent layout error: {}", e))
+                        },
                     }
                 },
-                BareKey::Char('i') if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Alt]) => {
+                BareKey::Char('i')
+                    if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Alt]) =>
+                {
                     let test_kdl = "layout { tab { pane; } }";
                     match save_layout("../evil_layout", test_kdl, false) {
-                        Ok(_) => self.explicit_string_to_render = Some(format!("Path traversal save success")),
-                        Err(e) => self.explicit_string_to_render = Some(format!("Path traversal save error: {}", e)),
+                        Ok(_) => {
+                            self.explicit_string_to_render =
+                                Some(format!("Path traversal save success"))
+                        },
+                        Err(e) => {
+                            self.explicit_string_to_render =
+                                Some(format!("Path traversal save error: {}", e))
+                        },
                     }
                 },
-                BareKey::Char('j') if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Alt]) => {
+                BareKey::Char('j')
+                    if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Alt]) =>
+                {
                     // Test edit_layout()
                     let mut context = BTreeMap::new();
                     context.insert("test_key".to_owned(), "test_value".to_owned());
                     match edit_layout("test_layout2", context) {
-                        Ok(_) => self.explicit_string_to_render = Some(format!("Edit layout command sent")),
-                        Err(e) => self.explicit_string_to_render = Some(format!("Edit layout error: {}", e))
+                        Ok(_) => {
+                            self.explicit_string_to_render =
+                                Some(format!("Edit layout command sent"))
+                        },
+                        Err(e) => {
+                            self.explicit_string_to_render =
+                                Some(format!("Edit layout error: {}", e))
+                        },
                     }
                 },
-                BareKey::Char('k') if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Alt]) => {
+                BareKey::Char('k')
+                    if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Alt]) =>
+                {
                     // Test override_layout()
                     let mut context = BTreeMap::new();
                     context.insert("override_test".to_owned(), "value".to_owned());
                     override_layout(
                         &LayoutInfo::BuiltIn("compact".to_owned()),
-                        false,  // retain_existing_terminal_panes
-                        false,  // retain_existing_plugin_panes
-                        false,  // apply_only_to_active_tab
-                        context
+                        false, // retain_existing_terminal_panes
+                        false, // retain_existing_plugin_panes
+                        false, // apply_only_to_active_tab
+                        context,
                     );
                     self.explicit_string_to_render = Some(format!("Override layout command sent"));
                 },

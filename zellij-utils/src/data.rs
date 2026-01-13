@@ -2,7 +2,9 @@ use crate::home::default_layout_dir;
 use crate::input::actions::{Action, RunCommandAction};
 use crate::input::config::{ConversionError, KdlError};
 use crate::input::keybinds::Keybinds;
-use crate::input::layout::{Layout, RunPlugin, RunPluginOrAlias, SplitSize, Run, RunPluginLocation};
+use crate::input::layout::{
+    Layout, Run, RunPlugin, RunPluginLocation, RunPluginOrAlias, SplitSize,
+};
 use crate::pane_size::PaneGeom;
 use crate::position::Position;
 use crate::shared::{colors as default_colors, eightbit_to_rgb};
@@ -11,14 +13,13 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt;
 use std::fs::Metadata;
+use std::hash::{Hash, Hasher};
 use std::net::IpAddr;
 use std::path::{Path, PathBuf};
 use std::str::{self, FromStr};
 use std::time::Duration;
 use strum_macros::{Display, EnumDiscriminants, EnumIter, EnumString};
 use unicode_width::UnicodeWidthChar;
-use std::hash::{Hash, Hasher};
-
 
 #[cfg(not(target_family = "wasm"))]
 use termwiz::{
@@ -621,7 +622,7 @@ impl KeyWithModifier {
             }
         }
         if self.key_modifiers.len() != modifiers.len() {
-            return false
+            return false;
         }
         true
     }
@@ -1739,8 +1740,7 @@ pub enum LayoutInfo {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct LayoutWithError {
     pub layout_name: String,
-    pub error: LayoutParsingError
-
+    pub error: LayoutParsingError,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -1775,7 +1775,11 @@ impl From<&PathBuf> for LayoutMetadata {
                         let layout_tabs = layout.tabs();
                         let tabs = if layout_tabs.is_empty() {
                             let (tiled_pane_layout, floating_pane_layout) = layout.new_tab();
-                            vec![TabMetadata::from(&(None, tiled_pane_layout, floating_pane_layout))]
+                            vec![TabMetadata::from(&(
+                                None,
+                                tiled_pane_layout,
+                                floating_pane_layout,
+                            ))]
                         } else {
                             layout
                                 .tabs()
@@ -1785,7 +1789,8 @@ impl From<&PathBuf> for LayoutMetadata {
                         };
 
                         // Get file metadata for creation and modification times as Unix epochs
-                        let (creation_time, update_time) = LayoutMetadata::creation_and_update_times(&path);
+                        let (creation_time, update_time) =
+                            LayoutMetadata::creation_and_update_times(&path);
 
                         LayoutMetadata {
                             tabs,
@@ -1796,13 +1801,13 @@ impl From<&PathBuf> for LayoutMetadata {
                     Err(e) => {
                         log::error!("Failed to parse layout: {}", e);
                         LayoutMetadata::default()
-                    }
+                    },
                 }
             },
             Err(e) => {
                 log::error!("Failed to read layout file: {}", e);
                 LayoutMetadata::default()
-            }
+            },
         }
     }
 }
@@ -1845,8 +1850,20 @@ pub struct TabMetadata {
     pub name: Option<String>,
 }
 
-impl From<&(Option<String>, crate::input::layout::TiledPaneLayout, Vec<crate::input::layout::FloatingPaneLayout>)> for TabMetadata {
-    fn from(tab: &(Option<String>, crate::input::layout::TiledPaneLayout, Vec<crate::input::layout::FloatingPaneLayout>)) -> Self {
+impl
+    From<&(
+        Option<String>,
+        crate::input::layout::TiledPaneLayout,
+        Vec<crate::input::layout::FloatingPaneLayout>,
+    )> for TabMetadata
+{
+    fn from(
+        tab: &(
+            Option<String>,
+            crate::input::layout::TiledPaneLayout,
+            Vec<crate::input::layout::FloatingPaneLayout>,
+        ),
+    ) -> Self {
         let (tab_name, tiled_pane_layout, floating_panes) = tab;
 
         // Collect panes from tiled layout (only leaf nodes are real panes)
@@ -1874,7 +1891,6 @@ pub struct PaneMetadata {
 
 impl From<&crate::input::layout::TiledPaneLayout> for PaneMetadata {
     fn from(pane: &crate::input::layout::TiledPaneLayout) -> Self {
-
         let mut is_plugin = false;
         let mut is_builtin_plugin = false;
 
@@ -1890,8 +1906,7 @@ impl From<&crate::input::layout::TiledPaneLayout> for PaneMetadata {
                 },
                 Run::EditFile(path, _line, _cwd) => {
                     // Use the file name
-                    path.file_name()
-                        .map(|n| n.to_string_lossy().to_string())
+                    path.file_name().map(|n| n.to_string_lossy().to_string())
                 },
                 Run::Plugin(plugin) => {
                     is_plugin = true;
@@ -1914,7 +1929,6 @@ impl From<&crate::input::layout::TiledPaneLayout> for PaneMetadata {
 
 impl From<&crate::input::layout::FloatingPaneLayout> for PaneMetadata {
     fn from(pane: &crate::input::layout::FloatingPaneLayout) -> Self {
-
         let mut is_plugin = false;
         let mut is_builtin_plugin = false;
 
@@ -1930,8 +1944,7 @@ impl From<&crate::input::layout::FloatingPaneLayout> for PaneMetadata {
                 },
                 Run::EditFile(path, _line, _cwd) => {
                     // Use the file name
-                    path.file_name()
-                        .map(|n| n.to_string_lossy().to_string())
+                    path.file_name().map(|n| n.to_string_lossy().to_string())
                 },
                 Run::Plugin(plugin) => {
                     is_plugin = true;
@@ -1959,7 +1972,10 @@ impl From<&crate::input::layout::FloatingPaneLayout> for PaneMetadata {
 }
 
 // Helper function to recursively collect leaf panes from TiledPaneLayout
-fn collect_leaf_panes(pane: &crate::input::layout::TiledPaneLayout, result: &mut Vec<PaneMetadata>) {
+fn collect_leaf_panes(
+    pane: &crate::input::layout::TiledPaneLayout,
+    result: &mut Vec<PaneMetadata>,
+) {
     if pane.children.is_empty() {
         // This is a leaf node (actual pane)
         result.push(PaneMetadata::from(pane));
@@ -2006,7 +2022,7 @@ impl LayoutInfo {
                     Some(LayoutInfo::File(
                         // layout_dir.join(layout_path).display().to_string(),
                         file_path.display().to_string(),
-                        LayoutMetadata::from(&file_path)
+                        LayoutMetadata::from(&file_path),
                     ))
                 } else if layout_path.starts_with("http://") || layout_path.starts_with("https://")
                 {
@@ -3204,10 +3220,10 @@ pub enum PluginCommand {
     CopyToClipboard(String), // text to copy
     OverrideLayout(
         LayoutInfo,
-        bool,                      // retain_existing_terminal_panes
-        bool,                      // retain_existing_plugin_panes
-        bool,                      // apply_only_to_active_tab,
-        BTreeMap<String, String>,  // context
+        bool,                     // retain_existing_terminal_panes
+        bool,                     // retain_existing_plugin_panes
+        bool,                     // apply_only_to_active_tab,
+        BTreeMap<String, String>, // context
     ),
     SaveLayout {
         layout_name: String,

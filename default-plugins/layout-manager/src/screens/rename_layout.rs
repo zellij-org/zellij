@@ -1,7 +1,7 @@
-use zellij_tile::prelude::*;
+use super::{ErrorScreen, KeyResponse, LayoutListScreen, OptimisticUpdate, Screen};
+use crate::text_input::{InputAction, TextInput};
 use crate::ui::truncate_with_ellipsis_start;
-use crate::text_input::{TextInput, InputAction};
-use super::{Screen, LayoutListScreen, ErrorScreen, KeyResponse, OptimisticUpdate};
+use zellij_tile::prelude::*;
 
 #[derive(Clone)]
 pub struct RenameLayoutScreen {
@@ -32,7 +32,9 @@ impl RenameLayoutScreen {
     }
 
     fn cancel_rename(&self) -> Screen {
-        Screen::LayoutList(LayoutListScreen::with_selected_index(self.selected_layout_index))
+        Screen::LayoutList(LayoutListScreen::with_selected_index(
+            self.selected_layout_index,
+        ))
     }
 
     fn attempt_rename(&self) -> KeyResponse {
@@ -41,7 +43,7 @@ impl RenameLayoutScreen {
         if name_input_text.is_empty() {
             show_cursor(None);
             return KeyResponse::new_screen(
-                self.create_error_screen("Layout name cannot be empty")
+                self.create_error_screen("Layout name cannot be empty"),
             );
         }
 
@@ -51,14 +53,11 @@ impl RenameLayoutScreen {
         };
 
         match rename_layout(&self.old_file_name, name_input_text) {
-            Ok(_) => {
-                KeyResponse::new_screen(
-                    Screen::LayoutList(LayoutListScreen::with_selected_index(self.selected_layout_index))
-                ).with_optimistic(optimistic)
-            }
-            Err(error_msg) => {
-                KeyResponse::new_screen(self.create_error_screen(&error_msg))
-            }
+            Ok(_) => KeyResponse::new_screen(Screen::LayoutList(
+                LayoutListScreen::with_selected_index(self.selected_layout_index),
+            ))
+            .with_optimistic(optimistic),
+            Err(error_msg) => KeyResponse::new_screen(self.create_error_screen(&error_msg)),
         }
     }
 
@@ -83,10 +82,8 @@ impl RenameLayoutScreen {
 
         if let Some(max_width) = max_width {
             if text.chars().count() > max_width {
-                let truncated_name = truncate_with_ellipsis_start(
-                    input_text,
-                    max_width.saturating_sub(prompt_len)
-                );
+                let truncated_name =
+                    truncate_with_ellipsis_start(input_text, max_width.saturating_sub(prompt_len));
                 text = format!("{}{}", prompt, truncated_name);
                 let truncated_len = truncated_name.chars().count();
                 cursor_position_in_line = prompt_len + cursor_pos.min(truncated_len);
@@ -103,10 +100,7 @@ impl RenameLayoutScreen {
     }
 
     fn help_text(&self) -> (&str, &[&str]) {
-        (
-            "<Enter> - Save, <Esc> - Cancel",
-            &["<Enter>", "<Esc>"],
-        )
+        ("<Enter> - Save, <Esc> - Cancel", &["<Enter>", "<Esc>"])
     }
 
     fn render_help_text(&self, x: usize, y: usize, _width: usize) {
@@ -133,7 +127,7 @@ impl RenameLayoutScreen {
         // Calculate desired width based on rename line and help text
         let desired_ui_width = std::cmp::max(
             self.help_text().0.chars().count(),
-            self.rename_line_text(None).0.chars().count()
+            self.rename_line_text(None).0.chars().count(),
         );
 
         // Leave at least 4 columns margin (2 on each side) to prevent text from reaching screen edge

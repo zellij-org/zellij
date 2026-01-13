@@ -1,8 +1,8 @@
-use zellij_tile::prelude::*;
-use crate::DisplayLayout;
 use crate::text_input::TextInput;
+use crate::DisplayLayout;
 use fuzzy_matcher::skim::SkimMatcherV2;
 use fuzzy_matcher::FuzzyMatcher;
+use zellij_tile::prelude::*;
 
 #[derive(Clone)]
 pub struct SearchResult {
@@ -74,7 +74,12 @@ impl SearchState {
         self.selected_search_index = index;
     }
 
-    pub fn update_filter(&mut self, display_layouts: &[DisplayLayout], base_x: usize, base_y: usize) {
+    pub fn update_filter(
+        &mut self,
+        display_layouts: &[DisplayLayout],
+        base_x: usize,
+        base_y: usize,
+    ) {
         let filter_prompt = "Filter:";
         let filter_text = self.filter_input.get_text();
 
@@ -93,14 +98,14 @@ impl SearchState {
             .enumerate()
             .filter_map(|(index, layout)| {
                 let name = layout.name();
-                matcher.fuzzy_indices(&name, filter_text).map(|(score, indices)| {
-                    SearchResult {
+                matcher
+                    .fuzzy_indices(&name, filter_text)
+                    .map(|(score, indices)| SearchResult {
                         layout: layout.clone(),
                         original_index: index,
                         score,
                         matched_indices: indices,
-                    }
-                })
+                    })
             })
             .collect();
 
@@ -124,7 +129,7 @@ impl SearchState {
             let cursor_pos = self.filter_input.get_cursor_position();
             show_cursor(Some((
                 filter_prompt.chars().count() + 1 + cursor_pos + base_x,
-                base_y
+                base_y,
             )));
         } else {
             show_cursor(None);
@@ -141,14 +146,16 @@ impl SearchState {
     }
 
     pub fn get_current_selected_original_index(&self) -> Option<usize> {
-        self.search_results.get(self.selected_search_index)
+        self.search_results
+            .get(self.selected_search_index)
             .map(|result| result.original_index)
     }
 
     pub fn render_filter_line(&self, base_x: usize, base_y: usize) {
         let filter_text_str = self.filter_input.get_text();
         let filter_text = if self.typing_filter {
-            let mut filter_line = Text::new(format!("Filter: {}", filter_text_str)).color_substring(2, "Filter:");
+            let mut filter_line =
+                Text::new(format!("Filter: {}", filter_text_str)).color_substring(2, "Filter:");
             if !filter_text_str.is_empty() {
                 filter_line = filter_line.color_last_substring(3, filter_text_str)
             }
@@ -161,7 +168,11 @@ impl SearchState {
         print_text_with_coordinates(filter_text, base_x, base_y, None, None);
     }
 
-    pub fn get_matched_indices_for_visible(&self, hidden_above: usize, visible_count: usize) -> Vec<Option<Vec<usize>>> {
+    pub fn get_matched_indices_for_visible(
+        &self,
+        hidden_above: usize,
+        visible_count: usize,
+    ) -> Vec<Option<Vec<usize>>> {
         if !self.filter_active || self.search_results.is_empty() {
             return vec![None; visible_count];
         }

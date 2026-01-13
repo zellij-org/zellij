@@ -23,8 +23,8 @@ use url::Url;
 use wasmi::{Engine, Module};
 use zellij_utils::consts::{ZELLIJ_CACHE_DIR, ZELLIJ_SESSION_CACHE_DIR, ZELLIJ_TMP_DIR};
 use zellij_utils::data::{
-    FloatingPaneCoordinates, InputMode, LayoutInfo, LayoutWithError, PaneContents, PaneRenderReport,
-    PermissionStatus, PermissionType, PipeMessage, PipeSource,
+    FloatingPaneCoordinates, InputMode, LayoutInfo, LayoutWithError, PaneContents,
+    PaneRenderReport, PermissionStatus, PermissionType, PipeMessage, PipeSource,
 };
 use zellij_utils::downloader::Downloader;
 use zellij_utils::input::keybinds::Keybinds;
@@ -1852,8 +1852,11 @@ impl WasmBridge {
             .next()
             .copied()
     }
-    pub fn update_available_layouts(&mut self, layouts: Vec<LayoutInfo>, errors: Vec<LayoutWithError>) {
-
+    pub fn update_available_layouts(
+        &mut self,
+        layouts: Vec<LayoutInfo>,
+        errors: Vec<LayoutWithError>,
+    ) {
         // Diff with existing layouts
         if self.available_layouts != layouts || self.available_layout_errors != errors {
             // Update the stored layouts
@@ -1862,8 +1865,8 @@ impl WasmBridge {
 
             // Notify all plugins of the change
             let _ = self.senders.send_to_plugin(PluginInstruction::Update(vec![(
-                None,  // Broadcast to all plugins
-                None,  // Broadcast to all clients
+                None, // Broadcast to all plugins
+                None, // Broadcast to all clients
                 Event::AvailableLayoutInfo(layouts, errors),
             )]));
         }
@@ -1872,7 +1875,10 @@ impl WasmBridge {
         let _ = self.senders.send_to_plugin(PluginInstruction::Update(vec![(
             Some(plugin_id),
             None,
-            Event::AvailableLayoutInfo(self.available_layouts.clone(), self.available_layout_errors.clone()),
+            Event::AvailableLayoutInfo(
+                self.available_layouts.clone(),
+                self.available_layout_errors.clone(),
+            ),
         )]));
     }
 }

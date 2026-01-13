@@ -1,9 +1,9 @@
-use zellij_tile::prelude::*;
+use super::{KeyResponse, LayoutListScreen, OptimisticUpdate, Screen};
+use crate::errors::{format_kdl_error, ErrorScreen};
+use crate::text_input::{InputAction, TextInput};
+use crate::ui::{truncate_with_ellipsis_start, LayoutDetail, Title};
 use crate::{DisplayLayout, LayoutInfo};
-use crate::ui::{LayoutDetail, truncate_with_ellipsis_start, Title};
-use crate::text_input::{TextInput, InputAction};
-use crate::errors::{ErrorScreen, format_kdl_error};
-use super::{Screen, LayoutListScreen, KeyResponse, OptimisticUpdate};
+use zellij_tile::prelude::*;
 
 #[derive(Clone)]
 pub struct ImportLayoutScreen {
@@ -36,7 +36,7 @@ impl ImportLayoutScreen {
             Err(e) => {
                 self.parsed_metadata = None;
                 self.parse_error = Some(format_kdl_error(e));
-            }
+            },
         }
     }
 
@@ -76,13 +76,9 @@ impl ImportLayoutScreen {
 
     fn handle_non_editing_mode_key(&mut self, key: KeyWithModifier) -> KeyResponse {
         match key.bare_key {
-            BareKey::Enter if key.has_no_modifiers() => {
-                self.attempt_save_layout()
-            }
-            BareKey::Char('r') if key.has_no_modifiers() => {
-                self.enter_editing_mode()
-            }
-            _ => KeyResponse::none()
+            BareKey::Enter if key.has_no_modifiers() => self.attempt_save_layout(),
+            BareKey::Char('r') if key.has_no_modifiers() => self.enter_editing_mode(),
+            _ => KeyResponse::none(),
         }
     }
 
@@ -104,21 +100,21 @@ impl ImportLayoutScreen {
         // Check if we have a pasted layout
         let Some(pasted_text) = &self.pasted_text else {
             return KeyResponse::new_screen(
-                self.create_error_screen("Please paste a layout first")
+                self.create_error_screen("Please paste a layout first"),
             );
         };
 
         // Check if the layout is valid
         if self.parse_error.is_some() {
             return KeyResponse::new_screen(
-                self.create_error_screen("Cannot save an invalid layout")
+                self.create_error_screen("Cannot save an invalid layout"),
             );
         }
 
         // Get the parsed metadata for optimistic update
         let Some(metadata) = &self.parsed_metadata else {
             return KeyResponse::new_screen(
-                self.create_error_screen("Cannot save layout without metadata")
+                self.create_error_screen("Cannot save layout without metadata"),
             );
         };
 
@@ -131,14 +127,9 @@ impl ImportLayoutScreen {
         };
 
         match self.save_layout(&layout_name, pasted_text) {
-            Ok(()) => {
-                KeyResponse::new_screen(
-                    Screen::LayoutList(LayoutListScreen::default())
-                ).with_optimistic(optimistic)
-            }
-            Err(error_msg) => {
-                KeyResponse::new_screen(self.create_error_screen(&error_msg))
-            }
+            Ok(()) => KeyResponse::new_screen(Screen::LayoutList(LayoutListScreen::default()))
+                .with_optimistic(optimistic),
+            Err(error_msg) => KeyResponse::new_screen(self.create_error_screen(&error_msg)),
         }
     }
 
@@ -191,9 +182,9 @@ impl ImportLayoutScreen {
         };
 
         let text_suffix = if self.editing_name {
-            ""  // No hint when editing
+            "" // No hint when editing
         } else {
-            " (<r> Rename)"  // Show rename hint when not editing
+            " (<r> Rename)" // Show rename hint when not editing
         };
 
         let mut text = format!("Save as: {}{}", display_name, text_suffix);
@@ -203,7 +194,7 @@ impl ImportLayoutScreen {
             if text.chars().count() > max_width {
                 let truncated_display_name = truncate_with_ellipsis_start(
                     display_name,
-                    max_width.saturating_sub(9 + text_suffix.chars().count())
+                    max_width.saturating_sub(9 + text_suffix.chars().count()),
                 );
                 text = format!("Save as: {}{}", truncated_display_name, text_suffix);
                 let truncated_len = truncated_display_name.chars().count();
@@ -222,10 +213,7 @@ impl ImportLayoutScreen {
 
     fn help_text(&self) -> (&str, &[&str]) {
         // Only Enter and Esc - NO <r> here (it's in the save-as line)
-        (
-            "<Enter> - Save, <Esc> - Back",
-            &["<Enter>", "<Esc>"],
-        )
+        ("<Enter> - Save, <Esc> - Back", &["<Enter>", "<Esc>"])
     }
 
     fn render_help_text(&self, x: usize, y: usize, _width: usize) {
@@ -245,23 +233,22 @@ impl ImportLayoutScreen {
     pub fn render(&self, rows: usize, cols: usize) {
         // Only render modal if we have a valid pasted layout
         if let Some(metadata) = &self.parsed_metadata {
-            let display_layout = DisplayLayout::Valid(LayoutInfo::File(
-                "imported".to_string(),
-                metadata.clone()
-            ));
+            let display_layout =
+                DisplayLayout::Valid(LayoutInfo::File("imported".to_string(), metadata.clone()));
 
             let layout_detail = LayoutDetail::new(&display_layout);
 
             let desired_ui_width = std::cmp::max(
                 self.help_text().0.chars().count(),
-                self.save_as_line_text(None).0.chars().count()
+                self.save_as_line_text(None).0.chars().count(),
             );
 
             let actual_ui_width = std::cmp::min(desired_ui_width, cols);
 
             // Calculate layout detail dimensions
             let available_cols_for_details = actual_ui_width.saturating_sub(2);
-            let desired_details_height = layout_detail.calculate_required_height(available_cols_for_details);
+            let desired_details_height =
+                layout_detail.calculate_required_height(available_cols_for_details);
 
             let desired_ui_height = 6 + desired_details_height;
             let base_y = rows.saturating_sub(desired_ui_height) / 2;
@@ -283,12 +270,16 @@ impl ImportLayoutScreen {
                 desired_details_height
             };
 
-            layout_detail.render(base_x + 2, details_y, actual_details_height, available_cols_for_details);
+            layout_detail.render(
+                base_x + 2,
+                details_y,
+                actual_details_height,
+                available_cols_for_details,
+            );
 
             // Render help text
             let help_y = details_y + actual_details_height + 1;
             self.render_help_text(base_x, help_y, actual_ui_width);
-
         } else if let Some(error) = &self.parse_error {
             // Show error if parse failed
             Title::new("Import Layout").render(0, 0);
@@ -297,11 +288,10 @@ impl ImportLayoutScreen {
             let help_y = rows.saturating_sub(2);
             self.render_esc_cancel_help(0, help_y);
         } else {
-
             // Calculate desired width
             let desired_ui_width = std::cmp::max(
                 self.help_text().0.chars().count(),
-                self.max_description_width()
+                self.max_description_width(),
             );
 
             let actual_ui_width = std::cmp::min(desired_ui_width, cols);

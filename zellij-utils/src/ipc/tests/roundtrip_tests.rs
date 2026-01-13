@@ -1,8 +1,8 @@
 use super::test_framework::*;
 use crate::data::{
     BareKey, CommandOrPlugin, ConnectToSession, Direction, FloatingPaneCoordinates, InputMode,
-    KeyModifier, KeyWithModifier, LayoutInfo, LayoutMetadata, OriginatingPlugin, PaneId, PluginTag, Resize,
-    WebSharing,
+    KeyModifier, KeyWithModifier, LayoutInfo, LayoutMetadata, OriginatingPlugin, PaneId, PluginTag,
+    Resize, WebSharing,
 };
 use crate::input::actions::{Action, SearchDirection, SearchOption};
 use crate::input::cli_assets::CliAssets;
@@ -3047,7 +3047,14 @@ fn test_server_messages() {
             name: Some("new_session_name".to_owned()),
             tab_position: Some(5),
             pane_id: Some((5, true)),
-            layout: Some(LayoutInfo::File("/path/to/my/file.kdl".to_owned(), LayoutMetadata { tabs: vec![], creation_time: "0".to_owned(), update_time: "0".to_owned() })),
+            layout: Some(LayoutInfo::File(
+                "/path/to/my/file.kdl".to_owned(),
+                LayoutMetadata {
+                    tabs: vec![],
+                    creation_time: "0".to_owned(),
+                    update_time: "0".to_owned()
+                }
+            )),
             cwd: Some(PathBuf::from("/path/to/cwd")),
         }
     });

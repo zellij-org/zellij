@@ -1,8 +1,9 @@
 mod kdl_layout_parser;
 use crate::data::{
     BareKey, Direction, FloatingPaneCoordinates, InputMode, KeyWithModifier, LayoutInfo,
-    MultiplayerColors, Palette, PaletteColor, PaneId, PaneInfo, PaneManifest, PermissionType,
-    Resize, SessionInfo, StyleDeclaration, Styling, TabInfo, WebSharing, LayoutMetadata, DEFAULT_STYLES,
+    LayoutMetadata, MultiplayerColors, Palette, PaletteColor, PaneId, PaneInfo, PaneManifest,
+    PermissionType, Resize, SessionInfo, StyleDeclaration, Styling, TabInfo, WebSharing,
+    DEFAULT_STYLES,
 };
 use crate::envs::EnvironmentVariables;
 use crate::home::{find_default_config_dir, get_layout_dir};
@@ -1758,9 +1759,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                     })
                     .unwrap_or(false);
                 let apply_only_to_active_tab = command_metadata
-                    .and_then(|c_m| {
-                        kdl_child_bool_value_for_entry(c_m, "apply_only_to_active_tab")
-                    })
+                    .and_then(|c_m| kdl_child_bool_value_for_entry(c_m, "apply_only_to_active_tab"))
                     .unwrap_or(false);
 
                 let layout_dir = config_options
@@ -5168,7 +5167,9 @@ impl SessionInfo {
                         match layout_source {
                             Some(layout_source) => match layout_source {
                                 "built-in" => Some(LayoutInfo::BuiltIn(layout_name)),
-                                "file" => Some(LayoutInfo::File(layout_name, LayoutMetadata::default())),
+                                "file" => {
+                                    Some(LayoutInfo::File(layout_name, LayoutMetadata::default()))
+                                },
                                 _ => None,
                             },
                             None => None,

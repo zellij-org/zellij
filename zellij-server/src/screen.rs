@@ -12,9 +12,9 @@ use crate::route::NotificationEnd;
 
 use log::{debug, warn};
 use zellij_utils::data::{
-    CommandOrPlugin, Direction, FloatingPaneCoordinates, GetFocusedPaneInfoResponse, KeyWithModifier, NewPanePlacement,
-    PaneContents, PaneManifest, PaneScrollbackResponse, PluginPermission, Resize, ResizeStrategy,
-    SessionInfo, Styling, WebSharing,
+    CommandOrPlugin, Direction, FloatingPaneCoordinates, GetFocusedPaneInfoResponse,
+    KeyWithModifier, NewPanePlacement, PaneContents, PaneManifest, PaneScrollbackResponse,
+    PluginPermission, Resize, ResizeStrategy, SessionInfo, Styling, WebSharing,
 };
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
@@ -2148,7 +2148,8 @@ impl Screen {
     }
     fn dump_layout_to_hd(&mut self) -> Result<()> {
         let err_context = || format!("Failed to log and report session state");
-        let session_layout_metadata = self.get_layout_metadata(Some(self.default_shell.clone()), None);
+        let session_layout_metadata =
+            self.get_layout_metadata(Some(self.default_shell.clone()), None);
         self.bus
             .senders
             .send_to_plugin(PluginInstruction::LogLayoutToHd(session_layout_metadata))
@@ -3323,7 +3324,9 @@ impl Screen {
             first_client_id.and_then(|client_id| self.active_tab_indices.get(&client_id));
 
         // Filter tabs based on optional tab_index parameter
-        let tabs_to_process: Vec<_> = self.tabs.iter()
+        let tabs_to_process: Vec<_> = self
+            .tabs
+            .iter()
             .filter(|(idx, _)| tab_index.map_or(true, |target| **idx == target))
             .collect();
 
@@ -4234,12 +4237,14 @@ pub(crate) fn screen_thread_main(
                     ))
                     .with_context(err_context)?;
             },
-            ScreenInstruction::DumpLayoutToPlugin { plugin_id, tab_index, response_channel } => {
+            ScreenInstruction::DumpLayoutToPlugin {
+                plugin_id,
+                tab_index,
+                response_channel,
+            } => {
                 let err_context = || format!("Failed to dump layout");
-                let session_layout_metadata = screen.get_layout_metadata(
-                    Some(screen.default_shell.clone()),
-                    tab_index,
-                );
+                let session_layout_metadata =
+                    screen.get_layout_metadata(Some(screen.default_shell.clone()), tab_index);
                 screen
                     .bus
                     .senders
@@ -4251,22 +4256,25 @@ pub(crate) fn screen_thread_main(
                     .with_context(err_context)
                     .non_fatal();
             },
-            ScreenInstruction::GetFocusedPaneInfo { client_id, response_channel } => {
+            ScreenInstruction::GetFocusedPaneInfo {
+                client_id,
+                response_channel,
+            } => {
                 let response = match screen.active_tab_indices.get(&client_id) {
-                    Some(&focused_tab_index) => {
-                        match screen.get_active_pane_id(&client_id) {
-                            Some(focused_pane_id) => GetFocusedPaneInfoResponse::Ok {
-                                tab_index: focused_tab_index,
-                                pane_id: focused_pane_id.into(),
-                            },
-                            None => GetFocusedPaneInfoResponse::Err(
-                                format!("No active pane found for client {:?}", client_id)
-                            ),
-                        }
+                    Some(&focused_tab_index) => match screen.get_active_pane_id(&client_id) {
+                        Some(focused_pane_id) => GetFocusedPaneInfoResponse::Ok {
+                            tab_index: focused_tab_index,
+                            pane_id: focused_pane_id.into(),
+                        },
+                        None => GetFocusedPaneInfoResponse::Err(format!(
+                            "No active pane found for client {:?}",
+                            client_id
+                        )),
                     },
-                    None => GetFocusedPaneInfoResponse::Err(
-                        format!("Client {:?} not found in active_tab_indices", client_id)
-                    ),
+                    None => GetFocusedPaneInfoResponse::Err(format!(
+                        "Client {:?} not found in active_tab_indices",
+                        client_id
+                    )),
                 };
                 let _ = response_channel.send(response);
             },
@@ -5246,10 +5254,8 @@ pub(crate) fn screen_thread_main(
             ) => {
                 // 1. Determine which tabs to close (exist but not in layout)
                 let existing_tab_indices: HashSet<usize> = screen.tabs.keys().copied().collect();
-                let layout_tab_indices: HashSet<usize> = tab_layouts
-                    .iter()
-                    .map(|tl| tl.tab_index)
-                    .collect();
+                let layout_tab_indices: HashSet<usize> =
+                    tab_layouts.iter().map(|tl| tl.tab_index).collect();
                 let tabs_to_close: Vec<usize> = existing_tab_indices
                     .difference(&layout_tab_indices)
                     .copied()
@@ -5257,7 +5263,6 @@ pub(crate) fn screen_thread_main(
 
                 // 2. Process each tab layout
                 let mut processed_tab_layouts = Vec::new();
-
 
                 if apply_only_to_focused_tab {
                     match screen.get_active_tab_mut(client_id) {
@@ -5282,22 +5287,23 @@ pub(crate) fn screen_thread_main(
 
                             // Mark run instructions to ignore (prevents re-spawning)
                             for run_instruction in tiled_to_ignore {
-                                tab_layout_info.tiled_layout.ignore_run_instruction(run_instruction);
+                                tab_layout_info
+                                    .tiled_layout
+                                    .ignore_run_instruction(run_instruction);
                             }
 
                             for idx in floating_indices {
-                                tab_layout_info.floating_layouts
+                                tab_layout_info
+                                    .floating_layouts
                                     .get_mut(idx)
                                     .map(|f| f.already_running = true);
                             }
 
                             processed_tab_layouts.push(tab_layout_info);
-
-
                         },
                         Err(e) => {
                             log::error!("Failed to override layout of active tab: {}", e);
-                        }
+                        },
                     }
                 } else {
                     for mut tab_layout_info in tab_layouts {
@@ -5308,7 +5314,7 @@ pub(crate) fn screen_thread_main(
                                 // no corresponding tab exists, we'll create it
                                 processed_tab_layouts.push(tab_layout_info);
                                 continue;
-                            }
+                            },
                         };
 
                         // Set the tab name if provided
@@ -5325,11 +5331,14 @@ pub(crate) fn screen_thread_main(
 
                         // Mark run instructions to ignore (prevents re-spawning)
                         for run_instruction in tiled_to_ignore {
-                            tab_layout_info.tiled_layout.ignore_run_instruction(run_instruction);
+                            tab_layout_info
+                                .tiled_layout
+                                .ignore_run_instruction(run_instruction);
                         }
 
                         for idx in floating_indices {
-                            tab_layout_info.floating_layouts
+                            tab_layout_info
+                                .floating_layouts
                                 .get_mut(idx)
                                 .map(|f| f.already_running = true);
                         }

@@ -10,13 +10,13 @@ use zellij_utils::input::actions::Action;
 pub use zellij_utils::plugin_api;
 use zellij_utils::plugin_api::event::ProtobufPaneScrollbackResponse;
 use zellij_utils::plugin_api::plugin_command::{
-    CreateTokenResponse, ListTokensResponse, ProtobufDeleteLayoutResponse,
-    ProtobufRenameLayoutResponse, ProtobufDumpLayoutResponse, ProtobufGetLayoutDirResponse,
-    ProtobufDumpSessionLayoutResponse, ProtobufEditLayoutResponse,
-    ProtobufGenerateRandomNameResponse, ProtobufGetPanePidResponse, ProtobufPluginCommand,
-    ProtobufSaveLayoutResponse, RenameWebTokenResponse, RevokeAllWebTokensResponse,
-    RevokeTokenResponse, dump_layout_response, dump_session_layout_response,
-    ProtobufParseLayoutResponse, ProtobufGetFocusedPaneInfoResponse, parse_layout_response, get_focused_pane_info_response,
+    dump_layout_response, dump_session_layout_response, get_focused_pane_info_response,
+    parse_layout_response, CreateTokenResponse, ListTokensResponse, ProtobufDeleteLayoutResponse,
+    ProtobufDumpLayoutResponse, ProtobufDumpSessionLayoutResponse, ProtobufEditLayoutResponse,
+    ProtobufGenerateRandomNameResponse, ProtobufGetFocusedPaneInfoResponse,
+    ProtobufGetLayoutDirResponse, ProtobufGetPanePidResponse, ProtobufParseLayoutResponse,
+    ProtobufPluginCommand, ProtobufRenameLayoutResponse, ProtobufSaveLayoutResponse,
+    RenameWebTokenResponse, RevokeAllWebTokensResponse, RevokeTokenResponse,
 };
 use zellij_utils::plugin_api::plugin_ids::{ProtobufPluginIds, ProtobufZellijVersion};
 
@@ -105,8 +105,7 @@ pub fn generate_random_name() -> String {
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
     let response =
-        ProtobufGenerateRandomNameResponse::decode(bytes_from_stdin().unwrap().as_slice())
-            .unwrap();
+        ProtobufGenerateRandomNameResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
     response.name
 }
 
@@ -126,8 +125,8 @@ pub fn dump_layout(layout_name: &str) -> Result<String, String> {
     unsafe { host_run_plugin_command() };
 
     // Read and decode the response
-    let response_bytes = bytes_from_stdin()
-        .map_err(|e| format!("Failed to read response from stdin: {:?}", e))?;
+    let response_bytes =
+        bytes_from_stdin().map_err(|e| format!("Failed to read response from stdin: {:?}", e))?;
 
     let protobuf_response = ProtobufDumpLayoutResponse::decode(response_bytes.as_slice())
         .map_err(|e| format!("Failed to decode protobuf response: {}", e))?;
@@ -157,8 +156,7 @@ pub fn get_layout_dir() -> String {
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
     let response =
-        ProtobufGetLayoutDirResponse::decode(bytes_from_stdin().unwrap().as_slice())
-            .unwrap();
+        ProtobufGetLayoutDirResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
     response.layout_dir
 }
 
@@ -169,21 +167,17 @@ pub fn get_focused_pane_info() -> Result<(usize, PaneId), String> {
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
 
-    let protobuf_response = ProtobufGetFocusedPaneInfoResponse::decode(
-        bytes_from_stdin().unwrap().as_slice()
-    )
-    .unwrap();
+    let protobuf_response =
+        ProtobufGetFocusedPaneInfoResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
 
     match protobuf_response.result {
         Some(get_focused_pane_info_response::Result::FocusedPaneInfo(info)) => {
             let tab_index = info.focused_tab_index as usize;
             match info.focused_pane_id {
-                Some(pb_pane_id) => {
-                    match pb_pane_id.try_into() {
-                        Ok(pane_id) => Ok((tab_index, pane_id)),
-                        Err(_) => Err("Invalid pane_id in response".to_string()),
-                    }
-                }
+                Some(pb_pane_id) => match pb_pane_id.try_into() {
+                    Ok(pane_id) => Ok((tab_index, pane_id)),
+                    Err(_) => Err("Invalid pane_id in response".to_string()),
+                },
                 None => Err("Missing pane_id in response".to_string()),
             }
         },
@@ -1120,24 +1114,29 @@ pub fn dump_session_layout() -> Result<(String, Option<LayoutMetadata>), String>
 
 /// Get the serialized layout for a specific tab in KDL format synchronously
 /// note: this removes the requesting plugin from the dumped layout
-pub fn dump_session_layout_for_tab(tab_index: usize) -> Result<(String, Option<LayoutMetadata>), String> {
+pub fn dump_session_layout_for_tab(
+    tab_index: usize,
+) -> Result<(String, Option<LayoutMetadata>), String> {
     dump_session_layout_impl(Some(tab_index))
 }
 
-fn dump_session_layout_impl(tab_index: Option<usize>) -> Result<(String, Option<LayoutMetadata>), String> {
+fn dump_session_layout_impl(
+    tab_index: Option<usize>,
+) -> Result<(String, Option<LayoutMetadata>), String> {
     let plugin_command = PluginCommand::DumpSessionLayout { tab_index };
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
 
     unsafe { host_run_plugin_command() };
 
-    let response_bytes = bytes_from_stdin()
-        .map_err(|e| format!("Failed to read response from stdin: {:?}", e))?;
+    let response_bytes =
+        bytes_from_stdin().map_err(|e| format!("Failed to read response from stdin: {:?}", e))?;
     let protobuf_response = ProtobufDumpSessionLayoutResponse::decode(response_bytes.as_slice())
         .map_err(|e| format!("Failed to decode protobuf response: {}", e))?;
 
     // Extract metadata if present
-    let metadata = protobuf_response.metadata
+    let metadata = protobuf_response
+        .metadata
         .and_then(|pb_metadata| pb_metadata.try_into().ok());
 
     match protobuf_response.result {
@@ -1157,21 +1156,18 @@ pub fn parse_layout(layout_string: &str) -> Result<LayoutMetadata, LayoutParsing
 
     unsafe { host_run_plugin_command() };
 
-    let response_bytes = bytes_from_stdin()
-        .map_err(|_| LayoutParsingError::SyntaxError)?;
+    let response_bytes = bytes_from_stdin().map_err(|_| LayoutParsingError::SyntaxError)?;
 
     let protobuf_response = ProtobufParseLayoutResponse::decode(response_bytes.as_slice())
         .map_err(|_| LayoutParsingError::SyntaxError)?;
 
     match protobuf_response.result {
-        Some(parse_layout_response::Result::Metadata(metadata)) => {
-            metadata.try_into()
-                .map_err(|_| LayoutParsingError::SyntaxError)
-        },
-        Some(parse_layout_response::Result::Error(error)) => {
-            Err(error.try_into()
-                .map_err(|_| LayoutParsingError::SyntaxError)?)
-        },
+        Some(parse_layout_response::Result::Metadata(metadata)) => metadata
+            .try_into()
+            .map_err(|_| LayoutParsingError::SyntaxError),
+        Some(parse_layout_response::Result::Error(error)) => Err(error
+            .try_into()
+            .map_err(|_| LayoutParsingError::SyntaxError)?),
         None => Err(LayoutParsingError::SyntaxError),
     }
 }
@@ -1360,7 +1356,11 @@ pub fn get_pane_pid(pane_id: PaneId) -> Result<i32, String> {
 /// # Returns
 /// * `Ok(())` - Layout was successfully validated and saved
 /// * `Err(String)` - Error message (parse error, I/O error, file exists, etc.)
-pub fn save_layout<S: AsRef<str>>(layout_name: S, layout_kdl: S, overwrite: bool) -> Result<(), String> {
+pub fn save_layout<S: AsRef<str>>(
+    layout_name: S,
+    layout_kdl: S,
+    overwrite: bool,
+) -> Result<(), String> {
     let plugin_command = PluginCommand::SaveLayout {
         layout_name: layout_name.as_ref().to_owned(),
         layout_kdl: layout_kdl.as_ref().to_owned(),
@@ -1476,7 +1476,10 @@ pub fn delete_layout<S: AsRef<str>>(layout_name: S) -> Result<(), String> {
 ///     Err(e) => eprintln!("Failed to rename layout: {}", e),
 /// }
 /// ```
-pub fn rename_layout(old_layout_name: impl Into<String>, new_layout_name: impl Into<String>) -> Result<(), String> {
+pub fn rename_layout(
+    old_layout_name: impl Into<String>,
+    new_layout_name: impl Into<String>,
+) -> Result<(), String> {
     let plugin_command = PluginCommand::RenameLayout {
         old_layout_name: old_layout_name.into(),
         new_layout_name: new_layout_name.into(),
@@ -1505,7 +1508,10 @@ pub fn rename_layout(old_layout_name: impl Into<String>, new_layout_name: impl I
 }
 
 /// Opens a layout file in the user's default `$EDITOR`
-pub fn edit_layout<S: AsRef<str>>(layout_name: S, context: BTreeMap<String, String>) -> Result<(), String> {
+pub fn edit_layout<S: AsRef<str>>(
+    layout_name: S,
+    context: BTreeMap<String, String>,
+) -> Result<(), String> {
     let layout_name = layout_name.as_ref().to_owned();
     let plugin_command = PluginCommand::EditLayout {
         layout_name,
@@ -1996,7 +2002,7 @@ pub fn override_layout<L: AsRef<LayoutInfo>>(
         retain_existing_terminal_panes,
         retain_existing_plugin_panes,
         apply_only_to_active_tab,
-        context
+        context,
     );
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());

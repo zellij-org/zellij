@@ -20,10 +20,10 @@ use wasmi::Engine;
 use crate::panes::PaneId;
 use crate::route::NotificationEnd;
 use crate::screen::ScreenInstruction;
-use zellij_utils::input::layout::TabLayoutInfo;
 use crate::session_layout_metadata::SessionLayoutMetadata;
 use crate::{pty::PtyInstruction, thread_bus::Bus, ClientId, ServerInstruction};
 use zellij_utils::data::PaneRenderReport;
+use zellij_utils::input::layout::TabLayoutInfo;
 
 pub use wasm_bridge::PluginRenderAsset;
 use wasm_bridge::WasmBridge;
@@ -32,17 +32,15 @@ use async_std::{channel, future::timeout, task};
 use zellij_utils::{
     data::{
         ClientInfo, CommandOrPlugin, Event, EventType, FloatingPaneCoordinates, InputMode,
-        LayoutInfo, LayoutWithError, MessageToPlugin, PermissionStatus, PermissionType, PipeMessage, PipeSource,
-        PluginCapabilities, WebServerStatus,
+        LayoutInfo, LayoutWithError, MessageToPlugin, PermissionStatus, PermissionType,
+        PipeMessage, PipeSource, PluginCapabilities, WebServerStatus,
     },
     errors::{prelude::*, ContextType, PluginContext},
     input::{
         actions::Action,
         command::TerminalAction,
         keybinds::Keybinds,
-        layout::{
-            FloatingPaneLayout, Layout, Run, RunPlugin, RunPluginOrAlias, TiledPaneLayout,
-        },
+        layout::{FloatingPaneLayout, Layout, Run, RunPlugin, RunPluginOrAlias, TiledPaneLayout},
         plugins::PluginAliases,
     },
     ipc::ClientAttributes,
@@ -262,7 +260,9 @@ impl From<&PluginInstruction> for PluginContext {
             PluginInstruction::PaneRenderReport(..) => PluginContext::PaneRenderReport,
             PluginInstruction::UserInput { .. } => PluginContext::UserInput,
             PluginInstruction::LayoutListUpdate(..) => PluginContext::LayoutListUpdate,
-            PluginInstruction::RequestStateUpdateForPlugin(..) => PluginContext::RequestStateUpdateForPlugin,
+            PluginInstruction::RequestStateUpdateForPlugin(..) => {
+                PluginContext::RequestStateUpdateForPlugin
+            },
         }
     }
 }
@@ -627,7 +627,9 @@ pub(crate) fn plugin_thread_main(
 
                 for mut tab_layout_info in tab_layouts {
                     // Populate plugin aliases in layouts
-                    tab_layout_info.tiled_layout.populate_plugin_aliases_in_layout(&plugin_aliases);
+                    tab_layout_info
+                        .tiled_layout
+                        .populate_plugin_aliases_in_layout(&plugin_aliases);
                     tab_layout_info.floating_layouts.iter_mut().for_each(|f| {
                         f.run
                             .as_mut()
@@ -635,10 +637,12 @@ pub(crate) fn plugin_thread_main(
                     });
 
                     // Extract run instructions from tiled layout
-                    let extracted_run_instructions = tab_layout_info.tiled_layout.extract_run_instructions();
+                    let extracted_run_instructions =
+                        tab_layout_info.tiled_layout.extract_run_instructions();
 
                     // Extract run instructions from floating layouts (excluding already_running)
-                    let extracted_floating_plugins: Vec<Option<Run>> = tab_layout_info.floating_layouts
+                    let extracted_floating_plugins: Vec<Option<Run>> = tab_layout_info
+                        .floating_layouts
                         .iter()
                         .filter(|f| !f.already_running)
                         .map(|f| f.run.clone())
@@ -799,7 +803,7 @@ pub(crate) fn plugin_thread_main(
             PluginInstruction::DumpLayoutToPlugin {
                 mut session_layout_metadata,
                 plugin_id,
-                response_channel
+                response_channel,
             } => {
                 populate_session_layout_metadata(
                     &mut session_layout_metadata,
@@ -844,7 +848,7 @@ pub(crate) fn plugin_thread_main(
                             Event::CustomMessage("session_layout_error".to_owned(), error_msg),
                         )];
                         wasm_bridge.update_plugins(updates, shutdown_send.clone())?;
-                    }
+                    },
                 }
             },
             PluginInstruction::ListClientsToPlugin(
@@ -1198,7 +1202,7 @@ pub(crate) fn plugin_thread_main(
             },
             PluginInstruction::RequestStateUpdateForPlugin(plugin_id) => {
                 wasm_bridge.state_update_for_plugin(plugin_id);
-            }
+            },
             PluginInstruction::Exit => {
                 break;
             },

@@ -1,17 +1,17 @@
+mod import_layout;
 mod layout_list;
 mod new_layout_from_session;
-mod import_layout;
 mod rename_layout;
 
 use zellij_tile::prelude::LayoutMetadata;
 
+pub use import_layout::ImportLayoutScreen;
 pub use layout_list::LayoutListScreen;
 pub use new_layout_from_session::NewLayoutFromCurrentSessionScreen;
-pub use import_layout::ImportLayoutScreen;
 pub use rename_layout::RenameLayoutScreen;
 
 // Re-export error types from errors module for convenience
-pub use crate::errors::{ErrorScreen, ErrorDetailScreen};
+pub use crate::errors::{ErrorDetailScreen, ErrorScreen};
 
 #[derive(Clone)]
 pub enum Screen {
@@ -32,9 +32,15 @@ impl Default for Screen {
 /// Optimistic state updates to apply before Zellij confirms
 #[derive(Clone, Debug)]
 pub enum OptimisticUpdate {
-    Delete(String),  // file_name
-    Rename { old_name: String, new_name: String },
-    Add { name: String, metadata: LayoutMetadata },
+    Delete(String), // file_name
+    Rename {
+        old_name: String,
+        new_name: String,
+    },
+    Add {
+        name: String,
+        metadata: LayoutMetadata,
+    },
 }
 
 /// Response from screen key handlers

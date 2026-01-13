@@ -696,7 +696,10 @@ pub fn start_client(
                 config_dir: cli_args.config_dir.clone(),
                 should_ignore_config: cli_args.is_setup_clean(),
                 configuration_options: Some(config_options.clone()),
-                layout: Some(LayoutInfo::File(path_to_layout.display().to_string(), LayoutMetadata::default())),
+                layout: Some(LayoutInfo::File(
+                    path_to_layout.display().to_string(),
+                    LayoutMetadata::default(),
+                )),
                 terminal_window_size: full_screen_ws,
                 data_dir: cli_args.data_dir.clone(),
                 is_debug: cli_args.debug,
@@ -1128,7 +1131,10 @@ pub fn start_server_detached(
                 config_dir: cli_args.config_dir.clone(),
                 should_ignore_config: cli_args.is_setup_clean(),
                 configuration_options: Some(config_options.clone()),
-                layout: Some(LayoutInfo::File(path_to_layout.display().to_string(), LayoutMetadata::default())),
+                layout: Some(LayoutInfo::File(
+                    path_to_layout.display().to_string(),
+                    LayoutMetadata::default(),
+                )),
                 terminal_window_size: Size { cols: 50, rows: 50 }, // static number until a
                 // client connects
                 data_dir: cli_args.data_dir.clone(),

@@ -51,8 +51,8 @@ use zellij_utils::{
         DEFAULT_SCROLL_BUFFER_SIZE, SCROLL_BUFFER_SIZE, ZELLIJ_SEEN_RELEASE_NOTES_CACHE_FILE,
     },
     data::{
-        ConnectToSession, Event, InputMode, KeyWithModifier, LayoutInfo, LayoutWithError, PluginCapabilities, Style,
-        WebSharing,
+        ConnectToSession, Event, InputMode, KeyWithModifier, LayoutInfo, LayoutWithError,
+        PluginCapabilities, Style, WebSharing,
     },
     errors::{prelude::*, ContextType, ErrorInstruction, FatalError, ServerContext},
     home::{default_layout_dir, get_default_data_dir},
@@ -1804,7 +1804,10 @@ fn init_session(
             let client_attributes = client_attributes.clone();
             let default_shell = default_shell.clone();
             let capabilities = capabilities.clone();
-            let layout_dir = config_options.layout_dir.clone().or_else(|| default_layout_dir());
+            let layout_dir = config_options
+                .layout_dir
+                .clone()
+                .or_else(|| default_layout_dir());
             let background_plugins = config.background_plugins.clone();
             move || {
                 plugin_thread_main(
@@ -1879,7 +1882,10 @@ fn init_session(
         })
         .unwrap();
     if let Some(config_file_path) = cli_assets.config_file_path.clone() {
-        let layout_dir = config_options.layout_dir.clone().or_else(|| default_layout_dir());
+        let layout_dir = config_options
+            .layout_dir
+            .clone()
+            .or_else(|| default_layout_dir());
         let default_layout_name = config_options
             .default_layout
             .map(|l| format!("{}", l.display()));
@@ -2021,12 +2027,19 @@ fn report_changes_in_layout_dir(
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async move {
             let to_plugin = to_plugin.clone();
-            watch_layout_dir_changes(layout_dir, default_layout_name, move |new_layouts, layout_errors| {
-                let to_plugin = to_plugin.clone();
-                async move {
-                    let _ = to_plugin.send(PluginInstruction::LayoutListUpdate(new_layouts, layout_errors));
-                }
-            })
+            watch_layout_dir_changes(
+                layout_dir,
+                default_layout_name,
+                move |new_layouts, layout_errors| {
+                    let to_plugin = to_plugin.clone();
+                    async move {
+                        let _ = to_plugin.send(PluginInstruction::LayoutListUpdate(
+                            new_layouts,
+                            layout_errors,
+                        ));
+                    }
+                },
+            )
             .await;
         });
     });
@@ -2124,11 +2137,13 @@ pub fn get_engine() -> Engine {
 
 // TODO: move elsewhere
 fn get_available_layouts(config_options: &Options) -> (Vec<LayoutInfo>, Vec<LayoutWithError>) {
-    let layout_dir = config_options.layout_dir.clone().or_else(|| default_layout_dir());
+    let layout_dir = config_options
+        .layout_dir
+        .clone()
+        .or_else(|| default_layout_dir());
     let default_layout_name = config_options
         .default_layout
         .as_ref()
         .map(|l| format!("{}", l.display()));
     Layout::list_available_layouts(layout_dir, &default_layout_name)
 }
-

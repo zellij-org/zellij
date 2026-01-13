@@ -516,8 +516,7 @@ pub async fn watch_layout_dir_changes<F, Fut>(
     layout_dir: PathBuf,
     default_layout_name: Option<String>,
     on_layout_change: F,
-)
-where
+) where
     F: Fn(Vec<LayoutInfo>, Vec<LayoutWithError>) -> Fut + Send + 'static,
     Fut: std::future::Future<Output = ()> + Send,
 {
@@ -550,7 +549,10 @@ where
             while let Some(event_result) = rx.recv().await {
                 match event_result {
                     Ok(event) => {
-                        if event.kind.is_remove() || event.kind.is_create() || event.kind.is_modify() {
+                        if event.kind.is_remove()
+                            || event.kind.is_create()
+                            || event.kind.is_modify()
+                        {
                             tokio::time::sleep(Duration::from_millis(100)).await;
 
                             if !layout_dir.exists() {

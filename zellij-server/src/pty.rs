@@ -79,11 +79,11 @@ pub enum PtyInstruction {
         Option<NotificationEnd>,             // completion signal
     ), // the String is the tab name
     OverrideLayout(
-        Option<PathBuf>,        // CWD
-        Option<TerminalAction>, // Default Shell
+        Option<PathBuf>,                                           // CWD
+        Option<TerminalAction>,                                    // Default Shell
         Vec<(TabLayoutInfo, HashMap<RunPluginOrAlias, Vec<u32>>)>, // (layout, plugin_ids) per tab
-        bool,                   // retain_existing_terminal_panes
-        bool,                   // retain_existing_plugin_panes
+        bool,                                                      // retain_existing_terminal_panes
+        bool,                                                      // retain_existing_plugin_panes
         ClientId,
         Option<NotificationEnd>,
     ),
@@ -529,7 +529,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                                 e
                             );
                             // Continue with other tabs (best-effort approach)
-                        }
+                        },
                     }
                 }
 
@@ -702,7 +702,11 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     .with_context(err_context)
                     .non_fatal();
             },
-            PtyInstruction::DumpLayoutToPlugin { mut session_layout_metadata, plugin_id, response_channel } => {
+            PtyInstruction::DumpLayoutToPlugin {
+                mut session_layout_metadata,
+                plugin_id,
+                response_channel,
+            } => {
                 let err_context = || format!("Failed to dump layout");
                 pty.populate_session_layout_metadata(&mut session_layout_metadata);
                 pty.bus

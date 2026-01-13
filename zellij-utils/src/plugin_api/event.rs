@@ -5,8 +5,7 @@ pub use super::generated_api::api::{
         layout_parsing_error::ErrorType as ProtobufLayoutParsingErrorType,
         pane_scrollback_response, ActionCompletePayload as ProtobufActionCompletePayload,
         AvailableLayoutInfoPayload as ProtobufAvailableLayoutInfoPayload,
-        ClientInfo as ProtobufClientInfo,
-        ClientPaneHistory as ProtobufClientPaneHistory,
+        ClientInfo as ProtobufClientInfo, ClientPaneHistory as ProtobufClientPaneHistory,
         ClientTabHistory as ProtobufClientTabHistory, ContextItem as ProtobufContextItem,
         CopyDestination as ProtobufCopyDestination, CwdChangedPayload as ProtobufCwdChangedPayload,
         Event as ProtobufEvent, EventNameList as ProtobufEventNameList,
@@ -16,17 +15,15 @@ pub use super::generated_api::api::{
         LayoutInfo as ProtobufLayoutInfo, LayoutMetadata as ProtobufLayoutMetadata,
         LayoutParsingError as ProtobufLayoutParsingError,
         LayoutWithError as ProtobufLayoutWithError, ModeUpdatePayload as ProtobufModeUpdatePayload,
-        PaneContents as ProtobufPaneContents,
-        PaneContentsEntry as ProtobufPaneContentsEntry, PaneId as ProtobufPaneId,
-        PaneInfo as ProtobufPaneInfo, PaneManifest as ProtobufPaneManifest,
-        PaneMetadata as ProtobufPaneMetadata,
+        PaneContents as ProtobufPaneContents, PaneContentsEntry as ProtobufPaneContentsEntry,
+        PaneId as ProtobufPaneId, PaneInfo as ProtobufPaneInfo,
+        PaneManifest as ProtobufPaneManifest, PaneMetadata as ProtobufPaneMetadata,
         PaneRenderReportPayload as ProtobufPaneRenderReportPayload,
         PaneScrollbackResponse as ProtobufPaneScrollbackResponse, PaneType as ProtobufPaneType,
         PluginInfo as ProtobufPluginInfo, ResurrectableSession as ProtobufResurrectableSession,
         SelectedText as ProtobufSelectedText, SessionManifest as ProtobufSessionManifest,
         SyntaxError as ProtobufSyntaxError, TabInfo as ProtobufTabInfo,
-        TabMetadata as ProtobufTabMetadata,
-        UserActionPayload as ProtobufUserActionPayload,
+        TabMetadata as ProtobufTabMetadata, UserActionPayload as ProtobufUserActionPayload,
         WebServerStatusPayload as ProtobufWebServerStatusPayload, WebSharing as ProtobufWebSharing,
         *,
     },
@@ -480,10 +477,14 @@ impl TryFrom<ProtobufEvent> for Event {
                     }
 
                     for protobuf_error in available_layout_info_payload.layouts_with_errors {
-                        layouts_with_errors.push(crate::data::LayoutWithError::try_from(protobuf_error)?);
+                        layouts_with_errors
+                            .push(crate::data::LayoutWithError::try_from(protobuf_error)?);
                     }
 
-                    Ok(Event::AvailableLayoutInfo(available_layouts, layouts_with_errors))
+                    Ok(Event::AvailableLayoutInfo(
+                        available_layouts,
+                        layouts_with_errors,
+                    ))
                 },
                 _ => Err("Malformed payload for the AvailableLayoutInfo Event"),
             },
@@ -1294,10 +1295,10 @@ impl TryFrom<ProtobufLayoutParsingError> for crate::data::LayoutParsingError {
                     file_name: kdl_variant.file_name,
                     source_code: kdl_variant.source_code,
                 })
-            }
+            },
             ProtobufLayoutParsingErrorType::SyntaxError(_) => {
                 Ok(crate::data::LayoutParsingError::SyntaxError)
-            }
+            },
         }
     }
 }
@@ -1317,7 +1318,7 @@ impl TryFrom<crate::data::LayoutParsingError> for ProtobufLayoutParsingError {
             }),
             crate::data::LayoutParsingError::SyntaxError => {
                 ProtobufLayoutParsingErrorType::SyntaxError(ProtobufSyntaxError {})
-            }
+            },
         };
         Ok(ProtobufLayoutParsingError {
             error_type: Some(error_type),
@@ -2511,9 +2512,23 @@ fn serialize_session_update_event_with_non_default_values() {
         connected_clients: 2,
         is_current_session: true,
         available_layouts: vec![
-            LayoutInfo::File("layout 1".to_owned(), LayoutMetadata { tabs: vec![], creation_time: "0".to_owned(), update_time: "0".to_owned() }),
+            LayoutInfo::File(
+                "layout 1".to_owned(),
+                LayoutMetadata {
+                    tabs: vec![],
+                    creation_time: "0".to_owned(),
+                    update_time: "0".to_owned(),
+                },
+            ),
             LayoutInfo::BuiltIn("layout2".to_owned()),
-            LayoutInfo::File("layout3".to_owned(), LayoutMetadata { tabs: vec![], creation_time: "0".to_owned(), update_time: "0".to_owned() }),
+            LayoutInfo::File(
+                "layout3".to_owned(),
+                LayoutMetadata {
+                    tabs: vec![],
+                    creation_time: "0".to_owned(),
+                    update_time: "0".to_owned(),
+                },
+            ),
         ],
         plugins,
         web_clients_allowed: false,
@@ -2530,9 +2545,23 @@ fn serialize_session_update_event_with_non_default_values() {
         connected_clients: 0,
         is_current_session: false,
         available_layouts: vec![
-            LayoutInfo::File("layout 1".to_owned(), LayoutMetadata { tabs: vec![], creation_time: "0".to_owned(), update_time: "0".to_owned() }),
+            LayoutInfo::File(
+                "layout 1".to_owned(),
+                LayoutMetadata {
+                    tabs: vec![],
+                    creation_time: "0".to_owned(),
+                    update_time: "0".to_owned(),
+                },
+            ),
             LayoutInfo::BuiltIn("layout2".to_owned()),
-            LayoutInfo::File("layout3".to_owned(), LayoutMetadata { tabs: vec![], creation_time: "0".to_owned(), update_time: "0".to_owned() }),
+            LayoutInfo::File(
+                "layout3".to_owned(),
+                LayoutMetadata {
+                    tabs: vec![],
+                    creation_time: "0".to_owned(),
+                    update_time: "0".to_owned(),
+                },
+            ),
         ],
         plugins: Default::default(),
         web_clients_allowed: false,

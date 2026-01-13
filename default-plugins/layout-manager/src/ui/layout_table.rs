@@ -1,8 +1,17 @@
-use zellij_tile::prelude::*;
+use super::text_utils::{
+    get_last_modified_string, get_layout_display_info, truncate_with_ellipsis,
+};
 use crate::DisplayLayout;
-use super::text_utils::{get_layout_display_info, get_last_modified_string, truncate_with_ellipsis};
+use zellij_tile::prelude::*;
 
-fn create_table_row(name: &str, metadata: Option<&LayoutMetadata>, is_error: bool, is_builtin: bool, max_name_width: Option<usize>, matched_indices: Option<&Vec<usize>>) -> Vec<Text> {
+fn create_table_row(
+    name: &str,
+    metadata: Option<&LayoutMetadata>,
+    is_error: bool,
+    is_builtin: bool,
+    max_name_width: Option<usize>,
+    matched_indices: Option<&Vec<usize>>,
+) -> Vec<Text> {
     let display_name = if let Some(max_width) = max_name_width {
         truncate_with_ellipsis(name, max_width)
     } else {
@@ -58,7 +67,12 @@ pub struct LayoutsTable {
 }
 
 impl LayoutsTable {
-    pub fn new(display_layouts: Vec<DisplayLayout>, selected_layout_index: usize, hidden_above: usize, hidden_below: usize) -> Self {
+    pub fn new(
+        display_layouts: Vec<DisplayLayout>,
+        selected_layout_index: usize,
+        hidden_above: usize,
+        hidden_below: usize,
+    ) -> Self {
         Self {
             display_layouts,
             selected_layout_index,
@@ -77,14 +91,14 @@ impl LayoutsTable {
         let mut table = match self.overflow_indicator(self.hidden_above) {
             Some(overflow_indicator) => {
                 Table::new().add_styled_row(vec![Text::new(" "), overflow_indicator])
-            }
-            None => {
-                Table::new().add_row(vec![" ", " "])
-            }
+            },
+            None => Table::new().add_row(vec![" ", " "]),
         };
 
         // Calculate the actual width needed for the "last modified" column
-        let max_last_modified_width = self.display_layouts.iter()
+        let max_last_modified_width = self
+            .display_layouts
+            .iter()
             .map(|layout| {
                 let (_, metadata_opt) = get_layout_display_info(layout);
                 get_last_modified_string(metadata_opt, layout.is_builtin()).len()
@@ -102,7 +116,14 @@ impl LayoutsTable {
         for (i, layout) in self.display_layouts.iter().enumerate() {
             let (name, metadata_opt) = get_layout_display_info(layout);
             let matched_indices = self.matched_indices.get(i).and_then(|opt| opt.as_ref());
-            let mut row = create_table_row(&name, metadata_opt, layout.is_error(), layout.is_builtin(), max_name_width, matched_indices);
+            let mut row = create_table_row(
+                &name,
+                metadata_opt,
+                layout.is_error(),
+                layout.is_builtin(),
+                max_name_width,
+                matched_indices,
+            );
 
             if i == self.selected_layout_index {
                 row = apply_selection(row);
@@ -213,8 +234,15 @@ impl Controls {
     }
 
     fn get_override_text_and_keys(&self, max_cols: usize) -> (String, &[&str]) {
-        let toggle_word = if self.show_more_options { "less" } else { "more" };
-        let long_text = format!("- <Tab> Override Session Layout, <?> {} options", toggle_word);
+        let toggle_word = if self.show_more_options {
+            "less"
+        } else {
+            "more"
+        };
+        let long_text = format!(
+            "- <Tab> Override Session Layout, <?> {} options",
+            toggle_word
+        );
         let short_text = format!("<Tab> Override, <?> {} options", toggle_word);
         let minimum_text = format!("<Tab>/<?> ...");
         let text = if max_cols >= long_text.chars().count() {
@@ -224,10 +252,7 @@ impl Controls {
         } else {
             minimum_text
         };
-        (
-            text,
-            &["<Tab>", "<?>"]
-        )
+        (text, &["<Tab>", "<?>"])
     }
 
     fn get_new_layout_text_and_keys(&self, max_cols: usize) -> (&str, &[&str]) {
@@ -241,10 +266,7 @@ impl Controls {
         } else {
             minimum_text
         };
-        (
-            text,
-            &["<n>", "<i>"]
-        )
+        (text, &["<n>", "<i>"])
     }
 
     pub fn calculate_width(&self, max_cols: usize) -> usize {
@@ -321,8 +343,8 @@ impl Controls {
 
     fn render_retain_option(&self, x: usize, y: usize, max_cols: usize) {
         let (retain_text, retain_substring) = self.get_retain_text_and_highlight(max_cols);
-        let retain_line = color_control_text(retain_text, &["<t>"])
-            .color_substring(0, retain_substring);
+        let retain_line =
+            color_control_text(retain_text, &["<t>"]).color_substring(0, retain_substring);
         print_text_with_coordinates(retain_line, x, y, None, None);
     }
 
@@ -331,23 +353,35 @@ impl Controls {
         let short_text = "  <t> Retain:  Term | Pl | Both | None ";
         if max_cols >= long_text.chars().count() {
             match (self.retain_terminal_panes, self.retain_plugin_panes) {
-                (true, false) =>  ("  <t> Retain: [Terminals] |  Plugins  |  Both  |  None", "[Terminals]"),
-                (false, true) =>  ("  <t> Retain:  Terminals  | [Plugins] |  Both  |  None", "[Plugins]"),
-                (true, true) =>   ("  <t> Retain:  Terminals  |  Plugins  | [Both] |  None", "[Both]"),
-                (false, false) => ("  <t> Retain:  Terminals  |  Plugins  |  Both  | [None]", "[None]"),
+                (true, false) => (
+                    "  <t> Retain: [Terminals] |  Plugins  |  Both  |  None",
+                    "[Terminals]",
+                ),
+                (false, true) => (
+                    "  <t> Retain:  Terminals  | [Plugins] |  Both  |  None",
+                    "[Plugins]",
+                ),
+                (true, true) => (
+                    "  <t> Retain:  Terminals  |  Plugins  | [Both] |  None",
+                    "[Both]",
+                ),
+                (false, false) => (
+                    "  <t> Retain:  Terminals  |  Plugins  |  Both  | [None]",
+                    "[None]",
+                ),
             }
         } else if max_cols >= short_text.chars().count() {
             match (self.retain_terminal_panes, self.retain_plugin_panes) {
-                (true, false) =>  ("  <t> Retain: [Term]| Pl | Both | None", "[Term]"),
-                (false, true) =>  ("  <t> Retain:  Term |[Pl]| Both | None", "[Pl]"),
-                (true, true) =>   ("  <t> Retain:  Term | Pl |[Both]| None", "[Both]"),
+                (true, false) => ("  <t> Retain: [Term]| Pl | Both | None", "[Term]"),
+                (false, true) => ("  <t> Retain:  Term |[Pl]| Both | None", "[Pl]"),
+                (true, true) => ("  <t> Retain:  Term | Pl |[Both]| None", "[Both]"),
                 (false, false) => ("  <t> Retain:  Term | Pl | Both |[None]", "[None]"),
             }
         } else {
             match (self.retain_terminal_panes, self.retain_plugin_panes) {
-                (true, false) =>  ("  <t> R: [T] | P | B | N ...", "[T]"),
-                (false, true) =>  ("  <t> R:  T  |[P]| B | N ...", "[P]"),
-                (true, true) =>   ("  <t> R:  T  | P |[B]| N ...", "[B]"),
+                (true, false) => ("  <t> R: [T] | P | B | N ...", "[T]"),
+                (false, true) => ("  <t> R:  T  |[P]| B | N ...", "[P]"),
+                (true, true) => ("  <t> R:  T  | P |[B]| N ...", "[B]"),
                 (false, false) => ("  <t> R:  T  | P | B |[N]...", "[N]"),
             }
         }
@@ -355,14 +389,14 @@ impl Controls {
 
     fn render_target_option(&self, x: usize, y: usize, max_cols: usize) {
         let (target_text, target_substring) = self.get_target_text_and_highlight(max_cols);
-        let target_line = color_control_text(target_text, &["<a>"])
-            .color_substring(2, target_substring);
+        let target_line =
+            color_control_text(target_text, &["<a>"]).color_substring(2, target_substring);
         print_text_with_coordinates(target_line, x, y, None, None);
     }
 
     fn get_target_text_and_highlight(&self, max_cols: usize) -> (&str, &str) {
         if self.apply_only_to_active_tab {
-            let long_text =  "  <a> Target:  All Tabs   | [Current]";
+            let long_text = "  <a> Target:  All Tabs   | [Current]";
             let short_text = "  <a> Target:  All |[Current]";
             if max_cols >= long_text.chars().count() {
                 (long_text, "[Current]")
@@ -370,7 +404,7 @@ impl Controls {
                 (short_text, "[Current]")
             }
         } else {
-            let long_text =  "  <a> Target: [All Tabs]  |  Current ";
+            let long_text = "  <a> Target: [All Tabs]  |  Current ";
             let short_text = "  <a> Target: [All]| Current ";
             if max_cols >= long_text.chars().count() {
                 (long_text, "[All Tabs]")

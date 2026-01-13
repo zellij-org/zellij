@@ -1528,22 +1528,20 @@ impl TryFrom<Action> for ProtobufAction {
                 retain_existing_terminal_panes,
                 retain_existing_plugin_panes,
                 apply_only_to_active_tab,
-            } => {
-                Ok(ProtobufAction {
-                    name: ProtobufActionName::OverrideLayout as i32,
-                    optional_payload: Some(OptionalPayload::OverrideLayoutPayload(
-                        OverrideLayoutPayload {
-                            tabs: tabs
-                                .into_iter()
-                                .map(|t| t.try_into())
-                                .collect::<Result<Vec<_>, _>>()?,
-                            retain_existing_terminal_panes,
-                            retain_existing_plugin_panes,
-                            apply_only_to_active_tab,
-                        },
-                    )),
-                })
-            },
+            } => Ok(ProtobufAction {
+                name: ProtobufActionName::OverrideLayout as i32,
+                optional_payload: Some(OptionalPayload::OverrideLayoutPayload(
+                    OverrideLayoutPayload {
+                        tabs: tabs
+                            .into_iter()
+                            .map(|t| t.try_into())
+                            .collect::<Result<Vec<_>, _>>()?,
+                        retain_existing_terminal_panes,
+                        retain_existing_plugin_panes,
+                        apply_only_to_active_tab,
+                    },
+                )),
+            }),
             Action::QueryTabNames => Ok(ProtobufAction {
                 name: ProtobufActionName::QueryTabNames as i32,
                 optional_payload: None,

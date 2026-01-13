@@ -11,7 +11,7 @@
 #[cfg(not(target_family = "wasm"))]
 use crate::downloader::Downloader;
 use crate::{
-    data::{Direction, LayoutInfo, LayoutMetadata, LayoutWithError, LayoutParsingError},
+    data::{Direction, LayoutInfo, LayoutMetadata, LayoutParsingError, LayoutWithError},
     home::{default_layout_dir, find_default_config_dir},
     input::{
         command::RunCommand,
@@ -230,9 +230,9 @@ impl RunPluginOrAlias {
         }
     }
     pub fn is_builtin_plugin(&self) -> bool {
-        self.get_run_plugin().map(|r| {
-            matches!(r.location, RunPluginLocation::Zellij(_))
-        }).unwrap_or(false)
+        self.get_run_plugin()
+            .map(|r| matches!(r.location, RunPluginLocation::Zellij(_)))
+            .unwrap_or(false)
     }
 }
 
@@ -1239,31 +1239,29 @@ impl Layout {
                                                                                   // here too?
                                     available_layouts.push(LayoutInfo::File(
                                         layout_name,
-                                        LayoutMetadata::from(&file_path)
+                                        LayoutMetadata::from(&file_path),
                                     ))
-                                }
+                                },
                                 Err(config_error) => {
                                     let file_path = file.path();
-                                    let file_name = file_path
-                                        .to_str()
-                                        .unwrap_or("unknown")
-                                        .to_string();
-                                    let source_code = std::fs::read_to_string(&file_path)
-                                        .unwrap_or_default();
+                                    let file_name =
+                                        file_path.to_str().unwrap_or("unknown").to_string();
+                                    let source_code =
+                                        std::fs::read_to_string(&file_path).unwrap_or_default();
 
                                     let error = match config_error {
-                                        ConfigError::KdlError(kdl_err) => LayoutParsingError::KdlError {
-                                            kdl_error: kdl_err,
-                                            file_name,
-                                            source_code,
+                                        ConfigError::KdlError(kdl_err) => {
+                                            LayoutParsingError::KdlError {
+                                                kdl_error: kdl_err,
+                                                file_name,
+                                                source_code,
+                                            }
                                         },
                                         _ => LayoutParsingError::SyntaxError,
                                     };
-                                    layouts_with_errors.push(LayoutWithError {
-                                        layout_name,
-                                        error,
-                                    });
-                                }
+                                    layouts_with_errors
+                                        .push(LayoutWithError { layout_name, error });
+                                },
                             }
                         }
                     }
@@ -1420,11 +1418,10 @@ impl Layout {
         let raw_layout = String::new();
         Ok(raw_layout)
     }
-    pub fn from_path_without_config(
-        layout_path: &PathBuf,
-    ) -> Result<Layout, ConfigError> {
+    pub fn from_path_without_config(layout_path: &PathBuf) -> Result<Layout, ConfigError> {
         // (path_to_layout as String, stringified_layout, Option<path_to_swap_layout as String, stringified_swap_layout>)
-        let (path_to_layout, raw_layout, raw_swap_layouts) = Layout::stringified_from_path(layout_path)?;
+        let (path_to_layout, raw_layout, raw_swap_layouts) =
+            Layout::stringified_from_path(layout_path)?;
         Layout::from_kdl(
             &raw_layout,
             Some(path_to_layout),

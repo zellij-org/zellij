@@ -176,20 +176,17 @@ impl Text {
         self
     }
 
-    pub fn error_color_last_substring<S: AsRef<str>>(
-        self,
-        substr: S,
-    ) -> Self {
+    pub fn error_color_last_substring<S: AsRef<str>>(self, substr: S) -> Self {
         const ERROR_COLOR_LEVEL: usize = 6;
         let substr = substr.as_ref();
         let mut start = 0;
         let mut last_pos = None;
-        
+
         while let Some(pos) = self.text[start..].find(substr) {
             last_pos = Some(start + pos);
             start = start + pos + substr.len();
         }
-        
+
         if let Some(abs_pos) = last_pos {
             return self.color_range(ERROR_COLOR_LEVEL, abs_pos..abs_pos + substr.len());
         }
@@ -261,26 +258,22 @@ impl Text {
         self
     }
 
-    pub fn success_color_last_substring<S: AsRef<str>>(
-        self,
-        substr: S,
-    ) -> Self {
+    pub fn success_color_last_substring<S: AsRef<str>>(self, substr: S) -> Self {
         const SUCCESS_COLOR_LEVEL: usize = 7;
         let substr = substr.as_ref();
         let mut start = 0;
         let mut last_pos = None;
-        
+
         while let Some(pos) = self.text[start..].find(substr) {
             last_pos = Some(start + pos);
             start = start + pos + substr.len();
         }
-        
+
         if let Some(abs_pos) = last_pos {
             return self.color_range(SUCCESS_COLOR_LEVEL, abs_pos..abs_pos + substr.len());
         }
         self
     }
-
 
     pub fn success_color_all(self) -> Self {
         const SUCCESS_COLOR_LEVEL: usize = 7;
@@ -351,20 +344,16 @@ impl Text {
         self
     }
 
-    pub fn color_last_substring<S: AsRef<str>>(
-        self,
-        index_level: usize,
-        substr: S,
-    ) -> Self {
+    pub fn color_last_substring<S: AsRef<str>>(self, index_level: usize, substr: S) -> Self {
         let substr = substr.as_ref();
         let mut start = 0;
         let mut last_pos = None;
-        
+
         while let Some(pos) = self.text[start..].find(substr) {
             last_pos = Some(start + pos);
             start = start + pos + substr.len();
         }
-        
+
         if let Some(abs_pos) = last_pos {
             return self.color_range(index_level, abs_pos..abs_pos + substr.len());
         }

@@ -1,6 +1,6 @@
-use zellij_tile::prelude::*;
-use crate::DisplayLayout;
 use super::text_utils::{get_layout_display_info, truncate_with_ellipsis, wrap_text_to_width};
+use crate::DisplayLayout;
+use zellij_tile::prelude::*;
 
 pub struct LayoutDetail<'a> {
     layout: &'a DisplayLayout,
@@ -13,8 +13,14 @@ impl<'a> LayoutDetail<'a> {
 
     pub fn render(&self, x: usize, y: usize, max_rows: usize, max_cols: usize) {
         match self.layout {
-            DisplayLayout::Valid(_) => self.render_valid_layout(self.layout, x, y, max_rows, max_cols),
-            DisplayLayout::Error { name: _, error: _, error_message } => self.render_error(error_message, x, y, max_rows, max_cols),
+            DisplayLayout::Valid(_) => {
+                self.render_valid_layout(self.layout, x, y, max_rows, max_cols)
+            },
+            DisplayLayout::Error {
+                name: _,
+                error: _,
+                error_message,
+            } => self.render_error(error_message, x, y, max_rows, max_cols),
         }
     }
 
@@ -26,10 +32,10 @@ impl<'a> LayoutDetail<'a> {
                     return 1; // No metadata available
                 };
                 self.calculate_content_lines(metadata, max_cols)
-            }
+            },
             DisplayLayout::Error { .. } => {
                 3 // Error message + hint line
-            }
+            },
         }
     }
 
@@ -47,7 +53,14 @@ impl<'a> LayoutDetail<'a> {
         }
     }
 
-    fn render_valid_layout(&self, layout: &DisplayLayout, x: usize, y: usize, max_rows: usize, max_cols: usize) {
+    fn render_valid_layout(
+        &self,
+        layout: &DisplayLayout,
+        x: usize,
+        y: usize,
+        max_rows: usize,
+        max_cols: usize,
+    ) {
         let (name, metadata_opt) = get_layout_display_info(layout);
         let Some(metadata) = metadata_opt else {
             if layout.is_builtin() {
@@ -65,7 +78,14 @@ impl<'a> LayoutDetail<'a> {
         let msg = Text::new("No metadata available").color_all(1);
         print_text_with_coordinates(msg, x, y + 1, None, None);
     }
-    fn render_built_in_indication(&self, name: &str, x: usize, y: usize, max_rows: usize, max_cols: usize) {
+    fn render_built_in_indication(
+        &self,
+        name: &str,
+        x: usize,
+        y: usize,
+        max_rows: usize,
+        max_cols: usize,
+    ) {
         if max_rows == 0 {
             return;
         }
@@ -85,7 +105,14 @@ impl<'a> LayoutDetail<'a> {
         }
     }
 
-    fn render_error(&self, error_message: &str, x: usize, y: usize, max_rows: usize, max_cols: usize) {
+    fn render_error(
+        &self,
+        error_message: &str,
+        x: usize,
+        y: usize,
+        max_rows: usize,
+        max_cols: usize,
+    ) {
         if max_rows == 0 {
             return;
         }
@@ -105,7 +132,14 @@ impl<'a> LayoutDetail<'a> {
         print_text_with_coordinates(hint, x, current_y + 1, None, None); // 1 for gap
     }
 
-    fn render_tabs_and_panes(&self, metadata: &LayoutMetadata, x: usize, y: usize, max_rows: usize, max_cols: usize) {
+    fn render_tabs_and_panes(
+        &self,
+        metadata: &LayoutMetadata,
+        x: usize,
+        y: usize,
+        max_rows: usize,
+        max_cols: usize,
+    ) {
         // let max_rows = max_rows.saturating_sub(1);
 
         if !self.should_show_tabs_section(metadata) {
@@ -119,14 +153,8 @@ impl<'a> LayoutDetail<'a> {
         let tabs_lines = self.prepare_tabs_content(metadata, left_width);
         let panes_lines = self.prepare_panes_content(metadata, right_width);
 
-        let (tabs_truncated, panes_truncated) = self.render_side_by_side_columns(
-            &panes_lines,
-            &tabs_lines,
-            x,
-            right_x,
-            y,
-            max_rows,
-        );
+        let (tabs_truncated, panes_truncated) =
+            self.render_side_by_side_columns(&panes_lines, &tabs_lines, x, right_x, y, max_rows);
 
         if tabs_truncated {
             self.render_truncation_ellipsis(x, y + max_rows);
@@ -244,7 +272,14 @@ impl<'a> LayoutDetail<'a> {
         (left_width, right_width, padding)
     }
 
-    fn render_colored_line(&self, line: &str, x: usize, y: usize, is_title: bool, title_color: usize) {
+    fn render_colored_line(
+        &self,
+        line: &str,
+        x: usize,
+        y: usize,
+        is_title: bool,
+        title_color: usize,
+    ) {
         let text = if is_title {
             Text::new(line).color_all(title_color)
         } else {
@@ -258,7 +293,14 @@ impl<'a> LayoutDetail<'a> {
         print_text_with_coordinates(ellipsis, x, y, None, None);
     }
 
-    fn render_panes_only(&self, metadata: &LayoutMetadata, x: usize, y: usize, max_rows: usize, max_cols: usize) {
+    fn render_panes_only(
+        &self,
+        metadata: &LayoutMetadata,
+        x: usize,
+        y: usize,
+        max_rows: usize,
+        max_cols: usize,
+    ) {
         let panes_lines = self.prepare_panes_content(metadata, max_cols);
 
         let mut was_truncated = false;

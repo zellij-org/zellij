@@ -2,10 +2,11 @@ use crate::panes::PaneId;
 use crate::ClientId;
 use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
+use std::time::{SystemTime, UNIX_EPOCH};
 use zellij_utils::common_path::common_path_all;
 use zellij_utils::pane_size::PaneGeom;
 use zellij_utils::{
-    data::{LayoutMetadata, TabMetadata, PaneMetadata},
+    data::{LayoutMetadata, PaneMetadata, TabMetadata},
     input::command::RunCommand,
     input::layout::{Layout, Run, RunPlugin, RunPluginOrAlias},
     input::plugins::PluginAliases,
@@ -14,7 +15,6 @@ use zellij_utils::{
         GlobalLayoutManifest, PaneLayoutManifest, TabLayoutManifest,
     },
 };
-use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Default, Debug, Clone)]
 pub struct SessionLayoutMetadata {
@@ -361,10 +361,7 @@ impl SessionLayoutMetadata {
             .unwrap_or_default();
 
         // Convert all tabs
-        let tabs = self.tabs
-            .iter()
-            .map(|tab| tab.to_tab_metadata())
-            .collect();
+        let tabs = self.tabs.iter().map(|tab| tab.to_tab_metadata()).collect();
 
         LayoutMetadata {
             tabs,
@@ -486,30 +483,25 @@ impl PaneLayoutMetadata {
         // Try to extract a meaningful name from the pane
         // Priority: explicit title > command name > file name > plugin location
         let name = self.title.clone().or_else(|| {
-            self.run.as_ref().and_then(|run| {
-                match run {
-                    Run::Command(cmd) => {
-                        Some(cmd.command.display().to_string())
-                    },
-                    Run::EditFile(path, _, _) => {
-                        path.file_name()
-                            .map(|n| n.to_string_lossy().to_string())
-                    },
-                    Run::Plugin(plugin) => {
-                        Some(plugin.location_string())
-                    },
-                    Run::Cwd(_) => None,
-                }
+            self.run.as_ref().and_then(|run| match run {
+                Run::Command(cmd) => Some(cmd.command.display().to_string()),
+                Run::EditFile(path, _, _) => {
+                    path.file_name().map(|n| n.to_string_lossy().to_string())
+                },
+                Run::Plugin(plugin) => Some(plugin.location_string()),
+                Run::Cwd(_) => None,
             })
         });
 
         let is_plugin = matches!(self.id, PaneId::Plugin(_));
 
         // Detect if this is a builtin plugin
-        let is_builtin_plugin = self.run.as_ref()
+        let is_builtin_plugin = self
+            .run
+            .as_ref()
             .map(|run| match run {
                 Run::Plugin(plugin) => plugin.is_builtin_plugin(),
-                _ => false
+                _ => false,
             })
             .unwrap_or(false);
 

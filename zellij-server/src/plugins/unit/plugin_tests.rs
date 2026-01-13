@@ -10247,8 +10247,8 @@ pub fn get_focused_pane_info_plugin_command() {
         .unwrap()
         .iter()
         .find_map(|i| {
-            if let ScreenInstruction::GetFocusedPaneInfo{..} = i {
-                return Some(i.clone())
+            if let ScreenInstruction::GetFocusedPaneInfo { .. } = i {
+                return Some(i.clone());
             } else {
                 None
             }
@@ -10331,8 +10331,8 @@ pub fn dump_session_layout_plugin_command() {
         .unwrap()
         .iter()
         .find_map(|i| {
-            if let ScreenInstruction::DumpLayoutToPlugin{..} = i {
-                return Some(i.clone())
+            if let ScreenInstruction::DumpLayoutToPlugin { .. } = i {
+                return Some(i.clone());
             }
             None
         });
@@ -10414,8 +10414,8 @@ pub fn dump_session_layout_for_tab_plugin_command() {
         .unwrap()
         .iter()
         .find_map(|i| {
-            if let ScreenInstruction::DumpLayoutToPlugin{..} = i {
-                return Some(i.clone())
+            if let ScreenInstruction::DumpLayoutToPlugin { .. } = i {
+                return Some(i.clone());
             }
             None
         });
@@ -11536,22 +11536,23 @@ pub fn edit_layout_plugin_command() {
     teardown();
 
     // this is the editor pane for the layout being spawned
-    let spawn_terminal_instruction = received_pty_instructions
-        .lock()
-        .unwrap()
-        .iter()
-        .find_map(|i| {
-            if let PtyInstruction::SpawnInPlaceTerminal(..) = i {
-                Some(i.clone())
-            } else {
-                None
-            }
-        });
+    let spawn_terminal_instruction =
+        received_pty_instructions
+            .lock()
+            .unwrap()
+            .iter()
+            .find_map(|i| {
+                if let PtyInstruction::SpawnInPlaceTerminal(..) = i {
+                    Some(i.clone())
+                } else {
+                    None
+                }
+            });
 
-    assert_snapshot!(
-        format!("{:#?}", spawn_terminal_instruction)
-            .replace(&format!("{}", temp_layout_folder.path().display().to_string()), "LAYOUT_FOLDER_PATH")
-    )
+    assert_snapshot!(format!("{:#?}", spawn_terminal_instruction).replace(
+        &format!("{}", temp_layout_folder.path().display().to_string()),
+        "LAYOUT_FOLDER_PATH"
+    ))
 }
 
 #[test]

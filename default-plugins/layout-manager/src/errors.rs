@@ -1,14 +1,19 @@
+use crate::screens::{KeyResponse, Screen};
+use crate::ui::{truncate_line_with_ansi, wrap_text_to_width, ErrorMessage, MultiLineErrorMessage};
 use zellij_tile::prelude::*;
-use crate::ui::{wrap_text_to_width, MultiLineErrorMessage, ErrorMessage, truncate_line_with_ansi};
-use crate::screens::{Screen, KeyResponse};
 
 /// Format a layout parsing error into a detailed error string
 pub fn format_kdl_error(error: LayoutParsingError) -> String {
     match error {
-        LayoutParsingError::KdlError { mut kdl_error, file_name, source_code } => {
+        LayoutParsingError::KdlError {
+            mut kdl_error,
+            file_name,
+            source_code,
+        } => {
             use miette::{GraphicalReportHandler, NamedSource, Report};
 
-            kdl_error.help_message = Some("https://zellij.dev/documentation/creating-a-layout.html".to_owned());
+            kdl_error.help_message =
+                Some("https://zellij.dev/documentation/creating-a-layout.html".to_owned());
             let report: Report = kdl_error.into();
             let report = report.with_source_code(NamedSource::new(file_name, source_code));
 
@@ -23,7 +28,7 @@ pub fn format_kdl_error(error: LayoutParsingError) -> String {
             "- Missing quotations (\") around an argument node eg. { first_node \"argument_node\"; }",
             "- Missing an equal sign (=) between node arguments on a title line. eg. argument=\"value\"",
             "- Found an extraneous equal sign (=) between node child arguments and their values. eg. { argument=\"value\" }")
-        }
+        },
     }
 }
 
@@ -112,7 +117,12 @@ impl ErrorDetailScreen {
             // Render beginning lines
             for line in error_lines.iter().take(beginning_lines) {
                 let truncated = truncate_line_with_ansi(line, available_cols);
-                print!("\u{1b}[{};{}H{}", header_height + current_row + 1, 2, truncated);
+                print!(
+                    "\u{1b}[{};{}H{}",
+                    header_height + current_row + 1,
+                    2,
+                    truncated
+                );
                 current_row += 1;
             }
 
@@ -124,7 +134,7 @@ impl ErrorDetailScreen {
                 (cols.saturating_sub(indicator.chars().count())) / 2,
                 header_height + current_row,
                 None,
-                None
+                None,
             );
             current_row += 1;
 
@@ -132,7 +142,12 @@ impl ErrorDetailScreen {
             let start_index = total_lines.saturating_sub(end_lines);
             for line in error_lines.iter().skip(start_index) {
                 let truncated = truncate_line_with_ansi(line, available_cols);
-                print!("\u{1b}[{};{}H{}", header_height + current_row + 1, 2, truncated);
+                print!(
+                    "\u{1b}[{};{}H{}",
+                    header_height + current_row + 1,
+                    2,
+                    truncated
+                );
                 current_row += 1;
             }
         }
