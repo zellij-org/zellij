@@ -493,6 +493,12 @@ pub fn get_name_generator() -> impl Iterator<Item = String> {
     names::Generator::new(&ADJECTIVES, &NOUNS, names::Name::Plain)
 }
 
+/// Generates a random human-readable name using curated adjectives and nouns.
+/// Returns a single name in the format: AdjectiveNoun (e.g., "BraveRustacean")
+pub fn generate_random_name() -> String {
+    get_name_generator().next().unwrap()
+}
+
 const ADJECTIVES: &[&'static str] = &[
     "adamant",
     "adept",

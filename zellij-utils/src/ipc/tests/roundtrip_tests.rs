@@ -1,8 +1,8 @@
 use super::test_framework::*;
 use crate::data::{
     BareKey, CommandOrPlugin, ConnectToSession, Direction, FloatingPaneCoordinates, InputMode,
-    KeyModifier, KeyWithModifier, LayoutInfo, OriginatingPlugin, PaneId, PluginTag, Resize,
-    WebSharing,
+    KeyModifier, KeyWithModifier, LayoutInfo, LayoutMetadata, OriginatingPlugin, PaneId, PluginTag,
+    Resize, WebSharing,
 };
 use crate::input::actions::{Action, SearchDirection, SearchOption};
 use crate::input::cli_assets::CliAssets;
@@ -2054,13 +2054,10 @@ fn test_client_messages() {
     });
     test_client_roundtrip!(ClientToServerMsg::Action {
         action: Action::OverrideLayout {
-            tiled_layout: None,
-            floating_layouts: vec![],
-            swap_tiled_layouts: None,
-            swap_floating_layouts: None,
-            tab_name: None,
+            tabs: vec![],
             retain_existing_terminal_panes: false,
             retain_existing_plugin_panes: false,
+            apply_only_to_active_tab: false,
         },
         terminal_id: Some(1),
         client_id: Some(100),
@@ -3050,7 +3047,14 @@ fn test_server_messages() {
             name: Some("new_session_name".to_owned()),
             tab_position: Some(5),
             pane_id: Some((5, true)),
-            layout: Some(LayoutInfo::File("/path/to/my/file.kdl".to_owned())),
+            layout: Some(LayoutInfo::File(
+                "/path/to/my/file.kdl".to_owned(),
+                LayoutMetadata {
+                    tabs: vec![],
+                    creation_time: "0".to_owned(),
+                    update_time: "0".to_owned()
+                }
+            )),
             cwd: Some(PathBuf::from("/path/to/cwd")),
         }
     });

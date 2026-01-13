@@ -4,7 +4,7 @@ use crate::spawn_server;
 use std::{fs, path::PathBuf};
 use zellij_utils::{
     consts::session_layout_cache_file_name,
-    data::{ConnectToSession, LayoutInfo, WebSharing},
+    data::{ConnectToSession, LayoutInfo, LayoutMetadata, WebSharing},
     envs,
     input::{cli_assets::CliAssets, config::Config, options::Options},
     ipc::{ClientAttributes, ClientToServerMsg},
@@ -70,6 +70,7 @@ pub fn create_first_message(
             session_layout_cache_file_name(&session_name)
                 .display()
                 .to_string(),
+            LayoutMetadata::default(),
         ))
     } else {
         None

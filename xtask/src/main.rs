@@ -83,6 +83,10 @@ fn workspace_members() -> &'static Vec<WorkspaceMember> {
                 build: true,
             },
             WorkspaceMember {
+                crate_name: "default-plugins/layout-manager",
+                build: true,
+            },
+            WorkspaceMember {
                 crate_name: "zellij-utils",
                 build: false,
             },

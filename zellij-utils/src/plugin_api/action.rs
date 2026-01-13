@@ -62,6 +62,7 @@ pub use super::generated_api::api::{
         SwapFloatingLayout as ProtobufSwapFloatingLayout,
         SwapTiledLayout as ProtobufSwapTiledLayout,
         SwitchToModePayload,
+        TabLayoutInfo as ProtobufTabLayoutInfo,
         TiledPaneLayout as ProtobufTiledPaneLayout,
         TiledPlacement as ProtobufTiledPlacement,
         UnblockCondition as ProtobufUnblockCondition,
@@ -83,7 +84,7 @@ use crate::input::layout::SplitSize;
 use crate::input::layout::{
     FloatingPaneLayout, LayoutConstraint, PercentOrFixed, PluginAlias, PluginUserConfiguration,
     Run, RunPlugin, RunPluginLocation, RunPluginOrAlias, SplitDirection, SwapFloatingLayout,
-    SwapTiledLayout, TiledPaneLayout,
+    SwapTiledLayout, TabLayoutInfo, TiledPaneLayout,
 };
 use crate::input::mouse::{MouseEvent, MouseEventType};
 use crate::position::Position;
@@ -723,48 +724,15 @@ impl TryFrom<ProtobufAction> for Action {
             },
             Some(ProtobufActionName::OverrideLayout) => match protobuf_action.optional_payload {
                 Some(OptionalPayload::OverrideLayoutPayload(payload)) => {
-                    let tiled_layout = payload.tiled_layout.map(|l| l.try_into()).transpose()?;
-
-                    let floating_layouts = payload
-                        .floating_layouts
-                        .into_iter()
-                        .map(|l| l.try_into())
-                        .collect::<Result<Vec<_>, _>>()?;
-
-                    let swap_tiled_layouts = if payload.swap_tiled_layouts.is_empty() {
-                        None
-                    } else {
-                        Some(
-                            payload
-                                .swap_tiled_layouts
-                                .into_iter()
-                                .map(|l| l.try_into())
-                                .collect::<Result<Vec<_>, _>>()?,
-                        )
-                    };
-
-                    let swap_floating_layouts = if payload.swap_floating_layouts.is_empty() {
-                        None
-                    } else {
-                        Some(
-                            payload
-                                .swap_floating_layouts
-                                .into_iter()
-                                .map(|l| l.try_into())
-                                .collect::<Result<Vec<_>, _>>()?,
-                        )
-                    };
-
-                    let tab_name = payload.tab_name.filter(|s| !s.is_empty());
-
                     Ok(Action::OverrideLayout {
-                        tiled_layout,
-                        floating_layouts,
-                        swap_tiled_layouts,
-                        swap_floating_layouts,
-                        tab_name,
+                        tabs: payload
+                            .tabs
+                            .into_iter()
+                            .map(|t| t.try_into())
+                            .collect::<Result<Vec<_>, _>>()?,
                         retain_existing_terminal_panes: payload.retain_existing_terminal_panes,
                         retain_existing_plugin_panes: payload.retain_existing_plugin_panes,
+                        apply_only_to_active_tab: payload.apply_only_to_active_tab,
                     })
                 },
                 Some(_) => Err("Mismatched payload for OverrideLayout"),
@@ -1556,56 +1524,24 @@ impl TryFrom<Action> for ProtobufAction {
                 optional_payload: None,
             }),
             Action::OverrideLayout {
-                tiled_layout,
-                floating_layouts,
-                swap_tiled_layouts,
-                swap_floating_layouts,
-                tab_name,
+                tabs,
                 retain_existing_terminal_panes,
                 retain_existing_plugin_panes,
-            } => {
-                let protobuf_tiled_layout = tiled_layout.map(|l| l.try_into()).transpose()?;
-
-                let protobuf_floating_layouts = floating_layouts
-                    .into_iter()
-                    .map(|l| l.try_into())
-                    .collect::<Result<Vec<_>, _>>()?;
-
-                let protobuf_swap_tiled_layouts = swap_tiled_layouts
-                    .map(|layouts| {
-                        layouts
+                apply_only_to_active_tab,
+            } => Ok(ProtobufAction {
+                name: ProtobufActionName::OverrideLayout as i32,
+                optional_payload: Some(OptionalPayload::OverrideLayoutPayload(
+                    OverrideLayoutPayload {
+                        tabs: tabs
                             .into_iter()
-                            .map(|l| l.try_into())
-                            .collect::<Result<Vec<_>, _>>()
-                    })
-                    .transpose()?
-                    .unwrap_or_default();
-
-                let protobuf_swap_floating_layouts = swap_floating_layouts
-                    .map(|layouts| {
-                        layouts
-                            .into_iter()
-                            .map(|l| l.try_into())
-                            .collect::<Result<Vec<_>, _>>()
-                    })
-                    .transpose()?
-                    .unwrap_or_default();
-
-                Ok(ProtobufAction {
-                    name: ProtobufActionName::OverrideLayout as i32,
-                    optional_payload: Some(OptionalPayload::OverrideLayoutPayload(
-                        OverrideLayoutPayload {
-                            tiled_layout: protobuf_tiled_layout,
-                            floating_layouts: protobuf_floating_layouts,
-                            swap_tiled_layouts: protobuf_swap_tiled_layouts,
-                            swap_floating_layouts: protobuf_swap_floating_layouts,
-                            tab_name: tab_name.clone(),
-                            retain_existing_terminal_panes,
-                            retain_existing_plugin_panes,
-                        },
-                    )),
-                })
-            },
+                            .map(|t| t.try_into())
+                            .collect::<Result<Vec<_>, _>>()?,
+                        retain_existing_terminal_panes,
+                        retain_existing_plugin_panes,
+                        apply_only_to_active_tab,
+                    },
+                )),
+            }),
             Action::QueryTabNames => Ok(ProtobufAction {
                 name: ProtobufActionName::QueryTabNames as i32,
                 optional_payload: None,
@@ -2735,6 +2671,77 @@ impl TryFrom<CommandOrPlugin> for ProtobufCommandOrPlugin {
         };
         Ok(ProtobufCommandOrPlugin {
             command_or_plugin_type,
+        })
+    }
+}
+
+impl TryFrom<ProtobufTabLayoutInfo> for TabLayoutInfo {
+    type Error = &'static str;
+
+    fn try_from(protobuf_tab: ProtobufTabLayoutInfo) -> Result<Self, Self::Error> {
+        Ok(TabLayoutInfo {
+            tab_index: protobuf_tab.tab_index as usize,
+            tab_name: protobuf_tab.tab_name.filter(|s| !s.is_empty()),
+            tiled_layout: protobuf_tab
+                .tiled_layout
+                .ok_or("missing tiled_layout")?
+                .try_into()?,
+            floating_layouts: protobuf_tab
+                .floating_layouts
+                .into_iter()
+                .map(|l| l.try_into())
+                .collect::<Result<Vec<_>, _>>()?,
+            swap_tiled_layouts: if protobuf_tab.swap_tiled_layouts.is_empty() {
+                None
+            } else {
+                Some(
+                    protobuf_tab
+                        .swap_tiled_layouts
+                        .into_iter()
+                        .map(|l| l.try_into())
+                        .collect::<Result<Vec<_>, _>>()?,
+                )
+            },
+            swap_floating_layouts: if protobuf_tab.swap_floating_layouts.is_empty() {
+                None
+            } else {
+                Some(
+                    protobuf_tab
+                        .swap_floating_layouts
+                        .into_iter()
+                        .map(|l| l.try_into())
+                        .collect::<Result<Vec<_>, _>>()?,
+                )
+            },
+        })
+    }
+}
+
+impl TryFrom<TabLayoutInfo> for ProtobufTabLayoutInfo {
+    type Error = &'static str;
+
+    fn try_from(tab_info: TabLayoutInfo) -> Result<Self, Self::Error> {
+        Ok(ProtobufTabLayoutInfo {
+            tab_index: tab_info.tab_index as u32,
+            tab_name: tab_info.tab_name,
+            tiled_layout: Some(tab_info.tiled_layout.try_into()?),
+            floating_layouts: tab_info
+                .floating_layouts
+                .into_iter()
+                .map(|l| l.try_into())
+                .collect::<Result<Vec<_>, _>>()?,
+            swap_tiled_layouts: tab_info
+                .swap_tiled_layouts
+                .unwrap_or_default()
+                .into_iter()
+                .map(|l| l.try_into())
+                .collect::<Result<Vec<_>, _>>()?,
+            swap_floating_layouts: tab_info
+                .swap_floating_layouts
+                .unwrap_or_default()
+                .into_iter()
+                .map(|l| l.try_into())
+                .collect::<Result<Vec<_>, _>>()?,
         })
     }
 }

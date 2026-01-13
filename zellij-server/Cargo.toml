@@ -26,6 +26,7 @@ daemonize = { workspace = true }
 highway = { version = "0.6.4", default-features = false, features = ["std"] }
 interprocess = { workspace = true }
 isahc = { workspace = true }
+kdl = { workspace = true }
 lazy_static = { workspace = true }
 libc = { workspace = true }
 log = { workspace = true }

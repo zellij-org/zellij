@@ -62,6 +62,7 @@ enum EventType {
     UserAction = 37;
     ActionComplete = 38;
     CwdChanged = 39;
+    AvailableLayoutInfo = 40;
 }
 
 message EventNameList {
@@ -103,6 +104,7 @@ message Event {
     UserActionPayload user_action_payload = 31;
     ActionCompletePayload action_complete_payload = 32;
     CwdChangedPayload cwd_changed_payload = 33;
+    AvailableLayoutInfoPayload available_layout_info_payload = 34;
   }
 }
 
@@ -200,6 +202,11 @@ message EditPaneExitedPayload {
 message SessionUpdatePayload {
   repeated SessionManifest session_manifests = 1;
   repeated ResurrectableSession resurrectable_sessions = 2;
+}
+
+message AvailableLayoutInfoPayload {
+  repeated LayoutInfo available_layouts = 1;
+  repeated LayoutWithError layouts_with_errors = 2;
 }
 
 message RunCommandResultPayload {
@@ -318,6 +325,54 @@ message PluginInfo {
 message LayoutInfo {
   string name = 1;
   string source = 2;
+  optional LayoutMetadata layout_metadata = 5;
+}
+
+message LayoutWithError {
+  string layout_name = 1;
+  LayoutParsingError error = 2;
+}
+
+message LayoutParsingError {
+  oneof error_type {
+    KdlErrorVariant kdl_error = 1;
+    SyntaxError syntax_error = 2;
+  }
+}
+
+message KdlErrorVariant {
+  KdlError kdl_error = 1;
+  string file_name = 2;
+  string source_code = 3;
+}
+
+message SyntaxError {
+  // Empty message, just a marker
+}
+
+message KdlError {
+  string error_message = 1;
+  optional uint64 offset = 2;
+  optional uint64 len = 3;
+  optional string help_message = 4;
+}
+
+message LayoutMetadata {
+  repeated TabMetadata tabs = 1;
+  string creation_time = 2;
+  string update_time = 3;
+
+}
+
+message TabMetadata {
+  repeated PaneMetadata pane_metadata = 1;
+  optional string name = 2;
+}
+
+message PaneMetadata {
+  optional string name = 1;
+  bool is_plugin = 2;
+  bool is_builtin_plugin = 3;
 }
 
 message ResurrectableSession {

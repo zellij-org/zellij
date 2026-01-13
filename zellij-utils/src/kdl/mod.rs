@@ -1,15 +1,16 @@
 mod kdl_layout_parser;
 use crate::data::{
     BareKey, Direction, FloatingPaneCoordinates, InputMode, KeyWithModifier, LayoutInfo,
-    MultiplayerColors, Palette, PaletteColor, PaneId, PaneInfo, PaneManifest, PermissionType,
-    Resize, SessionInfo, StyleDeclaration, Styling, TabInfo, WebSharing, DEFAULT_STYLES,
+    LayoutMetadata, MultiplayerColors, Palette, PaletteColor, PaneId, PaneInfo, PaneManifest,
+    PermissionType, Resize, SessionInfo, StyleDeclaration, Styling, TabInfo, WebSharing,
+    DEFAULT_STYLES,
 };
 use crate::envs::EnvironmentVariables;
 use crate::home::{find_default_config_dir, get_layout_dir};
 use crate::input::config::{Config, ConfigError, KdlError};
 use crate::input::keybinds::Keybinds;
 use crate::input::layout::{
-    Layout, PluginUserConfiguration, RunPlugin, RunPluginOrAlias, SplitSize,
+    Layout, PluginUserConfiguration, RunPlugin, RunPluginOrAlias, SplitSize, TabLayoutInfo,
 };
 use crate::input::options::{Clipboard, OnForceClose, Options};
 use crate::input::permission::{GrantedPermission, PermissionCache};
@@ -1727,13 +1728,10 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 let command_metadata = action_children.iter().next();
                 if command_metadata.is_none() {
                     return Ok(Action::OverrideLayout {
-                        tiled_layout: None,
-                        floating_layouts: vec![],
-                        swap_tiled_layouts: None,
-                        swap_floating_layouts: None,
-                        tab_name: None,
+                        tabs: vec![],
                         retain_existing_terminal_panes: false,
                         retain_existing_plugin_panes: false,
+                        apply_only_to_active_tab: false,
                     });
                 }
 
@@ -1759,6 +1757,9 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                     .and_then(|c_m| {
                         kdl_child_bool_value_for_entry(c_m, "retain_existing_plugin_panes")
                     })
+                    .unwrap_or(false);
+                let apply_only_to_active_tab = command_metadata
+                    .and_then(|c_m| kdl_child_bool_value_for_entry(c_m, "apply_only_to_active_tab"))
                     .unwrap_or(false);
 
                 let layout_dir = config_options
@@ -1804,26 +1805,38 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                     let (tab_name, layout, floating_panes_layout) = tabs.drain(..).next().unwrap();
                     let name = tab_name.or(name);
 
-                    Ok(Action::OverrideLayout {
-                        tiled_layout: Some(layout),
+                    let tab_layout_info = TabLayoutInfo {
+                        tab_index: 0,
+                        tab_name: name,
+                        tiled_layout: layout,
                         floating_layouts: floating_panes_layout,
                         swap_tiled_layouts,
                         swap_floating_layouts,
-                        tab_name: name,
+                    };
+
+                    Ok(Action::OverrideLayout {
+                        tabs: vec![tab_layout_info],
                         retain_existing_terminal_panes,
                         retain_existing_plugin_panes,
+                        apply_only_to_active_tab,
                     })
                 } else {
                     let (layout, floating_panes_layout) = layout.new_tab();
 
-                    Ok(Action::OverrideLayout {
-                        tiled_layout: Some(layout),
+                    let tab_layout_info = TabLayoutInfo {
+                        tab_index: 0,
+                        tab_name: name,
+                        tiled_layout: layout,
                         floating_layouts: floating_panes_layout,
                         swap_tiled_layouts,
                         swap_floating_layouts,
-                        tab_name: name,
+                    };
+
+                    Ok(Action::OverrideLayout {
+                        tabs: vec![tab_layout_info],
                         retain_existing_terminal_panes,
                         retain_existing_plugin_panes,
+                        apply_only_to_active_tab,
                     })
                 }
             },
@@ -5154,7 +5167,9 @@ impl SessionInfo {
                         match layout_source {
                             Some(layout_source) => match layout_source {
                                 "built-in" => Some(LayoutInfo::BuiltIn(layout_name)),
-                                "file" => Some(LayoutInfo::File(layout_name)),
+                                "file" => {
+                                    Some(LayoutInfo::File(layout_name, LayoutMetadata::default()))
+                                },
                                 _ => None,
                             },
                             None => None,
@@ -5288,7 +5303,7 @@ impl SessionInfo {
         let mut available_layouts_children = KdlDocument::new();
         for layout_info in &self.available_layouts {
             let (layout_name, layout_source) = match layout_info {
-                LayoutInfo::File(name) => (name.clone(), "file"),
+                LayoutInfo::File(name, _layout_metadata) => (name.clone(), "file"),
                 LayoutInfo::BuiltIn(name) => (name.clone(), "built-in"),
                 LayoutInfo::Url(url) => (url.clone(), "url"),
                 LayoutInfo::Stringified(_stringified) => ("stringified-layout".to_owned(), "N/A"),
@@ -5906,9 +5921,9 @@ fn serialize_and_deserialize_session_info_with_data() {
         connected_clients: 2,
         is_current_session: false,
         available_layouts: vec![
-            LayoutInfo::File("layout1".to_owned()),
+            LayoutInfo::File("layout1".to_owned(), LayoutMetadata::default()),
             LayoutInfo::BuiltIn("layout2".to_owned()),
-            LayoutInfo::File("layout3".to_owned()),
+            LayoutInfo::File("layout3".to_owned(), LayoutMetadata::default()),
         ],
         plugins: Default::default(),
         web_client_count: 2,

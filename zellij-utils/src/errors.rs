@@ -353,6 +353,7 @@ pub enum ScreenContext {
     SerializeLayoutForResurrection,
     RenameSession,
     DumpLayoutToPlugin,
+    GetFocusedPaneInfo,
     ListClientsMetadata,
     Reconfigure,
     RerunCommandPane,
@@ -469,6 +470,8 @@ pub enum PluginContext {
     FailedToStartWebServer,
     PaneRenderReport,
     UserInput,
+    LayoutListUpdate,
+    RequestStateUpdateForPlugin,
 }
 
 /// Stack call representations corresponding to the different types of [`ClientInstruction`]s.

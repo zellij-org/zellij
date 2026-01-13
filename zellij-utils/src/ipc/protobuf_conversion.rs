@@ -5,9 +5,10 @@ use crate::{
         ClientToServerMsg as ProtoClientToServerMsg, ColorRegistersMsg, ConfigFileUpdatedMsg,
         ConnStatusMsg, ConnectedMsg, DetachSessionMsg, ExitMsg, ExitReason as ProtoExitReason,
         FailedToStartWebServerMsg, FirstClientConnectedMsg, ForegroundColorMsg,
-        InputMode as ProtoInputMode, KeyMsg, KillSessionMsg, LogErrorMsg, LogMsg,
-        QueryTerminalSizeMsg, RenamedSessionMsg, RenderMsg,
-        ServerToClientMsg as ProtoServerToClientMsg, StartWebServerMsg, SwitchSessionMsg,
+        InputMode as ProtoInputMode, KeyMsg, KillSessionMsg, LayoutMetadata as ProtoLayoutMetadata,
+        LogErrorMsg, LogMsg, PaneMetadata as ProtoPaneMetadata, QueryTerminalSizeMsg,
+        RenamedSessionMsg, RenderMsg, ServerToClientMsg as ProtoServerToClientMsg,
+        StartWebServerMsg, SwitchSessionMsg, TabMetadata as ProtoTabMetadata,
         TerminalPixelDimensionsMsg, TerminalResizeMsg, UnblockCliPipeInputMsg,
         UnblockInputThreadMsg, WebServerStartedMsg,
     },
@@ -1098,25 +1099,15 @@ impl From<crate::input::actions::Action>
                 ActionType::NextSwapLayout(NextSwapLayoutAction {})
             },
             crate::input::actions::Action::OverrideLayout {
-                tiled_layout,
-                floating_layouts,
-                swap_tiled_layouts,
-                swap_floating_layouts,
-                tab_name,
+                tabs,
                 retain_existing_terminal_panes,
                 retain_existing_plugin_panes,
+                apply_only_to_active_tab,
             } => ActionType::OverrideLayout(OverrideLayoutAction {
-                tiled_layout: tiled_layout.map(|l| l.into()),
-                floating_layouts: floating_layouts.into_iter().map(|l| l.into()).collect(),
-                swap_tiled_layouts: swap_tiled_layouts
-                    .map(|layouts| layouts.into_iter().map(|l| l.into()).collect())
-                    .unwrap_or_default(),
-                swap_floating_layouts: swap_floating_layouts
-                    .map(|layouts| layouts.into_iter().map(|l| l.into()).collect())
-                    .unwrap_or_default(),
-                tab_name,
+                tabs: tabs.into_iter().map(|t| t.into()).collect(),
                 retain_existing_terminal_panes,
                 retain_existing_plugin_panes,
+                apply_only_to_active_tab,
             }),
             crate::input::actions::Action::QueryTabNames => {
                 ActionType::QueryTabNames(QueryTabNamesAction {})
@@ -1695,45 +1686,16 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
             ActionType::NextSwapLayout(_) => Ok(crate::input::actions::Action::NextSwapLayout),
             ActionType::OverrideLayout(override_layout_action) => {
                 Ok(crate::input::actions::Action::OverrideLayout {
-                    tiled_layout: override_layout_action
-                        .tiled_layout
-                        .map(|l| l.try_into())
-                        .transpose()?,
-                    floating_layouts: override_layout_action
-                        .floating_layouts
+                    tabs: override_layout_action
+                        .tabs
                         .into_iter()
-                        .map(|l| l.try_into())
+                        .map(|t| t.try_into())
                         .collect::<Result<Vec<_>>>()?,
-                    swap_tiled_layouts: if override_layout_action.swap_tiled_layouts.is_empty() {
-                        None
-                    } else {
-                        Some(
-                            override_layout_action
-                                .swap_tiled_layouts
-                                .into_iter()
-                                .map(|l| l.try_into())
-                                .collect::<Result<Vec<_>>>()?,
-                        )
-                    },
-                    swap_floating_layouts: if override_layout_action
-                        .swap_floating_layouts
-                        .is_empty()
-                    {
-                        None
-                    } else {
-                        Some(
-                            override_layout_action
-                                .swap_floating_layouts
-                                .into_iter()
-                                .map(|l| l.try_into())
-                                .collect::<Result<Vec<_>>>()?,
-                        )
-                    },
-                    tab_name: override_layout_action.tab_name,
                     retain_existing_terminal_panes: override_layout_action
                         .retain_existing_terminal_panes,
                     retain_existing_plugin_panes: override_layout_action
                         .retain_existing_plugin_panes,
+                    apply_only_to_active_tab: override_layout_action.apply_only_to_active_tab,
                 })
             },
             ActionType::QueryTabNames(_) => Ok(crate::input::actions::Action::QueryTabNames),
@@ -2031,14 +1993,19 @@ impl From<crate::data::LayoutInfo>
 {
     fn from(layout: crate::data::LayoutInfo) -> Self {
         use crate::client_server_contract::client_server_contract::layout_info::LayoutType;
-        let layout_type = match layout {
-            crate::data::LayoutInfo::BuiltIn(name) => LayoutType::BuiltinName(name),
-            crate::data::LayoutInfo::File(path) => LayoutType::FilePath(path),
-            crate::data::LayoutInfo::Url(url) => LayoutType::Url(url),
-            crate::data::LayoutInfo::Stringified(content) => LayoutType::Stringified(content),
+        let (layout_type, layout_metadata) = match layout {
+            crate::data::LayoutInfo::BuiltIn(name) => (LayoutType::BuiltinName(name), None),
+            crate::data::LayoutInfo::File(path, metadata) => {
+                (LayoutType::FilePath(path), Some(metadata.into()))
+            },
+            crate::data::LayoutInfo::Url(url) => (LayoutType::Url(url), None),
+            crate::data::LayoutInfo::Stringified(content) => {
+                (LayoutType::Stringified(content), None)
+            },
         };
         Self {
             layout_type: Some(layout_type),
+            layout_metadata,
         }
     }
 }
@@ -2053,13 +2020,91 @@ impl TryFrom<crate::client_server_contract::client_server_contract::LayoutInfo>
         use crate::client_server_contract::client_server_contract::layout_info::LayoutType;
         match layout.layout_type {
             Some(LayoutType::BuiltinName(name)) => Ok(crate::data::LayoutInfo::BuiltIn(name)),
-            Some(LayoutType::FilePath(path)) => Ok(crate::data::LayoutInfo::File(path)),
+            Some(LayoutType::FilePath(path)) => {
+                let layout_metadata = layout
+                    .layout_metadata
+                    .map(|m| m.try_into())
+                    .transpose()?
+                    .unwrap_or_default();
+                Ok(crate::data::LayoutInfo::File(path, layout_metadata))
+            },
             Some(LayoutType::Url(url)) => Ok(crate::data::LayoutInfo::Url(url)),
             Some(LayoutType::Stringified(content)) => {
                 Ok(crate::data::LayoutInfo::Stringified(content))
             },
             None => Err(anyhow!("LayoutInfo missing layout_type")),
         }
+    }
+}
+
+impl From<crate::data::LayoutMetadata> for ProtoLayoutMetadata {
+    fn from(metadata: crate::data::LayoutMetadata) -> Self {
+        ProtoLayoutMetadata {
+            tabs: metadata.tabs.into_iter().map(|t| t.into()).collect(),
+            creation_time: metadata.creation_time,
+            update_time: metadata.update_time,
+        }
+    }
+}
+
+impl TryFrom<ProtoLayoutMetadata> for crate::data::LayoutMetadata {
+    type Error = anyhow::Error;
+    fn try_from(proto_metadata: ProtoLayoutMetadata) -> Result<Self> {
+        let tabs = proto_metadata
+            .tabs
+            .into_iter()
+            .map(|t| t.try_into())
+            .collect::<Result<Vec<_>>>()?;
+        Ok(crate::data::LayoutMetadata {
+            tabs,
+            creation_time: proto_metadata.creation_time,
+            update_time: proto_metadata.update_time,
+        })
+    }
+}
+
+impl From<crate::data::TabMetadata> for ProtoTabMetadata {
+    fn from(metadata: crate::data::TabMetadata) -> Self {
+        ProtoTabMetadata {
+            pane_metadata: metadata.panes.into_iter().map(|p| p.into()).collect(),
+            name: metadata.name,
+        }
+    }
+}
+
+impl TryFrom<ProtoTabMetadata> for crate::data::TabMetadata {
+    type Error = anyhow::Error;
+    fn try_from(proto_metadata: ProtoTabMetadata) -> Result<Self> {
+        let panes = proto_metadata
+            .pane_metadata
+            .into_iter()
+            .map(|p| p.try_into())
+            .collect::<Result<Vec<_>>>()?;
+        Ok(crate::data::TabMetadata {
+            panes,
+            name: proto_metadata.name,
+        })
+    }
+}
+
+impl From<crate::data::PaneMetadata> for ProtoPaneMetadata {
+    fn from(metadata: crate::data::PaneMetadata) -> Self {
+        ProtoPaneMetadata {
+            name: metadata.name,
+            is_plugin: metadata.is_plugin,
+            is_builtin_plugin: metadata.is_builtin_plugin,
+        }
+    }
+}
+
+impl TryFrom<ProtoPaneMetadata> for crate::data::PaneMetadata {
+    type Error = anyhow::Error;
+    fn try_from(proto_metadata: ProtoPaneMetadata) -> Result<Self> {
+        Ok(crate::data::PaneMetadata {
+            name: proto_metadata.name,
+            is_plugin: proto_metadata.is_plugin,
+            is_builtin_plugin: proto_metadata.is_builtin_plugin,
+        })
     }
 }
 
@@ -2683,6 +2728,82 @@ impl From<crate::input::layout::Run>
                 run_type: Some(RunType::Cwd(path.to_string_lossy().to_string())),
             },
         }
+    }
+}
+
+// TabLayoutInfo conversion
+impl From<crate::input::layout::TabLayoutInfo>
+    for crate::client_server_contract::client_server_contract::TabLayoutInfo
+{
+    fn from(tab_info: crate::input::layout::TabLayoutInfo) -> Self {
+        Self {
+            tab_index: tab_info.tab_index as u32,
+            tab_name: tab_info.tab_name,
+            tiled_layout: Some(tab_info.tiled_layout.into()),
+            floating_layouts: tab_info
+                .floating_layouts
+                .into_iter()
+                .map(|l| l.into())
+                .collect(),
+            swap_tiled_layouts: tab_info
+                .swap_tiled_layouts
+                .unwrap_or_default()
+                .into_iter()
+                .map(|l| l.into())
+                .collect(),
+            swap_floating_layouts: tab_info
+                .swap_floating_layouts
+                .unwrap_or_default()
+                .into_iter()
+                .map(|l| l.into())
+                .collect(),
+        }
+    }
+}
+
+impl TryFrom<crate::client_server_contract::client_server_contract::TabLayoutInfo>
+    for crate::input::layout::TabLayoutInfo
+{
+    type Error = anyhow::Error;
+
+    fn try_from(
+        protobuf_tab: crate::client_server_contract::client_server_contract::TabLayoutInfo,
+    ) -> Result<Self> {
+        Ok(crate::input::layout::TabLayoutInfo {
+            tab_index: protobuf_tab.tab_index as usize,
+            tab_name: protobuf_tab.tab_name.filter(|s| !s.is_empty()),
+            tiled_layout: protobuf_tab
+                .tiled_layout
+                .ok_or_else(|| anyhow!("missing tiled_layout"))?
+                .try_into()?,
+            floating_layouts: protobuf_tab
+                .floating_layouts
+                .into_iter()
+                .map(|l| l.try_into())
+                .collect::<Result<Vec<_>>>()?,
+            swap_tiled_layouts: if protobuf_tab.swap_tiled_layouts.is_empty() {
+                None
+            } else {
+                Some(
+                    protobuf_tab
+                        .swap_tiled_layouts
+                        .into_iter()
+                        .map(|l| l.try_into())
+                        .collect::<Result<Vec<_>>>()?,
+                )
+            },
+            swap_floating_layouts: if protobuf_tab.swap_floating_layouts.is_empty() {
+                None
+            } else {
+                Some(
+                    protobuf_tab
+                        .swap_floating_layouts
+                        .into_iter()
+                        .map(|l| l.try_into())
+                        .collect::<Result<Vec<_>>>()?,
+                )
+            },
+        })
     }
 }
 

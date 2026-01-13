@@ -85,7 +85,7 @@ use zellij_utils::cli::CliArgs;
 use zellij_utils::{
     channels::{self, ChannelWithContext, SenderWithContext},
     consts::{set_permissions, ZELLIJ_SOCK_DIR},
-    data::{ClientId, ConnectToSession, KeyWithModifier, LayoutInfo},
+    data::{ClientId, ConnectToSession, KeyWithModifier, LayoutInfo, LayoutMetadata},
     envs,
     errors::{ClientContext, ContextType, ErrorInstruction},
     input::{cli_assets::CliAssets, config::Config, options::Options},
@@ -696,7 +696,10 @@ pub fn start_client(
                 config_dir: cli_args.config_dir.clone(),
                 should_ignore_config: cli_args.is_setup_clean(),
                 configuration_options: Some(config_options.clone()),
-                layout: Some(LayoutInfo::File(path_to_layout.display().to_string())),
+                layout: Some(LayoutInfo::File(
+                    path_to_layout.display().to_string(),
+                    LayoutMetadata::default(),
+                )),
                 terminal_window_size: full_screen_ws,
                 data_dir: cli_args.data_dir.clone(),
                 is_debug: cli_args.debug,
@@ -1128,7 +1131,10 @@ pub fn start_server_detached(
                 config_dir: cli_args.config_dir.clone(),
                 should_ignore_config: cli_args.is_setup_clean(),
                 configuration_options: Some(config_options.clone()),
-                layout: Some(LayoutInfo::File(path_to_layout.display().to_string())),
+                layout: Some(LayoutInfo::File(
+                    path_to_layout.display().to_string(),
+                    LayoutMetadata::default(),
+                )),
                 terminal_window_size: Size { cols: 50, rows: 50 }, // static number until a
                 // client connects
                 data_dir: cli_args.data_dir.clone(),

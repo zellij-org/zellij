@@ -20,12 +20,16 @@ use std::{
 };
 use wasmi::{Caller, Linker};
 use zellij_utils::data::{
-    CommandType, ConnectToSession, Event, FloatingPaneCoordinates, GetPanePidResponse, HttpVerb,
-    KeyWithModifier, LayoutInfo, MessageToPlugin, NewPanePlacement, OriginatingPlugin,
-    PaneScrollbackResponse, PermissionStatus, PermissionType, PluginPermission,
+    CommandType, ConnectToSession, DeleteLayoutResponse, EditLayoutResponse, Event,
+    FloatingPaneCoordinates, GetFocusedPaneInfoResponse, GetPanePidResponse, HttpVerb,
+    KeyWithModifier, LayoutInfo, LayoutMetadata, LayoutParsingError, MessageToPlugin,
+    NewPanePlacement, OriginatingPlugin, PaneScrollbackResponse, PermissionStatus, PermissionType,
+    PluginPermission, RenameLayoutResponse, SaveLayoutResponse, TabMetadata,
 };
+use zellij_utils::home::default_layout_dir;
 use zellij_utils::input::permission::PermissionCache;
 use zellij_utils::ipc::{ClientToServerMsg, IpcSenderWithContext};
+use zellij_utils::sessions::generate_random_name as generate_random_name_impl;
 #[cfg(feature = "web_server_capability")]
 use zellij_utils::web_authentication_tokens::{
     create_token, list_tokens, rename_token, revoke_all_tokens, revoke_token,
@@ -34,6 +38,7 @@ use zellij_utils::web_authentication_tokens::{
 use zellij_utils::web_server_commands::shutdown_all_webserver_instances;
 
 use crate::{panes::PaneId, screen::ScreenInstruction};
+use kdl::KdlDocument;
 
 use prost::Message;
 use zellij_utils::{
@@ -46,11 +51,22 @@ use zellij_utils::{
     input::{
         actions::Action,
         command::{OpenFilePayload, RunCommand, RunCommandAction, TerminalAction},
-        layout::{Layout, RunPluginOrAlias},
+        config::ConfigError,
+        layout::{Layout, RunPluginOrAlias, TabLayoutInfo},
     },
     plugin_api::{
-        event::ProtobufPaneScrollbackResponse,
-        plugin_command::{ProtobufGetPanePidResponse, ProtobufPluginCommand},
+        event::{
+            layout_parsing_error::ErrorType as ProtobufLayoutParsingErrorType,
+            ProtobufLayoutParsingError, ProtobufPaneScrollbackResponse, ProtobufSyntaxError,
+        },
+        plugin_command::{
+            dump_layout_response, dump_session_layout_response, parse_layout_response,
+            ProtobufDeleteLayoutResponse, ProtobufDumpLayoutResponse,
+            ProtobufDumpSessionLayoutResponse, ProtobufEditLayoutResponse,
+            ProtobufGenerateRandomNameResponse, ProtobufGetFocusedPaneInfoResponse,
+            ProtobufGetLayoutDirResponse, ProtobufGetPanePidResponse, ProtobufParseLayoutResponse,
+            ProtobufPluginCommand, ProtobufRenameLayoutResponse, ProtobufSaveLayoutResponse,
+        },
         plugin_ids::{ProtobufPluginIds, ProtobufZellijVersion},
     },
 };
@@ -107,6 +123,11 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::ShowCursor(cursor_position) => show_cursor(env, cursor_position),
                     PluginCommand::GetPluginIds => get_plugin_ids(env),
                     PluginCommand::GetZellijVersion => get_zellij_version(env),
+                    PluginCommand::GenerateRandomName => generate_random_name(env),
+                    PluginCommand::DumpLayout(layout_name) => dump_layout(env, layout_name),
+                    PluginCommand::ParseLayout(layout_string) => parse_layout(env, layout_string),
+                    PluginCommand::GetLayoutDir => get_layout_dir(env),
+                    PluginCommand::GetFocusedPaneInfo => get_focused_pane_info(env),
                     PluginCommand::OpenFile(file_to_open, context) => {
                         open_file(env, file_to_open, context)
                     },
@@ -184,6 +205,34 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::NewTabsWithLayoutInfo(layout_info) => {
                         new_tabs_with_layout_info(env, layout_info)?
                     },
+                    PluginCommand::OverrideLayout(
+                        layout_info,
+                        retain_existing_terminal_panes,
+                        retain_existing_plugin_panes,
+                        apply_only_to_active_tab,
+                        context,
+                    ) => override_layout(
+                        env,
+                        layout_info,
+                        retain_existing_terminal_panes,
+                        retain_existing_plugin_panes,
+                        apply_only_to_active_tab,
+                        context,
+                    )?,
+                    PluginCommand::SaveLayout {
+                        layout_name,
+                        layout_kdl,
+                        overwrite,
+                    } => save_layout(env, layout_name, layout_kdl, overwrite),
+                    PluginCommand::DeleteLayout { layout_name } => delete_layout(env, layout_name),
+                    PluginCommand::RenameLayout {
+                        old_layout_name,
+                        new_layout_name,
+                    } => rename_layout(env, old_layout_name, new_layout_name),
+                    PluginCommand::EditLayout {
+                        layout_name,
+                        context,
+                    } => edit_layout(env, layout_name, context),
                     PluginCommand::NewTab { name, cwd } => new_tab(env, name, cwd),
                     PluginCommand::GoToNextTab => go_to_next_tab(env),
                     PluginCommand::GoToPreviousTab => go_to_previous_tab(env),
@@ -325,7 +374,9 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                         scan_host_folder(env, folder_to_scan)
                     },
                     PluginCommand::WatchFilesystem => watch_filesystem(env),
-                    PluginCommand::DumpSessionLayout => dump_session_layout(env),
+                    PluginCommand::DumpSessionLayout { tab_index } => {
+                        dump_session_layout(env, tab_index)
+                    },
                     PluginCommand::CloseSelf => close_self(env),
                     PluginCommand::Reconfigure(new_config, write_config_to_disk) => {
                         reconfigure(env, new_config, write_config_to_disk)?
@@ -709,6 +760,218 @@ fn get_zellij_version(env: &PluginEnv) {
         .with_context(|| {
             format!(
                 "failed to request zellij version from host for plugin {}",
+                env.name()
+            )
+        })
+        .non_fatal();
+}
+
+fn generate_random_name(env: &PluginEnv) {
+    let name = generate_random_name_impl();
+    let response = ProtobufGenerateRandomNameResponse { name };
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| {
+            format!(
+                "failed to send generated random name to plugin {}",
+                env.name()
+            )
+        })
+        .non_fatal();
+}
+
+fn dump_layout(env: &PluginEnv, layout_name: String) {
+    let layout_path = PathBuf::from(&layout_name);
+
+    let layout_dir = env.layout_dir.clone().or_else(default_layout_dir);
+    let response = match Layout::stringified_from_dir(&layout_path, layout_dir.as_ref()) {
+        Ok((_, layout_content, _)) => ProtobufDumpLayoutResponse {
+            result: Some(dump_layout_response::Result::LayoutContent(layout_content)),
+        },
+        Err(e) => ProtobufDumpLayoutResponse {
+            result: Some(dump_layout_response::Result::Error(e.to_string())),
+        },
+    };
+
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to send layout dump to plugin {}", env.name()))
+        .non_fatal();
+}
+
+fn get_layout_dir(env: &PluginEnv) {
+    // Get layout dir from env or fall back to default
+    let layout_dir = env.layout_dir.clone().or_else(default_layout_dir);
+
+    // Convert PathBuf to String
+    let layout_dir_string = layout_dir
+        .and_then(|path| path.to_str().map(|s| s.to_string()))
+        .unwrap_or_else(|| String::from(""));
+
+    let response = ProtobufGetLayoutDirResponse {
+        layout_dir: layout_dir_string,
+    };
+
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to send layout dir to plugin {}", env.name()))
+        .non_fatal();
+}
+
+fn get_focused_pane_info(env: &PluginEnv) {
+    use crossbeam::channel::RecvTimeoutError;
+    use std::time::Duration;
+
+    let err_context = || {
+        format!(
+            "failed to get focused pane info for client {:?} from plugin {}",
+            env.client_id,
+            env.name()
+        )
+    };
+
+    // Create oneshot channel for response
+    let (response_sender, response_receiver) = crossbeam::channel::bounded(1);
+
+    // Send request to screen thread
+    env.senders
+        .send_to_screen(ScreenInstruction::GetFocusedPaneInfo {
+            client_id: env.client_id,
+            response_channel: response_sender,
+        })
+        .with_context(err_context)
+        .non_fatal();
+
+    // Block waiting for response with 100ms timeout
+    let response = match response_receiver.recv_timeout(Duration::from_millis(100)) {
+        Ok(response) => response,
+        Err(RecvTimeoutError::Timeout) => {
+            log::error!(
+                "GetFocusedPaneInfo timed out for plugin {} for client {:?}",
+                env.plugin_id,
+                env.client_id
+            );
+            GetFocusedPaneInfoResponse::Err("Timeout retrieving focused pane info".to_string())
+        },
+        Err(RecvTimeoutError::Disconnected) => {
+            log::error!(
+                "GetFocusedPaneInfo channel disconnected for plugin {}",
+                env.plugin_id
+            );
+            GetFocusedPaneInfoResponse::Err(
+                "Channel disconnected while retrieving focused pane info".to_string(),
+            )
+        },
+    };
+
+    // Convert to protobuf and write response back to plugin
+    let protobuf_response = ProtobufGetFocusedPaneInfoResponse::from(response);
+    wasi_write_object(env, &protobuf_response.encode_to_vec())
+        .with_context(err_context)
+        .non_fatal();
+}
+
+fn parse_layout(env: &PluginEnv, layout_string: String) {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    // Parse the KDL layout - same parameters as list_available_layouts in layout.rs:1260
+    let parse_result = Layout::from_kdl(
+        &layout_string,
+        Some("parse_layout_api".to_string()), // file_name for error reporting
+        None,                                 // no swap layouts
+        None,                                 // no cwd
+    );
+
+    let response = match parse_result {
+        Ok(layout) => {
+            // Extract tabs from layout
+            // This logic matches LayoutMetadata::from in data.rs:1762-1772
+            let layout_tabs = layout.tabs();
+            let tabs = if layout_tabs.is_empty() {
+                // Use default template if no explicit tabs defined
+                let (tiled_pane_layout, floating_pane_layout) = layout.new_tab();
+                vec![TabMetadata::from(&(
+                    None,
+                    tiled_pane_layout,
+                    floating_pane_layout,
+                ))]
+            } else {
+                layout
+                    .tabs()
+                    .into_iter()
+                    .map(|tab| TabMetadata::from(&tab))
+                    .collect()
+            };
+
+            // Get current time as Unix epoch timestamp
+            let current_time = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs()
+                .to_string();
+
+            let layout_metadata = LayoutMetadata {
+                tabs,
+                creation_time: current_time.clone(),
+                update_time: current_time,
+            };
+
+            // Convert LayoutMetadata to protobuf
+            match layout_metadata.try_into() {
+                Ok(protobuf_metadata) => ProtobufParseLayoutResponse {
+                    result: Some(parse_layout_response::Result::Metadata(protobuf_metadata)),
+                },
+                Err(e) => {
+                    log::error!("Failed to convert metadata to protobuf: {}", e);
+                    // Fallback to SyntaxError if conversion fails
+                    let error = LayoutParsingError::SyntaxError;
+                    let protobuf_error =
+                        error
+                            .try_into()
+                            .unwrap_or_else(|_| ProtobufLayoutParsingError {
+                                error_type: Some(ProtobufLayoutParsingErrorType::SyntaxError(
+                                    ProtobufSyntaxError {},
+                                )),
+                            });
+                    ProtobufParseLayoutResponse {
+                        result: Some(parse_layout_response::Result::Error(protobuf_error)),
+                    }
+                },
+            }
+        },
+        Err(config_error) => {
+            // Build LayoutParsingError following list_available_layouts pattern
+            // See zellij-utils/src/input/layout.rs:1238-1245
+            let file_name = "parse_layout_api".to_string();
+            let source_code = layout_string;
+
+            let error = match config_error {
+                ConfigError::KdlError(kdl_err) => LayoutParsingError::KdlError {
+                    kdl_error: kdl_err,
+                    file_name,
+                    source_code,
+                },
+                _ => LayoutParsingError::SyntaxError,
+            };
+
+            // Convert LayoutParsingError to protobuf
+            // TryFrom is implemented in zellij-utils/src/plugin_api/event.rs:1293-1314
+            let protobuf_error = error.try_into().unwrap_or_else(|e| {
+                log::error!("Failed to convert error to protobuf: {}", e);
+                ProtobufLayoutParsingError {
+                    error_type: Some(ProtobufLayoutParsingErrorType::SyntaxError(
+                        ProtobufSyntaxError {},
+                    )),
+                }
+            });
+
+            ProtobufParseLayoutResponse {
+                result: Some(parse_layout_response::Result::Error(protobuf_error)),
+            }
+        },
+    };
+
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| {
+            format!(
+                "failed to send parse layout response to plugin {}",
                 env.name()
             )
         })
@@ -2195,12 +2458,79 @@ fn watch_filesystem(env: &PluginEnv) {
         .map(|sender| sender.send(PluginInstruction::WatchFilesystem));
 }
 
-fn dump_session_layout(env: &PluginEnv) {
-    let _ = env
+// note this removes the requesting plugin
+fn dump_session_layout(env: &PluginEnv, tab_index: Option<usize>) {
+    use crate::plugins::DumpSessionLayoutResponse;
+
+    // Create oneshot channel for response
+    let (response_sender, response_receiver) = crossbeam::channel::bounded(1);
+
+    // Send request to screen thread
+    let send_result = env
         .senders
-        .to_screen
-        .as_ref()
-        .map(|sender| sender.send(ScreenInstruction::DumpLayoutToPlugin(env.plugin_id)));
+        .send_to_screen(ScreenInstruction::DumpLayoutToPlugin {
+            plugin_id: env.plugin_id,
+            tab_index,
+            response_channel: response_sender,
+        });
+
+    if let Err(e) = send_result {
+        let error_response = ProtobufDumpSessionLayoutResponse {
+            result: Some(dump_session_layout_response::Result::Error(format!(
+                "Failed to send dump layout request: {}",
+                e
+            ))),
+            metadata: None,
+        };
+        let _ = wasi_write_object(env, &error_response.encode_to_vec());
+        return;
+    }
+
+    // Wait for response with 1 second timeout
+    let response: DumpSessionLayoutResponse =
+        match response_receiver.recv_timeout(Duration::from_secs(1)) {
+            Ok(resp) => resp,
+            Err(e) => {
+                let error_response = ProtobufDumpSessionLayoutResponse {
+                    result: Some(dump_session_layout_response::Result::Error(format!(
+                        "Timeout waiting for session layout: {}",
+                        e
+                    ))),
+                    metadata: None,
+                };
+                let _ = wasi_write_object(env, &error_response.encode_to_vec());
+                return;
+            },
+        };
+
+    // Convert LayoutMetadata to protobuf
+    let protobuf_metadata = response
+        .metadata
+        .and_then(|metadata| match metadata.try_into() {
+            Ok(pb) => Some(pb),
+            Err(e) => {
+                log::error!("Failed to convert LayoutMetadata to protobuf: {}", e);
+                None
+            },
+        });
+
+    // Build protobuf response
+    let protobuf_response = match response.layout_result {
+        Ok(layout_content) => ProtobufDumpSessionLayoutResponse {
+            result: Some(dump_session_layout_response::Result::LayoutContent(
+                layout_content,
+            )),
+            metadata: protobuf_metadata,
+        },
+        Err(error) => ProtobufDumpSessionLayoutResponse {
+            result: Some(dump_session_layout_response::Result::Error(error)),
+            metadata: None,
+        },
+    };
+
+    // Write response back to plugin via WASI pipe
+    let _ = wasi_write_object(env, &protobuf_response.encode_to_vec())
+        .with_context(|| format!("failed to send session layout to plugin {}", env.name()));
 }
 
 fn list_clients(env: &PluginEnv) {
@@ -2491,6 +2821,298 @@ fn get_pane_pid(env: &PluginEnv, pane_id: PaneId) {
     wasi_write_object(env, &serialized)
         .with_context(err_context)
         .non_fatal();
+}
+
+fn save_layout(env: &PluginEnv, layout_name: String, layout_kdl: String, overwrite: bool) {
+    let err_context = || format!("Failed to save layout '{}'", layout_name);
+
+    let response = try_save_layout(env, &layout_name, &layout_kdl, overwrite)
+        .map(|_| SaveLayoutResponse::Ok(()))
+        .unwrap_or_else(SaveLayoutResponse::Err);
+
+    // Serialize and send response back to plugin
+    let protobuf_response = ProtobufSaveLayoutResponse::from(response);
+    let serialized = protobuf_response.encode_to_vec();
+    wasi_write_object(env, &serialized)
+        .with_context(err_context)
+        .non_fatal();
+}
+
+fn try_save_layout(
+    env: &PluginEnv,
+    layout_name: &str,
+    layout_kdl: &str,
+    overwrite: bool,
+) -> Result<(), String> {
+    // Step 1: Sanitize layout name for path traversal and invalid characters
+    let safe_name = sanitize_layout_name(layout_name)?;
+
+    // Step 2: Validate the layout by parsing it
+    Layout::from_kdl(
+        layout_kdl,
+        Some(format!("{}.kdl", safe_name)),
+        None, // No swap layouts
+        None, // No cwd override
+    )
+    .map_err(|config_error| format!("Invalid layout KDL: {:?}", config_error))?;
+
+    // Step 3: Get layout_dir from PluginEnv
+    let layout_dir = env
+        .layout_dir
+        .clone()
+        .or_else(default_layout_dir)
+        .ok_or_else(|| "Layout directory not found".to_string())?;
+
+    // Step 4: Create file path
+    let file_path = layout_dir.join(format!("{}.kdl", safe_name));
+
+    // Step 5: Check if file exists when overwrite=false
+    if file_path.exists() && !overwrite {
+        return Err(format!(
+            "Layout file '{}' already exists. Use overwrite flag to replace it.",
+            safe_name
+        ));
+    }
+
+    // Step 6: Ensure layout directory exists
+    std::fs::create_dir_all(layout_dir)
+        .map_err(|e| format!("Failed to create layout directory: {}", e))?;
+
+    // Step 7: Write to disk
+    let mut parsed_layout: KdlDocument = layout_kdl.parse().unwrap(); // unwrap
+                                                                      // should
+                                                                      // be
+                                                                      // safe,
+                                                                      // but
+                                                                      // let's
+                                                                      // do
+                                                                      // it
+                                                                      // nicer
+    parsed_layout.fmt();
+    std::fs::write(&file_path, &parsed_layout.to_string())
+        .map_err(|io_error| format!("Failed to write layout file: {}", io_error))?;
+
+    Ok(())
+}
+
+fn delete_layout(env: &PluginEnv, layout_name: String) {
+    let err_context = || format!("Failed to delete layout '{}'", layout_name);
+
+    let response = try_delete_layout(env, &layout_name)
+        .map(|_| DeleteLayoutResponse::Ok(()))
+        .unwrap_or_else(|e| DeleteLayoutResponse::Err(e));
+
+    let protobuf_response: ProtobufDeleteLayoutResponse = response.into();
+    let serialized = protobuf_response.encode_to_vec();
+    wasi_write_object(env, &serialized)
+        .with_context(err_context)
+        .non_fatal();
+}
+
+fn rename_layout(env: &PluginEnv, old_layout_name: String, new_layout_name: String) {
+    let err_context = || {
+        format!(
+            "Failed to rename layout '{}' to '{}'",
+            old_layout_name, new_layout_name
+        )
+    };
+
+    let response = try_rename_layout(env, &old_layout_name, &new_layout_name)
+        .map(|_| RenameLayoutResponse::Ok(()))
+        .unwrap_or_else(|e| RenameLayoutResponse::Err(e));
+
+    let protobuf_response: ProtobufRenameLayoutResponse = response.into();
+    let serialized = protobuf_response.encode_to_vec();
+    wasi_write_object(env, &serialized)
+        .with_context(err_context)
+        .non_fatal();
+}
+
+fn try_delete_layout(env: &PluginEnv, layout_name: &str) -> Result<(), String> {
+    // Sanitize the layout name to prevent directory traversal
+    let safe_name =
+        sanitize_layout_name(layout_name).map_err(|e| format!("Invalid layout name: {}", e))?;
+
+    // Get the layout directory from PluginEnv
+    let layout_dir = env
+        .layout_dir
+        .clone()
+        .or_else(default_layout_dir)
+        .ok_or_else(|| "Layout directory not found".to_string())?;
+
+    // Construct the full file path
+    let file_path = layout_dir.join(format!("{}.kdl", safe_name));
+
+    // Check if the file exists
+    if !file_path.exists() {
+        return Err(format!("Layout '{}' not found", safe_name));
+    }
+
+    // Delete the file
+    std::fs::remove_file(&file_path).map_err(|e| format!("Failed to delete layout file: {}", e))?;
+
+    Ok(())
+}
+
+fn try_rename_layout(
+    env: &PluginEnv,
+    old_layout_name: &str,
+    new_layout_name: &str,
+) -> Result<(), String> {
+    // Step 1: Sanitize both layout names
+    let safe_old_name = sanitize_layout_name(old_layout_name)
+        .map_err(|e| format!("Invalid old layout name: {}", e))?;
+
+    let safe_new_name = sanitize_layout_name(new_layout_name)
+        .map_err(|e| format!("Invalid new layout name: {}", e))?;
+
+    // Step 2: Get layout directory from PluginEnv
+    let layout_dir = env
+        .layout_dir
+        .clone()
+        .or_else(default_layout_dir)
+        .ok_or_else(|| "Layout directory not found".to_string())?;
+
+    // Step 3: Construct file paths
+    let old_file_path = layout_dir.join(format!("{}.kdl", safe_old_name));
+    let new_file_path = layout_dir.join(format!("{}.kdl", safe_new_name));
+
+    // Step 4: Check if source file exists
+    if !old_file_path.exists() {
+        return Err(format!("Layout '{}' not found", safe_old_name));
+    }
+
+    // Step 5: Check if target file already exists (fail if it does - no overwrite)
+    if new_file_path.exists() {
+        return Err(format!(
+            "Layout '{}' already exists. Cannot rename '{}' to existing layout name.",
+            safe_new_name, safe_old_name
+        ));
+    }
+
+    // Step 6: Rename the file
+    std::fs::rename(&old_file_path, &new_file_path)
+        .map_err(|e| format!("Failed to rename layout file: {}", e))?;
+
+    Ok(())
+}
+
+fn edit_layout(env: &PluginEnv, layout_name: String, context: BTreeMap<String, String>) {
+    let err_context = || format!("Failed to edit layout '{}'", layout_name);
+
+    let response = try_edit_layout(env, &layout_name, context)
+        .map(|_| EditLayoutResponse::Ok(()))
+        .unwrap_or_else(|e| EditLayoutResponse::Err(e));
+
+    let protobuf_response: ProtobufEditLayoutResponse = response.into();
+    let serialized = protobuf_response.encode_to_vec();
+    wasi_write_object(env, &serialized)
+        .with_context(err_context)
+        .non_fatal();
+}
+
+fn try_edit_layout(
+    env: &PluginEnv,
+    layout_name: &str,
+    context: BTreeMap<String, String>,
+) -> Result<(), String> {
+    // Sanitize the layout name to prevent directory traversal
+    let safe_name =
+        sanitize_layout_name(layout_name).map_err(|e| format!("Invalid layout name: {}", e))?;
+
+    // Get the layout directory from PluginEnv
+    let layout_dir = env
+        .layout_dir
+        .clone()
+        .or_else(default_layout_dir)
+        .ok_or_else(|| "Layout directory not found".to_string())?;
+
+    // Construct the full file path
+    let file_path = layout_dir.join(format!("{}.kdl", safe_name));
+
+    // Create FileToOpen for the layout file
+    let file_to_open = FileToOpen {
+        path: file_path,
+        line_number: None,
+        cwd: Some(layout_dir.clone()),
+    };
+
+    // Create an Action::EditFile
+    let action = Action::EditFile {
+        payload: OpenFilePayload::new(
+            file_to_open.path,
+            file_to_open.line_number,
+            file_to_open.cwd,
+        )
+        .with_originating_plugin(OriginatingPlugin::new(
+            env.plugin_id,
+            env.client_id,
+            context,
+        )),
+        direction: None,
+        floating: false,
+        in_place: true,
+        start_suppressed: false,
+        coordinates: None,
+        near_current_pane: true,
+    };
+
+    // Route the action - this is fallible
+    route_action(
+        action,
+        env.client_id,
+        None,
+        Some(PaneId::Plugin(env.plugin_id)),
+        env.senders.clone(),
+        env.capabilities.clone(),
+        env.client_attributes.clone(),
+        env.default_shell.clone(),
+        env.default_layout.clone(),
+        None,
+        env.keybinds.clone(),
+        env.default_mode.clone(),
+        None,
+    )
+    .map(|_| ())
+    .map_err(|e| format!("Failed to route edit action: {:?}", e))
+}
+
+/// Sanitize layout name to prevent path traversal and invalid filenames
+/// Returns the sanitized name or an error message
+fn sanitize_layout_name(name: &str) -> Result<String, String> {
+    // Check for empty name
+    if name.is_empty() {
+        return Err("Layout name cannot be empty".to_string());
+    }
+
+    // Check for path separators (prevent directory traversal)
+    if name.contains('/') || name.contains('\\') {
+        return Err("Layout name cannot contain path separators".to_string());
+    }
+
+    // Check for parent directory references
+    if name.contains("..") {
+        return Err("Layout name cannot contain '..'".to_string());
+    }
+
+    // Check length (most filesystems have 255 char limit, leave room for .kdl)
+    if name.len() > 250 {
+        return Err("Layout name too long (max 250 characters)".to_string());
+    }
+
+    // Only allow alphanumeric, hyphens, underscores, and spaces
+    let valid_chars = name
+        .chars()
+        .all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == ' ');
+
+    if !valid_chars {
+        return Err(
+            "Layout name can only contain letters, numbers, hyphens, underscores, and spaces"
+                .to_string(),
+        );
+    }
+
+    Ok(name.to_string())
 }
 
 fn move_pane_with_pane_id(env: &PluginEnv, pane_id: PaneId) {
@@ -2935,6 +3557,57 @@ fn replace_pane_with_existing_pane(
         ));
 }
 
+fn override_layout(
+    env: &mut PluginEnv,
+    layout_info: LayoutInfo,
+    retain_existing_terminal_panes: bool,
+    retain_existing_plugin_panes: bool,
+    apply_only_to_active_tab: bool,
+    context: BTreeMap<String, String>,
+) -> Result<()> {
+    let layout = Layout::from_layout_info(&env.layout_dir, layout_info)
+        .map_err(|e| anyhow!("Failed to parse layout: {:?}", e))?;
+
+    // Convert all tabs to Vec<TabLayoutInfo>
+    let tabs: Vec<TabLayoutInfo> = layout
+        .tabs
+        .iter()
+        .enumerate()
+        .map(|(index, (tab_name, tiled, floating))| TabLayoutInfo {
+            tab_index: index,
+            tab_name: tab_name.clone(),
+            tiled_layout: tiled.clone(),
+            floating_layouts: floating.clone(),
+            swap_tiled_layouts: Some(layout.swap_tiled_layouts.clone()),
+            swap_floating_layouts: Some(layout.swap_floating_layouts.clone()),
+        })
+        .collect();
+
+    // If no tabs, create default tab
+    let tabs = if tabs.is_empty() {
+        let (tiled, floating) = layout.new_tab();
+        vec![TabLayoutInfo {
+            tab_index: 0,
+            tab_name: None,
+            tiled_layout: tiled,
+            floating_layouts: floating,
+            swap_tiled_layouts: Some(layout.swap_tiled_layouts),
+            swap_floating_layouts: Some(layout.swap_floating_layouts),
+        }]
+    } else {
+        tabs
+    };
+
+    let action = Action::OverrideLayout {
+        tabs,
+        retain_existing_terminal_panes,
+        retain_existing_plugin_panes,
+        apply_only_to_active_tab,
+    };
+    run_action(env, action, context);
+    Ok(())
+}
+
 // Custom panic handler for plugins.
 //
 // This is called when a panic occurs in a plugin. Since most panics will likely originate in the
@@ -3105,14 +3778,24 @@ fn check_command_permission(
         | PluginCommand::ReplacePaneWithExistingPane(..)
         | PluginCommand::KillSessions(..)
         | PluginCommand::SendSigintToPaneId(..)
-        | PluginCommand::SendSigkillToPaneId(..) => PermissionType::ChangeApplicationState,
+        | PluginCommand::SendSigkillToPaneId(..)
+        | PluginCommand::OverrideLayout(..)
+        | PluginCommand::SaveLayout { .. }
+        | PluginCommand::DeleteLayout { .. }
+        | PluginCommand::RenameLayout { .. }
+        | PluginCommand::EditLayout { .. } => PermissionType::ChangeApplicationState,
         PluginCommand::UnblockCliPipeInput(..)
         | PluginCommand::BlockCliPipeInput(..)
         | PluginCommand::CliPipeOutput(..) => PermissionType::ReadCliPipes,
         PluginCommand::MessageToPlugin(..) => PermissionType::MessageAndLaunchOtherPlugins,
         PluginCommand::ListClients
-        | PluginCommand::DumpSessionLayout
-        | PluginCommand::GetPanePid { .. } => PermissionType::ReadApplicationState,
+        | PluginCommand::DumpSessionLayout { .. }
+        | PluginCommand::GetPanePid { .. }
+        | PluginCommand::GenerateRandomName
+        | PluginCommand::GetLayoutDir
+        | PluginCommand::GetFocusedPaneInfo
+        | PluginCommand::DumpLayout(..)
+        | PluginCommand::ParseLayout(..) => PermissionType::ReadApplicationState,
         PluginCommand::RebindKeys { .. } | PluginCommand::Reconfigure(..) => {
             PermissionType::Reconfigure
         },
