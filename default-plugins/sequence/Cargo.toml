@@ -2,7 +2,8 @@
 name = "sequence"
 version = "0.1.0"
 authors = ["Aram Drevekenin <aram@poor.dev>"]
-edition = "2018"
+edition.workspace = true
+license.workspace = true
 
 [dependencies]
 zellij-tile = { path = "../../zellij-tile" }
