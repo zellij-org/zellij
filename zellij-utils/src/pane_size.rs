@@ -5,7 +5,7 @@ use std::{
 };
 
 use crate::data::FloatingPaneCoordinates;
-use crate::input::layout::{SplitDirection, SplitSize};
+use crate::input::layout::{PercentOrFixed, SplitDirection, SplitSize};
 use crate::position::Position;
 
 /// Contains the position and size of a [`Pane`], or more generally of any terminal, measured
@@ -250,23 +250,45 @@ impl PaneGeom {
             SplitDirection::Horizontal => self.rows.is_percent(),
         }
     }
+    pub fn apply_floating_pane_position(
+        &mut self,
+        x: Option<PercentOrFixed>,
+        y: Option<PercentOrFixed>,
+        width: Option<PercentOrFixed>,
+        height: Option<PercentOrFixed>,
+        viewport_cols: usize,
+        viewport_rows: usize,
+    ) {
+        if let Some(width) = &width {
+            self.cols = Dimension::fixed(width.to_fixed(viewport_cols));
+        }
+        if let Some(height) = &height {
+            self.rows = Dimension::fixed(height.to_fixed(viewport_rows));
+        }
+        self.x = match &x {
+            Some(x) => x.to_fixed(viewport_cols),
+            None if width.is_some() => viewport_cols.saturating_sub(self.cols.as_usize()) / 2,
+            None => self.x,
+        };
+        self.y = match &y {
+            Some(y) => y.to_fixed(viewport_rows),
+            None if height.is_some() => viewport_rows.saturating_sub(self.rows.as_usize()) / 2,
+            None => self.y,
+        };
+    }
     pub fn adjust_coordinates(
         &mut self,
         floating_pane_coordinates: FloatingPaneCoordinates,
         viewport: Viewport,
     ) {
-        if let Some(x) = floating_pane_coordinates.x {
-            self.x = x.to_fixed(viewport.cols);
-        }
-        if let Some(y) = floating_pane_coordinates.y {
-            self.y = y.to_fixed(viewport.rows);
-        }
-        if let Some(height) = floating_pane_coordinates.height {
-            self.rows = Dimension::from_split_size(height, viewport.rows);
-        }
-        if let Some(width) = floating_pane_coordinates.width {
-            self.cols = Dimension::from_split_size(width, viewport.cols);
-        }
+        self.apply_floating_pane_position(
+            floating_pane_coordinates.x.map(Into::into),
+            floating_pane_coordinates.y.map(Into::into),
+            floating_pane_coordinates.width.map(Into::into),
+            floating_pane_coordinates.height.map(Into::into),
+            viewport.cols,
+            viewport.rows,
+        );
         if self.x < viewport.x {
             self.x = viewport.x;
         } else if self.x > viewport.x + viewport.cols {
