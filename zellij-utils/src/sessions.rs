@@ -428,15 +428,15 @@ pub fn assert_dead_session(name: &str, force: bool) {
     process::exit(1);
 }
 
-pub fn validate_session_name(name: &str) -> Result<(), &'static str> {
+pub fn validate_session_name(name: &str) -> Result<(), String> {
     if name.trim().is_empty() {
-        return Err("Session name cannot be empty. Please provide a specific session name.");
+        return Err("Session name cannot be empty. Please provide a specific session name.".to_string());
     }
     if name == "." || name == ".." {
-        return Err("Invalid session name.");
+        return Err(format!("Invalid session name: \"{}\".", name));
     }
     if name.contains('/') {
-        return Err("Session name cannot contain '/'.");
+        return Err("Session name cannot contain '/'.".to_string());
     }
     Ok(())
 }
