@@ -1,0 +1,7 @@
+---
+source: zellij-server/src/plugins/./unit/plugin_tests.rs
+expression: "format!(\"{:#?}\", plugin_bytes_event)"
+---
+Some(
+    "Layout dump error: IoError: The layout was not found, File: nonexistent_layout_xyz\n\r",
+)

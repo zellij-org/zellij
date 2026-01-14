@@ -2,4 +2,4 @@
 source: zellij-server/src/./unit/screen_tests.rs
 expression: "format!(\"{:?}\", *received_pty_instructions.lock().unwrap())"
 ---
-[UpdateActivePane(Some(Terminal(0)), 1), UpdateActivePane(Some(Terminal(0)), 1), SpawnTerminal(None, None, Tiled(None), false, ClientId(10)), Exit]
+[UpdateActivePane(Some(Terminal(0)), 1), UpdateActivePane(Some(Terminal(0)), 1), SpawnTerminal(None, None, Tiled(None), false, ClientId(10), Some(NotificationEnd { channel: None, exit_status: None, unblock_condition: None, affected_pane_id: None }), false), Exit]

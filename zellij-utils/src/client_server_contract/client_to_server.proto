@@ -1,0 +1,99 @@
+syntax = "proto3";
+package client_server_contract;
+
+import "common_types.proto";
+
+message ClientToServerMsg {
+  oneof message {
+    DetachSessionMsg detach_session = 1;
+    TerminalPixelDimensionsMsg terminal_pixel_dimensions = 2;
+    BackgroundColorMsg background_color = 3;
+    ForegroundColorMsg foreground_color = 4;
+    ColorRegistersMsg color_registers = 5;
+    TerminalResizeMsg terminal_resize = 6;
+    FirstClientConnectedMsg first_client_connected = 7;
+    AttachClientMsg attach_client = 8;
+    ActionMsg action = 9;
+    KeyMsg key = 10;
+    ClientExitedMsg client_exited = 11;
+    KillSessionMsg kill_session = 12;
+    ConnStatusMsg conn_status = 13;
+    WebServerStartedMsg web_server_started = 14;
+    FailedToStartWebServerMsg failed_to_start_web_server = 15;
+    AttachWatcherClientMsg attach_watcher_client = 16;
+  }
+}
+
+message DetachSessionMsg {
+  repeated uint32 client_ids = 1;
+}
+
+message TerminalPixelDimensionsMsg {
+  PixelDimensions pixel_dimensions = 1;
+}
+
+message BackgroundColorMsg {
+  string color = 1;
+}
+
+message ForegroundColorMsg {
+  string color = 1;
+}
+
+message ColorRegistersMsg {
+  repeated ColorRegister color_registers = 1;
+}
+
+message TerminalResizeMsg {
+  Size new_size = 1;
+}
+
+message FirstClientConnectedMsg {
+  CliAssets cli_assets = 1;
+  bool is_web_client = 2;
+}
+
+message AttachClientMsg {
+  CliAssets cli_assets = 1;
+  optional uint32 tab_position_to_focus = 2;
+  optional PaneReference pane_to_focus = 3;
+  bool is_web_client = 4;
+}
+
+message AttachWatcherClientMsg {
+  Size terminal_size = 1;
+  bool is_web_client = 2;
+}
+
+message ActionMsg {
+  Action action = 1;
+  optional uint32 terminal_id = 2;
+  optional uint32 client_id = 3;
+  bool is_cli_client = 4;
+}
+
+message KeyMsg {
+  KeyWithModifier key = 1;
+  repeated uint32 raw_bytes = 2;
+  bool is_kitty_keyboard_protocol = 3;
+}
+
+message ClientExitedMsg {
+  // Empty message
+}
+
+message KillSessionMsg {
+  // Empty message
+}
+
+message ConnStatusMsg {
+  // Empty message (just indicates connection status request)
+}
+
+message WebServerStartedMsg {
+  string base_url = 1;
+}
+
+message FailedToStartWebServerMsg {
+  string error = 1;
+}

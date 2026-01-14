@@ -1,22 +1,26 @@
 use zellij_tile::prelude::*;
 
+#[derive(Debug)]
 struct ScreenContent {
     title: (String, Text),
     items: Vec<Vec<Text>>,
     help: (String, Text),
     status_message: Option<(String, Text)>,
     max_width: usize,
-    new_token_item: Option<Vec<Text>>,
+    new_token_line: Option<(String, Text)>,
 }
 
+#[derive(Debug)]
 struct Layout {
     base_x: usize,
     base_y: usize,
     title_x: usize,
+    new_token_y: usize,
     help_y: usize,
     status_y: usize,
 }
 
+#[derive(Debug)]
 struct ScrollInfo {
     start_index: usize,
     end_index: usize,
@@ -24,14 +28,16 @@ struct ScrollInfo {
     truncated_bottom: usize,
 }
 
+#[derive(Debug)]
 struct ColumnWidths {
     token: usize,
     date: usize,
+    read_only: usize,
     controls: usize,
 }
 
 pub struct TokenManagementScreen<'a> {
-    token_list: &'a Vec<(String, String)>,
+    token_list: &'a Vec<(String, String, bool)>, // bool -> is_read_only
     selected_list_index: Option<usize>,
     renaming_token: &'a Option<String>,
     entering_new_token_name: &'a Option<String>,
@@ -43,7 +49,7 @@ pub struct TokenManagementScreen<'a> {
 
 impl<'a> TokenManagementScreen<'a> {
     pub fn new(
-        token_list: &'a Vec<(String, String)>,
+        token_list: &'a Vec<(String, String, bool)>,
         selected_list_index: Option<usize>,
         renaming_token: &'a Option<String>,
         entering_new_token_name: &'a Option<String>,
@@ -76,44 +82,55 @@ impl<'a> TokenManagementScreen<'a> {
 
         const MIN_TOKEN_WIDTH: usize = 10;
         const MIN_DATE_WIDTH: usize = 10; // Minimum for just date "YYYY-MM-DD"
+        const MIN_READ_ONLY_WIDTH: usize = 5; // Minimum for "RO/RW"
         const MIN_CONTROLS_WIDTH: usize = 6; // Minimum for "(<x>, <r>)"
-        const COLUMN_SPACING: usize = 2; // Space between columns
+        const COLUMN_SPACING: usize = 5; // Space between columns (4 columns with table padding)
 
-        let min_total_width =
-            MIN_TOKEN_WIDTH + MIN_DATE_WIDTH + MIN_CONTROLS_WIDTH + COLUMN_SPACING;
+        let min_total_width = MIN_TOKEN_WIDTH
+            + MIN_DATE_WIDTH
+            + MIN_READ_ONLY_WIDTH
+            + MIN_CONTROLS_WIDTH
+            + COLUMN_SPACING;
 
         if max_table_width <= min_total_width {
             return ColumnWidths {
                 token: MIN_TOKEN_WIDTH,
                 date: MIN_DATE_WIDTH,
+                read_only: MIN_READ_ONLY_WIDTH,
                 controls: MIN_CONTROLS_WIDTH,
             };
         }
 
         const PREFERRED_DATE_WIDTH: usize = 29; // "issued on YYYY-MM-DD HH:MM:SS"
+        const PREFERRED_READ_ONLY_WIDTH: usize = 10; // "read-write"
         const PREFERRED_CONTROLS_WIDTH: usize = 24; // "(<x> revoke, <r> rename)"
 
         let available_width = max_table_width.saturating_sub(COLUMN_SPACING);
-        let preferred_fixed_width = PREFERRED_DATE_WIDTH + PREFERRED_CONTROLS_WIDTH;
+        let preferred_fixed_width =
+            PREFERRED_DATE_WIDTH + PREFERRED_READ_ONLY_WIDTH + PREFERRED_CONTROLS_WIDTH;
 
         if available_width >= preferred_fixed_width + MIN_TOKEN_WIDTH {
-            // We can use preferred widths for date and controls
+            // We can use preferred widths for date, read_only, and controls
             ColumnWidths {
                 token: available_width.saturating_sub(preferred_fixed_width),
                 date: PREFERRED_DATE_WIDTH,
+                read_only: PREFERRED_READ_ONLY_WIDTH,
                 controls: PREFERRED_CONTROLS_WIDTH,
             }
         } else {
             // Need to balance truncation across all columns
+            // Priority: controls > read_only > date > token (token gets remaining space)
             let remaining_width = available_width
                 .saturating_sub(MIN_TOKEN_WIDTH)
                 .saturating_sub(MIN_DATE_WIDTH)
+                .saturating_sub(MIN_READ_ONLY_WIDTH)
                 .saturating_sub(MIN_CONTROLS_WIDTH);
-            let extra_per_column = remaining_width / 3;
+            let extra_per_column = remaining_width / 4;
 
             ColumnWidths {
                 token: MIN_TOKEN_WIDTH + extra_per_column,
                 date: MIN_DATE_WIDTH + extra_per_column,
+                read_only: MIN_READ_ONLY_WIDTH + extra_per_column,
                 controls: MIN_CONTROLS_WIDTH + extra_per_column,
             }
         }
@@ -184,6 +201,38 @@ impl<'a> TokenManagementScreen<'a> {
         }
     }
 
+    fn format_read_only(&self, is_read_only: bool, max_width: usize) -> String {
+        let full_text = if is_read_only {
+            "read-only"
+        } else {
+            "read-write"
+        };
+        let short_text = if is_read_only { "RO" } else { "RW" };
+
+        let text = if full_text.chars().count() <= max_width {
+            full_text
+        } else {
+            short_text
+        };
+
+        // Center the text in the column
+        let text_len = text.chars().count();
+        if text_len >= max_width {
+            return text.to_string();
+        }
+
+        let padding = max_width - text_len;
+        let left_padding = padding / 2;
+        let right_padding = padding - left_padding;
+
+        format!(
+            "{}{}{}",
+            " ".repeat(left_padding),
+            text,
+            " ".repeat(right_padding)
+        )
+    }
+
     fn format_controls(&self, max_width: usize, is_selected: bool) -> String {
         if !is_selected {
             return " ".repeat(max_width);
@@ -234,15 +283,15 @@ impl<'a> TokenManagementScreen<'a> {
         max_width = std::cmp::max(max_width, title_text.len());
 
         let mut items = vec![];
-        for (i, (token, created_at)) in self.token_list.iter().enumerate() {
+        for (i, (token, created_at, read_only)) in self.token_list.iter().enumerate() {
             let is_selected = Some(i) == self.selected_list_index;
             let (row_text, row_items) =
-                self.create_token_item(token, created_at, is_selected, &column_widths);
+                self.create_token_item(token, created_at, *read_only, is_selected, &column_widths);
             max_width = std::cmp::max(max_width, row_text.chars().count());
             items.push(row_items);
         }
 
-        let (new_token_text, new_token_row) = self.create_new_token_item(&column_widths);
+        let (new_token_text, new_token_line) = self.create_new_token_line();
         max_width = std::cmp::max(max_width, new_token_text.chars().count());
 
         let (help_text, help_line) = self.create_help_line();
@@ -261,7 +310,7 @@ impl<'a> TokenManagementScreen<'a> {
             help: (help_text, help_line),
             status_message,
             max_width,
-            new_token_item: Some(new_token_row),
+            new_token_line: Some((new_token_text, new_token_line)),
         }
     }
 
@@ -357,17 +406,18 @@ impl<'a> TokenManagementScreen<'a> {
         &self,
         token: &str,
         created_at: &str,
+        is_read_only: bool,
         is_selected: bool,
         column_widths: &ColumnWidths,
     ) -> (String, Vec<Text>) {
         if is_selected {
             if let Some(new_name) = &self.renaming_token {
-                self.create_renaming_item(new_name, created_at, column_widths)
+                self.create_renaming_item(new_name, created_at, is_read_only, column_widths)
             } else {
-                self.create_selected_item(token, created_at, column_widths)
+                self.create_selected_item(token, created_at, is_read_only, column_widths)
             }
         } else {
-            self.create_regular_item(token, created_at, column_widths)
+            self.create_regular_item(token, created_at, is_read_only, column_widths)
         }
     }
 
@@ -375,12 +425,14 @@ impl<'a> TokenManagementScreen<'a> {
         &self,
         new_name: &str,
         created_at: &str,
+        is_read_only: bool,
         column_widths: &ColumnWidths,
     ) -> (String, Vec<Text>) {
         let truncated_name =
             self.truncate_token_name(new_name, column_widths.token.saturating_sub(1)); // -1 for cursor
         let item_text = format!("{}_", truncated_name);
         let date_text = self.format_date(created_at, column_widths.date, true);
+        let read_only_text = self.format_read_only(is_read_only, column_widths.read_only);
         let controls_text = " ".repeat(column_widths.controls);
 
         let token_end = truncated_name.chars().count();
@@ -389,10 +441,14 @@ impl<'a> TokenManagementScreen<'a> {
                 .color_range(0, ..token_end + 1)
                 .selected(),
             Text::new(&date_text),
+            Text::new(&read_only_text).color_all(1),
             Text::new(&controls_text),
         ];
         (
-            format!("{} {} {}", item_text, date_text, controls_text),
+            format!(
+                "{} {} {} {}",
+                item_text, date_text, read_only_text, controls_text
+            ),
             items,
         )
     }
@@ -401,6 +457,7 @@ impl<'a> TokenManagementScreen<'a> {
         &self,
         token: &str,
         created_at: &str,
+        is_read_only: bool,
         column_widths: &ColumnWidths,
     ) -> (String, Vec<Text>) {
         let mut item_text = self.truncate_token_name(token, column_widths.token);
@@ -409,6 +466,7 @@ impl<'a> TokenManagementScreen<'a> {
             item_text.push(' ');
         };
         let date_text = self.format_date(created_at, column_widths.date, true);
+        let read_only_text = self.format_read_only(is_read_only, column_widths.read_only);
         let controls_text = self.format_controls(column_widths.controls, true);
 
         // Determine highlight ranges for controls based on the actual content
@@ -432,11 +490,15 @@ impl<'a> TokenManagementScreen<'a> {
         let items = vec![
             Text::new(&item_text).color_range(0, ..).selected(),
             Text::new(&date_text).selected(),
+            Text::new(&read_only_text).color_all(1).selected(),
             controls_colored,
         ];
 
         (
-            format!("{} {} {}", item_text, date_text, controls_text),
+            format!(
+                "{} {} {} {}",
+                item_text, date_text, read_only_text, controls_text
+            ),
             items,
         )
     }
@@ -445,6 +507,7 @@ impl<'a> TokenManagementScreen<'a> {
         &self,
         token: &str,
         created_at: &str,
+        is_read_only: bool,
         column_widths: &ColumnWidths,
     ) -> (String, Vec<Text>) {
         let mut item_text = self.truncate_token_name(token, column_widths.token);
@@ -453,57 +516,54 @@ impl<'a> TokenManagementScreen<'a> {
             item_text.push(' ');
         };
         let date_text = self.format_date(created_at, column_widths.date, true);
+        let read_only_text = self.format_read_only(is_read_only, column_widths.read_only);
         let controls_text = " ".repeat(column_widths.controls);
 
         let items = vec![
             Text::new(&item_text).color_range(0, ..),
             Text::new(&date_text),
+            Text::new(&read_only_text).color_all(1),
             Text::new(&controls_text),
         ];
         (
-            format!("{} {} {}", item_text, date_text, controls_text),
+            format!(
+                "{} {} {} {}",
+                item_text, date_text, read_only_text, controls_text
+            ),
             items,
         )
     }
 
-    fn create_new_token_item(&self, column_widths: &ColumnWidths) -> (String, Vec<Text>) {
-        let create_new_token_text = "<n> - create new token".to_string();
-        let short_create_text = "<n> - new".to_string();
-        let date_placeholder = " ".repeat(column_widths.date);
-        let controls_placeholder = " ".repeat(column_widths.controls);
+    fn create_new_token_line(&self) -> (String, Text) {
+        let full_create_text = "<n> - create new token, <o> - create read-only token".to_string();
+        let medium_create_text = "<n> - new token, <o> - read-only".to_string();
+        let short_create_text = "<n> - new, <o> - RO".to_string();
 
         if let Some(name) = &self.entering_new_token_name {
-            let truncated_name =
-                self.truncate_token_name(name, column_widths.token.saturating_sub(1)); // -1 for cursor
-            let text = format!("{}_", truncated_name);
-            let item = vec![
-                Text::new(&text).color_range(3, ..),
-                Text::new(&date_placeholder),
-                Text::new(&controls_placeholder),
-            ];
-            (
-                format!("{} {} {}", text, date_placeholder, controls_placeholder),
-                item,
-            )
-        } else {
-            // Check if the full text fits, otherwise use the short version
-            let text_to_use = if create_new_token_text.chars().count() <= column_widths.token {
-                &create_new_token_text
+            let max_width = self.cols.saturating_sub(1); // Leave room for cursor
+            let truncated_name = if name.chars().count() > max_width {
+                let chars: Vec<char> = name.chars().take(max_width).collect();
+                chars.into_iter().collect()
             } else {
-                &short_create_text
+                name.clone()
+            };
+            let text = format!("{}_", truncated_name);
+            (text.clone(), Text::new(&text).color_range(3, ..))
+        } else {
+            // Check which text fits
+            let (text_to_use, n_range, o_range) = if full_create_text.chars().count() <= self.cols {
+                (&full_create_text, 0..=2, 24..=26)
+            } else if medium_create_text.chars().count() <= self.cols {
+                (&medium_create_text, 0..=2, 16..=19)
+            } else {
+                (&short_create_text, 0..=2, 11..=14)
             };
 
-            let item = vec![
-                Text::new(text_to_use).color_range(3, 0..=2),
-                Text::new(&date_placeholder),
-                Text::new(&controls_placeholder),
-            ];
             (
-                format!(
-                    "{} {} {}",
-                    text_to_use, date_placeholder, controls_placeholder
-                ),
-                item,
+                text_to_use.to_string(),
+                Text::new(text_to_use)
+                    .color_range(3, n_range)
+                    .color_range(3, o_range),
             )
         }
     }
@@ -579,6 +639,7 @@ impl<'a> TokenManagementScreen<'a> {
             base_x: (self.cols.saturating_sub(content.max_width) as f64 / 2.0).floor() as usize,
             base_y,
             title_x: self.cols.saturating_sub(content.title.0.len()) / 2,
+            new_token_y,
             help_y,
             status_y: help_y, // Status message uses the same position as help
         }
@@ -587,16 +648,22 @@ impl<'a> TokenManagementScreen<'a> {
     fn print_items_to_screen(&self, content: ScreenContent, layout: Layout) {
         print_text_with_coordinates(content.title.1, layout.title_x, layout.base_y, None, None);
 
-        let mut table = Table::new().add_row(vec![" ", " ", " "]);
+        let mut table = Table::new().add_row(vec![" ", " ", " ", " "]);
         for item in content.items.into_iter() {
             table = table.add_styled_row(item);
         }
 
-        if let Some(new_token_item) = content.new_token_item {
-            table = table.add_styled_row(new_token_item);
-        }
-
         print_table_with_coordinates(table, layout.base_x, layout.base_y + 1, None, None);
+
+        if let Some((_, new_token_text)) = content.new_token_line {
+            print_text_with_coordinates(
+                new_token_text,
+                layout.base_x,
+                layout.new_token_y,
+                None,
+                None,
+            );
+        }
 
         if let Some((_, status_text)) = content.status_message {
             print_text_with_coordinates(status_text, layout.base_x, layout.status_y, None, None);

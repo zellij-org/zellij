@@ -1,0 +1,76 @@
+syntax = "proto3";
+package client_server_contract;
+
+import "common_types.proto";
+
+message ServerToClientMsg {
+  oneof message {
+    RenderMsg render = 1;
+    UnblockInputThreadMsg unblock_input_thread = 2;
+    ExitMsg exit = 3;
+    ConnectedMsg connected = 4;
+    LogMsg log = 5;
+    LogErrorMsg log_error = 6;
+    SwitchSessionMsg switch_session = 7;
+    UnblockCliPipeInputMsg unblock_cli_pipe_input = 8;
+    CliPipeOutputMsg cli_pipe_output = 9;
+    QueryTerminalSizeMsg query_terminal_size = 10;
+    StartWebServerMsg start_web_server = 11;
+    RenamedSessionMsg renamed_session = 12;
+    ConfigFileUpdatedMsg config_file_updated = 13;
+  }
+}
+
+message RenderMsg {
+  string content = 1;
+}
+
+message UnblockInputThreadMsg {
+  // Empty message
+}
+
+message ExitMsg {
+  ExitReason exit_reason = 1;
+  optional string payload = 2;
+}
+
+message ConnectedMsg {
+  // Empty message
+}
+
+message LogMsg {
+  repeated string lines = 1;
+}
+
+message LogErrorMsg {
+  repeated string lines = 1;
+}
+
+message SwitchSessionMsg {
+  ConnectToSession connect_to_session = 1;
+}
+
+message UnblockCliPipeInputMsg {
+  string pipe_name = 1;
+}
+
+message CliPipeOutputMsg {
+  string pipe_name = 1;
+  string output = 2;
+}
+
+message QueryTerminalSizeMsg {
+  // Empty message
+}
+
+message StartWebServerMsg {
+  // Empty message
+}
+
+message RenamedSessionMsg {
+  string name = 1;
+}
+
+message ConfigFileUpdatedMsg {
+  // Empty message
+}

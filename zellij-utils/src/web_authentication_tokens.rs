@@ -10,6 +10,7 @@ use uuid::Uuid;
 pub struct TokenInfo {
     pub name: String,
     pub created_at: String,
+    pub read_only: bool,
 }
 
 #[derive(Debug)]
@@ -96,6 +97,13 @@ fn init_db(conn: &Connection) -> Result<()> {
         [],
     )?;
 
+    // Migration: Add read_only column if it doesn't exist
+    conn.execute(
+        "ALTER TABLE tokens ADD COLUMN read_only BOOLEAN NOT NULL DEFAULT 0",
+        [],
+    )
+    .ok();
+
     Ok(())
 }
 
@@ -105,7 +113,7 @@ fn hash_token(token: &str) -> String {
     format!("{:x}", hasher.finalize())
 }
 
-pub fn create_token(name: Option<String>) -> Result<(String, String)> {
+pub fn create_token(name: Option<String>, read_only: bool) -> Result<(String, String)> {
     let db_path = get_db_path()?;
     let conn = Connection::open(db_path)?;
     init_db(&conn)?;
@@ -121,8 +129,8 @@ pub fn create_token(name: Option<String>) -> Result<(String, String)> {
     };
 
     match conn.execute(
-        "INSERT INTO tokens (token_hash, name) VALUES (?1, ?2)",
-        [&token_hash, &token_name],
+        "INSERT INTO tokens (token_hash, name, read_only) VALUES (?1, ?2, ?3)",
+        [&token_hash, &token_name, &(read_only as i64).to_string()],
     ) {
         Err(rusqlite::Error::SqliteFailure(ffi_error, _))
             if ffi_error.code == rusqlite::ErrorCode::ConstraintViolation =>
@@ -197,6 +205,29 @@ pub fn validate_session_token(session_token: &str) -> Result<bool> {
     )?;
 
     Ok(count > 0)
+}
+
+pub fn is_session_token_read_only(session_token: &str) -> Result<bool> {
+    let db_path = get_db_path()?;
+    let conn = Connection::open(db_path)?;
+    init_db(&conn)?;
+
+    let session_token_hash = hash_token(session_token);
+
+    // Join session_tokens to tokens table to get read_only flag
+    let read_only: i64 = match conn.query_row(
+        "SELECT t.read_only FROM tokens t
+         JOIN session_tokens st ON st.auth_token_hash = t.token_hash
+         WHERE st.session_token_hash = ?1 AND st.expires_at > datetime('now')",
+        [&session_token_hash],
+        |row| row.get(0),
+    ) {
+        Ok(val) => val,
+        Err(rusqlite::Error::QueryReturnedNoRows) => return Err(TokenError::InvalidToken),
+        Err(e) => return Err(TokenError::Database(e)),
+    };
+
+    Ok(read_only != 0)
 }
 
 pub fn cleanup_expired_sessions() -> Result<usize> {
@@ -310,11 +341,13 @@ pub fn list_tokens() -> Result<Vec<TokenInfo>> {
     let conn = Connection::open(db_path)?;
     init_db(&conn)?;
 
-    let mut stmt = conn.prepare("SELECT name, created_at FROM tokens ORDER BY created_at")?;
+    let mut stmt =
+        conn.prepare("SELECT name, created_at, read_only FROM tokens ORDER BY created_at")?;
     let rows = stmt.query_map([], |row| {
         Ok(TokenInfo {
             name: row.get::<_, String>(0)?,
             created_at: row.get::<_, String>(1)?,
+            read_only: row.get::<_, i64>(2)? != 0,
         })
     })?;
 

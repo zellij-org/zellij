@@ -49,6 +49,7 @@ pub fn nested_list(
             Some(padding + bulletin.len()),
             &coordinates,
             &style_declaration,
+            &style.colors,
             text_style.bold(Some(AnsiCode::On)),
         );
         text = pad_line(text, max_width, padding, text_width);

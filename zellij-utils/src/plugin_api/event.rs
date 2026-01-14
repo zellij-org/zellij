@@ -1,16 +1,29 @@
 pub use super::generated_api::api::{
     action::{Action as ProtobufAction, Position as ProtobufPosition},
     event::{
-        event::Payload as ProtobufEventPayload, ClientInfo as ProtobufClientInfo,
-        ClientTabHistory as ProtobufClientTabHistory, CopyDestination as ProtobufCopyDestination,
+        event::Payload as ProtobufEventPayload,
+        layout_parsing_error::ErrorType as ProtobufLayoutParsingErrorType,
+        pane_scrollback_response, ActionCompletePayload as ProtobufActionCompletePayload,
+        AvailableLayoutInfoPayload as ProtobufAvailableLayoutInfoPayload,
+        ClientInfo as ProtobufClientInfo, ClientPaneHistory as ProtobufClientPaneHistory,
+        ClientTabHistory as ProtobufClientTabHistory, ContextItem as ProtobufContextItem,
+        CopyDestination as ProtobufCopyDestination, CwdChangedPayload as ProtobufCwdChangedPayload,
         Event as ProtobufEvent, EventNameList as ProtobufEventNameList,
         EventType as ProtobufEventType, FileMetadata as ProtobufFileMetadata,
-        InputModeKeybinds as ProtobufInputModeKeybinds, KeyBind as ProtobufKeyBind,
-        LayoutInfo as ProtobufLayoutInfo, ModeUpdatePayload as ProtobufModeUpdatePayload,
+        InputModeKeybinds as ProtobufInputModeKeybinds, KdlError as ProtobufKdlError,
+        KdlErrorVariant as ProtobufKdlErrorVariant, KeyBind as ProtobufKeyBind,
+        LayoutInfo as ProtobufLayoutInfo, LayoutMetadata as ProtobufLayoutMetadata,
+        LayoutParsingError as ProtobufLayoutParsingError,
+        LayoutWithError as ProtobufLayoutWithError, ModeUpdatePayload as ProtobufModeUpdatePayload,
+        PaneContents as ProtobufPaneContents, PaneContentsEntry as ProtobufPaneContentsEntry,
         PaneId as ProtobufPaneId, PaneInfo as ProtobufPaneInfo,
-        PaneManifest as ProtobufPaneManifest, PaneType as ProtobufPaneType,
+        PaneManifest as ProtobufPaneManifest, PaneMetadata as ProtobufPaneMetadata,
+        PaneRenderReportPayload as ProtobufPaneRenderReportPayload,
+        PaneScrollbackResponse as ProtobufPaneScrollbackResponse, PaneType as ProtobufPaneType,
         PluginInfo as ProtobufPluginInfo, ResurrectableSession as ProtobufResurrectableSession,
-        SessionManifest as ProtobufSessionManifest, TabInfo as ProtobufTabInfo,
+        SelectedText as ProtobufSelectedText, SessionManifest as ProtobufSessionManifest,
+        SyntaxError as ProtobufSyntaxError, TabInfo as ProtobufTabInfo,
+        TabMetadata as ProtobufTabMetadata, UserActionPayload as ProtobufUserActionPayload,
         WebServerStatusPayload as ProtobufWebServerStatusPayload, WebSharing as ProtobufWebSharing,
         *,
     },
@@ -20,9 +33,11 @@ pub use super::generated_api::api::{
 };
 #[allow(hidden_glob_reexports)]
 use crate::data::{
-    ClientInfo, CopyDestination, Event, EventType, FileMetadata, InputMode, KeyWithModifier,
-    LayoutInfo, ModeInfo, Mouse, PaneId, PaneInfo, PaneManifest, PermissionStatus,
-    PluginCapabilities, PluginInfo, SessionInfo, Style, TabInfo, WebServerStatus, WebSharing,
+    ClientId, ClientInfo, CopyDestination, Event, EventType, FileMetadata, InputMode,
+    KeyWithModifier, LayoutInfo, LayoutMetadata, ModeInfo, Mouse, PaneContents, PaneId, PaneInfo,
+    PaneManifest, PaneMetadata, PaneScrollbackResponse, PermissionStatus, PluginCapabilities,
+    PluginInfo, SelectedText, SessionInfo, Style, TabInfo, TabMetadata, WebServerStatus,
+    WebSharing,
 };
 
 use crate::errors::prelude::*;
@@ -386,6 +401,92 @@ impl TryFrom<ProtobufEvent> for Event {
                     Ok(Event::InterceptedKeyPress(protobuf_key.try_into()?))
                 },
                 _ => Err("Malformed payload for the InterceptedKeyPress Event"),
+            },
+            Some(ProtobufEventType::PaneRenderReport) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::PaneRenderReportPayload(protobuf_payload)) => {
+                    Ok(Event::PaneRenderReport(protobuf_payload.try_into()?))
+                },
+                _ => Err("Malformed payload for the PaneRenderReport Event"),
+            },
+            Some(ProtobufEventType::UserAction) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::UserActionPayload(protobuf_payload)) => {
+                    let action: Action = protobuf_payload
+                        .action
+                        .ok_or("Missing action in UserAction payload")?
+                        .try_into()
+                        .map_err(|_| "Failed to convert Action in UserAction payload")?;
+                    let client_id = protobuf_payload.client_id as u16;
+                    let terminal_id = protobuf_payload.terminal_id;
+                    let cli_client_id = protobuf_payload.cli_client_id.map(|id| id as u16);
+                    Ok(Event::UserAction(
+                        action,
+                        client_id,
+                        terminal_id,
+                        cli_client_id,
+                    ))
+                },
+                _ => Err("Malformed payload for the UserAction Event"),
+            },
+            Some(ProtobufEventType::ActionComplete) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::ActionCompletePayload(protobuf_payload)) => {
+                    let action: Action = protobuf_payload
+                        .action
+                        .ok_or("Missing action in ActionComplete payload")?
+                        .try_into()
+                        .map_err(|_| "Failed to convert Action in ActionComplete payload")?;
+                    let pane_id = protobuf_payload
+                        .pane_id
+                        .map(|id| id.try_into())
+                        .transpose()
+                        .map_err(|_| "Failed to convert PaneId in ActionComplete payload")?;
+                    let context: BTreeMap<String, String> = protobuf_payload
+                        .context
+                        .into_iter()
+                        .map(|item| (item.name, item.value))
+                        .collect();
+                    Ok(Event::ActionComplete(action, pane_id, context))
+                },
+                _ => Err("Malformed payload for the ActionComplete Event"),
+            },
+            Some(ProtobufEventType::CwdChanged) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::CwdChangedPayload(protobuf_payload)) => {
+                    let pane_id: PaneId = protobuf_payload
+                        .pane_id
+                        .ok_or("Missing pane_id in CwdChanged payload")?
+                        .try_into()
+                        .map_err(|_| "Failed to convert PaneId in CwdChanged payload")?;
+                    let new_cwd = PathBuf::from(protobuf_payload.new_cwd);
+                    let focused_client_ids: Vec<ClientId> = protobuf_payload
+                        .focused_client_ids
+                        .into_iter()
+                        .map(|id| id as u16)
+                        .collect();
+                    Ok(Event::CwdChanged(pane_id, new_cwd, focused_client_ids))
+                },
+                _ => Err("Malformed payload for the CwdChanged Event"),
+            },
+            Some(ProtobufEventType::AvailableLayoutInfo) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::AvailableLayoutInfoPayload(
+                    available_layout_info_payload,
+                )) => {
+                    let mut available_layouts: Vec<LayoutInfo> = vec![];
+                    let mut layouts_with_errors: Vec<crate::data::LayoutWithError> = vec![];
+
+                    for protobuf_layout_info in available_layout_info_payload.available_layouts {
+                        available_layouts.push(LayoutInfo::try_from(protobuf_layout_info)?);
+                    }
+
+                    for protobuf_error in available_layout_info_payload.layouts_with_errors {
+                        layouts_with_errors
+                            .push(crate::data::LayoutWithError::try_from(protobuf_error)?);
+                    }
+
+                    Ok(Event::AvailableLayoutInfo(
+                        available_layouts,
+                        layouts_with_errors,
+                    ))
+                },
+                _ => Err("Malformed payload for the AvailableLayoutInfo Event"),
             },
             None => Err("Unknown Protobuf Event"),
         }
@@ -781,6 +882,88 @@ impl TryFrom<Event> for ProtobufEvent {
                 name: ProtobufEventType::InterceptedKeyPress as i32,
                 payload: Some(event::Payload::KeyPayload(key.try_into()?)),
             }),
+            Event::PaneRenderReport(pane_contents_map) => Ok(ProtobufEvent {
+                name: ProtobufEventType::PaneRenderReport as i32,
+                payload: Some(event::Payload::PaneRenderReportPayload(
+                    pane_contents_map.try_into()?,
+                )),
+            }),
+            Event::UserAction(action, client_id, terminal_id, cli_client_id) => {
+                let protobuf_action: ProtobufAction = action
+                    .try_into()
+                    .map_err(|_| "Failed to convert Action to protobuf")?;
+                let protobuf_payload = ProtobufUserActionPayload {
+                    action: Some(protobuf_action),
+                    client_id: client_id as u32,
+                    terminal_id,
+                    cli_client_id: cli_client_id.map(|id| id as u32),
+                };
+                Ok(ProtobufEvent {
+                    name: ProtobufEventType::UserAction as i32,
+                    payload: Some(event::Payload::UserActionPayload(protobuf_payload)),
+                })
+            },
+            Event::ActionComplete(action, pane_id, context) => {
+                let protobuf_action = action.try_into()?;
+                let protobuf_pane_id = pane_id.map(|id| id.try_into()).transpose()?;
+                let context_items: Vec<ProtobufContextItem> = context
+                    .into_iter()
+                    .map(|(name, value)| ProtobufContextItem { name, value })
+                    .collect();
+                let action_complete_payload = ProtobufActionCompletePayload {
+                    action: Some(protobuf_action),
+                    pane_id: protobuf_pane_id,
+                    context: context_items,
+                };
+                Ok(ProtobufEvent {
+                    name: ProtobufEventType::ActionComplete as i32,
+                    payload: Some(event::Payload::ActionCompletePayload(
+                        action_complete_payload,
+                    )),
+                })
+            },
+            Event::CwdChanged(pane_id, new_cwd, focused_client_ids) => {
+                let protobuf_pane_id: ProtobufPaneId = pane_id.try_into()?;
+                let new_cwd_string = new_cwd
+                    .to_str()
+                    .ok_or("Failed to convert PathBuf to string")?
+                    .to_string();
+                let focused_client_ids_u32: Vec<u32> =
+                    focused_client_ids.into_iter().map(|id| id as u32).collect();
+                let cwd_changed_payload = ProtobufCwdChangedPayload {
+                    pane_id: Some(protobuf_pane_id),
+                    new_cwd: new_cwd_string,
+                    focused_client_ids: focused_client_ids_u32,
+                };
+                Ok(ProtobufEvent {
+                    name: ProtobufEventType::CwdChanged as i32,
+                    payload: Some(event::Payload::CwdChangedPayload(cwd_changed_payload)),
+                })
+            },
+            Event::AvailableLayoutInfo(available_layouts, layouts_with_errors) => {
+                let mut protobuf_available_layouts = vec![];
+                let mut protobuf_layouts_with_errors = vec![];
+
+                for layout_info in available_layouts {
+                    protobuf_available_layouts.push(layout_info.try_into()?);
+                }
+
+                for layout_error in layouts_with_errors {
+                    protobuf_layouts_with_errors.push(layout_error.try_into()?);
+                }
+
+                let available_layout_info_payload = ProtobufAvailableLayoutInfoPayload {
+                    available_layouts: protobuf_available_layouts,
+                    layouts_with_errors: protobuf_layouts_with_errors,
+                };
+
+                Ok(ProtobufEvent {
+                    name: ProtobufEventType::AvailableLayoutInfo as i32,
+                    payload: Some(event::Payload::AvailableLayoutInfoPayload(
+                        available_layout_info_payload,
+                    )),
+                })
+            },
         }
     }
 }
@@ -826,6 +1009,11 @@ impl TryFrom<SessionInfo> for ProtobufSessionManifest {
                 .into_iter()
                 .map(|t| ProtobufClientTabHistory::from(t))
                 .collect(),
+            pane_history: session_info
+                .pane_history
+                .into_iter()
+                .map(|p| ProtobufClientPaneHistory::from(p))
+                .collect(),
         })
     }
 }
@@ -835,6 +1023,18 @@ impl From<(u16, Vec<usize>)> for ProtobufClientTabHistory {
         ProtobufClientTabHistory {
             client_id: client_id as u32,
             tab_history: tab_history.into_iter().map(|t| t as u32).collect(),
+        }
+    }
+}
+
+impl From<(u16, Vec<PaneId>)> for ProtobufClientPaneHistory {
+    fn from((client_id, pane_history): (u16, Vec<PaneId>)) -> ProtobufClientPaneHistory {
+        ProtobufClientPaneHistory {
+            client_id: client_id as u32,
+            pane_history: pane_history
+                .into_iter()
+                .filter_map(|p| p.try_into().ok())
+                .collect(),
         }
     }
 }
@@ -894,6 +1094,16 @@ impl TryFrom<ProtobufSessionManifest> for SessionInfo {
                 .collect();
             tab_history.insert(client_id as u16, tab_history_for_client);
         }
+        let mut pane_history = BTreeMap::new();
+        for client_pane_history in protobuf_session_manifest.pane_history.into_iter() {
+            let client_id = client_pane_history.client_id;
+            let pane_history_for_client = client_pane_history
+                .pane_history
+                .into_iter()
+                .filter_map(|p| p.try_into().ok())
+                .collect();
+            pane_history.insert(client_id as u16, pane_history_for_client);
+        }
         Ok(SessionInfo {
             name: protobuf_session_manifest.name,
             tabs: protobuf_session_manifest
@@ -913,6 +1123,7 @@ impl TryFrom<ProtobufSessionManifest> for SessionInfo {
             web_clients_allowed: protobuf_session_manifest.web_clients_allowed,
             web_client_count: protobuf_session_manifest.web_client_count as usize,
             tab_history,
+            pane_history,
         })
     }
 }
@@ -921,21 +1132,25 @@ impl TryFrom<LayoutInfo> for ProtobufLayoutInfo {
     type Error = &'static str;
     fn try_from(layout_info: LayoutInfo) -> Result<Self, &'static str> {
         match layout_info {
-            LayoutInfo::File(name) => Ok(ProtobufLayoutInfo {
+            LayoutInfo::File(name, layout_metadata) => Ok(ProtobufLayoutInfo {
                 source: "file".to_owned(),
                 name,
+                layout_metadata: Some(layout_metadata.try_into()?),
             }),
             LayoutInfo::BuiltIn(name) => Ok(ProtobufLayoutInfo {
                 source: "built-in".to_owned(),
                 name,
+                layout_metadata: None,
             }),
             LayoutInfo::Url(name) => Ok(ProtobufLayoutInfo {
                 source: "url".to_owned(),
                 name,
+                layout_metadata: None,
             }),
             LayoutInfo::Stringified(stringified_layout) => Ok(ProtobufLayoutInfo {
                 source: "stringified".to_owned(),
                 name: stringified_layout.clone(),
+                layout_metadata: None,
             }),
         }
     }
@@ -945,12 +1160,196 @@ impl TryFrom<ProtobufLayoutInfo> for LayoutInfo {
     type Error = &'static str;
     fn try_from(protobuf_layout_info: ProtobufLayoutInfo) -> Result<Self, &'static str> {
         match protobuf_layout_info.source.as_str() {
-            "file" => Ok(LayoutInfo::File(protobuf_layout_info.name)),
+            "file" => {
+                let layout_metadata = protobuf_layout_info
+                    .layout_metadata
+                    .map(|m| m.try_into())
+                    .transpose()?
+                    .unwrap_or_default();
+                Ok(LayoutInfo::File(protobuf_layout_info.name, layout_metadata))
+            },
             "built-in" => Ok(LayoutInfo::BuiltIn(protobuf_layout_info.name)),
             "url" => Ok(LayoutInfo::Url(protobuf_layout_info.name)),
             "stringified" => Ok(LayoutInfo::Stringified(protobuf_layout_info.name)),
             _ => Err("Unknown source for layout"),
         }
+    }
+}
+
+impl TryFrom<ProtobufLayoutMetadata> for LayoutMetadata {
+    type Error = &'static str;
+    fn try_from(protobuf_metadata: ProtobufLayoutMetadata) -> Result<Self, &'static str> {
+        let tabs = protobuf_metadata
+            .tabs
+            .into_iter()
+            .map(|t| t.try_into())
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(LayoutMetadata {
+            tabs,
+            creation_time: protobuf_metadata.creation_time,
+            update_time: protobuf_metadata.update_time,
+        })
+    }
+}
+
+impl TryFrom<LayoutMetadata> for ProtobufLayoutMetadata {
+    type Error = &'static str;
+    fn try_from(metadata: LayoutMetadata) -> Result<Self, &'static str> {
+        let tabs = metadata
+            .tabs
+            .into_iter()
+            .map(|t| t.try_into())
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(ProtobufLayoutMetadata {
+            tabs,
+            creation_time: metadata.creation_time,
+            update_time: metadata.update_time,
+        })
+    }
+}
+
+impl TryFrom<ProtobufTabMetadata> for TabMetadata {
+    type Error = &'static str;
+    fn try_from(protobuf_metadata: ProtobufTabMetadata) -> Result<Self, &'static str> {
+        let panes = protobuf_metadata
+            .pane_metadata
+            .into_iter()
+            .map(|p| p.try_into())
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(TabMetadata {
+            panes,
+            name: protobuf_metadata.name,
+        })
+    }
+}
+
+impl TryFrom<TabMetadata> for ProtobufTabMetadata {
+    type Error = &'static str;
+    fn try_from(metadata: TabMetadata) -> Result<Self, &'static str> {
+        let pane_metadata = metadata
+            .panes
+            .into_iter()
+            .map(|p| p.try_into())
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(ProtobufTabMetadata {
+            pane_metadata,
+            name: metadata.name,
+        })
+    }
+}
+
+impl TryFrom<ProtobufPaneMetadata> for PaneMetadata {
+    type Error = &'static str;
+    fn try_from(protobuf_metadata: ProtobufPaneMetadata) -> Result<Self, &'static str> {
+        Ok(PaneMetadata {
+            name: protobuf_metadata.name,
+            is_plugin: protobuf_metadata.is_plugin,
+            is_builtin_plugin: protobuf_metadata.is_builtin_plugin,
+        })
+    }
+}
+
+impl TryFrom<PaneMetadata> for ProtobufPaneMetadata {
+    type Error = &'static str;
+    fn try_from(metadata: PaneMetadata) -> Result<Self, &'static str> {
+        Ok(ProtobufPaneMetadata {
+            name: metadata.name,
+            is_plugin: metadata.is_plugin,
+            is_builtin_plugin: metadata.is_builtin_plugin,
+        })
+    }
+}
+
+// LayoutWithError conversions
+impl TryFrom<ProtobufLayoutWithError> for crate::data::LayoutWithError {
+    type Error = &'static str;
+    fn try_from(protobuf: ProtobufLayoutWithError) -> Result<Self, Self::Error> {
+        Ok(crate::data::LayoutWithError {
+            layout_name: protobuf.layout_name,
+            error: protobuf.error.ok_or("Missing error field")?.try_into()?,
+        })
+    }
+}
+
+impl TryFrom<crate::data::LayoutWithError> for ProtobufLayoutWithError {
+    type Error = &'static str;
+    fn try_from(layout_error: crate::data::LayoutWithError) -> Result<Self, Self::Error> {
+        Ok(ProtobufLayoutWithError {
+            layout_name: layout_error.layout_name,
+            error: Some(layout_error.error.try_into()?),
+        })
+    }
+}
+
+// LayoutParsingError conversions
+impl TryFrom<ProtobufLayoutParsingError> for crate::data::LayoutParsingError {
+    type Error = &'static str;
+    fn try_from(protobuf: ProtobufLayoutParsingError) -> Result<Self, Self::Error> {
+        match protobuf.error_type.ok_or("Missing error_type")? {
+            ProtobufLayoutParsingErrorType::KdlError(kdl_variant) => {
+                Ok(crate::data::LayoutParsingError::KdlError {
+                    kdl_error: kdl_variant
+                        .kdl_error
+                        .ok_or("Missing kdl_error")?
+                        .try_into()?,
+                    file_name: kdl_variant.file_name,
+                    source_code: kdl_variant.source_code,
+                })
+            },
+            ProtobufLayoutParsingErrorType::SyntaxError(_) => {
+                Ok(crate::data::LayoutParsingError::SyntaxError)
+            },
+        }
+    }
+}
+
+impl TryFrom<crate::data::LayoutParsingError> for ProtobufLayoutParsingError {
+    type Error = &'static str;
+    fn try_from(error: crate::data::LayoutParsingError) -> Result<Self, Self::Error> {
+        let error_type = match error {
+            crate::data::LayoutParsingError::KdlError {
+                kdl_error,
+                file_name,
+                source_code,
+            } => ProtobufLayoutParsingErrorType::KdlError(ProtobufKdlErrorVariant {
+                kdl_error: Some(kdl_error.try_into()?),
+                file_name,
+                source_code,
+            }),
+            crate::data::LayoutParsingError::SyntaxError => {
+                ProtobufLayoutParsingErrorType::SyntaxError(ProtobufSyntaxError {})
+            },
+        };
+        Ok(ProtobufLayoutParsingError {
+            error_type: Some(error_type),
+        })
+    }
+}
+
+// KdlError conversions
+impl TryFrom<ProtobufKdlError> for crate::input::config::KdlError {
+    type Error = &'static str;
+    fn try_from(protobuf: ProtobufKdlError) -> Result<Self, Self::Error> {
+        Ok(crate::input::config::KdlError {
+            error_message: protobuf.error_message,
+            src: None, // We don't serialize NamedSource
+            offset: protobuf.offset.map(|o| o as usize),
+            len: protobuf.len.map(|l| l as usize),
+            help_message: protobuf.help_message,
+        })
+    }
+}
+
+impl TryFrom<crate::input::config::KdlError> for ProtobufKdlError {
+    type Error = &'static str;
+    fn try_from(kdl: crate::input::config::KdlError) -> Result<Self, Self::Error> {
+        Ok(ProtobufKdlError {
+            error_message: kdl.error_message,
+            // src is not serialized
+            offset: kdl.offset.map(|o| o as u64),
+            len: kdl.len.map(|l| l as u64),
+            help_message: kdl.help_message,
+        })
     }
 }
 
@@ -1459,6 +1858,11 @@ impl TryFrom<ProtobufEventType> for EventType {
             ProtobufEventType::BeforeClose => EventType::BeforeClose,
             ProtobufEventType::FailedToStartWebServer => EventType::FailedToStartWebServer,
             ProtobufEventType::InterceptedKeyPress => EventType::InterceptedKeyPress,
+            ProtobufEventType::PaneRenderReport => EventType::PaneRenderReport,
+            ProtobufEventType::UserAction => EventType::UserAction,
+            ProtobufEventType::ActionComplete => EventType::ActionComplete,
+            ProtobufEventType::CwdChanged => EventType::CwdChanged,
+            ProtobufEventType::AvailableLayoutInfo => EventType::AvailableLayoutInfo,
         })
     }
 }
@@ -1502,6 +1906,11 @@ impl TryFrom<EventType> for ProtobufEventType {
             EventType::BeforeClose => ProtobufEventType::BeforeClose,
             EventType::FailedToStartWebServer => ProtobufEventType::FailedToStartWebServer,
             EventType::InterceptedKeyPress => ProtobufEventType::InterceptedKeyPress,
+            EventType::PaneRenderReport => ProtobufEventType::PaneRenderReport,
+            EventType::UserAction => ProtobufEventType::UserAction,
+            EventType::ActionComplete => ProtobufEventType::ActionComplete,
+            EventType::CwdChanged => ProtobufEventType::CwdChanged,
+            EventType::AvailableLayoutInfo => ProtobufEventType::AvailableLayoutInfo,
         })
     }
 }
@@ -1583,14 +1992,18 @@ fn serialize_mode_update_event_with_non_default_values() {
                 InputMode::Locked,
                 vec![(
                     KeyWithModifier::new(BareKey::Char('b')).with_alt_modifier(),
-                    vec![Action::SwitchToMode(InputMode::Normal)],
+                    vec![Action::SwitchToMode {
+                        input_mode: InputMode::Normal,
+                    }],
                 )],
             ),
             (
                 InputMode::Tab,
                 vec![(
                     KeyWithModifier::new(BareKey::Up).with_alt_modifier(),
-                    vec![Action::SwitchToMode(InputMode::Pane)],
+                    vec![Action::SwitchToMode {
+                        input_mode: InputMode::Pane,
+                    }],
                 )],
             ),
             (
@@ -1599,13 +2012,21 @@ fn serialize_mode_update_event_with_non_default_values() {
                     (
                         KeyWithModifier::new(BareKey::Char('b')).with_ctrl_modifier(),
                         vec![
-                            Action::SwitchToMode(InputMode::Tmux),
-                            Action::Write(None, vec![10], false),
+                            Action::SwitchToMode {
+                                input_mode: InputMode::Tmux,
+                            },
+                            Action::Write {
+                                key_with_modifier: None,
+                                bytes: vec![10],
+                                is_kitty_keyboard_protocol: false,
+                            },
                         ],
                     ),
                     (
                         KeyWithModifier::new(BareKey::Char('a')),
-                        vec![Action::WriteChars("foo".to_owned())],
+                        vec![Action::WriteChars {
+                            chars: "foo".to_owned(),
+                        }],
                     ),
                 ],
             ),
@@ -2091,14 +2512,29 @@ fn serialize_session_update_event_with_non_default_values() {
         connected_clients: 2,
         is_current_session: true,
         available_layouts: vec![
-            LayoutInfo::File("layout 1".to_owned()),
+            LayoutInfo::File(
+                "layout 1".to_owned(),
+                LayoutMetadata {
+                    tabs: vec![],
+                    creation_time: "0".to_owned(),
+                    update_time: "0".to_owned(),
+                },
+            ),
             LayoutInfo::BuiltIn("layout2".to_owned()),
-            LayoutInfo::File("layout3".to_owned()),
+            LayoutInfo::File(
+                "layout3".to_owned(),
+                LayoutMetadata {
+                    tabs: vec![],
+                    creation_time: "0".to_owned(),
+                    update_time: "0".to_owned(),
+                },
+            ),
         ],
         plugins,
         web_clients_allowed: false,
         web_client_count: 1,
         tab_history,
+        pane_history: Default::default(),
     };
     let session_info_2 = SessionInfo {
         name: "session 2".to_owned(),
@@ -2109,14 +2545,29 @@ fn serialize_session_update_event_with_non_default_values() {
         connected_clients: 0,
         is_current_session: false,
         available_layouts: vec![
-            LayoutInfo::File("layout 1".to_owned()),
+            LayoutInfo::File(
+                "layout 1".to_owned(),
+                LayoutMetadata {
+                    tabs: vec![],
+                    creation_time: "0".to_owned(),
+                    update_time: "0".to_owned(),
+                },
+            ),
             LayoutInfo::BuiltIn("layout2".to_owned()),
-            LayoutInfo::File("layout3".to_owned()),
+            LayoutInfo::File(
+                "layout3".to_owned(),
+                LayoutMetadata {
+                    tabs: vec![],
+                    creation_time: "0".to_owned(),
+                    update_time: "0".to_owned(),
+                },
+            ),
         ],
         plugins: Default::default(),
         web_clients_allowed: false,
         web_client_count: 0,
         tab_history: Default::default(),
+        pane_history: Default::default(),
     };
     let session_infos = vec![session_info_1, session_info_2];
     let resurrectable_sessions = vec![];
@@ -2229,5 +2680,136 @@ impl TryFrom<ProtobufWebServerStatusPayload> for WebServerStatus {
             Some(WebServerStatusIndication::Offline) => Ok(WebServerStatus::Offline),
             None => Err("Unknown status"),
         }
+    }
+}
+
+impl TryFrom<ProtobufPaneRenderReportPayload> for HashMap<PaneId, PaneContents> {
+    type Error = &'static str;
+    fn try_from(protobuf_payload: ProtobufPaneRenderReportPayload) -> Result<Self, &'static str> {
+        let mut pane_contents_map = HashMap::new();
+
+        for entry in protobuf_payload.pane_contents {
+            let pane_id = entry
+                .pane_id
+                .ok_or("Missing pane_id in PaneContentsEntry")?
+                .try_into()?;
+            let pane_contents = entry
+                .pane_contents
+                .ok_or("Missing pane_contents in PaneContentsEntry")?
+                .try_into()?;
+            pane_contents_map.insert(pane_id, pane_contents);
+        }
+
+        Ok(pane_contents_map)
+    }
+}
+
+impl TryFrom<HashMap<PaneId, PaneContents>> for ProtobufPaneRenderReportPayload {
+    type Error = &'static str;
+    fn try_from(pane_contents_map: HashMap<PaneId, PaneContents>) -> Result<Self, &'static str> {
+        let mut pane_contents_vec = vec![];
+
+        for (pane_id, pane_contents) in pane_contents_map {
+            pane_contents_vec.push(ProtobufPaneContentsEntry {
+                pane_id: Some(pane_id.try_into()?),
+                pane_contents: Some(pane_contents.try_into()?),
+            });
+        }
+
+        Ok(ProtobufPaneRenderReportPayload {
+            pane_contents: pane_contents_vec,
+        })
+    }
+}
+
+impl TryFrom<ProtobufPaneContents> for PaneContents {
+    type Error = &'static str;
+    fn try_from(protobuf_contents: ProtobufPaneContents) -> Result<Self, &'static str> {
+        let selected_text = protobuf_contents
+            .selected_text
+            .map(|st| st.try_into())
+            .transpose()?;
+
+        Ok(PaneContents {
+            viewport: protobuf_contents.viewport,
+            selected_text,
+            lines_above_viewport: protobuf_contents.lines_above_viewport,
+            lines_below_viewport: protobuf_contents.lines_below_viewport,
+        })
+    }
+}
+
+impl TryFrom<PaneContents> for ProtobufPaneContents {
+    type Error = &'static str;
+    fn try_from(pane_contents: PaneContents) -> Result<Self, &'static str> {
+        let selected_text = pane_contents
+            .selected_text
+            .map(|st| st.try_into())
+            .transpose()?;
+
+        Ok(ProtobufPaneContents {
+            viewport: pane_contents.viewport,
+            selected_text,
+            lines_above_viewport: pane_contents.lines_above_viewport,
+            lines_below_viewport: pane_contents.lines_below_viewport,
+        })
+    }
+}
+
+impl TryFrom<ProtobufPaneScrollbackResponse> for PaneScrollbackResponse {
+    type Error = &'static str;
+    fn try_from(protobuf_response: ProtobufPaneScrollbackResponse) -> Result<Self, &'static str> {
+        match protobuf_response.response {
+            Some(pane_scrollback_response::Response::Ok(pane_contents)) => {
+                Ok(PaneScrollbackResponse::Ok(pane_contents.try_into()?))
+            },
+            Some(pane_scrollback_response::Response::Err(error_msg)) => {
+                Ok(PaneScrollbackResponse::Err(error_msg))
+            },
+            None => Err("PaneScrollbackResponse missing response field"),
+        }
+    }
+}
+
+impl TryFrom<PaneScrollbackResponse> for ProtobufPaneScrollbackResponse {
+    type Error = &'static str;
+    fn try_from(response: PaneScrollbackResponse) -> Result<Self, &'static str> {
+        let response_field = match response {
+            PaneScrollbackResponse::Ok(pane_contents) => {
+                pane_scrollback_response::Response::Ok(pane_contents.try_into()?)
+            },
+            PaneScrollbackResponse::Err(error_msg) => {
+                pane_scrollback_response::Response::Err(error_msg)
+            },
+        };
+        Ok(ProtobufPaneScrollbackResponse {
+            response: Some(response_field),
+        })
+    }
+}
+
+impl TryFrom<ProtobufSelectedText> for SelectedText {
+    type Error = &'static str;
+    fn try_from(protobuf_selected_text: ProtobufSelectedText) -> Result<Self, &'static str> {
+        Ok(SelectedText {
+            start: protobuf_selected_text
+                .start
+                .ok_or("Missing start in SelectedText")?
+                .try_into()?,
+            end: protobuf_selected_text
+                .end
+                .ok_or("Missing end in SelectedText")?
+                .try_into()?,
+        })
+    }
+}
+
+impl TryFrom<SelectedText> for ProtobufSelectedText {
+    type Error = &'static str;
+    fn try_from(selected_text: SelectedText) -> Result<Self, &'static str> {
+        Ok(ProtobufSelectedText {
+            start: Some(selected_text.start.try_into()?),
+            end: Some(selected_text.end.try_into()?),
+        })
     }
 }

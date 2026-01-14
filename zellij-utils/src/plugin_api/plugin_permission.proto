@@ -16,4 +16,7 @@ enum PermissionType {
   FullHdAccess = 10;
   StartWebServer = 11;
   InterceptInput = 12;
+  ReadPaneContents = 13;
+  RunActionsAsUser = 14;
+  WriteToClipboard = 15;
 }

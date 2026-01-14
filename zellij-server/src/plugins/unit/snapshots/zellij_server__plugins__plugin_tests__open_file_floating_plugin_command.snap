@@ -32,5 +32,14 @@ Some(
         ClientId(
             1,
         ),
+        Some(
+            NotificationEnd {
+                channel: None,
+                exit_status: None,
+                unblock_condition: None,
+                affected_pane_id: None,
+            },
+        ),
+        false,
     ),
 )

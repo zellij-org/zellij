@@ -3,7 +3,63 @@ source: zellij-utils/src/input/./unit/layout_test.rs
 expression: "format!(\"{:#?}\", layout)"
 ---
 Layout {
-    tabs: [],
+    tabs: [
+        (
+            None,
+            TiledPaneLayout {
+                children_split_direction: Horizontal,
+                name: None,
+                children: [
+                    TiledPaneLayout {
+                        children_split_direction: Horizontal,
+                        name: None,
+                        children: [],
+                        split_size: None,
+                        run: Some(
+                            Command(
+                                RunCommand {
+                                    command: "pwd",
+                                    args: [],
+                                    cwd: Some(
+                                        "/tmp/foo",
+                                    ),
+                                    hold_on_close: true,
+                                    hold_on_start: false,
+                                    originating_plugin: None,
+                                    use_terminal_title: false,
+                                },
+                            ),
+                        ),
+                        borderless: false,
+                        focus: None,
+                        external_children_index: None,
+                        children_are_stacked: false,
+                        is_expanded_in_stack: false,
+                        exclude_from_sync: None,
+                        run_instructions_to_ignore: [],
+                        hide_floating_panes: false,
+                        pane_initial_contents: None,
+                    },
+                ],
+                split_size: None,
+                run: Some(
+                    Cwd(
+                        "/tmp",
+                    ),
+                ),
+                borderless: false,
+                focus: None,
+                external_children_index: None,
+                children_are_stacked: false,
+                is_expanded_in_stack: false,
+                exclude_from_sync: None,
+                run_instructions_to_ignore: [],
+                hide_floating_panes: false,
+                pane_initial_contents: None,
+            },
+            [],
+        ),
+    ],
     focused_tab_index: None,
     template: Some(
         (
@@ -43,7 +99,11 @@ Layout {
                     },
                 ],
                 split_size: None,
-                run: None,
+                run: Some(
+                    Cwd(
+                        "/tmp",
+                    ),
+                ),
                 borderless: false,
                 focus: None,
                 external_children_index: None,

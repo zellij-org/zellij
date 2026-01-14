@@ -1,7 +1,7 @@
 //! IPC stuff for starting to split things into a client and server model.
 use crate::{
     data::{ClientId, ConnectToSession, KeyWithModifier, Style},
-    errors::{get_current_ctx, prelude::*, ErrorContext},
+    errors::{prelude::*, ErrorContext},
     input::{actions::Action, cli_assets::CliAssets},
     pane_size::{Size, SizeInPixels},
 };
@@ -11,10 +11,22 @@ use nix::unistd::dup;
 use serde::{Deserialize, Serialize};
 use std::{
     fmt::{Display, Error, Formatter},
-    io::{self, Write},
+    io::{self, Read, Write},
     marker::PhantomData,
     os::unix::io::{AsRawFd, FromRawFd},
 };
+
+// Protobuf imports
+use crate::client_server_contract::client_server_contract::{
+    ClientToServerMsg as ProtoClientToServerMsg, ServerToClientMsg as ProtoServerToClientMsg,
+};
+use prost::Message;
+
+mod enum_conversions;
+mod protobuf_conversion;
+
+#[cfg(test)]
+mod tests;
 
 type SessionId = u64;
 
@@ -47,6 +59,18 @@ pub struct PixelDimensions {
     pub character_cell_size: Option<SizeInPixels>,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq)]
+pub struct PaneReference {
+    pub pane_id: u32,
+    pub is_plugin: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq)]
+pub struct ColorRegister {
+    pub index: usize,
+    pub color: String,
+}
+
 impl PixelDimensions {
     pub fn merge(&mut self, other: PixelDimensions) {
         if let Some(text_area_size) = other.text_area_size {
@@ -60,52 +84,98 @@ impl PixelDimensions {
 
 // Types of messages sent from the client to the server
 #[allow(clippy::large_enum_variant)]
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum ClientToServerMsg {
-    DetachSession(Vec<ClientId>),
-    TerminalPixelDimensions(PixelDimensions),
-    BackgroundColor(String),
-    ForegroundColor(String),
-    ColorRegisters(Vec<(usize, String)>),
-    TerminalResize(Size),
-    FirstClientConnected(
-        CliAssets,
-        bool, // is_web_client
-    ),
-    AttachClient(
-        CliAssets,
-        Option<usize>,       // tab position to focus
-        Option<(u32, bool)>, // (pane_id, is_plugin) => pane id to focus
-        bool,                // is_web_client
-    ),
-    Action(Action, Option<u32>, Option<ClientId>), // u32 is the terminal id
-    Key(KeyWithModifier, Vec<u8>, bool),           // key, raw_bytes, is_kitty_keyboard_protocol
+    DetachSession {
+        client_ids: Vec<ClientId>,
+    },
+    TerminalPixelDimensions {
+        pixel_dimensions: PixelDimensions,
+    },
+    BackgroundColor {
+        color: String,
+    },
+    ForegroundColor {
+        color: String,
+    },
+    ColorRegisters {
+        color_registers: Vec<ColorRegister>,
+    },
+    TerminalResize {
+        new_size: Size,
+    },
+    FirstClientConnected {
+        cli_assets: CliAssets,
+        is_web_client: bool,
+    },
+    AttachClient {
+        cli_assets: CliAssets,
+        tab_position_to_focus: Option<usize>,
+        pane_to_focus: Option<PaneReference>,
+        is_web_client: bool,
+    },
+    AttachWatcherClient {
+        terminal_size: Size,
+        is_web_client: bool,
+    },
+    Action {
+        action: Action,
+        terminal_id: Option<u32>,
+        client_id: Option<ClientId>,
+        is_cli_client: bool,
+    },
+    Key {
+        key: KeyWithModifier,
+        raw_bytes: Vec<u8>,
+        is_kitty_keyboard_protocol: bool,
+    },
     ClientExited,
     KillSession,
     ConnStatus,
-    WebServerStarted(String), // String -> base_url
-    FailedToStartWebServer(String),
+    WebServerStarted {
+        base_url: String,
+    },
+    FailedToStartWebServer {
+        error: String,
+    },
 }
 
 // Types of messages sent from the server to the client
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum ServerToClientMsg {
-    Render(String),
+    Render {
+        content: String,
+    },
     UnblockInputThread,
-    Exit(ExitReason),
+    Exit {
+        exit_reason: ExitReason,
+    },
     Connected,
-    Log(Vec<String>),
-    LogError(Vec<String>),
-    SwitchSession(ConnectToSession),
-    UnblockCliPipeInput(String),   // String -> pipe name
-    CliPipeOutput(String, String), // String -> pipe name, String -> Output
+    Log {
+        lines: Vec<String>,
+    },
+    LogError {
+        lines: Vec<String>,
+    },
+    SwitchSession {
+        connect_to_session: ConnectToSession,
+    },
+    UnblockCliPipeInput {
+        pipe_name: String,
+    },
+    CliPipeOutput {
+        pipe_name: String,
+        output: String,
+    },
     QueryTerminalSize,
     StartWebServer,
-    RenamedSession(String), // String -> new session name
+    RenamedSession {
+        name: String,
+    },
     ConfigFileUpdated,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum ExitReason {
     Normal,
     NormalDetached,
@@ -113,6 +183,7 @@ pub enum ExitReason {
     CannotAttach,
     Disconnect,
     WebClientsForbidden,
+    CustomExitStatus(i32),
     Error(String),
 }
 
@@ -157,6 +228,7 @@ There are a few things you can try now:
     "
                 )
             },
+            Self::CustomExitStatus(exit_status) => write!(f, "Exit {}", exit_status),
             Self::Error(e) => write!(f, "Error occurred in server:\n{}", e),
         }
     }
@@ -177,17 +249,18 @@ impl<T: Serialize> IpcSenderWithContext<T> {
         }
     }
 
-    /// Sends an event, along with the current [`ErrorContext`], on this [`IpcSenderWithContext`]'s socket.
-    pub fn send(&mut self, msg: T) -> Result<()> {
-        let err_ctx = get_current_ctx();
-        if rmp_serde::encode::write(&mut self.sender, &(msg, err_ctx)).is_err() {
-            Err(anyhow!("failed to send message to client"))
-        } else {
-            if let Err(e) = self.sender.flush() {
-                log::error!("Failed to flush ipc sender: {}", e);
-            }
-            Ok(())
-        }
+    pub fn send_client_msg(&mut self, msg: ClientToServerMsg) -> Result<()> {
+        let proto_msg: ProtoClientToServerMsg = msg.into();
+        write_protobuf_message(&mut self.sender, &proto_msg)?;
+        let _ = self.sender.flush();
+        Ok(())
+    }
+
+    pub fn send_server_msg(&mut self, msg: ServerToClientMsg) -> Result<()> {
+        let proto_msg: ProtoServerToClientMsg = msg.into();
+        write_protobuf_message(&mut self.sender, &proto_msg)?;
+        let _ = self.sender.flush();
+        Ok(())
     }
 
     /// Returns an [`IpcReceiverWithContext`] with the same socket as this sender.
@@ -220,14 +293,29 @@ where
         }
     }
 
-    /// Receives an event, along with the current [`ErrorContext`], on this [`IpcReceiverWithContext`]'s socket.
-    pub fn recv(&mut self) -> Option<(T, ErrorContext)> {
-        match rmp_serde::decode::from_read(&mut self.receiver) {
-            Ok(msg) => Some(msg),
-            Err(e) => {
-                warn!("Error in IpcReceiver.recv(): {:?}", e);
-                None
+    pub fn recv_client_msg(&mut self) -> Option<(ClientToServerMsg, ErrorContext)> {
+        match read_protobuf_message::<ProtoClientToServerMsg>(&mut self.receiver) {
+            Ok(proto_msg) => match proto_msg.try_into() {
+                Ok(rust_msg) => Some((rust_msg, ErrorContext::default())),
+                Err(e) => {
+                    warn!("Error converting protobuf to ClientToServerMsg: {:?}", e);
+                    None
+                },
             },
+            Err(_e) => None,
+        }
+    }
+
+    pub fn recv_server_msg(&mut self) -> Option<(ServerToClientMsg, ErrorContext)> {
+        match read_protobuf_message::<ProtoServerToClientMsg>(&mut self.receiver) {
+            Ok(proto_msg) => match proto_msg.try_into() {
+                Ok(rust_msg) => Some((rust_msg, ErrorContext::default())),
+                Err(e) => {
+                    warn!("Error converting protobuf to ServerToClientMsg: {:?}", e);
+                    None
+                },
+            },
+            Err(_e) => None,
         }
     }
 
@@ -237,5 +325,82 @@ where
         let dup_sock = dup(sock_fd).unwrap();
         let socket = unsafe { LocalSocketStream::from_raw_fd(dup_sock) };
         IpcSenderWithContext::new(socket)
+    }
+}
+
+// Protobuf wire format utilities
+fn read_protobuf_message<T: Message + Default>(reader: &mut impl Read) -> Result<T> {
+    // Read length-prefixed protobuf message
+    let mut len_bytes = [0u8; 4];
+    reader.read_exact(&mut len_bytes)?;
+    let len = u32::from_le_bytes(len_bytes) as usize;
+
+    let mut buf = vec![0u8; len];
+    reader.read_exact(&mut buf)?;
+
+    T::decode(&buf[..]).map_err(Into::into)
+}
+
+fn write_protobuf_message<T: Message>(writer: &mut impl Write, msg: &T) -> Result<()> {
+    let encoded = msg.encode_to_vec();
+    let len = encoded.len() as u32;
+
+    // we measure the length of the message and transmit it first so that the reader will be able
+    // to first read exactly 4 bytes (representing this length) and then read that amount of bytes
+    // as the actual message - this is so that we are able to distinct whole messages over the wire
+    // stream
+    writer.write_all(&len.to_le_bytes())?;
+    writer.write_all(&encoded)?;
+    Ok(())
+}
+
+// Protobuf helper functions
+pub fn send_protobuf_client_to_server(
+    sender: &mut IpcSenderWithContext<ClientToServerMsg>,
+    msg: ClientToServerMsg,
+) -> Result<()> {
+    let proto_msg: ProtoClientToServerMsg = msg.into();
+    write_protobuf_message(&mut sender.sender, &proto_msg)?;
+    let _ = sender.sender.flush();
+    Ok(())
+}
+
+pub fn send_protobuf_server_to_client(
+    sender: &mut IpcSenderWithContext<ServerToClientMsg>,
+    msg: ServerToClientMsg,
+) -> Result<()> {
+    let proto_msg: ProtoServerToClientMsg = msg.into();
+    write_protobuf_message(&mut sender.sender, &proto_msg)?;
+    let _ = sender.sender.flush();
+    Ok(())
+}
+
+pub fn recv_protobuf_client_to_server(
+    receiver: &mut IpcReceiverWithContext<ClientToServerMsg>,
+) -> Option<(ClientToServerMsg, ErrorContext)> {
+    match read_protobuf_message::<ProtoClientToServerMsg>(&mut receiver.receiver) {
+        Ok(proto_msg) => match proto_msg.try_into() {
+            Ok(rust_msg) => Some((rust_msg, ErrorContext::default())),
+            Err(e) => {
+                warn!("Error converting protobuf message: {:?}", e);
+                None
+            },
+        },
+        Err(_e) => None,
+    }
+}
+
+pub fn recv_protobuf_server_to_client(
+    receiver: &mut IpcReceiverWithContext<ServerToClientMsg>,
+) -> Option<(ServerToClientMsg, ErrorContext)> {
+    match read_protobuf_message::<ProtoServerToClientMsg>(&mut receiver.receiver) {
+        Ok(proto_msg) => match proto_msg.try_into() {
+            Ok(rust_msg) => Some((rust_msg, ErrorContext::default())),
+            Err(e) => {
+                warn!("Error converting protobuf message: {:?}", e);
+                None
+            },
+        },
+        Err(_e) => None,
     }
 }

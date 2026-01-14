@@ -387,9 +387,14 @@ impl ClientSender {
         std::thread::spawn(move || {
             let err_context = || format!("failed to send message to client {client_id}");
             for msg in client_buffer_receiver.iter() {
-                sender.send(msg).with_context(err_context).non_fatal();
+                sender
+                    .send_server_msg(msg)
+                    .with_context(err_context)
+                    .non_fatal();
             }
-            let _ = sender.send(ServerToClientMsg::Exit(ExitReason::Disconnect));
+            let _ = sender.send_server_msg(ServerToClientMsg::Exit {
+                exit_reason: ExitReason::Disconnect,
+            });
         });
         ClientSender {
             client_id,
@@ -495,6 +500,8 @@ pub trait ServerOsApi: Send + Sync {
     fn kill(&self, pid: Pid) -> Result<()>;
     /// Terminate the process with process ID `pid`. (SIGKILL)
     fn force_kill(&self, pid: Pid) -> Result<()>;
+    /// Send SIGINT to the process with process ID `pid`
+    fn send_sigint(&self, pid: Pid) -> Result<()>;
     /// Returns a [`Box`] pointer to this [`ServerOsApi`] struct.
     fn box_clone(&self) -> Box<dyn ServerOsApi>;
     fn send_to_client(&self, client_id: ClientId, msg: ServerToClientMsg) -> Result<()>;
@@ -690,6 +697,10 @@ impl ServerOsApi for ServerOsInputOutput {
     }
     fn force_kill(&self, pid: Pid) -> Result<()> {
         let _ = kill(pid, Some(Signal::SIGKILL));
+        Ok(())
+    }
+    fn send_sigint(&self, pid: Pid) -> Result<()> {
+        let _ = kill(pid, Some(Signal::SIGINT));
         Ok(())
     }
     fn send_to_client(&self, client_id: ClientId, msg: ServerToClientMsg) -> Result<()> {

@@ -6,11 +6,11 @@ use tokio::sync::mpsc::UnboundedSender;
 use tokio_util::sync::CancellationToken;
 
 use crate::os_input_output::ClientOsApi;
+use crate::web_client::session_management::spawn_new_session;
 use std::path::PathBuf;
 use zellij_utils::{
-    data::LayoutInfo,
     input::{config::Config, options::Options},
-    ipc::{ClientAttributes, ClientToServerMsg},
+    ipc::ClientToServerMsg,
 };
 
 pub trait ClientOsApiFactory: Send + Sync + std::fmt::Debug {
@@ -37,12 +37,11 @@ pub trait SessionManager: Send + Sync + std::fmt::Debug {
     fn spawn_session_if_needed(
         &self,
         session_name: &str,
-        client_attributes: ClientAttributes,
-        config_file_path: Option<PathBuf>,
-        config_options: &Options,
         os_input: Box<dyn ClientOsApi>,
-        requested_layout: Option<LayoutInfo>,
-    ) -> (ClientToServerMsg, PathBuf);
+        session_exists: bool,
+        zellij_ipc_pipe: &PathBuf,
+        first_message: ClientToServerMsg,
+    );
 }
 
 #[derive(Debug, Clone)]
@@ -66,26 +65,23 @@ impl SessionManager for RealSessionManager {
     fn spawn_session_if_needed(
         &self,
         session_name: &str,
-        client_attributes: ClientAttributes,
-        config_file_path: Option<PathBuf>,
-        config_options: &Options,
         os_input: Box<dyn ClientOsApi>,
-        requested_layout: Option<LayoutInfo>,
-    ) -> (ClientToServerMsg, PathBuf) {
-        crate::web_client::session_management::spawn_session_if_needed(
-            session_name,
-            client_attributes,
-            config_file_path,
-            config_options,
-            os_input,
-            requested_layout,
-        )
+        session_exists: bool,
+        zellij_ipc_pipe: &PathBuf,
+        first_message: ClientToServerMsg,
+    ) {
+        if !session_exists {
+            spawn_new_session(session_name, os_input.clone(), zellij_ipc_pipe);
+        }
+        os_input.connect_to_server(&zellij_ipc_pipe);
+        os_input.send_to_server(first_message);
     }
 }
 
 #[derive(Debug, Default, Clone)]
 pub struct ConnectionTable {
     pub client_id_to_channels: HashMap<String, ClientChannels>,
+    pub client_read_only_status: HashMap<String, bool>,
 }
 
 #[derive(Debug, Clone)]
@@ -168,25 +164,10 @@ pub struct AppState {
     pub is_https: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct StdinMessage {
-    pub web_client_id: String,
-    pub stdin: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum ShutdownSignal {
-    Shutdown,
-}
-
-#[derive(Serialize, Debug)]
-pub struct SendShutdownSignalResponse {
-    pub status: String,
-}
-
 #[derive(Serialize)]
 pub struct CreateClientIdResponse {
     pub web_client_id: String,
+    pub is_read_only: bool,
 }
 
 #[derive(Deserialize)]

@@ -58,6 +58,11 @@ enum EventType {
     BeforeClose = 32;
     FailedToStartWebServer = 34;
     InterceptedKeyPress = 35;
+    PaneRenderReport = 36;
+    UserAction = 37;
+    ActionComplete = 38;
+    CwdChanged = 39;
+    AvailableLayoutInfo = 40;
 }
 
 message EventNameList {
@@ -95,7 +100,18 @@ message Event {
     WebServerStatusPayload web_server_status_payload = 27;
     FailedToStartWebServerPayload failed_to_start_web_server_payload = 28;
     key.Key intercepted_key_payload = 29;
+    PaneRenderReportPayload pane_render_report_payload = 30;
+    UserActionPayload user_action_payload = 31;
+    ActionCompletePayload action_complete_payload = 32;
+    CwdChangedPayload cwd_changed_payload = 33;
+    AvailableLayoutInfoPayload available_layout_info_payload = 34;
   }
+}
+
+message CwdChangedPayload {
+  PaneId pane_id = 1;
+  string new_cwd = 2;
+  repeated uint32 focused_client_ids = 3;
 }
 
 message FailedToStartWebServerPayload {
@@ -186,6 +202,11 @@ message EditPaneExitedPayload {
 message SessionUpdatePayload {
   repeated SessionManifest session_manifests = 1;
   repeated ResurrectableSession resurrectable_sessions = 2;
+}
+
+message AvailableLayoutInfoPayload {
+  repeated LayoutInfo available_layouts = 1;
+  repeated LayoutWithError layouts_with_errors = 2;
 }
 
 message RunCommandResultPayload {
@@ -282,11 +303,17 @@ message SessionManifest {
   bool web_clients_allowed = 8;
   uint32 web_client_count = 9;
   repeated ClientTabHistory tab_history = 10;
+  repeated ClientPaneHistory pane_history = 11;
 }
 
 message ClientTabHistory {
   uint32 client_id = 1;
   repeated uint32 tab_history = 2;
+}
+
+message ClientPaneHistory {
+  uint32 client_id = 1;
+  repeated PaneId pane_history = 2;
 }
 
 message PluginInfo {
@@ -298,6 +325,54 @@ message PluginInfo {
 message LayoutInfo {
   string name = 1;
   string source = 2;
+  optional LayoutMetadata layout_metadata = 5;
+}
+
+message LayoutWithError {
+  string layout_name = 1;
+  LayoutParsingError error = 2;
+}
+
+message LayoutParsingError {
+  oneof error_type {
+    KdlErrorVariant kdl_error = 1;
+    SyntaxError syntax_error = 2;
+  }
+}
+
+message KdlErrorVariant {
+  KdlError kdl_error = 1;
+  string file_name = 2;
+  string source_code = 3;
+}
+
+message SyntaxError {
+  // Empty message, just a marker
+}
+
+message KdlError {
+  string error_message = 1;
+  optional uint64 offset = 2;
+  optional uint64 len = 3;
+  optional string help_message = 4;
+}
+
+message LayoutMetadata {
+  repeated TabMetadata tabs = 1;
+  string creation_time = 2;
+  string update_time = 3;
+
+}
+
+message TabMetadata {
+  repeated PaneMetadata pane_metadata = 1;
+  optional string name = 2;
+}
+
+message PaneMetadata {
+  optional string name = 1;
+  bool is_plugin = 2;
+  bool is_builtin_plugin = 3;
 }
 
 message ResurrectableSession {
@@ -387,4 +462,45 @@ message InputModeKeybinds {
 message KeyBind {
   key.Key key = 1;
   repeated action.Action action = 2;
+}
+
+message PaneRenderReportPayload {
+  repeated PaneContentsEntry pane_contents = 1;
+}
+
+message PaneContentsEntry {
+  PaneId pane_id = 1;
+  PaneContents pane_contents = 2;
+}
+
+message PaneContents {
+  repeated string viewport = 1;
+  optional SelectedText selected_text = 2;
+  repeated string lines_above_viewport = 3;
+  repeated string lines_below_viewport = 4;
+}
+
+message PaneScrollbackResponse {
+  oneof response {
+    PaneContents ok = 1;
+    string err = 2;
+  }
+}
+
+message SelectedText {
+  action.Position start = 1;
+  action.Position end = 2;
+}
+
+message UserActionPayload {
+  action.Action action = 1;
+  uint32 client_id = 2;
+  optional uint32 terminal_id = 3;
+  optional uint32 cli_client_id = 4;
+}
+
+message ActionCompletePayload {
+  action.Action action = 1;
+  optional PaneId pane_id = 2;
+  repeated ContextItem context = 3;
 }

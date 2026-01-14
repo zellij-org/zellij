@@ -1,0 +1,7 @@
+---
+source: zellij-server/src/plugins/./unit/plugin_tests.rs
+expression: "format!(\"{:#?}\", plugin_bytes_event)"
+---
+Some(
+    "Save invalid layout error: Invalid layout KDL: KdlError(KdlError { error_message: \"Failed to deserialize KDL node. \\nPossible reasons:\\n- Missing `;` after a node name, eg. { node; another_node; }\\n- Missing quotations (\\\") around an argument node eg. { first_node \\\"argument_node\\\"; }\\n- Missing an equal sign (=) between node arguments on a title line. eg. argument=\\\"value\\\"\\n- Found an extraneous equal sign (=) between node child arguments and their values. eg. { argument=\\\"value\\\" }\", src: Some(NamedSource { name: \"invalid_layout.kdl\", source: \"<redacted>\"), offset: Some(0), len: Some(4), help_message: None })\n\r",
+)

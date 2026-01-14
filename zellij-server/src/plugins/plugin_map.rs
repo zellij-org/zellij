@@ -1,18 +1,13 @@
 use crate::plugins::plugin_worker::MessageToWorker;
 use crate::plugins::PluginId;
-use bytes::Bytes;
 use std::io::Write;
 use std::{
     collections::{BTreeMap, HashMap, HashSet, VecDeque},
     path::PathBuf,
     sync::{Arc, Mutex},
 };
-use wasmtime::{Instance, Store};
-use wasmtime_wasi::preview1::WasiP1Ctx;
-use wasmtime_wasi::{
-    HostInputStream, HostOutputStream, StdinStream, StdoutStream, StreamError, StreamResult,
-    Subscribe,
-};
+use wasmi::{Instance, Store, StoreLimits};
+use wasmi_wasi::WasiCtx;
 
 use crate::{thread_bus::ThreadSenders, ClientId};
 
@@ -69,17 +64,6 @@ impl PluginMap {
             }
         }
         removed
-    }
-    pub fn remove_single_plugin(
-        &mut self,
-        plugin_id: PluginId,
-        client_id: ClientId,
-    ) -> Option<(
-        Arc<Mutex<RunningPlugin>>,
-        Arc<Mutex<Subscriptions>>,
-        HashMap<String, Sender<MessageToWorker>>,
-    )> {
-        self.plugin_assets.remove(&(plugin_id, client_id))
     }
     pub fn plugin_ids(&self) -> Vec<PluginId> {
         let mut unique_plugins: HashSet<PluginId> = self
@@ -293,7 +277,7 @@ pub struct PluginEnv {
     pub plugin: PluginConfig,
     pub permissions: Arc<Mutex<Option<HashSet<PermissionType>>>>,
     pub senders: ThreadSenders,
-    pub wasi_ctx: WasiP1Ctx,
+    pub wasi_ctx: WasiCtx,
     pub tab_index: Option<usize>,
     pub client_id: ClientId,
     #[allow(dead_code)]
@@ -314,32 +298,21 @@ pub struct PluginEnv {
     pub stdout_pipe: Arc<Mutex<VecDeque<u8>>>,
     pub keybinds: Keybinds,
     pub intercepting_key_presses: bool,
+    pub store_limits: StoreLimits,
 }
 
 #[derive(Clone)]
 pub struct VecDequeInputStream(pub Arc<Mutex<VecDeque<u8>>>);
 
-impl StdinStream for VecDequeInputStream {
-    fn stream(&self) -> Box<dyn wasmtime_wasi::HostInputStream> {
-        Box::new(self.clone())
-    }
-
-    fn isatty(&self) -> bool {
-        false
-    }
-}
-
-impl HostInputStream for VecDequeInputStream {
-    fn read(&mut self, size: usize) -> StreamResult<Bytes> {
+impl std::io::Read for VecDequeInputStream {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         let mut inner = self.0.lock().unwrap();
-        let len = std::cmp::min(size, inner.len());
-        Ok(Bytes::from_iter(inner.drain(0..len)))
+        let len = std::cmp::min(buf.len(), inner.len());
+        for (i, byte) in inner.drain(0..len).enumerate() {
+            buf[i] = byte;
+        }
+        Ok(len)
     }
-}
-
-#[async_trait::async_trait]
-impl Subscribe for VecDequeInputStream {
-    async fn ready(&mut self) {}
 }
 
 pub struct WriteOutputStream<T>(pub Arc<Mutex<T>>);
@@ -350,41 +323,16 @@ impl<T> Clone for WriteOutputStream<T> {
     }
 }
 
-impl<T: Write + Send + 'static> StdoutStream for WriteOutputStream<T> {
-    fn stream(&self) -> Box<dyn HostOutputStream> {
-        Box::new((*self).clone())
+impl<T: Write + Send + 'static> std::io::Write for WriteOutputStream<T> {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        let mut inner = self.0.lock().unwrap();
+        inner.write(buf)
     }
 
-    fn isatty(&self) -> bool {
-        false
+    fn flush(&mut self) -> std::io::Result<()> {
+        let mut inner = self.0.lock().unwrap();
+        inner.flush()
     }
-}
-
-impl<T: Write + Send + 'static> HostOutputStream for WriteOutputStream<T> {
-    fn write(&mut self, bytes: Bytes) -> StreamResult<()> {
-        self.0
-            .lock()
-            .unwrap()
-            .write_all(&*bytes)
-            .map_err(|e| StreamError::LastOperationFailed(e.into()))
-    }
-
-    fn flush(&mut self) -> StreamResult<()> {
-        self.0
-            .lock()
-            .unwrap()
-            .flush()
-            .map_err(|e| StreamError::LastOperationFailed(e.into()))
-    }
-
-    fn check_write(&mut self) -> StreamResult<usize> {
-        Ok(usize::MAX)
-    }
-}
-
-#[async_trait::async_trait]
-impl<T: Send + 'static> Subscribe for WriteOutputStream<T> {
-    async fn ready(&mut self) {}
 }
 
 impl PluginEnv {
@@ -457,6 +405,9 @@ impl RunningPlugin {
     }
     pub fn update_default_shell(&mut self, default_shell: Option<TerminalAction>) {
         self.store.data_mut().default_shell = default_shell;
+    }
+    pub fn update_layout_dir(&mut self, layout_dir: Option<PathBuf>) {
+        self.store.data_mut().layout_dir = layout_dir;
     }
     pub fn intercepting_key_presses(&self) -> bool {
         self.store.data().intercepting_key_presses

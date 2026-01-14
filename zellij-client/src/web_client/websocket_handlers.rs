@@ -62,7 +62,7 @@ async fn handle_ws_control(socket: WebSocket, state: AppState) {
         };
         let client_msg = match deserialized_msg.payload {
             WebClientToWebServerControlMessagePayload::TerminalResize(size) => {
-                ClientToServerMsg::TerminalResize(size)
+                ClientToServerMsg::TerminalResize { new_size: size }
             },
         };
 
@@ -132,6 +132,8 @@ async fn handle_ws_terminal(
         .unwrap()
         .add_client_terminal_tx(&web_client_id, stdout_channel_tx);
 
+    let (attachment_complete_tx, attachment_complete_rx) = tokio::sync::oneshot::channel();
+
     zellij_server_listener(
         os_input.clone(),
         state.connection_table.clone(),
@@ -141,6 +143,7 @@ async fn handle_ws_terminal(
         Some(state.config_file_path.clone()),
         web_client_id.clone(),
         state.session_manager.clone(),
+        Some(attachment_complete_tx),
     );
 
     let terminal_channel_cancellation_token = CancellationToken::new();
@@ -166,9 +169,30 @@ async fn handle_ws_terminal(
         .support_kitty_keyboard_protocol
         .map(|e| !e)
         .unwrap_or(false);
+
+    let _ = attachment_complete_rx.await;
+
     let mut mouse_old_event = MouseEvent::new();
     while let Some(Ok(msg)) = client_terminal_channel_rx.next().await {
         match msg {
+            Message::Binary(buf) => {
+                let Some(client_connection) = state
+                    .connection_table
+                    .lock()
+                    .unwrap()
+                    .get_client_os_api(&web_client_id)
+                    .cloned()
+                else {
+                    log::error!("Unknown web_client_id: {}", web_client_id);
+                    continue;
+                };
+                parse_stdin(
+                    &buf,
+                    client_connection.clone(),
+                    &mut mouse_old_event,
+                    explicitly_disable_kitty_keyboard_protocol,
+                );
+            },
             Message::Text(msg) => {
                 let Some(client_connection) = state
                     .connection_table
@@ -195,6 +219,7 @@ async fn handle_ws_terminal(
                     .remove_client(&web_client_id);
                 break;
             },
+            // TODO: support Message::Binary
             _ => {
                 log::error!("Unsupported websocket msg type");
             },

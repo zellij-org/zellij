@@ -1,4 +1,4 @@
-use crate::panes::selection::Selection;
+use super::Selection;
 use crate::panes::terminal_character::TerminalCharacter;
 use crate::panes::{Grid, Row};
 use std::borrow::Cow;

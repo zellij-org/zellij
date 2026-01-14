@@ -1,12 +1,15 @@
 //! Definition of the actions that can be bound to keys.
 
-use super::command::{OpenFilePayload, RunCommandAction};
+pub use super::command::{OpenFilePayload, RunCommandAction};
 use super::layout::{
     FloatingPaneLayout, Layout, PluginAlias, RunPlugin, RunPluginLocation, RunPluginOrAlias,
-    SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
+    SwapFloatingLayout, SwapTiledLayout, TabLayoutInfo, TiledPaneLayout,
 };
 use crate::cli::CliAction;
-use crate::data::{Direction, KeyWithModifier, PaneId, Resize};
+use crate::data::{
+    CommandOrPlugin, Direction, KeyWithModifier, LayoutInfo, NewPanePlacement, OriginatingPlugin,
+    PaneId, Resize, UnblockCondition,
+};
 use crate::data::{FloatingPaneCoordinates, InputMode};
 use crate::home::{find_default_config_dir, get_layout_dir};
 use crate::input::config::{Config, ConfigError, KdlError};
@@ -31,6 +34,7 @@ pub enum ResizeDirection {
     Increase,
     Decrease,
 }
+
 impl FromStr for ResizeDirection {
     type Err = String;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -98,46 +102,83 @@ impl FromStr for SearchOption {
 // They might need to be adjusted in the default config
 // as well `../../assets/config/default.yaml`
 /// Actions that can be bound to keys.
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(
+    Clone,
+    Debug,
+    PartialEq,
+    Eq,
+    Deserialize,
+    Serialize,
+    strum_macros::Display,
+    strum_macros::EnumString,
+    strum_macros::EnumIter,
+)]
+#[strum(ascii_case_insensitive)]
 pub enum Action {
     /// Quit Zellij.
     Quit,
     /// Write to the terminal.
-    Write(Option<KeyWithModifier>, Vec<u8>, bool), // bool -> is_kitty_keyboard_protocol
+    Write {
+        key_with_modifier: Option<KeyWithModifier>,
+        bytes: Vec<u8>,
+        is_kitty_keyboard_protocol: bool,
+    },
     /// Write Characters to the terminal.
-    WriteChars(String),
+    WriteChars {
+        chars: String,
+    },
     /// Switch to the specified input mode.
-    SwitchToMode(InputMode),
+    SwitchToMode {
+        input_mode: InputMode,
+    },
     /// Switch all connected clients to the specified input mode.
-    SwitchModeForAllClients(InputMode),
+    SwitchModeForAllClients {
+        input_mode: InputMode,
+    },
     /// Shrink/enlarge focused pane at specified border
-    Resize(Resize, Option<Direction>),
+    Resize {
+        resize: Resize,
+        direction: Option<Direction>,
+    },
     /// Switch focus to next pane in specified direction.
     FocusNextPane,
     FocusPreviousPane,
     /// Move the focus pane in specified direction.
     SwitchFocus,
-    MoveFocus(Direction),
+    MoveFocus {
+        direction: Direction,
+    },
     /// Tries to move the focus pane in specified direction.
     /// If there is no pane in the direction, move to previous/next Tab.
-    MoveFocusOrTab(Direction),
-    MovePane(Option<Direction>),
+    MoveFocusOrTab {
+        direction: Direction,
+    },
+    MovePane {
+        direction: Option<Direction>,
+    },
     MovePaneBackwards,
     /// Clear all buffers of a current screen
     ClearScreen,
     /// Dumps the screen to a file
-    DumpScreen(String, bool),
+    DumpScreen {
+        file_path: String,
+        include_scrollback: bool,
+    },
     /// Dumps
     DumpLayout,
     /// Scroll up in focus pane.
     EditScrollback,
     ScrollUp,
     /// Scroll up at point
-    ScrollUpAt(Position),
+    ScrollUpAt {
+        position: Position,
+    },
     /// Scroll down in focus pane.
     ScrollDown,
     /// Scroll down at point
-    ScrollDownAt(Position),
+    ScrollDownAt {
+        position: Position,
+    },
     /// Scroll down to bottom in focus pane.
     ScrollToBottom,
     /// Scroll up to top in focus pane.
@@ -158,49 +199,77 @@ pub enum Action {
     ToggleActiveSyncTab,
     /// Open a new pane in the specified direction (relative to focus).
     /// If no direction is specified, will try to use the biggest available space.
-    NewPane(Option<Direction>, Option<String>, bool), // String is an optional pane name
-    /// Open the file in a new pane using the default editor, bool -> start suppressed
-    EditFile(
-        OpenFilePayload,
-        Option<Direction>,
-        bool,
-        bool,
-        bool,
-        Option<FloatingPaneCoordinates>,
-    ), // bool is floating true/false, second bool is in_place
-    // third bool is start_suppressed
+    NewPane {
+        direction: Option<Direction>,
+        pane_name: Option<String>,
+        start_suppressed: bool,
+    },
+    NewBlockingPane {
+        placement: NewPanePlacement,
+        pane_name: Option<String>,
+        command: Option<RunCommandAction>,
+        unblock_condition: Option<UnblockCondition>,
+        near_current_pane: bool,
+    },
+    /// Open the file in a new pane using the default editor
+    EditFile {
+        payload: OpenFilePayload,
+        direction: Option<Direction>,
+        floating: bool,
+        in_place: bool,
+        start_suppressed: bool,
+        coordinates: Option<FloatingPaneCoordinates>,
+        near_current_pane: bool,
+    },
     /// Open a new floating pane
-    NewFloatingPane(
-        Option<RunCommandAction>,
-        Option<String>,
-        Option<FloatingPaneCoordinates>,
-    ), // String is an optional pane name
+    NewFloatingPane {
+        command: Option<RunCommandAction>,
+        pane_name: Option<String>,
+        coordinates: Option<FloatingPaneCoordinates>,
+        near_current_pane: bool,
+    },
     /// Open a new tiled (embedded, non-floating) pane
-    NewTiledPane(Option<Direction>, Option<RunCommandAction>, Option<String>), // String is an
+    NewTiledPane {
+        direction: Option<Direction>,
+        command: Option<RunCommandAction>,
+        pane_name: Option<String>,
+        near_current_pane: bool,
+    },
     /// Open a new pane in place of the focused one, suppressing it instead
-    NewInPlacePane(Option<RunCommandAction>, Option<String>), // String is an
-    // optional pane
-    NewStackedPane(Option<RunCommandAction>, Option<String>), // String is an
-    // optional pane
-    // name
+    NewInPlacePane {
+        command: Option<RunCommandAction>,
+        pane_name: Option<String>,
+        near_current_pane: bool,
+        pane_id_to_replace: Option<PaneId>,
+        close_replace_pane: bool,
+    },
+    NewStackedPane {
+        command: Option<RunCommandAction>,
+        pane_name: Option<String>,
+        near_current_pane: bool,
+    },
     /// Embed focused pane in tab if floating or float focused pane if embedded
     TogglePaneEmbedOrFloating,
     /// Toggle the visibility of all floating panes (if any) in the current Tab
     ToggleFloatingPanes,
     /// Close the focus pane.
     CloseFocus,
-    PaneNameInput(Vec<u8>),
+    PaneNameInput {
+        input: Vec<u8>,
+    },
     UndoRenamePane,
     /// Create a new tab, optionally with a specified tab layout.
-    NewTab(
-        Option<TiledPaneLayout>,
-        Vec<FloatingPaneLayout>,
-        Option<Vec<SwapTiledLayout>>,
-        Option<Vec<SwapFloatingLayout>>,
-        Option<String>,
-        bool,            // should_change_focus_to_new_tab
-        Option<PathBuf>, // cwd
-    ), // the String is the tab name
+    NewTab {
+        tiled_layout: Option<TiledPaneLayout>,
+        floating_layouts: Vec<FloatingPaneLayout>,
+        swap_tiled_layouts: Option<Vec<SwapTiledLayout>>,
+        swap_floating_layouts: Option<Vec<SwapFloatingLayout>>,
+        tab_name: Option<String>,
+        should_change_focus_to_new_tab: bool,
+        cwd: Option<PathBuf>,
+        initial_panes: Option<Vec<CommandOrPlugin>>,
+        first_pane_unblock_condition: Option<UnblockCondition>,
+    },
     /// Do nothing.
     NoOp,
     /// Go to the next tab.
@@ -209,64 +278,142 @@ pub enum Action {
     GoToPreviousTab,
     /// Close the current tab.
     CloseTab,
-    GoToTab(u32),
-    GoToTabName(String, bool),
+    GoToTab {
+        index: u32,
+    },
+    GoToTabName {
+        name: String,
+        create: bool,
+    },
     ToggleTab,
-    TabNameInput(Vec<u8>),
+    TabNameInput {
+        input: Vec<u8>,
+    },
     UndoRenameTab,
-    MoveTab(Direction),
+    MoveTab {
+        direction: Direction,
+    },
     /// Run specified command in new pane.
-    Run(RunCommandAction),
+    Run {
+        command: RunCommandAction,
+        near_current_pane: bool,
+    },
     /// Detach session and exit
     Detach,
-    LaunchOrFocusPlugin(RunPluginOrAlias, bool, bool, bool, bool), // bools => should float,
-    // move_to_focused_tab, should_open_in_place, skip_cache
-    LaunchPlugin(RunPluginOrAlias, bool, bool, bool, Option<PathBuf>), // bools => should float,
-    // should_open_in_place, skip_cache, Option<PathBuf> is cwd
-    MouseEvent(MouseEvent),
+    /// Switch to a different session
+    SwitchSession {
+        name: String,
+        tab_position: Option<usize>,
+        pane_id: Option<(u32, bool)>, // (id, is_plugin)
+        layout: Option<LayoutInfo>,
+        cwd: Option<PathBuf>,
+    },
+    LaunchOrFocusPlugin {
+        plugin: RunPluginOrAlias,
+        should_float: bool,
+        move_to_focused_tab: bool,
+        should_open_in_place: bool,
+        skip_cache: bool,
+    },
+    LaunchPlugin {
+        plugin: RunPluginOrAlias,
+        should_float: bool,
+        should_open_in_place: bool,
+        skip_cache: bool,
+        cwd: Option<PathBuf>,
+    },
+    MouseEvent {
+        event: MouseEvent,
+    },
     Copy,
     /// Confirm a prompt
     Confirm,
     /// Deny a prompt
     Deny,
     /// Confirm an action that invokes a prompt automatically
-    SkipConfirm(Box<Action>),
+    SkipConfirm {
+        action: Box<Action>,
+    },
     /// Search for String
-    SearchInput(Vec<u8>),
+    SearchInput {
+        input: Vec<u8>,
+    },
     /// Search for something
-    Search(SearchDirection),
+    Search {
+        direction: SearchDirection,
+    },
     /// Toggle case sensitivity of search
-    SearchToggleOption(SearchOption),
+    SearchToggleOption {
+        option: SearchOption,
+    },
     ToggleMouseMode,
     PreviousSwapLayout,
     NextSwapLayout,
+    /// Override the layout of the active tab
+    OverrideLayout {
+        tabs: Vec<TabLayoutInfo>,
+        retain_existing_terminal_panes: bool,
+        retain_existing_plugin_panes: bool,
+        apply_only_to_active_tab: bool,
+    },
     /// Query all tab names
     QueryTabNames,
     /// Open a new tiled (embedded, non-floating) plugin pane
-    NewTiledPluginPane(RunPluginOrAlias, Option<String>, bool, Option<PathBuf>), // String is an optional name, bool is
-    // skip_cache, Option<PathBuf> is cwd
-    NewFloatingPluginPane(
-        RunPluginOrAlias,
-        Option<String>,
-        bool,
-        Option<PathBuf>,
-        Option<FloatingPaneCoordinates>,
-    ), // String is an optional name, bool is
-    // skip_cache, Option<PathBuf> is cwd
-    NewInPlacePluginPane(RunPluginOrAlias, Option<String>, bool), // String is an optional name, bool is
-    // skip_cache
-    StartOrReloadPlugin(RunPluginOrAlias),
-    CloseTerminalPane(u32),
-    ClosePluginPane(u32),
-    FocusTerminalPaneWithId(u32, bool), // bool is should_float_if_hidden
-    FocusPluginPaneWithId(u32, bool),   // bool is should_float_if_hidden
-    RenameTerminalPane(u32, Vec<u8>),
-    RenamePluginPane(u32, Vec<u8>),
-    RenameTab(u32, Vec<u8>),
+    NewTiledPluginPane {
+        plugin: RunPluginOrAlias,
+        pane_name: Option<String>,
+        skip_cache: bool,
+        cwd: Option<PathBuf>,
+    },
+    NewFloatingPluginPane {
+        plugin: RunPluginOrAlias,
+        pane_name: Option<String>,
+        skip_cache: bool,
+        cwd: Option<PathBuf>,
+        coordinates: Option<FloatingPaneCoordinates>,
+    },
+    NewInPlacePluginPane {
+        plugin: RunPluginOrAlias,
+        pane_name: Option<String>,
+        skip_cache: bool,
+    },
+    StartOrReloadPlugin {
+        plugin: RunPluginOrAlias,
+    },
+    CloseTerminalPane {
+        pane_id: u32,
+    },
+    ClosePluginPane {
+        pane_id: u32,
+    },
+    FocusTerminalPaneWithId {
+        pane_id: u32,
+        should_float_if_hidden: bool,
+        should_be_in_place_if_hidden: bool,
+    },
+    FocusPluginPaneWithId {
+        pane_id: u32,
+        should_float_if_hidden: bool,
+        should_be_in_place_if_hidden: bool,
+    },
+    RenameTerminalPane {
+        pane_id: u32,
+        name: Vec<u8>,
+    },
+    RenamePluginPane {
+        pane_id: u32,
+        name: Vec<u8>,
+    },
+    RenameTab {
+        tab_index: u32,
+        name: Vec<u8>,
+    },
     BreakPane,
     BreakPaneRight,
     BreakPaneLeft,
-    RenameSession(String),
+    RenameSession {
+        name: String,
+    },
     CliPipe {
         pipe_id: String,
         name: Option<String>,
@@ -297,19 +444,43 @@ pub enum Action {
     },
     ListClients,
     TogglePanePinned,
-    StackPanes(Vec<PaneId>),
-    ChangeFloatingPaneCoordinates(PaneId, FloatingPaneCoordinates),
+    StackPanes {
+        pane_ids: Vec<PaneId>,
+    },
+    ChangeFloatingPaneCoordinates {
+        pane_id: PaneId,
+        coordinates: FloatingPaneCoordinates,
+    },
     TogglePaneInGroup,
     ToggleGroupMarking,
+}
+
+impl Default for Action {
+    fn default() -> Self {
+        Action::NoOp
+    }
+}
+
+impl Default for SearchDirection {
+    fn default() -> Self {
+        SearchDirection::Down
+    }
+}
+
+impl Default for SearchOption {
+    fn default() -> Self {
+        SearchOption::CaseSensitivity
+    }
 }
 
 impl Action {
     /// Checks that two Action are match except their mutable attributes.
     pub fn shallow_eq(&self, other_action: &Action) -> bool {
         match (self, other_action) {
-            (Action::NewTab(..), Action::NewTab(..)) => true,
-            (Action::LaunchOrFocusPlugin(..), Action::LaunchOrFocusPlugin(..)) => true,
-            (Action::LaunchPlugin(..), Action::LaunchPlugin(..)) => true,
+            (Action::NewTab { .. }, Action::NewTab { .. }) => true,
+            (Action::LaunchOrFocusPlugin { .. }, Action::LaunchOrFocusPlugin { .. }) => true,
+            (Action::LaunchPlugin { .. }, Action::LaunchPlugin { .. }) => true,
+            (Action::OverrideLayout { .. }, Action::OverrideLayout { .. }) => true,
             _ => self == other_action,
         }
     }
@@ -320,21 +491,29 @@ impl Action {
         config: Option<Config>,
     ) -> Result<Vec<Action>, String> {
         match cli_action {
-            CliAction::Write { bytes } => Ok(vec![Action::Write(None, bytes, false)]),
-            CliAction::WriteChars { chars } => Ok(vec![Action::WriteChars(chars)]),
-            CliAction::Resize { resize, direction } => Ok(vec![Action::Resize(resize, direction)]),
+            CliAction::Write { bytes } => Ok(vec![Action::Write {
+                key_with_modifier: None,
+                bytes,
+                is_kitty_keyboard_protocol: false,
+            }]),
+            CliAction::WriteChars { chars } => Ok(vec![Action::WriteChars { chars }]),
+            CliAction::Resize { resize, direction } => {
+                Ok(vec![Action::Resize { resize, direction }])
+            },
             CliAction::FocusNextPane => Ok(vec![Action::FocusNextPane]),
             CliAction::FocusPreviousPane => Ok(vec![Action::FocusPreviousPane]),
-            CliAction::MoveFocus { direction } => Ok(vec![Action::MoveFocus(direction)]),
-            CliAction::MoveFocusOrTab { direction } => Ok(vec![Action::MoveFocusOrTab(direction)]),
-            CliAction::MovePane { direction } => Ok(vec![Action::MovePane(direction)]),
+            CliAction::MoveFocus { direction } => Ok(vec![Action::MoveFocus { direction }]),
+            CliAction::MoveFocusOrTab { direction } => {
+                Ok(vec![Action::MoveFocusOrTab { direction }])
+            },
+            CliAction::MovePane { direction } => Ok(vec![Action::MovePane { direction }]),
             CliAction::MovePaneBackwards => Ok(vec![Action::MovePaneBackwards]),
-            CliAction::MoveTab { direction } => Ok(vec![Action::MoveTab(direction)]),
+            CliAction::MoveTab { direction } => Ok(vec![Action::MoveTab { direction }]),
             CliAction::Clear => Ok(vec![Action::ClearScreen]),
-            CliAction::DumpScreen { path, full } => Ok(vec![Action::DumpScreen(
-                path.as_os_str().to_string_lossy().into(),
-                full,
-            )]),
+            CliAction::DumpScreen { path, full } => Ok(vec![Action::DumpScreen {
+                file_path: path.as_os_str().to_string_lossy().into(),
+                include_scrollback: full,
+            }]),
             CliAction::DumpLayout => Ok(vec![Action::DumpLayout]),
             CliAction::EditScrollback => Ok(vec![Action::EditScrollback]),
             CliAction::ScrollUp => Ok(vec![Action::ScrollUp]),
@@ -366,6 +545,9 @@ impl Action {
                 height,
                 pinned,
                 stacked,
+                blocking,
+                unblock_condition,
+                near_current_pane,
             } => {
                 let current_dir = get_current_dir();
                 // cwd should only be specified in a plugin alias if it was explicitly given to us,
@@ -374,7 +556,53 @@ impl Action {
                 let cwd = cwd
                     .map(|cwd| current_dir.join(cwd))
                     .or_else(|| Some(current_dir.clone()));
-                if let Some(plugin) = plugin {
+                if blocking || unblock_condition.is_some() {
+                    // For blocking panes, we don't support plugins
+                    if plugin.is_some() {
+                        return Err("Blocking panes do not support plugin variants".to_string());
+                    }
+
+                    let command = if !command.is_empty() {
+                        let mut command = command.clone();
+                        let (command, args) = (PathBuf::from(command.remove(0)), command);
+                        let hold_on_start = start_suspended;
+                        let hold_on_close = !close_on_exit;
+                        Some(RunCommandAction {
+                            command,
+                            args,
+                            cwd,
+                            direction,
+                            hold_on_close,
+                            hold_on_start,
+                            ..Default::default()
+                        })
+                    } else {
+                        None
+                    };
+
+                    let placement = if floating {
+                        NewPanePlacement::Floating(FloatingPaneCoordinates::new(
+                            x, y, width, height, pinned,
+                        ))
+                    } else if in_place {
+                        NewPanePlacement::InPlace {
+                            pane_id_to_replace: None,
+                            close_replaced_pane: false,
+                        }
+                    } else if stacked {
+                        NewPanePlacement::Stacked(None)
+                    } else {
+                        NewPanePlacement::Tiled(direction)
+                    };
+
+                    Ok(vec![Action::NewBlockingPane {
+                        placement,
+                        pane_name: name,
+                        command,
+                        unblock_condition,
+                        near_current_pane,
+                    }])
+                } else if let Some(plugin) = plugin {
                     let plugin = match RunPluginLocation::parse(&plugin, cwd.clone()) {
                         Ok(location) => {
                             let user_configuration = configuration.unwrap_or_default();
@@ -396,19 +624,19 @@ impl Action {
                         },
                     };
                     if floating {
-                        Ok(vec![Action::NewFloatingPluginPane(
+                        Ok(vec![Action::NewFloatingPluginPane {
                             plugin,
-                            name,
-                            skip_plugin_cache,
+                            pane_name: name,
+                            skip_cache: skip_plugin_cache,
                             cwd,
-                            FloatingPaneCoordinates::new(x, y, width, height, pinned),
-                        )])
+                            coordinates: FloatingPaneCoordinates::new(x, y, width, height, pinned),
+                        }])
                     } else if in_place {
-                        Ok(vec![Action::NewInPlacePluginPane(
+                        Ok(vec![Action::NewInPlacePluginPane {
                             plugin,
-                            name,
-                            skip_plugin_cache,
-                        )])
+                            pane_name: name,
+                            skip_cache: skip_plugin_cache,
+                        }])
                     } else {
                         // it is intentional that a new tiled plugin pane cannot include a
                         // direction
@@ -418,12 +646,12 @@ impl Action {
                         // is being loaded
                         // this is not the case with terminal panes for historical reasons of
                         // backwards compatibility to a time before we had auto layouts
-                        Ok(vec![Action::NewTiledPluginPane(
+                        Ok(vec![Action::NewTiledPluginPane {
                             plugin,
-                            name,
-                            skip_plugin_cache,
+                            pane_name: name,
+                            skip_cache: skip_plugin_cache,
                             cwd,
-                        )])
+                        }])
                     }
                 } else if !command.is_empty() {
                     let mut command = command.clone();
@@ -440,35 +668,63 @@ impl Action {
                         ..Default::default()
                     };
                     if floating {
-                        Ok(vec![Action::NewFloatingPane(
-                            Some(run_command_action),
-                            name,
-                            FloatingPaneCoordinates::new(x, y, width, height, pinned),
-                        )])
+                        Ok(vec![Action::NewFloatingPane {
+                            command: Some(run_command_action),
+                            pane_name: name,
+                            coordinates: FloatingPaneCoordinates::new(x, y, width, height, pinned),
+                            near_current_pane,
+                        }])
                     } else if in_place {
-                        Ok(vec![Action::NewInPlacePane(Some(run_command_action), name)])
+                        Ok(vec![Action::NewInPlacePane {
+                            command: Some(run_command_action),
+                            pane_name: name,
+                            near_current_pane,
+                            pane_id_to_replace: None, // TODO: support this
+                            close_replace_pane: false,
+                        }])
                     } else if stacked {
-                        Ok(vec![Action::NewStackedPane(Some(run_command_action), name)])
+                        Ok(vec![Action::NewStackedPane {
+                            command: Some(run_command_action),
+                            pane_name: name,
+                            near_current_pane,
+                        }])
                     } else {
-                        Ok(vec![Action::NewTiledPane(
+                        Ok(vec![Action::NewTiledPane {
                             direction,
-                            Some(run_command_action),
-                            name,
-                        )])
+                            command: Some(run_command_action),
+                            pane_name: name,
+                            near_current_pane,
+                        }])
                     }
                 } else {
                     if floating {
-                        Ok(vec![Action::NewFloatingPane(
-                            None,
-                            name,
-                            FloatingPaneCoordinates::new(x, y, width, height, pinned),
-                        )])
+                        Ok(vec![Action::NewFloatingPane {
+                            command: None,
+                            pane_name: name,
+                            coordinates: FloatingPaneCoordinates::new(x, y, width, height, pinned),
+                            near_current_pane,
+                        }])
                     } else if in_place {
-                        Ok(vec![Action::NewInPlacePane(None, name)])
+                        Ok(vec![Action::NewInPlacePane {
+                            command: None,
+                            pane_name: name,
+                            near_current_pane,
+                            pane_id_to_replace: None, // TODO: support this
+                            close_replace_pane: false,
+                        }])
                     } else if stacked {
-                        Ok(vec![Action::NewStackedPane(None, name)])
+                        Ok(vec![Action::NewStackedPane {
+                            command: None,
+                            pane_name: name,
+                            near_current_pane,
+                        }])
                     } else {
-                        Ok(vec![Action::NewTiledPane(direction, None, name)])
+                        Ok(vec![Action::NewTiledPane {
+                            direction,
+                            command: None,
+                            pane_name: name,
+                            near_current_pane,
+                        }])
                     }
                 }
             },
@@ -484,6 +740,7 @@ impl Action {
                 width,
                 height,
                 pinned,
+                near_current_pane,
             } => {
                 let mut file = file;
                 let current_dir = get_current_dir();
@@ -496,34 +753,39 @@ impl Action {
                     }
                 }
                 let start_suppressed = false;
-                Ok(vec![Action::EditFile(
-                    OpenFilePayload::new(file, line_number, cwd),
+                Ok(vec![Action::EditFile {
+                    payload: OpenFilePayload::new(file, line_number, cwd),
                     direction,
                     floating,
                     in_place,
                     start_suppressed,
-                    FloatingPaneCoordinates::new(x, y, width, height, pinned),
-                )])
+                    coordinates: FloatingPaneCoordinates::new(x, y, width, height, pinned),
+                    near_current_pane,
+                }])
             },
-            CliAction::SwitchMode { input_mode } => {
-                Ok(vec![Action::SwitchModeForAllClients(input_mode)])
-            },
+            CliAction::SwitchMode { input_mode } => Ok(vec![Action::SwitchToMode { input_mode }]),
             CliAction::TogglePaneEmbedOrFloating => Ok(vec![Action::TogglePaneEmbedOrFloating]),
             CliAction::ToggleFloatingPanes => Ok(vec![Action::ToggleFloatingPanes]),
             CliAction::ClosePane => Ok(vec![Action::CloseFocus]),
             CliAction::RenamePane { name } => Ok(vec![
                 Action::UndoRenamePane,
-                Action::PaneNameInput(name.as_bytes().to_vec()),
+                Action::PaneNameInput {
+                    input: name.as_bytes().to_vec(),
+                },
             ]),
             CliAction::UndoRenamePane => Ok(vec![Action::UndoRenamePane]),
             CliAction::GoToNextTab => Ok(vec![Action::GoToNextTab]),
             CliAction::GoToPreviousTab => Ok(vec![Action::GoToPreviousTab]),
             CliAction::CloseTab => Ok(vec![Action::CloseTab]),
-            CliAction::GoToTab { index } => Ok(vec![Action::GoToTab(index)]),
-            CliAction::GoToTabName { name, create } => Ok(vec![Action::GoToTabName(name, create)]),
+            CliAction::GoToTab { index } => Ok(vec![Action::GoToTab { index }]),
+            CliAction::GoToTabName { name, create } => {
+                Ok(vec![Action::GoToTabName { name, create }])
+            },
             CliAction::RenameTab { name } => Ok(vec![
-                Action::TabNameInput(vec![0]),
-                Action::TabNameInput(name.as_bytes().to_vec()),
+                Action::TabNameInput { input: vec![0] },
+                Action::TabNameInput {
+                    input: name.as_bytes().to_vec(),
+                },
             ]),
             CliAction::UndoRenameTab => Ok(vec![Action::UndoRenameTab]),
             CliAction::NewTab {
@@ -531,11 +793,68 @@ impl Action {
                 layout,
                 layout_dir,
                 cwd,
+                initial_command,
+                initial_plugin,
+                close_on_exit,
+                start_suspended,
+                block_until_exit_success,
+                block_until_exit_failure,
+                block_until_exit,
             } => {
                 let current_dir = get_current_dir();
                 let cwd = cwd
                     .map(|cwd| current_dir.join(cwd))
-                    .or_else(|| Some(current_dir));
+                    .or_else(|| Some(current_dir.clone()));
+
+                // Map CLI flags to UnblockCondition
+                let first_pane_unblock_condition = if block_until_exit_success {
+                    Some(UnblockCondition::OnExitSuccess)
+                } else if block_until_exit_failure {
+                    Some(UnblockCondition::OnExitFailure)
+                } else if block_until_exit {
+                    Some(UnblockCondition::OnAnyExit)
+                } else {
+                    None
+                };
+
+                // Parse initial_panes from initial_command or initial_plugin
+                let initial_panes = if let Some(plugin_url) = initial_plugin {
+                    let plugin = match RunPluginLocation::parse(&plugin_url, cwd.clone()) {
+                        Ok(location) => RunPluginOrAlias::RunPlugin(RunPlugin {
+                            _allow_exec_host_cmd: false,
+                            location,
+                            configuration: Default::default(),
+                            initial_cwd: cwd.clone(),
+                        }),
+                        Err(_) => {
+                            let mut plugin_alias =
+                                PluginAlias::new(&plugin_url, &None, cwd.clone());
+                            plugin_alias.set_caller_cwd_if_not_set(Some(current_dir.clone()));
+                            RunPluginOrAlias::Alias(plugin_alias)
+                        },
+                    };
+                    Some(vec![CommandOrPlugin::Plugin(plugin)])
+                } else if !initial_command.is_empty() {
+                    let mut command: Vec<String> = initial_command.clone();
+                    let (command, args) = (
+                        PathBuf::from(command.remove(0)),
+                        command.into_iter().collect(),
+                    );
+                    let hold_on_close = !close_on_exit;
+                    let hold_on_start = start_suspended;
+                    let run_command_action = RunCommandAction {
+                        command,
+                        args,
+                        cwd: cwd.clone(),
+                        direction: None,
+                        hold_on_close,
+                        hold_on_start,
+                        ..Default::default()
+                    };
+                    Some(vec![CommandOrPlugin::Command(run_command_action)])
+                } else {
+                    None
+                };
                 if let Some(layout_path) = layout {
                     let layout_dir = layout_dir
                         .or_else(|| config.and_then(|c| c.options.layout_dir))
@@ -615,15 +934,17 @@ impl Action {
                                         false
                                     }
                                 });
-                            new_tab_actions.push(Action::NewTab(
-                                Some(layout),
-                                floating_panes_layout,
-                                swap_tiled_layouts.clone(),
-                                swap_floating_layouts.clone(),
-                                name,
+                            new_tab_actions.push(Action::NewTab {
+                                tiled_layout: Some(layout),
+                                floating_layouts: floating_panes_layout,
+                                swap_tiled_layouts: swap_tiled_layouts.clone(),
+                                swap_floating_layouts: swap_floating_layouts.clone(),
+                                tab_name: name,
                                 should_change_focus_to_new_tab,
-                                None, // the cwd is done through the layout
-                            ));
+                                cwd: None, // the cwd is done through the layout
+                                initial_panes: initial_panes.clone(),
+                                first_pane_unblock_condition,
+                            });
                         }
                         Ok(new_tab_actions)
                     } else {
@@ -631,31 +952,130 @@ impl Action {
                         let swap_floating_layouts = Some(layout.swap_floating_layouts.clone());
                         let (layout, floating_panes_layout) = layout.new_tab();
                         let should_change_focus_to_new_tab = true;
-                        Ok(vec![Action::NewTab(
-                            Some(layout),
-                            floating_panes_layout,
+                        Ok(vec![Action::NewTab {
+                            tiled_layout: Some(layout),
+                            floating_layouts: floating_panes_layout,
                             swap_tiled_layouts,
                             swap_floating_layouts,
-                            name,
+                            tab_name: name,
                             should_change_focus_to_new_tab,
-                            None, // the cwd is done through the layout
-                        )])
+                            cwd: None, // the cwd is done through the layout
+                            initial_panes,
+                            first_pane_unblock_condition,
+                        }])
                     }
                 } else {
                     let should_change_focus_to_new_tab = true;
-                    Ok(vec![Action::NewTab(
-                        None,
-                        vec![],
-                        None,
-                        None,
-                        name,
+                    Ok(vec![Action::NewTab {
+                        tiled_layout: None,
+                        floating_layouts: vec![],
+                        swap_tiled_layouts: None,
+                        swap_floating_layouts: None,
+                        tab_name: name,
                         should_change_focus_to_new_tab,
                         cwd,
-                    )])
+                        initial_panes,
+                        first_pane_unblock_condition,
+                    }])
                 }
             },
             CliAction::PreviousSwapLayout => Ok(vec![Action::PreviousSwapLayout]),
             CliAction::NextSwapLayout => Ok(vec![Action::NextSwapLayout]),
+            CliAction::OverrideLayout {
+                layout,
+                layout_dir,
+                retain_existing_terminal_panes,
+                retain_existing_plugin_panes,
+                apply_only_to_active_tab,
+            } => {
+                // Determine layout_dir: CLI arg > config > default
+                let layout_dir = layout_dir
+                    .or_else(|| config.and_then(|c| c.options.layout_dir))
+                    .or_else(|| get_layout_dir(find_default_config_dir()));
+
+                // Load layout from URL or file path
+                let (path_to_raw_layout, raw_layout, swap_layouts) = if let Some(layout_url) =
+                    layout.to_str().and_then(|l| {
+                        if l.starts_with("http://") || l.starts_with("https://") {
+                            Some(l)
+                        } else {
+                            None
+                        }
+                    }) {
+                    (
+                        layout_url.to_owned(),
+                        Layout::stringified_from_url(layout_url)
+                            .map_err(|e| format!("Failed to load layout from URL: {}", e))?,
+                        None,
+                    )
+                } else {
+                    Layout::stringified_from_path_or_default(Some(&layout), layout_dir)
+                        .map_err(|e| format!("Failed to load layout: {}", e))?
+                };
+
+                // Parse KDL layout
+                let layout = Layout::from_str(
+                    &raw_layout,
+                    path_to_raw_layout,
+                    swap_layouts.as_ref().map(|(f, p)| (f.as_str(), p.as_str())),
+                    None, // cwd
+                )
+                .map_err(|e| {
+                    let stringified_error = match e {
+                        ConfigError::KdlError(kdl_error) => {
+                            let error = kdl_error.add_src(
+                                layout.as_path().as_os_str().to_string_lossy().to_string(),
+                                String::from(raw_layout),
+                            );
+                            let report: Report = error.into();
+                            format!("{:?}", report)
+                        },
+                        ConfigError::KdlDeserializationError(kdl_error) => {
+                            let error_message = kdl_error.to_string();
+                            format!("Failed to deserialize KDL layout: {}", error_message)
+                        },
+                        e => format!("{}", e),
+                    };
+                    stringified_error
+                })?;
+
+                // Convert all tabs to Vec<TabLayoutInfo>
+                let tabs: Vec<TabLayoutInfo> = layout
+                    .tabs
+                    .iter()
+                    .enumerate()
+                    .map(|(index, (tab_name, tiled, floating))| TabLayoutInfo {
+                        tab_index: index,
+                        tab_name: tab_name.clone(),
+                        tiled_layout: tiled.clone(),
+                        floating_layouts: floating.clone(),
+                        swap_tiled_layouts: Some(layout.swap_tiled_layouts.clone()),
+                        swap_floating_layouts: Some(layout.swap_floating_layouts.clone()),
+                    })
+                    .collect();
+
+                // If no tabs, create default tab
+                let tabs = if tabs.is_empty() {
+                    let (tiled, floating) = layout.new_tab();
+                    vec![TabLayoutInfo {
+                        tab_index: 0,
+                        tab_name: None,
+                        tiled_layout: tiled,
+                        floating_layouts: floating,
+                        swap_tiled_layouts: Some(layout.swap_tiled_layouts),
+                        swap_floating_layouts: Some(layout.swap_floating_layouts),
+                    }]
+                } else {
+                    tabs
+                };
+
+                Ok(vec![Action::OverrideLayout {
+                    tabs,
+                    retain_existing_terminal_panes,
+                    retain_existing_plugin_panes,
+                    apply_only_to_active_tab,
+                }])
+            },
             CliAction::QueryTabNames => Ok(vec![Action::QueryTabNames]),
             CliAction::StartOrReloadPlugin { url, configuration } => {
                 let current_dir = get_current_dir();
@@ -665,7 +1085,9 @@ impl Action {
                     None,
                     Some(current_dir),
                 )?;
-                Ok(vec![Action::StartOrReloadPlugin(run_plugin_or_alias)])
+                Ok(vec![Action::StartOrReloadPlugin {
+                    plugin: run_plugin_or_alias,
+                }])
             },
             CliAction::LaunchOrFocusPlugin {
                 url,
@@ -682,13 +1104,13 @@ impl Action {
                     None,
                     Some(current_dir),
                 )?;
-                Ok(vec![Action::LaunchOrFocusPlugin(
-                    run_plugin_or_alias,
-                    floating,
+                Ok(vec![Action::LaunchOrFocusPlugin {
+                    plugin: run_plugin_or_alias,
+                    should_float: floating,
                     move_to_focused_tab,
-                    in_place,
-                    skip_plugin_cache,
-                )])
+                    should_open_in_place: in_place,
+                    skip_cache: skip_plugin_cache,
+                }])
             },
             CliAction::LaunchPlugin {
                 url,
@@ -704,15 +1126,15 @@ impl Action {
                     None,
                     Some(current_dir.clone()),
                 )?;
-                Ok(vec![Action::LaunchPlugin(
-                    run_plugin_or_alias,
-                    floating,
-                    in_place,
-                    skip_plugin_cache,
-                    Some(current_dir),
-                )])
+                Ok(vec![Action::LaunchPlugin {
+                    plugin: run_plugin_or_alias,
+                    should_float: floating,
+                    should_open_in_place: in_place,
+                    skip_cache: skip_plugin_cache,
+                    cwd: Some(current_dir),
+                }])
             },
-            CliAction::RenameSession { name } => Ok(vec![Action::RenameSession(name)]),
+            CliAction::RenameSession { name } => Ok(vec![Action::RenameSession { name }]),
             CliAction::Pipe {
                 name,
                 payload,
@@ -772,7 +1194,7 @@ impl Action {
                         )
                     )
                 } else {
-                    Ok(vec![Action::StackPanes(pane_ids)])
+                    Ok(vec![Action::StackPanes { pane_ids }])
                 }
             },
             CliAction::ChangeFloatingPaneCoordinates {
@@ -790,7 +1212,10 @@ impl Action {
                 let parsed_pane_id = PaneId::from_str(&pane_id);
                 match parsed_pane_id {
                     Ok(parsed_pane_id) => {
-                        Ok(vec![Action::ChangeFloatingPaneCoordinates(parsed_pane_id, coordinates)])
+                        Ok(vec![Action::ChangeFloatingPaneCoordinates {
+                            pane_id: parsed_pane_id,
+                            coordinates,
+                        }])
                     },
                     Err(_e) => {
                         Err(format!(
@@ -800,21 +1225,99 @@ impl Action {
                     }
                 }
             },
+            CliAction::Detach => Ok(vec![Action::Detach]),
+            CliAction::SwitchSession {
+                name,
+                tab_position,
+                pane_id,
+                layout,
+                layout_dir,
+                cwd,
+            } => {
+                let pane_id = match pane_id {
+                    Some(stringified_pane_id) => match PaneId::from_str(&stringified_pane_id) {
+                        Ok(PaneId::Terminal(id)) => Some((id, false)),
+                        Ok(PaneId::Plugin(id)) => Some((id, true)),
+                        Err(_e) => {
+                            return Err(format!(
+                                "Malformed pane id: {}, expecting either a bare integer (eg. 1), a terminal pane id (eg. terminal_1) or a plugin pane id (eg. plugin_1)",
+                                stringified_pane_id
+                            ));
+                        },
+                    },
+                    None => None,
+                };
+
+                let cwd = cwd.map(|cwd| {
+                    let current_dir = get_current_dir();
+                    current_dir.join(cwd)
+                });
+
+                let layout_dir = layout_dir.map(|layout_dir| {
+                    let current_dir = get_current_dir();
+                    current_dir.join(layout_dir)
+                });
+
+                let layout_info = if let Some(layout_path) = layout {
+                    let layout_dir = layout_dir
+                        .or_else(|| config.and_then(|c| c.options.layout_dir.clone()))
+                        .or_else(|| get_layout_dir(find_default_config_dir()));
+                    LayoutInfo::from_config(&layout_dir, &Some(layout_path))
+                } else {
+                    None
+                };
+
+                Ok(vec![Action::SwitchSession {
+                    name: name.clone(),
+                    tab_position: tab_position.clone(),
+                    pane_id,
+                    layout: layout_info,
+                    cwd,
+                }])
+            },
+        }
+    }
+    pub fn populate_originating_plugin(&mut self, originating_plugin: OriginatingPlugin) {
+        match self {
+            Action::NewBlockingPane { command, .. }
+            | Action::NewFloatingPane { command, .. }
+            | Action::NewTiledPane { command, .. }
+            | Action::NewInPlacePane { command, .. }
+            | Action::NewStackedPane { command, .. } => {
+                command
+                    .as_mut()
+                    .map(|c| c.populate_originating_plugin(originating_plugin));
+            },
+            Action::Run { command, .. } => {
+                command.populate_originating_plugin(originating_plugin);
+            },
+            Action::EditFile { payload, .. } => {
+                payload.originating_plugin = Some(originating_plugin);
+            },
+            Action::NewTab { initial_panes, .. } => {
+                if let Some(initial_panes) = initial_panes.as_mut() {
+                    for pane in initial_panes.iter_mut() {
+                        match pane {
+                            CommandOrPlugin::Command(run_command) => {
+                                run_command.populate_originating_plugin(originating_plugin.clone());
+                            },
+                            _ => {},
+                        }
+                    }
+                }
+            },
+            _ => {},
         }
     }
     pub fn launches_plugin(&self, plugin_url: &str) -> bool {
         match self {
-            Action::LaunchPlugin(run_plugin_or_alias, ..) => {
-                &run_plugin_or_alias.location_string() == plugin_url
-            },
-            Action::LaunchOrFocusPlugin(run_plugin_or_alias, ..) => {
-                &run_plugin_or_alias.location_string() == plugin_url
-            },
+            Action::LaunchPlugin { plugin, .. } => &plugin.location_string() == plugin_url,
+            Action::LaunchOrFocusPlugin { plugin, .. } => &plugin.location_string() == plugin_url,
             _ => false,
         }
     }
     pub fn is_mouse_action(&self) -> bool {
-        if let Action::MouseEvent(_mouse_event) = self {
+        if let Action::MouseEvent { .. } = self {
             return true;
         }
         false

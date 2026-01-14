@@ -2,10 +2,9 @@ use crate::plugins::plugin_map::{
     PluginEnv, PluginMap, RunningPlugin, VecDequeInputStream, WriteOutputStream,
 };
 use crate::plugins::plugin_worker::{plugin_worker, RunningWorker};
+use crate::plugins::wasm_bridge::{LoadingContext, PluginCache};
 use crate::plugins::zellij_exports::{wasi_write_object, zellij_exports};
 use crate::plugins::PluginId;
-use highway::{HighwayHash, PortableHash};
-use log::info;
 use prost::Message;
 use std::{
     collections::{HashMap, HashSet, VecDeque},
@@ -13,19 +12,20 @@ use std::{
     path::PathBuf,
     sync::{Arc, Mutex},
 };
-use url::Url;
-use wasmtime::{Engine, Instance, Linker, Module, Store};
-use wasmtime_wasi::{preview1::WasiP1Ctx, DirPerms, FilePerms, WasiCtxBuilder};
-use zellij_utils::consts::ZELLIJ_PLUGIN_ARTIFACT_DIR;
+use wasmi::{Engine, Instance, Linker, Module, Store, StoreLimits};
+use wasmi_wasi::sync::WasiCtxBuilder;
+use wasmi_wasi::wasi_common::pipe::{ReadPipe, WritePipe};
+use wasmi_wasi::Dir;
+use wasmi_wasi::WasiCtx;
 
 use crate::{
-    logging_pipe::LoggingPipe, screen::ScreenInstruction, thread_bus::ThreadSenders,
+    logging_pipe::LoggingPipe, thread_bus::ThreadSenders,
     ui::loading_indication::LoadingIndication, ClientId,
 };
 
 use zellij_utils::plugin_api::action::ProtobufPluginConfiguration;
 use zellij_utils::{
-    consts::{ZELLIJ_CACHE_DIR, ZELLIJ_SESSION_CACHE_DIR, ZELLIJ_TMP_DIR},
+    consts::ZELLIJ_TMP_DIR,
     data::{InputMode, PluginCapabilities},
     errors::prelude::*,
     input::command::TerminalAction,
@@ -36,597 +36,138 @@ use zellij_utils::{
     pane_size::Size,
 };
 
-macro_rules! display_loading_stage {
-    ($loading_stage:ident, $loading_indication:expr, $senders:expr, $plugin_id:expr) => {{
-        $loading_indication.$loading_stage();
-        drop(
-            $senders.send_to_screen(ScreenInstruction::UpdatePluginLoadingStage(
-                $plugin_id,
-                $loading_indication.clone(),
-            )),
-        );
-    }};
+fn create_plugin_fs_entries(plugin_own_data_dir: &PathBuf, plugin_own_cache_dir: &PathBuf) {
+    // Create filesystem entries mounted into WASM.
+    // We create them here to get expressive error messages in case they fail.
+    if let Err(e) = fs::create_dir_all(&plugin_own_data_dir) {
+        log::error!("Failed to create plugin data dir: {}", e);
+    };
+    if let Err(e) = fs::create_dir_all(&plugin_own_cache_dir) {
+        log::error!("Failed to create plugin cache dir: {}", e);
+    }
+    if let Err(e) = fs::create_dir_all(ZELLIJ_TMP_DIR.as_path()) {
+        log::error!("Failed to create plugin tmp dir: {}", e);
+    }
 }
 
 pub struct PluginLoader<'a> {
-    plugin_cache: Arc<Mutex<HashMap<PathBuf, Module>>>,
-    plugin_path: PathBuf,
-    loading_indication: &'a mut LoadingIndication,
-    senders: ThreadSenders,
+    skip_cache: bool,
     plugin_id: PluginId,
     client_id: ClientId,
-    engine: Engine,
-    plugin: PluginConfig,
-    plugin_dir: &'a PathBuf,
-    tab_index: Option<usize>,
+    plugin_cwd: PathBuf,
     plugin_own_data_dir: PathBuf,
     plugin_own_cache_dir: PathBuf,
-    size: Size,
-    wasm_blob_on_hd: Option<(Vec<u8>, PathBuf)>,
+    plugin_config: PluginConfig,
+    tab_index: Option<usize>,
     path_to_default_shell: PathBuf,
-    plugin_cwd: PathBuf,
     capabilities: PluginCapabilities,
     client_attributes: ClientAttributes,
     default_shell: Option<TerminalAction>,
-    default_layout: Box<Layout>,
     layout_dir: Option<PathBuf>,
     default_mode: InputMode,
     keybinds: Keybinds,
+    plugin_dir: PathBuf,
+    size: Size,
+    loading_indication: LoadingIndication,
+    senders: ThreadSenders,
+    engine: Engine,
+    default_layout: Box<Layout>,
+    plugin_cache: PluginCache,
+    plugin_map: &'a mut PluginMap, // we receive a mutable reference rather than the Arc so that it
+    // will be held for the lifetime of this struct and thus loading
+    // plugins for all connected clients will be one transaction
+    connected_clients: Option<Arc<Mutex<Vec<ClientId>>>>,
 }
 
 impl<'a> PluginLoader<'a> {
-    pub fn reload_plugin_from_memory(
-        plugin_id: PluginId,
-        plugin_dir: PathBuf,
-        plugin_cache: Arc<Mutex<HashMap<PathBuf, Module>>>,
-        senders: ThreadSenders,
-        engine: Engine,
-        plugin_map: Arc<Mutex<PluginMap>>,
-        connected_clients: Arc<Mutex<Vec<ClientId>>>,
-        loading_indication: &mut LoadingIndication,
-        path_to_default_shell: PathBuf,
-        plugin_cwd: PathBuf,
-        capabilities: PluginCapabilities,
-        client_attributes: ClientAttributes,
-        default_shell: Option<TerminalAction>,
-        default_layout: Box<Layout>,
-        layout_dir: Option<PathBuf>,
-    ) -> Result<()> {
-        let err_context = || format!("failed to reload plugin {plugin_id} from memory");
-        let mut connected_clients: Vec<ClientId> =
-            connected_clients.lock().unwrap().iter().copied().collect();
-        if connected_clients.is_empty() {
-            return Err(anyhow!("No connected clients, cannot reload plugin"));
-        }
-        let first_client_id = connected_clients.remove(0);
-
-        let mut plugin_loader = PluginLoader::new_from_existing_plugin_attributes(
-            &plugin_cache,
-            &plugin_map,
-            loading_indication,
-            &senders,
-            plugin_id,
-            first_client_id,
-            engine,
-            &plugin_dir,
-            path_to_default_shell,
-            Some(plugin_cwd),
-            capabilities,
-            client_attributes,
-            default_shell,
-            default_layout,
-            layout_dir,
-        )?;
-        plugin_loader
-            .load_module_from_memory()
-            .and_then(|module| plugin_loader.create_plugin_environment(module))
-            .and_then(|(store, instance)| {
-                plugin_loader.load_plugin_instance(store, &instance, &plugin_map)
-            })
-            .and_then(|_| {
-                plugin_loader.clone_instance_for_other_clients(&connected_clients, &plugin_map)
-            })
-            .with_context(err_context)?;
-        display_loading_stage!(end, loading_indication, senders, plugin_id);
-        Ok(())
-    }
-
-    pub fn start_plugin(
-        plugin_id: PluginId,
-        client_id: ClientId,
-        plugin: &PluginConfig,
-        tab_index: Option<usize>,
-        plugin_dir: PathBuf,
-        plugin_cache: Arc<Mutex<HashMap<PathBuf, Module>>>,
-        senders: ThreadSenders,
-        engine: Engine,
-        plugin_map: Arc<Mutex<PluginMap>>,
-        size: Size,
-        connected_clients: Arc<Mutex<Vec<ClientId>>>,
-        loading_indication: &mut LoadingIndication,
-        path_to_default_shell: PathBuf,
-        plugin_cwd: PathBuf,
-        capabilities: PluginCapabilities,
-        client_attributes: ClientAttributes,
-        default_shell: Option<TerminalAction>,
-        default_layout: Box<Layout>,
-        skip_cache: bool,
-        layout_dir: Option<PathBuf>,
-        default_mode: InputMode,
-        keybinds: Keybinds,
-    ) -> Result<()> {
-        let err_context = || format!("failed to start plugin {plugin_id} for client {client_id}");
-        let mut plugin_loader = PluginLoader::new(
-            &plugin_cache,
-            loading_indication,
-            &senders,
-            plugin_id,
-            client_id,
-            engine,
-            plugin.clone(),
-            &plugin_dir,
-            tab_index,
-            size,
-            path_to_default_shell,
-            plugin_cwd,
-            capabilities,
-            client_attributes,
-            default_shell,
-            default_layout,
-            layout_dir,
-            default_mode,
-            keybinds,
-        )?;
-        if skip_cache {
-            plugin_loader
-                .compile_module()
-                .and_then(|module| plugin_loader.create_plugin_environment(module))
-                .and_then(|(store, instance)| {
-                    plugin_loader.load_plugin_instance(store, &instance, &plugin_map)
-                })
-                .and_then(|_| {
-                    plugin_loader.clone_instance_for_other_clients(
-                        &connected_clients.lock().unwrap(),
-                        &plugin_map,
-                    )
-                })
-                .with_context(err_context)?;
-        } else {
-            plugin_loader
-                .load_module_from_memory()
-                .or_else(|_e| plugin_loader.load_module_from_hd_cache())
-                .or_else(|_e| plugin_loader.compile_module())
-                .and_then(|module| plugin_loader.create_plugin_environment(module))
-                .and_then(|(store, instance)| {
-                    plugin_loader.load_plugin_instance(store, &instance, &plugin_map)
-                })
-                .and_then(|_| {
-                    plugin_loader.clone_instance_for_other_clients(
-                        &connected_clients.lock().unwrap(),
-                        &plugin_map,
-                    )
-                })
-                .with_context(err_context)?;
-        };
-        display_loading_stage!(end, loading_indication, senders, plugin_id);
-        Ok(())
-    }
-
-    pub fn add_client(
-        client_id: ClientId,
-        plugin_dir: PathBuf,
-        plugin_cache: Arc<Mutex<HashMap<PathBuf, Module>>>,
-        senders: ThreadSenders,
-        engine: Engine,
-        plugin_map: Arc<Mutex<PluginMap>>,
-        connected_clients: Arc<Mutex<Vec<ClientId>>>,
-        loading_indication: &mut LoadingIndication,
-        path_to_default_shell: PathBuf,
-        plugin_cwd: PathBuf,
-        capabilities: PluginCapabilities,
-        client_attributes: ClientAttributes,
-        default_shell: Option<TerminalAction>,
-        default_layout: Box<Layout>,
-        layout_dir: Option<PathBuf>,
-        default_mode: InputMode,
-        keybinds: Keybinds,
-    ) -> Result<()> {
-        let mut new_plugins = HashSet::new();
-        for plugin_id in plugin_map.lock().unwrap().plugin_ids() {
-            new_plugins.insert((plugin_id, client_id));
-        }
-        for (plugin_id, existing_client_id) in new_plugins {
-            let mut plugin_loader = PluginLoader::new_from_different_client_id(
-                &plugin_cache,
-                &plugin_map,
-                loading_indication,
-                &senders,
-                plugin_id,
-                existing_client_id,
-                engine.clone(),
-                &plugin_dir,
-                path_to_default_shell.clone(),
-                plugin_cwd.clone(),
-                capabilities.clone(),
-                client_attributes.clone(),
-                default_shell.clone(),
-                default_layout.clone(),
-                layout_dir.clone(),
-                default_mode,
-                keybinds.clone(),
-            )?;
-            plugin_loader
-                .load_module_from_memory()
-                .and_then(|module| plugin_loader.create_plugin_environment(module))
-                .and_then(|(store, instance)| {
-                    plugin_loader.load_plugin_instance(store, &instance, &plugin_map)
-                })?
-        }
-        connected_clients.lock().unwrap().push(client_id);
-        Ok(())
-    }
-
-    pub fn reload_plugin(
-        plugin_id: PluginId,
-        plugin_dir: PathBuf,
-        plugin_cache: Arc<Mutex<HashMap<PathBuf, Module>>>,
-        senders: ThreadSenders,
-        engine: Engine,
-        plugin_map: Arc<Mutex<PluginMap>>,
-        connected_clients: Arc<Mutex<Vec<ClientId>>>,
-        loading_indication: &mut LoadingIndication,
-        path_to_default_shell: PathBuf,
-        capabilities: PluginCapabilities,
-        client_attributes: ClientAttributes,
-        default_shell: Option<TerminalAction>,
-        default_layout: Box<Layout>,
-        layout_dir: Option<PathBuf>,
-    ) -> Result<()> {
-        let err_context = || format!("failed to reload plugin id {plugin_id}");
-
-        let mut connected_clients: Vec<ClientId> =
-            connected_clients.lock().unwrap().iter().copied().collect();
-        if connected_clients.is_empty() {
-            return Err(anyhow!("No connected clients, cannot reload plugin"));
-        }
-        let first_client_id = connected_clients.remove(0);
-
-        let mut plugin_loader = PluginLoader::new_from_existing_plugin_attributes(
-            &plugin_cache,
-            &plugin_map,
-            loading_indication,
-            &senders,
-            plugin_id,
-            first_client_id,
-            engine,
-            &plugin_dir,
-            path_to_default_shell,
-            None,
-            capabilities,
-            client_attributes,
-            default_shell,
-            default_layout,
-            layout_dir,
-        )?;
-        plugin_loader
-            .compile_module()
-            .and_then(|module| plugin_loader.create_plugin_environment(module))
-            .and_then(|(store, instance)| {
-                plugin_loader.load_plugin_instance(store, &instance, &plugin_map)
-            })
-            .and_then(|_| {
-                plugin_loader.clone_instance_for_other_clients(&connected_clients, &plugin_map)
-            })
-            .with_context(err_context)?;
-        display_loading_stage!(end, loading_indication, senders, plugin_id);
-        Ok(())
-    }
     pub fn new(
-        plugin_cache: &Arc<Mutex<HashMap<PathBuf, Module>>>,
-        loading_indication: &'a mut LoadingIndication,
-        senders: &ThreadSenders,
-        plugin_id: PluginId,
-        client_id: ClientId,
+        skip_cache: bool,
+        loading_context: LoadingContext,
+        senders: ThreadSenders,
         engine: Engine,
-        plugin: PluginConfig,
-        plugin_dir: &'a PathBuf,
-        tab_index: Option<usize>,
-        size: Size,
-        path_to_default_shell: PathBuf,
-        plugin_cwd: PathBuf,
-        capabilities: PluginCapabilities,
-        client_attributes: ClientAttributes,
-        default_shell: Option<TerminalAction>,
         default_layout: Box<Layout>,
-        layout_dir: Option<PathBuf>,
-        default_mode: InputMode,
-        keybinds: Keybinds,
-    ) -> Result<Self> {
-        let plugin_own_data_dir = ZELLIJ_SESSION_CACHE_DIR
-            .join(Url::from(&plugin.location).to_string())
-            .join(format!("{}-{}", plugin_id, client_id));
-        let plugin_own_cache_dir = ZELLIJ_SESSION_CACHE_DIR
-            .join(Url::from(&plugin.location).to_string())
-            .join(format!("plugin_cache"));
-        create_plugin_fs_entries(&plugin_own_data_dir, &plugin_own_cache_dir)?;
-        let plugin_path = plugin.path.clone();
-        Ok(PluginLoader {
-            plugin_cache: plugin_cache.clone(),
-            plugin_path,
-            loading_indication,
-            senders: senders.clone(),
-            plugin_id,
-            client_id,
-            engine,
-            plugin,
-            plugin_dir,
-            tab_index,
-            plugin_own_data_dir,
-            plugin_own_cache_dir,
-            size,
-            wasm_blob_on_hd: None,
-            path_to_default_shell,
-            plugin_cwd,
-            capabilities,
-            client_attributes,
-            default_shell,
-            default_layout,
-            layout_dir,
-            default_mode,
-            keybinds,
-        })
-    }
-    pub fn new_from_existing_plugin_attributes(
-        plugin_cache: &Arc<Mutex<HashMap<PathBuf, Module>>>,
-        plugin_map: &Arc<Mutex<PluginMap>>,
-        loading_indication: &'a mut LoadingIndication,
-        senders: &ThreadSenders,
-        plugin_id: PluginId,
-        client_id: ClientId,
-        engine: Engine,
-        plugin_dir: &'a PathBuf,
-        path_to_default_shell: PathBuf,
-        cwd: Option<PathBuf>,
-        capabilities: PluginCapabilities,
-        client_attributes: ClientAttributes,
-        default_shell: Option<TerminalAction>,
-        default_layout: Box<Layout>,
-        layout_dir: Option<PathBuf>,
-    ) -> Result<Self> {
-        let err_context = || "Failed to find existing plugin";
-        let (running_plugin, _subscriptions, _workers) = {
-            let mut plugin_map = plugin_map.lock().unwrap();
-            plugin_map
-                .remove_single_plugin(plugin_id, client_id)
-                .with_context(err_context)?
-        };
-        let running_plugin = running_plugin.lock().unwrap();
-        let tab_index = running_plugin.store.data().tab_index;
-        let size = Size {
-            rows: running_plugin.rows,
-            cols: running_plugin.columns,
-        };
-        let keybinds = running_plugin.store.data().keybinds.clone();
-        let default_mode = running_plugin.store.data().default_mode;
-        let plugin_config = running_plugin.store.data().plugin.clone();
-        // prefer the explicitly given cwd, otherwise copy it from the running plugin
-        // (when reloading a plugin, we want to copy it, when starting a new plugin instance from
-        // meomory, we want to reset it)
-        let plugin_cwd = cwd.unwrap_or_else(|| running_plugin.store.data().plugin_cwd.clone());
-        loading_indication.set_name(running_plugin.store.data().name());
-        PluginLoader::new(
-            plugin_cache,
-            loading_indication,
+        plugin_cache: PluginCache,
+        plugin_map: &'a mut PluginMap,
+        connected_clients: Arc<Mutex<Vec<ClientId>>>,
+    ) -> Self {
+        let loading_indication = LoadingIndication::new("".into());
+        create_plugin_fs_entries(
+            &loading_context.plugin_own_data_dir,
+            &loading_context.plugin_own_cache_dir,
+        );
+        Self {
+            plugin_id: loading_context.plugin_id,
+            client_id: loading_context.client_id,
+            plugin_cwd: loading_context.plugin_cwd,
+            plugin_own_data_dir: loading_context.plugin_own_data_dir,
+            plugin_own_cache_dir: loading_context.plugin_own_cache_dir,
+            plugin_config: loading_context.plugin_config,
+            tab_index: loading_context.tab_index,
+            path_to_default_shell: loading_context.path_to_default_shell,
+            capabilities: loading_context.capabilities,
+            client_attributes: loading_context.client_attributes,
+            default_shell: loading_context.default_shell,
+            layout_dir: loading_context.layout_dir,
+            default_mode: loading_context.default_mode,
+            keybinds: loading_context.keybinds,
+            plugin_dir: loading_context.plugin_dir,
+            size: loading_context.size,
+
+            skip_cache,
             senders,
-            plugin_id,
-            client_id,
             engine,
-            plugin_config,
-            plugin_dir,
-            tab_index,
-            size,
-            path_to_default_shell,
-            plugin_cwd,
-            capabilities,
-            client_attributes,
-            default_shell,
             default_layout,
-            layout_dir,
-            default_mode,
-            keybinds,
-        )
-    }
-    pub fn new_from_different_client_id(
-        plugin_cache: &Arc<Mutex<HashMap<PathBuf, Module>>>,
-        plugin_map: &Arc<Mutex<PluginMap>>,
-        loading_indication: &'a mut LoadingIndication,
-        senders: &ThreadSenders,
-        plugin_id: PluginId,
-        client_id: ClientId,
-        engine: Engine,
-        plugin_dir: &'a PathBuf,
-        path_to_default_shell: PathBuf,
-        plugin_cwd: PathBuf,
-        capabilities: PluginCapabilities,
-        client_attributes: ClientAttributes,
-        default_shell: Option<TerminalAction>,
-        default_layout: Box<Layout>,
-        layout_dir: Option<PathBuf>,
-        default_mode: InputMode,
-        keybinds: Keybinds,
-    ) -> Result<Self> {
-        let err_context = || "Failed to find existing plugin";
-        let running_plugin = {
-            let plugin_map = plugin_map.lock().unwrap();
-            plugin_map
-                .get_running_plugin(plugin_id, None)
-                .with_context(err_context)?
-                .clone()
-        };
-        let running_plugin = running_plugin.lock().unwrap();
-        let tab_index = running_plugin.store.data().tab_index;
-        let size = Size {
-            rows: running_plugin.rows,
-            cols: running_plugin.columns,
-        };
-        let plugin_config = running_plugin.store.data().plugin.clone();
-        loading_indication.set_name(running_plugin.store.data().name());
-        PluginLoader::new(
             plugin_cache,
+            plugin_map,
+            connected_clients: Some(connected_clients),
             loading_indication,
-            senders,
-            plugin_id,
-            client_id,
-            engine,
-            plugin_config,
-            plugin_dir,
-            tab_index,
-            size,
-            path_to_default_shell,
-            plugin_cwd,
-            capabilities,
-            client_attributes,
-            default_shell,
-            default_layout,
-            layout_dir,
-            default_mode,
-            keybinds,
-        )
+        }
     }
-    pub fn load_module_from_memory(&mut self) -> Result<Module> {
-        display_loading_stage!(
-            indicate_loading_plugin_from_memory,
-            self.loading_indication,
-            self.senders,
-            self.plugin_id
-        );
-        let module = self
-            .plugin_cache
-            .lock()
-            .unwrap()
-            .remove(&self.plugin_path)
-            .ok_or(anyhow!("Plugin is not stored in memory"))?;
-        display_loading_stage!(
-            indicate_loading_plugin_from_memory_success,
-            self.loading_indication,
-            self.senders,
-            self.plugin_id
-        );
-        Ok(module)
+    pub fn without_connected_clients(mut self) -> Self {
+        self.connected_clients = None;
+        self
     }
-    pub fn load_module_from_hd_cache(&mut self) -> Result<Module> {
-        display_loading_stage!(
-            indicate_loading_plugin_from_memory_notfound,
-            self.loading_indication,
-            self.senders,
-            self.plugin_id
-        );
-        display_loading_stage!(
-            indicate_loading_plugin_from_hd_cache,
-            self.loading_indication,
-            self.senders,
-            self.plugin_id
-        );
-        let (_wasm_bytes, cached_path) = self.plugin_bytes_and_cache_path()?;
-        let timer = std::time::Instant::now();
-        let file_in_cache = std::fs::read(&cached_path)?;
-        let module = unsafe { Module::deserialize(&self.engine, file_in_cache)? };
-        log::info!(
-            "Loaded plugin '{}' from cache folder at '{}' in {:?}",
-            self.plugin_path.display(),
-            ZELLIJ_CACHE_DIR.display(),
-            timer.elapsed(),
-        );
-        display_loading_stage!(
-            indicate_loading_plugin_from_hd_cache_success,
-            self.loading_indication,
-            self.senders,
-            self.plugin_id
-        );
-        Ok(module)
+    pub fn start_plugin(&mut self) -> Result<()> {
+        let module = if self.skip_cache {
+            self.interpret_module()?
+        } else {
+            self.load_module_from_memory()
+                .or_else(|_e| self.interpret_module())?
+        };
+        let (store, instance) = self.create_plugin_environment(module)?;
+        self.load_plugin_instance(store, &instance)?;
+        self.clone_instance_for_other_clients()?;
+        Ok(())
     }
-    pub fn compile_module(&mut self) -> Result<Module> {
+    fn interpret_module(&mut self) -> Result<Module> {
         self.loading_indication.override_previous_error();
-        display_loading_stage!(
-            indicate_loading_plugin_from_hd_cache_notfound,
-            self.loading_indication,
-            self.senders,
-            self.plugin_id
-        );
-        display_loading_stage!(
-            indicate_compiling_plugin,
-            self.loading_indication,
-            self.senders,
-            self.plugin_id
-        );
-        let (wasm_bytes, cached_path) = self.plugin_bytes_and_cache_path()?;
+        let wasm_bytes = self.plugin_config.resolve_wasm_bytes(&self.plugin_dir)?;
         let timer = std::time::Instant::now();
-        let err_context = || "failed to recover cache dir";
-        let module = fs::create_dir_all(ZELLIJ_PLUGIN_ARTIFACT_DIR.as_path())
-            .map_err(anyError::new)
-            .and_then(|_| {
-                // compile module
-                Module::new(&self.engine, &wasm_bytes)
-            })
-            .and_then(|m| {
-                // serialize module to HD cache for faster loading in the future
-                fs::write(&cached_path, m.serialize()?).map_err(anyError::new)?;
-                log::info!(
-                    "Compiled plugin '{}' in {:?}",
-                    self.plugin_path.display(),
-                    timer.elapsed()
-                );
-                Ok(m)
-            })
-            .with_context(err_context)?;
+        let module = Module::new(&self.engine, &wasm_bytes)?;
+        log::info!(
+            "Loaded plugin '{}' in {:?}",
+            self.plugin_config.path.display(),
+            timer.elapsed()
+        );
         Ok(module)
     }
-    pub fn create_plugin_environment(
-        &mut self,
-        module: Module,
-    ) -> Result<(Store<PluginEnv>, Instance)> {
-        let (store, instance) = self.create_plugin_instance_env(&module)?;
-        // Only do an insert when everything went well!
-        let cloned_plugin = self.plugin.clone();
-        self.plugin_cache
-            .lock()
-            .unwrap()
-            .insert(cloned_plugin.path, module);
-        Ok((store, instance))
-    }
-    pub fn create_plugin_instance_and_wasi_env_for_worker(
-        &mut self,
-    ) -> Result<(Store<PluginEnv>, Instance)> {
-        let err_context = || {
-            format!(
-                "Failed to create instance and plugin env for worker {}",
-                self.plugin_id
-            )
-        };
+    fn load_module_from_memory(&mut self) -> Result<Module> {
         let module = self
             .plugin_cache
             .lock()
             .unwrap()
-            .get(&self.plugin.path)
-            .with_context(err_context)?
-            .clone();
-        let (store, instance) = self.create_plugin_instance_env(&module)?;
-        Ok((store, instance))
+            .remove(&self.plugin_config.path) // TODO: do we still bring it back later?
+            // maybe we can forgo this dance?
+            .ok_or(anyhow!("Plugin is not stored in memory"))?;
+        Ok(module)
     }
-    pub fn load_plugin_instance(
+    fn load_plugin_instance(
         &mut self,
         mut store: Store<PluginEnv>,
         instance: &Instance,
-        plugin_map: &Arc<Mutex<PluginMap>>,
     ) -> Result<()> {
         let err_context = || format!("failed to load plugin from instance {instance:#?}");
         let main_user_instance = instance.clone();
-        display_loading_stage!(
-            indicate_starting_plugin,
-            self.loading_indication,
-            self.senders,
-            self.plugin_id
-        );
         let start_function = instance
             .get_typed_func::<(), ()>(&mut store, "_start")
             .with_context(err_context)?;
@@ -641,7 +182,6 @@ impl<'a> PluginLoader<'a> {
             if function_name.ends_with("_worker") {
                 let (mut store, instance) =
                     self.create_plugin_instance_and_wasi_env_for_worker()?;
-
                 let start_function_for_worker = instance
                     .get_typed_func::<(), ()>(&mut store, "_start")
                     .with_context(err_context)?;
@@ -662,7 +202,7 @@ impl<'a> PluginLoader<'a> {
             self.size.rows,
             self.size.cols,
         )));
-        plugin_map.lock().unwrap().insert(
+        self.plugin_map.insert(
             self.plugin_id,
             self.client_id,
             plugin.clone(),
@@ -675,7 +215,7 @@ impl<'a> PluginLoader<'a> {
             .with_context(err_context)?;
 
         let protobuf_plugin_configuration: ProtobufPluginConfiguration = self
-            .plugin
+            .plugin_config
             .userspace_configuration
             .clone()
             .try_into()
@@ -687,145 +227,12 @@ impl<'a> PluginLoader<'a> {
             .call(&mut plugin.lock().unwrap().store, ())
             .with_context(err_context)?;
 
-        display_loading_stage!(
-            indicate_starting_plugin_success,
-            self.loading_indication,
-            self.senders,
-            self.plugin_id
-        );
-        display_loading_stage!(
-            indicate_writing_plugin_to_cache,
-            self.loading_indication,
-            self.senders,
-            self.plugin_id
-        );
-        display_loading_stage!(
-            indicate_writing_plugin_to_cache_success,
-            self.loading_indication,
-            self.senders,
-            self.plugin_id
-        );
-
         Ok(())
     }
-    pub fn clone_instance_for_other_clients(
-        &mut self,
-        connected_clients: &[ClientId],
-        plugin_map: &Arc<Mutex<PluginMap>>,
-    ) -> Result<()> {
-        if !connected_clients.is_empty() {
-            display_loading_stage!(
-                indicate_cloning_plugin_for_other_clients,
-                self.loading_indication,
-                self.senders,
-                self.plugin_id
-            );
-            for client_id in connected_clients {
-                if client_id == &self.client_id {
-                    // don't reload the plugin once more for ourselves
-                    continue;
-                }
-                let mut loading_indication = LoadingIndication::new("".into());
-                let mut plugin_loader_for_client = PluginLoader::new_from_different_client_id(
-                    &self.plugin_cache.clone(),
-                    &plugin_map,
-                    &mut loading_indication,
-                    &self.senders.clone(),
-                    self.plugin_id,
-                    *client_id,
-                    self.engine.clone(),
-                    &self.plugin_dir,
-                    self.path_to_default_shell.clone(),
-                    self.plugin_cwd.clone(),
-                    self.capabilities.clone(),
-                    self.client_attributes.clone(),
-                    self.default_shell.clone(),
-                    self.default_layout.clone(),
-                    self.layout_dir.clone(),
-                    self.default_mode,
-                    self.keybinds.clone(),
-                )?;
-                plugin_loader_for_client
-                    .load_module_from_memory()
-                    .and_then(|module| plugin_loader_for_client.create_plugin_environment(module))
-                    .and_then(|(store, instance)| {
-                        plugin_loader_for_client.load_plugin_instance(store, &instance, plugin_map)
-                    })?
-            }
-            display_loading_stage!(
-                indicate_cloning_plugin_for_other_clients_success,
-                self.loading_indication,
-                self.senders,
-                self.plugin_id
-            );
-        }
-        Ok(())
-    }
-    fn plugin_bytes_and_cache_path(&mut self) -> Result<(Vec<u8>, PathBuf)> {
-        match self.wasm_blob_on_hd.as_ref() {
-            Some((wasm_bytes, cached_path)) => Ok((wasm_bytes.clone(), cached_path.clone())),
-            None => {
-                if self.plugin._allow_exec_host_cmd {
-                    info!(
-                        "Plugin({:?}) is able to run any host command, this may lead to some security issues!",
-                        self.plugin.path
-                    );
-                }
-                // The plugins blob as stored on the filesystem
-                let wasm_bytes = self.plugin.resolve_wasm_bytes(&self.plugin_dir)?;
-                let hash: String = PortableHash::default()
-                    .hash256(&wasm_bytes)
-                    .iter()
-                    .map(ToString::to_string)
-                    .collect();
-                let cached_path = ZELLIJ_PLUGIN_ARTIFACT_DIR.join(&hash);
-                self.wasm_blob_on_hd = Some((wasm_bytes.clone(), cached_path.clone()));
-                Ok((wasm_bytes, cached_path))
-            },
-        }
-    }
-    pub fn create_wasi_ctx(
-        host_dir: &PathBuf,
-        data_dir: &PathBuf,
-        cache_dir: &PathBuf,
-        tmp_dir: &PathBuf,
-        plugin_url: &String,
-        plugin_id: PluginId,
-        stdin_pipe: Arc<Mutex<VecDeque<u8>>>,
-        stdout_pipe: Arc<Mutex<VecDeque<u8>>>,
-    ) -> Result<WasiP1Ctx> {
-        let err_context = || format!("Failed to create wasi_ctx");
-        let dirs = vec![
-            ("/host".to_owned(), host_dir.clone()),
-            ("/data".to_owned(), data_dir.clone()),
-            ("/cache".to_owned(), cache_dir.clone()),
-            ("/tmp".to_owned(), tmp_dir.clone()),
-        ];
-        let dirs = dirs.into_iter().filter(|(_dir_name, dir)| {
-            // note that this does not protect against TOCTOU errors
-            // eg. if one or more of these folders existed at the time of check but was deleted
-            // before we mounted in in the wasi environment, we'll crash
-            // when we move to a new wasi environment, we should address this with locking if
-            // there's no built-in solution
-            dir.try_exists().ok().unwrap_or(false)
-        });
-        let mut wasi_ctx_builder = WasiCtxBuilder::new();
-        wasi_ctx_builder.env("CLICOLOR_FORCE", "1");
-        for (guest_path, host_path) in dirs {
-            wasi_ctx_builder
-                .preopened_dir(host_path, guest_path, DirPerms::all(), FilePerms::all())
-                .with_context(err_context)?;
-        }
-        wasi_ctx_builder
-            .stdin(VecDequeInputStream(stdin_pipe.clone()))
-            .stdout(WriteOutputStream(stdout_pipe.clone()))
-            .stderr(WriteOutputStream(Arc::new(Mutex::new(LoggingPipe::new(
-                plugin_url, plugin_id,
-            )))));
-        let wasi_ctx = wasi_ctx_builder.build_p1();
-        Ok(wasi_ctx)
-    }
-    fn create_plugin_instance_env(&self, module: &Module) -> Result<(Store<PluginEnv>, Instance)> {
+    pub fn create_plugin_environment(
+        &self,
+        module: Module,
+    ) -> Result<(Store<PluginEnv>, Instance)> {
         let err_context = || {
             format!(
                 "Failed to create instance, plugin env and subscriptions for plugin {}",
@@ -840,16 +247,16 @@ impl<'a> PluginLoader<'a> {
             &self.plugin_own_data_dir,
             &self.plugin_own_cache_dir,
             &ZELLIJ_TMP_DIR,
-            &self.plugin.location.to_string(),
+            &self.plugin_config.location.to_string(),
             self.plugin_id,
             stdin_pipe.clone(),
             stdout_pipe.clone(),
         )?;
-        let plugin = self.plugin.clone();
+        let plugin_path = self.plugin_config.path.clone();
         let plugin_env = PluginEnv {
             plugin_id: self.plugin_id,
             client_id: self.client_id,
-            plugin,
+            plugin: self.plugin_config.clone(), // TODO: change field name in PluginEnv to plugin_config
             permissions: Arc::new(Mutex::new(None)),
             senders: self.senders.clone(),
             wasi_ctx,
@@ -871,43 +278,211 @@ impl<'a> PluginLoader<'a> {
             intercepting_key_presses: false,
             stdin_pipe,
             stdout_pipe,
+            store_limits: create_optimized_store_limits(),
         };
         let mut store = Store::new(&self.engine, plugin_env);
 
+        // Apply optimized resource limits for memory efficiency
+        store.limiter(|plugin_env| &mut plugin_env.store_limits);
+
         let mut linker = Linker::new(&self.engine);
-        wasmtime_wasi::preview1::add_to_linker_sync(&mut linker, |plugin_env: &mut PluginEnv| {
+        wasmi_wasi::add_to_linker(&mut linker, |plugin_env: &mut PluginEnv| {
             &mut plugin_env.wasi_ctx
-        })
-        .unwrap();
+        })?;
         zellij_exports(&mut linker);
 
         let instance = linker
-            .instantiate(&mut store, module)
+            .instantiate_and_start(&mut store, &module)
             .with_context(err_context)?;
 
         if let Some(func) = instance.get_func(&mut store, "_initialize") {
-            func.typed::<(), ()>(&store)?.call(&mut store, ())?;
+            if let Ok(typed_func) = func.typed::<(), ()>(&store) {
+                let _ = typed_func.call(&mut store, ());
+            }
+        }
+
+        self.plugin_cache
+            .lock()
+            .unwrap()
+            .insert(plugin_path.clone(), module);
+        Ok((store, instance))
+    }
+    pub fn clone_instance_for_other_clients(&mut self) -> Result<()> {
+        let Some(connected_clients) = self.connected_clients.as_ref() else {
+            return Ok(());
+        };
+        let connected_clients: Vec<ClientId> =
+            connected_clients.lock().unwrap().iter().copied().collect();
+        if !connected_clients.is_empty() {
+            self.connected_clients = None; // so we don't have infinite loops
+            for client_id in connected_clients {
+                if client_id == self.client_id {
+                    // don't reload the plugin once more for ourselves
+                    continue;
+                }
+                self.client_id = client_id;
+                self.start_plugin()?;
+            }
+        }
+        Ok(())
+    }
+    pub fn create_plugin_instance_and_wasi_env_for_worker(
+        &self,
+    ) -> Result<(Store<PluginEnv>, Instance)> {
+        let plugin_id = self.plugin_id;
+        let err_context = || {
+            format!(
+                "Failed to create instance and plugin env for worker {}",
+                plugin_id
+            )
+        };
+        let module = self
+            .plugin_cache
+            .lock()
+            .unwrap()
+            .get(&self.plugin_config.path)
+            .with_context(err_context)?
+            .clone();
+        let (store, instance) = self.create_plugin_instance_env(&module)?;
+        Ok((store, instance))
+    }
+    fn create_plugin_instance_env(&self, module: &Module) -> Result<(Store<PluginEnv>, Instance)> {
+        let err_context = || {
+            format!(
+                "Failed to create instance, plugin env and subscriptions for plugin {}",
+                self.plugin_id
+            )
+        };
+        let stdin_pipe = Arc::new(Mutex::new(VecDeque::new()));
+        let stdout_pipe = Arc::new(Mutex::new(VecDeque::new()));
+
+        let wasi_ctx = PluginLoader::create_wasi_ctx(
+            &self.plugin_cwd,
+            &self.plugin_own_data_dir,
+            &self.plugin_own_cache_dir,
+            &ZELLIJ_TMP_DIR,
+            &self.plugin_config.location.to_string(),
+            self.plugin_id,
+            stdin_pipe.clone(),
+            stdout_pipe.clone(),
+        )?;
+        let plugin_config = self.plugin_config.clone();
+        let plugin_env = PluginEnv {
+            plugin_id: self.plugin_id,
+            client_id: self.client_id,
+            plugin: plugin_config,
+            permissions: Arc::new(Mutex::new(None)),
+            senders: self.senders.clone(),
+            wasi_ctx,
+            plugin_own_data_dir: self.plugin_own_data_dir.clone(),
+            plugin_own_cache_dir: self.plugin_own_cache_dir.clone(),
+            tab_index: self.tab_index,
+            path_to_default_shell: self.path_to_default_shell.clone(),
+            capabilities: self.capabilities.clone(),
+            client_attributes: self.client_attributes.clone(),
+            default_shell: self.default_shell.clone(),
+            default_layout: self.default_layout.clone(),
+            plugin_cwd: self.plugin_cwd.clone(),
+            input_pipes_to_unblock: Arc::new(Mutex::new(HashSet::new())),
+            input_pipes_to_block: Arc::new(Mutex::new(HashSet::new())),
+            layout_dir: self.layout_dir.clone(),
+            default_mode: self.default_mode.clone(),
+            subscriptions: Arc::new(Mutex::new(HashSet::new())),
+            keybinds: self.keybinds.clone(),
+            intercepting_key_presses: false,
+            stdin_pipe,
+            stdout_pipe,
+            store_limits: create_optimized_store_limits(),
+        };
+        let mut store = Store::new(&self.engine, plugin_env);
+
+        // Apply optimized resource limits for memory efficiency
+        store.limiter(|plugin_env| &mut plugin_env.store_limits);
+
+        let mut linker = Linker::new(&self.engine);
+        wasmi_wasi::add_to_linker(&mut linker, |plugin_env: &mut PluginEnv| {
+            &mut plugin_env.wasi_ctx
+        })?;
+        zellij_exports(&mut linker);
+
+        let instance = linker
+            .instantiate_and_start(&mut store, module)
+            .with_context(err_context)?;
+
+        if let Some(func) = instance.get_func(&mut store, "_initialize") {
+            if let Ok(typed_func) = func.typed::<(), ()>(&store) {
+                let _ = typed_func.call(&mut store, ());
+            }
         }
 
         Ok((store, instance))
     }
+    pub fn create_wasi_ctx(
+        host_dir: &PathBuf,
+        data_dir: &PathBuf,
+        cache_dir: &PathBuf,
+        tmp_dir: &PathBuf,
+        plugin_url: &String,
+        plugin_id: PluginId,
+        stdin_pipe: Arc<Mutex<VecDeque<u8>>>,
+        stdout_pipe: Arc<Mutex<VecDeque<u8>>>,
+    ) -> Result<WasiCtx> {
+        let _err_context = || format!("Failed to create wasi_ctx");
+        let dirs = vec![
+            ("/host".to_owned(), host_dir.clone()),
+            ("/data".to_owned(), data_dir.clone()),
+            ("/cache".to_owned(), cache_dir.clone()),
+            ("/tmp".to_owned(), tmp_dir.clone()),
+        ];
+        let dirs = dirs.into_iter().filter(|(_dir_name, dir)| {
+            // note that this does not protect against TOCTOU errors
+            // eg. if one or more of these folders existed at the time of check but was deleted
+            // before we mounted in in the wasi environment, we'll crash
+            // when we move to a new wasi environment, we should address this with locking if
+            // there's no built-in solution
+            dir.try_exists().ok().unwrap_or(false)
+        });
+
+        let mut builder = WasiCtxBuilder::new();
+        builder.inherit_env()?;
+
+        // Mount directories using the builder
+        for (guest_path, host_path) in dirs {
+            match std::fs::File::open(&host_path) {
+                Ok(dir_file) => {
+                    let dir = Dir::from_std_file(dir_file);
+                    builder.preopened_dir(dir, guest_path)?;
+                },
+                Err(e) => {
+                    log::warn!("Failed to mount directory {:?}: {}", host_path, e);
+                },
+            }
+        }
+
+        let ctx = builder.build();
+
+        // Set up custom stdin/stdout/stderr
+        ctx.set_stdin(Box::new(ReadPipe::new(VecDequeInputStream(
+            stdin_pipe.clone(),
+        ))));
+        ctx.set_stdout(Box::new(WritePipe::new(WriteOutputStream(
+            stdout_pipe.clone(),
+        ))));
+        ctx.set_stderr(Box::new(WritePipe::new(WriteOutputStream(Arc::new(
+            Mutex::new(LoggingPipe::new(plugin_url, plugin_id)),
+        )))));
+
+        Ok(ctx)
+    }
 }
 
-fn create_plugin_fs_entries(
-    plugin_own_data_dir: &PathBuf,
-    plugin_own_cache_dir: &PathBuf,
-) -> Result<()> {
-    let err_context = || "failed to create plugin fs entries";
-    // Create filesystem entries mounted into WASM.
-    // We create them here to get expressive error messages in case they fail.
-    fs::create_dir_all(&plugin_own_data_dir)
-        .with_context(|| format!("failed to create datadir in {plugin_own_data_dir:?}"))
-        .with_context(err_context)?;
-    fs::create_dir_all(&plugin_own_cache_dir)
-        .with_context(|| format!("failed to create cache dir in {plugin_own_cache_dir:?}"))
-        .with_context(err_context)?;
-    fs::create_dir_all(ZELLIJ_TMP_DIR.as_path())
-        .with_context(|| format!("failed to create tmpdir at {:?}", &ZELLIJ_TMP_DIR.as_path()))
-        .with_context(err_context)?;
-    Ok(())
+fn create_optimized_store_limits() -> StoreLimits {
+    use wasmi::StoreLimitsBuilder;
+    StoreLimitsBuilder::new()
+        .instances(1) // One instance per plugin
+        .memories(4) // Max 4 linear memories per plugin
+        .memory_size(16 * 1024 * 1024) // 16MB per memory maximum
+        .tables(16) // Small table element limit
+        .trap_on_grow_failure(true) // Fail fast on resource exhaustion
+        .build()
 }

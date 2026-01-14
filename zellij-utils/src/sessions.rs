@@ -141,10 +141,11 @@ fn assert_socket(name: &str) -> bool {
     let path = &*ZELLIJ_SOCK_DIR.join(name);
     match LocalSocketStream::connect(path) {
         Ok(stream) => {
-            let mut sender = IpcSenderWithContext::new(stream);
-            let _ = sender.send(ClientToServerMsg::ConnStatus);
+            let mut sender: IpcSenderWithContext<ClientToServerMsg> =
+                IpcSenderWithContext::new(stream);
+            let _ = sender.send_client_msg(ClientToServerMsg::ConnStatus);
             let mut receiver: IpcReceiverWithContext<ServerToClientMsg> = sender.get_receiver();
-            match receiver.recv() {
+            match receiver.recv_server_msg() {
                 Some((ServerToClientMsg::Connected, _)) => true,
                 None | Some((_, _)) => false,
             }
@@ -242,7 +243,8 @@ pub fn kill_session(name: &str) {
     let path = &*ZELLIJ_SOCK_DIR.join(name);
     match LocalSocketStream::connect(path) {
         Ok(stream) => {
-            let _ = IpcSenderWithContext::new(stream).send(ClientToServerMsg::KillSession);
+            let _ = IpcSenderWithContext::<ClientToServerMsg>::new(stream)
+                .send_client_msg(ClientToServerMsg::KillSession);
         },
         Err(e) => {
             eprintln!("Error occurred: {:?}", e);
@@ -255,8 +257,8 @@ pub fn delete_session(name: &str, force: bool) {
     if force {
         let path = &*ZELLIJ_SOCK_DIR.join(name);
         let _ = LocalSocketStream::connect(path).map(|stream| {
-            IpcSenderWithContext::new(stream)
-                .send(ClientToServerMsg::KillSession)
+            IpcSenderWithContext::<ClientToServerMsg>::new(stream)
+                .send_client_msg(ClientToServerMsg::KillSession)
                 .ok();
         });
     }
@@ -426,17 +428,24 @@ pub fn assert_dead_session(name: &str, force: bool) {
     process::exit(1);
 }
 
-pub fn assert_session_ne(name: &str) {
+pub fn validate_session_name(name: &str) -> Result<(), String> {
     if name.trim().is_empty() {
-        eprintln!("Session name cannot be empty. Please provide a specific session name.");
-        process::exit(1);
+        return Err(
+            "Session name cannot be empty. Please provide a specific session name.".to_string(),
+        );
     }
     if name == "." || name == ".." {
-        eprintln!("Invalid session name: \"{}\".", name);
-        process::exit(1);
+        return Err(format!("Invalid session name: \"{}\".", name));
     }
     if name.contains('/') {
-        eprintln!("Session name cannot contain '/'.");
+        return Err("Session name cannot contain '/'.".to_string());
+    }
+    Ok(())
+}
+
+pub fn assert_session_ne(name: &str) {
+    if let Err(e) = validate_session_name(name) {
+        eprintln!("{}", e);
         process::exit(1);
     }
 
@@ -489,6 +498,12 @@ pub fn generate_unique_session_name() -> Option<String> {
 /// hash collisions, e.g. with 4096 unique names, the likelihood of a collision in 10 session names is 1%.
 pub fn get_name_generator() -> impl Iterator<Item = String> {
     names::Generator::new(&ADJECTIVES, &NOUNS, names::Name::Plain)
+}
+
+/// Generates a random human-readable name using curated adjectives and nouns.
+/// Returns a single name in the format: AdjectiveNoun (e.g., "BraveRustacean")
+pub fn generate_random_name() -> String {
+    get_name_generator().next().unwrap()
 }
 
 const ADJECTIVES: &[&'static str] = &[

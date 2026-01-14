@@ -80,7 +80,7 @@ impl<'a> MainScreen<'a> {
         state
     }
 
-    fn calculate_layout(&self, rows: usize, cols: usize) -> Layout {
+    fn calculate_layout<'b>(&'b self, rows: usize, cols: usize) -> Layout<'b> {
         let usage = Usage::new(!self.token_list_is_empty);
         let web_server_status_section = WebServerStatusSection::new(
             self.web_server_started,

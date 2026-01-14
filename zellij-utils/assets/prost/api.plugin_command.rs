@@ -3,7 +3,7 @@
 pub struct PluginCommand {
     #[prost(enumeration="CommandName", tag="1")]
     pub name: i32,
-    #[prost(oneof="plugin_command::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112")]
+    #[prost(oneof="plugin_command::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134")]
     pub payload: ::core::option::Option<plugin_command::Payload>,
 }
 /// Nested message and enum types in `PluginCommand`.
@@ -215,6 +215,42 @@ pub mod plugin_command {
         ReplacePaneWithExistingPanePayload(super::ReplacePaneWithExistingPanePayload),
         #[prost(message, tag="112")]
         NewTabPayload(super::NewTabPayload),
+        #[prost(message, tag="113")]
+        GetPaneScrollbackPayload(super::GetPaneScrollbackPayload),
+        #[prost(message, tag="114")]
+        RunActionPayload(super::RunActionPayload),
+        #[prost(message, tag="119")]
+        ShowCursorPayload(super::ShowCursorPayload),
+        #[prost(message, tag="120")]
+        CopyToClipboardPayload(super::CopyToClipboardPayload),
+        #[prost(message, tag="121")]
+        SendSigintToPaneIdPayload(super::PaneId),
+        #[prost(message, tag="122")]
+        SendSigkillToPaneIdPayload(super::PaneId),
+        #[prost(message, tag="123")]
+        GetPanePidPayload(super::GetPanePidPayload),
+        #[prost(message, tag="124")]
+        OverrideLayoutPayload(super::OverrideLayoutPayload),
+        #[prost(message, tag="125")]
+        SaveLayoutPayload(super::SaveLayoutPayload),
+        #[prost(message, tag="126")]
+        DeleteLayoutPayload(super::DeleteLayoutPayload),
+        #[prost(message, tag="127")]
+        EditLayoutPayload(super::EditLayoutPayload),
+        #[prost(message, tag="128")]
+        GenerateRandomNamePayload(super::GenerateRandomNamePayload),
+        #[prost(message, tag="129")]
+        DumpLayoutPayload(super::DumpLayoutPayload),
+        #[prost(message, tag="130")]
+        ParseLayoutPayload(super::ParseLayoutPayload),
+        #[prost(message, tag="131")]
+        RenameLayoutPayload(super::RenameLayoutPayload),
+        #[prost(message, tag="132")]
+        GetLayoutDirPayload(super::GetLayoutDirPayload),
+        #[prost(message, tag="133")]
+        DumpSessionLayoutPayload(super::DumpSessionLayoutPayload),
+        #[prost(message, tag="134")]
+        GetFocusedPaneInfoPayload(super::GetFocusedPaneInfoPayload),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -227,11 +263,27 @@ pub struct NewTabPayload {
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
+pub struct DumpSessionLayoutPayload {
+    #[prost(uint32, optional, tag="1")]
+    pub tab_index: ::core::option::Option<u32>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RunActionPayload {
+    #[prost(message, optional, tag="1")]
+    pub action: ::core::option::Option<super::action::Action>,
+    #[prost(message, repeated, tag="2")]
+    pub context: ::prost::alloc::vec::Vec<ContextItem>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ReplacePaneWithExistingPanePayload {
     #[prost(message, optional, tag="1")]
     pub pane_id_to_replace: ::core::option::Option<PaneId>,
     #[prost(message, optional, tag="2")]
     pub existing_pane_id: ::core::option::Option<PaneId>,
+    #[prost(bool, tag="3")]
+    pub suppress_replaced_pane: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -252,6 +304,8 @@ pub struct RevokeWebLoginTokenPayload {
 pub struct GenerateWebLoginTokenPayload {
     #[prost(string, optional, tag="1")]
     pub token_label: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(bool, optional, tag="2")]
+    pub read_only: ::core::option::Option<bool>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -608,6 +662,8 @@ pub struct ShowPaneWithIdPayload {
     pub pane_id: ::core::option::Option<PaneId>,
     #[prost(bool, tag="2")]
     pub should_float_if_hidden: bool,
+    #[prost(bool, tag="3")]
+    pub should_focus_pane: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -865,12 +921,14 @@ pub struct RevokeTokenResponse {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ListTokensResponse {
-    /// tokens/creation_times should be synchronized
+    /// tokens/creation_times/read_only_flags should be synchronized
     #[prost(string, repeated, tag="1")]
     pub tokens: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
     #[prost(string, repeated, tag="2")]
     pub creation_times: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
-    #[prost(string, optional, tag="3")]
+    #[prost(bool, repeated, tag="3")]
+    pub read_only_flags: ::prost::alloc::vec::Vec<bool>,
+    #[prost(string, optional, tag="4")]
     pub error: ::core::option::Option<::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -888,6 +946,285 @@ pub struct RenameWebTokenResponse {
     pub successfully_renamed: bool,
     #[prost(string, optional, tag="2")]
     pub error: ::core::option::Option<::prost::alloc::string::String>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetPaneScrollbackPayload {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+    #[prost(bool, tag="2")]
+    pub get_full_scrollback: bool,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ShowCursorPayload {
+    #[prost(message, optional, tag="1")]
+    pub position: ::core::option::Option<CursorPosition>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CursorPosition {
+    #[prost(uint32, tag="1")]
+    pub x: u32,
+    #[prost(uint32, tag="2")]
+    pub y: u32,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CopyToClipboardPayload {
+    #[prost(string, tag="1")]
+    pub text: ::prost::alloc::string::String,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetPanePidPayload {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetPanePidResponse {
+    #[prost(oneof="get_pane_pid_response::Result", tags="1, 2")]
+    pub result: ::core::option::Option<get_pane_pid_response::Result>,
+}
+/// Nested message and enum types in `GetPanePidResponse`.
+pub mod get_pane_pid_response {
+    #[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Result {
+        #[prost(int32, tag="1")]
+        Pid(i32),
+        #[prost(string, tag="2")]
+        Error(::prost::alloc::string::String),
+    }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SaveLayoutResponse {
+    #[prost(oneof="save_layout_response::Result", tags="1, 2")]
+    pub result: ::core::option::Option<save_layout_response::Result>,
+}
+/// Nested message and enum types in `SaveLayoutResponse`.
+pub mod save_layout_response {
+    #[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Result {
+        #[prost(bool, tag="1")]
+        Success(bool),
+        #[prost(string, tag="2")]
+        Error(::prost::alloc::string::String),
+    }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct DeleteLayoutResponse {
+    #[prost(oneof="delete_layout_response::Result", tags="1, 2")]
+    pub result: ::core::option::Option<delete_layout_response::Result>,
+}
+/// Nested message and enum types in `DeleteLayoutResponse`.
+pub mod delete_layout_response {
+    #[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Result {
+        #[prost(bool, tag="1")]
+        Success(bool),
+        #[prost(string, tag="2")]
+        Error(::prost::alloc::string::String),
+    }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EditLayoutResponse {
+    #[prost(oneof="edit_layout_response::Result", tags="1, 2")]
+    pub result: ::core::option::Option<edit_layout_response::Result>,
+}
+/// Nested message and enum types in `EditLayoutResponse`.
+pub mod edit_layout_response {
+    #[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Result {
+        #[prost(bool, tag="1")]
+        Success(bool),
+        #[prost(string, tag="2")]
+        Error(::prost::alloc::string::String),
+    }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GenerateRandomNameResponse {
+    #[prost(string, tag="1")]
+    pub name: ::prost::alloc::string::String,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct OverrideLayoutPayload {
+    #[prost(message, optional, tag="1")]
+    pub layout_info: ::core::option::Option<super::event::LayoutInfo>,
+    #[prost(message, repeated, tag="2")]
+    pub context: ::prost::alloc::vec::Vec<ContextItem>,
+    #[prost(bool, tag="3")]
+    pub retain_existing_terminal_panes: bool,
+    #[prost(bool, tag="4")]
+    pub retain_existing_plugin_panes: bool,
+    #[prost(bool, tag="5")]
+    pub apply_only_to_active_tab: bool,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SaveLayoutPayload {
+    #[prost(string, tag="1")]
+    pub layout_name: ::prost::alloc::string::String,
+    #[prost(string, tag="2")]
+    pub layout_kdl: ::prost::alloc::string::String,
+    #[prost(bool, tag="3")]
+    pub overwrite: bool,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct DeleteLayoutPayload {
+    #[prost(string, tag="1")]
+    pub layout_name: ::prost::alloc::string::String,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EditLayoutPayload {
+    #[prost(string, tag="1")]
+    pub layout_name: ::prost::alloc::string::String,
+    #[prost(message, repeated, tag="2")]
+    pub context: ::prost::alloc::vec::Vec<ContextItem>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GenerateRandomNamePayload {
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct DumpLayoutPayload {
+    #[prost(string, tag="1")]
+    pub layout_name: ::prost::alloc::string::String,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct DumpLayoutResponse {
+    #[prost(oneof="dump_layout_response::Result", tags="1, 2")]
+    pub result: ::core::option::Option<dump_layout_response::Result>,
+}
+/// Nested message and enum types in `DumpLayoutResponse`.
+pub mod dump_layout_response {
+    #[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Result {
+        #[prost(string, tag="1")]
+        LayoutContent(::prost::alloc::string::String),
+        #[prost(string, tag="2")]
+        Error(::prost::alloc::string::String),
+    }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct DumpSessionLayoutResponse {
+    #[prost(message, optional, tag="3")]
+    pub metadata: ::core::option::Option<super::event::LayoutMetadata>,
+    #[prost(oneof="dump_session_layout_response::Result", tags="1, 2")]
+    pub result: ::core::option::Option<dump_session_layout_response::Result>,
+}
+/// Nested message and enum types in `DumpSessionLayoutResponse`.
+pub mod dump_session_layout_response {
+    #[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Result {
+        #[prost(string, tag="1")]
+        LayoutContent(::prost::alloc::string::String),
+        #[prost(string, tag="2")]
+        Error(::prost::alloc::string::String),
+    }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ParseLayoutPayload {
+    #[prost(string, tag="1")]
+    pub layout_string: ::prost::alloc::string::String,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ParseLayoutResponse {
+    #[prost(oneof="parse_layout_response::Result", tags="1, 2")]
+    pub result: ::core::option::Option<parse_layout_response::Result>,
+}
+/// Nested message and enum types in `ParseLayoutResponse`.
+pub mod parse_layout_response {
+    #[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Result {
+        #[prost(message, tag="1")]
+        Metadata(super::super::event::LayoutMetadata),
+        #[prost(message, tag="2")]
+        Error(super::super::event::LayoutParsingError),
+    }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RenameLayoutPayload {
+    #[prost(string, tag="1")]
+    pub old_layout_name: ::prost::alloc::string::String,
+    #[prost(string, tag="2")]
+    pub new_layout_name: ::prost::alloc::string::String,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RenameLayoutResponse {
+    #[prost(oneof="rename_layout_response::Result", tags="1, 2")]
+    pub result: ::core::option::Option<rename_layout_response::Result>,
+}
+/// Nested message and enum types in `RenameLayoutResponse`.
+pub mod rename_layout_response {
+    #[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Result {
+        #[prost(bool, tag="1")]
+        Success(bool),
+        #[prost(string, tag="2")]
+        Error(::prost::alloc::string::String),
+    }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetLayoutDirPayload {
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetLayoutDirResponse {
+    #[prost(string, tag="1")]
+    pub layout_dir: ::prost::alloc::string::String,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetFocusedPaneInfoPayload {
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetFocusedPaneInfoResponse {
+    #[prost(oneof="get_focused_pane_info_response::Result", tags="1, 2")]
+    pub result: ::core::option::Option<get_focused_pane_info_response::Result>,
+}
+/// Nested message and enum types in `GetFocusedPaneInfoResponse`.
+pub mod get_focused_pane_info_response {
+    #[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Result {
+        #[prost(message, tag="1")]
+        FocusedPaneInfo(super::FocusedPaneInfo),
+        #[prost(string, tag="2")]
+        Error(::prost::alloc::string::String),
+    }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct FocusedPaneInfo {
+    #[prost(uint32, tag="1")]
+    pub focused_tab_index: u32,
+    #[prost(message, optional, tag="2")]
+    pub focused_pane_id: ::core::option::Option<PaneId>,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
@@ -1038,6 +1375,23 @@ pub enum CommandName {
     InterceptKeyPresses = 143,
     ClearKeyPressesIntercepts = 144,
     ReplacePaneWithExistingPane = 155,
+    GetPaneScrollback = 163,
+    RunAction = 164,
+    ShowCursor = 169,
+    CopyToClipboard = 170,
+    SendSigintToPaneId = 171,
+    SendSigkillToPaneId = 172,
+    GetPanePid = 173,
+    OverrideLayout = 174,
+    SaveLayout = 175,
+    DeleteLayout = 176,
+    EditLayout = 177,
+    GenerateRandomName = 178,
+    DumpLayout = 179,
+    ParseLayout = 180,
+    RenameLayout = 181,
+    GetLayoutDir = 182,
+    GetFocusedPaneInfo = 183,
 }
 impl CommandName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -1192,6 +1546,23 @@ impl CommandName {
             CommandName::InterceptKeyPresses => "InterceptKeyPresses",
             CommandName::ClearKeyPressesIntercepts => "ClearKeyPressesIntercepts",
             CommandName::ReplacePaneWithExistingPane => "ReplacePaneWithExistingPane",
+            CommandName::GetPaneScrollback => "GetPaneScrollback",
+            CommandName::RunAction => "RunAction",
+            CommandName::ShowCursor => "ShowCursor",
+            CommandName::CopyToClipboard => "CopyToClipboard",
+            CommandName::SendSigintToPaneId => "SendSigintToPaneId",
+            CommandName::SendSigkillToPaneId => "SendSigkillToPaneId",
+            CommandName::GetPanePid => "GetPanePid",
+            CommandName::OverrideLayout => "OverrideLayout",
+            CommandName::SaveLayout => "SaveLayout",
+            CommandName::DeleteLayout => "DeleteLayout",
+            CommandName::EditLayout => "EditLayout",
+            CommandName::GenerateRandomName => "GenerateRandomName",
+            CommandName::DumpLayout => "DumpLayout",
+            CommandName::ParseLayout => "ParseLayout",
+            CommandName::RenameLayout => "RenameLayout",
+            CommandName::GetLayoutDir => "GetLayoutDir",
+            CommandName::GetFocusedPaneInfo => "GetFocusedPaneInfo",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -1343,6 +1714,23 @@ impl CommandName {
             "InterceptKeyPresses" => Some(Self::InterceptKeyPresses),
             "ClearKeyPressesIntercepts" => Some(Self::ClearKeyPressesIntercepts),
             "ReplacePaneWithExistingPane" => Some(Self::ReplacePaneWithExistingPane),
+            "GetPaneScrollback" => Some(Self::GetPaneScrollback),
+            "RunAction" => Some(Self::RunAction),
+            "ShowCursor" => Some(Self::ShowCursor),
+            "CopyToClipboard" => Some(Self::CopyToClipboard),
+            "SendSigintToPaneId" => Some(Self::SendSigintToPaneId),
+            "SendSigkillToPaneId" => Some(Self::SendSigkillToPaneId),
+            "GetPanePid" => Some(Self::GetPanePid),
+            "OverrideLayout" => Some(Self::OverrideLayout),
+            "SaveLayout" => Some(Self::SaveLayout),
+            "DeleteLayout" => Some(Self::DeleteLayout),
+            "EditLayout" => Some(Self::EditLayout),
+            "GenerateRandomName" => Some(Self::GenerateRandomName),
+            "DumpLayout" => Some(Self::DumpLayout),
+            "ParseLayout" => Some(Self::ParseLayout),
+            "RenameLayout" => Some(Self::RenameLayout),
+            "GetLayoutDir" => Some(Self::GetLayoutDir),
+            "GetFocusedPaneInfo" => Some(Self::GetFocusedPaneInfo),
             _ => None,
         }
     }

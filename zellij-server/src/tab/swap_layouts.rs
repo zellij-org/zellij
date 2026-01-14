@@ -55,6 +55,17 @@ impl SwapLayouts {
         self.current_tiled_layout_position = 0;
         self.current_floating_layout_position = 0;
     }
+    pub fn set_swap_tiled_layouts(&mut self, new_swap_tiled_layouts: Vec<SwapTiledLayout>) {
+        self.swap_tiled_layouts = new_swap_tiled_layouts;
+        self.current_tiled_layout_position = 0;
+    }
+    pub fn set_swap_floating_layouts(
+        &mut self,
+        new_swap_floating_layouts: Vec<SwapFloatingLayout>,
+    ) {
+        self.swap_floating_layouts = new_swap_floating_layouts;
+        self.current_floating_layout_position = 0;
+    }
     pub fn set_is_floating_damaged(&mut self) {
         self.is_floating_damaged = true;
     }

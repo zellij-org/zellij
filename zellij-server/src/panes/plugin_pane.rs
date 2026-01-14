@@ -19,6 +19,7 @@ use crate::ClientId;
 use std::cell::RefCell;
 use std::rc::Rc;
 use vte;
+use zellij_utils::data::PaneContents;
 use zellij_utils::data::{
     BareKey, KeyWithModifier, PermissionStatus, PermissionType, PluginPermission,
 };
@@ -89,6 +90,7 @@ pub(crate) struct PluginPane {
     character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
     vte_parsers: HashMap<ClientId, vte::Parser>,
     grids: HashMap<ClientId, Grid>,
+    cursor_visibility: HashMap<ClientId, Option<(usize, usize)>>,
     prev_pane_name: String,
     frame: HashMap<ClientId, PaneFrame>,
     borderless: bool,
@@ -148,6 +150,7 @@ impl PluginPane {
             sixel_image_store,
             vte_parsers: HashMap::new(),
             grids: HashMap::new(),
+            cursor_visibility: HashMap::new(),
             style,
             pane_frame_color_override: None,
             invoked_with,
@@ -247,8 +250,25 @@ impl Pane for PluginPane {
 
         self.should_render.insert(client_id, true);
     }
-    fn cursor_coordinates(&self) -> Option<(usize, usize)> {
-        None
+    fn cursor_coordinates(&self, client_id: Option<ClientId>) -> Option<(usize, usize)> {
+        let own_content_columns = self.get_content_columns();
+        let own_content_rows = self.get_content_rows();
+        let Offset { top, left, .. } = self.content_offset;
+        if let Some(coordinates) =
+            client_id.and_then(|client_id| self.cursor_visibility.get(&client_id))
+        {
+            coordinates
+                .map(|(x, y)| (x + left, y + top))
+                .and_then(|(x, y)| {
+                    if x >= own_content_columns || y >= own_content_rows {
+                        None
+                    } else {
+                        Some((x, y)) // these are 0 indexed
+                    }
+                })
+        } else {
+            None
+        }
     }
     fn adjust_input_to_terminal(
         &mut self,
@@ -359,8 +379,14 @@ impl Pane for PluginPane {
     fn set_selectable(&mut self, selectable: bool) {
         self.selectable = selectable;
     }
+    fn show_cursor(&mut self, client_id: ClientId, cursor_position: Option<(usize, usize)>) {
+        self.cursor_visibility.insert(client_id, cursor_position);
+        self.should_render.insert(client_id, true);
+    }
     fn request_permissions_from_user(&mut self, permissions: Option<PluginPermission>) {
         self.requesting_permissions = permissions;
+        self.handle_plugin_bytes_for_all_clients(Default::default()); // to trigger the render of
+                                                                      // the permission message
     }
     fn render(
         &mut self,
@@ -400,56 +426,44 @@ impl Pane for PluginPane {
         if self.borderless {
             return Ok(None);
         }
-        if let Some(grid) = self.grids.get(&client_id) {
-            let err_context = || format!("failed to render frame for client {client_id}");
-            let pane_title = if let Some(text_color_override) = self
-                .pane_frame_color_override
-                .as_ref()
-                .and_then(|(_color, text)| text.as_ref())
-            {
-                text_color_override.into()
-            } else if self.pane_name.is_empty()
-                && input_mode == InputMode::RenamePane
-                && frame_params.is_main_client
-            {
-                String::from("Enter name...")
-            } else if self.pane_name.is_empty() {
-                grid.title
-                    .clone()
-                    .unwrap_or_else(|| self.pane_title.clone())
-            } else {
-                self.pane_name.clone()
-            };
+        let frame_geom = self.current_geom();
+        let grid = get_or_create_grid!(self, client_id);
+        let err_context = || format!("failed to render frame for client {client_id}");
+        let pane_title = if let Some(text_color_override) = self
+            .pane_frame_color_override
+            .as_ref()
+            .and_then(|(_color, text)| text.as_ref())
+        {
+            text_color_override.into()
+        } else if self.pane_name.is_empty()
+            && input_mode == InputMode::RenamePane
+            && frame_params.is_main_client
+        {
+            String::from("Enter name...")
+        } else if self.pane_name.is_empty() {
+            grid.title
+                .clone()
+                .unwrap_or_else(|| self.pane_title.clone())
+        } else {
+            self.pane_name.clone()
+        };
 
-            let frame_geom = self.current_geom();
-            let is_pinned = frame_geom.is_pinned;
-            let mut frame = PaneFrame::new(
-                frame_geom.into(),
-                grid.scrollback_position_and_length(),
-                pane_title,
-                frame_params,
-            )
-            .is_pinned(is_pinned);
-            if let Some((frame_color_override, _text)) = self.pane_frame_color_override.as_ref() {
-                frame.override_color(*frame_color_override);
-            }
+        let is_pinned = frame_geom.is_pinned;
+        let mut frame = PaneFrame::new(
+            frame_geom.into(),
+            grid.scrollback_position_and_length(),
+            pane_title,
+            frame_params,
+        )
+        .is_pinned(is_pinned);
+        if let Some((frame_color_override, _text)) = self.pane_frame_color_override.as_ref() {
+            frame.override_color(*frame_color_override);
+        }
 
-            let res = match self.frame.get(&client_id) {
-                // TODO: use and_then or something?
-                Some(last_frame) => {
-                    if &frame != last_frame {
-                        if !self.borderless {
-                            let frame_output = frame.render().with_context(err_context)?;
-                            self.frame.insert(client_id, frame);
-                            Some(frame_output)
-                        } else {
-                            None
-                        }
-                    } else {
-                        None
-                    }
-                },
-                None => {
+        let res = match self.frame.get(&client_id) {
+            // TODO: use and_then or something?
+            Some(last_frame) => {
+                if &frame != last_frame || is_pinned {
                     if !self.borderless {
                         let frame_output = frame.render().with_context(err_context)?;
                         self.frame.insert(client_id, frame);
@@ -457,12 +471,21 @@ impl Pane for PluginPane {
                     } else {
                         None
                     }
-                },
-            };
-            Ok(res)
-        } else {
-            Ok(None)
-        }
+                } else {
+                    None
+                }
+            },
+            None => {
+                if !self.borderless {
+                    let frame_output = frame.render().with_context(err_context)?;
+                    self.frame.insert(client_id, frame);
+                    Some(frame_output)
+                } else {
+                    None
+                }
+            },
+        };
+        Ok(res)
     }
     fn render_fake_cursor(
         &mut self,
@@ -850,6 +873,16 @@ impl Pane for PluginPane {
                 self.reset_selection(Some(client_id));
             }
         }
+    }
+    fn pane_contents(
+        &self,
+        client_id: Option<ClientId>,
+        get_full_scrollback: bool,
+    ) -> PaneContents {
+        client_id
+            .and_then(|c| self.grids.get(&c))
+            .map(|g| g.pane_contents(get_full_scrollback))
+            .unwrap_or_else(Default::default)
     }
 }
 

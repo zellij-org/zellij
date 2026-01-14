@@ -1,15 +1,16 @@
 mod kdl_layout_parser;
 use crate::data::{
     BareKey, Direction, FloatingPaneCoordinates, InputMode, KeyWithModifier, LayoutInfo,
-    MultiplayerColors, Palette, PaletteColor, PaneInfo, PaneManifest, PermissionType, Resize,
-    SessionInfo, StyleDeclaration, Styling, TabInfo, WebSharing, DEFAULT_STYLES,
+    LayoutMetadata, MultiplayerColors, Palette, PaletteColor, PaneId, PaneInfo, PaneManifest,
+    PermissionType, Resize, SessionInfo, StyleDeclaration, Styling, TabInfo, WebSharing,
+    DEFAULT_STYLES,
 };
 use crate::envs::EnvironmentVariables;
 use crate::home::{find_default_config_dir, get_layout_dir};
 use crate::input::config::{Config, ConfigError, KdlError};
 use crate::input::keybinds::Keybinds;
 use crate::input::layout::{
-    Layout, PluginUserConfiguration, RunPlugin, RunPluginOrAlias, SplitSize,
+    Layout, PluginUserConfiguration, RunPlugin, RunPluginOrAlias, SplitSize, TabLayoutInfo,
 };
 use crate::input::options::{Clipboard, OnForceClose, Options};
 use crate::input::permission::{GrantedPermission, PermissionCache};
@@ -414,10 +415,14 @@ impl Action {
         action_node: &KdlNode,
     ) -> Result<Self, ConfigError> {
         match action_name {
-            "Write" => Ok(Action::Write(None, bytes, false)),
-            "PaneNameInput" => Ok(Action::PaneNameInput(bytes)),
-            "TabNameInput" => Ok(Action::TabNameInput(bytes)),
-            "SearchInput" => Ok(Action::SearchInput(bytes)),
+            "Write" => Ok(Action::Write {
+                key_with_modifier: None,
+                bytes,
+                is_kitty_keyboard_protocol: false,
+            }),
+            "PaneNameInput" => Ok(Action::PaneNameInput { input: bytes }),
+            "TabNameInput" => Ok(Action::TabNameInput { input: bytes }),
+            "SearchInput" => Ok(Action::SearchInput { input: bytes }),
             "GoToTab" => {
                 let tab_index = *bytes.get(0).ok_or_else(|| {
                     ConfigError::new_kdl_error(
@@ -426,7 +431,7 @@ impl Action {
                         action_node.span().len(),
                     )
                 })? as u32;
-                Ok(Action::GoToTab(tab_index))
+                Ok(Action::GoToTab { index: tab_index })
             },
             _ => Err(ConfigError::new_kdl_error(
                 "Failed to parse action".into(),
@@ -441,9 +446,9 @@ impl Action {
         action_node: &KdlNode,
     ) -> Result<Self, ConfigError> {
         match action_name {
-            "WriteChars" => Ok(Action::WriteChars(string)),
+            "WriteChars" => Ok(Action::WriteChars { chars: string }),
             "SwitchToMode" => match InputMode::from_str(string.as_str()) {
-                Ok(input_mode) => Ok(Action::SwitchToMode(input_mode)),
+                Ok(input_mode) => Ok(Action::SwitchToMode { input_mode }),
                 Err(_e) => {
                     return Err(ConfigError::new_kdl_error(
                         format!("Unknown InputMode '{}'", string),
@@ -474,7 +479,7 @@ impl Action {
                     }
                 }
                 let resize = resize.unwrap_or(Resize::Increase);
-                Ok(Action::Resize(resize, direction))
+                Ok(Action::Resize { resize, direction })
             },
             "MoveFocus" => {
                 let direction = Direction::from_str(string.as_str()).map_err(|_| {
@@ -484,7 +489,7 @@ impl Action {
                         action_node.span().len(),
                     )
                 })?;
-                Ok(Action::MoveFocus(direction))
+                Ok(Action::MoveFocus { direction })
             },
             "MoveFocusOrTab" => {
                 let direction = Direction::from_str(string.as_str()).map_err(|_| {
@@ -494,7 +499,7 @@ impl Action {
                         action_node.span().len(),
                     )
                 })?;
-                Ok(Action::MoveFocusOrTab(direction))
+                Ok(Action::MoveFocusOrTab { direction })
             },
             "MoveTab" => {
                 let direction = Direction::from_str(string.as_str()).map_err(|_| {
@@ -511,12 +516,12 @@ impl Action {
                         action_node.span().len(),
                     ))
                 } else {
-                    Ok(Action::MoveTab(direction))
+                    Ok(Action::MoveTab { direction })
                 }
             },
             "MovePane" => {
                 if string.is_empty() {
-                    return Ok(Action::MovePane(None));
+                    return Ok(Action::MovePane { direction: None });
                 } else {
                     let direction = Direction::from_str(string.as_str()).map_err(|_| {
                         ConfigError::new_kdl_error(
@@ -525,17 +530,30 @@ impl Action {
                             action_node.span().len(),
                         )
                     })?;
-                    Ok(Action::MovePane(Some(direction)))
+                    Ok(Action::MovePane {
+                        direction: Some(direction),
+                    })
                 }
             },
             "MovePaneBackwards" => Ok(Action::MovePaneBackwards),
-            "DumpScreen" => Ok(Action::DumpScreen(string, false)),
+            "DumpScreen" => Ok(Action::DumpScreen {
+                file_path: string,
+                include_scrollback: false,
+            }),
             "DumpLayout" => Ok(Action::DumpLayout),
             "NewPane" => {
                 if string.is_empty() {
-                    return Ok(Action::NewPane(None, None, false));
+                    return Ok(Action::NewPane {
+                        direction: None,
+                        pane_name: None,
+                        start_suppressed: false,
+                    });
                 } else if string == "stacked" {
-                    return Ok(Action::NewStackedPane(None, None));
+                    return Ok(Action::NewStackedPane {
+                        command: None,
+                        pane_name: None,
+                        near_current_pane: false,
+                    });
                 } else {
                     let direction = Direction::from_str(string.as_str()).map_err(|_| {
                         ConfigError::new_kdl_error(
@@ -544,7 +562,11 @@ impl Action {
                             action_node.span().len(),
                         )
                     })?;
-                    Ok(Action::NewPane(Some(direction), None, false))
+                    Ok(Action::NewPane {
+                        direction: Some(direction),
+                        pane_name: None,
+                        start_suppressed: false,
+                    })
                 }
             },
             "SearchToggleOption" => {
@@ -555,7 +577,9 @@ impl Action {
                         action_node.span().len(),
                     )
                 })?;
-                Ok(Action::SearchToggleOption(toggle_option))
+                Ok(Action::SearchToggleOption {
+                    option: toggle_option,
+                })
             },
             "Search" => {
                 let search_direction =
@@ -566,9 +590,11 @@ impl Action {
                             action_node.span().len(),
                         )
                     })?;
-                Ok(Action::Search(search_direction))
+                Ok(Action::Search {
+                    direction: search_direction,
+                })
             },
-            "RenameSession" => Ok(Action::RenameSession(string)),
+            "RenameSession" => Ok(Action::RenameSession { name: string }),
             _ => Err(ConfigError::new_kdl_error(
                 format!("Unsupported action: {}", action_name),
                 action_node.span().offset(),
@@ -579,24 +605,31 @@ impl Action {
     pub fn to_kdl(&self) -> Option<KdlNode> {
         match self {
             Action::Quit => Some(KdlNode::new("Quit")),
-            Action::Write(_key, bytes, _is_kitty) => {
+            Action::Write {
+                key_with_modifier: _key,
+                bytes,
+                is_kitty_keyboard_protocol: _is_kitty,
+            } => {
                 let mut node = KdlNode::new("Write");
                 for byte in bytes {
                     node.push(KdlValue::Base10(*byte as i64));
                 }
                 Some(node)
             },
-            Action::WriteChars(string) => {
+            Action::WriteChars { chars: string } => {
                 let mut node = KdlNode::new("WriteChars");
                 node.push(string.clone());
                 Some(node)
             },
-            Action::SwitchToMode(input_mode) => {
+            Action::SwitchToMode { input_mode } => {
                 let mut node = KdlNode::new("SwitchToMode");
                 node.push(format!("{:?}", input_mode).to_lowercase());
                 Some(node)
             },
-            Action::Resize(resize, resize_direction) => {
+            Action::Resize {
+                resize,
+                direction: resize_direction,
+            } => {
                 let mut node = KdlNode::new("Resize");
                 let resize = match resize {
                     Resize::Increase => "Increase",
@@ -618,7 +651,7 @@ impl Action {
             Action::FocusNextPane => Some(KdlNode::new("FocusNextPane")),
             Action::FocusPreviousPane => Some(KdlNode::new("FocusPreviousPane")),
             Action::SwitchFocus => Some(KdlNode::new("SwitchFocus")),
-            Action::MoveFocus(direction) => {
+            Action::MoveFocus { direction } => {
                 let mut node = KdlNode::new("MoveFocus");
                 let direction = match direction {
                     Direction::Left => "left",
@@ -629,7 +662,7 @@ impl Action {
                 node.push(direction);
                 Some(node)
             },
-            Action::MoveFocusOrTab(direction) => {
+            Action::MoveFocusOrTab { direction } => {
                 let mut node = KdlNode::new("MoveFocusOrTab");
                 let direction = match direction {
                     Direction::Left => "left",
@@ -640,7 +673,7 @@ impl Action {
                 node.push(direction);
                 Some(node)
             },
-            Action::MovePane(direction) => {
+            Action::MovePane { direction } => {
                 let mut node = KdlNode::new("MovePane");
                 if let Some(direction) = direction {
                     let direction = match direction {
@@ -654,7 +687,10 @@ impl Action {
                 Some(node)
             },
             Action::MovePaneBackwards => Some(KdlNode::new("MovePaneBackwards")),
-            Action::DumpScreen(file, _) => {
+            Action::DumpScreen {
+                file_path: file,
+                include_scrollback: _,
+            } => {
                 let mut node = KdlNode::new("DumpScreen");
                 node.push(file.clone());
                 Some(node)
@@ -672,7 +708,11 @@ impl Action {
             Action::ToggleFocusFullscreen => Some(KdlNode::new("ToggleFocusFullscreen")),
             Action::TogglePaneFrames => Some(KdlNode::new("TogglePaneFrames")),
             Action::ToggleActiveSyncTab => Some(KdlNode::new("ToggleActiveSyncTab")),
-            Action::NewPane(direction, _, _) => {
+            Action::NewPane {
+                direction,
+                pane_name: _,
+                start_suppressed: _,
+            } => {
                 let mut node = KdlNode::new("NewPane");
                 if let Some(direction) = direction {
                     let direction = match direction {
@@ -688,7 +728,7 @@ impl Action {
             Action::TogglePaneEmbedOrFloating => Some(KdlNode::new("TogglePaneEmbedOrFloating")),
             Action::ToggleFloatingPanes => Some(KdlNode::new("ToggleFloatingPanes")),
             Action::CloseFocus => Some(KdlNode::new("CloseFocus")),
-            Action::PaneNameInput(bytes) => {
+            Action::PaneNameInput { input: bytes } => {
                 let mut node = KdlNode::new("PaneNameInput");
                 for byte in bytes {
                     node.push(KdlValue::Base10(*byte as i64));
@@ -696,7 +736,17 @@ impl Action {
                 Some(node)
             },
             Action::UndoRenamePane => Some(KdlNode::new("UndoRenamePane")),
-            Action::NewTab(_, _, _, _, name, should_change_focus_to_new_tab, cwd) => {
+            Action::NewTab {
+                tiled_layout: _,
+                floating_layouts: _,
+                swap_tiled_layouts: _,
+                swap_floating_layouts: _,
+                tab_name: name,
+                should_change_focus_to_new_tab,
+                cwd,
+                initial_panes: _,
+                first_pane_unblock_condition: _,
+            } => {
                 let mut node = KdlNode::new("NewTab");
                 let mut children = KdlDocument::new();
                 if let Some(name) = name {
@@ -725,13 +775,13 @@ impl Action {
             Action::GoToNextTab => Some(KdlNode::new("GoToNextTab")),
             Action::GoToPreviousTab => Some(KdlNode::new("GoToPreviousTab")),
             Action::CloseTab => Some(KdlNode::new("CloseTab")),
-            Action::GoToTab(index) => {
+            Action::GoToTab { index } => {
                 let mut node = KdlNode::new("GoToTab");
                 node.push(KdlValue::Base10(*index as i64));
                 Some(node)
             },
             Action::ToggleTab => Some(KdlNode::new("ToggleTab")),
-            Action::TabNameInput(bytes) => {
+            Action::TabNameInput { input: bytes } => {
                 let mut node = KdlNode::new("TabNameInput");
                 for byte in bytes {
                     node.push(KdlValue::Base10(*byte as i64));
@@ -739,7 +789,7 @@ impl Action {
                 Some(node)
             },
             Action::UndoRenameTab => Some(KdlNode::new("UndoRenameTab")),
-            Action::MoveTab(direction) => {
+            Action::MoveTab { direction } => {
                 let mut node = KdlNode::new("MoveTab");
                 let direction = match direction {
                     Direction::Left => "left",
@@ -750,7 +800,12 @@ impl Action {
                 node.push(direction);
                 Some(node)
             },
-            Action::NewTiledPane(direction, run_command_action, name) => {
+            Action::NewTiledPane {
+                direction,
+                command: run_command_action,
+                pane_name: name,
+                near_current_pane: false,
+            } => {
                 let mut node = KdlNode::new("Run");
                 let mut node_children = KdlDocument::new();
                 if let Some(run_command_action) = run_command_action {
@@ -795,7 +850,12 @@ impl Action {
                 }
                 Some(node)
             },
-            Action::NewFloatingPane(run_command_action, name, floating_pane_coordinates) => {
+            Action::NewFloatingPane {
+                command: run_command_action,
+                pane_name: name,
+                coordinates: floating_pane_coordinates,
+                near_current_pane: false,
+            } => {
                 let mut node = KdlNode::new("Run");
                 let mut node_children = KdlDocument::new();
                 let mut floating_pane = KdlNode::new("floating");
@@ -882,7 +942,13 @@ impl Action {
                 }
                 Some(node)
             },
-            Action::NewInPlacePane(run_command_action, name) => {
+            Action::NewInPlacePane {
+                command: run_command_action,
+                pane_name: name,
+                near_current_pane: false,
+                pane_id_to_replace: None,
+                close_replace_pane: false,
+            } => {
                 let mut node = KdlNode::new("Run");
                 let mut node_children = KdlDocument::new();
                 if let Some(run_command_action) = run_command_action {
@@ -919,7 +985,11 @@ impl Action {
                 }
                 Some(node)
             },
-            Action::NewStackedPane(run_command_action, name) => match run_command_action {
+            Action::NewStackedPane {
+                command: run_command_action,
+                pane_name: name,
+                near_current_pane: _,
+            } => match run_command_action {
                 Some(run_command_action) => {
                     let mut node = KdlNode::new("Run");
                     let mut node_children = KdlDocument::new();
@@ -962,13 +1032,42 @@ impl Action {
                 },
             },
             Action::Detach => Some(KdlNode::new("Detach")),
-            Action::LaunchOrFocusPlugin(
-                run_plugin_or_alias,
+            Action::SwitchSession {
+                name,
+                tab_position,
+                pane_id,
+                layout,
+                cwd,
+            } => {
+                let mut node = KdlNode::new("SwitchSession");
+                node.push(KdlEntry::new_prop("name", name.clone()));
+                if let Some(pos) = tab_position {
+                    node.push(KdlEntry::new_prop("tab_position", *pos as i64));
+                }
+                if let Some((id, is_plugin)) = pane_id {
+                    node.push(KdlEntry::new_prop("pane_id", *id as i64));
+                    if *is_plugin {
+                        node.push(KdlEntry::new_prop("is_plugin", true));
+                    }
+                }
+                if let Some(layout_info) = layout {
+                    node.push(KdlEntry::new_prop("layout", layout_info.name()));
+                }
+                if let Some(cwd_path) = cwd {
+                    node.push(KdlEntry::new_prop(
+                        "cwd",
+                        cwd_path.to_string_lossy().to_string(),
+                    ));
+                }
+                Some(node)
+            },
+            Action::LaunchOrFocusPlugin {
+                plugin: run_plugin_or_alias,
                 should_float,
                 move_to_focused_tab,
                 should_open_in_place,
-                skip_plugin_cache,
-            ) => {
+                skip_cache: skip_plugin_cache,
+            } => {
                 let mut node = KdlNode::new("LaunchOrFocusPlugin");
                 let mut node_children = KdlDocument::new();
                 let location = run_plugin_or_alias.location_string();
@@ -1005,13 +1104,13 @@ impl Action {
                 }
                 Some(node)
             },
-            Action::LaunchPlugin(
-                run_plugin_or_alias,
+            Action::LaunchPlugin {
+                plugin: run_plugin_or_alias,
                 should_float,
                 should_open_in_place,
-                skip_plugin_cache,
+                skip_cache: skip_plugin_cache,
                 cwd,
-            ) => {
+            } => {
                 let mut node = KdlNode::new("LaunchPlugin");
                 let mut node_children = KdlDocument::new();
                 let location = run_plugin_or_alias.location_string();
@@ -1053,14 +1152,16 @@ impl Action {
                 Some(node)
             },
             Action::Copy => Some(KdlNode::new("Copy")),
-            Action::SearchInput(bytes) => {
+            Action::SearchInput { input: bytes } => {
                 let mut node = KdlNode::new("SearchInput");
                 for byte in bytes {
                     node.push(KdlValue::Base10(*byte as i64));
                 }
                 Some(node)
             },
-            Action::Search(search_direction) => {
+            Action::Search {
+                direction: search_direction,
+            } => {
                 let mut node = KdlNode::new("Search");
                 let direction = match search_direction {
                     SearchDirection::Down => "down",
@@ -1069,7 +1170,9 @@ impl Action {
                 node.push(direction);
                 Some(node)
             },
-            Action::SearchToggleOption(search_toggle_option) => {
+            Action::SearchToggleOption {
+                option: search_toggle_option,
+            } => {
                 let mut node = KdlNode::new("SearchToggleOption");
                 node.push(format!("{:?}", search_toggle_option));
                 Some(node)
@@ -1402,6 +1505,50 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
             },
             "Detach" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
+            "SwitchSession" => {
+                let name = kdl_get_string_property_or_child_value!(kdl_action, "name")
+                    .map(|s| s.to_string())
+                    .ok_or(ConfigError::new_kdl_error(
+                        "SwitchSession action requires a 'name' property".into(),
+                        kdl_action.span().offset(),
+                        kdl_action.span().len(),
+                    ))?;
+                let tab_position =
+                    crate::kdl_get_int_property_or_child_value!(kdl_action, "tab_position")
+                        .map(|i| i as usize);
+                let pane_id = crate::kdl_get_int_property_or_child_value!(kdl_action, "pane_id")
+                    .map(|i| i as u32);
+                let is_plugin =
+                    crate::kdl_get_bool_property_or_child_value!(kdl_action, "is_plugin")
+                        .unwrap_or(false);
+                let pane_id_tuple = pane_id.map(|id| (id, is_plugin));
+
+                // Parse layout
+                let layout = if let Some(layout_str) =
+                    kdl_get_string_property_or_child_value!(kdl_action, "layout")
+                {
+                    let layout_path = PathBuf::from(layout_str);
+                    let layout_dir = config_options
+                        .layout_dir
+                        .clone()
+                        .or_else(|| get_layout_dir(find_default_config_dir()));
+                    LayoutInfo::from_config(&layout_dir, &Some(layout_path))
+                } else {
+                    None
+                };
+
+                // Parse cwd
+                let cwd =
+                    kdl_get_string_property_or_child_value!(kdl_action, "cwd").map(PathBuf::from);
+
+                Ok(Action::SwitchSession {
+                    name,
+                    tab_position,
+                    pane_id: pane_id_tuple,
+                    layout,
+                    cwd,
+                })
+            },
             "Copy" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
             "Clear" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
             "Confirm" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
@@ -1478,7 +1625,17 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
             "NewTab" => {
                 let command_metadata = action_children.iter().next();
                 if command_metadata.is_none() {
-                    return Ok(Action::NewTab(None, vec![], None, None, None, true, None));
+                    return Ok(Action::NewTab {
+                        tiled_layout: None,
+                        floating_layouts: vec![],
+                        swap_tiled_layouts: None,
+                        swap_floating_layouts: None,
+                        tab_name: None,
+                        should_change_focus_to_new_tab: true,
+                        cwd: None,
+                        initial_panes: None,
+                        first_pane_unblock_condition: None,
+                    });
                 }
 
                 let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
@@ -1539,28 +1696,148 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                     let name = tab_name.or(name);
                     let should_change_focus_to_new_tab = layout.focus.unwrap_or(true);
 
-                    Ok(Action::NewTab(
-                        Some(layout),
-                        floating_panes_layout,
+                    Ok(Action::NewTab {
+                        tiled_layout: Some(layout),
+                        floating_layouts: floating_panes_layout,
                         swap_tiled_layouts,
                         swap_floating_layouts,
-                        name,
+                        tab_name: name,
                         should_change_focus_to_new_tab,
                         cwd,
-                    ))
+                        initial_panes: None,
+                        first_pane_unblock_condition: None,
+                    })
                 } else {
                     let (layout, floating_panes_layout) = layout.new_tab();
                     let should_change_focus_to_new_tab = layout.focus.unwrap_or(true);
 
-                    Ok(Action::NewTab(
-                        Some(layout),
-                        floating_panes_layout,
+                    Ok(Action::NewTab {
+                        tiled_layout: Some(layout),
+                        floating_layouts: floating_panes_layout,
                         swap_tiled_layouts,
                         swap_floating_layouts,
-                        name,
+                        tab_name: name,
                         should_change_focus_to_new_tab,
                         cwd,
-                    ))
+                        initial_panes: None,
+                        first_pane_unblock_condition: None,
+                    })
+                }
+            },
+            "OverrideLayout" => {
+                let command_metadata = action_children.iter().next();
+                if command_metadata.is_none() {
+                    return Ok(Action::OverrideLayout {
+                        tabs: vec![],
+                        retain_existing_terminal_panes: false,
+                        retain_existing_plugin_panes: false,
+                        apply_only_to_active_tab: false,
+                    });
+                }
+
+                let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+
+                let layout = command_metadata
+                    .and_then(|c_m| kdl_child_string_value_for_entry(c_m, "layout"))
+                    .map(|layout_string| PathBuf::from(layout_string))
+                    .or_else(|| config_options.default_layout.clone());
+                let cwd = command_metadata
+                    .and_then(|c_m| kdl_child_string_value_for_entry(c_m, "cwd"))
+                    .map(|cwd_string| PathBuf::from(cwd_string))
+                    .map(|cwd| current_dir.join(cwd));
+                let name = command_metadata
+                    .and_then(|c_m| kdl_child_string_value_for_entry(c_m, "name"))
+                    .map(|name_string| name_string.to_string());
+                let retain_existing_terminal_panes = command_metadata
+                    .and_then(|c_m| {
+                        kdl_child_bool_value_for_entry(c_m, "retain_existing_terminal_panes")
+                    })
+                    .unwrap_or(false);
+                let retain_existing_plugin_panes = command_metadata
+                    .and_then(|c_m| {
+                        kdl_child_bool_value_for_entry(c_m, "retain_existing_plugin_panes")
+                    })
+                    .unwrap_or(false);
+                let apply_only_to_active_tab = command_metadata
+                    .and_then(|c_m| kdl_child_bool_value_for_entry(c_m, "apply_only_to_active_tab"))
+                    .unwrap_or(false);
+
+                let layout_dir = config_options
+                    .layout_dir
+                    .clone()
+                    .or_else(|| get_layout_dir(find_default_config_dir()));
+                let (path_to_raw_layout, raw_layout, swap_layouts) =
+                    Layout::stringified_from_path_or_default(layout.as_ref(), layout_dir).map_err(
+                        |e| {
+                            ConfigError::new_kdl_error(
+                                format!("Failed to load layout: {}", e),
+                                kdl_action.span().offset(),
+                                kdl_action.span().len(),
+                            )
+                        },
+                    )?;
+
+                let layout = Layout::from_str(
+                    &raw_layout,
+                    path_to_raw_layout,
+                    swap_layouts.as_ref().map(|(f, p)| (f.as_str(), p.as_str())),
+                    cwd.clone(),
+                )
+                .map_err(|e| {
+                    ConfigError::new_kdl_error(
+                        format!("Failed to load layout: {}", e),
+                        kdl_action.span().offset(),
+                        kdl_action.span().len(),
+                    )
+                })?;
+
+                let swap_tiled_layouts = Some(layout.swap_tiled_layouts.clone());
+                let swap_floating_layouts = Some(layout.swap_floating_layouts.clone());
+
+                let mut tabs = layout.tabs();
+                if tabs.len() > 1 {
+                    return Err(ConfigError::new_kdl_error(
+                        "Tab layout cannot itself have tabs".to_string(),
+                        kdl_action.span().offset(),
+                        kdl_action.span().len(),
+                    ));
+                } else if !tabs.is_empty() {
+                    let (tab_name, layout, floating_panes_layout) = tabs.drain(..).next().unwrap();
+                    let name = tab_name.or(name);
+
+                    let tab_layout_info = TabLayoutInfo {
+                        tab_index: 0,
+                        tab_name: name,
+                        tiled_layout: layout,
+                        floating_layouts: floating_panes_layout,
+                        swap_tiled_layouts,
+                        swap_floating_layouts,
+                    };
+
+                    Ok(Action::OverrideLayout {
+                        tabs: vec![tab_layout_info],
+                        retain_existing_terminal_panes,
+                        retain_existing_plugin_panes,
+                        apply_only_to_active_tab,
+                    })
+                } else {
+                    let (layout, floating_panes_layout) = layout.new_tab();
+
+                    let tab_layout_info = TabLayoutInfo {
+                        tab_index: 0,
+                        tab_name: name,
+                        tiled_layout: layout,
+                        floating_layouts: floating_panes_layout,
+                        swap_tiled_layouts,
+                        swap_floating_layouts,
+                    };
+
+                    Ok(Action::OverrideLayout {
+                        tabs: vec![tab_layout_info],
+                        retain_existing_terminal_panes,
+                        retain_existing_plugin_panes,
+                        apply_only_to_active_tab,
+                    })
                 }
             },
             "GoToTab" => parse_kdl_action_u8_arguments!(action_name, action_arguments, kdl_action),
@@ -1636,21 +1913,33 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 let pinned =
                     command_metadata.and_then(|c_m| kdl_child_bool_value_for_entry(c_m, "pinned"));
                 if floating {
-                    Ok(Action::NewFloatingPane(
-                        Some(run_command_action),
-                        name,
-                        FloatingPaneCoordinates::new(x, y, width, height, pinned),
-                    ))
+                    Ok(Action::NewFloatingPane {
+                        command: Some(run_command_action),
+                        pane_name: name,
+                        coordinates: FloatingPaneCoordinates::new(x, y, width, height, pinned),
+                        near_current_pane: false,
+                    })
                 } else if in_place {
-                    Ok(Action::NewInPlacePane(Some(run_command_action), name))
+                    Ok(Action::NewInPlacePane {
+                        command: Some(run_command_action),
+                        pane_name: name,
+                        near_current_pane: false,
+                        pane_id_to_replace: None,
+                        close_replace_pane: false,
+                    })
                 } else if stacked {
-                    Ok(Action::NewStackedPane(Some(run_command_action), name))
+                    Ok(Action::NewStackedPane {
+                        command: Some(run_command_action),
+                        pane_name: name,
+                        near_current_pane: false,
+                    })
                 } else {
-                    Ok(Action::NewTiledPane(
+                    Ok(Action::NewTiledPane {
                         direction,
-                        Some(run_command_action),
-                        name,
-                    ))
+                        command: Some(run_command_action),
+                        pane_name: name,
+                        near_current_pane: false,
+                    })
                 }
             },
             "LaunchOrFocusPlugin" => {
@@ -1696,13 +1985,13 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                     )
                 })?
                 .with_initial_cwd(initial_cwd);
-                Ok(Action::LaunchOrFocusPlugin(
-                    run_plugin_or_alias,
+                Ok(Action::LaunchOrFocusPlugin {
+                    plugin: run_plugin_or_alias,
                     should_float,
                     move_to_focused_tab,
                     should_open_in_place,
-                    skip_plugin_cache,
-                ))
+                    skip_cache: skip_plugin_cache,
+                })
             },
             "LaunchPlugin" => {
                 let arguments = action_arguments.iter().copied();
@@ -1741,14 +2030,14 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                         kdl_action.span().len(),
                     )
                 })?;
-                Ok(Action::LaunchPlugin(
-                    run_plugin_or_alias,
+                Ok(Action::LaunchPlugin {
+                    plugin: run_plugin_or_alias,
                     should_float,
                     should_open_in_place,
-                    skip_plugin_cache,
-                    None, // we explicitly do not send the current dir here so that it will be
-                          // filled from the active pane == better UX
-                ))
+                    skip_cache: skip_plugin_cache,
+                    cwd: None, // we explicitly do not send the current dir here so that it will be
+                               // filled from the active pane == better UX
+                })
             },
             "PreviousSwapLayout" => Ok(Action::PreviousSwapLayout),
             "NextSwapLayout" => Ok(Action::NextSwapLayout),
@@ -4878,7 +5167,9 @@ impl SessionInfo {
                         match layout_source {
                             Some(layout_source) => match layout_source {
                                 "built-in" => Some(LayoutInfo::BuiltIn(layout_name)),
-                                "file" => Some(LayoutInfo::File(layout_name)),
+                                "file" => {
+                                    Some(LayoutInfo::File(layout_name, LayoutMetadata::default()))
+                                },
                                 _ => None,
                             },
                             None => None,
@@ -4922,6 +5213,50 @@ impl SessionInfo {
                 }
             }
         }
+        let mut pane_history = BTreeMap::new();
+        if let Some(kdl_pane_history) = kdl_document.get("pane_history").and_then(|p| p.children())
+        {
+            for client_node in kdl_pane_history.nodes() {
+                if let Some(client_id) = client_node.children().and_then(|c| {
+                    c.get("id")
+                        .and_then(|c| c.entries().iter().next().and_then(|e| e.value().as_i64()))
+                }) {
+                    let mut history = vec![];
+                    if let Some(history_node) =
+                        client_node.children().and_then(|c| c.get("history"))
+                    {
+                        if let Some(history_children) = history_node.children() {
+                            for pane_id_node in history_children.nodes() {
+                                if pane_id_node.name().value() == "pane_id" {
+                                    let pane_type = pane_id_node
+                                        .entries()
+                                        .iter()
+                                        .find(|e| e.name().map(|n| n.value()) == Some("type"))
+                                        .and_then(|e| e.value().as_string());
+                                    let id = pane_id_node
+                                        .entries()
+                                        .iter()
+                                        .find(|e| e.name().is_none())
+                                        .and_then(|e| e.value().as_i64())
+                                        .map(|i| i as u32);
+                                    if let (Some(pane_type), Some(id)) = (pane_type, id) {
+                                        let pane_id = match pane_type {
+                                            "terminal" => Some(PaneId::Terminal(id)),
+                                            "plugin" => Some(PaneId::Plugin(id)),
+                                            _ => None,
+                                        };
+                                        if let Some(pane_id) = pane_id {
+                                            history.push(pane_id);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    pane_history.insert(client_id as u16, history);
+                }
+            }
+        }
         Ok(SessionInfo {
             name,
             tabs,
@@ -4933,6 +5268,7 @@ impl SessionInfo {
             web_clients_allowed,
             plugins: Default::default(), // we do not serialize plugin information
             tab_history,
+            pane_history,
         })
     }
     pub fn to_string(&self) -> String {
@@ -4967,7 +5303,7 @@ impl SessionInfo {
         let mut available_layouts_children = KdlDocument::new();
         for layout_info in &self.available_layouts {
             let (layout_name, layout_source) = match layout_info {
-                LayoutInfo::File(name) => (name.clone(), "file"),
+                LayoutInfo::File(name, _layout_metadata) => (name.clone(), "file"),
                 LayoutInfo::BuiltIn(name) => (name.clone(), "built-in"),
                 LayoutInfo::Url(url) => (url.clone(), "url"),
                 LayoutInfo::Stringified(_stringified) => ("stringified-layout".to_owned(), "N/A"),
@@ -4997,6 +5333,35 @@ impl SessionInfo {
         }
         tab_history.set_children(tab_history_children);
 
+        let mut pane_history = KdlNode::new("pane_history");
+        let mut pane_history_children = KdlDocument::new();
+        for (client_id, client_pane_history) in &self.pane_history {
+            let mut client_document = KdlDocument::new();
+            let mut client_node = KdlNode::new("client");
+            let mut id = KdlNode::new("id");
+            id.push(*client_id as i64);
+            client_document.nodes_mut().push(id);
+            let mut history = KdlNode::new("history");
+            for pane_id in client_pane_history {
+                let mut pane_id_node = KdlNode::new("pane_id");
+                match pane_id {
+                    PaneId::Terminal(id) => {
+                        pane_id_node.push(KdlEntry::new_prop("type", "terminal"));
+                        pane_id_node.push(*id as i64);
+                    },
+                    PaneId::Plugin(id) => {
+                        pane_id_node.push(KdlEntry::new_prop("type", "plugin"));
+                        pane_id_node.push(*id as i64);
+                    },
+                }
+                history.ensure_children().nodes_mut().push(pane_id_node);
+            }
+            client_document.nodes_mut().push(history);
+            client_node.set_children(client_document);
+            pane_history_children.nodes_mut().push(client_node);
+        }
+        pane_history.set_children(pane_history_children);
+
         kdl_document.nodes_mut().push(name);
         kdl_document.nodes_mut().push(tabs);
         kdl_document.nodes_mut().push(panes);
@@ -5005,6 +5370,7 @@ impl SessionInfo {
         kdl_document.nodes_mut().push(web_client_count);
         kdl_document.nodes_mut().push(available_layouts);
         kdl_document.nodes_mut().push(tab_history);
+        kdl_document.nodes_mut().push(pane_history);
         kdl_document.fmt();
         kdl_document.to_string()
     }
@@ -5555,14 +5921,15 @@ fn serialize_and_deserialize_session_info_with_data() {
         connected_clients: 2,
         is_current_session: false,
         available_layouts: vec![
-            LayoutInfo::File("layout1".to_owned()),
+            LayoutInfo::File("layout1".to_owned(), LayoutMetadata::default()),
             LayoutInfo::BuiltIn("layout2".to_owned()),
-            LayoutInfo::File("layout3".to_owned()),
+            LayoutInfo::File("layout3".to_owned(), LayoutMetadata::default()),
         ],
         plugins: Default::default(),
         web_client_count: 2,
         web_clients_allowed: true,
         tab_history: Default::default(),
+        pane_history: Default::default(),
     };
     let serialized = session_info.to_string();
     let deserealized = SessionInfo::from_string(&serialized, "not this session").unwrap();

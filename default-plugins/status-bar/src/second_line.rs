@@ -143,13 +143,13 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<KeyWithModifier
     }
 
     if mi.mode == IM::Pane { vec![
-        (s("New"), s("New"), action_key(&km, &[A::NewPane(None, None, false), TO_NORMAL])),
+        (s("New"), s("New"), action_key(&km, &[A::NewPane{direction: None, pane_name: None, start_suppressed: false}, TO_NORMAL])),
         (s("Change Focus"), s("Move"),
-            action_key_group(&km, &[&[A::MoveFocus(Dir::Left)], &[A::MoveFocus(Dir::Down)],
-                &[A::MoveFocus(Dir::Up)], &[A::MoveFocus(Dir::Right)]])),
+            action_key_group(&km, &[&[A::MoveFocus{direction: Dir::Left}], &[A::MoveFocus{direction: Dir::Down}],
+                &[A::MoveFocus{direction: Dir::Up}], &[A::MoveFocus{direction: Dir::Right}]])),
         (s("Close"), s("Close"), action_key(&km, &[A::CloseFocus, TO_NORMAL])),
         (s("Rename"), s("Rename"),
-            action_key(&km, &[A::SwitchToMode(IM::RenamePane), A::PaneNameInput(vec![0])])),
+            action_key(&km, &[A::SwitchToMode{input_mode: IM::RenamePane}, A::PaneNameInput{input: vec![0]}])),
         (s("Toggle Fullscreen"), s("Fullscreen"), action_key(&km, &[A::ToggleFocusFullscreen, TO_NORMAL])),
         (s("Toggle Floating"), s("Floating"),
             action_key(&km, &[A::ToggleFloatingPanes, TO_NORMAL])),
@@ -173,11 +173,21 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<KeyWithModifier
         };
 
         vec![
-        (s("New"), s("New"), action_key(&km, &[A::NewTab(None, vec![], None, None, None, true, None), TO_NORMAL])),
+        (s("New"), s("New"), action_key(&km, &[A::NewTab{
+            tiled_layout: None,
+            floating_layouts: vec![],
+            swap_tiled_layouts: None,
+            swap_floating_layouts: None,
+            tab_name: None,
+            should_change_focus_to_new_tab: true,
+            cwd: None,
+            initial_panes: None,
+            first_pane_unblock_condition: None,
+        }, TO_NORMAL])),
         (s("Change focus"), s("Move"), focus_keys),
         (s("Close"), s("Close"), action_key(&km, &[A::CloseTab, TO_NORMAL])),
         (s("Rename"), s("Rename"),
-            action_key(&km, &[A::SwitchToMode(IM::RenameTab), A::TabNameInput(vec![0])])),
+            action_key(&km, &[A::SwitchToMode{input_mode: IM::RenameTab}, A::TabNameInput{input: vec![0]}])),
         (s("Sync"), s("Sync"), action_key(&km, &[A::ToggleActiveSyncTab, TO_NORMAL])),
         (s("Break pane to new tab"), s("Break out"), action_key(&km, &[A::BreakPane, TO_NORMAL])),
         (s("Break pane left/right"), s("Break"), action_key_group(&km, &[
@@ -189,29 +199,29 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<KeyWithModifier
     ]} else if mi.mode == IM::Resize { vec![
         (s("Increase/Decrease size"), s("Increase/Decrease"),
             action_key_group(&km, &[
-                &[A::Resize(Resize::Increase, None)],
-                &[A::Resize(Resize::Decrease, None)]
+                &[A::Resize{resize: Resize::Increase, direction: None}],
+                &[A::Resize{resize: Resize::Decrease, direction: None}]
             ])),
         (s("Increase to"), s("Increase"), action_key_group(&km, &[
-            &[A::Resize(Resize::Increase, Some(Dir::Left))],
-            &[A::Resize(Resize::Increase, Some(Dir::Down))],
-            &[A::Resize(Resize::Increase, Some(Dir::Up))],
-            &[A::Resize(Resize::Increase, Some(Dir::Right))]
+            &[A::Resize{resize: Resize::Increase, direction: Some(Dir::Left)}],
+            &[A::Resize{resize: Resize::Increase, direction: Some(Dir::Down)}],
+            &[A::Resize{resize: Resize::Increase, direction: Some(Dir::Up)}],
+            &[A::Resize{resize: Resize::Increase, direction: Some(Dir::Right)}]
             ])),
         (s("Decrease from"), s("Decrease"), action_key_group(&km, &[
-            &[A::Resize(Resize::Decrease, Some(Dir::Left))],
-            &[A::Resize(Resize::Decrease, Some(Dir::Down))],
-            &[A::Resize(Resize::Decrease, Some(Dir::Up))],
-            &[A::Resize(Resize::Decrease, Some(Dir::Right))]
+            &[A::Resize{resize: Resize::Decrease, direction: Some(Dir::Left)}],
+            &[A::Resize{resize: Resize::Decrease, direction: Some(Dir::Down)}],
+            &[A::Resize{resize: Resize::Decrease, direction: Some(Dir::Up)}],
+            &[A::Resize{resize: Resize::Decrease, direction: Some(Dir::Right)}]
             ])),
         (s("Select pane"), s("Select"), to_normal_key),
     ]} else if mi.mode == IM::Move { vec![
         (s("Switch Location"), s("Move"), action_key_group(&km, &[
-            &[Action::MovePane(Some(Dir::Left))], &[Action::MovePane(Some(Dir::Down))],
-            &[Action::MovePane(Some(Dir::Up))], &[Action::MovePane(Some(Dir::Right))]])),
+            &[Action::MovePane{direction: Some(Dir::Left)}], &[Action::MovePane{direction: Some(Dir::Down)}],
+            &[Action::MovePane{direction: Some(Dir::Up)}], &[Action::MovePane{direction: Some(Dir::Right)}]])),
     ]} else if mi.mode == IM::Scroll { vec![
         (s("Enter search term"), s("Search"),
-            action_key(&km, &[A::SwitchToMode(IM::EnterSearch), A::SearchInput(vec![0])])),
+            action_key(&km, &[A::SwitchToMode{input_mode: IM::EnterSearch}, A::SearchInput{input: vec![0]}])),
         (s("Scroll"), s("Scroll"),
             action_key_group(&km, &[&[Action::ScrollDown], &[Action::ScrollUp]])),
         (s("Scroll page"), s("Scroll"),
@@ -222,48 +232,58 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<KeyWithModifier
             action_key(&km, &[Action::EditScrollback, TO_NORMAL])),
         (s("Select pane"), s("Select"), to_normal_key),
     ]} else if mi.mode == IM::EnterSearch { vec![
-        (s("When done"), s("Done"), action_key(&km, &[A::SwitchToMode(IM::Search)])),
+        (s("When done"), s("Done"), action_key(&km, &[A::SwitchToMode{input_mode: IM::Search}])),
         (s("Cancel"), s("Cancel"),
-            action_key(&km, &[A::SearchInput(vec![27]), A::SwitchToMode(IM::Scroll)])),
+            action_key(&km, &[A::SearchInput{input: vec![27]}, A::SwitchToMode{input_mode: IM::Scroll}])),
     ]} else if mi.mode == IM::Search { vec![
         (s("Enter Search term"), s("Search"),
-            action_key(&km, &[A::SwitchToMode(IM::EnterSearch), A::SearchInput(vec![0])])),
+            action_key(&km, &[A::SwitchToMode{input_mode: IM::EnterSearch}, A::SearchInput{input: vec![0]}])),
         (s("Scroll"), s("Scroll"),
             action_key_group(&km, &[&[Action::ScrollDown], &[Action::ScrollUp]])),
         (s("Scroll page"), s("Scroll"),
             action_key_group(&km, &[&[Action::PageScrollDown], &[Action::PageScrollUp]])),
         (s("Scroll half page"), s("Scroll"),
             action_key_group(&km, &[&[Action::HalfPageScrollDown], &[Action::HalfPageScrollUp]])),
-        (s("Search down"), s("Down"), action_key(&km, &[A::Search(SDir::Down)])),
-        (s("Search up"), s("Up"), action_key(&km, &[A::Search(SDir::Up)])),
+        (s("Search down"), s("Down"), action_key(&km, &[A::Search{direction: SDir::Down}])),
+        (s("Search up"), s("Up"), action_key(&km, &[A::Search{direction: SDir::Up}])),
         (s("Case sensitive"), s("Case"),
-            action_key(&km, &[A::SearchToggleOption(SOpt::CaseSensitivity)])),
+            action_key(&km, &[A::SearchToggleOption{option: SOpt::CaseSensitivity}])),
         (s("Wrap"), s("Wrap"),
-            action_key(&km, &[A::SearchToggleOption(SOpt::Wrap)])),
+            action_key(&km, &[A::SearchToggleOption{option: SOpt::Wrap}])),
         (s("Whole words"), s("Whole"),
-            action_key(&km, &[A::SearchToggleOption(SOpt::WholeWord)])),
+            action_key(&km, &[A::SearchToggleOption{option: SOpt::WholeWord}])),
     ]} else if mi.mode == IM::Session { vec![
         (s("Detach"), s("Detach"), action_key(&km, &[Action::Detach])),
-        (s("Session Manager"), s("Manager"), action_key(&km, &[A::LaunchOrFocusPlugin(Default::default(), true, true, false, false), TO_NORMAL])), // not entirely accurate
+        (s("Session Manager"), s("Manager"), action_key(&km, &[A::LaunchOrFocusPlugin{plugin: Default::default(), should_float: true, move_to_focused_tab: true, should_open_in_place: false, skip_cache: false}, TO_NORMAL])), // not entirely accurate
         (s("Select pane"), s("Select"), to_normal_key),
     ]} else if mi.mode == IM::Tmux { vec![
         (s("Move focus"), s("Move"), action_key_group(&km, &[
-            &[A::MoveFocus(Dir::Left)], &[A::MoveFocus(Dir::Down)],
-            &[A::MoveFocus(Dir::Up)], &[A::MoveFocus(Dir::Right)]])),
-        (s("Split down"), s("Down"), action_key(&km, &[A::NewPane(Some(Dir::Down), None, false), TO_NORMAL])),
-        (s("Split right"), s("Right"), action_key(&km, &[A::NewPane(Some(Dir::Right), None, false), TO_NORMAL])),
+            &[A::MoveFocus{direction: Dir::Left}], &[A::MoveFocus{direction: Dir::Down}],
+            &[A::MoveFocus{direction: Dir::Up}], &[A::MoveFocus{direction: Dir::Right}]])),
+        (s("Split down"), s("Down"), action_key(&km, &[A::NewPane{direction: Some(Dir::Down), pane_name: None, start_suppressed: false}, TO_NORMAL])),
+        (s("Split right"), s("Right"), action_key(&km, &[A::NewPane{direction: Some(Dir::Right), pane_name: None, start_suppressed: false}, TO_NORMAL])),
         (s("Fullscreen"), s("Fullscreen"), action_key(&km, &[A::ToggleFocusFullscreen, TO_NORMAL])),
-        (s("New tab"), s("New"), action_key(&km, &[A::NewTab(None, vec![], None, None, None, true, None), TO_NORMAL])),
+        (s("New tab"), s("New"), action_key(&km, &[A::NewTab{
+            tiled_layout: None,
+            floating_layouts: vec![],
+            swap_tiled_layouts: None,
+            swap_floating_layouts: None,
+            tab_name: None,
+            should_change_focus_to_new_tab: true,
+            cwd: None,
+            initial_panes: None,
+            first_pane_unblock_condition: None,
+        }, TO_NORMAL])),
         (s("Rename tab"), s("Rename"),
-            action_key(&km, &[A::SwitchToMode(IM::RenameTab), A::TabNameInput(vec![0])])),
+            action_key(&km, &[A::SwitchToMode{input_mode: IM::RenameTab}, A::TabNameInput{input: vec![0]}])),
         (s("Previous Tab"), s("Previous"), action_key(&km, &[A::GoToPreviousTab, TO_NORMAL])),
         (s("Next Tab"), s("Next"), action_key(&km, &[A::GoToNextTab, TO_NORMAL])),
         (s("Select pane"), s("Select"), to_normal_key),
     ]} else if matches!(mi.mode, IM::RenamePane | IM::RenameTab) { vec![
         (s("When done"), s("Done"), to_normal_key),
         (s("Select pane"), s("Select"), action_key_group(&km, &[
-            &[A::MoveFocus(Dir::Left)], &[A::MoveFocus(Dir::Down)],
-            &[A::MoveFocus(Dir::Up)], &[A::MoveFocus(Dir::Right)]])),
+            &[A::MoveFocus{direction: Dir::Left}], &[A::MoveFocus{direction: Dir::Down}],
+            &[A::MoveFocus{direction: Dir::Up}], &[A::MoveFocus{direction: Dir::Right}]])),
     ]} else { vec![] }
 }
 
@@ -413,9 +433,14 @@ pub fn floating_panes_are_visible(mode_info: &ModeInfo) -> LinePart {
     let press = "Press ";
     let pane_mode = format!(
         "{}",
-        action_key(km, &[Action::SwitchToMode(InputMode::Pane)])
-            .first()
-            .unwrap_or(&KeyWithModifier::new(BareKey::Char('?')))
+        action_key(
+            km,
+            &[Action::SwitchToMode {
+                input_mode: InputMode::Pane
+            }]
+        )
+        .first()
+        .unwrap_or(&KeyWithModifier::new(BareKey::Char('?')))
     );
     let plus = ", ";
     let p_left_separator = "<";
@@ -665,23 +690,38 @@ mod tests {
                 vec![
                     (
                         KeyWithModifier::new(BareKey::Left),
-                        vec![Action::MoveFocus(Direction::Left)],
+                        vec![Action::MoveFocus {
+                            direction: Direction::Left,
+                        }],
                     ),
                     (
                         KeyWithModifier::new(BareKey::Down),
-                        vec![Action::MoveFocus(Direction::Down)],
+                        vec![Action::MoveFocus {
+                            direction: Direction::Down,
+                        }],
                     ),
                     (
                         KeyWithModifier::new(BareKey::Up),
-                        vec![Action::MoveFocus(Direction::Up)],
+                        vec![Action::MoveFocus {
+                            direction: Direction::Up,
+                        }],
                     ),
                     (
                         KeyWithModifier::new(BareKey::Right),
-                        vec![Action::MoveFocus(Direction::Right)],
+                        vec![Action::MoveFocus {
+                            direction: Direction::Right,
+                        }],
                     ),
                     (
                         KeyWithModifier::new(BareKey::Char('n')),
-                        vec![Action::NewPane(None, None, false), TO_NORMAL],
+                        vec![
+                            Action::NewPane {
+                                direction: None,
+                                pane_name: None,
+                                start_suppressed: false,
+                            },
+                            TO_NORMAL,
+                        ],
                     ),
                     (
                         KeyWithModifier::new(BareKey::Char('x')),
@@ -715,23 +755,38 @@ mod tests {
                 vec![
                     (
                         KeyWithModifier::new(BareKey::Left),
-                        vec![Action::MoveFocus(Direction::Left)],
+                        vec![Action::MoveFocus {
+                            direction: Direction::Left,
+                        }],
                     ),
                     (
                         KeyWithModifier::new(BareKey::Down),
-                        vec![Action::MoveFocus(Direction::Down)],
+                        vec![Action::MoveFocus {
+                            direction: Direction::Down,
+                        }],
                     ),
                     (
                         KeyWithModifier::new(BareKey::Up),
-                        vec![Action::MoveFocus(Direction::Up)],
+                        vec![Action::MoveFocus {
+                            direction: Direction::Up,
+                        }],
                     ),
                     (
                         KeyWithModifier::new(BareKey::Right),
-                        vec![Action::MoveFocus(Direction::Right)],
+                        vec![Action::MoveFocus {
+                            direction: Direction::Right,
+                        }],
                     ),
                     (
                         KeyWithModifier::new(BareKey::Char('n')),
-                        vec![Action::NewPane(None, None, false), TO_NORMAL],
+                        vec![
+                            Action::NewPane {
+                                direction: None,
+                                pane_name: None,
+                                start_suppressed: false,
+                            },
+                            TO_NORMAL,
+                        ],
                     ),
                     (
                         KeyWithModifier::new(BareKey::Char('x')),
@@ -761,23 +816,38 @@ mod tests {
                 vec![
                     (
                         KeyWithModifier::new(BareKey::Char('a')).with_ctrl_modifier(),
-                        vec![Action::MoveFocus(Direction::Left)],
+                        vec![Action::MoveFocus {
+                            direction: Direction::Left,
+                        }],
                     ),
                     (
                         KeyWithModifier::new(BareKey::Enter).with_ctrl_modifier(),
-                        vec![Action::MoveFocus(Direction::Down)],
+                        vec![Action::MoveFocus {
+                            direction: Direction::Down,
+                        }],
                     ),
                     (
                         KeyWithModifier::new(BareKey::Char('1')).with_ctrl_modifier(),
-                        vec![Action::MoveFocus(Direction::Up)],
+                        vec![Action::MoveFocus {
+                            direction: Direction::Up,
+                        }],
                     ),
                     (
                         KeyWithModifier::new(BareKey::Char(' ')).with_ctrl_modifier(),
-                        vec![Action::MoveFocus(Direction::Right)],
+                        vec![Action::MoveFocus {
+                            direction: Direction::Right,
+                        }],
                     ),
                     (
                         KeyWithModifier::new(BareKey::Backspace),
-                        vec![Action::NewPane(None, None, false), TO_NORMAL],
+                        vec![
+                            Action::NewPane {
+                                direction: None,
+                                pane_name: None,
+                                start_suppressed: false,
+                            },
+                            TO_NORMAL,
+                        ],
                     ),
                     (
                         KeyWithModifier::new(BareKey::Esc),

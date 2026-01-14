@@ -1,12 +1,20 @@
 ---
 source: zellij-server/src/plugins/./unit/plugin_tests.rs
-assertion_line: 3789
 expression: "format!(\"{:#?}\", new_tab_event)"
 ---
 Some(
     ClosePane(
         Plugin(
             1,
+        ),
+        None,
+        Some(
+            NotificationEnd {
+                channel: None,
+                exit_status: None,
+                unblock_condition: None,
+                affected_pane_id: None,
+            },
         ),
         None,
     ),

@@ -24,6 +24,7 @@ use std::time::{Duration, Instant};
 
 use crate::panes::PaneId;
 use crate::plugins::{PluginId, PluginInstruction};
+use crate::pty::PtyInstruction;
 use crate::screen::ScreenInstruction;
 use crate::thread_bus::Bus;
 use crate::ClientId;
@@ -203,6 +204,7 @@ pub(crate) fn background_jobs_main(
                             let current_session_name =
                                 current_session_name.lock().unwrap().to_string();
                             let current_session_info = current_session_info.lock().unwrap().clone();
+                            let available_layouts = current_session_info.available_layouts.clone();
                             let current_session_layout =
                                 current_session_layout.lock().unwrap().clone();
                             if !disable_session_metadata {
@@ -220,6 +222,8 @@ pub(crate) fn background_jobs_main(
                                     let current_session_plugin_list =
                                         current_session_plugin_list.lock().unwrap().clone();
                                     session_info.populate_plugin_list(current_session_plugin_list);
+                                    // these are not serialized, so must be explicitly added
+                                    session_info.available_layouts = available_layouts.clone();
                                 }
                             }
                             let resurrectable_sessions =
@@ -228,6 +232,7 @@ pub(crate) fn background_jobs_main(
                                 session_infos_on_machine,
                                 resurrectable_sessions,
                             ));
+                            let _ = senders.send_to_pty(PtyInstruction::UpdateAndReportCwds);
                             if last_serialization_time
                                 .lock()
                                 .unwrap()

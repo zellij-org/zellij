@@ -1,15 +1,15 @@
 [package]
 name = "zellij"
-version = "0.44.0"
 authors = ["Aram Drevekenin <aram@poor.dev>"]
-edition = "2021"
 description = "A terminal workspace with batteries included"
-license = "MIT"
-repository = "https://github.com/zellij-org/zellij"
 homepage = "https://zellij.dev"
 include = ["src/**/*", "assets/layouts/*", "assets/config/*", "LICENSE.md", "README.md", "!**/*_test.*", "!**/tests/**/*"]
-# NOTE: When updating this, modify `channel` in `rust-toolchain.toml` accordingly
-rust-version = "1.84"
+# See 'workspace.package' for concrete values
+license.workspace = true
+repository.workspace = true
+edition.workspace = true
+version.workspace = true
+rust-version.workspace = true
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -19,7 +19,7 @@ zellij-server = { path = "zellij-server/", version = "0.44.0" }
 zellij-utils = { workspace = true }
 anyhow = { workspace = true }
 clap = { workspace = true }
-dialoguer = { version = "0.10.4", default-features = false }
+dialoguer = { workspace = true }
 humantime = { workspace = true }
 interprocess = { workspace = true }
 log = { workspace = true }
@@ -50,6 +50,8 @@ members = [
     "default-plugins/about",
     "default-plugins/share",
     "default-plugins/multiple-select",
+    "default-plugins/sequence",
+    "default-plugins/layout-manager",
     "zellij-client",
     "zellij-server",
     "zellij-utils",
@@ -59,15 +61,26 @@ members = [
     ".",
 ]
 
+[workspace.package]
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/zellij-org/zellij"
+version = "0.44.0"
+# NOTE: When updating this, modify `channel` in `rust-toolchain.toml` accordingly
+rust-version = "1.92"
+
 [workspace.dependencies]
 ansi_term = { version = "0.12.1", default-features = false }
 anyhow = { version = "1.0.70", default-features = false, features = ["backtrace", "std"] }
 async-std = { version = "1.3.0", default-features = false, features = ["attributes", "default", "std", "unstable"] }
+async-trait = { version = "0.1", default-features = false }
 clap = { version = "3.2.2", default-features = false, features = ["env", "derive", "color", "std", "suggestions"] }
 daemonize = { version = "0.5", default-features = false }
+dialoguer = { version = "0.10.4", default-features = false, features = ["password", "completion"] }
 humantime = { version = "2.1.0", default-features = false }
 interprocess = { version = "1.2.1", default-features = false }
 isahc = { version = "1.7.2", default-features = false, features = ["http2", "text-decoding"] }
+kdl = { version = "4.5.0", default-features = false, features = ["span"] }
 lazy_static = { version = "1.4.0", default-features = false }
 libc = { version = "0.2", default-features = false, features = ["std"] }
 log = { version = "0.4.17", default-features = false }
@@ -80,8 +93,8 @@ regex = { version = "1.5.5", default-features = false, features = ["perf", "std"
 serde = { version = "1.0", default-features = false, features = ["derive", "std"] }
 serde_json = { version = "1.0", default-features = false, features = ["std"] }
 signal-hook = { version = "0.3", default-features = false, features = ["iterator"] }
-strum = { version = "0.20.0", default-features = false }
-strum_macros = { version = "0.20.0", default-features = false }
+strum = { version = "0.27.2", default-features = false, features = ["std"] }
+strum_macros = { version = "0.27.2", default-features = false }
 suggest = { version = "0.4.0", default-features = false }
 tempfile = { version = "3.2.0", default-features = false }
 termwiz = { version = "0.23.2", default-features = false }
@@ -94,7 +107,6 @@ uuid = { version = "1.4.1", default-features = false, features = ["serde", "v4",
 vte = { version = "0.11.0", default-features = false }
 names = { version = "0.14.0", default-features = false }
 include_dir = { version = "0.7.3", default-features = false }
-rmp-serde = { version = "1.1.0", default-features = false }
 sha2 = { version = "0.10", default-features = false }
 zellij-utils = { path = "zellij-utils/", version = "0.44.0" }
 
@@ -107,6 +119,7 @@ opt-level = 3
 [profile.release]
 lto = true
 strip = true
+codegen-units = 1
 
 [package.metadata.deb]
 depends = "$auto"
@@ -135,7 +148,6 @@ plugins_from_target = ["zellij-utils/plugins_from_target"]
 disable_automatic_asset_installation = ["zellij-utils/disable_automatic_asset_installation"]
 vendored_curl = ["zellij-utils/vendored_curl"]
 unstable = ["zellij-client/unstable", "zellij-utils/unstable"]
-singlepass = ["zellij-server/singlepass"]
 web_server_capability = ["zellij-client/web_server_capability", "zellij-server/web_server_capability", "zellij-utils/web_server_capability"]
 
 # uncomment this when developing plugins in the Zellij UI to make plugin compilation faster

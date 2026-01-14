@@ -1,17 +1,30 @@
 pub use super::generated_api::api::{
-    action::{PaneIdAndShouldFloat, SwitchToModePayload},
+    action::{Action as ProtobufAction, PaneIdAndShouldFloat, SwitchToModePayload},
     event::{EventNameList as ProtobufEventNameList, Header},
     input_mode::InputMode as ProtobufInputMode,
     plugin_command::{
-        plugin_command::Payload, BreakPanesToNewTabPayload, BreakPanesToTabWithIndexPayload,
+        delete_layout_response, dump_layout_response, dump_session_layout_response,
+        edit_layout_response, get_focused_pane_info_response, get_pane_pid_response,
+        parse_layout_response, plugin_command::Payload, rename_layout_response,
+        save_layout_response, BreakPanesToNewTabPayload, BreakPanesToTabWithIndexPayload,
         ChangeFloatingPanesCoordinatesPayload, ChangeHostFolderPayload,
         ClearScreenForPaneIdPayload, CliPipeOutputPayload, CloseMultiplePanesPayload,
-        CloseTabWithIndexPayload, CommandName, ContextItem,
-        CreateTokenResponse as ProtobufCreateTokenResponse, CreateTokenResponse,
+        CloseTabWithIndexPayload, CommandName, ContextItem, CopyToClipboardPayload,
+        CreateTokenResponse as ProtobufCreateTokenResponse, CreateTokenResponse, CursorPosition,
+        DeleteLayoutPayload, DeleteLayoutResponse as ProtobufDeleteLayoutResponse,
+        DumpLayoutPayload, DumpLayoutResponse as ProtobufDumpLayoutResponse,
+        DumpSessionLayoutPayload, DumpSessionLayoutResponse as ProtobufDumpSessionLayoutResponse,
+        EditLayoutPayload, EditLayoutResponse as ProtobufEditLayoutResponse,
         EditScrollbackForPaneWithIdPayload, EmbedMultiplePanesPayload, EnvVariable, ExecCmdPayload,
         FixedOrPercent as ProtobufFixedOrPercent,
         FixedOrPercentValue as ProtobufFixedOrPercentValue, FloatMultiplePanesPayload,
-        FloatingPaneCoordinates as ProtobufFloatingPaneCoordinates, GenerateWebLoginTokenPayload,
+        FloatingPaneCoordinates as ProtobufFloatingPaneCoordinates, FocusedPaneInfo,
+        GenerateRandomNamePayload,
+        GenerateRandomNameResponse as ProtobufGenerateRandomNameResponse,
+        GenerateWebLoginTokenPayload, GetFocusedPaneInfoPayload,
+        GetFocusedPaneInfoResponse as ProtobufGetFocusedPaneInfoResponse, GetLayoutDirPayload,
+        GetLayoutDirResponse as ProtobufGetLayoutDirResponse, GetPanePidPayload,
+        GetPanePidResponse as ProtobufGetPanePidResponse, GetPaneScrollbackPayload,
         GroupAndUngroupPanesPayload, HidePaneWithIdPayload, HighlightAndUnhighlightPanesPayload,
         HttpVerb as ProtobufHttpVerb, IdAndNewName, KeyToRebind, KeyToUnbind, KillSessionsPayload,
         ListTokensResponse, LoadNewPluginPayload, MessageToPluginPayload,
@@ -21,28 +34,33 @@ pub use super::generated_api::api::{
         OpenCommandPaneNearPluginPayload, OpenCommandPanePayload,
         OpenFileFloatingNearPluginPayload, OpenFileInPlaceOfPluginPayload,
         OpenFileNearPluginPayload, OpenFilePayload, OpenTerminalFloatingNearPluginPayload,
-        OpenTerminalInPlaceOfPluginPayload, OpenTerminalNearPluginPayload,
+        OpenTerminalInPlaceOfPluginPayload, OpenTerminalNearPluginPayload, OverrideLayoutPayload,
         PageScrollDownInPaneIdPayload, PageScrollUpInPaneIdPayload, PaneId as ProtobufPaneId,
-        PaneIdAndFloatingPaneCoordinates, PaneType as ProtobufPaneType,
-        PluginCommand as ProtobufPluginCommand, PluginMessagePayload, RebindKeysPayload,
-        ReconfigurePayload, ReloadPluginPayload, RenameWebLoginTokenPayload,
-        RenameWebTokenResponse, ReplacePaneWithExistingPanePayload, RequestPluginPermissionPayload,
-        RerunCommandPanePayload, ResizePaneIdWithDirectionPayload, ResizePayload,
-        RevokeAllWebTokensResponse, RevokeTokenResponse, RevokeWebLoginTokenPayload,
-        RunCommandPayload, ScrollDownInPaneIdPayload, ScrollToBottomInPaneIdPayload,
-        ScrollToTopInPaneIdPayload, ScrollUpInPaneIdPayload, SetFloatingPanePinnedPayload,
-        SetSelfMouseSelectionSupportPayload, SetTimeoutPayload, ShowPaneWithIdPayload,
-        StackPanesPayload, SubscribePayload, SwitchSessionPayload, SwitchTabToPayload,
-        TogglePaneEmbedOrEjectForPaneIdPayload, TogglePaneIdFullscreenPayload, UnsubscribePayload,
-        WebRequestPayload, WriteCharsToPaneIdPayload, WriteToPaneIdPayload,
+        PaneIdAndFloatingPaneCoordinates, PaneType as ProtobufPaneType, ParseLayoutPayload,
+        ParseLayoutResponse as ProtobufParseLayoutResponse, PluginCommand as ProtobufPluginCommand,
+        PluginMessagePayload, RebindKeysPayload, ReconfigurePayload, ReloadPluginPayload,
+        RenameLayoutPayload, RenameLayoutResponse as ProtobufRenameLayoutResponse,
+        RenameWebLoginTokenPayload, RenameWebTokenResponse, ReplacePaneWithExistingPanePayload,
+        RequestPluginPermissionPayload, RerunCommandPanePayload, ResizePaneIdWithDirectionPayload,
+        ResizePayload, RevokeAllWebTokensResponse, RevokeTokenResponse, RevokeWebLoginTokenPayload,
+        RunActionPayload, RunCommandPayload, SaveLayoutPayload,
+        SaveLayoutResponse as ProtobufSaveLayoutResponse, ScrollDownInPaneIdPayload,
+        ScrollToBottomInPaneIdPayload, ScrollToTopInPaneIdPayload, ScrollUpInPaneIdPayload,
+        SetFloatingPanePinnedPayload, SetSelfMouseSelectionSupportPayload, SetTimeoutPayload,
+        ShowCursorPayload, ShowPaneWithIdPayload, StackPanesPayload, SubscribePayload,
+        SwitchSessionPayload, SwitchTabToPayload, TogglePaneEmbedOrEjectForPaneIdPayload,
+        TogglePaneIdFullscreenPayload, UnsubscribePayload, WebRequestPayload,
+        WriteCharsToPaneIdPayload, WriteToPaneIdPayload,
     },
     plugin_permission::PermissionType as ProtobufPermissionType,
     resize::ResizeAction as ProtobufResizeAction,
 };
 
 use crate::data::{
-    ConnectToSession, FloatingPaneCoordinates, HttpVerb, InputMode, KeyWithModifier,
-    MessageToPlugin, NewPluginArgs, PaneId, PermissionType, PluginCommand,
+    ConnectToSession, DeleteLayoutResponse, EditLayoutResponse, FloatingPaneCoordinates,
+    GetFocusedPaneInfoResponse, GetPanePidResponse, HttpVerb, InputMode, KeyWithModifier,
+    MessageToPlugin, NewPluginArgs, PaneId, PermissionType, PluginCommand, RenameLayoutResponse,
+    SaveLayoutResponse,
 };
 use crate::input::actions::Action;
 use crate::input::layout::SplitSize;
@@ -200,6 +218,159 @@ impl TryFrom<PaneId> for ProtobufPaneId {
     }
 }
 
+impl TryFrom<ProtobufGetPanePidResponse> for GetPanePidResponse {
+    type Error = &'static str;
+    fn try_from(protobuf_response: ProtobufGetPanePidResponse) -> Result<Self, &'static str> {
+        match protobuf_response.result {
+            Some(get_pane_pid_response::Result::Pid(pid)) => Ok(GetPanePidResponse::Ok(pid)),
+            Some(get_pane_pid_response::Result::Error(error)) => Ok(GetPanePidResponse::Err(error)),
+            None => Err("Empty GetPanePidResponse"),
+        }
+    }
+}
+
+impl From<GetPanePidResponse> for ProtobufGetPanePidResponse {
+    fn from(response: GetPanePidResponse) -> Self {
+        match response {
+            GetPanePidResponse::Ok(pid) => ProtobufGetPanePidResponse {
+                result: Some(get_pane_pid_response::Result::Pid(pid)),
+            },
+            GetPanePidResponse::Err(error) => ProtobufGetPanePidResponse {
+                result: Some(get_pane_pid_response::Result::Error(error)),
+            },
+        }
+    }
+}
+
+impl From<GetFocusedPaneInfoResponse> for ProtobufGetFocusedPaneInfoResponse {
+    fn from(response: GetFocusedPaneInfoResponse) -> Self {
+        match response {
+            GetFocusedPaneInfoResponse::Ok { tab_index, pane_id } => {
+                let protobuf_pane_id = ProtobufPaneId {
+                    pane_type: match pane_id {
+                        PaneId::Terminal(_) => ProtobufPaneType::Terminal as i32,
+                        PaneId::Plugin(_) => ProtobufPaneType::Plugin as i32,
+                    },
+                    id: match pane_id {
+                        PaneId::Terminal(id) | PaneId::Plugin(id) => id,
+                    },
+                };
+                ProtobufGetFocusedPaneInfoResponse {
+                    result: Some(get_focused_pane_info_response::Result::FocusedPaneInfo(
+                        FocusedPaneInfo {
+                            focused_tab_index: tab_index as u32,
+                            focused_pane_id: Some(protobuf_pane_id),
+                        },
+                    )),
+                }
+            },
+            GetFocusedPaneInfoResponse::Err(err) => ProtobufGetFocusedPaneInfoResponse {
+                result: Some(get_focused_pane_info_response::Result::Error(err)),
+            },
+        }
+    }
+}
+
+impl TryFrom<ProtobufSaveLayoutResponse> for SaveLayoutResponse {
+    type Error = &'static str;
+    fn try_from(protobuf_response: ProtobufSaveLayoutResponse) -> Result<Self, &'static str> {
+        match protobuf_response.result {
+            Some(save_layout_response::Result::Success(_)) => Ok(SaveLayoutResponse::Ok(())),
+            Some(save_layout_response::Result::Error(error)) => Ok(SaveLayoutResponse::Err(error)),
+            None => Err("Empty SaveLayoutResponse"),
+        }
+    }
+}
+
+impl From<SaveLayoutResponse> for ProtobufSaveLayoutResponse {
+    fn from(response: SaveLayoutResponse) -> Self {
+        match response {
+            SaveLayoutResponse::Ok(_) => ProtobufSaveLayoutResponse {
+                result: Some(save_layout_response::Result::Success(true)),
+            },
+            SaveLayoutResponse::Err(error) => ProtobufSaveLayoutResponse {
+                result: Some(save_layout_response::Result::Error(error)),
+            },
+        }
+    }
+}
+
+impl TryFrom<ProtobufDeleteLayoutResponse> for DeleteLayoutResponse {
+    type Error = &'static str;
+    fn try_from(protobuf_response: ProtobufDeleteLayoutResponse) -> Result<Self, &'static str> {
+        match protobuf_response.result {
+            Some(delete_layout_response::Result::Success(_)) => Ok(DeleteLayoutResponse::Ok(())),
+            Some(delete_layout_response::Result::Error(error)) => {
+                Ok(DeleteLayoutResponse::Err(error))
+            },
+            None => Err("Empty DeleteLayoutResponse"),
+        }
+    }
+}
+
+impl From<DeleteLayoutResponse> for ProtobufDeleteLayoutResponse {
+    fn from(response: DeleteLayoutResponse) -> Self {
+        match response {
+            DeleteLayoutResponse::Ok(_) => ProtobufDeleteLayoutResponse {
+                result: Some(delete_layout_response::Result::Success(true)),
+            },
+            DeleteLayoutResponse::Err(error) => ProtobufDeleteLayoutResponse {
+                result: Some(delete_layout_response::Result::Error(error)),
+            },
+        }
+    }
+}
+
+impl TryFrom<ProtobufRenameLayoutResponse> for RenameLayoutResponse {
+    type Error = &'static str;
+    fn try_from(protobuf_response: ProtobufRenameLayoutResponse) -> Result<Self, &'static str> {
+        match protobuf_response.result {
+            Some(rename_layout_response::Result::Success(_)) => Ok(RenameLayoutResponse::Ok(())),
+            Some(rename_layout_response::Result::Error(error)) => {
+                Ok(RenameLayoutResponse::Err(error))
+            },
+            None => Err("Empty RenameLayoutResponse"),
+        }
+    }
+}
+
+impl From<RenameLayoutResponse> for ProtobufRenameLayoutResponse {
+    fn from(response: RenameLayoutResponse) -> Self {
+        match response {
+            RenameLayoutResponse::Ok(_) => ProtobufRenameLayoutResponse {
+                result: Some(rename_layout_response::Result::Success(true)),
+            },
+            RenameLayoutResponse::Err(error) => ProtobufRenameLayoutResponse {
+                result: Some(rename_layout_response::Result::Error(error)),
+            },
+        }
+    }
+}
+
+impl TryFrom<ProtobufEditLayoutResponse> for EditLayoutResponse {
+    type Error = &'static str;
+    fn try_from(protobuf_response: ProtobufEditLayoutResponse) -> Result<Self, &'static str> {
+        match protobuf_response.result {
+            Some(edit_layout_response::Result::Success(_)) => Ok(EditLayoutResponse::Ok(())),
+            Some(edit_layout_response::Result::Error(error)) => Ok(EditLayoutResponse::Err(error)),
+            None => Err("Empty EditLayoutResponse"),
+        }
+    }
+}
+
+impl From<EditLayoutResponse> for ProtobufEditLayoutResponse {
+    fn from(response: EditLayoutResponse) -> Self {
+        match response {
+            EditLayoutResponse::Ok(_) => ProtobufEditLayoutResponse {
+                result: Some(edit_layout_response::Result::Success(true)),
+            },
+            EditLayoutResponse::Err(error) => ProtobufEditLayoutResponse {
+                result: Some(edit_layout_response::Result::Error(error)),
+            },
+        }
+    }
+}
+
 impl TryFrom<(InputMode, KeyWithModifier, Vec<Action>)> for KeyToRebind {
     type Error = &'static str;
     fn try_from(
@@ -287,6 +458,14 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                     Ok(PluginCommand::SetSelectable(should_be_selectable))
                 },
                 _ => Err("Mismatched payload for SetSelectable"),
+            },
+            Some(CommandName::ShowCursor) => match protobuf_plugin_command.payload {
+                Some(Payload::ShowCursorPayload(payload)) => {
+                    let cursor_position =
+                        payload.position.map(|pos| (pos.x as usize, pos.y as usize));
+                    Ok(PluginCommand::ShowCursor(cursor_position))
+                },
+                _ => Err("Mismatched payload for ShowCursor"),
             },
             Some(CommandName::GetPluginIds) => {
                 if protobuf_plugin_command.payload.is_some() {
@@ -734,7 +913,12 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 Some(Payload::FocusTerminalPanePayload(payload)) => {
                     let pane_id = payload.pane_id as u32;
                     let should_float = payload.should_float;
-                    Ok(PluginCommand::FocusTerminalPane(pane_id, should_float))
+                    let should_be_in_place = payload.should_be_in_place;
+                    Ok(PluginCommand::FocusTerminalPane(
+                        pane_id,
+                        should_float,
+                        should_be_in_place,
+                    ))
                 },
                 _ => Err("Mismatched payload for ClosePluginPane"),
             },
@@ -742,7 +926,12 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 Some(Payload::FocusPluginPanePayload(payload)) => {
                     let pane_id = payload.pane_id as u32;
                     let should_float = payload.should_float;
-                    Ok(PluginCommand::FocusPluginPane(pane_id, should_float))
+                    let should_be_in_place = payload.should_be_in_place;
+                    Ok(PluginCommand::FocusPluginPane(
+                        pane_id,
+                        should_float,
+                        should_be_in_place,
+                    ))
                 },
                 _ => Err("Mismatched payload for ClosePluginPane"),
             },
@@ -1002,8 +1191,13 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 None => Ok(PluginCommand::WatchFilesystem),
             },
             Some(CommandName::DumpSessionLayout) => match protobuf_plugin_command.payload {
-                Some(_) => Err("DumpSessionLayout should have no payload, found a payload"),
-                None => Ok(PluginCommand::DumpSessionLayout),
+                Some(Payload::DumpSessionLayoutPayload(payload)) => {
+                    Ok(PluginCommand::DumpSessionLayout {
+                        tab_index: payload.tab_index.map(|i| i as usize),
+                    })
+                },
+                None => Ok(PluginCommand::DumpSessionLayout { tab_index: None }),
+                _ => Err("Mismatched payload for DumpSessionLayout"),
             },
             Some(CommandName::CloseSelf) => match protobuf_plugin_command.payload {
                 Some(_) => Err("CloseSelf should have no payload, found a payload"),
@@ -1048,9 +1242,11 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                         .and_then(|p_id| PaneId::try_from(p_id).ok())
                         .ok_or("Failed to parse ShowPaneWithId command")?;
                     let should_float_if_hidden = show_pane_with_id_payload.should_float_if_hidden;
+                    let should_focus_pane = show_pane_with_id_payload.should_focus_pane;
                     Ok(PluginCommand::ShowPaneWithId(
                         pane_id,
                         should_float_if_hidden,
+                        should_focus_pane,
                     ))
                 },
                 _ => Err("Mismatched payload for ShowPaneWithId"),
@@ -1109,6 +1305,18 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 },
                 _ => Err("Mismatched payload for EditScrollback"),
             },
+            Some(CommandName::GetPaneScrollback) => match protobuf_plugin_command.payload {
+                Some(Payload::GetPaneScrollbackPayload(get_pane_scrollback_payload)) => {
+                    match get_pane_scrollback_payload.pane_id {
+                        Some(pane_id) => Ok(PluginCommand::GetPaneScrollback {
+                            pane_id: pane_id.try_into()?,
+                            get_full_scrollback: get_pane_scrollback_payload.get_full_scrollback,
+                        }),
+                        _ => Err("Malformed get_pane_scrollback_payload"),
+                    }
+                },
+                _ => Err("Mismatched payload for GetPaneScrollback"),
+            },
             Some(CommandName::WriteToPaneId) => match protobuf_plugin_command.payload {
                 Some(Payload::WriteToPaneIdPayload(write_to_pane_id_payload)) => {
                     match write_to_pane_id_payload.pane_id {
@@ -1132,6 +1340,93 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                     }
                 },
                 _ => Err("Mismatched payload for WriteCharsCharsToPaneId"),
+            },
+            Some(CommandName::SendSigintToPaneId) => match protobuf_plugin_command.payload {
+                Some(Payload::SendSigintToPaneIdPayload(pane_id)) => {
+                    Ok(PluginCommand::SendSigintToPaneId(pane_id.try_into()?))
+                },
+                _ => Err("Mismatched payload for SendSigintToPaneId"),
+            },
+            Some(CommandName::SendSigkillToPaneId) => match protobuf_plugin_command.payload {
+                Some(Payload::SendSigkillToPaneIdPayload(pane_id)) => {
+                    Ok(PluginCommand::SendSigkillToPaneId(pane_id.try_into()?))
+                },
+                _ => Err("Mismatched payload for SendSigkillToPaneId"),
+            },
+            Some(CommandName::GetPanePid) => match protobuf_plugin_command.payload {
+                Some(Payload::GetPanePidPayload(get_pane_pid_payload)) => {
+                    match get_pane_pid_payload.pane_id {
+                        Some(pane_id) => Ok(PluginCommand::GetPanePid {
+                            pane_id: pane_id.try_into()?,
+                        }),
+                        _ => Err("Malformed get_pane_pid payload"),
+                    }
+                },
+                _ => Err("Mismatched payload for GetPanePid"),
+            },
+            Some(CommandName::OverrideLayout) => match protobuf_plugin_command.payload {
+                Some(Payload::OverrideLayoutPayload(override_layout_payload)) => {
+                    let layout_info = override_layout_payload
+                        .layout_info
+                        .ok_or("OverrideLayout missing layout_info")?
+                        .try_into()
+                        .map_err(|_| "Failed to parse LayoutInfo")?;
+                    let context = override_layout_payload
+                        .context
+                        .into_iter()
+                        .map(|c| (c.name, c.value))
+                        .collect();
+                    Ok(PluginCommand::OverrideLayout(
+                        layout_info,
+                        override_layout_payload.retain_existing_terminal_panes,
+                        override_layout_payload.retain_existing_plugin_panes,
+                        override_layout_payload.apply_only_to_active_tab,
+                        context,
+                    ))
+                },
+                _ => Err("Mismatched payload for OverrideLayout"),
+            },
+            Some(CommandName::SaveLayout) => match protobuf_plugin_command.payload {
+                Some(Payload::SaveLayoutPayload(save_layout_payload)) => {
+                    Ok(PluginCommand::SaveLayout {
+                        layout_name: save_layout_payload.layout_name,
+                        layout_kdl: save_layout_payload.layout_kdl,
+                        overwrite: save_layout_payload.overwrite,
+                    })
+                },
+                _ => Err("Mismatched payload for SaveLayout"),
+            },
+            Some(CommandName::DeleteLayout) => match protobuf_plugin_command.payload {
+                Some(Payload::DeleteLayoutPayload(delete_layout_payload)) => {
+                    Ok(PluginCommand::DeleteLayout {
+                        layout_name: delete_layout_payload.layout_name,
+                    })
+                },
+                _ => Err("Mismatched payload for DeleteLayout"),
+            },
+            Some(CommandName::RenameLayout) => match protobuf_plugin_command.payload {
+                Some(Payload::RenameLayoutPayload(rename_layout_payload)) => {
+                    Ok(PluginCommand::RenameLayout {
+                        old_layout_name: rename_layout_payload.old_layout_name,
+                        new_layout_name: rename_layout_payload.new_layout_name,
+                    })
+                },
+                _ => Err("Mismatched payload for RenameLayout"),
+            },
+            Some(CommandName::EditLayout) => match protobuf_plugin_command.payload {
+                Some(Payload::EditLayoutPayload(edit_layout_payload)) => {
+                    let layout_name = edit_layout_payload.layout_name;
+                    let context: BTreeMap<String, String> = edit_layout_payload
+                        .context
+                        .into_iter()
+                        .map(|e| (e.name, e.value))
+                        .collect();
+                    Ok(PluginCommand::EditLayout {
+                        layout_name,
+                        context,
+                    })
+                },
+                _ => Err("Mismatched payload for EditLayout"),
             },
             Some(CommandName::MovePaneWithPaneId) => match protobuf_plugin_command.payload {
                 Some(Payload::MovePaneWithPaneIdPayload(move_pane_with_pane_id_payload)) => {
@@ -1679,6 +1974,7 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 Some(Payload::GenerateWebLoginTokenPayload(generate_web_login_token_payload)) => {
                     Ok(PluginCommand::GenerateWebLoginToken(
                         generate_web_login_token_payload.token_label,
+                        generate_web_login_token_payload.read_only.unwrap_or(false),
                     ))
                 },
                 _ => Err("GenerateWebLoginToken requires a payload"),
@@ -1733,9 +2029,50 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                         .existing_pane_id
                         .and_then(|p_id| PaneId::try_from(p_id).ok())
                         .ok_or("Failed to parse ReplacePaneWithExistingPanePayload")?,
+                    replace_pane_with_other_pane_payload.suppress_replaced_pane,
                 )),
                 _ => Err("Mismatched payload for ReplacePaneWithExistingPane"),
             },
+            Some(CommandName::RunAction) => match protobuf_plugin_command.payload {
+                Some(Payload::RunActionPayload(protobuf_payload)) => {
+                    let action = Action::try_from(
+                        protobuf_payload
+                            .action
+                            .ok_or("Missing action in RunAction payload")?,
+                    )
+                    .map_err(|_| "Failed to convert protobuf action")?;
+
+                    let context: BTreeMap<String, String> = protobuf_payload
+                        .context
+                        .into_iter()
+                        .map(|item| (item.name, item.value))
+                        .collect();
+
+                    Ok(PluginCommand::RunAction(action, context))
+                },
+                _ => Err("Mismatched payload for RunAction"),
+            },
+            Some(CommandName::CopyToClipboard) => match protobuf_plugin_command.payload {
+                Some(Payload::CopyToClipboardPayload(payload)) => {
+                    Ok(PluginCommand::CopyToClipboard(payload.text))
+                },
+                _ => Err("Mismatched payload for CopyToClipboard"),
+            },
+            Some(CommandName::GenerateRandomName) => Ok(PluginCommand::GenerateRandomName),
+            Some(CommandName::DumpLayout) => match protobuf_plugin_command.payload {
+                Some(Payload::DumpLayoutPayload(payload)) => {
+                    Ok(PluginCommand::DumpLayout(payload.layout_name))
+                },
+                _ => Err("Mismatched payload for DumpLayout"),
+            },
+            Some(CommandName::ParseLayout) => match protobuf_plugin_command.payload {
+                Some(Payload::ParseLayoutPayload(payload)) => {
+                    Ok(PluginCommand::ParseLayout(payload.layout_string))
+                },
+                _ => Err("Mismatched payload for ParseLayout"),
+            },
+            Some(CommandName::GetLayoutDir) => Ok(PluginCommand::GetLayoutDir),
+            Some(CommandName::GetFocusedPaneInfo) => Ok(PluginCommand::GetFocusedPaneInfo),
             None => Err("Unrecognized plugin command"),
         }
     }
@@ -1767,6 +2104,16 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                 name: CommandName::SetSelectable as i32,
                 payload: Some(Payload::SetSelectablePayload(should_be_selectable)),
             }),
+            PluginCommand::ShowCursor(cursor_position) => {
+                let position = cursor_position.map(|(x, y)| CursorPosition {
+                    x: x as u32,
+                    y: y as u32,
+                });
+                Ok(ProtobufPluginCommand {
+                    name: CommandName::ShowCursor as i32,
+                    payload: Some(Payload::ShowCursorPayload(ShowCursorPayload { position })),
+                })
+            },
             PluginCommand::GetPluginIds => Ok(ProtobufPluginCommand {
                 name: CommandName::GetPluginIds as i32,
                 payload: None,
@@ -2065,24 +2412,30 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                 name: CommandName::ClosePluginPane as i32,
                 payload: Some(Payload::ClosePluginPanePayload(pane_id)),
             }),
-            PluginCommand::FocusTerminalPane(pane_id, should_float_if_hidden) => {
-                Ok(ProtobufPluginCommand {
-                    name: CommandName::FocusTerminalPane as i32,
-                    payload: Some(Payload::FocusTerminalPanePayload(PaneIdAndShouldFloat {
-                        pane_id: pane_id,
-                        should_float: should_float_if_hidden,
-                    })),
-                })
-            },
-            PluginCommand::FocusPluginPane(pane_id, should_float_if_hidden) => {
-                Ok(ProtobufPluginCommand {
-                    name: CommandName::FocusPluginPane as i32,
-                    payload: Some(Payload::FocusPluginPanePayload(PaneIdAndShouldFloat {
-                        pane_id: pane_id,
-                        should_float: should_float_if_hidden,
-                    })),
-                })
-            },
+            PluginCommand::FocusTerminalPane(
+                pane_id,
+                should_float_if_hidden,
+                should_be_in_place_if_hidden,
+            ) => Ok(ProtobufPluginCommand {
+                name: CommandName::FocusTerminalPane as i32,
+                payload: Some(Payload::FocusTerminalPanePayload(PaneIdAndShouldFloat {
+                    pane_id: pane_id,
+                    should_float: should_float_if_hidden,
+                    should_be_in_place: should_be_in_place_if_hidden,
+                })),
+            }),
+            PluginCommand::FocusPluginPane(
+                pane_id,
+                should_float_if_hidden,
+                should_be_in_place_if_hidden,
+            ) => Ok(ProtobufPluginCommand {
+                name: CommandName::FocusPluginPane as i32,
+                payload: Some(Payload::FocusPluginPanePayload(PaneIdAndShouldFloat {
+                    pane_id: pane_id,
+                    should_float: should_float_if_hidden,
+                    should_be_in_place: should_be_in_place_if_hidden,
+                })),
+            }),
             PluginCommand::RenameTerminalPane(pane_id, new_name) => Ok(ProtobufPluginCommand {
                 name: CommandName::RenameTerminalPane as i32,
                 payload: Some(Payload::RenameTerminalPanePayload(IdAndNewName {
@@ -2292,9 +2645,13 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                 name: CommandName::WatchFilesystem as i32,
                 payload: None,
             }),
-            PluginCommand::DumpSessionLayout => Ok(ProtobufPluginCommand {
+            PluginCommand::DumpSessionLayout { tab_index } => Ok(ProtobufPluginCommand {
                 name: CommandName::DumpSessionLayout as i32,
-                payload: None,
+                payload: tab_index.map(|idx| {
+                    Payload::DumpSessionLayoutPayload(DumpSessionLayoutPayload {
+                        tab_index: Some(idx as u32),
+                    })
+                }),
             }),
             PluginCommand::CloseSelf => Ok(ProtobufPluginCommand {
                 name: CommandName::CloseSelf as i32,
@@ -2323,15 +2680,18 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     pane_id: ProtobufPaneId::try_from(pane_id_to_hide).ok(),
                 })),
             }),
-            PluginCommand::ShowPaneWithId(pane_id_to_show, should_float_if_hidden) => {
-                Ok(ProtobufPluginCommand {
-                    name: CommandName::ShowPaneWithId as i32,
-                    payload: Some(Payload::ShowPaneWithIdPayload(ShowPaneWithIdPayload {
-                        pane_id: ProtobufPaneId::try_from(pane_id_to_show).ok(),
-                        should_float_if_hidden,
-                    })),
-                })
-            },
+            PluginCommand::ShowPaneWithId(
+                pane_id_to_show,
+                should_float_if_hidden,
+                should_focus_pane,
+            ) => Ok(ProtobufPluginCommand {
+                name: CommandName::ShowPaneWithId as i32,
+                payload: Some(Payload::ShowPaneWithIdPayload(ShowPaneWithIdPayload {
+                    pane_id: ProtobufPaneId::try_from(pane_id_to_show).ok(),
+                    should_float_if_hidden,
+                    should_focus_pane,
+                })),
+            }),
             PluginCommand::OpenCommandPaneBackground(command_to_run, context) => {
                 let context: Vec<_> = context
                     .into_iter()
@@ -2373,6 +2733,18 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     },
                 )),
             }),
+            PluginCommand::GetPaneScrollback {
+                pane_id,
+                get_full_scrollback,
+            } => Ok(ProtobufPluginCommand {
+                name: CommandName::GetPaneScrollback as i32,
+                payload: Some(Payload::GetPaneScrollbackPayload(
+                    GetPaneScrollbackPayload {
+                        pane_id: Some(pane_id.try_into()?),
+                        get_full_scrollback,
+                    },
+                )),
+            }),
             PluginCommand::WriteToPaneId(bytes_to_write, pane_id) => Ok(ProtobufPluginCommand {
                 name: CommandName::WriteToPaneId as i32,
                 payload: Some(Payload::WriteToPaneIdPayload(WriteToPaneIdPayload {
@@ -2389,6 +2761,83 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                             pane_id: Some(pane_id.try_into()?),
                         },
                     )),
+                })
+            },
+            PluginCommand::SendSigintToPaneId(pane_id) => Ok(ProtobufPluginCommand {
+                name: CommandName::SendSigintToPaneId as i32,
+                payload: Some(Payload::SendSigintToPaneIdPayload(pane_id.try_into()?)),
+            }),
+            PluginCommand::SendSigkillToPaneId(pane_id) => Ok(ProtobufPluginCommand {
+                name: CommandName::SendSigkillToPaneId as i32,
+                payload: Some(Payload::SendSigkillToPaneIdPayload(pane_id.try_into()?)),
+            }),
+            PluginCommand::GetPanePid { pane_id } => Ok(ProtobufPluginCommand {
+                name: CommandName::GetPanePid as i32,
+                payload: Some(Payload::GetPanePidPayload(GetPanePidPayload {
+                    pane_id: Some(pane_id.try_into()?),
+                })),
+            }),
+            PluginCommand::OverrideLayout(
+                layout_info,
+                retain_existing_terminal_panes,
+                retain_existing_plugin_panes,
+                apply_only_to_active_tab,
+                context,
+            ) => Ok(ProtobufPluginCommand {
+                name: CommandName::OverrideLayout as i32,
+                payload: Some(Payload::OverrideLayoutPayload(OverrideLayoutPayload {
+                    layout_info: layout_info.try_into().ok(),
+                    context: context
+                        .into_iter()
+                        .map(|(name, value)| ContextItem { name, value })
+                        .collect(),
+                    retain_existing_terminal_panes,
+                    retain_existing_plugin_panes,
+                    apply_only_to_active_tab,
+                })),
+            }),
+            PluginCommand::SaveLayout {
+                layout_name,
+                layout_kdl,
+                overwrite,
+            } => Ok(ProtobufPluginCommand {
+                name: CommandName::SaveLayout as i32,
+                payload: Some(Payload::SaveLayoutPayload(SaveLayoutPayload {
+                    layout_name,
+                    layout_kdl,
+                    overwrite,
+                })),
+            }),
+            PluginCommand::DeleteLayout { layout_name } => Ok(ProtobufPluginCommand {
+                name: CommandName::DeleteLayout as i32,
+                payload: Some(Payload::DeleteLayoutPayload(DeleteLayoutPayload {
+                    layout_name,
+                })),
+            }),
+            PluginCommand::RenameLayout {
+                old_layout_name,
+                new_layout_name,
+            } => Ok(ProtobufPluginCommand {
+                name: CommandName::RenameLayout as i32,
+                payload: Some(Payload::RenameLayoutPayload(RenameLayoutPayload {
+                    old_layout_name,
+                    new_layout_name,
+                })),
+            }),
+            PluginCommand::EditLayout {
+                layout_name,
+                context,
+            } => {
+                let context: Vec<_> = context
+                    .into_iter()
+                    .map(|(name, value)| ContextItem { name, value })
+                    .collect();
+                Ok(ProtobufPluginCommand {
+                    name: CommandName::EditLayout as i32,
+                    payload: Some(Payload::EditLayoutPayload(EditLayoutPayload {
+                        layout_name,
+                        context,
+                    })),
                 })
             },
             PluginCommand::MovePaneWithPaneId(pane_id) => Ok(ProtobufPluginCommand {
@@ -2843,12 +3292,17 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     )),
                 })
             },
-            PluginCommand::GenerateWebLoginToken(token_label) => Ok(ProtobufPluginCommand {
-                name: CommandName::GenerateWebLoginToken as i32,
-                payload: Some(Payload::GenerateWebLoginTokenPayload(
-                    GenerateWebLoginTokenPayload { token_label },
-                )),
-            }),
+            PluginCommand::GenerateWebLoginToken(token_label, read_only) => {
+                Ok(ProtobufPluginCommand {
+                    name: CommandName::GenerateWebLoginToken as i32,
+                    payload: Some(Payload::GenerateWebLoginTokenPayload(
+                        GenerateWebLoginTokenPayload {
+                            token_label,
+                            read_only: Some(read_only),
+                        },
+                    )),
+                })
+            },
             PluginCommand::RevokeWebLoginToken(token_label) => Ok(ProtobufPluginCommand {
                 name: CommandName::RevokeWebLoginToken as i32,
                 payload: Some(Payload::RevokeWebLoginTokenPayload(
@@ -2877,17 +3331,71 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                 name: CommandName::ClearKeyPressesIntercepts as i32,
                 payload: None,
             }),
-            PluginCommand::ReplacePaneWithExistingPane(pane_id_to_replace, existing_pane_id) => {
+            PluginCommand::ReplacePaneWithExistingPane(
+                pane_id_to_replace,
+                existing_pane_id,
+                suppress_replaced_pane,
+            ) => Ok(ProtobufPluginCommand {
+                name: CommandName::ReplacePaneWithExistingPane as i32,
+                payload: Some(Payload::ReplacePaneWithExistingPanePayload(
+                    ReplacePaneWithExistingPanePayload {
+                        pane_id_to_replace: ProtobufPaneId::try_from(pane_id_to_replace).ok(),
+                        existing_pane_id: ProtobufPaneId::try_from(existing_pane_id).ok(),
+                        suppress_replaced_pane,
+                    },
+                )),
+            }),
+            PluginCommand::RunAction(action, context) => {
+                let protobuf_action = ProtobufAction::try_from(action)
+                    .map_err(|_| "Failed to convert action to protobuf")?;
+
+                let context_items: Vec<ContextItem> = context
+                    .into_iter()
+                    .map(|(name, value)| ContextItem { name, value })
+                    .collect();
+
                 Ok(ProtobufPluginCommand {
-                    name: CommandName::ReplacePaneWithExistingPane as i32,
-                    payload: Some(Payload::ReplacePaneWithExistingPanePayload(
-                        ReplacePaneWithExistingPanePayload {
-                            pane_id_to_replace: ProtobufPaneId::try_from(pane_id_to_replace).ok(),
-                            existing_pane_id: ProtobufPaneId::try_from(existing_pane_id).ok(),
-                        },
-                    )),
+                    name: CommandName::RunAction as i32,
+                    payload: Some(Payload::RunActionPayload(RunActionPayload {
+                        action: Some(protobuf_action),
+                        context: context_items,
+                    })),
                 })
             },
+            PluginCommand::CopyToClipboard(text) => Ok(ProtobufPluginCommand {
+                name: CommandName::CopyToClipboard as i32,
+                payload: Some(Payload::CopyToClipboardPayload(CopyToClipboardPayload {
+                    text,
+                })),
+            }),
+            PluginCommand::GenerateRandomName => Ok(ProtobufPluginCommand {
+                name: CommandName::GenerateRandomName as i32,
+                payload: Some(Payload::GenerateRandomNamePayload(
+                    GenerateRandomNamePayload {},
+                )),
+            }),
+            PluginCommand::DumpLayout(layout_name) => Ok(ProtobufPluginCommand {
+                name: CommandName::DumpLayout as i32,
+                payload: Some(Payload::DumpLayoutPayload(DumpLayoutPayload {
+                    layout_name,
+                })),
+            }),
+            PluginCommand::ParseLayout(layout_string) => Ok(ProtobufPluginCommand {
+                name: CommandName::ParseLayout as i32,
+                payload: Some(Payload::ParseLayoutPayload(ParseLayoutPayload {
+                    layout_string,
+                })),
+            }),
+            PluginCommand::GetLayoutDir => Ok(ProtobufPluginCommand {
+                name: CommandName::GetLayoutDir as i32,
+                payload: Some(Payload::GetLayoutDirPayload(GetLayoutDirPayload {})),
+            }),
+            PluginCommand::GetFocusedPaneInfo => Ok(ProtobufPluginCommand {
+                name: CommandName::GetFocusedPaneInfo as i32,
+                payload: Some(Payload::GetFocusedPaneInfoPayload(
+                    GetFocusedPaneInfoPayload {},
+                )),
+            }),
         }
     }
 }

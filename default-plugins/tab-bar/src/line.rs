@@ -253,11 +253,6 @@ pub fn tab_line(
     let non_tab_len =
         get_current_title_len(&prefix) + swap_layout_indicator.as_ref().map(|s| s.len).unwrap_or(0);
 
-    // if active tab alone won't fit in cols, don't draw any tabs
-    if non_tab_len + active_tab.len > cols {
-        return prefix;
-    }
-
     let mut tabs_to_render = vec![active_tab];
 
     populate_tabs_in_tab_line(

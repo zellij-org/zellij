@@ -6,6 +6,7 @@ use clap::Parser;
 use zellij_utils::{
     cli::{CliAction, CliArgs, Command, Sessions},
     consts::{create_config_and_cache_folders, VERSION},
+    data::UnblockCondition,
     envs,
     input::config::Config,
     logging::*,
@@ -39,10 +40,27 @@ fn main() {
             height,
             pinned,
             stacked,
+            blocking,
+            block_until_exit_success,
+            block_until_exit_failure,
+            block_until_exit,
+            near_current_pane,
         })) = opts.command
         {
             let cwd = cwd.or_else(|| std::env::current_dir().ok());
             let skip_plugin_cache = false; // N/A for this action
+
+            // Compute the unblock condition
+            let unblock_condition = if block_until_exit_success {
+                Some(UnblockCondition::OnExitSuccess)
+            } else if block_until_exit_failure {
+                Some(UnblockCondition::OnExitFailure)
+            } else if block_until_exit {
+                Some(UnblockCondition::OnAnyExit)
+            } else {
+                None
+            };
+
             let command_cli_action = CliAction::NewPane {
                 command,
                 plugin: None,
@@ -61,6 +79,9 @@ fn main() {
                 height,
                 pinned,
                 stacked,
+                blocking,
+                unblock_condition,
+                near_current_pane,
             };
             commands::send_action_to_session(command_cli_action, opts.session, config);
             std::process::exit(0);
@@ -80,6 +101,8 @@ fn main() {
         {
             let cwd = None;
             let stacked = false;
+            let blocking = false;
+            let unblock_condition = None;
             let command_cli_action = CliAction::NewPane {
                 command: vec![],
                 plugin: Some(url),
@@ -98,6 +121,9 @@ fn main() {
                 height,
                 pinned,
                 stacked,
+                blocking,
+                unblock_condition,
+                near_current_pane: false,
             };
             commands::send_action_to_session(command_cli_action, opts.session, config);
             std::process::exit(0);
@@ -114,6 +140,7 @@ fn main() {
             width,
             height,
             pinned,
+            near_current_pane,
         })) = opts.command
         {
             let mut file = file;
@@ -135,6 +162,7 @@ fn main() {
                 width,
                 height,
                 pinned,
+                near_current_pane,
             };
             commands::send_action_to_session(command_cli_action, opts.session, config);
             std::process::exit(0);
@@ -187,6 +215,8 @@ fn main() {
         commands::list_sessions(no_formatting, short, reverse);
     } else if let Some(Command::Sessions(Sessions::ListAliases)) = opts.command {
         commands::list_aliases(opts);
+    } else if let Some(Command::Sessions(Sessions::Watch { ref session_name })) = opts.command {
+        commands::watch_session(session_name.clone(), opts);
     } else if let Some(Command::Sessions(Sessions::KillAllSessions { yes })) = opts.command {
         commands::kill_all_sessions(yes);
     } else if let Some(Command::Sessions(Sessions::KillSession { ref target_session })) =
@@ -218,6 +248,13 @@ fn main() {
                 layout_dir: options.as_ref().and_then(|o| o.layout_dir.clone()),
                 name: None,
                 cwd: options.as_ref().and_then(|o| o.default_cwd.clone()),
+                initial_command: vec![],
+                initial_plugin: None,
+                close_on_exit: Default::default(),
+                start_suspended: Default::default(),
+                block_until_exit_success: false,
+                block_until_exit_failure: false,
+                block_until_exit: false,
             };
             commands::send_action_to_session(new_layout_cli_action, Some(session_name), config);
         } else {
@@ -275,7 +312,21 @@ fn main() {
                 },
             }
         } else if web_opts.create_token {
-            match commands::create_auth_token() {
+            let read_only = false;
+            match commands::create_auth_token(web_opts.token_name.clone(), read_only) {
+                Ok(token_and_name) => {
+                    println!("Created token successfully");
+                    println!("");
+                    println!("{}", token_and_name);
+                },
+                Err(e) => {
+                    eprintln!("Failed to create token: {}", e);
+                    std::process::exit(2)
+                },
+            }
+        } else if web_opts.create_read_only_token {
+            let read_only = true;
+            match commands::create_auth_token(web_opts.token_name.clone(), read_only) {
                 Ok(token_and_name) => {
                     println!("Created token successfully");
                     println!("");

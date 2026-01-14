@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 #[allow(unused_imports)]
 use std::io::prelude::*;
+use zellij_tile::prelude::actions::Action;
 use zellij_tile::prelude::*;
 
 // This is a fixture plugin used only for tests in Zellij
@@ -15,6 +16,7 @@ struct State {
     received_payload: Option<String>,
     configuration: BTreeMap<String, String>,
     message_to_plugin_payload: Option<String>,
+    explicit_string_to_render: Option<String>,
 }
 
 #[derive(Default, Serialize, Deserialize)]
@@ -59,6 +61,8 @@ impl ZellijPlugin for State {
             PermissionType::ReadCliPipes,
             PermissionType::MessageAndLaunchOtherPlugins,
             PermissionType::Reconfigure,
+            PermissionType::WriteToClipboard,
+            PermissionType::RunActionsAsUser,
         ]);
         self.configuration = configuration;
         subscribe(&[
@@ -150,27 +154,29 @@ impl ZellijPlugin for State {
                 BareKey::Char('6') if key.has_no_modifiers() => close_focused_tab(),
                 BareKey::Char('7') if key.has_no_modifiers() => undo_rename_tab(),
                 BareKey::Char('8') if key.has_no_modifiers() => quit_zellij(),
-                BareKey::Char('a') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
+                BareKey::Char('a') if key.has_only_modifiers(&[KeyModifier::Ctrl]) => {
                     previous_swap_layout()
                 },
-                BareKey::Char('b') if key.has_modifiers(&[KeyModifier::Ctrl]) => next_swap_layout(),
-                BareKey::Char('c') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
+                BareKey::Char('b') if key.has_only_modifiers(&[KeyModifier::Ctrl]) => {
+                    next_swap_layout()
+                },
+                BareKey::Char('c') if key.has_only_modifiers(&[KeyModifier::Ctrl]) => {
                     let tab_name = "my tab name";
                     go_to_tab_name(tab_name)
                 },
-                BareKey::Char('d') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
+                BareKey::Char('d') if key.has_only_modifiers(&[KeyModifier::Ctrl]) => {
                     let tab_name = "my tab name";
                     focus_or_create_tab(tab_name)
                 },
-                BareKey::Char('e') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
+                BareKey::Char('e') if key.has_only_modifiers(&[KeyModifier::Ctrl]) => {
                     let tab_index = 2;
                     go_to_tab(tab_index)
                 },
-                BareKey::Char('f') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
+                BareKey::Char('f') if key.has_only_modifiers(&[KeyModifier::Ctrl]) => {
                     let plugin_url = "file:/path/to/my/plugin.wasm";
                     start_or_reload_plugin(plugin_url)
                 },
-                BareKey::Char('g') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
+                BareKey::Char('g') if key.has_only_modifiers(&[KeyModifier::Ctrl]) => {
                     open_file(
                         FileToOpen {
                             path: std::path::PathBuf::from("/path/to/my/file.rs"),
@@ -179,7 +185,7 @@ impl ZellijPlugin for State {
                         BTreeMap::new(),
                     );
                 },
-                BareKey::Char('h') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
+                BareKey::Char('h') if key.has_only_modifiers(&[KeyModifier::Ctrl]) => {
                     open_file_floating(
                         FileToOpen {
                             path: std::path::PathBuf::from("/path/to/my/file.rs"),
@@ -189,7 +195,7 @@ impl ZellijPlugin for State {
                         BTreeMap::new(),
                     );
                 },
-                BareKey::Char('i') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
+                BareKey::Char('i') if key.has_only_modifiers(&[KeyModifier::Ctrl]) => {
                     open_file(
                         FileToOpen {
                             path: std::path::PathBuf::from("/path/to/my/file.rs"),
@@ -199,7 +205,7 @@ impl ZellijPlugin for State {
                         BTreeMap::new(),
                     );
                 },
-                BareKey::Char('j') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
+                BareKey::Char('j') if key.has_only_modifiers(&[KeyModifier::Ctrl]) => {
                     open_file_floating(
                         FileToOpen {
                             path: std::path::PathBuf::from("/path/to/my/file.rs"),
@@ -210,16 +216,16 @@ impl ZellijPlugin for State {
                         BTreeMap::new(),
                     );
                 },
-                BareKey::Char('k') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
+                BareKey::Char('k') if key.has_only_modifiers(&[KeyModifier::Ctrl]) => {
                     open_terminal(std::path::PathBuf::from("/path/to/my/file.rs").as_path());
                 },
-                BareKey::Char('l') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
+                BareKey::Char('l') if key.has_only_modifiers(&[KeyModifier::Ctrl]) => {
                     open_terminal_floating(
                         std::path::PathBuf::from("/path/to/my/file.rs").as_path(),
                         None,
                     );
                 },
-                BareKey::Char('m') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
+                BareKey::Char('m') if key.has_only_modifiers(&[KeyModifier::Ctrl]) => {
                     open_command_pane(
                         CommandToRun {
                             path: std::path::PathBuf::from("/path/to/my/file.rs"),
@@ -229,7 +235,7 @@ impl ZellijPlugin for State {
                         BTreeMap::new(),
                     );
                 },
-                BareKey::Char('n') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
+                BareKey::Char('n') if key.has_only_modifiers(&[KeyModifier::Ctrl]) => {
                     open_command_pane_floating(
                         CommandToRun {
                             path: std::path::PathBuf::from("/path/to/my/file.rs"),
@@ -240,51 +246,53 @@ impl ZellijPlugin for State {
                         BTreeMap::new(),
                     );
                 },
-                BareKey::Char('o') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
+                BareKey::Char('o') if key.has_only_modifiers(&[KeyModifier::Ctrl]) => {
                     switch_tab_to(1);
                 },
-                BareKey::Char('p') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
+                BareKey::Char('p') if key.has_only_modifiers(&[KeyModifier::Ctrl]) => {
                     hide_self();
                 },
-                BareKey::Char('q') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
+                BareKey::Char('q') if key.has_only_modifiers(&[KeyModifier::Ctrl]) => {
                     let should_float_if_hidden = false;
                     show_self(should_float_if_hidden);
                 },
-                BareKey::Char('r') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
+                BareKey::Char('r') if key.has_only_modifiers(&[KeyModifier::Ctrl]) => {
                     close_terminal_pane(1);
                 },
-                BareKey::Char('s') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
+                BareKey::Char('s') if key.has_only_modifiers(&[KeyModifier::Ctrl]) => {
                     close_plugin_pane(1);
                 },
-                BareKey::Char('t') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
+                BareKey::Char('t') if key.has_only_modifiers(&[KeyModifier::Ctrl]) => {
                     let should_float_if_hidden = false;
-                    focus_terminal_pane(1, should_float_if_hidden);
+                    let should_be_in_place_if_hidden = false;
+                    focus_terminal_pane(1, should_float_if_hidden, should_be_in_place_if_hidden);
                 },
-                BareKey::Char('u') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
+                BareKey::Char('u') if key.has_only_modifiers(&[KeyModifier::Ctrl]) => {
                     let should_float_if_hidden = false;
-                    focus_plugin_pane(1, should_float_if_hidden);
+                    let should_be_in_place_if_hidden = false;
+                    focus_plugin_pane(1, should_float_if_hidden, should_be_in_place_if_hidden);
                 },
-                BareKey::Char('v') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
+                BareKey::Char('v') if key.has_only_modifiers(&[KeyModifier::Ctrl]) => {
                     rename_terminal_pane(1, "new terminal_pane_name");
                 },
-                BareKey::Char('w') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
+                BareKey::Char('w') if key.has_only_modifiers(&[KeyModifier::Ctrl]) => {
                     rename_plugin_pane(1, "new plugin_pane_name");
                 },
-                BareKey::Char('x') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
+                BareKey::Char('x') if key.has_only_modifiers(&[KeyModifier::Ctrl]) => {
                     rename_tab(1, "new tab name");
                 },
-                BareKey::Char('z') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
+                BareKey::Char('z') if key.has_only_modifiers(&[KeyModifier::Ctrl]) => {
                     go_to_tab_name(&format!("{:?}", self.configuration));
                 },
-                BareKey::Char('1') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
+                BareKey::Char('1') if key.has_only_modifiers(&[KeyModifier::Ctrl]) => {
                     request_permission(&[PermissionType::ReadApplicationState]);
                 },
-                BareKey::Char('2') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
+                BareKey::Char('2') if key.has_only_modifiers(&[KeyModifier::Ctrl]) => {
                     let mut context = BTreeMap::new();
                     context.insert("user_key_1".to_owned(), "user_value_1".to_owned());
                     run_command(&["ls", "-l"], context);
                 },
-                BareKey::Char('3') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
+                BareKey::Char('3') if key.has_only_modifiers(&[KeyModifier::Ctrl]) => {
                     let mut context = BTreeMap::new();
                     context.insert("user_key_2".to_owned(), "user_value_2".to_owned());
                     let mut env_vars = BTreeMap::new();
@@ -296,7 +304,7 @@ impl ZellijPlugin for State {
                         context,
                     );
                 },
-                BareKey::Char('4') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
+                BareKey::Char('4') if key.has_only_modifiers(&[KeyModifier::Ctrl]) => {
                     let mut headers = BTreeMap::new();
                     let mut context = BTreeMap::new();
                     let body = vec![1, 2, 3];
@@ -312,31 +320,31 @@ impl ZellijPlugin for State {
                         context,
                     );
                 },
-                BareKey::Char('5') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
+                BareKey::Char('5') if key.has_only_modifiers(&[KeyModifier::Ctrl]) => {
                     switch_session(Some("my_new_session"));
                 },
-                BareKey::Char('6') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
+                BareKey::Char('6') if key.has_only_modifiers(&[KeyModifier::Ctrl]) => {
                     disconnect_other_clients()
                 },
-                BareKey::Char('7') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
+                BareKey::Char('7') if key.has_only_modifiers(&[KeyModifier::Ctrl]) => {
                     switch_session_with_layout(
                         Some("my_other_new_session"),
                         LayoutInfo::BuiltIn("compact".to_owned()),
                         None,
                     );
                 },
-                BareKey::Char('8') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
+                BareKey::Char('8') if key.has_only_modifiers(&[KeyModifier::Ctrl]) => {
                     let mut file = std::fs::File::create("/host/hi-from-plugin.txt").unwrap();
                     file.write_all(b"Hi there!").unwrap();
                 },
-                BareKey::Char('9') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
+                BareKey::Char('9') if key.has_only_modifiers(&[KeyModifier::Ctrl]) => {
                     switch_session_with_layout(
                         Some("my_other_new_session_with_cwd"),
                         LayoutInfo::BuiltIn("compact".to_owned()),
                         Some(std::path::PathBuf::from("/tmp")),
                     );
                 },
-                BareKey::Char('0') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
+                BareKey::Char('0') if key.has_only_modifiers(&[KeyModifier::Ctrl]) => {
                     let write_to_disk = true;
                     reconfigure(
                         "
@@ -350,13 +358,13 @@ impl ZellijPlugin for State {
                         write_to_disk,
                     );
                 },
-                BareKey::Char('a') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                BareKey::Char('a') if key.has_only_modifiers(&[KeyModifier::Alt]) => {
                     hide_pane_with_id(PaneId::Terminal(1));
                 },
-                BareKey::Char('b') if key.has_modifiers(&[KeyModifier::Alt]) => {
-                    show_pane_with_id(PaneId::Terminal(1), true);
+                BareKey::Char('b') if key.has_only_modifiers(&[KeyModifier::Alt]) => {
+                    show_pane_with_id(PaneId::Terminal(1), true, true);
                 },
-                BareKey::Char('c') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                BareKey::Char('c') if key.has_only_modifiers(&[KeyModifier::Alt]) => {
                     open_command_pane_background(
                         CommandToRun {
                             path: std::path::PathBuf::from("/path/to/my/file.rs"),
@@ -366,61 +374,61 @@ impl ZellijPlugin for State {
                         BTreeMap::new(),
                     );
                 },
-                BareKey::Char('d') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                BareKey::Char('d') if key.has_only_modifiers(&[KeyModifier::Alt]) => {
                     rerun_command_pane(1);
                 },
-                BareKey::Char('e') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                BareKey::Char('e') if key.has_only_modifiers(&[KeyModifier::Alt]) => {
                     resize_pane_with_id(
                         ResizeStrategy::new(Resize::Increase, Some(Direction::Left)),
                         PaneId::Terminal(2),
                     );
                 },
-                BareKey::Char('f') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                BareKey::Char('f') if key.has_only_modifiers(&[KeyModifier::Alt]) => {
                     edit_scrollback_for_pane_with_id(PaneId::Terminal(2));
                 },
-                BareKey::Char('g') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                BareKey::Char('g') if key.has_only_modifiers(&[KeyModifier::Alt]) => {
                     write_to_pane_id(vec![102, 111, 111], PaneId::Terminal(2));
                 },
-                BareKey::Char('h') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                BareKey::Char('h') if key.has_only_modifiers(&[KeyModifier::Alt]) => {
                     write_chars_to_pane_id("foo\n", PaneId::Terminal(2));
                 },
-                BareKey::Char('i') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                BareKey::Char('i') if key.has_only_modifiers(&[KeyModifier::Alt]) => {
                     move_pane_with_pane_id(PaneId::Terminal(2));
                 },
-                BareKey::Char('j') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                BareKey::Char('j') if key.has_only_modifiers(&[KeyModifier::Alt]) => {
                     move_pane_with_pane_id_in_direction(PaneId::Terminal(2), Direction::Left);
                 },
-                BareKey::Char('k') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                BareKey::Char('k') if key.has_only_modifiers(&[KeyModifier::Alt]) => {
                     clear_screen_for_pane_id(PaneId::Terminal(2));
                 },
-                BareKey::Char('l') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                BareKey::Char('l') if key.has_only_modifiers(&[KeyModifier::Alt]) => {
                     scroll_up_in_pane_id(PaneId::Terminal(2));
                 },
-                BareKey::Char('m') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                BareKey::Char('m') if key.has_only_modifiers(&[KeyModifier::Alt]) => {
                     scroll_down_in_pane_id(PaneId::Terminal(2));
                 },
-                BareKey::Char('n') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                BareKey::Char('n') if key.has_only_modifiers(&[KeyModifier::Alt]) => {
                     scroll_to_top_in_pane_id(PaneId::Terminal(2));
                 },
-                BareKey::Char('o') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                BareKey::Char('o') if key.has_only_modifiers(&[KeyModifier::Alt]) => {
                     scroll_to_bottom_in_pane_id(PaneId::Terminal(2));
                 },
-                BareKey::Char('p') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                BareKey::Char('p') if key.has_only_modifiers(&[KeyModifier::Alt]) => {
                     page_scroll_up_in_pane_id(PaneId::Terminal(2));
                 },
-                BareKey::Char('q') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                BareKey::Char('q') if key.has_only_modifiers(&[KeyModifier::Alt]) => {
                     page_scroll_down_in_pane_id(PaneId::Terminal(2));
                 },
-                BareKey::Char('r') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                BareKey::Char('r') if key.has_only_modifiers(&[KeyModifier::Alt]) => {
                     toggle_pane_id_fullscreen(PaneId::Terminal(2));
                 },
-                BareKey::Char('s') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                BareKey::Char('s') if key.has_only_modifiers(&[KeyModifier::Alt]) => {
                     toggle_pane_embed_or_eject_for_pane_id(PaneId::Terminal(2));
                 },
-                BareKey::Char('t') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                BareKey::Char('t') if key.has_only_modifiers(&[KeyModifier::Alt]) => {
                     close_tab_with_index(2);
                 },
-                BareKey::Char('u') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                BareKey::Char('u') if key.has_only_modifiers(&[KeyModifier::Alt]) => {
                     let should_change_focus_to_new_tab = true;
                     break_panes_to_new_tab(
                         &[PaneId::Terminal(1), PaneId::Plugin(2)],
@@ -428,7 +436,7 @@ impl ZellijPlugin for State {
                         should_change_focus_to_new_tab,
                     );
                 },
-                BareKey::Char('v') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                BareKey::Char('v') if key.has_only_modifiers(&[KeyModifier::Alt]) => {
                     let should_change_focus_to_target_tab = true;
                     break_panes_to_tab_with_index(
                         &[PaneId::Terminal(1), PaneId::Plugin(2)],
@@ -436,10 +444,10 @@ impl ZellijPlugin for State {
                         should_change_focus_to_target_tab,
                     );
                 },
-                BareKey::Char('w') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                BareKey::Char('w') if key.has_only_modifiers(&[KeyModifier::Alt]) => {
                     reload_plugin_with_id(0);
                 },
-                BareKey::Char('x') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                BareKey::Char('x') if key.has_only_modifiers(&[KeyModifier::Alt]) => {
                     let config = BTreeMap::new();
                     let load_in_background = true;
                     let skip_plugin_cache = true;
@@ -450,7 +458,7 @@ impl ZellijPlugin for State {
                         skip_plugin_cache,
                     )
                 },
-                BareKey::Char('y') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                BareKey::Char('y') if key.has_only_modifiers(&[KeyModifier::Alt]) => {
                     let write_to_disk = true;
                     let keys_to_unbind = vec![
                         (
@@ -490,48 +498,393 @@ impl ZellijPlugin for State {
                         (
                             InputMode::Locked,
                             KeyWithModifier::new(BareKey::Char('a')).with_ctrl_modifier(),
-                            vec![actions::Action::SwitchToMode(InputMode::Normal)],
+                            vec![actions::Action::SwitchToMode {
+                                input_mode: InputMode::Normal,
+                            }],
                         ),
                         (
                             InputMode::Normal,
                             KeyWithModifier::new(BareKey::Char('a')).with_ctrl_modifier(),
-                            vec![actions::Action::SwitchToMode(InputMode::Locked)],
+                            vec![actions::Action::SwitchToMode {
+                                input_mode: InputMode::Locked,
+                            }],
                         ),
                         (
                             InputMode::Pane,
                             KeyWithModifier::new(BareKey::Char('a')).with_ctrl_modifier(),
-                            vec![actions::Action::SwitchToMode(InputMode::Locked)],
+                            vec![actions::Action::SwitchToMode {
+                                input_mode: InputMode::Locked,
+                            }],
                         ),
                         (
                             InputMode::Tab,
                             KeyWithModifier::new(BareKey::Char('a')).with_ctrl_modifier(),
-                            vec![actions::Action::SwitchToMode(InputMode::Locked)],
+                            vec![actions::Action::SwitchToMode {
+                                input_mode: InputMode::Locked,
+                            }],
                         ),
                         (
                             InputMode::Resize,
                             KeyWithModifier::new(BareKey::Char('a')).with_ctrl_modifier(),
-                            vec![actions::Action::SwitchToMode(InputMode::Locked)],
+                            vec![actions::Action::SwitchToMode {
+                                input_mode: InputMode::Locked,
+                            }],
                         ),
                         (
                             InputMode::Move,
                             KeyWithModifier::new(BareKey::Char('a')).with_ctrl_modifier(),
-                            vec![actions::Action::SwitchToMode(InputMode::Locked)],
+                            vec![actions::Action::SwitchToMode {
+                                input_mode: InputMode::Locked,
+                            }],
                         ),
                         (
                             InputMode::Search,
                             KeyWithModifier::new(BareKey::Char('a')).with_ctrl_modifier(),
-                            vec![actions::Action::SwitchToMode(InputMode::Locked)],
+                            vec![actions::Action::SwitchToMode {
+                                input_mode: InputMode::Locked,
+                            }],
                         ),
                         (
                             InputMode::Session,
                             KeyWithModifier::new(BareKey::Char('a')).with_ctrl_modifier(),
-                            vec![actions::Action::SwitchToMode(InputMode::Locked)],
+                            vec![actions::Action::SwitchToMode {
+                                input_mode: InputMode::Locked,
+                            }],
                         ),
                     ];
                     rebind_keys(keys_to_unbind, keys_to_rebind, write_to_disk);
                 },
-                BareKey::Char('z') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                BareKey::Char('z') if key.has_only_modifiers(&[KeyModifier::Alt]) => {
                     list_clients();
+                },
+                BareKey::Char('a') if key.has_only_modifiers(&[KeyModifier::Super]) => {
+                    // Test show_cursor with coordinates
+                    show_cursor(Some((5, 10)));
+                },
+                BareKey::Char('b') if key.has_only_modifiers(&[KeyModifier::Super]) => {
+                    // Test hide_cursor
+                    show_cursor(None);
+                },
+                BareKey::Char('c') if key.has_only_modifiers(&[KeyModifier::Super]) => {
+                    // Test copy_to_clipboard
+                    copy_to_clipboard("test clipboard text");
+                },
+                BareKey::Char('d') if key.has_only_modifiers(&[KeyModifier::Super]) => {
+                    // Test run_action with MoveFocus
+                    let mut context = BTreeMap::new();
+                    context.insert("test_key".to_string(), "test_value".to_string());
+                    run_action(
+                        Action::MoveFocus {
+                            direction: Direction::Left,
+                        },
+                        context,
+                    );
+                },
+                BareKey::Char('e') if key.has_only_modifiers(&[KeyModifier::Super]) => {
+                    // Test send_sigint_to_pane_id
+                    send_sigint_to_pane_id(PaneId::Terminal(1));
+                },
+                BareKey::Char('f') if key.has_only_modifiers(&[KeyModifier::Super]) => {
+                    // Test send_sigkill_to_pane_id
+                    send_sigkill_to_pane_id(PaneId::Terminal(1));
+                },
+                BareKey::Char('a')
+                    if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Shift]) =>
+                {
+                    let name = generate_random_name();
+                    if !name.is_empty() {
+                        self.explicit_string_to_render = Some(format!("Generated name"));
+                    } else {
+                        self.explicit_string_to_render = Some(format!("Error: got empty name"));
+                    }
+                },
+                BareKey::Char('b')
+                    if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Shift]) =>
+                {
+                    match dump_layout("default") {
+                        Ok(kdl) => {
+                            self.explicit_string_to_render =
+                                Some(format!("Layout dump success: {}", kdl))
+                        },
+                        Err(e) => {
+                            self.explicit_string_to_render =
+                                Some(format!("Layout dump error: {}", e))
+                        },
+                    }
+                },
+                BareKey::Char('c')
+                    if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Shift]) =>
+                {
+                    // Test dump_layout() - not found case
+                    match dump_layout("nonexistent_layout_xyz") {
+                        Ok(kdl) => {
+                            self.explicit_string_to_render =
+                                Some(format!("Layout dump success: {}", kdl))
+                        },
+                        Err(e) => {
+                            self.explicit_string_to_render =
+                                Some(format!("Layout dump error: {}", e))
+                        },
+                    }
+                },
+                BareKey::Char('d')
+                    if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Shift]) =>
+                {
+                    // Test get_layout_dir()
+                    let dir = get_layout_dir();
+                    if !dir.is_empty() {
+                        self.explicit_string_to_render = Some(format!("Got layout folder"));
+                    } else {
+                        self.explicit_string_to_render =
+                            Some(format!("Error: Got empty layout folder!"));
+                    }
+                },
+                BareKey::Char('e')
+                    if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Shift]) =>
+                {
+                    // Test get_focused_pane_info()
+                    match get_focused_pane_info() {
+                        Ok((tab_index, pane_id)) => {
+                            println!("Focused pane: tab={}, pane={:?}", tab_index, pane_id)
+                        },
+                        Err(e) => {
+                            self.explicit_string_to_render =
+                                Some(format!("Focused pane error: {}", e))
+                        },
+                    }
+                },
+                BareKey::Char('f')
+                    if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Shift]) =>
+                {
+                    // Test dump_session_layout()
+                    match dump_session_layout() {
+                        Ok((kdl, metadata)) => {
+                            self.explicit_string_to_render = Some(format!(
+                                "Session layout: {} tabs, metadata: {:?}",
+                                kdl.len(),
+                                metadata
+                            ))
+                        },
+                        Err(e) => {
+                            self.explicit_string_to_render =
+                                Some(format!("Session layout error: {}", e))
+                        },
+                    }
+                },
+                BareKey::Char('g')
+                    if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Shift]) =>
+                {
+                    // Test dump_session_layout_for_tab()
+                    match dump_session_layout_for_tab(0) {
+                        Ok((kdl, metadata)) => {
+                            self.explicit_string_to_render = Some(format!(
+                                "Tab 0 layout: {} bytes, metadata: {:?}",
+                                kdl.len(),
+                                metadata
+                            ))
+                        },
+                        Err(e) => {
+                            self.explicit_string_to_render =
+                                Some(format!("Tab layout error: {}", e))
+                        },
+                    }
+                },
+                BareKey::Char('h')
+                    if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Shift]) =>
+                {
+                    // Test parse_layout() - valid KDL
+                    let valid_kdl = "layout { tab { pane; }; }";
+                    match parse_layout(valid_kdl) {
+                        Ok(metadata) => {
+                            if metadata.tabs.len() == 1 {
+                                self.explicit_string_to_render = Some(format!("Parse success"));
+                            } else {
+                                self.explicit_string_to_render =
+                                    Some(format!("Parse failure: got wrong metadata"));
+                            }
+                        },
+                        Err(e) => {
+                            self.explicit_string_to_render = Some(format!("Parse error: {:?}", e))
+                        },
+                    }
+                },
+                BareKey::Char('i')
+                    if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Shift]) =>
+                {
+                    // Test parse_layout() - invalid KDL
+                    let invalid_kdl = "layout { this is not valid kdl }";
+                    match parse_layout(invalid_kdl) {
+                        Ok(metadata) => {
+                            self.explicit_string_to_render =
+                                Some(format!("Parse success: {:?}", metadata))
+                        },
+                        Err(e) => {
+                            self.explicit_string_to_render = Some(format!("Parse error: {:?}", e))
+                        },
+                    }
+                },
+                BareKey::Char('a')
+                    if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Alt]) =>
+                {
+                    let test_kdl = "layout { tab { pane; }; }";
+                    match save_layout("test_layout", test_kdl, false) {
+                        Ok(_) => {
+                            self.explicit_string_to_render = Some(format!("Save layout success"))
+                        },
+                        Err(e) => {
+                            self.explicit_string_to_render =
+                                Some(format!("Save layout error: {}", e))
+                        },
+                    }
+                },
+                BareKey::Char('b')
+                    if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Alt]) =>
+                {
+                    let test_kdl = "layout { tab { pane; }; }";
+                    match save_layout("test_layout", test_kdl, false) {
+                        Ok(_) => {
+                            self.explicit_string_to_render = Some(format!("Save layout success"))
+                        },
+                        Err(e) => {
+                            self.explicit_string_to_render =
+                                Some(format!("Save layout error: {}", e))
+                        },
+                    }
+                },
+                BareKey::Char('c')
+                    if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Alt]) =>
+                {
+                    let test_kdl = "layout { tab { pane; pane; }; }";
+                    match save_layout("test_layout2", test_kdl, true) {
+                        Ok(_) => {
+                            self.explicit_string_to_render =
+                                Some(format!("Save layout with overwrite success"))
+                        },
+                        Err(e) => {
+                            self.explicit_string_to_render =
+                                Some(format!("Save layout with overwrite error: {}", e))
+                        },
+                    }
+                },
+                BareKey::Char('d')
+                    if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Alt]) =>
+                {
+                    // Test save_layout() - invalid KDL
+                    let invalid_kdl = "not valid kdl at all";
+                    match save_layout("invalid_layout", invalid_kdl, false) {
+                        Ok(_) => {
+                            self.explicit_string_to_render =
+                                Some(format!("Save invalid layout success"))
+                        },
+                        Err(e) => {
+                            self.explicit_string_to_render =
+                                Some(format!("Save invalid layout error: {}", e))
+                        },
+                    }
+                },
+                BareKey::Char('e')
+                    if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Alt]) =>
+                {
+                    match rename_layout("test_layout", "renamed_layout") {
+                        Ok(_) => {
+                            self.explicit_string_to_render = Some(format!("Rename layout success"))
+                        },
+                        Err(e) => {
+                            self.explicit_string_to_render =
+                                Some(format!("Rename layout error: {}", e))
+                        },
+                    }
+                },
+                BareKey::Char('f')
+                    if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Alt]) =>
+                {
+                    // Test rename_layout() - not found case
+                    match rename_layout("nonexistent_layout", "new_name") {
+                        Ok(_) => {
+                            self.explicit_string_to_render =
+                                Some(format!("Rename nonexistent layout success"))
+                        },
+                        Err(e) => {
+                            self.explicit_string_to_render =
+                                Some(format!("Rename nonexistent layout error: {}", e))
+                        },
+                    }
+                },
+                BareKey::Char('g')
+                    if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Alt]) =>
+                {
+                    // Test delete_layout() - success case
+                    match delete_layout("renamed_layout") {
+                        Ok(_) => {
+                            self.explicit_string_to_render = Some(format!("Delete layout success"))
+                        },
+                        Err(e) => {
+                            self.explicit_string_to_render =
+                                Some(format!("Delete layout error: {}", e))
+                        },
+                    }
+                },
+                BareKey::Char('h')
+                    if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Alt]) =>
+                {
+                    // Test delete_layout() - not found case
+                    match delete_layout("nonexistent_layout") {
+                        Ok(_) => {
+                            self.explicit_string_to_render =
+                                Some(format!("Delete nonexistent layout success"))
+                        },
+                        Err(e) => {
+                            self.explicit_string_to_render =
+                                Some(format!("Delete nonexistent layout error: {}", e))
+                        },
+                    }
+                },
+                BareKey::Char('i')
+                    if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Alt]) =>
+                {
+                    let test_kdl = "layout { tab { pane; } }";
+                    match save_layout("../evil_layout", test_kdl, false) {
+                        Ok(_) => {
+                            self.explicit_string_to_render =
+                                Some(format!("Path traversal save success"))
+                        },
+                        Err(e) => {
+                            self.explicit_string_to_render =
+                                Some(format!("Path traversal save error: {}", e))
+                        },
+                    }
+                },
+                BareKey::Char('j')
+                    if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Alt]) =>
+                {
+                    // Test edit_layout()
+                    let mut context = BTreeMap::new();
+                    context.insert("test_key".to_owned(), "test_value".to_owned());
+                    match edit_layout("test_layout2", context) {
+                        Ok(_) => {
+                            self.explicit_string_to_render =
+                                Some(format!("Edit layout command sent"))
+                        },
+                        Err(e) => {
+                            self.explicit_string_to_render =
+                                Some(format!("Edit layout error: {}", e))
+                        },
+                    }
+                },
+                BareKey::Char('k')
+                    if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Alt]) =>
+                {
+                    // Test override_layout()
+                    let mut context = BTreeMap::new();
+                    context.insert("override_test".to_owned(), "value".to_owned());
+                    override_layout(
+                        &LayoutInfo::BuiltIn("compact".to_owned()),
+                        false, // retain_existing_terminal_panes
+                        false, // retain_existing_plugin_panes
+                        false, // apply_only_to_active_tab
+                        context,
+                    );
+                    self.explicit_string_to_render = Some(format!("Override layout command sent"));
                 },
                 _ => {},
             },
@@ -588,6 +941,8 @@ impl ZellijPlugin for State {
             println!("Payload from worker: {:?}", payload);
         } else if let Some(payload) = self.message_to_plugin_payload.take() {
             println!("Payload from self: {:?}", payload);
+        } else if let Some(explicit_string_to_render) = self.explicit_string_to_render.take() {
+            println!("{}", explicit_string_to_render.trim());
         } else {
             println!(
                 "Rows: {:?}, Cols: {:?}, Received events: {:?}",

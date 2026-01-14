@@ -1,5 +1,5 @@
 use kdl::{KdlDocument, KdlEntry, KdlNode, KdlValue};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::PathBuf;
 
 use crate::{
@@ -789,14 +789,6 @@ fn get_tiled_panes_layout_from_panegeoms(
         }
     }
 
-    if let Some(SplitSize::Fixed(fixed_size)) = split_size {
-        if fixed_size == 1 && !new_geoms.is_empty() {
-            // invalid state, likely an off-by-one error somewhere, we do not serialize
-            log::error!("invalid state, not serializing");
-            return None;
-        }
-    }
-
     let new_split_sizes = get_split_sizes(&new_constraints);
 
     for (subgeoms, subsplit_size) in new_geoms.iter().zip(new_split_sizes) {
@@ -810,9 +802,7 @@ fn get_tiled_panes_layout_from_panegeoms(
         }
     }
     let children_are_stacked = children_split_direction == SplitDirection::Horizontal
-        && new_geoms
-            .iter()
-            .all(|c| c.iter().all(|c| c.geom.is_stacked()));
+        && all_geoms_are_from_the_same_stack(&new_geoms);
     Some(TiledPaneLayout {
         children_split_direction,
         split_size,
@@ -820,6 +810,16 @@ fn get_tiled_panes_layout_from_panegeoms(
         children_are_stacked,
         ..Default::default()
     })
+}
+
+fn all_geoms_are_from_the_same_stack(manifests: &Vec<Vec<PaneLayoutManifest>>) -> bool {
+    let mut stack_ids = HashSet::new();
+    for manifest_group in manifests {
+        for pane_layout_manifest in manifest_group {
+            stack_ids.insert(pane_layout_manifest.geom.stacked);
+        }
+    }
+    stack_ids.len() == 1 && !stack_ids.contains(&None)
 }
 
 fn get_floating_panes_layout_from_panegeoms(

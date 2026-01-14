@@ -15,7 +15,7 @@ use crate::{
     ClientId,
 };
 use std::time::Instant;
-use zellij_utils::data::{InputMode, PaletteColor};
+use zellij_utils::data::{InputMode, PaletteColor, PaneContents};
 
 macro_rules! mock_pane {
     ($pane_id:expr, $dimension:expr, $inner:expr, $x:expr, $y:expr, $logical_position:expr, $mock_panes:expr) => {
@@ -1085,7 +1085,7 @@ impl Pane for MockPane {
     fn handle_plugin_bytes(&mut self, _client_id: ClientId, _bytes: VteBytes) {
         unimplemented!()
     }
-    fn cursor_coordinates(&self) -> Option<(usize, usize)> {
+    fn cursor_coordinates(&self, _client_id: Option<ClientId>) -> Option<(usize, usize)> {
         unimplemented!()
     }
 
@@ -1234,6 +1234,13 @@ impl Pane for MockPane {
         unimplemented!()
     }
     fn custom_title(&self) -> Option<String> {
+        unimplemented!()
+    }
+    fn pane_contents(
+        &self,
+        _client_id: Option<ClientId>,
+        _get_full_scrollback: bool,
+    ) -> PaneContents {
         unimplemented!()
     }
 }

@@ -1,10 +1,10 @@
 [package]
 name = "zellij-client"
-version = "0.44.0"
+version.workspace = true
 authors = ["Kunal Mohan <kunalmohan99@gmail.com>"]
-edition = "2021"
+edition.workspace = true
 description = "The client-side library for Zellij"
-license = "MIT"
+license.workspace = true
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -20,15 +20,16 @@ time = { version = "0.3", optional = true }
 tower-http = { version = "0.6.4", features = ["cors"], optional = true }
 
 anyhow = { workspace = true }
+async-trait = { workspace = true }
 daemonize = { workspace = true }
+dialoguer = { workspace = true }
 interprocess = { workspace = true }
 lazy_static = { workspace = true }
 libc = { workspace = true }
 log = { workspace = true }
-mio = { version = "0.7.11", default-features = false, features = ['os-ext'] }
+mio = { version = "0.8.11", default-features = false, features = ['os-ext'] }
 nix = { workspace = true }
 notify = { workspace = true }
-rmp-serde = { workspace = true }
 regex = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -41,13 +42,13 @@ include_dir = { workspace = true }
 zellij-utils = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }
+isahc = { workspace = true }
+tokio-tungstenite = { version = "0.20", features = ["native-tls"] } #TODO: see about this native-tls...
+futures-util = "0.3"
+urlencoding = "2.1"
 
 [dev-dependencies]
 insta = "1.6.0"
-isahc = { workspace = true }
-tokio-tungstenite = "0.20"
-futures-util = "0.3"
-urlencoding = "2.1"
 serde_json = "1.0"
 serial_test = "3.0"
 

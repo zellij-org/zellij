@@ -49,6 +49,7 @@ fn create_pane() -> TerminalPane {
         arrow_fonts,
         styled_underlines,
         explicitly_disable_kitty_keyboard_protocol,
+        None,
     ); // 0 is the pane index
     let content = read_fixture();
     terminal_pane.handle_pty_bytes(content);

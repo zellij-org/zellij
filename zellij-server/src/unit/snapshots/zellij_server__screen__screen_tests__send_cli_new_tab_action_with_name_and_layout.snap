@@ -17,7 +17,7 @@ NewTab(
                     split_size: None,
                     run: Some(
                         Cwd(
-                            ".",
+                            "./.",
                         ),
                     ),
                     borderless: false,
@@ -37,7 +37,7 @@ NewTab(
                     split_size: None,
                     run: Some(
                         Cwd(
-                            ".",
+                            "./.",
                         ),
                     ),
                     borderless: false,
@@ -57,7 +57,7 @@ NewTab(
                     split_size: None,
                     run: Some(
                         Cwd(
-                            ".",
+                            "./.",
                         ),
                     ),
                     borderless: false,
@@ -72,7 +72,11 @@ NewTab(
                 },
             ],
             split_size: None,
-            run: None,
+            run: Some(
+                Cwd(
+                    ".",
+                ),
+            ),
             borderless: false,
             focus: None,
             external_children_index: None,
@@ -86,9 +90,19 @@ NewTab(
     ),
     [],
     1,
+    None,
+    false,
     true,
     (
         10,
         false,
+    ),
+    Some(
+        NotificationEnd {
+            channel: None,
+            exit_status: None,
+            unblock_condition: None,
+            affected_pane_id: None,
+        },
     ),
 )

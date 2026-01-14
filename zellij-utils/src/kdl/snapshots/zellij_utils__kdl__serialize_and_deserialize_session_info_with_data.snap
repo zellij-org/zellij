@@ -98,3 +98,5 @@ available_layouts {
 }
 tab_history {
 }
+pane_history {
+}

@@ -27,8 +27,10 @@ use tip::utils::get_cached_tip_name;
 // for more of these, copy paste from: https://en.wikipedia.org/wiki/Box-drawing_character
 static ARROW_SEPARATOR: &str = "";
 static MORE_MSG: &str = " ... ";
-/// Shorthand for `Action::SwitchToMode(InputMode::Normal)`.
-const TO_NORMAL: Action = Action::SwitchToMode(InputMode::Normal);
+/// Shorthand for `Action::SwitchToMode{input_mode: InputMode::Normal}`.
+const TO_NORMAL: Action = Action::SwitchToMode {
+    input_mode: InputMode::Normal,
+};
 
 #[derive(Default)]
 struct State {
@@ -588,11 +590,21 @@ pub mod tests {
             ),
             (
                 KeyWithModifier::new(BareKey::Char('c')).with_alt_modifier(),
-                vec![Action::ScrollDown, Action::SwitchToMode(InputMode::Normal)],
+                vec![
+                    Action::ScrollDown,
+                    Action::SwitchToMode {
+                        input_mode: InputMode::Normal,
+                    },
+                ],
             ),
             (
                 KeyWithModifier::new(BareKey::Char('1')),
-                vec![TO_NORMAL, Action::SwitchToMode(InputMode::Locked)],
+                vec![
+                    TO_NORMAL,
+                    Action::SwitchToMode {
+                        input_mode: InputMode::Locked,
+                    },
+                ],
             ),
         ]
     }

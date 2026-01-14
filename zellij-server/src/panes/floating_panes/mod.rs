@@ -18,6 +18,7 @@ use crate::{
     ClientId,
 };
 use std::cell::RefCell;
+use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::rc::Rc;
 use std::time::Instant;
@@ -129,6 +130,7 @@ impl FloatingPanes {
             .insert(pane_id, pane.position_and_size());
         self.panes.insert(pane_id, pane);
         self.z_indices.push(pane_id);
+        self.make_sure_pinned_panes_are_on_top();
     }
     pub fn replace_active_pane(
         &mut self,
@@ -169,6 +171,7 @@ impl FloatingPanes {
                     .with_context(err_context)?;
                 self.z_indices.remove(z_index);
                 self.z_indices.insert(z_index, with_pane_id);
+                self.make_sure_pinned_panes_are_on_top();
                 Ok(removed_pane)
             });
 
@@ -260,6 +263,18 @@ impl FloatingPanes {
             viewport,
         );
         floating_pane_grid.find_room_for_new_pane()
+    }
+    pub fn move_client_focus_to_existing_panes(&mut self) {
+        let existing_pane_ids: Vec<PaneId> = self.panes.keys().copied().collect();
+        let nonexisting_panes_that_are_focused = self
+            .active_panes
+            .values()
+            .filter(|pane_id| !existing_pane_ids.contains(pane_id))
+            .copied()
+            .collect::<Vec<_>>();
+        for pane_id in nonexisting_panes_that_are_focused {
+            self.move_clients_out_of_pane(pane_id);
+        }
     }
     pub fn position_floating_pane_layout(
         &mut self,
@@ -365,15 +380,45 @@ impl FloatingPanes {
         output: &mut Output,
         mouse_hover_pane_id: &HashMap<ClientId, PaneId>,
         current_pane_group: HashMap<ClientId, Vec<PaneId>>,
+        client_id_override: Option<ClientId>,
     ) -> Result<()> {
         let err_context = || "failed to render output";
-        let connected_clients: Vec<ClientId> =
+        let mut connected_clients: HashSet<ClientId> =
             { self.connected_clients.borrow().iter().copied().collect() };
+
+        // If we have a client_id_override (for watcher rendering), add it temporarily
+        if let Some(override_id) = client_id_override {
+            connected_clients.insert(override_id);
+        }
+
+        let connected_clients: Vec<ClientId> = connected_clients.into_iter().collect();
         let active_panes = if self.panes_are_visible() {
             self.active_panes.clone_active_panes()
         } else {
             Default::default()
         };
+
+        for (kind, pane) in &self.panes {
+            match kind {
+                PaneId::Terminal(_) => {
+                    output.add_pane_contents(
+                        &connected_clients,
+                        pane.pid(),
+                        pane.pane_contents(None, false),
+                    );
+                },
+                PaneId::Plugin(_) => {
+                    for client_id in &connected_clients {
+                        output.add_pane_contents(
+                            &[*client_id],
+                            pane.pid(),
+                            pane.pane_contents(Some(*client_id), false),
+                        );
+                    }
+                },
+            }
+        }
+
         let mut floating_panes: Vec<_> = if self.panes_are_visible() {
             self.panes.iter_mut().collect()
         } else if self.has_pinned_panes() {
@@ -385,21 +430,10 @@ impl FloatingPanes {
             vec![]
         };
         floating_panes.sort_by(|(a_id, _a_pane), (b_id, _b_pane)| {
-            self.z_indices
-                .iter()
-                .position(|id| id == *a_id)
-                .with_context(err_context)
-                .fatal()
-                .cmp(
-                    &self
-                        .z_indices
-                        .iter()
-                        .position(|id| id == *b_id)
-                        .with_context(err_context)
-                        .fatal(),
-                )
+            let a_pos = self.z_indices.iter().position(|id| id == *a_id);
+            let b_pos = self.z_indices.iter().position(|id| id == *b_id);
+            a_pos.cmp(&b_pos)
         });
-
         for (z_index, (kind, pane)) in floating_panes.iter_mut().enumerate() {
             let mut active_panes = active_panes.clone();
             let multiple_users_exist_in_session =
@@ -776,6 +810,16 @@ impl FloatingPanes {
             pane_geom.adjust_coordinates(new_coordinates, viewport);
             pane.set_geom(pane_geom);
             pane.set_should_render(true);
+
+            // we do this in case this moves the pane under another pane so that the pane user's
+            // are focused on will always be on top
+            let is_focused = self.active_panes.pane_id_is_focused(&pane_id);
+            if is_focused {
+                self.z_indices.retain(|p_id| *p_id != pane_id);
+                self.z_indices.push(pane_id);
+                self.make_sure_pinned_panes_are_on_top();
+            }
+
             self.desired_pane_positions.insert(pane_id, pane_geom);
         }
         let _ = self.set_pane_frames();
@@ -810,7 +854,7 @@ impl FloatingPanes {
                         self.focus_pane(next_active_pane_id, client_id);
                     },
                     None => {
-                        self.defocus_pane(pane_id, client_id);
+                        self.defocus_pane(client_id);
                     },
                 }
             }
@@ -825,6 +869,7 @@ impl FloatingPanes {
         }
         self.z_indices.retain(|p_id| *p_id != pane_id);
         self.z_indices.push(pane_id);
+        self.make_sure_pinned_panes_are_on_top();
         self.set_pane_active_at(pane_id);
         self.set_force_render();
     }
@@ -858,8 +903,7 @@ impl FloatingPanes {
             },
         }
     }
-    pub fn defocus_pane(&mut self, pane_id: PaneId, client_id: ClientId) {
-        self.z_indices.retain(|p_id| *p_id != pane_id);
+    pub fn defocus_pane(&mut self, client_id: ClientId) {
         self.active_panes.remove(&client_id, &mut self.panes);
         self.set_force_render();
     }
@@ -1213,5 +1257,28 @@ impl FloatingPanes {
             viewport,
         );
         floating_pane_grid.next_selectable_pane_id_to_the_right(&pane_id)
+    }
+    fn make_sure_pinned_panes_are_on_top(&mut self) {
+        let pinned_status: std::collections::HashMap<_, _> = self
+            .z_indices
+            .iter()
+            .map(|id| (id.clone(), self.pane_id_is_pinned(id)))
+            .collect();
+
+        self.z_indices.sort_by(|a_id, b_id| {
+            let a_is_pinned = pinned_status.get(a_id).copied().unwrap_or(false);
+            let b_is_pinned = pinned_status.get(b_id).copied().unwrap_or(false);
+            match (a_is_pinned, b_is_pinned) {
+                (true, false) => Ordering::Greater,
+                (false, true) => Ordering::Less,
+                _ => Ordering::Equal,
+            }
+        });
+    }
+    fn pane_id_is_pinned(&self, pane_id: &PaneId) -> bool {
+        self.panes
+            .get(pane_id)
+            .map(|p| p.position_and_size().is_pinned)
+            .unwrap_or(false)
     }
 }

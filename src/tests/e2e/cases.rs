@@ -1,7 +1,10 @@
 #![allow(unused)]
 
 use ::insta::assert_snapshot;
-use zellij_utils::{pane_size::Size, position::Position};
+use zellij_utils::{
+    pane_size::Size,
+    position::{Column, Line, Position},
+};
 
 use rand::Rng;
 use regex::Regex;
@@ -376,7 +379,9 @@ pub fn toggle_pane_fullscreen() {
             name: "Wait for pane to become fullscreen",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.cursor_position_is(3, 2) {
+                if remote_terminal.cursor_position_is(3, 2)
+                    && remote_terminal.snapshot_contains("LOCK")
+                {
                     // cursor is in full screen pane now
                     step_is_complete = true;
                 }
@@ -1445,6 +1450,7 @@ pub fn scrolling_inside_a_pane_with_mouse() {
                 if remote_terminal.cursor_position_is(63, 21)
                     && remote_terminal.snapshot_contains("line1 ")
                     && remote_terminal.snapshot_contains("SCROLL:  3/3")
+                    && remote_terminal.snapshot_contains("LOCK")
                 {
                     step_is_complete = true;
                 }
@@ -2311,6 +2317,8 @@ pub fn send_command_through_the_cli() {
                             fixture_folder
                         ));
                         std::thread::sleep(std::time::Duration::from_millis(100));
+                        remote_terminal.send_key(&ENTER);
+                        std::thread::sleep(std::time::Duration::from_millis(100));
                         step_is_complete = true;
                     }
                     step_is_complete
@@ -2370,6 +2378,102 @@ pub fn send_command_through_the_cli() {
                 let mut step_is_complete = false;
                 if remote_terminal.snapshot_contains("foo")
                     && remote_terminal.cursor_position_is(76, 4)
+                {
+                    step_is_complete = true
+                }
+                step_is_complete
+            },
+        });
+
+        if runner.test_timed_out && test_attempts > 0 {
+            test_attempts -= 1;
+            continue;
+        } else {
+            break last_snapshot;
+        }
+    };
+    let last_snapshot = account_for_races_in_snapshot(last_snapshot);
+    assert_snapshot!(last_snapshot);
+}
+
+#[test]
+#[ignore]
+pub fn send_blocking_command_through_the_cli() {
+    // here we test the following flow:
+    // - send a blocking command through the cli with --blocking --floating --close-on-exit
+    // - the command sleeps for 2 seconds (longer than the default 1s timeout) then exits with status 42
+    // - verify that the CLI blocks for the full duration (we check after 2+ seconds)
+    // - verify that the floating pane appears while running and disappears after completion
+    // - verify that the exit status is properly propagated
+    let fake_win_size = Size {
+        cols: 150,
+        rows: 24,
+    };
+    let mut test_attempts = 10;
+    let last_snapshot = loop {
+        RemoteRunner::kill_running_sessions(fake_win_size);
+        let mut runner = RemoteRunner::new(fake_win_size)
+            .add_step(Step {
+                name: "Run blocking command through the cli",
+                instruction: |mut remote_terminal: RemoteTerminal| -> bool {
+                    let mut step_is_complete = false;
+                    if remote_terminal.status_bar_appears()
+                        && remote_terminal.cursor_position_is(3, 2)
+                    {
+                        // Send a command that sleeps for 2 seconds then exits with status 42
+                        // Using bash -c with proper escaping
+                        // remote_terminal.send_key("aaa\n".as_bytes());
+                        std::thread::sleep(std::time::Duration::from_millis(100));
+                        remote_terminal.send_blocking_command_through_the_cli(
+                            // "lskdjlskdjf"
+                            "bash -c 'sleep 2 && exit 42'",
+                        );
+                        std::thread::sleep(std::time::Duration::from_millis(100));
+                        remote_terminal.send_key(&ENTER);
+                        std::thread::sleep(std::time::Duration::from_millis(100));
+                        step_is_complete = true;
+                    }
+                    step_is_complete
+                },
+            })
+            .add_step(Step {
+                name: "Wait for floating pane to appear",
+                instruction: |remote_terminal: RemoteTerminal| -> bool {
+                    let mut step_is_complete = false;
+                    // The floating pane should appear with the running command
+                    if remote_terminal.snapshot_contains("PIN [ ]") {
+                        std::thread::sleep(std::time::Duration::from_millis(2000)); // wait for
+                                                                                    // command to
+                                                                                    // end
+                        step_is_complete = true
+                    }
+                    step_is_complete
+                },
+            })
+            .add_step(Step {
+                name: "Wait for command to complete and verify exit status",
+                instruction: |mut remote_terminal: RemoteTerminal| -> bool {
+                    let mut step_is_complete = false;
+                    // After 2+ seconds, the command should complete and the floating pane should close
+                    // then we do echo $? to make sure we got back its exit status
+                    if !remote_terminal.snapshot_contains("PIN [ ]") {
+                        remote_terminal.send_key("echo $?".as_bytes());
+                        std::thread::sleep(std::time::Duration::from_millis(100));
+                        remote_terminal.send_key(&ENTER);
+                        std::thread::sleep(std::time::Duration::from_millis(100));
+                        step_is_complete = true
+                    }
+                    step_is_complete
+                },
+            });
+        runner.run_all_steps();
+
+        let last_snapshot = runner.take_snapshot_after(Step {
+            name: "Verify CLI returned with proper exit status after command completed",
+            instruction: |remote_terminal: RemoteTerminal| -> bool {
+                let mut step_is_complete = false;
+                if remote_terminal.snapshot_contains("echo $?")
+                    && remote_terminal.status_bar_appears()
                 {
                     step_is_complete = true
                 }
@@ -2485,6 +2589,7 @@ pub fn pin_floating_panes() {
                         remote_terminal.send_key(&PANE_MODE);
                         std::thread::sleep(std::time::Duration::from_millis(100));
                         remote_terminal.send_key(&TOGGLE_FLOATING_PANES);
+                        std::thread::sleep(std::time::Duration::from_millis(100));
                         step_is_complete = true;
                     }
                     step_is_complete
@@ -2517,9 +2622,14 @@ pub fn pin_floating_panes() {
         runner.run_all_steps();
         let last_snapshot = runner.take_snapshot_after(Step {
             name: "Wait for cursor to be behind pinned pane",
-            instruction: |remote_terminal: RemoteTerminal| -> bool {
+            instruction: |mut remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.snapshot_contains("hide") {
+                if !remote_terminal.snapshot_contains("LOCK") {
+                    remote_terminal.send_key(&PANE_MODE);
+                }
+                if remote_terminal.snapshot_contains("hide")
+                    && remote_terminal.snapshot_contains("LOCK")
+                {
                     // terminal has been filled with fixture text
                     step_is_complete = true;
                 }
@@ -2533,6 +2643,258 @@ pub fn pin_floating_panes() {
             break last_snapshot;
         }
     };
+    let last_snapshot = account_for_races_in_snapshot(last_snapshot);
+    assert_snapshot!(last_snapshot);
+}
+
+#[test]
+#[ignore]
+pub fn watcher_client_functionality() {
+    let fake_win_size = Size {
+        cols: 120,
+        rows: 24,
+    };
+    let mut test_attempts = 10;
+    let session_name = "watcher_client_functionality";
+    let (main_client_snapshot, watcher_snapshot) = loop {
+        RemoteRunner::kill_running_sessions(fake_win_size);
+
+        // Step 1: Create main client and wait for it to load
+        let mut main_client =
+            RemoteRunner::new_with_session_name(fake_win_size, session_name, false)
+                .dont_panic()
+                .add_step(Step {
+                    name: "Wait for app to load",
+                    instruction: |remote_terminal: RemoteTerminal| -> bool {
+                        remote_terminal.status_bar_appears()
+                            && remote_terminal.cursor_position_is(3, 2)
+                    },
+                });
+        main_client.run_all_steps();
+
+        // Step 2: Start a background process that produces periodic output
+        main_client = main_client.add_step(Step {
+            name: "Start background output loop",
+            instruction: |mut remote_terminal: RemoteTerminal| -> bool {
+                remote_terminal.send_key(b"{ for i in 1 2 3; do sleep 1; echo \"WATCHER_OUTPUT_$i\"; done & } 2>/dev/null");
+                std::thread::sleep(std::time::Duration::from_millis(100));
+                remote_terminal.send_key(&ENTER);
+                true
+            },
+        });
+        main_client.run_all_steps();
+
+        // Step 3: Wait for first output line to appear
+        main_client = main_client.add_step(Step {
+            name: "Wait for first background output",
+            instruction: |remote_terminal: RemoteTerminal| -> bool {
+                let found = remote_terminal.snapshot_contains("WATCHER_OUTPUT_1");
+                found
+            },
+        });
+        main_client.run_all_steps();
+
+        // Step 4: Attach watcher client
+        let mut watcher = RemoteRunner::new_watcher_session(fake_win_size, session_name)
+            .dont_panic()
+            .add_step(Step {
+                name: "Wait for watcher to connect",
+                instruction: |remote_terminal: RemoteTerminal| -> bool {
+                    remote_terminal.status_bar_appears()
+                    // && remote_terminal.cursor_position_is(3, 2)
+                },
+            });
+        watcher.run_all_steps();
+
+        // Step 5: Main client splits pane right
+        main_client = main_client.add_step(Step {
+            name: "Split pane to the right",
+            instruction: |mut remote_terminal: RemoteTerminal| -> bool {
+                if remote_terminal.status_bar_appears() && remote_terminal.cursor_position_is(1, 7)
+                {
+                    remote_terminal.send_key(&PANE_MODE);
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                    remote_terminal.send_key(&SPLIT_RIGHT_IN_PANE_MODE);
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                    true
+                } else {
+                    false
+                }
+            },
+        });
+        main_client.run_all_steps();
+
+        // Step 6: Verify watcher sees the split pane
+        watcher = watcher.add_step(Step {
+            name: "Watcher sees split pane",
+            instruction: |remote_terminal: RemoteTerminal| -> bool {
+                remote_terminal.cursor_position_is(63, 2) && remote_terminal.snapshot_contains("┐┌")
+                // vertical split indicator
+            },
+        });
+        watcher.run_all_steps();
+
+        // Step 7: Watcher tries to open a new tab (should be ignored)
+        watcher = watcher.add_step(Step {
+            name: "Watcher attempts to open new tab",
+            instruction: |mut remote_terminal: RemoteTerminal| -> bool {
+                remote_terminal.send_key(&TAB_MODE);
+                std::thread::sleep(std::time::Duration::from_millis(100));
+                remote_terminal.send_key(&NEW_TAB_IN_TAB_MODE);
+                std::thread::sleep(std::time::Duration::from_millis(500));
+                remote_terminal.send_key(b"some text that should not appear...");
+                std::thread::sleep(std::time::Duration::from_millis(500));
+                true
+            },
+        });
+        watcher.run_all_steps();
+
+        // Step 8: Verify main client didn't receive the tab command
+        main_client = main_client.add_step(Step {
+            name: "Verify no new tab was created",
+            instruction: |remote_terminal: RemoteTerminal| -> bool {
+                // Should still be in Tab #1, not Tab #2
+                remote_terminal.snapshot_contains("Tab #1")
+                    && !remote_terminal.snapshot_contains("Tab #2")
+            },
+        });
+        main_client.run_all_steps();
+
+        // Step 9: Watcher sends mouse click (should be ignored)
+        watcher = watcher.add_step(Step {
+            name: "Watcher attempts mouse click",
+            instruction: |mut remote_terminal: RemoteTerminal| -> bool {
+                let click_position = Position {
+                    line: Line(10),
+                    column: Column(10),
+                };
+                remote_terminal.send_key(&sgr_mouse_report(click_position, 0)); // left click
+                std::thread::sleep(std::time::Duration::from_millis(500));
+                true
+            },
+        });
+        watcher.run_all_steps();
+
+        // Step 10: Main client detaches
+        main_client = main_client.add_step(Step {
+            name: "Main client detaches",
+            instruction: |mut remote_terminal: RemoteTerminal| -> bool {
+                remote_terminal.send_key(&SESSION_MODE);
+                std::thread::sleep(std::time::Duration::from_millis(100));
+                remote_terminal.send_key(&DETACH_IN_SESSION_MODE);
+                true
+            },
+        });
+        main_client.run_all_steps();
+
+        // Step 11: Verify watcher receives background output even with no main client
+        watcher = watcher.add_step(Step {
+            name: "Watcher sees WATCHER_OUTPUT_2",
+            instruction: |remote_terminal: RemoteTerminal| -> bool {
+                remote_terminal.snapshot_contains("WATCHER_OUTPUT_2")
+            },
+        });
+        watcher.run_all_steps();
+
+        watcher = watcher.add_step(Step {
+            name: "Watcher sees WATCHER_OUTPUT_3",
+            instruction: |remote_terminal: RemoteTerminal| -> bool {
+                remote_terminal.snapshot_contains("WATCHER_OUTPUT_3")
+            },
+        });
+        watcher.run_all_steps();
+
+        // Step 12: Main client re-attaches
+        let mut main_client_reattached =
+            RemoteRunner::new_existing_session(fake_win_size, session_name)
+                .dont_panic()
+                .add_step(Step {
+                    name: "Main client re-attaches",
+                    instruction: |remote_terminal: RemoteTerminal| -> bool {
+                        std::thread::sleep(std::time::Duration::from_millis(500)); // wait for watcher
+                                                                                   // to fail running
+                                                                                   // commands
+                        remote_terminal.status_bar_appears()
+                            && remote_terminal.snapshot_contains("┐┌")
+                    },
+                });
+        main_client_reattached.run_all_steps();
+
+        watcher.run_all_steps();
+
+        // Step 15: Take final snapshots
+        let main_client_snapshot = main_client_reattached.take_snapshot_after(Step {
+            name: "Take main client final snapshot",
+            instruction: |remote_terminal: RemoteTerminal| -> bool {
+                remote_terminal.status_bar_appears()
+            },
+        });
+
+        let watcher_snapshot = watcher.take_snapshot_after(Step {
+            name: "Take watcher final snapshot",
+            instruction: |remote_terminal: RemoteTerminal| -> bool {
+                remote_terminal.status_bar_appears()
+            },
+        });
+
+        if (main_client_reattached.test_timed_out || watcher.test_timed_out) && test_attempts > 0 {
+            test_attempts -= 1;
+            continue;
+        } else {
+            break (main_client_snapshot, watcher_snapshot);
+        }
+    };
+
+    let main_client_snapshot = account_for_races_in_snapshot(main_client_snapshot);
+    let watcher_snapshot = account_for_races_in_snapshot(watcher_snapshot);
+    assert_snapshot!(main_client_snapshot);
+    assert_snapshot!(watcher_snapshot);
+}
+
+#[test]
+#[ignore]
+pub fn override_layout_from_default_to_compact() {
+    let fake_win_size = Size {
+        cols: 120,
+        rows: 24,
+    };
+    let mut test_attempts = 10;
+    let last_snapshot = loop {
+        RemoteRunner::kill_running_sessions(fake_win_size);
+
+        let mut runner = RemoteRunner::new(fake_win_size)
+            .add_step(Step {
+                name: "Wait for default layout to load",
+                instruction: |remote_terminal: RemoteTerminal| -> bool {
+                    remote_terminal.status_bar_appears()
+                },
+            })
+            .add_step(Step {
+                name: "Override to compact layout",
+                instruction: |mut remote_terminal: RemoteTerminal| -> bool {
+                    remote_terminal.run_zellij_action("override-layout compact");
+                    std::thread::sleep(std::time::Duration::from_millis(500));
+                    remote_terminal.send_key(&ENTER);
+                    true
+                },
+            });
+
+        runner.run_all_steps();
+        let last_snapshot = runner.take_snapshot_after(Step {
+            name: "Wait for compact layout to appear",
+            instruction: |remote_terminal: RemoteTerminal| -> bool {
+                remote_terminal.snapshot_contains("NORMAL")
+            },
+        });
+
+        if runner.test_timed_out && test_attempts > 0 {
+            test_attempts -= 1;
+            continue;
+        } else {
+            break last_snapshot;
+        }
+    };
+
     let last_snapshot = account_for_races_in_snapshot(last_snapshot);
     assert_snapshot!(last_snapshot);
 }

@@ -11,9 +11,9 @@ Config {
                 ),
                 key_modifiers: {},
             }: [
-                SwitchToMode(
-                    Session,
-                ),
+                SwitchToMode {
+                    input_mode: Session,
+                },
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -23,9 +23,9 @@ Config {
                     Ctrl,
                 },
             }: [
-                SwitchToMode(
-                    Resize,
-                ),
+                SwitchToMode {
+                    input_mode: Resize,
+                },
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -35,9 +35,9 @@ Config {
                     Ctrl,
                 },
             }: [
-                SwitchToMode(
-                    Resize,
-                ),
+                SwitchToMode {
+                    input_mode: Resize,
+                },
             ],
         },
         Resize: {
@@ -47,9 +47,9 @@ Config {
                 ),
                 key_modifiers: {},
             }: [
-                SwitchToMode(
-                    Locked,
-                ),
+                SwitchToMode {
+                    input_mode: Locked,
+                },
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -59,9 +59,9 @@ Config {
                     Ctrl,
                 },
             }: [
-                SwitchToMode(
-                    Resize,
-                ),
+                SwitchToMode {
+                    input_mode: Resize,
+                },
             ],
         },
         Scroll: {
@@ -71,9 +71,9 @@ Config {
                 ),
                 key_modifiers: {},
             }: [
-                SwitchToMode(
-                    Locked,
-                ),
+                SwitchToMode {
+                    input_mode: Locked,
+                },
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -83,9 +83,9 @@ Config {
                     Ctrl,
                 },
             }: [
-                SwitchToMode(
-                    Resize,
-                ),
+                SwitchToMode {
+                    input_mode: Resize,
+                },
             ],
         },
     },
@@ -188,6 +188,18 @@ Config {
                 location: Zellij(
                     PluginTag(
                         "plugin-manager",
+                    ),
+                ),
+                configuration: PluginUserConfiguration(
+                    {},
+                ),
+                initial_cwd: None,
+            },
+            "sequence": RunPlugin {
+                _allow_exec_host_cmd: false,
+                location: Zellij(
+                    PluginTag(
+                        "sequence",
                     ),
                 ),
                 configuration: PluginUserConfiguration(

@@ -1,6 +1,8 @@
 use crate::os_input_output::ClientOsApi;
 use crate::web_client::control_message::{SetConfigPayload, WebServerToWebClientControlMessage};
-use crate::web_client::session_management::build_initial_connection;
+use crate::web_client::session_management::{
+    build_initial_connection, create_first_message, create_ipc_pipe,
+};
 use crate::web_client::types::{ClientConnectionBus, ConnectionTable, SessionManager};
 use crate::web_client::utils::terminal_init_messages;
 
@@ -26,6 +28,7 @@ pub fn zellij_server_listener(
     config_file_path: Option<PathBuf>,
     web_client_id: String,
     session_manager: Arc<dyn SessionManager>,
+    attachment_complete_tx: Option<tokio::sync::oneshot::Sender<()>>,
 ) {
     let _server_listener_thread = std::thread::Builder::new()
         .name("server_listener".to_string())
@@ -41,6 +44,7 @@ pub fn zellij_server_listener(
                             return;
                         },
                     };
+                let mut attachment_complete_tx = attachment_complete_tx;
                 'reconnect_loop: loop {
                     let reconnect_info = reconnect_to_session.take();
                     let path = {
@@ -50,6 +54,7 @@ pub fn zellij_server_listener(
                             .or_else(generate_unique_session_name)
                         else {
                             log::error!("Failed to generate unique session name, bailing.");
+                            client_connection_bus.close_connection();
                             return;
                         };
                         let mut sock_dir = zellij_utils::consts::ZELLIJ_SOCK_DIR.clone();
@@ -81,17 +86,36 @@ pub fn zellij_server_listener(
                         .unwrap()
                         .to_owned();
 
-                    let (first_message, zellij_ipc_pipe) = session_manager.spawn_session_if_needed(
+                    // Look up read-only status from connection table
+                    let is_read_only = connection_table
+                        .lock()
+                        .unwrap()
+                        .is_client_read_only(&web_client_id);
+
+
+                    let session_exists = session_manager.session_exists(&session_name).unwrap_or(false);
+
+                    if is_read_only && !session_exists {
+                        log::error!("Read only tokens cannot create new sessions.");
+                        client_connection_bus.close_connection();
+                        return;
+                    }
+
+                    let should_create_new_session = !session_exists;
+                    let first_message = create_first_message(is_read_only, config_file_path.clone(), client_attributes.clone(), config_options.clone(), should_create_new_session, &session_name);
+                    let zellij_ipc_pipe = create_ipc_pipe(&session_name);
+
+                    session_manager.spawn_session_if_needed(
                         &session_name,
-                        client_attributes,
-                        config_file_path.clone(),
-                        &config_options,
                         os_input.clone(),
-                        reconnect_info.as_ref().and_then(|r| r.layout.clone()),
+                        session_exists,
+                        &zellij_ipc_pipe,
+                        first_message,
                     );
 
-                    os_input.connect_to_server(&zellij_ipc_pipe);
-                    os_input.send_to_server(first_message);
+                    if let Some(tx) = attachment_complete_tx.take() {
+                        let _ = tx.send(());
+                    }
 
                     client_connection_bus.send_control(
                         WebServerToWebClientControlMessage::SwitchedSession {
@@ -99,15 +123,26 @@ pub fn zellij_server_listener(
                         },
                     );
 
+                    let mut unknown_message_count = 0;
                     loop {
-                        match os_input.recv_from_server() {
-                            Some((ServerToClientMsg::UnblockInputThread, _)) => {},
-                            Some((ServerToClientMsg::Exit(exit_reason), _)) => {
+                        let msg = os_input.recv_from_server();
+                        if msg.is_some() {
+                            unknown_message_count = 0;
+                        } else {
+                            unknown_message_count += 1;
+                        }
+                        match msg.map(|m| m.0) {
+                            Some(ServerToClientMsg::UnblockInputThread) => {},
+                            Some(ServerToClientMsg::Connected) => {},
+                            Some(ServerToClientMsg::CliPipeOutput { .. } ) => {},
+                            Some(ServerToClientMsg::UnblockCliPipeInput { .. } ) => {},
+                            Some(ServerToClientMsg::StartWebServer { .. } ) => {},
+                            Some(ServerToClientMsg::Exit{exit_reason}) => {
                                 handle_exit_reason(&mut client_connection_bus, exit_reason);
                                 os_input.send_to_server(ClientToServerMsg::ClientExited);
                                 break;
                             },
-                            Some((ServerToClientMsg::Render(bytes), _)) => {
+                            Some(ServerToClientMsg::Render{content: bytes}) => {
                                 if !sent_init_messages {
                                     for message in terminal_init_messages() {
                                         client_connection_bus.send_stdout(message.to_owned())
@@ -116,33 +151,33 @@ pub fn zellij_server_listener(
                                 }
                                 client_connection_bus.send_stdout(bytes);
                             },
-                            Some((ServerToClientMsg::SwitchSession(connect_to_session), _)) => {
+                            Some(ServerToClientMsg::SwitchSession{connect_to_session}) => {
                                 reconnect_to_session = Some(connect_to_session);
                                 continue 'reconnect_loop;
                             },
-                            Some((ServerToClientMsg::QueryTerminalSize, _)) => {
+                            Some(ServerToClientMsg::QueryTerminalSize) => {
                                 client_connection_bus.send_control(
                                     WebServerToWebClientControlMessage::QueryTerminalSize,
                                 );
                             },
-                            Some((ServerToClientMsg::Log(lines), _)) => {
+                            Some(ServerToClientMsg::Log{lines}) => {
                                 client_connection_bus.send_control(
                                     WebServerToWebClientControlMessage::Log { lines },
                                 );
                             },
-                            Some((ServerToClientMsg::LogError(lines), _)) => {
+                            Some(ServerToClientMsg::LogError{lines}) => {
                                 client_connection_bus.send_control(
                                     WebServerToWebClientControlMessage::LogError { lines },
                                 );
                             },
-                            Some((ServerToClientMsg::RenamedSession(new_session_name), _)) => {
+                            Some(ServerToClientMsg::RenamedSession{name: new_session_name}) => {
                                 client_connection_bus.send_control(
                                     WebServerToWebClientControlMessage::SwitchedSession {
                                         new_session_name,
                                     },
                                 );
                             },
-                            Some((ServerToClientMsg::ConfigFileUpdated, _)) => {
+                            Some(ServerToClientMsg::ConfigFileUpdated) => {
 
                                 if let Some(config_file_path) = &config_file_path {
                                     if let Ok(new_config) = Config::from_path(&config_file_path, Some(config.clone())) {
@@ -189,10 +224,13 @@ pub fn zellij_server_listener(
                                     }
                                 }
                             },
-                            _ => {
-                                // server disconnected, stop trying to listen otherwise we retry
-                                // indefinitely and get 100% CPU
-                                break;
+                            None => {
+                                if unknown_message_count >= 1000 {
+                                    log::error!("Error: Received more than 1000 consecutive unknown server messages, disconnecting.");
+                                    // this probably means we're in an infinite loop, let's
+                                    // disconnect so as not to cause 100% CPU
+                                    break;
+                                }
                             },
                         }
                     }
