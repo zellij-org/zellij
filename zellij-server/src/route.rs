@@ -45,7 +45,7 @@ pub struct ActionCompletionResult {
     pub affected_pane_id: Option<PaneId>,
 }
 
-fn wait_for_action_completion(
+pub fn wait_for_action_completion(
     receiver: oneshot::Receiver<ActionCompletionResult>,
     action_name: &str,
     wait_forever: bool,

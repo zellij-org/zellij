@@ -4,7 +4,7 @@ use crate::global_async_runtime::get_tokio_runtime;
 use crate::plugins::plugin_map::PluginEnv;
 use crate::plugins::wasm_bridge::handle_plugin_crash;
 use crate::pty::{ClientTabIndexOrPaneId, PtyInstruction};
-use crate::route::route_action;
+use crate::route::{route_action, wait_for_action_completion, NotificationEnd};
 use crate::ServerInstruction;
 use interprocess::local_socket::LocalSocketStream;
 use log::warn;
@@ -18,6 +18,7 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
+use tokio::sync::oneshot;
 use wasmi::{Caller, Linker};
 use zellij_utils::data::{
     CommandType, ConnectToSession, DeleteLayoutResponse, EditLayoutResponse, Event,
@@ -2059,6 +2060,9 @@ fn switch_session(
             return Err(anyhow!("Failed to deserialize layout: {}", e));
         }
     }
+
+    let (completion_tx, completion_rx) = oneshot::channel();
+
     if session_name
         .as_ref()
         .map(|s| s.contains('/'))
@@ -2079,9 +2083,11 @@ fn switch_session(
             .send_to_server(ServerInstruction::SwitchSession(
                 connect_to_session,
                 client_id,
-                None,
+                Some(NotificationEnd::new(completion_tx)),
             ))
             .with_context(err_context)?;
+        let wait_forever = false;
+        let _ = wait_for_action_completion(completion_rx, "switch_session", wait_forever);
     }
     Ok(())
 }
