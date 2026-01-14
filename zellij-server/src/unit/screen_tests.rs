@@ -1668,7 +1668,11 @@ fn floating_pane_centers_with_percentage_width() {
     let expected_width = ((50.0_f64 / 100.0) * 120.0).floor() as usize;
     let expected_x = (120 - expected_width) / 2;
     assert_eq!(active_pane.cols(), expected_width, "width is 50% of 120");
-    assert_eq!(active_pane.x(), expected_x, "x centered based on calculated width");
+    assert_eq!(
+        active_pane.x(),
+        expected_x,
+        "x centered based on calculated width"
+    );
     assert_eq!(active_pane.y(), 5, "y explicitly set");
 }
 
@@ -1701,8 +1705,16 @@ fn floating_pane_centers_large_pane_safely() {
         )
         .unwrap();
     let active_pane = active_tab.get_active_pane(1).unwrap();
-    assert_eq!(active_pane.x(), 0, "x is 0 when pane larger than viewport (saturating_sub)");
-    assert_eq!(active_pane.y(), 0, "y is 0 when pane larger than viewport (saturating_sub)");
+    assert_eq!(
+        active_pane.x(),
+        0,
+        "x is 0 when pane larger than viewport (saturating_sub)"
+    );
+    assert_eq!(
+        active_pane.y(),
+        0,
+        "y is 0 when pane larger than viewport (saturating_sub)"
+    );
     assert!(active_pane.cols() <= 100, "width clamped to viewport");
     assert!(active_pane.rows() <= 30, "height clamped to viewport");
 }
