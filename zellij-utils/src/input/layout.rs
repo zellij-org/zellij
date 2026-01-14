@@ -73,6 +73,24 @@ pub enum SplitSize {
     Fixed(usize), // An absolute number of columns or rows
 }
 
+impl From<PercentOrFixed> for SplitSize {
+    fn from(pof: PercentOrFixed) -> Self {
+        match pof {
+            PercentOrFixed::Percent(p) => SplitSize::Percent(p),
+            PercentOrFixed::Fixed(f) => SplitSize::Fixed(f),
+        }
+    }
+}
+
+impl From<SplitSize> for PercentOrFixed {
+    fn from(ss: SplitSize) -> Self {
+        match ss {
+            SplitSize::Percent(p) => PercentOrFixed::Percent(p),
+            SplitSize::Fixed(f) => PercentOrFixed::Fixed(f),
+        }
+    }
+}
+
 impl SplitSize {
     pub fn to_fixed(&self, full_size: usize) -> usize {
         match self {
@@ -725,6 +743,14 @@ impl PercentOrFixed {
                     *fixed
                 }
             },
+        }
+    }
+    pub fn to_fixed(&self, full_size: usize) -> usize {
+        match self {
+            PercentOrFixed::Percent(percent) => {
+                ((*percent as f64 / 100.0) * full_size as f64).floor() as usize
+            },
+            PercentOrFixed::Fixed(fixed) => *fixed,
         }
     }
 }

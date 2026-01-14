@@ -9405,7 +9405,7 @@ fn new_floating_pane_in_auto_layout() {
         stacked_resize,
     );
 
-    let mut expected_cursor_coordinates = vec![(62, 11), (62, 6), (31, 12)];
+    let mut expected_cursor_coordinates = vec![(61, 11), (61, 6), (34, 12)];
     for i in 0..3 {
         let new_pane_id = i + 2;
         tab.new_pane(
