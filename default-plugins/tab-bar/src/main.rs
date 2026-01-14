@@ -40,6 +40,7 @@ struct State {
     hovered_new_tab_button: bool,
     hint_text: Option<BTreeMap<usize, StyledText>>,
     outstanding_hint_timeouts: usize,
+    show_tab_indices: bool,
 }
 
 static ARROW_SEPARATOR: &str = "";
@@ -50,6 +51,10 @@ impl ZellijPlugin for State {
     fn load(&mut self, configuration: BTreeMap<String, String>) {
         self.hide_swap_layout_indication = configuration
             .get("hide_swap_layout_indication")
+            .map(|s| s == "true")
+            .unwrap_or(false);
+        self.show_tab_indices = configuration
+            .get("show_tab_indices")
             .map(|s| s == "true")
             .unwrap_or(false);
         set_selectable(false);
@@ -214,6 +219,11 @@ impl ZellijPlugin for State {
                 active_tab_index = t.position;
             }
             let is_hovered = self.hovered_tab_idx == Some(t.position + 1);
+            let tab_index = if self.show_tab_indices {
+                Some(t.position + 1)
+            } else {
+                None
+            };
             let tab = tab_style(
                 tabname,
                 t,
@@ -222,6 +232,7 @@ impl ZellijPlugin for State {
                 self.mode_info.style.colors,
                 self.mode_info.capabilities,
                 dimmed,
+                tab_index,
             );
             is_alternate_tab = !is_alternate_tab;
             all_tabs.push(tab);
