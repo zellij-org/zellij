@@ -32,6 +32,7 @@ struct State {
     mode_info: ModeInfo,
     tab_line: Vec<LinePart>,
     hide_swap_layout_indication: bool,
+    show_tab_indices: bool,
 }
 
 static ARROW_SEPARATOR: &str = "";
@@ -42,6 +43,10 @@ impl ZellijPlugin for State {
     fn load(&mut self, configuration: BTreeMap<String, String>) {
         self.hide_swap_layout_indication = configuration
             .get("hide_swap_layout_indication")
+            .map(|s| s == "true")
+            .unwrap_or(false);
+        self.show_tab_indices = configuration
+            .get("show_tab_indices")
             .map(|s| s == "true")
             .unwrap_or(false);
         set_selectable(false);
@@ -119,12 +124,18 @@ impl ZellijPlugin for State {
             } else if t.active {
                 active_tab_index = t.position;
             }
+            let tab_index = if self.show_tab_indices {
+                Some(t.position + 1)
+            } else {
+                None
+            };
             let tab = tab_style(
                 tabname,
                 t,
                 is_alternate_tab,
                 self.mode_info.style.colors,
                 self.mode_info.capabilities,
+                tab_index,
             );
             is_alternate_tab = !is_alternate_tab;
             all_tabs.push(tab);

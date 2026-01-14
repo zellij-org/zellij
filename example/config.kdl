@@ -168,7 +168,10 @@ keybinds {
 }
 
 plugins {
-    tab-bar { path "tab-bar"; }
+    tab-bar {
+        path "tab-bar"
+        // show_tab_indices false
+    }
     status-bar { path "status-bar"; }
     strider { path "strider"; }
     compact-bar { path "compact-bar"; }
