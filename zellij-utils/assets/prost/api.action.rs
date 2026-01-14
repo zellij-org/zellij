@@ -257,21 +257,31 @@ pub struct NewTabPayload {
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct OverrideLayoutPayload {
-    #[prost(message, optional, tag="1")]
-    pub tiled_layout: ::core::option::Option<TiledPaneLayout>,
-    #[prost(message, repeated, tag="2")]
-    pub floating_layouts: ::prost::alloc::vec::Vec<FloatingPaneLayout>,
-    #[prost(message, repeated, tag="3")]
-    pub swap_tiled_layouts: ::prost::alloc::vec::Vec<SwapTiledLayout>,
-    #[prost(message, repeated, tag="4")]
-    pub swap_floating_layouts: ::prost::alloc::vec::Vec<SwapFloatingLayout>,
-    #[prost(string, optional, tag="5")]
+pub struct TabLayoutInfo {
+    #[prost(uint32, tag="1")]
+    pub tab_index: u32,
+    #[prost(string, optional, tag="2")]
     pub tab_name: ::core::option::Option<::prost::alloc::string::String>,
-    #[prost(bool, tag="10")]
+    #[prost(message, optional, tag="3")]
+    pub tiled_layout: ::core::option::Option<TiledPaneLayout>,
+    #[prost(message, repeated, tag="4")]
+    pub floating_layouts: ::prost::alloc::vec::Vec<FloatingPaneLayout>,
+    #[prost(message, repeated, tag="5")]
+    pub swap_tiled_layouts: ::prost::alloc::vec::Vec<SwapTiledLayout>,
+    #[prost(message, repeated, tag="6")]
+    pub swap_floating_layouts: ::prost::alloc::vec::Vec<SwapFloatingLayout>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct OverrideLayoutPayload {
+    #[prost(message, repeated, tag="1")]
+    pub tabs: ::prost::alloc::vec::Vec<TabLayoutInfo>,
+    #[prost(bool, tag="2")]
     pub retain_existing_terminal_panes: bool,
-    #[prost(bool, tag="11")]
+    #[prost(bool, tag="3")]
     pub retain_existing_plugin_panes: bool,
+    #[prost(bool, tag="4")]
+    pub apply_only_to_active_tab: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

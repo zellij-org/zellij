@@ -26,6 +26,7 @@ daemonize = { workspace = true }
 highway = { version = "0.6.4", default-features = false, features = ["std"] }
 interprocess = { workspace = true }
 isahc = { workspace = true }
+kdl = { workspace = true }
 lazy_static = { workspace = true }
 libc = { workspace = true }
 log = { workspace = true }
@@ -46,21 +47,21 @@ unicode-width = { workspace = true }
 url = { workspace = true }
 uuid = { workspace = true }
 vte = { workspace = true }
-wasmi_wasi = { version = "0.51.1" }
+wasmi_wasi = { version = "0.51.3" }
 zellij-utils = { workspace = true }
 tokio = { workspace = true }
 once_cell = "1.19"
 num_cpus = "1.16"
 
 [dependencies.wasmi]
-version = "0.51.1"
+version = "0.51.3"
 default-features = false
 features = ["std"]
 
 [dev-dependencies]
 insta = "1.6.0"
 tempfile = "3.2.0"
-wasmi = { version = "0.51.1", features = ["std"] }
+wasmi = { version = "0.51.3", features = ["std"] }
 
 [features]
 web_server_capability = ["zellij-utils/web_server_capability"]

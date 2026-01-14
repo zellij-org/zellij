@@ -406,6 +406,9 @@ impl RunningPlugin {
     pub fn update_default_shell(&mut self, default_shell: Option<TerminalAction>) {
         self.store.data_mut().default_shell = default_shell;
     }
+    pub fn update_layout_dir(&mut self, layout_dir: Option<PathBuf>) {
+        self.store.data_mut().layout_dir = layout_dir;
+    }
     pub fn intercepting_key_presses(&self) -> bool {
         self.store.data().intercepting_key_presses
     }

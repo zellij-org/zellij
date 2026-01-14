@@ -51,15 +51,15 @@ use zellij_utils::{
         DEFAULT_SCROLL_BUFFER_SIZE, SCROLL_BUFFER_SIZE, ZELLIJ_SEEN_RELEASE_NOTES_CACHE_FILE,
     },
     data::{
-        ConnectToSession, Event, InputMode, KeyWithModifier, LayoutInfo, PluginCapabilities, Style,
-        WebSharing,
+        ConnectToSession, Event, InputMode, KeyWithModifier, LayoutInfo, LayoutWithError,
+        PluginCapabilities, Style, WebSharing,
     },
     errors::{prelude::*, ContextType, ErrorInstruction, FatalError, ServerContext},
     home::{default_layout_dir, get_default_data_dir},
     input::{
         actions::Action,
         command::{RunCommand, TerminalAction},
-        config::{watch_config_file_changes, Config},
+        config::{watch_config_file_changes, watch_layout_dir_changes, Config},
         get_mode_info,
         keybinds::Keybinds,
         layout::{FloatingPaneLayout, Layout, PluginAlias, Run, RunPluginOrAlias},
@@ -401,6 +401,7 @@ impl SessionMetaData {
                     keybinds: Some(new_config.keybinds),
                     default_mode: new_config.options.default_mode,
                     default_shell: self.default_shell.clone(),
+                    layout_dir: new_config.options.layout_dir,
                     was_written_to_disk: config_was_written_to_disk,
                 })
                 .unwrap();
@@ -1781,6 +1782,9 @@ fn init_session(
         .unwrap();
 
     let zellij_cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+
+    let (available_layouts, available_layout_errors) = get_available_layouts(&config_options);
+
     let plugin_thread = thread::Builder::new()
         .name("wasm".to_string())
         .spawn({
@@ -1800,7 +1804,10 @@ fn init_session(
             let client_attributes = client_attributes.clone();
             let default_shell = default_shell.clone();
             let capabilities = capabilities.clone();
-            let layout_dir = config_options.layout_dir.clone();
+            let layout_dir = config_options
+                .layout_dir
+                .clone()
+                .or_else(|| default_layout_dir());
             let background_plugins = config.background_plugins.clone();
             move || {
                 plugin_thread_main(
@@ -1809,6 +1816,8 @@ fn init_session(
                     data_dir,
                     layout,
                     layout_dir,
+                    available_layouts,
+                    available_layout_errors,
                     path_to_default_shell,
                     zellij_cwd,
                     capabilities,
@@ -1873,7 +1882,19 @@ fn init_session(
         })
         .unwrap();
     if let Some(config_file_path) = cli_assets.config_file_path.clone() {
+        let layout_dir = config_options
+            .layout_dir
+            .clone()
+            .or_else(|| default_layout_dir());
+        let default_layout_name = config_options
+            .default_layout
+            .map(|l| format!("{}", l.display()));
         report_changes_in_config_file(config_file_path, to_server.clone());
+
+        // Watch layout directory for changes
+        if let Some(layout_dir_path) = layout_dir {
+            report_changes_in_layout_dir(layout_dir_path, default_layout_name, to_plugin.clone());
+        }
     }
 
     SessionMetaData {
@@ -1997,6 +2018,33 @@ fn report_changes_in_config_file(
     });
 }
 
+fn report_changes_in_layout_dir(
+    layout_dir: PathBuf,
+    default_layout_name: Option<String>,
+    to_plugin: SenderWithContext<PluginInstruction>,
+) {
+    std::thread::spawn(move || {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async move {
+            let to_plugin = to_plugin.clone();
+            watch_layout_dir_changes(
+                layout_dir,
+                default_layout_name,
+                move |new_layouts, layout_errors| {
+                    let to_plugin = to_plugin.clone();
+                    async move {
+                        let _ = to_plugin.send(PluginInstruction::LayoutListUpdate(
+                            new_layouts,
+                            layout_errors,
+                        ));
+                    }
+                },
+            )
+            .await;
+        });
+    });
+}
+
 fn update_new_saved_config(
     new_config: Option<Config>,
     write_config_to_disk: bool,
@@ -2085,4 +2133,17 @@ fn update_new_saved_config(
 pub fn get_engine() -> Engine {
     log::info!("Loading plugins using Wasmi interpreter");
     Engine::default()
+}
+
+// TODO: move elsewhere
+fn get_available_layouts(config_options: &Options) -> (Vec<LayoutInfo>, Vec<LayoutWithError>) {
+    let layout_dir = config_options
+        .layout_dir
+        .clone()
+        .or_else(|| default_layout_dir());
+    let default_layout_name = config_options
+        .default_layout
+        .as_ref()
+        .map(|l| format!("{}", l.display()));
+    Layout::list_available_layouts(layout_dir, &default_layout_name)
 }

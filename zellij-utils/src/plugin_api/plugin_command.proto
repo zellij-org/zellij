@@ -166,6 +166,16 @@ enum CommandName {
   SendSigintToPaneId = 171;
   SendSigkillToPaneId = 172;
   GetPanePid = 173;
+  OverrideLayout = 174;
+  SaveLayout = 175;
+  DeleteLayout = 176;
+  EditLayout = 177;
+  GenerateRandomName = 178;
+  DumpLayout = 179;
+  ParseLayout = 180;
+  RenameLayout = 181;
+  GetLayoutDir = 182;
+  GetFocusedPaneInfo = 183;
 }
 
 message PluginCommand {
@@ -280,12 +290,27 @@ message PluginCommand {
     PaneId send_sigint_to_pane_id_payload = 121;
     PaneId send_sigkill_to_pane_id_payload = 122;
     GetPanePidPayload get_pane_pid_payload = 123;
+    OverrideLayoutPayload override_layout_payload = 124;
+    SaveLayoutPayload save_layout_payload = 125;
+    DeleteLayoutPayload delete_layout_payload = 126;
+    EditLayoutPayload edit_layout_payload = 127;
+    GenerateRandomNamePayload generate_random_name_payload = 128;
+    DumpLayoutPayload dump_layout_payload = 129;
+    ParseLayoutPayload parse_layout_payload = 130;
+    RenameLayoutPayload rename_layout_payload = 131;
+    GetLayoutDirPayload get_layout_dir_payload = 132;
+    DumpSessionLayoutPayload dump_session_layout_payload = 133;
+    GetFocusedPaneInfoPayload get_focused_pane_info_payload = 134;
   }
 }
 
 message NewTabPayload {
   optional string name = 1;
   optional string cwd = 2;
+}
+
+message DumpSessionLayoutPayload {
+  optional uint32 tab_index = 1;
 }
 
 message RunActionPayload {
@@ -754,4 +779,116 @@ message GetPanePidResponse {
     int32 pid = 1;
     string error = 2;
   }
+}
+
+message SaveLayoutResponse {
+  oneof result {
+    bool success = 1;
+    string error = 2;
+  }
+}
+
+message DeleteLayoutResponse {
+  oneof result {
+    bool success = 1;
+    string error = 2;
+  }
+}
+
+message EditLayoutResponse {
+  oneof result {
+    bool success = 1;
+    string error = 2;
+  }
+}
+
+message GenerateRandomNameResponse {
+  string name = 1;
+}
+
+message OverrideLayoutPayload {
+  event.LayoutInfo layout_info = 1;
+  repeated ContextItem context = 2;
+  bool retain_existing_terminal_panes = 3;
+  bool retain_existing_plugin_panes = 4;
+  bool apply_only_to_active_tab = 5;
+}
+
+message SaveLayoutPayload {
+  string layout_name = 1;
+  string layout_kdl = 2;
+  bool overwrite = 3;
+}
+
+message DeleteLayoutPayload {
+  string layout_name = 1;
+}
+
+message EditLayoutPayload {
+  string layout_name = 1;
+  repeated ContextItem context = 2;
+}
+
+message GenerateRandomNamePayload {}
+
+message DumpLayoutPayload {
+  string layout_name = 1;
+}
+
+message DumpLayoutResponse {
+  oneof result {
+    string layout_content = 1;
+    string error = 2;
+  }
+}
+
+message DumpSessionLayoutResponse {
+  oneof result {
+    string layout_content = 1;
+    string error = 2;
+  }
+  optional api.event.LayoutMetadata metadata = 3;
+}
+
+message ParseLayoutPayload {
+  string layout_string = 1;
+}
+
+message ParseLayoutResponse {
+  oneof result {
+    api.event.LayoutMetadata metadata = 1;
+    api.event.LayoutParsingError error = 2;
+  }
+}
+
+message RenameLayoutPayload {
+  string old_layout_name = 1;
+  string new_layout_name = 2;
+}
+
+message RenameLayoutResponse {
+  oneof result {
+    bool success = 1;
+    string error = 2;
+  }
+}
+
+message GetLayoutDirPayload {}
+
+message GetLayoutDirResponse {
+  string layout_dir = 1;
+}
+
+message GetFocusedPaneInfoPayload {}
+
+message GetFocusedPaneInfoResponse {
+  oneof result {
+    FocusedPaneInfo focused_pane_info = 1;
+    string error = 2;
+  }
+}
+
+message FocusedPaneInfo {
+  uint32 focused_tab_index = 1;
+  PaneId focused_pane_id = 2;
 }

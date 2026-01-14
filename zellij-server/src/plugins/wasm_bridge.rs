@@ -23,8 +23,8 @@ use url::Url;
 use wasmi::{Engine, Module};
 use zellij_utils::consts::{ZELLIJ_CACHE_DIR, ZELLIJ_SESSION_CACHE_DIR, ZELLIJ_TMP_DIR};
 use zellij_utils::data::{
-    FloatingPaneCoordinates, InputMode, PaneContents, PaneRenderReport, PermissionStatus,
-    PermissionType, PipeMessage, PipeSource,
+    FloatingPaneCoordinates, InputMode, LayoutInfo, LayoutWithError, PaneContents,
+    PaneRenderReport, PermissionStatus, PermissionType, PipeMessage, PipeSource,
 };
 use zellij_utils::downloader::Downloader;
 use zellij_utils::input::keybinds::Keybinds;
@@ -179,6 +179,8 @@ pub struct WasmBridge {
         HashMap<RunPluginLocation, HashMap<PluginUserConfiguration, Vec<(PluginId, ClientId)>>>,
     pending_pipes: PendingPipes,
     layout_dir: Option<PathBuf>,
+    available_layouts: Vec<LayoutInfo>,
+    available_layout_errors: Vec<LayoutWithError>,
     default_mode: InputMode,
     default_keybinds: Keybinds,
     keybinds: HashMap<ClientId, Keybinds>,
@@ -199,6 +201,8 @@ impl WasmBridge {
         default_shell: Option<TerminalAction>,
         default_layout: Box<Layout>,
         layout_dir: Option<PathBuf>,
+        available_layouts: Vec<LayoutInfo>,
+        available_layout_errors: Vec<LayoutWithError>,
         default_mode: InputMode,
         default_keybinds: Keybinds,
     ) -> Self {
@@ -240,6 +244,8 @@ impl WasmBridge {
             cached_plugin_map: HashMap::new(),
             pending_pipes: Default::default(),
             layout_dir,
+            available_layouts,
+            available_layout_errors,
             default_mode,
             default_keybinds,
             keybinds: HashMap::new(),
@@ -1324,6 +1330,7 @@ impl WasmBridge {
         keybinds: Option<Keybinds>,
         default_mode: Option<InputMode>,
         default_shell: Option<TerminalAction>,
+        layout_dir: Option<PathBuf>,
     ) -> Result<()> {
         let plugins_to_reconfigure: Vec<(PluginId, Arc<Mutex<RunningPlugin>>)> = self
             .plugin_map
@@ -1347,11 +1354,13 @@ impl WasmBridge {
             self.keybinds.insert(client_id, keybinds.clone());
         }
         self.default_shell = default_shell.clone();
+        self.layout_dir = layout_dir.clone();
         for (plugin_id, running_plugin) in plugins_to_reconfigure {
             self.plugin_executor.execute_for_plugin(plugin_id, {
                 let running_plugin = running_plugin.clone();
                 let keybinds = keybinds.clone();
                 let default_shell = default_shell.clone();
+                let layout_dir = layout_dir.clone();
                 move |_senders,
                       _plugin_map,
                       _connected_clients,
@@ -1366,6 +1375,7 @@ impl WasmBridge {
                         running_plugin.update_default_mode(default_mode);
                     }
                     running_plugin.update_default_shell(default_shell);
+                    running_plugin.update_layout_dir(layout_dir);
                 }
             });
         }
@@ -1842,6 +1852,35 @@ impl WasmBridge {
             .next()
             .copied()
     }
+    pub fn update_available_layouts(
+        &mut self,
+        layouts: Vec<LayoutInfo>,
+        errors: Vec<LayoutWithError>,
+    ) {
+        // Diff with existing layouts
+        if self.available_layouts != layouts || self.available_layout_errors != errors {
+            // Update the stored layouts
+            self.available_layouts = layouts.clone();
+            self.available_layout_errors = errors.clone();
+
+            // Notify all plugins of the change
+            let _ = self.senders.send_to_plugin(PluginInstruction::Update(vec![(
+                None, // Broadcast to all plugins
+                None, // Broadcast to all clients
+                Event::AvailableLayoutInfo(layouts, errors),
+            )]));
+        }
+    }
+    pub fn state_update_for_plugin(&self, plugin_id: PluginId) {
+        let _ = self.senders.send_to_plugin(PluginInstruction::Update(vec![(
+            Some(plugin_id),
+            None,
+            Event::AvailableLayoutInfo(
+                self.available_layouts.clone(),
+                self.available_layout_errors.clone(),
+            ),
+        )]));
+    }
 }
 
 fn handle_plugin_successful_loading(
@@ -1852,6 +1891,7 @@ fn handle_plugin_successful_loading(
     let _ = senders.send_to_background_jobs(BackgroundJob::StopPluginLoadingAnimation(plugin_id));
     let _ = senders.send_to_screen(ScreenInstruction::RequestStateUpdateForPlugins);
     let _ = senders.send_to_background_jobs(BackgroundJob::ReportPluginList(plugin_list));
+    let _ = senders.send_to_plugin(PluginInstruction::RequestStateUpdateForPlugin(plugin_id));
 }
 
 fn handle_plugin_loading_failure(
@@ -1902,6 +1942,7 @@ fn check_event_permission(
         | Event::FailedToWriteConfigToDisk(..)
         | Event::CommandPaneReRun(..)
         | Event::CwdChanged(..)
+        | Event::AvailableLayoutInfo(..)
         | Event::InputReceived => PermissionType::ReadApplicationState,
         Event::WebServerStatus(..) => PermissionType::StartWebServer,
         Event::PaneRenderReport(..) => PermissionType::ReadPaneContents,

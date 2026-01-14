@@ -2,9 +2,11 @@ use crate::panes::PaneId;
 use crate::ClientId;
 use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
+use std::time::{SystemTime, UNIX_EPOCH};
 use zellij_utils::common_path::common_path_all;
 use zellij_utils::pane_size::PaneGeom;
 use zellij_utils::{
+    data::{LayoutMetadata, PaneMetadata, TabMetadata},
     input::command::RunCommand,
     input::layout::{Layout, Run, RunPlugin, RunPluginOrAlias},
     input::plugins::PluginAliases,
@@ -241,6 +243,27 @@ impl SessionLayoutMetadata {
         }
         plugin_ids
     }
+    pub fn remove_plugin_from_layout(&mut self, plugin_id_to_remove: u32) {
+        for tab in &mut self.tabs {
+            // Filter tiled panes
+            tab.tiled_panes.retain(|pane| {
+                if let PaneId::Plugin(id) = pane.id {
+                    id != plugin_id_to_remove
+                } else {
+                    true
+                }
+            });
+
+            // Filter floating panes
+            tab.floating_panes.retain(|pane| {
+                if let PaneId::Plugin(id) = pane.id {
+                    id != plugin_id_to_remove
+                } else {
+                    true
+                }
+            });
+        }
+    }
     pub fn update_terminal_commands(
         &mut self,
         mut terminal_ids_to_commands: HashMap<u32, Vec<String>>,
@@ -330,6 +353,22 @@ impl SessionLayoutMetadata {
         self.default_layout
             .populate_plugin_aliases_in_layout(&plugin_aliases);
     }
+    pub fn to_layout_metadata(&self) -> LayoutMetadata {
+        // Get current timestamp for both creation and update time
+        let current_time = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs().to_string())
+            .unwrap_or_default();
+
+        // Convert all tabs
+        let tabs = self.tabs.iter().map(|tab| tab.to_tab_metadata()).collect();
+
+        LayoutMetadata {
+            tabs,
+            creation_time: current_time.clone(),
+            update_time: current_time,
+        }
+    }
 }
 
 impl Into<GlobalLayoutManifest> for SessionLayoutMetadata {
@@ -360,6 +399,27 @@ impl Into<TabLayoutManifest> for TabLayoutMetadata {
             is_focused: self.is_focused,
             hide_floating_panes: self.hide_floating_panes,
             tab_index: None, // Set later in GlobalLayoutManifest conversion
+        }
+    }
+}
+
+impl TabLayoutMetadata {
+    fn to_tab_metadata(&self) -> TabMetadata {
+        let mut panes = Vec::new();
+
+        // Extract pane metadata from tiled panes
+        for pane in &self.tiled_panes {
+            panes.push(pane.to_pane_metadata());
+        }
+
+        // Extract pane metadata from floating panes
+        for pane in &self.floating_panes {
+            panes.push(pane.to_pane_metadata());
+        }
+
+        TabMetadata {
+            panes,
+            name: self.name.clone(),
         }
     }
 }
@@ -427,6 +487,40 @@ impl PaneLayoutMetadata {
             is_focused,
             pane_contents,
             focused_clients,
+        }
+    }
+    fn to_pane_metadata(&self) -> PaneMetadata {
+        use zellij_utils::input::layout::RunPluginLocation;
+
+        // Try to extract a meaningful name from the pane
+        // Priority: explicit title > command name > file name > plugin location
+        let name = self.title.clone().or_else(|| {
+            self.run.as_ref().and_then(|run| match run {
+                Run::Command(cmd) => Some(cmd.command.display().to_string()),
+                Run::EditFile(path, _, _) => {
+                    path.file_name().map(|n| n.to_string_lossy().to_string())
+                },
+                Run::Plugin(plugin) => Some(plugin.location_string()),
+                Run::Cwd(_) => None,
+            })
+        });
+
+        let is_plugin = matches!(self.id, PaneId::Plugin(_));
+
+        // Detect if this is a builtin plugin
+        let is_builtin_plugin = self
+            .run
+            .as_ref()
+            .map(|run| match run {
+                Run::Plugin(plugin) => plugin.is_builtin_plugin(),
+                _ => false,
+            })
+            .unwrap_or(false);
+
+        PaneMetadata {
+            name,
+            is_plugin,
+            is_builtin_plugin,
         }
     }
 }

@@ -3,8 +3,8 @@ use crate::route::NotificationEnd;
 use crate::terminal_bytes::TerminalBytes;
 use crate::{
     panes::PaneId,
-    plugins::{PluginId, PluginInstruction},
-    screen::ScreenInstruction,
+    plugins::{DumpSessionLayoutResponse, PluginId, PluginInstruction},
+    screen::{ScreenInstruction, TabOverrideResult},
     session_layout_metadata::SessionLayoutMetadata,
     thread_bus::{Bus, ThreadSenders},
     ClientId, ServerInstruction,
@@ -27,7 +27,7 @@ use zellij_utils::{
         command::{OpenFilePayload, RunCommand, TerminalAction},
         layout::{
             FloatingPaneLayout, Layout, Run, RunPluginOrAlias, SwapFloatingLayout, SwapTiledLayout,
-            TiledPaneLayout,
+            TabLayoutInfo, TiledPaneLayout,
         },
     },
     pane_size::Size,
@@ -79,16 +79,11 @@ pub enum PtyInstruction {
         Option<NotificationEnd>,             // completion signal
     ), // the String is the tab name
     OverrideLayout(
-        Option<PathBuf>,        // CWD
-        Option<TerminalAction>, // Default Shell
-        TiledPaneLayout,
-        Vec<FloatingPaneLayout>,
-        Option<Vec<SwapTiledLayout>>,
-        Option<Vec<SwapFloatingLayout>>,
-        bool,                                // retain_existing_terminal_panes
-        bool,                                // retain_existing_plugin_panes
-        usize,                               // tab_index
-        HashMap<RunPluginOrAlias, Vec<u32>>, // plugin_ids
+        Option<PathBuf>,                                           // CWD
+        Option<TerminalAction>,                                    // Default Shell
+        Vec<(TabLayoutInfo, HashMap<RunPluginOrAlias, Vec<u32>>)>, // (layout, plugin_ids) per tab
+        bool,                                                      // retain_existing_terminal_panes
+        bool,                                                      // retain_existing_plugin_panes
         ClientId,
         Option<NotificationEnd>,
     ),
@@ -114,7 +109,11 @@ pub enum PtyInstruction {
         bool,
         Option<NotificationEnd>,
     ), // bool is with_ids
-    DumpLayoutToPlugin(SessionLayoutMetadata, PluginId),
+    DumpLayoutToPlugin {
+        session_layout_metadata: SessionLayoutMetadata,
+        plugin_id: PluginId,
+        response_channel: crossbeam::channel::Sender<DumpSessionLayoutResponse>,
+    },
     LogLayoutToHd(SessionLayoutMetadata),
     FillPluginCwd(
         Option<bool>,   // should float
@@ -164,7 +163,7 @@ impl From<&PtyInstruction> for PtyContext {
             PtyInstruction::DropToShellInPane { .. } => PtyContext::DropToShellInPane,
             PtyInstruction::SpawnInPlaceTerminal(..) => PtyContext::SpawnInPlaceTerminal,
             PtyInstruction::DumpLayout(..) => PtyContext::DumpLayout,
-            PtyInstruction::DumpLayoutToPlugin(..) => PtyContext::DumpLayoutToPlugin,
+            PtyInstruction::DumpLayoutToPlugin { .. } => PtyContext::DumpLayoutToPlugin,
             PtyInstruction::LogLayoutToHd(..) => PtyContext::LogLayoutToHd,
             PtyInstruction::FillPluginCwd(..) => PtyContext::FillPluginCwd,
             PtyInstruction::ListClientsMetadata(..) => PtyContext::ListClientsMetadata,
@@ -501,34 +500,55 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
             PtyInstruction::OverrideLayout(
                 cwd,
                 default_shell,
-                tiled_layout,
-                floating_panes_layout,
-                swap_tiled_layouts,
-                swap_floating_layouts,
+                tab_layouts_with_plugin_ids,
                 retain_existing_terminal_panes,
                 retain_existing_plugin_panes,
-                tab_index,
-                plugin_ids,
                 client_id,
                 completion_tx,
             ) => {
                 let err_context = || "failed to override layout";
 
-                pty.spawn_terminals_for_layout_override(
-                    cwd,
-                    tiled_layout,
-                    floating_panes_layout,
-                    default_shell,
-                    plugin_ids,
-                    tab_index,
-                    client_id,
-                    swap_tiled_layouts,
-                    swap_floating_layouts,
-                    retain_existing_terminal_panes,
-                    retain_existing_plugin_panes,
-                    completion_tx,
-                )
-                .with_context(err_context)?;
+                let mut all_tab_results = Vec::new();
+
+                // Process each tab
+                for (tab_layout_info, plugin_ids) in tab_layouts_with_plugin_ids {
+                    match pty.spawn_terminals_for_layout_override(
+                        cwd.clone(),
+                        tab_layout_info.tiled_layout,
+                        tab_layout_info.floating_layouts,
+                        default_shell.clone(),
+                        plugin_ids,
+                        tab_layout_info.tab_index,
+                        tab_layout_info.tab_name,
+                        client_id,
+                        tab_layout_info.swap_tiled_layouts,
+                        tab_layout_info.swap_floating_layouts,
+                        retain_existing_terminal_panes,
+                        retain_existing_plugin_panes,
+                    ) {
+                        Ok(tab_result) => all_tab_results.push(tab_result),
+                        Err(e) => {
+                            log::error!(
+                                "Failed to spawn terminals for tab {}: {:?}",
+                                tab_layout_info.tab_index,
+                                e
+                            );
+                            // Continue with other tabs (best-effort approach)
+                        },
+                    }
+                }
+
+                // Send all results back to screen in one message
+                pty.bus
+                    .senders
+                    .send_to_screen(ScreenInstruction::OverrideLayoutComplete(
+                        all_tab_results,
+                        retain_existing_terminal_panes,
+                        retain_existing_plugin_panes,
+                        client_id,
+                        completion_tx,
+                    ))
+                    .with_context(err_context)?;
             },
             PtyInstruction::ClosePane(id, _completion_tx) => {
                 pty.close_pane(id)
@@ -693,15 +713,20 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     .with_context(err_context)
                     .non_fatal();
             },
-            PtyInstruction::DumpLayoutToPlugin(mut session_layout_metadata, plugin_id) => {
+            PtyInstruction::DumpLayoutToPlugin {
+                mut session_layout_metadata,
+                plugin_id,
+                response_channel,
+            } => {
                 let err_context = || format!("Failed to dump layout");
                 pty.populate_session_layout_metadata(&mut session_layout_metadata);
                 pty.bus
                     .senders
-                    .send_to_plugin(PluginInstruction::DumpLayoutToPlugin(
+                    .send_to_plugin(PluginInstruction::DumpLayoutToPlugin {
                         session_layout_metadata,
                         plugin_id,
-                    ))
+                        response_channel,
+                    })
                     .with_context(err_context)
                     .non_fatal();
             },
@@ -1270,13 +1295,13 @@ impl Pty {
         default_shell: Option<TerminalAction>,
         plugin_ids: HashMap<RunPluginOrAlias, Vec<u32>>,
         tab_index: usize,
+        tab_name: Option<String>,
         client_id: ClientId,
         swap_tiled_layouts: Option<Vec<SwapTiledLayout>>,
         swap_floating_layouts: Option<Vec<SwapFloatingLayout>>,
-        retain_existing_terminal_panes: bool,
-        retain_existing_plugin_panes: bool,
-        completion_tx: Option<NotificationEnd>,
-    ) -> Result<()> {
+        _retain_existing_terminal_panes: bool,
+        _retain_existing_plugin_panes: bool,
+    ) -> Result<TabOverrideResult> {
         let err_context = || format!("failed to spawn terminals for layout for");
 
         let mut default_shell =
@@ -1363,23 +1388,17 @@ impl Pty {
             })
             .collect();
 
-        self.bus
-            .senders
-            .send_to_screen(ScreenInstruction::OverrideLayoutComplete(
-                layout,
-                floating_panes_layout,
-                swap_tiled_layouts,
-                swap_floating_layouts,
-                new_tab_pane_ids,
-                new_tab_floating_pane_ids,
-                plugin_ids,
-                retain_existing_terminal_panes,
-                retain_existing_plugin_panes,
-                tab_index,
-                client_id,
-                completion_tx,
-            ))
-            .with_context(err_context)?;
+        let tab_result = TabOverrideResult {
+            tab_index,
+            tab_name,
+            tiled_layout: layout,
+            floating_layouts: floating_panes_layout,
+            swap_tiled_layouts,
+            swap_floating_layouts,
+            new_terminal_pids: new_tab_pane_ids,
+            new_floating_pane_pids: new_tab_floating_pane_ids,
+            plugin_ids,
+        };
 
         let mut terminals_to_start = vec![];
 
@@ -1441,7 +1460,7 @@ impl Pty {
         for (terminal_id, originating_plugin) in originating_plugins_to_inform {
             self.inform_originating_plugin_of_open(terminal_id, originating_plugin);
         }
-        Ok(())
+        Ok(tab_result)
     }
     fn inform_originating_plugin_of_open(
         &mut self,

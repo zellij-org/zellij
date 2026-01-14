@@ -1,4 +1,8 @@
 use crate::data::Styling;
+
+#[cfg(not(target_family = "wasm"))]
+use crate::data::{LayoutInfo, LayoutWithError};
+
 use miette::{Diagnostic, LabeledSpan, NamedSource, SourceCode};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -36,14 +40,39 @@ pub struct Config {
     pub web_client: WebClientConfig,
 }
 
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Serialize, Deserialize)]
 pub struct KdlError {
     pub error_message: String,
+    #[serde(skip)]
     pub src: Option<NamedSource>,
     pub offset: Option<usize>,
     pub len: Option<usize>,
     pub help_message: Option<String>,
 }
+
+impl Clone for KdlError {
+    fn clone(&self) -> Self {
+        KdlError {
+            error_message: self.error_message.clone(),
+            src: None, // NamedSource doesn't implement Clone, so we skip it
+            offset: self.offset,
+            len: self.len,
+            help_message: self.help_message.clone(),
+        }
+    }
+}
+
+impl PartialEq for KdlError {
+    fn eq(&self, other: &Self) -> bool {
+        // Compare everything except src (which doesn't implement PartialEq)
+        self.error_message == other.error_message
+            && self.offset == other.offset
+            && self.len == other.len
+            && self.help_message == other.help_message
+    }
+}
+
+impl Eq for KdlError {}
 
 impl KdlError {
     pub fn add_src(mut self, src_name: String, src_input: String) -> Self {
@@ -477,6 +506,72 @@ where
         }
 
         while !config_file_path.exists() {
+            tokio::time::sleep(Duration::from_secs(3)).await;
+        }
+    }
+}
+
+#[cfg(not(target_family = "wasm"))]
+pub async fn watch_layout_dir_changes<F, Fut>(
+    layout_dir: PathBuf,
+    default_layout_name: Option<String>,
+    on_layout_change: F,
+) where
+    F: Fn(Vec<LayoutInfo>, Vec<LayoutWithError>) -> Fut + Send + 'static,
+    Fut: std::future::Future<Output = ()> + Send,
+{
+    use crate::input::layout::Layout;
+    use notify::{self, Config as WatcherConfig, Event, PollWatcher, RecursiveMode, Watcher};
+    use std::time::Duration;
+    use tokio::sync::mpsc;
+
+    loop {
+        if layout_dir.exists() {
+            let (tx, mut rx) = mpsc::unbounded_channel();
+
+            let mut watcher = match PollWatcher::new(
+                move |res: Result<Event, notify::Error>| {
+                    let _ = tx.send(res);
+                },
+                WatcherConfig::default().with_poll_interval(Duration::from_secs(1)),
+            ) {
+                Ok(watcher) => watcher,
+                Err(_) => break,
+            };
+
+            if watcher
+                .watch(&layout_dir, RecursiveMode::Recursive)
+                .is_err()
+            {
+                break;
+            }
+
+            while let Some(event_result) = rx.recv().await {
+                match event_result {
+                    Ok(event) => {
+                        if event.kind.is_remove()
+                            || event.kind.is_create()
+                            || event.kind.is_modify()
+                        {
+                            tokio::time::sleep(Duration::from_millis(100)).await;
+
+                            if !layout_dir.exists() {
+                                break;
+                            }
+
+                            let (layouts, layout_errors) = Layout::list_available_layouts(
+                                Some(layout_dir.clone()),
+                                &default_layout_name,
+                            );
+                            on_layout_change(layouts, layout_errors).await;
+                        }
+                    },
+                    Err(_) => break,
+                }
+            }
+        }
+
+        while !layout_dir.exists() {
             tokio::time::sleep(Duration::from_secs(3)).await;
         }
     }

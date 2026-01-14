@@ -428,17 +428,24 @@ pub fn assert_dead_session(name: &str, force: bool) {
     process::exit(1);
 }
 
-pub fn assert_session_ne(name: &str) {
+pub fn validate_session_name(name: &str) -> Result<(), String> {
     if name.trim().is_empty() {
-        eprintln!("Session name cannot be empty. Please provide a specific session name.");
-        process::exit(1);
+        return Err(
+            "Session name cannot be empty. Please provide a specific session name.".to_string(),
+        );
     }
     if name == "." || name == ".." {
-        eprintln!("Invalid session name: \"{}\".", name);
-        process::exit(1);
+        return Err(format!("Invalid session name: \"{}\".", name));
     }
     if name.contains('/') {
-        eprintln!("Session name cannot contain '/'.");
+        return Err("Session name cannot contain '/'.".to_string());
+    }
+    Ok(())
+}
+
+pub fn assert_session_ne(name: &str) {
+    if let Err(e) = validate_session_name(name) {
+        eprintln!("{}", e);
         process::exit(1);
     }
 
@@ -491,6 +498,12 @@ pub fn generate_unique_session_name() -> Option<String> {
 /// hash collisions, e.g. with 4096 unique names, the likelihood of a collision in 10 session names is 1%.
 pub fn get_name_generator() -> impl Iterator<Item = String> {
     names::Generator::new(&ADJECTIVES, &NOUNS, names::Name::Plain)
+}
+
+/// Generates a random human-readable name using curated adjectives and nouns.
+/// Returns a single name in the format: AdjectiveNoun (e.g., "BraveRustacean")
+pub fn generate_random_name() -> String {
+    get_name_generator().next().unwrap()
 }
 
 const ADJECTIVES: &[&'static str] = &[

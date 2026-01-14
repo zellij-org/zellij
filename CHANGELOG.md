@@ -21,6 +21,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat: allow overriding layouts at runtime (https://github.com/zellij-org/zellij/pull/4566)
 * build: Update Rust toolchain to 1.92.0 (https://github.com/zellij-org/zellij/pull/4579)
 * docs: Explain Rust toolchain update strategy in CONTRIBUTING (https://github.com/zellij-org/zellij/pull/4585)
+* feat: new `layout-manager` interface and plugin API commands (https://github.com/zellij-org/zellij/pull/4601)
+* fix: keep serializing sessions resurrected from the welcome screen (https://github.com/zellij-org/zellij/pull/4604)
+* fix: sanitize session names when deleting them from the CLI (https://github.com/zellij-org/zellij/pull/4583)
 
 ## [0.43.1] - 2025-08-08
 * fix: pane rename backspace regression (https://github.com/zellij-org/zellij/pull/4346)
