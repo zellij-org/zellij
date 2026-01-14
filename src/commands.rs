@@ -131,8 +131,8 @@ pub(crate) fn kill_session(target_session: &Option<String>) {
 pub(crate) fn delete_session(target_session: &Option<String>, force: bool) {
     match target_session {
         Some(target_session) => {
-            if let Some(error_msg) = validate_session_name(target_session) {
-                eprintln!("{}", error_msg);
+            if let Err(e) = validate_session_name(target_session) {
+                eprintln!("{}", e);
                 process::exit(1);
             }
             assert_dead_session(target_session, force);
