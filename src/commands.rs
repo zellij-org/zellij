@@ -617,7 +617,7 @@ pub(crate) fn start_client(opts: CliArgs) {
     let os_input = get_os_input(get_client_os_input);
     loop {
         let os_input = os_input.clone();
-        let config = config.clone();
+        let mut config = config.clone();
         let mut config_options = config_options.clone();
         let mut opts = opts.clone();
         let mut is_a_reconnect = false;
@@ -659,6 +659,8 @@ pub(crate) fn start_client(opts: CliArgs) {
             if let Some(cwd) = &reconnect_to_session.cwd {
                 new_session_cwd = Some(cwd.clone());
             }
+            config = config_without_layout.clone();
+            config_options = config_options_without_layout.clone();
             is_a_reconnect = true;
         }
 
