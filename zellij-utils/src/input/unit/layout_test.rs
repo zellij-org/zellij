@@ -2361,3 +2361,120 @@ fn layout_node_with_name_and_only_floating_panes() {
     assert_eq!(layout.tabs.len(), 1);
     assert_eq!(layout.tabs[0].0, Some("floating-only".to_string()));
 }
+
+#[test]
+fn floating_pane_coordinates_allows_zero_percent_for_x_y() {
+    use crate::data::FloatingPaneCoordinates;
+    use crate::input::layout::PercentOrFixed;
+
+    let coords = FloatingPaneCoordinates::new(
+        Some("0%".to_string()),
+        Some("0%".to_string()),
+        Some("50%".to_string()),
+        Some("50%".to_string()),
+        None,
+    );
+
+    assert!(coords.is_some());
+    let coords = coords.unwrap();
+    assert_eq!(coords.x, Some(PercentOrFixed::Percent(0)));
+    assert_eq!(coords.y, Some(PercentOrFixed::Percent(0)));
+    assert_eq!(coords.width, Some(PercentOrFixed::Percent(50)));
+    assert_eq!(coords.height, Some(PercentOrFixed::Percent(50)));
+}
+
+#[test]
+fn floating_pane_coordinates_rejects_zero_percent_for_width() {
+    use crate::data::FloatingPaneCoordinates;
+    use crate::input::layout::PercentOrFixed;
+
+    let coords = FloatingPaneCoordinates::new(
+        Some("10%".to_string()),
+        Some("10%".to_string()),
+        Some("0%".to_string()),
+        Some("50%".to_string()),
+        None,
+    );
+
+    // Should have coords but width will be None due to rejection
+    assert!(coords.is_some());
+    let coords = coords.unwrap();
+    assert!(coords.width.is_none());
+    assert_eq!(coords.height, Some(PercentOrFixed::Percent(50)));
+}
+
+#[test]
+fn floating_pane_coordinates_rejects_zero_percent_for_height() {
+    use crate::data::FloatingPaneCoordinates;
+    use crate::input::layout::PercentOrFixed;
+
+    let coords = FloatingPaneCoordinates::new(
+        Some("10%".to_string()),
+        Some("10%".to_string()),
+        Some("50%".to_string()),
+        Some("0%".to_string()),
+        None,
+    );
+
+    // Should have coords but height will be None due to rejection
+    assert!(coords.is_some());
+    let coords = coords.unwrap();
+    assert_eq!(coords.width, Some(PercentOrFixed::Percent(50)));
+    assert!(coords.height.is_none());
+}
+
+#[test]
+fn floating_pane_coordinates_static_zero_works() {
+    use crate::data::FloatingPaneCoordinates;
+    use crate::input::layout::PercentOrFixed;
+
+    let coords = FloatingPaneCoordinates::new(
+        Some("0".to_string()),
+        Some("0".to_string()),
+        Some("100".to_string()),
+        Some("100".to_string()),
+        None,
+    );
+
+    assert!(coords.is_some());
+    let coords = coords.unwrap();
+    assert_eq!(coords.x, Some(PercentOrFixed::Fixed(0)));
+    assert_eq!(coords.y, Some(PercentOrFixed::Fixed(0)));
+    assert_eq!(coords.width, Some(PercentOrFixed::Fixed(100)));
+    assert_eq!(coords.height, Some(PercentOrFixed::Fixed(100)));
+}
+
+#[test]
+fn floating_pane_coordinates_one_percent_works() {
+    use crate::data::FloatingPaneCoordinates;
+    use crate::input::layout::PercentOrFixed;
+
+    let coords = FloatingPaneCoordinates::new(
+        Some("1%".to_string()),
+        Some("1%".to_string()),
+        Some("50%".to_string()),
+        Some("50%".to_string()),
+        None,
+    );
+
+    assert!(coords.is_some());
+    let coords = coords.unwrap();
+    assert_eq!(coords.x, Some(PercentOrFixed::Percent(1)));
+    assert_eq!(coords.y, Some(PercentOrFixed::Percent(1)));
+    assert_eq!(coords.width, Some(PercentOrFixed::Percent(50)));
+    assert_eq!(coords.height, Some(PercentOrFixed::Percent(50)));
+}
+
+#[test]
+fn tiled_pane_still_rejects_zero_percent() {
+    use crate::input::layout::SplitSize;
+    use std::str::FromStr;
+
+    // Verify SplitSize::from_str still rejects 0%
+    let result = SplitSize::from_str("0%");
+    assert!(result.is_err());
+
+    // But 1% should work
+    let result = SplitSize::from_str("1%");
+    assert!(result.is_ok());
+}

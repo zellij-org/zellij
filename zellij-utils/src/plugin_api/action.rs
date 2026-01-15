@@ -2212,6 +2212,32 @@ impl TryFrom<SplitSize> for ProtobufSplitSize {
     }
 }
 
+impl TryFrom<ProtobufSplitSize> for PercentOrFixed {
+    type Error = &'static str;
+    fn try_from(protobuf_split_size: ProtobufSplitSize) -> Result<Self, &'static str> {
+        use super::generated_api::api::action::split_size::SplitSizeVariant;
+
+        match protobuf_split_size.split_size_variant {
+            Some(SplitSizeVariant::Percent(p)) => Ok(PercentOrFixed::Percent(p as usize)),
+            Some(SplitSizeVariant::Fixed(f)) => Ok(PercentOrFixed::Fixed(f as usize)),
+            None => Err("PercentOrFixed must have either percent or fixed value"),
+        }
+    }
+}
+
+impl TryFrom<PercentOrFixed> for ProtobufSplitSize {
+    type Error = &'static str;
+    fn try_from(percent_or_fixed: PercentOrFixed) -> Result<Self, &'static str> {
+        use super::generated_api::api::action::split_size::SplitSizeVariant;
+
+        let split_size_variant = match percent_or_fixed {
+            PercentOrFixed::Percent(p) => Some(SplitSizeVariant::Percent(p as u32)),
+            PercentOrFixed::Fixed(f) => Some(SplitSizeVariant::Fixed(f as u32)),
+        };
+        Ok(ProtobufSplitSize { split_size_variant })
+    }
+}
+
 // FloatingPaneCoordinates conversions
 impl TryFrom<ProtobufFloatingPaneCoordinates> for FloatingPaneCoordinates {
     type Error = &'static str;

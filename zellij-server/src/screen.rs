@@ -29,7 +29,7 @@ use zellij_utils::{
     envs::set_session_name,
     input::command::TerminalAction,
     input::layout::{
-        FloatingPaneLayout, Layout, Run, RunPluginOrAlias, SplitSize, SwapFloatingLayout,
+        FloatingPaneLayout, Layout, PercentOrFixed, Run, RunPluginOrAlias, SwapFloatingLayout,
         SwapTiledLayout, TabLayoutInfo, TiledPaneLayout,
     },
     position::Position,
@@ -2898,10 +2898,10 @@ impl Screen {
                 let pane_id = pane.pid();
                 if pane_was_floating {
                     let floating_pane_coordinates = FloatingPaneCoordinates {
-                        x: Some(SplitSize::Fixed(pane.x())),
-                        y: Some(SplitSize::Fixed(pane.y())),
-                        width: Some(SplitSize::Fixed(pane.cols())),
-                        height: Some(SplitSize::Fixed(pane.rows())),
+                        x: Some(PercentOrFixed::Fixed(pane.x())),
+                        y: Some(PercentOrFixed::Fixed(pane.y())),
+                        width: Some(PercentOrFixed::Fixed(pane.cols())),
+                        height: Some(PercentOrFixed::Fixed(pane.rows())),
                         pinned: Some(pane.current_geom().is_pinned),
                     };
                     new_active_tab.add_floating_pane(
