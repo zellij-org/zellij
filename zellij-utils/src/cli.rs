@@ -487,6 +487,10 @@ pub enum Sessions {
         /// Whether to pin a floating pane so that it is always on top
         #[clap(long, requires("floating"))]
         pinned: Option<bool>,
+        /// start this pane without a border (warning: will make it impossible to move with the
+        /// mouse)
+        #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
+        borderless: bool,
     },
     /// Edit file with default $EDITOR / $VISUAL
     #[clap(visible_alias = "e")]
@@ -538,6 +542,10 @@ pub enum Sessions {
         /// if set, will open the pane near the current one rather than following the user's focus
         #[clap(long)]
         near_current_pane: bool,
+        /// start this pane without a border (warning: will make it impossible to move with the
+        /// mouse)
+        #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
+        borderless: bool,
     },
     ConvertConfig {
         old_config_file: PathBuf,
@@ -807,6 +815,10 @@ pub enum CliAction {
         /// if set, will open the pane near the current one rather than following the user's focus
         #[clap(long)]
         near_current_pane: bool,
+        /// start this pane without a border (warning: will make it impossible to move with the
+        /// mouse)
+        #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
+        borderless: bool,
     },
     /// Switch input mode of all connected clients [locked|pane|tab|resize|move|search|session]
     SwitchMode {

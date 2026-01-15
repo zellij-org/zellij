@@ -742,6 +742,7 @@ impl Action {
                 height,
                 pinned,
                 near_current_pane,
+                borderless,
             } => {
                 let mut file = file;
                 let current_dir = get_current_dir();
@@ -760,8 +761,7 @@ impl Action {
                     floating,
                     in_place,
                     start_suppressed,
-                    coordinates: FloatingPaneCoordinates::new(x, y, width, height, pinned, false), // TODO:
-                                                                                                  // borderless!!
+                    coordinates: FloatingPaneCoordinates::new(x, y, width, height, pinned, borderless),
                     near_current_pane,
                 }])
             },
