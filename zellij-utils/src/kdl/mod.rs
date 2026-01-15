@@ -10,7 +10,7 @@ use crate::home::{find_default_config_dir, get_layout_dir};
 use crate::input::config::{Config, ConfigError, KdlError};
 use crate::input::keybinds::Keybinds;
 use crate::input::layout::{
-    Layout, PluginUserConfiguration, RunPlugin, RunPluginOrAlias, SplitSize, TabLayoutInfo,
+    Layout, PercentOrFixed, PluginUserConfiguration, RunPlugin, RunPluginOrAlias, TabLayoutInfo,
 };
 use crate::input::options::{Clipboard, OnForceClose, Options};
 use crate::input::permission::{GrantedPermission, PermissionCache};
@@ -886,10 +886,10 @@ impl Action {
                     if let Some(x) = floating_pane_coordinates.x {
                         let mut x_node = KdlNode::new("x");
                         match x {
-                            SplitSize::Percent(x) => {
+                            PercentOrFixed::Percent(x) => {
                                 x_node.push(format!("{}%", x));
                             },
-                            SplitSize::Fixed(x) => {
+                            PercentOrFixed::Fixed(x) => {
                                 x_node.push(KdlValue::Base10(x as i64));
                             },
                         };
@@ -898,10 +898,10 @@ impl Action {
                     if let Some(y) = floating_pane_coordinates.y {
                         let mut y_node = KdlNode::new("y");
                         match y {
-                            SplitSize::Percent(y) => {
+                            PercentOrFixed::Percent(y) => {
                                 y_node.push(format!("{}%", y));
                             },
-                            SplitSize::Fixed(y) => {
+                            PercentOrFixed::Fixed(y) => {
                                 y_node.push(KdlValue::Base10(y as i64));
                             },
                         };
@@ -910,10 +910,10 @@ impl Action {
                     if let Some(width) = floating_pane_coordinates.width {
                         let mut width_node = KdlNode::new("width");
                         match width {
-                            SplitSize::Percent(width) => {
+                            PercentOrFixed::Percent(width) => {
                                 width_node.push(format!("{}%", width));
                             },
-                            SplitSize::Fixed(width) => {
+                            PercentOrFixed::Fixed(width) => {
                                 width_node.push(KdlValue::Base10(width as i64));
                             },
                         };
@@ -922,10 +922,10 @@ impl Action {
                     if let Some(height) = floating_pane_coordinates.height {
                         let mut height_node = KdlNode::new("height");
                         match height {
-                            SplitSize::Percent(height) => {
+                            PercentOrFixed::Percent(height) => {
                                 height_node.push(format!("{}%", height));
                             },
-                            SplitSize::Fixed(height) => {
+                            PercentOrFixed::Fixed(height) => {
                                 height_node.push(KdlValue::Base10(height as i64));
                             },
                         };

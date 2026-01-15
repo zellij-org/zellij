@@ -17,8 +17,8 @@ use zellij_utils::input::actions::Action;
 use zellij_utils::input::command::{RunCommand, TerminalAction};
 use zellij_utils::input::config::Config;
 use zellij_utils::input::layout::{
-    FloatingPaneLayout, Layout, PluginAlias, PluginUserConfiguration, Run, RunPlugin,
-    RunPluginLocation, RunPluginOrAlias, SplitDirection, SplitSize, TiledPaneLayout,
+    FloatingPaneLayout, Layout, PercentOrFixed, PluginAlias, PluginUserConfiguration, Run,
+    RunPlugin, RunPluginLocation, RunPluginOrAlias, SplitDirection, SplitSize, TiledPaneLayout,
 };
 use zellij_utils::input::mouse::MouseEvent;
 use zellij_utils::input::options::Options;
@@ -1444,10 +1444,10 @@ fn open_new_floating_pane_with_custom_coordinates() {
             false,
             true,
             NewPanePlacement::Floating(Some(FloatingPaneCoordinates {
-                x: Some(SplitSize::Percent(10)),
-                y: Some(SplitSize::Fixed(5)),
-                width: Some(SplitSize::Percent(1)),
-                height: Some(SplitSize::Fixed(2)),
+                x: Some(PercentOrFixed::Percent(10)),
+                y: Some(PercentOrFixed::Fixed(5)),
+                width: Some(PercentOrFixed::Percent(1)),
+                height: Some(PercentOrFixed::Fixed(2)),
                 pinned: None,
             })),
             Some(1),
@@ -1479,10 +1479,10 @@ fn open_new_floating_pane_with_custom_coordinates_exceeding_viewport() {
             false,
             true,
             NewPanePlacement::Floating(Some(FloatingPaneCoordinates {
-                x: Some(SplitSize::Fixed(122)),
-                y: Some(SplitSize::Fixed(21)),
-                width: Some(SplitSize::Fixed(10)),
-                height: Some(SplitSize::Fixed(10)),
+                x: Some(PercentOrFixed::Fixed(122)),
+                y: Some(PercentOrFixed::Fixed(21)),
+                width: Some(PercentOrFixed::Fixed(10)),
+                height: Some(PercentOrFixed::Fixed(10)),
                 pinned: None,
             })),
             Some(1),
@@ -1515,9 +1515,9 @@ fn floating_pane_auto_centers_horizontally_with_only_width() {
             true,
             NewPanePlacement::Floating(Some(FloatingPaneCoordinates {
                 x: None,
-                y: Some(SplitSize::Fixed(5)),
-                width: Some(SplitSize::Fixed(60)),
-                height: Some(SplitSize::Fixed(10)),
+                y: Some(PercentOrFixed::Fixed(5)),
+                width: Some(PercentOrFixed::Fixed(60)),
+                height: Some(PercentOrFixed::Fixed(10)),
                 pinned: None,
             })),
             Some(1),
@@ -1549,10 +1549,10 @@ fn floating_pane_auto_centers_vertically_with_only_height() {
             false,
             true,
             NewPanePlacement::Floating(Some(FloatingPaneCoordinates {
-                x: Some(SplitSize::Fixed(10)),
+                x: Some(PercentOrFixed::Fixed(10)),
                 y: None,
-                width: Some(SplitSize::Fixed(50)),
-                height: Some(SplitSize::Fixed(20)),
+                width: Some(PercentOrFixed::Fixed(50)),
+                height: Some(PercentOrFixed::Fixed(20)),
                 pinned: None,
             })),
             Some(1),
@@ -1586,8 +1586,8 @@ fn floating_pane_auto_centers_both_axes_with_only_size() {
             NewPanePlacement::Floating(Some(FloatingPaneCoordinates {
                 x: None,
                 y: None,
-                width: Some(SplitSize::Fixed(80)),
-                height: Some(SplitSize::Fixed(30)),
+                width: Some(PercentOrFixed::Fixed(80)),
+                height: Some(PercentOrFixed::Fixed(30)),
                 pinned: None,
             })),
             Some(1),
@@ -1619,10 +1619,10 @@ fn floating_pane_respects_explicit_coordinates_with_size() {
             false,
             true,
             NewPanePlacement::Floating(Some(FloatingPaneCoordinates {
-                x: Some(SplitSize::Fixed(15)),
-                y: Some(SplitSize::Fixed(8)),
-                width: Some(SplitSize::Fixed(80)),
-                height: Some(SplitSize::Fixed(30)),
+                x: Some(PercentOrFixed::Fixed(15)),
+                y: Some(PercentOrFixed::Fixed(8)),
+                width: Some(PercentOrFixed::Fixed(80)),
+                height: Some(PercentOrFixed::Fixed(30)),
                 pinned: None,
             })),
             Some(1),
@@ -1655,9 +1655,9 @@ fn floating_pane_centers_with_percentage_width() {
             true,
             NewPanePlacement::Floating(Some(FloatingPaneCoordinates {
                 x: None,
-                y: Some(SplitSize::Fixed(5)),
-                width: Some(SplitSize::Percent(50)),
-                height: Some(SplitSize::Fixed(20)),
+                y: Some(PercentOrFixed::Fixed(5)),
+                width: Some(PercentOrFixed::Percent(50)),
+                height: Some(PercentOrFixed::Fixed(20)),
                 pinned: None,
             })),
             Some(1),
@@ -1696,8 +1696,8 @@ fn floating_pane_centers_large_pane_safely() {
             NewPanePlacement::Floating(Some(FloatingPaneCoordinates {
                 x: None,
                 y: None,
-                width: Some(SplitSize::Fixed(150)),
-                height: Some(SplitSize::Fixed(50)),
+                width: Some(PercentOrFixed::Fixed(150)),
+                height: Some(PercentOrFixed::Fixed(50)),
                 pinned: None,
             })),
             Some(1),
