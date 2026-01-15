@@ -2364,9 +2364,9 @@ fn layout_node_with_name_and_only_floating_panes() {
 
 #[test]
 fn floating_pane_coordinates_allows_zero_percent_for_x_y() {
-    use crate::data::{FloatingPaneCoordinates};
+    use crate::data::FloatingPaneCoordinates;
     use crate::input::layout::PercentOrFixed;
-    
+
     let coords = FloatingPaneCoordinates::new(
         Some("0%".to_string()),
         Some("0%".to_string()),
@@ -2387,7 +2387,7 @@ fn floating_pane_coordinates_allows_zero_percent_for_x_y() {
 fn floating_pane_coordinates_rejects_zero_percent_for_width() {
     use crate::data::FloatingPaneCoordinates;
     use crate::input::layout::PercentOrFixed;
-    
+
     let coords = FloatingPaneCoordinates::new(
         Some("10%".to_string()),
         Some("10%".to_string()),
@@ -2407,7 +2407,7 @@ fn floating_pane_coordinates_rejects_zero_percent_for_width() {
 fn floating_pane_coordinates_rejects_zero_percent_for_height() {
     use crate::data::FloatingPaneCoordinates;
     use crate::input::layout::PercentOrFixed;
-    
+
     let coords = FloatingPaneCoordinates::new(
         Some("10%".to_string()),
         Some("10%".to_string()),
@@ -2427,7 +2427,7 @@ fn floating_pane_coordinates_rejects_zero_percent_for_height() {
 fn floating_pane_coordinates_static_zero_works() {
     use crate::data::FloatingPaneCoordinates;
     use crate::input::layout::PercentOrFixed;
-    
+
     let coords = FloatingPaneCoordinates::new(
         Some("0".to_string()),
         Some("0".to_string()),
@@ -2448,7 +2448,7 @@ fn floating_pane_coordinates_static_zero_works() {
 fn floating_pane_coordinates_one_percent_works() {
     use crate::data::FloatingPaneCoordinates;
     use crate::input::layout::PercentOrFixed;
-    
+
     let coords = FloatingPaneCoordinates::new(
         Some("1%".to_string()),
         Some("1%".to_string()),
@@ -2469,11 +2469,11 @@ fn floating_pane_coordinates_one_percent_works() {
 fn tiled_pane_still_rejects_zero_percent() {
     use crate::input::layout::SplitSize;
     use std::str::FromStr;
-    
+
     // Verify SplitSize::from_str still rejects 0%
     let result = SplitSize::from_str("0%");
     assert!(result.is_err());
-    
+
     // But 1% should work
     let result = SplitSize::from_str("1%");
     assert!(result.is_ok());

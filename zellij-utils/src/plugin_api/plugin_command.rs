@@ -78,7 +78,9 @@ impl Into<FloatingPaneCoordinates> for ProtobufFloatingPaneCoordinates {
                     Some(ProtobufFixedOrPercent::Percent) => {
                         Some(PercentOrFixed::Percent(x.value as usize))
                     },
-                    Some(ProtobufFixedOrPercent::Fixed) => Some(PercentOrFixed::Fixed(x.value as usize)),
+                    Some(ProtobufFixedOrPercent::Fixed) => {
+                        Some(PercentOrFixed::Fixed(x.value as usize))
+                    },
                     None => None,
                 }),
             y: self
@@ -87,7 +89,9 @@ impl Into<FloatingPaneCoordinates> for ProtobufFloatingPaneCoordinates {
                     Some(ProtobufFixedOrPercent::Percent) => {
                         Some(PercentOrFixed::Percent(y.value as usize))
                     },
-                    Some(ProtobufFixedOrPercent::Fixed) => Some(PercentOrFixed::Fixed(y.value as usize)),
+                    Some(ProtobufFixedOrPercent::Fixed) => {
+                        Some(PercentOrFixed::Fixed(y.value as usize))
+                    },
                     None => None,
                 }),
             width: self.width.and_then(|width| {

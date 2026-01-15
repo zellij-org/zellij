@@ -2472,7 +2472,9 @@ impl TryFrom<crate::client_server_contract::client_server_contract::FloatingCoor
             .coordinate_type
             .ok_or_else(|| anyhow!("FloatingCoordinate missing coordinate_type"))?
         {
-            CoordinateType::Percent(p) => Ok(crate::input::layout::PercentOrFixed::Percent(p as usize)),
+            CoordinateType::Percent(p) => {
+                Ok(crate::input::layout::PercentOrFixed::Percent(p as usize))
+            },
             CoordinateType::Fixed(f) => Ok(crate::input::layout::PercentOrFixed::Fixed(f as usize)),
         }
     }

@@ -2784,18 +2784,22 @@ impl FloatingPaneCoordinates {
 
         // Parse width/height - reject 0% or 0
         let width = width.and_then(|w| {
-            PercentOrFixed::from_str(&w).ok().and_then(|size| match size {
-                PercentOrFixed::Percent(0) => None,
-                PercentOrFixed::Fixed(0) => None,
-                _ => Some(size),
-            })
+            PercentOrFixed::from_str(&w)
+                .ok()
+                .and_then(|size| match size {
+                    PercentOrFixed::Percent(0) => None,
+                    PercentOrFixed::Fixed(0) => None,
+                    _ => Some(size),
+                })
         });
         let height = height.and_then(|h| {
-            PercentOrFixed::from_str(&h).ok().and_then(|size| match size {
-                PercentOrFixed::Percent(0) => None,
-                PercentOrFixed::Fixed(0) => None,
-                _ => Some(size),
-            })
+            PercentOrFixed::from_str(&h)
+                .ok()
+                .and_then(|size| match size {
+                    PercentOrFixed::Percent(0) => None,
+                    PercentOrFixed::Fixed(0) => None,
+                    _ => Some(size),
+                })
         });
 
         if x.is_none() && y.is_none() && width.is_none() && height.is_none() && pinned.is_none() {
