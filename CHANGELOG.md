@@ -26,6 +26,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: sanitize session names when deleting them from the CLI (https://github.com/zellij-org/zellij/pull/4583)
 * fix: properly close the welcome screen session when switching sessions away from it (https://github.com/zellij-org/zellij/pull/4605)
 * fix: properly center floating panes started with `--floating` when explicit width/height is provided (https://github.com/zellij-org/zellij/pull/4607)
+* fix: allow specifying "0%" coordinates when opening panes wit "zellij run --floating" (https://github.com/zellij-org/zellij/pull/4609)
 
 
 ## [0.43.1] - 2025-08-08
