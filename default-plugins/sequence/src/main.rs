@@ -881,6 +881,7 @@ fn change_floating_pane_coordinates(
         width.map(|width| format!("{}%", width)),
         height.map(|height| format!("{}%", height)),
         Some(should_be_pinned),
+        false,
     );
     if let Some(coordinates) = coordinates {
         // TODO: better

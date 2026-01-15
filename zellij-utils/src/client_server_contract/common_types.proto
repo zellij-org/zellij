@@ -715,8 +715,8 @@ enum ExitReason {
 message OpenFilePayload {
   string file_to_open = 1;
   optional uint32 line_number = 2;
-  optional string cwd = 3;                             // Renumbered after removing column_number
-  optional OriginatingPlugin originating_plugin = 4;   // Added missing originating_plugin field
+  optional string cwd = 3;
+  optional OriginatingPlugin originating_plugin = 4;
 }
 
 message FloatingPaneCoordinates {
@@ -724,7 +724,8 @@ message FloatingPaneCoordinates {
   optional FloatingCoordinate y = 2;
   optional FloatingCoordinate width = 3;
   optional FloatingCoordinate height = 4;
-  optional bool pinned = 5;  // Added missing pinned field
+  optional bool pinned = 5;
+  bool borderless = 6;
 }
 
 message FloatingCoordinate {

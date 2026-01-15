@@ -5374,18 +5374,25 @@ impl Tab {
     ) -> Result<()> {
         let err_context = || format!("failed to add floating pane");
         if let Some(mut new_pane_geom) = self.floating_panes.find_room_for_new_pane() {
-            if let Some(floating_pane_coordinates) = floating_pane_coordinates {
+            if let Some(floating_pane_coordinates) = &floating_pane_coordinates {
                 let viewport = self.viewport.borrow();
                 if let Some(pinned) = floating_pane_coordinates.pinned.as_ref() {
                     pane.set_pinned(*pinned);
                 }
-                new_pane_geom.adjust_coordinates(floating_pane_coordinates, *viewport);
+                new_pane_geom.adjust_coordinates(floating_pane_coordinates.clone(), *viewport);
                 self.swap_layouts.set_is_floating_damaged();
             }
             pane.set_active_at(Instant::now());
             pane.set_geom(new_pane_geom);
-            pane.set_content_offset(Offset::frame(1)); // floating panes always have a frame
-            pane.render_full_viewport(); // to make sure the frame is re-rendered
+            log::info!("add_floating_pane coordinates: {:#?}", floating_pane_coordinates);
+            let is_borderless = floating_pane_coordinates.map(|c| c.borderless).unwrap_or(false);
+            if is_borderless {
+                pane.set_content_offset(Offset::frame(0));
+                pane.set_borderless(true);
+            } else {
+                pane.set_content_offset(Offset::frame(1)); // floating panes always have a frame
+                pane.render_full_viewport(); // to make sure the frame is re-rendered
+            }
             resize_pty!(pane, self.os_api, self.senders, self.character_cell_size)
                 .with_context(err_context)?;
             self.floating_panes.add_pane(pane_id, pane);

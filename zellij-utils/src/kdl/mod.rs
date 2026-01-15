@@ -1916,7 +1916,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                     Ok(Action::NewFloatingPane {
                         command: Some(run_command_action),
                         pane_name: name,
-                        coordinates: FloatingPaneCoordinates::new(x, y, width, height, pinned),
+                        coordinates: FloatingPaneCoordinates::new(x, y, width, height, pinned, false), // TODO: borderless!!
                         near_current_pane: false,
                     })
                 } else if in_place {

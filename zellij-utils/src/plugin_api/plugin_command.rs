@@ -117,6 +117,7 @@ impl Into<FloatingPaneCoordinates> for ProtobufFloatingPaneCoordinates {
                 }
             }),
             pinned: self.pinned,
+            borderless: false, // TODO: not hard coded
         }
     }
 }

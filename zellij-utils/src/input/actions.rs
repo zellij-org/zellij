@@ -548,6 +548,7 @@ impl Action {
                 blocking,
                 unblock_condition,
                 near_current_pane,
+                borderless,
             } => {
                 let current_dir = get_current_dir();
                 // cwd should only be specified in a plugin alias if it was explicitly given to us,
@@ -582,7 +583,7 @@ impl Action {
 
                     let placement = if floating {
                         NewPanePlacement::Floating(FloatingPaneCoordinates::new(
-                            x, y, width, height, pinned,
+                            x, y, width, height, pinned, borderless,
                         ))
                     } else if in_place {
                         NewPanePlacement::InPlace {
@@ -629,7 +630,7 @@ impl Action {
                             pane_name: name,
                             skip_cache: skip_plugin_cache,
                             cwd,
-                            coordinates: FloatingPaneCoordinates::new(x, y, width, height, pinned),
+                            coordinates: FloatingPaneCoordinates::new(x, y, width, height, pinned, borderless),
                         }])
                     } else if in_place {
                         Ok(vec![Action::NewInPlacePluginPane {
@@ -671,7 +672,7 @@ impl Action {
                         Ok(vec![Action::NewFloatingPane {
                             command: Some(run_command_action),
                             pane_name: name,
-                            coordinates: FloatingPaneCoordinates::new(x, y, width, height, pinned),
+                            coordinates: FloatingPaneCoordinates::new(x, y, width, height, pinned, borderless),
                             near_current_pane,
                         }])
                     } else if in_place {
@@ -701,7 +702,7 @@ impl Action {
                         Ok(vec![Action::NewFloatingPane {
                             command: None,
                             pane_name: name,
-                            coordinates: FloatingPaneCoordinates::new(x, y, width, height, pinned),
+                            coordinates: FloatingPaneCoordinates::new(x, y, width, height, pinned, borderless),
                             near_current_pane,
                         }])
                     } else if in_place {
@@ -759,7 +760,8 @@ impl Action {
                     floating,
                     in_place,
                     start_suppressed,
-                    coordinates: FloatingPaneCoordinates::new(x, y, width, height, pinned),
+                    coordinates: FloatingPaneCoordinates::new(x, y, width, height, pinned, false), // TODO:
+                                                                                                  // borderless!!
                     near_current_pane,
                 }])
             },
@@ -1205,7 +1207,7 @@ impl Action {
                 height,
                 pinned,
             } => {
-                let Some(coordinates) = FloatingPaneCoordinates::new(x, y, width, height, pinned)
+                let Some(coordinates) = FloatingPaneCoordinates::new(x, y, width, height, pinned, false) // TODO: borderless!
                 else {
                     return Err(format!("Failed to parse floating pane coordinates"));
                 };

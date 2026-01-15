@@ -1148,10 +1148,8 @@ pub struct OpenFilePayload {
     pub file_to_open: ::prost::alloc::string::String,
     #[prost(uint32, optional, tag="2")]
     pub line_number: ::core::option::Option<u32>,
-    /// Renumbered after removing column_number
     #[prost(string, optional, tag="3")]
     pub cwd: ::core::option::Option<::prost::alloc::string::String>,
-    /// Added missing originating_plugin field
     #[prost(message, optional, tag="4")]
     pub originating_plugin: ::core::option::Option<OriginatingPlugin>,
 }
@@ -1166,9 +1164,10 @@ pub struct FloatingPaneCoordinates {
     pub width: ::core::option::Option<FloatingCoordinate>,
     #[prost(message, optional, tag="4")]
     pub height: ::core::option::Option<FloatingCoordinate>,
-    /// Added missing pinned field
     #[prost(bool, optional, tag="5")]
     pub pinned: ::core::option::Option<bool>,
+    #[prost(bool, tag="6")]
+    pub borderless: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

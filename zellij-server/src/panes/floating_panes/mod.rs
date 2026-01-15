@@ -360,6 +360,7 @@ impl FloatingPanes {
 
         for pane in self.panes.values_mut() {
             // floating panes should always have a frame unless explicitly set otherwise
+            log::info!("setting borderless for pane: {:?}", pane.pid());
             if !pane.borderless() {
                 pane.set_frame(true);
                 pane.set_content_offset(Offset::frame(1));

@@ -45,6 +45,7 @@ fn main() {
             block_until_exit_failure,
             block_until_exit,
             near_current_pane,
+            borderless,
         })) = opts.command
         {
             let cwd = cwd.or_else(|| std::env::current_dir().ok());
@@ -82,6 +83,7 @@ fn main() {
                 blocking,
                 unblock_condition,
                 near_current_pane,
+                borderless,
             };
             commands::send_action_to_session(command_cli_action, opts.session, config);
             std::process::exit(0);
@@ -124,6 +126,7 @@ fn main() {
                 blocking,
                 unblock_condition,
                 near_current_pane: false,
+                borderless: false, // TODO: not hard coded!!
             };
             commands::send_action_to_session(command_cli_action, opts.session, config);
             std::process::exit(0);

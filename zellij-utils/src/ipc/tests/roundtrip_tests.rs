@@ -1088,7 +1088,7 @@ fn test_client_messages() {
             floating: true,
             in_place: true,
             start_suppressed: true,
-            coordinates: FloatingPaneCoordinates::new(None, None, None, None, None),
+            coordinates: FloatingPaneCoordinates::new(None, None, None, None, None, false),
             near_current_pane: false,
         },
         terminal_id: Some(1),
@@ -1116,7 +1116,8 @@ fn test_client_messages() {
                 None,
                 None,
                 None,
-                None
+                None,
+                false,
             ),
             near_current_pane: false,
         },
@@ -1145,7 +1146,8 @@ fn test_client_messages() {
                 None,
                 None,
                 None,
-                None
+                None,
+                false,
             ),
             near_current_pane: false,
         },
@@ -1174,7 +1176,8 @@ fn test_client_messages() {
                 Some("50%".to_owned()),
                 Some("10".to_owned()),
                 Some("20".to_owned()),
-                Some(true)
+                Some(true),
+                false,
             ),
             near_current_pane: false,
         },
@@ -1198,7 +1201,7 @@ fn test_client_messages() {
             floating: true,
             in_place: true,
             start_suppressed: true,
-            coordinates: FloatingPaneCoordinates::new(None, None, None, None, Some(false)),
+            coordinates: FloatingPaneCoordinates::new(None, None, None, None, Some(false), false),
             near_current_pane: false,
         },
         terminal_id: Some(1),
@@ -1234,7 +1237,8 @@ fn test_client_messages() {
                 None,
                 None,
                 None,
-                None
+                None,
+                false,
             ),
             near_current_pane: false,
         },
@@ -1264,7 +1268,8 @@ fn test_client_messages() {
                 None,
                 None,
                 None,
-                None
+                None,
+                false,
             ),
             near_current_pane: false,
         },
@@ -2405,7 +2410,8 @@ fn test_client_messages() {
                 Some("10%".to_owned()),
                 None,
                 None,
-                Some(true)
+                Some(true),
+                false,
             ),
         },
         terminal_id: Some(1),
@@ -2650,7 +2656,25 @@ fn test_client_messages() {
                 None,
                 None,
                 Some("10%".to_owned()),
-                Some(false)
+                Some(false),
+                false,
+            )
+            .unwrap(),
+        },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::ChangeFloatingPaneCoordinates {
+            pane_id: PaneId::Terminal(0),
+            coordinates: FloatingPaneCoordinates::new(
+                None,
+                None,
+                None,
+                Some("10%".to_owned()),
+                Some(false),
+                true,
             )
             .unwrap(),
         },

@@ -438,6 +438,10 @@ pub enum Sessions {
         /// if set, will open the pane near the current one rather than following the user's focus
         #[clap(long)]
         near_current_pane: bool,
+        /// start this pane without a border (warning: will make it impossible to move with the
+        /// mouse)
+        #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
+        borderless: bool,
     },
     /// Load a plugin
     #[clap(visible_alias = "p")]
@@ -749,6 +753,10 @@ pub enum CliAction {
         /// if set, will open the pane near the current one rather than following the user's focus
         #[clap(long)]
         near_current_pane: bool,
+        /// start this pane without a border (warning: will make it impossible to move with the
+        /// mouse)
+        #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
+        borderless: bool,
     },
     /// Open the specified file in a new zellij pane with your default EDITOR
     Edit {

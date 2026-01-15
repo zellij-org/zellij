@@ -2373,6 +2373,7 @@ fn floating_pane_coordinates_allows_zero_percent_for_x_y() {
         Some("50%".to_string()),
         Some("50%".to_string()),
         None,
+        false,
     );
 
     assert!(coords.is_some());
@@ -2394,6 +2395,7 @@ fn floating_pane_coordinates_rejects_zero_percent_for_width() {
         Some("0%".to_string()),
         Some("50%".to_string()),
         None,
+        false,
     );
 
     // Should have coords but width will be None due to rejection
@@ -2414,6 +2416,7 @@ fn floating_pane_coordinates_rejects_zero_percent_for_height() {
         Some("50%".to_string()),
         Some("0%".to_string()),
         None,
+        false,
     );
 
     // Should have coords but height will be None due to rejection
@@ -2434,6 +2437,7 @@ fn floating_pane_coordinates_static_zero_works() {
         Some("100".to_string()),
         Some("100".to_string()),
         None,
+        false,
     );
 
     assert!(coords.is_some());
@@ -2455,6 +2459,7 @@ fn floating_pane_coordinates_one_percent_works() {
         Some("50%".to_string()),
         Some("50%".to_string()),
         None,
+        false,
     );
 
     assert!(coords.is_some());

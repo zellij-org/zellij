@@ -354,6 +354,7 @@ impl State {
                 Some(format!("50%")),
                 Some(format!("{}", initial_height)),
                 Some(false), // should not be pinned when running sequence
+                false,
             );
             coordinates.map(|coordinates| {
                 if Some(&coordinates) != self.current_position.as_ref() {
@@ -403,6 +404,7 @@ impl State {
                 Some(width.to_string()),
                 Some(height.to_string()),
                 Some(true), // should be pinned for sequence
+                false,
             );
             coordinates.map(|coordinates| {
                 if Some(&coordinates) != self.current_position.as_ref() {
