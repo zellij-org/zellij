@@ -5990,7 +5990,7 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
-                match screen.tabs.get_mut(&tab_index.saturating_sub(1)) {
+                match screen.tabs.values_mut().find(|t| t.position == tab_index) {
                     Some(tab) => {
                         tab.name = String::from_utf8_lossy(&new_name).to_string();
                     },
