@@ -60,6 +60,7 @@ impl ZellijPlugin for State {
         if self.is_welcome_screen {
             self.active_screen = ActiveScreen::NewSession;
         }
+        self.new_session_info.is_welcome_screen = self.is_welcome_screen;
         subscribe(&[
             EventType::ModeUpdate,
             EventType::SessionUpdate,
@@ -529,11 +530,11 @@ impl State {
                 self.search_term.clear();
                 self.sessions
                     .update_search_term(&self.search_term, &self.colors);
-                if !self.is_welcome_screen {
-                    // we usually don't want to hide_self() if we're the welcome screen because
-                    // unless the user did something odd like opening an extra pane/tab in the
-                    // welcome screen, this will result in the current session closing, as this is
-                    // the last selectable pane...
+                if self.is_welcome_screen {
+                    // the welcome screen has done its job and now we need to quit this temporary
+                    // session so as not to leave garbage sessions behind
+                    quit_zellij();
+                } else {
                     hide_self();
                 }
             },
@@ -542,6 +543,13 @@ impl State {
                     self.resurrectable_sessions.get_selected_session_name()
                 {
                     switch_session(Some(&session_name_to_resurrect));
+                    if self.is_welcome_screen {
+                        // the welcome screen has done its job and now we need to quit this temporary
+                        // session so as not to leave garbage sessions behind
+                        quit_zellij();
+                    } else {
+                        hide_self();
+                    }
                 }
             },
         }

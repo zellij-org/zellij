@@ -170,6 +170,18 @@ impl Dimension {
             },
         }
     }
+    pub fn from_percent_or_fixed(size: PercentOrFixed, full_size: usize) -> Self {
+        match size {
+            PercentOrFixed::Fixed(fixed) => Dimension {
+                constraint: Constraint::Fixed(fixed),
+                inner: fixed,
+            },
+            PercentOrFixed::Percent(percent) => Dimension {
+                constraint: Constraint::Percent(percent as f64),
+                inner: ((percent as f64 / 100.0) * full_size as f64).floor() as usize,
+            },
+        }
+    }
     pub fn split_out(&mut self, by: f64) -> Self {
         match self.constraint {
             Constraint::Percent(percent) => {
@@ -282,10 +294,10 @@ impl PaneGeom {
         viewport: Viewport,
     ) {
         self.apply_floating_pane_position(
-            floating_pane_coordinates.x.map(Into::into),
-            floating_pane_coordinates.y.map(Into::into),
-            floating_pane_coordinates.width.map(Into::into),
-            floating_pane_coordinates.height.map(Into::into),
+            floating_pane_coordinates.x,
+            floating_pane_coordinates.y,
+            floating_pane_coordinates.width,
+            floating_pane_coordinates.height,
             viewport.cols,
             viewport.rows,
         );

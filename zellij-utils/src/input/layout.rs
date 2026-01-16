@@ -715,7 +715,7 @@ pub struct TabLayoutInfo {
     pub swap_floating_layouts: Option<Vec<SwapFloatingLayout>>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
 pub enum PercentOrFixed {
     Percent(usize), // 1 to 100
     Fixed(usize),   // An absolute number of columns or rows
@@ -745,10 +745,10 @@ impl PercentOrFixed {
             },
         }
     }
-    pub fn to_fixed(&self, full_size: usize) -> usize {
+    pub fn to_fixed(&self, whole: usize) -> usize {
         match self {
             PercentOrFixed::Percent(percent) => {
-                ((*percent as f64 / 100.0) * full_size as f64).floor() as usize
+                ((*percent as f64 / 100.0) * whole as f64).floor() as usize
             },
             PercentOrFixed::Fixed(fixed) => *fixed,
         }

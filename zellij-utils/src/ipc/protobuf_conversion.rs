@@ -2448,6 +2448,43 @@ impl TryFrom<crate::client_server_contract::client_server_contract::FloatingCoor
     }
 }
 
+// FloatingCoordinate conversion - PercentOrFixed to FloatingCoordinate
+impl From<crate::input::layout::PercentOrFixed>
+    for crate::client_server_contract::client_server_contract::FloatingCoordinate
+{
+    fn from(size: crate::input::layout::PercentOrFixed) -> Self {
+        match size {
+            crate::input::layout::PercentOrFixed::Percent(p) => Self {
+                coordinate_type: Some(crate::client_server_contract::client_server_contract::floating_coordinate::CoordinateType::Percent(p as f32)),
+            },
+            crate::input::layout::PercentOrFixed::Fixed(f) => Self {
+                coordinate_type: Some(crate::client_server_contract::client_server_contract::floating_coordinate::CoordinateType::Fixed(f as u32)),
+            },
+        }
+    }
+}
+
+// Reverse FloatingCoordinate conversion for PercentOrFixed
+impl TryFrom<crate::client_server_contract::client_server_contract::FloatingCoordinate>
+    for crate::input::layout::PercentOrFixed
+{
+    type Error = anyhow::Error;
+    fn try_from(
+        coord: crate::client_server_contract::client_server_contract::FloatingCoordinate,
+    ) -> Result<Self> {
+        use crate::client_server_contract::client_server_contract::floating_coordinate::CoordinateType;
+        match coord
+            .coordinate_type
+            .ok_or_else(|| anyhow!("FloatingCoordinate missing coordinate_type"))?
+        {
+            CoordinateType::Percent(p) => {
+                Ok(crate::input::layout::PercentOrFixed::Percent(p as usize))
+            },
+            CoordinateType::Fixed(f) => Ok(crate::input::layout::PercentOrFixed::Fixed(f as usize)),
+        }
+    }
+}
+
 // FloatingPaneCoordinates conversion
 impl From<crate::data::FloatingPaneCoordinates>
     for crate::client_server_contract::client_server_contract::FloatingPaneCoordinates
