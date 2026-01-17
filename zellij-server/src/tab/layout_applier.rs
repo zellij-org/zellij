@@ -589,8 +589,14 @@ impl<'a> LayoutApplier<'a> {
             new_pane.handle_pty_bytes(pane_initial_contents.as_bytes().into());
             new_pane.handle_pty_bytes("\n\r".as_bytes().into());
         }
-        new_pane.set_borderless(false);
-        new_pane.set_content_offset(Offset::frame(1));
+        if floating_pane_layout.borderless.unwrap_or(false) {
+            new_pane.set_borderless(true);
+            new_pane.set_content_offset(Offset::default());
+        } else {
+
+            new_pane.set_borderless(false);
+            new_pane.set_content_offset(Offset::frame(1));
+        }
         resize_pty!(
             new_pane,
             self.os_api,
@@ -642,8 +648,13 @@ impl<'a> LayoutApplier<'a> {
             new_pane.handle_pty_bytes("\n\r".as_bytes().into());
         }
         log::info!("pid: {:?}", pid);
-        new_pane.set_borderless(false);
-        new_pane.set_content_offset(Offset::frame(1));
+        if floating_pane_layout.borderless.unwrap_or(false) {
+            new_pane.set_borderless(true);
+            new_pane.set_content_offset(Offset::default());
+        } else {
+            new_pane.set_borderless(false);
+            new_pane.set_content_offset(Offset::frame(1));
+        }
         if let Some(held_command) = hold_for_command {
             new_pane.hold(None, true, held_command.clone());
         }

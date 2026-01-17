@@ -121,6 +121,7 @@ message FloatingPaneLayout {
   bool already_running = 9;
   optional string pane_initial_contents = 10;
   optional uint32 logical_position = 11;
+  optional bool borderless = 12;
 }
 
 message SwapTiledLayout {
@@ -477,6 +478,7 @@ message FloatingPaneCoordinates {
   optional SplitSize width = 3;
   optional SplitSize height = 4;
   optional bool pinned = 5;
+  optional bool borderless = 6;
 }
 
 // UnblockCondition specifies when a blocking pane should unblock

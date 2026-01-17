@@ -183,6 +183,8 @@ pub struct FloatingPaneLayout {
     pub pane_initial_contents: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(uint32, optional, tag="11")]
     pub logical_position: ::core::option::Option<u32>,
+    #[prost(bool, optional, tag="12")]
+    pub borderless: ::core::option::Option<bool>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -632,6 +634,8 @@ pub struct FloatingPaneCoordinates {
     pub height: ::core::option::Option<SplitSize>,
     #[prost(bool, optional, tag="5")]
     pub pinned: ::core::option::Option<bool>,
+    #[prost(bool, optional, tag="6")]
+    pub borderless: ::core::option::Option<bool>,
 }
 /// NewPanePlacement specifies where a new pane should be placed
 #[allow(clippy::derive_partial_eq_without_eq)]

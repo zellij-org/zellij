@@ -2885,6 +2885,7 @@ impl From<crate::input::layout::FloatingPaneLayout>
             already_running: layout.already_running,
             pane_initial_contents: layout.pane_initial_contents,
             logical_position: layout.logical_position.map(|l| l as u32),
+            borderless: layout.borderless,
         }
     }
 }
@@ -3309,6 +3310,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::FloatingPane
             already_running: layout.already_running,
             pane_initial_contents: layout.pane_initial_contents,
             logical_position: layout.logical_position.map(|p| p as usize),
+            borderless: layout.borderless,
         })
     }
 }

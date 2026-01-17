@@ -2262,6 +2262,7 @@ impl TryFrom<FloatingPaneCoordinates> for ProtobufFloatingPaneCoordinates {
             width: coords.width.and_then(|w| w.try_into().ok()),
             height: coords.height.and_then(|h| h.try_into().ok()),
             pinned: coords.pinned,
+            borderless: Some(coords.borderless),
         })
     }
 }
@@ -2867,6 +2868,7 @@ impl TryFrom<ProtobufFloatingPaneLayout> for FloatingPaneLayout {
             already_running: protobuf.already_running,
             pane_initial_contents: protobuf.pane_initial_contents,
             logical_position: protobuf.logical_position.map(|p| p as usize),
+            borderless: protobuf.borderless,
         })
     }
 }
@@ -2891,6 +2893,7 @@ impl TryFrom<FloatingPaneLayout> for ProtobufFloatingPaneLayout {
             already_running: internal.already_running,
             pane_initial_contents: internal.pane_initial_contents,
             logical_position: internal.logical_position.map(|p| p as u32),
+            borderless: internal.borderless,
         })
     }
 }
