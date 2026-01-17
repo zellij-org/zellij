@@ -1118,6 +1118,10 @@ tail -f /tmp/my-live-logfile | zellij action pipe --name logs --plugin https://e
         /// Whether to pin a floating pane so that it is always on top
         #[clap(long)]
         pinned: Option<bool>,
+        /// change this pane to be without a border (warning: will make it impossible to move with the
+        /// mouse)
+        #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
+        borderless: bool,
     },
     /// Detach from the current session
     Detach,

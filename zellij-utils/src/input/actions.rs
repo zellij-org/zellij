@@ -1206,8 +1206,9 @@ impl Action {
                 width,
                 height,
                 pinned,
+                borderless,
             } => {
-                let Some(coordinates) = FloatingPaneCoordinates::new(x, y, width, height, pinned, false) // TODO: borderless!
+                let Some(coordinates) = FloatingPaneCoordinates::new(x, y, width, height, pinned, borderless)
                 else {
                     return Err(format!("Failed to parse floating pane coordinates"));
                 };
