@@ -711,6 +711,7 @@ message FloatingPaneCoordinates {
   optional FixedOrPercentValue width = 3;
   optional FixedOrPercentValue height = 4;
   optional bool pinned = 5;
+  optional bool borderless = 6;
 }
 
 message FixedOrPercentValue {
