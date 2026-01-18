@@ -938,6 +938,7 @@ impl TryFrom<ProtobufAction> for Action {
                     command: None,
                     pane_name: None,
                     near_current_pane: false,
+                    stack_with_pane_id: None,
                 }),
             },
             Some(ProtobufActionName::NewBlockingPane) => match protobuf_action.optional_payload {
@@ -1689,6 +1690,7 @@ impl TryFrom<Action> for ProtobufAction {
                 command: _,
                 pane_name: _,
                 near_current_pane: _,
+                stack_with_pane_id: _,
             } => Ok(ProtobufAction {
                 name: ProtobufActionName::NewStackedPane as i32,
                 optional_payload: None,
@@ -1770,7 +1772,10 @@ impl TryFrom<Action> for ProtobufAction {
                 coordinates: _,
             }
             | Action::SkipConfirm { action: _ }
-            | Action::SwitchSession { .. } => Err("Unsupported action"),
+            | Action::SwitchSession { .. }
+            | Action::WriteCharsToPaneId { .. }
+            | Action::ListPanes
+            | Action::DumpScreenForPaneId { .. } => Err("Unsupported action"),
         }
     }
 }
