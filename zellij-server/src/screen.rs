@@ -730,12 +730,8 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::ChangeFloatingPanesCoordinates(..) => {
                 ScreenContext::ChangeFloatingPanesCoordinates
             },
-            ScreenInstruction::TogglePaneBorderless(..) => {
-                ScreenContext::TogglePaneBorderless
-            },
-            ScreenInstruction::SetPaneBorderless(..) => {
-                ScreenContext::SetPaneBorderless
-            },
+            ScreenInstruction::TogglePaneBorderless(..) => ScreenContext::TogglePaneBorderless,
+            ScreenInstruction::SetPaneBorderless(..) => ScreenContext::SetPaneBorderless,
             ScreenInstruction::AddHighlightPaneFrameColorOverride(..) => {
                 ScreenContext::AddHighlightPaneFrameColorOverride
             },

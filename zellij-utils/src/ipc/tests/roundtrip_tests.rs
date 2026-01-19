@@ -1201,7 +1201,14 @@ fn test_client_messages() {
             floating: true,
             in_place: true,
             start_suppressed: true,
-            coordinates: FloatingPaneCoordinates::new(None, None, None, None, Some(false), Some(false)),
+            coordinates: FloatingPaneCoordinates::new(
+                None,
+                None,
+                None,
+                None,
+                Some(false),
+                Some(false)
+            ),
             near_current_pane: false,
         },
         terminal_id: Some(1),

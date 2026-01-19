@@ -2594,19 +2594,14 @@ fn change_floating_panes_coordinates(
 fn toggle_pane_borderless(env: &PluginEnv, pane_id: PaneId) {
     let _ = env
         .senders
-        .send_to_screen(ScreenInstruction::TogglePaneBorderless(
-            pane_id,
-            None,
-        ));
+        .send_to_screen(ScreenInstruction::TogglePaneBorderless(pane_id, None));
 }
 
 fn set_pane_borderless(env: &PluginEnv, pane_id: PaneId, borderless: bool) {
     let _ = env
         .senders
         .send_to_screen(ScreenInstruction::SetPaneBorderless(
-            pane_id,
-            borderless,
-            None,
+            pane_id, borderless, None,
         ));
 }
 

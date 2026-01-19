@@ -637,7 +637,9 @@ impl Action {
                             pane_name: name,
                             skip_cache: skip_plugin_cache,
                             cwd,
-                            coordinates: FloatingPaneCoordinates::new(x, y, width, height, pinned, borderless),
+                            coordinates: FloatingPaneCoordinates::new(
+                                x, y, width, height, pinned, borderless,
+                            ),
                         }])
                     } else if in_place {
                         Ok(vec![Action::NewInPlacePluginPane {
@@ -679,7 +681,9 @@ impl Action {
                         Ok(vec![Action::NewFloatingPane {
                             command: Some(run_command_action),
                             pane_name: name,
-                            coordinates: FloatingPaneCoordinates::new(x, y, width, height, pinned, borderless),
+                            coordinates: FloatingPaneCoordinates::new(
+                                x, y, width, height, pinned, borderless,
+                            ),
                             near_current_pane,
                         }])
                     } else if in_place {
@@ -709,7 +713,9 @@ impl Action {
                         Ok(vec![Action::NewFloatingPane {
                             command: None,
                             pane_name: name,
-                            coordinates: FloatingPaneCoordinates::new(x, y, width, height, pinned, borderless),
+                            coordinates: FloatingPaneCoordinates::new(
+                                x, y, width, height, pinned, borderless,
+                            ),
                             near_current_pane,
                         }])
                     } else if in_place {
@@ -768,7 +774,9 @@ impl Action {
                     floating,
                     in_place,
                     start_suppressed,
-                    coordinates: FloatingPaneCoordinates::new(x, y, width, height, pinned, borderless),
+                    coordinates: FloatingPaneCoordinates::new(
+                        x, y, width, height, pinned, borderless,
+                    ),
                     near_current_pane,
                 }])
             },
@@ -1215,7 +1223,8 @@ impl Action {
                 pinned,
                 borderless,
             } => {
-                let Some(coordinates) = FloatingPaneCoordinates::new(x, y, width, height, pinned, borderless)
+                let Some(coordinates) =
+                    FloatingPaneCoordinates::new(x, y, width, height, pinned, borderless)
                 else {
                     return Err(format!("Failed to parse floating pane coordinates"));
                 };
@@ -1251,7 +1260,10 @@ impl Action {
                     }
                 }
             },
-            CliAction::SetPaneBorderless { pane_id, borderless } => {
+            CliAction::SetPaneBorderless {
+                pane_id,
+                borderless,
+            } => {
                 let parsed_pane_id = PaneId::from_str(&pane_id);
                 match parsed_pane_id {
                     Ok(parsed_pane_id) => {

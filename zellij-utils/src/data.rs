@@ -2804,7 +2804,13 @@ impl FloatingPaneCoordinates {
                 })
         });
 
-        if x.is_none() && y.is_none() && width.is_none() && height.is_none() && pinned.is_none() && borderless.is_none() {
+        if x.is_none()
+            && y.is_none()
+            && width.is_none()
+            && height.is_none()
+            && pinned.is_none()
+            && borderless.is_none()
+        {
             None
         } else {
             Some(FloatingPaneCoordinates {

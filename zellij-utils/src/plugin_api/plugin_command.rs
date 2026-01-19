@@ -46,10 +46,11 @@ pub use super::generated_api::api::{
         RunActionPayload, RunCommandPayload, SaveLayoutPayload,
         SaveLayoutResponse as ProtobufSaveLayoutResponse, ScrollDownInPaneIdPayload,
         ScrollToBottomInPaneIdPayload, ScrollToTopInPaneIdPayload, ScrollUpInPaneIdPayload,
-        SetFloatingPanePinnedPayload, SetSelfMouseSelectionSupportPayload, SetTimeoutPayload,
-        ShowCursorPayload, ShowPaneWithIdPayload, StackPanesPayload, SubscribePayload,
-        SwitchSessionPayload, SwitchTabToPayload, TogglePaneEmbedOrEjectForPaneIdPayload,
-        TogglePaneIdFullscreenPayload, TogglePaneBorderlessPayload, SetPaneBorderlessPayload, UnsubscribePayload, WebRequestPayload,
+        SetFloatingPanePinnedPayload, SetPaneBorderlessPayload,
+        SetSelfMouseSelectionSupportPayload, SetTimeoutPayload, ShowCursorPayload,
+        ShowPaneWithIdPayload, StackPanesPayload, SubscribePayload, SwitchSessionPayload,
+        SwitchTabToPayload, TogglePaneBorderlessPayload, TogglePaneEmbedOrEjectForPaneIdPayload,
+        TogglePaneIdFullscreenPayload, UnsubscribePayload, WebRequestPayload,
         WriteCharsToPaneIdPayload, WriteToPaneIdPayload,
     },
     plugin_permission::PermissionType as ProtobufPermissionType,
@@ -1698,9 +1699,10 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
             Some(CommandName::SetPaneBorderless) => match protobuf_plugin_command.payload {
                 Some(Payload::SetPaneBorderlessPayload(payload)) => {
                     match (payload.pane_id, payload.borderless) {
-                        (Some(pane_id), borderless) => {
-                            Ok(PluginCommand::SetPaneBorderless(pane_id.try_into()?, borderless))
-                        },
+                        (Some(pane_id), borderless) => Ok(PluginCommand::SetPaneBorderless(
+                            pane_id.try_into()?,
+                            borderless,
+                        )),
                         _ => Err("Malformed SetPaneBorderless payload"),
                     }
                 },

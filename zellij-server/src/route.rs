@@ -1526,7 +1526,10 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
         },
-        Action::SetPaneBorderless { pane_id, borderless } => {
+        Action::SetPaneBorderless {
+            pane_id,
+            borderless,
+        } => {
             senders
                 .send_to_screen(ScreenInstruction::SetPaneBorderless(
                     pane_id.into(),

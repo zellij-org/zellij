@@ -23,8 +23,8 @@ use zellij_utils::data::WebSharing;
 use zellij_utils::envs::set_session_name;
 use zellij_utils::errors::{prelude::*, ErrorContext};
 use zellij_utils::input::layout::{
-    FloatingPaneLayout, Layout, PercentOrFixed, PluginUserConfiguration, RunPluginLocation, RunPluginOrAlias,
-    SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
+    FloatingPaneLayout, Layout, PercentOrFixed, PluginUserConfiguration, RunPluginLocation,
+    RunPluginOrAlias, SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
 };
 use zellij_utils::input::mouse::MouseEvent;
 use zellij_utils::input::plugins::PluginTag;
@@ -10012,17 +10012,11 @@ fn borderless_pinned_floating_pane() {
     tab.toggle_floating_panes(Some(client_id), None, None)
         .unwrap();
 
-    tab.handle_pty_bytes(
-        1,
-        Vec::from("Content behind pinned pane".as_bytes()),
-    )
-    .unwrap();
+    tab.handle_pty_bytes(1, Vec::from("Content behind pinned pane".as_bytes()))
+        .unwrap();
 
-    tab.handle_pty_bytes(
-        2,
-        Vec::from("\n\nPinned borderless pane".as_bytes()),
-    )
-    .unwrap();
+    tab.handle_pty_bytes(2, Vec::from("\n\nPinned borderless pane".as_bytes()))
+        .unwrap();
 
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
