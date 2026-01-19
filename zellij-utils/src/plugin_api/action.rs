@@ -1770,6 +1770,7 @@ impl TryFrom<Action> for ProtobufAction {
                 coordinates: _,
             }
             | Action::TogglePaneBorderless { pane_id: _ }
+            | Action::SetPaneBorderless { .. }
             | Action::SkipConfirm { action: _ }
             | Action::SwitchSession { .. } => Err("Unsupported action"),
         }

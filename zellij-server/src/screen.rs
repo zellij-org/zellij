@@ -497,6 +497,7 @@ pub enum ScreenInstruction {
         Option<NotificationEnd>,
     ),
     TogglePaneBorderless(PaneId, Option<NotificationEnd>),
+    SetPaneBorderless(PaneId, bool, Option<NotificationEnd>),
     AddHighlightPaneFrameColorOverride(Vec<PaneId>, Option<String>), // Option<String> => optional
     // message
     GroupAndUngroupPanes(Vec<PaneId>, Vec<PaneId>, bool, ClientId), // panes_to_group, panes_to_ungroup, bool -> for all clients
@@ -731,6 +732,9 @@ impl From<&ScreenInstruction> for ScreenContext {
             },
             ScreenInstruction::TogglePaneBorderless(..) => {
                 ScreenContext::TogglePaneBorderless
+            },
+            ScreenInstruction::SetPaneBorderless(..) => {
+                ScreenContext::SetPaneBorderless
             },
             ScreenInstruction::AddHighlightPaneFrameColorOverride(..) => {
                 ScreenContext::AddHighlightPaneFrameColorOverride
@@ -3239,6 +3243,14 @@ impl Screen {
         for (_tab_id, tab) in self.tabs.iter_mut() {
             if tab.has_pane_with_pid(&pane_id) {
                 tab.toggle_pane_borderless(&pane_id).non_fatal();
+                break;
+            }
+        }
+    }
+    pub fn set_pane_borderless(&mut self, pane_id: PaneId, borderless: bool) {
+        for (_tab_id, tab) in self.tabs.iter_mut() {
+            if tab.has_pane_with_pid(&pane_id) {
+                tab.set_pane_borderless(&pane_id, borderless).non_fatal();
                 break;
             }
         }
@@ -6506,6 +6518,10 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::TogglePaneBorderless(pane_id, _completion_tx) => {
                 screen.toggle_pane_borderless(pane_id);
+                let _ = screen.render(None);
+            },
+            ScreenInstruction::SetPaneBorderless(pane_id, borderless, _completion_tx) => {
+                screen.set_pane_borderless(pane_id, borderless);
                 let _ = screen.render(None);
             },
             ScreenInstruction::GroupAndUngroupPanes(

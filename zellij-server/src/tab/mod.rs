@@ -5789,6 +5789,45 @@ impl Tab {
         log::error!("Pane with id {:?} not found", pane_id);
         Ok(())
     }
+    pub fn set_pane_borderless(&mut self, pane_id: &PaneId, borderless: bool) -> Result<()> {
+        // Try floating panes first
+        if let Some(pane) = self.floating_panes.get_pane_mut(*pane_id) {
+            if borderless {
+                pane.set_content_offset(Offset::default()); // Borderless: no offset
+            } else {
+                pane.set_content_offset(Offset::frame(1)); // Bordered: 1-char offset
+            }
+            pane.set_borderless(borderless);
+            self.set_force_render();
+            return Ok(());
+        }
+
+        // Try tiled panes
+        if let Some(pane) = self.tiled_panes.get_pane_mut(*pane_id) {
+            if borderless {
+                pane.set_content_offset(Offset::default());
+            } else {
+                pane.set_content_offset(Offset::frame(1));
+            }
+            pane.set_borderless(borderless);
+            self.set_force_render();
+            return Ok(());
+        }
+
+        // Try suppressed panes
+        if let Some(pane) = self.suppressed_panes.get_mut(pane_id) {
+            if borderless {
+                pane.1.set_content_offset(Offset::default());
+            } else {
+                pane.1.set_content_offset(Offset::frame(1));
+            }
+            pane.1.set_borderless(borderless);
+            return Ok(());
+        }
+
+        log::error!("Pane with id {:?} not found", pane_id);
+        Ok(())
+    }
     pub fn get_viewport(&self) -> Viewport {
         self.viewport.borrow().clone()
     }

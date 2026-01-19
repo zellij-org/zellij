@@ -226,6 +226,7 @@ message Action {
     StackPanesAction stack_panes = 88;
     ChangeFloatingPaneCoordinatesAction change_floating_pane_coordinates = 89;
     TogglePaneBorderlessAction toggle_pane_borderless = 95;
+    SetPaneBorderlessAction set_pane_borderless = 96;
     TogglePaneInGroupAction toggle_pane_in_group = 90;
     ToggleGroupMarkingAction toggle_group_marking = 91;
     SwitchSessionAction switch_session = 92;
@@ -578,6 +579,11 @@ message ChangeFloatingPaneCoordinatesAction {
 
 message TogglePaneBorderlessAction {
   PaneId pane_id = 1;
+}
+
+message SetPaneBorderlessAction {
+  PaneId pane_id = 1;
+  bool borderless = 2;
 }
 
 // Supporting enums and messages

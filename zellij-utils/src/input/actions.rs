@@ -454,6 +454,10 @@ pub enum Action {
     TogglePaneBorderless {
         pane_id: PaneId,
     },
+    SetPaneBorderless {
+        pane_id: PaneId,
+        borderless: bool,
+    },
     TogglePaneInGroup,
     ToggleGroupMarking,
 }
@@ -1237,6 +1241,23 @@ impl Action {
                     Ok(parsed_pane_id) => {
                         Ok(vec![Action::TogglePaneBorderless {
                             pane_id: parsed_pane_id,
+                        }])
+                    },
+                    Err(_e) => {
+                        Err(format!(
+                            "Malformed pane id: {}, expecting either a bare integer (eg. 1), a terminal pane id (eg. terminal_1) or a plugin pane id (eg. plugin_1)",
+                            pane_id
+                        ))
+                    }
+                }
+            },
+            CliAction::SetPaneBorderless { pane_id, borderless } => {
+                let parsed_pane_id = PaneId::from_str(&pane_id);
+                match parsed_pane_id {
+                    Ok(parsed_pane_id) => {
+                        Ok(vec![Action::SetPaneBorderless {
+                            pane_id: parsed_pane_id,
+                            borderless,
                         }])
                     },
                     Err(_e) => {

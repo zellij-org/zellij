@@ -231,6 +231,7 @@ message Action {
     NewTabPayload new_tab_payload = 51;
     NewInPlacePanePayload new_in_place_pane_payload = 52;
     OverrideLayoutPayload override_layout_payload = 53;
+    SetPaneBorderlessPayload set_pane_borderless_payload = 54;
   }
 }
 
@@ -448,6 +449,7 @@ enum ActionName {
     NewBlockingPane = 91;
     NewInPlacePane = 92;
     OverrideLayout = 93;
+    SetPaneBorderless = 94;
 }
 
 message Position {
@@ -479,6 +481,12 @@ message FloatingPaneCoordinates {
   optional SplitSize height = 4;
   optional bool pinned = 5;
   optional bool borderless = 6;
+}
+
+// SetPaneBorderlessPayload specifies the pane and borderless state
+message SetPaneBorderlessPayload {
+  PaneId pane_id = 1;
+  bool borderless = 2;
 }
 
 // UnblockCondition specifies when a blocking pane should unblock

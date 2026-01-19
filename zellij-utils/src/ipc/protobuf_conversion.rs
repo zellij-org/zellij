@@ -735,7 +735,7 @@ impl From<crate::input::actions::Action>
             SwitchSessionAction, SwitchToModeAction, TabNameInputAction, ToggleActiveSyncTabAction,
             ToggleFloatingPanesAction, ToggleFocusFullscreenAction, ToggleGroupMarkingAction,
             ToggleMouseModeAction, TogglePaneEmbedOrFloatingAction, TogglePaneFramesAction,
-            TogglePaneInGroupAction, TogglePanePinnedAction, TogglePaneBorderlessAction, ToggleTabAction, UndoRenamePaneAction,
+            TogglePaneInGroupAction, TogglePanePinnedAction, TogglePaneBorderlessAction, SetPaneBorderlessAction, ToggleTabAction, UndoRenamePaneAction,
             UndoRenameTabAction, WriteAction, WriteCharsAction,
         };
         use std::collections::HashMap;
@@ -1285,6 +1285,12 @@ impl From<crate::input::actions::Action>
             crate::input::actions::Action::TogglePaneBorderless { pane_id } => {
                 ActionType::TogglePaneBorderless(TogglePaneBorderlessAction {
                     pane_id: Some(pane_id.into()),
+                })
+            },
+            crate::input::actions::Action::SetPaneBorderless { pane_id, borderless } => {
+                ActionType::SetPaneBorderless(SetPaneBorderlessAction {
+                    pane_id: Some(pane_id.into()),
+                    borderless,
                 })
             },
             crate::input::actions::Action::TogglePaneInGroup => {
@@ -1887,6 +1893,15 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                         .pane_id
                         .ok_or_else(|| anyhow!("TogglePaneBorderless missing pane_id"))?
                         .try_into()?,
+                },
+            ),
+            ActionType::SetPaneBorderless(set_borderless_action) => Ok(
+                crate::input::actions::Action::SetPaneBorderless {
+                    pane_id: set_borderless_action
+                        .pane_id
+                        .ok_or_else(|| anyhow!("SetPaneBorderless missing pane_id"))?
+                        .try_into()?,
+                    borderless: set_borderless_action.borderless,
                 },
             ),
             ActionType::TogglePaneInGroup(_) => {

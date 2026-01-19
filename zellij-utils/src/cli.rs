@@ -1128,6 +1128,14 @@ tail -f /tmp/my-live-logfile | zellij action pipe --name logs --plugin https://e
         #[clap(short, long, value_parser)]
         pane_id: String,
     },
+    SetPaneBorderless {
+        /// The pane_id of the pane, eg. terminal_1, plugin_2 or 3 (equivalent to terminal_3)
+        #[clap(short, long, value_parser)]
+        pane_id: String,
+        /// Whether the pane should be borderless (flag present) or bordered (flag absent)
+        #[clap(short, long, value_parser)]
+        borderless: bool,
+    },
     /// Detach from the current session
     Detach,
     /// Switch to a different session

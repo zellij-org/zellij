@@ -49,7 +49,7 @@ pub use super::generated_api::api::{
         SetFloatingPanePinnedPayload, SetSelfMouseSelectionSupportPayload, SetTimeoutPayload,
         ShowCursorPayload, ShowPaneWithIdPayload, StackPanesPayload, SubscribePayload,
         SwitchSessionPayload, SwitchTabToPayload, TogglePaneEmbedOrEjectForPaneIdPayload,
-        TogglePaneIdFullscreenPayload, TogglePaneBorderlessPayload, UnsubscribePayload, WebRequestPayload,
+        TogglePaneIdFullscreenPayload, TogglePaneBorderlessPayload, SetPaneBorderlessPayload, UnsubscribePayload, WebRequestPayload,
         WriteCharsToPaneIdPayload, WriteToPaneIdPayload,
     },
     plugin_permission::PermissionType as ProtobufPermissionType,
@@ -1695,6 +1695,17 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 },
                 _ => Err("Mismatched payload for TogglePaneBorderless"),
             },
+            Some(CommandName::SetPaneBorderless) => match protobuf_plugin_command.payload {
+                Some(Payload::SetPaneBorderlessPayload(payload)) => {
+                    match (payload.pane_id, payload.borderless) {
+                        (Some(pane_id), borderless) => {
+                            Ok(PluginCommand::SetPaneBorderless(pane_id.try_into()?, borderless))
+                        },
+                        _ => Err("Malformed SetPaneBorderless payload"),
+                    }
+                },
+                _ => Err("Mismatched payload for SetPaneBorderless"),
+            },
             Some(CommandName::OpenCommandPaneNearPlugin) => match protobuf_plugin_command.payload {
                 Some(Payload::OpenCommandPaneNearPluginPayload(command_to_run_payload)) => {
                     match command_to_run_payload.command_to_run {
@@ -3085,6 +3096,15 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                 payload: Some(Payload::TogglePaneBorderlessPayload(
                     TogglePaneBorderlessPayload {
                         pane_id: Some(pane_id.try_into()?),
+                    },
+                )),
+            }),
+            PluginCommand::SetPaneBorderless(pane_id, borderless) => Ok(ProtobufPluginCommand {
+                name: CommandName::SetPaneBorderless as i32,
+                payload: Some(Payload::SetPaneBorderlessPayload(
+                    SetPaneBorderlessPayload {
+                        pane_id: Some(pane_id.try_into()?),
+                        borderless,
                     },
                 )),
             }),
