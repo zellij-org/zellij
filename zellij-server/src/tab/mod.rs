@@ -886,6 +886,8 @@ impl Tab {
             .set_swap_tiled_layouts(new_swap_tiled_layouts);
         self.swap_layouts
             .set_swap_floating_layouts(new_swap_floating_layouts);
+        self.swap_layouts
+            .set_base_layout((layout.clone(), floating_panes_layout.clone()));
         match LayoutApplier::new(
             &self.viewport,
             &self.senders,
@@ -5384,7 +5386,6 @@ impl Tab {
             }
             pane.set_active_at(Instant::now());
             pane.set_geom(new_pane_geom);
-            log::info!("add_floating_pane coordinates: {:#?}", floating_pane_coordinates);
             let is_borderless = floating_pane_coordinates.map(|c| c.borderless).unwrap_or(false);
             if is_borderless {
                 pane.set_content_offset(Offset::frame(0));
@@ -5747,6 +5748,45 @@ impl Tab {
             .change_pane_coordinates(*pane_id, floating_pane_coordinates)?;
         self.set_force_render();
         self.swap_layouts.set_is_floating_damaged();
+        Ok(())
+    }
+    pub fn toggle_pane_borderless(&mut self, pane_id: &PaneId) -> Result<()> {
+        if let Some(pane) = self.floating_panes.get_pane_mut(*pane_id) {
+            let is_borderless = pane.borderless();
+            if is_borderless {
+                pane.set_content_offset(Offset::frame(1));
+            } else {
+                pane.set_content_offset(Offset::default());
+            }
+            pane.set_borderless(!is_borderless);
+            self.set_force_render();
+            return Ok(());
+        }
+
+        if let Some(pane) = self.tiled_panes.get_pane_mut(*pane_id) {
+            let is_borderless = pane.borderless();
+            if is_borderless {
+                pane.set_content_offset(Offset::frame(1));
+            } else {
+                pane.set_content_offset(Offset::default());
+            }
+            pane.set_borderless(!is_borderless);
+            self.set_force_render();
+            return Ok(());
+        }
+
+        if let Some(pane) = self.suppressed_panes.get_mut(pane_id) {
+            let is_borderless = pane.1.borderless();
+            if is_borderless {
+                pane.1.set_content_offset(Offset::frame(1));
+            } else {
+                pane.1.set_content_offset(Offset::default());
+            }
+            pane.1.set_borderless(!is_borderless);
+            return Ok(());
+        }
+
+        log::error!("Pane with id {:?} not found", pane_id);
         Ok(())
     }
     pub fn get_viewport(&self) -> Viewport {

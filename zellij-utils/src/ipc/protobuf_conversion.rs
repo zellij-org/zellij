@@ -735,7 +735,7 @@ impl From<crate::input::actions::Action>
             SwitchSessionAction, SwitchToModeAction, TabNameInputAction, ToggleActiveSyncTabAction,
             ToggleFloatingPanesAction, ToggleFocusFullscreenAction, ToggleGroupMarkingAction,
             ToggleMouseModeAction, TogglePaneEmbedOrFloatingAction, TogglePaneFramesAction,
-            TogglePaneInGroupAction, TogglePanePinnedAction, ToggleTabAction, UndoRenamePaneAction,
+            TogglePaneInGroupAction, TogglePanePinnedAction, TogglePaneBorderlessAction, ToggleTabAction, UndoRenamePaneAction,
             UndoRenameTabAction, WriteAction, WriteCharsAction,
         };
         use std::collections::HashMap;
@@ -1282,6 +1282,11 @@ impl From<crate::input::actions::Action>
                 pane_id: Some(pane_id.into()),
                 coordinates: Some(coordinates.into()),
             }),
+            crate::input::actions::Action::TogglePaneBorderless { pane_id } => {
+                ActionType::TogglePaneBorderless(TogglePaneBorderlessAction {
+                    pane_id: Some(pane_id.into()),
+                })
+            },
             crate::input::actions::Action::TogglePaneInGroup => {
                 ActionType::TogglePaneInGroup(TogglePaneInGroupAction {})
             },
@@ -1873,6 +1878,14 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                         .ok_or_else(|| {
                             anyhow!("ChangeFloatingPaneCoordinates missing coordinates")
                         })?
+                        .try_into()?,
+                },
+            ),
+            ActionType::TogglePaneBorderless(toggle_borderless_action) => Ok(
+                crate::input::actions::Action::TogglePaneBorderless {
+                    pane_id: toggle_borderless_action
+                        .pane_id
+                        .ok_or_else(|| anyhow!("TogglePaneBorderless missing pane_id"))?
                         .try_into()?,
                 },
             ),
@@ -2857,7 +2870,7 @@ impl From<crate::input::layout::TiledPaneLayout>
             children: layout.children.into_iter().map(|c| c.into()).collect(),
             split_size: layout.split_size.map(|s| s.into()),
             run: layout.run.map(|r| r.into()),
-            borderless: layout.borderless,
+            borderless: layout.borderless.unwrap_or(false),
             focus: layout.focus.map(|f| f.to_string()),
             exclude_from_sync: layout.exclude_from_sync,
             children_are_stacked: layout.children_are_stacked,
@@ -3270,7 +3283,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::TiledPaneLay
             children: children?,
             split_size,
             run,
-            borderless: layout.borderless,
+            borderless: Some(layout.borderless),
             focus: layout.focus.map(|f| f == "true"), // Convert string to bool
             external_children_index: layout.external_children_index.map(|l| l as usize),
             children_are_stacked: layout.children_are_stacked,

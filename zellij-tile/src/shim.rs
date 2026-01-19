@@ -1760,6 +1760,17 @@ pub fn change_floating_panes_coordinates(
     unsafe { host_run_plugin_command() };
 }
 
+/// Toggle the borderless state of a pane identified by pane_id
+///
+/// # Arguments
+/// * `pane_id` - The ID of the pane to toggle (PaneId::Terminal or PaneId::Plugin)
+pub fn toggle_pane_borderless(pane_id: PaneId) {
+    let plugin_command = PluginCommand::TogglePaneBorderless(pane_id);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 pub fn start_web_server() {
     let plugin_command = PluginCommand::StartWebServer;
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();

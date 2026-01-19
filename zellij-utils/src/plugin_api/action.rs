@@ -1769,6 +1769,7 @@ impl TryFrom<Action> for ProtobufAction {
                 pane_id: _,
                 coordinates: _,
             }
+            | Action::TogglePaneBorderless { pane_id: _ }
             | Action::SkipConfirm { action: _ }
             | Action::SwitchSession { .. } => Err("Unsupported action"),
         }
@@ -2804,7 +2805,7 @@ impl TryFrom<ProtobufTiledPaneLayout> for TiledPaneLayout {
             children,
             split_size,
             run,
-            borderless: protobuf.borderless,
+            borderless: Some(protobuf.borderless),
             focus,
             external_children_index: protobuf.external_children_index.map(|i| i as usize),
             children_are_stacked: protobuf.children_are_stacked,
@@ -2836,7 +2837,7 @@ impl TryFrom<TiledPaneLayout> for ProtobufTiledPaneLayout {
             children,
             split_size,
             run,
-            borderless: internal.borderless,
+            borderless: internal.borderless.unwrap_or(false),
             focus,
             external_children_index: internal.external_children_index.map(|i| i as u32),
             children_are_stacked: internal.children_are_stacked,

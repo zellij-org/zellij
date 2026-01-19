@@ -573,7 +573,7 @@ impl<'a> KdlLayoutParser<'a> {
                 })
         });
         Ok(TiledPaneLayout {
-            borderless: borderless.unwrap_or_default(),
+            borderless,
             focus,
             name,
             split_size,
@@ -749,7 +749,7 @@ impl<'a> KdlLayoutParser<'a> {
                     pane_template_run_command.add_start_suspended(start_suspended);
                 };
                 if let Some(borderless) = borderless {
-                    pane_template.borderless = borderless;
+                    pane_template.borderless = Some(borderless);
                 }
                 if let Some(focus) = focus {
                     pane_template.focus = Some(focus);
@@ -1137,7 +1137,7 @@ impl<'a> KdlLayoutParser<'a> {
                 template_name,
                 (
                     PaneOrFloatingPane::Pane(TiledPaneLayout {
-                        borderless: borderless.unwrap_or_default(),
+                        borderless,
                         focus,
                         split_size,
                         run,

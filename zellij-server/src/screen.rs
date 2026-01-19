@@ -496,6 +496,7 @@ pub enum ScreenInstruction {
         Vec<(PaneId, FloatingPaneCoordinates)>,
         Option<NotificationEnd>,
     ),
+    TogglePaneBorderless(PaneId, Option<NotificationEnd>),
     AddHighlightPaneFrameColorOverride(Vec<PaneId>, Option<String>), // Option<String> => optional
     // message
     GroupAndUngroupPanes(Vec<PaneId>, Vec<PaneId>, bool, ClientId), // panes_to_group, panes_to_ungroup, bool -> for all clients
@@ -727,6 +728,9 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::StackPanes(..) => ScreenContext::StackPanes,
             ScreenInstruction::ChangeFloatingPanesCoordinates(..) => {
                 ScreenContext::ChangeFloatingPanesCoordinates
+            },
+            ScreenInstruction::TogglePaneBorderless(..) => {
+                ScreenContext::TogglePaneBorderless
             },
             ScreenInstruction::AddHighlightPaneFrameColorOverride(..) => {
                 ScreenContext::AddHighlightPaneFrameColorOverride
@@ -3228,6 +3232,14 @@ impl Screen {
                         .non_fatal();
                     break;
                 }
+            }
+        }
+    }
+    pub fn toggle_pane_borderless(&mut self, pane_id: PaneId) {
+        for (_tab_id, tab) in self.tabs.iter_mut() {
+            if tab.has_pane_with_pid(&pane_id) {
+                tab.toggle_pane_borderless(&pane_id).non_fatal();
+                break;
             }
         }
     }
@@ -6490,6 +6502,10 @@ pub(crate) fn screen_thread_main(
                                 // waiting for it
             ) => {
                 screen.change_floating_panes_coordinates(pane_ids_and_coordinates);
+                let _ = screen.render(None);
+            },
+            ScreenInstruction::TogglePaneBorderless(pane_id, _completion_tx) => {
+                screen.toggle_pane_borderless(pane_id);
                 let _ = screen.render(None);
             },
             ScreenInstruction::GroupAndUngroupPanes(

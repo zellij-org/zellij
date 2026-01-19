@@ -3208,6 +3208,7 @@ pub enum PluginCommand {
     SetFloatingPanePinned(PaneId, bool), // bool -> should be pinned
     StackPanes(Vec<PaneId>),
     ChangeFloatingPanesCoordinates(Vec<(PaneId, FloatingPaneCoordinates)>),
+    TogglePaneBorderless(PaneId),
     OpenCommandPaneNearPlugin(CommandToRun, Context),
     OpenTerminalNearPlugin(FileToOpen),
     OpenTerminalFloatingNearPlugin(FileToOpen, Option<FloatingPaneCoordinates>),

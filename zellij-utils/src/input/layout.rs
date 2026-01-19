@@ -848,7 +848,7 @@ pub struct TiledPaneLayout {
     pub children: Vec<TiledPaneLayout>,
     pub split_size: Option<SplitSize>,
     pub run: Option<Run>,
-    pub borderless: bool,
+    pub borderless: Option<bool>,
     pub focus: Option<bool>,
     pub external_children_index: Option<usize>,
     pub children_are_stacked: bool,

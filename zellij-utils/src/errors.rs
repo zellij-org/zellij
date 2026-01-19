@@ -380,6 +380,7 @@ pub enum ScreenContext {
     SetFloatingPanePinned,
     StackPanes,
     ChangeFloatingPanesCoordinates,
+    TogglePaneBorderless,
     AddHighlightPaneFrameColorOverride,
     GroupAndUngroupPanes,
     HighlightAndUnhighlightPanes,

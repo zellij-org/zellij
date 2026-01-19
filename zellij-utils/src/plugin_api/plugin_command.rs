@@ -49,7 +49,7 @@ pub use super::generated_api::api::{
         SetFloatingPanePinnedPayload, SetSelfMouseSelectionSupportPayload, SetTimeoutPayload,
         ShowCursorPayload, ShowPaneWithIdPayload, StackPanesPayload, SubscribePayload,
         SwitchSessionPayload, SwitchTabToPayload, TogglePaneEmbedOrEjectForPaneIdPayload,
-        TogglePaneIdFullscreenPayload, UnsubscribePayload, WebRequestPayload,
+        TogglePaneIdFullscreenPayload, TogglePaneBorderlessPayload, UnsubscribePayload, WebRequestPayload,
         WriteCharsToPaneIdPayload, WriteToPaneIdPayload,
     },
     plugin_permission::PermissionType as ProtobufPermissionType,
@@ -1684,6 +1684,17 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                     _ => Err("Mismatched payload for ChangeFloatingPanesCoordinates"),
                 }
             },
+            Some(CommandName::TogglePaneBorderless) => match protobuf_plugin_command.payload {
+                Some(Payload::TogglePaneBorderlessPayload(toggle_payload)) => {
+                    match toggle_payload.pane_id {
+                        Some(pane_id) => {
+                            Ok(PluginCommand::TogglePaneBorderless(pane_id.try_into()?))
+                        },
+                        None => Err("Malformed TogglePaneBorderless payload"),
+                    }
+                },
+                _ => Err("Mismatched payload for TogglePaneBorderless"),
+            },
             Some(CommandName::OpenCommandPaneNearPlugin) => match protobuf_plugin_command.payload {
                 Some(Payload::OpenCommandPaneNearPluginPayload(command_to_run_payload)) => {
                     match command_to_run_payload.command_to_run {
@@ -3066,6 +3077,14 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                                     })
                                 })
                                 .collect(),
+                    },
+                )),
+            }),
+            PluginCommand::TogglePaneBorderless(pane_id) => Ok(ProtobufPluginCommand {
+                name: CommandName::TogglePaneBorderless as i32,
+                payload: Some(Payload::TogglePaneBorderlessPayload(
+                    TogglePaneBorderlessPayload {
+                        pane_id: Some(pane_id.try_into()?),
                     },
                 )),
             }),

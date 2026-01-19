@@ -451,6 +451,9 @@ pub enum Action {
         pane_id: PaneId,
         coordinates: FloatingPaneCoordinates,
     },
+    TogglePaneBorderless {
+        pane_id: PaneId,
+    },
     TogglePaneInGroup,
     ToggleGroupMarking,
 }
@@ -1223,6 +1226,22 @@ impl Action {
                     Err(_e) => {
                         Err(format!(
                             "Malformed pane id: {}, expecting a space separated list of either a bare integer (eg. 1), a terminal pane id (eg. terminal_1) or a plugin pane id (eg. plugin_1)",
+                            pane_id
+                        ))
+                    }
+                }
+            },
+            CliAction::TogglePaneBorderless { pane_id } => {
+                let parsed_pane_id = PaneId::from_str(&pane_id);
+                match parsed_pane_id {
+                    Ok(parsed_pane_id) => {
+                        Ok(vec![Action::TogglePaneBorderless {
+                            pane_id: parsed_pane_id,
+                        }])
+                    },
+                    Err(_e) => {
+                        Err(format!(
+                            "Malformed pane id: {}, expecting either a bare integer (eg. 1), a terminal pane id (eg. terminal_1) or a plugin pane id (eg. plugin_1)",
                             pane_id
                         ))
                     }
