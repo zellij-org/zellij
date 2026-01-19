@@ -1,6 +1,5 @@
 ---
 source: zellij-utils/src/input/./unit/layout_test.rs
-assertion_line: 1911
 expression: "format!(\"{:#?}\", layout)"
 ---
 Layout {
@@ -26,7 +25,7 @@ Layout {
                                         children: [],
                                         split_size: None,
                                         run: None,
-                                        borderless: false,
+                                        borderless: None,
                                         focus: None,
                                         external_children_index: None,
                                         children_are_stacked: false,
@@ -42,7 +41,7 @@ Layout {
                                         children: [],
                                         split_size: None,
                                         run: None,
-                                        borderless: false,
+                                        borderless: None,
                                         focus: None,
                                         external_children_index: None,
                                         children_are_stacked: false,
@@ -55,7 +54,7 @@ Layout {
                                 ],
                                 split_size: None,
                                 run: None,
-                                borderless: false,
+                                borderless: None,
                                 focus: None,
                                 external_children_index: None,
                                 children_are_stacked: true,
@@ -68,7 +67,7 @@ Layout {
                         ],
                         split_size: None,
                         run: None,
-                        borderless: false,
+                        borderless: None,
                         focus: None,
                         external_children_index: None,
                         children_are_stacked: true,
@@ -81,7 +80,7 @@ Layout {
                 ],
                 split_size: None,
                 run: None,
-                borderless: false,
+                borderless: None,
                 focus: None,
                 external_children_index: None,
                 children_are_stacked: false,

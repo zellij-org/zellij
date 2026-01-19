@@ -3076,6 +3076,7 @@ pub fn send_cli_edit_action_with_default_parameters() {
         width: None,
         height: None,
         pinned: None,
+        borderless: false,
         near_current_pane: false,
     };
     send_cli_action_to_server(&session_metadata, cli_edit_action, client_id);
@@ -3116,6 +3117,7 @@ pub fn send_cli_edit_action_with_line_number() {
         width: None,
         height: None,
         pinned: None,
+        borderless: false,
         near_current_pane: false,
     };
     send_cli_action_to_server(&session_metadata, cli_edit_action, client_id);
@@ -3156,6 +3158,7 @@ pub fn send_cli_edit_action_with_split_direction() {
         width: None,
         height: None,
         pinned: None,
+        borderless: false,
         near_current_pane: false,
     };
     send_cli_action_to_server(&session_metadata, cli_edit_action, client_id);
@@ -4417,6 +4420,7 @@ pub fn send_cli_change_floating_pane_coordinates_action() {
         width: Some("10".to_owned()),
         height: Some("10".to_owned()),
         pinned: None,
+        borderless: false,
     };
     send_cli_action_to_server(
         &session_metadata,

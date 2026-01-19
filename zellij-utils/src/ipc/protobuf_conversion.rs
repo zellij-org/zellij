@@ -2870,7 +2870,7 @@ impl From<crate::input::layout::TiledPaneLayout>
             children: layout.children.into_iter().map(|c| c.into()).collect(),
             split_size: layout.split_size.map(|s| s.into()),
             run: layout.run.map(|r| r.into()),
-            borderless: layout.borderless.unwrap_or(false),
+            borderless: layout.borderless,
             focus: layout.focus.map(|f| f.to_string()),
             exclude_from_sync: layout.exclude_from_sync,
             children_are_stacked: layout.children_are_stacked,
@@ -3283,7 +3283,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::TiledPaneLay
             children: children?,
             split_size,
             run,
-            borderless: Some(layout.borderless),
+            borderless: layout.borderless,
             focus: layout.focus.map(|f| f == "true"), // Convert string to bool
             external_children_index: layout.external_children_index.map(|l| l as usize),
             children_are_stacked: layout.children_are_stacked,

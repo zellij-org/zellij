@@ -1949,6 +1949,7 @@ fn test_client_messages() {
                     x: Some(PercentOrFixed::Percent(30)),
                     y: Some(PercentOrFixed::Percent(40)),
                     pinned: Some(true),
+                    borderless: None,
                     run: Some(Run::Cwd(PathBuf::from("/path/to/cwd"))),
                     focus: Some(true),
                     already_running: true,

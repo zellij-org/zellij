@@ -175,6 +175,7 @@ impl<'a> LayoutApplier<'a> {
             match existing_tab_state
                 .find_and_extract_exact_match_pane(&layout.run, position_and_size.logical_position)
             {
+
                 Some(pane) => {
                     pane_applier.apply_position_and_size_to_tiled_pane(
                         pane,

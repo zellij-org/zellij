@@ -1053,7 +1053,6 @@ fn increase_tiled_pane_sizes_with_stacked_resizes_into_uneven_panes() {
             size.cols,
             Palette::default(),
         );
-        eprintln!("increase: \n{}", snapshot);
         assert_snapshot!(snapshot);
     }
 
@@ -1068,7 +1067,6 @@ fn increase_tiled_pane_sizes_with_stacked_resizes_into_uneven_panes() {
             size.cols,
             Palette::default(),
         );
-        eprintln!("decrease: \n{}", snapshot);
         assert_snapshot!(snapshot);
     }
 }
@@ -8252,11 +8250,15 @@ fn swap_layouts_not_including_plugin_panes_present_in_existing_layout() {
         layout {
             swap_tiled_layout {
                 tab {
-                    pane size=2
+                    pane size=2 borderless=true {
+                        plugin location="zellij:status-bar"
+                    }
                     pane
                     pane
                     pane
-                    pane size=1
+                    pane size=1 borderless=true {
+                        plugin location="zellij:tab-bar"
+                    }
                 }
             }
         }
@@ -8476,7 +8478,6 @@ fn new_pane_in_stacked_resizes() {
             size.cols,
             Palette::default(),
         );
-        eprintln!("{}", snapshot);
         let (expected_x, expected_y) = expected_cursor_coordinates.remove(0);
         assert_eq!(
             cursor_coordinates,

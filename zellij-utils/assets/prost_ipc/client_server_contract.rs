@@ -1232,8 +1232,8 @@ pub struct TiledPaneLayout {
     pub split_size: ::core::option::Option<SplitSize>,
     #[prost(message, optional, tag="5")]
     pub run: ::core::option::Option<Run>,
-    #[prost(bool, tag="6")]
-    pub borderless: bool,
+    #[prost(bool, optional, tag="6")]
+    pub borderless: ::core::option::Option<bool>,
     #[prost(string, optional, tag="7")]
     pub focus: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(bool, optional, tag="8")]

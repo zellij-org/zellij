@@ -601,7 +601,7 @@ fn layout_with_borderless_panes() {
         template: Some((
             TiledPaneLayout {
                 children: vec![TiledPaneLayout {
-                    borderless: true,
+                    borderless: Some(true),
                     ..Default::default()
                 }],
                 ..Default::default()
