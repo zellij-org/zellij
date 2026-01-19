@@ -168,7 +168,7 @@ impl PaneGroups {
                 width: Some(PercentOrFixed::Fixed(width)),
                 height: Some(PercentOrFixed::Fixed(height)),
                 pinned: Some(true),
-                borderless: false, // TODO: not hard coded
+                borderless: Some(false),
             };
             let _ = self.senders.send_to_pty(PtyInstruction::FillPluginCwd(
                 should_float,

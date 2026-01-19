@@ -117,7 +117,7 @@ impl Into<FloatingPaneCoordinates> for ProtobufFloatingPaneCoordinates {
                 }
             }),
             pinned: self.pinned,
-            borderless: self.borderless.unwrap_or(false),
+            borderless: self.borderless,
         }
     }
 }
@@ -170,7 +170,7 @@ impl Into<ProtobufFloatingPaneCoordinates> for FloatingPaneCoordinates {
                 None => None,
             },
             pinned: self.pinned,
-            borderless: Some(self.borderless),
+            borderless: self.borderless,
         }
     }
 }

@@ -5386,7 +5386,7 @@ impl Tab {
             }
             pane.set_active_at(Instant::now());
             pane.set_geom(new_pane_geom);
-            let is_borderless = floating_pane_coordinates.map(|c| c.borderless).unwrap_or(false);
+            let is_borderless = floating_pane_coordinates.and_then(|c| c.borderless).unwrap_or(false);
             if is_borderless {
                 pane.set_content_offset(Offset::frame(0));
                 pane.set_borderless(true);

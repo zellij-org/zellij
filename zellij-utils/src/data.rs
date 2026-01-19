@@ -2768,7 +2768,7 @@ pub struct FloatingPaneCoordinates {
     pub width: Option<PercentOrFixed>,
     pub height: Option<PercentOrFixed>,
     pub pinned: Option<bool>,
-    pub borderless: bool,
+    pub borderless: Option<bool>,
 }
 
 impl FloatingPaneCoordinates {
@@ -2778,7 +2778,7 @@ impl FloatingPaneCoordinates {
         width: Option<String>,
         height: Option<String>,
         pinned: Option<bool>,
-        borderless: bool,
+        borderless: Option<bool>,
     ) -> Option<Self> {
         // Parse x/y coordinates - allows 0% or 0
         let x = x.and_then(|x| PercentOrFixed::from_str(&x).ok());
@@ -2804,7 +2804,7 @@ impl FloatingPaneCoordinates {
                 })
         });
 
-        if x.is_none() && y.is_none() && width.is_none() && height.is_none() && pinned.is_none() && !borderless {
+        if x.is_none() && y.is_none() && width.is_none() && height.is_none() && pinned.is_none() && borderless.is_none() {
             None
         } else {
             Some(FloatingPaneCoordinates {
@@ -2875,7 +2875,7 @@ impl From<PaneGeom> for FloatingPaneCoordinates {
             width: Some(PercentOrFixed::Fixed(pane_geom.cols.as_usize())),
             height: Some(PercentOrFixed::Fixed(pane_geom.rows.as_usize())),
             pinned: Some(pane_geom.is_pinned),
-            borderless: false, // TODO: not hardcoded
+            borderless: None,
         }
     }
 }

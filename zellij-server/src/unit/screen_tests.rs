@@ -1449,7 +1449,7 @@ fn open_new_floating_pane_with_custom_coordinates() {
                 width: Some(PercentOrFixed::Percent(1)),
                 height: Some(PercentOrFixed::Fixed(2)),
                 pinned: None,
-                borderless: false,
+                borderless: Some(false),
             })),
             Some(1),
             None,
@@ -1485,7 +1485,7 @@ fn open_new_floating_pane_with_custom_coordinates_exceeding_viewport() {
                 width: Some(PercentOrFixed::Fixed(10)),
                 height: Some(PercentOrFixed::Fixed(10)),
                 pinned: None,
-                borderless: false,
+                borderless: Some(false),
             })),
             Some(1),
             None,
@@ -1521,7 +1521,7 @@ fn floating_pane_auto_centers_horizontally_with_only_width() {
                 width: Some(PercentOrFixed::Fixed(60)),
                 height: Some(PercentOrFixed::Fixed(10)),
                 pinned: None,
-                borderless: false,
+                borderless: Some(false),
             })),
             Some(1),
             None,
@@ -1557,7 +1557,7 @@ fn floating_pane_auto_centers_vertically_with_only_height() {
                 width: Some(PercentOrFixed::Fixed(50)),
                 height: Some(PercentOrFixed::Fixed(20)),
                 pinned: None,
-                borderless: false,
+                borderless: Some(false),
             })),
             Some(1),
             None,
@@ -1593,7 +1593,7 @@ fn floating_pane_auto_centers_both_axes_with_only_size() {
                 width: Some(PercentOrFixed::Fixed(80)),
                 height: Some(PercentOrFixed::Fixed(30)),
                 pinned: None,
-                borderless: false,
+                borderless: Some(false),
             })),
             Some(1),
             None,
@@ -1629,7 +1629,7 @@ fn floating_pane_respects_explicit_coordinates_with_size() {
                 width: Some(PercentOrFixed::Fixed(80)),
                 height: Some(PercentOrFixed::Fixed(30)),
                 pinned: None,
-                borderless: false,
+                borderless: Some(false),
             })),
             Some(1),
             None,
@@ -1665,7 +1665,7 @@ fn floating_pane_centers_with_percentage_width() {
                 width: Some(PercentOrFixed::Percent(50)),
                 height: Some(PercentOrFixed::Fixed(20)),
                 pinned: None,
-                borderless: false,
+                borderless: Some(false),
             })),
             Some(1),
             None,
@@ -1706,7 +1706,7 @@ fn floating_pane_centers_large_pane_safely() {
                 width: Some(PercentOrFixed::Fixed(150)),
                 height: Some(PercentOrFixed::Fixed(50)),
                 pinned: None,
-                borderless: false,
+                borderless: Some(false),
             })),
             Some(1),
             None,
@@ -2878,7 +2878,7 @@ pub fn send_cli_new_pane_action_with_default_parameters() {
         blocking: false,
         unblock_condition: None,
         near_current_pane: false,
-        borderless: false,
+        borderless: Some(false),
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -2927,7 +2927,7 @@ pub fn send_cli_new_pane_action_with_split_direction() {
         blocking: false,
         unblock_condition: None,
         near_current_pane: false,
-        borderless: false,
+        borderless: Some(false),
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -2976,7 +2976,7 @@ pub fn send_cli_new_pane_action_with_command_and_cwd() {
         blocking: false,
         unblock_condition: None,
         near_current_pane: false,
-        borderless: false,
+        borderless: Some(false),
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -3036,7 +3036,7 @@ pub fn send_cli_new_pane_action_with_floating_pane_and_coordinates() {
         blocking: false,
         unblock_condition: None,
         near_current_pane: false,
-        borderless: false,
+        borderless: Some(false),
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -3076,7 +3076,7 @@ pub fn send_cli_edit_action_with_default_parameters() {
         width: None,
         height: None,
         pinned: None,
-        borderless: false,
+        borderless: Some(false),
         near_current_pane: false,
     };
     send_cli_action_to_server(&session_metadata, cli_edit_action, client_id);
@@ -3117,7 +3117,7 @@ pub fn send_cli_edit_action_with_line_number() {
         width: None,
         height: None,
         pinned: None,
-        borderless: false,
+        borderless: Some(false),
         near_current_pane: false,
     };
     send_cli_action_to_server(&session_metadata, cli_edit_action, client_id);
@@ -3158,7 +3158,7 @@ pub fn send_cli_edit_action_with_split_direction() {
         width: None,
         height: None,
         pinned: None,
-        borderless: false,
+        borderless: Some(false),
         near_current_pane: false,
     };
     send_cli_action_to_server(&session_metadata, cli_edit_action, client_id);
@@ -4420,7 +4420,7 @@ pub fn send_cli_change_floating_pane_coordinates_action() {
         width: Some("10".to_owned()),
         height: Some("10".to_owned()),
         pinned: None,
-        borderless: false,
+        borderless: Some(false),
     };
     send_cli_action_to_server(
         &session_metadata,

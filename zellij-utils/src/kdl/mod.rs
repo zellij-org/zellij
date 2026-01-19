@@ -1913,7 +1913,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 let pinned =
                     command_metadata.and_then(|c_m| kdl_child_bool_value_for_entry(c_m, "pinned"));
                 let borderless =
-                    command_metadata.and_then(|c_m| kdl_child_bool_value_for_entry(c_m, "borderless")).unwrap_or(false);
+                    command_metadata.and_then(|c_m| kdl_child_bool_value_for_entry(c_m, "borderless"));
                 if floating {
                     Ok(Action::NewFloatingPane {
                         command: Some(run_command_action),

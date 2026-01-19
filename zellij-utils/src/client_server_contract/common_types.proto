@@ -730,7 +730,7 @@ message FloatingPaneCoordinates {
   optional FloatingCoordinate width = 3;
   optional FloatingCoordinate height = 4;
   optional bool pinned = 5;
-  bool borderless = 6;
+  optional bool borderless = 6;
 }
 
 message FloatingCoordinate {

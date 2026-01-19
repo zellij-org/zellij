@@ -9899,7 +9899,7 @@ fn borderless_floating_pane() {
         width: Some(PercentOrFixed::Fixed(50)),
         height: Some(PercentOrFixed::Fixed(10)),
         pinned: None,
-        borderless: true,
+        borderless: Some(true),
     };
 
     tab.new_floating_pane(
@@ -9946,7 +9946,7 @@ fn borderless_pane_content_fills_edges() {
         width: Some(PercentOrFixed::Fixed(30)),
         height: Some(PercentOrFixed::Fixed(5)),
         pinned: None,
-        borderless: true,
+        borderless: Some(true),
     };
 
     tab.new_floating_pane(
@@ -9994,7 +9994,7 @@ fn borderless_pinned_floating_pane() {
         width: Some(PercentOrFixed::Fixed(60)),
         height: Some(PercentOrFixed::Fixed(8)),
         pinned: Some(true),
-        borderless: true,
+        borderless: Some(true),
     };
 
     tab.new_floating_pane(

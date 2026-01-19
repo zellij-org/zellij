@@ -41,7 +41,7 @@ pub fn change_floating_pane_coordinates_absolute(
         width.map(|width| width.to_string()),
         height.map(|height| height.to_string()),
         Some(should_be_pinned),
-        false,
+        Some(false),
     );
     if let Some(coordinates) = coordinates {
         change_floating_panes_coordinates(vec![(PaneId::Plugin(own_plugin_id), coordinates)]);

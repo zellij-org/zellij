@@ -440,8 +440,8 @@ pub enum Sessions {
         near_current_pane: bool,
         /// start this pane without a border (warning: will make it impossible to move with the
         /// mouse)
-        #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
-        borderless: bool,
+        #[clap(short, long, value_parser)]
+        borderless: Option<bool>,
     },
     /// Load a plugin
     #[clap(visible_alias = "p")]
@@ -489,8 +489,8 @@ pub enum Sessions {
         pinned: Option<bool>,
         /// start this pane without a border (warning: will make it impossible to move with the
         /// mouse)
-        #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
-        borderless: bool,
+        #[clap(short, long, value_parser)]
+        borderless: Option<bool>,
     },
     /// Edit file with default $EDITOR / $VISUAL
     #[clap(visible_alias = "e")]
@@ -544,8 +544,8 @@ pub enum Sessions {
         near_current_pane: bool,
         /// start this pane without a border (warning: will make it impossible to move with the
         /// mouse)
-        #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
-        borderless: bool,
+        #[clap(short, long, value_parser)]
+        borderless: Option<bool>,
     },
     ConvertConfig {
         old_config_file: PathBuf,
@@ -763,8 +763,8 @@ pub enum CliAction {
         near_current_pane: bool,
         /// start this pane without a border (warning: will make it impossible to move with the
         /// mouse)
-        #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
-        borderless: bool,
+        #[clap(short, long, value_parser)]
+        borderless: Option<bool>,
     },
     /// Open the specified file in a new zellij pane with your default EDITOR
     Edit {
@@ -817,8 +817,8 @@ pub enum CliAction {
         near_current_pane: bool,
         /// start this pane without a border (warning: will make it impossible to move with the
         /// mouse)
-        #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
-        borderless: bool,
+        #[clap(short, long, value_parser)]
+        borderless: Option<bool>,
     },
     /// Switch input mode of all connected clients [locked|pane|tab|resize|move|search|session]
     SwitchMode {
@@ -1118,10 +1118,10 @@ tail -f /tmp/my-live-logfile | zellij action pipe --name logs --plugin https://e
         /// Whether to pin a floating pane so that it is always on top
         #[clap(long)]
         pinned: Option<bool>,
-        /// change this pane to be without a border (warning: will make it impossible to move with the
-        /// mouse)
-        #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
-        borderless: bool,
+        /// change this pane to be with/without a border (warning: will make it impossible to move with the
+        /// mouse if without a border)
+        #[clap(short, long, value_parser)]
+        borderless: Option<bool>,
     },
     TogglePaneBorderless {
         /// The pane_id of the pane, eg. terminal_1, plugin_2 or 3 (equivalent to terminal_3)

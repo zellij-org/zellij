@@ -2249,7 +2249,7 @@ impl TryFrom<ProtobufFloatingPaneCoordinates> for FloatingPaneCoordinates {
             width: protobuf_coords.width.and_then(|w| w.try_into().ok()),
             height: protobuf_coords.height.and_then(|h| h.try_into().ok()),
             pinned: protobuf_coords.pinned,
-            borderless: false, // TODO: not hardcoded
+            borderless: protobuf_coords.borderless,
         })
     }
 }
@@ -2263,7 +2263,7 @@ impl TryFrom<FloatingPaneCoordinates> for ProtobufFloatingPaneCoordinates {
             width: coords.width.and_then(|w| w.try_into().ok()),
             height: coords.height.and_then(|h| h.try_into().ok()),
             pinned: coords.pinned,
-            borderless: Some(coords.borderless),
+            borderless: coords.borderless,
         })
     }
 }

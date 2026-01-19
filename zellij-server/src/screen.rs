@@ -2907,7 +2907,7 @@ impl Screen {
                         width: Some(PercentOrFixed::Fixed(pane.cols())),
                         height: Some(PercentOrFixed::Fixed(pane.rows())),
                         pinned: Some(pane.current_geom().is_pinned),
-                        borderless: false, // TODO: not hardcoded
+                        borderless: Some(pane.borderless()),
                     };
                     new_active_tab.add_floating_pane(
                         pane,
