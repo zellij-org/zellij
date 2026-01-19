@@ -2010,7 +2010,10 @@ impl LayoutInfo {
     ) -> Option<Self> {
         match layout_path {
             Some(layout_path) => {
-                if layout_path.extension().is_some() || layout_path.components().count() > 1 {
+                if layout_path.starts_with("http://") || layout_path.starts_with("https://") {
+                    Some(LayoutInfo::Url(layout_path.display().to_string()))
+                } else if layout_path.extension().is_some() || layout_path.components().count() > 1
+                {
                     let Some(layout_dir) = layout_dir
                         .as_ref()
                         .map(|l| l.clone())
@@ -2024,10 +2027,29 @@ impl LayoutInfo {
                         file_path.display().to_string(),
                         LayoutMetadata::from(&file_path),
                     ))
-                } else if layout_path.starts_with("http://") || layout_path.starts_with("https://")
-                {
-                    Some(LayoutInfo::Url(layout_path.display().to_string()))
                 } else {
+                    // Attempt to interpret as file name fragment
+                    if let Some(layout_dir) = layout_dir
+                        .as_ref()
+                        .map(|l| l.clone())
+                        .or_else(default_layout_dir)
+                    {
+                        let file_path = layout_dir.join(layout_path);
+                        if file_path.exists() {
+                            return Some(LayoutInfo::File(
+                                file_path.display().to_string(),
+                                LayoutMetadata::from(&file_path),
+                            ));
+                        }
+                        let file_path_with_ext = file_path.with_extension("kdl");
+                        if file_path_with_ext.exists() {
+                            return Some(LayoutInfo::File(
+                                file_path_with_ext.display().to_string(),
+                                LayoutMetadata::from(&file_path_with_ext),
+                            ));
+                        }
+                    }
+                    // Assume a builtin layout by default
                     Some(LayoutInfo::BuiltIn(layout_path.display().to_string()))
                 }
             },
