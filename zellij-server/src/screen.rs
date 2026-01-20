@@ -216,6 +216,7 @@ pub enum ScreenInstruction {
         response_channel: crossbeam::channel::Sender<GetFocusedPaneInfoResponse>,
     },
     EditScrollback(ClientId, Option<NotificationEnd>),
+    EditScrollbackRaw(ClientId, Option<NotificationEnd>),
     GetPaneScrollback {
         pane_id: PaneId,
         client_id: ClientId,
@@ -579,6 +580,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::DumpLayoutToPlugin { .. } => ScreenContext::DumpLayoutToPlugin,
             ScreenInstruction::GetFocusedPaneInfo { .. } => ScreenContext::GetFocusedPaneInfo,
             ScreenInstruction::EditScrollback(..) => ScreenContext::EditScrollback,
+            ScreenInstruction::EditScrollbackRaw(..) => ScreenContext::EditScrollback, // fallback
             ScreenInstruction::GetPaneScrollback { .. } => ScreenContext::GetPaneScrollback,
             ScreenInstruction::ScrollUp(..) => ScreenContext::ScrollUp,
             ScreenInstruction::ScrollDown(..) => ScreenContext::ScrollDown,
@@ -4298,6 +4300,16 @@ pub(crate) fn screen_thread_main(
                     screen,
                     client_id,
                     |tab: &mut Tab, client_id: ClientId| tab.edit_scrollback(client_id, completion_tx),
+                    ?
+                );
+                screen.render(None)?;
+                screen.log_and_report_session_state()?;
+            },
+            ScreenInstruction::EditScrollbackRaw(client_id, completion_tx) => {
+                active_tab_and_connected_client_id!(
+                    screen,
+                    client_id,
+                    |tab: &mut Tab, client_id: ClientId| tab.edit_scrollback_raw(client_id, completion_tx),
                     ?
                 );
                 screen.render(None)?;

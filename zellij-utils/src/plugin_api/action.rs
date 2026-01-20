@@ -1122,6 +1122,10 @@ impl TryFrom<Action> for ProtobufAction {
                 name: ProtobufActionName::EditScrollback as i32,
                 optional_payload: None,
             }),
+            Action::EditScrollbackRaw => Ok(ProtobufAction {
+                name: ProtobufActionName::EditScrollback as i32, // fallback to default edit scrollback
+                optional_payload: None,
+            }),
             Action::ScrollUp => Ok(ProtobufAction {
                 name: ProtobufActionName::ScrollUp as i32,
                 optional_payload: None,

@@ -813,6 +813,9 @@ impl From<crate::input::actions::Action>
             crate::input::actions::Action::EditScrollback => {
                 ActionType::EditScrollback(EditScrollbackAction {})
             },
+            crate::input::actions::Action::EditScrollbackRaw => {
+                ActionType::EditScrollback(EditScrollbackAction {}) // fallback to default edit scrollback
+            },
             crate::input::actions::Action::ScrollUp => ActionType::ScrollUp(ScrollUpAction {}),
             crate::input::actions::Action::ScrollUpAt { position } => {
                 ActionType::ScrollUpAt(ScrollUpAtAction {

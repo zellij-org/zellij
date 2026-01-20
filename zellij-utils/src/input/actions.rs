@@ -166,8 +166,9 @@ pub enum Action {
     },
     /// Dumps
     DumpLayout,
-    /// Scroll up in focus pane.
     EditScrollback,
+    EditScrollbackRaw,
+    /// Scroll up in focus pane.
     ScrollUp,
     /// Scroll up at point
     ScrollUpAt {

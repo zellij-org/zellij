@@ -288,6 +288,40 @@ macro_rules! dump_screen {
     }};
 }
 
+macro_rules! dump_screen_with_ansi {
+    ($lines:expr) => {{
+        use std::fmt::Write;
+        let mut is_first = true;
+        let mut buf = String::new();
+        let mut last_styles: Option<RcCharacterStyles> = None;
+
+        for line in &$lines {
+            if line.is_canonical && !is_first {
+                buf.push_str("\u{1b}[m\n");
+            }
+
+            let last_non_space = line
+                .columns
+                .iter()
+                .rposition(|tc| tc.character != ' ')
+                .map(|i| i + 1)
+                .unwrap_or(0);
+
+            for tc in line.columns.iter().take(last_non_space) {
+                // Only output style codes if style changed
+                if last_styles.as_ref() != Some(&tc.styles) {
+                    write!(buf, "{}", tc.styles).unwrap();
+                    last_styles = Some(tc.styles.clone());
+                }
+                buf.push(tc.character);
+            }
+            is_first = false;
+        }
+        buf.push_str("\u{1b}[m");
+        buf
+    }};
+}
+
 fn utf8_mouse_coordinates(column: usize, line: isize) -> Vec<u8> {
     let mut coordinates = vec![];
     let mouse_pos_encode = |pos: usize| -> Vec<u8> {
@@ -1221,6 +1255,19 @@ impl Grid {
             return viewport;
         }
         let mut scrollback: String = dump_screen!(self.lines_above);
+        if !scrollback.is_empty() {
+            scrollback.push('\n');
+        }
+        scrollback.push_str(&viewport);
+        scrollback
+    }
+    /// Dumps all lines (with ansi) above terminal viewport and the viewport itself to a string
+    pub fn dump_screen_with_ansi(&self, full: bool) -> String {
+        let viewport: String = dump_screen_with_ansi!(self.viewport);
+        if !full {
+            return viewport;
+        }
+        let mut scrollback: String = dump_screen_with_ansi!(self.lines_above);
         if !scrollback.is_empty() {
             scrollback.push('\n');
         }

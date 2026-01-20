@@ -528,6 +528,9 @@ impl Pane for TerminalPane {
     fn dump_screen(&self, full: bool, _client_id: Option<ClientId>) -> String {
         self.grid.dump_screen(full)
     }
+    fn dump_screen_with_ansi(&self, full: bool, _client_id: Option<ClientId>) -> String {
+        self.grid.dump_screen_with_ansi(full)
+    }
     fn clear_screen(&mut self) {
         self.grid.clear_screen()
     }
