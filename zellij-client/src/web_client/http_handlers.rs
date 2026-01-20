@@ -19,9 +19,13 @@ const WEB_CLIENT_PAGE: &str = include_str!(concat!(
 
 const ASSETS_DIR: include_dir::Dir<'_> = include_dir::include_dir!("$CARGO_MANIFEST_DIR/assets");
 
-pub async fn serve_html(request: Request) -> Html<String> {
+pub async fn serve_html(State(state): State<AppState>, request: Request) -> Html<String> {
     let cookies = parse_cookies(&request);
-    let is_authenticated = cookies.get("session_token").is_some();
+    let mut is_authenticated = cookies.get("session_token").is_some();
+    #[cfg(feature = "dangerously_expose_webserver")]
+    if state.dangerously_expose_webserver || state.dangerously_expose_webserver_read_only {
+        is_authenticated = true;
+    }
     let auth_value = if is_authenticated { "true" } else { "false" };
     let html = Html(WEB_CLIENT_PAGE.replace("IS_AUTHENTICATED", &format!("{}", auth_value)));
     html
