@@ -1912,11 +1912,15 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                     .map(|s| s.to_owned());
                 let pinned =
                     command_metadata.and_then(|c_m| kdl_child_bool_value_for_entry(c_m, "pinned"));
+                let borderless = command_metadata
+                    .and_then(|c_m| kdl_child_bool_value_for_entry(c_m, "borderless"));
                 if floating {
                     Ok(Action::NewFloatingPane {
                         command: Some(run_command_action),
                         pane_name: name,
-                        coordinates: FloatingPaneCoordinates::new(x, y, width, height, pinned),
+                        coordinates: FloatingPaneCoordinates::new(
+                            x, y, width, height, pinned, borderless,
+                        ),
                         near_current_pane: false,
                     })
                 } else if in_place {

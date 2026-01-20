@@ -176,6 +176,8 @@ enum CommandName {
   RenameLayout = 181;
   GetLayoutDir = 182;
   GetFocusedPaneInfo = 183;
+  TogglePaneBorderless = 184;
+  SetPaneBorderless = 185;
 }
 
 message PluginCommand {
@@ -301,6 +303,8 @@ message PluginCommand {
     GetLayoutDirPayload get_layout_dir_payload = 132;
     DumpSessionLayoutPayload dump_session_layout_payload = 133;
     GetFocusedPaneInfoPayload get_focused_pane_info_payload = 134;
+    TogglePaneBorderlessPayload toggle_pane_borderless_payload = 135;
+    SetPaneBorderlessPayload set_pane_borderless_payload = 136;
   }
 }
 
@@ -430,6 +434,15 @@ message StackPanesPayload {
 message SetFloatingPanePinnedPayload {
   PaneId pane_id = 1;
   bool should_be_pinned = 2;
+}
+
+message TogglePaneBorderlessPayload {
+  PaneId pane_id = 1;
+}
+
+message SetPaneBorderlessPayload {
+  PaneId pane_id = 1;
+  bool borderless = 2;
 }
 
 message ChangeHostFolderPayload {
@@ -711,6 +724,7 @@ message FloatingPaneCoordinates {
   optional FixedOrPercentValue width = 3;
   optional FixedOrPercentValue height = 4;
   optional bool pinned = 5;
+  optional bool borderless = 6;
 }
 
 message FixedOrPercentValue {

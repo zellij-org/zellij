@@ -13,7 +13,7 @@ TILED PANES (2)
     run: None
     selectable: true
     title: Pane #1
-    borderless: false
+    borderless: true
 
   Terminal(2):
     geom: x=0, y=20, cols=120, rows=20

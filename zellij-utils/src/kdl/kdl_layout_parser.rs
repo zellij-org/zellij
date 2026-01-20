@@ -573,7 +573,7 @@ impl<'a> KdlLayoutParser<'a> {
                 })
         });
         Ok(TiledPaneLayout {
-            borderless: borderless.unwrap_or_default(),
+            borderless,
             focus,
             name,
             split_size,
@@ -598,6 +598,7 @@ impl<'a> KdlLayoutParser<'a> {
         let x = self.parse_percent_or_fixed(kdl_node, "x", true)?;
         let y = self.parse_percent_or_fixed(kdl_node, "y", true)?;
         let pinned = kdl_get_bool_property_or_child_value_with_error!(kdl_node, "pinned");
+        let borderless = kdl_get_bool_property_or_child_value_with_error!(kdl_node, "borderless");
         let run = self.parse_command_plugin_or_edit_block(kdl_node)?;
         let focus = kdl_get_bool_property_or_child_value_with_error!(kdl_node, "focus");
         let name = kdl_get_string_property_or_child_value_with_error!(kdl_node, "name")
@@ -622,6 +623,7 @@ impl<'a> KdlLayoutParser<'a> {
             run,
             focus,
             pinned,
+            borderless,
             pane_initial_contents,
             ..Default::default()
         })
@@ -747,7 +749,7 @@ impl<'a> KdlLayoutParser<'a> {
                     pane_template_run_command.add_start_suspended(start_suspended);
                 };
                 if let Some(borderless) = borderless {
-                    pane_template.borderless = borderless;
+                    pane_template.borderless = Some(borderless);
                 }
                 if let Some(focus) = focus {
                     pane_template.focus = Some(focus);
@@ -1135,7 +1137,7 @@ impl<'a> KdlLayoutParser<'a> {
                 template_name,
                 (
                     PaneOrFloatingPane::Pane(TiledPaneLayout {
-                        borderless: borderless.unwrap_or_default(),
+                        borderless,
                         focus,
                         split_size,
                         run,

@@ -730,13 +730,14 @@ impl From<crate::input::actions::Action>
             RenameSessionAction, RenameTabAction, RenameTerminalPaneAction, ResizeAction,
             RunAction, ScrollDownAction, ScrollDownAtAction, ScrollToBottomAction,
             ScrollToTopAction, ScrollUpAction, ScrollUpAtAction, SearchAction, SearchInputAction,
-            SearchToggleOptionAction, SkipConfirmAction, StackPanesAction,
+            SearchToggleOptionAction, SetPaneBorderlessAction, SkipConfirmAction, StackPanesAction,
             StartOrReloadPluginAction, SwitchFocusAction, SwitchModeForAllClientsAction,
             SwitchSessionAction, SwitchToModeAction, TabNameInputAction, ToggleActiveSyncTabAction,
             ToggleFloatingPanesAction, ToggleFocusFullscreenAction, ToggleGroupMarkingAction,
-            ToggleMouseModeAction, TogglePaneEmbedOrFloatingAction, TogglePaneFramesAction,
-            TogglePaneInGroupAction, TogglePanePinnedAction, ToggleTabAction, UndoRenamePaneAction,
-            UndoRenameTabAction, WriteAction, WriteCharsAction,
+            ToggleMouseModeAction, TogglePaneBorderlessAction, TogglePaneEmbedOrFloatingAction,
+            TogglePaneFramesAction, TogglePaneInGroupAction, TogglePanePinnedAction,
+            ToggleTabAction, UndoRenamePaneAction, UndoRenameTabAction, WriteAction,
+            WriteCharsAction,
         };
         use std::collections::HashMap;
 
@@ -1281,6 +1282,18 @@ impl From<crate::input::actions::Action>
             } => ActionType::ChangeFloatingPaneCoordinates(ChangeFloatingPaneCoordinatesAction {
                 pane_id: Some(pane_id.into()),
                 coordinates: Some(coordinates.into()),
+            }),
+            crate::input::actions::Action::TogglePaneBorderless { pane_id } => {
+                ActionType::TogglePaneBorderless(TogglePaneBorderlessAction {
+                    pane_id: Some(pane_id.into()),
+                })
+            },
+            crate::input::actions::Action::SetPaneBorderless {
+                pane_id,
+                borderless,
+            } => ActionType::SetPaneBorderless(SetPaneBorderlessAction {
+                pane_id: Some(pane_id.into()),
+                borderless,
             }),
             crate::input::actions::Action::TogglePaneInGroup => {
                 ActionType::TogglePaneInGroup(TogglePaneInGroupAction {})
@@ -1876,6 +1889,23 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                         .try_into()?,
                 },
             ),
+            ActionType::TogglePaneBorderless(toggle_borderless_action) => {
+                Ok(crate::input::actions::Action::TogglePaneBorderless {
+                    pane_id: toggle_borderless_action
+                        .pane_id
+                        .ok_or_else(|| anyhow!("TogglePaneBorderless missing pane_id"))?
+                        .try_into()?,
+                })
+            },
+            ActionType::SetPaneBorderless(set_borderless_action) => {
+                Ok(crate::input::actions::Action::SetPaneBorderless {
+                    pane_id: set_borderless_action
+                        .pane_id
+                        .ok_or_else(|| anyhow!("SetPaneBorderless missing pane_id"))?
+                        .try_into()?,
+                    borderless: set_borderless_action.borderless,
+                })
+            },
             ActionType::TogglePaneInGroup(_) => {
                 Ok(crate::input::actions::Action::TogglePaneInGroup)
             },
@@ -2491,6 +2521,7 @@ impl From<crate::data::FloatingPaneCoordinates>
             width: coords.width.map(|w| w.into()),
             height: coords.height.map(|h| h.into()),
             pinned: coords.pinned,
+            borderless: coords.borderless,
         }
     }
 }
@@ -2509,6 +2540,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::FloatingPane
             width: coords.width.map(|w| w.try_into()).transpose()?,
             height: coords.height.map(|h| h.try_into()).transpose()?,
             pinned: coords.pinned,
+            borderless: coords.borderless,
         })
     }
 }
@@ -2883,6 +2915,7 @@ impl From<crate::input::layout::FloatingPaneLayout>
             already_running: layout.already_running,
             pane_initial_contents: layout.pane_initial_contents,
             logical_position: layout.logical_position.map(|l| l as u32),
+            borderless: layout.borderless,
         }
     }
 }
@@ -3307,6 +3340,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::FloatingPane
             already_running: layout.already_running,
             pane_initial_contents: layout.pane_initial_contents,
             logical_position: layout.logical_position.map(|p| p as usize),
+            borderless: layout.borderless,
         })
     }
 }

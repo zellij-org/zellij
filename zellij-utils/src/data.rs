@@ -2768,6 +2768,7 @@ pub struct FloatingPaneCoordinates {
     pub width: Option<PercentOrFixed>,
     pub height: Option<PercentOrFixed>,
     pub pinned: Option<bool>,
+    pub borderless: Option<bool>,
 }
 
 impl FloatingPaneCoordinates {
@@ -2777,6 +2778,7 @@ impl FloatingPaneCoordinates {
         width: Option<String>,
         height: Option<String>,
         pinned: Option<bool>,
+        borderless: Option<bool>,
     ) -> Option<Self> {
         // Parse x/y coordinates - allows 0% or 0
         let x = x.and_then(|x| PercentOrFixed::from_str(&x).ok());
@@ -2802,7 +2804,13 @@ impl FloatingPaneCoordinates {
                 })
         });
 
-        if x.is_none() && y.is_none() && width.is_none() && height.is_none() && pinned.is_none() {
+        if x.is_none()
+            && y.is_none()
+            && width.is_none()
+            && height.is_none()
+            && pinned.is_none()
+            && borderless.is_none()
+        {
             None
         } else {
             Some(FloatingPaneCoordinates {
@@ -2811,6 +2819,7 @@ impl FloatingPaneCoordinates {
                 width,
                 height,
                 pinned,
+                borderless,
             })
         }
     }
@@ -2872,6 +2881,7 @@ impl From<PaneGeom> for FloatingPaneCoordinates {
             width: Some(PercentOrFixed::Fixed(pane_geom.cols.as_usize())),
             height: Some(PercentOrFixed::Fixed(pane_geom.rows.as_usize())),
             pinned: Some(pane_geom.is_pinned),
+            borderless: None,
         }
     }
 }
@@ -3204,6 +3214,8 @@ pub enum PluginCommand {
     SetFloatingPanePinned(PaneId, bool), // bool -> should be pinned
     StackPanes(Vec<PaneId>),
     ChangeFloatingPanesCoordinates(Vec<(PaneId, FloatingPaneCoordinates)>),
+    TogglePaneBorderless(PaneId),
+    SetPaneBorderless(PaneId, bool),
     OpenCommandPaneNearPlugin(CommandToRun, Context),
     OpenTerminalNearPlugin(FileToOpen),
     OpenTerminalFloatingNearPlugin(FileToOpen, Option<FloatingPaneCoordinates>),

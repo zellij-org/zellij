@@ -803,6 +803,13 @@ impl FloatingPanes {
             if let Some(pinned) = new_coordinates.pinned.as_ref() {
                 pane.set_pinned(*pinned);
             }
+            if let Some(should_be_borderless) = new_coordinates.borderless {
+                if should_be_borderless {
+                    pane.set_borderless(true);
+                } else {
+                    pane.set_borderless(false);
+                };
+            }
             pane_geom.adjust_coordinates(new_coordinates, viewport);
             pane.set_geom(pane_geom);
             pane.set_should_render(true);

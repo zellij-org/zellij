@@ -1769,6 +1769,8 @@ impl TryFrom<Action> for ProtobufAction {
                 pane_id: _,
                 coordinates: _,
             }
+            | Action::TogglePaneBorderless { pane_id: _ }
+            | Action::SetPaneBorderless { .. }
             | Action::SkipConfirm { action: _ }
             | Action::SwitchSession { .. } => Err("Unsupported action"),
         }
@@ -2248,6 +2250,7 @@ impl TryFrom<ProtobufFloatingPaneCoordinates> for FloatingPaneCoordinates {
             width: protobuf_coords.width.and_then(|w| w.try_into().ok()),
             height: protobuf_coords.height.and_then(|h| h.try_into().ok()),
             pinned: protobuf_coords.pinned,
+            borderless: protobuf_coords.borderless,
         })
     }
 }
@@ -2261,6 +2264,7 @@ impl TryFrom<FloatingPaneCoordinates> for ProtobufFloatingPaneCoordinates {
             width: coords.width.and_then(|w| w.try_into().ok()),
             height: coords.height.and_then(|h| h.try_into().ok()),
             pinned: coords.pinned,
+            borderless: coords.borderless,
         })
     }
 }
@@ -2802,7 +2806,7 @@ impl TryFrom<ProtobufTiledPaneLayout> for TiledPaneLayout {
             children,
             split_size,
             run,
-            borderless: protobuf.borderless,
+            borderless: Some(protobuf.borderless),
             focus,
             external_children_index: protobuf.external_children_index.map(|i| i as usize),
             children_are_stacked: protobuf.children_are_stacked,
@@ -2834,7 +2838,7 @@ impl TryFrom<TiledPaneLayout> for ProtobufTiledPaneLayout {
             children,
             split_size,
             run,
-            borderless: internal.borderless,
+            borderless: internal.borderless.unwrap_or(false),
             focus,
             external_children_index: internal.external_children_index.map(|i| i as u32),
             children_are_stacked: internal.children_are_stacked,
@@ -2866,6 +2870,7 @@ impl TryFrom<ProtobufFloatingPaneLayout> for FloatingPaneLayout {
             already_running: protobuf.already_running,
             pane_initial_contents: protobuf.pane_initial_contents,
             logical_position: protobuf.logical_position.map(|p| p as usize),
+            borderless: protobuf.borderless,
         })
     }
 }
@@ -2890,6 +2895,7 @@ impl TryFrom<FloatingPaneLayout> for ProtobufFloatingPaneLayout {
             already_running: internal.already_running,
             pane_initial_contents: internal.pane_initial_contents,
             logical_position: internal.logical_position.map(|p| p as u32),
+            borderless: internal.borderless,
         })
     }
 }

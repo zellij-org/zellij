@@ -1518,6 +1518,26 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
         },
+        Action::TogglePaneBorderless { pane_id } => {
+            senders
+                .send_to_screen(ScreenInstruction::TogglePaneBorderless(
+                    pane_id.into(),
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
+        Action::SetPaneBorderless {
+            pane_id,
+            borderless,
+        } => {
+            senders
+                .send_to_screen(ScreenInstruction::SetPaneBorderless(
+                    pane_id.into(),
+                    borderless,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
         Action::TogglePaneInGroup => {
             senders
                 .send_to_screen(ScreenInstruction::TogglePaneInGroup(

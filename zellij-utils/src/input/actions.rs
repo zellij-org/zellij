@@ -451,6 +451,13 @@ pub enum Action {
         pane_id: PaneId,
         coordinates: FloatingPaneCoordinates,
     },
+    TogglePaneBorderless {
+        pane_id: PaneId,
+    },
+    SetPaneBorderless {
+        pane_id: PaneId,
+        borderless: bool,
+    },
     TogglePaneInGroup,
     ToggleGroupMarking,
 }
@@ -548,6 +555,7 @@ impl Action {
                 blocking,
                 unblock_condition,
                 near_current_pane,
+                borderless,
             } => {
                 let current_dir = get_current_dir();
                 // cwd should only be specified in a plugin alias if it was explicitly given to us,
@@ -582,7 +590,7 @@ impl Action {
 
                     let placement = if floating {
                         NewPanePlacement::Floating(FloatingPaneCoordinates::new(
-                            x, y, width, height, pinned,
+                            x, y, width, height, pinned, borderless,
                         ))
                     } else if in_place {
                         NewPanePlacement::InPlace {
@@ -629,7 +637,9 @@ impl Action {
                             pane_name: name,
                             skip_cache: skip_plugin_cache,
                             cwd,
-                            coordinates: FloatingPaneCoordinates::new(x, y, width, height, pinned),
+                            coordinates: FloatingPaneCoordinates::new(
+                                x, y, width, height, pinned, borderless,
+                            ),
                         }])
                     } else if in_place {
                         Ok(vec![Action::NewInPlacePluginPane {
@@ -671,7 +681,9 @@ impl Action {
                         Ok(vec![Action::NewFloatingPane {
                             command: Some(run_command_action),
                             pane_name: name,
-                            coordinates: FloatingPaneCoordinates::new(x, y, width, height, pinned),
+                            coordinates: FloatingPaneCoordinates::new(
+                                x, y, width, height, pinned, borderless,
+                            ),
                             near_current_pane,
                         }])
                     } else if in_place {
@@ -701,7 +713,9 @@ impl Action {
                         Ok(vec![Action::NewFloatingPane {
                             command: None,
                             pane_name: name,
-                            coordinates: FloatingPaneCoordinates::new(x, y, width, height, pinned),
+                            coordinates: FloatingPaneCoordinates::new(
+                                x, y, width, height, pinned, borderless,
+                            ),
                             near_current_pane,
                         }])
                     } else if in_place {
@@ -741,6 +755,7 @@ impl Action {
                 height,
                 pinned,
                 near_current_pane,
+                borderless,
             } => {
                 let mut file = file;
                 let current_dir = get_current_dir();
@@ -759,7 +774,9 @@ impl Action {
                     floating,
                     in_place,
                     start_suppressed,
-                    coordinates: FloatingPaneCoordinates::new(x, y, width, height, pinned),
+                    coordinates: FloatingPaneCoordinates::new(
+                        x, y, width, height, pinned, borderless,
+                    ),
                     near_current_pane,
                 }])
             },
@@ -1204,8 +1221,10 @@ impl Action {
                 width,
                 height,
                 pinned,
+                borderless,
             } => {
-                let Some(coordinates) = FloatingPaneCoordinates::new(x, y, width, height, pinned)
+                let Some(coordinates) =
+                    FloatingPaneCoordinates::new(x, y, width, height, pinned, borderless)
                 else {
                     return Err(format!("Failed to parse floating pane coordinates"));
                 };
@@ -1220,6 +1239,42 @@ impl Action {
                     Err(_e) => {
                         Err(format!(
                             "Malformed pane id: {}, expecting a space separated list of either a bare integer (eg. 1), a terminal pane id (eg. terminal_1) or a plugin pane id (eg. plugin_1)",
+                            pane_id
+                        ))
+                    }
+                }
+            },
+            CliAction::TogglePaneBorderless { pane_id } => {
+                let parsed_pane_id = PaneId::from_str(&pane_id);
+                match parsed_pane_id {
+                    Ok(parsed_pane_id) => {
+                        Ok(vec![Action::TogglePaneBorderless {
+                            pane_id: parsed_pane_id,
+                        }])
+                    },
+                    Err(_e) => {
+                        Err(format!(
+                            "Malformed pane id: {}, expecting either a bare integer (eg. 1), a terminal pane id (eg. terminal_1) or a plugin pane id (eg. plugin_1)",
+                            pane_id
+                        ))
+                    }
+                }
+            },
+            CliAction::SetPaneBorderless {
+                pane_id,
+                borderless,
+            } => {
+                let parsed_pane_id = PaneId::from_str(&pane_id);
+                match parsed_pane_id {
+                    Ok(parsed_pane_id) => {
+                        Ok(vec![Action::SetPaneBorderless {
+                            pane_id: parsed_pane_id,
+                            borderless,
+                        }])
+                    },
+                    Err(_e) => {
+                        Err(format!(
+                            "Malformed pane id: {}, expecting either a bare integer (eg. 1), a terminal pane id (eg. terminal_1) or a plugin pane id (eg. plugin_1)",
                             pane_id
                         ))
                     }
