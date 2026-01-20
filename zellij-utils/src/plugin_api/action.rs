@@ -2331,7 +2331,10 @@ impl TryFrom<NewPanePlacement> for ProtobufNewPanePlacement {
                     borderless,
                 }))
             },
-            NewPanePlacement::Tiled { direction, borderless } => {
+            NewPanePlacement::Tiled {
+                direction,
+                borderless,
+            } => {
                 let direction = direction.and_then(|d| {
                     let protobuf_direction: ProtobufResizeDirection = d.try_into().ok()?;
                     Some(protobuf_direction as i32)
@@ -2359,7 +2362,10 @@ impl TryFrom<NewPanePlacement> for ProtobufNewPanePlacement {
                     borderless,
                 }))
             },
-            NewPanePlacement::Stacked { pane_id_to_stack_under, borderless } => {
+            NewPanePlacement::Stacked {
+                pane_id_to_stack_under,
+                borderless,
+            } => {
                 let pane_id = pane_id_to_stack_under.and_then(|id| id.try_into().ok());
                 Some(PlacementVariant::Stacked(ProtobufStackedPlacement {
                     pane_id,

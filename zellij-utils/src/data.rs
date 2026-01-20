@@ -2997,9 +2997,7 @@ pub enum NewPanePlacement {
 
 impl Default for NewPanePlacement {
     fn default() -> Self {
-        NewPanePlacement::NoPreference {
-            borderless: None,
-        }
+        NewPanePlacement::NoPreference { borderless: None }
     }
 }
 
@@ -3057,7 +3055,10 @@ impl NewPanePlacement {
     }
     pub fn id_of_stack_root(&self) -> Option<PaneId> {
         match self {
-            NewPanePlacement::Stacked { pane_id_to_stack_under, .. } => *pane_id_to_stack_under,
+            NewPanePlacement::Stacked {
+                pane_id_to_stack_under,
+                ..
+            } => *pane_id_to_stack_under,
             _ => None,
         }
     }

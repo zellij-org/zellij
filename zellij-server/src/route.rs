@@ -505,9 +505,7 @@ pub(crate) fn route_action(
                     direction: Some(direction),
                     borderless: None,
                 },
-                None => NewPanePlacement::NoPreference {
-                    borderless: None,
-                },
+                None => NewPanePlacement::NoPreference { borderless: None },
             };
             senders
                 .send_to_pty(PtyInstruction::SpawnTerminal(
@@ -548,9 +546,10 @@ pub(crate) fn route_action(
             // behavior, they should not provide pane
             // inside the placement, but rather have the current pane id be picked up instead)
             let pane_id = match placement {
-                NewPanePlacement::Stacked { pane_id_to_stack_under, .. } => {
-                    pane_id_to_stack_under.map(|p| p.into()).or(pane_id)
-                },
+                NewPanePlacement::Stacked {
+                    pane_id_to_stack_under,
+                    ..
+                } => pane_id_to_stack_under.map(|p| p.into()).or(pane_id),
                 NewPanePlacement::InPlace {
                     pane_id_to_replace, ..
                 } => pane_id_to_replace.map(|p| p.into()).or(pane_id),

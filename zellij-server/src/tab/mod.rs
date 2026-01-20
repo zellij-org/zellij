@@ -1402,7 +1402,10 @@ impl Tab {
                 blocking_notification,
                 borderless,
             ),
-            NewPanePlacement::Tiled { direction: None, borderless } => self.new_tiled_pane(
+            NewPanePlacement::Tiled {
+                direction: None,
+                borderless,
+            } => self.new_tiled_pane(
                 pid,
                 initial_pane_title,
                 invoked_with,
@@ -1412,7 +1415,10 @@ impl Tab {
                 blocking_notification,
                 borderless,
             ),
-            NewPanePlacement::Tiled { direction: Some(direction), borderless } => {
+            NewPanePlacement::Tiled {
+                direction: Some(direction),
+                borderless,
+            } => {
                 if let Some(client_id) = client_id {
                     if direction == Direction::Left || direction == Direction::Right {
                         self.vertical_split(
@@ -1457,7 +1463,10 @@ impl Tab {
                 blocking_notification,
                 borderless,
             ),
-            NewPanePlacement::Stacked { pane_id_to_stack_under, borderless } => self.new_stacked_pane(
+            NewPanePlacement::Stacked {
+                pane_id_to_stack_under,
+                borderless,
+            } => self.new_stacked_pane(
                 pid,
                 initial_pane_title,
                 invoked_with,

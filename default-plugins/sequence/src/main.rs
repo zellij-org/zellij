@@ -599,7 +599,10 @@ pub fn handle_action_complete(
         };
 
         // Determine placement based on layout mode
-        let placement = NewPanePlacement::Stacked{pane_id_to_stack_under: pane_id, borderless: Some(false)};
+        let placement = NewPanePlacement::Stacked {
+            pane_id_to_stack_under: pane_id,
+            borderless: Some(false),
+        };
 
         // Update status: mark current command as completed
         // Use the pane_id from ActionComplete if the status is still Pending
@@ -1024,8 +1027,11 @@ fn rerun_sequence(state: &mut State) {
                 .all_commands
                 .iter()
                 .find_map(|c| c.get_pane_id());
-            NewPanePlacement::Stacked{pane_id_to_stack_under, borderless: Some(false) }
-       };
+            NewPanePlacement::Stacked {
+                pane_id_to_stack_under,
+                borderless: Some(false),
+            }
+        };
 
         // Determine unblock_condition based on whether this is the last command
         let unblock_condition = if selected_index < state.execution.all_commands.len() - 1 {

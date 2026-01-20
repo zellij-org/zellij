@@ -2555,26 +2555,28 @@ impl From<crate::data::NewPanePlacement>
     fn from(placement: crate::data::NewPanePlacement) -> Self {
         use crate::client_server_contract::client_server_contract::new_pane_placement::PlacementType;
         use crate::client_server_contract::client_server_contract::{
-            NoPreferencePlacement, TiledPlacement, StackedPlacement,
+            NoPreferencePlacement, StackedPlacement, TiledPlacement,
         };
         let placement_type = match placement {
-            crate::data::NewPanePlacement::NoPreference { borderless: Some(b) } => {
-                PlacementType::NoPreferenceWithOptions(NoPreferencePlacement {
-                    borderless: Some(b),
-                })
-            },
+            crate::data::NewPanePlacement::NoPreference {
+                borderless: Some(b),
+            } => PlacementType::NoPreferenceWithOptions(NoPreferencePlacement {
+                borderless: Some(b),
+            }),
             crate::data::NewPanePlacement::NoPreference { borderless: None } => {
                 PlacementType::NoPreference(true)
             },
-            crate::data::NewPanePlacement::Tiled { direction, borderless: Some(b) } => {
-                PlacementType::TiledWithOptions(TiledPlacement {
-                    direction: direction.map(direction_to_proto_i32),
-                    borderless: Some(b),
-                })
-            },
-            crate::data::NewPanePlacement::Tiled { direction, borderless: None } => {
-                PlacementType::Tiled(direction.map(direction_to_proto_i32).unwrap_or(0))
-            },
+            crate::data::NewPanePlacement::Tiled {
+                direction,
+                borderless: Some(b),
+            } => PlacementType::TiledWithOptions(TiledPlacement {
+                direction: direction.map(direction_to_proto_i32),
+                borderless: Some(b),
+            }),
+            crate::data::NewPanePlacement::Tiled {
+                direction,
+                borderless: None,
+            } => PlacementType::Tiled(direction.map(direction_to_proto_i32).unwrap_or(0)),
             crate::data::NewPanePlacement::Floating(coords) => {
                 PlacementType::Floating(coords.map(|c| c.into()).unwrap_or_default())
             },
@@ -2589,15 +2591,21 @@ impl From<crate::data::NewPanePlacement>
                     borderless,
                 },
             ),
-            crate::data::NewPanePlacement::Stacked { pane_id_to_stack_under, borderless: Some(b) } => {
-                PlacementType::StackedWithOptions(StackedPlacement {
-                    pane_id_to_stack_under: pane_id_to_stack_under.map(|id| id.into()),
-                    borderless: Some(b),
-                })
-            },
-            crate::data::NewPanePlacement::Stacked { pane_id_to_stack_under, borderless: None } => {
-                PlacementType::Stacked(pane_id_to_stack_under.map(|id| id.into()).unwrap_or_default())
-            },
+            crate::data::NewPanePlacement::Stacked {
+                pane_id_to_stack_under,
+                borderless: Some(b),
+            } => PlacementType::StackedWithOptions(StackedPlacement {
+                pane_id_to_stack_under: pane_id_to_stack_under.map(|id| id.into()),
+                borderless: Some(b),
+            }),
+            crate::data::NewPanePlacement::Stacked {
+                pane_id_to_stack_under,
+                borderless: None,
+            } => PlacementType::Stacked(
+                pane_id_to_stack_under
+                    .map(|id| id.into())
+                    .unwrap_or_default(),
+            ),
         };
         Self {
             placement_type: Some(placement_type),
@@ -2632,16 +2640,19 @@ impl TryFrom<crate::client_server_contract::client_server_contract::NewPanePlace
                 })
             },
             PlacementType::StackedWithOptions(opts) => {
-                let pane_id = opts.pane_id_to_stack_under.map(|id| id.try_into()).transpose()?;
+                let pane_id = opts
+                    .pane_id_to_stack_under
+                    .map(|id| id.try_into())
+                    .transpose()?;
                 Ok(crate::data::NewPanePlacement::Stacked {
                     pane_id_to_stack_under: pane_id,
                     borderless: opts.borderless,
                 })
             },
             // Legacy fields (without borderless support)
-            PlacementType::NoPreference(_) => Ok(crate::data::NewPanePlacement::NoPreference {
-                borderless: None,
-            }),
+            PlacementType::NoPreference(_) => {
+                Ok(crate::data::NewPanePlacement::NoPreference { borderless: None })
+            },
             PlacementType::Tiled(direction) => {
                 let direction = if direction == 0 {
                     None
