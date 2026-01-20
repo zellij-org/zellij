@@ -234,6 +234,7 @@ pub enum Action {
         command: Option<RunCommandAction>,
         pane_name: Option<String>,
         near_current_pane: bool,
+        borderless: Option<bool>,
     },
     /// Open a new pane in place of the focused one, suppressing it instead
     NewInPlacePane {
@@ -596,11 +597,18 @@ impl Action {
                         NewPanePlacement::InPlace {
                             pane_id_to_replace: None,
                             close_replaced_pane: false,
+                            borderless,
                         }
                     } else if stacked {
-                        NewPanePlacement::Stacked(None)
+                        NewPanePlacement::Stacked {
+                            pane_id_to_stack_under: None,
+                            borderless,
+                        }
                     } else {
-                        NewPanePlacement::Tiled(direction)
+                        NewPanePlacement::Tiled {
+                            direction,
+                            borderless,
+                        }
                     };
 
                     Ok(vec![Action::NewBlockingPane {
@@ -706,6 +714,7 @@ impl Action {
                             command: Some(run_command_action),
                             pane_name: name,
                             near_current_pane,
+                            borderless,
                         }])
                     }
                 } else {
@@ -738,6 +747,7 @@ impl Action {
                             command: None,
                             pane_name: name,
                             near_current_pane,
+                            borderless,
                         }])
                     }
                 }

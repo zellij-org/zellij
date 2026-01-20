@@ -1236,6 +1236,7 @@ fn open_terminal(env: &PluginEnv, cwd: PathBuf) {
         command: run_command_action,
         pane_name: None,
         near_current_pane: false,
+        borderless: None,
     };
     apply_action!(action, error_msg, env);
 }
@@ -1254,7 +1255,10 @@ fn open_terminal_near_plugin(env: &PluginEnv, cwd: PathBuf) {
     let _ = env.senders.send_to_pty(PtyInstruction::SpawnTerminal(
         Some(default_shell),
         name,
-        NewPanePlacement::Tiled(None),
+        NewPanePlacement::Tiled {
+            direction: None,
+            borderless: None,
+        },
         false,
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
         None,  // no completion signal needed for plugin calls
@@ -1440,6 +1444,7 @@ fn open_command_pane(
         command: Some(run_command_action),
         pane_name: name,
         near_current_pane: false,
+        borderless: None,
     };
     apply_action!(action, error_msg, env);
 }
@@ -1475,7 +1480,10 @@ fn open_command_pane_near_plugin(
     let _ = env.senders.send_to_pty(PtyInstruction::SpawnTerminal(
         Some(run_cmd),
         name,
-        NewPanePlacement::Tiled(None),
+        NewPanePlacement::Tiled {
+            direction: None,
+            borderless: None,
+        },
         false,
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
         None,  // no completion signal needed for plugin calls

@@ -501,8 +501,11 @@ pub(crate) fn route_action(
         } => {
             let shell = default_shell.clone();
             let new_pane_placement = match direction {
-                Some(direction) => NewPanePlacement::Tiled(Some(direction)),
-                None => NewPanePlacement::NoPreference,
+                Some(direction) => NewPanePlacement::Tiled {
+                    direction: Some(direction),
+                    borderless: None,
+                },
+                None => NewPanePlacement::NoPreference { borderless: None },
             };
             senders
                 .send_to_pty(PtyInstruction::SpawnTerminal(
@@ -543,9 +546,10 @@ pub(crate) fn route_action(
             // behavior, they should not provide pane
             // inside the placement, but rather have the current pane id be picked up instead)
             let pane_id = match placement {
-                NewPanePlacement::Stacked(pane_id_to_stack_under) => {
-                    pane_id_to_stack_under.map(|p| p.into()).or(pane_id)
-                },
+                NewPanePlacement::Stacked {
+                    pane_id_to_stack_under,
+                    ..
+                } => pane_id_to_stack_under.map(|p| p.into()).or(pane_id),
                 NewPanePlacement::InPlace {
                     pane_id_to_replace, ..
                 } => pane_id_to_replace.map(|p| p.into()).or(pane_id),
@@ -605,7 +609,10 @@ pub(crate) fn route_action(
                     if should_float {
                         NewPanePlacement::Floating(floating_pane_coordinates)
                     } else {
-                        NewPanePlacement::Tiled(split_direction)
+                        NewPanePlacement::Tiled {
+                            direction: split_direction,
+                            borderless: None,
+                        }
                     },
                     start_suppressed,
                     ClientTabIndexOrPaneId::ClientId(client_id),
@@ -728,7 +735,10 @@ pub(crate) fn route_action(
                         .send_to_pty(PtyInstruction::SpawnTerminal(
                             run_cmd,
                             name,
-                            NewPanePlacement::Stacked(Some(pane_id.into())),
+                            NewPanePlacement::Stacked {
+                                pane_id_to_stack_under: Some(pane_id.into()),
+                                borderless: None,
+                            },
                             false,
                             ClientTabIndexOrPaneId::PaneId(pane_id),
                             Some(NotificationEnd::new(completion_tx)),
@@ -741,7 +751,10 @@ pub(crate) fn route_action(
                         .send_to_pty(PtyInstruction::SpawnTerminal(
                             run_cmd,
                             name,
-                            NewPanePlacement::Stacked(None),
+                            NewPanePlacement::Stacked {
+                                pane_id_to_stack_under: None,
+                                borderless: None,
+                            },
                             false,
                             ClientTabIndexOrPaneId::ClientId(client_id),
                             Some(NotificationEnd::new(completion_tx)),
@@ -756,6 +769,7 @@ pub(crate) fn route_action(
             command: run_command,
             pane_name: name,
             near_current_pane,
+            borderless,
         } => {
             let run_cmd = run_command
                 .map(|cmd| TerminalAction::RunCommand(cmd.into()))
@@ -769,7 +783,10 @@ pub(crate) fn route_action(
                 .send_to_pty(PtyInstruction::SpawnTerminal(
                     run_cmd,
                     name,
-                    NewPanePlacement::Tiled(direction),
+                    NewPanePlacement::Tiled {
+                        direction,
+                        borderless,
+                    },
                     false,
                     client_tab_index_or_paneid,
                     Some(NotificationEnd::new(completion_tx)),
@@ -825,7 +842,10 @@ pub(crate) fn route_action(
                 .send_to_pty(PtyInstruction::SpawnTerminal(
                     run_cmd,
                     None,
-                    NewPanePlacement::Tiled(command.direction),
+                    NewPanePlacement::Tiled {
+                        direction: command.direction,
+                        borderless: None,
+                    },
                     false,
                     client_tab_index_or_paneid,
                     Some(NotificationEnd::new(completion_tx)),

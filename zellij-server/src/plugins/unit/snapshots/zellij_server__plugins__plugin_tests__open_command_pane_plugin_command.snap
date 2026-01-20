@@ -27,9 +27,10 @@ Some(
             ),
         ),
         None,
-        Tiled(
-            None,
-        ),
+        Tiled {
+            direction: None,
+            borderless: None,
+        },
         false,
         ClientId(
             1,

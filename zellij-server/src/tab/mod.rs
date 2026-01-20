@@ -1392,7 +1392,7 @@ impl Tab {
     ) -> Result<()> {
         let invoked_with = self.normalize_invoked_with_for_default_shell(invoked_with);
         match new_pane_placement {
-            NewPanePlacement::NoPreference => self.new_no_preference_pane(
+            NewPanePlacement::NoPreference { borderless } => self.new_no_preference_pane(
                 pid,
                 initial_pane_title,
                 invoked_with,
@@ -1400,8 +1400,12 @@ impl Tab {
                 should_focus_pane,
                 client_id,
                 blocking_notification,
+                borderless,
             ),
-            NewPanePlacement::Tiled(None) => self.new_tiled_pane(
+            NewPanePlacement::Tiled {
+                direction: None,
+                borderless,
+            } => self.new_tiled_pane(
                 pid,
                 initial_pane_title,
                 invoked_with,
@@ -1409,8 +1413,12 @@ impl Tab {
                 should_focus_pane,
                 client_id,
                 blocking_notification,
+                borderless,
             ),
-            NewPanePlacement::Tiled(Some(direction)) => {
+            NewPanePlacement::Tiled {
+                direction: Some(direction),
+                borderless,
+            } => {
                 if let Some(client_id) = client_id {
                     if direction == Direction::Left || direction == Direction::Right {
                         self.vertical_split(
@@ -1418,6 +1426,7 @@ impl Tab {
                             initial_pane_title,
                             client_id,
                             blocking_notification,
+                            borderless,
                         )?;
                     } else {
                         self.horizontal_split(
@@ -1425,6 +1434,7 @@ impl Tab {
                             initial_pane_title,
                             client_id,
                             blocking_notification,
+                            borderless,
                         )?;
                     }
                 }
@@ -1442,6 +1452,7 @@ impl Tab {
             NewPanePlacement::InPlace {
                 pane_id_to_replace,
                 close_replaced_pane,
+                borderless,
             } => self.new_in_place_pane(
                 pid,
                 initial_pane_title,
@@ -1450,8 +1461,12 @@ impl Tab {
                 close_replaced_pane,
                 client_id,
                 blocking_notification,
+                borderless,
             ),
-            NewPanePlacement::Stacked(pane_id_to_stack_under) => self.new_stacked_pane(
+            NewPanePlacement::Stacked {
+                pane_id_to_stack_under,
+                borderless,
+            } => self.new_stacked_pane(
                 pid,
                 initial_pane_title,
                 invoked_with,
@@ -1460,6 +1475,7 @@ impl Tab {
                 pane_id_to_stack_under.map(|id| id.into()),
                 client_id,
                 blocking_notification,
+                borderless,
             ),
         }
     }
@@ -1472,6 +1488,7 @@ impl Tab {
         should_focus_pane: bool,
         client_id: Option<ClientId>,
         blocking_notification: Option<NotificationEnd>,
+        borderless: Option<bool>,
     ) -> Result<()> {
         let err_context = || format!("failed to create new pane with id {pid:?}");
         self.close_down_to_max_terminals()
@@ -1529,6 +1546,10 @@ impl Tab {
             },
         };
 
+        if let Some(borderless) = borderless {
+            new_pane.set_borderless(borderless);
+        }
+
         if start_suppressed {
             // this pane needs to start in the background (suppressed), only accessible if a plugin takes it out
             // of there in one way or another
@@ -1576,6 +1597,7 @@ impl Tab {
         should_focus_pane: bool,
         client_id: Option<ClientId>,
         blocking_notification: Option<NotificationEnd>,
+        borderless: Option<bool>,
     ) -> Result<()> {
         let err_context = || format!("failed to create new pane with id {pid:?}");
         if should_focus_pane {
@@ -1635,6 +1657,10 @@ impl Tab {
                 )) as Box<dyn Pane>
             },
         };
+
+        if let Some(borderless) = borderless {
+            new_pane.set_borderless(borderless);
+        }
 
         if start_suppressed {
             // this pane needs to start in the background (suppressed), only accessible if a plugin takes it out
@@ -1770,6 +1796,7 @@ impl Tab {
         close_replaced_pane: bool,
         client_id: Option<ClientId>,
         blocking_notification: Option<NotificationEnd>,
+        borderless: Option<bool>,
     ) -> Result<()> {
         match (pane_id_to_replace, client_id) {
             (Some(pane_id_to_replace), _) => {
@@ -1779,6 +1806,7 @@ impl Tab {
                     close_replaced_pane,
                     invoked_with,
                     blocking_notification,
+                    borderless,
                 )?;
             },
             (None, Some(client_id)) => match self.get_active_pane_id(client_id) {
@@ -1789,6 +1817,7 @@ impl Tab {
                         close_replaced_pane,
                         invoked_with,
                         blocking_notification,
+                        borderless,
                     )?;
                 },
                 None => {
@@ -1814,6 +1843,7 @@ impl Tab {
         pane_id_to_stack_under: Option<PaneId>,
         client_id: Option<ClientId>,
         blocking_notification: Option<NotificationEnd>,
+        borderless: Option<bool>,
     ) -> Result<()> {
         let err_context = || format!("failed to create new pane with id {pid:?}");
         if should_focus_pane {
@@ -1873,6 +1903,10 @@ impl Tab {
                 )) as Box<dyn Pane>
             },
         };
+
+        if let Some(borderless) = borderless {
+            new_pane.set_borderless(borderless);
+        }
 
         if start_suppressed {
             // this pane needs to start in the background (suppressed), only accessible if a plugin takes it out
@@ -2024,6 +2058,7 @@ impl Tab {
         close_replaced_pane: bool,
         run: Option<Run>,
         completion_tx: Option<NotificationEnd>,
+        borderless: Option<bool>,
     ) -> Result<()> {
         // this method creates a new pane from pid and replaces it with the active pane
         // the active pane is then suppressed (hidden and not rendered) until the current
@@ -2033,7 +2068,7 @@ impl Tab {
         match new_pane_id {
             PaneId::Terminal(new_pane_id) => {
                 let next_terminal_position = self.get_next_terminal_position(); // TODO: this is not accurate in this case
-                let new_pane = TerminalPane::new(
+                let mut new_pane = TerminalPane::new(
                     new_pane_id,
                     PaneGeom::default(), // the initial size will be set later
                     self.style,
@@ -2052,6 +2087,9 @@ impl Tab {
                     self.explicitly_disable_kitty_keyboard_protocol,
                     completion_tx,
                 );
+                if let Some(borderless) = borderless {
+                    new_pane.set_borderless(borderless);
+                }
                 let replaced_pane = if self.floating_panes.panes_contain(&old_pane_id) {
                     self.floating_panes
                         .replace_pane(old_pane_id, Box::new(new_pane))
@@ -2093,7 +2131,7 @@ impl Tab {
                 }
             },
             PaneId::Plugin(plugin_pid) => {
-                let new_pane = PluginPane::new(
+                let mut new_pane = PluginPane::new(
                     plugin_pid,
                     PaneGeom::default(), // this will be filled out later
                     self.senders
@@ -2119,6 +2157,9 @@ impl Tab {
                     self.arrow_fonts,
                     self.styled_underlines,
                 );
+                if let Some(borderless) = borderless {
+                    new_pane.set_borderless(borderless);
+                }
                 let replaced_pane = if self.floating_panes.panes_contain(&old_pane_id) {
                     self.floating_panes
                         .replace_pane(old_pane_id, Box::new(new_pane))
@@ -2210,6 +2251,7 @@ impl Tab {
         initial_pane_title: Option<String>,
         client_id: ClientId,
         completion_tx: Option<NotificationEnd>,
+        borderless: Option<bool>,
     ) -> Result<()> {
         let err_context =
             || format!("failed to split pane {pid:?} horizontally for client {client_id}");
@@ -2224,7 +2266,7 @@ impl Tab {
         if self.tiled_panes.can_split_pane_horizontally(client_id) {
             if let PaneId::Terminal(term_pid) = pid {
                 let next_terminal_position = self.get_next_terminal_position();
-                let new_terminal = TerminalPane::new(
+                let mut new_terminal = TerminalPane::new(
                     term_pid,
                     PaneGeom::default(), // the initial size will be set later
                     self.style,
@@ -2243,6 +2285,9 @@ impl Tab {
                     self.explicitly_disable_kitty_keyboard_protocol,
                     completion_tx,
                 );
+                if let Some(borderless) = borderless {
+                    new_terminal.set_borderless(borderless);
+                }
                 self.tiled_panes
                     .split_pane_horizontally(pid, Box::new(new_terminal), client_id);
                 self.set_should_clear_display_before_rendering();
@@ -2272,6 +2317,7 @@ impl Tab {
         initial_pane_title: Option<String>,
         client_id: ClientId,
         completion_tx: Option<NotificationEnd>,
+        borderless: Option<bool>,
     ) -> Result<()> {
         let err_context =
             || format!("failed to split pane {pid:?} vertically for client {client_id}");
@@ -2286,7 +2332,7 @@ impl Tab {
         if self.tiled_panes.can_split_pane_vertically(client_id) {
             if let PaneId::Terminal(term_pid) = pid {
                 let next_terminal_position = self.get_next_terminal_position();
-                let new_terminal = TerminalPane::new(
+                let mut new_terminal = TerminalPane::new(
                     term_pid,
                     PaneGeom::default(), // the initial size will be set later
                     self.style,
@@ -2305,6 +2351,9 @@ impl Tab {
                     self.explicitly_disable_kitty_keyboard_protocol,
                     completion_tx,
                 );
+                if let Some(borderless) = borderless {
+                    new_terminal.set_borderless(borderless);
+                }
                 self.tiled_panes
                     .split_pane_vertically(pid, Box::new(new_terminal), client_id);
                 self.set_should_clear_display_before_rendering();

@@ -25,9 +25,10 @@ Some(
         Some(
             "Editing: /path/to/my/file.rs",
         ),
-        Tiled(
-            None,
-        ),
+        Tiled {
+            direction: None,
+            borderless: None,
+        },
         false,
         ClientId(
             1,

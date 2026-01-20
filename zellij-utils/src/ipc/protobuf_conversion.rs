@@ -898,11 +898,13 @@ impl From<crate::input::actions::Action>
                 command,
                 pane_name,
                 near_current_pane,
+                borderless,
             } => ActionType::NewTiledPane(NewTiledPaneAction {
                 direction: direction.map(|d| direction_to_proto_i32(d)),
                 command: command.map(|c| c.into()),
                 pane_name,
                 near_current_pane,
+                borderless,
             }),
             crate::input::actions::Action::NewInPlacePane {
                 command,
@@ -1469,6 +1471,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                     command: new_tiled_action.command.map(|c| c.try_into()).transpose()?,
                     pane_name: new_tiled_action.pane_name,
                     near_current_pane: new_tiled_action.near_current_pane,
+                    borderless: new_tiled_action.borderless,
                 })
             },
             ActionType::NewInPlacePane(new_in_place_action) => {
@@ -2551,26 +2554,58 @@ impl From<crate::data::NewPanePlacement>
 {
     fn from(placement: crate::data::NewPanePlacement) -> Self {
         use crate::client_server_contract::client_server_contract::new_pane_placement::PlacementType;
+        use crate::client_server_contract::client_server_contract::{
+            NoPreferencePlacement, StackedPlacement, TiledPlacement,
+        };
         let placement_type = match placement {
-            crate::data::NewPanePlacement::NoPreference => PlacementType::NoPreference(true),
-            crate::data::NewPanePlacement::Tiled(direction) => {
-                PlacementType::Tiled(direction.map(direction_to_proto_i32).unwrap_or(0))
+            crate::data::NewPanePlacement::NoPreference {
+                borderless: Some(b),
+            } => PlacementType::NoPreferenceWithOptions(NoPreferencePlacement {
+                borderless: Some(b),
+            }),
+            crate::data::NewPanePlacement::NoPreference { borderless: None } => {
+                PlacementType::NoPreference(true)
             },
+            crate::data::NewPanePlacement::Tiled {
+                direction,
+                borderless: Some(b),
+            } => PlacementType::TiledWithOptions(TiledPlacement {
+                direction: direction.map(direction_to_proto_i32),
+                borderless: Some(b),
+            }),
+            crate::data::NewPanePlacement::Tiled {
+                direction,
+                borderless: None,
+            } => PlacementType::Tiled(direction.map(direction_to_proto_i32).unwrap_or(0)),
             crate::data::NewPanePlacement::Floating(coords) => {
                 PlacementType::Floating(coords.map(|c| c.into()).unwrap_or_default())
             },
             crate::data::NewPanePlacement::InPlace {
                 pane_id_to_replace,
                 close_replaced_pane,
+                borderless,
             } => PlacementType::InPlace(
                 crate::client_server_contract::client_server_contract::NewPanePlacementInPlace {
                     pane_id_to_replace: pane_id_to_replace.map(|id| id.into()),
                     close_replaced_pane,
+                    borderless,
                 },
             ),
-            crate::data::NewPanePlacement::Stacked(pane_id) => {
-                PlacementType::Stacked(pane_id.map(|id| id.into()).unwrap_or_default())
-            },
+            crate::data::NewPanePlacement::Stacked {
+                pane_id_to_stack_under,
+                borderless: Some(b),
+            } => PlacementType::StackedWithOptions(StackedPlacement {
+                pane_id_to_stack_under: pane_id_to_stack_under.map(|id| id.into()),
+                borderless: Some(b),
+            }),
+            crate::data::NewPanePlacement::Stacked {
+                pane_id_to_stack_under,
+                borderless: None,
+            } => PlacementType::Stacked(
+                pane_id_to_stack_under
+                    .map(|id| id.into())
+                    .unwrap_or_default(),
+            ),
         };
         Self {
             placement_type: Some(placement_type),
@@ -2591,14 +2626,43 @@ impl TryFrom<crate::client_server_contract::client_server_contract::NewPanePlace
             .placement_type
             .ok_or_else(|| anyhow!("NewPanePlacement missing placement_type"))?
         {
-            PlacementType::NoPreference(_) => Ok(crate::data::NewPanePlacement::NoPreference),
+            // New fields (with borderless support) take priority
+            PlacementType::NoPreferenceWithOptions(opts) => {
+                Ok(crate::data::NewPanePlacement::NoPreference {
+                    borderless: opts.borderless,
+                })
+            },
+            PlacementType::TiledWithOptions(opts) => {
+                let direction = opts.direction.map(proto_i32_to_direction).transpose()?;
+                Ok(crate::data::NewPanePlacement::Tiled {
+                    direction,
+                    borderless: opts.borderless,
+                })
+            },
+            PlacementType::StackedWithOptions(opts) => {
+                let pane_id = opts
+                    .pane_id_to_stack_under
+                    .map(|id| id.try_into())
+                    .transpose()?;
+                Ok(crate::data::NewPanePlacement::Stacked {
+                    pane_id_to_stack_under: pane_id,
+                    borderless: opts.borderless,
+                })
+            },
+            // Legacy fields (without borderless support)
+            PlacementType::NoPreference(_) => {
+                Ok(crate::data::NewPanePlacement::NoPreference { borderless: None })
+            },
             PlacementType::Tiled(direction) => {
                 let direction = if direction == 0 {
                     None
                 } else {
                     Some(proto_i32_to_direction(direction)?)
                 };
-                Ok(crate::data::NewPanePlacement::Tiled(direction))
+                Ok(crate::data::NewPanePlacement::Tiled {
+                    direction,
+                    borderless: None,
+                })
             },
             PlacementType::Floating(coords) => {
                 let coords = if coords == Default::default() {
@@ -2614,6 +2678,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::NewPanePlace
                     .map(|id| id.try_into())
                     .transpose()?,
                 close_replaced_pane: in_place.close_replaced_pane,
+                borderless: in_place.borderless,
             }),
             PlacementType::Stacked(pane_id) => {
                 let pane_id = if pane_id == Default::default() {
@@ -2621,7 +2686,10 @@ impl TryFrom<crate::client_server_contract::client_server_contract::NewPanePlace
                 } else {
                     Some(pane_id.try_into()?)
                 };
-                Ok(crate::data::NewPanePlacement::Stacked(pane_id))
+                Ok(crate::data::NewPanePlacement::Stacked {
+                    pane_id_to_stack_under: pane_id,
+                    borderless: None,
+                })
             },
         }
     }

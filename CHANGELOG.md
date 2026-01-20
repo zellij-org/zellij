@@ -27,7 +27,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: properly close the welcome screen session when switching sessions away from it (https://github.com/zellij-org/zellij/pull/4605)
 * fix: properly center floating panes started with `--floating` when explicit width/height is provided (https://github.com/zellij-org/zellij/pull/4607)
 * fix: allow specifying "0%" coordinates when opening panes wit "zellij run --floating" (https://github.com/zellij-org/zellij/pull/4609)
-* feat: allow opening panes as `borderless` or toggling/changing the borderless status of existing panes (https://github.com/zellij-org/zellij/pull/4615)
+* feat: allow opening panes as `borderless` or toggling/changing the borderless status of existing panes (https://github.com/zellij-org/zellij/pull/4615 and https://github.com/zellij-org/zellij/pull/4618)
 
 
 ## [0.43.1] - 2025-08-08

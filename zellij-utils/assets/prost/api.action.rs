@@ -481,6 +481,8 @@ pub struct NewTiledPanePayload {
     pub direction: ::core::option::Option<i32>,
     #[prost(bool, tag="3")]
     pub near_current_pane: bool,
+    #[prost(bool, optional, tag="4")]
+    pub borderless: ::core::option::Option<bool>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -660,8 +662,8 @@ pub mod new_pane_placement {
     #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Oneof)]
     pub enum PlacementVariant {
-        #[prost(bool, tag="1")]
-        NoPreference(bool),
+        #[prost(message, tag="1")]
+        NoPreference(super::NoPreferenceOptions),
         #[prost(message, tag="2")]
         Tiled(super::TiledPlacement),
         #[prost(message, tag="3")]
@@ -674,9 +676,17 @@ pub mod new_pane_placement {
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
+pub struct NoPreferenceOptions {
+    #[prost(bool, optional, tag="1")]
+    pub borderless: ::core::option::Option<bool>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct TiledPlacement {
     #[prost(enumeration="super::resize::ResizeDirection", optional, tag="1")]
     pub direction: ::core::option::Option<i32>,
+    #[prost(bool, optional, tag="2")]
+    pub borderless: ::core::option::Option<bool>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -691,12 +701,16 @@ pub struct InPlaceConfig {
     pub pane_id_to_replace: ::core::option::Option<PaneId>,
     #[prost(bool, tag="2")]
     pub close_replaced_pane: bool,
+    #[prost(bool, optional, tag="3")]
+    pub borderless: ::core::option::Option<bool>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct StackedPlacement {
     #[prost(message, optional, tag="1")]
     pub pane_id: ::core::option::Option<PaneId>,
+    #[prost(bool, optional, tag="2")]
+    pub borderless: ::core::option::Option<bool>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
