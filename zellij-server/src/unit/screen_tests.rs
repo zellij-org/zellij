@@ -1901,7 +1901,10 @@ fn group_panes_following_focus() {
                     None,
                     false,
                     true,
-                    NewPanePlacement::Tiled(None),
+                    NewPanePlacement::Tiled {
+                        direction: None,
+                        borderless: None,
+                    },
                     Some(client_id),
                     None,
                 )
@@ -1959,7 +1962,10 @@ fn break_group_with_mouse() {
                     None,
                     false,
                     true,
-                    NewPanePlacement::Tiled(None),
+                    NewPanePlacement::Tiled {
+                        direction: None,
+                        borderless: None,
+                    },
                     Some(client_id),
                     None,
                 )

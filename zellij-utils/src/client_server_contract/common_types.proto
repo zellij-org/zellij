@@ -376,6 +376,7 @@ message NewTiledPaneAction {
   optional RunCommandAction command = 2;
   optional string pane_name = 3;
   bool near_current_pane = 7;
+  optional bool borderless = 8;
 }
 
 message NewInPlacePaneAction {
@@ -696,12 +697,31 @@ message NewPanePlacement {
     FloatingPaneCoordinates floating = 3;
     NewPanePlacementInPlace in_place = 4;
     PaneId stacked = 5;
+    // these new variants are so that we can send data along with the previous variants without compromising backwards compatibility by changing the above types
+    NoPreferencePlacement no_preference_with_options = 6;
+    TiledPlacement tiled_with_options = 7;
+    StackedPlacement stacked_with_options = 8;
   }
+}
+
+message NoPreferencePlacement {
+  optional bool borderless = 1;
+}
+
+message TiledPlacement {
+  optional Direction direction = 1;
+  optional bool borderless = 2;
+}
+
+message StackedPlacement {
+  optional PaneId pane_id_to_stack_under = 1;
+  optional bool borderless = 2;
 }
 
 message NewPanePlacementInPlace {
   optional PaneId pane_id_to_replace = 1;
   bool close_replaced_pane = 2;
+  optional bool borderless = 3;
 }
 
 message PaneIdWithPlugin {

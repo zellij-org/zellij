@@ -2943,6 +2943,7 @@ impl Screen {
                 close_replaced_pane,
                 run,
                 None,
+                None,
             );
             if let Some(pane_title) = pane_title {
                 let _ = tab.rename_pane(pane_title.as_bytes().to_vec(), new_pane_id);
@@ -5637,7 +5638,10 @@ pub(crate) fn screen_thread_main(
                     );
                 }
                 if should_be_tiled {
-                    new_pane_placement = NewPanePlacement::Tiled(None);
+                    new_pane_placement = NewPanePlacement::Tiled {
+                        direction: None,
+                        borderless: None,
+                    };
                 }
                 if should_be_in_place {
                     new_pane_placement = NewPanePlacement::with_pane_id_to_replace(

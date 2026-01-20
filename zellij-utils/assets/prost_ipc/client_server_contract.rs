@@ -656,6 +656,8 @@ pub struct NewTiledPaneAction {
     pub pane_name: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(bool, tag="7")]
     pub near_current_pane: bool,
+    #[prost(bool, optional, tag="8")]
+    pub borderless: ::core::option::Option<bool>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1121,7 +1123,7 @@ pub struct SwitchSessionAction {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct NewPanePlacement {
-    #[prost(oneof="new_pane_placement::PlacementType", tags="1, 2, 3, 4, 5")]
+    #[prost(oneof="new_pane_placement::PlacementType", tags="1, 2, 3, 4, 5, 6, 7, 8")]
     pub placement_type: ::core::option::Option<new_pane_placement::PlacementType>,
 }
 /// Nested message and enum types in `NewPanePlacement`.
@@ -1139,7 +1141,36 @@ pub mod new_pane_placement {
         InPlace(super::NewPanePlacementInPlace),
         #[prost(message, tag="5")]
         Stacked(super::PaneId),
+        /// these new variants are so that we can send data along with the previous variants without compromising backwards compatibility by changing the above types
+        #[prost(message, tag="6")]
+        NoPreferenceWithOptions(super::NoPreferencePlacement),
+        #[prost(message, tag="7")]
+        TiledWithOptions(super::TiledPlacement),
+        #[prost(message, tag="8")]
+        StackedWithOptions(super::StackedPlacement),
     }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct NoPreferencePlacement {
+    #[prost(bool, optional, tag="1")]
+    pub borderless: ::core::option::Option<bool>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct TiledPlacement {
+    #[prost(enumeration="Direction", optional, tag="1")]
+    pub direction: ::core::option::Option<i32>,
+    #[prost(bool, optional, tag="2")]
+    pub borderless: ::core::option::Option<bool>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct StackedPlacement {
+    #[prost(message, optional, tag="1")]
+    pub pane_id_to_stack_under: ::core::option::Option<PaneId>,
+    #[prost(bool, optional, tag="2")]
+    pub borderless: ::core::option::Option<bool>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1148,6 +1179,8 @@ pub struct NewPanePlacementInPlace {
     pub pane_id_to_replace: ::core::option::Option<PaneId>,
     #[prost(bool, tag="2")]
     pub close_replaced_pane: bool,
+    #[prost(bool, optional, tag="3")]
+    pub borderless: ::core::option::Option<bool>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

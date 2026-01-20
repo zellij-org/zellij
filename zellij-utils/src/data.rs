@@ -2976,19 +2976,30 @@ impl FromStr for WebSharing {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum NewPanePlacement {
-    NoPreference,
-    Tiled(Option<Direction>),
+    NoPreference {
+        borderless: Option<bool>,
+    },
+    Tiled {
+        direction: Option<Direction>,
+        borderless: Option<bool>,
+    },
     Floating(Option<FloatingPaneCoordinates>),
     InPlace {
         pane_id_to_replace: Option<PaneId>,
         close_replaced_pane: bool,
+        borderless: Option<bool>,
     },
-    Stacked(Option<PaneId>),
+    Stacked {
+        pane_id_to_stack_under: Option<PaneId>,
+        borderless: Option<bool>,
+    },
 }
 
 impl Default for NewPanePlacement {
     fn default() -> Self {
-        NewPanePlacement::NoPreference
+        NewPanePlacement::NoPreference {
+            borderless: None,
+        }
     }
 }
 
@@ -3007,6 +3018,7 @@ impl NewPanePlacement {
             NewPanePlacement::InPlace {
                 pane_id_to_replace: None,
                 close_replaced_pane,
+                borderless: None,
             }
         } else {
             self
@@ -3019,12 +3031,13 @@ impl NewPanePlacement {
         NewPanePlacement::InPlace {
             pane_id_to_replace,
             close_replaced_pane,
+            borderless: None,
         }
     }
     pub fn should_float(&self) -> Option<bool> {
         match self {
             NewPanePlacement::Floating(_) => Some(true),
-            NewPanePlacement::Tiled(_) => Some(false),
+            NewPanePlacement::Tiled { .. } => Some(false),
             _ => None,
         }
     }
@@ -3038,14 +3051,23 @@ impl NewPanePlacement {
     }
     pub fn should_stack(&self) -> bool {
         match self {
-            NewPanePlacement::Stacked(_) => true,
+            NewPanePlacement::Stacked { .. } => true,
             _ => false,
         }
     }
     pub fn id_of_stack_root(&self) -> Option<PaneId> {
         match self {
-            NewPanePlacement::Stacked(id) => *id,
+            NewPanePlacement::Stacked { pane_id_to_stack_under, .. } => *pane_id_to_stack_under,
             _ => None,
+        }
+    }
+    pub fn get_borderless(&self) -> Option<bool> {
+        match self {
+            NewPanePlacement::NoPreference { borderless } => *borderless,
+            NewPanePlacement::Tiled { borderless, .. } => *borderless,
+            NewPanePlacement::Floating(coords) => coords.as_ref().and_then(|c| c.borderless),
+            NewPanePlacement::InPlace { borderless, .. } => *borderless,
+            NewPanePlacement::Stacked { borderless, .. } => *borderless,
         }
     }
 }
