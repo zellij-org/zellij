@@ -10,9 +10,9 @@ fn send_done_parsing_after_query_timeout(
     send_input_instructions: SenderWithContext<InputInstruction>,
     query_duration: u64,
 ) {
-    std::thread::spawn({
-        move || {
-            std::thread::sleep(std::time::Duration::from_millis(query_duration));
+    tokio::spawn({
+        async move {
+            tokio::time::sleep(tokio::time::Duration::from_millis(query_duration)).await;
             send_input_instructions
                 .send(InputInstruction::DoneParsing)
                 .unwrap();
@@ -20,8 +20,8 @@ fn send_done_parsing_after_query_timeout(
     });
 }
 
-pub(crate) fn stdin_loop(
-    mut os_input: Box<dyn ClientOsApi>,
+pub(crate) async fn stdin_loop(
+    os_input: Box<dyn ClientOsApi>,
     send_input_instructions: SenderWithContext<InputInstruction>,
     stdin_ansi_parser: Arc<Mutex<StdinAnsiParser>>,
     explicitly_disable_kitty_keyboard_protocol: bool,
@@ -60,98 +60,106 @@ pub(crate) fn stdin_loop(
         }
     }
     let mut ansi_stdin_events = vec![];
+    let mut stdin = os_input.get_async_stdin_reader();
     loop {
-        match os_input.read_from_stdin() {
-            Ok(buf) => {
-                {
-                    // here we check if we need to parse specialized ANSI instructions sent over STDIN
-                    // this happens either on startup (see above) or on SIGWINCH
-                    //
-                    // if we need to parse them, we do so with an internal timeout - anything else we
-                    // receive on STDIN during that timeout is unceremoniously dropped
-                    let mut stdin_ansi_parser = stdin_ansi_parser.lock().unwrap();
-                    if stdin_ansi_parser.should_parse() {
-                        let events = stdin_ansi_parser.parse(buf);
-                        if !events.is_empty() {
-                            ansi_stdin_events.append(&mut events.clone());
-                            let _ = send_input_instructions
-                                .send(InputInstruction::AnsiStdinInstructions(events));
-                        }
-                        continue;
-                    }
-                }
-                if !ansi_stdin_events.is_empty() {
-                    stdin_ansi_parser
-                        .lock()
-                        .unwrap()
-                        .write_cache(ansi_stdin_events.drain(..).collect());
-                }
-                current_buffer.append(&mut buf.to_vec());
+        tokio::select! {
+            biased;
 
-                if !explicitly_disable_kitty_keyboard_protocol {
-                    // first we try to parse with the KittyKeyboardParser
-                    // if we fail, we try to parse normally
-                    match KittyKeyboardParser::new().parse(&buf) {
-                        Some(key_with_modifier) => {
+            result = stdin.read() => {
+                match result {
+                    Ok(buf) if !buf.is_empty() => {
+                        {
+                            // here we check if we need to parse specialized ANSI instructions sent over STDIN
+                            // this happens either on startup (see above) or on SIGWINCH
+                            //
+                            // if we need to parse them, we do so with an internal timeout - anything else we
+                            // receive on STDIN during that timeout is unceremoniously dropped
+                            let mut stdin_ansi_parser = stdin_ansi_parser.lock().unwrap();
+                            if stdin_ansi_parser.should_parse() {
+                                let events = stdin_ansi_parser.parse(buf);
+                                if !events.is_empty() {
+                                    ansi_stdin_events.append(&mut events.clone());
+                                    let _ = send_input_instructions
+                                        .send(InputInstruction::AnsiStdinInstructions(events));
+                                }
+                                continue;
+                            }
+                        }
+                        if !ansi_stdin_events.is_empty() {
+                            stdin_ansi_parser
+                                .lock()
+                                .unwrap()
+                                .write_cache(ansi_stdin_events.drain(..).collect());
+                        }
+                        current_buffer.append(&mut buf.to_vec());
+
+                        if !explicitly_disable_kitty_keyboard_protocol {
+                            // first we try to parse with the KittyKeyboardParser
+                            // if we fail, we try to parse normally
+                            match KittyKeyboardParser::new().parse(&buf) {
+                                Some(key_with_modifier) => {
+                                    send_input_instructions
+                                        .send(InputInstruction::KeyWithModifierEvent(
+                                            key_with_modifier,
+                                            current_buffer.drain(..).collect(),
+                                        ))
+                                        .unwrap();
+                                    continue;
+                                },
+                                None => {},
+                            }
+                        }
+
+                        let maybe_more = false; // read_from_stdin should (hopefully) always empty the STDIN buffer completely
+                        let mut events = vec![];
+                        input_parser.parse(
+                            &buf,
+                            |input_event: InputEvent| {
+                                events.push(input_event);
+                            },
+                            maybe_more,
+                        );
+
+                        let event_count = events.len();
+                        for (i, input_event) in events.into_iter().enumerate() {
+                            if holding_mouse && is_mouse_press_or_hold(&input_event) && i == event_count - 1
+                            {
+                                let mut poller = os_input.stdin_poller();
+                                loop {
+                                    if poller.ready() {
+                                        break;
+                                    }
+                                    send_input_instructions
+                                        .send(InputInstruction::KeyEvent(
+                                            input_event.clone(),
+                                            current_buffer.clone(),
+                                        ))
+                                        .unwrap();
+                                }
+                            }
+
+                            holding_mouse = is_mouse_press_or_hold(&input_event);
+
                             send_input_instructions
-                                .send(InputInstruction::KeyWithModifierEvent(
-                                    key_with_modifier,
+                                .send(InputInstruction::KeyEvent(
+                                    input_event,
                                     current_buffer.drain(..).collect(),
                                 ))
                                 .unwrap();
-                            continue;
-                        },
-                        None => {},
-                    }
-                }
-
-                let maybe_more = false; // read_from_stdin should (hopefully) always empty the STDIN buffer completely
-                let mut events = vec![];
-                input_parser.parse(
-                    &buf,
-                    |input_event: InputEvent| {
-                        events.push(input_event);
-                    },
-                    maybe_more,
-                );
-
-                let event_count = events.len();
-                for (i, input_event) in events.into_iter().enumerate() {
-                    if holding_mouse && is_mouse_press_or_hold(&input_event) && i == event_count - 1
-                    {
-                        let mut poller = os_input.stdin_poller();
-                        loop {
-                            if poller.ready() {
-                                break;
-                            }
-                            send_input_instructions
-                                .send(InputInstruction::KeyEvent(
-                                    input_event.clone(),
-                                    current_buffer.clone(),
-                                ))
-                                .unwrap();
                         }
-                    }
-
-                    holding_mouse = is_mouse_press_or_hold(&input_event);
-
-                    send_input_instructions
-                        .send(InputInstruction::KeyEvent(
-                            input_event,
-                            current_buffer.drain(..).collect(),
-                        ))
-                        .unwrap();
+                    },
+                    Ok(_) => {
+                        log::debug!("EOF on stdin");
+                        let _ = send_input_instructions.send(InputInstruction::Exit);
+                        break;
+                    },
+                    Err(e) => {
+                        log::error!("Failed to read from STDIN: {}", e);
+                        let _ = send_input_instructions.send(InputInstruction::Exit);
+                        break;
+                    },
                 }
-            },
-            Err(e) => {
-                if e == "Session ended" {
-                    log::debug!("Switched sessions, signing this thread off...");
-                } else {
-                    log::error!("Failed to read from STDIN: {}", e);
-                }
-                let _ = send_input_instructions.send(InputInstruction::Exit);
-                break;
-            },
+            }
         }
     }
 }
