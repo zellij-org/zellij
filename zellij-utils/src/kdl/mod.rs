@@ -49,6 +49,7 @@ macro_rules! parse_kdl_action_arguments {
                 "FocusPreviousPane" => Ok(Action::FocusPreviousPane),
                 "SwitchFocus" => Ok(Action::SwitchFocus),
                 "EditScrollback" => Ok(Action::EditScrollback),
+                "EditScrollbackRaw" => Ok(Action::EditScrollbackRaw),
                 "ScrollUp" => Ok(Action::ScrollUp),
                 "ScrollDown" => Ok(Action::ScrollDown),
                 "ScrollToBottom" => Ok(Action::ScrollToBottom),
@@ -697,6 +698,7 @@ impl Action {
             },
             Action::DumpLayout => Some(KdlNode::new("DumpLayout")),
             Action::EditScrollback => Some(KdlNode::new("EditScrollback")),
+            Action::EditScrollbackRaw => Some(KdlNode::new("EditScrollbackRaw")),
             Action::ScrollUp => Some(KdlNode::new("ScrollUp")),
             Action::ScrollDown => Some(KdlNode::new("ScrollDown")),
             Action::ScrollToBottom => Some(KdlNode::new("ScrollToBottom")),
@@ -1450,6 +1452,9 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
             },
             "SwitchFocus" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
             "EditScrollback" => {
+                parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
+            },
+            "EditScrollbackRaw" => {
                 parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
             },
             "ScrollUp" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
