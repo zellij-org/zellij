@@ -1918,7 +1918,7 @@ pub fn focus_last_pane_plugin_command() {
     let plugin_host_folder = PathBuf::from(temp_folder.path());
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
     let (plugin_thread_sender, screen_receiver, teardown) =
-        create_plugin_thread(Some(plugin_host_folder));
+        create_plugin_thread(Some(plugin_host_folder), None);
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
     let run_plugin = RunPluginOrAlias::RunPlugin(RunPlugin {
@@ -1949,6 +1949,7 @@ pub fn focus_last_pane_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
