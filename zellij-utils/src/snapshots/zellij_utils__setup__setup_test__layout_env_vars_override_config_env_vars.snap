@@ -6196,5 +6196,6 @@ Config {
         cursor_inactive_style: None,
         cursor_style: None,
         mac_option_is_meta: true,
+        base_url: None,
     },
 }
