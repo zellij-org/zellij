@@ -121,6 +121,7 @@ message FloatingPaneLayout {
   bool already_running = 9;
   optional string pane_initial_contents = 10;
   optional uint32 logical_position = 11;
+  optional bool borderless = 12;
 }
 
 message SwapTiledLayout {
@@ -230,6 +231,7 @@ message Action {
     NewTabPayload new_tab_payload = 51;
     NewInPlacePanePayload new_in_place_pane_payload = 52;
     OverrideLayoutPayload override_layout_payload = 53;
+    SetPaneBorderlessPayload set_pane_borderless_payload = 54;
   }
 }
 
@@ -296,6 +298,7 @@ message NewTiledPanePayload {
   optional RunCommandAction command = 1;
   optional resize.ResizeDirection direction = 2;
   bool near_current_pane = 3;
+  optional bool borderless = 4;
 }
 
 message MovePanePayload {
@@ -447,6 +450,7 @@ enum ActionName {
     NewBlockingPane = 91;
     NewInPlacePane = 92;
     OverrideLayout = 93;
+    SetPaneBorderless = 94;
 }
 
 message Position {
@@ -477,6 +481,13 @@ message FloatingPaneCoordinates {
   optional SplitSize width = 3;
   optional SplitSize height = 4;
   optional bool pinned = 5;
+  optional bool borderless = 6;
+}
+
+// SetPaneBorderlessPayload specifies the pane and borderless state
+message SetPaneBorderlessPayload {
+  PaneId pane_id = 1;
+  bool borderless = 2;
 }
 
 // UnblockCondition specifies when a blocking pane should unblock
@@ -489,7 +500,7 @@ enum UnblockCondition {
 // NewPanePlacement specifies where a new pane should be placed
 message NewPanePlacement {
   oneof placement_variant {
-    bool no_preference = 1;
+    NoPreferenceOptions no_preference = 1;
     TiledPlacement tiled = 2;
     FloatingPlacement floating = 3;
     InPlaceConfig in_place = 4;
@@ -497,8 +508,13 @@ message NewPanePlacement {
   }
 }
 
+message NoPreferenceOptions {
+  optional bool borderless = 1;
+}
+
 message TiledPlacement {
   optional resize.ResizeDirection direction = 1;
+  optional bool borderless = 2;
 }
 
 message FloatingPlacement {
@@ -508,10 +524,12 @@ message FloatingPlacement {
 message InPlaceConfig {
   optional PaneId pane_id_to_replace = 1;
   bool close_replaced_pane = 2;
+  optional bool borderless = 3;
 }
 
 message StackedPlacement {
   optional PaneId pane_id = 1;
+  optional bool borderless = 2;
 }
 
 message MouseEventPayload {

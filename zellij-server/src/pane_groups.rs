@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use zellij_utils::data::FloatingPaneCoordinates;
-use zellij_utils::input::layout::{RunPluginOrAlias, SplitSize};
+use zellij_utils::input::layout::{PercentOrFixed, RunPluginOrAlias};
 use zellij_utils::pane_size::Size;
 
 use crate::{panes::PaneId, pty::PtyInstruction, thread_bus::ThreadSenders, ClientId};
@@ -163,11 +163,12 @@ impl PaneGroups {
             let height = std::cmp::max(height_30_percent, 10);
             let y_position = screen_size.rows.saturating_sub(height + 2);
             let floating_pane_coordinates = FloatingPaneCoordinates {
-                x: Some(SplitSize::Fixed(2)),
-                y: Some(SplitSize::Fixed(y_position)),
-                width: Some(SplitSize::Fixed(width)),
-                height: Some(SplitSize::Fixed(height)),
+                x: Some(PercentOrFixed::Fixed(2)),
+                y: Some(PercentOrFixed::Fixed(y_position)),
+                width: Some(PercentOrFixed::Fixed(width)),
+                height: Some(PercentOrFixed::Fixed(height)),
                 pinned: Some(true),
+                borderless: Some(false),
             };
             let _ = self.senders.send_to_pty(PtyInstruction::FillPluginCwd(
                 should_float,

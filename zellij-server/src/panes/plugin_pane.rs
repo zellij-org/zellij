@@ -697,8 +697,13 @@ impl Pane for PluginPane {
         }
     }
 
-    fn set_borderless(&mut self, borderless: bool) {
-        self.borderless = borderless;
+    fn set_borderless(&mut self, should_be_borderless: bool) {
+        self.borderless = should_be_borderless;
+        if should_be_borderless {
+            self.set_content_offset(Offset::default());
+        } else {
+            self.set_content_offset(Offset::frame(1));
+        }
     }
     fn borderless(&self) -> bool {
         self.borderless

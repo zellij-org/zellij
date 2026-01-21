@@ -3,7 +3,7 @@ use crate::input::actions::{Action, RunCommandAction};
 use crate::input::config::{ConversionError, KdlError};
 use crate::input::keybinds::Keybinds;
 use crate::input::layout::{
-    Layout, Run, RunPlugin, RunPluginLocation, RunPluginOrAlias, SplitSize,
+    Layout, PercentOrFixed, Run, RunPlugin, RunPluginLocation, RunPluginOrAlias,
 };
 use crate::pane_size::PaneGeom;
 use crate::position::Position;
@@ -2763,11 +2763,12 @@ impl PipeMessage {
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize, Default)]
 pub struct FloatingPaneCoordinates {
-    pub x: Option<SplitSize>,
-    pub y: Option<SplitSize>,
-    pub width: Option<SplitSize>,
-    pub height: Option<SplitSize>,
+    pub x: Option<PercentOrFixed>,
+    pub y: Option<PercentOrFixed>,
+    pub width: Option<PercentOrFixed>,
+    pub height: Option<PercentOrFixed>,
     pub pinned: Option<bool>,
+    pub borderless: Option<bool>,
 }
 
 impl FloatingPaneCoordinates {
@@ -2777,12 +2778,39 @@ impl FloatingPaneCoordinates {
         width: Option<String>,
         height: Option<String>,
         pinned: Option<bool>,
+        borderless: Option<bool>,
     ) -> Option<Self> {
-        let x = x.and_then(|x| SplitSize::from_str(&x).ok());
-        let y = y.and_then(|y| SplitSize::from_str(&y).ok());
-        let width = width.and_then(|width| SplitSize::from_str(&width).ok());
-        let height = height.and_then(|height| SplitSize::from_str(&height).ok());
-        if x.is_none() && y.is_none() && width.is_none() && height.is_none() && pinned.is_none() {
+        // Parse x/y coordinates - allows 0% or 0
+        let x = x.and_then(|x| PercentOrFixed::from_str(&x).ok());
+        let y = y.and_then(|y| PercentOrFixed::from_str(&y).ok());
+
+        // Parse width/height - reject 0% or 0
+        let width = width.and_then(|w| {
+            PercentOrFixed::from_str(&w)
+                .ok()
+                .and_then(|size| match size {
+                    PercentOrFixed::Percent(0) => None,
+                    PercentOrFixed::Fixed(0) => None,
+                    _ => Some(size),
+                })
+        });
+        let height = height.and_then(|h| {
+            PercentOrFixed::from_str(&h)
+                .ok()
+                .and_then(|size| match size {
+                    PercentOrFixed::Percent(0) => None,
+                    PercentOrFixed::Fixed(0) => None,
+                    _ => Some(size),
+                })
+        });
+
+        if x.is_none()
+            && y.is_none()
+            && width.is_none()
+            && height.is_none()
+            && pinned.is_none()
+            && borderless.is_none()
+        {
             None
         } else {
             Some(FloatingPaneCoordinates {
@@ -2791,11 +2819,12 @@ impl FloatingPaneCoordinates {
                 width,
                 height,
                 pinned,
+                borderless,
             })
         }
     }
     pub fn with_x_fixed(mut self, x: usize) -> Self {
-        self.x = Some(SplitSize::Fixed(x));
+        self.x = Some(PercentOrFixed::Fixed(x));
         self
     }
     pub fn with_x_percent(mut self, x: usize) -> Self {
@@ -2803,11 +2832,11 @@ impl FloatingPaneCoordinates {
             eprintln!("x must be between 0 and 100");
             return self;
         }
-        self.x = Some(SplitSize::Percent(x));
+        self.x = Some(PercentOrFixed::Percent(x));
         self
     }
     pub fn with_y_fixed(mut self, y: usize) -> Self {
-        self.y = Some(SplitSize::Fixed(y));
+        self.y = Some(PercentOrFixed::Fixed(y));
         self
     }
     pub fn with_y_percent(mut self, y: usize) -> Self {
@@ -2815,11 +2844,11 @@ impl FloatingPaneCoordinates {
             eprintln!("y must be between 0 and 100");
             return self;
         }
-        self.y = Some(SplitSize::Percent(y));
+        self.y = Some(PercentOrFixed::Percent(y));
         self
     }
     pub fn with_width_fixed(mut self, width: usize) -> Self {
-        self.width = Some(SplitSize::Fixed(width));
+        self.width = Some(PercentOrFixed::Fixed(width));
         self
     }
     pub fn with_width_percent(mut self, width: usize) -> Self {
@@ -2827,11 +2856,11 @@ impl FloatingPaneCoordinates {
             eprintln!("width must be between 0 and 100");
             return self;
         }
-        self.width = Some(SplitSize::Percent(width));
+        self.width = Some(PercentOrFixed::Percent(width));
         self
     }
     pub fn with_height_fixed(mut self, height: usize) -> Self {
-        self.height = Some(SplitSize::Fixed(height));
+        self.height = Some(PercentOrFixed::Fixed(height));
         self
     }
     pub fn with_height_percent(mut self, height: usize) -> Self {
@@ -2839,7 +2868,7 @@ impl FloatingPaneCoordinates {
             eprintln!("height must be between 0 and 100");
             return self;
         }
-        self.height = Some(SplitSize::Percent(height));
+        self.height = Some(PercentOrFixed::Percent(height));
         self
     }
 }
@@ -2847,11 +2876,12 @@ impl FloatingPaneCoordinates {
 impl From<PaneGeom> for FloatingPaneCoordinates {
     fn from(pane_geom: PaneGeom) -> Self {
         FloatingPaneCoordinates {
-            x: Some(SplitSize::Fixed(pane_geom.x)),
-            y: Some(SplitSize::Fixed(pane_geom.y)),
-            width: Some(SplitSize::Fixed(pane_geom.cols.as_usize())),
-            height: Some(SplitSize::Fixed(pane_geom.rows.as_usize())),
+            x: Some(PercentOrFixed::Fixed(pane_geom.x)),
+            y: Some(PercentOrFixed::Fixed(pane_geom.y)),
+            width: Some(PercentOrFixed::Fixed(pane_geom.cols.as_usize())),
+            height: Some(PercentOrFixed::Fixed(pane_geom.rows.as_usize())),
             pinned: Some(pane_geom.is_pinned),
+            borderless: None,
         }
     }
 }
@@ -2946,19 +2976,28 @@ impl FromStr for WebSharing {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum NewPanePlacement {
-    NoPreference,
-    Tiled(Option<Direction>),
+    NoPreference {
+        borderless: Option<bool>,
+    },
+    Tiled {
+        direction: Option<Direction>,
+        borderless: Option<bool>,
+    },
     Floating(Option<FloatingPaneCoordinates>),
     InPlace {
         pane_id_to_replace: Option<PaneId>,
         close_replaced_pane: bool,
+        borderless: Option<bool>,
     },
-    Stacked(Option<PaneId>),
+    Stacked {
+        pane_id_to_stack_under: Option<PaneId>,
+        borderless: Option<bool>,
+    },
 }
 
 impl Default for NewPanePlacement {
     fn default() -> Self {
-        NewPanePlacement::NoPreference
+        NewPanePlacement::NoPreference { borderless: None }
     }
 }
 
@@ -2977,6 +3016,7 @@ impl NewPanePlacement {
             NewPanePlacement::InPlace {
                 pane_id_to_replace: None,
                 close_replaced_pane,
+                borderless: None,
             }
         } else {
             self
@@ -2989,12 +3029,13 @@ impl NewPanePlacement {
         NewPanePlacement::InPlace {
             pane_id_to_replace,
             close_replaced_pane,
+            borderless: None,
         }
     }
     pub fn should_float(&self) -> Option<bool> {
         match self {
             NewPanePlacement::Floating(_) => Some(true),
-            NewPanePlacement::Tiled(_) => Some(false),
+            NewPanePlacement::Tiled { .. } => Some(false),
             _ => None,
         }
     }
@@ -3008,14 +3049,26 @@ impl NewPanePlacement {
     }
     pub fn should_stack(&self) -> bool {
         match self {
-            NewPanePlacement::Stacked(_) => true,
+            NewPanePlacement::Stacked { .. } => true,
             _ => false,
         }
     }
     pub fn id_of_stack_root(&self) -> Option<PaneId> {
         match self {
-            NewPanePlacement::Stacked(id) => *id,
+            NewPanePlacement::Stacked {
+                pane_id_to_stack_under,
+                ..
+            } => *pane_id_to_stack_under,
             _ => None,
+        }
+    }
+    pub fn get_borderless(&self) -> Option<bool> {
+        match self {
+            NewPanePlacement::NoPreference { borderless } => *borderless,
+            NewPanePlacement::Tiled { borderless, .. } => *borderless,
+            NewPanePlacement::Floating(coords) => coords.as_ref().and_then(|c| c.borderless),
+            NewPanePlacement::InPlace { borderless, .. } => *borderless,
+            NewPanePlacement::Stacked { borderless, .. } => *borderless,
         }
     }
 }
@@ -3184,6 +3237,8 @@ pub enum PluginCommand {
     SetFloatingPanePinned(PaneId, bool), // bool -> should be pinned
     StackPanes(Vec<PaneId>),
     ChangeFloatingPanesCoordinates(Vec<(PaneId, FloatingPaneCoordinates)>),
+    TogglePaneBorderless(PaneId),
+    SetPaneBorderless(PaneId, bool),
     OpenCommandPaneNearPlugin(CommandToRun, Context),
     OpenTerminalNearPlugin(FileToOpen),
     OpenTerminalFloatingNearPlugin(FileToOpen, Option<FloatingPaneCoordinates>),

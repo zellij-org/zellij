@@ -292,18 +292,14 @@ impl FloatingPanes {
         let mut position = floating_pane_grid
             .find_room_for_new_pane()
             .with_context(err_context)?;
-        if let Some(x) = &floating_pane_layout.x {
-            position.x = x.to_position(viewport.cols);
-        }
-        if let Some(y) = &floating_pane_layout.y {
-            position.y = y.to_position(viewport.rows);
-        }
-        if let Some(width) = &floating_pane_layout.width {
-            position.cols = Dimension::fixed(width.to_position(viewport.cols));
-        }
-        if let Some(height) = &floating_pane_layout.height {
-            position.rows = Dimension::fixed(height.to_position(viewport.rows));
-        }
+        position.apply_floating_pane_position(
+            floating_pane_layout.x.clone(),
+            floating_pane_layout.y.clone(),
+            floating_pane_layout.width.clone(),
+            floating_pane_layout.height.clone(),
+            viewport.cols,
+            viewport.rows,
+        );
         if let Some(is_pinned) = &floating_pane_layout.pinned {
             position.is_pinned = *is_pinned;
         }
@@ -806,6 +802,13 @@ impl FloatingPanes {
             let mut pane_geom = pane.position_and_size();
             if let Some(pinned) = new_coordinates.pinned.as_ref() {
                 pane.set_pinned(*pinned);
+            }
+            if let Some(should_be_borderless) = new_coordinates.borderless {
+                if should_be_borderless {
+                    pane.set_borderless(true);
+                } else {
+                    pane.set_borderless(false);
+                };
             }
             pane_geom.adjust_coordinates(new_coordinates, viewport);
             pane.set_geom(pane_geom);

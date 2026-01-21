@@ -46,9 +46,10 @@ pub use super::generated_api::api::{
         RunActionPayload, RunCommandPayload, SaveLayoutPayload,
         SaveLayoutResponse as ProtobufSaveLayoutResponse, ScrollDownInPaneIdPayload,
         ScrollToBottomInPaneIdPayload, ScrollToTopInPaneIdPayload, ScrollUpInPaneIdPayload,
-        SetFloatingPanePinnedPayload, SetSelfMouseSelectionSupportPayload, SetTimeoutPayload,
-        ShowCursorPayload, ShowPaneWithIdPayload, StackPanesPayload, SubscribePayload,
-        SwitchSessionPayload, SwitchTabToPayload, TogglePaneEmbedOrEjectForPaneIdPayload,
+        SetFloatingPanePinnedPayload, SetPaneBorderlessPayload,
+        SetSelfMouseSelectionSupportPayload, SetTimeoutPayload, ShowCursorPayload,
+        ShowPaneWithIdPayload, StackPanesPayload, SubscribePayload, SwitchSessionPayload,
+        SwitchTabToPayload, TogglePaneBorderlessPayload, TogglePaneEmbedOrEjectForPaneIdPayload,
         TogglePaneIdFullscreenPayload, UnsubscribePayload, WebRequestPayload,
         WriteCharsToPaneIdPayload, WriteToPaneIdPayload,
     },
@@ -63,7 +64,7 @@ use crate::data::{
     SaveLayoutResponse,
 };
 use crate::input::actions::Action;
-use crate::input::layout::SplitSize;
+use crate::input::layout::PercentOrFixed;
 
 use std::collections::BTreeMap;
 use std::convert::TryFrom;
@@ -76,27 +77,31 @@ impl Into<FloatingPaneCoordinates> for ProtobufFloatingPaneCoordinates {
                 .x
                 .and_then(|x| match ProtobufFixedOrPercent::from_i32(x.r#type) {
                     Some(ProtobufFixedOrPercent::Percent) => {
-                        Some(SplitSize::Percent(x.value as usize))
+                        Some(PercentOrFixed::Percent(x.value as usize))
                     },
-                    Some(ProtobufFixedOrPercent::Fixed) => Some(SplitSize::Fixed(x.value as usize)),
+                    Some(ProtobufFixedOrPercent::Fixed) => {
+                        Some(PercentOrFixed::Fixed(x.value as usize))
+                    },
                     None => None,
                 }),
             y: self
                 .y
                 .and_then(|y| match ProtobufFixedOrPercent::from_i32(y.r#type) {
                     Some(ProtobufFixedOrPercent::Percent) => {
-                        Some(SplitSize::Percent(y.value as usize))
+                        Some(PercentOrFixed::Percent(y.value as usize))
                     },
-                    Some(ProtobufFixedOrPercent::Fixed) => Some(SplitSize::Fixed(y.value as usize)),
+                    Some(ProtobufFixedOrPercent::Fixed) => {
+                        Some(PercentOrFixed::Fixed(y.value as usize))
+                    },
                     None => None,
                 }),
             width: self.width.and_then(|width| {
                 match ProtobufFixedOrPercent::from_i32(width.r#type) {
                     Some(ProtobufFixedOrPercent::Percent) => {
-                        Some(SplitSize::Percent(width.value as usize))
+                        Some(PercentOrFixed::Percent(width.value as usize))
                     },
                     Some(ProtobufFixedOrPercent::Fixed) => {
-                        Some(SplitSize::Fixed(width.value as usize))
+                        Some(PercentOrFixed::Fixed(width.value as usize))
                     },
                     None => None,
                 }
@@ -104,15 +109,16 @@ impl Into<FloatingPaneCoordinates> for ProtobufFloatingPaneCoordinates {
             height: self.height.and_then(|height| {
                 match ProtobufFixedOrPercent::from_i32(height.r#type) {
                     Some(ProtobufFixedOrPercent::Percent) => {
-                        Some(SplitSize::Percent(height.value as usize))
+                        Some(PercentOrFixed::Percent(height.value as usize))
                     },
                     Some(ProtobufFixedOrPercent::Fixed) => {
-                        Some(SplitSize::Fixed(height.value as usize))
+                        Some(PercentOrFixed::Fixed(height.value as usize))
                     },
                     None => None,
                 }
             }),
             pinned: self.pinned,
+            borderless: self.borderless,
         }
     }
 }
@@ -121,50 +127,51 @@ impl Into<ProtobufFloatingPaneCoordinates> for FloatingPaneCoordinates {
     fn into(self) -> ProtobufFloatingPaneCoordinates {
         ProtobufFloatingPaneCoordinates {
             x: match self.x {
-                Some(SplitSize::Percent(percent)) => Some(ProtobufFixedOrPercentValue {
+                Some(PercentOrFixed::Percent(percent)) => Some(ProtobufFixedOrPercentValue {
                     r#type: ProtobufFixedOrPercent::Percent as i32,
                     value: percent as u32,
                 }),
-                Some(SplitSize::Fixed(fixed)) => Some(ProtobufFixedOrPercentValue {
+                Some(PercentOrFixed::Fixed(fixed)) => Some(ProtobufFixedOrPercentValue {
                     r#type: ProtobufFixedOrPercent::Fixed as i32,
                     value: fixed as u32,
                 }),
                 None => None,
             },
             y: match self.y {
-                Some(SplitSize::Percent(percent)) => Some(ProtobufFixedOrPercentValue {
+                Some(PercentOrFixed::Percent(percent)) => Some(ProtobufFixedOrPercentValue {
                     r#type: ProtobufFixedOrPercent::Percent as i32,
                     value: percent as u32,
                 }),
-                Some(SplitSize::Fixed(fixed)) => Some(ProtobufFixedOrPercentValue {
+                Some(PercentOrFixed::Fixed(fixed)) => Some(ProtobufFixedOrPercentValue {
                     r#type: ProtobufFixedOrPercent::Fixed as i32,
                     value: fixed as u32,
                 }),
                 None => None,
             },
             width: match self.width {
-                Some(SplitSize::Percent(percent)) => Some(ProtobufFixedOrPercentValue {
+                Some(PercentOrFixed::Percent(percent)) => Some(ProtobufFixedOrPercentValue {
                     r#type: ProtobufFixedOrPercent::Percent as i32,
                     value: percent as u32,
                 }),
-                Some(SplitSize::Fixed(fixed)) => Some(ProtobufFixedOrPercentValue {
+                Some(PercentOrFixed::Fixed(fixed)) => Some(ProtobufFixedOrPercentValue {
                     r#type: ProtobufFixedOrPercent::Fixed as i32,
                     value: fixed as u32,
                 }),
                 None => None,
             },
             height: match self.height {
-                Some(SplitSize::Percent(percent)) => Some(ProtobufFixedOrPercentValue {
+                Some(PercentOrFixed::Percent(percent)) => Some(ProtobufFixedOrPercentValue {
                     r#type: ProtobufFixedOrPercent::Percent as i32,
                     value: percent as u32,
                 }),
-                Some(SplitSize::Fixed(fixed)) => Some(ProtobufFixedOrPercentValue {
+                Some(PercentOrFixed::Fixed(fixed)) => Some(ProtobufFixedOrPercentValue {
                     r#type: ProtobufFixedOrPercent::Fixed as i32,
                     value: fixed as u32,
                 }),
                 None => None,
             },
             pinned: self.pinned,
+            borderless: self.borderless,
         }
     }
 }
@@ -1678,6 +1685,29 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                     _ => Err("Mismatched payload for ChangeFloatingPanesCoordinates"),
                 }
             },
+            Some(CommandName::TogglePaneBorderless) => match protobuf_plugin_command.payload {
+                Some(Payload::TogglePaneBorderlessPayload(toggle_payload)) => {
+                    match toggle_payload.pane_id {
+                        Some(pane_id) => {
+                            Ok(PluginCommand::TogglePaneBorderless(pane_id.try_into()?))
+                        },
+                        None => Err("Malformed TogglePaneBorderless payload"),
+                    }
+                },
+                _ => Err("Mismatched payload for TogglePaneBorderless"),
+            },
+            Some(CommandName::SetPaneBorderless) => match protobuf_plugin_command.payload {
+                Some(Payload::SetPaneBorderlessPayload(payload)) => {
+                    match (payload.pane_id, payload.borderless) {
+                        (Some(pane_id), borderless) => Ok(PluginCommand::SetPaneBorderless(
+                            pane_id.try_into()?,
+                            borderless,
+                        )),
+                        _ => Err("Malformed SetPaneBorderless payload"),
+                    }
+                },
+                _ => Err("Mismatched payload for SetPaneBorderless"),
+            },
             Some(CommandName::OpenCommandPaneNearPlugin) => match protobuf_plugin_command.payload {
                 Some(Payload::OpenCommandPaneNearPluginPayload(command_to_run_payload)) => {
                     match command_to_run_payload.command_to_run {
@@ -3060,6 +3090,23 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                                     })
                                 })
                                 .collect(),
+                    },
+                )),
+            }),
+            PluginCommand::TogglePaneBorderless(pane_id) => Ok(ProtobufPluginCommand {
+                name: CommandName::TogglePaneBorderless as i32,
+                payload: Some(Payload::TogglePaneBorderlessPayload(
+                    TogglePaneBorderlessPayload {
+                        pane_id: Some(pane_id.try_into()?),
+                    },
+                )),
+            }),
+            PluginCommand::SetPaneBorderless(pane_id, borderless) => Ok(ProtobufPluginCommand {
+                name: CommandName::SetPaneBorderless as i32,
+                payload: Some(Payload::SetPaneBorderlessPayload(
+                    SetPaneBorderlessPayload {
+                        pane_id: Some(pane_id.try_into()?),
+                        borderless,
                     },
                 )),
             }),

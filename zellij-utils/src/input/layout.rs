@@ -73,6 +73,24 @@ pub enum SplitSize {
     Fixed(usize), // An absolute number of columns or rows
 }
 
+impl From<PercentOrFixed> for SplitSize {
+    fn from(pof: PercentOrFixed) -> Self {
+        match pof {
+            PercentOrFixed::Percent(p) => SplitSize::Percent(p),
+            PercentOrFixed::Fixed(f) => SplitSize::Fixed(f),
+        }
+    }
+}
+
+impl From<SplitSize> for PercentOrFixed {
+    fn from(ss: SplitSize) -> Self {
+        match ss {
+            SplitSize::Percent(p) => PercentOrFixed::Percent(p),
+            SplitSize::Fixed(f) => PercentOrFixed::Fixed(f),
+        }
+    }
+}
+
 impl SplitSize {
     pub fn to_fixed(&self, full_size: usize) -> usize {
         match self {
@@ -697,7 +715,7 @@ pub struct TabLayoutInfo {
     pub swap_floating_layouts: Option<Vec<SwapFloatingLayout>>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
 pub enum PercentOrFixed {
     Percent(usize), // 1 to 100
     Fixed(usize),   // An absolute number of columns or rows
@@ -725,6 +743,14 @@ impl PercentOrFixed {
                     *fixed
                 }
             },
+        }
+    }
+    pub fn to_fixed(&self, whole: usize) -> usize {
+        match self {
+            PercentOrFixed::Percent(percent) => {
+                ((*percent as f64 / 100.0) * whole as f64).floor() as usize
+            },
+            PercentOrFixed::Fixed(fixed) => *fixed,
         }
     }
 }
@@ -764,6 +790,7 @@ pub struct FloatingPaneLayout {
     pub x: Option<PercentOrFixed>,
     pub y: Option<PercentOrFixed>,
     pub pinned: Option<bool>,
+    pub borderless: Option<bool>,
     pub run: Option<Run>,
     pub focus: Option<bool>,
     pub already_running: bool,
@@ -780,6 +807,7 @@ impl FloatingPaneLayout {
             x: None,
             y: None,
             pinned: None,
+            borderless: None,
             run: None,
             focus: None,
             already_running: false,
@@ -820,7 +848,7 @@ pub struct TiledPaneLayout {
     pub children: Vec<TiledPaneLayout>,
     pub split_size: Option<SplitSize>,
     pub run: Option<Run>,
-    pub borderless: bool,
+    pub borderless: Option<bool>,
     pub focus: Option<bool>,
     pub external_children_index: Option<usize>,
     pub children_are_stacked: bool,

@@ -29,7 +29,7 @@ use zellij_utils::{
     envs::set_session_name,
     input::command::TerminalAction,
     input::layout::{
-        FloatingPaneLayout, Layout, Run, RunPluginOrAlias, SplitSize, SwapFloatingLayout,
+        FloatingPaneLayout, Layout, PercentOrFixed, Run, RunPluginOrAlias, SwapFloatingLayout,
         SwapTiledLayout, TabLayoutInfo, TiledPaneLayout,
     },
     position::Position,
@@ -496,6 +496,8 @@ pub enum ScreenInstruction {
         Vec<(PaneId, FloatingPaneCoordinates)>,
         Option<NotificationEnd>,
     ),
+    TogglePaneBorderless(PaneId, Option<NotificationEnd>),
+    SetPaneBorderless(PaneId, bool, Option<NotificationEnd>),
     AddHighlightPaneFrameColorOverride(Vec<PaneId>, Option<String>), // Option<String> => optional
     // message
     GroupAndUngroupPanes(Vec<PaneId>, Vec<PaneId>, bool, ClientId), // panes_to_group, panes_to_ungroup, bool -> for all clients
@@ -728,6 +730,8 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::ChangeFloatingPanesCoordinates(..) => {
                 ScreenContext::ChangeFloatingPanesCoordinates
             },
+            ScreenInstruction::TogglePaneBorderless(..) => ScreenContext::TogglePaneBorderless,
+            ScreenInstruction::SetPaneBorderless(..) => ScreenContext::SetPaneBorderless,
             ScreenInstruction::AddHighlightPaneFrameColorOverride(..) => {
                 ScreenContext::AddHighlightPaneFrameColorOverride
             },
@@ -2898,11 +2902,12 @@ impl Screen {
                 let pane_id = pane.pid();
                 if pane_was_floating {
                     let floating_pane_coordinates = FloatingPaneCoordinates {
-                        x: Some(SplitSize::Fixed(pane.x())),
-                        y: Some(SplitSize::Fixed(pane.y())),
-                        width: Some(SplitSize::Fixed(pane.cols())),
-                        height: Some(SplitSize::Fixed(pane.rows())),
+                        x: Some(PercentOrFixed::Fixed(pane.x())),
+                        y: Some(PercentOrFixed::Fixed(pane.y())),
+                        width: Some(PercentOrFixed::Fixed(pane.cols())),
+                        height: Some(PercentOrFixed::Fixed(pane.rows())),
                         pinned: Some(pane.current_geom().is_pinned),
+                        borderless: Some(pane.borderless()),
                     };
                     new_active_tab.add_floating_pane(
                         pane,
@@ -2937,6 +2942,7 @@ impl Screen {
                 new_pane_id,
                 close_replaced_pane,
                 run,
+                None,
                 None,
             );
             if let Some(pane_title) = pane_title {
@@ -3227,6 +3233,22 @@ impl Screen {
                         .non_fatal();
                     break;
                 }
+            }
+        }
+    }
+    pub fn toggle_pane_borderless(&mut self, pane_id: PaneId) {
+        for (_tab_id, tab) in self.tabs.iter_mut() {
+            if tab.has_pane_with_pid(&pane_id) {
+                tab.toggle_pane_borderless(&pane_id).non_fatal();
+                break;
+            }
+        }
+    }
+    pub fn set_pane_borderless(&mut self, pane_id: PaneId, borderless: bool) {
+        for (_tab_id, tab) in self.tabs.iter_mut() {
+            if tab.has_pane_with_pid(&pane_id) {
+                tab.set_pane_borderless(&pane_id, borderless).non_fatal();
+                break;
             }
         }
     }
@@ -5616,7 +5638,10 @@ pub(crate) fn screen_thread_main(
                     );
                 }
                 if should_be_tiled {
-                    new_pane_placement = NewPanePlacement::Tiled(None);
+                    new_pane_placement = NewPanePlacement::Tiled {
+                        direction: None,
+                        borderless: None,
+                    };
                 }
                 if should_be_in_place {
                     new_pane_placement = NewPanePlacement::with_pane_id_to_replace(
@@ -6489,6 +6514,14 @@ pub(crate) fn screen_thread_main(
                                 // waiting for it
             ) => {
                 screen.change_floating_panes_coordinates(pane_ids_and_coordinates);
+                let _ = screen.render(None);
+            },
+            ScreenInstruction::TogglePaneBorderless(pane_id, _completion_tx) => {
+                screen.toggle_pane_borderless(pane_id);
+                let _ = screen.render(None);
+            },
+            ScreenInstruction::SetPaneBorderless(pane_id, borderless, _completion_tx) => {
+                screen.set_pane_borderless(pane_id, borderless);
                 let _ = screen.render(None);
             },
             ScreenInstruction::GroupAndUngroupPanes(

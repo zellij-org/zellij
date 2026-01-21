@@ -4,7 +4,7 @@ use crate::global_async_runtime::get_tokio_runtime;
 use crate::plugins::plugin_map::PluginEnv;
 use crate::plugins::wasm_bridge::handle_plugin_crash;
 use crate::pty::{ClientTabIndexOrPaneId, PtyInstruction};
-use crate::route::route_action;
+use crate::route::{route_action, wait_for_action_completion, NotificationEnd};
 use crate::ServerInstruction;
 use interprocess::local_socket::LocalSocketStream;
 use log::warn;
@@ -18,6 +18,7 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
+use tokio::sync::oneshot;
 use wasmi::{Caller, Linker};
 use zellij_utils::data::{
     CommandType, ConnectToSession, DeleteLayoutResponse, EditLayoutResponse, Event,
@@ -509,6 +510,12 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                                 .map(|(p_id, coordinates)| (p_id.into(), coordinates))
                                 .collect(),
                         )
+                    },
+                    PluginCommand::TogglePaneBorderless(pane_id) => {
+                        toggle_pane_borderless(env, pane_id.into())
+                    },
+                    PluginCommand::SetPaneBorderless(pane_id, borderless) => {
+                        set_pane_borderless(env, pane_id.into(), borderless)
                     },
                     PluginCommand::OpenFileNearPlugin(file_to_open, context) => {
                         open_file_near_plugin(env, file_to_open, context)
@@ -1229,6 +1236,7 @@ fn open_terminal(env: &PluginEnv, cwd: PathBuf) {
         command: run_command_action,
         pane_name: None,
         near_current_pane: false,
+        borderless: None,
     };
     apply_action!(action, error_msg, env);
 }
@@ -1247,7 +1255,10 @@ fn open_terminal_near_plugin(env: &PluginEnv, cwd: PathBuf) {
     let _ = env.senders.send_to_pty(PtyInstruction::SpawnTerminal(
         Some(default_shell),
         name,
-        NewPanePlacement::Tiled(None),
+        NewPanePlacement::Tiled {
+            direction: None,
+            borderless: None,
+        },
         false,
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
         None,  // no completion signal needed for plugin calls
@@ -1433,6 +1444,7 @@ fn open_command_pane(
         command: Some(run_command_action),
         pane_name: name,
         near_current_pane: false,
+        borderless: None,
     };
     apply_action!(action, error_msg, env);
 }
@@ -1468,7 +1480,10 @@ fn open_command_pane_near_plugin(
     let _ = env.senders.send_to_pty(PtyInstruction::SpawnTerminal(
         Some(run_cmd),
         name,
-        NewPanePlacement::Tiled(None),
+        NewPanePlacement::Tiled {
+            direction: None,
+            borderless: None,
+        },
         false,
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
         None,  // no completion signal needed for plugin calls
@@ -2059,6 +2074,9 @@ fn switch_session(
             return Err(anyhow!("Failed to deserialize layout: {}", e));
         }
     }
+
+    let (completion_tx, completion_rx) = oneshot::channel();
+
     if session_name
         .as_ref()
         .map(|s| s.contains('/'))
@@ -2079,9 +2097,11 @@ fn switch_session(
             .send_to_server(ServerInstruction::SwitchSession(
                 connect_to_session,
                 client_id,
-                None,
+                Some(NotificationEnd::new(completion_tx)),
             ))
             .with_context(err_context)?;
+        let wait_forever = false;
+        let _ = wait_for_action_completion(completion_rx, "switch_session", wait_forever);
     }
     Ok(())
 }
@@ -2576,6 +2596,20 @@ fn change_floating_panes_coordinates(
         .send_to_screen(ScreenInstruction::ChangeFloatingPanesCoordinates(
             pane_ids_and_coordinates,
             None,
+        ));
+}
+
+fn toggle_pane_borderless(env: &PluginEnv, pane_id: PaneId) {
+    let _ = env
+        .senders
+        .send_to_screen(ScreenInstruction::TogglePaneBorderless(pane_id, None));
+}
+
+fn set_pane_borderless(env: &PluginEnv, pane_id: PaneId, borderless: bool) {
+    let _ = env
+        .senders
+        .send_to_screen(ScreenInstruction::SetPaneBorderless(
+            pane_id, borderless, None,
         ));
 }
 
@@ -3770,6 +3804,8 @@ fn check_command_permission(
         | PluginCommand::SetFloatingPanePinned(..)
         | PluginCommand::StackPanes(..)
         | PluginCommand::ChangeFloatingPanesCoordinates(..)
+        | PluginCommand::TogglePaneBorderless(..)
+        | PluginCommand::SetPaneBorderless(..)
         | PluginCommand::GroupAndUngroupPanes(..)
         | PluginCommand::HighlightAndUnhighlightPanes(..)
         | PluginCommand::CloseMultiplePanes(..)
