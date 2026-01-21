@@ -389,11 +389,6 @@ pub(crate) fn background_jobs_main(
                 });
             },
             BackgroundJob::QueryZellijWebServerStatus => {
-//                 if !cfg!(feature = "web_server_capability") {
-//                     // no web server capability, no need to query
-//                     continue;
-//                 }
-
                 #[cfg(feature = "web_server_capability")]
                 task::spawn({
                     let senders = bus.senders.clone();
