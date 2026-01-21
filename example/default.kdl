@@ -233,7 +233,9 @@ plugins {
     }
     status-bar location="zellij:status-bar"
     strider location="zellij:strider"
-    compact-bar location="zellij:compact-bar"
+    compact-bar location="zellij:compact-bar" {
+        // show_tab_indices false
+    }
     session-manager location="zellij:session-manager"
     welcome-screen location="zellij:session-manager" {
         welcome_screen true
