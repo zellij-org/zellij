@@ -2573,6 +2573,7 @@ impl Screen {
                 new_active_tab.add_tiled_pane(
                     plugin_pane_to_move_to_active_tab,
                     pane_id,
+                    false,
                     Some(client_id),
                 )?;
             }
@@ -2700,7 +2701,8 @@ impl Screen {
                     already_running_layout.already_running = true;
                 }
             } else {
-                tab.add_tiled_pane(active_pane, active_pane_id, Some(client_id))?;
+                let without_relayout = true;
+                tab.add_tiled_pane(active_pane, active_pane_id, without_relayout, Some(client_id))?;
                 tiled_panes_layout.ignore_run_instruction(active_pane_run_instruction.clone());
             }
             let should_change_focus_to_new_tab = true;
@@ -2779,7 +2781,8 @@ impl Screen {
             let pane_id = pane.pid();
             // here we pass None instead of the ClientId, because we do not want this pane to be
             // necessarily focused
-            tab.add_tiled_pane(pane, pane_id, None)?;
+            let without_relayout = true;
+            tab.add_tiled_pane(pane, pane_id, without_relayout, None)?;
             tiled_panes_layout.ignore_run_instruction(run_instruction.clone());
         }
         let is_web_client = self
@@ -2836,7 +2839,7 @@ impl Screen {
                 new_active_tab.add_floating_pane(active_pane, active_pane_id, None, true)?;
             } else {
                 new_active_tab.hide_floating_panes();
-                new_active_tab.add_tiled_pane(active_pane, active_pane_id, Some(client_id))?;
+                new_active_tab.add_tiled_pane(active_pane, active_pane_id, false, Some(client_id))?;
             }
 
             self.log_and_report_session_state()?;
@@ -2918,7 +2921,7 @@ impl Screen {
                 } else {
                     // here we pass None instead of the ClientId, because we do not want this pane to be
                     // necessarily focused
-                    new_active_tab.add_tiled_pane(pane, pane_id, None)?;
+                    new_active_tab.add_tiled_pane(pane, pane_id, false, None)?;
                 }
             }
         } else {
