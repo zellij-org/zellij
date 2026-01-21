@@ -2678,7 +2678,6 @@ impl Screen {
             let active_pane_id = active_tab
                 .get_active_pane_id(client_id)
                 .with_context(err_context)?;
-            let pane_to_break_is_floating = active_tab.are_floating_panes_visible();
             let active_pane = active_tab
                 .extract_pane(active_pane_id, false)
                 .with_context(err_context)?;
@@ -2690,21 +2689,10 @@ impl Screen {
             );
             self.new_tab(tab_index, swap_layouts, None, Some(client_id))?;
             let tab = self.tabs.get_mut(&tab_index).with_context(err_context)?;
-            let (mut tiled_panes_layout, mut floating_panes_layout) = default_layout.new_tab();
-            if pane_to_break_is_floating {
-                tab.show_floating_panes();
-                tab.add_floating_pane(active_pane, active_pane_id, None, true)?;
-                if let Some(already_running_layout) = floating_panes_layout
-                    .iter_mut()
-                    .find(|i| i.run == active_pane_run_instruction)
-                {
-                    already_running_layout.already_running = true;
-                }
-            } else {
-                let without_relayout = true;
-                tab.add_tiled_pane(active_pane, active_pane_id, without_relayout, Some(client_id))?;
-                tiled_panes_layout.ignore_run_instruction(active_pane_run_instruction.clone());
-            }
+            let (mut tiled_panes_layout, floating_panes_layout) = default_layout.new_tab();
+            let without_relayout = true;
+            tab.add_tiled_pane(active_pane, active_pane_id, without_relayout, Some(client_id))?;
+            tiled_panes_layout.ignore_run_instruction(active_pane_run_instruction.clone());
             let should_change_focus_to_new_tab = true;
             let is_web_client = self
                 .connected_clients
