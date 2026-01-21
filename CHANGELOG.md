@@ -30,6 +30,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat: allow opening panes as `borderless` or toggling/changing the borderless status of existing panes (https://github.com/zellij-org/zellij/pull/4615 and https://github.com/zellij-org/zellij/pull/4618)
 * fix: query webserver through ipc rather than https (https://github.com/zellij-org/zellij/pull/4620)
 * feat: add web client `base_url` option (https://github.com/zellij-org/zellij/pull/4409)
+* fix: breaking floating panes to a new tab no longer keeps them floating (https://github.com/zellij-org/zellij/pull/4622)
 
 
 ## [0.43.1] - 2025-08-08
