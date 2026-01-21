@@ -2691,7 +2691,12 @@ impl Screen {
             let tab = self.tabs.get_mut(&tab_index).with_context(err_context)?;
             let (mut tiled_panes_layout, floating_panes_layout) = default_layout.new_tab();
             let without_relayout = true;
-            tab.add_tiled_pane(active_pane, active_pane_id, without_relayout, Some(client_id))?;
+            tab.add_tiled_pane(
+                active_pane,
+                active_pane_id,
+                without_relayout,
+                Some(client_id),
+            )?;
             tiled_panes_layout.ignore_run_instruction(active_pane_run_instruction.clone());
             let should_change_focus_to_new_tab = true;
             let is_web_client = self
@@ -2827,7 +2832,12 @@ impl Screen {
                 new_active_tab.add_floating_pane(active_pane, active_pane_id, None, true)?;
             } else {
                 new_active_tab.hide_floating_panes();
-                new_active_tab.add_tiled_pane(active_pane, active_pane_id, false, Some(client_id))?;
+                new_active_tab.add_tiled_pane(
+                    active_pane,
+                    active_pane_id,
+                    false,
+                    Some(client_id),
+                )?;
             }
 
             self.log_and_report_session_state()?;

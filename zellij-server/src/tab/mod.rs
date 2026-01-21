@@ -5472,7 +5472,8 @@ impl Tab {
         if self.tiled_panes.fullscreen_is_active() {
             self.tiled_panes.unset_fullscreen();
         }
-        let should_auto_layout = self.auto_layout && !self.swap_layouts.is_tiled_damaged() && !without_relayout;
+        let should_auto_layout =
+            self.auto_layout && !self.swap_layouts.is_tiled_damaged() && !without_relayout;
         if self.tiled_panes.has_room_for_new_pane() {
             pane.set_active_at(Instant::now());
             if should_auto_layout {
