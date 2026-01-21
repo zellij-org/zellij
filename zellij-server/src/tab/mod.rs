@@ -1265,6 +1265,7 @@ impl Tab {
                     self.add_tiled_pane(
                         floating_pane_to_embed,
                         focused_floating_pane_id,
+                        false,
                         Some(client_id),
                     )?;
                 }
@@ -1303,7 +1304,7 @@ impl Tab {
                         format!("failed to find floating pane (ID: {pane_id:?}) to embed",)
                     })
                     .with_context(err_context)?;
-                self.add_tiled_pane(floating_pane_to_embed, pane_id, client_id)?;
+                self.add_tiled_pane(floating_pane_to_embed, pane_id, false, client_id)?;
             }
         } else if self.tiled_panes.panes_contain(&pane_id) {
             if self.get_selectable_tiled_panes().count() <= 1 {
@@ -1578,13 +1579,13 @@ impl Tab {
             if self.floating_panes.panes_are_visible() {
                 self.add_floating_pane(new_pane, pid, None, true)
             } else {
-                self.add_tiled_pane(new_pane, pid, client_id)
+                self.add_tiled_pane(new_pane, pid, false, client_id)
             }
         } else {
             if self.floating_panes.panes_are_visible() {
                 self.add_floating_pane(new_pane, pid, None, false)
             } else {
-                self.add_tiled_pane(new_pane, pid, client_id)
+                self.add_tiled_pane(new_pane, pid, false, client_id)
             }
         }
     }
@@ -1687,7 +1688,7 @@ impl Tab {
                 .insert(pid, (is_scrollback_editor, new_pane));
             Ok(())
         } else {
-            self.add_tiled_pane(new_pane, pid, client_id)
+            self.add_tiled_pane(new_pane, pid, false, client_id)
         }
     }
     pub fn new_floating_pane(
@@ -5275,7 +5276,7 @@ impl Tab {
                             Ok(())
                         } else {
                             self.hide_floating_panes();
-                            self.add_tiled_pane(pane, pane_id, Some(client_id))
+                            self.add_tiled_pane(pane, pane_id, false, Some(client_id))
                         }
                     },
                     None => Ok(()),
@@ -5317,7 +5318,7 @@ impl Tab {
                     self.add_floating_pane(pane, pane_id, None, true)
                         .non_fatal();
                 } else {
-                    self.add_tiled_pane(pane, pane_id, None).non_fatal();
+                    self.add_tiled_pane(pane, pane_id, false, None).non_fatal();
                 }
             },
             None => {
@@ -5338,7 +5339,7 @@ impl Tab {
                     self.add_floating_pane(pane, pane_id, None, true)
                         .non_fatal();
                 } else {
-                    self.add_tiled_pane(pane, pane_id, None).non_fatal();
+                    self.add_tiled_pane(pane, pane_id, false, None).non_fatal();
                 }
             },
             None => {
@@ -5465,12 +5466,14 @@ impl Tab {
         &mut self,
         mut pane: Box<dyn Pane>,
         pane_id: PaneId,
+        without_relayout: bool,
         client_id: Option<ClientId>,
     ) -> Result<()> {
         if self.tiled_panes.fullscreen_is_active() {
             self.tiled_panes.unset_fullscreen();
         }
-        let should_auto_layout = self.auto_layout && !self.swap_layouts.is_tiled_damaged();
+        let should_auto_layout =
+            self.auto_layout && !self.swap_layouts.is_tiled_damaged() && !without_relayout;
         if self.tiled_panes.has_room_for_new_pane() {
             pane.set_active_at(Instant::now());
             if should_auto_layout {

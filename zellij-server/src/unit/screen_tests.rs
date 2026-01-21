@@ -4074,10 +4074,8 @@ pub fn screen_can_break_floating_pane_to_a_new_tab() {
     let _ = mock_screen.to_screen.send(ScreenInstruction::ApplyLayout(
         TiledPaneLayout::default(),
         floating_panes_layout,
-        vec![(1, None)], // tiled pane ids - send these because one needs to be created under the
-        // ejected floating pane, lest the tab be closed as having no tiled panes
-        // (this happens in prod in the pty thread)
-        vec![], // floating panes ids
+        vec![], // tiled pane ids
+        vec![], // floating pane ids
         Default::default(),
         1,
         true,
@@ -4228,10 +4226,8 @@ pub fn screen_can_break_floating_plugin_pane_to_a_new_tab() {
     let _ = mock_screen.to_screen.send(ScreenInstruction::ApplyLayout(
         TiledPaneLayout::default(),
         floating_panes_layout,
-        vec![(1, None)], // tiled pane ids - send these because one needs to be created under the
-        // ejected floating pane, lest the tab be closed as having no tiled panes
-        // (this happens in prod in the pty thread)
-        vec![], // floating panes ids
+        vec![], // tiled pane ids
+        vec![], // floating pane ids
         Default::default(),
         1,
         true,
@@ -4290,6 +4286,20 @@ pub fn screen_can_move_pane_to_a_new_tab_right() {
         1,
         None,
     ));
+
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let _ = mock_screen.to_screen.send(ScreenInstruction::ApplyLayout(
+        TiledPaneLayout::default(),
+        Default::default(),
+        vec![], // tiled pane ids
+        vec![], // floating pane ids
+        Default::default(),
+        1,
+        true,
+        (1, false),
+        None,
+        None,
+    ));
     std::thread::sleep(std::time::Duration::from_millis(100));
     let _ = mock_screen
         .to_screen
@@ -4337,6 +4347,18 @@ pub fn screen_can_move_pane_to_a_new_tab_left() {
         Box::new(Layout::default()),
         Default::default(),
         1,
+        None,
+    ));
+    let _ = mock_screen.to_screen.send(ScreenInstruction::ApplyLayout(
+        TiledPaneLayout::default(),
+        Default::default(),
+        vec![], // tiled pane ids
+        vec![], // floating pane ids
+        Default::default(),
+        1,
+        true,
+        (1, false),
+        None,
         None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(100));
