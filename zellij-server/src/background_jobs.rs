@@ -6,6 +6,11 @@ use zellij_utils::consts::{
 use zellij_utils::data::{Event, HttpVerb, SessionInfo, WebServerStatus};
 use zellij_utils::errors::{prelude::*, BackgroundJobContext, ContextType};
 use zellij_utils::input::layout::RunPlugin;
+use zellij_utils::shared::parse_base_url;
+use zellij_utils::web_server_commands::{
+    discover_webserver_sockets, query_webserver_with_response, InstructionForWebServer,
+    WebServerResponse,
+};
 
 use isahc::prelude::*;
 use isahc::AsyncReadResponseExt;
@@ -388,79 +393,20 @@ pub(crate) fn background_jobs_main(
                 }
 
                 task::spawn({
-                    let http_client = http_client.clone();
                     let senders = bus.senders.clone();
                     let web_server_base_url = web_server_base_url.clone();
                     async move {
-                        async fn web_request(
-                            http_client: HttpClient,
-                            web_server_base_url: &str,
-                        ) -> Result<
-                            (u16, Vec<u8>), // status_code, body
-                            isahc::Error,
-                        > {
-                            let request =
-                                Request::get(format!("{}/info/version", web_server_base_url,));
-                            let req = request.body(())?;
-                            let mut res = http_client.send_async(req).await?;
+                        let status = task::spawn_blocking(move || {
+                            query_webserver_via_ipc(&web_server_base_url)
+                        })
+                        .await
+                        .unwrap_or(WebServerStatus::Offline);
 
-                            let status_code = res.status();
-                            let body = res.bytes().await?;
-                            Ok((status_code.as_u16(), body))
-                        }
-                        let Some(http_client) = http_client else {
-                            log::error!("Cannot perform http request, likely due to a misconfigured http client");
-                            return;
-                        };
-
-                        let http_client = http_client.clone();
-                        match web_request(http_client, &web_server_base_url).await {
-                            Ok((status, body)) => {
-                                if status == 200 && &body == VERSION.as_bytes() {
-                                    // online
-                                    let _ =
-                                        senders.send_to_plugin(PluginInstruction::Update(vec![(
-                                            None,
-                                            None,
-                                            Event::WebServerStatus(WebServerStatus::Online(
-                                                web_server_base_url.clone(),
-                                            )),
-                                        )]));
-                                } else if status == 200 {
-                                    let _ =
-                                        senders.send_to_plugin(PluginInstruction::Update(vec![(
-                                            None,
-                                            None,
-                                            Event::WebServerStatus(
-                                                WebServerStatus::DifferentVersion(
-                                                    String::from_utf8_lossy(&body).to_string(),
-                                                ),
-                                            ),
-                                        )]));
-                                } else {
-                                    // offline/error
-                                    let _ =
-                                        senders.send_to_plugin(PluginInstruction::Update(vec![(
-                                            None,
-                                            None,
-                                            Event::WebServerStatus(WebServerStatus::Offline),
-                                        )]));
-                                }
-                            },
-                            Err(e) => {
-                                if e.kind() == isahc::error::ErrorKind::ConnectionFailed {
-                                    let _ =
-                                        senders.send_to_plugin(PluginInstruction::Update(vec![(
-                                            None,
-                                            None,
-                                            Event::WebServerStatus(WebServerStatus::Offline),
-                                        )]));
-                                } else {
-                                    // no-op - otherwise we'll get errors if we were mid-request
-                                    // (eg. when the server was shut down by a user action)
-                                }
-                            },
-                        }
+                        let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
+                            None,
+                            None,
+                            Event::WebServerStatus(status),
+                        )]));
                     }
                 });
             },
@@ -677,4 +623,44 @@ fn find_resurrectable_sessions(
             BTreeMap::new()
         },
     }
+}
+
+fn query_webserver_via_ipc(web_server_base_url: &str) -> Result<WebServerStatus> {
+    let expected_addr = parse_base_url(web_server_base_url)
+        .context("Failed to parse web server base URL")?;
+
+    let sockets = discover_webserver_sockets()
+        .context("Failed to discover web server sockets")?;
+
+    if sockets.is_empty() {
+        return Ok(WebServerStatus::Offline);
+    }
+
+    for socket_path in sockets {
+        let path_str = socket_path.to_str().unwrap_or("");
+
+        match query_webserver_with_response(
+            path_str,
+            InstructionForWebServer::QueryVersion,
+            500,
+        ) {
+            Ok(WebServerResponse::Version(info)) => {
+                let matches_expected =
+                    info.ip == expected_addr.ip && info.port == expected_addr.port;
+
+                if !matches_expected {
+                    continue;
+                }
+
+                if info.version == VERSION {
+                    return Ok(WebServerStatus::Online(web_server_base_url.to_string()));
+                } else {
+                    return Ok(WebServerStatus::DifferentVersion(info.version));
+                }
+            },
+            Err(_) => continue,
+        }
+    }
+
+    Ok(WebServerStatus::Offline)
 }

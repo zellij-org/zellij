@@ -1,10 +1,12 @@
 use axum_server::Handle;
-use tokio::io::AsyncReadExt;
+use std::net::IpAddr;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{UnixListener, UnixStream};
 use zellij_utils::consts::WEBSERVER_SOCKET_PATH;
 use zellij_utils::prost::Message;
-use zellij_utils::web_server_commands::InstructionForWebServer;
+use zellij_utils::web_server_commands::{InstructionForWebServer, VersionInfo, WebServerResponse};
 use zellij_utils::web_server_contract::web_server_contract::InstructionForWebServer as ProtoInstructionForWebServer;
+use zellij_utils::web_server_contract::web_server_contract::WebServerResponse as ProtoWebServerResponse;
 
 pub async fn create_webserver_receiver(
     id: &str,
@@ -43,7 +45,27 @@ pub async fn receive_webserver_instruction(
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
 }
 
-pub async fn listen_to_web_server_instructions(server_handle: Handle, id: &str) {
+pub async fn send_webserver_response(
+    sender: &mut UnixStream,
+    response: WebServerResponse,
+) -> std::io::Result<()> {
+    let proto_response: ProtoWebServerResponse = response.into();
+    let encoded = proto_response.encode_to_vec();
+    let len = encoded.len() as u32;
+
+    sender.write_all(&len.to_le_bytes()).await?;
+    sender.write_all(&encoded).await?;
+    sender.flush().await?;
+
+    Ok(())
+}
+
+pub async fn listen_to_web_server_instructions(
+    server_handle: Handle,
+    id: &str,
+    web_server_ip: IpAddr,
+    web_server_port: u16,
+) {
     loop {
         let receiver = create_webserver_receiver(id).await;
         match receiver {
@@ -54,10 +76,17 @@ pub async fn listen_to_web_server_instructions(server_handle: Handle, id: &str) 
                             server_handle.shutdown();
                             break;
                         },
+                        InstructionForWebServer::QueryVersion => {
+                            let response = WebServerResponse::Version(VersionInfo {
+                                version: zellij_utils::consts::VERSION.to_string(),
+                                ip: web_server_ip.to_string(),
+                                port: web_server_port,
+                            });
+                            let _ = send_webserver_response(&mut receiver, response).await;
+                        },
                     },
                     Err(e) => {
                         log::error!("Failed to process web server instruction: {}", e);
-                        // Continue loop to recreate receiver and try again
                     },
                 }
             },
