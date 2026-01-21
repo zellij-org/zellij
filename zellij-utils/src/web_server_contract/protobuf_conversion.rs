@@ -3,9 +3,9 @@ use crate::web_server_commands::{
     InstructionForWebServer as RustInstructionForWebServer, VersionInfo, WebServerResponse,
 };
 use crate::web_server_contract::web_server_contract::{
-    instruction_for_web_server, web_server_response, InstructionForWebServer as ProtoInstructionForWebServer,
-    QueryVersionMsg, ShutdownWebServerMsg, VersionResponseMsg,
-    WebServerResponse as ProtoWebServerResponse,
+    instruction_for_web_server, web_server_response,
+    InstructionForWebServer as ProtoInstructionForWebServer, QueryVersionMsg, ShutdownWebServerMsg,
+    VersionResponseMsg, WebServerResponse as ProtoWebServerResponse,
 };
 
 // Convert Rust InstructionForWebServer to protobuf

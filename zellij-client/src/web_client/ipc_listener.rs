@@ -69,26 +69,24 @@ pub async fn listen_to_web_server_instructions(
     loop {
         let receiver = create_webserver_receiver(id).await;
         match receiver {
-            Ok(mut receiver) => {
-                match receive_webserver_instruction(&mut receiver).await {
-                    Ok(instruction) => match instruction {
-                        InstructionForWebServer::ShutdownWebServer => {
-                            server_handle.shutdown();
-                            break;
-                        },
-                        InstructionForWebServer::QueryVersion => {
-                            let response = WebServerResponse::Version(VersionInfo {
-                                version: zellij_utils::consts::VERSION.to_string(),
-                                ip: web_server_ip.to_string(),
-                                port: web_server_port,
-                            });
-                            let _ = send_webserver_response(&mut receiver, response).await;
-                        },
+            Ok(mut receiver) => match receive_webserver_instruction(&mut receiver).await {
+                Ok(instruction) => match instruction {
+                    InstructionForWebServer::ShutdownWebServer => {
+                        server_handle.shutdown();
+                        break;
                     },
-                    Err(e) => {
-                        log::error!("Failed to process web server instruction: {}", e);
+                    InstructionForWebServer::QueryVersion => {
+                        let response = WebServerResponse::Version(VersionInfo {
+                            version: zellij_utils::consts::VERSION.to_string(),
+                            ip: web_server_ip.to_string(),
+                            port: web_server_port,
+                        });
+                        let _ = send_webserver_response(&mut receiver, response).await;
                     },
-                }
+                },
+                Err(e) => {
+                    log::error!("Failed to process web server instruction: {}", e);
+                },
             },
             Err(e) => {
                 log::error!("Failed to listen to ipc channel: {}", e);

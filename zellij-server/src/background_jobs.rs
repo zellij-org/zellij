@@ -626,11 +626,10 @@ fn find_resurrectable_sessions(
 }
 
 fn query_webserver_via_ipc(web_server_base_url: &str) -> Result<WebServerStatus> {
-    let expected_addr = parse_base_url(web_server_base_url)
-        .context("Failed to parse web server base URL")?;
+    let expected_addr =
+        parse_base_url(web_server_base_url).context("Failed to parse web server base URL")?;
 
-    let sockets = discover_webserver_sockets()
-        .context("Failed to discover web server sockets")?;
+    let sockets = discover_webserver_sockets().context("Failed to discover web server sockets")?;
 
     if sockets.is_empty() {
         return Ok(WebServerStatus::Offline);
@@ -639,11 +638,7 @@ fn query_webserver_via_ipc(web_server_base_url: &str) -> Result<WebServerStatus>
     for socket_path in sockets {
         let path_str = socket_path.to_str().unwrap_or("");
 
-        match query_webserver_with_response(
-            path_str,
-            InstructionForWebServer::QueryVersion,
-            500,
-        ) {
+        match query_webserver_with_response(path_str, InstructionForWebServer::QueryVersion, 500) {
             Ok(WebServerResponse::Version(info)) => {
                 let matches_expected =
                     info.ip == expected_addr.ip && info.port == expected_addr.port;
