@@ -29,6 +29,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: allow specifying "0%" coordinates when opening panes wit "zellij run --floating" (https://github.com/zellij-org/zellij/pull/4609)
 * feat: allow opening panes as `borderless` or toggling/changing the borderless status of existing panes (https://github.com/zellij-org/zellij/pull/4615 and https://github.com/zellij-org/zellij/pull/4618)
 * fix: query webserver through ipc rather than https (https://github.com/zellij-org/zellij/pull/4620)
+* feat: add web client `base_url` option (https://github.com/zellij-org/zellij/pull/4409)
 
 
 ## [0.43.1] - 2025-08-08
