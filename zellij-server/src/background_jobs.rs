@@ -7,6 +7,8 @@ use zellij_utils::data::{Event, HttpVerb, SessionInfo, WebServerStatus};
 use zellij_utils::errors::{prelude::*, BackgroundJobContext, ContextType};
 use zellij_utils::input::layout::RunPlugin;
 use zellij_utils::shared::parse_base_url;
+
+#[cfg(feature = "web_server_capability")]
 use zellij_utils::web_server_commands::{
     discover_webserver_sockets, query_webserver_with_response, InstructionForWebServer,
     WebServerResponse,
@@ -387,11 +389,12 @@ pub(crate) fn background_jobs_main(
                 });
             },
             BackgroundJob::QueryZellijWebServerStatus => {
-                if !cfg!(feature = "web_server_capability") {
-                    // no web server capability, no need to query
-                    continue;
-                }
+//                 if !cfg!(feature = "web_server_capability") {
+//                     // no web server capability, no need to query
+//                     continue;
+//                 }
 
+                #[cfg(feature = "web_server_capability")]
                 task::spawn({
                     let senders = bus.senders.clone();
                     let web_server_base_url = web_server_base_url.clone();
@@ -625,6 +628,7 @@ fn find_resurrectable_sessions(
     }
 }
 
+#[cfg(feature = "web_server_capability")]
 fn query_webserver_via_ipc(web_server_base_url: &str) -> Result<WebServerStatus> {
     let expected_addr =
         parse_base_url(web_server_base_url).context("Failed to parse web server base URL")?;
