@@ -2768,6 +2768,7 @@ pub struct FloatingPaneCoordinates {
     pub width: Option<PercentOrFixed>,
     pub height: Option<PercentOrFixed>,
     pub pinned: Option<bool>,
+    pub borderless: Option<bool>,
 }
 
 impl FloatingPaneCoordinates {
@@ -2777,6 +2778,7 @@ impl FloatingPaneCoordinates {
         width: Option<String>,
         height: Option<String>,
         pinned: Option<bool>,
+        borderless: Option<bool>,
     ) -> Option<Self> {
         // Parse x/y coordinates - allows 0% or 0
         let x = x.and_then(|x| PercentOrFixed::from_str(&x).ok());
@@ -2802,7 +2804,13 @@ impl FloatingPaneCoordinates {
                 })
         });
 
-        if x.is_none() && y.is_none() && width.is_none() && height.is_none() && pinned.is_none() {
+        if x.is_none()
+            && y.is_none()
+            && width.is_none()
+            && height.is_none()
+            && pinned.is_none()
+            && borderless.is_none()
+        {
             None
         } else {
             Some(FloatingPaneCoordinates {
@@ -2811,6 +2819,7 @@ impl FloatingPaneCoordinates {
                 width,
                 height,
                 pinned,
+                borderless,
             })
         }
     }
@@ -2872,6 +2881,7 @@ impl From<PaneGeom> for FloatingPaneCoordinates {
             width: Some(PercentOrFixed::Fixed(pane_geom.cols.as_usize())),
             height: Some(PercentOrFixed::Fixed(pane_geom.rows.as_usize())),
             pinned: Some(pane_geom.is_pinned),
+            borderless: None,
         }
     }
 }
@@ -2966,19 +2976,28 @@ impl FromStr for WebSharing {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum NewPanePlacement {
-    NoPreference,
-    Tiled(Option<Direction>),
+    NoPreference {
+        borderless: Option<bool>,
+    },
+    Tiled {
+        direction: Option<Direction>,
+        borderless: Option<bool>,
+    },
     Floating(Option<FloatingPaneCoordinates>),
     InPlace {
         pane_id_to_replace: Option<PaneId>,
         close_replaced_pane: bool,
+        borderless: Option<bool>,
     },
-    Stacked(Option<PaneId>),
+    Stacked {
+        pane_id_to_stack_under: Option<PaneId>,
+        borderless: Option<bool>,
+    },
 }
 
 impl Default for NewPanePlacement {
     fn default() -> Self {
-        NewPanePlacement::NoPreference
+        NewPanePlacement::NoPreference { borderless: None }
     }
 }
 
@@ -2997,6 +3016,7 @@ impl NewPanePlacement {
             NewPanePlacement::InPlace {
                 pane_id_to_replace: None,
                 close_replaced_pane,
+                borderless: None,
             }
         } else {
             self
@@ -3009,12 +3029,13 @@ impl NewPanePlacement {
         NewPanePlacement::InPlace {
             pane_id_to_replace,
             close_replaced_pane,
+            borderless: None,
         }
     }
     pub fn should_float(&self) -> Option<bool> {
         match self {
             NewPanePlacement::Floating(_) => Some(true),
-            NewPanePlacement::Tiled(_) => Some(false),
+            NewPanePlacement::Tiled { .. } => Some(false),
             _ => None,
         }
     }
@@ -3028,14 +3049,26 @@ impl NewPanePlacement {
     }
     pub fn should_stack(&self) -> bool {
         match self {
-            NewPanePlacement::Stacked(_) => true,
+            NewPanePlacement::Stacked { .. } => true,
             _ => false,
         }
     }
     pub fn id_of_stack_root(&self) -> Option<PaneId> {
         match self {
-            NewPanePlacement::Stacked(id) => *id,
+            NewPanePlacement::Stacked {
+                pane_id_to_stack_under,
+                ..
+            } => *pane_id_to_stack_under,
             _ => None,
+        }
+    }
+    pub fn get_borderless(&self) -> Option<bool> {
+        match self {
+            NewPanePlacement::NoPreference { borderless } => *borderless,
+            NewPanePlacement::Tiled { borderless, .. } => *borderless,
+            NewPanePlacement::Floating(coords) => coords.as_ref().and_then(|c| c.borderless),
+            NewPanePlacement::InPlace { borderless, .. } => *borderless,
+            NewPanePlacement::Stacked { borderless, .. } => *borderless,
         }
     }
 }
@@ -3204,6 +3237,8 @@ pub enum PluginCommand {
     SetFloatingPanePinned(PaneId, bool), // bool -> should be pinned
     StackPanes(Vec<PaneId>),
     ChangeFloatingPanesCoordinates(Vec<(PaneId, FloatingPaneCoordinates)>),
+    TogglePaneBorderless(PaneId),
+    SetPaneBorderless(PaneId, bool),
     OpenCommandPaneNearPlugin(CommandToRun, Context),
     OpenTerminalNearPlugin(FileToOpen),
     OpenTerminalFloatingNearPlugin(FileToOpen, Option<FloatingPaneCoordinates>),

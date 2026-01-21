@@ -573,7 +573,7 @@ impl TiledPanes {
                 pane.set_content_offset(Offset::default());
             } else {
                 // no draw_pane_frames and this pane should have a separation to other panes
-                // according to its position in the viewport (eg. no separation if its at the
+                // according to its position in the viewport (eg. no separation if it's at the
                 // viewport bottom) - offset its content accordingly
                 let mut position_and_size = pane.current_geom();
                 let is_stacked = position_and_size.is_stacked();
@@ -1194,7 +1194,7 @@ impl TiledPanes {
         &mut self,
         run: Option<Run>,
         geom: PaneGeom,
-        borderless: bool,
+        should_be_borderless: Option<bool>,
     ) {
         match self
             .panes
@@ -1203,8 +1203,15 @@ impl TiledPanes {
         {
             Some((_, pane)) => {
                 pane.set_geom(geom);
-                pane.set_borderless(borderless);
-                if self.draw_pane_frames {
+
+                if let Some(should_be_borderless) = should_be_borderless {
+                    pane.set_borderless(should_be_borderless);
+                    if should_be_borderless {
+                        pane.set_content_offset(Offset::default());
+                    } else {
+                        pane.set_content_offset(Offset::frame(1));
+                    }
+                } else if self.draw_pane_frames {
                     pane.set_content_offset(Offset::frame(1));
                 }
             },

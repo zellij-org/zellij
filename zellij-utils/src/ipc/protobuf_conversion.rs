@@ -730,13 +730,14 @@ impl From<crate::input::actions::Action>
             RenameSessionAction, RenameTabAction, RenameTerminalPaneAction, ResizeAction,
             RunAction, ScrollDownAction, ScrollDownAtAction, ScrollToBottomAction,
             ScrollToTopAction, ScrollUpAction, ScrollUpAtAction, SearchAction, SearchInputAction,
-            SearchToggleOptionAction, SkipConfirmAction, StackPanesAction,
+            SearchToggleOptionAction, SetPaneBorderlessAction, SkipConfirmAction, StackPanesAction,
             StartOrReloadPluginAction, SwitchFocusAction, SwitchModeForAllClientsAction,
             SwitchSessionAction, SwitchToModeAction, TabNameInputAction, ToggleActiveSyncTabAction,
             ToggleFloatingPanesAction, ToggleFocusFullscreenAction, ToggleGroupMarkingAction,
-            ToggleMouseModeAction, TogglePaneEmbedOrFloatingAction, TogglePaneFramesAction,
-            TogglePaneInGroupAction, TogglePanePinnedAction, ToggleTabAction, UndoRenamePaneAction,
-            UndoRenameTabAction, WriteAction, WriteCharsAction,
+            ToggleMouseModeAction, TogglePaneBorderlessAction, TogglePaneEmbedOrFloatingAction,
+            TogglePaneFramesAction, TogglePaneInGroupAction, TogglePanePinnedAction,
+            ToggleTabAction, UndoRenamePaneAction, UndoRenameTabAction, WriteAction,
+            WriteCharsAction,
         };
         use std::collections::HashMap;
 
@@ -897,11 +898,13 @@ impl From<crate::input::actions::Action>
                 command,
                 pane_name,
                 near_current_pane,
+                borderless,
             } => ActionType::NewTiledPane(NewTiledPaneAction {
                 direction: direction.map(|d| direction_to_proto_i32(d)),
                 command: command.map(|c| c.into()),
                 pane_name,
                 near_current_pane,
+                borderless,
             }),
             crate::input::actions::Action::NewInPlacePane {
                 command,
@@ -1282,6 +1285,18 @@ impl From<crate::input::actions::Action>
                 pane_id: Some(pane_id.into()),
                 coordinates: Some(coordinates.into()),
             }),
+            crate::input::actions::Action::TogglePaneBorderless { pane_id } => {
+                ActionType::TogglePaneBorderless(TogglePaneBorderlessAction {
+                    pane_id: Some(pane_id.into()),
+                })
+            },
+            crate::input::actions::Action::SetPaneBorderless {
+                pane_id,
+                borderless,
+            } => ActionType::SetPaneBorderless(SetPaneBorderlessAction {
+                pane_id: Some(pane_id.into()),
+                borderless,
+            }),
             crate::input::actions::Action::TogglePaneInGroup => {
                 ActionType::TogglePaneInGroup(TogglePaneInGroupAction {})
             },
@@ -1458,6 +1473,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                     command: new_tiled_action.command.map(|c| c.try_into()).transpose()?,
                     pane_name: new_tiled_action.pane_name,
                     near_current_pane: new_tiled_action.near_current_pane,
+                    borderless: new_tiled_action.borderless,
                 })
             },
             ActionType::NewInPlacePane(new_in_place_action) => {
@@ -1878,6 +1894,23 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                         .try_into()?,
                 },
             ),
+            ActionType::TogglePaneBorderless(toggle_borderless_action) => {
+                Ok(crate::input::actions::Action::TogglePaneBorderless {
+                    pane_id: toggle_borderless_action
+                        .pane_id
+                        .ok_or_else(|| anyhow!("TogglePaneBorderless missing pane_id"))?
+                        .try_into()?,
+                })
+            },
+            ActionType::SetPaneBorderless(set_borderless_action) => {
+                Ok(crate::input::actions::Action::SetPaneBorderless {
+                    pane_id: set_borderless_action
+                        .pane_id
+                        .ok_or_else(|| anyhow!("SetPaneBorderless missing pane_id"))?
+                        .try_into()?,
+                    borderless: set_borderless_action.borderless,
+                })
+            },
             ActionType::TogglePaneInGroup(_) => {
                 Ok(crate::input::actions::Action::TogglePaneInGroup)
             },
@@ -2496,6 +2529,7 @@ impl From<crate::data::FloatingPaneCoordinates>
             width: coords.width.map(|w| w.into()),
             height: coords.height.map(|h| h.into()),
             pinned: coords.pinned,
+            borderless: coords.borderless,
         }
     }
 }
@@ -2514,6 +2548,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::FloatingPane
             width: coords.width.map(|w| w.try_into()).transpose()?,
             height: coords.height.map(|h| h.try_into()).transpose()?,
             pinned: coords.pinned,
+            borderless: coords.borderless,
         })
     }
 }
@@ -2524,26 +2559,58 @@ impl From<crate::data::NewPanePlacement>
 {
     fn from(placement: crate::data::NewPanePlacement) -> Self {
         use crate::client_server_contract::client_server_contract::new_pane_placement::PlacementType;
+        use crate::client_server_contract::client_server_contract::{
+            NoPreferencePlacement, StackedPlacement, TiledPlacement,
+        };
         let placement_type = match placement {
-            crate::data::NewPanePlacement::NoPreference => PlacementType::NoPreference(true),
-            crate::data::NewPanePlacement::Tiled(direction) => {
-                PlacementType::Tiled(direction.map(direction_to_proto_i32).unwrap_or(0))
+            crate::data::NewPanePlacement::NoPreference {
+                borderless: Some(b),
+            } => PlacementType::NoPreferenceWithOptions(NoPreferencePlacement {
+                borderless: Some(b),
+            }),
+            crate::data::NewPanePlacement::NoPreference { borderless: None } => {
+                PlacementType::NoPreference(true)
             },
+            crate::data::NewPanePlacement::Tiled {
+                direction,
+                borderless: Some(b),
+            } => PlacementType::TiledWithOptions(TiledPlacement {
+                direction: direction.map(direction_to_proto_i32),
+                borderless: Some(b),
+            }),
+            crate::data::NewPanePlacement::Tiled {
+                direction,
+                borderless: None,
+            } => PlacementType::Tiled(direction.map(direction_to_proto_i32).unwrap_or(0)),
             crate::data::NewPanePlacement::Floating(coords) => {
                 PlacementType::Floating(coords.map(|c| c.into()).unwrap_or_default())
             },
             crate::data::NewPanePlacement::InPlace {
                 pane_id_to_replace,
                 close_replaced_pane,
+                borderless,
             } => PlacementType::InPlace(
                 crate::client_server_contract::client_server_contract::NewPanePlacementInPlace {
                     pane_id_to_replace: pane_id_to_replace.map(|id| id.into()),
                     close_replaced_pane,
+                    borderless,
                 },
             ),
-            crate::data::NewPanePlacement::Stacked(pane_id) => {
-                PlacementType::Stacked(pane_id.map(|id| id.into()).unwrap_or_default())
-            },
+            crate::data::NewPanePlacement::Stacked {
+                pane_id_to_stack_under,
+                borderless: Some(b),
+            } => PlacementType::StackedWithOptions(StackedPlacement {
+                pane_id_to_stack_under: pane_id_to_stack_under.map(|id| id.into()),
+                borderless: Some(b),
+            }),
+            crate::data::NewPanePlacement::Stacked {
+                pane_id_to_stack_under,
+                borderless: None,
+            } => PlacementType::Stacked(
+                pane_id_to_stack_under
+                    .map(|id| id.into())
+                    .unwrap_or_default(),
+            ),
         };
         Self {
             placement_type: Some(placement_type),
@@ -2564,14 +2631,43 @@ impl TryFrom<crate::client_server_contract::client_server_contract::NewPanePlace
             .placement_type
             .ok_or_else(|| anyhow!("NewPanePlacement missing placement_type"))?
         {
-            PlacementType::NoPreference(_) => Ok(crate::data::NewPanePlacement::NoPreference),
+            // New fields (with borderless support) take priority
+            PlacementType::NoPreferenceWithOptions(opts) => {
+                Ok(crate::data::NewPanePlacement::NoPreference {
+                    borderless: opts.borderless,
+                })
+            },
+            PlacementType::TiledWithOptions(opts) => {
+                let direction = opts.direction.map(proto_i32_to_direction).transpose()?;
+                Ok(crate::data::NewPanePlacement::Tiled {
+                    direction,
+                    borderless: opts.borderless,
+                })
+            },
+            PlacementType::StackedWithOptions(opts) => {
+                let pane_id = opts
+                    .pane_id_to_stack_under
+                    .map(|id| id.try_into())
+                    .transpose()?;
+                Ok(crate::data::NewPanePlacement::Stacked {
+                    pane_id_to_stack_under: pane_id,
+                    borderless: opts.borderless,
+                })
+            },
+            // Legacy fields (without borderless support)
+            PlacementType::NoPreference(_) => {
+                Ok(crate::data::NewPanePlacement::NoPreference { borderless: None })
+            },
             PlacementType::Tiled(direction) => {
                 let direction = if direction == 0 {
                     None
                 } else {
                     Some(proto_i32_to_direction(direction)?)
                 };
-                Ok(crate::data::NewPanePlacement::Tiled(direction))
+                Ok(crate::data::NewPanePlacement::Tiled {
+                    direction,
+                    borderless: None,
+                })
             },
             PlacementType::Floating(coords) => {
                 let coords = if coords == Default::default() {
@@ -2587,6 +2683,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::NewPanePlace
                     .map(|id| id.try_into())
                     .transpose()?,
                 close_replaced_pane: in_place.close_replaced_pane,
+                borderless: in_place.borderless,
             }),
             PlacementType::Stacked(pane_id) => {
                 let pane_id = if pane_id == Default::default() {
@@ -2594,7 +2691,10 @@ impl TryFrom<crate::client_server_contract::client_server_contract::NewPanePlace
                 } else {
                     Some(pane_id.try_into()?)
                 };
-                Ok(crate::data::NewPanePlacement::Stacked(pane_id))
+                Ok(crate::data::NewPanePlacement::Stacked {
+                    pane_id_to_stack_under: pane_id,
+                    borderless: None,
+                })
             },
         }
     }
@@ -2888,6 +2988,7 @@ impl From<crate::input::layout::FloatingPaneLayout>
             already_running: layout.already_running,
             pane_initial_contents: layout.pane_initial_contents,
             logical_position: layout.logical_position.map(|l| l as u32),
+            borderless: layout.borderless,
         }
     }
 }
@@ -3316,6 +3417,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::FloatingPane
             logical_position: layout.logical_position.map(|p| p as usize),
             pane_id: None,
             is_plugin: None,
+            borderless: layout.borderless,
         })
     }
 }

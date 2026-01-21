@@ -23,8 +23,8 @@ use zellij_utils::data::WebSharing;
 use zellij_utils::envs::set_session_name;
 use zellij_utils::errors::{prelude::*, ErrorContext};
 use zellij_utils::input::layout::{
-    FloatingPaneLayout, Layout, PluginUserConfiguration, RunPluginLocation, RunPluginOrAlias,
-    SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
+    FloatingPaneLayout, Layout, PercentOrFixed, PluginUserConfiguration, RunPluginLocation,
+    RunPluginOrAlias, SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
 };
 use zellij_utils::input::mouse::MouseEvent;
 use zellij_utils::input::plugins::PluginTag;
@@ -42,7 +42,7 @@ use std::rc::Rc;
 
 use interprocess::local_socket::LocalSocketStream;
 use zellij_utils::{
-    data::{InputMode, ModeInfo, NewPanePlacement, Palette, Style},
+    data::{FloatingPaneCoordinates, InputMode, ModeInfo, NewPanePlacement, Palette, Style},
     input::command::{RunCommand, TerminalAction},
     ipc::{ClientToServerMsg, ServerToClientMsg},
 };
@@ -1034,10 +1034,10 @@ fn increase_tiled_pane_sizes_with_stacked_resizes_into_uneven_panes() {
         .unwrap();
     }
     tab.move_focus_up(client_id).unwrap();
-    tab.vertical_split(PaneId::Terminal(4), None, client_id, None)
+    tab.vertical_split(PaneId::Terminal(4), None, client_id, None, None)
         .unwrap();
     tab.move_focus_right(client_id).unwrap();
-    tab.horizontal_split(PaneId::Terminal(5), None, client_id, None)
+    tab.horizontal_split(PaneId::Terminal(5), None, client_id, None, None)
         .unwrap();
     tab.move_focus_down(client_id).unwrap();
 
@@ -1053,7 +1053,6 @@ fn increase_tiled_pane_sizes_with_stacked_resizes_into_uneven_panes() {
             size.cols,
             Palette::default(),
         );
-        eprintln!("increase: \n{}", snapshot);
         assert_snapshot!(snapshot);
     }
 
@@ -1068,7 +1067,6 @@ fn increase_tiled_pane_sizes_with_stacked_resizes_into_uneven_panes() {
             size.cols,
             Palette::default(),
         );
-        eprintln!("decrease: \n{}", snapshot);
         assert_snapshot!(snapshot);
     }
 }
@@ -1101,7 +1099,7 @@ fn split_stack_vertically() {
         .unwrap();
     tab.resize(client_id, ResizeStrategy::new(Resize::Increase, None))
         .unwrap();
-    tab.vertical_split(PaneId::Terminal(4), None, client_id, None)
+    tab.vertical_split(PaneId::Terminal(4), None, client_id, None, None)
         .unwrap();
 
     tab.render(&mut output, None).unwrap();
@@ -1142,7 +1140,7 @@ fn split_stack_horizontally() {
         .unwrap();
     tab.resize(client_id, ResizeStrategy::new(Resize::Increase, None))
         .unwrap();
-    tab.horizontal_split(PaneId::Terminal(4), None, client_id, None)
+    tab.horizontal_split(PaneId::Terminal(4), None, client_id, None, None)
         .unwrap();
 
     tab.render(&mut output, None).unwrap();
@@ -1185,7 +1183,7 @@ fn render_stacks_without_pane_frames() {
         .unwrap();
     tab.resize(client_id, ResizeStrategy::new(Resize::Increase, None))
         .unwrap();
-    tab.vertical_split(PaneId::Terminal(4), None, client_id, None)
+    tab.vertical_split(PaneId::Terminal(4), None, client_id, None, None)
         .unwrap();
     for i in 5..7 {
         let new_pane_id_1 = PaneId::Terminal(i);
@@ -1378,7 +1376,10 @@ fn new_stacked_pane() {
         None,
         false,
         true,
-        NewPanePlacement::Stacked(None),
+        NewPanePlacement::Stacked {
+            pane_id_to_stack_under: None,
+            borderless: None,
+        },
         Some(client_id),
         None,
     )
@@ -5452,7 +5453,7 @@ fn move_focus_right_into_stacked_panes() {
         .unwrap();
     }
     tab.move_focus_left(client_id);
-    tab.horizontal_split(PaneId::Terminal(16), None, client_id, None)
+    tab.horizontal_split(PaneId::Terminal(16), None, client_id, None, None)
         .unwrap();
 
     tab.move_focus_up(client_id);
@@ -5524,7 +5525,7 @@ fn move_focus_left_into_stacked_panes() {
         .unwrap();
     }
     tab.move_focus_right(client_id);
-    tab.horizontal_split(PaneId::Terminal(1), None, client_id, None)
+    tab.horizontal_split(PaneId::Terminal(1), None, client_id, None, None)
         .unwrap();
 
     tab.move_focus_up(client_id);
@@ -5601,7 +5602,7 @@ fn move_focus_up_into_stacked_panes() {
     tab.move_focus_up(client_id);
     tab.move_focus_left(client_id);
     tab.move_focus_down(client_id);
-    tab.vertical_split(PaneId::Terminal(7), None, client_id, None)
+    tab.vertical_split(PaneId::Terminal(7), None, client_id, None, None)
         .unwrap();
 
     tab.move_focus_up(client_id);
@@ -5674,7 +5675,7 @@ fn move_focus_down_into_stacked_panes() {
     }
     tab.move_focus_left(client_id);
     tab.move_focus_up(client_id);
-    tab.vertical_split(PaneId::Terminal(7), None, client_id, None)
+    tab.vertical_split(PaneId::Terminal(7), None, client_id, None, None)
         .unwrap();
 
     tab.move_focus_down(client_id);
@@ -8252,11 +8253,15 @@ fn swap_layouts_not_including_plugin_panes_present_in_existing_layout() {
         layout {
             swap_tiled_layout {
                 tab {
-                    pane size=2
+                    pane size=2 borderless=true {
+                        plugin location="zellij:status-bar"
+                    }
                     pane
                     pane
                     pane
-                    pane size=1
+                    pane size=1 borderless=true {
+                        plugin location="zellij:tab-bar"
+                    }
                 }
             }
         }
@@ -8476,7 +8481,6 @@ fn new_pane_in_stacked_resizes() {
             size.cols,
             Palette::default(),
         );
-        eprintln!("{}", snapshot);
         let (expected_x, expected_y) = expected_cursor_coordinates.remove(0);
         assert_eq!(
             cursor_coordinates,
@@ -9870,6 +9874,153 @@ fn can_define_expanded_pane_in_stack() {
     let client_id = 1;
     let mut tab = create_new_tab_with_layout(size, ModeInfo::default(), layout);
     let mut output = Output::default();
+    tab.render(&mut output, None).unwrap();
+    let snapshot = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!(snapshot);
+}
+
+#[test]
+fn borderless_floating_pane() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let new_pane_id = PaneId::Terminal(2);
+    let mut output = Output::default();
+
+    // Create borderless floating pane
+    let coordinates = FloatingPaneCoordinates {
+        x: Some(PercentOrFixed::Fixed(10)),
+        y: Some(PercentOrFixed::Fixed(5)),
+        width: Some(PercentOrFixed::Fixed(50)),
+        height: Some(PercentOrFixed::Fixed(10)),
+        pinned: None,
+        borderless: Some(true),
+    };
+
+    tab.new_floating_pane(
+        new_pane_id,
+        None,
+        None,
+        false,
+        true,
+        Some(coordinates),
+        None,
+    )
+    .unwrap();
+
+    tab.handle_pty_bytes(
+        2,
+        Vec::from("\n\n\n                   I am borderless".as_bytes()),
+    )
+    .unwrap();
+
+    tab.render(&mut output, None).unwrap();
+    let snapshot = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!(snapshot);
+}
+
+#[test]
+fn borderless_pane_content_fills_edges() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let new_pane_id = PaneId::Terminal(2);
+    let mut output = Output::default();
+
+    let coordinates = FloatingPaneCoordinates {
+        x: Some(PercentOrFixed::Fixed(10)),
+        y: Some(PercentOrFixed::Fixed(5)),
+        width: Some(PercentOrFixed::Fixed(30)),
+        height: Some(PercentOrFixed::Fixed(5)),
+        pinned: None,
+        borderless: Some(true),
+    };
+
+    tab.new_floating_pane(
+        new_pane_id,
+        None,
+        None,
+        false,
+        true,
+        Some(coordinates),
+        None,
+    )
+    .unwrap();
+
+    // Fill with X's to verify content reaches edges
+    tab.handle_pty_bytes(
+        2,
+        Vec::from("XXXXXXXXXXXXXXXXXXXXXXXXXXXXXX\r\nXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX\r\nXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX\r\nXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX\r\nXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX".as_bytes()),
+    )
+    .unwrap();
+
+    tab.render(&mut output, None).unwrap();
+    let snapshot = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!(snapshot);
+}
+
+#[test]
+fn borderless_pinned_floating_pane() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let borderless_pane_id = PaneId::Terminal(2);
+    let mut output = Output::default();
+
+    let coordinates = FloatingPaneCoordinates {
+        x: Some(PercentOrFixed::Fixed(30)),
+        y: Some(PercentOrFixed::Fixed(5)),
+        width: Some(PercentOrFixed::Fixed(60)),
+        height: Some(PercentOrFixed::Fixed(8)),
+        pinned: Some(true),
+        borderless: Some(true),
+    };
+
+    tab.new_floating_pane(
+        borderless_pane_id,
+        None,
+        None,
+        false,
+        true,
+        Some(coordinates),
+        None,
+    )
+    .unwrap();
+
+    // Toggle floating panes off to test pinned behavior
+    tab.toggle_floating_panes(Some(client_id), None, None)
+        .unwrap();
+
+    tab.handle_pty_bytes(1, Vec::from("Content behind pinned pane".as_bytes()))
+        .unwrap();
+
+    tab.handle_pty_bytes(2, Vec::from("\n\nPinned borderless pane".as_bytes()))
+        .unwrap();
+
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),

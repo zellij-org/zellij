@@ -46,9 +46,10 @@ pub use super::generated_api::api::{
         RunActionPayload, RunCommandPayload, SaveLayoutPayload,
         SaveLayoutResponse as ProtobufSaveLayoutResponse, ScrollDownInPaneIdPayload,
         ScrollToBottomInPaneIdPayload, ScrollToTopInPaneIdPayload, ScrollUpInPaneIdPayload,
-        SetFloatingPanePinnedPayload, SetSelfMouseSelectionSupportPayload, SetTimeoutPayload,
-        ShowCursorPayload, ShowPaneWithIdPayload, StackPanesPayload, SubscribePayload,
-        SwitchSessionPayload, SwitchTabToPayload, TogglePaneEmbedOrEjectForPaneIdPayload,
+        SetFloatingPanePinnedPayload, SetPaneBorderlessPayload,
+        SetSelfMouseSelectionSupportPayload, SetTimeoutPayload, ShowCursorPayload,
+        ShowPaneWithIdPayload, StackPanesPayload, SubscribePayload, SwitchSessionPayload,
+        SwitchTabToPayload, TogglePaneBorderlessPayload, TogglePaneEmbedOrEjectForPaneIdPayload,
         TogglePaneIdFullscreenPayload, UnsubscribePayload, WebRequestPayload,
         WriteCharsToPaneIdPayload, WriteToPaneIdPayload,
     },
@@ -117,6 +118,7 @@ impl Into<FloatingPaneCoordinates> for ProtobufFloatingPaneCoordinates {
                 }
             }),
             pinned: self.pinned,
+            borderless: self.borderless,
         }
     }
 }
@@ -169,6 +171,7 @@ impl Into<ProtobufFloatingPaneCoordinates> for FloatingPaneCoordinates {
                 None => None,
             },
             pinned: self.pinned,
+            borderless: self.borderless,
         }
     }
 }
@@ -1682,6 +1685,29 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                     _ => Err("Mismatched payload for ChangeFloatingPanesCoordinates"),
                 }
             },
+            Some(CommandName::TogglePaneBorderless) => match protobuf_plugin_command.payload {
+                Some(Payload::TogglePaneBorderlessPayload(toggle_payload)) => {
+                    match toggle_payload.pane_id {
+                        Some(pane_id) => {
+                            Ok(PluginCommand::TogglePaneBorderless(pane_id.try_into()?))
+                        },
+                        None => Err("Malformed TogglePaneBorderless payload"),
+                    }
+                },
+                _ => Err("Mismatched payload for TogglePaneBorderless"),
+            },
+            Some(CommandName::SetPaneBorderless) => match protobuf_plugin_command.payload {
+                Some(Payload::SetPaneBorderlessPayload(payload)) => {
+                    match (payload.pane_id, payload.borderless) {
+                        (Some(pane_id), borderless) => Ok(PluginCommand::SetPaneBorderless(
+                            pane_id.try_into()?,
+                            borderless,
+                        )),
+                        _ => Err("Malformed SetPaneBorderless payload"),
+                    }
+                },
+                _ => Err("Mismatched payload for SetPaneBorderless"),
+            },
             Some(CommandName::OpenCommandPaneNearPlugin) => match protobuf_plugin_command.payload {
                 Some(Payload::OpenCommandPaneNearPluginPayload(command_to_run_payload)) => {
                     match command_to_run_payload.command_to_run {
@@ -3064,6 +3090,23 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                                     })
                                 })
                                 .collect(),
+                    },
+                )),
+            }),
+            PluginCommand::TogglePaneBorderless(pane_id) => Ok(ProtobufPluginCommand {
+                name: CommandName::TogglePaneBorderless as i32,
+                payload: Some(Payload::TogglePaneBorderlessPayload(
+                    TogglePaneBorderlessPayload {
+                        pane_id: Some(pane_id.try_into()?),
+                    },
+                )),
+            }),
+            PluginCommand::SetPaneBorderless(pane_id, borderless) => Ok(ProtobufPluginCommand {
+                name: CommandName::SetPaneBorderless as i32,
+                payload: Some(Payload::SetPaneBorderlessPayload(
+                    SetPaneBorderlessPayload {
+                        pane_id: Some(pane_id.try_into()?),
+                        borderless,
                     },
                 )),
             }),

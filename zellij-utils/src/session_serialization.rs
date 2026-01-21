@@ -396,7 +396,7 @@ fn serialize_tiled_layout_attributes(
             None => (),
         };
     }
-    if layout.borderless {
+    if layout.borderless.unwrap_or(false) {
         kdl_node
             .entries_mut()
             .push(KdlEntry::new_prop("borderless", KdlValue::Bool(true)));
@@ -785,7 +785,7 @@ fn tiled_pane_layout_from_manifest(
             }
             (
                 run,
-                g.is_borderless,
+                Some(g.is_borderless),
                 g.geom.is_stacked() && g.geom.rows.inner > 1,
                 g.title.clone(),
                 Some(g.is_focused),
@@ -794,7 +794,7 @@ fn tiled_pane_layout_from_manifest(
                 g.is_plugin,
             )
         })
-        .unwrap_or((None, false, false, None, None, None, None, None));
+        .unwrap_or((None, None, false, None, None, None, None, None));
     TiledPaneLayout {
         split_size,
         run,
@@ -914,6 +914,7 @@ fn get_floating_panes_layout_from_panegeoms(
                 logical_position: None,
                 pane_id: m.pane_id,
                 is_plugin: m.is_plugin,
+                borderless: Some(m.is_borderless),
             }
         })
         .collect()

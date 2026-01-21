@@ -29,7 +29,9 @@ Some(
             ),
         ),
         None,
-        NoPreference,
+        NoPreference {
+            borderless: None,
+        },
         true,
         ClientId(
             1,

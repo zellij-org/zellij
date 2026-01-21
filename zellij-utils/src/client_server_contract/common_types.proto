@@ -225,12 +225,14 @@ message Action {
     TogglePanePinnedAction toggle_pane_pinned = 87;
     StackPanesAction stack_panes = 88;
     ChangeFloatingPaneCoordinatesAction change_floating_pane_coordinates = 89;
+    TogglePaneBorderlessAction toggle_pane_borderless = 95;
+    SetPaneBorderlessAction set_pane_borderless = 96;
     TogglePaneInGroupAction toggle_pane_in_group = 90;
     ToggleGroupMarkingAction toggle_group_marking = 91;
     SwitchSessionAction switch_session = 92;
     NewBlockingPaneAction new_blocking_pane = 93;
     OverrideLayoutAction override_layout = 94;
-    RenameTabByNameAction rename_tab_by_name = 95;
+    RenameTabByNameAction rename_tab_by_name = 97;
   }
 }
 
@@ -377,6 +379,7 @@ message NewTiledPaneAction {
   optional RunCommandAction command = 2;
   optional string pane_name = 3;
   bool near_current_pane = 7;
+  optional bool borderless = 8;
 }
 
 message NewInPlacePaneAction {
@@ -583,6 +586,15 @@ message ChangeFloatingPaneCoordinatesAction {
   FloatingPaneCoordinates coordinates = 2;
 }
 
+message TogglePaneBorderlessAction {
+  PaneId pane_id = 1;
+}
+
+message SetPaneBorderlessAction {
+  PaneId pane_id = 1;
+  bool borderless = 2;
+}
+
 // Supporting enums and messages
 enum InputMode {
   INPUT_MODE_UNSPECIFIED = 0;
@@ -693,12 +705,31 @@ message NewPanePlacement {
     FloatingPaneCoordinates floating = 3;
     NewPanePlacementInPlace in_place = 4;
     PaneId stacked = 5;
+    // these new variants are so that we can send data along with the previous variants without compromising backwards compatibility by changing the above types
+    NoPreferencePlacement no_preference_with_options = 6;
+    TiledPlacement tiled_with_options = 7;
+    StackedPlacement stacked_with_options = 8;
   }
+}
+
+message NoPreferencePlacement {
+  optional bool borderless = 1;
+}
+
+message TiledPlacement {
+  optional Direction direction = 1;
+  optional bool borderless = 2;
+}
+
+message StackedPlacement {
+  optional PaneId pane_id_to_stack_under = 1;
+  optional bool borderless = 2;
 }
 
 message NewPanePlacementInPlace {
   optional PaneId pane_id_to_replace = 1;
   bool close_replaced_pane = 2;
+  optional bool borderless = 3;
 }
 
 message PaneIdWithPlugin {
@@ -723,8 +754,8 @@ enum ExitReason {
 message OpenFilePayload {
   string file_to_open = 1;
   optional uint32 line_number = 2;
-  optional string cwd = 3;                             // Renumbered after removing column_number
-  optional OriginatingPlugin originating_plugin = 4;   // Added missing originating_plugin field
+  optional string cwd = 3;
+  optional OriginatingPlugin originating_plugin = 4;
 }
 
 message FloatingPaneCoordinates {
@@ -732,7 +763,8 @@ message FloatingPaneCoordinates {
   optional FloatingCoordinate y = 2;
   optional FloatingCoordinate width = 3;
   optional FloatingCoordinate height = 4;
-  optional bool pinned = 5;  // Added missing pinned field
+  optional bool pinned = 5;
+  optional bool borderless = 6;
 }
 
 message FloatingCoordinate {
@@ -759,7 +791,7 @@ message TiledPaneLayout {
   repeated TiledPaneLayout children = 3;
   optional SplitSize split_size = 4;
   optional Run run = 5;
-  bool borderless = 6;
+  optional bool borderless = 6;
   optional string focus = 7;
   optional bool exclude_from_sync = 8;
   bool children_are_stacked = 9;
@@ -782,6 +814,7 @@ message FloatingPaneLayout {
   bool already_running = 9;
   optional string pane_initial_contents = 10;
   optional uint32 logical_position = 11;
+  optional bool borderless = 12;
 }
 
 message SwapTiledLayout {

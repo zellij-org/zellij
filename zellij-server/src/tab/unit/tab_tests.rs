@@ -405,7 +405,7 @@ fn write_to_suppressed_pane() {
     };
     let stacked_resize = true;
     let mut tab = create_new_tab(size, stacked_resize);
-    tab.vertical_split(PaneId::Terminal(2), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(2), None, 1, None, None)
         .unwrap();
 
     // Suppress pane 2 and remove it from active panes
@@ -436,7 +436,8 @@ fn split_panes_vertically() {
     let stacked_resize = true;
     let mut tab = create_new_tab(size, stacked_resize);
     let new_pane_id = PaneId::Terminal(2);
-    tab.vertical_split(new_pane_id, None, 1, None).unwrap();
+    tab.vertical_split(new_pane_id, None, 1, None, None)
+        .unwrap();
     assert_eq!(tab.tiled_panes.panes.len(), 2, "The tab has two panes");
     assert_eq!(
         tab.tiled_panes
@@ -533,7 +534,8 @@ fn split_panes_horizontally() {
     let stacked_resize = true;
     let mut tab = create_new_tab(size, stacked_resize);
     let new_pane_id = PaneId::Terminal(2);
-    tab.horizontal_split(new_pane_id, None, 1, None).unwrap();
+    tab.horizontal_split(new_pane_id, None, 1, None, None)
+        .unwrap();
     assert_eq!(tab.tiled_panes.panes.len(), 2, "The tab has two panes");
 
     assert_eq!(
@@ -825,7 +827,7 @@ pub fn cannot_split_panes_vertically_when_active_pane_is_too_small() {
     let size = Size { cols: 8, rows: 20 };
     let stacked_resize = true;
     let mut tab = create_new_tab(size, stacked_resize);
-    tab.vertical_split(PaneId::Terminal(2), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(2), None, 1, None, None)
         .unwrap();
     assert_eq!(
         tab.tiled_panes.panes.len(),
@@ -839,7 +841,7 @@ pub fn cannot_split_panes_horizontally_when_active_pane_is_too_small() {
     let size = Size { cols: 121, rows: 4 };
     let stacked_resize = true;
     let mut tab = create_new_tab(size, stacked_resize);
-    tab.horizontal_split(PaneId::Terminal(2), None, 1, None)
+    tab.horizontal_split(PaneId::Terminal(2), None, 1, None, None)
         .unwrap();
     assert_eq!(
         tab.tiled_panes.panes.len(),
@@ -880,7 +882,7 @@ pub fn cannot_split_panes_vertically_when_active_pane_has_fixed_columns() {
     fixed_child.split_size = Some(SplitSize::Fixed(30));
     initial_layout.children = vec![fixed_child, TiledPaneLayout::default()];
     let mut tab = create_new_tab_with_layout(size, initial_layout);
-    tab.vertical_split(PaneId::Terminal(3), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(3), None, 1, None, None)
         .unwrap();
     assert_eq!(tab.tiled_panes.panes.len(), 2, "Tab still has two panes");
 }
@@ -894,7 +896,7 @@ pub fn cannot_split_panes_horizontally_when_active_pane_has_fixed_rows() {
     fixed_child.split_size = Some(SplitSize::Fixed(12));
     initial_layout.children = vec![fixed_child, TiledPaneLayout::default()];
     let mut tab = create_new_tab_with_layout(size, initial_layout);
-    tab.horizontal_split(PaneId::Terminal(3), None, 1, None)
+    tab.horizontal_split(PaneId::Terminal(3), None, 1, None, None)
         .unwrap();
     assert_eq!(tab.tiled_panes.panes.len(), 2, "Tab still has two panes");
 }
@@ -1238,7 +1240,8 @@ pub fn close_pane_with_another_pane_above_it() {
     let stacked_resize = true;
     let mut tab = create_new_tab(size, stacked_resize);
     let new_pane_id = PaneId::Terminal(2);
-    tab.horizontal_split(new_pane_id, None, 1, None).unwrap();
+    tab.horizontal_split(new_pane_id, None, 1, None, None)
+        .unwrap();
     tab.close_focused_pane(1, None).unwrap();
     assert_eq!(tab.tiled_panes.panes.len(), 1, "One pane left in tab");
 
@@ -1304,7 +1307,8 @@ pub fn close_pane_with_another_pane_below_it() {
     let stacked_resize = true;
     let mut tab = create_new_tab(size, stacked_resize);
     let new_pane_id = PaneId::Terminal(2);
-    tab.horizontal_split(new_pane_id, None, 1, None).unwrap();
+    tab.horizontal_split(new_pane_id, None, 1, None, None)
+        .unwrap();
     tab.move_focus_up(1).unwrap();
     tab.close_focused_pane(1, None).unwrap();
     assert_eq!(tab.tiled_panes.panes.len(), 1, "One pane left in tab");
@@ -1368,7 +1372,8 @@ pub fn close_pane_with_another_pane_to_the_left() {
     let stacked_resize = true;
     let mut tab = create_new_tab(size, stacked_resize);
     let new_pane_id = PaneId::Terminal(2);
-    tab.vertical_split(new_pane_id, None, 1, None).unwrap();
+    tab.vertical_split(new_pane_id, None, 1, None, None)
+        .unwrap();
     tab.close_focused_pane(1, None).unwrap();
     assert_eq!(tab.tiled_panes.panes.len(), 1, "One pane left in tab");
 
@@ -1431,7 +1436,8 @@ pub fn close_pane_with_another_pane_to_the_right() {
     let stacked_resize = true;
     let mut tab = create_new_tab(size, stacked_resize);
     let new_pane_id = PaneId::Terminal(2);
-    tab.vertical_split(new_pane_id, None, 1, None).unwrap();
+    tab.vertical_split(new_pane_id, None, 1, None, None)
+        .unwrap();
     tab.move_focus_left(1).unwrap();
     tab.close_focused_pane(1, None).unwrap();
     assert_eq!(tab.tiled_panes.panes.len(), 1, "One pane left in tab");
@@ -1498,9 +1504,11 @@ pub fn close_pane_with_multiple_panes_above_it() {
     let mut tab = create_new_tab(size, stacked_resize);
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
-    tab.horizontal_split(new_pane_id_1, None, 1, None).unwrap();
+    tab.horizontal_split(new_pane_id_1, None, 1, None, None)
+        .unwrap();
     tab.move_focus_up(1).unwrap();
-    tab.vertical_split(new_pane_id_2, None, 1, None).unwrap();
+    tab.vertical_split(new_pane_id_2, None, 1, None, None)
+        .unwrap();
     tab.move_focus_down(1).unwrap();
     tab.close_focused_pane(1, None).unwrap();
     assert_eq!(tab.tiled_panes.panes.len(), 2, "Two panes left in tab");
@@ -1610,8 +1618,10 @@ pub fn close_pane_with_multiple_panes_below_it() {
     let mut tab = create_new_tab(size, stacked_resize);
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
-    tab.horizontal_split(new_pane_id_1, None, 1, None).unwrap();
-    tab.vertical_split(new_pane_id_2, None, 1, None).unwrap();
+    tab.horizontal_split(new_pane_id_1, None, 1, None, None)
+        .unwrap();
+    tab.vertical_split(new_pane_id_2, None, 1, None, None)
+        .unwrap();
     tab.move_focus_up(1).unwrap();
     tab.close_focused_pane(1, None).unwrap();
     assert_eq!(tab.tiled_panes.panes.len(), 2, "Two panes left in tab");
@@ -1721,9 +1731,11 @@ pub fn close_pane_with_multiple_panes_to_the_left() {
     let mut tab = create_new_tab(size, stacked_resize);
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
-    tab.vertical_split(new_pane_id_1, None, 1, None).unwrap();
+    tab.vertical_split(new_pane_id_1, None, 1, None, None)
+        .unwrap();
     tab.move_focus_left(1).unwrap();
-    tab.horizontal_split(new_pane_id_2, None, 1, None).unwrap();
+    tab.horizontal_split(new_pane_id_2, None, 1, None, None)
+        .unwrap();
     tab.move_focus_right(1).unwrap();
     tab.close_focused_pane(1, None).unwrap();
     assert_eq!(tab.tiled_panes.panes.len(), 2, "Two panes left in tab");
@@ -1833,8 +1845,10 @@ pub fn close_pane_with_multiple_panes_to_the_right() {
     let mut tab = create_new_tab(size, stacked_resize);
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
-    tab.vertical_split(new_pane_id_1, None, 1, None).unwrap();
-    tab.horizontal_split(new_pane_id_2, None, 1, None).unwrap();
+    tab.vertical_split(new_pane_id_1, None, 1, None, None)
+        .unwrap();
+    tab.horizontal_split(new_pane_id_2, None, 1, None, None)
+        .unwrap();
     tab.move_focus_left(1).unwrap();
     tab.close_focused_pane(1, None).unwrap();
     assert_eq!(tab.tiled_panes.panes.len(), 2, "Two panes left in tab");
@@ -1949,19 +1963,25 @@ pub fn close_pane_with_multiple_panes_above_it_away_from_screen_edges() {
     let new_pane_id_5 = PaneId::Terminal(6);
     let new_pane_id_6 = PaneId::Terminal(7);
 
-    tab.vertical_split(new_pane_id_1, None, 1, None).unwrap();
-    tab.vertical_split(new_pane_id_2, None, 1, None).unwrap();
+    tab.vertical_split(new_pane_id_1, None, 1, None, None)
+        .unwrap();
+    tab.vertical_split(new_pane_id_2, None, 1, None, None)
+        .unwrap();
     tab.move_focus_left(1).unwrap();
     tab.move_focus_left(1).unwrap();
-    tab.horizontal_split(new_pane_id_3, None, 1, None).unwrap();
+    tab.horizontal_split(new_pane_id_3, None, 1, None, None)
+        .unwrap();
     tab.move_focus_right(1).unwrap();
-    tab.horizontal_split(new_pane_id_4, None, 1, None).unwrap();
+    tab.horizontal_split(new_pane_id_4, None, 1, None, None)
+        .unwrap();
     tab.move_focus_right(1).unwrap();
-    tab.horizontal_split(new_pane_id_5, None, 1, None).unwrap();
+    tab.horizontal_split(new_pane_id_5, None, 1, None, None)
+        .unwrap();
     tab.move_focus_left(1).unwrap();
     tab.move_focus_up(1).unwrap();
     tab_resize_down(&mut tab, 1);
-    tab.vertical_split(new_pane_id_6, None, 1, None).unwrap();
+    tab.vertical_split(new_pane_id_6, None, 1, None, None)
+        .unwrap();
     tab.move_focus_down(1).unwrap();
     tab.close_focused_pane(1, None).unwrap();
 
@@ -2250,18 +2270,24 @@ pub fn close_pane_with_multiple_panes_below_it_away_from_screen_edges() {
     let new_pane_id_5 = PaneId::Terminal(6);
     let new_pane_id_6 = PaneId::Terminal(7);
 
-    tab.vertical_split(new_pane_id_1, None, 1, None).unwrap();
-    tab.vertical_split(new_pane_id_2, None, 1, None).unwrap();
+    tab.vertical_split(new_pane_id_1, None, 1, None, None)
+        .unwrap();
+    tab.vertical_split(new_pane_id_2, None, 1, None, None)
+        .unwrap();
     tab.move_focus_left(1).unwrap();
     tab.move_focus_left(1).unwrap();
-    tab.horizontal_split(new_pane_id_3, None, 1, None).unwrap();
+    tab.horizontal_split(new_pane_id_3, None, 1, None, None)
+        .unwrap();
     tab.move_focus_right(1).unwrap();
-    tab.horizontal_split(new_pane_id_4, None, 1, None).unwrap();
+    tab.horizontal_split(new_pane_id_4, None, 1, None, None)
+        .unwrap();
     tab.move_focus_right(1).unwrap();
-    tab.horizontal_split(new_pane_id_5, None, 1, None).unwrap();
+    tab.horizontal_split(new_pane_id_5, None, 1, None, None)
+        .unwrap();
     tab.move_focus_left(1).unwrap();
     tab_resize_up(&mut tab, 1);
-    tab.vertical_split(new_pane_id_6, None, 1, None).unwrap();
+    tab.vertical_split(new_pane_id_6, None, 1, None, None)
+        .unwrap();
     tab.move_focus_up(1).unwrap();
     tab.close_focused_pane(1, None).unwrap();
 
@@ -2552,21 +2578,27 @@ pub fn close_pane_with_multiple_panes_to_the_left_away_from_screen_edges() {
     let new_pane_id_5 = PaneId::Terminal(6);
     let new_pane_id_6 = PaneId::Terminal(7);
 
-    tab.horizontal_split(new_pane_id_1, None, 1, None).unwrap();
-    tab.horizontal_split(new_pane_id_2, None, 1, None).unwrap();
+    tab.horizontal_split(new_pane_id_1, None, 1, None, None)
+        .unwrap();
+    tab.horizontal_split(new_pane_id_2, None, 1, None, None)
+        .unwrap();
     tab.move_focus_up(1).unwrap();
     tab.move_focus_up(1).unwrap();
-    tab.vertical_split(new_pane_id_3, None, 1, None).unwrap();
+    tab.vertical_split(new_pane_id_3, None, 1, None, None)
+        .unwrap();
     tab.move_focus_down(1).unwrap();
-    tab.vertical_split(new_pane_id_4, None, 1, None).unwrap();
+    tab.vertical_split(new_pane_id_4, None, 1, None, None)
+        .unwrap();
     tab.move_focus_down(1).unwrap();
-    tab.vertical_split(new_pane_id_5, None, 1, None).unwrap();
+    tab.vertical_split(new_pane_id_5, None, 1, None, None)
+        .unwrap();
     tab.move_focus_up(1).unwrap();
     tab.move_focus_left(1).unwrap();
     tab_resize_right(&mut tab, 1);
     tab_resize_up(&mut tab, 1);
     tab_resize_up(&mut tab, 1);
-    tab.horizontal_split(new_pane_id_6, None, 1, None).unwrap();
+    tab.horizontal_split(new_pane_id_6, None, 1, None, None)
+        .unwrap();
     tab.move_focus_right(1).unwrap();
     tab.close_focused_pane(1, None).unwrap();
 
@@ -2857,20 +2889,26 @@ pub fn close_pane_with_multiple_panes_to_the_right_away_from_screen_edges() {
     let new_pane_id_5 = PaneId::Terminal(6);
     let new_pane_id_6 = PaneId::Terminal(7);
 
-    tab.horizontal_split(new_pane_id_1, None, 1, None).unwrap();
-    tab.horizontal_split(new_pane_id_2, None, 1, None).unwrap();
+    tab.horizontal_split(new_pane_id_1, None, 1, None, None)
+        .unwrap();
+    tab.horizontal_split(new_pane_id_2, None, 1, None, None)
+        .unwrap();
     tab.move_focus_up(1).unwrap();
     tab.move_focus_up(1).unwrap();
-    tab.vertical_split(new_pane_id_3, None, 1, None).unwrap();
+    tab.vertical_split(new_pane_id_3, None, 1, None, None)
+        .unwrap();
     tab.move_focus_down(1).unwrap();
-    tab.vertical_split(new_pane_id_4, None, 1, None).unwrap();
+    tab.vertical_split(new_pane_id_4, None, 1, None, None)
+        .unwrap();
     tab.move_focus_down(1).unwrap();
-    tab.vertical_split(new_pane_id_5, None, 1, None).unwrap();
+    tab.vertical_split(new_pane_id_5, None, 1, None, None)
+        .unwrap();
     tab.move_focus_up(1).unwrap();
     tab_resize_left(&mut tab, 1);
     tab_resize_up(&mut tab, 1);
     tab_resize_up(&mut tab, 1);
-    tab.horizontal_split(new_pane_id_6, None, 1, None).unwrap();
+    tab.horizontal_split(new_pane_id_6, None, 1, None, None)
+        .unwrap();
     tab.move_focus_left(1).unwrap();
     tab.close_focused_pane(1, None).unwrap();
 
@@ -3145,7 +3183,8 @@ pub fn move_focus_down() {
     let mut tab = create_new_tab(size, stacked_resize);
     let new_pane_id = PaneId::Terminal(2);
 
-    tab.horizontal_split(new_pane_id, None, 1, None).unwrap();
+    tab.horizontal_split(new_pane_id, None, 1, None, None)
+        .unwrap();
     tab.move_focus_up(1).unwrap();
     tab.move_focus_down(1).unwrap();
 
@@ -3168,9 +3207,12 @@ pub fn move_focus_down_to_the_most_recently_used_pane() {
     let new_pane_id_2 = PaneId::Terminal(3);
     let new_pane_id_3 = PaneId::Terminal(4);
 
-    tab.horizontal_split(new_pane_id_1, None, 1, None).unwrap();
-    tab.vertical_split(new_pane_id_2, None, 1, None).unwrap();
-    tab.vertical_split(new_pane_id_3, None, 1, None).unwrap();
+    tab.horizontal_split(new_pane_id_1, None, 1, None, None)
+        .unwrap();
+    tab.vertical_split(new_pane_id_2, None, 1, None, None)
+        .unwrap();
+    tab.vertical_split(new_pane_id_3, None, 1, None, None)
+        .unwrap();
     tab.move_focus_up(1).unwrap();
     tab.move_focus_down(1).unwrap();
 
@@ -3196,7 +3238,8 @@ pub fn move_focus_up() {
     let mut tab = create_new_tab(size, stacked_resize);
     let new_pane_id = PaneId::Terminal(2);
 
-    tab.horizontal_split(new_pane_id, None, 1, None).unwrap();
+    tab.horizontal_split(new_pane_id, None, 1, None, None)
+        .unwrap();
     tab.move_focus_up(1).unwrap();
 
     assert_eq!(
@@ -3218,10 +3261,13 @@ pub fn move_focus_up_to_the_most_recently_used_pane() {
     let new_pane_id_2 = PaneId::Terminal(3);
     let new_pane_id_3 = PaneId::Terminal(4);
 
-    tab.horizontal_split(new_pane_id_1, None, 1, None).unwrap();
+    tab.horizontal_split(new_pane_id_1, None, 1, None, None)
+        .unwrap();
     tab.move_focus_up(1).unwrap();
-    tab.vertical_split(new_pane_id_2, None, 1, None).unwrap();
-    tab.vertical_split(new_pane_id_3, None, 1, None).unwrap();
+    tab.vertical_split(new_pane_id_2, None, 1, None, None)
+        .unwrap();
+    tab.vertical_split(new_pane_id_3, None, 1, None, None)
+        .unwrap();
     tab.move_focus_down(1).unwrap();
     tab.move_focus_up(1).unwrap();
 
@@ -3247,7 +3293,8 @@ pub fn move_focus_left() {
     let mut tab = create_new_tab(size, stacked_resize);
     let new_pane_id = PaneId::Terminal(2);
 
-    tab.vertical_split(new_pane_id, None, 1, None).unwrap();
+    tab.vertical_split(new_pane_id, None, 1, None, None)
+        .unwrap();
     tab.move_focus_left(1).unwrap();
 
     assert_eq!(
@@ -3269,10 +3316,13 @@ pub fn move_focus_left_to_the_most_recently_used_pane() {
     let new_pane_id_2 = PaneId::Terminal(3);
     let new_pane_id_3 = PaneId::Terminal(4);
 
-    tab.vertical_split(new_pane_id_1, None, 1, None).unwrap();
+    tab.vertical_split(new_pane_id_1, None, 1, None, None)
+        .unwrap();
     tab.move_focus_left(1).unwrap();
-    tab.horizontal_split(new_pane_id_2, None, 1, None).unwrap();
-    tab.horizontal_split(new_pane_id_3, None, 1, None).unwrap();
+    tab.horizontal_split(new_pane_id_2, None, 1, None, None)
+        .unwrap();
+    tab.horizontal_split(new_pane_id_3, None, 1, None, None)
+        .unwrap();
     tab.move_focus_right(1).unwrap();
     tab.move_focus_left(1).unwrap();
 
@@ -3298,7 +3348,8 @@ pub fn move_focus_right() {
     let mut tab = create_new_tab(size, stacked_resize);
     let new_pane_id = PaneId::Terminal(2);
 
-    tab.vertical_split(new_pane_id, None, 1, None).unwrap();
+    tab.vertical_split(new_pane_id, None, 1, None, None)
+        .unwrap();
     tab.move_focus_left(1).unwrap();
     tab.move_focus_right(1).unwrap();
 
@@ -3321,9 +3372,12 @@ pub fn move_focus_right_to_the_most_recently_used_pane() {
     let new_pane_id_2 = PaneId::Terminal(3);
     let new_pane_id_3 = PaneId::Terminal(4);
 
-    tab.vertical_split(new_pane_id_1, None, 1, None).unwrap();
-    tab.horizontal_split(new_pane_id_2, None, 1, None).unwrap();
-    tab.horizontal_split(new_pane_id_3, None, 1, None).unwrap();
+    tab.vertical_split(new_pane_id_1, None, 1, None, None)
+        .unwrap();
+    tab.horizontal_split(new_pane_id_2, None, 1, None, None)
+        .unwrap();
+    tab.horizontal_split(new_pane_id_3, None, 1, None, None)
+        .unwrap();
     tab.move_focus_left(1).unwrap();
     tab.move_focus_right(1).unwrap();
 
@@ -3349,7 +3403,8 @@ pub fn move_active_pane_down() {
     let mut tab = create_new_tab(size, stacked_resize);
     let new_pane_id = PaneId::Terminal(2);
 
-    tab.horizontal_split(new_pane_id, None, 1, None).unwrap();
+    tab.horizontal_split(new_pane_id, None, 1, None, None)
+        .unwrap();
     tab.move_focus_up(1).unwrap();
     tab.move_active_pane_down(1);
 
@@ -3377,9 +3432,12 @@ pub fn move_active_pane_down_to_the_most_recently_used_position() {
     let new_pane_id_2 = PaneId::Terminal(3);
     let new_pane_id_3 = PaneId::Terminal(4);
 
-    tab.horizontal_split(new_pane_id_1, None, 1, None).unwrap();
-    tab.vertical_split(new_pane_id_2, None, 1, None).unwrap();
-    tab.vertical_split(new_pane_id_3, None, 1, None).unwrap();
+    tab.horizontal_split(new_pane_id_1, None, 1, None, None)
+        .unwrap();
+    tab.vertical_split(new_pane_id_2, None, 1, None, None)
+        .unwrap();
+    tab.vertical_split(new_pane_id_3, None, 1, None, None)
+        .unwrap();
     tab.move_focus_up(1).unwrap();
     tab.move_active_pane_down(1);
 
@@ -3410,7 +3468,8 @@ pub fn move_active_pane_up() {
     let mut tab = create_new_tab(size, stacked_resize);
     let new_pane_id = PaneId::Terminal(2);
 
-    tab.horizontal_split(new_pane_id, None, 1, None).unwrap();
+    tab.horizontal_split(new_pane_id, None, 1, None, None)
+        .unwrap();
     tab.move_active_pane_up(1);
 
     assert_eq!(
@@ -3437,10 +3496,13 @@ pub fn move_active_pane_up_to_the_most_recently_used_position() {
     let new_pane_id_2 = PaneId::Terminal(3);
     let new_pane_id_3 = PaneId::Terminal(4);
 
-    tab.horizontal_split(new_pane_id_1, None, 1, None).unwrap();
+    tab.horizontal_split(new_pane_id_1, None, 1, None, None)
+        .unwrap();
     tab.move_focus_up(1).unwrap();
-    tab.vertical_split(new_pane_id_2, None, 1, None).unwrap();
-    tab.vertical_split(new_pane_id_3, None, 1, None).unwrap();
+    tab.vertical_split(new_pane_id_2, None, 1, None, None)
+        .unwrap();
+    tab.vertical_split(new_pane_id_3, None, 1, None, None)
+        .unwrap();
     tab.move_focus_down(1).unwrap();
     tab.move_active_pane_up(1);
 
@@ -3472,7 +3534,8 @@ pub fn move_active_pane_left() {
     let mut tab = create_new_tab(size, stacked_resize);
     let new_pane_id = PaneId::Terminal(2);
 
-    tab.vertical_split(new_pane_id, None, 1, None).unwrap();
+    tab.vertical_split(new_pane_id, None, 1, None, None)
+        .unwrap();
     tab.move_active_pane_left(1);
 
     assert_eq!(
@@ -3499,10 +3562,13 @@ pub fn move_active_pane_left_to_the_most_recently_used_position() {
     let new_pane_id_2 = PaneId::Terminal(3);
     let new_pane_id_3 = PaneId::Terminal(4);
 
-    tab.vertical_split(new_pane_id_1, None, 1, None).unwrap();
+    tab.vertical_split(new_pane_id_1, None, 1, None, None)
+        .unwrap();
     tab.move_focus_left(1).unwrap();
-    tab.horizontal_split(new_pane_id_2, None, 1, None).unwrap();
-    tab.horizontal_split(new_pane_id_3, None, 1, None).unwrap();
+    tab.horizontal_split(new_pane_id_2, None, 1, None, None)
+        .unwrap();
+    tab.horizontal_split(new_pane_id_3, None, 1, None, None)
+        .unwrap();
     tab.move_focus_right(1).unwrap();
     tab.move_active_pane_left(1);
 
@@ -3534,7 +3600,8 @@ pub fn move_active_pane_right() {
     let mut tab = create_new_tab(size, stacked_resize);
     let new_pane_id = PaneId::Terminal(2);
 
-    tab.vertical_split(new_pane_id, None, 1, None).unwrap();
+    tab.vertical_split(new_pane_id, None, 1, None, None)
+        .unwrap();
     tab.move_focus_left(1).unwrap();
     tab.move_active_pane_right(1);
 
@@ -3562,9 +3629,12 @@ pub fn move_active_pane_right_to_the_most_recently_used_position() {
     let new_pane_id_2 = PaneId::Terminal(3);
     let new_pane_id_3 = PaneId::Terminal(4);
 
-    tab.vertical_split(new_pane_id_1, None, 1, None).unwrap();
-    tab.horizontal_split(new_pane_id_2, None, 1, None).unwrap();
-    tab.horizontal_split(new_pane_id_3, None, 1, None).unwrap();
+    tab.vertical_split(new_pane_id_1, None, 1, None, None)
+        .unwrap();
+    tab.horizontal_split(new_pane_id_2, None, 1, None, None)
+        .unwrap();
+    tab.horizontal_split(new_pane_id_3, None, 1, None, None)
+        .unwrap();
     tab.move_focus_left(1).unwrap();
     tab.move_active_pane_right(1);
 
@@ -3603,7 +3673,8 @@ pub fn resize_down_with_pane_above() {
     let stacked_resize = true;
     let mut tab = create_new_tab(size, stacked_resize);
     let new_pane_id = PaneId::Terminal(2);
-    tab.horizontal_split(new_pane_id, None, 1, None).unwrap();
+    tab.horizontal_split(new_pane_id, None, 1, None, None)
+        .unwrap();
     tab_resize_down(&mut tab, 1);
 
     assert_eq!(
@@ -3710,7 +3781,8 @@ pub fn resize_down_with_pane_below() {
     let stacked_resize = true;
     let mut tab = create_new_tab(size, stacked_resize);
     let new_pane_id = PaneId::Terminal(2);
-    tab.horizontal_split(new_pane_id, None, 1, None).unwrap();
+    tab.horizontal_split(new_pane_id, None, 1, None, None)
+        .unwrap();
     tab.move_focus_up(1).unwrap();
     tab_resize_down(&mut tab, 1);
 
@@ -3824,8 +3896,10 @@ pub fn resize_down_with_panes_above_and_below() {
     let first_pane_id = PaneId::Terminal(1);
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
-    tab.horizontal_split(new_pane_id_1, None, 1, None).unwrap();
-    tab.horizontal_split(new_pane_id_2, None, 1, None).unwrap();
+    tab.horizontal_split(new_pane_id_1, None, 1, None, None)
+        .unwrap();
+    tab.horizontal_split(new_pane_id_2, None, 1, None, None)
+        .unwrap();
     tab.move_focus_up(1).unwrap();
     tab_resize_down(&mut tab, 1);
 
@@ -3978,9 +4052,11 @@ pub fn resize_down_with_multiple_panes_above() {
     let first_pane_id = PaneId::Terminal(1);
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
-    tab.horizontal_split(new_pane_id_1, None, 1, None).unwrap();
+    tab.horizontal_split(new_pane_id_1, None, 1, None, None)
+        .unwrap();
     tab.move_focus_up(1).unwrap();
-    tab.vertical_split(new_pane_id_2, None, 1, None).unwrap();
+    tab.vertical_split(new_pane_id_2, None, 1, None, None)
+        .unwrap();
     tab.move_focus_down(1).unwrap();
     tab_resize_down(&mut tab, 1);
 
@@ -4134,11 +4210,12 @@ pub fn resize_down_with_panes_above_aligned_left_with_current_pane() {
     let pane_to_the_left = PaneId::Terminal(2);
     let focused_pane = PaneId::Terminal(3);
     let pane_above = PaneId::Terminal(4);
-    tab.horizontal_split(pane_to_the_left, None, 1, None)
+    tab.horizontal_split(pane_to_the_left, None, 1, None, None)
         .unwrap();
-    tab.vertical_split(focused_pane, None, 1, None).unwrap();
+    tab.vertical_split(focused_pane, None, 1, None, None)
+        .unwrap();
     tab.move_focus_up(1).unwrap();
-    tab.vertical_split(pane_above, None, 1, None).unwrap();
+    tab.vertical_split(pane_above, None, 1, None, None).unwrap();
     tab.move_focus_down(1).unwrap();
     tab_resize_down(&mut tab, 1);
 
@@ -4336,11 +4413,12 @@ pub fn resize_down_with_panes_below_aligned_left_with_current_pane() {
     let pane_below_and_left = PaneId::Terminal(2);
     let pane_below = PaneId::Terminal(3);
     let focused_pane = PaneId::Terminal(4);
-    tab.horizontal_split(pane_below_and_left, None, 1, None)
+    tab.horizontal_split(pane_below_and_left, None, 1, None, None)
         .unwrap();
-    tab.vertical_split(pane_below, None, 1, None).unwrap();
+    tab.vertical_split(pane_below, None, 1, None, None).unwrap();
     tab.move_focus_up(1).unwrap();
-    tab.vertical_split(focused_pane, None, 1, None).unwrap();
+    tab.vertical_split(focused_pane, None, 1, None, None)
+        .unwrap();
     tab_resize_down(&mut tab, 1);
 
     assert_eq!(
@@ -4537,11 +4615,12 @@ pub fn resize_down_with_panes_above_aligned_right_with_current_pane() {
     let focused_pane = PaneId::Terminal(2);
     let pane_to_the_right = PaneId::Terminal(3);
     let pane_above_and_right = PaneId::Terminal(4);
-    tab.horizontal_split(focused_pane, None, 1, None).unwrap();
-    tab.vertical_split(pane_to_the_right, None, 1, None)
+    tab.horizontal_split(focused_pane, None, 1, None, None)
+        .unwrap();
+    tab.vertical_split(pane_to_the_right, None, 1, None, None)
         .unwrap();
     tab.move_focus_up(1).unwrap();
-    tab.vertical_split(pane_above_and_right, None, 1, None)
+    tab.vertical_split(pane_above_and_right, None, 1, None, None)
         .unwrap();
     tab.move_focus_down(1).unwrap();
     tab.move_focus_left(1).unwrap();
@@ -4741,11 +4820,12 @@ pub fn resize_down_with_panes_below_aligned_right_with_current_pane() {
     let pane_below = PaneId::Terminal(2);
     let pane_below_and_right = PaneId::Terminal(3);
     let pane_to_the_right = PaneId::Terminal(4);
-    tab.horizontal_split(pane_below, None, 1, None).unwrap();
-    tab.vertical_split(pane_below_and_right, None, 1, None)
+    tab.horizontal_split(pane_below, None, 1, None, None)
+        .unwrap();
+    tab.vertical_split(pane_below_and_right, None, 1, None, None)
         .unwrap();
     tab.move_focus_up(1).unwrap();
-    tab.vertical_split(pane_to_the_right, None, 1, None)
+    tab.vertical_split(pane_to_the_right, None, 1, None, None)
         .unwrap();
     tab.move_focus_left(1).unwrap();
     tab_resize_down(&mut tab, 1);
@@ -4940,16 +5020,16 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_current_pane() {
     };
     let stacked_resize = true;
     let mut tab = create_new_tab(size, stacked_resize);
-    tab.horizontal_split(PaneId::Terminal(2), None, 1, None)
+    tab.horizontal_split(PaneId::Terminal(2), None, 1, None, None)
         .unwrap();
-    tab.vertical_split(PaneId::Terminal(3), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(3), None, 1, None, None)
         .unwrap();
-    tab.vertical_split(PaneId::Terminal(4), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(4), None, 1, None, None)
         .unwrap();
     tab.move_focus_up(1).unwrap();
-    tab.vertical_split(PaneId::Terminal(5), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(5), None, 1, None, None)
         .unwrap();
-    tab.vertical_split(PaneId::Terminal(6), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(6), None, 1, None, None)
         .unwrap();
     tab.move_focus_left(1).unwrap();
     tab.move_focus_down(1).unwrap();
@@ -5231,16 +5311,16 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_current_pane() {
     };
     let stacked_resize = true;
     let mut tab = create_new_tab(size, stacked_resize);
-    tab.horizontal_split(PaneId::Terminal(2), None, 1, None)
+    tab.horizontal_split(PaneId::Terminal(2), None, 1, None, None)
         .unwrap();
-    tab.vertical_split(PaneId::Terminal(3), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(3), None, 1, None, None)
         .unwrap();
-    tab.vertical_split(PaneId::Terminal(4), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(4), None, 1, None, None)
         .unwrap();
     tab.move_focus_up(1).unwrap();
-    tab.vertical_split(PaneId::Terminal(5), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(5), None, 1, None, None)
         .unwrap();
-    tab.vertical_split(PaneId::Terminal(6), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(6), None, 1, None, None)
         .unwrap();
     tab.move_focus_left(1).unwrap();
     tab_resize_down(&mut tab, 1);
@@ -5521,22 +5601,22 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_panes_to_the_lef
     };
     let stacked_resize = true;
     let mut tab = create_new_tab(size, stacked_resize);
-    tab.horizontal_split(PaneId::Terminal(2), None, 1, None)
+    tab.horizontal_split(PaneId::Terminal(2), None, 1, None, None)
         .unwrap();
     tab.move_focus_up(1).unwrap();
-    tab.vertical_split(PaneId::Terminal(3), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(3), None, 1, None, None)
         .unwrap();
-    tab.vertical_split(PaneId::Terminal(4), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(4), None, 1, None, None)
         .unwrap();
     tab.move_focus_down(1).unwrap();
-    tab.vertical_split(PaneId::Terminal(5), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(5), None, 1, None, None)
         .unwrap();
-    tab.vertical_split(PaneId::Terminal(6), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(6), None, 1, None, None)
         .unwrap();
     tab.move_focus_left(1).unwrap();
-    tab.vertical_split(PaneId::Terminal(7), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(7), None, 1, None, None)
         .unwrap();
-    tab.vertical_split(PaneId::Terminal(8), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(8), None, 1, None, None)
         .unwrap();
     tab.move_focus_left(1).unwrap();
     tab_resize_down(&mut tab, 1);
@@ -5903,22 +5983,22 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_to_the_left_and_
     };
     let stacked_resize = true;
     let mut tab = create_new_tab(size, stacked_resize);
-    tab.horizontal_split(PaneId::Terminal(2), None, 1, None)
+    tab.horizontal_split(PaneId::Terminal(2), None, 1, None, None)
         .unwrap();
     tab.move_focus_up(1).unwrap();
-    tab.vertical_split(PaneId::Terminal(3), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(3), None, 1, None, None)
         .unwrap();
-    tab.vertical_split(PaneId::Terminal(4), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(4), None, 1, None, None)
         .unwrap();
     tab.move_focus_left(1).unwrap();
-    tab.vertical_split(PaneId::Terminal(5), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(5), None, 1, None, None)
         .unwrap();
-    tab.vertical_split(PaneId::Terminal(6), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(6), None, 1, None, None)
         .unwrap();
     tab.move_focus_down(1).unwrap();
-    tab.vertical_split(PaneId::Terminal(7), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(7), None, 1, None, None)
         .unwrap();
-    tab.vertical_split(PaneId::Terminal(8), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(8), None, 1, None, None)
         .unwrap();
     tab.move_focus_left(1).unwrap();
     tab.move_focus_up(1).unwrap();
@@ -6285,7 +6365,7 @@ pub fn cannot_resize_down_when_pane_below_is_at_minimum_height() {
     };
     let stacked_resize = true;
     let mut tab = create_new_tab(size, stacked_resize);
-    tab.horizontal_split(PaneId::Terminal(2), None, 1, None)
+    tab.horizontal_split(PaneId::Terminal(2), None, 1, None, None)
         .unwrap();
     tab.move_focus_up(1).unwrap();
     tab_resize_down(&mut tab, 1);
@@ -6467,7 +6547,7 @@ pub fn resize_left_with_pane_to_the_left() {
     };
     let stacked_resize = true;
     let mut tab = create_new_tab(size, stacked_resize);
-    tab.vertical_split(PaneId::Terminal(2), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(2), None, 1, None, None)
         .unwrap();
     tab_resize_left(&mut tab, 1);
 
@@ -6572,7 +6652,7 @@ pub fn resize_left_with_pane_to_the_right() {
     };
     let stacked_resize = true;
     let mut tab = create_new_tab(size, stacked_resize);
-    tab.vertical_split(PaneId::Terminal(2), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(2), None, 1, None, None)
         .unwrap();
     tab.move_focus_left(1).unwrap();
     tab_resize_left(&mut tab, 1);
@@ -6679,9 +6759,9 @@ pub fn resize_left_with_panes_to_the_left_and_right() {
     };
     let stacked_resize = true;
     let mut tab = create_new_tab(size, stacked_resize);
-    tab.vertical_split(PaneId::Terminal(2), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(2), None, 1, None, None)
         .unwrap();
-    tab.vertical_split(PaneId::Terminal(3), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(3), None, 1, None, None)
         .unwrap();
     tab.move_focus_left(1).unwrap();
     tab_resize_left(&mut tab, 1);
@@ -6830,10 +6910,10 @@ pub fn resize_left_with_multiple_panes_to_the_left() {
     };
     let stacked_resize = true;
     let mut tab = create_new_tab(size, stacked_resize);
-    tab.vertical_split(PaneId::Terminal(2), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(2), None, 1, None, None)
         .unwrap();
     tab.move_focus_left(1).unwrap();
-    tab.horizontal_split(PaneId::Terminal(3), None, 1, None)
+    tab.horizontal_split(PaneId::Terminal(3), None, 1, None, None)
         .unwrap();
     tab.move_focus_right(1).unwrap();
     tab_resize_left(&mut tab, 1);
@@ -6983,12 +7063,12 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_with_current_pane() {
     };
     let stacked_resize = true;
     let mut tab = create_new_tab(size, stacked_resize);
-    tab.horizontal_split(PaneId::Terminal(2), None, 1, None)
+    tab.horizontal_split(PaneId::Terminal(2), None, 1, None, None)
         .unwrap();
-    tab.vertical_split(PaneId::Terminal(3), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(3), None, 1, None, None)
         .unwrap();
     tab.move_focus_up(1).unwrap();
-    tab.vertical_split(PaneId::Terminal(4), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(4), None, 1, None, None)
         .unwrap();
     tab.move_focus_down(1).unwrap();
     tab_resize_left(&mut tab, 1);
@@ -7181,12 +7261,12 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_with_current_pane() {
     };
     let stacked_resize = true;
     let mut tab = create_new_tab(size, stacked_resize);
-    tab.horizontal_split(PaneId::Terminal(2), None, 1, None)
+    tab.horizontal_split(PaneId::Terminal(2), None, 1, None, None)
         .unwrap();
-    tab.vertical_split(PaneId::Terminal(3), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(3), None, 1, None, None)
         .unwrap();
     tab.move_focus_up(1).unwrap();
-    tab.vertical_split(PaneId::Terminal(4), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(4), None, 1, None, None)
         .unwrap();
     tab.move_focus_down(1).unwrap();
     tab.move_focus_left(1).unwrap();
@@ -7380,12 +7460,12 @@ pub fn resize_left_with_panes_to_the_left_aligned_bottom_with_current_pane() {
     };
     let stacked_resize = true;
     let mut tab = create_new_tab(size, stacked_resize);
-    tab.horizontal_split(PaneId::Terminal(2), None, 1, None)
+    tab.horizontal_split(PaneId::Terminal(2), None, 1, None, None)
         .unwrap();
-    tab.vertical_split(PaneId::Terminal(3), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(3), None, 1, None, None)
         .unwrap();
     tab.move_focus_up(1).unwrap();
-    tab.vertical_split(PaneId::Terminal(4), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(4), None, 1, None, None)
         .unwrap();
     tab_resize_left(&mut tab, 1);
 
@@ -7577,12 +7657,12 @@ pub fn resize_left_with_panes_to_the_right_aligned_bottom_with_current_pane() {
     };
     let stacked_resize = true;
     let mut tab = create_new_tab(size, stacked_resize);
-    tab.horizontal_split(PaneId::Terminal(2), None, 1, None)
+    tab.horizontal_split(PaneId::Terminal(2), None, 1, None, None)
         .unwrap();
-    tab.vertical_split(PaneId::Terminal(3), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(3), None, 1, None, None)
         .unwrap();
     tab.move_focus_up(1).unwrap();
-    tab.vertical_split(PaneId::Terminal(4), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(4), None, 1, None, None)
         .unwrap();
     tab.move_focus_left(1).unwrap();
     tab_resize_left(&mut tab, 1);
@@ -7777,17 +7857,17 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_current_pa
     };
     let stacked_resize = true;
     let mut tab = create_new_tab(size, stacked_resize);
-    tab.horizontal_split(PaneId::Terminal(2), None, 1, None)
+    tab.horizontal_split(PaneId::Terminal(2), None, 1, None, None)
         .unwrap();
-    tab.horizontal_split(PaneId::Terminal(3), None, 1, None)
+    tab.horizontal_split(PaneId::Terminal(3), None, 1, None, None)
         .unwrap();
-    tab.vertical_split(PaneId::Terminal(4), None, 1, None)
-        .unwrap();
-    tab.move_focus_up(1).unwrap();
-    tab.vertical_split(PaneId::Terminal(5), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(4), None, 1, None, None)
         .unwrap();
     tab.move_focus_up(1).unwrap();
-    tab.vertical_split(PaneId::Terminal(6), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(5), None, 1, None, None)
+        .unwrap();
+    tab.move_focus_up(1).unwrap();
+    tab.vertical_split(PaneId::Terminal(6), None, 1, None, None)
         .unwrap();
     tab.move_focus_down(1).unwrap();
     tab_resize_left(&mut tab, 1);
@@ -8068,17 +8148,17 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_current_p
     };
     let stacked_resize = true;
     let mut tab = create_new_tab(size, stacked_resize);
-    tab.horizontal_split(PaneId::Terminal(2), None, 1, None)
+    tab.horizontal_split(PaneId::Terminal(2), None, 1, None, None)
         .unwrap();
-    tab.horizontal_split(PaneId::Terminal(3), None, 1, None)
+    tab.horizontal_split(PaneId::Terminal(3), None, 1, None, None)
         .unwrap();
-    tab.vertical_split(PaneId::Terminal(4), None, 1, None)
-        .unwrap();
-    tab.move_focus_up(1).unwrap();
-    tab.vertical_split(PaneId::Terminal(5), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(4), None, 1, None, None)
         .unwrap();
     tab.move_focus_up(1).unwrap();
-    tab.vertical_split(PaneId::Terminal(6), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(5), None, 1, None, None)
+        .unwrap();
+    tab.move_focus_up(1).unwrap();
+    tab.vertical_split(PaneId::Terminal(6), None, 1, None, None)
         .unwrap();
     tab.move_focus_down(1).unwrap();
     tab.move_focus_left(1).unwrap();
@@ -8360,23 +8440,23 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
     };
     let stacked_resize = true;
     let mut tab = create_new_tab(size, stacked_resize);
-    tab.horizontal_split(PaneId::Terminal(2), None, 1, None)
+    tab.horizontal_split(PaneId::Terminal(2), None, 1, None, None)
         .unwrap();
-    tab.horizontal_split(PaneId::Terminal(3), None, 1, None)
+    tab.horizontal_split(PaneId::Terminal(3), None, 1, None, None)
         .unwrap();
-    tab.vertical_split(PaneId::Terminal(4), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(4), None, 1, None, None)
         .unwrap();
     tab.move_focus_up(1).unwrap();
     tab.move_focus_up(1).unwrap();
-    tab.vertical_split(PaneId::Terminal(5), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(5), None, 1, None, None)
         .unwrap();
     tab.move_focus_down(1).unwrap();
     tab_resize_down(&mut tab, 1);
-    tab.vertical_split(PaneId::Terminal(6), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(6), None, 1, None, None)
         .unwrap();
-    tab.horizontal_split(PaneId::Terminal(7), None, 1, None)
+    tab.horizontal_split(PaneId::Terminal(7), None, 1, None, None)
         .unwrap();
-    tab.horizontal_split(PaneId::Terminal(8), None, 1, None)
+    tab.horizontal_split(PaneId::Terminal(8), None, 1, None, None)
         .unwrap();
     tab.move_focus_up(1).unwrap();
     tab_resize_left(&mut tab, 1);
@@ -8743,24 +8823,24 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
     };
     let stacked_resize = true;
     let mut tab = create_new_tab(size, stacked_resize);
-    tab.horizontal_split(PaneId::Terminal(2), None, 1, None)
+    tab.horizontal_split(PaneId::Terminal(2), None, 1, None, None)
         .unwrap();
-    tab.horizontal_split(PaneId::Terminal(3), None, 1, None)
+    tab.horizontal_split(PaneId::Terminal(3), None, 1, None, None)
         .unwrap();
-    tab.vertical_split(PaneId::Terminal(4), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(4), None, 1, None, None)
         .unwrap();
     tab.move_focus_up(1).unwrap();
     tab.move_focus_up(1).unwrap();
-    tab.vertical_split(PaneId::Terminal(5), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(5), None, 1, None, None)
         .unwrap();
     tab.move_focus_down(1).unwrap();
     tab_resize_down(&mut tab, 1);
-    tab.vertical_split(PaneId::Terminal(6), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(6), None, 1, None, None)
         .unwrap();
     tab.move_focus_left(1).unwrap();
-    tab.horizontal_split(PaneId::Terminal(7), None, 1, None)
+    tab.horizontal_split(PaneId::Terminal(7), None, 1, None, None)
         .unwrap();
-    tab.horizontal_split(PaneId::Terminal(8), None, 1, None)
+    tab.horizontal_split(PaneId::Terminal(8), None, 1, None, None)
         .unwrap();
     tab.move_focus_up(1).unwrap();
     tab_resize_left(&mut tab, 1);
@@ -9122,7 +9202,7 @@ pub fn cannot_resize_left_when_pane_to_the_left_is_at_minimum_width() {
     let size = Size { cols: 10, rows: 20 };
     let stacked_resize = true;
     let mut tab = create_new_tab(size, stacked_resize);
-    tab.vertical_split(PaneId::Terminal(2), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(2), None, 1, None, None)
         .unwrap();
     tab_resize_left(&mut tab, 1);
 
@@ -9165,7 +9245,7 @@ pub fn resize_right_with_pane_to_the_left() {
     };
     let stacked_resize = true;
     let mut tab = create_new_tab(size, stacked_resize);
-    tab.vertical_split(PaneId::Terminal(2), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(2), None, 1, None, None)
         .unwrap();
     tab_resize_right(&mut tab, 1);
 
@@ -9271,7 +9351,7 @@ pub fn resize_right_with_pane_to_the_right() {
     };
     let stacked_resize = true;
     let mut tab = create_new_tab(size, stacked_resize);
-    tab.vertical_split(PaneId::Terminal(2), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(2), None, 1, None, None)
         .unwrap();
     tab.move_focus_left(1).unwrap();
     tab_resize_right(&mut tab, 1);
@@ -9378,9 +9458,9 @@ pub fn resize_right_with_panes_to_the_left_and_right() {
     };
     let stacked_resize = true;
     let mut tab = create_new_tab(size, stacked_resize);
-    tab.vertical_split(PaneId::Terminal(2), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(2), None, 1, None, None)
         .unwrap();
-    tab.vertical_split(PaneId::Terminal(3), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(3), None, 1, None, None)
         .unwrap();
     tab.move_focus_left(1).unwrap();
     tab_resize_right(&mut tab, 1);
@@ -9530,10 +9610,10 @@ pub fn resize_right_with_multiple_panes_to_the_left() {
     };
     let stacked_resize = true;
     let mut tab = create_new_tab(size, stacked_resize);
-    tab.vertical_split(PaneId::Terminal(2), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(2), None, 1, None, None)
         .unwrap();
     tab.move_focus_left(1).unwrap();
-    tab.horizontal_split(PaneId::Terminal(3), None, 1, None)
+    tab.horizontal_split(PaneId::Terminal(3), None, 1, None, None)
         .unwrap();
     tab.move_focus_right(1).unwrap();
     tab_resize_right(&mut tab, 1);
@@ -9683,13 +9763,13 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_with_current_pane() {
     };
     let stacked_resize = true;
     let mut tab = create_new_tab(size, stacked_resize);
-    tab.vertical_split(PaneId::Terminal(2), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(2), None, 1, None, None)
         .unwrap();
     tab.move_focus_left(1).unwrap();
-    tab.horizontal_split(PaneId::Terminal(3), None, 1, None)
+    tab.horizontal_split(PaneId::Terminal(3), None, 1, None, None)
         .unwrap();
     tab.move_focus_right(1).unwrap();
-    tab.horizontal_split(PaneId::Terminal(4), None, 1, None)
+    tab.horizontal_split(PaneId::Terminal(4), None, 1, None, None)
         .unwrap();
     tab_resize_right(&mut tab, 1);
 
@@ -9880,13 +9960,13 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_with_current_pane() {
     };
     let stacked_resize = true;
     let mut tab = create_new_tab(size, stacked_resize);
-    tab.vertical_split(PaneId::Terminal(2), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(2), None, 1, None, None)
         .unwrap();
     tab.move_focus_left(1).unwrap();
-    tab.horizontal_split(PaneId::Terminal(3), None, 1, None)
+    tab.horizontal_split(PaneId::Terminal(3), None, 1, None, None)
         .unwrap();
     tab.move_focus_right(1).unwrap();
-    tab.horizontal_split(PaneId::Terminal(4), None, 1, None)
+    tab.horizontal_split(PaneId::Terminal(4), None, 1, None, None)
         .unwrap();
     tab.move_focus_left(1).unwrap();
     tab_resize_right(&mut tab, 1);
@@ -10079,13 +10159,13 @@ pub fn resize_right_with_panes_to_the_left_aligned_bottom_with_current_pane() {
     };
     let stacked_resize = true;
     let mut tab = create_new_tab(size, stacked_resize);
-    tab.vertical_split(PaneId::Terminal(2), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(2), None, 1, None, None)
         .unwrap();
     tab.move_focus_left(1).unwrap();
-    tab.horizontal_split(PaneId::Terminal(3), None, 1, None)
+    tab.horizontal_split(PaneId::Terminal(3), None, 1, None, None)
         .unwrap();
     tab.move_focus_right(1).unwrap();
-    tab.horizontal_split(PaneId::Terminal(4), None, 1, None)
+    tab.horizontal_split(PaneId::Terminal(4), None, 1, None, None)
         .unwrap();
     tab.move_focus_up(1).unwrap();
     tab_resize_right(&mut tab, 1);
@@ -10278,13 +10358,13 @@ pub fn resize_right_with_panes_to_the_right_aligned_bottom_with_current_pane() {
     };
     let stacked_resize = true;
     let mut tab = create_new_tab(size, stacked_resize);
-    tab.vertical_split(PaneId::Terminal(2), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(2), None, 1, None, None)
         .unwrap();
     tab.move_focus_left(1).unwrap();
-    tab.horizontal_split(PaneId::Terminal(3), None, 1, None)
+    tab.horizontal_split(PaneId::Terminal(3), None, 1, None, None)
         .unwrap();
     tab.move_focus_right(1).unwrap();
-    tab.horizontal_split(PaneId::Terminal(4), None, 1, None)
+    tab.horizontal_split(PaneId::Terminal(4), None, 1, None, None)
         .unwrap();
     tab.move_focus_up(1).unwrap();
     tab.move_focus_left(1).unwrap();
@@ -10480,17 +10560,17 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_current_p
     };
     let stacked_resize = true;
     let mut tab = create_new_tab(size, stacked_resize);
-    tab.horizontal_split(PaneId::Terminal(2), None, 1, None)
+    tab.horizontal_split(PaneId::Terminal(2), None, 1, None, None)
         .unwrap();
-    tab.horizontal_split(PaneId::Terminal(3), None, 1, None)
+    tab.horizontal_split(PaneId::Terminal(3), None, 1, None, None)
         .unwrap();
-    tab.vertical_split(PaneId::Terminal(4), None, 1, None)
-        .unwrap();
-    tab.move_focus_up(1).unwrap();
-    tab.vertical_split(PaneId::Terminal(5), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(4), None, 1, None, None)
         .unwrap();
     tab.move_focus_up(1).unwrap();
-    tab.vertical_split(PaneId::Terminal(6), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(5), None, 1, None, None)
+        .unwrap();
+    tab.move_focus_up(1).unwrap();
+    tab.vertical_split(PaneId::Terminal(6), None, 1, None, None)
         .unwrap();
     tab.move_focus_down(1).unwrap();
     tab_resize_right(&mut tab, 1);
@@ -10770,17 +10850,17 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_current_
     };
     let stacked_resize = true;
     let mut tab = create_new_tab(size, stacked_resize);
-    tab.horizontal_split(PaneId::Terminal(2), None, 1, None)
+    tab.horizontal_split(PaneId::Terminal(2), None, 1, None, None)
         .unwrap();
-    tab.horizontal_split(PaneId::Terminal(3), None, 1, None)
+    tab.horizontal_split(PaneId::Terminal(3), None, 1, None, None)
         .unwrap();
-    tab.vertical_split(PaneId::Terminal(4), None, 1, None)
-        .unwrap();
-    tab.move_focus_up(1).unwrap();
-    tab.vertical_split(PaneId::Terminal(5), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(4), None, 1, None, None)
         .unwrap();
     tab.move_focus_up(1).unwrap();
-    tab.vertical_split(PaneId::Terminal(6), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(5), None, 1, None, None)
+        .unwrap();
+    tab.move_focus_up(1).unwrap();
+    tab.vertical_split(PaneId::Terminal(6), None, 1, None, None)
         .unwrap();
     tab.move_focus_down(1).unwrap();
     tab.move_focus_left(1).unwrap();
@@ -11061,23 +11141,23 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
     };
     let stacked_resize = true;
     let mut tab = create_new_tab(size, stacked_resize);
-    tab.horizontal_split(PaneId::Terminal(2), None, 1, None)
+    tab.horizontal_split(PaneId::Terminal(2), None, 1, None, None)
         .unwrap();
-    tab.horizontal_split(PaneId::Terminal(3), None, 1, None)
+    tab.horizontal_split(PaneId::Terminal(3), None, 1, None, None)
         .unwrap();
-    tab.vertical_split(PaneId::Terminal(4), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(4), None, 1, None, None)
         .unwrap();
     tab.move_focus_up(1).unwrap();
     tab.move_focus_up(1).unwrap();
-    tab.vertical_split(PaneId::Terminal(5), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(5), None, 1, None, None)
         .unwrap();
     tab.move_focus_down(1).unwrap();
     tab_resize_up(&mut tab, 1);
-    tab.vertical_split(PaneId::Terminal(6), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(6), None, 1, None, None)
         .unwrap();
-    tab.horizontal_split(PaneId::Terminal(7), None, 1, None)
+    tab.horizontal_split(PaneId::Terminal(7), None, 1, None, None)
         .unwrap();
-    tab.horizontal_split(PaneId::Terminal(8), None, 1, None)
+    tab.horizontal_split(PaneId::Terminal(8), None, 1, None, None)
         .unwrap();
     tab.move_focus_up(1).unwrap();
     tab_resize_right(&mut tab, 1);
@@ -11443,24 +11523,24 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
     };
     let stacked_resize = true;
     let mut tab = create_new_tab(size, stacked_resize);
-    tab.horizontal_split(PaneId::Terminal(2), None, 1, None)
+    tab.horizontal_split(PaneId::Terminal(2), None, 1, None, None)
         .unwrap();
-    tab.horizontal_split(PaneId::Terminal(3), None, 1, None)
+    tab.horizontal_split(PaneId::Terminal(3), None, 1, None, None)
         .unwrap();
-    tab.vertical_split(PaneId::Terminal(4), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(4), None, 1, None, None)
         .unwrap();
     tab.move_focus_up(1).unwrap();
     tab.move_focus_up(1).unwrap();
-    tab.vertical_split(PaneId::Terminal(5), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(5), None, 1, None, None)
         .unwrap();
     tab.move_focus_down(1).unwrap();
     tab_resize_up(&mut tab, 1);
-    tab.vertical_split(PaneId::Terminal(6), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(6), None, 1, None, None)
         .unwrap();
     tab.move_focus_left(1).unwrap();
-    tab.horizontal_split(PaneId::Terminal(7), None, 1, None)
+    tab.horizontal_split(PaneId::Terminal(7), None, 1, None, None)
         .unwrap();
-    tab.horizontal_split(PaneId::Terminal(8), None, 1, None)
+    tab.horizontal_split(PaneId::Terminal(8), None, 1, None, None)
         .unwrap();
     tab.move_focus_up(1).unwrap();
     tab_resize_right(&mut tab, 1);
@@ -11821,7 +11901,7 @@ pub fn cannot_resize_right_when_pane_to_the_left_is_at_minimum_width() {
     let size = Size { cols: 10, rows: 20 };
     let stacked_resize = true;
     let mut tab = create_new_tab(size, stacked_resize);
-    tab.vertical_split(PaneId::Terminal(2), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(2), None, 1, None, None)
         .unwrap();
     tab_resize_right(&mut tab, 1);
 
@@ -11911,7 +11991,7 @@ pub fn resize_up_with_pane_above() {
     };
     let stacked_resize = true;
     let mut tab = create_new_tab(size, stacked_resize);
-    tab.horizontal_split(PaneId::Terminal(2), None, 1, None)
+    tab.horizontal_split(PaneId::Terminal(2), None, 1, None, None)
         .unwrap();
     tab_resize_up(&mut tab, 1);
 
@@ -12018,7 +12098,7 @@ pub fn resize_up_with_pane_below() {
     };
     let stacked_resize = true;
     let mut tab = create_new_tab(size, stacked_resize);
-    tab.horizontal_split(PaneId::Terminal(2), None, 1, None)
+    tab.horizontal_split(PaneId::Terminal(2), None, 1, None, None)
         .unwrap();
     tab.move_focus_up(1).unwrap();
     tab_resize_up(&mut tab, 1);
@@ -12129,9 +12209,9 @@ pub fn resize_up_with_panes_above_and_below() {
     };
     let stacked_resize = true;
     let mut tab = create_new_tab(size, stacked_resize);
-    tab.horizontal_split(PaneId::Terminal(2), None, 1, None)
+    tab.horizontal_split(PaneId::Terminal(2), None, 1, None, None)
         .unwrap();
-    tab.horizontal_split(PaneId::Terminal(3), None, 1, None)
+    tab.horizontal_split(PaneId::Terminal(3), None, 1, None, None)
         .unwrap();
     tab.move_focus_up(1).unwrap();
     tab_resize_up(&mut tab, 1);
@@ -12281,10 +12361,10 @@ pub fn resize_up_with_multiple_panes_above() {
     };
     let stacked_resize = true;
     let mut tab = create_new_tab(size, stacked_resize);
-    tab.horizontal_split(PaneId::Terminal(2), None, 1, None)
+    tab.horizontal_split(PaneId::Terminal(2), None, 1, None, None)
         .unwrap();
     tab.move_focus_up(1).unwrap();
-    tab.vertical_split(PaneId::Terminal(3), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(3), None, 1, None, None)
         .unwrap();
     tab.move_focus_down(1).unwrap();
     tab_resize_up(&mut tab, 1);
@@ -12433,13 +12513,13 @@ pub fn resize_up_with_panes_above_aligned_left_with_current_pane() {
     };
     let stacked_resize = true;
     let mut tab = create_new_tab(size, stacked_resize);
-    tab.horizontal_split(PaneId::Terminal(2), None, 1, None)
+    tab.horizontal_split(PaneId::Terminal(2), None, 1, None, None)
         .unwrap();
     tab.move_focus_up(1).unwrap();
-    tab.vertical_split(PaneId::Terminal(3), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(3), None, 1, None, None)
         .unwrap();
     tab.move_focus_down(1).unwrap();
-    tab.vertical_split(PaneId::Terminal(4), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(4), None, 1, None, None)
         .unwrap();
     tab_resize_up(&mut tab, 1);
 
@@ -12632,13 +12712,13 @@ pub fn resize_up_with_panes_below_aligned_left_with_current_pane() {
     };
     let stacked_resize = true;
     let mut tab = create_new_tab(size, stacked_resize);
-    tab.horizontal_split(PaneId::Terminal(2), None, 1, None)
+    tab.horizontal_split(PaneId::Terminal(2), None, 1, None, None)
         .unwrap();
     tab.move_focus_up(1).unwrap();
-    tab.vertical_split(PaneId::Terminal(3), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(3), None, 1, None, None)
         .unwrap();
     tab.move_focus_down(1).unwrap();
-    tab.vertical_split(PaneId::Terminal(4), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(4), None, 1, None, None)
         .unwrap();
     tab.move_focus_up(1).unwrap();
     tab_resize_up(&mut tab, 1);
@@ -12832,13 +12912,13 @@ pub fn resize_up_with_panes_above_aligned_right_with_current_pane() {
     };
     let stacked_resize = true;
     let mut tab = create_new_tab(size, stacked_resize);
-    tab.horizontal_split(PaneId::Terminal(2), None, 1, None)
+    tab.horizontal_split(PaneId::Terminal(2), None, 1, None, None)
         .unwrap();
     tab.move_focus_up(1).unwrap();
-    tab.vertical_split(PaneId::Terminal(3), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(3), None, 1, None, None)
         .unwrap();
     tab.move_focus_down(1).unwrap();
-    tab.vertical_split(PaneId::Terminal(4), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(4), None, 1, None, None)
         .unwrap();
     tab.move_focus_left(1).unwrap();
     tab_resize_up(&mut tab, 1);
@@ -13032,13 +13112,13 @@ pub fn resize_up_with_panes_below_aligned_right_with_current_pane() {
     };
     let stacked_resize = true;
     let mut tab = create_new_tab(size, stacked_resize);
-    tab.horizontal_split(PaneId::Terminal(2), None, 1, None)
+    tab.horizontal_split(PaneId::Terminal(2), None, 1, None, None)
         .unwrap();
     tab.move_focus_up(1).unwrap();
-    tab.vertical_split(PaneId::Terminal(3), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(3), None, 1, None, None)
         .unwrap();
     tab.move_focus_down(1).unwrap();
-    tab.vertical_split(PaneId::Terminal(4), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(4), None, 1, None, None)
         .unwrap();
     tab.move_focus_left(1).unwrap();
     tab.move_focus_up(1).unwrap();
@@ -13233,16 +13313,16 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_current_pane() {
     };
     let stacked_resize = true;
     let mut tab = create_new_tab(size, stacked_resize);
-    tab.horizontal_split(PaneId::Terminal(2), None, 1, None)
+    tab.horizontal_split(PaneId::Terminal(2), None, 1, None, None)
         .unwrap();
-    tab.vertical_split(PaneId::Terminal(3), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(3), None, 1, None, None)
         .unwrap();
-    tab.vertical_split(PaneId::Terminal(4), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(4), None, 1, None, None)
         .unwrap();
     tab.move_focus_up(1).unwrap();
-    tab.vertical_split(PaneId::Terminal(5), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(5), None, 1, None, None)
         .unwrap();
-    tab.vertical_split(PaneId::Terminal(6), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(6), None, 1, None, None)
         .unwrap();
     tab.move_focus_left(1).unwrap();
     tab_resize_up(&mut tab, 1);
@@ -13522,16 +13602,16 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_current_pane() {
     };
     let stacked_resize = true;
     let mut tab = create_new_tab(size, stacked_resize);
-    tab.horizontal_split(PaneId::Terminal(2), None, 1, None)
+    tab.horizontal_split(PaneId::Terminal(2), None, 1, None, None)
         .unwrap();
-    tab.vertical_split(PaneId::Terminal(3), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(3), None, 1, None, None)
         .unwrap();
-    tab.vertical_split(PaneId::Terminal(4), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(4), None, 1, None, None)
         .unwrap();
     tab.move_focus_up(1).unwrap();
-    tab.vertical_split(PaneId::Terminal(5), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(5), None, 1, None, None)
         .unwrap();
-    tab.vertical_split(PaneId::Terminal(6), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(6), None, 1, None, None)
         .unwrap();
     tab.move_focus_left(1).unwrap();
     tab.move_focus_up(1).unwrap();
@@ -13812,22 +13892,22 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
     };
     let stacked_resize = true;
     let mut tab = create_new_tab(size, stacked_resize);
-    tab.horizontal_split(PaneId::Terminal(2), None, 1, None)
+    tab.horizontal_split(PaneId::Terminal(2), None, 1, None, None)
         .unwrap();
     tab.move_focus_up(1).unwrap();
-    tab.vertical_split(PaneId::Terminal(3), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(3), None, 1, None, None)
         .unwrap();
-    tab.vertical_split(PaneId::Terminal(4), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(4), None, 1, None, None)
         .unwrap();
     tab.move_focus_down(1).unwrap();
-    tab.vertical_split(PaneId::Terminal(5), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(5), None, 1, None, None)
         .unwrap();
-    tab.vertical_split(PaneId::Terminal(6), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(6), None, 1, None, None)
         .unwrap();
     tab.move_focus_left(1).unwrap();
-    tab.vertical_split(PaneId::Terminal(7), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(7), None, 1, None, None)
         .unwrap();
-    tab.vertical_split(PaneId::Terminal(8), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(8), None, 1, None, None)
         .unwrap();
     tab.move_focus_left(1).unwrap();
     tab_resize_up(&mut tab, 1);
@@ -14193,23 +14273,23 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
     };
     let stacked_resize = true;
     let mut tab = create_new_tab(size, stacked_resize);
-    tab.horizontal_split(PaneId::Terminal(2), None, 1, None)
+    tab.horizontal_split(PaneId::Terminal(2), None, 1, None, None)
         .unwrap();
     tab.move_focus_up(1).unwrap();
-    tab.vertical_split(PaneId::Terminal(3), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(3), None, 1, None, None)
         .unwrap();
-    tab.vertical_split(PaneId::Terminal(4), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(4), None, 1, None, None)
         .unwrap();
     tab.move_focus_down(1).unwrap();
-    tab.vertical_split(PaneId::Terminal(5), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(5), None, 1, None, None)
         .unwrap();
-    tab.vertical_split(PaneId::Terminal(6), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(6), None, 1, None, None)
         .unwrap();
     tab.move_focus_up(1).unwrap();
     tab.move_focus_left(1).unwrap();
-    tab.vertical_split(PaneId::Terminal(7), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(7), None, 1, None, None)
         .unwrap();
-    tab.vertical_split(PaneId::Terminal(8), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(8), None, 1, None, None)
         .unwrap();
     tab.move_focus_left(1).unwrap();
     tab_resize_up(&mut tab, 1);
@@ -14574,7 +14654,7 @@ pub fn cannot_resize_up_when_pane_above_is_at_minimum_height() {
     };
     let stacked_resize = true;
     let mut tab = create_new_tab(size, stacked_resize);
-    tab.horizontal_split(PaneId::Terminal(2), None, 1, None)
+    tab.horizontal_split(PaneId::Terminal(2), None, 1, None, None)
         .unwrap();
     tab_resize_down(&mut tab, 1);
 
@@ -14657,7 +14737,8 @@ pub fn nondirectional_resize_increase_with_1_pane_to_left() {
     let stacked_resize = false; // note - this is not the default
     let mut tab = create_new_tab(size, stacked_resize);
     let new_pane_id_1 = PaneId::Terminal(2);
-    tab.vertical_split(new_pane_id_1, None, 1, None).unwrap();
+    tab.vertical_split(new_pane_id_1, None, 1, None, None)
+        .unwrap();
     tab_resize_increase(&mut tab, 1);
 
     // should behave like `resize_left_with_pane_to_the_left`
@@ -14691,10 +14772,10 @@ pub fn nondirectional_resize_increase_with_2_panes_to_left() {
     };
     let stacked_resize = false; // note - this is not the default
     let mut tab = create_new_tab(size, stacked_resize);
-    tab.vertical_split(PaneId::Terminal(2), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(2), None, 1, None, None)
         .unwrap();
     tab.move_focus_left(1).unwrap();
-    tab.horizontal_split(PaneId::Terminal(3), None, 1, None)
+    tab.horizontal_split(PaneId::Terminal(3), None, 1, None, None)
         .unwrap();
     tab.move_focus_right(1).unwrap();
     tab_resize_increase(&mut tab, 1);
@@ -14752,10 +14833,10 @@ pub fn nondirectional_resize_increase_with_1_pane_to_right_1_pane_above() {
     };
     let stacked_resize = false; // note - this is not the default
     let mut tab = create_new_tab(size, stacked_resize);
-    tab.vertical_split(PaneId::Terminal(2), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(2), None, 1, None, None)
         .unwrap();
     tab.move_focus_left(1).unwrap();
-    tab.horizontal_split(PaneId::Terminal(3), None, 1, None)
+    tab.horizontal_split(PaneId::Terminal(3), None, 1, None, None)
         .unwrap();
     tab_resize_increase(&mut tab, 1);
 
@@ -14811,9 +14892,9 @@ pub fn nondirectional_resize_increase_with_1_pane_to_right_1_pane_to_left() {
     };
     let stacked_resize = false; // note - this is not the default
     let mut tab = create_new_tab(size, stacked_resize);
-    tab.vertical_split(PaneId::Terminal(2), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(2), None, 1, None, None)
         .unwrap();
-    tab.vertical_split(PaneId::Terminal(3), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(3), None, 1, None, None)
         .unwrap();
     tab.move_focus_left(1).unwrap();
     tab_resize_increase(&mut tab, 1);
@@ -14870,9 +14951,9 @@ pub fn nondirectional_resize_increase_with_pane_above_aligned_right_with_current
     };
     let stacked_resize = false; // note - this is not the default
     let mut tab = create_new_tab(size, stacked_resize);
-    tab.vertical_split(PaneId::Terminal(2), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(2), None, 1, None, None)
         .unwrap();
-    tab.vertical_split(PaneId::Terminal(3), None, 1, None)
+    tab.vertical_split(PaneId::Terminal(3), None, 1, None, None)
         .unwrap();
     tab.move_focus_left(1).unwrap();
     tab_resize_increase(&mut tab, 1);

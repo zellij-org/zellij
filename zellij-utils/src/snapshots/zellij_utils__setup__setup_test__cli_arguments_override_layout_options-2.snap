@@ -1,6 +1,5 @@
 ---
 source: zellij-utils/src/setup.rs
-assertion_line: 793
 expression: "format!(\"{:#?}\", layout)"
 ---
 Layout {
@@ -14,7 +13,7 @@ Layout {
                 children: [],
                 split_size: None,
                 run: None,
-                borderless: false,
+                borderless: None,
                 focus: None,
                 external_children_index: None,
                 children_are_stacked: false,
@@ -23,8 +22,6 @@ Layout {
                 run_instructions_to_ignore: [],
                 hide_floating_panes: false,
                 pane_initial_contents: None,
-                pane_id: None,
-                is_plugin: None,
             },
             [],
         ),
