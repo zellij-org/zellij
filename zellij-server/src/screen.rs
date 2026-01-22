@@ -139,6 +139,63 @@ macro_rules! active_tab_and_connected_client_id {
     };
 }
 
+macro_rules! active_tab_and_connected_client_id_with_first_tab_fallback {
+    ($screen:ident, $client_id:ident, $closure:expr) => {
+        match $screen.get_active_tab_mut($client_id) {
+            Ok(active_tab) => {
+                $closure(active_tab, Some($client_id));
+            },
+            Err(_) => {
+                if let Some(client_id) = $screen.get_first_client_id() {
+                    match $screen.get_active_tab_mut(client_id) {
+                        Ok(active_tab) => {
+                            $closure(active_tab, Some(client_id));
+                        },
+                        Err(err) => Err::<(), _>(err).non_fatal(),
+                    }
+                } else {
+                    match $screen.get_indexed_tab_mut(0) {
+                        Some(first_tab) => {
+                            $closure(first_tab, None);
+                        },
+                        None => {
+                            log::error!("Not tabs found!");
+                        }
+                    }
+                };
+            },
+        }
+    };
+    // Same as above, but with an added `?` for when the closure returns a `Result` type.
+    ($screen:ident, $client_id:ident, $closure:expr, ?) => {
+        match $screen.get_active_tab_mut($client_id) {
+            Ok(active_tab) => {
+                $closure(active_tab, Some($client_id)).non_fatal();
+            },
+            Err(_) => {
+                if let Some(client_id) = $screen.get_first_client_id() {
+                    match $screen.get_active_tab_mut(client_id) {
+                        Ok(active_tab) => {
+                            $closure(active_tab, Some(client_id))?;
+                        },
+                        Err(err) => Err::<(), _>(err).non_fatal(),
+                    }
+                } else {
+                    match $screen.get_indexed_tab_mut(0) {
+                        Some(first_tab) => {
+                            $closure(first_tab, None)?;
+                        },
+                        None => {
+                            log::error!("Not tabs found!");
+                        }
+                    }
+                };
+            },
+        }
+    };
+}
+
+
 type InitialTitle = String;
 type HoldForCommand = Option<RunCommand>;
 
@@ -3853,25 +3910,26 @@ pub(crate) fn screen_thread_main(
 
                 let blocking_notification = if set_blocking { completion_tx } else { None };
 
+                log::info!("client_or_tab_index: {:?}", client_or_tab_index);
                 match client_or_tab_index {
                     ClientTabIndexOrPaneId::ClientId(client_id) => {
-                        active_tab_and_connected_client_id!(screen, client_id, |tab: &mut Tab, client_id: ClientId| {
+                        active_tab_and_connected_client_id_with_first_tab_fallback!(screen, client_id, |tab: &mut Tab, client_id: Option<ClientId>| {
                             tab.new_pane(pid,
                                initial_pane_title,
                                invoked_with,
                                start_suppressed,
                                true,
                                new_pane_placement,
-                               Some(client_id),
+                               client_id,
                                blocking_notification
                            )
                         }, ?);
                         if let Some(hold_for_command) = hold_for_command {
                             let is_first_run = true;
-                            active_tab_and_connected_client_id!(
+                            active_tab_and_connected_client_id_with_first_tab_fallback!(
                                 screen,
                                 client_id,
-                                |tab: &mut Tab, _client_id: ClientId| tab.hold_pane(
+                                |tab: &mut Tab, _client_id: Option<ClientId>| tab.hold_pane(
                                     pid,
                                     None,
                                     is_first_run,
