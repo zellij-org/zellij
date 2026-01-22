@@ -941,6 +941,7 @@ impl TerminalPane {
         debug: bool,
         arrow_fonts: bool,
         styled_underlines: bool,
+        osc8_hyperlinks: bool,
         explicitly_disable_keyboard_protocol: bool,
         mut notification_end: Option<NotificationEnd>,
     ) -> TerminalPane {
@@ -958,6 +959,7 @@ impl TerminalPane {
             debug,
             arrow_fonts,
             styled_underlines,
+            osc8_hyperlinks,
             explicitly_disable_keyboard_protocol,
         );
         if let Some(notification_end) = notification_end.as_mut() {

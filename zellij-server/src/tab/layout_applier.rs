@@ -41,6 +41,7 @@ pub struct LayoutApplier<'a> {
     debug: bool,
     arrow_fonts: bool,
     styled_underlines: bool,
+    osc8_hyperlinks: bool,
     explicitly_disable_kitty_keyboard_protocol: bool,
     blocking_terminal: Option<(u32, NotificationEnd)>,
 }
@@ -65,6 +66,7 @@ impl<'a> LayoutApplier<'a> {
         debug: bool,
         arrow_fonts: bool,
         styled_underlines: bool,
+        osc8_hyperlinks: bool,
         explicitly_disable_kitty_keyboard_protocol: bool,
         blocking_terminal: Option<(u32, NotificationEnd)>,
     ) -> Self {
@@ -98,6 +100,7 @@ impl<'a> LayoutApplier<'a> {
             debug,
             arrow_fonts,
             styled_underlines,
+            osc8_hyperlinks,
             explicitly_disable_kitty_keyboard_protocol,
             blocking_terminal,
         }
@@ -637,6 +640,7 @@ impl<'a> LayoutApplier<'a> {
             self.debug,
             self.arrow_fonts,
             self.styled_underlines,
+            self.osc8_hyperlinks,
             self.explicitly_disable_kitty_keyboard_protocol,
             None,
         );
@@ -706,6 +710,7 @@ impl<'a> LayoutApplier<'a> {
             self.debug,
             self.arrow_fonts,
             self.styled_underlines,
+            self.osc8_hyperlinks,
             self.explicitly_disable_kitty_keyboard_protocol,
             notification_end,
         );

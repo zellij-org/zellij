@@ -922,6 +922,7 @@ pub(crate) struct Screen {
     default_layout: Box<Layout>,
     default_shell: PathBuf,
     styled_underlines: bool,
+    osc8_hyperlinks: bool,
     arrow_fonts: bool,
     layout_dir: Option<PathBuf>,
     default_layout_name: Option<String>,
@@ -960,6 +961,7 @@ impl Screen {
         serialize_pane_viewport: bool,
         scrollback_lines_to_serialize: Option<usize>,
         styled_underlines: bool,
+        osc8_hyperlinks: bool,
         arrow_fonts: bool,
         layout_dir: Option<PathBuf>,
         explicitly_disable_kitty_keyboard_protocol: bool,
@@ -1009,6 +1011,7 @@ impl Screen {
             serialize_pane_viewport,
             scrollback_lines_to_serialize,
             styled_underlines,
+            osc8_hyperlinks,
             arrow_fonts,
             resurrectable_sessions,
             layout_dir,
@@ -1516,6 +1519,7 @@ impl Screen {
                 self.sixel_image_store.clone(),
                 self.character_cell_size.clone(),
                 self.styled_underlines,
+                self.osc8_hyperlinks,
             );
 
             let mut tabs_to_close = vec![];
@@ -1561,6 +1565,7 @@ impl Screen {
                     self.sixel_image_store.clone(),
                     self.character_cell_size.clone(),
                     self.styled_underlines,
+                    self.osc8_hyperlinks,
                 );
 
                 let focused_tab_index_of_followed_client_id = *self
@@ -1749,6 +1754,7 @@ impl Screen {
             self.debug,
             self.arrow_fonts,
             self.styled_underlines,
+            self.osc8_hyperlinks,
             self.explicitly_disable_kitty_keyboard_protocol,
             self.default_editor.clone(),
             self.web_clients_allowed,
@@ -3713,6 +3719,7 @@ pub(crate) fn screen_thread_main(
         .unwrap_or_else(|| IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)));
     let web_server_port = config_options.web_server_port.unwrap_or(8082);
     let styled_underlines = config_options.styled_underlines.unwrap_or(true);
+    let osc8_hyperlinks = config_options.osc8_hyperlinks.unwrap_or(true);
     let explicitly_disable_kitty_keyboard_protocol = config_options
         .support_kitty_keyboard_protocol
         .map(|e| !e) // this is due to the config options wording, if
@@ -3755,6 +3762,7 @@ pub(crate) fn screen_thread_main(
         serialize_pane_viewport,
         scrollback_lines_to_serialize,
         styled_underlines,
+        osc8_hyperlinks,
         arrow_fonts,
         layout_dir,
         explicitly_disable_kitty_keyboard_protocol,

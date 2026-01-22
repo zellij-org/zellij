@@ -359,6 +359,7 @@ pub struct Grid {
     debug: bool,
     arrow_fonts: bool,
     styled_underlines: bool,
+    osc8_hyperlinks: bool,
     pub supports_kitty_keyboard_protocol: bool, // has the app requested kitty keyboard support?
     explicitly_disable_kitty_keyboard_protocol: bool, // has kitty keyboard support been explicitly
     // disabled by user config?
@@ -492,6 +493,7 @@ impl Grid {
         debug: bool,
         arrow_fonts: bool,
         styled_underlines: bool,
+        osc8_hyperlinks: bool,
         explicitly_disable_kitty_keyboard_protocol: bool,
     ) -> Self {
         let sixel_grid = SixelGrid::new(character_cell_size.clone(), sixel_image_store);
@@ -547,6 +549,7 @@ impl Grid {
             debug,
             arrow_fonts,
             styled_underlines,
+            osc8_hyperlinks,
             lock_renders: false,
             supports_kitty_keyboard_protocol: false,
             explicitly_disable_kitty_keyboard_protocol,
@@ -1110,10 +1113,10 @@ impl Grid {
                     to_serialize.push(line.clone())
                 }
                 self.output_buffer
-                    .serialize(to_serialize.as_slice(), None)
+                    .serialize(to_serialize.as_slice(), self.osc8_hyperlinks, None)
                     .ok()
             },
-            None => self.output_buffer.serialize(&self.viewport, None).ok(),
+            None => self.output_buffer.serialize(&self.viewport, self.osc8_hyperlinks, None).ok(),
         }
     }
     pub fn render(

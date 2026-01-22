@@ -10,6 +10,13 @@ expression: fake_document.to_string()
 // 
 simplified_ui true
  
+// Enable OSC8 hyperlink output
+// Options:
+//   - true (Default)
+//   - false
+// 
+// osc8_hyperlinks true
+ 
 // Choose the theme that is specified in the themes section.
 // Default: default
 // 

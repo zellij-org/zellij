@@ -79,6 +79,7 @@ fn take_snapshots_and_cursor_coordinates_from_render_events<'a>(
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let osc8_hyperlinks = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         screen_size.rows,
@@ -92,6 +93,7 @@ fn take_snapshots_and_cursor_coordinates_from_render_events<'a>(
         debug,
         arrow_fonts,
         styled_underlines,
+        osc8_hyperlinks,
         explicitly_disable_kitty_keyboard_protocol,
     );
     let snapshots: Vec<(Option<(usize, usize)>, String)> = all_events
@@ -279,6 +281,7 @@ fn create_new_screen(size: Size, advanced_mouse_actions: bool) -> Screen {
 
     let debug = false;
     let styled_underlines = true;
+    let osc8_hyperlinks = true;
     let arrow_fonts = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let stacked_resize = true;
@@ -302,6 +305,7 @@ fn create_new_screen(size: Size, advanced_mouse_actions: bool) -> Screen {
         serialize_pane_viewport,
         scrollback_lines_to_serialize,
         styled_underlines,
+        osc8_hyperlinks,
         arrow_fonts,
         layout_dir,
         explicitly_disable_kitty_keyboard_protocol,
