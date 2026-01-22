@@ -297,7 +297,8 @@ macro_rules! dump_screen_with_ansi {
 
         for line in &$lines {
             if line.is_canonical && !is_first {
-                buf.push_str("\n");
+                buf.push_str("\u{1b}[m\n");
+                last_styles = None;
             }
 
             let last_non_space = line
