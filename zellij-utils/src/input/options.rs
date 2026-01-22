@@ -108,6 +108,11 @@ pub struct Options {
     #[serde(default)]
     pub copy_on_select: Option<bool>,
 
+    /// Enable OSC8 hyperlink output (true or false)
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub osc8_hyperlinks: Option<bool>,
+
     /// Explicit full path to open the scrollback editor (default is $EDITOR or $VISUAL)
     #[clap(long, value_parser)]
     pub scrollback_editor: Option<PathBuf>,
@@ -287,6 +292,7 @@ impl Options {
         let copy_command = other.copy_command.or_else(|| self.copy_command.clone());
         let copy_clipboard = other.copy_clipboard.or(self.copy_clipboard);
         let copy_on_select = other.copy_on_select.or(self.copy_on_select);
+        let osc8_hyperlinks = other.osc8_hyperlinks.or(self.osc8_hyperlinks);
         let scrollback_editor = other
             .scrollback_editor
             .or_else(|| self.scrollback_editor.clone());
@@ -345,6 +351,7 @@ impl Options {
             copy_command,
             copy_clipboard,
             copy_on_select,
+            osc8_hyperlinks,
             scrollback_editor,
             session_name,
             attach_to_session,
@@ -408,6 +415,7 @@ impl Options {
         let copy_command = other.copy_command.or_else(|| self.copy_command.clone());
         let copy_clipboard = other.copy_clipboard.or(self.copy_clipboard);
         let copy_on_select = other.copy_on_select.or(self.copy_on_select);
+        let osc8_hyperlinks = other.osc8_hyperlinks.or(self.osc8_hyperlinks);
         let scrollback_editor = other
             .scrollback_editor
             .or_else(|| self.scrollback_editor.clone());
@@ -462,6 +470,7 @@ impl Options {
             copy_command,
             copy_clipboard,
             copy_on_select,
+            osc8_hyperlinks,
             scrollback_editor,
             session_name,
             attach_to_session,

@@ -15,7 +15,13 @@ fn create_test_output() -> Output {
         width: 10,
     })));
     let styled_underlines = true;
-    Output::new(sixel_image_store, character_cell_size, styled_underlines)
+    let osc8_hyperlinks = true;
+    Output::new(
+        sixel_image_store,
+        character_cell_size,
+        styled_underlines,
+        osc8_hyperlinks,
+    )
 }
 
 /// Helper to create a simple CharacterChunk with text
@@ -846,7 +852,7 @@ fn test_output_buffer_serialize() {
     let row = Row::from_columns(columns);
     let viewport = vec![row];
 
-    let result = buffer.serialize(&viewport, None).unwrap();
+    let result = buffer.serialize(&viewport, true, None).unwrap();
 
     // Should contain the character and newlines/carriage returns
     assert!(result.contains('A'), "Serialized output should contain 'A'");

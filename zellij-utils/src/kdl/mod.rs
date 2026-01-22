@@ -2616,6 +2616,9 @@ impl Options {
             };
         let copy_on_select =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "copy_on_select").map(|(v, _)| v);
+        let osc8_hyperlinks =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "osc8_hyperlinks")
+                .map(|(v, _)| v);
         let scrollback_editor =
             kdl_property_first_arg_as_string_or_error!(kdl_options, "scrollback_editor")
                 .map(|(string, _entry)| PathBuf::from(string));
@@ -2715,6 +2718,7 @@ impl Options {
             copy_command,
             copy_clipboard,
             copy_on_select,
+            osc8_hyperlinks,
             scrollback_editor,
             session_name,
             attach_to_session,
@@ -2762,6 +2766,36 @@ impl Options {
         };
         if let Some(simplified_ui) = self.simplified_ui {
             let mut node = create_node(simplified_ui);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(true);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
+    fn osc8_hyperlinks_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!(
+            "{}\n{}\n{}\n{}\n{}\n{}",
+            " ",
+            "// Enable OSC8 hyperlink output",
+            "// Options:",
+            "//   - true (Default)",
+            "//   - false",
+            "// ",
+        );
+
+        let create_node = |node_value: bool| -> KdlNode {
+            let mut node = KdlNode::new("osc8_hyperlinks");
+            node.push(KdlValue::Bool(node_value));
+            node
+        };
+        if let Some(osc8_hyperlinks) = self.osc8_hyperlinks {
+            let mut node = create_node(osc8_hyperlinks);
             if add_comments {
                 node.set_leading(format!("{}\n", comment_text));
             }
@@ -3895,6 +3929,9 @@ impl Options {
         let mut nodes = vec![];
         if let Some(simplified_ui_node) = self.simplified_ui_to_kdl(add_comments) {
             nodes.push(simplified_ui_node);
+        }
+        if let Some(osc8_hyperlinks_node) = self.osc8_hyperlinks_to_kdl(add_comments) {
+            nodes.push(osc8_hyperlinks_node);
         }
         if let Some(theme_node) = self.theme_to_kdl(add_comments) {
             nodes.push(theme_node);
@@ -6821,4 +6858,24 @@ fn bare_config_from_default_assets_to_string_with_comments() {
         "Deserialized serialized config equals original config"
     );
     insta::assert_snapshot!(fake_config_stringified);
+}
+
+#[test]
+fn osc8_hyperlinks_config_parsing() {
+    let config_with_osc8_disabled = r#"
+        osc8_hyperlinks false
+    "#;
+    let config = Config::from_kdl(config_with_osc8_disabled, None).unwrap();
+    assert_eq!(config.options.osc8_hyperlinks, Some(false));
+
+    let config_with_osc8_enabled = r#"
+        osc8_hyperlinks true
+    "#;
+    let config = Config::from_kdl(config_with_osc8_enabled, None).unwrap();
+    assert_eq!(config.options.osc8_hyperlinks, Some(true));
+
+    // Test serialization roundtrip
+    let serialized = config.to_string(false);
+    let deserialized = Config::from_kdl(&serialized, None).unwrap();
+    assert_eq!(deserialized.options.osc8_hyperlinks, Some(true));
 }

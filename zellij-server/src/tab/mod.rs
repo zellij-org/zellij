@@ -263,6 +263,7 @@ pub(crate) struct Tab {
     debug: bool,
     arrow_fonts: bool,
     styled_underlines: bool,
+    osc8_hyperlinks: bool,
     explicitly_disable_kitty_keyboard_protocol: bool,
     web_clients_allowed: bool,
     web_sharing: WebSharing,
@@ -684,6 +685,7 @@ impl Tab {
         debug: bool,
         arrow_fonts: bool,
         styled_underlines: bool,
+        osc8_hyperlinks: bool,
         explicitly_disable_kitty_keyboard_protocol: bool,
         default_editor: Option<PathBuf>,
         web_clients_allowed: bool,
@@ -785,6 +787,7 @@ impl Tab {
             debug,
             arrow_fonts,
             styled_underlines,
+            osc8_hyperlinks,
             explicitly_disable_kitty_keyboard_protocol,
             default_editor,
             web_clients_allowed,
@@ -830,6 +833,7 @@ impl Tab {
             self.debug,
             self.arrow_fonts,
             self.styled_underlines,
+            self.osc8_hyperlinks,
             self.explicitly_disable_kitty_keyboard_protocol,
             blocking_terminal,
         )
@@ -907,6 +911,7 @@ impl Tab {
             self.debug,
             self.arrow_fonts,
             self.styled_underlines,
+            self.osc8_hyperlinks,
             self.explicitly_disable_kitty_keyboard_protocol,
             blocking_terminal,
         )
@@ -999,6 +1004,7 @@ impl Tab {
                 self.debug,
                 self.arrow_fonts,
                 self.styled_underlines,
+                self.osc8_hyperlinks,
                 self.explicitly_disable_kitty_keyboard_protocol,
                 None,
             )
@@ -1038,6 +1044,7 @@ impl Tab {
                 self.debug,
                 self.arrow_fonts,
                 self.styled_underlines,
+                self.osc8_hyperlinks,
                 self.explicitly_disable_kitty_keyboard_protocol,
                 None,
             )
@@ -1513,6 +1520,7 @@ impl Tab {
                     self.debug,
                     self.arrow_fonts,
                     self.styled_underlines,
+                    self.osc8_hyperlinks,
                     self.explicitly_disable_kitty_keyboard_protocol,
                     blocking_notification,
                 )) as Box<dyn Pane>
@@ -1625,6 +1633,7 @@ impl Tab {
                     self.debug,
                     self.arrow_fonts,
                     self.styled_underlines,
+                    self.osc8_hyperlinks,
                     self.explicitly_disable_kitty_keyboard_protocol,
                     blocking_notification,
                 )) as Box<dyn Pane>
@@ -1726,6 +1735,7 @@ impl Tab {
                     self.debug,
                     self.arrow_fonts,
                     self.styled_underlines,
+                    self.osc8_hyperlinks,
                     self.explicitly_disable_kitty_keyboard_protocol,
                     blocking_notification,
                 )) as Box<dyn Pane>
@@ -1871,6 +1881,7 @@ impl Tab {
                     self.debug,
                     self.arrow_fonts,
                     self.styled_underlines,
+                    self.osc8_hyperlinks,
                     self.explicitly_disable_kitty_keyboard_protocol,
                     blocking_notification,
                 )) as Box<dyn Pane>
@@ -2085,6 +2096,7 @@ impl Tab {
                     self.debug,
                     self.arrow_fonts,
                     self.styled_underlines,
+                    self.osc8_hyperlinks,
                     self.explicitly_disable_kitty_keyboard_protocol,
                     completion_tx,
                 );
@@ -2283,6 +2295,7 @@ impl Tab {
                     self.debug,
                     self.arrow_fonts,
                     self.styled_underlines,
+                    self.osc8_hyperlinks,
                     self.explicitly_disable_kitty_keyboard_protocol,
                     completion_tx,
                 );
@@ -2349,6 +2362,7 @@ impl Tab {
                     self.debug,
                     self.arrow_fonts,
                     self.styled_underlines,
+                    self.osc8_hyperlinks,
                     self.explicitly_disable_kitty_keyboard_protocol,
                     completion_tx,
                 );
@@ -5909,6 +5923,7 @@ impl Tab {
             self.debug,
             self.arrow_fonts,
             self.styled_underlines,
+            self.osc8_hyperlinks,
             self.explicitly_disable_kitty_keyboard_protocol,
             None,
         );

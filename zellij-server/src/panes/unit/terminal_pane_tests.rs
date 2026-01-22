@@ -39,6 +39,7 @@ pub fn scrolling_inside_a_pane() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let osc8_hyperlinks = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let mut terminal_pane = TerminalPane::new(
         pid,
@@ -56,6 +57,7 @@ pub fn scrolling_inside_a_pane() {
         debug,
         arrow_fonts,
         styled_underlines,
+        osc8_hyperlinks,
         explicitly_disable_kitty_keyboard_protocol,
         None,
     ); // 0 is the pane index
@@ -90,6 +92,7 @@ pub fn sixel_image_inside_terminal_pane() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let osc8_hyperlinks = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let mut terminal_pane = TerminalPane::new(
         pid,
@@ -107,6 +110,7 @@ pub fn sixel_image_inside_terminal_pane() {
         debug,
         arrow_fonts,
         styled_underlines,
+        osc8_hyperlinks,
         explicitly_disable_kitty_keyboard_protocol,
         None,
     ); // 0 is the pane index
@@ -141,6 +145,7 @@ pub fn partial_sixel_image_inside_terminal_pane() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let osc8_hyperlinks = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let mut terminal_pane = TerminalPane::new(
         pid,
@@ -158,6 +163,7 @@ pub fn partial_sixel_image_inside_terminal_pane() {
         debug,
         arrow_fonts,
         styled_underlines,
+        osc8_hyperlinks,
         explicitly_disable_kitty_keyboard_protocol,
         None,
     ); // 0 is the pane index
@@ -186,6 +192,7 @@ pub fn overflowing_sixel_image_inside_terminal_pane() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let osc8_hyperlinks = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let mut terminal_pane = TerminalPane::new(
         pid,
@@ -203,6 +210,7 @@ pub fn overflowing_sixel_image_inside_terminal_pane() {
         debug,
         arrow_fonts,
         styled_underlines,
+        osc8_hyperlinks,
         explicitly_disable_kitty_keyboard_protocol,
         None,
     ); // 0 is the pane index
@@ -230,6 +238,7 @@ pub fn scrolling_through_a_sixel_image() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let osc8_hyperlinks = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let mut terminal_pane = TerminalPane::new(
         pid,
@@ -247,6 +256,7 @@ pub fn scrolling_through_a_sixel_image() {
         debug,
         arrow_fonts,
         styled_underlines,
+        osc8_hyperlinks,
         explicitly_disable_kitty_keyboard_protocol,
         None,
     ); // 0 is the pane index
@@ -285,6 +295,7 @@ pub fn multiple_sixel_images_in_pane() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let osc8_hyperlinks = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let mut terminal_pane = TerminalPane::new(
         pid,
@@ -302,6 +313,7 @@ pub fn multiple_sixel_images_in_pane() {
         debug,
         arrow_fonts,
         styled_underlines,
+        osc8_hyperlinks,
         explicitly_disable_kitty_keyboard_protocol,
         None,
     ); // 0 is the pane index
@@ -338,6 +350,7 @@ pub fn resizing_pane_with_sixel_images() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let osc8_hyperlinks = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let mut terminal_pane = TerminalPane::new(
         pid,
@@ -355,6 +368,7 @@ pub fn resizing_pane_with_sixel_images() {
         debug,
         arrow_fonts,
         styled_underlines,
+        osc8_hyperlinks,
         explicitly_disable_kitty_keyboard_protocol,
         None,
     ); // 0 is the pane index
@@ -394,6 +408,7 @@ pub fn changing_character_cell_size_with_sixel_images() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let osc8_hyperlinks = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let mut terminal_pane = TerminalPane::new(
         pid,
@@ -411,6 +426,7 @@ pub fn changing_character_cell_size_with_sixel_images() {
         debug,
         arrow_fonts,
         styled_underlines,
+        osc8_hyperlinks,
         explicitly_disable_kitty_keyboard_protocol,
         None,
     ); // 0 is the pane index
@@ -455,6 +471,7 @@ pub fn keep_working_after_corrupted_sixel_image() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let osc8_hyperlinks = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let mut terminal_pane = TerminalPane::new(
         pid,
@@ -472,6 +489,7 @@ pub fn keep_working_after_corrupted_sixel_image() {
         debug,
         arrow_fonts,
         styled_underlines,
+        osc8_hyperlinks,
         explicitly_disable_kitty_keyboard_protocol,
         None,
     ); // 0 is the pane index
@@ -514,6 +532,7 @@ pub fn pane_with_frame_position_is_on_frame() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let osc8_hyperlinks = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let mut terminal_pane = TerminalPane::new(
         pid,
@@ -531,6 +550,7 @@ pub fn pane_with_frame_position_is_on_frame() {
         debug,
         arrow_fonts,
         styled_underlines,
+        osc8_hyperlinks,
         explicitly_disable_kitty_keyboard_protocol,
         None,
     ); // 0 is the pane index
@@ -609,6 +629,7 @@ pub fn pane_with_bottom_and_right_borders_position_is_on_frame() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let osc8_hyperlinks = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let mut terminal_pane = TerminalPane::new(
         pid,
@@ -626,6 +647,7 @@ pub fn pane_with_bottom_and_right_borders_position_is_on_frame() {
         debug,
         arrow_fonts,
         styled_underlines,
+        osc8_hyperlinks,
         explicitly_disable_kitty_keyboard_protocol,
         None,
     ); // 0 is the pane index
@@ -704,6 +726,7 @@ pub fn frameless_pane_position_is_on_frame() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let osc8_hyperlinks = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let mut terminal_pane = TerminalPane::new(
         pid,
@@ -721,6 +744,7 @@ pub fn frameless_pane_position_is_on_frame() {
         debug,
         arrow_fonts,
         styled_underlines,
+        osc8_hyperlinks,
         explicitly_disable_kitty_keyboard_protocol,
         None,
     ); // 0 is the pane index
