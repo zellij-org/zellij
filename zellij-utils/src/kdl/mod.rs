@@ -2617,7 +2617,8 @@ impl Options {
         let copy_on_select =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "copy_on_select").map(|(v, _)| v);
         let osc8_hyperlinks =
-            kdl_property_first_arg_as_bool_or_error!(kdl_options, "osc8_hyperlinks").map(|(v, _)| v);
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "osc8_hyperlinks")
+                .map(|(v, _)| v);
         let scrollback_editor =
             kdl_property_first_arg_as_string_or_error!(kdl_options, "scrollback_editor")
                 .map(|(string, _entry)| PathBuf::from(string));

@@ -1097,7 +1097,12 @@ impl OutputBuffer {
         self.changed_lines.clear();
         self.should_update_all_lines = false;
     }
-    pub fn serialize(&self, viewport: &[Row], osc8_hyperlinks: bool, max_size: Option<Size>) -> Result<String> {
+    pub fn serialize(
+        &self,
+        viewport: &[Row],
+        osc8_hyperlinks: bool,
+        max_size: Option<Size>,
+    ) -> Result<String> {
         let mut chunks = Vec::new();
         for (line_index, line) in viewport.iter().enumerate() {
             let terminal_characters =
@@ -1107,7 +1112,14 @@ impl OutputBuffer {
             let y = line_index;
             chunks.push(CharacterChunk::new(terminal_characters, x, y));
         }
-        serialize_chunks_with_newlines(chunks, None, None, self.styled_underlines, osc8_hyperlinks, max_size)
+        serialize_chunks_with_newlines(
+            chunks,
+            None,
+            None,
+            self.styled_underlines,
+            osc8_hyperlinks,
+            max_size,
+        )
     }
     pub fn changed_chunks_in_viewport(
         &self,

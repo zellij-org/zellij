@@ -16,7 +16,12 @@ fn create_test_output() -> Output {
     })));
     let styled_underlines = true;
     let osc8_hyperlinks = true;
-    Output::new(sixel_image_store, character_cell_size, styled_underlines, osc8_hyperlinks)
+    Output::new(
+        sixel_image_store,
+        character_cell_size,
+        styled_underlines,
+        osc8_hyperlinks,
+    )
 }
 
 /// Helper to create a simple CharacterChunk with text

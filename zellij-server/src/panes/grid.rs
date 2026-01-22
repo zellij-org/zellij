@@ -1116,7 +1116,10 @@ impl Grid {
                     .serialize(to_serialize.as_slice(), self.osc8_hyperlinks, None)
                     .ok()
             },
-            None => self.output_buffer.serialize(&self.viewport, self.osc8_hyperlinks, None).ok(),
+            None => self
+                .output_buffer
+                .serialize(&self.viewport, self.osc8_hyperlinks, None)
+                .ok(),
         }
     }
     pub fn render(
