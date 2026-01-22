@@ -654,6 +654,12 @@ fn message_to_plugin(env: &PluginEnv, mut message_to_plugin: MessageToPlugin) ->
     if message_to_plugin.plugin_url.as_ref().map(|s| s.as_str()) == Some("zellij:OWN_URL") {
         message_to_plugin.plugin_url = Some(env.plugin.location.display());
     }
+    if !message_to_plugin.has_cwd() {
+        message_to_plugin = message_to_plugin.new_plugin_instance_should_have_cwd(env.plugin_cwd.clone());
+    }
+    if !message_to_plugin.plugin_config.contains_key("caller_cwd") {
+        message_to_plugin.plugin_config.insert("caller_cwd".to_owned(), env.plugin_cwd.display().to_string());
+    }
     env.senders
         .send_to_plugin(PluginInstruction::MessageFromPlugin {
             source_plugin_id: env.plugin_id,
@@ -2086,6 +2092,7 @@ fn switch_session(
     } else {
         let client_id = env.client_id;
         let tab_position = tab_position.map(|p| p + 1); // ¯\_()_/¯
+        let cwd = cwd.or_else(|| Some(env.plugin_cwd.clone()));
         let connect_to_session = ConnectToSession {
             name: session_name,
             tab_position,

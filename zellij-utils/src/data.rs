@@ -2674,6 +2674,9 @@ impl MessageToPlugin {
         new_plugin_args.should_focus = Some(true);
         self
     }
+    pub fn has_cwd(&self) -> bool {
+        self.new_plugin_args.as_ref().map(|n| n.cwd.is_some()).unwrap_or(false)
+    }
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
