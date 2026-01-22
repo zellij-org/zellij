@@ -2675,7 +2675,10 @@ impl MessageToPlugin {
         self
     }
     pub fn has_cwd(&self) -> bool {
-        self.new_plugin_args.as_ref().map(|n| n.cwd.is_some()).unwrap_or(false)
+        self.new_plugin_args
+            .as_ref()
+            .map(|n| n.cwd.is_some())
+            .unwrap_or(false)
     }
 }
 

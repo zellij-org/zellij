@@ -655,10 +655,14 @@ fn message_to_plugin(env: &PluginEnv, mut message_to_plugin: MessageToPlugin) ->
         message_to_plugin.plugin_url = Some(env.plugin.location.display());
     }
     if !message_to_plugin.has_cwd() {
-        message_to_plugin = message_to_plugin.new_plugin_instance_should_have_cwd(env.plugin_cwd.clone());
+        message_to_plugin =
+            message_to_plugin.new_plugin_instance_should_have_cwd(env.plugin_cwd.clone());
     }
     if !message_to_plugin.plugin_config.contains_key("caller_cwd") {
-        message_to_plugin.plugin_config.insert("caller_cwd".to_owned(), env.plugin_cwd.display().to_string());
+        message_to_plugin.plugin_config.insert(
+            "caller_cwd".to_owned(),
+            env.plugin_cwd.display().to_string(),
+        );
     }
     env.senders
         .send_to_plugin(PluginInstruction::MessageFromPlugin {
