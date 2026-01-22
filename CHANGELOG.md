@@ -32,6 +32,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat: add web client `base_url` option (https://github.com/zellij-org/zellij/pull/4409)
 * fix: breaking floating panes to a new tab no longer keeps them floating (https://github.com/zellij-org/zellij/pull/4622)
 * fix: allow disabling automatic OSC8 hyperlink formatting (https://github.com/zellij-org/zellij/pull/4624)
+* fix: properly set cwd for new sessions started from the `session-manager` (https://github.com/zellij-org/zellij/pull/4625)
 
 
 ## [0.43.1] - 2025-08-08
