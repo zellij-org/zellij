@@ -6673,9 +6673,8 @@ pub fn switch_session_plugin_command() {
         .clone();
     // we do the replace below to avoid the randomness of the temporary folder in the snapshot
     // while still testing it
-    assert_snapshot!(
-        format!("{:#?}", switch_session_event).replace(&format!("{:?}", temp_folder.path()), "\"CWD\"")
-    );
+    assert_snapshot!(format!("{:#?}", switch_session_event)
+        .replace(&format!("{:?}", temp_folder.path()), "\"CWD\""));
 }
 
 #[test]
@@ -6762,9 +6761,8 @@ pub fn switch_session_with_layout_plugin_command() {
         .clone();
     // we do the replace below to avoid the randomness of the temporary folder in the snapshot
     // while still testing it
-    assert_snapshot!(
-        format!("{:#?}", switch_session_event).replace(&format!("{:?}", temp_folder.path()), "\"CWD\"")
-    );
+    assert_snapshot!(format!("{:#?}", switch_session_event)
+        .replace(&format!("{:?}", temp_folder.path()), "\"CWD\""));
 }
 
 #[test]
