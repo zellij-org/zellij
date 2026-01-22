@@ -160,7 +160,7 @@ macro_rules! active_tab_and_connected_client_id_with_first_tab_fallback {
                         },
                         None => {
                             log::error!("Not tabs found!");
-                        }
+                        },
                     }
                 };
             },
@@ -187,14 +187,13 @@ macro_rules! active_tab_and_connected_client_id_with_first_tab_fallback {
                         },
                         None => {
                             log::error!("Not tabs found!");
-                        }
+                        },
                     }
                 };
             },
         }
     };
 }
-
 
 type InitialTitle = String;
 type HoldForCommand = Option<RunCommand>;
