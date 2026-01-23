@@ -1,6 +1,6 @@
 use crate::background_jobs::BackgroundJob;
 use crate::route::NotificationEnd;
-use crate::terminal_bytes::TerminalBytes;
+use crate::terminal_bytes::{create_bytes_complete_signal, TerminalBytes};
 use crate::{
     panes::PaneId,
     plugins::{DumpSessionLayoutResponse, PluginId, PluginInstruction},
@@ -981,9 +981,30 @@ impl Pty {
 
         let originating_command_plugin = Arc::new(originating_command_plugin.clone());
         let originating_edit_plugin = Arc::new(originating_edit_plugin.clone());
+
+        // Create a synchronization signal to ensure bytes are fully read before close
+        let bytes_complete_signal = create_bytes_complete_signal();
+        let bytes_complete_for_quit_cb = bytes_complete_signal.clone();
+
         let quit_cb = Box::new({
             let senders = self.bus.senders.clone();
             move |pane_id, exit_status, command| {
+                // Wait for bytes reading to complete before sending close instruction
+                // This prevents a race condition where ClosePane could be processed
+                // before all output bytes are written to the pane's grid
+                {
+                    let (lock, cvar) = &*bytes_complete_for_quit_cb;
+                    let done = lock.lock().unwrap();
+                    // Wait with a timeout to avoid deadlock if something goes wrong
+                    let timeout = std::time::Duration::from_secs(5);
+                    let result = cvar.wait_timeout_while(done, timeout, |done| !*done);
+                    if let Ok((_, timeout_result)) = result {
+                        if timeout_result.timed_out() {
+                            log::warn!("Timed out waiting for bytes to complete for pane {:?}", pane_id);
+                        }
+                    }
+                }
+
                 // if this command originated in a plugin, we send the plugin an event letting it
                 // know the command exited and some other useful information
                 if let PaneId::Terminal(pane_id) = pane_id {
@@ -1050,8 +1071,10 @@ impl Pty {
                 .fatal()
                 .clone();
             let debug_to_file = self.debug_to_file;
+            let bytes_complete_signal = bytes_complete_signal.clone();
             async move {
                 TerminalBytes::new(pid_primary, senders, os_input, debug_to_file, terminal_id)
+                    .with_bytes_complete_signal(bytes_complete_signal)
                     .listen()
                     .await
                     .with_context(|| err_context(terminal_id))
