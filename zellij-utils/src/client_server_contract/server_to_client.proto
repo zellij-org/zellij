@@ -18,6 +18,7 @@ message ServerToClientMsg {
     StartWebServerMsg start_web_server = 11;
     RenamedSessionMsg renamed_session = 12;
     ConfigFileUpdatedMsg config_file_updated = 13;
+    CapturedOutputMsg captured_output = 14;
   }
 }
 
@@ -73,4 +74,8 @@ message RenamedSessionMsg {
 
 message ConfigFileUpdatedMsg {
   // Empty message
+}
+
+message CapturedOutputMsg {
+  string output = 1;
 }

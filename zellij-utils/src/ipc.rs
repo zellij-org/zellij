@@ -167,6 +167,9 @@ pub enum ServerToClientMsg {
         pipe_name: String,
         output: String,
     },
+    CapturedOutput {
+        output: String,
+    },
     QueryTerminalSize,
     StartWebServer,
     RenamedSession {

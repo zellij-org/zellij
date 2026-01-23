@@ -209,6 +209,7 @@ pub enum Action {
         pane_name: Option<String>,
         command: Option<RunCommandAction>,
         unblock_condition: Option<UnblockCondition>,
+        capture_output: bool,
         near_current_pane: bool,
     },
     /// Open the file in a new pane using the default editor
@@ -555,6 +556,7 @@ impl Action {
                 stacked,
                 blocking,
                 unblock_condition,
+                capture_output,
                 near_current_pane,
                 borderless,
             } => {
@@ -616,6 +618,7 @@ impl Action {
                         pane_name: name,
                         command,
                         unblock_condition,
+                        capture_output,
                         near_current_pane,
                     }])
                 } else if let Some(plugin) = plugin {

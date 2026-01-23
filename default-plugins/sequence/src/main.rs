@@ -638,6 +638,7 @@ pub fn handle_action_complete(
             command: Some(command),
             pane_name: Some(next_command_text.trim().to_string()),
             unblock_condition,
+            capture_output: false,
             near_current_pane: true,
         };
 
@@ -1047,6 +1048,7 @@ fn rerun_sequence(state: &mut State) {
             command: Some(command),
             pane_name: Some(command_text.trim().to_string()),
             unblock_condition,
+            capture_output: false,
             near_current_pane: true,
         };
 

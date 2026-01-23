@@ -435,6 +435,10 @@ pub enum Sessions {
             conflicts_with("block-until-exit-failure")
         )]
         block_until_exit: bool,
+        /// Capture terminal output and print to stdout when command completes
+        /// (implies --block-until-exit unless another blocking flag is specified)
+        #[clap(long, value_parser, default_value("false"), takes_value(false))]
+        output: bool,
         /// if set, will open the pane near the current one rather than following the user's focus
         #[clap(long)]
         near_current_pane: bool,
@@ -757,6 +761,10 @@ pub enum CliAction {
         // TODO: clean this up
         #[clap(skip)]
         unblock_condition: Option<UnblockCondition>,
+
+        /// Capture terminal output and print to stdout when command completes
+        #[clap(skip)]
+        capture_output: bool,
 
         /// if set, will open the pane near the current one rather than following the user's focus
         #[clap(long)]

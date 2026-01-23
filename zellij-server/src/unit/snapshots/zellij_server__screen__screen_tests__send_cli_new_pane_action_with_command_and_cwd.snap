@@ -2,4 +2,4 @@
 source: zellij-server/src/./unit/screen_tests.rs
 expression: "format!(\"{:?}\", new_pane_instruction)"
 ---
-Some(SpawnTerminal(Some(RunCommand(RunCommand { command: "htop", args: [], cwd: Some("/some/folder"), hold_on_close: true, hold_on_start: false, originating_plugin: None, use_terminal_title: false })), None, Tiled { direction: Some(Right), borderless: Some(false) }, false, ClientId(10), Some(NotificationEnd { channel: None, exit_status: None, unblock_condition: None, affected_pane_id: None }), false))
+Some(SpawnTerminal(Some(RunCommand(RunCommand { command: "htop", args: [], cwd: Some("/some/folder"), hold_on_close: true, hold_on_start: false, originating_plugin: None, use_terminal_title: false })), None, Tiled { direction: Some(Right), borderless: Some(false) }, false, ClientId(10), Some(NotificationEnd { channel: None, exit_status: None, unblock_condition: None, affected_pane_id: None, capture_output: false, captured_output: None }), false))
