@@ -260,8 +260,7 @@ pub enum ScreenInstruction {
     Exit,
     ClearScreen(ClientId, Option<NotificationEnd>),
     DumpScreen(String, ClientId, bool, Option<NotificationEnd>),
-    DumpLayout(Option<PathBuf>, ClientId, Option<NotificationEnd>), // PathBuf is the default configured
-    // shell
+    DumpLayout(Option<PathBuf>, ClientId, bool, Option<NotificationEnd>), // PathBuf is the default configured shell, bool is with_ids
     DumpLayoutToPlugin {
         plugin_id: PluginId,
         tab_index: Option<usize>,
@@ -4299,7 +4298,7 @@ pub(crate) fn screen_thread_main(
                 );
                 screen.render(None)?;
             },
-            ScreenInstruction::DumpLayout(default_shell, client_id, completion_tx) => {
+            ScreenInstruction::DumpLayout(default_shell, client_id, with_ids, completion_tx) => {
                 let err_context = || format!("Failed to dump layout");
                 let session_layout_metadata = screen.get_layout_metadata(default_shell, None);
                 screen
@@ -4308,6 +4307,7 @@ pub(crate) fn screen_thread_main(
                     .send_to_plugin(PluginInstruction::DumpLayout(
                         session_layout_metadata,
                         client_id,
+                        with_ids,
                         completion_tx,
                     ))
                     .with_context(err_context)?;
@@ -6081,7 +6081,7 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
-                match screen.tabs.get_mut(&tab_index.saturating_sub(1)) {
+                match screen.tabs.values_mut().find(|t| t.position == tab_index) {
                     Some(tab) => {
                         tab.name = String::from_utf8_lossy(&new_name).to_string();
                     },
