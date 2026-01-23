@@ -173,6 +173,7 @@ pub enum PluginInstruction {
         skip_cache: bool,
         cli_client_id: ClientId,
         plugin_and_client_id: Option<(u32, ClientId)>,
+        on_done: Option<NotificationEnd>,
     },
     CachePluginEvents {
         plugin_id: PluginId,
@@ -961,7 +962,9 @@ pub(crate) fn plugin_thread_main(
                 skip_cache,
                 cli_client_id,
                 plugin_and_client_id,
+                on_done,
             } => {
+                let _ = on_done; // signal completion
                 let should_float = floating.unwrap_or(true);
                 let mut pipe_messages = vec![];
                 let floating_pane_coordinates = None; // TODO: do we want to allow this?
