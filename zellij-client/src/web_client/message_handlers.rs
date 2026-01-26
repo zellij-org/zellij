@@ -77,12 +77,17 @@ pub fn parse_stdin(
     mouse_old_event: &mut MouseEvent,
     explicitly_disable_kitty_keyboard_protocol: bool,
 ) {
-    // Check if this looks like multi-byte UTF-8 (likely IME input)
+    // Check if this looks like multi-byte input (either UTF-8 or multi-byte ASCII from IME)
+    // Multi-byte UTF-8: first byte has 0xC0 bits set
+    // Multi-byte ASCII: len > 1 and all bytes are ASCII (sent as batch from IME)
+    // But exclude ANSI escape sequences (ESC followed by printable chars)
     let is_multibyte_utf8 = buf.len() > 1 && (buf[0] & 0xC0) == 0xC0;
+    let is_ansi_escape = buf.len() >= 2 && buf[0] == 0x1B; // ESC character
+    let is_multibyte_ascii = buf.len() > 1 && buf.iter().all(|&b| b < 128);
 
-    if is_multibyte_utf8 {
-        // For multi-byte UTF-8 (IME input), bypass InputParser and send directly
-        // to avoid each byte being parsed as a separate character
+    if (is_multibyte_utf8 || (is_multibyte_ascii && !is_ansi_escape)) {
+        // For multi-byte input (IME input or UTF-8), bypass InputParser and send directly
+        // to avoid each byte/character being parsed as separate events
         os_input.send_to_server(ClientToServerMsg::Action {
             action: Action::Write {
                 key_with_modifier: None,
