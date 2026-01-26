@@ -70,12 +70,32 @@ pub fn send_control_messages_to_client(
     });
 }
 
+
 pub fn parse_stdin(
     buf: &[u8],
     os_input: Box<dyn ClientOsApi>,
     mouse_old_event: &mut MouseEvent,
     explicitly_disable_kitty_keyboard_protocol: bool,
 ) {
+    // Check if this looks like multi-byte UTF-8 (likely IME input)
+    let is_multibyte_utf8 = buf.len() > 1 && (buf[0] & 0xC0) == 0xC0;
+
+    if is_multibyte_utf8 {
+        // For multi-byte UTF-8 (IME input), bypass InputParser and send directly
+        // to avoid each byte being parsed as a separate character
+        os_input.send_to_server(ClientToServerMsg::Action {
+            action: Action::Write {
+                key_with_modifier: None,
+                bytes: buf.to_vec(),
+                is_kitty_keyboard_protocol: false,
+            },
+            terminal_id: None,
+            client_id: None,
+            is_cli_client: false,
+        });
+        return;
+    }
+
     if !explicitly_disable_kitty_keyboard_protocol {
         match KittyKeyboardParser::new().parse(&buf) {
             Some(key_with_modifier) => {
