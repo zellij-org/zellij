@@ -673,9 +673,8 @@ impl Setup {
             .as_ref()
             .and_then(|cli_options| cli_options.layout_dir.clone())
             .or_else(|| config.options.layout_dir.clone())
-            .or_else(|| {
-                get_layout_dir(cli_args.config_dir.clone().or_else(find_default_config_dir))
-            })
+            .or_else(|| get_layout_dir(cli_args.config_dir.clone()))
+            .or_else(|| get_layout_dir(find_default_config_dir()))
             // Try to get an absolute path, else let the resolution code figure this out.
             .map(|d| d.canonicalize().unwrap_or(d));
         // the chosen layout can either be a path relative to the layout_dir or a name of one
@@ -706,7 +705,8 @@ impl Setup {
         } else {
             // we merge-override the config here because the layout might contain configuration
             // that needs to take precedence
-            Layout::from_path_or_default(chosen_layout.as_ref(), layout_dir.clone(), config).map(|(_layout, config)| (layout_info, config))
+            Layout::from_path_or_default(chosen_layout.as_ref(), layout_dir.clone(), config)
+                .map(|(_layout, config)| (layout_info, config))
         }
     }
     fn handle_setup_commands(cli_args: &CliArgs) {
@@ -855,7 +855,10 @@ mod setup_test {
     #[test]
     fn cli_config_dir_overrides_defaults() {
         let cli_args = CliArgs {
-            config_dir: Some(PathBuf::from(format!("{}/src/test-fixtures/config-dirs/layout-upside-down", env!("CARGO_MANIFEST_DIR")))),
+            config_dir: Some(PathBuf::from(format!(
+                "{}/src/test-fixtures/config-dirs/layout-upside-down",
+                env!("CARGO_MANIFEST_DIR")
+            ))),
             ..Default::default()
         };
         let (_, layout_info, _, _, _) = Setup::from_cli_args(&cli_args).unwrap();

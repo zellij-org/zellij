@@ -92,13 +92,13 @@ fn start_zellij(channel: &mut ssh2::Channel) {
     std::thread::sleep(std::time::Duration::from_secs(3)); // wait until Zellij stops parsing startup ANSI codes from the terminal STDIN
 }
 
-fn start_zellij_with_config_dir(channel: &mut ssh2::Channel, data_dir: &str) {
+fn start_zellij_with_config_dir(channel: &mut ssh2::Channel, config_dir: &str) {
     stop_zellij(channel);
     channel
         .write_all(
             format!(
-                "{} {} --session {} --data-dir {} options --show-release-notes false --show-startup-tips false\n",
-                SET_ENV_VARIABLES, ZELLIJ_EXECUTABLE_LOCATION, SESSION_NAME, format!("{}/{}", ZELLIJ_CONFIG_DIRS_PATH, data_dir)
+                "{} {} --session {} --data-dir {} --config-dir {} options --show-release-notes false --show-startup-tips false\n",
+                SET_ENV_VARIABLES, ZELLIJ_EXECUTABLE_LOCATION, SESSION_NAME, ZELLIJ_DATA_DIR, format!("{}/{}", ZELLIJ_CONFIG_DIRS_PATH, config_dir)
             )
             .as_bytes(),
         )
