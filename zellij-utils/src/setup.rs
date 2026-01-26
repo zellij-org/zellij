@@ -874,4 +874,25 @@ mod setup_test {
             )
         );
     }
+    #[test]
+    fn cli_config_dir_finds_custom_default() {
+        let cli_args = CliArgs {
+            config_dir: Some(PathBuf::from(format!(
+                "{}/src/test-fixtures/config-dirs/custom-default-layout",
+                env!("CARGO_MANIFEST_DIR")
+            ))),
+            ..Default::default()
+        };
+        let (_, layout_info, _, _, _) = Setup::from_cli_args(&cli_args).unwrap();
+        let Some(LayoutInfo::File(layout_path, _)) = layout_info else {
+            panic!("layout info has unexpected format");
+        };
+        assert_eq!(
+            layout_path,
+            format!(
+                "{}/src/test-fixtures/config-dirs/custom-default-layout/layouts/default.kdl",
+                env!("CARGO_MANIFEST_DIR")
+            )
+        );
+    }
 }
