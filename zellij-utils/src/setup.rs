@@ -748,6 +748,7 @@ fn merge_attach_command_options(
 mod setup_test {
     use super::Setup;
     use crate::cli::{CliArgs, Command};
+    use crate::data::LayoutInfo;
     use crate::input::options::Options;
     use insta::assert_snapshot;
     use std::path::PathBuf;
@@ -862,6 +863,15 @@ mod setup_test {
             ..Default::default()
         };
         let (_, layout_info, _, _, _) = Setup::from_cli_args(&cli_args).unwrap();
-        assert_snapshot!(format!("{:#?}", layout_info));
+        let Some(LayoutInfo::File(layout_path, _)) = layout_info else {
+            panic!("layout info has unexpected format");
+        };
+        assert_eq!(
+            layout_path,
+            format!(
+                "{}/src/test-fixtures/config-dirs/layout-upside-down/layouts/upside-down.kdl",
+                env!("CARGO_MANIFEST_DIR")
+            )
+        );
     }
 }
