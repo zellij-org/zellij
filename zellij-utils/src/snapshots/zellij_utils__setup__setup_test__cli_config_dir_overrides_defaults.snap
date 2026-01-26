@@ -1,0 +1,39 @@
+---
+source: zellij-utils/src/setup.rs
+expression: "format!(\"{:#?}\", layout)"
+---
+Some(
+    File(
+        "/var/home/hartan/repos/github.com/zellij-org/zellij/zellij-utils/src/test-fixtures/config-dirs/layout-upside-down/layouts/upside-down.kdl",
+        LayoutMetadata {
+            tabs: [
+                TabMetadata {
+                    panes: [
+                        PaneMetadata {
+                            name: Some(
+                                "status-bar",
+                            ),
+                            is_plugin: true,
+                            is_builtin_plugin: false,
+                        },
+                        PaneMetadata {
+                            name: None,
+                            is_plugin: false,
+                            is_builtin_plugin: false,
+                        },
+                        PaneMetadata {
+                            name: Some(
+                                "tab-bar",
+                            ),
+                            is_plugin: true,
+                            is_builtin_plugin: false,
+                        },
+                    ],
+                    name: None,
+                },
+            ],
+            creation_time: "1769419220",
+            update_time: "1769419220",
+        },
+    ),
+)

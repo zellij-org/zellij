@@ -596,7 +596,7 @@ pub(crate) fn start_client(opts: CliArgs) {
     convert_old_yaml_files(&opts);
     let (
         config,
-        _layout,
+        client_layout_info,
         config_options,
         mut config_without_layout,
         mut config_options_without_layout,
@@ -622,7 +622,7 @@ pub(crate) fn start_client(opts: CliArgs) {
         let mut opts = opts.clone();
         let mut is_a_reconnect = false;
         let mut should_create_detached = false;
-        let mut layout_info = None;
+        let mut layout_info = client_layout_info.clone();
         let mut new_session_cwd = None;
 
         if let Some(reconnect_to_session) = &reconnect_to_session {
