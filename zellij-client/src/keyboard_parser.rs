@@ -6,6 +6,8 @@ enum KittyKeysParsingState {
     Ground,
     ReceivedEscapeCharacter,
     ParsingNumber,
+    ParsingShiftedKey,   // After first colon - parsing shifted key
+    SkippingAlternateKey, // After second colon - skip alternate key until ; or terminator
     ParsingModifiers,
     DoneParsingWithU,
     DoneParsingWithTilde,
@@ -15,6 +17,7 @@ enum KittyKeysParsingState {
 pub struct KittyKeyboardParser {
     state: KittyKeysParsingState,
     number_bytes: Vec<u8>,
+    shifted_key_bytes: Vec<u8>,  // For REPORT_ALTERNATE_KEYS: the shifted form
     modifier_bytes: Vec<u8>,
 }
 
@@ -23,6 +26,7 @@ impl KittyKeyboardParser {
         KittyKeyboardParser {
             state: KittyKeysParsingState::Ground,
             number_bytes: vec![],
+            shifted_key_bytes: vec![],
             modifier_bytes: vec![],
         }
     }
@@ -34,12 +38,20 @@ impl KittyKeyboardParser {
         }
         match self.state {
             KittyKeysParsingState::DoneParsingWithU => {
-                // CSI number ; modifiers u
-                KeyWithModifier::from_bytes_with_u(&self.number_bytes, &self.modifier_bytes)
+                // CSI number:shifted ; modifiers u
+                KeyWithModifier::from_bytes_with_u(
+                    &self.number_bytes,
+                    &self.shifted_key_bytes,
+                    &self.modifier_bytes,
+                )
             },
             KittyKeysParsingState::DoneParsingWithTilde => {
-                // CSI number ; modifiers ~
-                KeyWithModifier::from_bytes_with_tilde(&self.number_bytes, &self.modifier_bytes)
+                // CSI number:shifted ; modifiers ~
+                KeyWithModifier::from_bytes_with_tilde(
+                    &self.number_bytes,
+                    &self.shifted_key_bytes,
+                    &self.modifier_bytes,
+                )
             },
             KittyKeysParsingState::ParsingModifiers => {
                 // CSI 1; modifiers [ABCDEFHPQS]
@@ -62,6 +74,8 @@ impl KittyKeyboardParser {
     }
     pub fn advance(&mut self, byte: u8) -> bool {
         // returns false if we failed parsing
+        // Format: CSI number:shifted:alternate ; modifiers u
+        // The shifted and alternate parts are optional (REPORT_ALTERNATE_KEYS flag)
         match (&self.state, byte) {
             (KittyKeysParsingState::Ground, 0x1b | 0x5b) => {
                 self.state = KittyKeysParsingState::ReceivedEscapeCharacter;
@@ -69,22 +83,42 @@ impl KittyKeyboardParser {
             (KittyKeysParsingState::ReceivedEscapeCharacter, 91) => {
                 self.state = KittyKeysParsingState::ParsingNumber;
             },
+            // Colon separates base key from shifted key
+            (KittyKeysParsingState::ParsingNumber, 58) => {
+                self.state = KittyKeysParsingState::ParsingShiftedKey;
+            },
+            // Second colon separates shifted from alternate - we ignore alternate
+            (KittyKeysParsingState::ParsingShiftedKey, 58) => {
+                // Transition to skipping state - alternate key bytes will be discarded
+                self.state = KittyKeysParsingState::SkippingAlternateKey;
+            },
             (KittyKeysParsingState::ParsingNumber, 59) => {
-                // semicolon
+                // semicolon - no shifted key present
                 if &self.number_bytes == &[49] {
                     self.number_bytes.clear();
                 }
                 self.state = KittyKeysParsingState::ParsingModifiers;
             },
+            (KittyKeysParsingState::ParsingShiftedKey, 59)
+            | (KittyKeysParsingState::SkippingAlternateKey, 59) => {
+                // semicolon after shifted key or alternate key
+                self.state = KittyKeysParsingState::ParsingModifiers;
+            },
             (
-                KittyKeysParsingState::ParsingNumber | KittyKeysParsingState::ParsingModifiers,
+                KittyKeysParsingState::ParsingNumber
+                | KittyKeysParsingState::ParsingShiftedKey
+                | KittyKeysParsingState::SkippingAlternateKey
+                | KittyKeysParsingState::ParsingModifiers,
                 117,
             ) => {
                 // u
                 self.state = KittyKeysParsingState::DoneParsingWithU;
             },
             (
-                KittyKeysParsingState::ParsingNumber | KittyKeysParsingState::ParsingModifiers,
+                KittyKeysParsingState::ParsingNumber
+                | KittyKeysParsingState::ParsingShiftedKey
+                | KittyKeysParsingState::SkippingAlternateKey
+                | KittyKeysParsingState::ParsingModifiers,
                 126,
             ) => {
                 // ~
@@ -92,6 +126,12 @@ impl KittyKeyboardParser {
             },
             (KittyKeysParsingState::ParsingNumber, _) => {
                 self.number_bytes.push(byte);
+            },
+            (KittyKeysParsingState::ParsingShiftedKey, _) => {
+                self.shifted_key_bytes.push(byte);
+            },
+            (KittyKeysParsingState::SkippingAlternateKey, _) => {
+                // Discard alternate key bytes - we don't use them
             },
             (KittyKeysParsingState::ParsingModifiers, _) => {
                 self.modifier_bytes.push(byte);
@@ -1776,4 +1816,49 @@ pub fn can_parse_keys_with_multiple_modifiers() {
         ),
         "Can parse a bare 'F4 (superernate)' keypress with all modifiers"
     );
+}
+
+#[test]
+pub fn can_parse_shifted_keys_with_report_alternate_keys() {
+    use zellij_utils::data::BareKey;
+
+    // Test parsing M-< which is sent as: ESC[44:60;4u
+    // 44 = comma (base key, ASCII 44 = ',')
+    // 60 = < (shifted key, ASCII 60 = '<')
+    // 4 = shift(1) + alt(2) + 1 = modifier value for Shift+Alt
+    let key = "\u{1b}[44:60;4u";
+    let parsed = KittyKeyboardParser::new().parse(&key.as_bytes());
+    assert!(parsed.is_some(), "Should parse shifted key format");
+    let parsed = parsed.unwrap();
+    assert_eq!(parsed.bare_key, BareKey::Char(','), "Base key should be comma");
+    assert_eq!(
+        parsed.shifted_key,
+        Some(BareKey::Char('<')),
+        "Shifted key should be '<'"
+    );
+    assert!(
+        parsed.key_modifiers.contains(&zellij_utils::data::KeyModifier::Shift),
+        "Should have Shift modifier"
+    );
+    assert!(
+        parsed.key_modifiers.contains(&zellij_utils::data::KeyModifier::Alt),
+        "Should have Alt modifier"
+    );
+
+    // Test that regular format still works (no shifted key)
+    let key = "\u{1b}[44;4u";
+    let parsed = KittyKeyboardParser::new().parse(&key.as_bytes());
+    assert!(parsed.is_some(), "Should parse regular format");
+    let parsed = parsed.unwrap();
+    assert_eq!(parsed.bare_key, BareKey::Char(','));
+    assert_eq!(parsed.shifted_key, None, "No shifted key in regular format");
+
+    // Test with three colon-separated values (base:shifted:alternate)
+    // We only care about base and shifted, alternate is ignored
+    let key = "\u{1b}[44:60:60;4u";
+    let parsed = KittyKeyboardParser::new().parse(&key.as_bytes());
+    assert!(parsed.is_some(), "Should parse three-value format");
+    let parsed = parsed.unwrap();
+    assert_eq!(parsed.bare_key, BareKey::Char(','));
+    assert_eq!(parsed.shifted_key, Some(BareKey::Char('<')));
 }

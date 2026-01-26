@@ -98,6 +98,7 @@ impl FromStr for KeyWithModifier {
         }
         Ok(KeyWithModifier {
             bare_key,
+            shifted_key: None,
             key_modifiers,
         })
     }
@@ -106,6 +107,9 @@ impl FromStr for KeyWithModifier {
 #[derive(Debug, Clone, Eq, Serialize, Deserialize, PartialOrd, Ord)]
 pub struct KeyWithModifier {
     pub bare_key: BareKey,
+    /// The shifted form of the key, if provided by REPORT_ALTERNATE_KEYS
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shifted_key: Option<BareKey>,
     pub key_modifiers: BTreeSet<KeyModifier>,
 }
 
@@ -393,6 +397,33 @@ impl BareKey {
             _ => None,
         }
     }
+    #[cfg(not(target_family = "wasm"))]
+    pub fn to_termwiz_keycode(&self) -> KeyCode {
+        match self {
+            BareKey::PageDown => KeyCode::PageDown,
+            BareKey::PageUp => KeyCode::PageUp,
+            BareKey::Left => KeyCode::LeftArrow,
+            BareKey::Down => KeyCode::DownArrow,
+            BareKey::Up => KeyCode::UpArrow,
+            BareKey::Right => KeyCode::RightArrow,
+            BareKey::Home => KeyCode::Home,
+            BareKey::End => KeyCode::End,
+            BareKey::Backspace => KeyCode::Backspace,
+            BareKey::Delete => KeyCode::Delete,
+            BareKey::Insert => KeyCode::Insert,
+            BareKey::F(index) => KeyCode::Function(*index),
+            BareKey::Char(character) => KeyCode::Char(*character),
+            BareKey::Tab => KeyCode::Tab,
+            BareKey::Esc => KeyCode::Escape,
+            BareKey::Enter => KeyCode::Enter,
+            BareKey::CapsLock => KeyCode::CapsLock,
+            BareKey::ScrollLock => KeyCode::ScrollLock,
+            BareKey::NumLock => KeyCode::NumLock,
+            BareKey::PrintScreen => KeyCode::PrintScreen,
+            BareKey::Pause => KeyCode::Pause,
+            BareKey::Menu => KeyCode::Menu,
+        }
+    }
 }
 
 bitflags::bitflags! {
@@ -438,12 +469,25 @@ impl KeyWithModifier {
     pub fn new(bare_key: BareKey) -> Self {
         KeyWithModifier {
             bare_key,
+            shifted_key: None,
             key_modifiers: BTreeSet::new(),
         }
     }
     pub fn new_with_modifiers(bare_key: BareKey, key_modifiers: BTreeSet<KeyModifier>) -> Self {
         KeyWithModifier {
             bare_key,
+            shifted_key: None,
+            key_modifiers,
+        }
+    }
+    pub fn new_with_shifted_key(
+        bare_key: BareKey,
+        shifted_key: Option<BareKey>,
+        key_modifiers: BTreeSet<KeyModifier>,
+    ) -> Self {
+        KeyWithModifier {
+            bare_key,
+            shifted_key,
             key_modifiers,
         }
     }
@@ -463,28 +507,48 @@ impl KeyWithModifier {
         self.key_modifiers.insert(KeyModifier::Super);
         self
     }
-    pub fn from_bytes_with_u(number_bytes: &[u8], modifier_bytes: &[u8]) -> Option<Self> {
-        // CSI number ; modifiers u
+    pub fn from_bytes_with_u(
+        number_bytes: &[u8],
+        shifted_key_bytes: &[u8],
+        modifier_bytes: &[u8],
+    ) -> Option<Self> {
+        // CSI number:shifted ; modifiers u
         let bare_key = BareKey::from_bytes_with_u(number_bytes);
+        let shifted_key = if shifted_key_bytes.is_empty() {
+            None
+        } else {
+            BareKey::from_bytes_with_u(shifted_key_bytes)
+        };
         match bare_key {
             Some(bare_key) => {
                 let key_modifiers = KeyModifier::from_bytes(modifier_bytes);
                 Some(KeyWithModifier {
                     bare_key,
+                    shifted_key,
                     key_modifiers,
                 })
             },
             _ => None,
         }
     }
-    pub fn from_bytes_with_tilde(number_bytes: &[u8], modifier_bytes: &[u8]) -> Option<Self> {
-        // CSI number ; modifiers ~
+    pub fn from_bytes_with_tilde(
+        number_bytes: &[u8],
+        shifted_key_bytes: &[u8],
+        modifier_bytes: &[u8],
+    ) -> Option<Self> {
+        // CSI number:shifted ; modifiers ~
         let bare_key = BareKey::from_bytes_with_tilde(number_bytes);
+        let shifted_key = if shifted_key_bytes.is_empty() {
+            None
+        } else {
+            BareKey::from_bytes_with_tilde(shifted_key_bytes)
+        };
         match bare_key {
             Some(bare_key) => {
                 let key_modifiers = KeyModifier::from_bytes(modifier_bytes);
                 Some(KeyWithModifier {
                     bare_key,
+                    shifted_key,
                     key_modifiers,
                 })
             },
@@ -495,13 +559,14 @@ impl KeyWithModifier {
         number_bytes: &[u8],
         modifier_bytes: &[u8],
     ) -> Option<Self> {
-        // CSI 1; modifiers [ABCDEFHPQS]
+        // CSI 1; modifiers [ABCDEFHPQS] - this format doesn't support alternate keys
         let bare_key = BareKey::from_bytes_with_no_ending_byte(number_bytes);
         match bare_key {
             Some(bare_key) => {
                 let key_modifiers = KeyModifier::from_bytes(modifier_bytes);
                 Some(KeyWithModifier {
                     bare_key,
+                    shifted_key: None,
                     key_modifiers,
                 })
             },
@@ -512,6 +577,7 @@ impl KeyWithModifier {
         let common_modifiers: BTreeSet<&KeyModifier> = common_modifiers.into_iter().collect();
         KeyWithModifier {
             bare_key: self.bare_key.clone(),
+            shifted_key: self.shifted_key.clone(),
             key_modifiers: self
                 .key_modifiers
                 .iter()
@@ -576,7 +642,22 @@ impl KeyWithModifier {
     }
     #[cfg(not(target_family = "wasm"))]
     pub fn serialize_non_kitty(&self) -> Option<String> {
-        let modifiers = self.to_termwiz_modifiers();
+        let mut modifiers = self.to_termwiz_modifiers();
+
+        // If we have a shifted key and the shift modifier is set, use the shifted key
+        // directly and remove the shift modifier (it's now "baked into" the character).
+        // This handles the case where e.g. Shift+comma should produce '<' not ','.
+        let key_code = if self.key_modifiers.contains(&KeyModifier::Shift) {
+            if let Some(ref shifted_key) = self.shifted_key {
+                modifiers.remove(Modifiers::SHIFT);
+                shifted_key.to_termwiz_keycode()
+            } else {
+                self.to_termwiz_keycode()
+            }
+        } else {
+            self.to_termwiz_keycode()
+        };
+
         let key_code_encode_modes = KeyCodeEncodeModes {
             encoding: KeyboardEncoding::Xterm,
             // all these flags are false because they have been dealt with before this
@@ -585,7 +666,7 @@ impl KeyWithModifier {
             newline_mode: false,
             modify_other_keys: None,
         };
-        self.to_termwiz_keycode()
+        key_code
             .encode(modifiers, key_code_encode_modes, true)
             .ok()
     }
@@ -593,7 +674,10 @@ impl KeyWithModifier {
     pub fn serialize_kitty(&self) -> Option<String> {
         let modifiers = self.to_termwiz_modifiers();
         let key_code_encode_modes = KeyCodeEncodeModes {
-            encoding: KeyboardEncoding::Kitty(KittyKeyboardFlags::DISAMBIGUATE_ESCAPE_CODES),
+            encoding: KeyboardEncoding::Kitty(
+                KittyKeyboardFlags::DISAMBIGUATE_ESCAPE_CODES
+                    | KittyKeyboardFlags::REPORT_ALTERNATE_KEYS,
+            ),
             // all these flags are false because they have been dealt with before this
             // serialization
             application_cursor_keys: false,

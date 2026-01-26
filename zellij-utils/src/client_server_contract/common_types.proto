@@ -30,6 +30,8 @@ message KeyWithModifier {
   BareKey bare_key = 1;
   repeated KeyModifier key_modifiers = 2;
   optional string character = 3; // Only set when bare_key is CHAR
+  optional BareKey shifted_key = 4; // From REPORT_ALTERNATE_KEYS
+  optional string shifted_character = 5; // Only set when shifted_key is CHAR
 }
 
 enum BareKey {

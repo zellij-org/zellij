@@ -101,6 +101,7 @@ impl TryFrom<ProtobufKey> for KeyWithModifier {
         }
         Ok(KeyWithModifier {
             bare_key,
+            shifted_key: None,
             key_modifiers,
         })
     }

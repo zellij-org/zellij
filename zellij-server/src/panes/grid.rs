@@ -3177,9 +3177,8 @@ impl Perform for Grid {
         } else if c == 's' {
             self.save_cursor_position();
         } else if c == 'u' && intermediates == &[b'>'] {
-            // Zellij only supports the first "progressive enhancement" layer of the kitty keyboard
-            // protocol
-            // 0 disables, everything else enables.
+            // Zellij supports DISAMBIGUATE_ESCAPE_CODES (1) and REPORT_ALTERNATE_KEYS (4)
+            // 0 disables, any positive value enables these enhancements.
             let count = next_param_or(0);
             if !self.explicitly_disable_kitty_keyboard_protocol {
                 if count > 0 {
@@ -3189,16 +3188,15 @@ impl Perform for Grid {
                 }
             }
         } else if c == 'u' && intermediates == &[b'<'] {
-            // Zellij only supports the first "progressive enhancement" layer of the kitty keyboard
-            // protocol
+            // Pop kitty keyboard protocol state (disable)
             if !self.explicitly_disable_kitty_keyboard_protocol {
                 self.supports_kitty_keyboard_protocol = false;
             }
         } else if c == 'u' && intermediates == &[b'?'] {
-            // Zellij only supports the first "progressive enhancement" layer of the kitty keyboard
-            // protocol
+            // Zellij supports DISAMBIGUATE_ESCAPE_CODES (1) and REPORT_ALTERNATE_KEYS (4)
+            // Combined value: 1 + 4 = 5
             let reply = if self.supports_kitty_keyboard_protocol {
-                "\u{1b}[?1u"
+                "\u{1b}[?5u"
             } else {
                 "\u{1b}[?0u"
             };

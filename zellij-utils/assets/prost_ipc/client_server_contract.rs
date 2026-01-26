@@ -48,6 +48,12 @@ pub struct KeyWithModifier {
     /// Only set when bare_key is CHAR
     #[prost(string, optional, tag="3")]
     pub character: ::core::option::Option<::prost::alloc::string::String>,
+    /// From REPORT_ALTERNATE_KEYS
+    #[prost(enumeration="BareKey", optional, tag="4")]
+    pub shifted_key: ::core::option::Option<i32>,
+    /// Only set when shifted_key is CHAR
+    #[prost(string, optional, tag="5")]
+    pub shifted_character: ::core::option::Option<::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -2421,122 +2427,6 @@ impl WebSharing {
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct ServerToClientMsg {
-    #[prost(oneof="server_to_client_msg::Message", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13")]
-    pub message: ::core::option::Option<server_to_client_msg::Message>,
-}
-/// Nested message and enum types in `ServerToClientMsg`.
-pub mod server_to_client_msg {
-    #[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Oneof)]
-    pub enum Message {
-        #[prost(message, tag="1")]
-        Render(super::RenderMsg),
-        #[prost(message, tag="2")]
-        UnblockInputThread(super::UnblockInputThreadMsg),
-        #[prost(message, tag="3")]
-        Exit(super::ExitMsg),
-        #[prost(message, tag="4")]
-        Connected(super::ConnectedMsg),
-        #[prost(message, tag="5")]
-        Log(super::LogMsg),
-        #[prost(message, tag="6")]
-        LogError(super::LogErrorMsg),
-        #[prost(message, tag="7")]
-        SwitchSession(super::SwitchSessionMsg),
-        #[prost(message, tag="8")]
-        UnblockCliPipeInput(super::UnblockCliPipeInputMsg),
-        #[prost(message, tag="9")]
-        CliPipeOutput(super::CliPipeOutputMsg),
-        #[prost(message, tag="10")]
-        QueryTerminalSize(super::QueryTerminalSizeMsg),
-        #[prost(message, tag="11")]
-        StartWebServer(super::StartWebServerMsg),
-        #[prost(message, tag="12")]
-        RenamedSession(super::RenamedSessionMsg),
-        #[prost(message, tag="13")]
-        ConfigFileUpdated(super::ConfigFileUpdatedMsg),
-    }
-}
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct RenderMsg {
-    #[prost(string, tag="1")]
-    pub content: ::prost::alloc::string::String,
-}
-/// Empty message
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct UnblockInputThreadMsg {
-}
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct ExitMsg {
-    #[prost(enumeration="ExitReason", tag="1")]
-    pub exit_reason: i32,
-    #[prost(string, optional, tag="2")]
-    pub payload: ::core::option::Option<::prost::alloc::string::String>,
-}
-/// Empty message
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct ConnectedMsg {
-}
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct LogMsg {
-    #[prost(string, repeated, tag="1")]
-    pub lines: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
-}
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct LogErrorMsg {
-    #[prost(string, repeated, tag="1")]
-    pub lines: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
-}
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct SwitchSessionMsg {
-    #[prost(message, optional, tag="1")]
-    pub connect_to_session: ::core::option::Option<ConnectToSession>,
-}
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct UnblockCliPipeInputMsg {
-    #[prost(string, tag="1")]
-    pub pipe_name: ::prost::alloc::string::String,
-}
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct CliPipeOutputMsg {
-    #[prost(string, tag="1")]
-    pub pipe_name: ::prost::alloc::string::String,
-    #[prost(string, tag="2")]
-    pub output: ::prost::alloc::string::String,
-}
-/// Empty message
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct QueryTerminalSizeMsg {
-}
-/// Empty message
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct StartWebServerMsg {
-}
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct RenamedSessionMsg {
-    #[prost(string, tag="1")]
-    pub name: ::prost::alloc::string::String,
-}
-/// Empty message
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct ConfigFileUpdatedMsg {
-}
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ClientToServerMsg {
     #[prost(oneof="client_to_server_msg::Message", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16")]
     pub message: ::core::option::Option<client_to_server_msg::Message>,
@@ -2692,4 +2582,120 @@ pub struct WebServerStartedMsg {
 pub struct FailedToStartWebServerMsg {
     #[prost(string, tag="1")]
     pub error: ::prost::alloc::string::String,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ServerToClientMsg {
+    #[prost(oneof="server_to_client_msg::Message", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13")]
+    pub message: ::core::option::Option<server_to_client_msg::Message>,
+}
+/// Nested message and enum types in `ServerToClientMsg`.
+pub mod server_to_client_msg {
+    #[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Message {
+        #[prost(message, tag="1")]
+        Render(super::RenderMsg),
+        #[prost(message, tag="2")]
+        UnblockInputThread(super::UnblockInputThreadMsg),
+        #[prost(message, tag="3")]
+        Exit(super::ExitMsg),
+        #[prost(message, tag="4")]
+        Connected(super::ConnectedMsg),
+        #[prost(message, tag="5")]
+        Log(super::LogMsg),
+        #[prost(message, tag="6")]
+        LogError(super::LogErrorMsg),
+        #[prost(message, tag="7")]
+        SwitchSession(super::SwitchSessionMsg),
+        #[prost(message, tag="8")]
+        UnblockCliPipeInput(super::UnblockCliPipeInputMsg),
+        #[prost(message, tag="9")]
+        CliPipeOutput(super::CliPipeOutputMsg),
+        #[prost(message, tag="10")]
+        QueryTerminalSize(super::QueryTerminalSizeMsg),
+        #[prost(message, tag="11")]
+        StartWebServer(super::StartWebServerMsg),
+        #[prost(message, tag="12")]
+        RenamedSession(super::RenamedSessionMsg),
+        #[prost(message, tag="13")]
+        ConfigFileUpdated(super::ConfigFileUpdatedMsg),
+    }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RenderMsg {
+    #[prost(string, tag="1")]
+    pub content: ::prost::alloc::string::String,
+}
+/// Empty message
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct UnblockInputThreadMsg {
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ExitMsg {
+    #[prost(enumeration="ExitReason", tag="1")]
+    pub exit_reason: i32,
+    #[prost(string, optional, tag="2")]
+    pub payload: ::core::option::Option<::prost::alloc::string::String>,
+}
+/// Empty message
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ConnectedMsg {
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct LogMsg {
+    #[prost(string, repeated, tag="1")]
+    pub lines: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct LogErrorMsg {
+    #[prost(string, repeated, tag="1")]
+    pub lines: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SwitchSessionMsg {
+    #[prost(message, optional, tag="1")]
+    pub connect_to_session: ::core::option::Option<ConnectToSession>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct UnblockCliPipeInputMsg {
+    #[prost(string, tag="1")]
+    pub pipe_name: ::prost::alloc::string::String,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CliPipeOutputMsg {
+    #[prost(string, tag="1")]
+    pub pipe_name: ::prost::alloc::string::String,
+    #[prost(string, tag="2")]
+    pub output: ::prost::alloc::string::String,
+}
+/// Empty message
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct QueryTerminalSizeMsg {
+}
+/// Empty message
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct StartWebServerMsg {
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RenamedSessionMsg {
+    #[prost(string, tag="1")]
+    pub name: ::prost::alloc::string::String,
+}
+/// Empty message
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ConfigFileUpdatedMsg {
 }
