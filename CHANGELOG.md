@@ -37,6 +37,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: properly occlude cursor in floating panes when (partially) covered by another pinned pane (https://github.com/zellij-org/zellij/pull/4644)
 * fix: resolve short layout names as files if possible (https://github.com/zellij-org/zellij/pull/4640)
 * fix: restore focused tab position on reattaching to a detached session (https://github.com/zellij-org/zellij/pull/4115)
+* fix: session creation time (all session created 0s ago bug) on musl targets (https://github.com/zellij-org/zellij/pull/4645)
 
 
 ## [0.43.1] - 2025-08-08
