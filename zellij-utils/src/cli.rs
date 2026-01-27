@@ -642,6 +642,8 @@ pub enum CliAction {
     },
     /// Dump current layout to stdout
     DumpLayout,
+    /// Save the current session state to disk immediately
+    SaveSession,
     /// Open the pane scrollback in your default editor
     EditScrollback,
     /// Scroll up in the focused pane

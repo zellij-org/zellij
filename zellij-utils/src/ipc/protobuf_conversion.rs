@@ -730,7 +730,7 @@ impl From<crate::input::actions::Action>
             PageScrollDownAction, PageScrollUpAction, PaneIdWithPlugin, PaneNameInputAction,
             PreviousSwapLayoutAction, QueryTabNamesAction, QuitAction, RenamePluginPaneAction,
             RenameSessionAction, RenameTabAction, RenameTerminalPaneAction, ResizeAction,
-            RunAction, ScrollDownAction, ScrollDownAtAction, ScrollToBottomAction,
+            RunAction, SaveSessionAction, ScrollDownAction, ScrollDownAtAction, ScrollToBottomAction,
             ScrollToTopAction, ScrollUpAction, ScrollUpAtAction, SearchAction, SearchInputAction,
             SearchToggleOptionAction, SetPaneBorderlessAction, SkipConfirmAction, StackPanesAction,
             StartOrReloadPluginAction, SwitchFocusAction, SwitchModeForAllClientsAction,
@@ -1305,6 +1305,9 @@ impl From<crate::input::actions::Action>
             crate::input::actions::Action::ToggleGroupMarking => {
                 ActionType::ToggleGroupMarking(ToggleGroupMarkingAction {})
             },
+            crate::input::actions::Action::SaveSession => {
+                ActionType::SaveSession(SaveSessionAction {})
+            },
         };
 
         Self {
@@ -1390,6 +1393,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                 })
             },
             ActionType::DumpLayout(_) => Ok(crate::input::actions::Action::DumpLayout),
+            ActionType::SaveSession(_) => Ok(crate::input::actions::Action::SaveSession),
             ActionType::EditScrollback(_) => Ok(crate::input::actions::Action::EditScrollback),
             ActionType::ScrollUp(_) => Ok(crate::input::actions::Action::ScrollUp),
             ActionType::ScrollUpAt(scroll_action) => {

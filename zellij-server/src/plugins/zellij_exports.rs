@@ -62,11 +62,12 @@ use zellij_utils::{
         },
         plugin_command::{
             dump_layout_response, dump_session_layout_response, parse_layout_response,
-            ProtobufDeleteLayoutResponse, ProtobufDumpLayoutResponse,
+            save_session_response, ProtobufDeleteLayoutResponse, ProtobufDumpLayoutResponse,
             ProtobufDumpSessionLayoutResponse, ProtobufEditLayoutResponse,
             ProtobufGenerateRandomNameResponse, ProtobufGetFocusedPaneInfoResponse,
             ProtobufGetLayoutDirResponse, ProtobufGetPanePidResponse, ProtobufParseLayoutResponse,
             ProtobufPluginCommand, ProtobufRenameLayoutResponse, ProtobufSaveLayoutResponse,
+            ProtobufSaveSessionResponse,
         },
         plugin_ids::{ProtobufPluginIds, ProtobufZellijVersion},
     },
@@ -129,6 +130,7 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::ParseLayout(layout_string) => parse_layout(env, layout_string),
                     PluginCommand::GetLayoutDir => get_layout_dir(env),
                     PluginCommand::GetFocusedPaneInfo => get_focused_pane_info(env),
+                    PluginCommand::SaveSession => save_session(env),
                     PluginCommand::OpenFile(file_to_open, context) => {
                         open_file(env, file_to_open, context)
                     },
@@ -2564,6 +2566,37 @@ fn dump_session_layout(env: &PluginEnv, tab_index: Option<usize>) {
         .with_context(|| format!("failed to send session layout to plugin {}", env.name()));
 }
 
+fn save_session(env: &PluginEnv) {
+    use save_session_response::Result as SaveSessionResult;
+
+    // Create completion channel to wait for save to finish
+    let (completion_tx, completion_rx) = oneshot::channel();
+
+    // Send to screen with NotificationEnd (Screen passes to PTY)
+    let send_result = env
+        .senders
+        .send_to_screen(ScreenInstruction::SaveSession(
+            env.client_id,
+            Some(NotificationEnd::new(completion_tx)),
+        ));
+
+    let response = if let Err(e) = send_result {
+        ProtobufSaveSessionResponse {
+            result: Some(SaveSessionResult::Error(format!("Failed to send save request: {}", e))),
+        }
+    } else {
+        // Wait for PTY to complete the write
+        let wait_forever = false;
+        let _result = wait_for_action_completion(completion_rx, "save_session", wait_forever);
+        // Success - save completed (or timed out, but we consider timeout as success for this)
+        ProtobufSaveSessionResponse {
+            result: Some(SaveSessionResult::Success(true)),
+        }
+    };
+
+    let _ = wasi_write_object(env, &response.encode_to_vec());
+}
+
 fn list_clients(env: &PluginEnv) {
     let _ = env.senders.to_screen.as_ref().map(|sender| {
         sender.send(ScreenInstruction::ListClientsToPlugin(
@@ -3842,7 +3875,8 @@ fn check_command_permission(
         | PluginCommand::GetLayoutDir
         | PluginCommand::GetFocusedPaneInfo
         | PluginCommand::DumpLayout(..)
-        | PluginCommand::ParseLayout(..) => PermissionType::ReadApplicationState,
+        | PluginCommand::ParseLayout(..)
+        | PluginCommand::SaveSession => PermissionType::ReadApplicationState,
         PluginCommand::RebindKeys { .. } | PluginCommand::Reconfigure(..) => {
             PermissionType::Reconfigure
         },

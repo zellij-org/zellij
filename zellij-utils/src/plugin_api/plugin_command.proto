@@ -178,6 +178,7 @@ enum CommandName {
   GetFocusedPaneInfo = 183;
   TogglePaneBorderless = 184;
   SetPaneBorderless = 185;
+  SaveSession = 186;
 }
 
 message PluginCommand {
@@ -305,6 +306,7 @@ message PluginCommand {
     GetFocusedPaneInfoPayload get_focused_pane_info_payload = 134;
     TogglePaneBorderlessPayload toggle_pane_borderless_payload = 135;
     SetPaneBorderlessPayload set_pane_borderless_payload = 136;
+    SaveSessionPayload save_session_payload = 137;
   }
 }
 
@@ -905,4 +907,13 @@ message GetFocusedPaneInfoResponse {
 message FocusedPaneInfo {
   uint32 focused_tab_index = 1;
   PaneId focused_pane_id = 2;
+}
+
+message SaveSessionPayload {}
+
+message SaveSessionResponse {
+  oneof result {
+    bool success = 1;
+    string error = 2;
+  }
 }

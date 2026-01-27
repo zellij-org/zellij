@@ -1,4 +1,5 @@
 use crate::background_jobs::BackgroundJob;
+use crate::background_jobs::write_session_state_to_disk;
 use crate::route::NotificationEnd;
 use crate::terminal_bytes::TerminalBytes;
 use crate::{
@@ -19,7 +20,7 @@ use std::{collections::HashMap, os::unix::io::RawFd, path::PathBuf};
 use zellij_utils::{
     data::{
         CommandOrPlugin, Event, FloatingPaneCoordinates, GetPanePidResponse, NewPanePlacement,
-        OriginatingPlugin,
+        OriginatingPlugin, SessionInfo,
     },
     errors::prelude::*,
     errors::{ContextType, PtyContext},
@@ -110,6 +111,12 @@ pub enum PtyInstruction {
         response_channel: crossbeam::channel::Sender<DumpSessionLayoutResponse>,
     },
     LogLayoutToHd(SessionLayoutMetadata),
+    SaveSessionToDisk {
+        session_name: String,
+        session_info: SessionInfo,
+        session_layout_metadata: SessionLayoutMetadata,
+        completion_tx: Option<NotificationEnd>,
+    },
     FillPluginCwd(
         Option<bool>,   // should float
         bool,           // should be opened in place
@@ -160,6 +167,7 @@ impl From<&PtyInstruction> for PtyContext {
             PtyInstruction::DumpLayout(..) => PtyContext::DumpLayout,
             PtyInstruction::DumpLayoutToPlugin { .. } => PtyContext::DumpLayoutToPlugin,
             PtyInstruction::LogLayoutToHd(..) => PtyContext::LogLayoutToHd,
+            PtyInstruction::SaveSessionToDisk { .. } => PtyContext::SaveSessionToDisk,
             PtyInstruction::FillPluginCwd(..) => PtyContext::FillPluginCwd,
             PtyInstruction::ListClientsMetadata(..) => PtyContext::ListClientsMetadata,
             PtyInstruction::Reconfigure { .. } => PtyContext::Reconfigure,
@@ -759,6 +767,33 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                         },
                     }
                 }
+            },
+            PtyInstruction::SaveSessionToDisk {
+                session_name,
+                session_info,
+                mut session_layout_metadata,
+                completion_tx: _completion_tx, // Dropped at end to signal completion
+            } => {
+                pty.populate_session_layout_metadata(&mut session_layout_metadata);
+                match session_serialization::serialize_session_layout(
+                    session_layout_metadata.into(),
+                ) {
+                    Ok(kdl_and_files) => {
+                        write_session_state_to_disk(
+                            session_name,
+                            session_info,
+                            kdl_and_files.clone(),
+                        );
+                        let _ = pty.bus
+                            .senders
+                            .send_to_background_jobs(BackgroundJob::ReportLayoutInfo(
+                                kdl_and_files,
+                            ));
+                    }
+                    Err(e) => {
+                        log::error!("Failed to serialize layout: {}", e);
+                    }
+                };
             },
             PtyInstruction::FillPluginCwd(
                 should_float,

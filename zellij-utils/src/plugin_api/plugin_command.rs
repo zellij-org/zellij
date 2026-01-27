@@ -6,7 +6,7 @@ pub use super::generated_api::api::{
         delete_layout_response, dump_layout_response, dump_session_layout_response,
         edit_layout_response, get_focused_pane_info_response, get_pane_pid_response,
         parse_layout_response, plugin_command::Payload, rename_layout_response,
-        save_layout_response, BreakPanesToNewTabPayload, BreakPanesToTabWithIndexPayload,
+        save_layout_response, save_session_response, BreakPanesToNewTabPayload, BreakPanesToTabWithIndexPayload,
         ChangeFloatingPanesCoordinatesPayload, ChangeHostFolderPayload,
         ClearScreenForPaneIdPayload, CliPipeOutputPayload, CloseMultiplePanesPayload,
         CloseTabWithIndexPayload, CommandName, ContextItem, CopyToClipboardPayload,
@@ -44,7 +44,8 @@ pub use super::generated_api::api::{
         RequestPluginPermissionPayload, RerunCommandPanePayload, ResizePaneIdWithDirectionPayload,
         ResizePayload, RevokeAllWebTokensResponse, RevokeTokenResponse, RevokeWebLoginTokenPayload,
         RunActionPayload, RunCommandPayload, SaveLayoutPayload,
-        SaveLayoutResponse as ProtobufSaveLayoutResponse, ScrollDownInPaneIdPayload,
+        SaveLayoutResponse as ProtobufSaveLayoutResponse, SaveSessionPayload,
+        SaveSessionResponse as ProtobufSaveSessionResponse, ScrollDownInPaneIdPayload,
         ScrollToBottomInPaneIdPayload, ScrollToTopInPaneIdPayload, ScrollUpInPaneIdPayload,
         SetFloatingPanePinnedPayload, SetPaneBorderlessPayload,
         SetSelfMouseSelectionSupportPayload, SetTimeoutPayload, ShowCursorPayload,
@@ -2103,6 +2104,7 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
             },
             Some(CommandName::GetLayoutDir) => Ok(PluginCommand::GetLayoutDir),
             Some(CommandName::GetFocusedPaneInfo) => Ok(PluginCommand::GetFocusedPaneInfo),
+            Some(CommandName::SaveSession) => Ok(PluginCommand::SaveSession),
             None => Err("Unrecognized plugin command"),
         }
     }
@@ -3442,6 +3444,10 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                 payload: Some(Payload::GetFocusedPaneInfoPayload(
                     GetFocusedPaneInfoPayload {},
                 )),
+            }),
+            PluginCommand::SaveSession => Ok(ProtobufPluginCommand {
+                name: CommandName::SaveSession as i32,
+                payload: Some(Payload::SaveSessionPayload(SaveSessionPayload {})),
             }),
         }
     }

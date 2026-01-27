@@ -511,7 +511,7 @@ fn job_already_running(
     }
 }
 
-fn write_session_state_to_disk(
+pub fn write_session_state_to_disk(
     current_session_name: String,
     current_session_info: SessionInfo,
     current_session_layout: (String, BTreeMap<String, String>),
