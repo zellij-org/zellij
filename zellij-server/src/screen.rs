@@ -957,6 +957,7 @@ pub(crate) struct Screen {
     connected_clients: Rc<RefCell<HashMap<ClientId, bool>>>, // bool -> is_web_client
     /// The indices of this [`Screen`]'s active [`Tab`]s.
     active_tab_indices: BTreeMap<ClientId, usize>,
+    global_last_active_tab_index: usize,
     tab_history: BTreeMap<ClientId, Vec<usize>>,
     pane_history: BTreeMap<ClientId, Vec<PaneId>>,
     mode_info: BTreeMap<ClientId, ModeInfo>,
@@ -1046,6 +1047,7 @@ impl Screen {
             style: client_attributes.style,
             connected_clients: Rc::new(RefCell::new(HashMap::new())),
             active_tab_indices: BTreeMap::new(),
+            global_last_active_tab_index: 0,
             tabs: BTreeMap::new(),
             terminal_emulator_colors: Rc::new(RefCell::new(Palette::default())),
             terminal_emulator_color_codes: Rc::new(RefCell::new(HashMap::new())),
@@ -1966,6 +1968,8 @@ impl Screen {
             self.active_tab_indices.iter().next()
         {
             *first_active_tab_index
+        } else if self.tabs.contains_key(&self.global_last_active_tab_index) {
+            self.global_last_active_tab_index
         } else if self.tabs.contains_key(&0) {
             0
         } else if let Some(tab_index) = self.tabs.keys().next() {
@@ -2013,6 +2017,7 @@ impl Screen {
             }
         }
         if self.active_tab_indices.contains_key(&client_id) {
+            self.global_last_active_tab_index = *self.active_tab_indices.get(&client_id).unwrap();
             self.active_tab_indices.remove(&client_id);
         }
         if self.tab_history.contains_key(&client_id) {
