@@ -224,6 +224,8 @@ pub fn zellij_server_listener(
                                     }
                                 }
                             },
+                            // CapturedOutput is only used for CLI clients, not web clients
+                            Some(ServerToClientMsg::CapturedOutput { .. }) => {},
                             None => {
                                 if unknown_message_count >= 1000 {
                                     log::error!("Error: Received more than 1000 consecutive unknown server messages, disconnecting.");

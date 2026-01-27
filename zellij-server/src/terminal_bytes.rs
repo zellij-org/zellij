@@ -6,6 +6,7 @@ use crate::{
 use async_std::task;
 use std::{
     os::unix::io::RawFd,
+    sync::{Arc, Condvar, Mutex},
     time::{Duration, Instant},
 };
 use zellij_utils::{
@@ -13,12 +14,21 @@ use zellij_utils::{
     logging::debug_to_file,
 };
 
+/// Synchronization primitive to signal when bytes reading is complete.
+/// Used to coordinate between TerminalBytes (reader) and quit_cb (sender of ClosePane).
+pub(crate) type BytesCompleteSignal = Arc<(Mutex<bool>, Condvar)>;
+
+pub(crate) fn create_bytes_complete_signal() -> BytesCompleteSignal {
+    Arc::new((Mutex::new(false), Condvar::new()))
+}
+
 pub(crate) struct TerminalBytes {
     pid: RawFd,
     terminal_id: u32,
     senders: ThreadSenders,
     async_reader: Box<dyn AsyncReader>,
     debug: bool,
+    bytes_complete_signal: Option<BytesCompleteSignal>,
 }
 
 impl TerminalBytes {
@@ -35,7 +45,13 @@ impl TerminalBytes {
             senders,
             debug,
             async_reader: os_input.async_file_reader(pid),
+            bytes_complete_signal: None,
         }
+    }
+
+    pub fn with_bytes_complete_signal(mut self, signal: BytesCompleteSignal) -> Self {
+        self.bytes_complete_signal = Some(signal);
+        self
     }
     pub async fn listen(&mut self) -> Result<()> {
         // This function reads bytes from the pty and then sends them as
@@ -91,6 +107,15 @@ impl TerminalBytes {
         // FIXME: Ideally we detect whether the application is being quit and only ignore the error
         // in that particular case?
         let _ = self.async_send_to_screen(ScreenInstruction::Render).await;
+
+        // Signal that bytes reading is complete
+        // This allows quit_cb to proceed with sending ClosePane/HoldPane
+        if let Some(signal) = &self.bytes_complete_signal {
+            let (lock, cvar) = &**signal;
+            let mut done = lock.lock().unwrap();
+            *done = true;
+            cvar.notify_all();
+        }
 
         Ok(())
     }

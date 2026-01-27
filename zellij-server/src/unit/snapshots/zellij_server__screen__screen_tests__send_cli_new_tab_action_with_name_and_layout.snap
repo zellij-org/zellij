@@ -103,6 +103,8 @@ NewTab(
             exit_status: None,
             unblock_condition: None,
             affected_pane_id: None,
+            capture_output: false,
+            captured_output: None,
         },
     ),
 )

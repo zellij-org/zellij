@@ -136,6 +136,8 @@ impl From<ServerToClientMsg> for ClientInstruction {
             ServerToClientMsg::StartWebServer => ClientInstruction::StartWebServer,
             ServerToClientMsg::RenamedSession { name } => ClientInstruction::RenamedSession(name),
             ServerToClientMsg::ConfigFileUpdated => ClientInstruction::ConfigFileUpdated,
+            // CapturedOutput is handled in cli_client.rs, not here
+            ServerToClientMsg::CapturedOutput { .. } => ClientInstruction::UnblockInputThread,
         }
     }
 }

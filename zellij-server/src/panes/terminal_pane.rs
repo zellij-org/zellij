@@ -743,6 +743,12 @@ impl Pane for TerminalPane {
         self.invoked_with = Some(Run::Command(run_command.clone()));
         self.is_held = Some((exit_status, is_first_run, run_command));
         if let Some(notification_end) = self.notification_end.as_mut() {
+            // Capture output before potentially dropping the notification_end
+            if notification_end.should_capture_output() {
+                let output = self.grid.dump_screen(true); // full scrollback + viewport
+                notification_end.set_captured_output(output);
+            }
+
             if let Some(exit_status) = exit_status {
                 notification_end.set_exit_status(exit_status);
 
@@ -911,6 +917,12 @@ impl Pane for TerminalPane {
     }
     fn update_exit_status(&mut self, exit_status: i32) {
         if let Some(notification_end) = self.notification_end.as_mut() {
+            // Capture output before potentially dropping the notification_end
+            if notification_end.should_capture_output() {
+                let output = self.grid.dump_screen(true); // full scrollback + viewport
+                notification_end.set_captured_output(output);
+            }
+
             notification_end.set_exit_status(exit_status);
             // Check if unblock condition is met
             if let Some(condition) = notification_end.unblock_condition() {

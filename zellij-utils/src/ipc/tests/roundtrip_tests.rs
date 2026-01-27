@@ -3029,6 +3029,9 @@ fn test_server_messages() {
         pipe_name: "stderr".to_string(),
         output: "Error occurred\n".to_string(),
     });
+    test_server_roundtrip!(ServerToClientMsg::CapturedOutput {
+        output: "hello world\n".to_string(),
+    });
     test_server_roundtrip!(ServerToClientMsg::Exit {
         exit_reason: ExitReason::Normal,
     });

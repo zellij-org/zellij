@@ -961,6 +961,7 @@ impl TryFrom<ProtobufAction> for Action {
                         pane_name,
                         command,
                         unblock_condition,
+                        capture_output: false, // capture_output is CLI-only
                         near_current_pane,
                     })
                 },
@@ -1703,6 +1704,7 @@ impl TryFrom<Action> for ProtobufAction {
                 pane_name,
                 command,
                 unblock_condition,
+                capture_output: _, // capture_output is CLI-only, not serialized
                 near_current_pane,
             } => {
                 let placement: ProtobufNewPanePlacement = placement.try_into()?;

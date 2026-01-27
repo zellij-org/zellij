@@ -43,6 +43,7 @@ const ACTION_COMPLETION_TIMEOUT: Duration = Duration::from_secs(1);
 pub struct ActionCompletionResult {
     pub exit_status: Option<i32>,
     pub affected_pane_id: Option<PaneId>,
+    pub captured_output: Option<String>,
 }
 
 pub fn wait_for_action_completion(
@@ -60,6 +61,7 @@ pub fn wait_for_action_completion(
                     ActionCompletionResult {
                         exit_status: None,
                         affected_pane_id: None,
+                        captured_output: None,
                     }
                 },
             }
@@ -78,6 +80,7 @@ pub fn wait_for_action_completion(
                 ActionCompletionResult {
                     exit_status: None,
                     affected_pane_id: None,
+                    captured_output: None,
                 }
             },
         }
@@ -96,6 +99,8 @@ pub struct NotificationEnd {
     exit_status: Option<i32>,
     unblock_condition: Option<UnblockCondition>,
     affected_pane_id: Option<PaneId>, // optional payload of the pane id affected by this action
+    capture_output: bool,              // whether to capture terminal output when command completes
+    captured_output: Option<String>,   // the captured terminal output (if capture_output is true)
 }
 
 impl Clone for NotificationEnd {
@@ -106,6 +111,8 @@ impl Clone for NotificationEnd {
             exit_status: self.exit_status,
             unblock_condition: self.unblock_condition,
             affected_pane_id: self.affected_pane_id,
+            capture_output: self.capture_output,
+            captured_output: self.captured_output.clone(),
         }
     }
 }
@@ -117,18 +124,34 @@ impl NotificationEnd {
             exit_status: None,
             unblock_condition: None,
             affected_pane_id: None,
+            capture_output: false,
+            captured_output: None,
+        }
+    }
+
+    pub fn new_with_capture(sender: oneshot::Sender<ActionCompletionResult>, capture_output: bool) -> Self {
+        NotificationEnd {
+            channel: Some(sender),
+            exit_status: None,
+            unblock_condition: None,
+            affected_pane_id: None,
+            capture_output,
+            captured_output: None,
         }
     }
 
     pub fn new_with_condition(
         sender: oneshot::Sender<ActionCompletionResult>,
         unblock_condition: UnblockCondition,
+        capture_output: bool,
     ) -> Self {
         NotificationEnd {
             channel: Some(sender),
             exit_status: None,
             unblock_condition: Some(unblock_condition),
             affected_pane_id: None,
+            capture_output,
+            captured_output: None,
         }
     }
 
@@ -143,6 +166,14 @@ impl NotificationEnd {
     pub fn unblock_condition(&self) -> Option<UnblockCondition> {
         self.unblock_condition
     }
+
+    pub fn should_capture_output(&self) -> bool {
+        self.capture_output
+    }
+
+    pub fn set_captured_output(&mut self, output: String) {
+        self.captured_output = Some(output);
+    }
 }
 
 impl Drop for NotificationEnd {
@@ -151,6 +182,7 @@ impl Drop for NotificationEnd {
             let result = ActionCompletionResult {
                 exit_status: self.exit_status,
                 affected_pane_id: self.affected_pane_id,
+                captured_output: self.captured_output.take(),
             };
             let _ = tx.send(result);
         }
@@ -524,6 +556,7 @@ pub(crate) fn route_action(
             pane_name,
             command,
             unblock_condition,
+            capture_output,
             near_current_pane,
         } => {
             let command = command
@@ -535,9 +568,10 @@ pub(crate) fn route_action(
                 Some(NotificationEnd::new_with_condition(
                     completion_tx,
                     condition,
+                    capture_output,
                 ))
             } else {
-                Some(NotificationEnd::new(completion_tx))
+                Some(NotificationEnd::new_with_capture(completion_tx, capture_output))
             };
 
             // we prefer the pane id provided by the action explicitly over the one that originated
@@ -883,7 +917,7 @@ pub(crate) fn route_action(
             let (completion_tx, block_on_first_terminal) = if let Some(condition) =
                 first_pane_unblock_condition
             {
-                let notification = NotificationEnd::new_with_condition(completion_tx, condition);
+                let notification = NotificationEnd::new_with_condition(completion_tx, condition, false);
                 wait_forever = true;
                 (notification, true)
             } else {
@@ -1576,9 +1610,19 @@ pub(crate) fn route_action(
         },
     }
     let result = wait_for_action_completion(completion_rx, &action_name, wait_forever);
-    if let Some(exit_status) = result.exit_status {
-        if let Some(cli_client_id) = cli_client_id {
-            if let Some(os_input) = os_input {
+    if let Some(cli_client_id) = cli_client_id {
+        if let Some(ref os_input) = os_input {
+            // Send captured output first, if any
+            if let Some(ref output) = result.captured_output {
+                let _ = os_input.send_to_client(
+                    cli_client_id,
+                    ServerToClientMsg::CapturedOutput {
+                        output: output.clone(),
+                    },
+                );
+            }
+            // Then send exit status
+            if let Some(exit_status) = result.exit_status {
                 let _ = os_input.send_to_client(
                     cli_client_id,
                     ServerToClientMsg::Exit {

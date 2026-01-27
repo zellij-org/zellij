@@ -44,6 +44,7 @@ fn main() {
             block_until_exit_success,
             block_until_exit_failure,
             block_until_exit,
+            output,
             near_current_pane,
             borderless,
         })) = opts.command
@@ -52,11 +53,12 @@ fn main() {
             let skip_plugin_cache = false; // N/A for this action
 
             // Compute the unblock condition
+            // If --output is set and no blocking flag is specified, imply --block-until-exit
             let unblock_condition = if block_until_exit_success {
                 Some(UnblockCondition::OnExitSuccess)
             } else if block_until_exit_failure {
                 Some(UnblockCondition::OnExitFailure)
-            } else if block_until_exit {
+            } else if block_until_exit || output {
                 Some(UnblockCondition::OnAnyExit)
             } else {
                 None
@@ -82,6 +84,7 @@ fn main() {
                 stacked,
                 blocking,
                 unblock_condition,
+                capture_output: output,
                 near_current_pane,
                 borderless,
             };
@@ -126,6 +129,7 @@ fn main() {
                 stacked,
                 blocking,
                 unblock_condition,
+                capture_output: false,
                 near_current_pane: false,
                 borderless,
             };
