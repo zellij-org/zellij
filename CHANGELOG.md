@@ -35,6 +35,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: properly set cwd for new sessions started from the `session-manager` (https://github.com/zellij-org/zellij/pull/4625)
 * fix: get `zellij run --session <X>` to work even when the specified session has no connected users (https://github.com/zellij-org/zellij/pull/4626)
 * fix: properly occlude cursor in floating panes when (partially) covered by another pinned pane (https://github.com/zellij-org/zellij/pull/4644)
+* fix: resolve short layout names as files if possible (https://github.com/zellij-org/zellij/pull/4640)
 
 
 ## [0.43.1] - 2025-08-08
