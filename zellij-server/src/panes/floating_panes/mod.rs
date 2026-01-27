@@ -230,6 +230,9 @@ impl FloatingPanes {
     pub fn active_pane_id(&self, client_id: ClientId) -> Option<PaneId> {
         self.active_panes.get(&client_id).copied()
     }
+    pub fn get_pane_z_index(&self, pane_id: PaneId) -> Option<usize> {
+        self.z_indices.iter().position(|id| id == &pane_id)
+    }
     pub fn active_pane_id_or_focused_pane_id(&self, client_id: Option<ClientId>) -> Option<PaneId> {
         // returns the focused pane of any client_id - should be safe because the way things are
         // set up at the time of writing, all clients are focused on the same floating pane due to

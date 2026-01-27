@@ -508,7 +508,7 @@ fn test_serialize_with_size_hides_cursor_when_cropped() {
     let max_size = Some(Size { rows: 10, cols: 20 });
 
     // Set cursor outside max_size
-    output.cursor_is_visible(25, 5);
+    output.cursor_is_visible(25, 5, None);
 
     let chunk = create_character_chunk_from_str("Test", 0, 0);
     output
@@ -796,14 +796,142 @@ fn test_cursor_is_visible_with_floating_panes() {
 
     // Cursor inside pane bounds
     assert!(
-        !stack.cursor_is_visible(7, 7),
+        !stack.cursor_is_visible(7, 7, None),
         "Cursor should not be visible when covered by pane"
     );
 
     // Cursor outside pane bounds
     assert!(
-        stack.cursor_is_visible(20, 20),
+        stack.cursor_is_visible(20, 20, None),
         "Cursor should be visible when not covered by pane"
+    );
+}
+
+#[test]
+fn test_cursor_visibility_with_z_index_bottom_layer() {
+    // Two overlapping panes: bottom at (5,5) and top at (5,5)
+    let bottom_pane = create_pane_geom(5, 5, 10, 10);
+    let top_pane = create_pane_geom(5, 5, 10, 10);
+
+    let stack = FloatingPanesStack {
+        layers: vec![bottom_pane, top_pane],
+    };
+
+    // Cursor at position (7,7) in the bottom layer (z-index 0)
+    // Should be hidden because there's a pane above it (z-index 1) at the same position
+    assert!(
+        !stack.cursor_is_visible(7, 7, Some(0)),
+        "Cursor in bottom layer should be hidden by pane above it"
+    );
+}
+
+#[test]
+fn test_cursor_visibility_with_z_index_top_layer() {
+    // Two overlapping panes: bottom at (5,5) and top at (5,5)
+    let bottom_pane = create_pane_geom(5, 5, 10, 10);
+    let top_pane = create_pane_geom(5, 5, 10, 10);
+
+    let stack = FloatingPanesStack {
+        layers: vec![bottom_pane, top_pane],
+    };
+
+    // Cursor at position (7,7) in the top layer (z-index 1)
+    // Should be visible even though there's a pane below it at the same position
+    assert!(
+        stack.cursor_is_visible(7, 7, Some(1)),
+        "Cursor in top layer should be visible (not affected by panes below)"
+    );
+}
+
+#[test]
+fn test_cursor_visibility_with_multiple_layers() {
+    // Three panes stacked vertically with different layers
+    // Layer 0 (bottom): pane at (5,5)
+    // Layer 1 (middle): pane at (10,10)
+    // Layer 2 (top): pane at (5,5) - overlaps with layer 0
+    let layer0_pane = create_pane_geom(5, 5, 10, 10);
+    let layer1_pane = create_pane_geom(10, 10, 10, 10);
+    let layer2_pane = create_pane_geom(5, 5, 10, 10);
+
+    let stack = FloatingPanesStack {
+        layers: vec![layer0_pane, layer1_pane, layer2_pane],
+    };
+
+    // Cursor at (7,7) in layer 0 - should be hidden by layer 2
+    assert!(
+        !stack.cursor_is_visible(7, 7, Some(0)),
+        "Cursor in layer 0 should be hidden by layer 2 above it"
+    );
+
+    // Cursor at (16,16) in layer 1 - should be visible (layer 2 doesn't cover this position)
+    // Layer 1 is at (10,10) size 10x10, so covers (10,10) to (19,19)
+    // Layer 2 is at (5,5) size 10x10, so covers (5,5) to (14,14)
+    // Position (16,16) is inside layer 1 but outside layer 2
+    assert!(
+        stack.cursor_is_visible(16, 16, Some(1)),
+        "Cursor in layer 1 should be visible when not covered by layers above"
+    );
+
+    // Cursor at (7,7) in layer 2 - should be visible (no layers above)
+    assert!(
+        stack.cursor_is_visible(7, 7, Some(2)),
+        "Cursor in top layer should always be visible"
+    );
+}
+
+#[test]
+fn test_cursor_visibility_pinned_pane_over_floating() {
+    // Simulates a floating pane (z-index 0) with a pinned pane (z-index 1) on top
+    // Both panes overlap at the same position
+    let floating_pane = create_pane_geom(10, 10, 20, 20);
+    let mut pinned_pane = create_pane_geom(10, 10, 20, 20);
+    pinned_pane.is_pinned = true;
+
+    let stack = FloatingPanesStack {
+        layers: vec![floating_pane, pinned_pane],
+    };
+
+    // Cursor in the floating pane (z-index 0) at position covered by pinned pane
+    assert!(
+        !stack.cursor_is_visible(15, 15, Some(0)),
+        "Cursor in floating pane should be hidden when covered by pinned pane above"
+    );
+
+    // Cursor in the pinned pane (z-index 1) at the same position
+    assert!(
+        stack.cursor_is_visible(15, 15, Some(1)),
+        "Cursor in pinned pane should be visible"
+    );
+}
+
+#[test]
+fn test_cursor_visibility_partial_overlap() {
+    // Two panes with partial overlap
+    // Layer 0: pane at (0, 0) size 10x10
+    // Layer 1: pane at (5, 5) size 10x10 (overlaps bottom-right of layer 0)
+    let layer0_pane = create_pane_geom(0, 0, 10, 10);
+    let layer1_pane = create_pane_geom(5, 5, 10, 10);
+
+    let stack = FloatingPanesStack {
+        layers: vec![layer0_pane, layer1_pane],
+    };
+
+    // Cursor at (2,2) in layer 0 - not covered by layer 1, should be visible
+    assert!(
+        stack.cursor_is_visible(2, 2, Some(0)),
+        "Cursor in non-overlapping area should be visible"
+    );
+
+    // Cursor at (7,7) in layer 0 - covered by layer 1, should be hidden
+    assert!(
+        !stack.cursor_is_visible(7, 7, Some(0)),
+        "Cursor in overlapping area should be hidden by pane above"
+    );
+
+    // Cursor at (7,7) in layer 1 - should be visible (top layer)
+    assert!(
+        stack.cursor_is_visible(7, 7, Some(1)),
+        "Cursor in top layer should be visible in overlapping area"
     );
 }
 

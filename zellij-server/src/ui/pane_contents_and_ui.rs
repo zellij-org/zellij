@@ -161,8 +161,11 @@ impl<'a> PaneContentsAndUi<'a> {
                     .pane
                     .cursor_coordinates(Some(*fake_cursor_client_id))
                     .map(|(x, y)| {
-                        self.output
-                            .cursor_is_visible(self.pane.x() + x, self.pane.y() + y)
+                        self.output.cursor_is_visible(
+                            self.pane.x() + x,
+                            self.pane.y() + y,
+                            self.z_index,
+                        )
                     })
                     .unwrap_or(false);
                 if cursor_is_visible {
