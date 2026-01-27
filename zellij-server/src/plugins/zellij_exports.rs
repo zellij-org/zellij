@@ -9,6 +9,7 @@ use crate::ServerInstruction;
 use interprocess::local_socket::LocalSocketStream;
 use log::warn;
 use serde::Serialize;
+use std::collections::HashMap;
 use std::{
     collections::{BTreeMap, HashSet},
     io::{Read, Write},
@@ -1390,6 +1391,7 @@ fn open_command_pane_in_place_of_plugin(
     let command = command_to_run.path;
     let cwd = command_to_run.cwd.map(|cwd| env.plugin_cwd.join(cwd));
     let args = command_to_run.args;
+    let env_vars = HashMap::default();
     let direction = None;
     let hold_on_close = true;
     let hold_on_start = false;
@@ -1398,6 +1400,7 @@ fn open_command_pane_in_place_of_plugin(
     let run_command_action = RunCommandAction {
         command,
         args,
+        env_vars,
         cwd,
         direction,
         hold_on_close,
@@ -1430,6 +1433,7 @@ fn open_command_pane(
     let command = command_to_run.path;
     let cwd = command_to_run.cwd.map(|cwd| env.plugin_cwd.join(cwd));
     let args = command_to_run.args;
+    let env_vars = HashMap::default();
     let direction = None;
     let hold_on_close = true;
     let hold_on_start = false;
@@ -1439,6 +1443,7 @@ fn open_command_pane(
         command,
         args,
         cwd,
+        env_vars,
         direction,
         hold_on_close,
         hold_on_start,
@@ -1467,6 +1472,7 @@ fn open_command_pane_near_plugin(
     let command = command_to_run.path;
     let cwd = command_to_run.cwd.map(|cwd| env.plugin_cwd.join(cwd));
     let args = command_to_run.args;
+    let env_vars = HashMap::default();
     let direction = None;
     let hold_on_close = true;
     let hold_on_start = false;
@@ -1475,6 +1481,7 @@ fn open_command_pane_near_plugin(
     let run_command_action = RunCommandAction {
         command,
         args,
+        env_vars,
         cwd,
         direction,
         hold_on_close,
@@ -1511,6 +1518,7 @@ fn open_command_pane_floating(
     let command = command_to_run.path;
     let cwd = command_to_run.cwd.map(|cwd| env.plugin_cwd.join(cwd));
     let args = command_to_run.args;
+    let env_vars = HashMap::default();
     let direction = None;
     let hold_on_close = true;
     let hold_on_start = false;
@@ -1519,6 +1527,7 @@ fn open_command_pane_floating(
     let run_command_action = RunCommandAction {
         command,
         args,
+        env_vars,
         cwd,
         direction,
         hold_on_close,
@@ -1548,6 +1557,7 @@ fn open_command_pane_floating_near_plugin(
     let command = command_to_run.path;
     let cwd = command_to_run.cwd.map(|cwd| env.plugin_cwd.join(cwd));
     let args = command_to_run.args;
+    let env_vars = HashMap::default();
     let direction = None;
     let hold_on_close = true;
     let hold_on_start = false;
@@ -1556,6 +1566,7 @@ fn open_command_pane_floating_near_plugin(
     let run_command_action = RunCommandAction {
         command,
         args,
+        env_vars,
         cwd,
         direction,
         hold_on_close,
@@ -1588,6 +1599,7 @@ fn open_command_pane_in_place(
     let command = command_to_run.path;
     let cwd = command_to_run.cwd.map(|cwd| env.plugin_cwd.join(cwd));
     let args = command_to_run.args;
+    let env_vars = HashMap::default();
     let direction = None;
     let hold_on_close = true;
     let hold_on_start = false;
@@ -1596,6 +1608,7 @@ fn open_command_pane_in_place(
     let run_command_action = RunCommandAction {
         command,
         args,
+        env_vars,
         cwd,
         direction,
         hold_on_close,
@@ -1628,6 +1641,7 @@ fn open_command_pane_background(
         .map(|cwd| env.plugin_cwd.join(cwd))
         .or_else(|| Some(env.plugin_cwd.clone()));
     let args = command_to_run.args;
+    let env_vars = HashMap::default();
     let direction = None;
     let hold_on_close = true;
     let hold_on_start = false;
@@ -1637,6 +1651,7 @@ fn open_command_pane_background(
     let run_command_action = RunCommandAction {
         command,
         args,
+        env_vars,
         cwd,
         direction,
         hold_on_close,
