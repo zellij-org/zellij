@@ -1,5 +1,6 @@
 ---
 source: zellij-utils/src/kdl/mod.rs
+assertion_line: 6589
 expression: fake_config_stringified
 ---
 keybinds clear-defaults=true {
@@ -243,7 +244,7 @@ keybinds clear-defaults=true {
         bind "down" { MoveFocus "down"; SwitchToMode "normal"; }
         bind "up" { MoveFocus "up"; SwitchToMode "normal"; }
         bind "right" { MoveFocus "right"; SwitchToMode "normal"; }
-        bind "space" { NextSwapLayout; }
+        bind "space" { NextSwapLayout; SwitchToMode "normal"; }
         bind "\"" { NewPane "down"; SwitchToMode "normal"; }
         bind "%" { NewPane "right"; SwitchToMode "normal"; }
         bind "," { SwitchToMode "renametab"; }
@@ -255,8 +256,15 @@ keybinds clear-defaults=true {
         bind "k" { MoveFocus "up"; SwitchToMode "normal"; }
         bind "l" { MoveFocus "right"; SwitchToMode "normal"; }
         bind "n" { GoToNextTab; SwitchToMode "normal"; }
-        bind "o" { FocusNextPane; }
+        bind "o" { FocusNextPane; SwitchToMode "normal"; }
         bind "p" { GoToPreviousTab; SwitchToMode "normal"; }
+        bind "s" {
+            LaunchOrFocusPlugin "session-manager" {
+                floating true
+                move_to_focused_tab true
+            }
+            SwitchToMode "normal"
+        }
         bind "z" { ToggleFocusFullscreen; SwitchToMode "normal"; }
     }
 }
@@ -282,3 +290,4 @@ load_plugins {
 web_client {
     font "monospace"
 }
+
