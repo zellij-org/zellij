@@ -1936,6 +1936,16 @@ impl From<crate::data::KeyWithModifier>
             other => (bare_key_to_proto_i32(*other), None),
         };
 
+        // Handle shifted key the same way
+        let (shifted_key_enum, shifted_char_data) = match &key.shifted_key {
+            Some(crate::data::BareKey::Char(c)) => (
+                Some(crate::client_server_contract::client_server_contract::BareKey::Char as i32),
+                Some(c.to_string()),
+            ),
+            Some(other) => (Some(bare_key_to_proto_i32(*other)), None),
+            None => (None, None),
+        };
+
         Self {
             bare_key: bare_key_enum,
             key_modifiers: key
@@ -1944,6 +1954,8 @@ impl From<crate::data::KeyWithModifier>
                 .map(|modifier| key_modifier_to_proto_i32(modifier))
                 .collect(),
             character: char_data,
+            shifted_key: shifted_key_enum,
+            shifted_character: shifted_char_data,
         }
     }
 }
@@ -1974,6 +1986,26 @@ impl TryFrom<crate::client_server_contract::client_server_contract::KeyWithModif
             bare_key_from_proto_i32(key.bare_key)?
         };
 
+        // Handle shifted key the same way
+        let shifted_key = if let Some(shifted_key_proto) = key.shifted_key {
+            if shifted_key_proto
+                == crate::client_server_contract::client_server_contract::BareKey::Char as i32
+            {
+                let character_str = key
+                    .shifted_character
+                    .ok_or_else(|| anyhow!("Shifted character key missing character data"))?;
+                let character = character_str
+                    .chars()
+                    .next()
+                    .ok_or_else(|| anyhow!("Empty shifted character string"))?;
+                Some(crate::data::BareKey::Char(character))
+            } else {
+                Some(bare_key_from_proto_i32(shifted_key_proto)?)
+            }
+        } else {
+            None
+        };
+
         let key_modifiers: Result<BTreeSet<_>> = key
             .key_modifiers
             .into_iter()
@@ -1982,6 +2014,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::KeyWithModif
 
         Ok(Self {
             bare_key,
+            shifted_key,
             key_modifiers: key_modifiers?,
         })
     }

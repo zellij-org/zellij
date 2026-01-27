@@ -2709,6 +2709,7 @@ fn test_client_messages() {
         key: KeyWithModifier {
             bare_key: BareKey::PageDown,
             key_modifiers: BTreeSet::new(),
+            shifted_key: None,
         },
         raw_bytes: "raw_bytes".as_bytes().to_vec(),
         is_kitty_keyboard_protocol: false,
@@ -2717,6 +2718,7 @@ fn test_client_messages() {
         key: KeyWithModifier {
             bare_key: BareKey::PageDown,
             key_modifiers: demo_modifiers_1,
+            shifted_key: None,
         },
         raw_bytes: "raw_bytes".as_bytes().to_vec(),
         is_kitty_keyboard_protocol: false,
@@ -2725,6 +2727,7 @@ fn test_client_messages() {
         key: KeyWithModifier {
             bare_key: BareKey::PageDown,
             key_modifiers: demo_modifiers_2,
+            shifted_key: None,
         },
         raw_bytes: "raw_bytes".as_bytes().to_vec(),
         is_kitty_keyboard_protocol: false,
@@ -2733,6 +2736,7 @@ fn test_client_messages() {
         key: KeyWithModifier {
             bare_key: BareKey::PageDown,
             key_modifiers: demo_modifiers_3,
+            shifted_key: None,
         },
         raw_bytes: "raw_bytes".as_bytes().to_vec(),
         is_kitty_keyboard_protocol: false,
@@ -2741,6 +2745,7 @@ fn test_client_messages() {
         key: KeyWithModifier {
             bare_key: BareKey::PageDown,
             key_modifiers: demo_modifiers_4,
+            shifted_key: None,
         },
         raw_bytes: "raw_bytes".as_bytes().to_vec(),
         is_kitty_keyboard_protocol: false,
@@ -2749,6 +2754,7 @@ fn test_client_messages() {
         key: KeyWithModifier {
             bare_key: BareKey::PageUp,
             key_modifiers: BTreeSet::new(),
+            shifted_key: None,
         },
         raw_bytes: "raw_bytes".as_bytes().to_vec(),
         is_kitty_keyboard_protocol: false,
@@ -2757,6 +2763,7 @@ fn test_client_messages() {
         key: KeyWithModifier {
             bare_key: BareKey::Down,
             key_modifiers: BTreeSet::new(),
+            shifted_key: None,
         },
         raw_bytes: "raw_bytes".as_bytes().to_vec(),
         is_kitty_keyboard_protocol: false,
@@ -2765,6 +2772,7 @@ fn test_client_messages() {
         key: KeyWithModifier {
             bare_key: BareKey::Up,
             key_modifiers: BTreeSet::new(),
+            shifted_key: None,
         },
         raw_bytes: "raw_bytes".as_bytes().to_vec(),
         is_kitty_keyboard_protocol: false,
@@ -2773,6 +2781,7 @@ fn test_client_messages() {
         key: KeyWithModifier {
             bare_key: BareKey::Right,
             key_modifiers: BTreeSet::new(),
+            shifted_key: None,
         },
         raw_bytes: "raw_bytes".as_bytes().to_vec(),
         is_kitty_keyboard_protocol: false,
@@ -2781,6 +2790,7 @@ fn test_client_messages() {
         key: KeyWithModifier {
             bare_key: BareKey::Home,
             key_modifiers: BTreeSet::new(),
+            shifted_key: None,
         },
         raw_bytes: "raw_bytes".as_bytes().to_vec(),
         is_kitty_keyboard_protocol: false,
@@ -2789,6 +2799,7 @@ fn test_client_messages() {
         key: KeyWithModifier {
             bare_key: BareKey::End,
             key_modifiers: BTreeSet::new(),
+            shifted_key: None,
         },
         raw_bytes: "raw_bytes".as_bytes().to_vec(),
         is_kitty_keyboard_protocol: false,
@@ -2797,6 +2808,7 @@ fn test_client_messages() {
         key: KeyWithModifier {
             bare_key: BareKey::Backspace,
             key_modifiers: BTreeSet::new(),
+            shifted_key: None,
         },
         raw_bytes: "raw_bytes".as_bytes().to_vec(),
         is_kitty_keyboard_protocol: false,
@@ -2805,6 +2817,7 @@ fn test_client_messages() {
         key: KeyWithModifier {
             bare_key: BareKey::Delete,
             key_modifiers: BTreeSet::new(),
+            shifted_key: None,
         },
         raw_bytes: "raw_bytes".as_bytes().to_vec(),
         is_kitty_keyboard_protocol: false,
@@ -2813,6 +2826,7 @@ fn test_client_messages() {
         key: KeyWithModifier {
             bare_key: BareKey::Insert,
             key_modifiers: BTreeSet::new(),
+            shifted_key: None,
         },
         raw_bytes: "raw_bytes".as_bytes().to_vec(),
         is_kitty_keyboard_protocol: false,
@@ -2821,6 +2835,7 @@ fn test_client_messages() {
         key: KeyWithModifier {
             bare_key: BareKey::Tab,
             key_modifiers: BTreeSet::new(),
+            shifted_key: None,
         },
         raw_bytes: "raw_bytes".as_bytes().to_vec(),
         is_kitty_keyboard_protocol: false,
@@ -2829,6 +2844,7 @@ fn test_client_messages() {
         key: KeyWithModifier {
             bare_key: BareKey::Esc,
             key_modifiers: BTreeSet::new(),
+            shifted_key: None,
         },
         raw_bytes: "raw_bytes".as_bytes().to_vec(),
         is_kitty_keyboard_protocol: false,
@@ -2837,6 +2853,7 @@ fn test_client_messages() {
         key: KeyWithModifier {
             bare_key: BareKey::Enter,
             key_modifiers: BTreeSet::new(),
+            shifted_key: None,
         },
         raw_bytes: "raw_bytes".as_bytes().to_vec(),
         is_kitty_keyboard_protocol: false,
@@ -2845,6 +2862,7 @@ fn test_client_messages() {
         key: KeyWithModifier {
             bare_key: BareKey::CapsLock,
             key_modifiers: BTreeSet::new(),
+            shifted_key: None,
         },
         raw_bytes: "raw_bytes".as_bytes().to_vec(),
         is_kitty_keyboard_protocol: false,
@@ -2853,6 +2871,7 @@ fn test_client_messages() {
         key: KeyWithModifier {
             bare_key: BareKey::ScrollLock,
             key_modifiers: BTreeSet::new(),
+            shifted_key: None,
         },
         raw_bytes: "raw_bytes".as_bytes().to_vec(),
         is_kitty_keyboard_protocol: false,
@@ -2861,6 +2880,7 @@ fn test_client_messages() {
         key: KeyWithModifier {
             bare_key: BareKey::NumLock,
             key_modifiers: BTreeSet::new(),
+            shifted_key: None,
         },
         raw_bytes: "raw_bytes".as_bytes().to_vec(),
         is_kitty_keyboard_protocol: false,
@@ -2869,6 +2889,7 @@ fn test_client_messages() {
         key: KeyWithModifier {
             bare_key: BareKey::PrintScreen,
             key_modifiers: BTreeSet::new(),
+            shifted_key: None,
         },
         raw_bytes: "raw_bytes".as_bytes().to_vec(),
         is_kitty_keyboard_protocol: false,
@@ -2877,6 +2898,7 @@ fn test_client_messages() {
         key: KeyWithModifier {
             bare_key: BareKey::Pause,
             key_modifiers: BTreeSet::new(),
+            shifted_key: None,
         },
         raw_bytes: "raw_bytes".as_bytes().to_vec(),
         is_kitty_keyboard_protocol: false,
@@ -2885,6 +2907,7 @@ fn test_client_messages() {
         key: KeyWithModifier {
             bare_key: BareKey::Menu,
             key_modifiers: BTreeSet::new(),
+            shifted_key: None,
         },
         raw_bytes: "raw_bytes".as_bytes().to_vec(),
         is_kitty_keyboard_protocol: false,
@@ -2893,6 +2916,7 @@ fn test_client_messages() {
         key: KeyWithModifier {
             bare_key: BareKey::F(1),
             key_modifiers: BTreeSet::new(),
+            shifted_key: None,
         },
         raw_bytes: "raw_bytes".as_bytes().to_vec(),
         is_kitty_keyboard_protocol: false,
@@ -2901,6 +2925,7 @@ fn test_client_messages() {
         key: KeyWithModifier {
             bare_key: BareKey::F(2),
             key_modifiers: BTreeSet::new(),
+            shifted_key: None,
         },
         raw_bytes: "raw_bytes".as_bytes().to_vec(),
         is_kitty_keyboard_protocol: false,
@@ -2909,6 +2934,7 @@ fn test_client_messages() {
         key: KeyWithModifier {
             bare_key: BareKey::F(3),
             key_modifiers: BTreeSet::new(),
+            shifted_key: None,
         },
         raw_bytes: "raw_bytes".as_bytes().to_vec(),
         is_kitty_keyboard_protocol: false,
@@ -2917,6 +2943,7 @@ fn test_client_messages() {
         key: KeyWithModifier {
             bare_key: BareKey::F(4),
             key_modifiers: BTreeSet::new(),
+            shifted_key: None,
         },
         raw_bytes: "raw_bytes".as_bytes().to_vec(),
         is_kitty_keyboard_protocol: false,
@@ -2925,6 +2952,7 @@ fn test_client_messages() {
         key: KeyWithModifier {
             bare_key: BareKey::F(5),
             key_modifiers: BTreeSet::new(),
+            shifted_key: None,
         },
         raw_bytes: "raw_bytes".as_bytes().to_vec(),
         is_kitty_keyboard_protocol: false,
@@ -2933,6 +2961,7 @@ fn test_client_messages() {
         key: KeyWithModifier {
             bare_key: BareKey::F(6),
             key_modifiers: BTreeSet::new(),
+            shifted_key: None,
         },
         raw_bytes: "raw_bytes".as_bytes().to_vec(),
         is_kitty_keyboard_protocol: false,
@@ -2941,6 +2970,7 @@ fn test_client_messages() {
         key: KeyWithModifier {
             bare_key: BareKey::F(7),
             key_modifiers: BTreeSet::new(),
+            shifted_key: None,
         },
         raw_bytes: "raw_bytes".as_bytes().to_vec(),
         is_kitty_keyboard_protocol: false,
@@ -2949,6 +2979,7 @@ fn test_client_messages() {
         key: KeyWithModifier {
             bare_key: BareKey::F(8),
             key_modifiers: BTreeSet::new(),
+            shifted_key: None,
         },
         raw_bytes: "raw_bytes".as_bytes().to_vec(),
         is_kitty_keyboard_protocol: false,
@@ -2957,6 +2988,7 @@ fn test_client_messages() {
         key: KeyWithModifier {
             bare_key: BareKey::F(9),
             key_modifiers: BTreeSet::new(),
+            shifted_key: None,
         },
         raw_bytes: "raw_bytes".as_bytes().to_vec(),
         is_kitty_keyboard_protocol: false,
@@ -2965,6 +2997,7 @@ fn test_client_messages() {
         key: KeyWithModifier {
             bare_key: BareKey::F(10),
             key_modifiers: BTreeSet::new(),
+            shifted_key: None,
         },
         raw_bytes: "raw_bytes".as_bytes().to_vec(),
         is_kitty_keyboard_protocol: false,
@@ -2973,6 +3006,7 @@ fn test_client_messages() {
         key: KeyWithModifier {
             bare_key: BareKey::F(11),
             key_modifiers: BTreeSet::new(),
+            shifted_key: None,
         },
         raw_bytes: "raw_bytes".as_bytes().to_vec(),
         is_kitty_keyboard_protocol: false,
@@ -2981,6 +3015,7 @@ fn test_client_messages() {
         key: KeyWithModifier {
             bare_key: BareKey::F(12),
             key_modifiers: BTreeSet::new(),
+            shifted_key: None,
         },
         raw_bytes: "raw_bytes".as_bytes().to_vec(),
         is_kitty_keyboard_protocol: false,
@@ -2989,9 +3024,23 @@ fn test_client_messages() {
         key: KeyWithModifier {
             bare_key: BareKey::Char('a'),
             key_modifiers: BTreeSet::new(),
+            shifted_key: None,
         },
         raw_bytes: "raw_bytes".as_bytes().to_vec(),
         is_kitty_keyboard_protocol: false,
+    });
+    // Test with shifted_key (for REPORT_ALTERNATE_KEYS)
+    let mut shift_alt_modifiers = BTreeSet::new();
+    shift_alt_modifiers.insert(KeyModifier::Shift);
+    shift_alt_modifiers.insert(KeyModifier::Alt);
+    test_client_roundtrip!(ClientToServerMsg::Key {
+        key: KeyWithModifier {
+            bare_key: BareKey::Char(','),
+            key_modifiers: shift_alt_modifiers,
+            shifted_key: Some(BareKey::Char('<')),
+        },
+        raw_bytes: "\x1b[44:60;4u".as_bytes().to_vec(),
+        is_kitty_keyboard_protocol: true,
     });
     test_client_roundtrip!(ClientToServerMsg::ClientExited);
     test_client_roundtrip!(ClientToServerMsg::KillSession);
