@@ -23,9 +23,12 @@ pub fn get_sessions() -> Result<Vec<(String, Duration)>, io::ErrorKind> {
             files.for_each(|file| {
                 if let Ok(file) = file {
                     let file_name = file.file_name().into_string().unwrap();
+                    // try to get creation time, fall back to modification time on platforms where it's not supported (e.g., musl)
+                    // for session creation time these are almost always identical (notable
+                    // exceptions are session name changes)
                     let ctime = std::fs::metadata(&file.path())
                         .ok()
-                        .and_then(|f| f.created().ok())
+                        .and_then(|f| f.created().ok().or_else(|| f.modified().ok()))
                         .and_then(|d| d.elapsed().ok())
                         .unwrap_or_default();
                     let duration = Duration::from_secs(ctime.as_secs());
@@ -51,12 +54,12 @@ pub fn get_resurrectable_sessions() -> Vec<(String, Duration)> {
                 .filter_map(|folder_name| {
                     let layout_file_name =
                         session_layout_cache_file_name(&folder_name.display().to_string());
-                    let ctime = match std::fs::metadata(&layout_file_name)
-                        .and_then(|metadata| metadata.created())
-                    {
-                        Ok(created) => Some(created),
-                        Err(_e) => None,
-                    };
+                    // Try to get creation time, fall back to modification time on platforms where it's not supported (e.g., musl)
+                    let ctime = std::fs::metadata(&layout_file_name)
+                        .ok()
+                        .and_then(|metadata| {
+                            metadata.created().ok().or_else(|| metadata.modified().ok())
+                        });
                     let elapsed_duration = ctime
                         .map(|ctime| {
                             Duration::from_secs(ctime.elapsed().ok().unwrap_or_default().as_secs())
