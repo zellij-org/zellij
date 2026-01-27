@@ -10050,3 +10050,159 @@ fn borderless_pinned_floating_pane() {
     );
     assert_snapshot!(snapshot);
 }
+
+#[test]
+fn cursor_hidden_when_floating_pane_is_under_pinned_pane() {
+    // Test that cursor is correctly hidden when focused on a floating pane that's under a pinned pane
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let mut output = Output::default();
+
+    // Create first floating pane (will be underneath)
+    let bottom_pane_coordinates = FloatingPaneCoordinates {
+        x: Some(PercentOrFixed::Fixed(10)),
+        y: Some(PercentOrFixed::Fixed(5)),
+        width: Some(PercentOrFixed::Fixed(40)),
+        height: Some(PercentOrFixed::Fixed(10)),
+        pinned: Some(false),
+        borderless: Some(false),
+    };
+
+    tab.new_floating_pane(
+        PaneId::Terminal(2),
+        None,
+        None,
+        false,
+        true,
+        Some(bottom_pane_coordinates),
+        None,
+    )
+    .unwrap();
+
+    // Create overlapping pinned pane on top
+    let top_pane_coordinates = FloatingPaneCoordinates {
+        x: Some(PercentOrFixed::Fixed(15)),
+        y: Some(PercentOrFixed::Fixed(6)),
+        width: Some(PercentOrFixed::Fixed(30)),
+        height: Some(PercentOrFixed::Fixed(8)),
+        pinned: Some(true),
+        borderless: Some(false),
+    };
+
+    tab.new_floating_pane(
+        PaneId::Terminal(3),
+        None,
+        None,
+        false,
+        true,
+        Some(top_pane_coordinates),
+        None,
+    )
+    .unwrap();
+
+    // Add some text to both panes so we can see them
+    tab.handle_pty_bytes(2, Vec::from("Bottom floating pane".as_bytes()))
+        .unwrap();
+    tab.handle_pty_bytes(3, Vec::from("Top pinned pane".as_bytes()))
+        .unwrap();
+
+    // Explicitly focus the bottom floating pane (PaneId::Terminal(2))
+    // Use move_focus_left to switch from pane 3 to pane 2
+    tab.move_focus_left(client_id).unwrap();
+
+    // Render
+    tab.render(&mut output, None).unwrap();
+    let (_snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+
+    // The cursor should be hidden because the focused pane (2) is under the pinned pane (3)
+    // and the cursor position falls within the overlapping area
+    assert_eq!(
+        cursor_coordinates, None,
+        "Cursor should be hidden when focused floating pane is under a pinned pane that covers it"
+    );
+}
+
+#[test]
+fn cursor_visible_when_pinned_pane_is_focused() {
+    // Test that cursor is visible when focused on a pinned pane that's on top
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let mut output = Output::default();
+
+    // Create first floating pane (will be underneath)
+    let bottom_pane_coordinates = FloatingPaneCoordinates {
+        x: Some(PercentOrFixed::Fixed(10)),
+        y: Some(PercentOrFixed::Fixed(5)),
+        width: Some(PercentOrFixed::Fixed(40)),
+        height: Some(PercentOrFixed::Fixed(10)),
+        pinned: Some(false),
+        borderless: Some(false),
+    };
+
+    tab.new_floating_pane(
+        PaneId::Terminal(2),
+        None,
+        None,
+        false,
+        true,
+        Some(bottom_pane_coordinates),
+        None,
+    )
+    .unwrap();
+
+    // Create overlapping pinned pane on top
+    let top_pane_coordinates = FloatingPaneCoordinates {
+        x: Some(PercentOrFixed::Fixed(15)),
+        y: Some(PercentOrFixed::Fixed(6)),
+        width: Some(PercentOrFixed::Fixed(30)),
+        height: Some(PercentOrFixed::Fixed(8)),
+        pinned: Some(true),
+        borderless: Some(false),
+    };
+
+    tab.new_floating_pane(
+        PaneId::Terminal(3),
+        None,
+        None,
+        false,
+        true,
+        Some(top_pane_coordinates),
+        None,
+    )
+    .unwrap();
+
+    // Add some text to both panes
+    tab.handle_pty_bytes(2, Vec::from("Bottom floating pane".as_bytes()))
+        .unwrap();
+    tab.handle_pty_bytes(3, Vec::from("Top pinned pane".as_bytes()))
+        .unwrap();
+
+    // The pinned pane should be focused by default (last created)
+    // Render
+    tab.render(&mut output, None).unwrap();
+    let (_snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+
+    // The cursor should be visible because the focused pane is the pinned pane on top
+    assert!(
+        cursor_coordinates.is_some(),
+        "Cursor should be visible when focused on pinned pane that's on top"
+    );
+}

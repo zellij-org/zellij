@@ -3057,11 +3057,14 @@ impl Tab {
             match self
                 .get_active_terminal_cursor_position(client_id)
                 .and_then(|(cursor_position_x, cursor_position_y)| {
-                    // TODO: get active_pane_z_index and pass it to cursor_is_visible so we do the
-                    // right thing if the cursor is in a floating pane
-                    if self.floating_panes.panes_are_visible() {
-                        Some((cursor_position_x, cursor_position_y))
-                    } else if output.cursor_is_visible(cursor_position_x, cursor_position_y) {
+                    let active_pane_z_index = self
+                        .get_active_pane_id(client_id)
+                        .and_then(|pane_id| self.floating_panes.get_pane_z_index(pane_id));
+                    if output.cursor_is_visible(
+                        cursor_position_x,
+                        cursor_position_y,
+                        active_pane_z_index,
+                    ) {
                         Some((cursor_position_x, cursor_position_y))
                     } else {
                         None

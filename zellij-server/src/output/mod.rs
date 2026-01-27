@@ -595,11 +595,16 @@ impl Output {
         self.client_character_chunks.values().any(|c| !c.is_empty())
             || self.sixel_chunks.values().any(|c| !c.is_empty())
     }
-    pub fn cursor_is_visible(&mut self, cursor_x: usize, cursor_y: usize) -> bool {
+    pub fn cursor_is_visible(
+        &mut self,
+        cursor_x: usize,
+        cursor_y: usize,
+        z_index: Option<usize>,
+    ) -> bool {
         self.cursor_coordinates = Some((cursor_x, cursor_y));
         self.floating_panes_stack
             .as_ref()
-            .map(|s| s.cursor_is_visible(cursor_x, cursor_y))
+            .map(|s| s.cursor_is_visible(cursor_x, cursor_y, z_index))
             .unwrap_or(true)
     }
     pub fn add_pane_contents(
@@ -910,8 +915,13 @@ impl FloatingPanesStack {
         }
         uncovered_chunks
     }
-    pub fn cursor_is_visible(&self, cursor_x: usize, cursor_y: usize) -> bool {
-        let z_index = 0; // TODO: receive z_index
+    pub fn cursor_is_visible(
+        &self,
+        cursor_x: usize,
+        cursor_y: usize,
+        z_index: Option<usize>,
+    ) -> bool {
+        let z_index = z_index.map(|z| z + 1).unwrap_or(0); // +1 because we only check panes above the active pane
         let panes_to_check = self.layers.iter().skip(z_index);
         for pane_geom in panes_to_check {
             let pane_top_edge = pane_geom.y;
