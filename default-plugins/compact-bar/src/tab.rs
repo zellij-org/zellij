@@ -27,6 +27,7 @@ pub fn render_tab(
     is_alternate_tab: bool,
     palette: Styling,
     separator: &str,
+    tab_index: Option<usize>,
 ) -> LinePart {
     let focused_clients = tab.other_focused_clients.as_slice();
     let separator_width = separator.width();
@@ -47,13 +48,43 @@ pub fn render_tab(
     } else {
         palette.ribbon_unselected.base
     };
+
+    // Use emphasis color for the index prefix (similar to status bar key styling)
+    let index_color = if tab.active {
+        palette.ribbon_selected.emphasis_0
+    } else {
+        palette.text_unselected.emphasis_0
+    };
+
     let separator_fill_color = palette.text_unselected.background;
     let left_separator = style!(separator_fill_color, background_color).paint(separator);
-    let mut tab_text_len = text.width() + (separator_width * 2) + 2; // + 2 for padding
 
-    let tab_styled_text = style!(foreground_color, background_color)
-        .bold()
-        .paint(format!(" {} ", text));
+    // Build the tab content with optional index prefix
+    let base = style!(foreground_color, background_color);
+    let text_width = text.width();
+
+    let (index_parts, index_len): (Vec<ANSIString>, usize) = if let Some(index) = tab_index {
+        let index_str = index.to_string();
+        let index_width = index_str.width();
+        let accent = style!(index_color, background_color);
+        (
+            vec![
+                base.bold().paint("<"),
+                accent.bold().paint(index_str),
+                base.bold().paint("> "),
+            ],
+            index_width + 3,
+        )
+    } else {
+        (vec![], 0)
+    };
+
+    let mut tab_text_len = (separator_width * 2) + 2 + index_len + text_width;
+
+    let mut tab_parts: Vec<ANSIString> = vec![base.paint(" ")];
+    tab_parts.extend(index_parts);
+    tab_parts.push(base.bold().paint(text));
+    tab_parts.push(base.paint(" "));
 
     let right_separator = style!(background_color, separator_fill_color).paint(separator);
     let tab_styled_text = if !focused_clients.is_empty() {
@@ -71,14 +102,17 @@ pub fn render_tab(
             .paint("]")
             .to_string();
         s.push_str(&left_separator.to_string());
-        s.push_str(&tab_styled_text.to_string());
+        s.push_str(&ANSIStrings(&tab_parts).to_string());
         s.push_str(&cursor_beginning);
         s.push_str(&cursor_section);
         s.push_str(&cursor_end);
         s.push_str(&right_separator.to_string());
         s
     } else {
-        ANSIStrings(&[left_separator, tab_styled_text, right_separator]).to_string()
+        let mut all_parts = vec![left_separator];
+        all_parts.extend(tab_parts);
+        all_parts.push(right_separator);
+        ANSIStrings(&all_parts).to_string()
     };
 
     LinePart {
@@ -94,6 +128,7 @@ pub fn tab_style(
     mut is_alternate_tab: bool,
     palette: Styling,
     capabilities: PluginCapabilities,
+    tab_index: Option<usize>,
 ) -> LinePart {
     let separator = tab_separator(capabilities);
 
@@ -107,7 +142,7 @@ pub fn tab_style(
         is_alternate_tab = false;
     }
 
-    render_tab(tabname, tab, is_alternate_tab, palette, separator)
+    render_tab(tabname, tab, is_alternate_tab, palette, separator, tab_index)
 }
 
 pub(crate) fn get_tab_to_focus(
