@@ -5065,10 +5065,24 @@ impl Tab {
     ) -> Result<()> {
         let err_context = || format!("failed to resize tiled pane {pane_id:?}");
 
-        // Convert pixel delta to percentage (every ~10 pixels = 5%)
+        // Calculate percentage based on total viewport size for 1:1 cell mapping
+        // Formula: (delta_cells / total_viewport_cells) * 100.0 = percentage
+        // This ensures 1 cell of mouse movement = exactly 1 cell of pane resize
+        let viewport = self.viewport.borrow();
+        let viewport_cols = viewport.cols;
+        let viewport_rows = viewport.rows;
+
         let change_by_percent = (
-            (change_by.0 / 10.0) * 5.0,
-            (change_by.1 / 10.0) * 5.0,
+            if viewport_cols > 0 {
+                (change_by.0 / viewport_cols as f64) * 100.0  // cols
+            } else {
+                0.0
+            },
+            if viewport_rows > 0 {
+                (change_by.1 / viewport_rows as f64) * 100.0  // rows
+            } else {
+                0.0
+            },
         );
 
         self.tiled_panes
