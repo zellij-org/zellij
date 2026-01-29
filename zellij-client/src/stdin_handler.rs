@@ -60,7 +60,41 @@ pub(crate) fn stdin_loop(
         }
     }
     let mut ansi_stdin_events = vec![];
+    let mut needs_finalization = false;
+    let mut last_input_time = std::time::Instant::now();
     loop {
+        // Poll-based wait for input, with finalization check
+        {
+            let mut poller = os_input.stdin_poller();
+            loop {
+                // Check if finalization is needed (50ms since last input)
+                if needs_finalization
+                    && last_input_time.elapsed() >= std::time::Duration::from_millis(50)
+                {
+                    let mut finalize_events = vec![];
+                    input_parser.parse(
+                        &[],
+                        |input_event: InputEvent| {
+                            finalize_events.push(input_event);
+                        },
+                        false,
+                    );
+                    // Send any events from finalization
+                    for input_event in finalize_events {
+                        holding_mouse = is_mouse_press_or_hold(&input_event);
+                        send_input_instructions
+                            .send(InputInstruction::KeyEvent(input_event, vec![]))
+                            .unwrap();
+                    }
+                    needs_finalization = false;
+                }
+
+                if poller.ready() {
+                    break; // Input available, exit poll loop
+                }
+            }
+        }
+
         match os_input.read_from_stdin() {
             Ok(buf) => {
                 {
@@ -105,7 +139,9 @@ pub(crate) fn stdin_loop(
                     }
                 }
 
-                let maybe_more = false; // read_from_stdin should (hopefully) always empty the STDIN buffer completely
+                // more input might be coming
+                // parsed events will be sent immediately, finalization happens later if needed
+                let maybe_more = true;
                 let mut events = vec![];
                 input_parser.parse(
                     &buf,
@@ -142,6 +178,10 @@ pub(crate) fn stdin_loop(
                         ))
                         .unwrap();
                 }
+
+                // Mark that finalization may be needed after 50ms of no input
+                needs_finalization = true;
+                last_input_time = std::time::Instant::now();
             },
             Err(e) => {
                 if e == "Session ended" {
