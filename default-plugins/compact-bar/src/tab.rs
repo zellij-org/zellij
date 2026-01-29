@@ -104,7 +104,7 @@ pub fn tab_style(
     }
     // Show bell indicator for inactive tabs with pending bell notifications
     if tab.has_bell && !tab.active {
-        tabname.push_str(" *");
+        tabname.push_str(" [!]");
     }
     // we only color alternate tabs differently if we can't use the arrow fonts to separate them
     if !capabilities.arrow_fonts {

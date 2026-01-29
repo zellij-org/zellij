@@ -4539,19 +4539,6 @@ pub fn bell_in_inactive_tab_sets_has_bell_flag() {
         })
         .collect();
 
-    // Print all tab updates for debugging
-    eprintln!("=== TAB UPDATES RECEIVED ===");
-    for (i, tabs) in tab_updates.iter().enumerate() {
-        eprintln!(
-            "Update {}: {:?}",
-            i,
-            tabs.iter()
-                .map(|t| (t.position, t.name.clone(), t.active, t.has_bell))
-                .collect::<Vec<_>>()
-        );
-    }
-    eprintln!("=== END TAB UPDATES ===");
-
     // Check if any TabUpdate contains a tab with has_bell = true
     let has_bell_in_any_update = tab_updates
         .iter()

@@ -1604,15 +1604,32 @@ impl Screen {
 
             // Drain pending bells from ALL tabs (including inactive ones) and send to all clients.
             // This ensures bells from background tabs are propagated to the terminal.
+            // Also add visual indicators to unfocused panes with bells.
             let mut has_bell = false;
-            for tab in self.tabs.values_mut() {
-                if tab.drain_pending_bells() {
+            let all_client_ids: Vec<ClientId> =
+                self.connected_clients.borrow().keys().copied().collect();
+            for (tab_index, tab) in self.tabs.iter_mut() {
+                let panes_with_bells = tab.drain_pending_bells();
+                if !panes_with_bells.is_empty() {
                     has_bell = true;
+                    // Add bell highlight to unfocused panes in this tab
+                    // A pane is considered unfocused if no client has it as their active pane
+                    for pane_id in panes_with_bells {
+                        let is_focused_by_any_client = all_client_ids.iter().any(|client_id| {
+                            // Only check focus for clients whose active tab is this tab
+                            self.active_tab_indices
+                                .get(client_id)
+                                .map(|active_tab| *active_tab == *tab_index)
+                                .unwrap_or(false)
+                                && tab.get_active_pane_id(*client_id) == Some(pane_id)
+                        });
+                        if !is_focused_by_any_client {
+                            tab.add_highlight_pane_frame_color_override(pane_id, None, None);
+                        }
+                    }
                 }
             }
             if has_bell {
-                let all_client_ids: Vec<ClientId> =
-                    self.connected_clients.borrow().keys().copied().collect();
                 // Send the bell character (BEL, \x07) to all connected clients
                 output.add_post_vte_instruction_to_multiple_clients(
                     all_client_ids.into_iter(),

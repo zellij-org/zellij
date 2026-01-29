@@ -5960,26 +5960,22 @@ impl Tab {
             .unwrap_or(false)
     }
     /// Drains pending bells from all panes in this tab (tiled, floating, and suppressed).
-    /// Returns true if any pane had a pending bell.
+    /// Returns a vector of pane IDs that had pending bells.
     /// Also sets has_pending_bell_notification to true if a bell was found.
-    pub fn drain_pending_bells(&mut self) -> bool {
-        let mut has_bell = false;
-        if self.tiled_panes.drain_pending_bells() {
-            has_bell = true;
-        }
-        if self.floating_panes.drain_pending_bells() {
-            has_bell = true;
-        }
+    pub fn drain_pending_bells(&mut self) -> Vec<PaneId> {
+        let mut panes_with_bells = Vec::new();
+        panes_with_bells.extend(self.tiled_panes.drain_pending_bells());
+        panes_with_bells.extend(self.floating_panes.drain_pending_bells());
         // Also check suppressed panes (e.g., scrollback editors)
-        for (_pane_id, (_is_scrollback, pane)) in self.suppressed_panes.iter_mut() {
+        for (pane_id, (_is_scrollback, pane)) in self.suppressed_panes.iter_mut() {
             if pane.drain_pending_bell() {
-                has_bell = true;
+                panes_with_bells.push(*pane_id);
             }
         }
-        if has_bell {
+        if !panes_with_bells.is_empty() {
             self.has_pending_bell_notification = true;
         }
-        has_bell
+        panes_with_bells
     }
 
     /// Clears the pending bell notification flag. Should be called when the tab becomes active.
