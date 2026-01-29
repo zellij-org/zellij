@@ -62,10 +62,9 @@ impl ZellijPlugin for State {
             self.active_screen = ActiveScreen::NewSession;
         }
         self.new_session_info.is_welcome_screen = self.is_welcome_screen;
-
-        self.current_session_last_saved_time = current_session_last_saved_time();
-        set_timeout(1.0);
-
+        if !self.is_welcome_screen {
+            set_timeout(0.1); // for the current_session_last_saved_time polling
+        }
         subscribe(&[
             EventType::ModeUpdate,
             EventType::SessionUpdate,
