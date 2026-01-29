@@ -131,6 +131,7 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::GetLayoutDir => get_layout_dir(env),
                     PluginCommand::GetFocusedPaneInfo => get_focused_pane_info(env),
                     PluginCommand::SaveSession => save_session(env),
+                    PluginCommand::CurrentSessionLastSavedTime => current_session_last_saved_time(env),
                     PluginCommand::OpenFile(file_to_open, context) => {
                         open_file(env, file_to_open, context)
                     },
@@ -2597,6 +2598,40 @@ fn save_session(env: &PluginEnv) {
     let _ = wasi_write_object(env, &response.encode_to_vec());
 }
 
+fn current_session_last_saved_time(env: &PluginEnv) {
+    use zellij_utils::plugin_api::plugin_command::ProtobufCurrentSessionLastSavedTimeResponse;
+
+    // Query WasmBridge for last save time (stored as Unix epoch)
+    let (response_tx, response_rx) = crossbeam::channel::bounded(1);
+
+    let send_result = env.senders.send_to_plugin(
+        PluginInstruction::GetLastSessionSaveTime {
+            response_channel: response_tx,
+        }
+    );
+
+    let saved_timestamp_millis = if send_result.is_ok() {
+        response_rx
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .ok()
+            .flatten()
+    } else {
+        None
+    };
+
+    // Calculate elapsed time since last save
+    let timestamp_millis = saved_timestamp_millis.map(|saved_time| {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64;
+        now.saturating_sub(saved_time)
+    });
+
+    let response = ProtobufCurrentSessionLastSavedTimeResponse { timestamp_millis };
+    let _ = wasi_write_object(env, &response.encode_to_vec());
+}
+
 fn list_clients(env: &PluginEnv) {
     let _ = env.senders.to_screen.as_ref().map(|sender| {
         sender.send(ScreenInstruction::ListClientsToPlugin(
@@ -3876,7 +3911,8 @@ fn check_command_permission(
         | PluginCommand::GetFocusedPaneInfo
         | PluginCommand::DumpLayout(..)
         | PluginCommand::ParseLayout(..)
-        | PluginCommand::SaveSession => PermissionType::ReadApplicationState,
+        | PluginCommand::SaveSession
+        | PluginCommand::CurrentSessionLastSavedTime => PermissionType::ReadApplicationState,
         PluginCommand::RebindKeys { .. } | PluginCommand::Reconfigure(..) => {
             PermissionType::Reconfigure
         },

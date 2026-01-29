@@ -187,6 +187,7 @@ pub struct WasmBridge {
     base_modes: HashMap<ClientId, InputMode>,
     downloader: Downloader,
     previous_pane_render_report: Option<PaneRenderReport>,
+    pub last_session_save_time: Arc<Mutex<Option<u64>>>, // milliseconds since UNIX epoch
 }
 
 impl WasmBridge {
@@ -252,6 +253,7 @@ impl WasmBridge {
             base_modes: HashMap::new(),
             downloader,
             previous_pane_render_report: None,
+            last_session_save_time: Arc::new(Mutex::new(None)),
         }
     }
     pub fn load_plugin(
@@ -1943,6 +1945,7 @@ fn check_event_permission(
         | Event::CommandPaneReRun(..)
         | Event::CwdChanged(..)
         | Event::AvailableLayoutInfo(..)
+        | Event::SavedCurrentSession(..)
         | Event::InputReceived => PermissionType::ReadApplicationState,
         Event::WebServerStatus(..) => PermissionType::StartWebServer,
         Event::PaneRenderReport(..) => PermissionType::ReadPaneContents,

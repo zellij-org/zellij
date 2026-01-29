@@ -190,6 +190,15 @@ pub(crate) fn background_jobs_main(
             },
             BackgroundJob::ReportLayoutInfo(session_layout) => {
                 *current_session_layout.lock().unwrap() = session_layout;
+
+                // not entirely accurate
+                let timestamp_millis = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis() as u64;
+                let _ = bus.senders.send_to_plugin(
+                    PluginInstruction::SavedCurrentSession(timestamp_millis)
+                );
             },
             BackgroundJob::ReadAllSessionInfosOnMachine => {
                 // this job should only be run once and it keeps track of other sessions (as well
@@ -220,6 +229,12 @@ pub(crate) fn background_jobs_main(
                                     current_session_info,
                                     current_session_layout,
                                 );
+
+                                // Send SavedCurrentSession instruction to plugin thread
+                                let timestamp_millis = std::time::SystemTime::now()
+                                    .duration_since(std::time::UNIX_EPOCH)
+                                    .unwrap_or_default()
+                                    .as_millis() as u64;
                             }
                             let mut session_infos_on_machine =
                                 read_other_live_session_states(&current_session_name);

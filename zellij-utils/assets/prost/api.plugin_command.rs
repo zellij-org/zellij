@@ -3,7 +3,7 @@
 pub struct PluginCommand {
     #[prost(enumeration="CommandName", tag="1")]
     pub name: i32,
-    #[prost(oneof="plugin_command::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137")]
+    #[prost(oneof="plugin_command::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138")]
     pub payload: ::core::option::Option<plugin_command::Payload>,
 }
 /// Nested message and enum types in `PluginCommand`.
@@ -257,6 +257,8 @@ pub mod plugin_command {
         SetPaneBorderlessPayload(super::SetPaneBorderlessPayload),
         #[prost(message, tag="137")]
         SaveSessionPayload(super::SaveSessionPayload),
+        #[prost(message, tag="138")]
+        CurrentSessionLastSavedTimePayload(super::CurrentSessionLastSavedTimePayload),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -1269,6 +1271,17 @@ pub mod save_session_response {
         Error(::prost::alloc::string::String),
     }
 }
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CurrentSessionLastSavedTimePayload {
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CurrentSessionLastSavedTimeResponse {
+    /// None if never saved, otherwise milliseconds elapsed since last save
+    #[prost(uint64, optional, tag="1")]
+    pub timestamp_millis: ::core::option::Option<u64>,
+}
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
 pub enum CommandName {
@@ -1438,6 +1451,7 @@ pub enum CommandName {
     TogglePaneBorderless = 184,
     SetPaneBorderless = 185,
     SaveSession = 186,
+    CurrentSessionLastSavedTime = 187,
 }
 impl CommandName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -1612,6 +1626,7 @@ impl CommandName {
             CommandName::TogglePaneBorderless => "TogglePaneBorderless",
             CommandName::SetPaneBorderless => "SetPaneBorderless",
             CommandName::SaveSession => "SaveSession",
+            CommandName::CurrentSessionLastSavedTime => "CurrentSessionLastSavedTime",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -1783,6 +1798,7 @@ impl CommandName {
             "TogglePaneBorderless" => Some(Self::TogglePaneBorderless),
             "SetPaneBorderless" => Some(Self::SetPaneBorderless),
             "SaveSession" => Some(Self::SaveSession),
+            "CurrentSessionLastSavedTime" => Some(Self::CurrentSessionLastSavedTime),
             _ => None,
         }
     }

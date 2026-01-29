@@ -16,7 +16,8 @@ use zellij_utils::plugin_api::plugin_command::{
     ProtobufEditLayoutResponse, ProtobufGenerateRandomNameResponse,
     ProtobufGetFocusedPaneInfoResponse, ProtobufGetLayoutDirResponse, ProtobufGetPanePidResponse,
     ProtobufParseLayoutResponse, ProtobufPluginCommand, ProtobufRenameLayoutResponse,
-    ProtobufSaveLayoutResponse, ProtobufSaveSessionResponse, RenameWebTokenResponse,
+    ProtobufSaveLayoutResponse, ProtobufSaveSessionResponse,
+    ProtobufCurrentSessionLastSavedTimeResponse, RenameWebTokenResponse,
     RevokeAllWebTokensResponse, RevokeTokenResponse,
 };
 use zellij_utils::plugin_api::generated_api::api::plugin_command::save_session_response;
@@ -227,6 +228,35 @@ pub fn save_session() -> Result<(), String> {
         Some(save_session_response::Result::Error(error)) => Err(error),
         None => Err("Server returned empty response".to_string()),
     }
+}
+
+/// Returns the elapsed time in milliseconds since the current session state was last saved to disk.
+///
+/// Returns `None` if the session has never been saved during this session.
+/// The returned value is the number of milliseconds elapsed since the last save, not a Unix epoch timestamp.
+///
+/// # Example
+///
+/// ```no_run
+/// use zellij_tile::prelude::*;
+///
+/// if let Some(elapsed_millis) = current_session_last_saved_time() {
+///     println!("Session was last saved {} ms ago", elapsed_millis);
+/// } else {
+///     println!("Session has not been saved yet");
+/// }
+/// ```
+pub fn current_session_last_saved_time() -> Option<u64> {
+    let plugin_command = PluginCommand::CurrentSessionLastSavedTime;
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+
+    let protobuf_response = ProtobufCurrentSessionLastSavedTimeResponse::decode(
+        bytes_from_stdin().unwrap().as_slice()
+    ).unwrap();
+
+    protobuf_response.timestamp_millis
 }
 
 // Host Functions

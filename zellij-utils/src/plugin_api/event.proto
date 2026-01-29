@@ -63,6 +63,7 @@ enum EventType {
     ActionComplete = 38;
     CwdChanged = 39;
     AvailableLayoutInfo = 40;
+    SavedCurrentSession = 41;
 }
 
 message EventNameList {
@@ -105,6 +106,7 @@ message Event {
     ActionCompletePayload action_complete_payload = 32;
     CwdChangedPayload cwd_changed_payload = 33;
     AvailableLayoutInfoPayload available_layout_info_payload = 34;
+    SavedCurrentSessionPayload saved_current_session_payload = 35;
   }
 }
 
@@ -503,4 +505,8 @@ message ActionCompletePayload {
   action.Action action = 1;
   optional PaneId pane_id = 2;
   repeated ContextItem context = 3;
+}
+
+message SavedCurrentSessionPayload {
+  uint64 timestamp_millis = 1; // milliseconds elapsed since the session was saved
 }

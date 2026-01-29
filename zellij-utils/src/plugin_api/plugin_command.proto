@@ -179,6 +179,7 @@ enum CommandName {
   TogglePaneBorderless = 184;
   SetPaneBorderless = 185;
   SaveSession = 186;
+  CurrentSessionLastSavedTime = 187;
 }
 
 message PluginCommand {
@@ -307,6 +308,7 @@ message PluginCommand {
     TogglePaneBorderlessPayload toggle_pane_borderless_payload = 135;
     SetPaneBorderlessPayload set_pane_borderless_payload = 136;
     SaveSessionPayload save_session_payload = 137;
+    CurrentSessionLastSavedTimePayload current_session_last_saved_time_payload = 138;
   }
 }
 
@@ -916,4 +918,10 @@ message SaveSessionResponse {
     bool success = 1;
     string error = 2;
   }
+}
+
+message CurrentSessionLastSavedTimePayload {}
+
+message CurrentSessionLastSavedTimeResponse {
+  optional uint64 timestamp_millis = 1; // None if never saved, otherwise milliseconds elapsed since last save
 }

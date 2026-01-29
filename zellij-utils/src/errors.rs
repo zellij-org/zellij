@@ -476,6 +476,8 @@ pub enum PluginContext {
     UserInput,
     LayoutListUpdate,
     RequestStateUpdateForPlugin,
+    SavedCurrentSession,
+    GetLastSessionSaveTime,
 }
 
 /// Stack call representations corresponding to the different types of [`ClientInstruction`]s.

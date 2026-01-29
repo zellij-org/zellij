@@ -9,7 +9,7 @@ pub struct EventNameList {
 pub struct Event {
     #[prost(enumeration="EventType", tag="1")]
     pub name: i32,
-    #[prost(oneof="event::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34")]
+    #[prost(oneof="event::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35")]
     pub payload: ::core::option::Option<event::Payload>,
 }
 /// Nested message and enum types in `Event`.
@@ -83,6 +83,8 @@ pub mod event {
         CwdChangedPayload(super::CwdChangedPayload),
         #[prost(message, tag="34")]
         AvailableLayoutInfoPayload(super::AvailableLayoutInfoPayload),
+        #[prost(message, tag="35")]
+        SavedCurrentSessionPayload(super::SavedCurrentSessionPayload),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -709,6 +711,13 @@ pub struct ActionCompletePayload {
     #[prost(message, repeated, tag="3")]
     pub context: ::prost::alloc::vec::Vec<ContextItem>,
 }
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SavedCurrentSessionPayload {
+    /// milliseconds elapsed since the session was saved
+    #[prost(uint64, tag="1")]
+    pub timestamp_millis: u64,
+}
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
 pub enum EventType {
@@ -767,6 +776,7 @@ pub enum EventType {
     ActionComplete = 38,
     CwdChanged = 39,
     AvailableLayoutInfo = 40,
+    SavedCurrentSession = 41,
 }
 impl EventType {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -815,6 +825,7 @@ impl EventType {
             EventType::ActionComplete => "ActionComplete",
             EventType::CwdChanged => "CwdChanged",
             EventType::AvailableLayoutInfo => "AvailableLayoutInfo",
+            EventType::SavedCurrentSession => "SavedCurrentSession",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -860,6 +871,7 @@ impl EventType {
             "ActionComplete" => Some(Self::ActionComplete),
             "CwdChanged" => Some(Self::CwdChanged),
             "AvailableLayoutInfo" => Some(Self::AvailableLayoutInfo),
+            "SavedCurrentSession" => Some(Self::SavedCurrentSession),
             _ => None,
         }
     }

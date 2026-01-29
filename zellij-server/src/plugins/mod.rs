@@ -207,6 +207,10 @@ pub enum PluginInstruction {
     },
     LayoutListUpdate(Vec<LayoutInfo>, Vec<LayoutWithError>),
     RequestStateUpdateForPlugin(PluginId),
+    SavedCurrentSession(u64), // u64 = milliseconds since UNIX epoch
+    GetLastSessionSaveTime {
+        response_channel: crossbeam::channel::Sender<Option<u64>>,
+    },
     Exit,
 }
 
@@ -262,6 +266,10 @@ impl From<&PluginInstruction> for PluginContext {
             PluginInstruction::LayoutListUpdate(..) => PluginContext::LayoutListUpdate,
             PluginInstruction::RequestStateUpdateForPlugin(..) => {
                 PluginContext::RequestStateUpdateForPlugin
+            },
+            PluginInstruction::SavedCurrentSession(..) => PluginContext::SavedCurrentSession,
+            PluginInstruction::GetLastSessionSaveTime { .. } => {
+                PluginContext::GetLastSessionSaveTime
             },
         }
     }
@@ -1202,6 +1210,21 @@ pub(crate) fn plugin_thread_main(
             },
             PluginInstruction::RequestStateUpdateForPlugin(plugin_id) => {
                 wasm_bridge.state_update_for_plugin(plugin_id);
+            },
+            PluginInstruction::SavedCurrentSession(timestamp_millis) => {
+                // Store timestamp in WasmBridge (as Unix epoch for internal use)
+                log::info!("setting timestamp_millis: {:?}", timestamp_millis);
+                *wasm_bridge.last_session_save_time.lock().unwrap() = Some(timestamp_millis);
+
+                // Fire event to subscribed plugins with elapsed time of 0 (just saved)
+                let event = Event::SavedCurrentSession(0);
+                let updates = vec![(None, None, event)]; // broadcast to all
+                wasm_bridge.update_plugins(updates, shutdown_send.clone())?;
+            },
+            PluginInstruction::GetLastSessionSaveTime { response_channel } => {
+                let timestamp = *wasm_bridge.last_session_save_time.lock().unwrap();
+                log::info!("sending timestamp: {:?}", timestamp);
+                let _ = response_channel.send(timestamp);
             },
             PluginInstruction::Exit => {
                 break;

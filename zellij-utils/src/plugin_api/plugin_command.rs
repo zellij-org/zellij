@@ -45,7 +45,10 @@ pub use super::generated_api::api::{
         ResizePayload, RevokeAllWebTokensResponse, RevokeTokenResponse, RevokeWebLoginTokenPayload,
         RunActionPayload, RunCommandPayload, SaveLayoutPayload,
         SaveLayoutResponse as ProtobufSaveLayoutResponse, SaveSessionPayload,
-        SaveSessionResponse as ProtobufSaveSessionResponse, ScrollDownInPaneIdPayload,
+        SaveSessionResponse as ProtobufSaveSessionResponse,
+        CurrentSessionLastSavedTimePayload,
+        CurrentSessionLastSavedTimeResponse as ProtobufCurrentSessionLastSavedTimeResponse,
+        ScrollDownInPaneIdPayload,
         ScrollToBottomInPaneIdPayload, ScrollToTopInPaneIdPayload, ScrollUpInPaneIdPayload,
         SetFloatingPanePinnedPayload, SetPaneBorderlessPayload,
         SetSelfMouseSelectionSupportPayload, SetTimeoutPayload, ShowCursorPayload,
@@ -2105,6 +2108,9 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
             Some(CommandName::GetLayoutDir) => Ok(PluginCommand::GetLayoutDir),
             Some(CommandName::GetFocusedPaneInfo) => Ok(PluginCommand::GetFocusedPaneInfo),
             Some(CommandName::SaveSession) => Ok(PluginCommand::SaveSession),
+            Some(CommandName::CurrentSessionLastSavedTime) => {
+                Ok(PluginCommand::CurrentSessionLastSavedTime)
+            },
             None => Err("Unrecognized plugin command"),
         }
     }
@@ -3448,6 +3454,12 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
             PluginCommand::SaveSession => Ok(ProtobufPluginCommand {
                 name: CommandName::SaveSession as i32,
                 payload: Some(Payload::SaveSessionPayload(SaveSessionPayload {})),
+            }),
+            PluginCommand::CurrentSessionLastSavedTime => Ok(ProtobufPluginCommand {
+                name: CommandName::CurrentSessionLastSavedTime as i32,
+                payload: Some(Payload::CurrentSessionLastSavedTimePayload(
+                    CurrentSessionLastSavedTimePayload {},
+                )),
             }),
         }
     }
