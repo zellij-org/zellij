@@ -64,6 +64,7 @@ pub enum BackgroundJob {
         BTreeMap<String, String>, // context
     ),
     HighlightPanesWithMessage(Vec<PaneId>, String),
+    HighlightPanesForBell(Vec<PaneId>),
     RenderToClients,
     QueryZellijWebServerStatus,
     Exit,
@@ -88,6 +89,9 @@ impl From<&BackgroundJob> for BackgroundJobContext {
             BackgroundJob::RenderToClients => BackgroundJobContext::ReportPluginList,
             BackgroundJob::HighlightPanesWithMessage(..) => {
                 BackgroundJobContext::HighlightPanesWithMessage
+            },
+            BackgroundJob::HighlightPanesForBell(..) => {
+                BackgroundJobContext::HighlightPanesWithMessage // reuse same context
             },
             BackgroundJob::QueryZellijWebServerStatus => {
                 BackgroundJobContext::QueryZellijWebServerStatus
@@ -487,6 +491,18 @@ pub(crate) fn background_jobs_main(
                         task::sleep(std::time::Duration::from_millis(FLASH_DURATION_MS)).await;
                         let _ = senders.send_to_screen(
                             ScreenInstruction::ClearPaneFrameColorOverride(pane_ids),
+                        );
+                    }
+                });
+            },
+            BackgroundJob::HighlightPanesForBell(pane_ids) => {
+                // Unlike HighlightPanesWithMessage, this doesn't auto-clear.
+                // The highlight persists until the pane is focused.
+                task::spawn({
+                    let senders = bus.senders.clone();
+                    async move {
+                        let _ = senders.send_to_screen(
+                            ScreenInstruction::AddHighlightPaneFrameColorOverride(pane_ids, None),
                         );
                     }
                 });

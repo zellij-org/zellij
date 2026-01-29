@@ -1604,15 +1604,16 @@ impl Screen {
 
             // Drain pending bells from ALL tabs (including inactive ones) and send to all clients.
             // This ensures bells from background tabs are propagated to the terminal.
-            // Also add visual indicators to unfocused panes with bells.
+            // Also collect panes that need bell highlighting (unfocused panes with bells).
             let mut has_bell = false;
+            let mut panes_to_highlight: Vec<PaneId> = Vec::new();
             let all_client_ids: Vec<ClientId> =
                 self.connected_clients.borrow().keys().copied().collect();
             for (tab_index, tab) in self.tabs.iter_mut() {
                 let panes_with_bells = tab.drain_pending_bells();
                 if !panes_with_bells.is_empty() {
                     has_bell = true;
-                    // Add bell highlight to unfocused panes in this tab
+                    // Collect unfocused panes that need bell highlighting
                     // A pane is considered unfocused if no client has it as their active pane
                     for pane_id in panes_with_bells {
                         let is_focused_by_any_client = all_client_ids.iter().any(|client_id| {
@@ -1624,10 +1625,16 @@ impl Screen {
                                 && tab.get_active_pane_id(*client_id) == Some(pane_id)
                         });
                         if !is_focused_by_any_client {
-                            tab.add_highlight_pane_frame_color_override(pane_id, None, None);
+                            panes_to_highlight.push(pane_id);
                         }
                     }
                 }
+            }
+            // Send bell highlight via background job to avoid render races
+            if !panes_to_highlight.is_empty() {
+                let _ = self.bus.senders.send_to_background_jobs(
+                    BackgroundJob::HighlightPanesForBell(panes_to_highlight),
+                );
             }
             if has_bell {
                 // Send the bell character (BEL, \x07) to all connected clients
