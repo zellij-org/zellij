@@ -1771,7 +1771,7 @@ pub(crate) fn route_thread_main(
                                             },
                                             Err(e) => {
                                                 log::error!("{}", e);
-                                            }
+                                            },
                                         }
                                     }
                                 }
@@ -1866,7 +1866,7 @@ pub(crate) fn route_thread_main(
                                     },
                                     Err(e) => {
                                         log::error!("{}", e);
-                                    }
+                                    },
                                 }
                             }
                         },
