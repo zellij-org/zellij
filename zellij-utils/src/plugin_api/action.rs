@@ -2292,6 +2292,7 @@ impl TryFrom<ProtobufNewPanePlacement> for NewPanePlacement {
                     .and_then(|d| d.try_into().ok());
                 Ok(NewPanePlacement::Tiled {
                     direction,
+                    split_size: None, // TODO: add to protobuf when available
                     borderless: tiled.borderless,
                 })
             },
@@ -2334,6 +2335,7 @@ impl TryFrom<NewPanePlacement> for ProtobufNewPanePlacement {
             },
             NewPanePlacement::Tiled {
                 direction,
+                split_size: _, // TODO: serialize to protobuf when available
                 borderless,
             } => {
                 let direction = direction.and_then(|d| {
