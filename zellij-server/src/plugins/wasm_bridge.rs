@@ -1945,7 +1945,6 @@ fn check_event_permission(
         | Event::CommandPaneReRun(..)
         | Event::CwdChanged(..)
         | Event::AvailableLayoutInfo(..)
-        | Event::SavedCurrentSession(..)
         | Event::InputReceived => PermissionType::ReadApplicationState,
         Event::WebServerStatus(..) => PermissionType::StartWebServer,
         Event::PaneRenderReport(..) => PermissionType::ReadPaneContents,

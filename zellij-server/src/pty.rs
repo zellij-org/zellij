@@ -785,14 +785,14 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                             kdl_and_files.clone(),
                         );
 
-                        // Send SavedCurrentSession instruction to plugin thread
+                        // Update session save time for plugin query
                         let timestamp_millis = std::time::SystemTime::now()
                             .duration_since(std::time::UNIX_EPOCH)
                             .unwrap_or_default()
                             .as_millis() as u64;
                         let _ = pty.bus
                             .senders
-                            .send_to_plugin(PluginInstruction::SavedCurrentSession(timestamp_millis));
+                            .send_to_plugin(PluginInstruction::UpdateSessionSaveTime(timestamp_millis));
 
                         let _ = pty.bus
                             .senders

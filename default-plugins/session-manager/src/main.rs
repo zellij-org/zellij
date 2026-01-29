@@ -129,10 +129,6 @@ impl ZellijPlugin for State {
                 self.update_session_infos(session_infos);
                 should_render = true;
             },
-//             Event::SavedCurrentSession(timestamp_millis) => {
-//                 self.current_session_last_saved_time = Some(timestamp_millis);
-//                 should_render = true;
-//             },
             _ => (),
         };
         should_render

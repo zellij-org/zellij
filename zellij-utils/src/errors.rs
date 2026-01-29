@@ -476,7 +476,7 @@ pub enum PluginContext {
     UserInput,
     LayoutListUpdate,
     RequestStateUpdateForPlugin,
-    SavedCurrentSession,
+    UpdateSessionSaveTime,
     GetLastSessionSaveTime,
 }
 

@@ -5,7 +5,6 @@ pub use super::generated_api::api::{
         layout_parsing_error::ErrorType as ProtobufLayoutParsingErrorType,
         pane_scrollback_response, ActionCompletePayload as ProtobufActionCompletePayload,
         AvailableLayoutInfoPayload as ProtobufAvailableLayoutInfoPayload,
-        SavedCurrentSessionPayload as ProtobufSavedCurrentSessionPayload,
         ClientInfo as ProtobufClientInfo, ClientPaneHistory as ProtobufClientPaneHistory,
         ClientTabHistory as ProtobufClientTabHistory, ContextItem as ProtobufContextItem,
         CopyDestination as ProtobufCopyDestination, CwdChangedPayload as ProtobufCwdChangedPayload,
@@ -489,14 +488,6 @@ impl TryFrom<ProtobufEvent> for Event {
                 },
                 _ => Err("Malformed payload for the AvailableLayoutInfo Event"),
             },
-            Some(ProtobufEventType::SavedCurrentSession) => match protobuf_event.payload {
-                Some(ProtobufEventPayload::SavedCurrentSessionPayload(
-                    saved_current_session_payload,
-                )) => {
-                    Ok(Event::SavedCurrentSession(saved_current_session_payload.timestamp_millis))
-                },
-                _ => Err("Malformed payload for the SavedCurrentSession Event"),
-            },
             None => Err("Unknown Protobuf Event"),
         }
     }
@@ -970,18 +961,6 @@ impl TryFrom<Event> for ProtobufEvent {
                     name: ProtobufEventType::AvailableLayoutInfo as i32,
                     payload: Some(event::Payload::AvailableLayoutInfoPayload(
                         available_layout_info_payload,
-                    )),
-                })
-            },
-            Event::SavedCurrentSession(timestamp_millis) => {
-                let saved_current_session_payload = ProtobufSavedCurrentSessionPayload {
-                    timestamp_millis,
-                };
-
-                Ok(ProtobufEvent {
-                    name: ProtobufEventType::SavedCurrentSession as i32,
-                    payload: Some(event::Payload::SavedCurrentSessionPayload(
-                        saved_current_session_payload,
                     )),
                 })
             },
@@ -1884,7 +1863,6 @@ impl TryFrom<ProtobufEventType> for EventType {
             ProtobufEventType::ActionComplete => EventType::ActionComplete,
             ProtobufEventType::CwdChanged => EventType::CwdChanged,
             ProtobufEventType::AvailableLayoutInfo => EventType::AvailableLayoutInfo,
-            ProtobufEventType::SavedCurrentSession => EventType::SavedCurrentSession,
         })
     }
 }
@@ -1933,7 +1911,6 @@ impl TryFrom<EventType> for ProtobufEventType {
             EventType::ActionComplete => ProtobufEventType::ActionComplete,
             EventType::CwdChanged => ProtobufEventType::CwdChanged,
             EventType::AvailableLayoutInfo => ProtobufEventType::AvailableLayoutInfo,
-            EventType::SavedCurrentSession => ProtobufEventType::SavedCurrentSession,
         })
     }
 }

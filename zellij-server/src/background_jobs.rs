@@ -191,13 +191,13 @@ pub(crate) fn background_jobs_main(
             BackgroundJob::ReportLayoutInfo(session_layout) => {
                 *current_session_layout.lock().unwrap() = session_layout;
 
-                // not entirely accurate
+                // Update session save time for plugin query
                 let timestamp_millis = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap_or_default()
                     .as_millis() as u64;
                 let _ = bus.senders.send_to_plugin(
-                    PluginInstruction::SavedCurrentSession(timestamp_millis)
+                    PluginInstruction::UpdateSessionSaveTime(timestamp_millis)
                 );
             },
             BackgroundJob::ReadAllSessionInfosOnMachine => {
