@@ -2608,7 +2608,7 @@ fn current_session_last_saved_time(env: &PluginEnv) {
 
     let saved_timestamp_millis = if send_result.is_ok() {
         response_rx
-            .recv_timeout(std::time::Duration::from_secs(5))
+            .recv_timeout(std::time::Duration::from_secs(1))
             .ok()
             .flatten()
     } else {

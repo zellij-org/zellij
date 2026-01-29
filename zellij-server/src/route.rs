@@ -1749,7 +1749,7 @@ pub(crate) fn route_thread_main(
                                                 cli_client_id: None,
                                             });
 
-                                        if route_action(
+                                        match route_action(
                                             action,
                                             client_id,
                                             None,
@@ -1763,10 +1763,15 @@ pub(crate) fn route_thread_main(
                                             keybinds.clone(),
                                             client_input_mode,
                                             Some(os_input.clone()),
-                                        )?
-                                        .0
-                                        {
-                                            should_break = true;
+                                        ) {
+                                            Ok(route_action_should_break) => {
+                                                if route_action_should_break.0 {
+                                                    should_break = true;
+                                                }
+                                            },
+                                            Err(e) => {
+                                                log::error!("{}", e);
+                                            },
                                         }
                                     }
                                 }
@@ -1839,7 +1844,7 @@ pub(crate) fn route_thread_main(
                                 client_keybinds,
                             )) = session_data_assets
                             {
-                                if route_action(
+                                match route_action(
                                     action,
                                     client_id,
                                     Some(cli_client_id),
@@ -1853,10 +1858,15 @@ pub(crate) fn route_thread_main(
                                     client_keybinds,
                                     client_input_mode,
                                     Some(os_input.clone()),
-                                )?
-                                .0
-                                {
-                                    should_break = true;
+                                ) {
+                                    Ok(route_action_should_break) => {
+                                        if route_action_should_break.0 {
+                                            should_break = true;
+                                        }
+                                    },
+                                    Err(e) => {
+                                        log::error!("{}", e);
+                                    },
                                 }
                             }
                         },
