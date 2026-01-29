@@ -10,8 +10,7 @@ use new_session_info::NewSessionInfo;
 use ui::{
     components::{
         render_controls_line, render_error, render_new_session_block, render_prompt,
-        render_renaming_session_screen, render_screen_toggle, render_unsaved_changes_line,
-        Colors,
+        render_renaming_session_screen, render_screen_toggle, render_unsaved_changes_line, Colors,
     },
     welcome_screen::{render_banner, render_welcome_boundaries},
     SessionUiInfo,
@@ -105,7 +104,7 @@ impl ZellijPlugin for State {
                 self.current_session_last_saved_time = current_session_last_saved_time();
                 set_timeout(1.0);
                 should_render = true;
-            }
+            },
             Event::ModeUpdate(mode_info) => {
                 self.colors = Colors::new(mode_info.style.colors);
                 self.is_web_client = mode_info.is_web_client.unwrap_or(false);
@@ -168,11 +167,8 @@ impl ZellijPlugin for State {
                     self.render_kill_all_sessions_warning(height, width, x, y);
                 } else {
                     render_prompt(&self.search_term, self.colors, x, y + 2);
-
-                    // Always leave room for the unsaved changes line
                     let bottom_lines = 7;
                     let room_for_list = height.saturating_sub(bottom_lines);
-
                     self.sessions.update_rows(room_for_list);
                     let list =
                         self.sessions
@@ -189,11 +185,22 @@ impl ZellijPlugin for State {
         if let Some(error) = self.error.as_ref() {
             render_error(&error, height, width, x, y);
         } else if self.active_screen == ActiveScreen::AttachToSession && !self.is_welcome_screen {
-            let help_offset = render_controls_line(self.active_screen, width, self.colors, x, rows.saturating_sub(1));
+            let help_offset = render_controls_line(
+                self.active_screen,
+                width,
+                self.colors,
+                x,
+                rows.saturating_sub(1),
+            );
             // Adjust position and width based on whether controls line shows "Help: "
             let adjusted_x = x + help_offset;
             let adjusted_width = width.saturating_sub(help_offset);
-            render_unsaved_changes_line(adjusted_width, adjusted_x, rows, self.current_session_last_saved_time);
+            render_unsaved_changes_line(
+                adjusted_width,
+                adjusted_x,
+                rows,
+                self.current_session_last_saved_time,
+            );
         } else {
             let _ = render_controls_line(self.active_screen, width, self.colors, x, rows);
         }
@@ -418,12 +425,13 @@ impl State {
                     }
                 },
                 BareKey::Char('a') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
-                    if !self.is_welcome_screen { // we don't want to save welcome screen sessions
+                    if !self.is_welcome_screen {
+                        // we don't want to save welcome screen sessions
                         if let Err(e) = save_session() {
                             self.show_error(&format!("Couldn't save session: {}", e));
                         }
                     }
-                }
+                },
                 _ => {},
             }
         }

@@ -196,9 +196,9 @@ pub(crate) fn background_jobs_main(
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap_or_default()
                     .as_millis() as u64;
-                let _ = bus.senders.send_to_plugin(
-                    PluginInstruction::UpdateSessionSaveTime(timestamp_millis)
-                );
+                let _ = bus
+                    .senders
+                    .send_to_plugin(PluginInstruction::UpdateSessionSaveTime(timestamp_millis));
             },
             BackgroundJob::ReadAllSessionInfosOnMachine => {
                 // this job should only be run once and it keeps track of other sessions (as well
@@ -234,7 +234,8 @@ pub(crate) fn background_jobs_main(
                                 let timestamp_millis = std::time::SystemTime::now()
                                     .duration_since(std::time::UNIX_EPOCH)
                                     .unwrap_or_default()
-                                    .as_millis() as u64;
+                                    .as_millis()
+                                    as u64;
                             }
                             let mut session_infos_on_machine =
                                 read_other_live_session_states(&current_session_name);

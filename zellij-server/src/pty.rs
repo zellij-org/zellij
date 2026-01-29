@@ -1,5 +1,5 @@
-use crate::background_jobs::BackgroundJob;
 use crate::background_jobs::write_session_state_to_disk;
+use crate::background_jobs::BackgroundJob;
 use crate::route::NotificationEnd;
 use crate::terminal_bytes::TerminalBytes;
 use crate::{
@@ -790,19 +790,17 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                             .duration_since(std::time::UNIX_EPOCH)
                             .unwrap_or_default()
                             .as_millis() as u64;
-                        let _ = pty.bus
-                            .senders
-                            .send_to_plugin(PluginInstruction::UpdateSessionSaveTime(timestamp_millis));
+                        let _ = pty.bus.senders.send_to_plugin(
+                            PluginInstruction::UpdateSessionSaveTime(timestamp_millis),
+                        );
 
-                        let _ = pty.bus
-                            .senders
-                            .send_to_background_jobs(BackgroundJob::ReportLayoutInfo(
-                                kdl_and_files,
-                            ));
-                    }
+                        let _ = pty.bus.senders.send_to_background_jobs(
+                            BackgroundJob::ReportLayoutInfo(kdl_and_files),
+                        );
+                    },
                     Err(e) => {
                         log::error!("Failed to serialize layout: {}", e);
-                    }
+                    },
                 };
             },
             PtyInstruction::FillPluginCwd(

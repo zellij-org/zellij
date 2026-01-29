@@ -1,6 +1,6 @@
+use humantime::format_duration;
 use std::path::PathBuf;
 use std::time::Duration;
-use humantime::format_duration;
 use unicode_width::UnicodeWidthChar;
 use unicode_width::UnicodeWidthStr;
 use zellij_tile::prelude::*;
@@ -1050,18 +1050,30 @@ pub fn render_unsaved_changes_line(
 
     // Calculate total widths for each display mode
     // Format: "{shortcut}{separator}{action}{space}{time}"
-    let full_width = shortcut_width + separator_width + full_action_text.width() + space_width + time_width;
-    let medium_width = shortcut_width + separator_width + medium_action_text.width() + space_width + time_width;
-    let short_width = shortcut_width + separator_width + short_action_text.width() + space_width + time_width;
+    let full_width =
+        shortcut_width + separator_width + full_action_text.width() + space_width + time_width;
+    let medium_width =
+        shortcut_width + separator_width + medium_action_text.width() + space_width + time_width;
+    let short_width =
+        shortcut_width + separator_width + short_action_text.width() + space_width + time_width;
     let minimal_width = shortcut_width + space_width + time_width;
 
     // Select appropriate message based on available width
     let msg = if max_cols >= full_width {
-        format!("{}{}{}{}{}", shortcut_text, separator, full_action_text, space, time_text)
+        format!(
+            "{}{}{}{}{}",
+            shortcut_text, separator, full_action_text, space, time_text
+        )
     } else if max_cols >= medium_width {
-        format!("{}{}{}{}{}", shortcut_text, separator, medium_action_text, space, time_text)
+        format!(
+            "{}{}{}{}{}",
+            shortcut_text, separator, medium_action_text, space, time_text
+        )
     } else if max_cols >= short_width {
-        format!("{}{}{}{}{}", shortcut_text, separator, short_action_text, space, time_text)
+        format!(
+            "{}{}{}{}{}",
+            shortcut_text, separator, short_action_text, space, time_text
+        )
     } else if max_cols >= minimal_width {
         format!("{}{}{}", shortcut_text, space, time_text)
     } else {

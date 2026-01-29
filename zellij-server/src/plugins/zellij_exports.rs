@@ -131,7 +131,9 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::GetLayoutDir => get_layout_dir(env),
                     PluginCommand::GetFocusedPaneInfo => get_focused_pane_info(env),
                     PluginCommand::SaveSession => save_session(env),
-                    PluginCommand::CurrentSessionLastSavedTime => current_session_last_saved_time(env),
+                    PluginCommand::CurrentSessionLastSavedTime => {
+                        current_session_last_saved_time(env)
+                    },
                     PluginCommand::OpenFile(file_to_open, context) => {
                         open_file(env, file_to_open, context)
                     },
@@ -2569,27 +2571,23 @@ fn dump_session_layout(env: &PluginEnv, tab_index: Option<usize>) {
 
 fn save_session(env: &PluginEnv) {
     use save_session_response::Result as SaveSessionResult;
-
-    // Create completion channel to wait for save to finish
     let (completion_tx, completion_rx) = oneshot::channel();
 
-    // Send to screen with NotificationEnd (Screen passes to PTY)
-    let send_result = env
-        .senders
-        .send_to_screen(ScreenInstruction::SaveSession(
-            env.client_id,
-            Some(NotificationEnd::new(completion_tx)),
-        ));
+    let send_result = env.senders.send_to_screen(ScreenInstruction::SaveSession(
+        env.client_id,
+        Some(NotificationEnd::new(completion_tx)),
+    ));
 
     let response = if let Err(e) = send_result {
         ProtobufSaveSessionResponse {
-            result: Some(SaveSessionResult::Error(format!("Failed to send save request: {}", e))),
+            result: Some(SaveSessionResult::Error(format!(
+                "Failed to send save request: {}",
+                e
+            ))),
         }
     } else {
-        // Wait for PTY to complete the write
         let wait_forever = false;
         let _result = wait_for_action_completion(completion_rx, "save_session", wait_forever);
-        // Success - save completed (or timed out, but we consider timeout as success for this)
         ProtobufSaveSessionResponse {
             result: Some(SaveSessionResult::Success(true)),
         }
@@ -2601,14 +2599,12 @@ fn save_session(env: &PluginEnv) {
 fn current_session_last_saved_time(env: &PluginEnv) {
     use zellij_utils::plugin_api::plugin_command::ProtobufCurrentSessionLastSavedTimeResponse;
 
-    // Query WasmBridge for last save time (stored as Unix epoch)
     let (response_tx, response_rx) = crossbeam::channel::bounded(1);
-
-    let send_result = env.senders.send_to_plugin(
-        PluginInstruction::GetLastSessionSaveTime {
+    let send_result = env
+        .senders
+        .send_to_plugin(PluginInstruction::GetLastSessionSaveTime {
             response_channel: response_tx,
-        }
-    );
+        });
 
     let saved_timestamp_millis = if send_result.is_ok() {
         response_rx
@@ -2619,7 +2615,6 @@ fn current_session_last_saved_time(env: &PluginEnv) {
         None
     };
 
-    // Calculate elapsed time since last save
     let timestamp_millis = saved_timestamp_millis.map(|saved_time| {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)

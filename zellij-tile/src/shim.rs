@@ -9,18 +9,18 @@ use zellij_utils::errors::prelude::*;
 use zellij_utils::input::actions::Action;
 pub use zellij_utils::plugin_api;
 use zellij_utils::plugin_api::event::ProtobufPaneScrollbackResponse;
+use zellij_utils::plugin_api::generated_api::api::plugin_command::save_session_response;
 use zellij_utils::plugin_api::plugin_command::{
     dump_layout_response, dump_session_layout_response, get_focused_pane_info_response,
     parse_layout_response, CreateTokenResponse, ListTokensResponse,
-    ProtobufDeleteLayoutResponse, ProtobufDumpLayoutResponse, ProtobufDumpSessionLayoutResponse,
-    ProtobufEditLayoutResponse, ProtobufGenerateRandomNameResponse,
-    ProtobufGetFocusedPaneInfoResponse, ProtobufGetLayoutDirResponse, ProtobufGetPanePidResponse,
-    ProtobufParseLayoutResponse, ProtobufPluginCommand, ProtobufRenameLayoutResponse,
-    ProtobufSaveLayoutResponse, ProtobufSaveSessionResponse,
-    ProtobufCurrentSessionLastSavedTimeResponse, RenameWebTokenResponse,
-    RevokeAllWebTokensResponse, RevokeTokenResponse,
+    ProtobufCurrentSessionLastSavedTimeResponse, ProtobufDeleteLayoutResponse,
+    ProtobufDumpLayoutResponse, ProtobufDumpSessionLayoutResponse, ProtobufEditLayoutResponse,
+    ProtobufGenerateRandomNameResponse, ProtobufGetFocusedPaneInfoResponse,
+    ProtobufGetLayoutDirResponse, ProtobufGetPanePidResponse, ProtobufParseLayoutResponse,
+    ProtobufPluginCommand, ProtobufRenameLayoutResponse, ProtobufSaveLayoutResponse,
+    ProtobufSaveSessionResponse, RenameWebTokenResponse, RevokeAllWebTokensResponse,
+    RevokeTokenResponse,
 };
-use zellij_utils::plugin_api::generated_api::api::plugin_command::save_session_response;
 use zellij_utils::plugin_api::plugin_ids::{ProtobufPluginIds, ProtobufZellijVersion};
 
 pub use super::ui_components::*;
@@ -212,14 +212,13 @@ pub fn get_focused_pane_info() -> Result<(usize, PaneId), String> {
 /// ```
 pub fn save_session() -> Result<(), String> {
     let plugin_command = PluginCommand::SaveSession;
-    let protobuf_plugin_command: ProtobufPluginCommand =
-        plugin_command.try_into().unwrap();
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
 
     unsafe { host_run_plugin_command() };
 
-    let response_bytes = bytes_from_stdin()
-        .map_err(|e| format!("Failed to read response: {:?}", e))?;
+    let response_bytes =
+        bytes_from_stdin().map_err(|e| format!("Failed to read response: {:?}", e))?;
     let protobuf_response = ProtobufSaveSessionResponse::decode(response_bytes.as_slice())
         .map_err(|e| format!("Failed to decode response: {}", e))?;
 
@@ -252,9 +251,9 @@ pub fn current_session_last_saved_time() -> Option<u64> {
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
 
-    let protobuf_response = ProtobufCurrentSessionLastSavedTimeResponse::decode(
-        bytes_from_stdin().unwrap().as_slice()
-    ).unwrap();
+    let protobuf_response =
+        ProtobufCurrentSessionLastSavedTimeResponse::decode(bytes_from_stdin().unwrap().as_slice())
+            .unwrap();
 
     protobuf_response.timestamp_millis
 }

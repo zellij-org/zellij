@@ -390,7 +390,6 @@ pub(crate) fn route_action(
                 .with_context(err_context)?;
         },
         Action::SaveSession => {
-            log::info!("route SaveSession");
             senders
                 .send_to_screen(ScreenInstruction::SaveSession(
                     client_id,
