@@ -508,8 +508,6 @@ pub trait Pane {
         false
     }
     fn get_edge_at_position(&self, position: &Position, draw_pane_frames: bool) -> Option<PaneEdge> {
-        const EDGE_THRESHOLD: usize = 1;
-
         if !self.contains(position) {
             return None;
         }
@@ -521,48 +519,62 @@ pub trait Pane {
         let pane_cols = self.cols();
         let pane_rows = self.rows();
 
+        // Dynamic threshold: relative to pane size, with min/max bounds
+        // Use 1/3 of the smaller dimension, constrained between 3 and 10 cells
+        let corner_threshold = usize::max(3, usize::min(10, usize::min(pane_cols, pane_rows) / 3));
+
         if draw_pane_frames {
-            // When frames are visible, only actual frame areas count as edges
-            if !self.position_is_on_frame(position) {
-                return None;
-            }
+            let content_x = self.get_content_x();
+            let content_y = self.get_content_y();
+            let content_cols = self.get_content_columns();
+            let content_rows = self.get_content_rows();
 
-            // Detect corners first (two edges simultaneously)
-            let on_left = (pane_x..self.get_content_x()).contains(&pos_col);
-            let on_right = (self.get_content_x() + self.get_content_columns()..pane_x + pane_cols)
-                .contains(&pos_col);
-            let on_top = (pane_y as isize..self.get_content_y() as isize).contains(&pos_line);
-            let on_bottom = ((self.get_content_y() + self.get_content_rows()) as isize
-                ..(pane_y + pane_rows) as isize)
-                .contains(&pos_line);
+            let on_frame = self.position_is_on_frame(position);
 
-            if on_top && on_left {
-                return Some(PaneEdge::TopLeft);
-            } else if on_top && on_right {
-                return Some(PaneEdge::TopRight);
-            } else if on_bottom && on_left {
-                return Some(PaneEdge::BottomLeft);
-            } else if on_bottom && on_right {
-                return Some(PaneEdge::BottomRight);
-            } else if on_left {
-                return Some(PaneEdge::Left);
-            } else if on_right {
-                return Some(PaneEdge::Right);
-            } else if on_top {
-                return Some(PaneEdge::Top);
-            } else if on_bottom {
-                return Some(PaneEdge::Bottom);
+            if on_frame {
+                // When on frame, determine which corner based on quadrant
+                let mid_col = pane_x + pane_cols / 2;
+                let mid_line = pane_y + pane_rows / 2;
+
+                let is_left = pos_col < mid_col;
+                let is_top = (pos_line as usize) < mid_line;
+
+                return Some(match (is_top, is_left) {
+                    (true, true) => PaneEdge::TopLeft,
+                    (true, false) => PaneEdge::TopRight,
+                    (false, true) => PaneEdge::BottomLeft,
+                    (false, false) => PaneEdge::BottomRight,
+                });
+            } else {
+                // When not on frame, check if within threshold of content area edges
+                let near_left = pos_col >= content_x && pos_col < content_x + corner_threshold;
+                let near_right = pos_col >= (content_x + content_cols).saturating_sub(corner_threshold)
+                    && pos_col < content_x + content_cols;
+                let near_top = pos_line >= content_y as isize && pos_line < (content_y + corner_threshold) as isize;
+                let near_bottom = pos_line >= ((content_y + content_rows).saturating_sub(corner_threshold)) as isize
+                    && pos_line < (content_y + content_rows) as isize;
+
+                // Detect corners based on which edges we're near
+                if near_top && near_left {
+                    return Some(PaneEdge::TopLeft);
+                } else if near_top && near_right {
+                    return Some(PaneEdge::TopRight);
+                } else if near_bottom && near_left {
+                    return Some(PaneEdge::BottomLeft);
+                } else if near_bottom && near_right {
+                    return Some(PaneEdge::BottomRight);
+                }
             }
         } else {
-            // When frameless, use boundary proximity detection
-            let near_left = pos_col >= pane_x && pos_col < pane_x + EDGE_THRESHOLD;
-            let near_right = pos_col >= (pane_x + pane_cols).saturating_sub(EDGE_THRESHOLD)
+            // Frameless mode: check if within threshold of pane boundaries
+            let near_left = pos_col >= pane_x && pos_col < pane_x + corner_threshold;
+            let near_right = pos_col >= (pane_x + pane_cols).saturating_sub(corner_threshold)
                 && pos_col < pane_x + pane_cols;
-            let near_top = pos_line >= pane_y as isize && pos_line < (pane_y + EDGE_THRESHOLD) as isize;
-            let near_bottom = pos_line >= (pane_y + pane_rows).saturating_sub(EDGE_THRESHOLD) as isize
+            let near_top = pos_line >= pane_y as isize && pos_line < (pane_y + corner_threshold) as isize;
+            let near_bottom = pos_line >= (pane_y + pane_rows).saturating_sub(corner_threshold) as isize
                 && pos_line < (pane_y + pane_rows) as isize;
 
-            // Detect corners first
+            // Detect corners based on which edges we're near
             if near_top && near_left {
                 return Some(PaneEdge::TopLeft);
             } else if near_top && near_right {
@@ -571,14 +583,6 @@ pub trait Pane {
                 return Some(PaneEdge::BottomLeft);
             } else if near_bottom && near_right {
                 return Some(PaneEdge::BottomRight);
-            } else if near_left {
-                return Some(PaneEdge::Left);
-            } else if near_right {
-                return Some(PaneEdge::Right);
-            } else if near_top {
-                return Some(PaneEdge::Top);
-            } else if near_bottom {
-                return Some(PaneEdge::Bottom);
             }
         }
 
