@@ -32,6 +32,7 @@ struct State {
     mode_info: ModeInfo,
     tab_line: Vec<LinePart>,
     hide_swap_layout_indication: bool,
+    bell_indicator: String,
 }
 
 static ARROW_SEPARATOR: &str = "";
@@ -44,6 +45,10 @@ impl ZellijPlugin for State {
             .get("hide_swap_layout_indication")
             .map(|s| s == "true")
             .unwrap_or(false);
+        self.bell_indicator = configuration
+            .get("bell_indicator")
+            .cloned()
+            .unwrap_or_else(|| " [!]".to_string());
         set_selectable(false);
         subscribe(&[
             EventType::TabUpdate,
@@ -125,6 +130,7 @@ impl ZellijPlugin for State {
                 is_alternate_tab,
                 self.mode_info.style.colors,
                 self.mode_info.capabilities,
+                &self.bell_indicator,
             );
             is_alternate_tab = !is_alternate_tab;
             all_tabs.push(tab);

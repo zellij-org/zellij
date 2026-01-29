@@ -52,6 +52,7 @@ struct State {
     config: BTreeMap<String, String>,
     own_plugin_id: Option<u32>,
     toggle_tooltip_key: Option<String>,
+    bell_indicator: String,
 
     // Tooltip state
     is_tooltip: bool,
@@ -130,6 +131,10 @@ impl State {
     fn initialize_configuration(&mut self, configuration: BTreeMap<String, String>) {
         self.config = configuration.clone();
         self.is_tooltip = self.parse_bool_config(CONFIG_IS_TOOLTIP, false);
+        self.bell_indicator = configuration
+            .get("bell_indicator")
+            .cloned()
+            .unwrap_or_else(|| " [!]".to_string());
 
         if !self.is_tooltip {
             if let Some(tooltip_toggle_key) = configuration.get(CONFIG_TOGGLE_TOOLTIP_KEY) {
@@ -532,6 +537,7 @@ impl State {
                 is_alternate_tab,
                 self.mode_info.style.colors,
                 self.mode_info.capabilities,
+                &self.bell_indicator,
             );
 
             is_alternate_tab = !is_alternate_tab;
