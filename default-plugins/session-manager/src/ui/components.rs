@@ -1,4 +1,6 @@
+use humantime::format_duration;
 use std::path::PathBuf;
+use std::time::Duration;
 use unicode_width::UnicodeWidthChar;
 use unicode_width::UnicodeWidthStr;
 use zellij_tile::prelude::*;
@@ -927,13 +929,19 @@ pub fn render_controls_line(
     colors: Colors,
     x: usize,
     y: usize,
-) {
-    match active_screen {
+) -> usize {
+    const HELP_PREFIX_LEN: usize = 6;
+    let x = x + 1;
+
+    let shows_help_prefix = match active_screen {
         ActiveScreen::NewSession => {
             if max_cols >= 50 {
                 print!(
                     "\u{1b}[m\u{1b}[{y};{x}H\u{1b}[1mHelp: Fill in the form to start a new session."
                 );
+                true
+            } else {
+                false
             }
         },
         ActiveScreen::AttachToSession => {
@@ -950,8 +958,12 @@ pub fn render_controls_line(
                 print!(
                     "\u{1b}[m\u{1b}[{y};{x}HHelp: {rename} - {rename_text}, {disconnect} - {disconnect_text}, {kill} - {kill_text}, {kill_all} - {kill_all_text}"
                 );
+                true
             } else if max_cols >= 28 {
                 print!("\u{1b}[m\u{1b}[{y};{x}H{rename}/{disconnect}/{kill}/{kill_all}");
+                false
+            } else {
+                false
             }
         },
         ActiveScreen::ResurrectSession => {
@@ -968,11 +980,110 @@ pub fn render_controls_line(
                 print!(
                     "\u{1b}[m\u{1b}[{y};{x}HHelp: {arrows} - {navigate}, {enter} - {select}, {del} - {del_text}, {del_all} - {del_all_text}"
                 );
+                true
             } else if max_cols >= 28 {
                 print!("\u{1b}[m\u{1b}[{y};{x}H{arrows}/{enter}/{del}/{del_all}");
+                false
+            } else {
+                false
             }
         },
+    };
+
+    if shows_help_prefix {
+        HELP_PREFIX_LEN
+    } else {
+        0
     }
+}
+
+fn format_elapsed_time(elapsed_millis: u64) -> String {
+    // Convert elapsed milliseconds to Duration
+    let elapsed_duration = Duration::from_millis(elapsed_millis);
+
+    // Use humantime to format the duration, same as in resurrectable_sessions.rs
+    let duration_str = format_duration(elapsed_duration).to_string();
+    let duration_parts = duration_str.split_whitespace();
+    let mut formatted_duration = String::new();
+    for part in duration_parts {
+        if !part.ends_with('s') {
+            if !formatted_duration.is_empty() {
+                formatted_duration.push(' ');
+            }
+            formatted_duration.push_str(part);
+        }
+    }
+    if formatted_duration.is_empty() {
+        format!("just now")
+    } else {
+        format!("{} ago", formatted_duration)
+    }
+}
+
+pub fn render_unsaved_changes_line(
+    max_cols: usize,
+    x: usize,
+    y: usize,
+    last_saved_timestamp: Option<u64>,
+) {
+    // Declare all text components
+    let shortcut_text = "<Ctrl a>";
+    let full_action_text = "Save current session for resurrection";
+    let medium_action_text = "Save session";
+    let short_action_text = "Save";
+    let separator = " - ";
+    let space = " ";
+
+    let time_text = match last_saved_timestamp {
+        Some(timestamp) => {
+            let elapsed = format_elapsed_time(timestamp);
+            format!("(saved {})", elapsed)
+        },
+        None => "(not saved)".to_string(),
+    };
+
+    // Calculate component widths
+    let shortcut_width = shortcut_text.width();
+    let separator_width = separator.width();
+    let space_width = space.width();
+    let time_width = time_text.width();
+
+    // Calculate total widths for each display mode
+    // Format: "{shortcut}{separator}{action}{space}{time}"
+    let full_width =
+        shortcut_width + separator_width + full_action_text.width() + space_width + time_width;
+    let medium_width =
+        shortcut_width + separator_width + medium_action_text.width() + space_width + time_width;
+    let short_width =
+        shortcut_width + separator_width + short_action_text.width() + space_width + time_width;
+    let minimal_width = shortcut_width + space_width + time_width;
+
+    // Select appropriate message based on available width
+    let msg = if max_cols >= full_width {
+        format!(
+            "{}{}{}{}{}",
+            shortcut_text, separator, full_action_text, space, time_text
+        )
+    } else if max_cols >= medium_width {
+        format!(
+            "{}{}{}{}{}",
+            shortcut_text, separator, medium_action_text, space, time_text
+        )
+    } else if max_cols >= short_width {
+        format!(
+            "{}{}{}{}{}",
+            shortcut_text, separator, short_action_text, space, time_text
+        )
+    } else if max_cols >= minimal_width {
+        format!("{}{}{}", shortcut_text, space, time_text)
+    } else {
+        return; // Not enough space to render
+    };
+
+    let text = Text::new(&msg)
+        .color_substring(3, shortcut_text)
+        .color_substring(2, &time_text);
+    print_text_with_coordinates(text, x, y, None, None);
 }
 
 // Maps the various prompts and UI elements to the colors to present them with

@@ -232,6 +232,7 @@ message Action {
     SwitchSessionAction switch_session = 92;
     NewBlockingPaneAction new_blocking_pane = 93;
     OverrideLayoutAction override_layout = 94;
+    SaveSessionAction save_session = 97;
   }
 }
 
@@ -245,6 +246,7 @@ message SwitchFocusAction {}
 message MovePaneBackwardsAction {}
 message ClearScreenAction {}
 message DumpLayoutAction {}
+message SaveSessionAction {}
 message EditScrollbackAction {}
 message ScrollUpAction {}
 message ScrollDownAction {}

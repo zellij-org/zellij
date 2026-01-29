@@ -259,6 +259,7 @@ pub enum ScreenContext {
     ClearScreen,
     DumpScreen,
     DumpLayout,
+    SaveSession,
     EditScrollback,
     GetPaneScrollback,
     ScrollUp,
@@ -418,6 +419,7 @@ pub enum PtyContext {
     SpawnInPlaceTerminal,
     DumpLayout,
     LogLayoutToHd,
+    SaveSessionToDisk,
     FillPluginCwd,
     DumpLayoutToPlugin,
     ListClientsMetadata,
@@ -474,6 +476,8 @@ pub enum PluginContext {
     UserInput,
     LayoutListUpdate,
     RequestStateUpdateForPlugin,
+    UpdateSessionSaveTime,
+    GetLastSessionSaveTime,
 }
 
 /// Stack call representations corresponding to the different types of [`ClientInstruction`]s.

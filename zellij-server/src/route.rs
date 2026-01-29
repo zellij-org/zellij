@@ -389,6 +389,14 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
         },
+        Action::SaveSession => {
+            senders
+                .send_to_screen(ScreenInstruction::SaveSession(
+                    client_id,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
         Action::EditScrollback => {
             senders
                 .send_to_screen(ScreenInstruction::EditScrollback(

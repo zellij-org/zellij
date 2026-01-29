@@ -62,11 +62,12 @@ use zellij_utils::{
         },
         plugin_command::{
             dump_layout_response, dump_session_layout_response, parse_layout_response,
-            ProtobufDeleteLayoutResponse, ProtobufDumpLayoutResponse,
+            save_session_response, ProtobufDeleteLayoutResponse, ProtobufDumpLayoutResponse,
             ProtobufDumpSessionLayoutResponse, ProtobufEditLayoutResponse,
             ProtobufGenerateRandomNameResponse, ProtobufGetFocusedPaneInfoResponse,
             ProtobufGetLayoutDirResponse, ProtobufGetPanePidResponse, ProtobufParseLayoutResponse,
             ProtobufPluginCommand, ProtobufRenameLayoutResponse, ProtobufSaveLayoutResponse,
+            ProtobufSaveSessionResponse,
         },
         plugin_ids::{ProtobufPluginIds, ProtobufZellijVersion},
     },
@@ -129,6 +130,10 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::ParseLayout(layout_string) => parse_layout(env, layout_string),
                     PluginCommand::GetLayoutDir => get_layout_dir(env),
                     PluginCommand::GetFocusedPaneInfo => get_focused_pane_info(env),
+                    PluginCommand::SaveSession => save_session(env),
+                    PluginCommand::CurrentSessionLastSavedTime => {
+                        current_session_last_saved_time(env)
+                    },
                     PluginCommand::OpenFile(file_to_open, context) => {
                         open_file(env, file_to_open, context)
                     },
@@ -2564,6 +2569,64 @@ fn dump_session_layout(env: &PluginEnv, tab_index: Option<usize>) {
         .with_context(|| format!("failed to send session layout to plugin {}", env.name()));
 }
 
+fn save_session(env: &PluginEnv) {
+    use save_session_response::Result as SaveSessionResult;
+    let (completion_tx, completion_rx) = oneshot::channel();
+
+    let send_result = env.senders.send_to_screen(ScreenInstruction::SaveSession(
+        env.client_id,
+        Some(NotificationEnd::new(completion_tx)),
+    ));
+
+    let response = if let Err(e) = send_result {
+        ProtobufSaveSessionResponse {
+            result: Some(SaveSessionResult::Error(format!(
+                "Failed to send save request: {}",
+                e
+            ))),
+        }
+    } else {
+        let wait_forever = false;
+        let _result = wait_for_action_completion(completion_rx, "save_session", wait_forever);
+        ProtobufSaveSessionResponse {
+            result: Some(SaveSessionResult::Success(true)),
+        }
+    };
+
+    let _ = wasi_write_object(env, &response.encode_to_vec());
+}
+
+fn current_session_last_saved_time(env: &PluginEnv) {
+    use zellij_utils::plugin_api::plugin_command::ProtobufCurrentSessionLastSavedTimeResponse;
+
+    let (response_tx, response_rx) = crossbeam::channel::bounded(1);
+    let send_result = env
+        .senders
+        .send_to_plugin(PluginInstruction::GetLastSessionSaveTime {
+            response_channel: response_tx,
+        });
+
+    let saved_timestamp_millis = if send_result.is_ok() {
+        response_rx
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .ok()
+            .flatten()
+    } else {
+        None
+    };
+
+    let timestamp_millis = saved_timestamp_millis.map(|saved_time| {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64;
+        now.saturating_sub(saved_time)
+    });
+
+    let response = ProtobufCurrentSessionLastSavedTimeResponse { timestamp_millis };
+    let _ = wasi_write_object(env, &response.encode_to_vec());
+}
+
 fn list_clients(env: &PluginEnv) {
     let _ = env.senders.to_screen.as_ref().map(|sender| {
         sender.send(ScreenInstruction::ListClientsToPlugin(
@@ -3842,7 +3905,9 @@ fn check_command_permission(
         | PluginCommand::GetLayoutDir
         | PluginCommand::GetFocusedPaneInfo
         | PluginCommand::DumpLayout(..)
-        | PluginCommand::ParseLayout(..) => PermissionType::ReadApplicationState,
+        | PluginCommand::ParseLayout(..)
+        | PluginCommand::SaveSession
+        | PluginCommand::CurrentSessionLastSavedTime => PermissionType::ReadApplicationState,
         PluginCommand::RebindKeys { .. } | PluginCommand::Reconfigure(..) => {
             PermissionType::Reconfigure
         },

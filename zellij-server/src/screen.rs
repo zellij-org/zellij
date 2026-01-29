@@ -262,6 +262,7 @@ pub enum ScreenInstruction {
     DumpScreen(String, ClientId, bool, Option<NotificationEnd>),
     DumpLayout(Option<PathBuf>, ClientId, Option<NotificationEnd>), // PathBuf is the default configured
     // shell
+    SaveSession(ClientId, Option<NotificationEnd>),
     DumpLayoutToPlugin {
         plugin_id: PluginId,
         tab_index: Option<usize>,
@@ -634,6 +635,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::ClearScreen(..) => ScreenContext::ClearScreen,
             ScreenInstruction::DumpScreen(..) => ScreenContext::DumpScreen,
             ScreenInstruction::DumpLayout(..) => ScreenContext::DumpLayout,
+            ScreenInstruction::SaveSession(..) => ScreenContext::SaveSession,
             ScreenInstruction::DumpLayoutToPlugin { .. } => ScreenContext::DumpLayoutToPlugin,
             ScreenInstruction::GetFocusedPaneInfo { .. } => ScreenContext::GetFocusedPaneInfo,
             ScreenInstruction::EditScrollback(..) => ScreenContext::EditScrollback,
@@ -3914,7 +3916,6 @@ pub(crate) fn screen_thread_main(
 
                 let blocking_notification = if set_blocking { completion_tx } else { None };
 
-                log::info!("client_or_tab_index: {:?}", client_or_tab_index);
                 match client_or_tab_index {
                     ClientTabIndexOrPaneId::ClientId(client_id) => {
                         active_tab_and_connected_client_id_with_first_tab_fallback!(screen, client_id, |tab: &mut Tab, client_id: Option<ClientId>| {
@@ -6167,6 +6168,62 @@ pub(crate) fn screen_thread_main(
                 if screen.session_serialization {
                     screen.dump_layout_to_hd()?;
                 }
+            },
+            ScreenInstruction::SaveSession(_client_id, completion_tx) => {
+                let err_context = || "Failed to save session";
+
+                screen.update_active_pane_ids();
+                let pane_manifest = screen.generate_and_report_pane_state()?;
+                let tab_infos = screen.generate_and_report_tab_state()?;
+
+                #[cfg(not(test))]
+                let (available_layouts, _layout_errors) = Layout::list_available_layouts(
+                    screen.layout_dir.clone(),
+                    &screen.default_layout_name,
+                );
+                #[cfg(test)]
+                let available_layouts = vec![];
+
+                let session_info = SessionInfo {
+                    name: screen.session_name.clone(),
+                    tabs: tab_infos,
+                    panes: pane_manifest,
+                    connected_clients: screen.active_tab_indices.keys().len(),
+                    is_current_session: true,
+                    available_layouts,
+                    web_clients_allowed: screen.web_sharing.web_clients_allowed(),
+                    web_client_count: screen
+                        .connected_clients
+                        .borrow()
+                        .iter()
+                        .filter(|(_client_id, is_web_client)| **is_web_client)
+                        .count(),
+                    plugins: Default::default(),
+                    tab_history: screen.tab_history.clone(),
+                    pane_history: screen
+                        .pane_history
+                        .iter()
+                        .map(|(k, v)| (*k, v.iter().map(|v| (*v).into()).collect()))
+                        .collect(),
+                };
+
+                let session_layout_metadata = if screen.session_serialization {
+                    screen.get_layout_metadata(Some(screen.default_shell.clone()), None)
+                } else {
+                    // Create empty metadata if serialization is disabled
+                    SessionLayoutMetadata::new(screen.default_layout.clone())
+                };
+
+                screen
+                    .bus
+                    .senders
+                    .send_to_pty(PtyInstruction::SaveSessionToDisk {
+                        session_name: screen.session_name.clone(),
+                        session_info,
+                        session_layout_metadata,
+                        completion_tx,
+                    })
+                    .with_context(err_context)?;
             },
             ScreenInstruction::RenameSession(
                 name,

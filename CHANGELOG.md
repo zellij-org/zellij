@@ -38,6 +38,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: resolve short layout names as files if possible (https://github.com/zellij-org/zellij/pull/4640)
 * fix: restore focused tab position on reattaching to a detached session (https://github.com/zellij-org/zellij/pull/4115)
 * fix: session creation time (all session created 0s ago bug) on musl targets (https://github.com/zellij-org/zellij/pull/4645)
+* feat: allow explicitly saving current session for resurrection (rather than waiting on the resurrection interval) (https://github.com/zellij-org/zellij/pull/4654)
 
 
 ## [0.43.1] - 2025-08-08
