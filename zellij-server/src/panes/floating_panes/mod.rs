@@ -558,6 +558,37 @@ impl FloatingPanes {
         Ok(true)
     }
 
+    pub fn resize_pane_with_strategies(
+        &mut self,
+        pane_id: PaneId,
+        strategies: &[ResizeStrategy],
+        change_by: (usize, usize),
+    ) -> Result<()> {
+        let err_context = || format!("Failed to resize pane {:?} with strategies", pane_id);
+        let display_area = *self.display_area.borrow();
+        let viewport = *self.viewport.borrow();
+        let mut floating_pane_grid = FloatingPaneGrid::new(
+            &mut self.panes,
+            &mut self.desired_pane_positions,
+            display_area,
+            viewport,
+        );
+
+        // Apply each strategy
+        for strategy in strategies {
+            floating_pane_grid
+                .change_pane_size(&pane_id, strategy, change_by)
+                .with_context(err_context)?;
+        }
+
+        for pane in self.panes.values_mut() {
+            resize_pty!(pane, os_api, self.senders, self.character_cell_size)
+                .with_context(err_context)?;
+        }
+        self.set_force_render();
+        Ok(())
+    }
+
     fn set_pane_active_at(&mut self, pane_id: PaneId) {
         if let Some(pane) = self.panes.get_mut(&pane_id) {
             pane.set_active_at(Instant::now());

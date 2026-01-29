@@ -115,25 +115,7 @@ pub(crate) fn stdin_loop(
                     maybe_more,
                 );
 
-                let event_count = events.len();
-                for (i, input_event) in events.into_iter().enumerate() {
-                    if holding_mouse && is_mouse_press_or_hold(&input_event) && i == event_count - 1
-                    {
-                        let mut poller = os_input.stdin_poller();
-                        loop {
-                            if poller.ready() {
-                                break;
-                            }
-                            send_input_instructions
-                                .send(InputInstruction::KeyEvent(
-                                    input_event.clone(),
-                                    current_buffer.clone(),
-                                ))
-                                .unwrap();
-                        }
-                    }
-
-                    holding_mouse = is_mouse_press_or_hold(&input_event);
+                for input_event in events.into_iter() {
 
                     send_input_instructions
                         .send(InputInstruction::KeyEvent(
@@ -154,15 +136,4 @@ pub(crate) fn stdin_loop(
             },
         }
     }
-}
-
-fn is_mouse_press_or_hold(input_event: &InputEvent) -> bool {
-    if let InputEvent::Mouse(mouse_event) = input_event {
-        if mouse_event.mouse_buttons.contains(MouseButtons::LEFT)
-            || mouse_event.mouse_buttons.contains(MouseButtons::RIGHT)
-        {
-            return true;
-        }
-    }
-    false
 }

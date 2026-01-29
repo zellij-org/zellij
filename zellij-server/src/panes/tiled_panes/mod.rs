@@ -1754,6 +1754,36 @@ impl TiledPanes {
         Ok(pane_size_changed)
     }
 
+    pub fn resize_pane_with_strategies(
+        &mut self,
+        pane_id: PaneId,
+        strategies: &[ResizeStrategy],
+        change_by: (f64, f64),
+    ) -> Result<()> {
+        let err_context = || format!("failed to resize pane {:?} with strategies", pane_id);
+
+        let mut pane_grid = TiledPaneGrid::new(
+            &mut self.panes,
+            &self.panes_to_hide,
+            *self.display_area.borrow(),
+            *self.viewport.borrow(),
+        );
+
+        // Apply each strategy
+        for strategy in strategies {
+            // Ignore errors - resize may fail if hitting constraints (acceptable)
+            let _ = pane_grid
+                .change_pane_size(&pane_id, strategy, change_by)
+                .with_context(err_context);
+        }
+
+        for pane in self.panes.values_mut() {
+            resize_pty!(pane, self.os_api, self.senders, self.character_cell_size).unwrap();
+        }
+        self.reset_boundaries();
+        Ok(())
+    }
+
     pub fn focus_next_pane(&mut self, client_id: ClientId) {
         let active_pane_id = self.get_active_pane_id(client_id).unwrap();
         let next_active_pane_id = {

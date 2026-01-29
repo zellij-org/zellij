@@ -217,6 +217,26 @@ impl MouseEffect {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PaneEdge {
+    Left,
+    Right,
+    Top,
+    Bottom,
+    TopLeft,
+    TopRight,
+    BottomLeft,
+    BottomRight,
+}
+
+struct PaneResizeState {
+    pane_id: PaneId,
+    edge: PaneEdge,
+    start_position: Position,
+    start_geom: PaneGeom,
+    is_floating: bool,
+}
+
 pub(crate) struct Tab {
     pub index: usize,
     pub position: usize,
@@ -242,6 +262,7 @@ pub(crate) struct Tab {
     auto_layout: bool,
     pending_vte_events: HashMap<u32, Vec<VteBytes>>,
     pub selecting_with_mouse_in_pane: Option<PaneId>, // this is only pub for the tests
+    pane_being_resized_with_mouse: Option<PaneResizeState>,
     link_handler: Rc<RefCell<LinkHandler>>,
     clipboard_provider: ClipboardProvider,
     // TODO: used only to focus the pane when the layout is loaded
@@ -486,6 +507,83 @@ pub trait Pane {
         }
         false
     }
+    fn get_edge_at_position(&self, position: &Position, draw_pane_frames: bool) -> Option<PaneEdge> {
+        const EDGE_THRESHOLD: usize = 1;
+
+        if !self.contains(position) {
+            return None;
+        }
+
+        let pos_col = position.column();
+        let pos_line = position.line();
+        let pane_x = self.x();
+        let pane_y = self.y();
+        let pane_cols = self.cols();
+        let pane_rows = self.rows();
+
+        if draw_pane_frames {
+            // When frames are visible, only actual frame areas count as edges
+            if !self.position_is_on_frame(position) {
+                return None;
+            }
+
+            // Detect corners first (two edges simultaneously)
+            let on_left = (pane_x..self.get_content_x()).contains(&pos_col);
+            let on_right = (self.get_content_x() + self.get_content_columns()..pane_x + pane_cols)
+                .contains(&pos_col);
+            let on_top = (pane_y as isize..self.get_content_y() as isize).contains(&pos_line);
+            let on_bottom = ((self.get_content_y() + self.get_content_rows()) as isize
+                ..(pane_y + pane_rows) as isize)
+                .contains(&pos_line);
+
+            if on_top && on_left {
+                return Some(PaneEdge::TopLeft);
+            } else if on_top && on_right {
+                return Some(PaneEdge::TopRight);
+            } else if on_bottom && on_left {
+                return Some(PaneEdge::BottomLeft);
+            } else if on_bottom && on_right {
+                return Some(PaneEdge::BottomRight);
+            } else if on_left {
+                return Some(PaneEdge::Left);
+            } else if on_right {
+                return Some(PaneEdge::Right);
+            } else if on_top {
+                return Some(PaneEdge::Top);
+            } else if on_bottom {
+                return Some(PaneEdge::Bottom);
+            }
+        } else {
+            // When frameless, use boundary proximity detection
+            let near_left = pos_col >= pane_x && pos_col < pane_x + EDGE_THRESHOLD;
+            let near_right = pos_col >= (pane_x + pane_cols).saturating_sub(EDGE_THRESHOLD)
+                && pos_col < pane_x + pane_cols;
+            let near_top = pos_line >= pane_y as isize && pos_line < (pane_y + EDGE_THRESHOLD) as isize;
+            let near_bottom = pos_line >= (pane_y + pane_rows).saturating_sub(EDGE_THRESHOLD) as isize
+                && pos_line < (pane_y + pane_rows) as isize;
+
+            // Detect corners first
+            if near_top && near_left {
+                return Some(PaneEdge::TopLeft);
+            } else if near_top && near_right {
+                return Some(PaneEdge::TopRight);
+            } else if near_bottom && near_left {
+                return Some(PaneEdge::BottomLeft);
+            } else if near_bottom && near_right {
+                return Some(PaneEdge::BottomRight);
+            } else if near_left {
+                return Some(PaneEdge::Left);
+            } else if near_right {
+                return Some(PaneEdge::Right);
+            } else if near_top {
+                return Some(PaneEdge::Top);
+            } else if near_bottom {
+                return Some(PaneEdge::Bottom);
+            }
+        }
+
+        None
+    }
     // TODO: get rid of this in favor of intercept_mouse_event_on_frame
     fn intercept_left_mouse_click(&mut self, _position: &Position, _client_id: ClientId) -> bool {
         let intercepted = false;
@@ -656,6 +754,73 @@ pub fn get_next_terminal_position(
     tiled_panes_count + floating_panes_count + 1
 }
 
+fn edge_and_delta_to_strategies(
+    edge: PaneEdge,
+    delta_x: isize,
+    delta_y: isize,
+) -> Vec<ResizeStrategy> {
+    use zellij_utils::data::{Direction::*, Resize::*};
+
+    match edge {
+        PaneEdge::Left => {
+            let resize = if delta_x < 0 { Increase } else { Decrease };
+            vec![ResizeStrategy::new(resize, Some(Left))]
+        },
+        PaneEdge::Right => {
+            let resize = if delta_x > 0 { Increase } else { Decrease };
+            vec![ResizeStrategy::new(resize, Some(Right))]
+        },
+        PaneEdge::Top => {
+            let resize = if delta_y < 0 { Increase } else { Decrease };
+            vec![ResizeStrategy::new(resize, Some(Up))]
+        },
+        PaneEdge::Bottom => {
+            let resize = if delta_y > 0 { Increase } else { Decrease };
+            vec![ResizeStrategy::new(resize, Some(Down))]
+        },
+        PaneEdge::TopLeft => {
+            let mut strategies = vec![];
+            // Top edge
+            let resize_y = if delta_y < 0 { Increase } else { Decrease };
+            strategies.push(ResizeStrategy::new(resize_y, Some(Up)));
+            // Left edge
+            let resize_x = if delta_x < 0 { Increase } else { Decrease };
+            strategies.push(ResizeStrategy::new(resize_x, Some(Left)));
+            strategies
+        },
+        PaneEdge::TopRight => {
+            let mut strategies = vec![];
+            // Top edge
+            let resize_y = if delta_y < 0 { Increase } else { Decrease };
+            strategies.push(ResizeStrategy::new(resize_y, Some(Up)));
+            // Right edge
+            let resize_x = if delta_x > 0 { Increase } else { Decrease };
+            strategies.push(ResizeStrategy::new(resize_x, Some(Right)));
+            strategies
+        },
+        PaneEdge::BottomLeft => {
+            let mut strategies = vec![];
+            // Bottom edge
+            let resize_y = if delta_y > 0 { Increase } else { Decrease };
+            strategies.push(ResizeStrategy::new(resize_y, Some(Down)));
+            // Left edge
+            let resize_x = if delta_x < 0 { Increase } else { Decrease };
+            strategies.push(ResizeStrategy::new(resize_x, Some(Left)));
+            strategies
+        },
+        PaneEdge::BottomRight => {
+            let mut strategies = vec![];
+            // Bottom edge
+            let resize_y = if delta_y > 0 { Increase } else { Decrease };
+            strategies.push(ResizeStrategy::new(resize_y, Some(Down)));
+            // Right edge
+            let resize_x = if delta_x > 0 { Increase } else { Decrease };
+            strategies.push(ResizeStrategy::new(resize_x, Some(Right)));
+            strategies
+        },
+    }
+}
+
 impl Tab {
     // FIXME: Still too many arguments for clippy to be happy...
     #[allow(clippy::too_many_arguments)]
@@ -772,6 +937,7 @@ impl Tab {
             pending_vte_events: HashMap::new(),
             connected_clients,
             selecting_with_mouse_in_pane: None,
+            pane_being_resized_with_mouse: None,
             link_handler: Rc::new(RefCell::new(LinkHandler::new())),
             clipboard_provider,
             focus_pane_id: None,
@@ -4309,10 +4475,45 @@ impl Tab {
             match event.event_type {
                 MouseEventType::Press if event.alt => {
                     self.mouse_hover_pane_id.remove(&client_id);
+                    // Check if position is on edge for resize
+                    let draw_pane_frames = self.draw_pane_frames;
+                    if let Ok(Some(pane_at_position)) = self.get_pane_at(&event.position, false) {
+                        if let Some(edge) = pane_at_position.get_edge_at_position(&event.position, draw_pane_frames) {
+                            // Start resize
+                            self.start_pane_resize_with_mouse(
+                                pane_id_at_position,
+                                edge,
+                                event.position,
+                                client_id,
+                            ).with_context(err_context)?;
+                            return Ok(MouseEffect::state_changed());
+                        }
+                    }
                     Ok(MouseEffect::group_toggle(pane_id_at_position))
                 },
                 MouseEventType::Motion if event.alt => {
+                    // If resizing, continue resize
+                    if self.pane_being_resized_with_mouse.is_some() {
+                        let state_changed = self.continue_pane_resize_with_mouse(event.position, client_id)
+                            .with_context(err_context)?;
+                        if state_changed {
+                            return Ok(MouseEffect::state_changed());
+                        } else {
+                            return Ok(MouseEffect::default());
+                        }
+                    }
+                    // Otherwise, do grouping
                     Ok(MouseEffect::group_add(pane_id_at_position))
+                },
+                MouseEventType::Release if event.alt => {
+                    // If resizing, stop resize
+                    if self.pane_being_resized_with_mouse.is_some() {
+                        self.stop_pane_resize_with_mouse(event.position, client_id)
+                            .with_context(err_context)?;
+                        return Ok(MouseEffect::state_changed());
+                    }
+                    // Otherwise, default behavior
+                    self.handle_left_mouse_release(event, client_id)
                 },
                 MouseEventType::Press => {
                     if pane_id_at_position == active_pane_id {
@@ -4727,6 +4928,152 @@ impl Tab {
             }
         };
         Ok(MouseEffect::leave_clipboard_message())
+    }
+
+    fn start_pane_resize_with_mouse(
+        &mut self,
+        pane_id: PaneId,
+        edge: PaneEdge,
+        position: Position,
+        _client_id: ClientId,
+    ) -> Result<()> {
+        let err_context = || format!("failed to start pane resize for pane {pane_id:?}");
+
+        // Determine if floating or tiled
+        let is_floating = self.floating_panes.panes_contain(&pane_id);
+
+        // Get current pane geometry
+        let start_geom = if is_floating {
+            self.floating_panes
+                .get_pane(pane_id)
+                .map(|p| p.position_and_size())
+                .with_context(err_context)?
+        } else {
+            self.tiled_panes
+                .get_pane(pane_id)
+                .map(|p| p.position_and_size())
+                .with_context(err_context)?
+        };
+
+        self.pane_being_resized_with_mouse = Some(PaneResizeState {
+            pane_id,
+            edge,
+            start_position: position,
+            start_geom,
+            is_floating,
+        });
+
+        Ok(())
+    }
+
+    fn continue_pane_resize_with_mouse(
+        &mut self,
+        current_position: Position,
+        _client_id: ClientId,
+    ) -> Result<bool> { // bool -> state changed
+        let err_context = || "failed to continue pane resize with mouse";
+
+        // Extract needed values from resize_state to avoid borrow issues
+        let (pane_id, edge, is_floating, delta_x, delta_y) = if let Some(resize_state) = &self.pane_being_resized_with_mouse {
+            // Calculate delta from start_position to current_position
+            let delta_x = current_position.column() as isize
+                - resize_state.start_position.column() as isize;
+            let delta_y = current_position.line()
+                - resize_state.start_position.line();
+
+            // Only proceed if there's a meaningful delta
+            if delta_x == 0 && delta_y == 0 {
+                return Ok(false);
+            }
+
+            (resize_state.pane_id, resize_state.edge, resize_state.is_floating, delta_x, delta_y)
+        } else {
+            return Ok(true);
+        };
+
+        // Convert edge + delta to ResizeStrategy
+        let strategies = edge_and_delta_to_strategies(edge, delta_x, delta_y);
+
+        // Apply appropriate resize function
+        if is_floating {
+            self.resize_floating_pane_with_strategies(
+                pane_id,
+                &strategies,
+                (delta_x.unsigned_abs(), delta_y.unsigned_abs()),
+            ).with_context(err_context)?;
+        } else {
+            self.resize_tiled_pane_with_strategies(
+                pane_id,
+                &strategies,
+                (delta_x.abs() as f64, delta_y.abs() as f64),
+            ).with_context(err_context)?;
+        }
+
+        // Update start_position to current position (incremental)
+        if let Some(resize_state) = self.pane_being_resized_with_mouse.as_mut() {
+            resize_state.start_position = current_position;
+        }
+
+        self.set_force_render();
+
+        Ok(true)
+    }
+
+    fn stop_pane_resize_with_mouse(
+        &mut self,
+        final_position: Position,
+        client_id: ClientId,
+    ) -> Result<()> {
+        let err_context = || "failed to stop pane resize with mouse";
+
+        // Perform final resize with any remaining delta
+        self.continue_pane_resize_with_mouse(final_position, client_id)
+            .with_context(err_context)?;
+
+        // Clear resize state
+        self.pane_being_resized_with_mouse = None;
+
+        Ok(())
+    }
+
+    fn resize_floating_pane_with_strategies(
+        &mut self,
+        pane_id: PaneId,
+        strategies: &[ResizeStrategy],
+        change_by: (usize, usize),
+    ) -> Result<()> {
+        let err_context = || format!("failed to resize floating pane {pane_id:?}");
+
+        self.floating_panes
+            .resize_pane_with_strategies(pane_id, strategies, change_by)
+            .with_context(err_context)?;
+
+        self.swap_layouts.set_is_floating_damaged();
+
+        Ok(())
+    }
+
+    fn resize_tiled_pane_with_strategies(
+        &mut self,
+        pane_id: PaneId,
+        strategies: &[ResizeStrategy],
+        change_by: (f64, f64),
+    ) -> Result<()> {
+        let err_context = || format!("failed to resize tiled pane {pane_id:?}");
+
+        // Convert pixel delta to percentage (every ~10 pixels = 5%)
+        let change_by_percent = (
+            (change_by.0 / 10.0) * 5.0,
+            (change_by.1 / 10.0) * 5.0,
+        );
+
+        self.tiled_panes
+            .resize_pane_with_strategies(pane_id, strategies, change_by_percent)
+            .with_context(err_context)?;
+
+        self.swap_layouts.set_is_tiled_damaged();
+
+        Ok(())
     }
 
     fn unselectable_pane_at_position(&mut self, point: &Position) -> Option<&mut Box<dyn Pane>> {
