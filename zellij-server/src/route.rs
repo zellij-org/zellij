@@ -2,7 +2,6 @@ use std::collections::{BTreeMap, HashSet, VecDeque};
 use std::sync::{Arc, RwLock};
 use tokio::sync::oneshot;
 
-use crate::global_async_runtime::get_tokio_runtime;
 use crate::thread_bus::ThreadSenders;
 use crate::{
     os_input_output::ServerOsApi,
@@ -15,6 +14,7 @@ use crate::{
 use std::thread;
 use std::time::Duration;
 use uuid::Uuid;
+use zellij_utils::global_async_runtime::get_tokio_runtime;
 use zellij_utils::{
     channels::SenderWithContext,
     data::{

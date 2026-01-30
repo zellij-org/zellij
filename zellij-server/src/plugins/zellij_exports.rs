@@ -1,6 +1,5 @@
 use super::PluginInstruction;
 use crate::background_jobs::BackgroundJob;
-use crate::global_async_runtime::get_tokio_runtime;
 use crate::plugins::plugin_map::PluginEnv;
 use crate::plugins::wasm_bridge::handle_plugin_crash;
 use crate::pty::{ClientTabIndexOrPaneId, PtyInstruction};
@@ -27,6 +26,7 @@ use zellij_utils::data::{
     NewPanePlacement, OriginatingPlugin, PaneScrollbackResponse, PermissionStatus, PermissionType,
     PluginPermission, RenameLayoutResponse, SaveLayoutResponse, TabMetadata,
 };
+use zellij_utils::global_async_runtime::get_tokio_runtime;
 use zellij_utils::home::default_layout_dir;
 use zellij_utils::input::permission::PermissionCache;
 use zellij_utils::ipc::{ClientToServerMsg, IpcSenderWithContext};

@@ -1,10 +1,10 @@
 use super::{PinnedExecutor, PluginId, PluginInstruction};
-use crate::global_async_runtime::get_tokio_runtime;
 use crate::plugins::pipes::{
     apply_pipe_message_to_plugin, pipes_to_block_or_unblock, PendingPipes, PipeStateChange,
 };
 use crate::plugins::plugin_loader::PluginLoader;
 use crate::plugins::plugin_map::{AtomicEvent, PluginEnv, PluginMap, RunningPlugin, Subscriptions};
+use zellij_utils::global_async_runtime::get_tokio_runtime;
 
 use crate::plugins::plugin_worker::MessageToWorker;
 use crate::plugins::watch_filesystem::watch_filesystem;
