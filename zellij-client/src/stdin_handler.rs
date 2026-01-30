@@ -3,7 +3,7 @@ use crate::os_input_output::ClientOsApi;
 use crate::stdin_ansi_parser::StdinAnsiParser;
 use crate::InputInstruction;
 use std::sync::{Arc, Mutex};
-use termwiz::input::{InputEvent, InputParser, MouseButtons};
+use termwiz::input::{InputEvent, InputParser};
 use zellij_utils::channels::SenderWithContext;
 
 fn send_done_parsing_after_query_timeout(
@@ -26,7 +26,6 @@ pub(crate) fn stdin_loop(
     stdin_ansi_parser: Arc<Mutex<StdinAnsiParser>>,
     explicitly_disable_kitty_keyboard_protocol: bool,
 ) {
-    let mut holding_mouse = false;
     let mut input_parser = InputParser::new();
     let mut current_buffer = vec![];
     {

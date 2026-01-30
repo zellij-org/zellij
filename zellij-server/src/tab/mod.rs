@@ -4414,7 +4414,6 @@ impl Tab {
             .ok_or(anyhow!("Failed to find pane at position"))?;
 
         if event.left {
-            // left mouse click
             let pane_id_at_position = self
                 .get_pane_at(&event.position, false)
                 .with_context(err_context)?
@@ -4422,22 +4421,84 @@ impl Tab {
                 .pid();
             match event.event_type {
                 MouseEventType::Press if event.alt => {
+                    // TODO: forward to pane if disabled
+                    Ok(MouseEffect::group_toggle(pane_id_at_position))
+                },
+                MouseEventType::Press if event.ctrl => {
                     self.mouse_hover_pane_id.remove(&client_id);
                     if let Ok(Some(pane_at_position)) = self.get_pane_at(&event.position, false) {
-                        if let Some(edge) = pane_at_position.get_edge_at_position(&event.position) {
-                            self.start_pane_resize_with_mouse(
-                                pane_id_at_position,
-                                edge,
-                                event.position,
-                                client_id,
-                            ).with_context(err_context)?;
-                            return Ok(MouseEffect::state_changed());
+                        let position_is_on_frame = pane_at_position.position_is_on_frame(&event.position);
+
+                        if position_is_on_frame {
+                            // for eg. pinned toggle
+                            let intercepted = pane_at_position.intercept_mouse_event_on_frame(&event, client_id);
+                            if intercepted {
+                                self.set_force_render();
+                                return Ok(MouseEffect::state_changed());
+                            } else {
+                                if let Some(edge) = pane_at_position.get_edge_at_position(&event.position) {
+                                    self.start_pane_resize_with_mouse(
+                                        pane_id_at_position,
+                                        edge,
+                                        event.position,
+                                        client_id,
+                                    ).with_context(err_context)?;
+                                    return Ok(MouseEffect::state_changed());
+                                }
+                            }
                         }
                     }
-                    // Ok(MouseEffect::group_toggle(pane_id_at_position))
-                    Ok(MouseEffect::default()) // TODO: NO!!!!11oneoneone
-                },
+                    // TODO: forward to pane
+                    Ok(MouseEffect::default())
+                }
+                MouseEventType::Press => {
+                    self.mouse_hover_pane_id.remove(&client_id);
+                    let floating_panes_are_visible = self.floating_panes.panes_are_visible();
+                    if let Ok(Some(pane_at_position)) = self.get_pane_at(&event.position, false) {
+                        let position_is_on_frame = pane_at_position.position_is_on_frame(&event.position);
+
+                        if position_is_on_frame {
+                            // for eg. pinned toggle
+                            let intercepted = pane_at_position.intercept_mouse_event_on_frame(&event, client_id);
+                            if intercepted {
+                                self.set_force_render();
+                                return Ok(MouseEffect::state_changed());
+                            } else if floating_panes_are_visible {
+                                let search_selectable = false;
+                                if self
+                                    .floating_panes
+                                    .move_pane_with_mouse(event.position, search_selectable)
+                                {
+                                    self.swap_layouts.set_is_floating_damaged();
+                                    self.set_force_render();
+                                    return Ok(MouseEffect::state_changed());
+                                }
+                            } else {
+                                if let Some(edge) = pane_at_position.get_edge_at_position(&event.position) {
+                                    self.start_pane_resize_with_mouse(
+                                        pane_id_at_position,
+                                        edge,
+                                        event.position,
+                                        client_id,
+                                    ).with_context(err_context)?;
+                                    return Ok(MouseEffect::state_changed());
+                                }
+                            }
+                        }
+                    }
+
+                    if pane_id_at_position == active_pane_id {
+                        log::info!("handling active");
+                        self.handle_active_pane_left_mouse_press(event, client_id)
+                    } else {
+                        log::info!("handling inactive");
+                        self.handle_inactive_pane_left_mouse_press(event, client_id)
+                    }
+                }
                 MouseEventType::Motion if event.alt => {
+                    Ok(MouseEffect::group_add(pane_id_at_position))
+                },
+                MouseEventType::Motion => {
                     // If resizing, continue resize
                     if self.pane_being_resized_with_mouse.is_some() {
                         let state_changed = self.continue_pane_resize_with_mouse(event.position, client_id)
@@ -4448,11 +4509,11 @@ impl Tab {
                             return Ok(MouseEffect::default());
                         }
                     }
-                    // Otherwise, do grouping
-                    // Ok(MouseEffect::group_add(pane_id_at_position))
-                    Ok(MouseEffect::default()) // TODO: NO!!!111oneoneon
-                },
-                MouseEventType::Release if event.alt => {
+                    self.handle_left_mouse_motion(event, client_id)
+                    // Ok(MouseEffect::default())
+                }
+                // MouseEventType::Release if event.alt => {
+                MouseEventType::Release => {
                     // If resizing, stop resize
                     if self.pane_being_resized_with_mouse.is_some() {
                         self.stop_pane_resize_with_mouse(event.position, client_id)
@@ -4462,15 +4523,6 @@ impl Tab {
                     // Otherwise, default behavior
                     self.handle_left_mouse_release(event, client_id)
                 },
-                MouseEventType::Press => {
-                    if pane_id_at_position == active_pane_id {
-                        self.handle_active_pane_left_mouse_press(event, client_id)
-                    } else {
-                        self.handle_inactive_pane_left_mouse_press(event, client_id)
-                    }
-                },
-                MouseEventType::Motion => self.handle_left_mouse_motion(event, client_id),
-                MouseEventType::Release => self.handle_left_mouse_release(event, client_id),
             }
         } else if event.wheel_up {
             self.handle_scrollwheel_up(&event.position, 3, client_id)
@@ -4527,6 +4579,7 @@ impl Tab {
             .get_pane_at(&event.position, false)
             .with_context(err_context)?
             .ok_or_else(|| anyhow!("Failed to find pane at position"))?;
+        let pane_id_at_position = pane_at_position.pid();
         if pane_at_position.position_is_on_frame(&event.position) {
             // intercept frame click eg. for toggling pinned
             let intercepted = pane_at_position.intercept_mouse_event_on_frame(&event, client_id);
@@ -4543,6 +4596,19 @@ impl Tab {
                     self.swap_layouts.set_is_floating_damaged();
                     self.set_force_render();
                     return Ok(MouseEffect::state_changed());
+                }
+            } else {
+                // start resize
+                if let Ok(Some(pane_at_position)) = self.get_pane_at(&event.position, false) {
+                    if let Some(edge) = pane_at_position.get_edge_at_position(&event.position) {
+                        self.start_pane_resize_with_mouse(
+                            pane_id_at_position,
+                            edge,
+                            event.position,
+                            client_id,
+                        ).with_context(err_context)?;
+                        return Ok(MouseEffect::state_changed());
+                    }
                 }
             }
         } else {
