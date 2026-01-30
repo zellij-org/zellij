@@ -231,6 +231,7 @@ impl<'a> TiledPaneGrid<'a> {
         pane_id: &PaneId,
         strategy: &ResizeStrategy,
         change_by: (f64, f64),
+        allow_inverting_strategy: bool,
     ) -> Result<bool> {
         let err_context = || format!("failed to {strategy} by {change_by:?} for pane {pane_id:?}");
         // Shorthand
@@ -239,7 +240,8 @@ impl<'a> TiledPaneGrid<'a> {
 
         // Default behavior is to only increase pane size, unless the direction being resized to is
         // a boundary. In this case, decrease size from the other side (invert strategy)!
-        let can_invert_strategy_if_needed = strategy.resize_increase()  // Only invert when increasing
+        let can_invert_strategy_if_needed = allow_inverting_strategy 
+            && strategy.resize_increase()  // Only invert when increasing
             && strategy.invert_on_boundaries          // Only invert if configured to do so
             && strategy.direction.is_some(); // Only invert if there's a direction
 
@@ -474,10 +476,10 @@ impl<'a> TiledPaneGrid<'a> {
                             .unwrap_or(false)
                     {
                         let result = self
-                            .change_pane_size(pane_id, &main_strategy, change_by)
+                            .change_pane_size(pane_id, &main_strategy, change_by, true)
                             .and_then(|ret| {
                                 Ok(ret
-                                    && self.change_pane_size(pane_id, &sub_strategy, change_by)?)
+                                    && self.change_pane_size(pane_id, &sub_strategy, change_by, true)?)
                             })
                             .and_then(|ret| {
                                 if let Some(aligned_pane) = aligned_panes[adjust_pane] {
@@ -490,6 +492,7 @@ impl<'a> TiledPaneGrid<'a> {
                                                 resize: strategy.resize.invert(),
                                             },
                                             change_by,
+                                            true,
                                         )?)
                                 } else {
                                     Ok(ret)
@@ -505,7 +508,7 @@ impl<'a> TiledPaneGrid<'a> {
                         ..strategy
                     };
                     if self
-                        .change_pane_size(pane_id, &new_strategy, change_by)
+                        .change_pane_size(pane_id, &new_strategy, change_by, true)
                         .unwrap_or(false)
                     {
                         return Ok(true);

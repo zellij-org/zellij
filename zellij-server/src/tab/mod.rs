@@ -507,7 +507,7 @@ pub trait Pane {
         }
         false
     }
-    fn get_edge_at_position(&self, position: &Position, draw_pane_frames: bool) -> Option<PaneEdge> {
+    fn get_edge_at_position(&self, position: &Position) -> Option<PaneEdge> {
         if !self.contains(position) {
             return None;
         }
@@ -519,74 +519,18 @@ pub trait Pane {
         let pane_cols = self.cols();
         let pane_rows = self.rows();
 
-        // Dynamic threshold: relative to pane size, with min/max bounds
-        // Use 1/3 of the smaller dimension, constrained between 3 and 10 cells
-        let corner_threshold = usize::max(3, usize::min(10, usize::min(pane_cols, pane_rows) / 3));
+        let mid_col = pane_x + pane_cols / 2;
+        let mid_line = pane_y + pane_rows / 2;
 
-        if draw_pane_frames {
-            let content_x = self.get_content_x();
-            let content_y = self.get_content_y();
-            let content_cols = self.get_content_columns();
-            let content_rows = self.get_content_rows();
+        let is_left = pos_col < mid_col;
+        let is_top = (pos_line as usize) < mid_line;
 
-            let on_frame = self.position_is_on_frame(position);
-
-            if on_frame {
-                // When on frame, determine which corner based on quadrant
-                let mid_col = pane_x + pane_cols / 2;
-                let mid_line = pane_y + pane_rows / 2;
-
-                let is_left = pos_col < mid_col;
-                let is_top = (pos_line as usize) < mid_line;
-
-                return Some(match (is_top, is_left) {
-                    (true, true) => PaneEdge::TopLeft,
-                    (true, false) => PaneEdge::TopRight,
-                    (false, true) => PaneEdge::BottomLeft,
-                    (false, false) => PaneEdge::BottomRight,
-                });
-            } else {
-                // When not on frame, check if within threshold of content area edges
-                let near_left = pos_col >= content_x && pos_col < content_x + corner_threshold;
-                let near_right = pos_col >= (content_x + content_cols).saturating_sub(corner_threshold)
-                    && pos_col < content_x + content_cols;
-                let near_top = pos_line >= content_y as isize && pos_line < (content_y + corner_threshold) as isize;
-                let near_bottom = pos_line >= ((content_y + content_rows).saturating_sub(corner_threshold)) as isize
-                    && pos_line < (content_y + content_rows) as isize;
-
-                // Detect corners based on which edges we're near
-                if near_top && near_left {
-                    return Some(PaneEdge::TopLeft);
-                } else if near_top && near_right {
-                    return Some(PaneEdge::TopRight);
-                } else if near_bottom && near_left {
-                    return Some(PaneEdge::BottomLeft);
-                } else if near_bottom && near_right {
-                    return Some(PaneEdge::BottomRight);
-                }
-            }
-        } else {
-            // Frameless mode: check if within threshold of pane boundaries
-            let near_left = pos_col >= pane_x && pos_col < pane_x + corner_threshold;
-            let near_right = pos_col >= (pane_x + pane_cols).saturating_sub(corner_threshold)
-                && pos_col < pane_x + pane_cols;
-            let near_top = pos_line >= pane_y as isize && pos_line < (pane_y + corner_threshold) as isize;
-            let near_bottom = pos_line >= (pane_y + pane_rows).saturating_sub(corner_threshold) as isize
-                && pos_line < (pane_y + pane_rows) as isize;
-
-            // Detect corners based on which edges we're near
-            if near_top && near_left {
-                return Some(PaneEdge::TopLeft);
-            } else if near_top && near_right {
-                return Some(PaneEdge::TopRight);
-            } else if near_bottom && near_left {
-                return Some(PaneEdge::BottomLeft);
-            } else if near_bottom && near_right {
-                return Some(PaneEdge::BottomRight);
-            }
-        }
-
-        None
+        return Some(match (is_top, is_left) {
+            (true, true) => PaneEdge::TopLeft,
+            (true, false) => PaneEdge::TopRight,
+            (false, true) => PaneEdge::BottomLeft,
+            (false, false) => PaneEdge::BottomRight,
+        });
     }
     // TODO: get rid of this in favor of intercept_mouse_event_on_frame
     fn intercept_left_mouse_click(&mut self, _position: &Position, _client_id: ClientId) -> bool {
@@ -4479,11 +4423,8 @@ impl Tab {
             match event.event_type {
                 MouseEventType::Press if event.alt => {
                     self.mouse_hover_pane_id.remove(&client_id);
-                    // Check if position is on edge for resize
-                    let draw_pane_frames = self.draw_pane_frames;
                     if let Ok(Some(pane_at_position)) = self.get_pane_at(&event.position, false) {
-                        if let Some(edge) = pane_at_position.get_edge_at_position(&event.position, draw_pane_frames) {
-                            // Start resize
+                        if let Some(edge) = pane_at_position.get_edge_at_position(&event.position) {
                             self.start_pane_resize_with_mouse(
                                 pane_id_at_position,
                                 edge,
@@ -5008,10 +4949,12 @@ impl Tab {
                 (delta_x.unsigned_abs(), delta_y.unsigned_abs()),
             ).with_context(err_context)?;
         } else {
+            let allow_inverting_strategy = false; // bad ux for mouse resize
             self.resize_tiled_pane_with_strategies(
                 pane_id,
                 &strategies,
                 (delta_x.abs() as f64, delta_y.abs() as f64),
+                allow_inverting_strategy,
             ).with_context(err_context)?;
         }
 
@@ -5064,6 +5007,7 @@ impl Tab {
         pane_id: PaneId,
         strategies: &[ResizeStrategy],
         change_by: (f64, f64),
+        allow_inverting_strategy: bool,
     ) -> Result<()> {
         let err_context = || format!("failed to resize tiled pane {pane_id:?}");
 
@@ -5088,7 +5032,7 @@ impl Tab {
         );
 
         self.tiled_panes
-            .resize_pane_with_strategies(pane_id, strategies, change_by_percent)
+            .resize_pane_with_strategies(pane_id, strategies, change_by_percent, allow_inverting_strategy)
             .with_context(err_context)?;
 
         self.swap_layouts.set_is_tiled_damaged();

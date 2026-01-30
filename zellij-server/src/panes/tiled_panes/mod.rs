@@ -1714,6 +1714,7 @@ impl TiledPanes {
                 &pane_id,
                 &strategy,
                 resize_percent.unwrap_or((RESIZE_PERCENT, RESIZE_PERCENT)),
+                true,
             )
             .with_context(err_context)
         {
@@ -1728,6 +1729,7 @@ impl TiledPanes {
                             &pane_id,
                             &strategy,
                             (RESIZE_PERCENT * 2.0, RESIZE_PERCENT * 2.0),
+                            true,
                         )
                         .with_context(err_context)
                     {
@@ -1759,6 +1761,7 @@ impl TiledPanes {
         pane_id: PaneId,
         strategies: &[ResizeStrategy],
         change_by: (f64, f64),
+        allow_inverting_strategy: bool,
     ) -> Result<()> {
         let err_context = || format!("failed to resize pane {:?} with strategies", pane_id);
 
@@ -1773,7 +1776,7 @@ impl TiledPanes {
         for strategy in strategies {
             // Ignore errors - resize may fail if hitting constraints (acceptable)
             let _ = pane_grid
-                .change_pane_size(&pane_id, strategy, change_by)
+                .change_pane_size(&pane_id, strategy, change_by, allow_inverting_strategy)
                 .with_context(err_context);
         }
 
