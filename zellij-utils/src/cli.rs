@@ -339,6 +339,10 @@ pub enum Sessions {
         #[clap(short, long, value_parser, conflicts_with("floating"))]
         direction: Option<Direction>,
 
+        /// The size (percent) of the newly opened pane when splitting with `--direction`
+        #[clap(long, value_parser, requires("direction"), conflicts_with("floating"))]
+        size: Option<usize>,
+
         /// Change the working directory of the new pane
         #[clap(long, value_parser)]
         cwd: Option<PathBuf>,
@@ -672,6 +676,11 @@ pub enum CliAction {
         /// Direction to open the new pane in
         #[clap(short, long, value_parser, conflicts_with("floating"))]
         direction: Option<Direction>,
+
+        /// The size (percent) of the newly opened pane when splitting with `--direction`
+        /// (eg. `--size 30` will create a pane with 30% of the width/height depending on direction)
+        #[clap(long, value_parser, requires("direction"), conflicts_with("floating"))]
+        size: Option<usize>,
 
         #[clap(last(true))]
         command: Vec<String>,

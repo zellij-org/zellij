@@ -377,6 +377,7 @@ message NewTiledPaneAction {
   optional string pane_name = 3;
   bool near_current_pane = 7;
   optional bool borderless = 8;
+  optional SplitSize split_size = 9;
 }
 
 message NewInPlacePaneAction {
@@ -711,6 +712,7 @@ message NoPreferencePlacement {
 message TiledPlacement {
   optional Direction direction = 1;
   optional bool borderless = 2;
+  optional SplitSize split_size = 3;
 }
 
 message StackedPlacement {

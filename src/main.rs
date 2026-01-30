@@ -28,6 +28,7 @@ fn main() {
         if let Some(Command::Sessions(Sessions::Run {
             command,
             direction,
+            size,
             cwd,
             floating,
             in_place,
@@ -66,6 +67,7 @@ fn main() {
                 command,
                 plugin: None,
                 direction,
+                size,
                 cwd,
                 floating,
                 in_place,
@@ -106,10 +108,12 @@ fn main() {
             let stacked = false;
             let blocking = false;
             let unblock_condition = None;
+            let size = None;
             let command_cli_action = CliAction::NewPane {
                 command: vec![],
                 plugin: Some(url),
                 direction: None,
+                size,
                 cwd,
                 floating,
                 in_place,

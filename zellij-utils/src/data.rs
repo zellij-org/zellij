@@ -3,7 +3,7 @@ use crate::input::actions::{Action, RunCommandAction};
 use crate::input::config::{ConversionError, KdlError};
 use crate::input::keybinds::Keybinds;
 use crate::input::layout::{
-    Layout, PercentOrFixed, Run, RunPlugin, RunPluginLocation, RunPluginOrAlias,
+    Layout, PercentOrFixed, Run, RunPlugin, RunPluginLocation, RunPluginOrAlias, SplitSize,
 };
 use crate::pane_size::PaneGeom;
 use crate::position::Position;
@@ -3015,6 +3015,7 @@ pub enum NewPanePlacement {
     },
     Tiled {
         direction: Option<Direction>,
+        split_size: Option<SplitSize>,
         borderless: Option<bool>,
     },
     Floating(Option<FloatingPaneCoordinates>),
