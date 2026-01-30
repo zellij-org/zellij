@@ -135,7 +135,7 @@ pub(crate) fn background_jobs_main(
         .build()
         .ok();
     // We needn't do anything with the runtime, but it should exist at this point.
-    let runtime = crate::global_async_runtime::get_tokio_runtime();
+    let runtime = zellij_utils::global_async_runtime::get_tokio_runtime();
 
     loop {
         let (event, mut err_ctx) = bus.recv().with_context(err_context)?;

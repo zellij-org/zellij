@@ -1243,7 +1243,7 @@ pub(crate) fn plugin_thread_main(
     // once all senders are dropped or the timeout is reached, recv will return an error, that we ignore
 
     drop(shutdown_send);
-    let runtime = crate::global_async_runtime::get_tokio_runtime();
+    let runtime = zellij_utils::global_async_runtime::get_tokio_runtime();
     runtime.block_on(async {
         let result = tokio::time::timeout(EXIT_TIMEOUT, shutdown_receive.recv()).await;
         if let Err(err) = result {

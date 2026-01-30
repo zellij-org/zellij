@@ -51,7 +51,7 @@ pub fn plugin_worker(mut worker: RunningWorker) -> UnboundedSender<MessageToWork
         UnboundedSender<MessageToWorker>,
         UnboundedReceiver<MessageToWorker>,
     ) = unbounded_channel();
-    crate::global_async_runtime::get_tokio_runtime().spawn({
+    zellij_utils::global_async_runtime::get_tokio_runtime().spawn({
         async move {
             loop {
                 match receiver.recv().await {

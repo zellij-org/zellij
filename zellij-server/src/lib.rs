@@ -11,7 +11,6 @@ pub mod panes;
 pub mod tab;
 
 mod background_jobs;
-mod global_async_runtime;
 mod logging_pipe;
 mod pane_groups;
 mod plugins;
@@ -2057,7 +2056,7 @@ fn report_changes_in_config_file(
     config_file_path: PathBuf,
     to_server: SenderWithContext<ServerInstruction>,
 ) {
-    global_async_runtime::get_tokio_runtime().spawn(async move {
+    zellij_utils::global_async_runtime::get_tokio_runtime().spawn(async move {
         watch_config_file_changes(config_file_path, move |new_config| {
             let to_server = to_server.clone();
             async move {
@@ -2075,7 +2074,7 @@ fn report_changes_in_layout_dir(
     to_screen: SenderWithContext<ScreenInstruction>,
 ) {
     std::thread::spawn(move || {
-        let rt = crate::global_async_runtime::get_tokio_runtime();
+        let rt = zellij_utils::global_async_runtime::get_tokio_runtime();
         rt.block_on(async move {
             watch_layout_dir_changes(
                 layout_dir,
