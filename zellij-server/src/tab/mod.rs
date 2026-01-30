@@ -4493,7 +4493,8 @@ impl Tab {
                             return Ok(MouseEffect::state_changed());
                         }
                     }
-                    Ok(MouseEffect::group_toggle(pane_id_at_position))
+                    // Ok(MouseEffect::group_toggle(pane_id_at_position))
+                    Ok(MouseEffect::default()) // TODO: NO!!!!11oneoneone
                 },
                 MouseEventType::Motion if event.alt => {
                     // If resizing, continue resize
@@ -4507,7 +4508,8 @@ impl Tab {
                         }
                     }
                     // Otherwise, do grouping
-                    Ok(MouseEffect::group_add(pane_id_at_position))
+                    // Ok(MouseEffect::group_add(pane_id_at_position))
+                    Ok(MouseEffect::default()) // TODO: NO!!!111oneoneon
                 },
                 MouseEventType::Release if event.alt => {
                     // If resizing, stop resize
