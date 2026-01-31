@@ -2004,6 +2004,59 @@ impl LayoutInfo {
             LayoutInfo::Stringified(_stringified) => false,
         }
     }
+    pub fn from_cli(
+        layout_dir: &Option<PathBuf>,
+        maybe_layout_path: &Option<PathBuf>,
+        cwd: PathBuf,
+    ) -> Option<Self> {
+        // If we're not given a layout path, fall back to "default". Since we cannot tell ahead of
+        // time whether the user has a layout named "default.kdl" in their layout directory, we
+        // cannot blindly assume that this is indeed the builtin default layout. The layout
+        // resolution below will correctly handle this.
+        // The docs promise this behavior, so we have to abide:
+        // <https://zellij.dev/documentation/layouts.html#layout-default-directory>
+        let layout_path = maybe_layout_path
+            .clone()
+            .unwrap_or(PathBuf::from("default"));
+
+        if layout_path.starts_with("http://") || layout_path.starts_with("https://") {
+            Some(LayoutInfo::Url(layout_path.display().to_string()))
+        } else if layout_path.extension().is_some() || layout_path.components().count() > 1 {
+            let layout_dir = cwd;
+            let file_path = layout_dir.join(layout_path);
+            Some(LayoutInfo::File(
+                // layout_dir.join(layout_path).display().to_string(),
+                file_path.display().to_string(),
+                LayoutMetadata::from(&file_path),
+            ))
+        } else {
+            // Attempt to interpret the layout as bare layout name from the layout application
+            // directory. This is described in the docs:
+            // <https://zellij.dev/documentation/layouts.html#layout-default-directory>
+            if let Some(layout_dir) = layout_dir
+                .as_ref()
+                .map(|l| l.clone())
+                .or_else(default_layout_dir)
+            {
+                let file_path = layout_dir.join(&layout_path);
+                if file_path.exists() {
+                    return Some(LayoutInfo::File(
+                        file_path.display().to_string(),
+                        LayoutMetadata::from(&file_path),
+                    ));
+                }
+                let file_path_with_ext = file_path.with_extension("kdl");
+                if file_path_with_ext.exists() {
+                    return Some(LayoutInfo::File(
+                        file_path_with_ext.display().to_string(),
+                        LayoutMetadata::from(&file_path_with_ext),
+                    ));
+                }
+            }
+            // Assume a builtin layout by default
+            Some(LayoutInfo::BuiltIn(layout_path.display().to_string()))
+        }
+    }
     pub fn from_config(
         layout_dir: &Option<PathBuf>,
         maybe_layout_path: &Option<PathBuf>,
