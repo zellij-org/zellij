@@ -299,6 +299,7 @@ message NewTiledPanePayload {
   optional resize.ResizeDirection direction = 2;
   bool near_current_pane = 3;
   optional bool borderless = 4;
+  optional SplitSize split_size = 5;
 }
 
 message MovePanePayload {
@@ -515,6 +516,7 @@ message NoPreferenceOptions {
 message TiledPlacement {
   optional resize.ResizeDirection direction = 1;
   optional bool borderless = 2;
+  optional SplitSize split_size = 3;
 }
 
 message FloatingPlacement {

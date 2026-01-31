@@ -483,6 +483,8 @@ pub struct NewTiledPanePayload {
     pub near_current_pane: bool,
     #[prost(bool, optional, tag="4")]
     pub borderless: ::core::option::Option<bool>,
+    #[prost(message, optional, tag="5")]
+    pub split_size: ::core::option::Option<SplitSize>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -687,6 +689,8 @@ pub struct TiledPlacement {
     pub direction: ::core::option::Option<i32>,
     #[prost(bool, optional, tag="2")]
     pub borderless: ::core::option::Option<bool>,
+    #[prost(message, optional, tag="3")]
+    pub split_size: ::core::option::Option<SplitSize>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
