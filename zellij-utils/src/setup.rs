@@ -774,7 +774,16 @@ mod setup_test {
         )));
         let (_config, layout_info, options, _, _) = Setup::from_cli_args(&cli_args).unwrap();
         assert_snapshot!(format!("{:#?}", options));
-        assert_snapshot!(format!("{:#?}", layout_info));
+        let Some(LayoutInfo::File(layout_path, _)) = layout_info else {
+            panic!("layout info doesn't have expected format");
+        };
+        assert_eq!(
+            layout_path,
+            format!(
+                "{}/src/test-fixtures/layout-with-options.kdl",
+                env!("CARGO_MANIFEST_DIR")
+            )
+        );
     }
     #[test]
     fn cli_arguments_override_layout_options() {
@@ -789,7 +798,16 @@ mod setup_test {
         }));
         let (_config, layout_info, options, _, _) = Setup::from_cli_args(&cli_args).unwrap();
         assert_snapshot!(format!("{:#?}", options));
-        assert_snapshot!(format!("{:#?}", layout_info));
+        let Some(LayoutInfo::File(layout_path, _)) = layout_info else {
+            panic!("layout info doesn't have expected format");
+        };
+        assert_eq!(
+            layout_path,
+            format!(
+                "{}/src/test-fixtures/layout-with-options.kdl",
+                env!("CARGO_MANIFEST_DIR")
+            )
+        );
     }
     #[test]
     fn layout_env_vars_override_config_env_vars() {
@@ -936,7 +954,7 @@ mod setup_test {
         assert_eq!(
             layout_path,
             format!(
-                "{}/assets/layouts/compact.kdl",
+                "{}/assets/layouts/compact",
                 std::env::current_dir().unwrap().display()
             ),
         );
