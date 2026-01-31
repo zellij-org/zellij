@@ -4471,3 +4471,83 @@ pub fn send_cli_change_floating_pane_coordinates_action() {
     }
     assert_snapshot!(format!("{}", snapshot_count));
 }
+
+#[test]
+pub fn bell_in_inactive_tab_sets_has_bell_flag() {
+    // This test verifies that when a bell character is received in an inactive tab,
+    // the TabInfo.has_bell flag is set to true in the TabUpdate event sent to plugins.
+    let size = Size { cols: 80, rows: 10 };
+    let client_id = 1;
+
+    // Create initial layout with one pane
+    let mut initial_layout = TiledPaneLayout::default();
+    initial_layout.children_split_direction = SplitDirection::Vertical;
+    initial_layout.children = vec![TiledPaneLayout::default()];
+
+    // Create second tab layout
+    let mut second_tab_layout = TiledPaneLayout::default();
+    second_tab_layout.children_split_direction = SplitDirection::Vertical;
+    second_tab_layout.children = vec![TiledPaneLayout::default()];
+
+    let mut mock_screen = MockScreen::new(size);
+    mock_screen.new_tab(second_tab_layout);
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
+
+    // Capture plugin instructions to check TabUpdate events
+    let received_plugin_instructions = Arc::new(Mutex::new(vec![]));
+    let plugin_receiver = mock_screen.plugin_receiver.take().unwrap();
+    let plugin_thread = log_actions_in_thread!(
+        received_plugin_instructions,
+        PluginInstruction::Exit,
+        plugin_receiver
+    );
+
+    // Switch to the second tab (making first tab inactive)
+    // Tab indices are 1-based in CLI actions
+    let goto_tab = CliAction::GoToTab { index: 2 };
+    send_cli_action_to_server(&session_metadata, goto_tab, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    // Send bell character (\x07) to terminal 0 which is in the first (inactive) tab
+    let bell_char: Vec<u8> = vec![0x07]; // BEL character
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::PtyBytes(0, bell_char));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    // Trigger a render to process the bell
+    let _ = mock_screen.to_screen.send(ScreenInstruction::Render);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    mock_screen.teardown(vec![plugin_thread, screen_thread]);
+
+    // Find TabUpdate events and check if any tab has has_bell = true
+    let tab_updates: Vec<_> = received_plugin_instructions
+        .lock()
+        .unwrap()
+        .iter()
+        .filter_map(|instruction| match instruction {
+            PluginInstruction::Update(updates) => {
+                let tab_update = updates.iter().find_map(|u| match u {
+                    (_, _, Event::TabUpdate(tabs)) => Some(tabs.clone()),
+                    _ => None,
+                });
+                tab_update
+            },
+            _ => None,
+        })
+        .collect();
+
+    // Check if any TabUpdate contains a tab with has_bell = true
+    let has_bell_in_any_update = tab_updates
+        .iter()
+        .any(|tabs| tabs.iter().any(|tab| tab.has_bell && !tab.active));
+
+    assert!(
+        has_bell_in_any_update,
+        "Expected to find a TabUpdate with has_bell=true for an inactive tab. \
+         Tab updates received: {:#?}",
+        tab_updates
+    );
+}

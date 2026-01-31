@@ -873,6 +873,10 @@ impl FloatingPanes {
             self.active_panes
                 .insert(client_id, pane_id, &mut self.panes);
         }
+        // Clear any bell highlight when pane becomes focused
+        if let Some(pane) = self.panes.get_mut(&pane_id) {
+            pane.clear_pane_frame_color_override(None);
+        }
         self.z_indices.retain(|p_id| *p_id != pane_id);
         self.z_indices.push(pane_id);
         self.make_sure_pinned_panes_are_on_top();
@@ -1286,5 +1290,14 @@ impl FloatingPanes {
             .get(pane_id)
             .map(|p| p.position_and_size().is_pinned)
             .unwrap_or(false)
+    }
+    pub fn drain_pending_bells(&mut self) -> Vec<PaneId> {
+        let mut panes_with_bells = Vec::new();
+        for (pane_id, pane) in self.panes.iter_mut() {
+            if pane.drain_pending_bell() {
+                panes_with_bells.push(*pane_id);
+            }
+        }
+        panes_with_bells
     }
 }

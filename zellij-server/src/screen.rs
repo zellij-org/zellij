@@ -1286,6 +1286,11 @@ impl Screen {
                         self.update_client_tab_focus(client_id, new_tab_index);
                     }
 
+                    // Clear any pending bell notification on the new active tab
+                    if let Some(new_tab) = self.get_indexed_tab_mut(new_tab_index) {
+                        new_tab.clear_pending_bell_notification();
+                    }
+
                     if let Some(current_tab) = self.get_indexed_tab_mut(current_tab_index) {
                         if current_tab.has_no_connected_clients() {
                             current_tab.visible(false).with_context(err_context)?;
@@ -1595,6 +1600,50 @@ impl Screen {
                 self.close_tab_at_index(tab_index)
                     .context(err_context)
                     .non_fatal();
+            }
+
+            // Drain pending bells from ALL tabs (including inactive ones) and send to all clients.
+            // This ensures bells from background tabs are propagated to the terminal.
+            // Also collect panes that need bell highlighting (unfocused panes with bells).
+            let mut has_bell = false;
+            let mut panes_to_highlight: Vec<PaneId> = Vec::new();
+            let all_client_ids: Vec<ClientId> =
+                self.connected_clients.borrow().keys().copied().collect();
+            for (tab_index, tab) in self.tabs.iter_mut() {
+                let panes_with_bells = tab.drain_pending_bells();
+                if !panes_with_bells.is_empty() {
+                    has_bell = true;
+                    // Collect unfocused panes that need bell highlighting
+                    // A pane is considered unfocused if no client has it as their active pane
+                    for pane_id in panes_with_bells {
+                        let is_focused_by_any_client = all_client_ids.iter().any(|client_id| {
+                            // Only check focus for clients whose active tab is this tab
+                            self.active_tab_indices
+                                .get(client_id)
+                                .map(|active_tab| *active_tab == *tab_index)
+                                .unwrap_or(false)
+                                && tab.get_active_pane_id(*client_id) == Some(pane_id)
+                        });
+                        if !is_focused_by_any_client {
+                            panes_to_highlight.push(pane_id);
+                        }
+                    }
+                }
+            }
+            // Send bell highlight via background job to avoid render races
+            if !panes_to_highlight.is_empty() {
+                let _ = self.bus.senders.send_to_background_jobs(
+                    BackgroundJob::HighlightPanesForBell(panes_to_highlight),
+                );
+            }
+            if has_bell {
+                // Send the bell character (BEL, \x07) to all connected clients
+                output.add_post_vte_instruction_to_multiple_clients(
+                    all_client_ids.into_iter(),
+                    "\u{7}",
+                );
+                // Notify plugins about the updated bell state so tab-bar can show indicator
+                let _ = self.generate_and_report_tab_state();
             }
 
             let pane_render_report = output.drain_pane_render_report();
@@ -2095,6 +2144,7 @@ impl Screen {
                 display_area_columns: tab_display_area.cols,
                 selectable_tiled_panes_count,
                 selectable_floating_panes_count,
+                has_bell: tab.has_pending_bell_notification,
             };
             tab_infos_for_screen_state.insert(tab.position, tab_info_for_screen);
         }
@@ -2135,6 +2185,7 @@ impl Screen {
                     display_area_columns: tab_display_area.cols,
                     selectable_tiled_panes_count,
                     selectable_floating_panes_count,
+                    has_bell: tab.has_pending_bell_notification,
                 };
                 plugin_tab_updates.push(tab_info_for_plugins);
             }

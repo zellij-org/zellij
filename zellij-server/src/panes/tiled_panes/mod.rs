@@ -904,6 +904,10 @@ impl TiledPanes {
         }
         self.active_panes
             .insert(client_id, pane_id, &mut self.panes);
+        // Clear any bell highlight when pane becomes focused
+        if let Some(pane) = self.panes.get_mut(&pane_id) {
+            pane.clear_pane_frame_color_override(None);
+        }
         if self.session_is_mirrored {
             // move all clients
             let connected_clients: Vec<ClientId> =
@@ -2728,6 +2732,15 @@ impl TiledPanes {
             *self.viewport.borrow(),
         );
         pane_grid.next_selectable_pane_id_to_the_right(&pane_id)
+    }
+    pub fn drain_pending_bells(&mut self) -> Vec<PaneId> {
+        let mut panes_with_bells = Vec::new();
+        for (pane_id, pane) in self.panes.iter_mut() {
+            if pane.drain_pending_bell() {
+                panes_with_bells.push(*pane_id);
+            }
+        }
+        panes_with_bells
     }
 }
 

@@ -94,6 +94,7 @@ pub fn tab_style(
     mut is_alternate_tab: bool,
     palette: Styling,
     capabilities: PluginCapabilities,
+    bell_indicator: &str,
 ) -> LinePart {
     let separator = tab_separator(capabilities);
 
@@ -101,6 +102,10 @@ pub fn tab_style(
         tabname.push_str(" (FULLSCREEN)");
     } else if tab.is_sync_panes_active {
         tabname.push_str(" (SYNC)");
+    }
+    // Show bell indicator for inactive tabs with pending bell notifications
+    if tab.has_bell && !tab.active && !bell_indicator.is_empty() {
+        tabname.push_str(bell_indicator);
     }
     // we only color alternate tabs differently if we can't use the arrow fonts to separate them
     if !capabilities.arrow_fonts {
