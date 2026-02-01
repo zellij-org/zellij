@@ -1216,6 +1216,20 @@ impl Screen {
         }
     }
 
+    /// Notify the pty thread of the active tab name for the given client (so new panes get
+    /// ZELLIJ_TAB_NAME set).
+    fn send_active_tab_name_to_pty(&mut self, client_id: ClientId) -> Result<()> {
+        if let Some(&tab_index) = self.active_tab_indices.get(&client_id) {
+            if let Some(tab) = self.tabs.get(&tab_index) {
+                let name = tab.name.clone();
+                self.bus
+                    .senders
+                    .send_to_pty(PtyInstruction::UpdateClientTabName(client_id, name))?;
+            }
+        }
+        Ok(())
+    }
+
     /// A helper function to switch to a new tab at specified position.
     fn switch_active_tab(
         &mut self,
@@ -1298,6 +1312,19 @@ impl Screen {
 
                     self.log_and_report_session_state()
                         .with_context(err_context)?;
+                    if self.session_is_mirrored {
+                        let all_connected_clients: Vec<ClientId> = self
+                            .connected_clients
+                            .borrow()
+                            .iter()
+                            .map(|(c, _i)| *c)
+                            .collect();
+                        for cid in all_connected_clients {
+                            let _ = self.send_active_tab_name_to_pty(cid);
+                        }
+                    } else {
+                        let _ = self.send_active_tab_name_to_pty(client_id);
+                    }
                     return self.render(None).with_context(err_context);
                 },
                 Err(err) => Err::<(), _>(err).with_context(err_context).non_fatal(),
@@ -4894,6 +4921,7 @@ pub(crate) fn screen_thread_main(
                     (client_id, is_web_client),
                     blocking_terminal,
                 )?;
+                let _ = screen.send_active_tab_name_to_pty(client_id);
                 pending_tab_ids.remove(&tab_index);
                 if pending_tab_ids.is_empty() {
                     for (tab_index, client_id) in pending_tab_switches.drain() {
@@ -5044,6 +5072,7 @@ pub(crate) fn screen_thread_main(
                                 // waiting for it
             ) => {
                 screen.update_active_tab_name(c, client_id)?;
+                let _ = screen.send_active_tab_name_to_pty(client_id);
                 screen.render(None)?;
             },
             ScreenInstruction::UndoRenameTab(
@@ -5052,6 +5081,7 @@ pub(crate) fn screen_thread_main(
                                 // waiting for it
             ) => {
                 screen.undo_active_rename_tab(client_id)?;
+                let _ = screen.send_active_tab_name_to_pty(client_id);
                 screen.render(None)?;
             },
             ScreenInstruction::MoveTabLeft(client_id, completion_tx) => {
@@ -5168,6 +5198,7 @@ pub(crate) fn screen_thread_main(
                 } else if let Some(tab_position_to_focus) = tab_position_to_focus {
                     screen.go_to_tab(tab_position_to_focus, client_id)?;
                 }
+                let _ = screen.send_active_tab_name_to_pty(client_id);
                 for event in pending_events_waiting_for_client.drain(..) {
                     screen.bus.senders.send_to_screen(event).non_fatal();
                 }

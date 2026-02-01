@@ -18,6 +18,8 @@ pub fn set_zellij(v: String) {
 
 pub const SESSION_NAME_ENV_KEY: &str = "ZELLIJ_SESSION_NAME";
 
+pub const TAB_NAME_ENV_KEY: &str = "ZELLIJ_TAB_NAME";
+
 pub fn get_session_name() -> Result<String> {
     Ok(var(SESSION_NAME_ENV_KEY)?)
 }

@@ -147,6 +147,8 @@ pub enum PtyInstruction {
         response_channel: crossbeam::channel::Sender<GetPanePidResponse>,
     },
     UpdateAndReportCwds,
+    /// Update the active tab name for a client (used when switching/renaming tabs).
+    UpdateClientTabName(ClientId, String),
     Exit,
 }
 
@@ -177,6 +179,7 @@ impl From<&PtyInstruction> for PtyContext {
             PtyInstruction::SendSigkillToPaneId(..) => PtyContext::SendSigkillToPaneId,
             PtyInstruction::GetPanePid { .. } => PtyContext::GetPanePid,
             PtyInstruction::UpdateAndReportCwds => PtyContext::UpdateAndReportCwds,
+            PtyInstruction::UpdateClientTabName(..) => PtyContext::UpdateClientTabName,
             PtyInstruction::Exit => PtyContext::Exit,
         }
     }
@@ -193,6 +196,10 @@ pub(crate) struct Pty {
     post_command_discovery_hook: Option<String>,
     plugin_cwds: HashMap<u32, PathBuf>,   // plugin_id -> cwd
     terminal_cwds: HashMap<u32, PathBuf>, // terminal_id -> cwd
+    /// Active tab name per client (for ZELLIJ_TAB_NAME when spawning panes).
+    client_active_tab_names: HashMap<ClientId, String>,
+    /// Tab name per terminal pane (for ZELLIJ_TAB_NAME when re-running command).
+    terminal_tab_names: HashMap<u32, String>,
 }
 
 pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
@@ -857,6 +864,9 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
             PtyInstruction::UpdateAndReportCwds => {
                 pty.update_and_report_cwds();
             },
+            PtyInstruction::UpdateClientTabName(client_id, tab_name) => {
+                pty.client_active_tab_names.insert(client_id, tab_name);
+            },
             PtyInstruction::Exit => break,
         }
     }
@@ -881,6 +891,8 @@ impl Pty {
             post_command_discovery_hook,
             plugin_cwds: HashMap::new(),
             terminal_cwds: HashMap::new(),
+            client_active_tab_names: HashMap::new(),
+            terminal_tab_names: HashMap::new(),
         }
     }
     pub fn get_default_terminal(
@@ -974,6 +986,13 @@ impl Pty {
     ) -> Result<(u32, bool)> {
         // bool is starts_held
         let err_context = || format!("failed to spawn terminal for {:?}", client_or_tab_index);
+
+        let tab_name = match &client_or_tab_index {
+            ClientTabIndexOrPaneId::ClientId(client_id) => {
+                self.client_active_tab_names.get(client_id).cloned()
+            },
+            ClientTabIndexOrPaneId::TabIndex(_) | ClientTabIndexOrPaneId::PaneId(_) => None,
+        };
 
         // returns the terminal id
         let terminal_action = match client_or_tab_index {
@@ -1078,9 +1097,17 @@ impl Pty {
             .as_mut()
             .context("no OS I/O interface found")
             .and_then(|os_input| {
-                os_input.spawn_terminal(terminal_action, quit_cb, self.default_editor.clone())
+                os_input.spawn_terminal(
+                    terminal_action,
+                    quit_cb,
+                    self.default_editor.clone(),
+                    tab_name.clone(),
+                )
             })
             .with_context(err_context)?;
+        if let Some(name) = tab_name {
+            self.terminal_tab_names.insert(terminal_id, name);
+        }
         let terminal_bytes = task::spawn({
             let err_context =
                 |terminal_id: u32| format!("failed to run async task for terminal {terminal_id}");
@@ -1172,7 +1199,7 @@ impl Pty {
             });
             let mut terminal_id = None;
             if let Some(new_pane_data) =
-                self.apply_run_instruction(run_instruction, default_shell.clone())?
+                self.apply_run_instruction(run_instruction, default_shell.clone(), None)?
             {
                 terminal_id = Some(new_pane_data.0);
                 new_pane_pids.push(new_pane_data);
@@ -1192,7 +1219,7 @@ impl Pty {
             });
             let mut terminal_id = None;
             if let Some(new_pane_data) =
-                self.apply_run_instruction(run_instruction, default_shell.clone())?
+                self.apply_run_instruction(run_instruction, default_shell.clone(), None)?
             {
                 terminal_id = Some(new_pane_data.0);
                 new_floating_panes_pids.push(new_pane_data);
@@ -1365,8 +1392,11 @@ impl Pty {
                 }
             });
             let mut terminal_id = None;
-            if let Some(new_pane_data) =
-                self.apply_run_instruction(run_instruction, default_shell.clone())?
+            if let Some(new_pane_data) = self.apply_run_instruction(
+                run_instruction,
+                default_shell.clone(),
+                tab_name.clone(),
+            )?
             {
                 terminal_id = Some(new_pane_data.0);
                 new_pane_pids.push(new_pane_data);
@@ -1385,8 +1415,11 @@ impl Pty {
                 }
             });
             let mut terminal_id = None;
-            if let Some(new_pane_data) =
-                self.apply_run_instruction(run_instruction, default_shell.clone())?
+            if let Some(new_pane_data) = self.apply_run_instruction(
+                run_instruction,
+                default_shell.clone(),
+                tab_name.clone(),
+            )?
             {
                 terminal_id = Some(new_pane_data.0);
                 new_floating_panes_pids.push(new_pane_data);
@@ -1515,6 +1548,7 @@ impl Pty {
         &mut self,
         run_instruction: Option<Run>,
         default_shell: TerminalAction,
+        tab_name: Option<String>,
     ) -> Result<Option<(u32, bool, Option<RunCommand>, Result<i32>)>> {
         // terminal_id,
         // starts_held,
@@ -1589,12 +1623,20 @@ impl Pty {
                         .as_mut()
                         .context("no OS I/O interface found")
                         .with_context(err_context)?
-                        .spawn_terminal(cmd, quit_cb, self.default_editor.clone())
+                        .spawn_terminal(
+                            cmd,
+                            quit_cb,
+                            self.default_editor.clone(),
+                            tab_name.clone(),
+                        )
                         .with_context(err_context)
                     {
                         Ok((terminal_id, pid_primary, child_fd)) => {
                             self.id_to_child_pid.insert(terminal_id, child_fd);
                             self.capture_initial_cwd(terminal_id, child_fd);
+                            if let Some(ref name) = tab_name {
+                                self.terminal_tab_names.insert(terminal_id, name.clone());
+                            }
                             Ok(Some((
                                 terminal_id,
                                 starts_held,
@@ -1622,12 +1664,20 @@ impl Pty {
                     .as_mut()
                     .context("no OS I/O interface found")
                     .with_context(err_context)?
-                    .spawn_terminal(shell, quit_cb, self.default_editor.clone())
+                    .spawn_terminal(
+                        shell,
+                        quit_cb,
+                        self.default_editor.clone(),
+                        tab_name.clone(),
+                    )
                     .with_context(err_context)
                 {
                     Ok((terminal_id, pid_primary, child_fd)) => {
                         self.id_to_child_pid.insert(terminal_id, child_fd);
                         self.capture_initial_cwd(terminal_id, child_fd);
+                        if let Some(ref name) = tab_name {
+                            self.terminal_tab_names.insert(terminal_id, name.clone());
+                        }
                         Ok(Some((terminal_id, starts_held, None, Ok(pid_primary))))
                     },
                     Err(err) => match err.downcast_ref::<ZellijError>() {
@@ -1654,12 +1704,16 @@ impl Pty {
                         )),
                         quit_cb,
                         self.default_editor.clone(),
+                        tab_name.clone(),
                     )
                     .with_context(err_context)
                 {
                     Ok((terminal_id, pid_primary, child_fd)) => {
                         self.id_to_child_pid.insert(terminal_id, child_fd);
                         self.capture_initial_cwd(terminal_id, child_fd);
+                        if let Some(ref name) = tab_name {
+                            self.terminal_tab_names.insert(terminal_id, name.clone());
+                        }
                         Ok(Some((terminal_id, starts_held, None, Ok(pid_primary))))
                     },
                     Err(err) => match err.downcast_ref::<ZellijError>() {
@@ -1678,12 +1732,20 @@ impl Pty {
                     .as_mut()
                     .context("no OS I/O interface found")
                     .with_context(err_context)?
-                    .spawn_terminal(default_shell.clone(), quit_cb, self.default_editor.clone())
+                    .spawn_terminal(
+                        default_shell.clone(),
+                        quit_cb,
+                        self.default_editor.clone(),
+                        tab_name.clone(),
+                    )
                     .with_context(err_context)
                 {
                     Ok((terminal_id, pid_primary, child_fd)) => {
                         self.id_to_child_pid.insert(terminal_id, child_fd);
                         self.capture_initial_cwd(terminal_id, child_fd);
+                        if let Some(ref name) = tab_name {
+                            self.terminal_tab_names.insert(terminal_id, name.clone());
+                        }
                         Ok(Some((terminal_id, starts_held, None, Ok(pid_primary))))
                     },
                     Err(err) => match err.downcast_ref::<ZellijError>() {
@@ -1703,6 +1765,7 @@ impl Pty {
         match id {
             PaneId::Terminal(id) => {
                 self.task_handles.remove(&id);
+                self.terminal_tab_names.remove(&id);
                 if let Some(child_fd) = self.id_to_child_pid.remove(&id) {
                     task::block_on(async {
                         let err_context = || format!("failed to run async task for pane {id}");
@@ -1793,13 +1856,14 @@ impl Pty {
                         }
                     }
                 });
+                let tab_name = self.terminal_tab_names.get(&id).cloned();
                 let (pid_primary, child_fd): (RawFd, RawFd) = self
                     .bus
                     .os_input
                     .as_mut()
                     .context("no OS I/O interface found")
                     .and_then(|os_input| {
-                        os_input.re_run_command_in_terminal(id, run_command, quit_cb)
+                        os_input.re_run_command_in_terminal(id, run_command, quit_cb, tab_name)
                     })
                     .with_context(err_context)?;
                 let terminal_bytes = task::spawn({

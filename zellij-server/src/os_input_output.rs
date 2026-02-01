@@ -157,6 +157,7 @@ fn handle_openpty(
     cmd: RunCommand,
     quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>, // u32 is the exit status
     terminal_id: u32,
+    tab_name: Option<&str>,
 ) -> Result<(RawFd, RawFd)> {
     let err_context = |cmd: &RunCommand| {
         format!(
@@ -185,7 +186,11 @@ fn handle_openpty(
             }
             command
                 .args(&cmd.args)
-                .env("ZELLIJ_PANE_ID", &format!("{}", terminal_id))
+                .env("ZELLIJ_PANE_ID", &format!("{}", terminal_id));
+            if let Some(name) = tab_name {
+                command.env(zellij_utils::envs::TAB_NAME_ENV_KEY, name);
+            }
+            command
                 .pre_exec(move || -> std::io::Result<()> {
                     if libc::login_tty(pid_secondary) != 0 {
                         panic!("failed to set controlling terminal");
@@ -226,16 +231,17 @@ fn handle_terminal(
     orig_termios: Option<termios::Termios>,
     quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
     terminal_id: u32,
+    tab_name: Option<&str>,
 ) -> Result<(RawFd, RawFd)> {
     let err_context = || "failed to spawn child terminal".to_string();
 
     // Create a pipe to allow the child the communicate the shell's pid to its
     // parent.
     match openpty(None, &orig_termios) {
-        Ok(open_pty_res) => handle_openpty(open_pty_res, cmd, quit_cb, terminal_id),
+        Ok(open_pty_res) => handle_openpty(open_pty_res, cmd, quit_cb, terminal_id, tab_name),
         Err(e) => match failover_cmd {
             Some(failover_cmd) => {
-                handle_terminal(failover_cmd, None, orig_termios, quit_cb, terminal_id)
+                handle_terminal(failover_cmd, None, orig_termios, quit_cb, terminal_id, tab_name)
                     .with_context(err_context)
             },
             None => Err::<(i32, i32), _>(e)
@@ -285,6 +291,7 @@ fn spawn_terminal(
     quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>, // u32 is the exit_status
     default_editor: Option<PathBuf>,
     terminal_id: u32,
+    tab_name: Option<&str>,
 ) -> Result<(RawFd, RawFd)> {
     // returns the terminal_id, the primary fd and the
     // secondary fd
@@ -353,7 +360,7 @@ fn spawn_terminal(
         None
     };
 
-    handle_terminal(cmd, failover_cmd, orig_termios, quit_cb, terminal_id)
+    handle_terminal(cmd, failover_cmd, orig_termios, quit_cb, terminal_id, tab_name)
 }
 
 // The ClientSender is in charge of sending messages to the client on a special thread
@@ -483,6 +490,7 @@ pub trait ServerOsApi: Send + Sync {
         terminal_action: TerminalAction,
         quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>, // u32 is the exit status
         default_editor: Option<PathBuf>,
+        tab_name: Option<String>,
     ) -> Result<(u32, RawFd, RawFd)>;
     // reserves a terminal id without actually opening a terminal
     fn reserve_terminal_id(&self) -> Result<u32> {
@@ -530,6 +538,7 @@ pub trait ServerOsApi: Send + Sync {
         terminal_id: u32,
         run_command: RunCommand,
         quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>, // u32 is the exit status
+        tab_name: Option<String>,
     ) -> Result<(RawFd, RawFd)>;
     fn clear_terminal_id(&self, terminal_id: u32) -> Result<()>;
     fn cache_resizes(&mut self) {}
@@ -582,6 +591,7 @@ impl ServerOsApi for ServerOsInputOutput {
         terminal_action: TerminalAction,
         quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>, // u32 is the exit status
         default_editor: Option<PathBuf>,
+        tab_name: Option<String>,
     ) -> Result<(u32, RawFd, RawFd)> {
         let err_context = || "failed to spawn terminal".to_string();
 
@@ -614,6 +624,7 @@ impl ServerOsApi for ServerOsInputOutput {
                     quit_cb,
                     default_editor,
                     terminal_id,
+                    tab_name.as_deref(),
                 )
                 .and_then(|(pid_primary, pid_secondary)| {
                     self.terminal_id_to_raw_fd
@@ -856,6 +867,7 @@ impl ServerOsApi for ServerOsInputOutput {
         terminal_id: u32,
         run_command: RunCommand,
         quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>, // u32 is the exit status
+        tab_name: Option<String>,
     ) -> Result<(RawFd, RawFd)> {
         let default_editor = None; // no need for a default editor when running an explicit command
         self.orig_termios
@@ -868,6 +880,7 @@ impl ServerOsApi for ServerOsInputOutput {
                     quit_cb,
                     default_editor,
                     terminal_id,
+                    tab_name.as_deref(),
                 )
             })
             .and_then(|(pid_primary, pid_secondary)| {
