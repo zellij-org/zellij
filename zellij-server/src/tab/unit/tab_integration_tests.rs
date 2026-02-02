@@ -10442,6 +10442,63 @@ fn test_ctrl_drag_resizes_tiled_pane_vertically() {
 }
 
 #[test]
+fn test_ctrl_drag_resizes_unfocused_tiled_pane_vertically() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let new_pane_id = PaneId::Terminal(2);
+    let mut output = Output::default();
+
+    tab.horizontal_split(new_pane_id, None, client_id, None, None)
+        .unwrap();
+
+    tab.handle_pty_bytes(1, Vec::from("Top pane".as_bytes()))
+        .unwrap();
+    tab.handle_pty_bytes(2, Vec::from("Bottom pane".as_bytes()))
+        .unwrap();
+
+    tab.render(&mut output, None).unwrap();
+    let snapshot_before = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+
+    let edge_position = Position::new(10, 60);
+    let _ = tab.focus_pane_with_id(PaneId::Terminal(1), false, false, client_id); // focus top pane
+    tab.handle_mouse_event(&MouseEvent::new_left_press_with_ctrl_event(edge_position), client_id)
+        .unwrap();
+
+    let motion_position = Position::new(11, 60);
+    let motion_effect = tab
+        .handle_mouse_event(&MouseEvent::new_left_motion_with_ctrl_event(motion_position), client_id)
+        .unwrap();
+
+    tab.handle_mouse_event(&MouseEvent::new_left_release_with_ctrl_event(motion_position), client_id)
+        .unwrap();
+
+    assert!(motion_effect.state_changed);
+
+    let mut output = Output::default();
+    tab.render(&mut output, None).unwrap();
+    let snapshot_after = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    let focused_pane = tab.get_active_pane_id(client_id).unwrap();
+
+    assert_ne!(focused_pane, new_pane_id, "resize did not change focus");
+    assert_ne!(snapshot_before, snapshot_after);
+    assert_snapshot!(format!("{}", snapshot_after));
+}
+
+#[test]
 fn test_ctrl_click_on_pane_body_does_nothing() {
     let size = Size {
         cols: 121,
@@ -10612,6 +10669,78 @@ fn test_ctrl_drag_resizes_floating_pane_from_corner() {
     );
 
     assert_ne!(snapshot_before, snapshot_after);
+    assert_snapshot!(format!("{}", snapshot_after));
+}
+
+#[test]
+fn test_ctrl_drag_resizes_pinned_floating_pane_when_floating_panes_not_shown() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let floating_pane_id = PaneId::Terminal(2);
+    let mut output = Output::default();
+
+    let coordinates = FloatingPaneCoordinates {
+        x: Some(PercentOrFixed::Fixed(5)),
+        y: Some(PercentOrFixed::Fixed(5)),
+        width: Some(PercentOrFixed::Fixed(25)),
+        height: Some(PercentOrFixed::Fixed(10)),
+        pinned: Some(true),
+        borderless: Some(false),
+    };
+
+    tab.new_pane(
+        floating_pane_id,
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::Floating(Some(coordinates)),
+        Some(client_id),
+        None,
+    )
+    .unwrap();
+
+    tab.handle_pty_bytes(2, Vec::from("Corner resize test".as_bytes()))
+        .unwrap();
+
+    tab.render(&mut output, None).unwrap();
+    let snapshot_before = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    eprintln!("{}", snapshot_before);
+
+    let corner_position = Position::new(14, 29);
+    tab.handle_mouse_event(&MouseEvent::new_left_press_with_ctrl_event(corner_position), client_id)
+        .unwrap();
+
+    let motion_position = Position::new(15, 30);
+    let motion_effect = tab
+        .handle_mouse_event(&MouseEvent::new_left_motion_with_ctrl_event(motion_position), client_id)
+        .unwrap();
+
+    tab.handle_mouse_event(&MouseEvent::new_left_release_with_ctrl_event(motion_position), client_id)
+        .unwrap();
+
+    assert!(motion_effect.state_changed);
+
+    let mut output = Output::default();
+    tab.render(&mut output, None).unwrap();
+    let snapshot_after = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+
+    assert_ne!(snapshot_before, snapshot_after);
+    eprintln!("{}", snapshot_after);
     assert_snapshot!(format!("{}", snapshot_after));
 }
 
@@ -11335,30 +11464,46 @@ fn test_hover_over_inactive_pane_sets_hover_state() {
         .handle_mouse_event(&MouseEvent::new_buttonless_motion(Position::new(10, 30)), client_id)
         .unwrap();
 
-    // Effect should succeed (hover state set internally)
-    assert!(effect.group_toggle.is_none());
+    let hover_panes = tab.query_mouse_hover_pane_id();
+    assert_snapshot!(format!("{:?}", hover_panes));
+    assert!(effect.state_changed);
 }
 
 #[test]
-fn test_hover_over_active_pane_forwards_motion() {
+fn test_hover_over_active_pane_unsets_hover() {
     let size = Size {
         cols: 121,
         rows: 20,
     };
     let client_id = 1;
     let mut tab = create_new_tab(size, ModeInfo::default());
+    let new_pane_id = PaneId::Terminal(2);
     let mut output = Output::default();
 
-    tab.handle_pty_bytes(1, Vec::from("Active pane".as_bytes()))
+    // Create a vertical split
+    tab.vertical_split(new_pane_id, None, client_id, None, None)
         .unwrap();
 
-    // Hover over active pane with buttonless motion
+    tab.handle_pty_bytes(1, Vec::from("Left".as_bytes()))
+        .unwrap();
+    tab.handle_pty_bytes(2, Vec::from("Right".as_bytes()))
+        .unwrap();
+
+    // Active pane is pane 2 (right)
+    assert_eq!(tab.get_active_pane_id(client_id), Some(PaneId::Terminal(2)));
+
+    // Hover over inactive pane (left) with buttonless motion
+    let _effect = tab
+        .handle_mouse_event(&MouseEvent::new_buttonless_motion(Position::new(10, 30)), client_id)
+        .unwrap();
+    // Hover over active pane (right) with buttonless motion
     let effect = tab
-        .handle_mouse_event(&MouseEvent::new_buttonless_motion(Position::new(10, 60)), client_id)
+        .handle_mouse_event(&MouseEvent::new_buttonless_motion(Position::new(10, 90)), client_id)
         .unwrap();
 
-    // Motion should be forwarded to active pane
-    assert!(effect.group_toggle.is_none());
+    let hover_panes = tab.query_mouse_hover_pane_id();
+    assert_snapshot!(format!("{:?}", hover_panes));
+    assert!(effect.state_changed);
 }
 
 // ============================================================================
