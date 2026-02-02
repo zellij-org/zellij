@@ -1319,7 +1319,7 @@ impl TiledPanes {
     ) -> Result<()> {
         if *self.stacked_resize.borrow() && strategy.direction.is_none() {
             if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
-                self.stacked_resize_pane_with_id(active_pane_id, strategy)?;
+                self.stacked_resize_pane_with_id(active_pane_id, strategy, None)?;
                 self.reapply_pane_frames();
             }
         } else {
@@ -1518,12 +1518,14 @@ impl TiledPanes {
         self.tombstones_before_increase = None;
         self.tombstones_before_decrease = None;
     }
-    fn stacked_resize_pane_with_id(
+    pub fn stacked_resize_pane_with_id(
         &mut self,
         pane_id: PaneId,
         strategy: &ResizeStrategy,
+        // override as rarely as possible to maintain ux consistency
+        resize_percent_override: Option<(f64, f64)>,
     ) -> Result<bool> {
-        let resize_percent = (30.0, 30.0);
+        let resize_percent = resize_percent_override.unwrap_or((30.0, 30.0));
         match strategy.resize {
             Resize::Increase => {
                 match self.tombstones_before_decrease.as_mut() {
