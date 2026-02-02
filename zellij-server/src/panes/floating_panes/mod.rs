@@ -48,7 +48,9 @@ pub struct FloatingPanes {
     z_indices: Vec<PaneId>,
     active_panes: ActivePanes,
     show_panes: bool,
-    pane_being_moved_with_mouse: Option<(PaneId, Position)>,
+    pane_being_moved_with_mouse: Option<(PaneId, Position, Position)>, // (pane-id,
+                                                                       // initial_position,
+                                                                       // last_position)
     senders: ThreadSenders,
     window_title: Option<String>,
 }
@@ -1054,8 +1056,15 @@ impl FloatingPanes {
             .ok()?
             .and_then(|pane_id| self.panes.get_mut(&pane_id))
     }
-    pub fn set_pane_being_moved_with_mouse(&mut self, pane_id: PaneId, position: Position) {
-        self.pane_being_moved_with_mouse = Some((pane_id, position));
+    pub fn set_pane_being_moved_with_mouse(&mut self, pane_id: PaneId, last_position: Position) {
+        if let Some((last_pane_id, initial_position))  = self.pane_being_moved_with_mouse.map(|(pane_id, initial_position, _)| (pane_id, initial_position)) {
+            if last_pane_id == pane_id {
+                // preserve initial_position
+                self.pane_being_moved_with_mouse = Some((pane_id, initial_position, last_position));
+                return;
+            }
+        }
+        self.pane_being_moved_with_mouse = Some((pane_id, last_position, last_position));
     }
     pub fn pane_is_being_moved_with_mouse(&self) -> bool {
         self.pane_being_moved_with_mouse.is_some()
@@ -1064,7 +1073,7 @@ impl FloatingPanes {
         // true => changed position
         let display_area = *self.display_area.borrow();
         let viewport = *self.viewport.borrow();
-        let Some((pane_id, previous_position)) = self.pane_being_moved_with_mouse else {
+        let Some((pane_id, _initial_position, previous_position)) = self.pane_being_moved_with_mouse else {
             log::error!("Pane is not being moved with mousd");
             return false;
         };
@@ -1109,12 +1118,22 @@ impl FloatingPanes {
         };
         false
     }
-    pub fn stop_moving_pane_with_mouse(&mut self, position: Position) {
-        if self.pane_being_moved_with_mouse.is_some() {
-            self.move_pane_to_position(&position);
+    pub fn stop_moving_pane_with_mouse(&mut self, position: Position) -> bool { // bool -> this
+                                                                                // pane was never
+                                                                                // moved (initial
+                                                                                // position ==
+                                                                                // last_position)
+        let mut never_moved = false;
+        if let Some((_pane_id, initial_position, _last_position)) = self.pane_being_moved_with_mouse.take() {
+            if initial_position == position {
+                never_moved = true;
+            } else {
+                self.move_pane_to_position(&position);
+            }
             self.set_force_render();
         };
         self.pane_being_moved_with_mouse = None;
+        never_moved
     }
     pub fn get_active_pane_id(&self, client_id: ClientId) -> Option<PaneId> {
         self.active_panes.get(&client_id).copied()

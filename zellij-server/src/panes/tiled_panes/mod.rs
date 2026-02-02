@@ -1772,9 +1772,7 @@ impl TiledPanes {
             *self.viewport.borrow(),
         );
 
-        // Apply each strategy
         for strategy in strategies {
-            // Ignore errors - resize may fail if hitting constraints (acceptable)
             let _ = pane_grid
                 .change_pane_size(&pane_id, strategy, change_by, allow_inverting_strategy)
                 .with_context(err_context);

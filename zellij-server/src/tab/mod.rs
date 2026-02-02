@@ -4488,10 +4488,8 @@ impl Tab {
                     }
 
                     if pane_id_at_position == active_pane_id {
-                        log::info!("handling active");
                         self.handle_active_pane_left_mouse_press(event, client_id)
                     } else {
-                        log::info!("handling inactive");
                         self.handle_inactive_pane_left_mouse_press(event, client_id)
                     }
                 }
@@ -4516,8 +4514,15 @@ impl Tab {
                 MouseEventType::Release => {
                     // If resizing, stop resize
                     if self.pane_being_resized_with_mouse.is_some() {
-                        self.stop_pane_resize_with_mouse(event.position, client_id)
+                        let resized = self.stop_pane_resize_with_mouse(event.position, client_id)
                             .with_context(err_context)?;
+                        if !resized {
+                            if let Ok(Some(pane_at_position)) = self.get_pane_at(&event.position, false) {
+                                if pane_at_position.pid() != active_pane_id {
+                                    return self.handle_inactive_pane_left_mouse_press(event, client_id);
+                                }
+                            }
+                        }
                         return Ok(MouseEffect::state_changed());
                     }
                     // Otherwise, default behavior
@@ -4694,7 +4699,10 @@ impl Tab {
             let moved_pane_with_mouse = self
                 .floating_panes
                 .move_pane_with_mouse(event.position, search_selectable);
-            if moved_pane_with_mouse {
+            let active_pane_id_after_click = self
+                .get_active_pane_id(client_id)
+                .ok_or_else(|| anyhow!("Failed to find pane at position"))?;
+            if moved_pane_with_mouse || active_pane_id_before_click != active_pane_id_after_click {
                 return Ok(MouseEffect::state_changed());
             } else {
                 return Ok(MouseEffect::default());
@@ -4800,8 +4808,22 @@ impl Tab {
             }
         } else if floating_panes_are_visible && self.floating_panes.pane_is_being_moved_with_mouse()
         {
-            self.floating_panes
+            let never_moved = self.floating_panes
                 .stop_moving_pane_with_mouse(event.position);
+            if never_moved {
+                let active_pane_id = self
+                    .get_active_pane_id(client_id)
+                    .ok_or_else(|| anyhow!("Failed to find pane at position"))?;
+                let pane_id_at_position = self
+                    .get_pane_at(&event.position, false)
+                    .with_context(err_context)?
+                    .ok_or_else(|| anyhow!("Failed to find pane at position"))?
+                    .pid();
+                if active_pane_id != pane_id_at_position {
+                    self.focus_pane_at(&event.position, client_id)
+                        .with_context(err_context)?;
+                }
+            }
         } else {
             let active_pane_id = self
                 .get_active_pane_id(client_id)
@@ -4904,6 +4926,7 @@ impl Tab {
         let err_context = || format!("failed to handle mouse no click for client {client_id}");
         let absolute_position = event.position;
 
+        let mut should_render = false;
         let active_pane_id = self
             .get_active_pane_id(client_id)
             .ok_or_else(|| anyhow!("Failed to find pane at position"))?;
@@ -4927,7 +4950,10 @@ impl Tab {
                         .with_context(err_context)?;
                     }
                 }
-                self.mouse_hover_pane_id.remove(&client_id);
+                let removed = self.mouse_hover_pane_id.remove(&client_id);
+                if removed.is_some() {
+                    should_render = true;
+                }
             } else {
                 let pane_id = pane.pid();
                 // if the pane is not selectable, we don't want to create a hover effect over it
@@ -4938,9 +4964,16 @@ impl Tab {
                 } else if self.advanced_mouse_actions {
                     self.mouse_hover_pane_id.remove(&client_id);
                 }
+                should_render = true;
             }
         };
-        Ok(MouseEffect::leave_clipboard_message())
+        let mut mouse_effect = if should_render {
+            MouseEffect::state_changed()
+        } else {
+            MouseEffect::default()
+        };
+        mouse_effect.leave_clipboard_message = true;
+        Ok(mouse_effect)
     }
 
     fn start_pane_resize_with_mouse(
@@ -5038,17 +5071,17 @@ impl Tab {
         &mut self,
         final_position: Position,
         client_id: ClientId,
-    ) -> Result<()> {
+    ) -> Result<bool> { // bool -> resized
         let err_context = || "failed to stop pane resize with mouse";
 
         // Perform final resize with any remaining delta
-        self.continue_pane_resize_with_mouse(final_position, client_id)
+        let resized = self.continue_pane_resize_with_mouse(final_position, client_id)
             .with_context(err_context)?;
 
         // Clear resize state
         self.pane_being_resized_with_mouse = None;
 
-        Ok(())
+        Ok(resized)
     }
 
     fn resize_floating_pane_with_strategies(

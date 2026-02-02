@@ -284,9 +284,6 @@ impl crate::os_input_output::ClientOsApi for MockClientOsApi {
         Ok(())
     }
 
-    fn stdin_poller(&self) -> crate::os_input_output::StdinPoller {
-        crate::os_input_output::StdinPoller::default()
-    }
 }
 
 // Tests
