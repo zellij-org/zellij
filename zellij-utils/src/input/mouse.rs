@@ -328,6 +328,36 @@ impl MouseEvent {
         };
         event
     }
+    pub fn new_ctrl_scroll_up_event(position: Position) -> Self {
+        let event = MouseEvent {
+            event_type: MouseEventType::Press,
+            left: false,
+            right: false,
+            middle: false,
+            wheel_up: true,
+            wheel_down: false,
+            shift: false,
+            alt: false,
+            ctrl: true,
+            position,
+        };
+        event
+    }
+    pub fn new_ctrl_scroll_down_event(position: Position) -> Self {
+        let event = MouseEvent {
+            event_type: MouseEventType::Press,
+            left: false,
+            right: false,
+            middle: false,
+            wheel_up: false,
+            wheel_down: true,
+            shift: false,
+            alt: false,
+            ctrl: true,
+            position,
+        };
+        event
+    }
 }
 
 impl Default for MouseEvent {

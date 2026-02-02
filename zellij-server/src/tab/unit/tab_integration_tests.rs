@@ -11735,3 +11735,439 @@ fn test_left_click_on_floating_frame_not_on_pin_moves_pane() {
     assert_ne!(snapshot_before, snapshot_after);
     assert_snapshot!(format!("{}", snapshot_after));
 }
+
+#[test]
+fn test_ctrl_scroll_up_on_active_tiled_pane_increases_pane_size() {
+    let size = Size {
+        cols: 120,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let new_pane_id = PaneId::Terminal(2);
+    let mut output = Output::default();
+
+    tab.vertical_split(new_pane_id, None, client_id, None, None)
+        .unwrap();
+
+    tab.handle_pty_bytes(1, Vec::from("Left pane".as_bytes()))
+        .unwrap();
+    tab.handle_pty_bytes(2, Vec::from("Right pane".as_bytes()))
+        .unwrap();
+
+    tab.render(&mut output, None).unwrap();
+    let snapshot_before = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+
+    let active_pane_position = Position::new(5, 70);
+    let effect = tab
+        .handle_mouse_event(&MouseEvent::new_ctrl_scroll_up_event(active_pane_position), client_id)
+        .unwrap();
+
+    assert!(effect.state_changed);
+
+    let mut output = Output::default();
+    tab.render(&mut output, None).unwrap();
+    let snapshot_after = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+
+    assert_ne!(snapshot_before, snapshot_after);
+    assert_snapshot!(format!("{}", snapshot_after));
+}
+
+#[test]
+fn test_ctrl_scroll_down_on_active_tiled_pane_decreases_pane_size() {
+    let size = Size {
+        cols: 120,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let new_pane_id = PaneId::Terminal(2);
+    let mut output = Output::default();
+
+    tab.vertical_split(new_pane_id, None, client_id, None, None)
+        .unwrap();
+
+    tab.handle_pty_bytes(1, Vec::from("Left pane".as_bytes()))
+        .unwrap();
+    tab.handle_pty_bytes(2, Vec::from("Right pane".as_bytes()))
+        .unwrap();
+
+    tab.render(&mut output, None).unwrap();
+    let snapshot_before = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+
+    let active_pane_position = Position::new(5, 70);
+    let effect = tab
+        .handle_mouse_event(&MouseEvent::new_ctrl_scroll_down_event(active_pane_position), client_id)
+        .unwrap();
+
+    assert!(effect.state_changed);
+
+    let mut output = Output::default();
+    tab.render(&mut output, None).unwrap();
+    let snapshot_after = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+
+    assert_ne!(snapshot_before, snapshot_after);
+    assert_snapshot!(format!("{}", snapshot_after));
+}
+
+#[test]
+fn test_ctrl_scroll_up_on_inactive_tiled_pane_increases_active_tiled_pane_size() {
+    let size = Size {
+        cols: 120,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let new_pane_id = PaneId::Terminal(2);
+    let mut output = Output::default();
+
+    tab.vertical_split(new_pane_id, None, client_id, None, None)
+        .unwrap();
+
+    tab.handle_pty_bytes(1, Vec::from("Left pane".as_bytes()))
+        .unwrap();
+    tab.handle_pty_bytes(2, Vec::from("Right pane".as_bytes()))
+        .unwrap();
+
+    tab.render(&mut output, None).unwrap();
+    let snapshot_before = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+
+    let inactive_pane_position = Position::new(5, 10);
+    let effect = tab
+        .handle_mouse_event(&MouseEvent::new_ctrl_scroll_up_event(inactive_pane_position), client_id)
+        .unwrap();
+
+    assert!(effect.state_changed);
+
+    let mut output = Output::default();
+    tab.render(&mut output, None).unwrap();
+    let snapshot_after = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+
+    assert_ne!(snapshot_before, snapshot_after);
+    assert_snapshot!(format!("{}", snapshot_after));
+}
+
+#[test]
+fn test_ctrl_scroll_down_on_inactive_tiled_pane_decreases_active_tiled_pane_size() {
+    let size = Size {
+        cols: 120,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let new_pane_id = PaneId::Terminal(2);
+    let mut output = Output::default();
+
+    tab.vertical_split(new_pane_id, None, client_id, None, None)
+        .unwrap();
+
+    tab.handle_pty_bytes(1, Vec::from("Left pane".as_bytes()))
+        .unwrap();
+    tab.handle_pty_bytes(2, Vec::from("Right pane".as_bytes()))
+        .unwrap();
+
+    tab.render(&mut output, None).unwrap();
+    let snapshot_before = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+
+    let inactive_pane_position = Position::new(5, 10);
+    let effect = tab
+        .handle_mouse_event(&MouseEvent::new_ctrl_scroll_down_event(inactive_pane_position), client_id)
+        .unwrap();
+
+    assert!(effect.state_changed);
+
+    let mut output = Output::default();
+    tab.render(&mut output, None).unwrap();
+    let snapshot_after = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+
+    assert_ne!(snapshot_before, snapshot_after);
+    assert_snapshot!(format!("{}", snapshot_after));
+}
+
+#[test]
+fn test_ctrl_scroll_up_increases_floating_pane_size() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let new_pane_id = PaneId::Terminal(2);
+    let mut output = Output::default();
+
+    tab.toggle_floating_panes(Some(client_id), None, None)
+        .unwrap();
+    tab.new_pane(
+        new_pane_id,
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::default(),
+        Some(client_id),
+        None,
+    )
+    .unwrap();
+
+    tab.handle_pty_bytes(1, Vec::from("Tiled pane".as_bytes()))
+        .unwrap();
+    tab.handle_pty_bytes(2, Vec::from("Floating pane".as_bytes()))
+        .unwrap();
+
+    tab.render(&mut output, None).unwrap();
+    let snapshot_before = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+
+    let floating_pane_position = Position::new(5, 50);
+    let effect = tab
+        .handle_mouse_event(&MouseEvent::new_ctrl_scroll_up_event(floating_pane_position), client_id)
+        .unwrap();
+
+    assert!(effect.state_changed);
+
+    let mut output = Output::default();
+    tab.render(&mut output, None).unwrap();
+    let snapshot_after = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+
+    assert_ne!(snapshot_before, snapshot_after);
+    assert_snapshot!(format!("{}", snapshot_after));
+}
+
+#[test]
+fn test_ctrl_scroll_down_decreases_floating_pane_size() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let new_pane_id = PaneId::Terminal(2);
+    let mut output = Output::default();
+
+    tab.toggle_floating_panes(Some(client_id), None, None)
+        .unwrap();
+    tab.new_pane(
+        new_pane_id,
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::default(),
+        Some(client_id),
+        None,
+    )
+    .unwrap();
+
+    tab.handle_pty_bytes(1, Vec::from("Tiled pane".as_bytes()))
+        .unwrap();
+    tab.handle_pty_bytes(2, Vec::from("Floating pane".as_bytes()))
+        .unwrap();
+
+    tab.render(&mut output, None).unwrap();
+    let snapshot_before = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+
+    let floating_pane_position = Position::new(5, 50);
+    let effect = tab
+        .handle_mouse_event(&MouseEvent::new_ctrl_scroll_down_event(floating_pane_position), client_id)
+        .unwrap();
+
+    assert!(effect.state_changed);
+
+    let mut output = Output::default();
+    tab.render(&mut output, None).unwrap();
+    let snapshot_after = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+
+    assert_ne!(snapshot_before, snapshot_after);
+    assert_snapshot!(format!("{}", snapshot_after));
+}
+
+#[test]
+fn test_ctrl_scroll_up_increases_pinned_floating_pane_size_when_floating_panes_hidden() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let new_pane_id = PaneId::Terminal(2);
+    let mut output = Output::default();
+
+    let coordinates = FloatingPaneCoordinates {
+        x: Some(PercentOrFixed::Fixed(5)),
+        y: Some(PercentOrFixed::Fixed(5)),
+        width: Some(PercentOrFixed::Fixed(30)),
+        height: Some(PercentOrFixed::Fixed(10)),
+        pinned: Some(true),
+        borderless: Some(false),
+    };
+
+    tab.new_pane(
+        new_pane_id,
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::Floating(Some(coordinates)),
+        Some(client_id),
+        None,
+    )
+    .unwrap();
+
+    tab.handle_pty_bytes(1, Vec::from("Tiled pane".as_bytes()))
+        .unwrap();
+    tab.handle_pty_bytes(2, Vec::from("Floating pane".as_bytes()))
+        .unwrap();
+
+    tab.render(&mut output, None).unwrap();
+    let snapshot_before = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+
+    let floating_pane_position = Position::new(10, 10);
+    let effect = tab
+        .handle_mouse_event(&MouseEvent::new_ctrl_scroll_up_event(floating_pane_position), client_id)
+        .unwrap();
+
+    assert!(effect.state_changed);
+
+    let mut output = Output::default();
+    tab.render(&mut output, None).unwrap();
+    let snapshot_after = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+
+    assert_ne!(snapshot_before, snapshot_after);
+    assert_snapshot!(format!("{}", snapshot_after));
+}
+
+#[test]
+fn test_ctrl_scroll_down_decreases_pinned_floating_pane_size_when_floating_panes_hidden() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let new_pane_id = PaneId::Terminal(2);
+    let mut output = Output::default();
+
+    let coordinates = FloatingPaneCoordinates {
+        x: Some(PercentOrFixed::Fixed(5)),
+        y: Some(PercentOrFixed::Fixed(5)),
+        width: Some(PercentOrFixed::Fixed(30)),
+        height: Some(PercentOrFixed::Fixed(10)),
+        pinned: Some(true),
+        borderless: Some(false),
+    };
+
+    tab.new_pane(
+        new_pane_id,
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::Floating(Some(coordinates)),
+        Some(client_id),
+        None,
+    )
+    .unwrap();
+
+    tab.handle_pty_bytes(1, Vec::from("Tiled pane".as_bytes()))
+        .unwrap();
+    tab.handle_pty_bytes(2, Vec::from("Floating pane".as_bytes()))
+        .unwrap();
+
+    tab.render(&mut output, None).unwrap();
+    let snapshot_before = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+
+    let floating_pane_position = Position::new(6, 10);
+    let effect = tab
+        .handle_mouse_event(&MouseEvent::new_ctrl_scroll_down_event(floating_pane_position), client_id)
+        .unwrap();
+
+    assert!(effect.state_changed);
+
+    let mut output = Output::default();
+    tab.render(&mut output, None).unwrap();
+    let snapshot_after = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+
+    assert_ne!(snapshot_before, snapshot_after);
+    eprintln!("{}", snapshot_before);
+    eprintln!("{}", snapshot_after);
+    assert_snapshot!(format!("{}", snapshot_after));
+}
