@@ -1643,12 +1643,20 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
 
                 let layout = command_metadata
                     .and_then(|c_m| kdl_child_string_value_for_entry(c_m, "layout"))
-                    .map(|layout_string| PathBuf::from(layout_string))
+                    .map(|layout_string| {
+                        shellexpand::full(layout_string)
+                            .map(|s| PathBuf::from(s.as_ref()))
+                            .unwrap_or_else(|_| PathBuf::from(layout_string))
+                    })
                     .or_else(|| config_options.default_layout.clone());
                 let cwd = command_metadata
                     .and_then(|c_m| kdl_child_string_value_for_entry(c_m, "cwd"))
-                    .map(|cwd_string| PathBuf::from(cwd_string))
-                    .map(|cwd| current_dir.join(cwd));
+                    .map(|cwd_string| {
+                        shellexpand::full(cwd_string)
+                            .map(|s| PathBuf::from(s.as_ref()))
+                            .unwrap_or_else(|_| PathBuf::from(cwd_string))
+                    })
+                    .map(|cwd| if cwd.is_absolute() { cwd } else { current_dir.join(cwd) });
                 let name = command_metadata
                     .and_then(|c_m| kdl_child_string_value_for_entry(c_m, "name"))
                     .map(|name_string| name_string.to_string());
@@ -1740,12 +1748,20 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
 
                 let layout = command_metadata
                     .and_then(|c_m| kdl_child_string_value_for_entry(c_m, "layout"))
-                    .map(|layout_string| PathBuf::from(layout_string))
+                    .map(|layout_string| {
+                        shellexpand::full(layout_string)
+                            .map(|s| PathBuf::from(s.as_ref()))
+                            .unwrap_or_else(|_| PathBuf::from(layout_string))
+                    })
                     .or_else(|| config_options.default_layout.clone());
                 let cwd = command_metadata
                     .and_then(|c_m| kdl_child_string_value_for_entry(c_m, "cwd"))
-                    .map(|cwd_string| PathBuf::from(cwd_string))
-                    .map(|cwd| current_dir.join(cwd));
+                    .map(|cwd_string| {
+                        shellexpand::full(cwd_string)
+                            .map(|s| PathBuf::from(s.as_ref()))
+                            .unwrap_or_else(|_| PathBuf::from(cwd_string))
+                    })
+                    .map(|cwd| if cwd.is_absolute() { cwd } else { current_dir.join(cwd) });
                 let name = command_metadata
                     .and_then(|c_m| kdl_child_string_value_for_entry(c_m, "name"))
                     .map(|name_string| name_string.to_string());
