@@ -25,6 +25,7 @@ lazy_static = { workspace = true }
 log = { workspace = true }
 miette = { workspace = true }
 nix = { workspace = true }
+once_cell = { version = "1.19", default-features = false }
 percent-encoding = { version = "2.1.0", default-features = false, features = ["std"] }
 prost = { workspace = true }
 serde = { workspace = true }
