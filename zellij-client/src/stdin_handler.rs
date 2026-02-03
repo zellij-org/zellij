@@ -4,6 +4,7 @@ use crate::stdin_ansi_parser::StdinAnsiParser;
 use crate::InputInstruction;
 use std::sync::{Arc, Mutex};
 use termwiz::input::{InputEvent, InputParser, MouseButtons};
+use tokio::time::{Duration, Instant};
 use zellij_utils::channels::SenderWithContext;
 
 fn send_done_parsing_after_query_timeout(
@@ -12,7 +13,7 @@ fn send_done_parsing_after_query_timeout(
 ) {
     tokio::spawn({
         async move {
-            tokio::time::sleep(tokio::time::Duration::from_millis(query_duration)).await;
+            tokio::time::sleep(Duration::from_millis(query_duration)).await;
             send_input_instructions
                 .send(InputInstruction::DoneParsing)
                 .unwrap();
@@ -61,6 +62,12 @@ pub(crate) async fn stdin_loop(
     }
     let mut ansi_stdin_events = vec![];
     let mut stdin = os_input.get_async_stdin_reader();
+
+    let mut finalization_timeout = Box::pin(tokio::time::sleep_until(
+        Instant::now() + Duration::from_hours(24),
+    ));
+    let mut needs_finalization = false;
+
     loop {
         tokio::select! {
             biased;
@@ -110,7 +117,11 @@ pub(crate) async fn stdin_loop(
                             }
                         }
 
-                        let maybe_more = false; // read_from_stdin should (hopefully) always empty the STDIN buffer completely
+                        // Parse with maybe_more = true - complete events sent immediately
+                        //
+                        // Ambiguous events (if any) will be finalized later only if 50ms
+                        // passes with no new input
+                        let maybe_more = true;
                         let mut events = vec![];
                         input_parser.parse(
                             &buf,
@@ -147,8 +158,14 @@ pub(crate) async fn stdin_loop(
                                 ))
                                 .unwrap();
                         }
+
+                        needs_finalization = true;
+                        finalization_timeout.as_mut().reset(Instant::now() + Duration::from_millis(50));
                     },
                     Ok(_) => {
+                        if needs_finalization {
+                            finalize_events(&mut input_parser, &mut current_buffer, &send_input_instructions);
+                        }
                         log::debug!("EOF on stdin");
                         let _ = send_input_instructions.send(InputInstruction::Exit);
                         break;
@@ -160,7 +177,36 @@ pub(crate) async fn stdin_loop(
                     },
                 }
             }
+
+            _ = &mut finalization_timeout, if needs_finalization => {
+                finalize_events(&mut input_parser, &mut current_buffer, &send_input_instructions);
+                needs_finalization = false;
+                finalization_timeout.as_mut().reset(Instant::now() + Duration::from_hours(24));
+            }
         }
+    }
+}
+
+fn finalize_events(
+    input_parser: &mut InputParser,
+    current_buffer: &mut Vec<u8>,
+    send_input_instructions: &SenderWithContext<InputInstruction>,
+) {
+    let mut events = vec![];
+    input_parser.parse(
+        &[],
+        |input_event: InputEvent| {
+            events.push(input_event);
+        },
+        false,
+    );
+    for input_event in events {
+        send_input_instructions
+            .send(InputInstruction::KeyEvent(
+                input_event,
+                current_buffer.drain(..).collect(),
+            ))
+            .unwrap();
     }
 }
 
