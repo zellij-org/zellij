@@ -38,26 +38,3 @@ pub mod web_server_contract;
 
 // TODO(hartan): Remove this re-export for the next minor release.
 pub use ::prost;
-
-#[cfg(not(target_family = "wasm"))]
-static ASYNC_RUNTIME: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
-#[cfg(not(target_family = "wasm"))]
-use std::sync::OnceLock;
-
-#[cfg(not(target_family = "wasm"))]
-pub(crate) fn async_runtime() -> tokio::runtime::Handle {
-    match tokio::runtime::Handle::try_current() {
-        Ok(handle) => handle.clone(),
-        _ => {
-            let runtime = ASYNC_RUNTIME.get_or_init(|| {
-                tokio::runtime::Builder::new_multi_thread()
-                    .worker_threads(4)
-                    .thread_name("zellij utils async-runtime")
-                    .enable_all()
-                    .build()
-                    .expect("Failed to create tokio runtime")
-            });
-            runtime.handle().clone()
-        },
-    }
-}
