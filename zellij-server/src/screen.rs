@@ -1327,13 +1327,13 @@ impl Screen {
     ) -> Result<()> {
         let err_context = || format!("failed to switch to next tab for client {client_id}");
 
-        let client_id = if self.get_active_tab(client_id).is_ok() {
+        let effective_client_id = if self.get_active_tab(client_id).is_ok() {
             Some(client_id)
         } else {
             self.get_first_client_id()
         };
 
-        if let Some(client_id) = client_id {
+        if let Some(client_id) = effective_client_id {
             match self.get_active_tab(client_id) {
                 Ok(active_tab) => {
                     let active_tab_pos = active_tab.position;
@@ -1346,6 +1346,15 @@ impl Screen {
                     );
                 },
                 Err(err) => Err::<(), _>(err).with_context(err_context).non_fatal(),
+            }
+        } else if let Some(active_tab_index) = self.get_active_tab_index_with_fallback(client_id) {
+            // No clients connected - update global_last_active_tab_index directly
+            if let Some(active_tab) = self.tabs.get(&active_tab_index) {
+                let active_tab_pos = active_tab.position;
+                let new_tab_pos = (active_tab_pos + 1) % self.tabs.len();
+                if let Some(new_tab) = self.tabs.values().find(|t| t.position == new_tab_pos) {
+                    self.global_last_active_tab_index = new_tab.index;
+                }
             }
         }
         Ok(())
@@ -1360,13 +1369,13 @@ impl Screen {
     ) -> Result<()> {
         let err_context = || format!("failed to switch to previous tab for client {client_id}");
 
-        let client_id = if self.get_active_tab(client_id).is_ok() {
+        let effective_client_id = if self.get_active_tab(client_id).is_ok() {
             Some(client_id)
         } else {
             self.get_first_client_id()
         };
 
-        if let Some(client_id) = client_id {
+        if let Some(client_id) = effective_client_id {
             match self.get_active_tab(client_id) {
                 Ok(active_tab) => {
                     let active_tab_pos = active_tab.position;
@@ -1384,6 +1393,19 @@ impl Screen {
                     );
                 },
                 Err(err) => Err::<(), _>(err).with_context(err_context).non_fatal(),
+            }
+        } else if let Some(active_tab_index) = self.get_active_tab_index_with_fallback(client_id) {
+            // No clients connected - update global_last_active_tab_index directly
+            if let Some(active_tab) = self.tabs.get(&active_tab_index) {
+                let active_tab_pos = active_tab.position;
+                let new_tab_pos = if active_tab_pos == 0 {
+                    self.tabs.len() - 1
+                } else {
+                    active_tab_pos - 1
+                };
+                if let Some(new_tab) = self.tabs.values().find(|t| t.position == new_tab_pos) {
+                    self.global_last_active_tab_index = new_tab.index;
+                }
             }
         }
         Ok(())
@@ -1459,13 +1481,13 @@ impl Screen {
     pub fn close_tab(&mut self, client_id: ClientId) -> Result<()> {
         let err_context = || format!("failed to close tab for client {client_id:?}");
 
-        let client_id = if self.get_active_tab(client_id).is_ok() {
+        let effective_client_id = if self.get_active_tab(client_id).is_ok() {
             Some(client_id)
         } else {
             self.get_first_client_id()
         };
 
-        match client_id {
+        match effective_client_id {
             Some(client_id) => {
                 let active_tab_index = *self
                     .active_tab_indices
@@ -1474,7 +1496,15 @@ impl Screen {
                 self.close_tab_at_index(active_tab_index)
                     .with_context(err_context)
             },
-            None => Ok(()),
+            None => {
+                // No clients connected - use fallback to find tab to close
+                if let Some(active_tab_index) = self.get_active_tab_index_with_fallback(client_id) {
+                    self.close_tab_at_index(active_tab_index)
+                        .with_context(err_context)
+                } else {
+                    Ok(())
+                }
+            },
         }
     }
 
@@ -1725,6 +1755,29 @@ impl Screen {
 
     pub fn get_first_client_id(&self) -> Option<ClientId> {
         self.active_tab_indices.keys().next().copied()
+    }
+
+    /// Returns the active tab index for a client, with fallback for detached sessions.
+    /// Fallback priority (matches `add_client` logic):
+    /// 1. Specified client's active tab
+    /// 2. First connected client's active tab
+    /// 3. `global_last_active_tab_index` if that tab exists
+    /// 4. First tab by index
+    fn get_active_tab_index_with_fallback(&self, client_id: ClientId) -> Option<usize> {
+        // Try specified client's active tab
+        if let Some(&idx) = self.active_tab_indices.get(&client_id) {
+            return Some(idx);
+        }
+        // Try first connected client's active tab
+        if let Some(&idx) = self.active_tab_indices.values().next() {
+            return Some(idx);
+        }
+        // Try global_last_active_tab_index
+        if self.tabs.contains_key(&self.global_last_active_tab_index) {
+            return Some(self.global_last_active_tab_index);
+        }
+        // Fall back to first tab
+        self.tabs.keys().next().copied()
     }
 
     /// Returns an immutable reference to this [`Screen`]'s previous active [`Tab`].
@@ -2258,33 +2311,38 @@ impl Screen {
         let err_context =
             || format!("failed to update active tabs name for client id: {client_id:?}");
 
-        let client_id = if self.get_active_tab(client_id).is_ok() {
+        let effective_client_id = if self.get_active_tab(client_id).is_ok() {
             Some(client_id)
         } else {
             self.get_first_client_id()
         };
 
-        match client_id {
+        let s = str::from_utf8(&buf)
+            .with_context(|| format!("failed to construct tab name from buf: {buf:?}"))
+            .with_context(err_context)?;
+
+        // Helper closure to apply name change to a tab
+        let apply_name_change = |tab: &mut Tab, s: &str| {
+            match s {
+                "\0" => {
+                    tab.name = String::new();
+                },
+                "\u{007F}" | "\u{0008}" => {
+                    // delete and backspace keys
+                    tab.name.pop();
+                },
+                c => {
+                    tab.name
+                        .push_str(&clean_string_from_control_and_linebreak(c));
+                },
+            }
+        };
+
+        match effective_client_id {
             Some(client_id) => {
-                let s = str::from_utf8(&buf)
-                    .with_context(|| format!("failed to construct tab name from buf: {buf:?}"))
-                    .with_context(err_context)?;
                 match self.get_active_tab_mut(client_id) {
                     Ok(active_tab) => {
-                        match s {
-                            "\0" => {
-                                active_tab.name = String::new();
-                            },
-                            "\u{007F}" | "\u{0008}" => {
-                                // delete and backspace keys
-                                active_tab.name.pop();
-                            },
-                            c => {
-                                active_tab
-                                    .name
-                                    .push_str(&clean_string_from_control_and_linebreak(c));
-                            },
-                        }
+                        apply_name_change(active_tab, s);
                         self.log_and_report_session_state()
                             .with_context(err_context)
                     },
@@ -2294,23 +2352,43 @@ impl Screen {
                     },
                 }
             },
-            None => Ok(()),
+            None => {
+                // No clients connected - use fallback to find tab to rename
+                if let Some(active_tab_index) = self.get_active_tab_index_with_fallback(client_id) {
+                    if let Some(active_tab) = self.tabs.get_mut(&active_tab_index) {
+                        apply_name_change(active_tab, s);
+                        return self.log_and_report_session_state()
+                            .with_context(err_context);
+                    }
+                }
+                Ok(())
+            },
         }
     }
     pub fn undo_active_rename_tab(&mut self, client_id: ClientId) -> Result<()> {
         let err_context = || format!("failed to undo active tab rename for client {}", client_id);
 
-        let client_id = if self.get_active_tab(client_id).is_ok() {
+        let effective_client_id = if self.get_active_tab(client_id).is_ok() {
             Some(client_id)
         } else {
             self.get_first_client_id()
         };
-        match client_id {
+
+        // Helper closure to undo rename on a tab
+        let undo_rename = |tab: &mut Tab| -> bool {
+            if tab.name != tab.prev_name {
+                tab.name = tab.prev_name.clone();
+                true
+            } else {
+                false
+            }
+        };
+
+        match effective_client_id {
             Some(client_id) => {
                 match self.get_active_tab_mut(client_id) {
                     Ok(active_tab) => {
-                        if active_tab.name != active_tab.prev_name {
-                            active_tab.name = active_tab.prev_name.clone();
+                        if undo_rename(active_tab) {
                             self.log_and_report_session_state()
                                 .context("failed to undo renaming of active tab")?;
                         }
@@ -2319,7 +2397,18 @@ impl Screen {
                 };
                 Ok(())
             },
-            None => Ok(()),
+            None => {
+                // No clients connected - use fallback to find tab
+                if let Some(active_tab_index) = self.get_active_tab_index_with_fallback(client_id) {
+                    if let Some(active_tab) = self.tabs.get_mut(&active_tab_index) {
+                        if undo_rename(active_tab) {
+                            self.log_and_report_session_state()
+                                .context("failed to undo renaming of active tab")?;
+                        }
+                    }
+                }
+                Ok(())
+            },
         }
     }
 
@@ -2329,24 +2418,34 @@ impl Screen {
             debug!("cannot move tab to left: only one tab exists");
             return Ok(());
         }
-        let Some(client_id) = self.client_id(client_id) else {
-            return Ok(());
+
+        let effective_client_id = self.client_id(client_id);
+
+        // Get the active tab position - either from client or fallback
+        let active_tab_pos = if let Some(cid) = effective_client_id {
+            match self.get_active_tab(cid) {
+                Ok(tab) => Some(tab.position),
+                Err(err) => {
+                    Err::<(), _>(err).with_context(err_context).non_fatal();
+                    None
+                },
+            }
+        } else if let Some(tab_index) = self.get_active_tab_index_with_fallback(client_id) {
+            self.tabs.get(&tab_index).map(|t| t.position)
+        } else {
+            None
         };
 
-        match self.get_active_tab(client_id) {
-            Ok(active_tab) => {
-                let active_tab_pos = active_tab.position;
-                let left_tab_pos = if active_tab_pos == 0 {
-                    self.tabs.len() - 1
-                } else {
-                    active_tab_pos - 1
-                };
+        if let Some(active_tab_pos) = active_tab_pos {
+            let left_tab_pos = if active_tab_pos == 0 {
+                self.tabs.len() - 1
+            } else {
+                active_tab_pos - 1
+            };
 
-                self.switch_tabs(active_tab_pos, left_tab_pos, client_id);
-                self.log_and_report_session_state()
-                    .context("failed to move tab to left")?;
-            },
-            Err(err) => Err::<(), _>(err).with_context(err_context).non_fatal(),
+            self.switch_tabs(active_tab_pos, left_tab_pos, effective_client_id);
+            self.log_and_report_session_state()
+                .context("failed to move tab to left")?;
         }
         Ok(())
     }
@@ -2359,7 +2458,12 @@ impl Screen {
         }
     }
 
-    fn switch_tabs(&mut self, active_tab_pos: usize, other_tab_pos: usize, client_id: u16) {
+    fn switch_tabs(
+        &mut self,
+        active_tab_pos: usize,
+        other_tab_pos: usize,
+        client_id: Option<ClientId>,
+    ) {
         let Some(active_tab_idx) = self
             .tabs
             .values()
@@ -2406,7 +2510,12 @@ impl Screen {
         std::mem::swap(&mut active_tab.position, &mut other_tab.position);
 
         // now, `active_tab.index` is changed, so we need to update it
-        self.active_tab_indices.insert(client_id, active_tab.index);
+        if let Some(client_id) = client_id {
+            self.active_tab_indices.insert(client_id, active_tab.index);
+        } else {
+            // No client connected - update global_last_active_tab_index to track the moved tab
+            self.global_last_active_tab_index = active_tab.index;
+        }
 
         self.tabs.insert(active_tab.index, active_tab);
         self.tabs.insert(other_tab.index, other_tab);
@@ -2418,20 +2527,30 @@ impl Screen {
             debug!("cannot move tab to right: only one tab exists");
             return Ok(());
         }
-        let Some(client_id) = self.client_id(client_id) else {
-            return Ok(());
+
+        let effective_client_id = self.client_id(client_id);
+
+        // Get the active tab position - either from client or fallback
+        let active_tab_pos = if let Some(cid) = effective_client_id {
+            match self.get_active_tab(cid) {
+                Ok(tab) => Some(tab.position),
+                Err(err) => {
+                    Err::<(), _>(err).with_context(err_context).non_fatal();
+                    None
+                },
+            }
+        } else if let Some(tab_index) = self.get_active_tab_index_with_fallback(client_id) {
+            self.tabs.get(&tab_index).map(|t| t.position)
+        } else {
+            None
         };
 
-        match self.get_active_tab(client_id) {
-            Ok(active_tab) => {
-                let active_tab_pos = active_tab.position;
-                let right_tab_pos = (active_tab_pos + 1) % self.tabs.len();
+        if let Some(active_tab_pos) = active_tab_pos {
+            let right_tab_pos = (active_tab_pos + 1) % self.tabs.len();
 
-                self.switch_tabs(active_tab_pos, right_tab_pos, client_id);
-                self.log_and_report_session_state()
-                    .context("failed to move tab to the right")?;
-            },
-            Err(err) => Err::<(), _>(err).with_context(err_context).non_fatal(),
+            self.switch_tabs(active_tab_pos, right_tab_pos, effective_client_id);
+            self.log_and_report_session_state()
+                .context("failed to move tab to the right")?;
         }
         Ok(())
     }
@@ -2522,12 +2641,13 @@ impl Screen {
             )
         };
 
-        let client_id = if self.get_active_tab(client_id).is_ok() {
+        let effective_client_id = if self.get_active_tab(client_id).is_ok() {
             Some(client_id)
         } else {
             self.get_first_client_id()
         };
-        if let Some(client_id) = client_id {
+
+        if let Some(client_id) = effective_client_id {
             match self.get_active_tab_mut(client_id) {
                 Ok(active_tab) => {
                     active_tab
@@ -2544,6 +2664,10 @@ impl Screen {
                 },
                 Err(err) => Err::<(), _>(err).with_context(err_context).non_fatal(),
             };
+        } else {
+            // No clients connected - just switch to previous tab
+            self.switch_tab_prev(Some(Direction::Left), true, client_id)
+                .with_context(err_context)?;
         }
         self.log_and_report_session_state()
             .with_context(err_context)?;
@@ -2557,13 +2681,13 @@ impl Screen {
             )
         };
 
-        let client_id = if self.get_active_tab(client_id).is_ok() {
+        let effective_client_id = if self.get_active_tab(client_id).is_ok() {
             Some(client_id)
         } else {
             self.get_first_client_id()
         };
 
-        if let Some(client_id) = client_id {
+        if let Some(client_id) = effective_client_id {
             match self.get_active_tab_mut(client_id) {
                 Ok(active_tab) => {
                     active_tab
@@ -2580,6 +2704,10 @@ impl Screen {
                 },
                 Err(err) => Err::<(), _>(err).with_context(err_context).non_fatal(),
             };
+        } else {
+            // No clients connected - just switch to next tab
+            self.switch_tab_next(Some(Direction::Right), true, client_id)
+                .with_context(err_context)?;
         }
         self.log_and_report_session_state()
             .with_context(err_context)?;
