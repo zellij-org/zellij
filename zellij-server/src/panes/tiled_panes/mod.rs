@@ -1005,6 +1005,7 @@ impl TiledPanes {
         mouse_hover_pane_id: &HashMap<ClientId, PaneId>,
         current_pane_group: HashMap<ClientId, Vec<PaneId>>,
         client_id_override: Option<ClientId>,
+        help_text_visible: &HashMap<ClientId, bool>,
     ) -> Result<()> {
         let err_context = || "failed to render tiled panes";
 
@@ -1038,6 +1039,7 @@ impl TiledPanes {
                 .stacked_pane_ids_on_top_and_bottom_of_stacks()
                 .with_context(err_context)?
         };
+        let selectable_pane_count = self.panes.iter().filter(|(_, p)| p.selectable()).count();
         for (kind, pane) in self.panes.iter_mut() {
             match kind {
                 PaneId::Terminal(_) => {
@@ -1072,6 +1074,10 @@ impl TiledPanes {
                 let pane_is_one_liner_in_stack =
                     pane_is_stacked && pane.current_geom().rows.is_fixed();
                 let pane_is_selectable = pane.selectable();
+                let show_help_text = active_panes.iter()
+                    .any(|(client_id, pane_id)| {
+                        pane_id == &pane.pid() && help_text_visible.get(client_id).copied().unwrap_or(false)
+                    }) && selectable_pane_count > 1 && self.fullscreen_is_active.is_none();
                 let mut pane_contents_and_ui = PaneContentsAndUi::new(
                     pane,
                     output,
@@ -1084,6 +1090,7 @@ impl TiledPanes {
                     should_draw_pane_frames,
                     &mouse_hover_pane_id,
                     current_pane_group.clone(),
+                    show_help_text,
                 );
                 for client_id in &connected_clients {
                     let client_mode = self

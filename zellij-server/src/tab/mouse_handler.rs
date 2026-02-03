@@ -3,7 +3,9 @@ use zellij_utils::errors::prelude::*;
 use zellij_utils::input::mouse::{MouseEvent, MouseEventType};
 use zellij_utils::pane_size::PaneGeom;
 use zellij_utils::position::Position;
+use std::time::Instant;
 
+use crate::background_jobs::BackgroundJob;
 use crate::panes::PaneId;
 use crate::ClientId;
 
@@ -533,6 +535,10 @@ impl MouseHandler {
     ) -> Result<MouseEffect> {
         let err_context = || format!("failed to execute mouse action {action:?} for client {client_id}");
 
+        if !matches!(action, MouseAction::UpdateHover { .. }) {
+            tab.mouse_help_text_visible.remove(&client_id);
+        }
+
         match action {
             MouseAction::GroupToggle(pane_id) => {
                 Ok(MouseEffect::group_toggle(pane_id))
@@ -815,6 +821,11 @@ impl MouseHandler {
                 }
             }
         }
+
+        if tab.mouse_help_text_visible.remove(&client_id).is_some() {
+            should_render = true;
+        }
+
         let mut mouse_effect = if should_render {
             MouseEffect::state_changed()
         } else {
@@ -849,6 +860,19 @@ impl MouseHandler {
             let removed_hover = tab.mouse_hover_pane_id.remove(&client_id);
             if removed_hover.is_some() {
                 should_render = true;
+            }
+
+            if event.event_type == MouseEventType::Motion {
+                tab.last_mouse_activity_time.insert(client_id, Instant::now());
+                let was_visible = tab.mouse_help_text_visible.get(&client_id).copied().unwrap_or(false);
+                tab.mouse_help_text_visible.insert(client_id, true);
+                if !was_visible {
+                    should_render = true;
+                }
+
+                tab.senders
+                    .send_to_background_jobs(BackgroundJob::ClearHelpText { client_id })
+                    .with_context(err_context)?;
             }
         }
         let mouse_effect = if should_render {

@@ -127,6 +127,7 @@ pub enum ServerInstruction {
     SendWebClientsForbidden(ClientId),
     WebServerStarted(String), // String -> base_url
     FailedToStartWebServer(String),
+    ClearMouseHelpText(ClientId),
 }
 
 impl From<&ServerInstruction> for ServerContext {
@@ -174,6 +175,7 @@ impl From<&ServerInstruction> for ServerContext {
             ServerInstruction::SendWebClientsForbidden(..) => {
                 ServerContext::SendWebClientsForbidden
             },
+            ServerInstruction::ClearMouseHelpText(..) => ServerContext::ClearMouseHelpText,
         }
     }
 }
@@ -1641,6 +1643,16 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .unwrap()
                     .senders
                     .send_to_plugin(PluginInstruction::FailedToStartWebServer(error))
+                    .unwrap();
+            },
+            ServerInstruction::ClearMouseHelpText(client_id) => {
+                session_data
+                    .write()
+                    .unwrap()
+                    .as_ref()
+                    .unwrap()
+                    .senders
+                    .send_to_screen(ScreenInstruction::ClearMouseHelpText(client_id))
                     .unwrap();
             },
         }

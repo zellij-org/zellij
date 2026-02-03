@@ -206,6 +206,8 @@ pub(crate) struct Tab {
     web_clients_allowed: bool,
     web_sharing: WebSharing,
     mouse_hover_pane_id: HashMap<ClientId, PaneId>,
+    mouse_help_text_visible: HashMap<ClientId, bool>,
+    last_mouse_activity_time: HashMap<ClientId, Instant>,
     current_pane_group: Rc<RefCell<PaneGroups>>,
     advanced_mouse_actions: bool,
     currently_marking_pane_group: Rc<RefCell<HashMap<ClientId, bool>>>,
@@ -757,6 +759,8 @@ impl Tab {
             web_clients_allowed,
             web_sharing,
             mouse_hover_pane_id: HashMap::new(),
+            mouse_help_text_visible: HashMap::new(),
+            last_mouse_activity_time: HashMap::new(),
             current_pane_group,
             currently_marking_pane_group,
             advanced_mouse_actions,
@@ -1187,6 +1191,8 @@ impl Tab {
             .get_mut(&client_id)
             .map(|c| c.change_to_default_mode()); // TODO: no races?
         self.connected_clients.borrow_mut().remove(&client_id);
+        self.mouse_help_text_visible.remove(&client_id);
+        self.last_mouse_activity_time.remove(&client_id);
         self.set_force_render();
     }
     pub fn drain_connected_clients(
@@ -2592,7 +2598,8 @@ impl Tab {
             )
         };
 
-        self.clear_search(client_id); // this is an inexpensive operation if empty, if we need more such cleanups we should consider moving this and the rest to some sort of cleanup method
+        self.clear_search(client_id);
+        self.mouse_help_text_visible.clear();
         let pane_id = if self.floating_panes.panes_are_visible() {
             self.floating_panes
                 .get_active_pane_id(client_id)
@@ -2974,6 +2981,7 @@ impl Tab {
                 &self.mouse_hover_pane_id,
                 current_pane_group.clone(),
                 client_id_override,
+                &self.mouse_help_text_visible,
             )
             .with_context(err_context)?;
         if (self.floating_panes.panes_are_visible() && self.floating_panes.has_active_panes())
@@ -2985,6 +2993,7 @@ impl Tab {
                     &self.mouse_hover_pane_id,
                     current_pane_group,
                     client_id_override,
+                    &self.mouse_help_text_visible,
                 )
                 .with_context(err_context)?;
         }
@@ -4300,6 +4309,10 @@ impl Tab {
             self.mouse_hover_pane_id.clear();
         }
         Ok(())
+    }
+
+    pub fn clear_mouse_help_text(&mut self, client_id: ClientId) {
+        self.mouse_help_text_visible.insert(client_id, false);
     }
 
     pub fn update_active_pane_name(&mut self, buf: Vec<u8>, client_id: ClientId) -> Result<()> {

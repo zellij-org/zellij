@@ -572,6 +572,7 @@ pub enum ScreenInstruction {
     RemoveWatcherClient(ClientId),
     SetFollowedClient(ClientId),
     WatcherTerminalResize(ClientId, Size),
+    ClearMouseHelpText(ClientId),
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -817,7 +818,8 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::AddWatcherClient(..) => ScreenContext::AddWatcherClient,
             ScreenInstruction::RemoveWatcherClient(..) => ScreenContext::RemoveWatcherClient,
             ScreenInstruction::SetFollowedClient(..) => ScreenContext::SetFollowedClient,
-            ScreenInstruction::WatcherTerminalResize(..) => ScreenContext::WatcherTerminalResize, // NEW
+            ScreenInstruction::WatcherTerminalResize(..) => ScreenContext::WatcherTerminalResize,
+            ScreenInstruction::ClearMouseHelpText(..) => ScreenContext::ClearMouseHelpText,
         }
     }
 }
@@ -6833,9 +6835,14 @@ pub(crate) fn screen_thread_main(
                     .context("failed to set followed client")?;
             },
             ScreenInstruction::WatcherTerminalResize(client_id, size) => {
-                // NEW
                 screen.set_watcher_size(client_id, size);
                 screen.render(None)?;
+            },
+            ScreenInstruction::ClearMouseHelpText(client_id) => {
+                if let Ok(tab) = screen.get_active_tab_mut(client_id) {
+                    tab.clear_mouse_help_text(client_id);
+                    screen.render(None)?;
+                }
             },
         }
     }

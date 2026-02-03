@@ -382,6 +382,7 @@ impl FloatingPanes {
         mouse_hover_pane_id: &HashMap<ClientId, PaneId>,
         current_pane_group: HashMap<ClientId, Vec<PaneId>>,
         client_id_override: Option<ClientId>,
+        help_text_visible: &HashMap<ClientId, bool>,
     ) -> Result<()> {
         let err_context = || "failed to render output";
         let mut connected_clients: HashSet<ClientId> =
@@ -441,6 +442,10 @@ impl FloatingPanes {
                 { self.connected_clients_in_app.borrow().len() > 1 };
             active_panes.retain(|c_id, _| self.connected_clients.borrow().contains(c_id));
             let pane_is_selectable = pane.selectable();
+            let show_help_text = active_panes.iter()
+                .any(|(client_id, pane_id)| {
+                    pane_id == &pane.pid() && help_text_visible.get(client_id).copied().unwrap_or(false)
+                });
             let mut pane_contents_and_ui = PaneContentsAndUi::new(
                 pane,
                 output,
@@ -453,6 +458,7 @@ impl FloatingPanes {
                 true,
                 mouse_hover_pane_id,
                 current_pane_group.clone(),
+                show_help_text,
             );
             for client_id in &connected_clients {
                 let client_mode = self
