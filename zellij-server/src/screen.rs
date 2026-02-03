@@ -1327,11 +1327,7 @@ impl Screen {
     ) -> Result<()> {
         let err_context = || format!("failed to switch to next tab for client {client_id}");
 
-        let effective_client_id = if self.get_active_tab(client_id).is_ok() {
-            Some(client_id)
-        } else {
-            self.get_first_client_id()
-        };
+        let effective_client_id = self.client_id(client_id);
 
         if let Some(client_id) = effective_client_id {
             match self.get_active_tab(client_id) {
@@ -1369,11 +1365,7 @@ impl Screen {
     ) -> Result<()> {
         let err_context = || format!("failed to switch to previous tab for client {client_id}");
 
-        let effective_client_id = if self.get_active_tab(client_id).is_ok() {
-            Some(client_id)
-        } else {
-            self.get_first_client_id()
-        };
+        let effective_client_id = self.client_id(client_id);
 
         if let Some(client_id) = effective_client_id {
             match self.get_active_tab(client_id) {
@@ -1481,11 +1473,7 @@ impl Screen {
     pub fn close_tab(&mut self, client_id: ClientId) -> Result<()> {
         let err_context = || format!("failed to close tab for client {client_id:?}");
 
-        let effective_client_id = if self.get_active_tab(client_id).is_ok() {
-            Some(client_id)
-        } else {
-            self.get_first_client_id()
-        };
+        let effective_client_id = self.client_id(client_id);
 
         match effective_client_id {
             Some(client_id) => {
@@ -2311,11 +2299,7 @@ impl Screen {
         let err_context =
             || format!("failed to update active tabs name for client id: {client_id:?}");
 
-        let effective_client_id = if self.get_active_tab(client_id).is_ok() {
-            Some(client_id)
-        } else {
-            self.get_first_client_id()
-        };
+        let effective_client_id = self.client_id(client_id);
 
         let s = str::from_utf8(&buf)
             .with_context(|| format!("failed to construct tab name from buf: {buf:?}"))
@@ -2368,11 +2352,7 @@ impl Screen {
     pub fn undo_active_rename_tab(&mut self, client_id: ClientId) -> Result<()> {
         let err_context = || format!("failed to undo active tab rename for client {}", client_id);
 
-        let effective_client_id = if self.get_active_tab(client_id).is_ok() {
-            Some(client_id)
-        } else {
-            self.get_first_client_id()
-        };
+        let effective_client_id = self.client_id(client_id);
 
         // Helper closure to undo rename on a tab
         let undo_rename = |tab: &mut Tab| -> bool {
@@ -2641,11 +2621,7 @@ impl Screen {
             )
         };
 
-        let effective_client_id = if self.get_active_tab(client_id).is_ok() {
-            Some(client_id)
-        } else {
-            self.get_first_client_id()
-        };
+        let effective_client_id = self.client_id(client_id);
 
         if let Some(client_id) = effective_client_id {
             match self.get_active_tab_mut(client_id) {
@@ -2681,11 +2657,7 @@ impl Screen {
             )
         };
 
-        let effective_client_id = if self.get_active_tab(client_id).is_ok() {
-            Some(client_id)
-        } else {
-            self.get_first_client_id()
-        };
+        let effective_client_id = self.client_id(client_id);
 
         if let Some(client_id) = effective_client_id {
             match self.get_active_tab_mut(client_id) {
