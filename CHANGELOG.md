@@ -40,6 +40,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: session creation time (all session created 0s ago bug) on musl targets (https://github.com/zellij-org/zellij/pull/4645)
 * feat: allow explicitly saving current session for resurrection (rather than waiting on the resurrection interval) (https://github.com/zellij-org/zellij/pull/4654)
 * fix: proper error handling in route (https://github.com/zellij-org/zellij/pull/4655)
+* feat: allow resizing panes with the mouse (https://github.com/zellij-org/zellij/pull/4678)
 
 
 ## [0.43.1] - 2025-08-08
