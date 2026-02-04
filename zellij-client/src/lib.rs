@@ -427,6 +427,18 @@ pub async fn run_remote_client_terminal_loop(
                             Ok(WebServerToWebClientControlMessage::SwitchedSession{ .. }) => {
                                 // no-op
                             }
+                            Ok(WebServerToWebClientControlMessage::Heartbeat { timestamp }) => {
+                                let response = Message::Text(
+                                    serde_json::to_string(&WebClientToWebServerControlMessage {
+                                        web_client_id: connections.web_client_id.clone(),
+                                        payload: WebClientToWebServerControlMessagePayload::HeartbeatResponse { timestamp },
+                                    })
+                                    .unwrap(),
+                                );
+                                if let Err(e) = connections.control_ws.send(response).await {
+                                    log::error!("Failed to send heartbeat response: {}", e);
+                                }
+                            }
                             Err(e) => {
                                 log::error!("Failed to deserialize control message: {}", e);
                             }
