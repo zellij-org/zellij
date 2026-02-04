@@ -1669,6 +1669,8 @@ pub struct Options {
     pub post_command_discovery_hook: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(bool, optional, tag="40")]
     pub osc8_hyperlinks: ::core::option::Option<bool>,
+    #[prost(bool, optional, tag="41")]
+    pub mouse_hover_effects: ::core::option::Option<bool>,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]

@@ -48,7 +48,9 @@ pub struct FloatingPanes {
     z_indices: Vec<PaneId>,
     active_panes: ActivePanes,
     show_panes: bool,
-    pane_being_moved_with_mouse: Option<(PaneId, Position)>,
+    pane_being_moved_with_mouse: Option<(PaneId, Position, Position)>, // (pane-id,
+    // initial_position,
+    // last_position)
     senders: ThreadSenders,
     window_title: Option<String>,
 }
@@ -380,6 +382,7 @@ impl FloatingPanes {
         mouse_hover_pane_id: &HashMap<ClientId, PaneId>,
         current_pane_group: HashMap<ClientId, Vec<PaneId>>,
         client_id_override: Option<ClientId>,
+        help_text_visible: &HashMap<ClientId, bool>,
     ) -> Result<()> {
         let err_context = || "failed to render output";
         let mut connected_clients: HashSet<ClientId> =
@@ -439,6 +442,9 @@ impl FloatingPanes {
                 { self.connected_clients_in_app.borrow().len() > 1 };
             active_panes.retain(|c_id, _| self.connected_clients.borrow().contains(c_id));
             let pane_is_selectable = pane.selectable();
+            let show_help_text = active_panes.iter().any(|(client_id, pane_id)| {
+                pane_id == &pane.pid() && help_text_visible.get(client_id).copied().unwrap_or(false)
+            });
             let mut pane_contents_and_ui = PaneContentsAndUi::new(
                 pane,
                 output,
@@ -451,6 +457,7 @@ impl FloatingPanes {
                 true,
                 mouse_hover_pane_id,
                 current_pane_group.clone(),
+                show_help_text,
             );
             for client_id in &connected_clients {
                 let client_mode = self
@@ -556,6 +563,37 @@ impl FloatingPanes {
         }
         self.set_force_render();
         Ok(true)
+    }
+
+    pub fn resize_pane_with_strategies(
+        &mut self,
+        pane_id: PaneId,
+        strategies: &[ResizeStrategy],
+        change_by: (usize, usize),
+    ) -> Result<()> {
+        let err_context = || format!("Failed to resize pane {:?} with strategies", pane_id);
+        let display_area = *self.display_area.borrow();
+        let viewport = *self.viewport.borrow();
+        let mut floating_pane_grid = FloatingPaneGrid::new(
+            &mut self.panes,
+            &mut self.desired_pane_positions,
+            display_area,
+            viewport,
+        );
+
+        // Apply each strategy
+        for strategy in strategies {
+            floating_pane_grid
+                .change_pane_size(&pane_id, strategy, change_by)
+                .with_context(err_context)?;
+        }
+
+        for pane in self.panes.values_mut() {
+            resize_pty!(pane, os_api, self.senders, self.character_cell_size)
+                .with_context(err_context)?;
+        }
+        self.set_force_render();
+        Ok(())
     }
 
     fn set_pane_active_at(&mut self, pane_id: PaneId) {
@@ -1023,8 +1061,18 @@ impl FloatingPanes {
             .ok()?
             .and_then(|pane_id| self.panes.get_mut(&pane_id))
     }
-    pub fn set_pane_being_moved_with_mouse(&mut self, pane_id: PaneId, position: Position) {
-        self.pane_being_moved_with_mouse = Some((pane_id, position));
+    pub fn set_pane_being_moved_with_mouse(&mut self, pane_id: PaneId, last_position: Position) {
+        if let Some((last_pane_id, initial_position)) = self
+            .pane_being_moved_with_mouse
+            .map(|(pane_id, initial_position, _)| (pane_id, initial_position))
+        {
+            if last_pane_id == pane_id {
+                // preserve initial_position
+                self.pane_being_moved_with_mouse = Some((pane_id, initial_position, last_position));
+                return;
+            }
+        }
+        self.pane_being_moved_with_mouse = Some((pane_id, last_position, last_position));
     }
     pub fn pane_is_being_moved_with_mouse(&self) -> bool {
         self.pane_being_moved_with_mouse.is_some()
@@ -1033,8 +1081,9 @@ impl FloatingPanes {
         // true => changed position
         let display_area = *self.display_area.borrow();
         let viewport = *self.viewport.borrow();
-        let Some((pane_id, previous_position)) = self.pane_being_moved_with_mouse else {
-            log::error!("Pane is not being moved with mousd");
+        let Some((pane_id, _initial_position, previous_position)) =
+            self.pane_being_moved_with_mouse
+        else {
             return false;
         };
         if click_position == &previous_position {
@@ -1066,7 +1115,7 @@ impl FloatingPanes {
             }
         } else if let Some(pane) = self.get_pane_at_mut(&position, search_selectable) {
             let clicked_on_frame = pane.position_is_on_frame(&position);
-            if show_panes && clicked_on_frame {
+            if (show_panes || pane.position_and_size().is_pinned) && clicked_on_frame {
                 let pid = pane.pid();
                 if self.pane_being_moved_with_mouse.is_none() {
                     self.set_pane_being_moved_with_mouse(pid, position);
@@ -1078,12 +1127,25 @@ impl FloatingPanes {
         };
         false
     }
-    pub fn stop_moving_pane_with_mouse(&mut self, position: Position) {
-        if self.pane_being_moved_with_mouse.is_some() {
-            self.move_pane_to_position(&position);
+    pub fn stop_moving_pane_with_mouse(&mut self, position: Position) -> bool {
+        // bool -> this
+        // pane was never
+        // moved (initial
+        // position ==
+        // last_position)
+        let mut never_moved = false;
+        if let Some((_pane_id, initial_position, _last_position)) =
+            self.pane_being_moved_with_mouse.take()
+        {
+            if initial_position == position {
+                never_moved = true;
+            } else {
+                self.move_pane_to_position(&position);
+            }
             self.set_force_render();
         };
         self.pane_being_moved_with_mouse = None;
+        never_moved
     }
     pub fn get_active_pane_id(&self, client_id: ClientId) -> Option<PaneId> {
         self.active_panes.get(&client_id).copied()

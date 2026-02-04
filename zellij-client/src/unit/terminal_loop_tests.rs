@@ -129,10 +129,6 @@ impl ClientOsApi for TestClientOsApi {
         Ok(())
     }
 
-    fn stdin_poller(&self) -> crate::os_input_output::StdinPoller {
-        crate::os_input_output::StdinPoller::default()
-    }
-
     fn get_async_stdin_reader(&self) -> Box<dyn AsyncStdin> {
         Box::new(MockAsyncStdin {
             rx: self.stdin_rx.clone(),

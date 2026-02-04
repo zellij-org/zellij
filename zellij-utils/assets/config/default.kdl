@@ -520,6 +520,11 @@ load_plugins {
 //
 // advanced_mouse_actions false
 
+// Whether to enable mouse hover visual effects (frame highlight and help text)
+// Default: true
+//
+// mouse_hover_effects false
+
 // Whether to output OSC8 hyperlink sequences
 // Default: true
 //

@@ -1928,7 +1928,4 @@ impl ClientOsApi for MockClientOsApi {
     fn disable_mouse(&self) -> anyhow::Result<()> {
         Ok(())
     }
-    fn stdin_poller(&self) -> crate::os_input_output::StdinPoller {
-        crate::os_input_output::StdinPoller::default()
-    }
 }

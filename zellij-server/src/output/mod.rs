@@ -717,7 +717,7 @@ impl FloatingPanesStack {
                 // pane covers chunk completely
                 drop(c_chunk.terminal_characters.drain(..));
                 return Ok(None);
-            } else if pane_right_edge > c_chunk_left_side
+            } else if pane_right_edge >= c_chunk_left_side
                 && pane_right_edge < c_chunk_right_side
                 && pane_left_edge <= c_chunk_left_side
             {
@@ -726,8 +726,8 @@ impl FloatingPanesStack {
                 drop(covered_part);
                 c_chunk.x = pane_right_edge + 1;
                 return Ok(None);
-            } else if pane_left_edge > c_chunk_left_side
-                && pane_left_edge < c_chunk_right_side
+            } else if pane_left_edge >= c_chunk_left_side
+                && pane_left_edge >= c_chunk_left_side
                 && pane_right_edge >= c_chunk_right_side
             {
                 // pane covers chunk partially to the right

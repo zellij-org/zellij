@@ -34,7 +34,7 @@ use crate::plugins::{PluginId, PluginInstruction};
 use crate::pty::PtyInstruction;
 use crate::screen::ScreenInstruction;
 use crate::thread_bus::Bus;
-use crate::ClientId;
+use crate::{ClientId, ServerInstruction};
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum BackgroundJob {
@@ -66,6 +66,9 @@ pub enum BackgroundJob {
     HighlightPanesWithMessage(Vec<PaneId>, String),
     RenderToClients,
     QueryZellijWebServerStatus,
+    ClearHelpText {
+        client_id: ClientId,
+    },
     Exit,
 }
 
@@ -92,6 +95,7 @@ impl From<&BackgroundJob> for BackgroundJobContext {
             BackgroundJob::QueryZellijWebServerStatus => {
                 BackgroundJobContext::QueryZellijWebServerStatus
             },
+            BackgroundJob::ClearHelpText { .. } => BackgroundJobContext::ClearHelpText,
             BackgroundJob::Exit => BackgroundJobContext::Exit,
         }
     }
@@ -103,6 +107,7 @@ static PLUGIN_ANIMATION_OFFSET_DURATION_MD: u64 = 500;
 static SESSION_READ_DURATION: u64 = 1000;
 static DEFAULT_SERIALIZATION_INTERVAL: u64 = 60000;
 static REPAINT_DELAY_MS: u64 = 10;
+static HELP_TEXT_DEBOUNCE_DURATION: u64 = 5000;
 
 pub(crate) fn background_jobs_main(
     bus: Bus<BackgroundJob>,
@@ -122,6 +127,8 @@ pub(crate) fn background_jobs_main(
     let serialization_interval = serialization_interval.map(|s| s * 1000); // convert to
                                                                            // milliseconds
     let last_render_request: Arc<Mutex<Option<Instant>>> = Arc::new(Mutex::new(None));
+    let pending_help_text_clear: Arc<Mutex<HashMap<ClientId, Instant>>> =
+        Arc::new(Mutex::new(HashMap::new()));
 
     let http_client = HttpClient::builder()
         // TODO: timeout?
@@ -490,6 +497,58 @@ pub(crate) fn background_jobs_main(
                         );
                     }
                 });
+            },
+            BackgroundJob::ClearHelpText { client_id } => {
+                let should_spawn = {
+                    let mut pending = pending_help_text_clear.lock().unwrap();
+                    let current_time = Instant::now();
+                    let should_spawn = !pending.contains_key(&client_id);
+                    pending.insert(client_id, current_time);
+                    should_spawn
+                };
+
+                if should_spawn {
+                    task::spawn({
+                        let senders = bus.senders.clone();
+                        let pending = pending_help_text_clear.clone();
+                        let debounce_duration = Duration::from_millis(HELP_TEXT_DEBOUNCE_DURATION);
+                        async move {
+                            task::sleep(debounce_duration).await;
+                            loop {
+                                let next_sleep_duration = {
+                                    let mut pending = pending.lock().unwrap();
+                                    match pending.get(&client_id) {
+                                        Some(&last_motion_time) => {
+                                            let time_since_motion =
+                                                Instant::now().duration_since(last_motion_time);
+                                            if time_since_motion >= debounce_duration {
+                                                pending.remove(&client_id);
+                                                None
+                                            } else {
+                                                let remaining = debounce_duration
+                                                    .saturating_sub(time_since_motion);
+                                                Some(remaining)
+                                            }
+                                        },
+                                        None => break,
+                                    }
+                                };
+
+                                match next_sleep_duration {
+                                    Some(duration) => {
+                                        task::sleep(duration).await;
+                                    },
+                                    None => {
+                                        let _ = senders.send_to_server(
+                                            ServerInstruction::ClearMouseHelpText(client_id),
+                                        );
+                                        break;
+                                    },
+                                }
+                            }
+                        }
+                    });
+                }
             },
             BackgroundJob::Exit => {
                 for loading_plugin in loading_plugins.values() {

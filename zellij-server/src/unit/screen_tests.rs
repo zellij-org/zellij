@@ -256,7 +256,11 @@ impl ServerOsApi for FakeInputOutput {
     }
 }
 
-fn create_new_screen(size: Size, advanced_mouse_actions: bool) -> Screen {
+fn create_new_screen(
+    size: Size,
+    advanced_mouse_actions: bool,
+    mouse_hover_effects: bool,
+) -> Screen {
     let mut bus: Bus<ScreenInstruction> = Bus::empty();
     let fake_os_input = FakeInputOutput::default();
     bus.os_input = Some(Box::new(fake_os_input));
@@ -314,6 +318,7 @@ fn create_new_screen(size: Size, advanced_mouse_actions: bool) -> Screen {
         false,
         web_sharing,
         advanced_mouse_actions,
+        mouse_hover_effects,
         web_server_ip,
         web_server_port,
     );
@@ -783,7 +788,7 @@ fn open_new_tab() {
         cols: 121,
         rows: 20,
     };
-    let mut screen = create_new_screen(size, true);
+    let mut screen = create_new_screen(size, true, true);
 
     new_tab(&mut screen, 1, 0);
     new_tab(&mut screen, 2, 1);
@@ -802,7 +807,7 @@ pub fn switch_to_prev_tab() {
         cols: 121,
         rows: 20,
     };
-    let mut screen = create_new_screen(size, true);
+    let mut screen = create_new_screen(size, true, true);
 
     new_tab(&mut screen, 1, 1);
     new_tab(&mut screen, 2, 2);
@@ -821,7 +826,7 @@ pub fn switch_to_next_tab() {
         cols: 121,
         rows: 20,
     };
-    let mut screen = create_new_screen(size, true);
+    let mut screen = create_new_screen(size, true, true);
 
     new_tab(&mut screen, 1, 1);
     new_tab(&mut screen, 2, 2);
@@ -841,7 +846,7 @@ pub fn switch_to_tab_name() {
         cols: 121,
         rows: 20,
     };
-    let mut screen = create_new_screen(size, true);
+    let mut screen = create_new_screen(size, true, true);
 
     new_tab(&mut screen, 1, 1);
     new_tab(&mut screen, 2, 2);
@@ -875,7 +880,7 @@ pub fn close_tab() {
         cols: 121,
         rows: 20,
     };
-    let mut screen = create_new_screen(size, true);
+    let mut screen = create_new_screen(size, true, true);
 
     new_tab(&mut screen, 1, 1);
     new_tab(&mut screen, 2, 2);
@@ -895,7 +900,7 @@ pub fn close_the_middle_tab() {
         cols: 121,
         rows: 20,
     };
-    let mut screen = create_new_screen(size, true);
+    let mut screen = create_new_screen(size, true, true);
 
     new_tab(&mut screen, 1, 1);
     new_tab(&mut screen, 2, 2);
@@ -917,7 +922,7 @@ fn move_focus_left_at_left_screen_edge_changes_tab() {
         cols: 121,
         rows: 20,
     };
-    let mut screen = create_new_screen(size, true);
+    let mut screen = create_new_screen(size, true, true);
 
     new_tab(&mut screen, 1, 1);
     new_tab(&mut screen, 2, 2);
@@ -954,6 +959,7 @@ fn create_fixed_size_screen() -> Screen {
             cols: 121,
             rows: 20,
         },
+        true,
         true,
     )
 }
@@ -1085,7 +1091,7 @@ fn move_focus_right_at_right_screen_edge_changes_tab() {
         cols: 121,
         rows: 20,
     };
-    let mut screen = create_new_screen(size, true);
+    let mut screen = create_new_screen(size, true, true);
 
     new_tab(&mut screen, 1, 1);
     new_tab(&mut screen, 2, 2);
@@ -1106,7 +1112,7 @@ pub fn toggle_to_previous_tab_simple() {
         cols: 121,
         rows: 20,
     };
-    let mut screen = create_new_screen(position_and_size, true);
+    let mut screen = create_new_screen(position_and_size, true, true);
 
     new_tab(&mut screen, 1, 1);
     new_tab(&mut screen, 2, 2);
@@ -1134,7 +1140,7 @@ pub fn toggle_to_previous_tab_create_tabs_only() {
         cols: 121,
         rows: 20,
     };
-    let mut screen = create_new_screen(position_and_size, true);
+    let mut screen = create_new_screen(position_and_size, true, true);
 
     new_tab(&mut screen, 1, 0);
     new_tab(&mut screen, 2, 1);
@@ -1184,7 +1190,7 @@ pub fn toggle_to_previous_tab_delete() {
         cols: 121,
         rows: 20,
     };
-    let mut screen = create_new_screen(position_and_size, true);
+    let mut screen = create_new_screen(position_and_size, true, true);
 
     new_tab(&mut screen, 1, 0);
     new_tab(&mut screen, 2, 1);
@@ -1280,7 +1286,7 @@ fn switch_to_tab_with_fullscreen() {
         cols: 121,
         rows: 20,
     };
-    let mut screen = create_new_screen(size, true);
+    let mut screen = create_new_screen(size, true, true);
 
     new_tab(&mut screen, 1, 1);
     {
@@ -1325,7 +1331,7 @@ fn update_screen_pixel_dimensions() {
         cols: 121,
         rows: 20,
     };
-    let mut screen = create_new_screen(size, true);
+    let mut screen = create_new_screen(size, true, true);
     let initial_pixel_dimensions = screen.pixel_dimensions;
     screen.update_pixel_dimensions(PixelDimensions {
         character_cell_size: Some(SizeInPixels {
@@ -1404,7 +1410,7 @@ fn attach_after_first_tab_closed() {
         cols: 121,
         rows: 20,
     };
-    let mut screen = create_new_screen(size, true);
+    let mut screen = create_new_screen(size, true, true);
 
     new_tab(&mut screen, 1, 0);
     {
@@ -1436,7 +1442,7 @@ fn open_new_floating_pane_with_custom_coordinates() {
         cols: 121,
         rows: 20,
     };
-    let mut screen = create_new_screen(size, true);
+    let mut screen = create_new_screen(size, true, true);
 
     new_tab(&mut screen, 1, 0);
     let active_tab = screen.get_active_tab_mut(1).unwrap();
@@ -1472,7 +1478,7 @@ fn open_new_floating_pane_with_custom_coordinates_exceeding_viewport() {
         cols: 121,
         rows: 20,
     };
-    let mut screen = create_new_screen(size, true);
+    let mut screen = create_new_screen(size, true, true);
 
     new_tab(&mut screen, 1, 0);
     let active_tab = screen.get_active_tab_mut(1).unwrap();
@@ -1508,7 +1514,7 @@ fn floating_pane_auto_centers_horizontally_with_only_width() {
         cols: 120,
         rows: 20,
     };
-    let mut screen = create_new_screen(size, true);
+    let mut screen = create_new_screen(size, true, true);
 
     new_tab(&mut screen, 1, 0);
     let active_tab = screen.get_active_tab_mut(1).unwrap();
@@ -1544,7 +1550,7 @@ fn floating_pane_auto_centers_vertically_with_only_height() {
         cols: 120,
         rows: 40,
     };
-    let mut screen = create_new_screen(size, true);
+    let mut screen = create_new_screen(size, true, true);
 
     new_tab(&mut screen, 1, 0);
     let active_tab = screen.get_active_tab_mut(1).unwrap();
@@ -1580,7 +1586,7 @@ fn floating_pane_auto_centers_both_axes_with_only_size() {
         cols: 120,
         rows: 40,
     };
-    let mut screen = create_new_screen(size, true);
+    let mut screen = create_new_screen(size, true, true);
 
     new_tab(&mut screen, 1, 0);
     let active_tab = screen.get_active_tab_mut(1).unwrap();
@@ -1616,7 +1622,7 @@ fn floating_pane_respects_explicit_coordinates_with_size() {
         cols: 120,
         rows: 40,
     };
-    let mut screen = create_new_screen(size, true);
+    let mut screen = create_new_screen(size, true, true);
 
     new_tab(&mut screen, 1, 0);
     let active_tab = screen.get_active_tab_mut(1).unwrap();
@@ -1652,7 +1658,7 @@ fn floating_pane_centers_with_percentage_width() {
         cols: 120,
         rows: 40,
     };
-    let mut screen = create_new_screen(size, true);
+    let mut screen = create_new_screen(size, true, true);
 
     new_tab(&mut screen, 1, 0);
     let active_tab = screen.get_active_tab_mut(1).unwrap();
@@ -1693,7 +1699,7 @@ fn floating_pane_centers_large_pane_safely() {
         cols: 100,
         rows: 30,
     };
-    let mut screen = create_new_screen(size, true);
+    let mut screen = create_new_screen(size, true, true);
 
     new_tab(&mut screen, 1, 0);
     let active_tab = screen.get_active_tab_mut(1).unwrap();
@@ -1813,7 +1819,7 @@ fn group_panes_with_mouse() {
         rows: 20,
     };
     let client_id = 1;
-    let mut screen = create_new_screen(size, true);
+    let mut screen = create_new_screen(size, true, true);
 
     new_tab(&mut screen, 1, 0);
     new_tab(&mut screen, 2, 1);
@@ -1855,7 +1861,7 @@ fn group_panes_with_keyboard() {
         rows: 20,
     };
     let client_id = 1;
-    let mut screen = create_new_screen(size, true);
+    let mut screen = create_new_screen(size, true, true);
 
     new_tab(&mut screen, 1, 0);
     new_tab(&mut screen, 2, 1);
@@ -1891,7 +1897,7 @@ fn group_panes_following_focus() {
         rows: 20,
     };
     let client_id = 1;
-    let mut screen = create_new_screen(size, true);
+    let mut screen = create_new_screen(size, true, true);
 
     new_tab(&mut screen, 1, 0);
 
@@ -1952,7 +1958,7 @@ fn break_group_with_mouse() {
         rows: 20,
     };
     let client_id = 1;
-    let mut screen = create_new_screen(size, true);
+    let mut screen = create_new_screen(size, true, true);
 
     new_tab(&mut screen, 1, 0);
 
