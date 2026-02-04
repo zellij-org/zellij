@@ -1,5 +1,13 @@
+:root {
+    --dynamic-vh: 100dvh;
+    --dynamic-vw: 100dvw;
+}
+
+html,
 body,
 #terminal {
-    height: 100vh;
+    height: var(--dynamic-vh, 100vh);
+    width: var(--dynamic-vw, 100vw);
     margin: 0;
+    overflow: hidden;
 }
