@@ -1,16 +1,16 @@
 use crate::{
     client_server_contract::client_server_contract::{
         client_to_server_msg, server_to_client_msg, ActionMsg, AttachClientMsg,
-        AttachWatcherClientMsg, BackgroundColorMsg, CliPipeOutputMsg, ClientExitedMsg,
-        ClientToServerMsg as ProtoClientToServerMsg, ColorRegistersMsg, ConfigFileUpdatedMsg,
-        ConnStatusMsg, ConnectedMsg, DetachSessionMsg, ExitMsg, ExitReason as ProtoExitReason,
-        FailedToStartWebServerMsg, FirstClientConnectedMsg, ForegroundColorMsg,
-        InputMode as ProtoInputMode, KeyMsg, KillSessionMsg, LayoutMetadata as ProtoLayoutMetadata,
-        LogErrorMsg, LogMsg, PaneMetadata as ProtoPaneMetadata, QueryTerminalSizeMsg,
-        RenamedSessionMsg, RenderMsg, ServerToClientMsg as ProtoServerToClientMsg,
-        StartWebServerMsg, SwitchSessionMsg, TabMetadata as ProtoTabMetadata,
-        TerminalPixelDimensionsMsg, TerminalResizeMsg, UnblockCliPipeInputMsg,
-        UnblockInputThreadMsg, WebServerStartedMsg,
+        AttachWatcherClientMsg, BackgroundColorMsg, CapturedOutputMsg, CliPipeOutputMsg,
+        ClientExitedMsg, ClientToServerMsg as ProtoClientToServerMsg, ColorRegistersMsg,
+        ConfigFileUpdatedMsg, ConnStatusMsg, ConnectedMsg, DetachSessionMsg, ExitMsg,
+        ExitReason as ProtoExitReason, FailedToStartWebServerMsg, FirstClientConnectedMsg,
+        ForegroundColorMsg, InputMode as ProtoInputMode, KeyMsg, KillSessionMsg,
+        LayoutMetadata as ProtoLayoutMetadata, LogErrorMsg, LogMsg,
+        PaneMetadata as ProtoPaneMetadata, QueryTerminalSizeMsg, RenamedSessionMsg, RenderMsg,
+        ServerToClientMsg as ProtoServerToClientMsg, StartWebServerMsg, SwitchSessionMsg,
+        TabMetadata as ProtoTabMetadata, TerminalPixelDimensionsMsg, TerminalResizeMsg,
+        UnblockCliPipeInputMsg, UnblockInputThreadMsg, WebServerStartedMsg,
     },
     data::InputMode,
     errors::prelude::*,
@@ -278,6 +278,9 @@ impl From<ServerToClientMsg> for ProtoServerToClientMsg {
             ServerToClientMsg::CliPipeOutput { pipe_name, output } => {
                 server_to_client_msg::Message::CliPipeOutput(CliPipeOutputMsg { pipe_name, output })
             },
+            ServerToClientMsg::CapturedOutput { output } => {
+                server_to_client_msg::Message::CapturedOutput(CapturedOutputMsg { output })
+            },
             ServerToClientMsg::QueryTerminalSize => {
                 server_to_client_msg::Message::QueryTerminalSize(QueryTerminalSizeMsg {})
             },
@@ -358,6 +361,11 @@ impl TryFrom<ProtoServerToClientMsg> for ServerToClientMsg {
                 Ok(ServerToClientMsg::CliPipeOutput {
                     pipe_name: pipe_output.pipe_name,
                     output: pipe_output.output,
+                })
+            },
+            Some(server_to_client_msg::Message::CapturedOutput(captured_output)) => {
+                Ok(ServerToClientMsg::CapturedOutput {
+                    output: captured_output.output,
                 })
             },
             Some(server_to_client_msg::Message::QueryTerminalSize(_)) => {
@@ -937,6 +945,7 @@ impl From<crate::input::actions::Action>
                 pane_name,
                 command,
                 unblock_condition,
+                capture_output: _, // capture_output is only used in CLI, not serialized
                 near_current_pane,
             } => ActionType::NewBlockingPane(NewBlockingPaneAction {
                 placement: Some(placement.into()),
@@ -1521,6 +1530,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                         .unblock_condition
                         .map(|c| proto_i32_to_unblock_condition(c))
                         .transpose()?,
+                    capture_output: false, // capture_output is CLI-only, default to false
                     near_current_pane: new_blocking_action.near_current_pane,
                 })
             },
