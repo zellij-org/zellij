@@ -1080,7 +1080,6 @@ impl FloatingPanes {
         let display_area = *self.display_area.borrow();
         let viewport = *self.viewport.borrow();
         let Some((pane_id, _initial_position, previous_position)) = self.pane_being_moved_with_mouse else {
-            log::error!("Pane is not being moved with mousd");
             return false;
         };
         if click_position == &previous_position {
