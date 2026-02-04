@@ -159,6 +159,7 @@ pub enum PaneEdge {
     BottomRight,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PaneResizeState {
     pub pane_id: PaneId,
     pub edge: PaneEdge,
@@ -167,6 +168,7 @@ pub struct PaneResizeState {
     pub is_floating: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct ClickedPaneDetails {
     pane_id: PaneId,
     on_frame: bool,
@@ -176,6 +178,7 @@ struct ClickedPaneDetails {
     terminal_wants_mouse: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct MouseEventContext {
     pane_id_at_position: Option<PaneId>,
     active_pane_id: Option<PaneId>,
@@ -1109,6 +1112,19 @@ impl MouseHandler {
             {
                 tab.floating_panes.focus_pane(clicked_pane, client_id);
                 tab.set_pane_active_at(clicked_pane);
+                return Ok(());
+            }
+        }
+        if tab.floating_panes.has_pinned_panes() {
+            let search_selectable = false;
+            if let Some(pane_id) = tab
+                .floating_panes
+                .get_pinned_pane_id_at(point, search_selectable)
+                .with_context(err_context)?
+            {
+                tab.floating_panes.focus_pane(pane_id, client_id);
+                tab.set_pane_active_at(pane_id);
+                tab.show_floating_panes();
                 return Ok(());
             }
         }
