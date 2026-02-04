@@ -202,58 +202,106 @@ fn edge_and_delta_to_strategies(
     match edge {
         PaneEdge::Left => {
             let resize = if delta_x < 0 { Increase } else { Decrease };
-            vec![ResizeStrategy::new(resize, Some(Left))]
+            vec![ResizeStrategy {
+                resize,
+                direction: Some(Left),
+                invert_on_boundaries: false,
+            }]
         },
         PaneEdge::Right => {
             let resize = if delta_x > 0 { Increase } else { Decrease };
-            vec![ResizeStrategy::new(resize, Some(Right))]
+            vec![ResizeStrategy {
+                resize,
+                direction: Some(Right),
+                invert_on_boundaries: false,
+            }]
         },
         PaneEdge::Top => {
             let resize = if delta_y < 0 { Increase } else { Decrease };
-            vec![ResizeStrategy::new(resize, Some(Up))]
+            vec![ResizeStrategy {
+                resize,
+                direction: Some(Up),
+                invert_on_boundaries: false,
+            }]
         },
         PaneEdge::Bottom => {
             let resize = if delta_y > 0 { Increase } else { Decrease };
-            vec![ResizeStrategy::new(resize, Some(Down))]
+            vec![ResizeStrategy {
+                resize,
+                direction: Some(Down),
+                invert_on_boundaries: false,
+            }]
         },
         PaneEdge::TopLeft => {
             let mut strategies = vec![];
             // Top edge
             let resize_y = if delta_y < 0 { Increase } else { Decrease };
-            strategies.push(ResizeStrategy::new(resize_y, Some(Up)));
+            strategies.push(ResizeStrategy {
+                resize: resize_y,
+                direction: Some(Up),
+                invert_on_boundaries: false,
+            });
             // Left edge
             let resize_x = if delta_x < 0 { Increase } else { Decrease };
-            strategies.push(ResizeStrategy::new(resize_x, Some(Left)));
+            strategies.push(ResizeStrategy {
+                resize: resize_x,
+                direction: Some(Left),
+                invert_on_boundaries: false,
+            });
             strategies
         },
         PaneEdge::TopRight => {
             let mut strategies = vec![];
             // Top edge
             let resize_y = if delta_y < 0 { Increase } else { Decrease };
-            strategies.push(ResizeStrategy::new(resize_y, Some(Up)));
+            strategies.push(ResizeStrategy {
+                resize: resize_y,
+                direction: Some(Up),
+                invert_on_boundaries: false,
+            });
             // Right edge
             let resize_x = if delta_x > 0 { Increase } else { Decrease };
-            strategies.push(ResizeStrategy::new(resize_x, Some(Right)));
+            strategies.push(ResizeStrategy {
+                resize: resize_x,
+                direction: Some(Right),
+                invert_on_boundaries: false,
+            });
             strategies
         },
         PaneEdge::BottomLeft => {
             let mut strategies = vec![];
             // Bottom edge
             let resize_y = if delta_y > 0 { Increase } else { Decrease };
-            strategies.push(ResizeStrategy::new(resize_y, Some(Down)));
+            strategies.push(ResizeStrategy {
+                resize: resize_y,
+                direction: Some(Down),
+                invert_on_boundaries: false,
+            });
             // Left edge
             let resize_x = if delta_x < 0 { Increase } else { Decrease };
-            strategies.push(ResizeStrategy::new(resize_x, Some(Left)));
+            strategies.push(ResizeStrategy {
+                resize: resize_x,
+                direction: Some(Left),
+                invert_on_boundaries: false,
+            });
             strategies
         },
         PaneEdge::BottomRight => {
             let mut strategies = vec![];
             // Bottom edge
             let resize_y = if delta_y > 0 { Increase } else { Decrease };
-            strategies.push(ResizeStrategy::new(resize_y, Some(Down)));
+            strategies.push(ResizeStrategy {
+                resize: resize_y,
+                direction: Some(Down),
+                invert_on_boundaries: false,
+            });
             // Right edge
             let resize_x = if delta_x > 0 { Increase } else { Decrease };
-            strategies.push(ResizeStrategy::new(resize_x, Some(Right)));
+            strategies.push(ResizeStrategy {
+                resize: resize_x,
+                direction: Some(Right),
+                invert_on_boundaries: false,
+            });
             strategies
         },
     }
@@ -413,13 +461,11 @@ impl MouseHandler {
                 (delta_x.unsigned_abs(), delta_y.unsigned_abs()),
             ).with_context(err_context)?;
         } else {
-            let allow_inverting_strategy = false; // bad ux for mouse resize
             Self::resize_tiled_pane_with_strategies(
                 tab,
                 pane_id,
                 &strategies,
                 (delta_x.abs() as f64, delta_y.abs() as f64),
-                allow_inverting_strategy,
             ).with_context(err_context)?;
         }
 
@@ -479,7 +525,6 @@ impl MouseHandler {
         pane_id: PaneId,
         strategies: &[ResizeStrategy],
         change_by: (f64, f64),
-        allow_inverting_strategy: bool,
     ) -> Result<()> {
         let err_context = || format!("failed to resize tiled pane {pane_id:?}");
 
@@ -504,7 +549,7 @@ impl MouseHandler {
         );
 
         tab.tiled_panes
-            .resize_pane_with_strategies(pane_id, strategies, change_by_percent, allow_inverting_strategy)
+            .resize_pane_with_strategies(pane_id, strategies, change_by_percent)
             .with_context(err_context)?;
 
         tab.swap_layouts.set_is_tiled_damaged();
