@@ -283,7 +283,6 @@ impl crate::os_input_output::ClientOsApi for MockClientOsApi {
     fn disable_mouse(&self) -> anyhow::Result<()> {
         Ok(())
     }
-
 }
 
 // Tests

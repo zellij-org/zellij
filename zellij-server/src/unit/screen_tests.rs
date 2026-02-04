@@ -256,7 +256,11 @@ impl ServerOsApi for FakeInputOutput {
     }
 }
 
-fn create_new_screen(size: Size, advanced_mouse_actions: bool, mouse_hover_effects: bool) -> Screen {
+fn create_new_screen(
+    size: Size,
+    advanced_mouse_actions: bool,
+    mouse_hover_effects: bool,
+) -> Screen {
     let mut bus: Bus<ScreenInstruction> = Bus::empty();
     let fake_os_input = FakeInputOutput::default();
     bus.os_input = Some(Box::new(fake_os_input));

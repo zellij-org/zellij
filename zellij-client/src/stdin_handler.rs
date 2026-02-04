@@ -115,7 +115,6 @@ pub(crate) fn stdin_loop(
                 );
 
                 for input_event in events.into_iter() {
-
                     send_input_instructions
                         .send(InputInstruction::KeyEvent(
                             input_event,

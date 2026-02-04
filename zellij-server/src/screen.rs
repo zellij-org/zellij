@@ -13,8 +13,9 @@ use crate::route::NotificationEnd;
 use log::{debug, warn};
 use zellij_utils::data::{
     CommandOrPlugin, Direction, FloatingPaneCoordinates, GetFocusedPaneInfoResponse,
-    KeyWithModifier, NewPanePlacement, PaneContents, PaneManifest, PaneScrollbackResponse,
-    PluginPermission, Resize, ResizeStrategy, SessionInfo, Styling, WebSharing, LayoutInfo
+    KeyWithModifier, LayoutInfo, NewPanePlacement, PaneContents, PaneManifest,
+    PaneScrollbackResponse, PluginPermission, Resize, ResizeStrategy, SessionInfo, Styling,
+    WebSharing,
 };
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
@@ -2178,7 +2179,6 @@ impl Screen {
         // generate own session info
         let pane_manifest = self.generate_and_report_pane_state()?;
         let tab_infos = self.generate_and_report_tab_state()?;
-
 
         // in the context of unit/integration tests, we don't need to list available layouts
         // because this is mostly about HD access - it does however throw off the timing in the

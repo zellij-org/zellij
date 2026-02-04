@@ -49,8 +49,8 @@ pub struct FloatingPanes {
     active_panes: ActivePanes,
     show_panes: bool,
     pane_being_moved_with_mouse: Option<(PaneId, Position, Position)>, // (pane-id,
-                                                                       // initial_position,
-                                                                       // last_position)
+    // initial_position,
+    // last_position)
     senders: ThreadSenders,
     window_title: Option<String>,
 }
@@ -442,10 +442,9 @@ impl FloatingPanes {
                 { self.connected_clients_in_app.borrow().len() > 1 };
             active_panes.retain(|c_id, _| self.connected_clients.borrow().contains(c_id));
             let pane_is_selectable = pane.selectable();
-            let show_help_text = active_panes.iter()
-                .any(|(client_id, pane_id)| {
-                    pane_id == &pane.pid() && help_text_visible.get(client_id).copied().unwrap_or(false)
-                });
+            let show_help_text = active_panes.iter().any(|(client_id, pane_id)| {
+                pane_id == &pane.pid() && help_text_visible.get(client_id).copied().unwrap_or(false)
+            });
             let mut pane_contents_and_ui = PaneContentsAndUi::new(
                 pane,
                 output,
@@ -1063,7 +1062,10 @@ impl FloatingPanes {
             .and_then(|pane_id| self.panes.get_mut(&pane_id))
     }
     pub fn set_pane_being_moved_with_mouse(&mut self, pane_id: PaneId, last_position: Position) {
-        if let Some((last_pane_id, initial_position))  = self.pane_being_moved_with_mouse.map(|(pane_id, initial_position, _)| (pane_id, initial_position)) {
+        if let Some((last_pane_id, initial_position)) = self
+            .pane_being_moved_with_mouse
+            .map(|(pane_id, initial_position, _)| (pane_id, initial_position))
+        {
             if last_pane_id == pane_id {
                 // preserve initial_position
                 self.pane_being_moved_with_mouse = Some((pane_id, initial_position, last_position));
@@ -1079,7 +1081,9 @@ impl FloatingPanes {
         // true => changed position
         let display_area = *self.display_area.borrow();
         let viewport = *self.viewport.borrow();
-        let Some((pane_id, _initial_position, previous_position)) = self.pane_being_moved_with_mouse else {
+        let Some((pane_id, _initial_position, previous_position)) =
+            self.pane_being_moved_with_mouse
+        else {
             return false;
         };
         if click_position == &previous_position {
@@ -1123,13 +1127,16 @@ impl FloatingPanes {
         };
         false
     }
-    pub fn stop_moving_pane_with_mouse(&mut self, position: Position) -> bool { // bool -> this
-                                                                                // pane was never
-                                                                                // moved (initial
-                                                                                // position ==
-                                                                                // last_position)
+    pub fn stop_moving_pane_with_mouse(&mut self, position: Position) -> bool {
+        // bool -> this
+        // pane was never
+        // moved (initial
+        // position ==
+        // last_position)
         let mut never_moved = false;
-        if let Some((_pane_id, initial_position, _last_position)) = self.pane_being_moved_with_mouse.take() {
+        if let Some((_pane_id, initial_position, _last_position)) =
+            self.pane_being_moved_with_mouse.take()
+        {
             if initial_position == position {
                 never_moved = true;
             } else {

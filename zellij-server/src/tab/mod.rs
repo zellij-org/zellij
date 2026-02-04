@@ -153,7 +153,6 @@ enum BufferedTabInstruction {
     HoldPane(PaneId, Option<i32>, bool, RunCommand), // Option<i32> is the exit status, bool is is_first_run
 }
 
-
 pub(crate) struct Tab {
     pub index: usize,
     pub position: usize,

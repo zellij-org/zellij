@@ -3928,8 +3928,11 @@ fn pane_in_sgr_button_event_tracking_mouse_mode() {
     )
     .unwrap();
     // tab.handle_right_mouse_release(&Position::new(7, 75), client_id)
-    tab.handle_mouse_event(&MouseEvent::new_right_release_event(Position::new(7, 75)), client_id)
-        .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_right_release_event(Position::new(7, 75)),
+        client_id,
+    )
+    .unwrap();
     tab.handle_mouse_event(
         &MouseEvent::new_middle_press_event(Position::new(5, 71)),
         client_id,
@@ -3941,8 +3944,11 @@ fn pane_in_sgr_button_event_tracking_mouse_mode() {
     )
     .unwrap();
     // tab.handle_middle_mouse_release(&Position::new(7, 75), client_id)
-    tab.handle_mouse_event(&MouseEvent::new_middle_release_event(Position::new(7, 75)), client_id)
-        .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_middle_release_event(Position::new(7, 75)),
+        client_id,
+    )
+    .unwrap();
     tab.handle_scrollwheel_up(&Position::new(5, 71), 1, client_id)
         .unwrap();
     tab.handle_scrollwheel_down(&Position::new(5, 71), 1, client_id)
@@ -4013,8 +4019,11 @@ fn pane_in_sgr_normal_event_tracking_mouse_mode() {
     )
     .unwrap();
     // tab.handle_right_mouse_release(&Position::new(7, 75), client_id)
-    tab.handle_mouse_event(&MouseEvent::new_right_release_event(Position::new(7, 75)), client_id)
-        .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_right_release_event(Position::new(7, 75)),
+        client_id,
+    )
+    .unwrap();
     tab.handle_mouse_event(
         &MouseEvent::new_middle_press_event(Position::new(5, 71)),
         client_id,
@@ -4026,8 +4035,11 @@ fn pane_in_sgr_normal_event_tracking_mouse_mode() {
     )
     .unwrap();
     // tab.handle_middle_mouse_release(&Position::new(7, 75), client_id)
-    tab.handle_mouse_event(&MouseEvent::new_middle_release_event(Position::new(7, 75)), client_id)
-        .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_middle_release_event(Position::new(7, 75)),
+        client_id,
+    )
+    .unwrap();
     tab.handle_scrollwheel_up(&Position::new(5, 71), 1, client_id)
         .unwrap();
     tab.handle_scrollwheel_down(&Position::new(5, 71), 1, client_id)
@@ -4098,8 +4110,11 @@ fn pane_in_sgr_any_event_tracking_mouse_mode() {
     )
     .unwrap();
     // tab.handle_right_mouse_release(&Position::new(7, 75), client_id)
-    tab.handle_mouse_event(&MouseEvent::new_right_release_event(Position::new(7, 75)), client_id)
-        .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_right_release_event(Position::new(7, 75)),
+        client_id,
+    )
+    .unwrap();
     tab.handle_mouse_event(
         &MouseEvent::new_middle_press_event(Position::new(5, 71)),
         client_id,
@@ -4111,8 +4126,11 @@ fn pane_in_sgr_any_event_tracking_mouse_mode() {
     )
     .unwrap();
     // tab.handle_middle_mouse_release(&Position::new(7, 75), client_id)
-    tab.handle_mouse_event(&MouseEvent::new_middle_release_event(Position::new(7, 75)), client_id)
-        .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_middle_release_event(Position::new(7, 75)),
+        client_id,
+    )
+    .unwrap();
     tab.handle_scrollwheel_up(&Position::new(5, 71), 1, client_id)
         .unwrap();
     tab.handle_scrollwheel_down(&Position::new(5, 71), 1, client_id)
@@ -4189,8 +4207,11 @@ fn pane_in_utf8_button_event_tracking_mouse_mode() {
     )
     .unwrap();
     // tab.handle_right_mouse_release(&Position::new(7, 75), client_id)
-    tab.handle_mouse_event(&MouseEvent::new_right_release_event(Position::new(7, 75)), client_id)
-        .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_right_release_event(Position::new(7, 75)),
+        client_id,
+    )
+    .unwrap();
     tab.handle_mouse_event(
         &MouseEvent::new_middle_press_event(Position::new(5, 71)),
         client_id,
@@ -4202,8 +4223,11 @@ fn pane_in_utf8_button_event_tracking_mouse_mode() {
     )
     .unwrap();
     // tab.handle_middle_mouse_release(&Position::new(7, 75), client_id)
-    tab.handle_mouse_event(&MouseEvent::new_middle_release_event(Position::new(7, 75)), client_id)
-        .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_middle_release_event(Position::new(7, 75)),
+        client_id,
+    )
+    .unwrap();
     tab.handle_scrollwheel_up(&Position::new(5, 71), 1, client_id)
         .unwrap();
     tab.handle_scrollwheel_down(&Position::new(5, 71), 1, client_id)
@@ -4274,8 +4298,11 @@ fn pane_in_utf8_normal_event_tracking_mouse_mode() {
     )
     .unwrap();
     // tab.handle_right_mouse_release(&Position::new(7, 75), client_id)
-    tab.handle_mouse_event(&MouseEvent::new_right_release_event(Position::new(7, 75)), client_id)
-        .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_right_release_event(Position::new(7, 75)),
+        client_id,
+    )
+    .unwrap();
     tab.handle_mouse_event(
         &MouseEvent::new_middle_press_event(Position::new(5, 71)),
         client_id,
@@ -4287,8 +4314,11 @@ fn pane_in_utf8_normal_event_tracking_mouse_mode() {
     )
     .unwrap();
     // tab.handle_middle_mouse_release(&Position::new(7, 75), client_id)
-    tab.handle_mouse_event(&MouseEvent::new_middle_release_event(Position::new(7, 75)), client_id)
-        .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_middle_release_event(Position::new(7, 75)),
+        client_id,
+    )
+    .unwrap();
     tab.handle_scrollwheel_up(&Position::new(5, 71), 1, client_id)
         .unwrap();
     tab.handle_scrollwheel_down(&Position::new(5, 71), 1, client_id)
@@ -4359,8 +4389,11 @@ fn pane_in_utf8_any_event_tracking_mouse_mode() {
     )
     .unwrap();
     // tab.handle_right_mouse_release(&Position::new(7, 75), client_id)
-    tab.handle_mouse_event(&MouseEvent::new_right_release_event(Position::new(7, 75)), client_id)
-        .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_right_release_event(Position::new(7, 75)),
+        client_id,
+    )
+    .unwrap();
     tab.handle_mouse_event(
         &MouseEvent::new_middle_press_event(Position::new(5, 71)),
         client_id,
@@ -4372,8 +4405,11 @@ fn pane_in_utf8_any_event_tracking_mouse_mode() {
     )
     .unwrap();
     // tab.handle_middle_mouse_release(&Position::new(7, 75), client_id)
-    tab.handle_mouse_event(&MouseEvent::new_middle_release_event(Position::new(7, 75)), client_id)
-        .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_middle_release_event(Position::new(7, 75)),
+        client_id,
+    )
+    .unwrap();
     tab.handle_scrollwheel_up(&Position::new(5, 71), 1, client_id)
         .unwrap();
     tab.handle_scrollwheel_down(&Position::new(5, 71), 1, client_id)
@@ -10251,10 +10287,6 @@ fn cursor_visible_when_pinned_pane_is_focused() {
     );
 }
 
-// ============================================================================
-// GROUP 4: Focus and Text Selection Tests
-// ============================================================================
-
 #[test]
 fn test_left_click_on_inactive_tiled_pane_changes_focus() {
     let size = Size {
@@ -10276,7 +10308,10 @@ fn test_left_click_on_inactive_tiled_pane_changes_focus() {
     assert_eq!(tab.get_active_pane_id(client_id), Some(new_pane_id));
 
     let effect = tab
-        .handle_mouse_event(&MouseEvent::new_left_press_event(Position::new(5, 30)), client_id)
+        .handle_mouse_event(
+            &MouseEvent::new_left_press_event(Position::new(5, 30)),
+            client_id,
+        )
         .unwrap();
 
     assert!(effect.state_changed);
@@ -10294,32 +10329,34 @@ fn test_left_release_after_selection_copies_to_clipboard() {
     let mut output = Output::default();
 
     // Fill the pane with some text content
-    tab.handle_pty_bytes(
-        1,
-        Vec::from("Selectable text content here".as_bytes()),
+    tab.handle_pty_bytes(1, Vec::from("Selectable text content here".as_bytes()))
+        .unwrap();
+
+    // Start text selection with left press
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_press_event(Position::new(1, 5)),
+        client_id,
     )
     .unwrap();
 
-    // Start text selection with left press
-    tab.handle_mouse_event(&MouseEvent::new_left_press_event(Position::new(1, 5)), client_id)
-        .unwrap();
-
     // Drag to create selection
-    tab.handle_mouse_event(&MouseEvent::new_left_motion_event(Position::new(1, 15)), client_id)
-        .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_motion_event(Position::new(1, 15)),
+        client_id,
+    )
+    .unwrap();
 
     // Release should trigger clipboard copy
     let release_effect = tab
-        .handle_mouse_event(&MouseEvent::new_left_release_event(Position::new(1, 15)), client_id)
+        .handle_mouse_event(
+            &MouseEvent::new_left_release_event(Position::new(1, 15)),
+            client_id,
+        )
         .unwrap();
 
     // Verify clipboard message was sent
     assert!(release_effect.leave_clipboard_message);
 }
-
-// ============================================================================
-// GROUP 2: Pane Resize Tests (Ctrl+Mouse)
-// ============================================================================
 
 #[test]
 fn test_ctrl_click_on_tiled_pane_edge_starts_resize() {
@@ -10345,7 +10382,10 @@ fn test_ctrl_click_on_tiled_pane_edge_starts_resize() {
     // For a vertical split at cols=121, the edge is around column 60-61
     let edge_position = Position::new(5, 60);
     let effect = tab
-        .handle_mouse_event(&MouseEvent::new_left_press_with_ctrl_event(edge_position), client_id)
+        .handle_mouse_event(
+            &MouseEvent::new_left_press_with_ctrl_event(edge_position),
+            client_id,
+        )
         .unwrap();
 
     // Verify resize started
@@ -10380,16 +10420,25 @@ fn test_ctrl_drag_resizes_tiled_pane_horizontally() {
     );
 
     let edge_position = Position::new(5, 60);
-    tab.handle_mouse_event(&MouseEvent::new_left_press_with_ctrl_event(edge_position), client_id)
-        .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_press_with_ctrl_event(edge_position),
+        client_id,
+    )
+    .unwrap();
 
     let motion_position = Position::new(5, 61);
     let motion_effect = tab
-        .handle_mouse_event(&MouseEvent::new_left_motion_with_ctrl_event(motion_position), client_id)
+        .handle_mouse_event(
+            &MouseEvent::new_left_motion_with_ctrl_event(motion_position),
+            client_id,
+        )
         .unwrap();
 
-    tab.handle_mouse_event(&MouseEvent::new_left_release_with_ctrl_event(motion_position), client_id)
-        .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_release_with_ctrl_event(motion_position),
+        client_id,
+    )
+    .unwrap();
 
     assert!(motion_effect.state_changed);
 
@@ -10434,16 +10483,25 @@ fn test_ctrl_drag_resizes_tiled_pane_vertically() {
     );
 
     let edge_position = Position::new(10, 60);
-    tab.handle_mouse_event(&MouseEvent::new_left_press_with_ctrl_event(edge_position), client_id)
-        .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_press_with_ctrl_event(edge_position),
+        client_id,
+    )
+    .unwrap();
 
     let motion_position = Position::new(11, 60);
     let motion_effect = tab
-        .handle_mouse_event(&MouseEvent::new_left_motion_with_ctrl_event(motion_position), client_id)
+        .handle_mouse_event(
+            &MouseEvent::new_left_motion_with_ctrl_event(motion_position),
+            client_id,
+        )
         .unwrap();
 
-    tab.handle_mouse_event(&MouseEvent::new_left_release_with_ctrl_event(motion_position), client_id)
-        .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_release_with_ctrl_event(motion_position),
+        client_id,
+    )
+    .unwrap();
 
     assert!(motion_effect.state_changed);
 
@@ -10489,16 +10547,25 @@ fn test_ctrl_drag_resizes_unfocused_tiled_pane_vertically() {
 
     let edge_position = Position::new(10, 60);
     let _ = tab.focus_pane_with_id(PaneId::Terminal(1), false, false, client_id); // focus top pane
-    tab.handle_mouse_event(&MouseEvent::new_left_press_with_ctrl_event(edge_position), client_id)
-        .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_press_with_ctrl_event(edge_position),
+        client_id,
+    )
+    .unwrap();
 
     let motion_position = Position::new(11, 60);
     let motion_effect = tab
-        .handle_mouse_event(&MouseEvent::new_left_motion_with_ctrl_event(motion_position), client_id)
+        .handle_mouse_event(
+            &MouseEvent::new_left_motion_with_ctrl_event(motion_position),
+            client_id,
+        )
         .unwrap();
 
-    tab.handle_mouse_event(&MouseEvent::new_left_release_with_ctrl_event(motion_position), client_id)
-        .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_release_with_ctrl_event(motion_position),
+        client_id,
+    )
+    .unwrap();
 
     assert!(motion_effect.state_changed);
 
@@ -10540,7 +10607,10 @@ fn test_ctrl_click_on_pane_body_does_nothing() {
     // Click in the center of a pane (not on an edge)
     let center_position = Position::new(10, 30);
     let effect = tab
-        .handle_mouse_event(&MouseEvent::new_left_press_with_ctrl_event(center_position), client_id)
+        .handle_mouse_event(
+            &MouseEvent::new_left_press_with_ctrl_event(center_position),
+            client_id,
+        )
         .unwrap();
 
     // Should not trigger any state change
@@ -10593,16 +10663,25 @@ fn test_ctrl_drag_resizes_floating_pane_from_edge() {
     );
 
     let edge_position = Position::new(7, 14); // Approximate right edge
-    tab.handle_mouse_event(&MouseEvent::new_left_press_with_ctrl_event(edge_position), client_id)
-        .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_press_with_ctrl_event(edge_position),
+        client_id,
+    )
+    .unwrap();
 
     let motion_position = Position::new(7, 15);
     let motion_effect = tab
-        .handle_mouse_event(&MouseEvent::new_left_motion_with_ctrl_event(motion_position), client_id)
+        .handle_mouse_event(
+            &MouseEvent::new_left_motion_with_ctrl_event(motion_position),
+            client_id,
+        )
         .unwrap();
 
-    tab.handle_mouse_event(&MouseEvent::new_left_release_with_ctrl_event(motion_position), client_id)
-        .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_release_with_ctrl_event(motion_position),
+        client_id,
+    )
+    .unwrap();
 
     assert!(motion_effect.state_changed);
 
@@ -10665,16 +10744,25 @@ fn test_ctrl_drag_resizes_floating_pane_from_corner() {
     );
 
     let corner_position = Position::new(14, 14);
-    tab.handle_mouse_event(&MouseEvent::new_left_press_with_ctrl_event(corner_position), client_id)
-        .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_press_with_ctrl_event(corner_position),
+        client_id,
+    )
+    .unwrap();
 
     let motion_position = Position::new(15, 15);
     let motion_effect = tab
-        .handle_mouse_event(&MouseEvent::new_left_motion_with_ctrl_event(motion_position), client_id)
+        .handle_mouse_event(
+            &MouseEvent::new_left_motion_with_ctrl_event(motion_position),
+            client_id,
+        )
         .unwrap();
 
-    tab.handle_mouse_event(&MouseEvent::new_left_release_with_ctrl_event(motion_position), client_id)
-        .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_release_with_ctrl_event(motion_position),
+        client_id,
+    )
+    .unwrap();
 
     assert!(motion_effect.state_changed);
 
@@ -10736,16 +10824,25 @@ fn test_ctrl_drag_resizes_pinned_floating_pane_when_floating_panes_not_shown() {
     eprintln!("{}", snapshot_before);
 
     let corner_position = Position::new(14, 29);
-    tab.handle_mouse_event(&MouseEvent::new_left_press_with_ctrl_event(corner_position), client_id)
-        .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_press_with_ctrl_event(corner_position),
+        client_id,
+    )
+    .unwrap();
 
     let motion_position = Position::new(15, 30);
     let motion_effect = tab
-        .handle_mouse_event(&MouseEvent::new_left_motion_with_ctrl_event(motion_position), client_id)
+        .handle_mouse_event(
+            &MouseEvent::new_left_motion_with_ctrl_event(motion_position),
+            client_id,
+        )
         .unwrap();
 
-    tab.handle_mouse_event(&MouseEvent::new_left_release_with_ctrl_event(motion_position), client_id)
-        .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_release_with_ctrl_event(motion_position),
+        client_id,
+    )
+    .unwrap();
 
     assert!(motion_effect.state_changed);
 
@@ -10762,10 +10859,6 @@ fn test_ctrl_drag_resizes_pinned_floating_pane_when_floating_panes_not_shown() {
     eprintln!("{}", snapshot_after);
     assert_snapshot!(format!("{}", snapshot_after));
 }
-
-// ============================================================================
-// GROUP 3: Floating Pane Interactions Tests
-// ============================================================================
 
 #[test]
 fn test_ctrl_click_on_floating_pin_button_toggles_pin() {
@@ -10805,7 +10898,10 @@ fn test_ctrl_click_on_floating_pin_button_toggles_pin() {
     let pin_position = Position::new(5, 87);
 
     let effect = tab
-        .handle_mouse_event(&MouseEvent::new_left_press_with_ctrl_event(pin_position), client_id)
+        .handle_mouse_event(
+            &MouseEvent::new_left_press_with_ctrl_event(pin_position),
+            client_id,
+        )
         .unwrap();
 
     // Verify state changed (pin toggle should trigger this)
@@ -10859,7 +10955,10 @@ fn test_ctrl_click_on_floating_frame_not_on_pin_starts_resize() {
     let frame_position = Position::new(5, 30);
 
     let effect = tab
-        .handle_mouse_event(&MouseEvent::new_left_press_with_ctrl_event(frame_position), client_id)
+        .handle_mouse_event(
+            &MouseEvent::new_left_press_with_ctrl_event(frame_position),
+            client_id,
+        )
         .unwrap();
 
     // Should start resize (if on edge), state_changed should be true
@@ -10912,12 +11011,18 @@ fn test_left_drag_moves_floating_pane() {
 
     // Drag to move the pane
     let motion_position = Position::new(6, 31);
-    tab.handle_mouse_event(&MouseEvent::new_left_motion_event(motion_position), client_id)
-        .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_motion_event(motion_position),
+        client_id,
+    )
+    .unwrap();
 
     // Release
-    tab.handle_mouse_event(&MouseEvent::new_left_release_event(motion_position), client_id)
-        .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_release_event(motion_position),
+        client_id,
+    )
+    .unwrap();
 
     // Verify state changed
     assert!(press_effect.state_changed);
@@ -10965,7 +11070,6 @@ fn test_left_click_on_floating_pane_changes_focus() {
         pinned: None,
         borderless: Some(false),
     };
-
 
     tab.toggle_floating_panes(Some(client_id), None, None)
         .unwrap();
@@ -11097,13 +11201,6 @@ fn test_left_click_on_pinned_floating_pane() {
     assert_snapshot!(format!("{}", snapshot));
 }
 
-// ============================================================================
-// GROUP 1: Pane Grouping Tests (Alt+Mouse)
-// ============================================================================
-
-
-// TODO: CONTINUE HERE - verify the snapshots, there are also some tests the llm seems to have
-// broken with various sed stuff... might need to revert them
 #[test]
 fn test_alt_left_click_toggles_pane_group() {
     let size = Size {
@@ -11233,10 +11330,6 @@ fn test_right_alt_click_ungroups_panes() {
     assert!(effect.ungroup);
 }
 
-// ============================================================================
-// GROUP 5: Scroll Wheel Tests
-// ============================================================================
-
 #[test]
 fn test_scroll_wheel_up_scrolls_pane() {
     let size = Size {
@@ -11266,7 +11359,10 @@ fn test_scroll_wheel_up_scrolls_pane() {
 
     // Scroll up
     let effect = tab
-        .handle_mouse_event(&MouseEvent::new_scroll_up_event(Position::new(10, 60)), client_id)
+        .handle_mouse_event(
+            &MouseEvent::new_scroll_up_event(Position::new(10, 60)),
+            client_id,
+        )
         .unwrap();
 
     // Render after scroll
@@ -11303,12 +11399,21 @@ fn test_scroll_wheel_down_scrolls_pane() {
         .unwrap();
 
     // First scroll up to have content above viewport
-    tab.handle_mouse_event(&MouseEvent::new_scroll_up_event(Position::new(10, 60)), client_id)
-        .unwrap();
-    tab.handle_mouse_event(&MouseEvent::new_scroll_up_event(Position::new(10, 60)), client_id)
-        .unwrap();
-    tab.handle_mouse_event(&MouseEvent::new_scroll_up_event(Position::new(10, 60)), client_id)
-        .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_scroll_up_event(Position::new(10, 60)),
+        client_id,
+    )
+    .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_scroll_up_event(Position::new(10, 60)),
+        client_id,
+    )
+    .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_scroll_up_event(Position::new(10, 60)),
+        client_id,
+    )
+    .unwrap();
 
     // Render before scrolling down
     let mut output = Output::default();
@@ -11322,7 +11427,10 @@ fn test_scroll_wheel_down_scrolls_pane() {
 
     // Scroll down
     let effect = tab
-        .handle_mouse_event(&MouseEvent::new_scroll_down_event(Position::new(10, 60)), client_id)
+        .handle_mouse_event(
+            &MouseEvent::new_scroll_down_event(Position::new(10, 60)),
+            client_id,
+        )
         .unwrap();
 
     // Render after scroll
@@ -11384,7 +11492,10 @@ fn test_scroll_on_inactive_pane_scrolls_that_pane() {
 
     // Scroll up on the left (inactive) pane
     let effect = tab
-        .handle_mouse_event(&MouseEvent::new_scroll_up_event(Position::new(10, 30)), client_id)
+        .handle_mouse_event(
+            &MouseEvent::new_scroll_up_event(Position::new(10, 30)),
+            client_id,
+        )
         .unwrap();
 
     // Render after scroll
@@ -11402,10 +11513,6 @@ fn test_scroll_on_inactive_pane_scrolls_that_pane() {
     assert_snapshot!(format!("{}", snapshot_after));
 }
 
-// ============================================================================
-// GROUP 6: Right and Middle Click Tests
-// ============================================================================
-
 #[test]
 fn test_right_click_forwards_to_active_pane() {
     let size = Size {
@@ -11421,7 +11528,10 @@ fn test_right_click_forwards_to_active_pane() {
 
     // Right click on the active pane
     let effect = tab
-        .handle_mouse_event(&MouseEvent::new_right_press_event(Position::new(10, 60)), client_id)
+        .handle_mouse_event(
+            &MouseEvent::new_right_press_event(Position::new(10, 60)),
+            client_id,
+        )
         .unwrap();
 
     // Event should be forwarded (verified via MouseEffect or no error)
@@ -11444,16 +11554,15 @@ fn test_middle_click_forwards_to_active_pane() {
 
     // Middle click on the active pane
     let effect = tab
-        .handle_mouse_event(&MouseEvent::new_middle_press_event(Position::new(10, 60)), client_id)
+        .handle_mouse_event(
+            &MouseEvent::new_middle_press_event(Position::new(10, 60)),
+            client_id,
+        )
         .unwrap();
 
     // Event should be forwarded (verified via MouseEffect or no error)
     assert!(effect.group_toggle.is_none());
 }
-
-// ============================================================================
-// GROUP 7: Hover Effects Tests
-// ============================================================================
 
 #[test]
 fn test_hover_over_inactive_pane_sets_hover_state() {
@@ -11480,7 +11589,10 @@ fn test_hover_over_inactive_pane_sets_hover_state() {
 
     // Hover over inactive pane (left) with buttonless motion
     let effect = tab
-        .handle_mouse_event(&MouseEvent::new_buttonless_motion(Position::new(10, 30)), client_id)
+        .handle_mouse_event(
+            &MouseEvent::new_buttonless_motion(Position::new(10, 30)),
+            client_id,
+        )
         .unwrap();
 
     let hover_panes = tab.query_mouse_hover_pane_id();
@@ -11513,21 +11625,23 @@ fn test_hover_over_active_pane_unsets_hover() {
 
     // Hover over inactive pane (left) with buttonless motion
     let _effect = tab
-        .handle_mouse_event(&MouseEvent::new_buttonless_motion(Position::new(10, 30)), client_id)
+        .handle_mouse_event(
+            &MouseEvent::new_buttonless_motion(Position::new(10, 30)),
+            client_id,
+        )
         .unwrap();
     // Hover over active pane (right) with buttonless motion
     let effect = tab
-        .handle_mouse_event(&MouseEvent::new_buttonless_motion(Position::new(10, 90)), client_id)
+        .handle_mouse_event(
+            &MouseEvent::new_buttonless_motion(Position::new(10, 90)),
+            client_id,
+        )
         .unwrap();
 
     let hover_panes = tab.query_mouse_hover_pane_id();
     assert_snapshot!(format!("{:?}", hover_panes));
     assert!(effect.state_changed);
 }
-
-// ============================================================================
-// GROUP 8: Complex Scenarios Tests
-// ============================================================================
 
 #[test]
 fn test_resize_tiled_then_move_floating_sequence() {
@@ -11552,14 +11666,23 @@ fn test_resize_tiled_then_move_floating_sequence() {
 
     // Resize tiled pane with Ctrl+drag
     let edge_position = Position::new(5, 60);
-    tab.handle_mouse_event(&MouseEvent::new_left_press_with_ctrl_event(edge_position), client_id)
-        .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_press_with_ctrl_event(edge_position),
+        client_id,
+    )
+    .unwrap();
     let motion_position = Position::new(5, 70);
     let resize_effect = tab
-        .handle_mouse_event(&MouseEvent::new_left_motion_with_ctrl_event(motion_position), client_id)
+        .handle_mouse_event(
+            &MouseEvent::new_left_motion_with_ctrl_event(motion_position),
+            client_id,
+        )
         .unwrap();
-    tab.handle_mouse_event(&MouseEvent::new_left_release_with_ctrl_event(motion_position), client_id)
-        .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_release_with_ctrl_event(motion_position),
+        client_id,
+    )
+    .unwrap();
 
     assert!(resize_effect.state_changed);
 
@@ -11587,10 +11710,16 @@ fn test_resize_tiled_then_move_floating_sequence() {
         .handle_mouse_event(&MouseEvent::new_left_press_event(frame_position), client_id)
         .unwrap();
     let motion_position = Position::new(8, 40);
-    tab.handle_mouse_event(&MouseEvent::new_left_motion_event(motion_position), client_id)
-        .unwrap();
-    tab.handle_mouse_event(&MouseEvent::new_left_release_event(motion_position), client_id)
-        .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_motion_event(motion_position),
+        client_id,
+    )
+    .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_release_event(motion_position),
+        client_id,
+    )
+    .unwrap();
 
     // Both operations should have succeeded
     assert!(move_effect.state_changed);
@@ -11722,11 +11851,17 @@ fn test_left_click_on_floating_frame_not_on_pin_moves_pane() {
         .unwrap();
 
     let motion_position = Position::new(6, 31);
-    tab.handle_mouse_event(&MouseEvent::new_left_motion_event(motion_position), client_id)
-        .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_motion_event(motion_position),
+        client_id,
+    )
+    .unwrap();
 
-    tab.handle_mouse_event(&MouseEvent::new_left_release_event(motion_position), client_id)
-        .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_release_event(motion_position),
+        client_id,
+    )
+    .unwrap();
 
     assert!(press_effect.state_changed);
 
@@ -11772,7 +11907,10 @@ fn test_ctrl_scroll_up_on_active_tiled_pane_increases_pane_size() {
 
     let active_pane_position = Position::new(5, 70);
     let effect = tab
-        .handle_mouse_event(&MouseEvent::new_ctrl_scroll_up_event(active_pane_position), client_id)
+        .handle_mouse_event(
+            &MouseEvent::new_ctrl_scroll_up_event(active_pane_position),
+            client_id,
+        )
         .unwrap();
 
     assert!(effect.state_changed);
@@ -11819,7 +11957,10 @@ fn test_ctrl_scroll_down_on_active_tiled_pane_decreases_pane_size() {
 
     let active_pane_position = Position::new(5, 70);
     let effect = tab
-        .handle_mouse_event(&MouseEvent::new_ctrl_scroll_down_event(active_pane_position), client_id)
+        .handle_mouse_event(
+            &MouseEvent::new_ctrl_scroll_down_event(active_pane_position),
+            client_id,
+        )
         .unwrap();
 
     assert!(effect.state_changed);
@@ -11866,7 +12007,10 @@ fn test_ctrl_scroll_up_on_inactive_tiled_pane_increases_active_tiled_pane_size()
 
     let inactive_pane_position = Position::new(5, 10);
     let effect = tab
-        .handle_mouse_event(&MouseEvent::new_ctrl_scroll_up_event(inactive_pane_position), client_id)
+        .handle_mouse_event(
+            &MouseEvent::new_ctrl_scroll_up_event(inactive_pane_position),
+            client_id,
+        )
         .unwrap();
 
     assert!(effect.state_changed);
@@ -11913,7 +12057,10 @@ fn test_ctrl_scroll_down_on_inactive_tiled_pane_decreases_active_tiled_pane_size
 
     let inactive_pane_position = Position::new(5, 10);
     let effect = tab
-        .handle_mouse_event(&MouseEvent::new_ctrl_scroll_down_event(inactive_pane_position), client_id)
+        .handle_mouse_event(
+            &MouseEvent::new_ctrl_scroll_down_event(inactive_pane_position),
+            client_id,
+        )
         .unwrap();
 
     assert!(effect.state_changed);
@@ -11971,7 +12118,10 @@ fn test_ctrl_scroll_up_increases_floating_pane_size() {
 
     let floating_pane_position = Position::new(5, 50);
     let effect = tab
-        .handle_mouse_event(&MouseEvent::new_ctrl_scroll_up_event(floating_pane_position), client_id)
+        .handle_mouse_event(
+            &MouseEvent::new_ctrl_scroll_up_event(floating_pane_position),
+            client_id,
+        )
         .unwrap();
 
     assert!(effect.state_changed);
@@ -12029,7 +12179,10 @@ fn test_ctrl_scroll_down_decreases_floating_pane_size() {
 
     let floating_pane_position = Position::new(5, 50);
     let effect = tab
-        .handle_mouse_event(&MouseEvent::new_ctrl_scroll_down_event(floating_pane_position), client_id)
+        .handle_mouse_event(
+            &MouseEvent::new_ctrl_scroll_down_event(floating_pane_position),
+            client_id,
+        )
         .unwrap();
 
     assert!(effect.state_changed);
@@ -12094,7 +12247,10 @@ fn test_ctrl_scroll_up_increases_pinned_floating_pane_size_when_floating_panes_h
 
     let floating_pane_position = Position::new(10, 10);
     let effect = tab
-        .handle_mouse_event(&MouseEvent::new_ctrl_scroll_up_event(floating_pane_position), client_id)
+        .handle_mouse_event(
+            &MouseEvent::new_ctrl_scroll_up_event(floating_pane_position),
+            client_id,
+        )
         .unwrap();
 
     assert!(effect.state_changed);
@@ -12159,7 +12315,10 @@ fn test_ctrl_scroll_down_decreases_pinned_floating_pane_size_when_floating_panes
 
     let floating_pane_position = Position::new(6, 10);
     let effect = tab
-        .handle_mouse_event(&MouseEvent::new_ctrl_scroll_down_event(floating_pane_position), client_id)
+        .handle_mouse_event(
+            &MouseEvent::new_ctrl_scroll_down_event(floating_pane_position),
+            client_id,
+        )
         .unwrap();
 
     assert!(effect.state_changed);

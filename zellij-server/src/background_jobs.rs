@@ -66,7 +66,9 @@ pub enum BackgroundJob {
     HighlightPanesWithMessage(Vec<PaneId>, String),
     RenderToClients,
     QueryZellijWebServerStatus,
-    ClearHelpText { client_id: ClientId },
+    ClearHelpText {
+        client_id: ClientId,
+    },
     Exit,
 }
 
@@ -125,7 +127,8 @@ pub(crate) fn background_jobs_main(
     let serialization_interval = serialization_interval.map(|s| s * 1000); // convert to
                                                                            // milliseconds
     let last_render_request: Arc<Mutex<Option<Instant>>> = Arc::new(Mutex::new(None));
-    let pending_help_text_clear: Arc<Mutex<HashMap<ClientId, Instant>>> = Arc::new(Mutex::new(HashMap::new()));
+    let pending_help_text_clear: Arc<Mutex<HashMap<ClientId, Instant>>> =
+        Arc::new(Mutex::new(HashMap::new()));
 
     let http_client = HttpClient::builder()
         // TODO: timeout?
@@ -516,15 +519,17 @@ pub(crate) fn background_jobs_main(
                                     let mut pending = pending.lock().unwrap();
                                     match pending.get(&client_id) {
                                         Some(&last_motion_time) => {
-                                            let time_since_motion = Instant::now().duration_since(last_motion_time);
+                                            let time_since_motion =
+                                                Instant::now().duration_since(last_motion_time);
                                             if time_since_motion >= debounce_duration {
                                                 pending.remove(&client_id);
                                                 None
                                             } else {
-                                                let remaining = debounce_duration.saturating_sub(time_since_motion);
+                                                let remaining = debounce_duration
+                                                    .saturating_sub(time_since_motion);
                                                 Some(remaining)
                                             }
-                                        }
+                                        },
                                         None => break,
                                     }
                                 };
@@ -535,10 +540,10 @@ pub(crate) fn background_jobs_main(
                                     },
                                     None => {
                                         let _ = senders.send_to_server(
-                                            ServerInstruction::ClearMouseHelpText(client_id)
+                                            ServerInstruction::ClearMouseHelpText(client_id),
                                         );
                                         break;
-                                    }
+                                    },
                                 }
                             }
                         }

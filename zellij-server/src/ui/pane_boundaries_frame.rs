@@ -717,16 +717,17 @@ impl PaneFrame {
             foreground_color(self.get_corner(boundary_type::BOTTOM_RIGHT), self.color);
 
         // Try different versions of the help text from longest to shortest
-        let (mut help_text_characters, help_text_len) =
-            if let Some((chars, len)) = self.help_text_version_full(max_undertitle_length) {
-                (chars, len)
-            } else if let Some((chars, len)) = self.help_text_version_medium(max_undertitle_length) {
-                (chars, len)
-            } else if let Some((chars, len)) = self.help_text_version_short(max_undertitle_length) {
-                (chars, len)
-            } else {
-                return Ok(self.empty_undertitle(max_undertitle_length));
-            };
+        let (mut help_text_characters, help_text_len) = if let Some((chars, len)) =
+            self.help_text_version_full(max_undertitle_length)
+        {
+            (chars, len)
+        } else if let Some((chars, len)) = self.help_text_version_medium(max_undertitle_length) {
+            (chars, len)
+        } else if let Some((chars, len)) = self.help_text_version_short(max_undertitle_length) {
+            (chars, len)
+        } else {
+            return Ok(self.empty_undertitle(max_undertitle_length));
+        };
 
         let padding_len = max_undertitle_length.saturating_sub(help_text_len);
         let mut padding = String::new();
@@ -756,7 +757,10 @@ impl PaneFrame {
         }
     }
 
-    fn help_text_version_medium(&self, max_length: usize) -> Option<(Vec<TerminalCharacter>, usize)> {
+    fn help_text_version_medium(
+        &self,
+        max_length: usize,
+    ) -> Option<(Vec<TerminalCharacter>, usize)> {
         let text = if self.is_floating {
             " <Ctrl MouseScroll/drag borders> resize "
         } else {
@@ -770,7 +774,10 @@ impl PaneFrame {
         }
     }
 
-    fn help_text_version_short(&self, max_length: usize) -> Option<(Vec<TerminalCharacter>, usize)> {
+    fn help_text_version_short(
+        &self,
+        max_length: usize,
+    ) -> Option<(Vec<TerminalCharacter>, usize)> {
         let text = if self.is_floating {
             " <Ctrl MouseScroll/drag borders> "
         } else {

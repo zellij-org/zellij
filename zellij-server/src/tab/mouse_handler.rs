@@ -1,9 +1,9 @@
+use std::time::Instant;
 use zellij_utils::data::{Direction, Resize, ResizeStrategy};
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::mouse::{MouseEvent, MouseEventType};
 use zellij_utils::pane_size::PaneGeom;
 use zellij_utils::position::Position;
-use std::time::Instant;
 
 use crate::background_jobs::BackgroundJob;
 use crate::panes::PaneId;
@@ -333,12 +333,28 @@ impl MouseHandler {
         let active_pane_id = tab.get_active_pane_id(client_id);
         let floating_visible = tab.floating_panes.panes_are_visible();
 
-        let clicked_pane = pane_id_at_position
-            .and_then(|id| Self::gather_clicked_pane_details(tab, id, &event.position, active_pane_id, event, client_id));
+        let clicked_pane = pane_id_at_position.and_then(|id| {
+            Self::gather_clicked_pane_details(
+                tab,
+                id,
+                &event.position,
+                active_pane_id,
+                event,
+                client_id,
+            )
+        });
 
         let (pinned_selectable, pinned_unselectable) = if !floating_visible {
-            let selectable = tab.floating_panes.get_pinned_pane_id_at(&event.position, true).ok().flatten();
-            let unselectable = tab.floating_panes.get_pinned_pane_id_at(&event.position, false).ok().flatten();
+            let selectable = tab
+                .floating_panes
+                .get_pinned_pane_id_at(&event.position, true)
+                .ok()
+                .flatten();
+            let unselectable = tab
+                .floating_panes
+                .get_pinned_pane_id_at(&event.position, false)
+                .ok()
+                .flatten();
             (selectable, unselectable)
         } else {
             (None, None)
@@ -370,7 +386,11 @@ impl MouseHandler {
 
         let on_frame = pane.position_is_on_frame(position);
         let frame_intercepted = on_frame && pane.intercept_mouse_event_on_frame(event, client_id);
-        let edge = if on_frame { pane.get_edge_at_position(position) } else { None };
+        let edge = if on_frame {
+            pane.get_edge_at_position(position)
+        } else {
+            None
+        };
         let terminal_wants_mouse = if Some(pane_id) == active_pane_id {
             let relative_position = pane.relative_position(position);
             pane.mouse_left_click(&relative_position, false).is_some()
@@ -428,26 +448,33 @@ impl MouseHandler {
         tab: &mut Tab,
         current_position: Position,
         _client_id: ClientId,
-    ) -> Result<bool> { // bool -> state changed
+    ) -> Result<bool> {
+        // bool -> state changed
         let err_context = || "failed to continue pane resize with mouse";
 
         // Extract needed values from resize_state to avoid borrow issues
-        let (pane_id, edge, is_floating, delta_x, delta_y) = if let Some(resize_state) = &tab.pane_being_resized_with_mouse {
-            // Calculate delta from start_position to current_position
-            let delta_x = current_position.column() as isize
-                - resize_state.start_position.column() as isize;
-            let delta_y = current_position.line()
-                - resize_state.start_position.line();
+        let (pane_id, edge, is_floating, delta_x, delta_y) =
+            if let Some(resize_state) = &tab.pane_being_resized_with_mouse {
+                // Calculate delta from start_position to current_position
+                let delta_x = current_position.column() as isize
+                    - resize_state.start_position.column() as isize;
+                let delta_y = current_position.line() - resize_state.start_position.line();
 
-            // Only proceed if there's a meaningful delta
-            if delta_x == 0 && delta_y == 0 {
-                return Ok(false);
-            }
+                // Only proceed if there's a meaningful delta
+                if delta_x == 0 && delta_y == 0 {
+                    return Ok(false);
+                }
 
-            (resize_state.pane_id, resize_state.edge, resize_state.is_floating, delta_x, delta_y)
-        } else {
-            return Ok(true);
-        };
+                (
+                    resize_state.pane_id,
+                    resize_state.edge,
+                    resize_state.is_floating,
+                    delta_x,
+                    delta_y,
+                )
+            } else {
+                return Ok(true);
+            };
 
         // Convert edge + delta to ResizeStrategy
         let strategies = edge_and_delta_to_strategies(edge, delta_x, delta_y);
@@ -459,14 +486,16 @@ impl MouseHandler {
                 pane_id,
                 &strategies,
                 (delta_x.unsigned_abs(), delta_y.unsigned_abs()),
-            ).with_context(err_context)?;
+            )
+            .with_context(err_context)?;
         } else {
             Self::resize_tiled_pane_with_strategies(
                 tab,
                 pane_id,
                 &strategies,
                 (delta_x.abs() as f64, delta_y.abs() as f64),
-            ).with_context(err_context)?;
+            )
+            .with_context(err_context)?;
         }
 
         // Update start_position to current position (incremental)
@@ -483,18 +512,27 @@ impl MouseHandler {
         tab: &mut Tab,
         final_position: Position,
         client_id: ClientId,
-    ) -> Result<bool> { // bool -> never_resized
+    ) -> Result<bool> {
+        // bool -> never_resized
         let err_context = || "failed to stop pane resize with mouse";
 
         // Perform final resize with any remaining delta
-        let start_geom = tab.pane_being_resized_with_mouse.as_ref().map(|p| p.start_geom.clone());
-        let pane_id = tab.pane_being_resized_with_mouse.as_ref().map(|p| p.pane_id);
+        let start_geom = tab
+            .pane_being_resized_with_mouse
+            .as_ref()
+            .map(|p| p.start_geom.clone());
+        let pane_id = tab
+            .pane_being_resized_with_mouse
+            .as_ref()
+            .map(|p| p.pane_id);
         let _resized = Self::continue_pane_resize_with_mouse(tab, final_position, client_id)
             .with_context(err_context)?;
-        let last_geom = pane_id.and_then(|pane_id| tab.get_pane_with_id(pane_id)).map(|p| p.position_and_size());
+        let last_geom = pane_id
+            .and_then(|pane_id| tab.get_pane_with_id(pane_id))
+            .map(|p| p.position_and_size());
         let never_resized = match (start_geom, last_geom) {
             (Some(start_geom), Some(last_geom)) => start_geom == last_geom,
-            _ => false
+            _ => false,
         };
 
         // Clear resize state
@@ -537,12 +575,12 @@ impl MouseHandler {
 
         let change_by_percent = (
             if viewport_cols > 0 {
-                (change_by.0 / viewport_cols as f64) * 100.0  // cols
+                (change_by.0 / viewport_cols as f64) * 100.0 // cols
             } else {
                 0.0
             },
             if viewport_rows > 0 {
-                (change_by.1 / viewport_rows as f64) * 100.0  // rows
+                (change_by.1 / viewport_rows as f64) * 100.0 // rows
             } else {
                 0.0
             },
@@ -581,28 +619,28 @@ impl MouseHandler {
         event: &MouseEvent,
         client_id: ClientId,
     ) -> Result<MouseEffect> {
-        let err_context = || format!("failed to execute mouse action {action:?} for client {client_id}");
+        let err_context =
+            || format!("failed to execute mouse action {action:?} for client {client_id}");
 
         if !matches!(action, MouseAction::UpdateHover { .. }) {
             tab.mouse_help_text_visible.remove(&client_id);
         }
 
         match action {
-            MouseAction::GroupToggle(pane_id) => {
-                Ok(MouseEffect::group_toggle(pane_id))
-            }
-            MouseAction::GroupAdd(pane_id) => {
-                Ok(MouseEffect::group_add(pane_id))
-            }
-            MouseAction::Ungroup => {
-                Ok(MouseEffect::ungroup())
-            }
-            MouseAction::StartResize { pane_id, edge, is_floating: _, position } => {
+            MouseAction::GroupToggle(pane_id) => Ok(MouseEffect::group_toggle(pane_id)),
+            MouseAction::GroupAdd(pane_id) => Ok(MouseEffect::group_add(pane_id)),
+            MouseAction::Ungroup => Ok(MouseEffect::ungroup()),
+            MouseAction::StartResize {
+                pane_id,
+                edge,
+                is_floating: _,
+                position,
+            } => {
                 tab.mouse_hover_pane_id.remove(&client_id);
                 Self::start_pane_resize_with_mouse(tab, pane_id, edge, position, client_id)
                     .with_context(err_context)?;
                 Ok(MouseEffect::state_changed())
-            }
+            },
             MouseAction::ContinueResize { position } => {
                 let state_changed = Self::continue_pane_resize_with_mouse(tab, position, client_id)
                     .with_context(err_context)?;
@@ -611,20 +649,22 @@ impl MouseHandler {
                 } else {
                     Ok(MouseEffect::default())
                 }
-            }
+            },
             MouseAction::StopResize { position } => {
                 Self::execute_stop_resize(tab, position, client_id)
-            }
-            MouseAction::FocusPane { pane_id: _, position } => {
-                Self::execute_focus_pane(tab, position, client_id)
-            }
+            },
+            MouseAction::FocusPane {
+                pane_id: _,
+                position,
+            } => Self::execute_focus_pane(tab, position, client_id),
             MouseAction::ShowFloatingPanesAndFocus { pane_id } => {
                 tab.show_floating_panes();
                 tab.floating_panes.focus_pane(pane_id, client_id);
                 Ok(MouseEffect::state_changed())
-            }
+            },
             MouseAction::StartSelection { pane_id, position } => {
-                let pane = tab.get_pane_with_id_mut(pane_id)
+                let pane = tab
+                    .get_pane_with_id_mut(pane_id)
                     .ok_or_else(|| anyhow!("Failed to find pane {pane_id:?}"))?;
                 let relative_position = pane.relative_position(&position);
                 let mut leave_clipboard_message = false;
@@ -640,57 +680,55 @@ impl MouseHandler {
                 } else {
                     Ok(MouseEffect::default())
                 }
-            }
+            },
             MouseAction::UpdateSelection { position } => {
                 if let Some(pane_id_with_selection) = tab.selecting_with_mouse_in_pane {
-                    if let Some(pane_with_selection) = tab.get_pane_with_id_mut(pane_id_with_selection) {
+                    if let Some(pane_with_selection) =
+                        tab.get_pane_with_id_mut(pane_id_with_selection)
+                    {
                         let relative_position = pane_with_selection.relative_position(&position);
                         pane_with_selection.update_selection(&relative_position, client_id);
                     }
                 }
                 Ok(MouseEffect::default())
-            }
+            },
             MouseAction::EndSelection { position } => {
                 Self::execute_end_selection(tab, position, client_id)
-            }
+            },
             MouseAction::StartMovingFloatingPane { position } => {
                 Self::execute_move_floating_pane(tab, position)
-            }
+            },
             MouseAction::ContinueMovingFloatingPane { position } => {
                 Self::execute_move_floating_pane(tab, position)
-            }
+            },
             MouseAction::StopMovingFloatingPane { position } => {
                 Self::execute_stop_moving_floating_pane(tab, position, client_id)
-            }
+            },
             MouseAction::ScrollUp { pane_id: _, lines } => {
                 Self::handle_scrollwheel_up(tab, &event.position, lines, client_id)
                     .with_context(err_context)
-            }
+            },
             MouseAction::ScrollDown { pane_id: _, lines } => {
                 Self::handle_scrollwheel_down(tab, &event.position, lines, client_id)
                     .with_context(err_context)
-            }
+            },
             MouseAction::ResizeScrollUp { pane_id } => {
-                Self::handle_resize_scroll_up(tab, pane_id, client_id)
-                    .with_context(err_context)
-            }
+                Self::handle_resize_scroll_up(tab, pane_id, client_id).with_context(err_context)
+            },
             MouseAction::ResizeScrollDown { pane_id } => {
-                Self::handle_resize_scroll_down(tab, pane_id, client_id)
-                    .with_context(err_context)
-            }
+                Self::handle_resize_scroll_down(tab, pane_id, client_id).with_context(err_context)
+            },
             MouseAction::UpdateHover { pane_id } => {
                 Self::execute_update_hover(tab, pane_id, client_id)
-            }
+            },
             MouseAction::SendToTerminal { pane_id, event } => {
                 Self::execute_send_to_terminal(tab, pane_id, event, client_id)
-            }
+            },
             MouseAction::FrameIntercepted { pane_id: _ } => {
                 tab.set_force_render();
                 Ok(MouseEffect::state_changed())
-            }
-            MouseAction::NoAction => {
-                Ok(MouseEffect::default())
-            }
+            },
+            MouseAction::NoAction => Ok(MouseEffect::default()),
         }
     }
 
@@ -706,12 +744,12 @@ impl MouseHandler {
             let pane_id_at_position = Self::get_pane_at(tab, &position, false)
                 .with_context(err_context)?
                 .map(|p| p.pid());
-            let active_pane_id = tab.get_active_pane_id(client_id)
+            let active_pane_id = tab
+                .get_active_pane_id(client_id)
                 .ok_or_else(|| anyhow!("Failed to find active pane"))?;
             if let Some(pane_id) = pane_id_at_position {
                 if pane_id != active_pane_id {
-                    Self::focus_pane_at(tab, &position, client_id)
-                        .with_context(err_context)?;
+                    Self::focus_pane_at(tab, &position, client_id).with_context(err_context)?;
                 }
             }
         }
@@ -725,11 +763,11 @@ impl MouseHandler {
     ) -> Result<MouseEffect> {
         let err_context = || "failed to focus pane";
         tab.mouse_hover_pane_id.remove(&client_id);
-        let active_pane_id_before = tab.get_active_pane_id(client_id)
+        let active_pane_id_before = tab
+            .get_active_pane_id(client_id)
             .ok_or_else(|| anyhow!("Failed to find active pane"))?;
 
-        Self::focus_pane_at(tab, &position, client_id)
-            .with_context(err_context)?;
+        Self::focus_pane_at(tab, &position, client_id).with_context(err_context)?;
 
         if let Some(pane_at_position) = Self::unselectable_pane_at_position(tab, &position) {
             let relative_position = pane_at_position.relative_position(&position);
@@ -738,9 +776,11 @@ impl MouseHandler {
 
         if tab.floating_panes.panes_are_visible() {
             let search_selectable = false;
-            let moved_pane_with_mouse = tab.floating_panes
+            let moved_pane_with_mouse = tab
+                .floating_panes
                 .move_pane_with_mouse(position, search_selectable);
-            let active_pane_id_after = tab.get_active_pane_id(client_id)
+            let active_pane_id_after = tab
+                .get_active_pane_id(client_id)
                 .ok_or_else(|| anyhow!("Failed to find active pane"))?;
             if moved_pane_with_mouse || active_pane_id_before != active_pane_id_after {
                 return Ok(MouseEffect::state_changed());
@@ -749,7 +789,8 @@ impl MouseHandler {
             }
         }
 
-        let active_pane_id_after = tab.get_active_pane_id(client_id)
+        let active_pane_id_after = tab
+            .get_active_pane_id(client_id)
             .ok_or_else(|| anyhow!("Failed to find active pane"))?;
         if active_pane_id_before != active_pane_id_after {
             Ok(MouseEffect::state_changed())
@@ -767,7 +808,8 @@ impl MouseHandler {
         let mut leave_clipboard_message = false;
         let copy_on_release = tab.copy_on_select;
 
-        if let Some(pane_with_selection) = tab.selecting_with_mouse_in_pane
+        if let Some(pane_with_selection) = tab
+            .selecting_with_mouse_in_pane
             .and_then(|p_id| tab.get_pane_with_id_mut(p_id))
         {
             let mut relative_position = pane_with_selection.relative_position(&position);
@@ -784,7 +826,9 @@ impl MouseHandler {
                     .min(pane_with_selection.get_content_rows() as isize),
             );
 
-            if let Some(mouse_event) = pane_with_selection.mouse_left_click_release(&relative_position) {
+            if let Some(mouse_event) =
+                pane_with_selection.mouse_left_click_release(&relative_position)
+            {
                 tab.write_to_active_terminal(&None, mouse_event.into_bytes(), false, client_id)
                     .with_context(err_context)?;
             } else {
@@ -813,7 +857,10 @@ impl MouseHandler {
 
     fn execute_move_floating_pane(tab: &mut Tab, position: Position) -> Result<MouseEffect> {
         let search_selectable = false;
-        if tab.floating_panes.move_pane_with_mouse(position, search_selectable) {
+        if tab
+            .floating_panes
+            .move_pane_with_mouse(position, search_selectable)
+        {
             tab.swap_layouts.set_is_floating_damaged();
             tab.set_force_render();
             Ok(MouseEffect::state_changed())
@@ -830,15 +877,15 @@ impl MouseHandler {
         let err_context = || "failed to stop moving floating pane";
         let never_moved = tab.floating_panes.stop_moving_pane_with_mouse(position);
         if never_moved {
-            let active_pane_id = tab.get_active_pane_id(client_id)
+            let active_pane_id = tab
+                .get_active_pane_id(client_id)
                 .ok_or_else(|| anyhow!("Failed to find active pane"))?;
             let pane_id_at_position = Self::get_pane_at(tab, &position, false)
                 .with_context(err_context)?
                 .ok_or_else(|| anyhow!("Failed to find pane at position"))?
                 .pid();
             if active_pane_id != pane_id_at_position {
-                Self::focus_pane_at(tab, &position, client_id)
-                    .with_context(err_context)?;
+                Self::focus_pane_at(tab, &position, client_id).with_context(err_context)?;
             }
         }
         Ok(MouseEffect::default())
@@ -861,13 +908,13 @@ impl MouseHandler {
                     }
                     should_render = true;
                 }
-            }
+            },
             None => {
                 let removed = tab.mouse_hover_pane_id.remove(&client_id);
                 if removed.is_some() {
                     should_render = true;
                 }
-            }
+            },
         }
 
         if tab.mouse_help_text_visible.remove(&client_id).is_some() {
@@ -891,10 +938,12 @@ impl MouseHandler {
     ) -> Result<MouseEffect> {
         let err_context = || format!("failed to send to terminal for pane {pane_id:?}");
         let mut should_render = false;
-        let active_pane_id = tab.get_active_pane_id(client_id)
+        let active_pane_id = tab
+            .get_active_pane_id(client_id)
             .ok_or_else(|| anyhow!("Failed to find active pane"))?;
         if pane_id == active_pane_id {
-            let pane = tab.get_pane_with_id(pane_id)
+            let pane = tab
+                .get_pane_with_id(pane_id)
                 .ok_or_else(|| anyhow!("Failed to find pane {pane_id:?}"))?;
             let relative_position = pane.relative_position(&event.position);
             let mut event_for_pane = event.clone();
@@ -911,8 +960,13 @@ impl MouseHandler {
             }
 
             if event.event_type == MouseEventType::Motion && tab.mouse_hover_effects {
-                tab.last_mouse_activity_time.insert(client_id, Instant::now());
-                let was_visible = tab.mouse_help_text_visible.get(&client_id).copied().unwrap_or(false);
+                tab.last_mouse_activity_time
+                    .insert(client_id, Instant::now());
+                let was_visible = tab
+                    .mouse_help_text_visible
+                    .get(&client_id)
+                    .copied()
+                    .unwrap_or(false);
                 tab.mouse_help_text_visible.insert(client_id, true);
                 if !was_visible {
                     should_render = true;
@@ -931,30 +985,39 @@ impl MouseHandler {
         Ok(mouse_effect)
     }
 
-    fn determine_mouse_action(
-        event: &MouseEvent,
-        ctx: &MouseEventContext,
-    ) -> Result<MouseAction> {
+    fn determine_mouse_action(event: &MouseEvent, ctx: &MouseEventContext) -> Result<MouseAction> {
         if ctx.pane_being_resized {
             return Ok(match event.event_type {
-                MouseEventType::Motion => MouseAction::ContinueResize { position: event.position },
-                MouseEventType::Release => MouseAction::StopResize { position: event.position },
+                MouseEventType::Motion => MouseAction::ContinueResize {
+                    position: event.position,
+                },
+                MouseEventType::Release => MouseAction::StopResize {
+                    position: event.position,
+                },
                 _ => MouseAction::NoAction,
             });
         }
 
         if ctx.selecting_with_mouse {
             return Ok(match event.event_type {
-                MouseEventType::Motion if event.left => MouseAction::UpdateSelection { position: event.position },
-                MouseEventType::Release if event.left => MouseAction::EndSelection { position: event.position },
+                MouseEventType::Motion if event.left => MouseAction::UpdateSelection {
+                    position: event.position,
+                },
+                MouseEventType::Release if event.left => MouseAction::EndSelection {
+                    position: event.position,
+                },
                 _ => MouseAction::NoAction,
             });
         }
 
         if ctx.pane_being_moved {
             return Ok(match event.event_type {
-                MouseEventType::Motion if event.left => MouseAction::ContinueMovingFloatingPane { position: event.position },
-                MouseEventType::Release if event.left => MouseAction::StopMovingFloatingPane { position: event.position },
+                MouseEventType::Motion if event.left => MouseAction::ContinueMovingFloatingPane {
+                    position: event.position,
+                },
+                MouseEventType::Release if event.left => MouseAction::StopMovingFloatingPane {
+                    position: event.position,
+                },
                 _ => MouseAction::NoAction,
             });
         }
@@ -999,14 +1062,17 @@ impl MouseHandler {
             return Ok(MouseAction::NoAction);
         }
 
-        let is_ctrl_left_press = event.ctrl && event.left && event.event_type == MouseEventType::Press;
+        let is_ctrl_left_press =
+            event.ctrl && event.left && event.event_type == MouseEventType::Press;
         if is_ctrl_left_press {
             let Some(details) = &ctx.clicked_pane else {
                 return Ok(MouseAction::NoAction);
             };
             if details.on_frame {
                 if details.frame_intercepted {
-                    return Ok(MouseAction::FrameIntercepted { pane_id: details.pane_id });
+                    return Ok(MouseAction::FrameIntercepted {
+                        pane_id: details.pane_id,
+                    });
                 }
                 if let Some(edge) = details.edge {
                     return Ok(MouseAction::StartResize {
@@ -1020,23 +1086,31 @@ impl MouseHandler {
             return Ok(MouseAction::NoAction);
         }
 
-        let is_plain_left_press = event.left && event.event_type == MouseEventType::Press && !event.ctrl && !event.alt;
+        let is_plain_left_press =
+            event.left && event.event_type == MouseEventType::Press && !event.ctrl && !event.alt;
         if is_plain_left_press {
             let Some(details) = &ctx.clicked_pane else {
                 return Ok(MouseAction::NoAction);
             };
 
             let is_active_pane = Some(details.pane_id) == ctx.active_pane_id;
-            let is_pinned_pane = ctx.pinned_selectable.map(|id| id == details.pane_id).unwrap_or(false);
+            let is_pinned_pane = ctx
+                .pinned_selectable
+                .map(|id| id == details.pane_id)
+                .unwrap_or(false);
 
             if details.on_frame {
                 if details.frame_intercepted {
-                    return Ok(MouseAction::FrameIntercepted { pane_id: details.pane_id });
+                    return Ok(MouseAction::FrameIntercepted {
+                        pane_id: details.pane_id,
+                    });
                 }
 
                 let should_start_moving = ctx.floating_visible || is_pinned_pane;
                 if should_start_moving {
-                    return Ok(MouseAction::StartMovingFloatingPane { position: event.position });
+                    return Ok(MouseAction::StartMovingFloatingPane {
+                        position: event.position,
+                    });
                 }
 
                 if let Some(edge) = details.edge {
@@ -1051,9 +1125,15 @@ impl MouseHandler {
 
             if is_active_pane {
                 if details.terminal_wants_mouse {
-                    return Ok(MouseAction::SendToTerminal { pane_id: details.pane_id, event: *event });
+                    return Ok(MouseAction::SendToTerminal {
+                        pane_id: details.pane_id,
+                        event: *event,
+                    });
                 } else {
-                    return Ok(MouseAction::StartSelection { pane_id: details.pane_id, position: event.position });
+                    return Ok(MouseAction::StartSelection {
+                        pane_id: details.pane_id,
+                        position: event.position,
+                    });
                 }
             }
 
@@ -1066,7 +1146,10 @@ impl MouseHandler {
                 }
             }
 
-            return Ok(MouseAction::FocusPane { pane_id: details.pane_id, position: event.position });
+            return Ok(MouseAction::FocusPane {
+                pane_id: details.pane_id,
+                position: event.position,
+            });
         }
 
         if event.right {
@@ -1075,7 +1158,10 @@ impl MouseHandler {
             };
             let is_active_pane = Some(pane_id) == ctx.active_pane_id;
             if is_active_pane {
-                return Ok(MouseAction::SendToTerminal { pane_id, event: *event });
+                return Ok(MouseAction::SendToTerminal {
+                    pane_id,
+                    event: *event,
+                });
             }
             return Ok(MouseAction::NoAction);
         }
@@ -1086,39 +1172,58 @@ impl MouseHandler {
             };
             let is_active_pane = Some(pane_id) == ctx.active_pane_id;
             if is_active_pane {
-                return Ok(MouseAction::SendToTerminal { pane_id, event: *event });
+                return Ok(MouseAction::SendToTerminal {
+                    pane_id,
+                    event: *event,
+                });
             }
             return Ok(MouseAction::NoAction);
         }
 
-        let is_left_motion_or_release = event.left && (event.event_type == MouseEventType::Motion || event.event_type == MouseEventType::Release);
+        let is_left_motion_or_release = event.left
+            && (event.event_type == MouseEventType::Motion
+                || event.event_type == MouseEventType::Release);
         if is_left_motion_or_release {
             let Some(details) = &ctx.clicked_pane else {
                 return Ok(MouseAction::NoAction);
             };
             let is_active_pane = Some(details.pane_id) == ctx.active_pane_id;
             if is_active_pane && details.terminal_wants_mouse {
-                return Ok(MouseAction::SendToTerminal { pane_id: details.pane_id, event: *event });
+                return Ok(MouseAction::SendToTerminal {
+                    pane_id: details.pane_id,
+                    event: *event,
+                });
             }
             return Ok(MouseAction::NoAction);
         }
 
-        let is_buttonless_motion = event.event_type == MouseEventType::Motion && !event.left && !event.right && !event.middle;
+        let is_buttonless_motion = event.event_type == MouseEventType::Motion
+            && !event.left
+            && !event.right
+            && !event.middle;
         if is_buttonless_motion {
             let Some(pane_id) = ctx.pane_id_at_position else {
                 return Ok(MouseAction::UpdateHover { pane_id: None });
             };
             let is_active_pane = Some(pane_id) == ctx.active_pane_id;
             if is_active_pane {
-                return Ok(MouseAction::SendToTerminal { pane_id, event: *event });
+                return Ok(MouseAction::SendToTerminal {
+                    pane_id,
+                    event: *event,
+                });
             }
-            return Ok(MouseAction::UpdateHover { pane_id: Some(pane_id) });
+            return Ok(MouseAction::UpdateHover {
+                pane_id: Some(pane_id),
+            });
         }
 
         Ok(MouseAction::NoAction)
     }
 
-    fn unselectable_pane_at_position<'a>(tab: &'a mut Tab, point: &Position) -> Option<&'a mut Box<dyn Pane>> {
+    fn unselectable_pane_at_position<'a>(
+        tab: &'a mut Tab,
+        point: &Position,
+    ) -> Option<&'a mut Box<dyn Pane>> {
         // the repetition in this function is to appease the borrow checker, I don't like it either
         let floating_panes_are_visible = tab.floating_panes.panes_are_visible();
         if floating_panes_are_visible {
@@ -1266,26 +1371,17 @@ impl MouseHandler {
         };
 
         if is_floating {
-            Self::resize_floating_pane_with_strategies(
-                tab,
-                pane_id,
-                &[strategy],
-                (5, 2),
-            )
-            .with_context(err_context)?;
+            Self::resize_floating_pane_with_strategies(tab, pane_id, &[strategy], (5, 2))
+                .with_context(err_context)?;
             tab.swap_layouts.set_is_floating_damaged();
         } else {
-
             // we only resize the active pane for tiled panes (better ux)
-            let active_pane_id = tab.get_active_pane_id(client_id)
+            let active_pane_id = tab
+                .get_active_pane_id(client_id)
                 .ok_or_else(|| anyhow!("Failed to find active pane"))?;
 
-            Self::resize_tiled_pane_with_stacked_resize(
-                tab,
-                active_pane_id,
-                &strategy,
-            )
-            .with_context(err_context)?;
+            Self::resize_tiled_pane_with_stacked_resize(tab, active_pane_id, &strategy)
+                .with_context(err_context)?;
             tab.swap_layouts.set_is_tiled_damaged();
         }
 
@@ -1309,25 +1405,17 @@ impl MouseHandler {
         };
 
         if is_floating {
-            Self::resize_floating_pane_with_strategies(
-                tab,
-                pane_id,
-                &[strategy],
-                (5, 2),
-            )
-            .with_context(err_context)?;
+            Self::resize_floating_pane_with_strategies(tab, pane_id, &[strategy], (5, 2))
+                .with_context(err_context)?;
             tab.swap_layouts.set_is_floating_damaged();
         } else {
             // we only resize the active pane for tiled panes (better ux)
-            let active_pane_id = tab.get_active_pane_id(client_id)
+            let active_pane_id = tab
+                .get_active_pane_id(client_id)
                 .ok_or_else(|| anyhow!("Failed to find active pane"))?;
 
-            Self::resize_tiled_pane_with_stacked_resize(
-                tab,
-                active_pane_id,
-                &strategy,
-            )
-            .with_context(err_context)?;
+            Self::resize_tiled_pane_with_stacked_resize(tab, active_pane_id, &strategy)
+                .with_context(err_context)?;
             tab.swap_layouts.set_is_tiled_damaged();
         }
 

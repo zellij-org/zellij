@@ -1074,10 +1074,11 @@ impl TiledPanes {
                 let pane_is_one_liner_in_stack =
                     pane_is_stacked && pane.current_geom().rows.is_fixed();
                 let pane_is_selectable = pane.selectable();
-                let show_help_text = active_panes.iter()
-                    .any(|(client_id, pane_id)| {
-                        pane_id == &pane.pid() && help_text_visible.get(client_id).copied().unwrap_or(false)
-                    }) && selectable_pane_count > 1 && self.fullscreen_is_active.is_none();
+                let show_help_text = active_panes.iter().any(|(client_id, pane_id)| {
+                    pane_id == &pane.pid()
+                        && help_text_visible.get(client_id).copied().unwrap_or(false)
+                }) && selectable_pane_count > 1
+                    && self.fullscreen_is_active.is_none();
                 let mut pane_contents_and_ui = PaneContentsAndUi::new(
                     pane,
                     output,
