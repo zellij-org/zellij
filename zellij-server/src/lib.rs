@@ -395,6 +395,7 @@ impl SessionMetaData {
                         .options
                         .advanced_mouse_actions
                         .unwrap_or(true),
+                    mouse_hover_effects: new_config.options.mouse_hover_effects.unwrap_or(true),
                 })
                 .unwrap();
             self.senders

@@ -215,6 +215,7 @@ fn create_new_tab(size: Size, stacked_resize: bool) -> Tab {
         current_pane_group,
         currently_marking_pane_group,
         advanced_mouse_actions,
+        true, // mouse_hover_effects
         web_server_ip,
         web_server_port,
     );
@@ -298,6 +299,7 @@ fn create_new_tab_with_layout(size: Size, layout: TiledPaneLayout) -> Tab {
         current_pane_group,
         currently_marking_pane_group,
         advanced_mouse_actions,
+        true, // mouse_hover_effects
         web_server_ip,
         web_server_port,
     );
@@ -387,6 +389,7 @@ fn create_new_tab_with_cell_size(
         current_pane_group,
         currently_marking_pane_group,
         advanced_mouse_actions,
+        true, // mouse_hover_effects
         web_server_ip,
         web_server_port,
     );

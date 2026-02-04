@@ -514,6 +514,7 @@ pub enum ScreenInstruction {
         stacked_resize: bool,
         default_editor: Option<PathBuf>,
         advanced_mouse_actions: bool,
+        mouse_hover_effects: bool,
     },
     RerunCommandPane(u32, Option<NotificationEnd>), // u32 - terminal pane id
     ResizePaneWithId(ResizeStrategy, PaneId),
@@ -993,6 +994,7 @@ pub(crate) struct Screen {
     web_sharing: WebSharing,
     current_pane_group: Rc<RefCell<PaneGroups>>,
     advanced_mouse_actions: bool,
+    mouse_hover_effects: bool,
     currently_marking_pane_group: Rc<RefCell<HashMap<ClientId, bool>>>,
     // the below are the configured values - the ones that will be set if and when the web server
     // is brought online
@@ -1032,6 +1034,7 @@ impl Screen {
         web_clients_allowed: bool,
         web_sharing: WebSharing,
         advanced_mouse_actions: bool,
+        mouse_hover_effects: bool,
         web_server_ip: IpAddr,
         web_server_port: u16,
     ) -> Self {
@@ -1085,6 +1088,7 @@ impl Screen {
             current_pane_group: Rc::new(RefCell::new(current_pane_group)),
             currently_marking_pane_group: Rc::new(RefCell::new(HashMap::new())),
             advanced_mouse_actions,
+            mouse_hover_effects,
             web_server_ip,
             web_server_port,
             render_blocker: RenderBlocker::new(100),
@@ -1826,6 +1830,7 @@ impl Screen {
             self.current_pane_group.clone(),
             self.currently_marking_pane_group.clone(),
             self.advanced_mouse_actions,
+            self.mouse_hover_effects,
             self.web_server_ip,
             self.web_server_port,
         );
@@ -3147,6 +3152,7 @@ impl Screen {
         stacked_resize: bool,
         default_editor: Option<PathBuf>,
         advanced_mouse_actions: bool,
+        mouse_hover_effects: bool,
         client_id: ClientId,
     ) -> Result<()> {
         let should_support_arrow_fonts = !simplified_ui;
@@ -3162,6 +3168,7 @@ impl Screen {
         self.copy_options.copy_on_select = copy_on_select;
         self.draw_pane_frames = pane_frames;
         self.advanced_mouse_actions = advanced_mouse_actions;
+        self.mouse_hover_effects = mouse_hover_effects;
         self.default_mode_info
             .update_arrow_fonts(should_support_arrow_fonts);
         self.default_mode_info
@@ -3182,6 +3189,14 @@ impl Screen {
             tab.set_pane_frames(pane_frames);
             tab.update_arrow_fonts(should_support_arrow_fonts);
             tab.update_advanced_mouse_actions(advanced_mouse_actions);
+            tab.update_mouse_hover_effects(mouse_hover_effects);
+        }
+
+        // Clear hover state when disabled
+        if !mouse_hover_effects {
+            for tab in self.tabs.values_mut() {
+                tab.clear_mouse_hover_state();
+            }
         }
 
         // client specific configuration
@@ -3817,6 +3832,7 @@ pub(crate) fn screen_thread_main(
         .unwrap_or(false);
     let web_sharing = config_options.web_sharing.unwrap_or_else(Default::default);
     let advanced_mouse_actions = config_options.advanced_mouse_actions.unwrap_or(true);
+    let mouse_hover_effects = config_options.mouse_hover_effects.unwrap_or(true);
 
     let thread_senders = bus.senders.clone();
     let mut screen = Screen::new(
@@ -3854,6 +3870,7 @@ pub(crate) fn screen_thread_main(
         web_clients_allowed,
         web_sharing,
         advanced_mouse_actions,
+        mouse_hover_effects,
         web_server_ip,
         web_server_port,
     );
@@ -6343,6 +6360,7 @@ pub(crate) fn screen_thread_main(
                 stacked_resize,
                 default_editor,
                 advanced_mouse_actions,
+                mouse_hover_effects,
             } => {
                 screen
                     .reconfigure(
@@ -6361,6 +6379,7 @@ pub(crate) fn screen_thread_main(
                         stacked_resize,
                         default_editor,
                         advanced_mouse_actions,
+                        mouse_hover_effects,
                         client_id,
                     )
                     .non_fatal();

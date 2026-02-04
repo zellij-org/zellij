@@ -275,6 +275,7 @@ fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
         current_group,
         currently_marking_pane_group,
         advanced_mouse_actions,
+        true, // mouse_hover_effects
         web_server_ip,
         web_server_port,
     );
@@ -359,6 +360,7 @@ fn create_new_tab_without_pane_frames(size: Size, default_mode: ModeInfo) -> Tab
         current_group,
         currently_marking_pane_group,
         advanced_mouse_actions,
+        true, // mouse_hover_effects
         web_server_ip,
         web_server_port,
     );
@@ -458,6 +460,7 @@ fn create_new_tab_with_swap_layouts(
         current_group,
         currently_marking_pane_group,
         advanced_mouse_actions,
+        true, // mouse_hover_effects
         web_server_ip,
         web_server_port,
     );
@@ -558,6 +561,7 @@ fn create_new_tab_with_os_api(
         current_group,
         currently_marking_pane_group,
         advanced_mouse_actions,
+        true, // mouse_hover_effects
         web_server_ip,
         web_server_port,
     );
@@ -644,6 +648,7 @@ fn create_new_tab_with_layout(size: Size, default_mode: ModeInfo, layout: &str) 
         current_group,
         currently_marking_pane_group,
         advanced_mouse_actions,
+        true, // mouse_hover_effects
         web_server_ip,
         web_server_port,
     );
@@ -744,6 +749,7 @@ fn create_new_tab_with_mock_pty_writer(
         current_group,
         currently_marking_pane_group,
         advanced_mouse_actions,
+        true, // mouse_hover_effects
         web_server_ip,
         web_server_port,
     );
@@ -835,6 +841,7 @@ fn create_new_tab_with_sixel_support(
         current_group,
         currently_marking_pane_group,
         advanced_mouse_actions,
+        true, // mouse_hover_effects
         web_server_ip,
         web_server_port,
     );

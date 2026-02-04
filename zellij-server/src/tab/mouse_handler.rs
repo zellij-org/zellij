@@ -806,9 +806,9 @@ impl MouseHandler {
             Some(pid) => {
                 if let Some(pane) = tab.get_pane_with_id(pid) {
                     let pane_is_selectable = pane.selectable();
-                    if tab.advanced_mouse_actions && pane_is_selectable {
+                    if tab.advanced_mouse_actions && tab.mouse_hover_effects && pane_is_selectable {
                         tab.mouse_hover_pane_id.insert(client_id, pid);
-                    } else if tab.advanced_mouse_actions {
+                    } else if tab.advanced_mouse_actions || !tab.mouse_hover_effects {
                         tab.mouse_hover_pane_id.remove(&client_id);
                     }
                     should_render = true;
@@ -862,7 +862,7 @@ impl MouseHandler {
                 should_render = true;
             }
 
-            if event.event_type == MouseEventType::Motion {
+            if event.event_type == MouseEventType::Motion && tab.mouse_hover_effects {
                 tab.last_mouse_activity_time.insert(client_id, Instant::now());
                 let was_visible = tab.mouse_help_text_visible.get(&client_id).copied().unwrap_or(false);
                 tab.mouse_help_text_visible.insert(client_id, true);

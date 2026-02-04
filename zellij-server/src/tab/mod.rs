@@ -210,6 +210,7 @@ pub(crate) struct Tab {
     last_mouse_activity_time: HashMap<ClientId, Instant>,
     current_pane_group: Rc<RefCell<PaneGroups>>,
     advanced_mouse_actions: bool,
+    mouse_hover_effects: bool,
     currently_marking_pane_group: Rc<RefCell<HashMap<ClientId, bool>>>,
     connected_clients_in_app: Rc<RefCell<HashMap<ClientId, bool>>>, // bool -> is_web_client
     // the below are the configured values - the ones that will be set if and when the web server
@@ -658,6 +659,7 @@ impl Tab {
         current_pane_group: Rc<RefCell<PaneGroups>>,
         currently_marking_pane_group: Rc<RefCell<HashMap<ClientId, bool>>>,
         advanced_mouse_actions: bool,
+        mouse_hover_effects: bool,
         web_server_ip: IpAddr,
         web_server_port: u16,
     ) -> Self {
@@ -764,6 +766,7 @@ impl Tab {
             current_pane_group,
             currently_marking_pane_group,
             advanced_mouse_actions,
+            mouse_hover_effects,
             connected_clients_in_app,
             web_server_ip,
             web_server_port,
@@ -5082,6 +5085,13 @@ impl Tab {
     }
     pub fn update_advanced_mouse_actions(&mut self, advanced_mouse_actions: bool) {
         self.advanced_mouse_actions = advanced_mouse_actions;
+    }
+    pub fn update_mouse_hover_effects(&mut self, mouse_hover_effects: bool) {
+        self.mouse_hover_effects = mouse_hover_effects;
+    }
+    pub fn clear_mouse_hover_state(&mut self) {
+        self.mouse_hover_pane_id.clear();
+        self.mouse_help_text_visible.clear();
     }
     pub fn update_web_sharing(&mut self, web_sharing: WebSharing) {
         let old_value = self.web_sharing;
