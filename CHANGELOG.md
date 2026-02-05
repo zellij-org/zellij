@@ -42,6 +42,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: proper error handling in route (https://github.com/zellij-org/zellij/pull/4655)
 * feat: allow resizing panes with the mouse (https://github.com/zellij-org/zellij/pull/4678)
 * fix: don't trim empty colored cells when resizing terminal grid (https://github.com/zellij-org/zellij/pull/4680)
+* fix: prevent selection from scrolling up after double/triple-click (https://github.com/zellij-org/zellij/pull/4681)
 
 
 ## [0.43.1] - 2025-08-08
