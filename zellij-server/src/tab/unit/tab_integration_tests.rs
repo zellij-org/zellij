@@ -70,6 +70,7 @@ impl ServerOsApi for FakeInputOutput {
         _file_to_open: TerminalAction,
         _quit_db: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
         _default_editor: Option<PathBuf>,
+        _tab_name: Option<String>,
     ) -> Result<(u32, RawFd, RawFd)> {
         unimplemented!()
     }
@@ -132,6 +133,7 @@ impl ServerOsApi for FakeInputOutput {
         _terminal_id: u32,
         _run_command: RunCommand,
         _quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>, // u32 is the exit status
+        _tab_name: Option<String>,
     ) -> Result<(RawFd, RawFd)> {
         unimplemented!()
     }
