@@ -76,11 +76,20 @@ impl Keybinds {
         key_is_kitty_protocol: bool,
     ) -> Action {
         match *mode {
+            // In Locked mode, unbound keys are always forwarded to the pane
             InputMode::Locked => Action::Write {
                 key_with_modifier: key_with_modifier.cloned(),
                 bytes: raw_bytes,
                 is_kitty_keyboard_protocol: key_is_kitty_protocol,
             },
+            // In Normal mode, unbound keys are always forwarded to the pane
+            // (regardless of whether Normal is the default_input_mode)
+            InputMode::Normal => Action::Write {
+                key_with_modifier: key_with_modifier.cloned(),
+                bytes: raw_bytes,
+                is_kitty_keyboard_protocol: key_is_kitty_protocol,
+            },
+            // In the user's configured default input mode, forward unbound keys
             mode if mode == default_input_mode => Action::Write {
                 key_with_modifier: key_with_modifier.cloned(),
                 bytes: raw_bytes,

@@ -594,3 +594,42 @@ fn error_received_on_unknown_key_instruction() {
     let config_error = Config::from_kdl(config_contents, None).unwrap_err();
     assert_snapshot!(format!("{:?}", config_error));
 }
+
+#[test]
+fn unbound_keys_in_normal_mode_are_forwarded_when_default_mode_is_locked() {
+    // Regression test for https://github.com/zellij-org/zellij/issues/775#issuecomment-2472786982
+    // When a user configures zellij to start in Locked mode (default_input_mode = Locked)
+    // and uses clear-defaults=true with custom keybindings in Normal mode, unbound keys
+    // should still be forwarded to the pane, not silently consumed.
+    let config_contents = r#"
+        keybinds clear-defaults=true {
+            locked {
+                bind "Ctrl o" { SwitchToMode "Normal"; }
+            }
+            normal {
+                bind "Ctrl g" { SwitchToMode "Locked"; }
+            }
+        }
+    "#;
+    let config = Config::from_kdl(config_contents, None).unwrap();
+
+    // Ctrl-o is unbound in Normal mode (only bound in Locked mode)
+    let ctrl_o = KeyWithModifier::new(BareKey::Char('o')).with_ctrl_modifier();
+    let raw_bytes = vec![15u8]; // Ctrl-O raw byte
+
+    // When default_input_mode is Locked, unbound keys in Normal mode should still be forwarded
+    let action = config.keybinds.get_actions_for_key_in_mode_or_default_action(
+        &InputMode::Normal,
+        &ctrl_o,
+        raw_bytes.clone(),
+        InputMode::Locked, // User's default mode is Locked
+        false,
+    );
+
+    // The action should be Write (forward to pane), not NoOp
+    assert!(
+        matches!(&action[0], Action::Write { .. }),
+        "Unbound key in Normal mode should be forwarded to pane even when default_input_mode is Locked. Got: {:?}",
+        action
+    );
+}
