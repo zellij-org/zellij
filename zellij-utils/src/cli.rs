@@ -765,7 +765,7 @@ pub enum CliAction {
         near_current_pane: bool,
         /// start this pane without a border (warning: will make it impossible to move with the
         /// mouse)
-        #[clap(short, long, value_parser)]
+        #[clap(long, value_parser)]
         borderless: Option<bool>,
     },
     /// Open the specified file in a new zellij pane with your default EDITOR
