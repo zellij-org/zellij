@@ -861,9 +861,17 @@ impl Grid {
             for line in &mut viewport_canonical_lines {
                 let mut trim_at = None;
                 for (index, character) in line.columns.iter().enumerate() {
-                    if character.character != EMPTY_TERMINAL_CHARACTER.character {
+                    let is_trimmable_space = character.character
+                        == EMPTY_TERMINAL_CHARACTER.character
+                        && matches!(character.styles.background, Some(AnsiCode::Reset) | None);
+
+                    if !is_trimmable_space {
+                        // we can't trim this character, meaning that if we had a previous
+                        // character that we marked as the trim_at point, we need to clear it
                         trim_at = None;
                     } else if trim_at.is_none() {
+                        // we CAN trim this character, set the trim_at point only if it's not set
+                        // because we want the trim_at point to be the EARLIEST trimmable character
                         trim_at = Some(index);
                     }
                 }

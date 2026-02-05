@@ -4128,3 +4128,94 @@ fn cannot_escape_scroll_region() {
     }
     assert_snapshot!(format!("{:?}", grid));
 }
+
+#[test]
+fn preserve_background_color_on_resize() {
+    use crate::panes::terminal_character::{AnsiCode, EMPTY_TERMINAL_CHARACTER};
+
+    let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
+    let arrow_fonts = true;
+    let styled_underlines = true;
+    let osc8_hyperlinks = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
+    let mut grid = Grid::new(
+        10,
+        20,
+        Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
+        sixel_image_store,
+        Style::default(),
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        osc8_hyperlinks,
+        explicitly_disable_kitty_keyboard_protocol,
+    );
+
+    let mut parse = |s, grid: &mut Grid| {
+        for b in Vec::from(s) {
+            vte_parser.advance(&mut *grid, b)
+        }
+    };
+
+    // Write text with red background that extends to end of line
+    // ESC[41m = red background
+    // ESC[K = clear to end of line (fills with current background)
+    // ESC[0m = reset
+    let content = "test\x1b[41m\x1b[K\x1b[0m";
+    parse(content, &mut grid);
+
+    // Check that characters after "test" have red background before resize
+    let first_row = &grid.viewport[0];
+    let background_char_count_before = first_row
+        .columns
+        .iter()
+        .enumerate()
+        .filter(|(i, c)| *i >= 4 && c.styles.background != Some(AnsiCode::Reset))
+        .count();
+    assert!(
+        background_char_count_before > 0,
+        "Should have characters with background color before resize"
+    );
+
+    // Also check that plain trailing spaces are properly trimmed (regression test)
+    let content2 = "\r\n\rplain text with spaces    ";
+    parse(content2, &mut grid);
+
+    // Resize the grid
+    grid.change_size(10, 30);
+
+    // Check that the background color is preserved after resize
+    let first_row = &grid.viewport[0];
+    let background_char_count_after = first_row
+        .columns
+        .iter()
+        .enumerate()
+        .filter(|(i, c)| *i >= 4 && c.styles.background != Some(AnsiCode::Reset))
+        .count();
+    assert_eq!(
+        background_char_count_before, background_char_count_after,
+        "Background colored characters should be preserved after resize"
+    );
+
+    // Verify that the second line doesn't have excessive trailing spaces
+    // (it should be trimmed since they're plain spaces without background color)
+    let second_row = &grid.viewport[1];
+    let trailing_spaces = second_row
+        .columns
+        .iter()
+        .rev()
+        .take_while(|c| c.character == EMPTY_TERMINAL_CHARACTER.character)
+        .count();
+    // All trailing plain spaces should be completely removed
+    assert_eq!(
+        trailing_spaces, 0,
+        "Plain trailing spaces should be completely trimmed, but found {} trailing spaces",
+        trailing_spaces
+    );
+}
