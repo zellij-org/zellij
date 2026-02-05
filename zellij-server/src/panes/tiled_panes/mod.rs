@@ -573,7 +573,7 @@ impl TiledPanes {
                 pane.set_content_offset(Offset::default());
             } else {
                 // no draw_pane_frames and this pane should have a separation to other panes
-                // according to its position in the viewport (eg. no separation if its at the
+                // according to its position in the viewport (eg. no separation if it's at the
                 // viewport bottom) - offset its content accordingly
                 let mut position_and_size = pane.current_geom();
                 let is_stacked = position_and_size.is_stacked();
@@ -1005,6 +1005,7 @@ impl TiledPanes {
         mouse_hover_pane_id: &HashMap<ClientId, PaneId>,
         current_pane_group: HashMap<ClientId, Vec<PaneId>>,
         client_id_override: Option<ClientId>,
+        help_text_visible: &HashMap<ClientId, bool>,
     ) -> Result<()> {
         let err_context = || "failed to render tiled panes";
 
@@ -1038,6 +1039,7 @@ impl TiledPanes {
                 .stacked_pane_ids_on_top_and_bottom_of_stacks()
                 .with_context(err_context)?
         };
+        let selectable_pane_count = self.panes.iter().filter(|(_, p)| p.selectable()).count();
         for (kind, pane) in self.panes.iter_mut() {
             match kind {
                 PaneId::Terminal(_) => {
@@ -1072,6 +1074,11 @@ impl TiledPanes {
                 let pane_is_one_liner_in_stack =
                     pane_is_stacked && pane.current_geom().rows.is_fixed();
                 let pane_is_selectable = pane.selectable();
+                let show_help_text = active_panes.iter().any(|(client_id, pane_id)| {
+                    pane_id == &pane.pid()
+                        && help_text_visible.get(client_id).copied().unwrap_or(false)
+                }) && selectable_pane_count > 1
+                    && self.fullscreen_is_active.is_none();
                 let mut pane_contents_and_ui = PaneContentsAndUi::new(
                     pane,
                     output,
@@ -1084,6 +1091,7 @@ impl TiledPanes {
                     should_draw_pane_frames,
                     &mouse_hover_pane_id,
                     current_pane_group.clone(),
+                    show_help_text,
                 );
                 for client_id in &connected_clients {
                     let client_mode = self
@@ -1194,7 +1202,7 @@ impl TiledPanes {
         &mut self,
         run: Option<Run>,
         geom: PaneGeom,
-        borderless: bool,
+        should_be_borderless: Option<bool>,
     ) {
         match self
             .panes
@@ -1203,8 +1211,15 @@ impl TiledPanes {
         {
             Some((_, pane)) => {
                 pane.set_geom(geom);
-                pane.set_borderless(borderless);
-                if self.draw_pane_frames {
+
+                if let Some(should_be_borderless) = should_be_borderless {
+                    pane.set_borderless(should_be_borderless);
+                    if should_be_borderless {
+                        pane.set_content_offset(Offset::default());
+                    } else {
+                        pane.set_content_offset(Offset::frame(1));
+                    }
+                } else if self.draw_pane_frames {
                     pane.set_content_offset(Offset::frame(1));
                 }
             },
@@ -1312,7 +1327,7 @@ impl TiledPanes {
     ) -> Result<()> {
         if *self.stacked_resize.borrow() && strategy.direction.is_none() {
             if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
-                self.stacked_resize_pane_with_id(active_pane_id, strategy)?;
+                self.stacked_resize_pane_with_id(active_pane_id, strategy, None)?;
                 self.reapply_pane_frames();
             }
         } else {
@@ -1511,12 +1526,14 @@ impl TiledPanes {
         self.tombstones_before_increase = None;
         self.tombstones_before_decrease = None;
     }
-    fn stacked_resize_pane_with_id(
+    pub fn stacked_resize_pane_with_id(
         &mut self,
         pane_id: PaneId,
         strategy: &ResizeStrategy,
+        // override as rarely as possible to maintain ux consistency
+        resize_percent_override: Option<(f64, f64)>,
     ) -> Result<bool> {
-        let resize_percent = (30.0, 30.0);
+        let resize_percent = resize_percent_override.unwrap_or((30.0, 30.0));
         match strategy.resize {
             Resize::Increase => {
                 match self.tombstones_before_decrease.as_mut() {
@@ -1745,6 +1762,34 @@ impl TiledPanes {
         }
         self.reset_boundaries();
         Ok(pane_size_changed)
+    }
+
+    pub fn resize_pane_with_strategies(
+        &mut self,
+        pane_id: PaneId,
+        strategies: &[ResizeStrategy],
+        change_by: (f64, f64),
+    ) -> Result<()> {
+        let err_context = || format!("failed to resize pane {:?} with strategies", pane_id);
+
+        let mut pane_grid = TiledPaneGrid::new(
+            &mut self.panes,
+            &self.panes_to_hide,
+            *self.display_area.borrow(),
+            *self.viewport.borrow(),
+        );
+
+        for strategy in strategies {
+            let _ = pane_grid
+                .change_pane_size(&pane_id, strategy, change_by)
+                .with_context(err_context);
+        }
+
+        for pane in self.panes.values_mut() {
+            resize_pty!(pane, self.os_api, self.senders, self.character_cell_size).unwrap();
+        }
+        self.reset_boundaries();
+        Ok(())
     }
 
     pub fn focus_next_pane(&mut self, client_id: ClientId) {

@@ -4,12 +4,27 @@ package web_server_contract;
 message InstructionForWebServer {
   oneof instruction {
     ShutdownWebServerMsg shutdown_web_server = 1;
+    QueryVersionMsg query_version = 2;
     // Future commands can be added here
-    // RestartWebServerMsg restart_web_server = 2;
-    // ReloadConfigMsg reload_config = 3;
+    // RestartWebServerMsg restart_web_server = 3;
+    // ReloadConfigMsg reload_config = 4;
   }
 }
 
 message ShutdownWebServerMsg {
   // Empty for now, but allows for future parameters like graceful timeout
+}
+
+message QueryVersionMsg {}
+
+message WebServerResponse {
+  oneof response {
+    VersionResponseMsg version = 1;
+  }
+}
+
+message VersionResponseMsg {
+  string version = 1;
+  string ip = 2;
+  uint32 port = 3;
 }

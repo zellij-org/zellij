@@ -239,6 +239,7 @@ impl Execution {
         let placement = NewPanePlacement::InPlace {
             pane_id_to_replace: primary_pane_id,
             close_replaced_pane: false,
+            borderless: Some(false),
         };
 
         let action = Action::NewBlockingPane {

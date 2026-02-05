@@ -1,6 +1,6 @@
 ---
 source: zellij-server/src/plugins/./unit/plugin_tests.rs
-expression: "format!(\"{:#?}\", switch_session_event)"
+expression: "format!(\"{:#?}\",\nswitch_session_event).replace(&format!(\"{:?}\", temp_folder.path()), \"\\\"CWD\\\"\")"
 ---
 Some(
     SwitchSession(
@@ -11,7 +11,9 @@ Some(
             tab_position: None,
             pane_id: None,
             layout: None,
-            cwd: None,
+            cwd: Some(
+                "CWD",
+            ),
         },
         1,
         Some(

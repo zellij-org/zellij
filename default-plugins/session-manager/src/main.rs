@@ -10,7 +10,7 @@ use new_session_info::NewSessionInfo;
 use ui::{
     components::{
         render_controls_line, render_error, render_new_session_block, render_prompt,
-        render_renaming_session_screen, render_screen_toggle, Colors,
+        render_renaming_session_screen, render_screen_toggle, render_unsaved_changes_line, Colors,
     },
     welcome_screen::{render_banner, render_welcome_boundaries},
     SessionUiInfo,
@@ -19,7 +19,7 @@ use ui::{
 use resurrectable_sessions::ResurrectableSessions;
 use session_list::SessionList;
 
-#[derive(Clone, Debug, Copy)]
+#[derive(Clone, Debug, Copy, PartialEq)]
 enum ActiveScreen {
     NewSession,
     AttachToSession,
@@ -47,6 +47,7 @@ struct State {
     show_kill_all_sessions_warning: bool,
     request_ids: Vec<String>,
     is_web_client: bool,
+    current_session_last_saved_time: Option<u64>,
 }
 
 register_plugin!(State);
@@ -61,11 +62,15 @@ impl ZellijPlugin for State {
             self.active_screen = ActiveScreen::NewSession;
         }
         self.new_session_info.is_welcome_screen = self.is_welcome_screen;
+        if !self.is_welcome_screen {
+            set_timeout(0.1); // for the current_session_last_saved_time polling
+        }
         subscribe(&[
             EventType::ModeUpdate,
             EventType::SessionUpdate,
             EventType::Key,
             EventType::RunCommandResult,
+            EventType::Timer,
         ]);
     }
 
@@ -94,6 +99,11 @@ impl ZellijPlugin for State {
     fn update(&mut self, event: Event) -> bool {
         let mut should_render = false;
         match event {
+            Event::Timer(_) => {
+                self.current_session_last_saved_time = current_session_last_saved_time();
+                set_timeout(1.0);
+                should_render = true;
+            },
             Event::ModeUpdate(mode_info) => {
                 self.colors = Colors::new(mode_info.style.colors);
                 self.is_web_client = mode_info.is_web_client.unwrap_or(false);
@@ -156,7 +166,8 @@ impl ZellijPlugin for State {
                     self.render_kill_all_sessions_warning(height, width, x, y);
                 } else {
                     render_prompt(&self.search_term, self.colors, x, y + 2);
-                    let room_for_list = height.saturating_sub(6); // search line and controls;
+                    let bottom_lines = 7;
+                    let room_for_list = height.saturating_sub(bottom_lines);
                     self.sessions.update_rows(room_for_list);
                     let list =
                         self.sessions
@@ -172,8 +183,25 @@ impl ZellijPlugin for State {
         }
         if let Some(error) = self.error.as_ref() {
             render_error(&error, height, width, x, y);
+        } else if self.active_screen == ActiveScreen::AttachToSession && !self.is_welcome_screen {
+            let help_offset = render_controls_line(
+                self.active_screen,
+                width,
+                self.colors,
+                x,
+                rows.saturating_sub(1),
+            );
+            // Adjust position and width based on whether controls line shows "Help: "
+            let adjusted_x = x + help_offset;
+            let adjusted_width = width.saturating_sub(help_offset);
+            render_unsaved_changes_line(
+                adjusted_width,
+                adjusted_x,
+                rows,
+                self.current_session_last_saved_time,
+            );
         } else {
-            render_controls_line(self.active_screen, width, self.colors, x + 1, rows);
+            let _ = render_controls_line(self.active_screen, width, self.colors, x, rows);
         }
         if self.is_welcome_screen {
             render_welcome_boundaries(rows, cols); // explicitly done in the end to override some
@@ -393,6 +421,14 @@ impl State {
                         should_render = true;
                     } else if !self.is_welcome_screen {
                         hide_self();
+                    }
+                },
+                BareKey::Char('a') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
+                    if !self.is_welcome_screen {
+                        // we don't want to save welcome screen sessions
+                        if let Err(e) = save_session() {
+                            self.show_error(&format!("Couldn't save session: {}", e));
+                        }
                     }
                 },
                 _ => {},

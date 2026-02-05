@@ -10,6 +10,13 @@ expression: fake_document.to_string()
 // 
 simplified_ui true
  
+// Enable OSC8 hyperlink output
+// Options:
+//   - true (Default)
+//   - false
+// 
+// osc8_hyperlinks true
+ 
 // Choose the theme that is specified in the themes section.
 // Default: default
 // 
@@ -244,6 +251,10 @@ web_sharing "disabled"
 // Whether to enable mouse hover effects and pane grouping functionality
 // default is true
 // advanced_mouse_actions false
+ 
+// Whether to enable mouse hover visual effects (frame highlight and help text)
+// default is true
+// mouse_hover_effects false
  
 // The ip address the web server should listen on when it starts
 // Default: "127.0.0.1"

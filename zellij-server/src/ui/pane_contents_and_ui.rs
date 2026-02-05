@@ -19,6 +19,7 @@ pub struct PaneContentsAndUi<'a> {
     should_draw_pane_frames: bool,
     mouse_is_hovering_over_pane_for_clients: HashSet<ClientId>,
     current_pane_group: HashMap<ClientId, Vec<PaneId>>,
+    show_help_text: bool,
 }
 
 impl<'a> PaneContentsAndUi<'a> {
@@ -34,6 +35,7 @@ impl<'a> PaneContentsAndUi<'a> {
         should_draw_pane_frames: bool,
         mouse_hover_pane_id: &HashMap<ClientId, PaneId>,
         current_pane_group: HashMap<ClientId, Vec<PaneId>>,
+        show_help_text: bool,
     ) -> Self {
         let mut focused_clients: Vec<ClientId> = active_panes
             .iter()
@@ -63,6 +65,7 @@ impl<'a> PaneContentsAndUi<'a> {
             should_draw_pane_frames,
             mouse_is_hovering_over_pane_for_clients,
             current_pane_group,
+            show_help_text,
         }
     }
     pub fn render_pane_contents_to_multiple_clients(
@@ -161,8 +164,11 @@ impl<'a> PaneContentsAndUi<'a> {
                     .pane
                     .cursor_coordinates(Some(*fake_cursor_client_id))
                     .map(|(x, y)| {
-                        self.output
-                            .cursor_is_visible(self.pane.x() + x, self.pane.y() + y)
+                        self.output.cursor_is_visible(
+                            self.pane.x() + x,
+                            self.pane.y() + y,
+                            self.z_index,
+                        )
                     })
                     .unwrap_or(false);
                 if cursor_is_visible {
@@ -245,6 +251,7 @@ impl<'a> PaneContentsAndUi<'a> {
                     .mouse_is_hovering_over_pane_for_clients
                     .contains(&client_id),
                 pane_is_selectable,
+                show_help_text: self.show_help_text,
             }
         } else {
             FrameParams {
@@ -263,6 +270,7 @@ impl<'a> PaneContentsAndUi<'a> {
                     .mouse_is_hovering_over_pane_for_clients
                     .contains(&client_id),
                 pane_is_selectable,
+                show_help_text: self.show_help_text,
             }
         };
 

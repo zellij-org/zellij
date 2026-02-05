@@ -207,6 +207,10 @@ pub enum PluginInstruction {
     },
     LayoutListUpdate(Vec<LayoutInfo>, Vec<LayoutWithError>),
     RequestStateUpdateForPlugin(PluginId),
+    UpdateSessionSaveTime(u64), // u64 = milliseconds since UNIX epoch
+    GetLastSessionSaveTime {
+        response_channel: crossbeam::channel::Sender<Option<u64>>,
+    },
     Exit,
 }
 
@@ -262,6 +266,10 @@ impl From<&PluginInstruction> for PluginContext {
             PluginInstruction::LayoutListUpdate(..) => PluginContext::LayoutListUpdate,
             PluginInstruction::RequestStateUpdateForPlugin(..) => {
                 PluginContext::RequestStateUpdateForPlugin
+            },
+            PluginInstruction::UpdateSessionSaveTime(..) => PluginContext::UpdateSessionSaveTime,
+            PluginInstruction::GetLastSessionSaveTime { .. } => {
+                PluginContext::GetLastSessionSaveTime
             },
         }
     }
@@ -1202,6 +1210,14 @@ pub(crate) fn plugin_thread_main(
             },
             PluginInstruction::RequestStateUpdateForPlugin(plugin_id) => {
                 wasm_bridge.state_update_for_plugin(plugin_id);
+            },
+            PluginInstruction::UpdateSessionSaveTime(timestamp_millis) => {
+                // Store timestamp in WasmBridge (as Unix epoch for internal use)
+                *wasm_bridge.last_session_save_time.lock().unwrap() = Some(timestamp_millis);
+            },
+            PluginInstruction::GetLastSessionSaveTime { response_channel } => {
+                let timestamp = *wasm_bridge.last_session_save_time.lock().unwrap();
+                let _ = response_channel.send(timestamp);
             },
             PluginInstruction::Exit => {
                 break;

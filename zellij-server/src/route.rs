@@ -389,6 +389,14 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
         },
+        Action::SaveSession => {
+            senders
+                .send_to_screen(ScreenInstruction::SaveSession(
+                    client_id,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
         Action::EditScrollback => {
             senders
                 .send_to_screen(ScreenInstruction::EditScrollback(
@@ -509,8 +517,11 @@ pub(crate) fn route_action(
         } => {
             let shell = default_shell.clone();
             let new_pane_placement = match direction {
-                Some(direction) => NewPanePlacement::Tiled(Some(direction)),
-                None => NewPanePlacement::NoPreference,
+                Some(direction) => NewPanePlacement::Tiled {
+                    direction: Some(direction),
+                    borderless: None,
+                },
+                None => NewPanePlacement::NoPreference { borderless: None },
             };
             senders
                 .send_to_pty(PtyInstruction::SpawnTerminal(
@@ -551,9 +562,10 @@ pub(crate) fn route_action(
             // behavior, they should not provide pane
             // inside the placement, but rather have the current pane id be picked up instead)
             let pane_id = match placement {
-                NewPanePlacement::Stacked(pane_id_to_stack_under) => {
-                    pane_id_to_stack_under.map(|p| p.into()).or(pane_id)
-                },
+                NewPanePlacement::Stacked {
+                    pane_id_to_stack_under,
+                    ..
+                } => pane_id_to_stack_under.map(|p| p.into()).or(pane_id),
                 NewPanePlacement::InPlace {
                     pane_id_to_replace, ..
                 } => pane_id_to_replace.map(|p| p.into()).or(pane_id),
@@ -613,7 +625,10 @@ pub(crate) fn route_action(
                     if should_float {
                         NewPanePlacement::Floating(floating_pane_coordinates)
                     } else {
-                        NewPanePlacement::Tiled(split_direction)
+                        NewPanePlacement::Tiled {
+                            direction: split_direction,
+                            borderless: None,
+                        }
                     },
                     start_suppressed,
                     ClientTabIndexOrPaneId::ClientId(client_id),
@@ -736,7 +751,10 @@ pub(crate) fn route_action(
                         .send_to_pty(PtyInstruction::SpawnTerminal(
                             run_cmd,
                             name,
-                            NewPanePlacement::Stacked(Some(pane_id.into())),
+                            NewPanePlacement::Stacked {
+                                pane_id_to_stack_under: Some(pane_id.into()),
+                                borderless: None,
+                            },
                             false,
                             ClientTabIndexOrPaneId::PaneId(pane_id),
                             Some(NotificationEnd::new(completion_tx)),
@@ -749,7 +767,10 @@ pub(crate) fn route_action(
                         .send_to_pty(PtyInstruction::SpawnTerminal(
                             run_cmd,
                             name,
-                            NewPanePlacement::Stacked(None),
+                            NewPanePlacement::Stacked {
+                                pane_id_to_stack_under: None,
+                                borderless: None,
+                            },
                             false,
                             ClientTabIndexOrPaneId::ClientId(client_id),
                             Some(NotificationEnd::new(completion_tx)),
@@ -764,6 +785,7 @@ pub(crate) fn route_action(
             command: run_command,
             pane_name: name,
             near_current_pane,
+            borderless,
         } => {
             let run_cmd = run_command
                 .map(|cmd| TerminalAction::RunCommand(cmd.into()))
@@ -777,7 +799,10 @@ pub(crate) fn route_action(
                 .send_to_pty(PtyInstruction::SpawnTerminal(
                     run_cmd,
                     name,
-                    NewPanePlacement::Tiled(direction),
+                    NewPanePlacement::Tiled {
+                        direction,
+                        borderless,
+                    },
                     false,
                     client_tab_index_or_paneid,
                     Some(NotificationEnd::new(completion_tx)),
@@ -833,7 +858,10 @@ pub(crate) fn route_action(
                 .send_to_pty(PtyInstruction::SpawnTerminal(
                     run_cmd,
                     None,
-                    NewPanePlacement::Tiled(command.direction),
+                    NewPanePlacement::Tiled {
+                        direction: command.direction,
+                        borderless: None,
+                    },
                     false,
                     client_tab_index_or_paneid,
                     Some(NotificationEnd::new(completion_tx)),
@@ -1526,6 +1554,26 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
         },
+        Action::TogglePaneBorderless { pane_id } => {
+            senders
+                .send_to_screen(ScreenInstruction::TogglePaneBorderless(
+                    pane_id.into(),
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
+        Action::SetPaneBorderless {
+            pane_id,
+            borderless,
+        } => {
+            senders
+                .send_to_screen(ScreenInstruction::SetPaneBorderless(
+                    pane_id.into(),
+                    borderless,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
         Action::TogglePaneInGroup => {
             senders
                 .send_to_screen(ScreenInstruction::TogglePaneInGroup(
@@ -1709,7 +1757,7 @@ pub(crate) fn route_thread_main(
                                                 cli_client_id: None,
                                             });
 
-                                        if route_action(
+                                        match route_action(
                                             action,
                                             client_id,
                                             None,
@@ -1723,10 +1771,15 @@ pub(crate) fn route_thread_main(
                                             keybinds.clone(),
                                             client_input_mode,
                                             Some(os_input.clone()),
-                                        )?
-                                        .0
-                                        {
-                                            should_break = true;
+                                        ) {
+                                            Ok(route_action_should_break) => {
+                                                if route_action_should_break.0 {
+                                                    should_break = true;
+                                                }
+                                            },
+                                            Err(e) => {
+                                                log::error!("{}", e);
+                                            },
                                         }
                                     }
                                 }
@@ -1799,7 +1852,7 @@ pub(crate) fn route_thread_main(
                                 client_keybinds,
                             )) = session_data_assets
                             {
-                                if route_action(
+                                match route_action(
                                     action,
                                     client_id,
                                     Some(cli_client_id),
@@ -1813,10 +1866,15 @@ pub(crate) fn route_thread_main(
                                     client_keybinds,
                                     client_input_mode,
                                     Some(os_input.clone()),
-                                )?
-                                .0
-                                {
-                                    should_break = true;
+                                ) {
+                                    Ok(route_action_should_break) => {
+                                        if route_action_should_break.0 {
+                                            should_break = true;
+                                        }
+                                    },
+                                    Err(e) => {
+                                        log::error!("{}", e);
+                                    },
                                 }
                             }
                         },

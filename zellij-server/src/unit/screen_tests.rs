@@ -79,6 +79,7 @@ fn take_snapshots_and_cursor_coordinates_from_render_events<'a>(
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let osc8_hyperlinks = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         screen_size.rows,
@@ -92,6 +93,7 @@ fn take_snapshots_and_cursor_coordinates_from_render_events<'a>(
         debug,
         arrow_fonts,
         styled_underlines,
+        osc8_hyperlinks,
         explicitly_disable_kitty_keyboard_protocol,
     );
     let snapshots: Vec<(Option<(usize, usize)>, String)> = all_events
@@ -254,7 +256,11 @@ impl ServerOsApi for FakeInputOutput {
     }
 }
 
-fn create_new_screen(size: Size, advanced_mouse_actions: bool) -> Screen {
+fn create_new_screen(
+    size: Size,
+    advanced_mouse_actions: bool,
+    mouse_hover_effects: bool,
+) -> Screen {
     let mut bus: Bus<ScreenInstruction> = Bus::empty();
     let fake_os_input = FakeInputOutput::default();
     bus.os_input = Some(Box::new(fake_os_input));
@@ -279,6 +285,7 @@ fn create_new_screen(size: Size, advanced_mouse_actions: bool) -> Screen {
 
     let debug = false;
     let styled_underlines = true;
+    let osc8_hyperlinks = true;
     let arrow_fonts = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let stacked_resize = true;
@@ -302,6 +309,7 @@ fn create_new_screen(size: Size, advanced_mouse_actions: bool) -> Screen {
         serialize_pane_viewport,
         scrollback_lines_to_serialize,
         styled_underlines,
+        osc8_hyperlinks,
         arrow_fonts,
         layout_dir,
         explicitly_disable_kitty_keyboard_protocol,
@@ -310,6 +318,7 @@ fn create_new_screen(size: Size, advanced_mouse_actions: bool) -> Screen {
         false,
         web_sharing,
         advanced_mouse_actions,
+        mouse_hover_effects,
         web_server_ip,
         web_server_port,
     );
@@ -779,7 +788,7 @@ fn open_new_tab() {
         cols: 121,
         rows: 20,
     };
-    let mut screen = create_new_screen(size, true);
+    let mut screen = create_new_screen(size, true, true);
 
     new_tab(&mut screen, 1, 0);
     new_tab(&mut screen, 2, 1);
@@ -798,7 +807,7 @@ pub fn switch_to_prev_tab() {
         cols: 121,
         rows: 20,
     };
-    let mut screen = create_new_screen(size, true);
+    let mut screen = create_new_screen(size, true, true);
 
     new_tab(&mut screen, 1, 1);
     new_tab(&mut screen, 2, 2);
@@ -817,7 +826,7 @@ pub fn switch_to_next_tab() {
         cols: 121,
         rows: 20,
     };
-    let mut screen = create_new_screen(size, true);
+    let mut screen = create_new_screen(size, true, true);
 
     new_tab(&mut screen, 1, 1);
     new_tab(&mut screen, 2, 2);
@@ -837,7 +846,7 @@ pub fn switch_to_tab_name() {
         cols: 121,
         rows: 20,
     };
-    let mut screen = create_new_screen(size, true);
+    let mut screen = create_new_screen(size, true, true);
 
     new_tab(&mut screen, 1, 1);
     new_tab(&mut screen, 2, 2);
@@ -871,7 +880,7 @@ pub fn close_tab() {
         cols: 121,
         rows: 20,
     };
-    let mut screen = create_new_screen(size, true);
+    let mut screen = create_new_screen(size, true, true);
 
     new_tab(&mut screen, 1, 1);
     new_tab(&mut screen, 2, 2);
@@ -891,7 +900,7 @@ pub fn close_the_middle_tab() {
         cols: 121,
         rows: 20,
     };
-    let mut screen = create_new_screen(size, true);
+    let mut screen = create_new_screen(size, true, true);
 
     new_tab(&mut screen, 1, 1);
     new_tab(&mut screen, 2, 2);
@@ -913,7 +922,7 @@ fn move_focus_left_at_left_screen_edge_changes_tab() {
         cols: 121,
         rows: 20,
     };
-    let mut screen = create_new_screen(size, true);
+    let mut screen = create_new_screen(size, true, true);
 
     new_tab(&mut screen, 1, 1);
     new_tab(&mut screen, 2, 2);
@@ -950,6 +959,7 @@ fn create_fixed_size_screen() -> Screen {
             cols: 121,
             rows: 20,
         },
+        true,
         true,
     )
 }
@@ -1081,7 +1091,7 @@ fn move_focus_right_at_right_screen_edge_changes_tab() {
         cols: 121,
         rows: 20,
     };
-    let mut screen = create_new_screen(size, true);
+    let mut screen = create_new_screen(size, true, true);
 
     new_tab(&mut screen, 1, 1);
     new_tab(&mut screen, 2, 2);
@@ -1102,7 +1112,7 @@ pub fn toggle_to_previous_tab_simple() {
         cols: 121,
         rows: 20,
     };
-    let mut screen = create_new_screen(position_and_size, true);
+    let mut screen = create_new_screen(position_and_size, true, true);
 
     new_tab(&mut screen, 1, 1);
     new_tab(&mut screen, 2, 2);
@@ -1130,7 +1140,7 @@ pub fn toggle_to_previous_tab_create_tabs_only() {
         cols: 121,
         rows: 20,
     };
-    let mut screen = create_new_screen(position_and_size, true);
+    let mut screen = create_new_screen(position_and_size, true, true);
 
     new_tab(&mut screen, 1, 0);
     new_tab(&mut screen, 2, 1);
@@ -1180,7 +1190,7 @@ pub fn toggle_to_previous_tab_delete() {
         cols: 121,
         rows: 20,
     };
-    let mut screen = create_new_screen(position_and_size, true);
+    let mut screen = create_new_screen(position_and_size, true, true);
 
     new_tab(&mut screen, 1, 0);
     new_tab(&mut screen, 2, 1);
@@ -1276,7 +1286,7 @@ fn switch_to_tab_with_fullscreen() {
         cols: 121,
         rows: 20,
     };
-    let mut screen = create_new_screen(size, true);
+    let mut screen = create_new_screen(size, true, true);
 
     new_tab(&mut screen, 1, 1);
     {
@@ -1321,7 +1331,7 @@ fn update_screen_pixel_dimensions() {
         cols: 121,
         rows: 20,
     };
-    let mut screen = create_new_screen(size, true);
+    let mut screen = create_new_screen(size, true, true);
     let initial_pixel_dimensions = screen.pixel_dimensions;
     screen.update_pixel_dimensions(PixelDimensions {
         character_cell_size: Some(SizeInPixels {
@@ -1400,7 +1410,7 @@ fn attach_after_first_tab_closed() {
         cols: 121,
         rows: 20,
     };
-    let mut screen = create_new_screen(size, true);
+    let mut screen = create_new_screen(size, true, true);
 
     new_tab(&mut screen, 1, 0);
     {
@@ -1432,7 +1442,7 @@ fn open_new_floating_pane_with_custom_coordinates() {
         cols: 121,
         rows: 20,
     };
-    let mut screen = create_new_screen(size, true);
+    let mut screen = create_new_screen(size, true, true);
 
     new_tab(&mut screen, 1, 0);
     let active_tab = screen.get_active_tab_mut(1).unwrap();
@@ -1449,6 +1459,7 @@ fn open_new_floating_pane_with_custom_coordinates() {
                 width: Some(PercentOrFixed::Percent(1)),
                 height: Some(PercentOrFixed::Fixed(2)),
                 pinned: None,
+                borderless: Some(false),
             })),
             Some(1),
             None,
@@ -1467,7 +1478,7 @@ fn open_new_floating_pane_with_custom_coordinates_exceeding_viewport() {
         cols: 121,
         rows: 20,
     };
-    let mut screen = create_new_screen(size, true);
+    let mut screen = create_new_screen(size, true, true);
 
     new_tab(&mut screen, 1, 0);
     let active_tab = screen.get_active_tab_mut(1).unwrap();
@@ -1484,6 +1495,7 @@ fn open_new_floating_pane_with_custom_coordinates_exceeding_viewport() {
                 width: Some(PercentOrFixed::Fixed(10)),
                 height: Some(PercentOrFixed::Fixed(10)),
                 pinned: None,
+                borderless: Some(false),
             })),
             Some(1),
             None,
@@ -1502,7 +1514,7 @@ fn floating_pane_auto_centers_horizontally_with_only_width() {
         cols: 120,
         rows: 20,
     };
-    let mut screen = create_new_screen(size, true);
+    let mut screen = create_new_screen(size, true, true);
 
     new_tab(&mut screen, 1, 0);
     let active_tab = screen.get_active_tab_mut(1).unwrap();
@@ -1519,6 +1531,7 @@ fn floating_pane_auto_centers_horizontally_with_only_width() {
                 width: Some(PercentOrFixed::Fixed(60)),
                 height: Some(PercentOrFixed::Fixed(10)),
                 pinned: None,
+                borderless: Some(false),
             })),
             Some(1),
             None,
@@ -1537,7 +1550,7 @@ fn floating_pane_auto_centers_vertically_with_only_height() {
         cols: 120,
         rows: 40,
     };
-    let mut screen = create_new_screen(size, true);
+    let mut screen = create_new_screen(size, true, true);
 
     new_tab(&mut screen, 1, 0);
     let active_tab = screen.get_active_tab_mut(1).unwrap();
@@ -1554,6 +1567,7 @@ fn floating_pane_auto_centers_vertically_with_only_height() {
                 width: Some(PercentOrFixed::Fixed(50)),
                 height: Some(PercentOrFixed::Fixed(20)),
                 pinned: None,
+                borderless: Some(false),
             })),
             Some(1),
             None,
@@ -1572,7 +1586,7 @@ fn floating_pane_auto_centers_both_axes_with_only_size() {
         cols: 120,
         rows: 40,
     };
-    let mut screen = create_new_screen(size, true);
+    let mut screen = create_new_screen(size, true, true);
 
     new_tab(&mut screen, 1, 0);
     let active_tab = screen.get_active_tab_mut(1).unwrap();
@@ -1589,6 +1603,7 @@ fn floating_pane_auto_centers_both_axes_with_only_size() {
                 width: Some(PercentOrFixed::Fixed(80)),
                 height: Some(PercentOrFixed::Fixed(30)),
                 pinned: None,
+                borderless: Some(false),
             })),
             Some(1),
             None,
@@ -1607,7 +1622,7 @@ fn floating_pane_respects_explicit_coordinates_with_size() {
         cols: 120,
         rows: 40,
     };
-    let mut screen = create_new_screen(size, true);
+    let mut screen = create_new_screen(size, true, true);
 
     new_tab(&mut screen, 1, 0);
     let active_tab = screen.get_active_tab_mut(1).unwrap();
@@ -1624,6 +1639,7 @@ fn floating_pane_respects_explicit_coordinates_with_size() {
                 width: Some(PercentOrFixed::Fixed(80)),
                 height: Some(PercentOrFixed::Fixed(30)),
                 pinned: None,
+                borderless: Some(false),
             })),
             Some(1),
             None,
@@ -1642,7 +1658,7 @@ fn floating_pane_centers_with_percentage_width() {
         cols: 120,
         rows: 40,
     };
-    let mut screen = create_new_screen(size, true);
+    let mut screen = create_new_screen(size, true, true);
 
     new_tab(&mut screen, 1, 0);
     let active_tab = screen.get_active_tab_mut(1).unwrap();
@@ -1659,6 +1675,7 @@ fn floating_pane_centers_with_percentage_width() {
                 width: Some(PercentOrFixed::Percent(50)),
                 height: Some(PercentOrFixed::Fixed(20)),
                 pinned: None,
+                borderless: Some(false),
             })),
             Some(1),
             None,
@@ -1682,7 +1699,7 @@ fn floating_pane_centers_large_pane_safely() {
         cols: 100,
         rows: 30,
     };
-    let mut screen = create_new_screen(size, true);
+    let mut screen = create_new_screen(size, true, true);
 
     new_tab(&mut screen, 1, 0);
     let active_tab = screen.get_active_tab_mut(1).unwrap();
@@ -1699,6 +1716,7 @@ fn floating_pane_centers_large_pane_safely() {
                 width: Some(PercentOrFixed::Fixed(150)),
                 height: Some(PercentOrFixed::Fixed(50)),
                 pinned: None,
+                borderless: Some(false),
             })),
             Some(1),
             None,
@@ -1801,7 +1819,7 @@ fn group_panes_with_mouse() {
         rows: 20,
     };
     let client_id = 1;
-    let mut screen = create_new_screen(size, true);
+    let mut screen = create_new_screen(size, true, true);
 
     new_tab(&mut screen, 1, 0);
     new_tab(&mut screen, 2, 1);
@@ -1843,7 +1861,7 @@ fn group_panes_with_keyboard() {
         rows: 20,
     };
     let client_id = 1;
-    let mut screen = create_new_screen(size, true);
+    let mut screen = create_new_screen(size, true, true);
 
     new_tab(&mut screen, 1, 0);
     new_tab(&mut screen, 2, 1);
@@ -1879,7 +1897,7 @@ fn group_panes_following_focus() {
         rows: 20,
     };
     let client_id = 1;
-    let mut screen = create_new_screen(size, true);
+    let mut screen = create_new_screen(size, true, true);
 
     new_tab(&mut screen, 1, 0);
 
@@ -1893,7 +1911,10 @@ fn group_panes_following_focus() {
                     None,
                     false,
                     true,
-                    NewPanePlacement::Tiled(None),
+                    NewPanePlacement::Tiled {
+                        direction: None,
+                        borderless: None,
+                    },
                     Some(client_id),
                     None,
                 )
@@ -1937,7 +1958,7 @@ fn break_group_with_mouse() {
         rows: 20,
     };
     let client_id = 1;
-    let mut screen = create_new_screen(size, true);
+    let mut screen = create_new_screen(size, true, true);
 
     new_tab(&mut screen, 1, 0);
 
@@ -1951,7 +1972,10 @@ fn break_group_with_mouse() {
                     None,
                     false,
                     true,
-                    NewPanePlacement::Tiled(None),
+                    NewPanePlacement::Tiled {
+                        direction: None,
+                        borderless: None,
+                    },
                     Some(client_id),
                     None,
                 )
@@ -2870,6 +2894,7 @@ pub fn send_cli_new_pane_action_with_default_parameters() {
         blocking: false,
         unblock_condition: None,
         near_current_pane: false,
+        borderless: Some(false),
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -2918,6 +2943,7 @@ pub fn send_cli_new_pane_action_with_split_direction() {
         blocking: false,
         unblock_condition: None,
         near_current_pane: false,
+        borderless: Some(false),
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -2966,6 +2992,7 @@ pub fn send_cli_new_pane_action_with_command_and_cwd() {
         blocking: false,
         unblock_condition: None,
         near_current_pane: false,
+        borderless: Some(false),
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -3025,6 +3052,7 @@ pub fn send_cli_new_pane_action_with_floating_pane_and_coordinates() {
         blocking: false,
         unblock_condition: None,
         near_current_pane: false,
+        borderless: Some(false),
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -3064,6 +3092,7 @@ pub fn send_cli_edit_action_with_default_parameters() {
         width: None,
         height: None,
         pinned: None,
+        borderless: Some(false),
         near_current_pane: false,
     };
     send_cli_action_to_server(&session_metadata, cli_edit_action, client_id);
@@ -3104,6 +3133,7 @@ pub fn send_cli_edit_action_with_line_number() {
         width: None,
         height: None,
         pinned: None,
+        borderless: Some(false),
         near_current_pane: false,
     };
     send_cli_action_to_server(&session_metadata, cli_edit_action, client_id);
@@ -3144,6 +3174,7 @@ pub fn send_cli_edit_action_with_split_direction() {
         width: None,
         height: None,
         pinned: None,
+        borderless: Some(false),
         near_current_pane: false,
     };
     send_cli_action_to_server(&session_metadata, cli_edit_action, client_id);
@@ -4053,10 +4084,8 @@ pub fn screen_can_break_floating_pane_to_a_new_tab() {
     let _ = mock_screen.to_screen.send(ScreenInstruction::ApplyLayout(
         TiledPaneLayout::default(),
         floating_panes_layout,
-        vec![(1, None)], // tiled pane ids - send these because one needs to be created under the
-        // ejected floating pane, lest the tab be closed as having no tiled panes
-        // (this happens in prod in the pty thread)
-        vec![], // floating panes ids
+        vec![], // tiled pane ids
+        vec![], // floating pane ids
         Default::default(),
         1,
         true,
@@ -4207,10 +4236,8 @@ pub fn screen_can_break_floating_plugin_pane_to_a_new_tab() {
     let _ = mock_screen.to_screen.send(ScreenInstruction::ApplyLayout(
         TiledPaneLayout::default(),
         floating_panes_layout,
-        vec![(1, None)], // tiled pane ids - send these because one needs to be created under the
-        // ejected floating pane, lest the tab be closed as having no tiled panes
-        // (this happens in prod in the pty thread)
-        vec![], // floating panes ids
+        vec![], // tiled pane ids
+        vec![], // floating pane ids
         Default::default(),
         1,
         true,
@@ -4269,6 +4296,20 @@ pub fn screen_can_move_pane_to_a_new_tab_right() {
         1,
         None,
     ));
+
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let _ = mock_screen.to_screen.send(ScreenInstruction::ApplyLayout(
+        TiledPaneLayout::default(),
+        Default::default(),
+        vec![], // tiled pane ids
+        vec![], // floating pane ids
+        Default::default(),
+        1,
+        true,
+        (1, false),
+        None,
+        None,
+    ));
     std::thread::sleep(std::time::Duration::from_millis(100));
     let _ = mock_screen
         .to_screen
@@ -4316,6 +4357,18 @@ pub fn screen_can_move_pane_to_a_new_tab_left() {
         Box::new(Layout::default()),
         Default::default(),
         1,
+        None,
+    ));
+    let _ = mock_screen.to_screen.send(ScreenInstruction::ApplyLayout(
+        TiledPaneLayout::default(),
+        Default::default(),
+        vec![], // tiled pane ids
+        vec![], // floating pane ids
+        Default::default(),
+        1,
+        true,
+        (1, false),
+        None,
         None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -4405,6 +4458,7 @@ pub fn send_cli_change_floating_pane_coordinates_action() {
         width: Some("10".to_owned()),
         height: Some("10".to_owned()),
         pinned: None,
+        borderless: Some(false),
     };
     send_cli_action_to_server(
         &session_metadata,

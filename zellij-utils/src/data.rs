@@ -2004,34 +2004,115 @@ impl LayoutInfo {
             LayoutInfo::Stringified(_stringified) => false,
         }
     }
-    pub fn from_config(
+    pub fn from_cli(
         layout_dir: &Option<PathBuf>,
-        layout_path: &Option<PathBuf>,
+        maybe_layout_path: &Option<PathBuf>,
+        cwd: PathBuf,
     ) -> Option<Self> {
-        match layout_path {
-            Some(layout_path) => {
-                if layout_path.extension().is_some() || layout_path.components().count() > 1 {
-                    let Some(layout_dir) = layout_dir
-                        .as_ref()
-                        .map(|l| l.clone())
-                        .or_else(default_layout_dir)
-                    else {
-                        return None;
-                    };
-                    let file_path = layout_dir.join(layout_path);
-                    Some(LayoutInfo::File(
-                        // layout_dir.join(layout_path).display().to_string(),
+        // If we're not given a layout path, fall back to "default". Since we cannot tell ahead of
+        // time whether the user has a layout named "default.kdl" in their layout directory, we
+        // cannot blindly assume that this is indeed the builtin default layout. The layout
+        // resolution below will correctly handle this.
+        // The docs promise this behavior, so we have to abide:
+        // <https://zellij.dev/documentation/layouts.html#layout-default-directory>
+        let layout_path = maybe_layout_path
+            .clone()
+            .unwrap_or(PathBuf::from("default"));
+
+        if layout_path.starts_with("http://") || layout_path.starts_with("https://") {
+            Some(LayoutInfo::Url(layout_path.display().to_string()))
+        } else if layout_path.extension().is_some() || layout_path.components().count() > 1 {
+            let layout_dir = cwd;
+            let file_path = layout_dir.join(layout_path);
+            Some(LayoutInfo::File(
+                // layout_dir.join(layout_path).display().to_string(),
+                file_path.display().to_string(),
+                LayoutMetadata::from(&file_path),
+            ))
+        } else {
+            // Attempt to interpret the layout as bare layout name from the layout application
+            // directory. This is described in the docs:
+            // <https://zellij.dev/documentation/layouts.html#layout-default-directory>
+            if let Some(layout_dir) = layout_dir
+                .as_ref()
+                .map(|l| l.clone())
+                .or_else(default_layout_dir)
+            {
+                let file_path = layout_dir.join(&layout_path);
+                if file_path.exists() {
+                    return Some(LayoutInfo::File(
                         file_path.display().to_string(),
                         LayoutMetadata::from(&file_path),
-                    ))
-                } else if layout_path.starts_with("http://") || layout_path.starts_with("https://")
-                {
-                    Some(LayoutInfo::Url(layout_path.display().to_string()))
-                } else {
-                    Some(LayoutInfo::BuiltIn(layout_path.display().to_string()))
+                    ));
                 }
-            },
-            None => None,
+                let file_path_with_ext = file_path.with_extension("kdl");
+                if file_path_with_ext.exists() {
+                    return Some(LayoutInfo::File(
+                        file_path_with_ext.display().to_string(),
+                        LayoutMetadata::from(&file_path_with_ext),
+                    ));
+                }
+            }
+            // Assume a builtin layout by default
+            Some(LayoutInfo::BuiltIn(layout_path.display().to_string()))
+        }
+    }
+    pub fn from_config(
+        layout_dir: &Option<PathBuf>,
+        maybe_layout_path: &Option<PathBuf>,
+    ) -> Option<Self> {
+        // If we're not given a layout path, fall back to "default". Since we cannot tell ahead of
+        // time whether the user has a layout named "default.kdl" in their layout directory, we
+        // cannot blindly assume that this is indeed the builtin default layout. The layout
+        // resolution below will correctly handle this.
+        // The docs promise this behavior, so we have to abide:
+        // <https://zellij.dev/documentation/layouts.html#layout-default-directory>
+        let layout_path = maybe_layout_path
+            .clone()
+            .unwrap_or(PathBuf::from("default"));
+
+        if layout_path.starts_with("http://") || layout_path.starts_with("https://") {
+            Some(LayoutInfo::Url(layout_path.display().to_string()))
+        } else if layout_path.extension().is_some() || layout_path.components().count() > 1 {
+            let Some(layout_dir) = layout_dir
+                .as_ref()
+                .map(|l| l.clone())
+                .or_else(default_layout_dir)
+            else {
+                return None;
+            };
+            let file_path = layout_dir.join(layout_path);
+            Some(LayoutInfo::File(
+                // layout_dir.join(layout_path).display().to_string(),
+                file_path.display().to_string(),
+                LayoutMetadata::from(&file_path),
+            ))
+        } else {
+            // Attempt to interpret the layout as bare layout name from the layout application
+            // directory. This is described in the docs:
+            // <https://zellij.dev/documentation/layouts.html#layout-default-directory>
+            if let Some(layout_dir) = layout_dir
+                .as_ref()
+                .map(|l| l.clone())
+                .or_else(default_layout_dir)
+            {
+                let file_path = layout_dir.join(&layout_path);
+                if file_path.exists() {
+                    return Some(LayoutInfo::File(
+                        file_path.display().to_string(),
+                        LayoutMetadata::from(&file_path),
+                    ));
+                }
+                let file_path_with_ext = file_path.with_extension("kdl");
+                if file_path_with_ext.exists() {
+                    return Some(LayoutInfo::File(
+                        file_path_with_ext.display().to_string(),
+                        LayoutMetadata::from(&file_path_with_ext),
+                    ));
+                }
+            }
+            // Assume a builtin layout by default
+            Some(LayoutInfo::BuiltIn(layout_path.display().to_string()))
         }
     }
 }
@@ -2674,6 +2755,12 @@ impl MessageToPlugin {
         new_plugin_args.should_focus = Some(true);
         self
     }
+    pub fn has_cwd(&self) -> bool {
+        self.new_plugin_args
+            .as_ref()
+            .map(|n| n.cwd.is_some())
+            .unwrap_or(false)
+    }
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
@@ -2768,6 +2855,7 @@ pub struct FloatingPaneCoordinates {
     pub width: Option<PercentOrFixed>,
     pub height: Option<PercentOrFixed>,
     pub pinned: Option<bool>,
+    pub borderless: Option<bool>,
 }
 
 impl FloatingPaneCoordinates {
@@ -2777,6 +2865,7 @@ impl FloatingPaneCoordinates {
         width: Option<String>,
         height: Option<String>,
         pinned: Option<bool>,
+        borderless: Option<bool>,
     ) -> Option<Self> {
         // Parse x/y coordinates - allows 0% or 0
         let x = x.and_then(|x| PercentOrFixed::from_str(&x).ok());
@@ -2802,7 +2891,13 @@ impl FloatingPaneCoordinates {
                 })
         });
 
-        if x.is_none() && y.is_none() && width.is_none() && height.is_none() && pinned.is_none() {
+        if x.is_none()
+            && y.is_none()
+            && width.is_none()
+            && height.is_none()
+            && pinned.is_none()
+            && borderless.is_none()
+        {
             None
         } else {
             Some(FloatingPaneCoordinates {
@@ -2811,6 +2906,7 @@ impl FloatingPaneCoordinates {
                 width,
                 height,
                 pinned,
+                borderless,
             })
         }
     }
@@ -2872,6 +2968,7 @@ impl From<PaneGeom> for FloatingPaneCoordinates {
             width: Some(PercentOrFixed::Fixed(pane_geom.cols.as_usize())),
             height: Some(PercentOrFixed::Fixed(pane_geom.rows.as_usize())),
             pinned: Some(pane_geom.is_pinned),
+            borderless: None,
         }
     }
 }
@@ -2966,19 +3063,28 @@ impl FromStr for WebSharing {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum NewPanePlacement {
-    NoPreference,
-    Tiled(Option<Direction>),
+    NoPreference {
+        borderless: Option<bool>,
+    },
+    Tiled {
+        direction: Option<Direction>,
+        borderless: Option<bool>,
+    },
     Floating(Option<FloatingPaneCoordinates>),
     InPlace {
         pane_id_to_replace: Option<PaneId>,
         close_replaced_pane: bool,
+        borderless: Option<bool>,
     },
-    Stacked(Option<PaneId>),
+    Stacked {
+        pane_id_to_stack_under: Option<PaneId>,
+        borderless: Option<bool>,
+    },
 }
 
 impl Default for NewPanePlacement {
     fn default() -> Self {
-        NewPanePlacement::NoPreference
+        NewPanePlacement::NoPreference { borderless: None }
     }
 }
 
@@ -2997,6 +3103,7 @@ impl NewPanePlacement {
             NewPanePlacement::InPlace {
                 pane_id_to_replace: None,
                 close_replaced_pane,
+                borderless: None,
             }
         } else {
             self
@@ -3009,12 +3116,13 @@ impl NewPanePlacement {
         NewPanePlacement::InPlace {
             pane_id_to_replace,
             close_replaced_pane,
+            borderless: None,
         }
     }
     pub fn should_float(&self) -> Option<bool> {
         match self {
             NewPanePlacement::Floating(_) => Some(true),
-            NewPanePlacement::Tiled(_) => Some(false),
+            NewPanePlacement::Tiled { .. } => Some(false),
             _ => None,
         }
     }
@@ -3028,14 +3136,26 @@ impl NewPanePlacement {
     }
     pub fn should_stack(&self) -> bool {
         match self {
-            NewPanePlacement::Stacked(_) => true,
+            NewPanePlacement::Stacked { .. } => true,
             _ => false,
         }
     }
     pub fn id_of_stack_root(&self) -> Option<PaneId> {
         match self {
-            NewPanePlacement::Stacked(id) => *id,
+            NewPanePlacement::Stacked {
+                pane_id_to_stack_under,
+                ..
+            } => *pane_id_to_stack_under,
             _ => None,
+        }
+    }
+    pub fn get_borderless(&self) -> Option<bool> {
+        match self {
+            NewPanePlacement::NoPreference { borderless } => *borderless,
+            NewPanePlacement::Tiled { borderless, .. } => *borderless,
+            NewPanePlacement::Floating(coords) => coords.as_ref().and_then(|c| c.borderless),
+            NewPanePlacement::InPlace { borderless, .. } => *borderless,
+            NewPanePlacement::Stacked { borderless, .. } => *borderless,
         }
     }
 }
@@ -3204,6 +3324,8 @@ pub enum PluginCommand {
     SetFloatingPanePinned(PaneId, bool), // bool -> should be pinned
     StackPanes(Vec<PaneId>),
     ChangeFloatingPanesCoordinates(Vec<(PaneId, FloatingPaneCoordinates)>),
+    TogglePaneBorderless(PaneId),
+    SetPaneBorderless(PaneId, bool),
     OpenCommandPaneNearPlugin(CommandToRun, Context),
     OpenTerminalNearPlugin(FileToOpen),
     OpenTerminalFloatingNearPlugin(FileToOpen, Option<FloatingPaneCoordinates>),
@@ -3266,4 +3388,6 @@ pub enum PluginCommand {
     ParseLayout(String), // String contains raw KDL layout
     GetLayoutDir,
     GetFocusedPaneInfo,
+    SaveSession,
+    CurrentSessionLastSavedTime,
 }

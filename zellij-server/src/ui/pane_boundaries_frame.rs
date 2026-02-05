@@ -65,6 +65,7 @@ pub struct FrameParams {
     pub content_offset: Offset,
     pub mouse_is_hovering_over_pane: bool,
     pub pane_is_selectable: bool,
+    pub show_help_text: bool,
 }
 
 #[derive(Default, PartialEq)]
@@ -88,6 +89,7 @@ pub struct PaneFrame {
     content_offset: Offset,
     mouse_is_hovering_over_pane: bool,
     is_selectable: bool,
+    show_help_text: bool,
 }
 
 impl PaneFrame {
@@ -117,6 +119,7 @@ impl PaneFrame {
             content_offset: frame_params.content_offset,
             mouse_is_hovering_over_pane: frame_params.mouse_is_hovering_over_pane,
             is_selectable: frame_params.pane_is_selectable,
+            show_help_text: frame_params.show_help_text,
         }
     }
     pub fn is_pinned(mut self, is_pinned: bool) -> Self {
@@ -705,6 +708,89 @@ impl PaneFrame {
             .or_else(|| Some(self.title_line_without_middle()))
             .with_context(|| format!("failed to render title '{}'", self.title))
     }
+    fn render_help_text_undertitle(&self) -> Result<Vec<TerminalCharacter>> {
+        let max_undertitle_length = self.geom.cols.saturating_sub(2);
+
+        let mut left_boundary =
+            foreground_color(self.get_corner(boundary_type::BOTTOM_LEFT), self.color);
+        let mut right_boundary =
+            foreground_color(self.get_corner(boundary_type::BOTTOM_RIGHT), self.color);
+
+        // Try different versions of the help text from longest to shortest
+        let (mut help_text_characters, help_text_len) = if let Some((chars, len)) =
+            self.help_text_version_full(max_undertitle_length)
+        {
+            (chars, len)
+        } else if let Some((chars, len)) = self.help_text_version_medium(max_undertitle_length) {
+            (chars, len)
+        } else if let Some((chars, len)) = self.help_text_version_short(max_undertitle_length) {
+            (chars, len)
+        } else {
+            return Ok(self.empty_undertitle(max_undertitle_length));
+        };
+
+        let padding_len = max_undertitle_length.saturating_sub(help_text_len);
+        let mut padding = String::new();
+        for _ in 0..padding_len {
+            padding.push_str(boundary_type::HORIZONTAL);
+        }
+
+        let mut ret = vec![];
+        ret.append(&mut left_boundary);
+        ret.append(&mut help_text_characters);
+        ret.append(&mut foreground_color(&padding, self.color));
+        ret.append(&mut right_boundary);
+        Ok(ret)
+    }
+
+    fn help_text_version_full(&self, max_length: usize) -> Option<(Vec<TerminalCharacter>, usize)> {
+        let text = if self.is_floating {
+            " Ctrl <MouseScroll> or Ctrl <drag borders> to resize "
+        } else {
+            " Ctrl <MouseScroll> or <drag borders> to resize "
+        };
+        let len = text.chars().count();
+        if len <= max_length {
+            Some((foreground_color(text, self.color), len))
+        } else {
+            None
+        }
+    }
+
+    fn help_text_version_medium(
+        &self,
+        max_length: usize,
+    ) -> Option<(Vec<TerminalCharacter>, usize)> {
+        let text = if self.is_floating {
+            " <Ctrl MouseScroll/drag borders> resize "
+        } else {
+            " <Ctrl MouseScroll>/<drag borders> resize "
+        };
+        let len = text.chars().count();
+        if len <= max_length {
+            Some((foreground_color(text, self.color), len))
+        } else {
+            None
+        }
+    }
+
+    fn help_text_version_short(
+        &self,
+        max_length: usize,
+    ) -> Option<(Vec<TerminalCharacter>, usize)> {
+        let text = if self.is_floating {
+            " <Ctrl MouseScroll/drag borders> "
+        } else {
+            " <Ctrl MouseScroll>/<drag borders> "
+        };
+        let len = text.chars().count();
+        if len <= max_length {
+            Some((foreground_color(text, self.color), len))
+        } else {
+            None
+        }
+    }
+
     fn render_held_undertitle(&self) -> Result<Vec<TerminalCharacter>> {
         let max_undertitle_length = self.geom.cols.saturating_sub(2); // 2 for the left and right corners
         let (mut first_part, first_part_len) = self.first_exited_held_title_part_full();
@@ -846,7 +932,16 @@ impl PaneFrame {
                     character_chunks.push(CharacterChunk::new(title, x, y));
                 } else if row == self.geom.rows - 1 {
                     // bottom row
-                    if self.mouse_is_hovering_over_pane && !self.is_main_client {
+                    if self.show_help_text && self.is_main_client {
+                        let x = self.geom.x;
+                        let y = self.geom.y + row;
+                        character_chunks.push(CharacterChunk::new(
+                            self.render_help_text_undertitle()
+                                .with_context(err_context)?,
+                            x,
+                            y,
+                        ));
+                    } else if self.mouse_is_hovering_over_pane && !self.is_main_client {
                         let x = self.geom.x;
                         let y = self.geom.y + row;
                         character_chunks.push(CharacterChunk::new(

@@ -219,8 +219,6 @@ pub trait ClientOsApi: Send + Sync + std::fmt::Debug {
     fn load_palette(&self) -> Palette;
     fn enable_mouse(&self) -> Result<()>;
     fn disable_mouse(&self) -> Result<()>;
-    // Repeatedly send action, until stdin is readable again
-    fn stdin_poller(&self) -> StdinPoller;
     fn env_variable(&self, _name: &str) -> Option<String> {
         None
     }
@@ -408,10 +406,6 @@ impl ClientOsApi for ClientOsInputOutput {
         Ok(())
     }
 
-    fn stdin_poller(&self) -> StdinPoller {
-        StdinPoller::default()
-    }
-
     fn env_variable(&self, name: &str) -> Option<String> {
         std::env::var(name).ok()
     }
@@ -449,44 +443,3 @@ pub fn get_cli_client_os_input() -> Result<ClientOsInputOutput, nix::Error> {
 }
 
 pub const DEFAULT_STDIN_POLL_TIMEOUT_MS: u64 = 10;
-
-pub struct StdinPoller {
-    poll: Poll,
-    events: Events,
-    timeout: time::Duration,
-}
-
-impl StdinPoller {
-    // use mio poll to check if stdin is readable without blocking
-    pub fn ready(&mut self) -> bool {
-        self.poll
-            .poll(&mut self.events, Some(self.timeout))
-            .expect("could not poll stdin for readiness");
-        for event in &self.events {
-            if event.token() == Token(0) && event.is_readable() {
-                return true;
-            }
-        }
-        false
-    }
-}
-
-impl Default for StdinPoller {
-    fn default() -> Self {
-        let stdin = 0;
-        let mut stdin_fd = SourceFd(&stdin);
-        let events = Events::with_capacity(128);
-        let poll = Poll::new().unwrap();
-        poll.registry()
-            .register(&mut stdin_fd, Token(0), Interest::READABLE)
-            .expect("could not create stdin poll");
-
-        let timeout = time::Duration::from_millis(DEFAULT_STDIN_POLL_TIMEOUT_MS);
-
-        Self {
-            poll,
-            events,
-            timeout,
-        }
-    }
-}

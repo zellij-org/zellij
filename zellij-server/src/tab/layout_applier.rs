@@ -41,6 +41,7 @@ pub struct LayoutApplier<'a> {
     debug: bool,
     arrow_fonts: bool,
     styled_underlines: bool,
+    osc8_hyperlinks: bool,
     explicitly_disable_kitty_keyboard_protocol: bool,
     blocking_terminal: Option<(u32, NotificationEnd)>,
 }
@@ -65,6 +66,7 @@ impl<'a> LayoutApplier<'a> {
         debug: bool,
         arrow_fonts: bool,
         styled_underlines: bool,
+        osc8_hyperlinks: bool,
         explicitly_disable_kitty_keyboard_protocol: bool,
         blocking_terminal: Option<(u32, NotificationEnd)>,
     ) -> Self {
@@ -98,6 +100,7 @@ impl<'a> LayoutApplier<'a> {
             debug,
             arrow_fonts,
             styled_underlines,
+            osc8_hyperlinks,
             explicitly_disable_kitty_keyboard_protocol,
             blocking_terminal,
         }
@@ -541,7 +544,7 @@ impl<'a> LayoutApplier<'a> {
             new_plugin.handle_pty_bytes("\n\r".as_bytes().into());
         }
 
-        new_plugin.set_borderless(layout.borderless);
+        new_plugin.set_borderless(layout.borderless.unwrap_or(false));
         if let Some(exclude_from_sync) = layout.exclude_from_sync {
             new_plugin.set_exclude_from_sync(exclude_from_sync);
         }
@@ -589,8 +592,11 @@ impl<'a> LayoutApplier<'a> {
             new_pane.handle_pty_bytes(pane_initial_contents.as_bytes().into());
             new_pane.handle_pty_bytes("\n\r".as_bytes().into());
         }
-        new_pane.set_borderless(false);
-        new_pane.set_content_offset(Offset::frame(1));
+        if floating_pane_layout.borderless.unwrap_or(false) {
+            new_pane.set_borderless(true);
+        } else {
+            new_pane.set_borderless(false);
+        }
         resize_pty!(
             new_pane,
             self.os_api,
@@ -634,6 +640,7 @@ impl<'a> LayoutApplier<'a> {
             self.debug,
             self.arrow_fonts,
             self.styled_underlines,
+            self.osc8_hyperlinks,
             self.explicitly_disable_kitty_keyboard_protocol,
             None,
         );
@@ -641,8 +648,11 @@ impl<'a> LayoutApplier<'a> {
             new_pane.handle_pty_bytes(pane_initial_contents.as_bytes().into());
             new_pane.handle_pty_bytes("\n\r".as_bytes().into());
         }
-        new_pane.set_borderless(false);
-        new_pane.set_content_offset(Offset::frame(1));
+        if floating_pane_layout.borderless.unwrap_or(false) {
+            new_pane.set_borderless(true);
+        } else {
+            new_pane.set_borderless(false);
+        }
         if let Some(held_command) = hold_for_command {
             new_pane.hold(None, true, held_command.clone());
         }
@@ -700,6 +710,7 @@ impl<'a> LayoutApplier<'a> {
             self.debug,
             self.arrow_fonts,
             self.styled_underlines,
+            self.osc8_hyperlinks,
             self.explicitly_disable_kitty_keyboard_protocol,
             notification_end,
         );
@@ -707,7 +718,7 @@ impl<'a> LayoutApplier<'a> {
             new_pane.handle_pty_bytes(pane_initial_contents.as_bytes().into());
             new_pane.handle_pty_bytes("\n\r".as_bytes().into());
         }
-        new_pane.set_borderless(layout.borderless);
+        new_pane.set_borderless(layout.borderless.unwrap_or(false));
         if let Some(exclude_from_sync) = layout.exclude_from_sync {
             new_pane.set_exclude_from_sync(exclude_from_sync);
         }
@@ -1298,6 +1309,9 @@ impl<'a> PaneApplier<'a> {
         if floating_panes_layout.focus.unwrap_or(false) {
             self.new_focused_pane_id = Some(pane.pid());
         }
+        if let Some(should_be_borderless) = floating_panes_layout.borderless {
+            pane.set_borderless(should_be_borderless);
+        }
         self.apply_position_and_size_to_floating_pane(pane, position_and_size);
         Ok(())
     }
@@ -1374,7 +1388,9 @@ impl<'a> PaneApplier<'a> {
         if let Some(position_and_size) = position_and_size {
             pane.set_geom(position_and_size);
         }
-        pane.set_borderless(layout.borderless);
+        if let Some(should_be_borderless) = layout.borderless {
+            pane.set_borderless(should_be_borderless);
+        }
         if let Some(pane_title) = layout.name.as_ref() {
             pane.set_title(pane_title.into());
         }

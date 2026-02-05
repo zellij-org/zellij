@@ -633,11 +633,16 @@ impl Pane for TerminalPane {
         }
     }
 
-    fn set_borderless(&mut self, borderless: bool) {
-        self.borderless = borderless;
-    }
     fn borderless(&self) -> bool {
         self.borderless
+    }
+    fn set_borderless(&mut self, should_be_borderless: bool) {
+        self.borderless = should_be_borderless;
+        if should_be_borderless {
+            self.set_content_offset(Offset::default());
+        } else {
+            self.set_content_offset(Offset::frame(1));
+        }
     }
 
     fn set_exclude_from_sync(&mut self, exclude_from_sync: bool) {
@@ -939,6 +944,7 @@ impl TerminalPane {
         debug: bool,
         arrow_fonts: bool,
         styled_underlines: bool,
+        osc8_hyperlinks: bool,
         explicitly_disable_keyboard_protocol: bool,
         mut notification_end: Option<NotificationEnd>,
     ) -> TerminalPane {
@@ -956,6 +962,7 @@ impl TerminalPane {
             debug,
             arrow_fonts,
             styled_underlines,
+            osc8_hyperlinks,
             explicitly_disable_keyboard_protocol,
         );
         if let Some(notification_end) = notification_end.as_mut() {

@@ -6,12 +6,14 @@ pub use super::generated_api::api::{
         delete_layout_response, dump_layout_response, dump_session_layout_response,
         edit_layout_response, get_focused_pane_info_response, get_pane_pid_response,
         parse_layout_response, plugin_command::Payload, rename_layout_response,
-        save_layout_response, BreakPanesToNewTabPayload, BreakPanesToTabWithIndexPayload,
-        ChangeFloatingPanesCoordinatesPayload, ChangeHostFolderPayload,
-        ClearScreenForPaneIdPayload, CliPipeOutputPayload, CloseMultiplePanesPayload,
-        CloseTabWithIndexPayload, CommandName, ContextItem, CopyToClipboardPayload,
-        CreateTokenResponse as ProtobufCreateTokenResponse, CreateTokenResponse, CursorPosition,
-        DeleteLayoutPayload, DeleteLayoutResponse as ProtobufDeleteLayoutResponse,
+        save_layout_response, save_session_response, BreakPanesToNewTabPayload,
+        BreakPanesToTabWithIndexPayload, ChangeFloatingPanesCoordinatesPayload,
+        ChangeHostFolderPayload, ClearScreenForPaneIdPayload, CliPipeOutputPayload,
+        CloseMultiplePanesPayload, CloseTabWithIndexPayload, CommandName, ContextItem,
+        CopyToClipboardPayload, CreateTokenResponse as ProtobufCreateTokenResponse,
+        CreateTokenResponse, CurrentSessionLastSavedTimePayload,
+        CurrentSessionLastSavedTimeResponse as ProtobufCurrentSessionLastSavedTimeResponse,
+        CursorPosition, DeleteLayoutPayload, DeleteLayoutResponse as ProtobufDeleteLayoutResponse,
         DumpLayoutPayload, DumpLayoutResponse as ProtobufDumpLayoutResponse,
         DumpSessionLayoutPayload, DumpSessionLayoutResponse as ProtobufDumpSessionLayoutResponse,
         EditLayoutPayload, EditLayoutResponse as ProtobufEditLayoutResponse,
@@ -44,11 +46,13 @@ pub use super::generated_api::api::{
         RequestPluginPermissionPayload, RerunCommandPanePayload, ResizePaneIdWithDirectionPayload,
         ResizePayload, RevokeAllWebTokensResponse, RevokeTokenResponse, RevokeWebLoginTokenPayload,
         RunActionPayload, RunCommandPayload, SaveLayoutPayload,
-        SaveLayoutResponse as ProtobufSaveLayoutResponse, ScrollDownInPaneIdPayload,
+        SaveLayoutResponse as ProtobufSaveLayoutResponse, SaveSessionPayload,
+        SaveSessionResponse as ProtobufSaveSessionResponse, ScrollDownInPaneIdPayload,
         ScrollToBottomInPaneIdPayload, ScrollToTopInPaneIdPayload, ScrollUpInPaneIdPayload,
-        SetFloatingPanePinnedPayload, SetSelfMouseSelectionSupportPayload, SetTimeoutPayload,
-        ShowCursorPayload, ShowPaneWithIdPayload, StackPanesPayload, SubscribePayload,
-        SwitchSessionPayload, SwitchTabToPayload, TogglePaneEmbedOrEjectForPaneIdPayload,
+        SetFloatingPanePinnedPayload, SetPaneBorderlessPayload,
+        SetSelfMouseSelectionSupportPayload, SetTimeoutPayload, ShowCursorPayload,
+        ShowPaneWithIdPayload, StackPanesPayload, SubscribePayload, SwitchSessionPayload,
+        SwitchTabToPayload, TogglePaneBorderlessPayload, TogglePaneEmbedOrEjectForPaneIdPayload,
         TogglePaneIdFullscreenPayload, UnsubscribePayload, WebRequestPayload,
         WriteCharsToPaneIdPayload, WriteToPaneIdPayload,
     },
@@ -117,6 +121,7 @@ impl Into<FloatingPaneCoordinates> for ProtobufFloatingPaneCoordinates {
                 }
             }),
             pinned: self.pinned,
+            borderless: self.borderless,
         }
     }
 }
@@ -169,6 +174,7 @@ impl Into<ProtobufFloatingPaneCoordinates> for FloatingPaneCoordinates {
                 None => None,
             },
             pinned: self.pinned,
+            borderless: self.borderless,
         }
     }
 }
@@ -1682,6 +1688,29 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                     _ => Err("Mismatched payload for ChangeFloatingPanesCoordinates"),
                 }
             },
+            Some(CommandName::TogglePaneBorderless) => match protobuf_plugin_command.payload {
+                Some(Payload::TogglePaneBorderlessPayload(toggle_payload)) => {
+                    match toggle_payload.pane_id {
+                        Some(pane_id) => {
+                            Ok(PluginCommand::TogglePaneBorderless(pane_id.try_into()?))
+                        },
+                        None => Err("Malformed TogglePaneBorderless payload"),
+                    }
+                },
+                _ => Err("Mismatched payload for TogglePaneBorderless"),
+            },
+            Some(CommandName::SetPaneBorderless) => match protobuf_plugin_command.payload {
+                Some(Payload::SetPaneBorderlessPayload(payload)) => {
+                    match (payload.pane_id, payload.borderless) {
+                        (Some(pane_id), borderless) => Ok(PluginCommand::SetPaneBorderless(
+                            pane_id.try_into()?,
+                            borderless,
+                        )),
+                        _ => Err("Malformed SetPaneBorderless payload"),
+                    }
+                },
+                _ => Err("Mismatched payload for SetPaneBorderless"),
+            },
             Some(CommandName::OpenCommandPaneNearPlugin) => match protobuf_plugin_command.payload {
                 Some(Payload::OpenCommandPaneNearPluginPayload(command_to_run_payload)) => {
                     match command_to_run_payload.command_to_run {
@@ -2077,6 +2106,10 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
             },
             Some(CommandName::GetLayoutDir) => Ok(PluginCommand::GetLayoutDir),
             Some(CommandName::GetFocusedPaneInfo) => Ok(PluginCommand::GetFocusedPaneInfo),
+            Some(CommandName::SaveSession) => Ok(PluginCommand::SaveSession),
+            Some(CommandName::CurrentSessionLastSavedTime) => {
+                Ok(PluginCommand::CurrentSessionLastSavedTime)
+            },
             None => Err("Unrecognized plugin command"),
         }
     }
@@ -3067,6 +3100,23 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     },
                 )),
             }),
+            PluginCommand::TogglePaneBorderless(pane_id) => Ok(ProtobufPluginCommand {
+                name: CommandName::TogglePaneBorderless as i32,
+                payload: Some(Payload::TogglePaneBorderlessPayload(
+                    TogglePaneBorderlessPayload {
+                        pane_id: Some(pane_id.try_into()?),
+                    },
+                )),
+            }),
+            PluginCommand::SetPaneBorderless(pane_id, borderless) => Ok(ProtobufPluginCommand {
+                name: CommandName::SetPaneBorderless as i32,
+                payload: Some(Payload::SetPaneBorderlessPayload(
+                    SetPaneBorderlessPayload {
+                        pane_id: Some(pane_id.try_into()?),
+                        borderless,
+                    },
+                )),
+            }),
             PluginCommand::OpenCommandPaneNearPlugin(command_to_run, context) => {
                 let context: Vec<_> = context
                     .into_iter()
@@ -3398,6 +3448,16 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                 name: CommandName::GetFocusedPaneInfo as i32,
                 payload: Some(Payload::GetFocusedPaneInfoPayload(
                     GetFocusedPaneInfoPayload {},
+                )),
+            }),
+            PluginCommand::SaveSession => Ok(ProtobufPluginCommand {
+                name: CommandName::SaveSession as i32,
+                payload: Some(Payload::SaveSessionPayload(SaveSessionPayload {})),
+            }),
+            PluginCommand::CurrentSessionLastSavedTime => Ok(ProtobufPluginCommand {
+                name: CommandName::CurrentSessionLastSavedTime as i32,
+                payload: Some(Payload::CurrentSessionLastSavedTimePayload(
+                    CurrentSessionLastSavedTimePayload {},
                 )),
             }),
         }

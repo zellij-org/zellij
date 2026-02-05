@@ -2898,3 +2898,37 @@ pub fn override_layout_from_default_to_compact() {
     let last_snapshot = account_for_races_in_snapshot(last_snapshot);
     assert_snapshot!(last_snapshot);
 }
+
+#[test]
+#[ignore]
+pub fn use_custom_layout_with_relative_path() {
+    let fake_win_size = Size {
+        cols: 120,
+        rows: 24,
+    };
+    // Should resolve to $fixtures/layouts/upside-down.kdl
+    let config_dir_name = "e2e-upside-down";
+    let mut test_attempts = 10;
+    let last_snapshot = loop {
+        RemoteRunner::kill_running_sessions(fake_win_size);
+        let mut runner = RemoteRunner::new_with_config_dir(fake_win_size, config_dir_name);
+        runner.run_all_steps();
+        let last_snapshot = runner.take_snapshot_after(Step {
+            name: "Wait for app to start",
+            instruction: |remote_terminal: RemoteTerminal| -> bool {
+                let lines = remote_terminal.lines();
+                lines.len() > 2
+                    && lines[0].trim().starts_with("Ctrl +")
+                    && lines[1].trim().starts_with("Tip:")
+            },
+        });
+        if runner.test_timed_out && test_attempts > 0 {
+            test_attempts -= 1;
+            continue;
+        } else {
+            break last_snapshot;
+        }
+    };
+    let last_snapshot = account_for_races_in_snapshot(last_snapshot);
+    assert_snapshot!(last_snapshot);
+}

@@ -599,7 +599,10 @@ pub fn handle_action_complete(
         };
 
         // Determine placement based on layout mode
-        let placement = NewPanePlacement::Stacked(pane_id);
+        let placement = NewPanePlacement::Stacked {
+            pane_id_to_stack_under: pane_id,
+            borderless: Some(false),
+        };
 
         // Update status: mark current command as completed
         // Use the pane_id from ActionComplete if the status is still Pending
@@ -881,6 +884,7 @@ fn change_floating_pane_coordinates(
         width.map(|width| format!("{}%", width)),
         height.map(|height| format!("{}%", height)),
         Some(should_be_pinned),
+        Some(false),
     );
     if let Some(coordinates) = coordinates {
         // TODO: better
@@ -1015,6 +1019,7 @@ fn rerun_sequence(state: &mut State) {
             NewPanePlacement::InPlace {
                 pane_id_to_replace: Some(*pane_id),
                 close_replaced_pane,
+                borderless: Some(false),
             }
         } else {
             let pane_id_to_stack_under = state
@@ -1022,7 +1027,10 @@ fn rerun_sequence(state: &mut State) {
                 .all_commands
                 .iter()
                 .find_map(|c| c.get_pane_id());
-            NewPanePlacement::Stacked(pane_id_to_stack_under)
+            NewPanePlacement::Stacked {
+                pane_id_to_stack_under,
+                borderless: Some(false),
+            }
         };
 
         // Determine unblock_condition based on whether this is the last command

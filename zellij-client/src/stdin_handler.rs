@@ -3,7 +3,7 @@ use crate::os_input_output::ClientOsApi;
 use crate::stdin_ansi_parser::StdinAnsiParser;
 use crate::InputInstruction;
 use std::sync::{Arc, Mutex};
-use termwiz::input::{InputEvent, InputParser, MouseButtons};
+use termwiz::input::{InputEvent, InputParser};
 use zellij_utils::channels::SenderWithContext;
 
 fn send_done_parsing_after_query_timeout(
@@ -26,7 +26,6 @@ pub(crate) fn stdin_loop(
     stdin_ansi_parser: Arc<Mutex<StdinAnsiParser>>,
     explicitly_disable_kitty_keyboard_protocol: bool,
 ) {
-    let mut holding_mouse = false;
     let mut input_parser = InputParser::new();
     let mut current_buffer = vec![];
     {
@@ -115,26 +114,7 @@ pub(crate) fn stdin_loop(
                     maybe_more,
                 );
 
-                let event_count = events.len();
-                for (i, input_event) in events.into_iter().enumerate() {
-                    if holding_mouse && is_mouse_press_or_hold(&input_event) && i == event_count - 1
-                    {
-                        let mut poller = os_input.stdin_poller();
-                        loop {
-                            if poller.ready() {
-                                break;
-                            }
-                            send_input_instructions
-                                .send(InputInstruction::KeyEvent(
-                                    input_event.clone(),
-                                    current_buffer.clone(),
-                                ))
-                                .unwrap();
-                        }
-                    }
-
-                    holding_mouse = is_mouse_press_or_hold(&input_event);
-
+                for input_event in events.into_iter() {
                     send_input_instructions
                         .send(InputInstruction::KeyEvent(
                             input_event,
@@ -154,15 +134,4 @@ pub(crate) fn stdin_loop(
             },
         }
     }
-}
-
-fn is_mouse_press_or_hold(input_event: &InputEvent) -> bool {
-    if let InputEvent::Mouse(mouse_event) = input_event {
-        if mouse_event.mouse_buttons.contains(MouseButtons::LEFT)
-            || mouse_event.mouse_buttons.contains(MouseButtons::RIGHT)
-        {
-            return true;
-        }
-    }
-    false
 }

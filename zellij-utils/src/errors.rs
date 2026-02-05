@@ -259,6 +259,7 @@ pub enum ScreenContext {
     ClearScreen,
     DumpScreen,
     DumpLayout,
+    SaveSession,
     EditScrollback,
     GetPaneScrollback,
     ScrollUp,
@@ -380,6 +381,8 @@ pub enum ScreenContext {
     SetFloatingPanePinned,
     StackPanes,
     ChangeFloatingPanesCoordinates,
+    TogglePaneBorderless,
+    SetPaneBorderless,
     AddHighlightPaneFrameColorOverride,
     GroupAndUngroupPanes,
     HighlightAndUnhighlightPanes,
@@ -395,7 +398,8 @@ pub enum ScreenContext {
     AddWatcherClient,
     RemoveWatcherClient,
     SetFollowedClient,
-    WatcherTerminalResize, // NEW
+    WatcherTerminalResize,
+    ClearMouseHelpText,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.
@@ -416,6 +420,7 @@ pub enum PtyContext {
     SpawnInPlaceTerminal,
     DumpLayout,
     LogLayoutToHd,
+    SaveSessionToDisk,
     FillPluginCwd,
     DumpLayoutToPlugin,
     ListClientsMetadata,
@@ -472,6 +477,8 @@ pub enum PluginContext {
     UserInput,
     LayoutListUpdate,
     RequestStateUpdateForPlugin,
+    UpdateSessionSaveTime,
+    GetLastSessionSaveTime,
 }
 
 /// Stack call representations corresponding to the different types of [`ClientInstruction`]s.
@@ -532,6 +539,7 @@ pub enum ServerContext {
     WebServerStarted,
     FailedToStartWebServer,
     SendWebClientsForbidden,
+    ClearMouseHelpText,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -558,6 +566,7 @@ pub enum BackgroundJobContext {
     RenderToClients,
     HighlightPanesWithMessage,
     QueryZellijWebServerStatus,
+    ClearHelpText,
     Exit,
 }
 

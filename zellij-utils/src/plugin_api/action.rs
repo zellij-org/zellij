@@ -360,6 +360,7 @@ impl TryFrom<ProtobufAction> for Action {
                         .and_then(|d| ProtobufResizeDirection::from_i32(d))
                         .and_then(|d| d.try_into().ok());
                     let near_current_pane = payload.near_current_pane;
+                    let borderless = payload.borderless;
                     if let Some(payload) = payload.command {
                         let pane_name = payload.pane_name.clone();
                         let run_command_action: RunCommandAction = payload.try_into()?;
@@ -368,6 +369,7 @@ impl TryFrom<ProtobufAction> for Action {
                             command: Some(run_command_action),
                             pane_name,
                             near_current_pane,
+                            borderless,
                         })
                     } else {
                         Ok(Action::NewTiledPane {
@@ -375,6 +377,7 @@ impl TryFrom<ProtobufAction> for Action {
                             command: None,
                             pane_name: None,
                             near_current_pane,
+                            borderless,
                         })
                     }
                 },
@@ -1259,6 +1262,7 @@ impl TryFrom<Action> for ProtobufAction {
                 command: run_command_action,
                 pane_name,
                 near_current_pane,
+                borderless,
             } => {
                 let direction = direction.and_then(|direction| {
                     let protobuf_direction: ProtobufResizeDirection = direction.try_into().ok()?;
@@ -1278,6 +1282,7 @@ impl TryFrom<Action> for ProtobufAction {
                             direction,
                             command,
                             near_current_pane,
+                            borderless,
                         },
                     )),
                 })
@@ -1773,8 +1778,11 @@ impl TryFrom<Action> for ProtobufAction {
                 pane_id: _,
                 coordinates: _,
             }
+            | Action::TogglePaneBorderless { pane_id: _ }
+            | Action::SetPaneBorderless { .. }
             | Action::SkipConfirm { action: _ }
-            | Action::SwitchSession { .. } => Err("Unsupported action"),
+            | Action::SwitchSession { .. }
+            | Action::SaveSession => Err("Unsupported action"),
         }
     }
 }
@@ -2252,6 +2260,7 @@ impl TryFrom<ProtobufFloatingPaneCoordinates> for FloatingPaneCoordinates {
             width: protobuf_coords.width.and_then(|w| w.try_into().ok()),
             height: protobuf_coords.height.and_then(|h| h.try_into().ok()),
             pinned: protobuf_coords.pinned,
+            borderless: protobuf_coords.borderless,
         })
     }
 }
@@ -2265,6 +2274,7 @@ impl TryFrom<FloatingPaneCoordinates> for ProtobufFloatingPaneCoordinates {
             width: coords.width.and_then(|w| w.try_into().ok()),
             height: coords.height.and_then(|h| h.try_into().ok()),
             pinned: coords.pinned,
+            borderless: coords.borderless,
         })
     }
 }
@@ -2276,13 +2286,18 @@ impl TryFrom<ProtobufNewPanePlacement> for NewPanePlacement {
         use super::generated_api::api::action::new_pane_placement::PlacementVariant;
 
         match protobuf_placement.placement_variant {
-            Some(PlacementVariant::NoPreference(_)) => Ok(NewPanePlacement::NoPreference),
+            Some(PlacementVariant::NoPreference(opts)) => Ok(NewPanePlacement::NoPreference {
+                borderless: opts.borderless,
+            }),
             Some(PlacementVariant::Tiled(tiled)) => {
                 let direction = tiled
                     .direction
                     .and_then(|d| ProtobufResizeDirection::from_i32(d))
                     .and_then(|d| d.try_into().ok());
-                Ok(NewPanePlacement::Tiled(direction))
+                Ok(NewPanePlacement::Tiled {
+                    direction,
+                    borderless: tiled.borderless,
+                })
             },
             Some(PlacementVariant::Floating(floating)) => {
                 let coords = floating.coordinates.and_then(|c| c.try_into().ok());
@@ -2294,11 +2309,15 @@ impl TryFrom<ProtobufNewPanePlacement> for NewPanePlacement {
                 Ok(NewPanePlacement::InPlace {
                     pane_id_to_replace,
                     close_replaced_pane: config.close_replaced_pane,
+                    borderless: config.borderless,
                 })
             },
             Some(PlacementVariant::Stacked(stacked)) => {
                 let pane_id = stacked.pane_id.and_then(|id| id.try_into().ok());
-                Ok(NewPanePlacement::Stacked(pane_id))
+                Ok(NewPanePlacement::Stacked {
+                    pane_id_to_stack_under: pane_id,
+                    borderless: stacked.borderless,
+                })
             },
             None => Err("NewPanePlacement must have a placement variant"),
         }
@@ -2309,16 +2328,25 @@ impl TryFrom<NewPanePlacement> for ProtobufNewPanePlacement {
     type Error = &'static str;
     fn try_from(placement: NewPanePlacement) -> Result<Self, &'static str> {
         use super::generated_api::api::action::new_pane_placement::PlacementVariant;
+        use super::generated_api::api::action::NoPreferenceOptions;
 
         let placement_variant = match placement {
-            NewPanePlacement::NoPreference => Some(PlacementVariant::NoPreference(true)),
-            NewPanePlacement::Tiled(direction) => {
+            NewPanePlacement::NoPreference { borderless } => {
+                Some(PlacementVariant::NoPreference(NoPreferenceOptions {
+                    borderless,
+                }))
+            },
+            NewPanePlacement::Tiled {
+                direction,
+                borderless,
+            } => {
                 let direction = direction.and_then(|d| {
                     let protobuf_direction: ProtobufResizeDirection = d.try_into().ok()?;
                     Some(protobuf_direction as i32)
                 });
                 Some(PlacementVariant::Tiled(ProtobufTiledPlacement {
                     direction,
+                    borderless,
                 }))
             },
             NewPanePlacement::Floating(coords) => {
@@ -2330,17 +2358,23 @@ impl TryFrom<NewPanePlacement> for ProtobufNewPanePlacement {
             NewPanePlacement::InPlace {
                 pane_id_to_replace,
                 close_replaced_pane,
+                borderless,
             } => {
                 let pane_id_to_replace = pane_id_to_replace.and_then(|id| id.try_into().ok());
                 Some(PlacementVariant::InPlace(ProtobufInPlaceConfig {
                     pane_id_to_replace,
                     close_replaced_pane,
+                    borderless,
                 }))
             },
-            NewPanePlacement::Stacked(pane_id) => {
-                let pane_id = pane_id.and_then(|id| id.try_into().ok());
+            NewPanePlacement::Stacked {
+                pane_id_to_stack_under,
+                borderless,
+            } => {
+                let pane_id = pane_id_to_stack_under.and_then(|id| id.try_into().ok());
                 Some(PlacementVariant::Stacked(ProtobufStackedPlacement {
                     pane_id,
+                    borderless,
                 }))
             },
         };
@@ -2806,7 +2840,7 @@ impl TryFrom<ProtobufTiledPaneLayout> for TiledPaneLayout {
             children,
             split_size,
             run,
-            borderless: protobuf.borderless,
+            borderless: Some(protobuf.borderless),
             focus,
             external_children_index: protobuf.external_children_index.map(|i| i as usize),
             children_are_stacked: protobuf.children_are_stacked,
@@ -2838,7 +2872,7 @@ impl TryFrom<TiledPaneLayout> for ProtobufTiledPaneLayout {
             children,
             split_size,
             run,
-            borderless: internal.borderless,
+            borderless: internal.borderless.unwrap_or(false),
             focus,
             external_children_index: internal.external_children_index.map(|i| i as u32),
             children_are_stacked: internal.children_are_stacked,
@@ -2870,6 +2904,7 @@ impl TryFrom<ProtobufFloatingPaneLayout> for FloatingPaneLayout {
             already_running: protobuf.already_running,
             pane_initial_contents: protobuf.pane_initial_contents,
             logical_position: protobuf.logical_position.map(|p| p as usize),
+            borderless: protobuf.borderless,
         })
     }
 }
@@ -2894,6 +2929,7 @@ impl TryFrom<FloatingPaneLayout> for ProtobufFloatingPaneLayout {
             already_running: internal.already_running,
             pane_initial_contents: internal.pane_initial_contents,
             logical_position: internal.logical_position.map(|p| p as u32),
+            borderless: internal.borderless,
         })
     }
 }

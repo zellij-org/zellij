@@ -48,6 +48,7 @@ macro_rules! get_or_create_grid {
     ($self:ident, $client_id:ident) => {{
         let rows = $self.get_content_rows();
         let cols = $self.get_content_columns();
+        let osc8_hyperlinks = true; // N/A for plugins, always enabled
         let explicitly_disable_kitty_keyboard_protocol = false; // N/A for plugins
 
         $self.grids.entry($client_id).or_insert_with(|| {
@@ -63,6 +64,7 @@ macro_rules! get_or_create_grid {
                 $self.debug,
                 $self.arrow_fonts,
                 $self.styled_underlines,
+                osc8_hyperlinks,
                 explicitly_disable_kitty_keyboard_protocol,
             );
             grid.hide_cursor();
@@ -697,8 +699,13 @@ impl Pane for PluginPane {
         }
     }
 
-    fn set_borderless(&mut self, borderless: bool) {
-        self.borderless = borderless;
+    fn set_borderless(&mut self, should_be_borderless: bool) {
+        self.borderless = should_be_borderless;
+        if should_be_borderless {
+            self.set_content_offset(Offset::default());
+        } else {
+            self.set_content_offset(Offset::frame(1));
+        }
     }
     fn borderless(&self) -> bool {
         self.borderless

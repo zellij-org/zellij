@@ -6,6 +6,13 @@ use zellij_utils::consts::{
 use zellij_utils::data::{Event, HttpVerb, SessionInfo, WebServerStatus};
 use zellij_utils::errors::{prelude::*, BackgroundJobContext, ContextType};
 use zellij_utils::input::layout::RunPlugin;
+use zellij_utils::shared::parse_base_url;
+
+#[cfg(feature = "web_server_capability")]
+use zellij_utils::web_server_commands::{
+    discover_webserver_sockets, query_webserver_with_response, InstructionForWebServer,
+    WebServerResponse,
+};
 
 use isahc::prelude::*;
 use isahc::AsyncReadResponseExt;
@@ -27,7 +34,7 @@ use crate::plugins::{PluginId, PluginInstruction};
 use crate::pty::PtyInstruction;
 use crate::screen::ScreenInstruction;
 use crate::thread_bus::Bus;
-use crate::ClientId;
+use crate::{ClientId, ServerInstruction};
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum BackgroundJob {
@@ -59,6 +66,9 @@ pub enum BackgroundJob {
     HighlightPanesWithMessage(Vec<PaneId>, String),
     RenderToClients,
     QueryZellijWebServerStatus,
+    ClearHelpText {
+        client_id: ClientId,
+    },
     Exit,
 }
 
@@ -85,6 +95,7 @@ impl From<&BackgroundJob> for BackgroundJobContext {
             BackgroundJob::QueryZellijWebServerStatus => {
                 BackgroundJobContext::QueryZellijWebServerStatus
             },
+            BackgroundJob::ClearHelpText { .. } => BackgroundJobContext::ClearHelpText,
             BackgroundJob::Exit => BackgroundJobContext::Exit,
         }
     }
@@ -96,6 +107,7 @@ static PLUGIN_ANIMATION_OFFSET_DURATION_MD: u64 = 500;
 static SESSION_READ_DURATION: u64 = 1000;
 static DEFAULT_SERIALIZATION_INTERVAL: u64 = 60000;
 static REPAINT_DELAY_MS: u64 = 10;
+static HELP_TEXT_DEBOUNCE_DURATION: u64 = 5000;
 
 pub(crate) fn background_jobs_main(
     bus: Bus<BackgroundJob>,
@@ -115,6 +127,8 @@ pub(crate) fn background_jobs_main(
     let serialization_interval = serialization_interval.map(|s| s * 1000); // convert to
                                                                            // milliseconds
     let last_render_request: Arc<Mutex<Option<Instant>>> = Arc::new(Mutex::new(None));
+    let pending_help_text_clear: Arc<Mutex<HashMap<ClientId, Instant>>> =
+        Arc::new(Mutex::new(HashMap::new()));
 
     let http_client = HttpClient::builder()
         // TODO: timeout?
@@ -183,6 +197,15 @@ pub(crate) fn background_jobs_main(
             },
             BackgroundJob::ReportLayoutInfo(session_layout) => {
                 *current_session_layout.lock().unwrap() = session_layout;
+
+                // Update session save time for plugin query
+                let timestamp_millis = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis() as u64;
+                let _ = bus
+                    .senders
+                    .send_to_plugin(PluginInstruction::UpdateSessionSaveTime(timestamp_millis));
             },
             BackgroundJob::ReadAllSessionInfosOnMachine => {
                 // this job should only be run once and it keeps track of other sessions (as well
@@ -213,6 +236,13 @@ pub(crate) fn background_jobs_main(
                                     current_session_info,
                                     current_session_layout,
                                 );
+
+                                // Send SavedCurrentSession instruction to plugin thread
+                                let timestamp_millis = std::time::SystemTime::now()
+                                    .duration_since(std::time::UNIX_EPOCH)
+                                    .unwrap_or_default()
+                                    .as_millis()
+                                    as u64;
                             }
                             let mut session_infos_on_machine =
                                 read_other_live_session_states(&current_session_name);
@@ -382,85 +412,22 @@ pub(crate) fn background_jobs_main(
                 });
             },
             BackgroundJob::QueryZellijWebServerStatus => {
-                if !cfg!(feature = "web_server_capability") {
-                    // no web server capability, no need to query
-                    continue;
-                }
-
+                #[cfg(feature = "web_server_capability")]
                 task::spawn({
-                    let http_client = http_client.clone();
                     let senders = bus.senders.clone();
                     let web_server_base_url = web_server_base_url.clone();
                     async move {
-                        async fn web_request(
-                            http_client: HttpClient,
-                            web_server_base_url: &str,
-                        ) -> Result<
-                            (u16, Vec<u8>), // status_code, body
-                            isahc::Error,
-                        > {
-                            let request =
-                                Request::get(format!("{}/info/version", web_server_base_url,));
-                            let req = request.body(())?;
-                            let mut res = http_client.send_async(req).await?;
+                        let status = task::spawn_blocking(move || {
+                            query_webserver_via_ipc(&web_server_base_url)
+                        })
+                        .await
+                        .unwrap_or(WebServerStatus::Offline);
 
-                            let status_code = res.status();
-                            let body = res.bytes().await?;
-                            Ok((status_code.as_u16(), body))
-                        }
-                        let Some(http_client) = http_client else {
-                            log::error!("Cannot perform http request, likely due to a misconfigured http client");
-                            return;
-                        };
-
-                        let http_client = http_client.clone();
-                        match web_request(http_client, &web_server_base_url).await {
-                            Ok((status, body)) => {
-                                if status == 200 && &body == VERSION.as_bytes() {
-                                    // online
-                                    let _ =
-                                        senders.send_to_plugin(PluginInstruction::Update(vec![(
-                                            None,
-                                            None,
-                                            Event::WebServerStatus(WebServerStatus::Online(
-                                                web_server_base_url.clone(),
-                                            )),
-                                        )]));
-                                } else if status == 200 {
-                                    let _ =
-                                        senders.send_to_plugin(PluginInstruction::Update(vec![(
-                                            None,
-                                            None,
-                                            Event::WebServerStatus(
-                                                WebServerStatus::DifferentVersion(
-                                                    String::from_utf8_lossy(&body).to_string(),
-                                                ),
-                                            ),
-                                        )]));
-                                } else {
-                                    // offline/error
-                                    let _ =
-                                        senders.send_to_plugin(PluginInstruction::Update(vec![(
-                                            None,
-                                            None,
-                                            Event::WebServerStatus(WebServerStatus::Offline),
-                                        )]));
-                                }
-                            },
-                            Err(e) => {
-                                if e.kind() == isahc::error::ErrorKind::ConnectionFailed {
-                                    let _ =
-                                        senders.send_to_plugin(PluginInstruction::Update(vec![(
-                                            None,
-                                            None,
-                                            Event::WebServerStatus(WebServerStatus::Offline),
-                                        )]));
-                                } else {
-                                    // no-op - otherwise we'll get errors if we were mid-request
-                                    // (eg. when the server was shut down by a user action)
-                                }
-                            },
-                        }
+                        let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
+                            None,
+                            None,
+                            Event::WebServerStatus(status),
+                        )]));
                     }
                 });
             },
@@ -531,6 +498,58 @@ pub(crate) fn background_jobs_main(
                     }
                 });
             },
+            BackgroundJob::ClearHelpText { client_id } => {
+                let should_spawn = {
+                    let mut pending = pending_help_text_clear.lock().unwrap();
+                    let current_time = Instant::now();
+                    let should_spawn = !pending.contains_key(&client_id);
+                    pending.insert(client_id, current_time);
+                    should_spawn
+                };
+
+                if should_spawn {
+                    task::spawn({
+                        let senders = bus.senders.clone();
+                        let pending = pending_help_text_clear.clone();
+                        let debounce_duration = Duration::from_millis(HELP_TEXT_DEBOUNCE_DURATION);
+                        async move {
+                            task::sleep(debounce_duration).await;
+                            loop {
+                                let next_sleep_duration = {
+                                    let mut pending = pending.lock().unwrap();
+                                    match pending.get(&client_id) {
+                                        Some(&last_motion_time) => {
+                                            let time_since_motion =
+                                                Instant::now().duration_since(last_motion_time);
+                                            if time_since_motion >= debounce_duration {
+                                                pending.remove(&client_id);
+                                                None
+                                            } else {
+                                                let remaining = debounce_duration
+                                                    .saturating_sub(time_since_motion);
+                                                Some(remaining)
+                                            }
+                                        },
+                                        None => break,
+                                    }
+                                };
+
+                                match next_sleep_duration {
+                                    Some(duration) => {
+                                        task::sleep(duration).await;
+                                    },
+                                    None => {
+                                        let _ = senders.send_to_server(
+                                            ServerInstruction::ClearMouseHelpText(client_id),
+                                        );
+                                        break;
+                                    },
+                                }
+                            }
+                        }
+                    });
+                }
+            },
             BackgroundJob::Exit => {
                 for loading_plugin in loading_plugins.values() {
                     loading_plugin.store(false, Ordering::SeqCst);
@@ -567,7 +586,7 @@ fn job_already_running(
     }
 }
 
-fn write_session_state_to_disk(
+pub fn write_session_state_to_disk(
     current_session_name: String,
     current_session_info: SessionInfo,
     current_session_layout: (String, BTreeMap<String, String>),
@@ -677,4 +696,40 @@ fn find_resurrectable_sessions(
             BTreeMap::new()
         },
     }
+}
+
+#[cfg(feature = "web_server_capability")]
+fn query_webserver_via_ipc(web_server_base_url: &str) -> Result<WebServerStatus> {
+    let expected_addr =
+        parse_base_url(web_server_base_url).context("Failed to parse web server base URL")?;
+
+    let sockets = discover_webserver_sockets().context("Failed to discover web server sockets")?;
+
+    if sockets.is_empty() {
+        return Ok(WebServerStatus::Offline);
+    }
+
+    for socket_path in sockets {
+        let path_str = socket_path.to_str().unwrap_or("");
+
+        match query_webserver_with_response(path_str, InstructionForWebServer::QueryVersion, 500) {
+            Ok(WebServerResponse::Version(info)) => {
+                let matches_expected =
+                    info.ip == expected_addr.ip && info.port == expected_addr.port;
+
+                if !matches_expected {
+                    continue;
+                }
+
+                if info.version == VERSION {
+                    return Ok(WebServerStatus::Online(web_server_base_url.to_string()));
+                } else {
+                    return Ok(WebServerStatus::DifferentVersion(info.version));
+                }
+            },
+            Err(_) => continue,
+        }
+    }
+
+    Ok(WebServerStatus::Offline)
 }

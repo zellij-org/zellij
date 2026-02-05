@@ -62,11 +62,12 @@ use zellij_utils::{
         },
         plugin_command::{
             dump_layout_response, dump_session_layout_response, parse_layout_response,
-            ProtobufDeleteLayoutResponse, ProtobufDumpLayoutResponse,
+            save_session_response, ProtobufDeleteLayoutResponse, ProtobufDumpLayoutResponse,
             ProtobufDumpSessionLayoutResponse, ProtobufEditLayoutResponse,
             ProtobufGenerateRandomNameResponse, ProtobufGetFocusedPaneInfoResponse,
             ProtobufGetLayoutDirResponse, ProtobufGetPanePidResponse, ProtobufParseLayoutResponse,
             ProtobufPluginCommand, ProtobufRenameLayoutResponse, ProtobufSaveLayoutResponse,
+            ProtobufSaveSessionResponse,
         },
         plugin_ids::{ProtobufPluginIds, ProtobufZellijVersion},
     },
@@ -129,6 +130,10 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::ParseLayout(layout_string) => parse_layout(env, layout_string),
                     PluginCommand::GetLayoutDir => get_layout_dir(env),
                     PluginCommand::GetFocusedPaneInfo => get_focused_pane_info(env),
+                    PluginCommand::SaveSession => save_session(env),
+                    PluginCommand::CurrentSessionLastSavedTime => {
+                        current_session_last_saved_time(env)
+                    },
                     PluginCommand::OpenFile(file_to_open, context) => {
                         open_file(env, file_to_open, context)
                     },
@@ -511,6 +516,12 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                                 .collect(),
                         )
                     },
+                    PluginCommand::TogglePaneBorderless(pane_id) => {
+                        toggle_pane_borderless(env, pane_id.into())
+                    },
+                    PluginCommand::SetPaneBorderless(pane_id, borderless) => {
+                        set_pane_borderless(env, pane_id.into(), borderless)
+                    },
                     PluginCommand::OpenFileNearPlugin(file_to_open, context) => {
                         open_file_near_plugin(env, file_to_open, context)
                     },
@@ -647,6 +658,16 @@ fn cli_pipe_output(env: &PluginEnv, pipe_name: String, output: String) -> Result
 fn message_to_plugin(env: &PluginEnv, mut message_to_plugin: MessageToPlugin) -> Result<()> {
     if message_to_plugin.plugin_url.as_ref().map(|s| s.as_str()) == Some("zellij:OWN_URL") {
         message_to_plugin.plugin_url = Some(env.plugin.location.display());
+    }
+    if !message_to_plugin.has_cwd() {
+        message_to_plugin =
+            message_to_plugin.new_plugin_instance_should_have_cwd(env.plugin_cwd.clone());
+    }
+    if !message_to_plugin.plugin_config.contains_key("caller_cwd") {
+        message_to_plugin.plugin_config.insert(
+            "caller_cwd".to_owned(),
+            env.plugin_cwd.display().to_string(),
+        );
     }
     env.senders
         .send_to_plugin(PluginInstruction::MessageFromPlugin {
@@ -1230,6 +1251,7 @@ fn open_terminal(env: &PluginEnv, cwd: PathBuf) {
         command: run_command_action,
         pane_name: None,
         near_current_pane: false,
+        borderless: None,
     };
     apply_action!(action, error_msg, env);
 }
@@ -1248,7 +1270,10 @@ fn open_terminal_near_plugin(env: &PluginEnv, cwd: PathBuf) {
     let _ = env.senders.send_to_pty(PtyInstruction::SpawnTerminal(
         Some(default_shell),
         name,
-        NewPanePlacement::Tiled(None),
+        NewPanePlacement::Tiled {
+            direction: None,
+            borderless: None,
+        },
         false,
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
         None,  // no completion signal needed for plugin calls
@@ -1434,6 +1459,7 @@ fn open_command_pane(
         command: Some(run_command_action),
         pane_name: name,
         near_current_pane: false,
+        borderless: None,
     };
     apply_action!(action, error_msg, env);
 }
@@ -1469,7 +1495,10 @@ fn open_command_pane_near_plugin(
     let _ = env.senders.send_to_pty(PtyInstruction::SpawnTerminal(
         Some(run_cmd),
         name,
-        NewPanePlacement::Tiled(None),
+        NewPanePlacement::Tiled {
+            direction: None,
+            borderless: None,
+        },
         false,
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
         None,  // no completion signal needed for plugin calls
@@ -2072,6 +2101,7 @@ fn switch_session(
     } else {
         let client_id = env.client_id;
         let tab_position = tab_position.map(|p| p + 1); // ¯\_()_/¯
+        let cwd = cwd.or_else(|| Some(env.plugin_cwd.clone()));
         let connect_to_session = ConnectToSession {
             name: session_name,
             tab_position,
@@ -2539,6 +2569,64 @@ fn dump_session_layout(env: &PluginEnv, tab_index: Option<usize>) {
         .with_context(|| format!("failed to send session layout to plugin {}", env.name()));
 }
 
+fn save_session(env: &PluginEnv) {
+    use save_session_response::Result as SaveSessionResult;
+    let (completion_tx, completion_rx) = oneshot::channel();
+
+    let send_result = env.senders.send_to_screen(ScreenInstruction::SaveSession(
+        env.client_id,
+        Some(NotificationEnd::new(completion_tx)),
+    ));
+
+    let response = if let Err(e) = send_result {
+        ProtobufSaveSessionResponse {
+            result: Some(SaveSessionResult::Error(format!(
+                "Failed to send save request: {}",
+                e
+            ))),
+        }
+    } else {
+        let wait_forever = false;
+        let _result = wait_for_action_completion(completion_rx, "save_session", wait_forever);
+        ProtobufSaveSessionResponse {
+            result: Some(SaveSessionResult::Success(true)),
+        }
+    };
+
+    let _ = wasi_write_object(env, &response.encode_to_vec());
+}
+
+fn current_session_last_saved_time(env: &PluginEnv) {
+    use zellij_utils::plugin_api::plugin_command::ProtobufCurrentSessionLastSavedTimeResponse;
+
+    let (response_tx, response_rx) = crossbeam::channel::bounded(1);
+    let send_result = env
+        .senders
+        .send_to_plugin(PluginInstruction::GetLastSessionSaveTime {
+            response_channel: response_tx,
+        });
+
+    let saved_timestamp_millis = if send_result.is_ok() {
+        response_rx
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .ok()
+            .flatten()
+    } else {
+        None
+    };
+
+    let timestamp_millis = saved_timestamp_millis.map(|saved_time| {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64;
+        now.saturating_sub(saved_time)
+    });
+
+    let response = ProtobufCurrentSessionLastSavedTimeResponse { timestamp_millis };
+    let _ = wasi_write_object(env, &response.encode_to_vec());
+}
+
 fn list_clients(env: &PluginEnv) {
     let _ = env.senders.to_screen.as_ref().map(|sender| {
         sender.send(ScreenInstruction::ListClientsToPlugin(
@@ -2582,6 +2670,20 @@ fn change_floating_panes_coordinates(
         .send_to_screen(ScreenInstruction::ChangeFloatingPanesCoordinates(
             pane_ids_and_coordinates,
             None,
+        ));
+}
+
+fn toggle_pane_borderless(env: &PluginEnv, pane_id: PaneId) {
+    let _ = env
+        .senders
+        .send_to_screen(ScreenInstruction::TogglePaneBorderless(pane_id, None));
+}
+
+fn set_pane_borderless(env: &PluginEnv, pane_id: PaneId, borderless: bool) {
+    let _ = env
+        .senders
+        .send_to_screen(ScreenInstruction::SetPaneBorderless(
+            pane_id, borderless, None,
         ));
 }
 
@@ -3776,6 +3878,8 @@ fn check_command_permission(
         | PluginCommand::SetFloatingPanePinned(..)
         | PluginCommand::StackPanes(..)
         | PluginCommand::ChangeFloatingPanesCoordinates(..)
+        | PluginCommand::TogglePaneBorderless(..)
+        | PluginCommand::SetPaneBorderless(..)
         | PluginCommand::GroupAndUngroupPanes(..)
         | PluginCommand::HighlightAndUnhighlightPanes(..)
         | PluginCommand::CloseMultiplePanes(..)
@@ -3801,7 +3905,9 @@ fn check_command_permission(
         | PluginCommand::GetLayoutDir
         | PluginCommand::GetFocusedPaneInfo
         | PluginCommand::DumpLayout(..)
-        | PluginCommand::ParseLayout(..) => PermissionType::ReadApplicationState,
+        | PluginCommand::ParseLayout(..)
+        | PluginCommand::SaveSession
+        | PluginCommand::CurrentSessionLastSavedTime => PermissionType::ReadApplicationState,
         PluginCommand::RebindKeys { .. } | PluginCommand::Reconfigure(..) => {
             PermissionType::Reconfigure
         },

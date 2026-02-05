@@ -108,6 +108,11 @@ pub struct Options {
     #[serde(default)]
     pub copy_on_select: Option<bool>,
 
+    /// Enable OSC8 hyperlink output (true or false)
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub osc8_hyperlinks: Option<bool>,
+
     /// Explicit full path to open the scrollback editor (default is $EDITOR or $VISUAL)
     #[clap(long, value_parser)]
     pub scrollback_editor: Option<PathBuf>,
@@ -220,6 +225,12 @@ pub struct Options {
     #[serde(default)]
     pub advanced_mouse_actions: Option<bool>,
 
+    /// Whether to enable mouse hover visual effects (frame highlight and help text)
+    /// default is true
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub mouse_hover_effects: Option<bool>,
+
     // these are intentionally excluded from the CLI options as they must be specified in the
     // configuration file
     pub web_server_ip: Option<IpAddr>,
@@ -287,6 +298,7 @@ impl Options {
         let copy_command = other.copy_command.or_else(|| self.copy_command.clone());
         let copy_clipboard = other.copy_clipboard.or(self.copy_clipboard);
         let copy_on_select = other.copy_on_select.or(self.copy_on_select);
+        let osc8_hyperlinks = other.osc8_hyperlinks.or(self.osc8_hyperlinks);
         let scrollback_editor = other
             .scrollback_editor
             .or_else(|| self.scrollback_editor.clone());
@@ -315,6 +327,7 @@ impl Options {
         let show_startup_tips = other.show_startup_tips.or(self.show_startup_tips);
         let show_release_notes = other.show_release_notes.or(self.show_release_notes);
         let advanced_mouse_actions = other.advanced_mouse_actions.or(self.advanced_mouse_actions);
+        let mouse_hover_effects = other.mouse_hover_effects.or(self.mouse_hover_effects);
         let web_server_ip = other.web_server_ip.or(self.web_server_ip);
         let web_server_port = other.web_server_port.or(self.web_server_port);
         let web_server_cert = other
@@ -345,6 +358,7 @@ impl Options {
             copy_command,
             copy_clipboard,
             copy_on_select,
+            osc8_hyperlinks,
             scrollback_editor,
             session_name,
             attach_to_session,
@@ -362,6 +376,7 @@ impl Options {
             show_startup_tips,
             show_release_notes,
             advanced_mouse_actions,
+            mouse_hover_effects,
             web_server_ip,
             web_server_port,
             web_server_cert,
@@ -408,6 +423,7 @@ impl Options {
         let copy_command = other.copy_command.or_else(|| self.copy_command.clone());
         let copy_clipboard = other.copy_clipboard.or(self.copy_clipboard);
         let copy_on_select = other.copy_on_select.or(self.copy_on_select);
+        let osc8_hyperlinks = other.osc8_hyperlinks.or(self.osc8_hyperlinks);
         let scrollback_editor = other
             .scrollback_editor
             .or_else(|| self.scrollback_editor.clone());
@@ -432,6 +448,7 @@ impl Options {
         let show_startup_tips = other.show_startup_tips.or(self.show_startup_tips);
         let show_release_notes = other.show_release_notes.or(self.show_release_notes);
         let advanced_mouse_actions = other.advanced_mouse_actions.or(self.advanced_mouse_actions);
+        let mouse_hover_effects = other.mouse_hover_effects.or(self.mouse_hover_effects);
         let web_server_ip = other.web_server_ip.or(self.web_server_ip);
         let web_server_port = other.web_server_port.or(self.web_server_port);
         let web_server_cert = other
@@ -462,6 +479,7 @@ impl Options {
             copy_command,
             copy_clipboard,
             copy_on_select,
+            osc8_hyperlinks,
             scrollback_editor,
             session_name,
             attach_to_session,
@@ -479,6 +497,7 @@ impl Options {
             show_startup_tips,
             show_release_notes,
             advanced_mouse_actions,
+            mouse_hover_effects,
             web_server_ip,
             web_server_port,
             web_server_cert,
