@@ -1759,17 +1759,15 @@ impl Pty {
             PaneId::Terminal(id) => {
                 self.task_handles.remove(&id);
                 if let Some(child_fd) = self.id_to_child_pid.remove(&id) {
-                    crate::global_async_runtime::get_tokio_runtime().block_on(async {
-                        let err_context = || format!("failed to run async task for pane {id}");
-                        self.bus
-                            .os_input
-                            .as_mut()
-                            .with_context(err_context)
-                            .fatal()
-                            .kill(Pid::from_raw(child_fd))
-                            .with_context(err_context)
-                            .fatal();
-                    });
+                    let err_context = || format!("failed to kill child processes for pane {id}");
+                    self.bus
+                        .os_input
+                        .as_mut()
+                        .with_context(err_context)
+                        .fatal()
+                        .kill(Pid::from_raw(child_fd))
+                        .with_context(err_context)
+                        .fatal();
                 }
                 self.bus
                     .os_input
