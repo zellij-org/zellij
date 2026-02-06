@@ -127,8 +127,8 @@ fn into_raw_mode(pid: RawFd) {
     };
 }
 
-fn unset_raw_mode(pid: RawFd, orig_termios: termios::Termios) -> Result<(), nix::Error> {
-    termios::tcsetattr(pid, termios::SetArg::TCSANOW, &orig_termios)
+fn unset_raw_mode(pid: RawFd, orig_termios: termios::Termios) -> Result<(), std::io::Error> {
+    Ok(termios::tcsetattr(pid, termios::SetArg::TCSANOW, &orig_termios)?)
 }
 
 pub(crate) fn get_terminal_size_using_fd(fd: RawFd) -> Size {
@@ -192,7 +192,7 @@ pub trait ClientOsApi: Send + Sync + std::fmt::Debug {
     fn set_raw_mode(&mut self, fd: RawFd);
     /// Set the terminal associated to file descriptor `fd` to
     /// [cooked mode](https://en.wikipedia.org/wiki/Terminal_mode).
-    fn unset_raw_mode(&self, fd: RawFd) -> Result<(), nix::Error>;
+    fn unset_raw_mode(&self, fd: RawFd) -> Result<(), std::io::Error>;
     /// Returns the writer that allows writing to standard output.
     fn get_stdout_writer(&self) -> Box<dyn io::Write>;
     /// Returns a BufReader that allows to read from STDIN line by line, also locks STDIN
@@ -239,7 +239,7 @@ impl ClientOsApi for ClientOsInputOutput {
     fn set_raw_mode(&mut self, fd: RawFd) {
         into_raw_mode(fd);
     }
-    fn unset_raw_mode(&self, fd: RawFd) -> Result<(), nix::Error> {
+    fn unset_raw_mode(&self, fd: RawFd) -> Result<(), std::io::Error> {
         match &self.orig_termios {
             Some(orig_termios) => {
                 let orig_termios = orig_termios.lock().unwrap();
@@ -417,7 +417,7 @@ impl Clone for Box<dyn ClientOsApi> {
     }
 }
 
-pub fn get_client_os_input() -> Result<ClientOsInputOutput, nix::Error> {
+pub fn get_client_os_input() -> Result<ClientOsInputOutput, std::io::Error> {
     let current_termios = termios::tcgetattr(0).ok();
     let orig_termios = current_termios.map(|termios| Arc::new(Mutex::new(termios)));
     let reading_from_stdin = Arc::new(Mutex::new(None));
@@ -430,7 +430,7 @@ pub fn get_client_os_input() -> Result<ClientOsInputOutput, nix::Error> {
     })
 }
 
-pub fn get_cli_client_os_input() -> Result<ClientOsInputOutput, nix::Error> {
+pub fn get_cli_client_os_input() -> Result<ClientOsInputOutput, std::io::Error> {
     let orig_termios = None; // not a terminal
     let reading_from_stdin = Arc::new(Mutex::new(None));
     Ok(ClientOsInputOutput {

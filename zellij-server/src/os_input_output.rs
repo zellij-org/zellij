@@ -916,7 +916,7 @@ impl Clone for Box<dyn ServerOsApi> {
     }
 }
 
-pub fn get_server_os_input() -> Result<ServerOsInputOutput, nix::Error> {
+pub fn get_server_os_input() -> Result<ServerOsInputOutput, std::io::Error> {
     let current_termios = termios::tcgetattr(0).ok();
     if current_termios.is_none() {
         log::warn!("Starting a server without a controlling terminal, using the default termios configuration.");

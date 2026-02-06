@@ -5,7 +5,6 @@ use std::{fs::File, io::prelude::*, path::PathBuf, process, time::Duration};
 #[cfg(feature = "web_server_capability")]
 use isahc::{config::RedirectPolicy, prelude::*, HttpClient, Request};
 
-use nix;
 use zellij_client::{
     old_config_converter::{
         config_yaml_to_config_kdl, convert_old_yaml_files, layout_yaml_to_layout_kdl,
@@ -147,7 +146,7 @@ pub(crate) fn delete_session(target_session: &Option<String>, force: bool) {
 }
 
 fn get_os_input<OsInputOutput>(
-    fn_get_os_input: fn() -> Result<OsInputOutput, nix::Error>,
+    fn_get_os_input: fn() -> Result<OsInputOutput, std::io::Error>,
 ) -> OsInputOutput {
     match fn_get_os_input() {
         Ok(os_input) => os_input,
