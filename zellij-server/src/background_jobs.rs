@@ -1,4 +1,3 @@
-use tokio::task;
 use zellij_utils::consts::{
     session_info_cache_file_name, session_info_folder_for_session, session_layout_cache_file_name,
     VERSION, ZELLIJ_SESSION_INFO_CACHE_DIR, ZELLIJ_SOCK_DIR,
@@ -516,12 +515,12 @@ pub(crate) fn background_jobs_main(
                 };
 
                 if should_spawn {
-                    task::spawn({
+                    runtime.spawn({
                         let senders = bus.senders.clone();
                         let pending = pending_help_text_clear.clone();
                         let debounce_duration = Duration::from_millis(HELP_TEXT_DEBOUNCE_DURATION);
                         async move {
-                            task::sleep(debounce_duration).await;
+                            tokio::time::sleep(debounce_duration).await;
                             loop {
                                 let next_sleep_duration = {
                                     let mut pending = pending.lock().unwrap();
@@ -544,7 +543,7 @@ pub(crate) fn background_jobs_main(
 
                                 match next_sleep_duration {
                                     Some(duration) => {
-                                        task::sleep(duration).await;
+                                        tokio::time::sleep(duration).await;
                                     },
                                     None => {
                                         let _ = senders.send_to_server(
