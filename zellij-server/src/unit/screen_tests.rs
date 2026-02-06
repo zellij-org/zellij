@@ -1096,7 +1096,11 @@ fn tab_id_remains_stable_after_switch() {
 
     // Verify initial state: IDs should be 0, 1, 2
     let initial_tab_ids: Vec<usize> = screen.tabs.keys().copied().collect();
-    assert_eq!(initial_tab_ids, vec![0, 1, 2], "Initial tab IDs should be 0, 1, 2");
+    assert_eq!(
+        initial_tab_ids,
+        vec![0, 1, 2],
+        "Initial tab IDs should be 0, 1, 2"
+    );
 
     // Verify initial positions match IDs
     assert_eq!(screen.tabs.get(&0).unwrap().id, 0);

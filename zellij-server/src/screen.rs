@@ -1172,7 +1172,10 @@ impl Screen {
     ///
     /// Use this to convert position → ID for BTreeMap lookups.
     fn get_tab_id_at_position(&self, position: usize) -> Option<usize> {
-        self.tabs.values().find(|t| t.position == position).map(|t| t.id)
+        self.tabs
+            .values()
+            .find(|t| t.position == position)
+            .map(|t| t.id)
     }
 
     /// Gets the display position of the tab with the given ID.
@@ -1208,8 +1211,7 @@ impl Screen {
             let client_tab_history = self.tab_history.entry(client_id).or_insert_with(Vec::new);
             if let Some(client_previous_tab) = client_tab_history.pop() {
                 if let Some(client_active_tab) = self.tabs.get_mut(&client_previous_tab) {
-                    self.active_tab_ids
-                        .insert(client_id, client_previous_tab);
+                    self.active_tab_ids.insert(client_id, client_previous_tab);
                     client_active_tab
                         .add_client(client_id, Some(client_mode_info))
                         .with_context(err_context)?;
@@ -1709,10 +1711,8 @@ impl Screen {
                     self.osc8_hyperlinks,
                 );
 
-                let focused_tab_index_of_followed_client_id = *self
-                    .active_tab_ids
-                    .get(&followed_client_id)
-                    .unwrap_or(&0);
+                let focused_tab_index_of_followed_client_id =
+                    *self.active_tab_ids.get(&followed_client_id).unwrap_or(&0);
 
                 if let Some(tab) = self
                     .tabs
@@ -2222,9 +2222,7 @@ impl Screen {
                 };
                 plugin_tab_updates.push(tab_info_for_plugins);
             }
-            plugin_tab_updates.sort_by(|a, b| {
-                a.position.cmp(&b.position)
-            });
+            plugin_tab_updates.sort_by(|a, b| a.position.cmp(&b.position));
             plugin_updates.push((None, Some(*client_id), Event::TabUpdate(plugin_tab_updates)));
         }
         self.bus
@@ -5024,8 +5022,7 @@ pub(crate) fn screen_thread_main(
                         }
                     }
                 } else if should_change_focus_to_new_tab {
-                    let client_id_to_switch = if screen.active_tab_ids.contains_key(&client_id)
-                    {
+                    let client_id_to_switch = if screen.active_tab_ids.contains_key(&client_id) {
                         Some(client_id)
                     } else {
                         screen.active_tab_ids.keys().next().copied()
@@ -6212,7 +6209,7 @@ pub(crate) fn screen_thread_main(
                                 // waiting for it
             ) => {
                 // tab_index here is 1-based user input representing display position
-                let tab_position = tab_index.saturating_sub(1);  // Convert to 0-based
+                let tab_position = tab_index.saturating_sub(1); // Convert to 0-based
 
                 match screen.get_tab_by_position_mut(tab_position) {
                     Some(tab) => {
