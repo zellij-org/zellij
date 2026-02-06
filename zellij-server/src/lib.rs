@@ -2016,18 +2016,14 @@ fn report_changes_in_config_file(
     config_file_path: PathBuf,
     to_server: SenderWithContext<ServerInstruction>,
 ) {
-    std::thread::spawn(move || {
-        let rt = crate::global_async_runtime::get_tokio_runtime();
-        rt.block_on(async move {
+    global_async_runtime::get_tokio_runtime().spawn(async move {
+        watch_config_file_changes(config_file_path, move |new_config| {
             let to_server = to_server.clone();
-            watch_config_file_changes(config_file_path, move |new_config| {
-                let to_server = to_server.clone();
-                async move {
-                    let _ = to_server.send(ServerInstruction::ConfigWrittenToDisk(new_config));
-                }
-            })
-            .await;
-        });
+            async move {
+                let _ = to_server.send(ServerInstruction::ConfigWrittenToDisk(new_config));
+            }
+        })
+        .await;
     });
 }
 
@@ -2036,25 +2032,21 @@ fn report_changes_in_layout_dir(
     default_layout_name: Option<String>,
     to_plugin: SenderWithContext<PluginInstruction>,
 ) {
-    std::thread::spawn(move || {
-        let rt = crate::global_async_runtime::get_tokio_runtime();
-        rt.block_on(async move {
-            let to_plugin = to_plugin.clone();
-            watch_layout_dir_changes(
-                layout_dir,
-                default_layout_name,
-                move |new_layouts, layout_errors| {
-                    let to_plugin = to_plugin.clone();
-                    async move {
-                        let _ = to_plugin.send(PluginInstruction::LayoutListUpdate(
-                            new_layouts,
-                            layout_errors,
-                        ));
-                    }
-                },
-            )
-            .await;
-        });
+    global_async_runtime::get_tokio_runtime().spawn(async move {
+        watch_layout_dir_changes(
+            layout_dir,
+            default_layout_name,
+            move |new_layouts, layout_errors| {
+                let to_plugin = to_plugin.clone();
+                async move {
+                    let _ = to_plugin.send(PluginInstruction::LayoutListUpdate(
+                        new_layouts,
+                        layout_errors,
+                    ));
+                }
+            },
+        )
+        .await;
     });
 }
 
