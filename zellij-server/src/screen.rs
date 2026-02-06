@@ -2177,6 +2177,7 @@ impl Screen {
                 display_area_columns: tab_display_area.cols,
                 selectable_tiled_panes_count,
                 selectable_floating_panes_count,
+                tab_id: tab.id,
             };
             tab_infos_for_screen_state.insert(tab.position, tab_info_for_screen);
         }
@@ -2217,6 +2218,7 @@ impl Screen {
                     display_area_columns: tab_display_area.cols,
                     selectable_tiled_panes_count,
                     selectable_floating_panes_count,
+                    tab_id: tab.id,
                 };
                 plugin_tab_updates.push(tab_info_for_plugins);
             }
