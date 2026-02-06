@@ -1086,6 +1086,91 @@ fn wrapping_move_of_active_tab_to_right() {
 }
 
 #[test]
+fn tab_id_remains_stable_after_switch() {
+    // Test that tab IDs remain stable when switching tabs, only positions change
+    let mut screen = create_fixed_size_screen();
+
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+    new_tab(&mut screen, 3, 2);
+
+    // Verify initial state: IDs should be 0, 1, 2
+    let initial_tab_ids: Vec<usize> = screen.tabs.keys().copied().collect();
+    assert_eq!(
+        initial_tab_ids,
+        vec![0, 1, 2],
+        "Initial tab IDs should be 0, 1, 2"
+    );
+
+    // Verify initial positions match IDs
+    assert_eq!(screen.tabs.get(&0).unwrap().id, 0);
+    assert_eq!(screen.tabs.get(&0).unwrap().position, 0);
+    assert_eq!(screen.tabs.get(&1).unwrap().id, 1);
+    assert_eq!(screen.tabs.get(&1).unwrap().position, 1);
+    assert_eq!(screen.tabs.get(&2).unwrap().id, 2);
+    assert_eq!(screen.tabs.get(&2).unwrap().position, 2);
+
+    // Move active tab (position 2, ID 2) to right, which wraps to position 0
+    // This switches tabs at positions 2 and 0 (tab IDs 2 and 0)
+    screen.move_active_tab_to_right(1).expect("TEST");
+
+    // Verify BTreeMap keys (IDs) remain unchanged
+    let after_switch_tab_ids: Vec<usize> = screen.tabs.keys().copied().collect();
+    assert_eq!(
+        after_switch_tab_ids,
+        vec![0, 1, 2],
+        "Tab IDs in BTreeMap should remain 0, 1, 2 after switch"
+    );
+
+    // Verify IDs remain stable but positions are swapped
+    // Tab 0: was at position 0, now at position 2 (swapped with tab 2)
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().id,
+        0,
+        "Tab with ID 0 should still have ID 0"
+    );
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().position,
+        2,
+        "Tab with ID 0 should now be at position 2"
+    );
+
+    // Tab 1: remains unchanged at position 1
+    assert_eq!(
+        screen.tabs.get(&1).unwrap().id,
+        1,
+        "Tab with ID 1 should still have ID 1"
+    );
+    assert_eq!(
+        screen.tabs.get(&1).unwrap().position,
+        1,
+        "Tab with ID 1 should remain at position 1"
+    );
+
+    // Tab 2: was at position 2, now at position 0 (swapped with tab 0)
+    assert_eq!(
+        screen.tabs.get(&2).unwrap().id,
+        2,
+        "Tab with ID 2 should still have ID 2"
+    );
+    assert_eq!(
+        screen.tabs.get(&2).unwrap().position,
+        0,
+        "Tab with ID 2 should now be at position 0"
+    );
+
+    // Verify that lookup by position works correctly after switch
+    let tab_at_pos_0 = screen.tabs.values().find(|t| t.position == 0).unwrap();
+    assert_eq!(tab_at_pos_0.id, 2, "Tab at position 0 should have ID 2");
+
+    let tab_at_pos_1 = screen.tabs.values().find(|t| t.position == 1).unwrap();
+    assert_eq!(tab_at_pos_1.id, 1, "Tab at position 1 should have ID 1");
+
+    let tab_at_pos_2 = screen.tabs.values().find(|t| t.position == 2).unwrap();
+    assert_eq!(tab_at_pos_2.id, 0, "Tab at position 2 should have ID 0");
+}
+
+#[test]
 fn move_focus_right_at_right_screen_edge_changes_tab() {
     let size = Size {
         cols: 121,
@@ -1431,7 +1516,7 @@ fn attach_after_first_tab_closed() {
     }
     new_tab(&mut screen, 2, 1);
 
-    screen.close_tab_at_index(0).expect("TEST");
+    screen.close_tab_by_id(0).expect("TEST");
     screen.remove_client(1).expect("TEST");
     screen.add_client(1, false).expect("TEST");
 }

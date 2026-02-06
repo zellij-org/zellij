@@ -2184,6 +2184,8 @@ pub struct TabInfo {
     pub selectable_tiled_panes_count: usize,
     /// The number of selectable (eg. not the UI bars) floating panes currently in this tab
     pub selectable_floating_panes_count: usize,
+    /// The stable identifier for this tab
+    pub tab_id: usize,
 }
 
 /// The `PaneManifest` contains a dictionary of panes, indexed by the tab position (0 indexed).

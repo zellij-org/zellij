@@ -154,7 +154,7 @@ enum BufferedTabInstruction {
 }
 
 pub(crate) struct Tab {
-    pub index: usize,
+    pub id: usize,
     pub position: usize,
     pub name: String,
     pub prev_name: String,
@@ -625,7 +625,7 @@ impl Tab {
     // FIXME: Still too many arguments for clippy to be happy...
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        index: usize,
+        id: usize,
         position: usize,
         name: String,
         display_area: Size,
@@ -663,7 +663,7 @@ impl Tab {
         web_server_port: u16,
     ) -> Self {
         let name = if name.is_empty() {
-            format!("Tab #{}", index + 1)
+            format!("Tab #{}", id + 1)
         } else {
             name
         };
@@ -714,7 +714,7 @@ impl Tab {
         let swap_layouts = SwapLayouts::new(swap_layouts, display_area.clone());
 
         Tab {
-            index,
+            id,
             position,
             tiled_panes,
             floating_panes,
@@ -1325,7 +1325,7 @@ impl Tab {
                     let name = None;
                     let client_id_or_tab_index = match client_id {
                         Some(client_id) => ClientTabIndexOrPaneId::ClientId(client_id),
-                        None => ClientTabIndexOrPaneId::TabIndex(self.index),
+                        None => ClientTabIndexOrPaneId::TabIndex(self.id),
                     };
                     let should_start_suppressed = false;
                     let instruction = PtyInstruction::SpawnTerminal(
@@ -3155,7 +3155,7 @@ impl Tab {
         selectable_tiled_panes.count() > 0
     }
     pub fn resize_whole_tab(&mut self, new_screen_size: Size) -> Result<()> {
-        let err_context = || format!("failed to resize whole tab (index {})", self.index);
+        let err_context = || format!("failed to resize whole tab (id {})", self.id);
         self.floating_panes.resize(new_screen_size);
         // we need to do this explicitly because floating_panes.resize does not do this
         self.floating_panes
