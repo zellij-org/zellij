@@ -1431,7 +1431,7 @@ fn attach_after_first_tab_closed() {
     }
     new_tab(&mut screen, 2, 1);
 
-    screen.close_tab_at_index(0).expect("TEST");
+    screen.close_tab_by_id(0).expect("TEST");
     screen.remove_client(1).expect("TEST");
     screen.add_client(1, false).expect("TEST");
 }

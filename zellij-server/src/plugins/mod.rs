@@ -94,7 +94,7 @@ pub enum PluginInstruction {
         Option<TerminalAction>,
         Option<TiledPaneLayout>,
         Vec<FloatingPaneLayout>,
-        usize,                        // tab_index
+        usize,                        // tab_id
         Option<Vec<CommandOrPlugin>>, // initial_panes
         bool,                         // block_on_first_terminal
         bool,                         // should change focus to new tab
@@ -502,7 +502,7 @@ pub(crate) fn plugin_thread_main(
                 terminal_action,
                 mut tab_layout,
                 mut floating_panes_layout,
-                tab_index,
+                tab_id,
                 initial_panes,
                 block_on_first_terminal,
                 should_change_focus_to_new_tab,
@@ -580,7 +580,7 @@ pub(crate) fn plugin_thread_main(
                         let skip_cache = false;
                         match wasm_bridge.load_plugin(
                             &run_plugin,
-                            Some(tab_index),
+                            Some(tab_id),
                             size,
                             cwd,
                             skip_cache,
@@ -603,7 +603,7 @@ pub(crate) fn plugin_thread_main(
                     terminal_action,
                     tab_layout,
                     floating_panes_layout,
-                    tab_index,
+                    tab_id,
                     plugin_ids,
                     initial_panes,
                     block_on_first_terminal,
