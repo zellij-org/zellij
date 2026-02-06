@@ -43,6 +43,7 @@ sixel-tokenizer = { version = "0.1.0", default-features = false }
 sysinfo = { version = "0.22.5", default-features = false }
 tempfile = { workspace = true }
 typetag = { version = "0.1.7", default-features = false }
+unicode-normalization = { workspace = true }
 unicode-width = { workspace = true }
 url = { workspace = true }
 uuid = { workspace = true }
