@@ -1891,11 +1891,11 @@ impl MockClientOsApi {
 }
 
 impl ClientOsApi for MockClientOsApi {
-    fn get_terminal_size_using_fd(&self, _fd: std::os::unix::io::RawFd) -> Size {
+    fn get_terminal_size(&self) -> Size {
         self.terminal_size
     }
-    fn set_raw_mode(&mut self, _fd: std::os::unix::io::RawFd) {}
-    fn unset_raw_mode(&self, _fd: std::os::unix::io::RawFd) -> Result<(), std::io::Error> {
+    fn set_raw_mode(&mut self) {}
+    fn unset_raw_mode(&self) -> Result<(), std::io::Error> {
         Ok(())
     }
     fn get_stdout_writer(&self) -> Box<dyn std::io::Write> {

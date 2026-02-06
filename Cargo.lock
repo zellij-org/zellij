@@ -943,6 +943,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "crossterm"
+version = "0.28.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "829d955a0bb380ef178a640b91779e3987da38c9aea133b20614cfed8cdea9c6"
+dependencies = [
+ "bitflags 2.5.0",
+ "parking_lot 0.12.1",
+ "rustix 0.38.44",
+]
+
+[[package]]
 name = "crypto-common"
 version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5326,6 +5337,7 @@ dependencies = [
  "axum",
  "axum-extra",
  "axum-server",
+ "crossterm",
  "daemonize",
  "dialoguer",
  "futures",

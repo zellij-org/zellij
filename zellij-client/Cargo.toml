@@ -21,6 +21,7 @@ tower-http = { version = "0.6.4", features = ["cors"], optional = true }
 
 anyhow = { workspace = true }
 async-trait = { workspace = true }
+crossterm = { workspace = true }
 daemonize = { workspace = true }
 dialoguer = { workspace = true }
 interprocess = { workspace = true }

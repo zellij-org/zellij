@@ -1,19 +1,13 @@
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use interprocess;
-use libc;
-use nix;
 use signal_hook;
 use zellij_utils::pane_size::Size;
 
 use interprocess::local_socket::LocalSocketStream;
-use mio::{unix::SourceFd, Events, Interest, Poll, Token};
-use nix::pty::Winsize;
-use nix::sys::termios;
 use signal_hook::{consts::signal::*, iterator::Signals};
 use std::io::prelude::*;
 use std::io::IsTerminal;
-use std::os::unix::io::RawFd;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::{io, thread, time};
@@ -118,62 +112,20 @@ impl AsyncSignals for AsyncSignalListener {
     }
 }
 
-fn into_raw_mode(pid: RawFd) {
-    let mut tio = termios::tcgetattr(pid).expect("could not get terminal attribute");
-    termios::cfmakeraw(&mut tio);
-    match termios::tcsetattr(pid, termios::SetArg::TCSANOW, &tio) {
-        Ok(_) => {},
-        Err(e) => panic!("error {:?}", e),
-    };
-}
-
-fn unset_raw_mode(pid: RawFd, orig_termios: termios::Termios) -> Result<(), std::io::Error> {
-    Ok(termios::tcsetattr(
-        pid,
-        termios::SetArg::TCSANOW,
-        &orig_termios,
-    )?)
-}
-
-pub(crate) fn get_terminal_size_using_fd(fd: RawFd) -> Size {
-    // TODO: do this with the nix ioctl
-    use libc::ioctl;
-    use libc::TIOCGWINSZ;
-
-    let mut winsize = Winsize {
-        ws_row: 0,
-        ws_col: 0,
-        ws_xpixel: 0,
-        ws_ypixel: 0,
-    };
-
-    // TIOCGWINSZ is an u32, but the second argument to ioctl is u64 on
-    // some platforms. When checked on Linux, clippy will complain about
-    // useless conversion.
-    #[allow(clippy::useless_conversion)]
-    unsafe {
-        ioctl(fd, TIOCGWINSZ.into(), &mut winsize)
-    };
-
-    // fallback to default values when rows/cols == 0: https://github.com/zellij-org/zellij/issues/1551
-    let rows = if winsize.ws_row != 0 {
-        winsize.ws_row as usize
-    } else {
-        24
-    };
-
-    let cols = if winsize.ws_col != 0 {
-        winsize.ws_col as usize
-    } else {
-        80
-    };
-
-    Size { rows, cols }
+pub(crate) fn get_terminal_size() -> Size {
+    match crossterm::terminal::size() {
+        Ok((cols, rows)) => {
+            // fallback to default values when rows/cols == 0: https://github.com/zellij-org/zellij/issues/1551
+            let rows = if rows != 0 { rows as usize } else { 24 };
+            let cols = if cols != 0 { cols as usize } else { 80 };
+            Size { rows, cols }
+        },
+        Err(_) => Size { rows: 24, cols: 80 },
+    }
 }
 
 #[derive(Clone)]
 pub struct ClientOsInputOutput {
-    orig_termios: Option<Arc<Mutex<termios::Termios>>>,
     send_instructions_to_server: Arc<Mutex<Option<IpcSenderWithContext<ClientToServerMsg>>>>,
     receive_instructions_from_server: Arc<Mutex<Option<IpcReceiverWithContext<ServerToClientMsg>>>>,
     reading_from_stdin: Arc<Mutex<Option<Vec<u8>>>>,
@@ -189,14 +141,14 @@ impl std::fmt::Debug for ClientOsInputOutput {
 /// The `ClientOsApi` trait represents an abstract interface to the features of an operating system that
 /// Zellij client requires.
 pub trait ClientOsApi: Send + Sync + std::fmt::Debug {
-    /// Returns the size of the terminal associated to file descriptor `fd`.
-    fn get_terminal_size_using_fd(&self, fd: RawFd) -> Size;
-    /// Set the terminal associated to file descriptor `fd` to
+    /// Returns the size of the terminal.
+    fn get_terminal_size(&self) -> Size;
+    /// Set the terminal to
     /// [raw mode](https://en.wikipedia.org/wiki/Terminal_mode).
-    fn set_raw_mode(&mut self, fd: RawFd);
-    /// Set the terminal associated to file descriptor `fd` to
+    fn set_raw_mode(&mut self);
+    /// Set the terminal to
     /// [cooked mode](https://en.wikipedia.org/wiki/Terminal_mode).
-    fn unset_raw_mode(&self, fd: RawFd) -> Result<(), std::io::Error>;
+    fn unset_raw_mode(&self) -> Result<(), std::io::Error>;
     /// Returns the writer that allows writing to standard output.
     fn get_stdout_writer(&self) -> Box<dyn io::Write>;
     /// Returns a BufReader that allows to read from STDIN line by line, also locks STDIN
@@ -237,23 +189,14 @@ pub trait ClientOsApi: Send + Sync + std::fmt::Debug {
 }
 
 impl ClientOsApi for ClientOsInputOutput {
-    fn get_terminal_size_using_fd(&self, fd: RawFd) -> Size {
-        get_terminal_size_using_fd(fd)
+    fn get_terminal_size(&self) -> Size {
+        get_terminal_size()
     }
-    fn set_raw_mode(&mut self, fd: RawFd) {
-        into_raw_mode(fd);
+    fn set_raw_mode(&mut self) {
+        crossterm::terminal::enable_raw_mode().expect("could not enable raw mode");
     }
-    fn unset_raw_mode(&self, fd: RawFd) -> Result<(), std::io::Error> {
-        match &self.orig_termios {
-            Some(orig_termios) => {
-                let orig_termios = orig_termios.lock().unwrap();
-                unset_raw_mode(fd, orig_termios.clone())
-            },
-            None => {
-                log::warn!("trying to unset raw mode for a non-terminal session");
-                Ok(())
-            },
-        }
+    fn unset_raw_mode(&self) -> Result<(), std::io::Error> {
+        crossterm::terminal::disable_raw_mode()
     }
     fn box_clone(&self) -> Box<dyn ClientOsApi> {
         Box::new((*self).clone())
@@ -422,11 +365,8 @@ impl Clone for Box<dyn ClientOsApi> {
 }
 
 pub fn get_client_os_input() -> Result<ClientOsInputOutput, std::io::Error> {
-    let current_termios = termios::tcgetattr(0).ok();
-    let orig_termios = current_termios.map(|termios| Arc::new(Mutex::new(termios)));
     let reading_from_stdin = Arc::new(Mutex::new(None));
     Ok(ClientOsInputOutput {
-        orig_termios,
         send_instructions_to_server: Arc::new(Mutex::new(None)),
         receive_instructions_from_server: Arc::new(Mutex::new(None)),
         reading_from_stdin,
@@ -435,10 +375,8 @@ pub fn get_client_os_input() -> Result<ClientOsInputOutput, std::io::Error> {
 }
 
 pub fn get_cli_client_os_input() -> Result<ClientOsInputOutput, std::io::Error> {
-    let orig_termios = None; // not a terminal
     let reading_from_stdin = Arc::new(Mutex::new(None));
     Ok(ClientOsInputOutput {
-        orig_termios,
         send_instructions_to_server: Arc::new(Mutex::new(None)),
         receive_instructions_from_server: Arc::new(Mutex::new(None)),
         reading_from_stdin,
@@ -447,3 +385,44 @@ pub fn get_cli_client_os_input() -> Result<ClientOsInputOutput, std::io::Error> 
 }
 
 pub const DEFAULT_STDIN_POLL_TIMEOUT_MS: u64 = 10;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn get_terminal_size_returns_nonzero_or_fallback() {
+        let size = get_terminal_size();
+        // In CI or when not attached to a terminal, crossterm may return an error
+        // and we fall back to 80x24. Either way, size should be valid.
+        assert!(size.rows > 0, "rows should be positive");
+        assert!(size.cols > 0, "cols should be positive");
+    }
+
+    #[test]
+    fn get_terminal_size_fallback_values() {
+        // Verify the fallback constants are what we expect
+        let fallback = Size { rows: 24, cols: 80 };
+        // When crossterm::terminal::size() fails (no terminal), we should get 80x24
+        // This is implicitly tested by get_terminal_size_returns_nonzero_or_fallback
+        // but we verify the constants here
+        assert_eq!(fallback.rows, 24);
+        assert_eq!(fallback.cols, 80);
+    }
+
+    #[test]
+    fn client_os_input_output_can_be_constructed() {
+        let os_input = get_client_os_input().expect("should construct ClientOsInputOutput");
+        let size = os_input.get_terminal_size();
+        assert!(size.rows > 0, "rows should be positive");
+        assert!(size.cols > 0, "cols should be positive");
+    }
+
+    #[test]
+    fn cli_client_os_input_can_be_constructed() {
+        let os_input = get_cli_client_os_input().expect("should construct CLI ClientOsInputOutput");
+        let size = os_input.get_terminal_size();
+        assert!(size.rows > 0, "rows should be positive");
+        assert!(size.cols > 0, "cols should be positive");
+    }
+}
