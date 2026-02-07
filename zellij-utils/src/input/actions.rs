@@ -3,7 +3,7 @@
 pub use super::command::{OpenFilePayload, RunCommandAction};
 use super::layout::{
     FloatingPaneLayout, Layout, PluginAlias, RunPlugin, RunPluginLocation, RunPluginOrAlias,
-    SwapFloatingLayout, SwapTiledLayout, TabLayoutInfo, TiledPaneLayout,
+    SplitSize, SwapFloatingLayout, SwapTiledLayout, TabLayoutInfo, TiledPaneLayout,
 };
 use crate::cli::CliAction;
 use crate::data::{
@@ -233,6 +233,7 @@ pub enum Action {
     /// Open a new tiled (embedded, non-floating) pane
     NewTiledPane {
         direction: Option<Direction>,
+        split_size: Option<SplitSize>,
         command: Option<RunCommandAction>,
         pane_name: Option<String>,
         near_current_pane: bool,
@@ -540,6 +541,7 @@ impl Action {
             CliAction::ToggleActiveSyncTab => Ok(vec![Action::ToggleActiveSyncTab]),
             CliAction::NewPane {
                 direction,
+                size,
                 command,
                 plugin,
                 cwd,
@@ -562,6 +564,15 @@ impl Action {
                 borderless,
             } => {
                 let current_dir = get_current_dir();
+                let split_size = match size {
+                    Some(percent) if (1..=99).contains(&percent) => Some(SplitSize::Percent(percent)),
+                    Some(_) => {
+                        return Err(
+                            "Invalid --size, must be a percentage between 1 and 99".to_string()
+                        );
+                    },
+                    None => None,
+                };
                 // cwd should only be specified in a plugin alias if it was explicitly given to us,
                 // otherwise the current_dir might override a cwd defined in the alias itself
                 let alias_cwd = cwd.clone().map(|cwd| current_dir.join(cwd));
@@ -610,6 +621,7 @@ impl Action {
                     } else {
                         NewPanePlacement::Tiled {
                             direction,
+                            split_size: None,
                             borderless,
                         }
                     };
@@ -714,6 +726,7 @@ impl Action {
                     } else {
                         Ok(vec![Action::NewTiledPane {
                             direction,
+                            split_size,
                             command: Some(run_command_action),
                             pane_name: name,
                             near_current_pane,
@@ -747,6 +760,7 @@ impl Action {
                     } else {
                         Ok(vec![Action::NewTiledPane {
                             direction,
+                            split_size,
                             command: None,
                             pane_name: name,
                             near_current_pane,
