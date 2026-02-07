@@ -2137,6 +2137,7 @@ pub fn send_cli_write_chars_action_to_screen() {
     );
     let cli_action = CliAction::WriteChars {
         chars: "input from the cli".into(),
+        pane_id: None,
     };
     send_cli_action_to_server(&session_metadata, cli_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -2396,6 +2397,7 @@ pub fn send_cli_dump_screen_action() {
     let cli_action = CliAction::DumpScreen {
         path: PathBuf::from("/tmp/foo"),
         full: true,
+        pane_id: None,
     };
     let _ = mock_screen.to_screen.send(ScreenInstruction::PtyBytes(
         0,
@@ -2976,6 +2978,7 @@ pub fn send_cli_new_pane_action_with_default_parameters() {
         height: None,
         pinned: None,
         stacked: false,
+        stack_with: None,
         blocking: false,
         unblock_condition: None,
         near_current_pane: false,
@@ -3025,6 +3028,7 @@ pub fn send_cli_new_pane_action_with_split_direction() {
         height: None,
         pinned: None,
         stacked: false,
+        stack_with: None,
         blocking: false,
         unblock_condition: None,
         near_current_pane: false,
@@ -3074,6 +3078,7 @@ pub fn send_cli_new_pane_action_with_command_and_cwd() {
         height: None,
         pinned: None,
         stacked: false,
+        stack_with: None,
         blocking: false,
         unblock_condition: None,
         near_current_pane: false,
@@ -3134,6 +3139,7 @@ pub fn send_cli_new_pane_action_with_floating_pane_and_coordinates() {
         height: None,
         pinned: None,
         stacked: false,
+        stack_with: None,
         blocking: false,
         unblock_condition: None,
         near_current_pane: false,
@@ -3409,7 +3415,7 @@ pub fn send_cli_close_pane_action() {
         ServerInstruction::KillSession,
         server_receiver
     );
-    let close_pane_action = CliAction::ClosePane;
+    let close_pane_action = CliAction::ClosePane { pane_id: None };
     send_cli_action_to_server(&session_metadata, close_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![server_instruction, screen_thread]);

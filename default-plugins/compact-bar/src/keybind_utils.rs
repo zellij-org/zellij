@@ -442,6 +442,7 @@ impl KeybindProcessor {
                                 command: None,
                                 pane_name: None,
                                 near_current_pane: false,
+                                ..
                             }
                         )
                     },
