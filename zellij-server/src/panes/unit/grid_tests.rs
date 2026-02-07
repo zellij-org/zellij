@@ -4362,3 +4362,69 @@ fn single_click_drag_selection_preserved_after_scroll() {
     assert_eq!(grid.selection.start.column, start_before.column);
     assert_eq!(grid.selection.end.column, end_before.column);
 }
+
+#[test]
+fn nfd_hangul_jamo_composed_to_nfc_syllable() {
+    // NFD "폴더명" = ᄑ(U+1111) ᅩ(U+1169) ᆯ(U+11AF) ᄃ(U+1103) ᅥ(U+1165) ᄆ(U+1106) ᅧ(U+1167) ᆼ(U+11BC)
+    // Should be composed to NFC: 폴(U+D3F4) 더(U+B354) 명(U+BA85)
+    let nfd_content = "\u{1111}\u{1169}\u{11AF}\u{1103}\u{1165}\u{1106}\u{1167}\u{11BC}";
+    let grid = create_grid_with_content(nfd_content);
+
+    let first_row = &grid.viewport[0];
+    // NFC "폴더명" should be 3 characters, each width 2, total 6 columns
+    // Plus padding to fill the row
+    assert_eq!(first_row.columns[0].character, '폴');
+    assert_eq!(first_row.columns[1].character, '더');
+    assert_eq!(first_row.columns[2].character, '명');
+}
+
+#[test]
+fn nfd_hangul_with_ansi_color_composed_correctly() {
+    // Simulate colored directory name: \x1b[01;34m + NFD "폴더" + \x1b[0m
+    let colored_nfd = "\x1b[01;34m\u{1111}\u{1169}\u{11AF}\u{1103}\u{1165}\x1b[0m";
+    let grid = create_grid_with_content(colored_nfd);
+
+    let first_row = &grid.viewport[0];
+    assert_eq!(first_row.columns[0].character, '폴');
+    assert_eq!(first_row.columns[1].character, '더');
+}
+
+#[test]
+fn nfd_hangul_two_char_syllable_without_jongseong() {
+    // NFD "가나" = ᄀ(U+1100) ᅡ(U+1161) ᄂ(U+1102) ᅡ(U+1161)
+    // Should compose to NFC: 가(U+AC00) 나(U+B098)
+    let nfd_content = "\u{1100}\u{1161}\u{1102}\u{1161}";
+    let grid = create_grid_with_content(nfd_content);
+
+    let first_row = &grid.viewport[0];
+    assert_eq!(first_row.columns[0].character, '가');
+    assert_eq!(first_row.columns[1].character, '나');
+}
+
+#[test]
+fn nfc_hangul_still_works_correctly() {
+    // Pre-composed NFC "폴더명" should still work
+    let nfc_content = "폴더명";
+    let grid = create_grid_with_content(nfc_content);
+
+    let first_row = &grid.viewport[0];
+    assert_eq!(first_row.columns[0].character, '폴');
+    assert_eq!(first_row.columns[1].character, '더');
+    assert_eq!(first_row.columns[2].character, '명');
+}
+
+#[test]
+fn nfd_hangul_mixed_with_ascii() {
+    // NFD "폴더" + ASCII " test"
+    let content = "\u{1111}\u{1169}\u{11AF}\u{1103}\u{1165} test";
+    let grid = create_grid_with_content(content);
+
+    let first_row = &grid.viewport[0];
+    assert_eq!(first_row.columns[0].character, '폴');
+    assert_eq!(first_row.columns[1].character, '더');
+    assert_eq!(first_row.columns[2].character, ' ');
+    assert_eq!(first_row.columns[3].character, 't');
+    assert_eq!(first_row.columns[4].character, 'e');
+    assert_eq!(first_row.columns[5].character, 's');
+    assert_eq!(first_row.columns[6].character, 't');
+}

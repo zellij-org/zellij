@@ -13,6 +13,7 @@ use std::{
     str,
 };
 
+use unicode_normalization::char::compose;
 use vte;
 use zellij_utils::{
     consts::{DEFAULT_SCROLL_BUFFER_SIZE, SCROLL_BUFFER_SIZE},
@@ -1775,6 +1776,19 @@ impl Grid {
     fn set_preceding_character(&mut self, terminal_character: TerminalCharacter) {
         self.preceding_char = Some(terminal_character);
     }
+    fn replace_preceding_character_in_viewport(&mut self, new_char: &TerminalCharacter) {
+        if let Some(preceding) = &self.preceding_char {
+            let preceding_width = preceding.width();
+            let preceding_x = self.cursor.x.saturating_sub(preceding_width);
+            if let Some(row) = self.viewport.get_mut(self.cursor.y) {
+                let abs_idx = row.absolute_character_index(preceding_x);
+                if let Some(cell) = row.columns.get_mut(abs_idx) {
+                    *cell = new_char.clone();
+                }
+            }
+            self.output_buffer.update_line(self.cursor.y);
+        }
+    }
     pub fn start_selection(&mut self, start: &Position) {
         let old_selection = self.selection;
         self.click.record_click(*start);
@@ -2500,6 +2514,17 @@ impl Grid {
 impl Perform for Grid {
     fn print(&mut self, c: char) {
         let c = self.cursor.charsets[self.active_charset].map(c);
+
+        // Try to compose with preceding character for proper Unicode normalization
+        // (e.g. NFD Hangul Jamo → NFC syllable: ᄑ + ᅩ + ᆯ → 폴)
+        if let Some(ref preceding) = self.preceding_char {
+            if let Some(composed) = compose(preceding.character, c) {
+                let composed_tc = TerminalCharacter::new_styled(composed, preceding.styles.clone());
+                self.replace_preceding_character_in_viewport(&composed_tc);
+                self.preceding_char = Some(composed_tc);
+                return;
+            }
+        }
 
         let terminal_character =
             TerminalCharacter::new_styled(c, self.cursor.pending_styles.clone());
