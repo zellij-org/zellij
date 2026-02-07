@@ -26,8 +26,6 @@ use zellij_utils::shared::web_server_base_url;
 #[cfg(feature = "web_server_capability")]
 use futures_util::{SinkExt, StreamExt};
 #[cfg(feature = "web_server_capability")]
-use tokio::runtime::Runtime;
-#[cfg(feature = "web_server_capability")]
 use tokio_tungstenite::tungstenite::Message;
 
 #[cfg(feature = "web_server_capability")]
@@ -35,6 +33,26 @@ use crate::web_client::control_message::{
     WebClientToWebServerControlMessage, WebClientToWebServerControlMessagePayload,
     WebServerToWebClientControlMessage,
 };
+
+static ASYNC_RUNTIME: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
+use std::sync::OnceLock;
+
+pub(crate) fn async_runtime() -> tokio::runtime::Handle {
+    match tokio::runtime::Handle::try_current() {
+        Ok(handle) => handle.clone(),
+        _ => {
+            let runtime = ASYNC_RUNTIME.get_or_init(|| {
+                tokio::runtime::Builder::new_multi_thread()
+                    .worker_threads(4)
+                    .thread_name("zellij client async-runtime")
+                    .enable_all()
+                    .build()
+                    .expect("Failed to create tokio runtime")
+            });
+            runtime.handle().clone()
+        },
+    }
+}
 
 #[derive(Debug)]
 pub enum RemoteClientError {
@@ -461,10 +479,10 @@ pub fn start_remote_client(
 ) -> Result<Option<ConnectToSession>, RemoteClientError> {
     info!("Starting Zellij client!");
 
-    let runtime = Runtime::new().map_err(|e| RemoteClientError::IoError(e))?;
+    let runtime = crate::async_runtime();
 
     let connections = remote_attach::attach_to_remote_session(
-        &runtime,
+        runtime.clone(),
         os_input.clone(),
         remote_session_url,
         token,

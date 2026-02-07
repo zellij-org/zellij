@@ -2,9 +2,8 @@ use crate::plugins::plugin_map::PluginEnv;
 use crate::plugins::zellij_exports::wasi_write_object;
 use wasmi::{Instance, Store};
 
-use async_channel::{unbounded, Receiver, Sender};
-use async_std::task;
 use prost::Message;
+use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use zellij_utils::errors::prelude::*;
 use zellij_utils::plugin_api::message::ProtobufMessage;
 
@@ -47,22 +46,25 @@ pub enum MessageToWorker {
     Exit,
 }
 
-pub fn plugin_worker(mut worker: RunningWorker) -> Sender<MessageToWorker> {
-    let (sender, receiver): (Sender<MessageToWorker>, Receiver<MessageToWorker>) = unbounded();
-    task::spawn({
+pub fn plugin_worker(mut worker: RunningWorker) -> UnboundedSender<MessageToWorker> {
+    let (sender, mut receiver): (
+        UnboundedSender<MessageToWorker>,
+        UnboundedReceiver<MessageToWorker>,
+    ) = unbounded_channel();
+    crate::global_async_runtime::get_tokio_runtime().spawn({
         async move {
             loop {
                 match receiver.recv().await {
-                    Ok(MessageToWorker::Message(message, payload)) => {
+                    Some(MessageToWorker::Message(message, payload)) => {
                         if let Err(e) = worker.send_message(message, payload) {
                             log::error!("Failed to send message to worker: {:?}", e);
                         }
                     },
-                    Ok(MessageToWorker::Exit) => {
+                    Some(MessageToWorker::Exit) => {
                         break;
                     },
-                    Err(e) => {
-                        log::error!("Failed to receive worker message on channel: {:?}", e);
+                    None => {
+                        log::error!("Failed to receive worker message on channel");
                         break;
                     },
                 }

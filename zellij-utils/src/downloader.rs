@@ -1,16 +1,16 @@
-use async_std::sync::Mutex;
-use async_std::{
-    fs,
-    io::{ReadExt, WriteExt},
-    stream::StreamExt,
-};
 use isahc::prelude::*;
 use isahc::{config::RedirectPolicy, HttpClient, Request};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use thiserror::Error;
+use tokio::{io::AsyncWriteExt as _, sync::Mutex};
+use tokio_stream::StreamExt as _;
+use tokio_util::compat::FuturesAsyncReadCompatExt as _;
+use tokio_util::io::ReaderStream;
 use url::Url;
+
+const STREAM_BUFFER_SIZE_BYTES: usize = 65535;
 
 #[derive(Error, Debug)]
 pub enum DownloaderError {
@@ -94,7 +94,7 @@ impl Downloader {
         let file_part_path = self.location.join(format!("{}.part", file_name));
         let (mut target, file_part_size) = {
             if file_part_path.exists() {
-                let file_part = fs::OpenOptions::new()
+                let file_part = tokio::fs::OpenOptions::new()
                     .append(true)
                     .write(true)
                     .open(&file_part_path)
@@ -111,7 +111,7 @@ impl Downloader {
 
                 (file_part, file_part_size)
             } else {
-                let file_part = fs::File::create(&file_part_path)
+                let file_part = tokio::fs::File::create(&file_part_path)
                     .await
                     .map_err(|e| DownloaderError::Io(e))?;
 
@@ -124,18 +124,18 @@ impl Downloader {
             .body(())?;
         let mut res = client.send_async(request).await?;
         let body = res.body_mut();
-        let mut stream = body.bytes();
-        while let Some(byte) = stream.next().await {
-            let byte = byte.map_err(|e| DownloaderError::Io(e))?;
+        let mut stream = ReaderStream::with_capacity(body.compat(), STREAM_BUFFER_SIZE_BYTES);
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk.map_err(DownloaderError::Io)?;
             target
-                .write(&[byte])
+                .write_all(&chunk)
                 .await
-                .map_err(|e| DownloaderError::Io(e))?;
+                .map_err(DownloaderError::Io)?;
         }
 
         log::debug!("Download complete: {:?}", file_part_path);
 
-        fs::rename(file_part_path, file_path)
+        tokio::fs::rename(file_part_path, file_path)
             .await
             .map_err(|e| DownloaderError::Io(e))?;
 
@@ -154,10 +154,10 @@ impl Downloader {
 
         let mut downloaded_bytes: Vec<u8> = vec![];
         let body = res.body_mut();
-        let mut stream = body.bytes();
-        while let Some(byte) = stream.next().await {
-            let byte = byte.map_err(|e| DownloaderError::Io(e))?;
-            downloaded_bytes.push(byte);
+        let mut stream = ReaderStream::with_capacity(body.compat(), STREAM_BUFFER_SIZE_BYTES);
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk.map_err(DownloaderError::Io)?;
+            downloaded_bytes.extend_from_slice(&*chunk);
         }
 
         log::debug!("Download complete");
@@ -165,6 +165,44 @@ impl Downloader {
             .map_err(|e| DownloaderError::InvalidUrlBody(format!("{}", e)))?;
 
         Ok(stringified)
+    }
+
+    /// Download the content of a URL and block for the result.
+    ///
+    /// Wraps the `async` call to [`download_without_cache`] such that it can be used from sync
+    /// code. This is achieved by either:
+    ///
+    /// 1. Reusing an existing async runtime in case one is present in the current thread, or
+    /// 2. Spawning a new async runtime on the current thread
+    ///
+    /// If neither of these works, an error is returned instead.
+    ///
+    /// # Note
+    ///
+    /// At the moment, this function is only here to bridge the gap between the async
+    /// [`Downloader`] impl and the sync [`Layout`] code that ultimately calls this function. This
+    /// is needed since the Layout code can't trivially be turned `async` without a lot of
+    /// refactoring, while the Downloader is used in many other places with async code and can't
+    /// sensibly be sync. Maybe in the future, when more code around here is async, we can drop
+    /// this function.
+    pub fn download_without_cache_blocking(url: &str) -> Result<String, DownloaderError> {
+        let runtime_handle = match tokio::runtime::Handle::try_current() {
+            Ok(handle) => handle.clone(),
+            Err(e) if e.is_missing_context() => {
+                let runtime = tokio::runtime::Builder::new_current_thread()
+                    .thread_name("ephemeral runtime for downloader implementation")
+                    .build()
+                    .map_err(DownloaderError::Io)?;
+                runtime.handle().clone()
+            },
+            _ => {
+                return Err(DownloaderError::Io(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "failed to spawn runtime for download task",
+                )))
+            },
+        };
+        runtime_handle.block_on(async move { Downloader::download_without_cache(url).await })
     }
 
     fn parse_name(&self, url: &str) -> Result<String, DownloaderError> {
@@ -192,7 +230,7 @@ mod tests {
     use tempfile::tempdir;
 
     #[ignore]
-    #[async_std::test]
+    #[tokio::test]
     async fn test_download_ok() {
         let location = tempdir().expect("Failed to create temp directory");
         let location_path = location.path();
@@ -213,7 +251,7 @@ mod tests {
     }
 
     #[ignore]
-    #[async_std::test]
+    #[tokio::test]
     async fn test_download_without_file_name() {
         let location = tempdir().expect("Failed to create temp directory");
         let location_path = location.path();

@@ -11,7 +11,7 @@ use wasmi_wasi::WasiCtx;
 
 use crate::{thread_bus::ThreadSenders, ClientId};
 
-use async_channel::Sender;
+use tokio::sync::mpsc::UnboundedSender;
 use zellij_utils::{
     data::EventType,
     data::InputMode,
@@ -36,7 +36,7 @@ pub struct PluginMap {
         (
             Arc<Mutex<RunningPlugin>>,
             Arc<Mutex<Subscriptions>>,
-            HashMap<String, Sender<MessageToWorker>>,
+            HashMap<String, UnboundedSender<MessageToWorker>>,
         ),
     >,
 }
@@ -50,7 +50,7 @@ impl PluginMap {
         (
             Arc<Mutex<RunningPlugin>>,
             Arc<Mutex<Subscriptions>>,
-            HashMap<String, Sender<MessageToWorker>>,
+            HashMap<String, UnboundedSender<MessageToWorker>>,
         ),
     > {
         let mut removed = HashMap::new();
@@ -136,7 +136,7 @@ impl PluginMap {
         plugin_id: PluginId,
         client_id: ClientId,
         worker_name: &str,
-    ) -> Option<Sender<MessageToWorker>> {
+    ) -> Option<UnboundedSender<MessageToWorker>> {
         self.plugin_assets
             .iter()
             .find(|((p_id, c_id), _)| p_id == &plugin_id && c_id == &client_id)
@@ -222,7 +222,7 @@ impl PluginMap {
         client_id: ClientId,
         running_plugin: Arc<Mutex<RunningPlugin>>,
         subscriptions: Arc<Mutex<Subscriptions>>,
-        running_workers: HashMap<String, Sender<MessageToWorker>>,
+        running_workers: HashMap<String, UnboundedSender<MessageToWorker>>,
     ) {
         self.plugin_assets.insert(
             (plugin_id, client_id),
