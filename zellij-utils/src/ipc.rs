@@ -6,7 +6,6 @@ use crate::{
     pane_size::{Size, SizeInPixels},
 };
 use interprocess::local_socket::Stream as LocalSocketStream;
-use interprocess::TryClone;
 use log::warn;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -28,6 +27,18 @@ mod protobuf_conversion;
 mod tests;
 
 type SessionId = u64;
+
+/// A bidirectional byte stream that supports cloning for simultaneous read/write.
+pub trait IpcStream: Read + Write + Send + 'static {
+    fn try_clone_stream(&self) -> io::Result<Box<dyn IpcStream>>;
+}
+
+impl IpcStream for LocalSocketStream {
+    fn try_clone_stream(&self) -> io::Result<Box<dyn IpcStream>> {
+        use interprocess::TryClone;
+        Ok(Box::new(self.try_clone()?))
+    }
+}
 
 #[derive(PartialEq, Eq, Serialize, Deserialize, Hash)]
 pub struct Session {
@@ -237,13 +248,20 @@ There are a few things you can try now:
 
 /// Sends messages on a stream socket, along with an [`ErrorContext`].
 pub struct IpcSenderWithContext<T: Serialize> {
-    sender: io::BufWriter<LocalSocketStream>,
+    sender: io::BufWriter<Box<dyn IpcStream>>,
     _phantom: PhantomData<T>,
 }
 
 impl<T: Serialize> IpcSenderWithContext<T> {
     /// Returns a sender to the given [LocalSocketStream](interprocess::local_socket::LocalSocketStream).
     pub fn new(sender: LocalSocketStream) -> Self {
+        Self {
+            sender: io::BufWriter::new(Box::new(sender)),
+            _phantom: PhantomData,
+        }
+    }
+
+    fn from_boxed(sender: Box<dyn IpcStream>) -> Self {
         Self {
             sender: io::BufWriter::new(sender),
             _phantom: PhantomData,
@@ -269,14 +287,14 @@ impl<T: Serialize> IpcSenderWithContext<T> {
     where
         F: for<'de> Deserialize<'de> + Serialize,
     {
-        let socket = self.sender.get_ref().try_clone().unwrap();
-        IpcReceiverWithContext::new(socket)
+        let socket = self.sender.get_ref().try_clone_stream().unwrap();
+        IpcReceiverWithContext::from_boxed(socket)
     }
 }
 
 /// Receives messages on a stream socket, along with an [`ErrorContext`].
 pub struct IpcReceiverWithContext<T> {
-    receiver: io::BufReader<LocalSocketStream>,
+    receiver: io::BufReader<Box<dyn IpcStream>>,
     _phantom: PhantomData<T>,
 }
 
@@ -286,6 +304,13 @@ where
 {
     /// Returns a receiver to the given [LocalSocketStream](interprocess::local_socket::LocalSocketStream).
     pub fn new(receiver: LocalSocketStream) -> Self {
+        Self {
+            receiver: io::BufReader::new(Box::new(receiver)),
+            _phantom: PhantomData,
+        }
+    }
+
+    fn from_boxed(receiver: Box<dyn IpcStream>) -> Self {
         Self {
             receiver: io::BufReader::new(receiver),
             _phantom: PhantomData,
@@ -320,8 +345,8 @@ where
 
     /// Returns an [`IpcSenderWithContext`] with the same socket as this receiver.
     pub fn get_sender<F: Serialize>(&self) -> IpcSenderWithContext<F> {
-        let socket = self.receiver.get_ref().try_clone().unwrap();
-        IpcSenderWithContext::new(socket)
+        let socket = self.receiver.get_ref().try_clone_stream().unwrap();
+        IpcSenderWithContext::from_boxed(socket)
     }
 }
 
