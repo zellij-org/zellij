@@ -3,6 +3,7 @@ use crate::ipc::{
 };
 use crate::pane_size::Size;
 use interprocess::local_socket::{prelude::*, GenericFilePath, ListenerOptions, Stream as LocalSocketStream};
+#[cfg(not(windows))]
 use std::os::unix::fs::FileTypeExt;
 use std::path::PathBuf;
 use tempfile::TempDir;
@@ -208,6 +209,7 @@ fn receiver_returns_none_on_closed_connection() {
 // FileTypeExt::is_socket() for identifying socket files, and the assert_socket
 // probing pattern (connect, send ConnStatus, expect Connected).
 
+#[cfg(not(windows))]
 #[test]
 fn is_socket_identifies_bound_unix_socket() {
     let (_dir, path) = socket_path();
@@ -220,6 +222,7 @@ fn is_socket_identifies_bound_unix_socket() {
     );
 }
 
+#[cfg(not(windows))]
 #[test]
 fn is_socket_rejects_regular_file() {
     let dir = TempDir::new().expect("failed to create temp dir");
@@ -294,6 +297,7 @@ fn session_probe_rejects_dead_socket() {
     );
 }
 
+#[cfg(not(windows))]
 #[test]
 fn socket_directory_enumeration_finds_sockets() {
     // Simulates the readdir + is_socket() filtering pattern from get_sessions().

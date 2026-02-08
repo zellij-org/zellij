@@ -1,6 +1,6 @@
 use crate::{
     consts::{
-        session_info_folder_for_session, session_layout_cache_file_name,
+        is_ipc_socket, session_info_folder_for_session, session_layout_cache_file_name,
         ZELLIJ_SESSION_INFO_CACHE_DIR, ZELLIJ_SOCK_DIR,
     },
     envs,
@@ -11,7 +11,6 @@ use anyhow;
 use humantime::format_duration;
 use interprocess::local_socket::{prelude::*, GenericFilePath, Stream as LocalSocketStream};
 use std::collections::HashMap;
-use std::os::unix::fs::FileTypeExt;
 use std::time::{Duration, SystemTime};
 use std::{fs, io, process};
 use suggest::Suggest;
@@ -32,7 +31,7 @@ pub fn get_sessions() -> Result<Vec<(String, Duration)>, io::ErrorKind> {
                         .and_then(|d| d.elapsed().ok())
                         .unwrap_or_default();
                     let duration = Duration::from_secs(ctime.as_secs());
-                    if file.file_type().unwrap().is_socket() && assert_socket(&file_name) {
+                    if is_ipc_socket(&file.file_type().unwrap()) && assert_socket(&file_name) {
                         sessions.push((file_name, duration));
                     }
                 }
@@ -126,7 +125,7 @@ pub fn get_sessions_sorted_by_mtime() -> anyhow::Result<Vec<String>> {
                 let file = file?;
                 let file_name = file.file_name().into_string().unwrap();
                 let file_modified_at = file.metadata()?.modified()?;
-                if file.file_type()?.is_socket() && assert_socket(&file_name) {
+                if is_ipc_socket(&file.file_type()?) && assert_socket(&file_name) {
                     sessions_with_mtime.push((file_name, file_modified_at));
                 }
             }
@@ -270,11 +269,15 @@ pub fn kill_session(name: &str) {
 pub fn delete_session(name: &str, force: bool) {
     if force {
         let path = &*ZELLIJ_SOCK_DIR.join(name);
-        let _ = path.to_fs_name::<GenericFilePath>().ok().and_then(|fs_name| LocalSocketStream::connect(fs_name).ok()).map(|stream| {
-            IpcSenderWithContext::<ClientToServerMsg>::new(stream)
-                .send_client_msg(ClientToServerMsg::KillSession)
-                .ok();
-        });
+        let _ = path
+            .to_fs_name::<GenericFilePath>()
+            .ok()
+            .and_then(|fs_name| LocalSocketStream::connect(fs_name).ok())
+            .map(|stream| {
+                IpcSenderWithContext::<ClientToServerMsg>::new(stream)
+                    .send_client_msg(ClientToServerMsg::KillSession)
+                    .ok();
+            });
     }
     if let Err(e) = std::fs::remove_dir_all(session_info_folder_for_session(name)) {
         if e.kind() == std::io::ErrorKind::NotFound {

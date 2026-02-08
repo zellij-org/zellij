@@ -692,7 +692,12 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
             move || {
                 drop(std::fs::remove_file(&socket_path));
                 let listener = ListenerOptions::new()
-                    .name(socket_path.as_path().to_fs_name::<GenericFilePath>().unwrap())
+                    .name(
+                        socket_path
+                            .as_path()
+                            .to_fs_name::<GenericFilePath>()
+                            .unwrap(),
+                    )
                     .create_sync()
                     .unwrap();
                 // set the sticky bit to avoid the socket file being potentially cleaned up

@@ -257,7 +257,9 @@ impl ClientOsApi for ClientOsInputOutput {
         }
     }
     fn connect_to_server(&self, path: &Path) {
-        let fs_name = path.to_fs_name::<GenericFilePath>().expect("failed to convert path to socket name");
+        let fs_name = path
+            .to_fs_name::<GenericFilePath>()
+            .expect("failed to convert path to socket name");
         let socket;
         loop {
             match LocalSocketStream::connect(fs_name.clone()) {
