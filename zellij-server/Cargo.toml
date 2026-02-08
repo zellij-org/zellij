@@ -26,7 +26,6 @@ kdl = { workspace = true }
 lazy_static = { workspace = true }
 log = { workspace = true }
 notify-debouncer-full = { workspace = true }
-close_fds = "0.3.2"
 prost = { workspace = true }
 regex = { workspace = true }
 semver = { version = "0.11.0", default-features = false }
@@ -35,7 +34,7 @@ serde_json = { workspace = true }
 signal-hook = { workspace = true }
 sixel-image = { version = "0.1.0", default-features = false }
 sixel-tokenizer = { version = "0.1.0", default-features = false }
-sysinfo = { version = "0.22.5", default-features = false }
+sysinfo = { version = "0.33", default-features = false, features = ["system"] }
 tempfile = { workspace = true }
 tokio = { workspace = true }
 typetag = { version = "0.1.7", default-features = false }
@@ -54,6 +53,7 @@ default-features = false
 features = ["std"]
 
 [target.'cfg(unix)'.dependencies]
+close_fds = "0.3.2"
 daemonize = { workspace = true }
 libc = { workspace = true }
 nix = { workspace = true }
