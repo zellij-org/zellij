@@ -2978,6 +2978,7 @@ pub fn send_cli_new_pane_action_with_default_parameters() {
         stacked: false,
         blocking: false,
         unblock_condition: None,
+        capture_output: false,
         near_current_pane: false,
         borderless: Some(false),
     };
@@ -3027,6 +3028,7 @@ pub fn send_cli_new_pane_action_with_split_direction() {
         stacked: false,
         blocking: false,
         unblock_condition: None,
+        capture_output: false,
         near_current_pane: false,
         borderless: Some(false),
     };
@@ -3076,6 +3078,7 @@ pub fn send_cli_new_pane_action_with_command_and_cwd() {
         stacked: false,
         blocking: false,
         unblock_condition: None,
+        capture_output: false,
         near_current_pane: false,
         borderless: Some(false),
     };
@@ -3136,6 +3139,7 @@ pub fn send_cli_new_pane_action_with_floating_pane_and_coordinates() {
         stacked: false,
         blocking: false,
         unblock_condition: None,
+        capture_output: false,
         near_current_pane: false,
         borderless: Some(false),
     };

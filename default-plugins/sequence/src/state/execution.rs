@@ -247,6 +247,7 @@ impl Execution {
             command: Some(command),
             pane_name: Some(first_command.trim().to_string()),
             unblock_condition: first_chain_type.to_unblock_condition(),
+            capture_output: false,
             near_current_pane: true,
         };
 

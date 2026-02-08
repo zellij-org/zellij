@@ -205,6 +205,8 @@ fn individual_messages_client(
     action: Action,
     pane_id: Option<u32>,
 ) {
+    use std::io::Write as _;
+
     let msg = ClientToServerMsg::Action {
         action,
         terminal_id: pane_id,
@@ -216,6 +218,12 @@ fn individual_messages_client(
         match os_input.recv_from_server() {
             Some((ServerToClientMsg::UnblockInputThread, _)) => {
                 break;
+            },
+            Some((ServerToClientMsg::CapturedOutput { output }, _)) => {
+                // Write captured output to stdout (don't break - we still need to handle exit status)
+                let mut stdout = os_input.get_stdout_writer();
+                let _ = stdout.write_all(output.as_bytes());
+                let _ = stdout.flush();
             },
             Some((ServerToClientMsg::Log { lines: log_lines }, _)) => {
                 log_lines.iter().for_each(|line| println!("{line}"));
