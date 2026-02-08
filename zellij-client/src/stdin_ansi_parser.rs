@@ -129,6 +129,12 @@ impl StdinAnsiParser {
     }
     pub fn write_cache(&self, events: Vec<AnsiStdinInstruction>) {
         if let Ok(serialized_events) = serde_json::to_string(&events) {
+            if let Some(parent) = ZELLIJ_STDIN_CACHE_FILE.parent() {
+                if let Err(e) = std::fs::create_dir_all(parent) {
+                    log::error!("Failed to create stdin cache directory: {:?}", e);
+                    return;
+                }
+            }
             if let Ok(mut file) = File::create(ZELLIJ_STDIN_CACHE_FILE.as_path()) {
                 let _ = file.write_all(serialized_events.as_bytes());
             }
