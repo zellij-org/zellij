@@ -681,7 +681,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
     let _ = thread::Builder::new()
         .name("server_listener".to_string())
         .spawn({
-            use interprocess::local_socket::LocalSocketListener;
+            use interprocess::local_socket::{prelude::*, GenericFilePath, ListenerOptions};
             use zellij_utils::shared::set_permissions;
 
             let os_input = os_input.clone();
@@ -691,7 +691,10 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
             let socket_path = socket_path.clone();
             move || {
                 drop(std::fs::remove_file(&socket_path));
-                let listener = LocalSocketListener::bind(&*socket_path).unwrap();
+                let listener = ListenerOptions::new()
+                    .name(socket_path.as_path().to_fs_name::<GenericFilePath>().unwrap())
+                    .create_sync()
+                    .unwrap();
                 // set the sticky bit to avoid the socket file being potentially cleaned up
                 // https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html states that for XDG_RUNTIME_DIR:
                 // "To ensure that your files are not removed, they should have their access time timestamp modified at least once every 6 hours of monotonic time or the 'sticky' bit should be set on the file. "

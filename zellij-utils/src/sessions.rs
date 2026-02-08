@@ -9,7 +9,7 @@ use crate::{
 };
 use anyhow;
 use humantime::format_duration;
-use interprocess::local_socket::LocalSocketStream;
+use interprocess::local_socket::{prelude::*, GenericFilePath, Stream as LocalSocketStream};
 use std::collections::HashMap;
 use std::os::unix::fs::FileTypeExt;
 use std::time::{Duration, SystemTime};
@@ -142,7 +142,11 @@ pub fn get_sessions_sorted_by_mtime() -> anyhow::Result<Vec<String>> {
 
 fn assert_socket(name: &str) -> bool {
     let path = &*ZELLIJ_SOCK_DIR.join(name);
-    match LocalSocketStream::connect(path) {
+    let fs_name = match path.to_fs_name::<GenericFilePath>() {
+        Ok(name) => name,
+        Err(_) => return false,
+    };
+    match LocalSocketStream::connect(fs_name) {
         Ok(stream) => {
             let mut sender: IpcSenderWithContext<ClientToServerMsg> =
                 IpcSenderWithContext::new(stream);
@@ -244,7 +248,14 @@ pub fn get_active_session() -> ActiveSession {
 
 pub fn kill_session(name: &str) {
     let path = &*ZELLIJ_SOCK_DIR.join(name);
-    match LocalSocketStream::connect(path) {
+    let fs_name = match path.to_fs_name::<GenericFilePath>() {
+        Ok(name) => name,
+        Err(e) => {
+            eprintln!("Error occurred: {:?}", e);
+            process::exit(1);
+        },
+    };
+    match LocalSocketStream::connect(fs_name) {
         Ok(stream) => {
             let _ = IpcSenderWithContext::<ClientToServerMsg>::new(stream)
                 .send_client_msg(ClientToServerMsg::KillSession);
@@ -259,7 +270,7 @@ pub fn kill_session(name: &str) {
 pub fn delete_session(name: &str, force: bool) {
     if force {
         let path = &*ZELLIJ_SOCK_DIR.join(name);
-        let _ = LocalSocketStream::connect(path).map(|stream| {
+        let _ = path.to_fs_name::<GenericFilePath>().ok().and_then(|fs_name| LocalSocketStream::connect(fs_name).ok()).map(|stream| {
             IpcSenderWithContext::<ClientToServerMsg>::new(stream)
                 .send_client_msg(ClientToServerMsg::KillSession)
                 .ok();

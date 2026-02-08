@@ -5,15 +5,14 @@ use crate::{
     input::{actions::Action, cli_assets::CliAssets},
     pane_size::{Size, SizeInPixels},
 };
-use interprocess::local_socket::LocalSocketStream;
+use interprocess::local_socket::Stream as LocalSocketStream;
+use interprocess::TryClone;
 use log::warn;
-use nix::unistd::dup;
 use serde::{Deserialize, Serialize};
 use std::{
     fmt::{Display, Error, Formatter},
     io::{self, Read, Write},
     marker::PhantomData,
-    os::unix::io::{AsRawFd, FromRawFd},
 };
 
 // Protobuf imports
@@ -270,9 +269,7 @@ impl<T: Serialize> IpcSenderWithContext<T> {
     where
         F: for<'de> Deserialize<'de> + Serialize,
     {
-        let sock_fd = self.sender.get_ref().as_raw_fd();
-        let dup_sock = dup(sock_fd).unwrap();
-        let socket = unsafe { LocalSocketStream::from_raw_fd(dup_sock) };
+        let socket = self.sender.get_ref().try_clone().unwrap();
         IpcReceiverWithContext::new(socket)
     }
 }
@@ -323,9 +320,7 @@ where
 
     /// Returns an [`IpcSenderWithContext`] with the same socket as this receiver.
     pub fn get_sender<F: Serialize>(&self) -> IpcSenderWithContext<F> {
-        let sock_fd = self.receiver.get_ref().as_raw_fd();
-        let dup_sock = dup(sock_fd).unwrap();
-        let socket = unsafe { LocalSocketStream::from_raw_fd(dup_sock) };
+        let socket = self.receiver.get_ref().try_clone().unwrap();
         IpcSenderWithContext::new(socket)
     }
 }

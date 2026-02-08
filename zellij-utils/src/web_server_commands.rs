@@ -2,7 +2,7 @@ use crate::consts::WEBSERVER_SOCKET_PATH;
 use crate::errors::prelude::*;
 use crate::web_server_contract::web_server_contract::InstructionForWebServer as ProtoInstructionForWebServer;
 use crate::web_server_contract::web_server_contract::WebServerResponse as ProtoWebServerResponse;
-use interprocess::local_socket::LocalSocketStream;
+use interprocess::local_socket::{prelude::*, GenericFilePath, Stream as LocalSocketStream};
 use prost::Message;
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -60,7 +60,8 @@ pub enum WebServerResponse {
 }
 
 pub fn create_webserver_sender(path: &str) -> Result<BufWriter<LocalSocketStream>> {
-    let stream = LocalSocketStream::connect(path)?;
+    let fs_name = path.to_fs_name::<GenericFilePath>()?;
+    let stream = LocalSocketStream::connect(fs_name)?;
     Ok(BufWriter::new(stream))
 }
 

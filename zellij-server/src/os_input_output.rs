@@ -1,6 +1,6 @@
 use crate::{panes::PaneId, ClientId};
 
-use interprocess::local_socket::LocalSocketStream;
+use interprocess::local_socket::Stream as LocalSocketStream;
 
 #[cfg(not(windows))]
 use crate::os_input_output_unix::UnixPtyBackend as PtyBackendImpl;

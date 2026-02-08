@@ -6,7 +6,7 @@ use crate::plugins::wasm_bridge::handle_plugin_crash;
 use crate::pty::{ClientTabIndexOrPaneId, PtyInstruction};
 use crate::route::{route_action, wait_for_action_completion, NotificationEnd};
 use crate::ServerInstruction;
-use interprocess::local_socket::LocalSocketStream;
+use interprocess::local_socket::{prelude::*, GenericFilePath, Stream as LocalSocketStream};
 use log::warn;
 use serde::Serialize;
 use std::{
@@ -3165,7 +3165,14 @@ fn disconnect_other_clients(env: &PluginEnv) {
 fn kill_sessions(session_names: Vec<String>) {
     for session_name in session_names {
         let path = &*ZELLIJ_SOCK_DIR.join(&session_name);
-        match LocalSocketStream::connect(path) {
+        let fs_name = match path.to_fs_name::<GenericFilePath>() {
+            Ok(name) => name,
+            Err(e) => {
+                log::error!("Failed to convert path for session {}: {:?}", session_name, e);
+                continue;
+            },
+        };
+        match LocalSocketStream::connect(fs_name) {
             Ok(stream) => {
                 let _ = IpcSenderWithContext::<ClientToServerMsg>::new(stream)
                     .send_client_msg(ClientToServerMsg::KillSession);
