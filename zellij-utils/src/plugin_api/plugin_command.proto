@@ -180,6 +180,7 @@ enum CommandName {
   SetPaneBorderless = 185;
   SaveSession = 186;
   CurrentSessionLastSavedTime = 187;
+  GetPaneInfo = 188;
 }
 
 message PluginCommand {
@@ -309,6 +310,7 @@ message PluginCommand {
     SetPaneBorderlessPayload set_pane_borderless_payload = 136;
     SaveSessionPayload save_session_payload = 137;
     CurrentSessionLastSavedTimePayload current_session_last_saved_time_payload = 138;
+    GetPaneInfoPayload get_pane_info_payload = 139;
   }
 }
 
@@ -924,6 +926,14 @@ message CurrentSessionLastSavedTimePayload {}
 
 message CurrentSessionLastSavedTimeResponse {
   optional uint64 timestamp_millis = 1; // None if never saved, otherwise milliseconds elapsed since last save
+}
+
+message GetPaneInfoPayload {
+  PaneId pane_id = 1;
+}
+
+message GetPaneInfoResponse {
+  optional event.PaneInfo pane_info = 1; // None if pane not found
 }
 
 message NewTabResponse {

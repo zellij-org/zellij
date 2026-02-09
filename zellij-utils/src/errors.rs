@@ -355,6 +355,7 @@ pub enum ScreenContext {
     RenameSession,
     DumpLayoutToPlugin,
     GetFocusedPaneInfo,
+    GetPaneInfo,
     ListClientsMetadata,
     Reconfigure,
     RerunCommandPane,

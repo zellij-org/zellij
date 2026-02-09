@@ -41,7 +41,7 @@ use crate::route::NotificationEnd;
 use log::{debug, warn};
 use zellij_utils::data::{
     CommandOrPlugin, Direction, FloatingPaneCoordinates, GetFocusedPaneInfoResponse,
-    KeyWithModifier, LayoutInfo, NewPanePlacement, PaneContents, PaneManifest,
+    KeyWithModifier, LayoutInfo, NewPanePlacement, PaneContents, PaneInfo, PaneManifest,
     PaneScrollbackResponse, PluginPermission, Resize, ResizeStrategy, SessionInfo, Styling,
     WebSharing,
 };
@@ -300,6 +300,10 @@ pub enum ScreenInstruction {
     GetFocusedPaneInfo {
         client_id: ClientId,
         response_channel: crossbeam::channel::Sender<GetFocusedPaneInfoResponse>,
+    },
+    GetPaneInfo {
+        pane_id: PaneId,
+        response_channel: crossbeam::channel::Sender<Option<PaneInfo>>,
     },
     EditScrollback(ClientId, Option<NotificationEnd>),
     GetPaneScrollback {
@@ -675,6 +679,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::SaveSession(..) => ScreenContext::SaveSession,
             ScreenInstruction::DumpLayoutToPlugin { .. } => ScreenContext::DumpLayoutToPlugin,
             ScreenInstruction::GetFocusedPaneInfo { .. } => ScreenContext::GetFocusedPaneInfo,
+            ScreenInstruction::GetPaneInfo { .. } => ScreenContext::GetPaneInfo,
             ScreenInstruction::EditScrollback(..) => ScreenContext::EditScrollback,
             ScreenInstruction::GetPaneScrollback { .. } => ScreenContext::GetPaneScrollback,
             ScreenInstruction::ScrollUp(..) => ScreenContext::ScrollUp,
@@ -3719,6 +3724,16 @@ impl Screen {
         active_tab.get_active_pane_id(*client_id)
     }
 
+    fn get_pane_info(&self, pane_id: PaneId) -> Option<PaneInfo> {
+        // Search through all tabs to find the pane
+        for tab in self.tabs.values() {
+            if let Some(pane_info) = tab.get_pane_info(pane_id) {
+                return Some(pane_info);
+            }
+        }
+        None
+    }
+
     fn group_and_ungroup_panes(
         &mut self,
         pane_ids_to_group: Vec<PaneId>,
@@ -4492,6 +4507,13 @@ pub(crate) fn screen_thread_main(
                     )),
                 };
                 let _ = response_channel.send(response);
+            },
+            ScreenInstruction::GetPaneInfo {
+                pane_id,
+                response_channel,
+            } => {
+                let pane_info = screen.get_pane_info(pane_id);
+                let _ = response_channel.send(pane_info);
             },
             ScreenInstruction::ListClientsToPlugin(plugin_id, client_id) => {
                 let err_context = || format!("Failed to dump layout");

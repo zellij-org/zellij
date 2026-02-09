@@ -17,8 +17,9 @@ use zellij_utils::plugin_api::plugin_command::{
     ProtobufCurrentSessionLastSavedTimeResponse, ProtobufDeleteLayoutResponse,
     ProtobufDumpLayoutResponse, ProtobufDumpSessionLayoutResponse, ProtobufEditLayoutResponse,
     ProtobufFocusOrCreateTabResponse, ProtobufGenerateRandomNameResponse,
-    ProtobufGetFocusedPaneInfoResponse, ProtobufGetLayoutDirResponse, ProtobufGetPanePidResponse,
-    ProtobufNewTabResponse, ProtobufNewTabsResponse, ProtobufOpenCommandPaneBackgroundResponse,
+    ProtobufGetFocusedPaneInfoResponse, ProtobufGetLayoutDirResponse, ProtobufGetPaneInfoResponse,
+    ProtobufGetPanePidResponse, ProtobufNewTabResponse, ProtobufNewTabsResponse,
+    ProtobufOpenCommandPaneBackgroundResponse,
     ProtobufOpenCommandPaneFloatingNearPluginResponse, ProtobufOpenCommandPaneFloatingResponse,
     ProtobufOpenCommandPaneInPlaceOfPluginResponse, ProtobufOpenCommandPaneInPlaceResponse,
     ProtobufOpenCommandPaneNearPluginResponse, ProtobufOpenCommandPaneResponse,
@@ -198,6 +199,50 @@ pub fn get_focused_pane_info() -> Result<(usize, PaneId), String> {
         Some(get_focused_pane_info_response::Result::Error(err)) => Err(err),
         None => Err("Empty response from host".to_string()),
     }
+}
+
+/// Query information about a specific pane by its PaneId.
+///
+/// This synchronously queries Zellij for detailed information about the pane with the given ID,
+/// including its position, size, state, and other metadata.
+///
+/// # Parameters
+///
+/// - `pane_id`: The ID of the pane to query
+///
+/// # Returns
+///
+/// - `Some(PaneInfo)` if the pane exists and information was successfully retrieved
+/// - `None` if the pane does not exist or could not be found
+///
+/// # Example
+///
+/// ```no_run
+/// use zellij_tile::prelude::*;
+///
+/// // Query info for a specific pane
+/// let pane_id = PaneId::Terminal(1);
+/// match get_pane_info(pane_id) {
+///     Some(info) => {
+///         println!("Pane title: {}", info.title);
+///         println!("Pane is focused: {}", info.is_focused);
+///         println!("Pane position: ({}, {})", info.pane_x, info.pane_y);
+///     },
+///     None => println!("Pane not found"),
+/// }
+/// ```
+pub fn get_pane_info(pane_id: PaneId) -> Option<PaneInfo> {
+    let plugin_command = PluginCommand::GetPaneInfo(pane_id);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+
+    let protobuf_response =
+        ProtobufGetPaneInfoResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
+
+    protobuf_response
+        .pane_info
+        .and_then(|pb_pane_info| pb_pane_info.try_into().ok())
 }
 
 /// Save the current session state to disk immediately.

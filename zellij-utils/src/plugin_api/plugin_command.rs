@@ -30,7 +30,8 @@ pub use super::generated_api::api::{
         GenerateRandomNameResponse as ProtobufGenerateRandomNameResponse,
         GenerateWebLoginTokenPayload, GetFocusedPaneInfoPayload,
         GetFocusedPaneInfoResponse as ProtobufGetFocusedPaneInfoResponse, GetLayoutDirPayload,
-        GetLayoutDirResponse as ProtobufGetLayoutDirResponse, GetPanePidPayload,
+        GetLayoutDirResponse as ProtobufGetLayoutDirResponse, GetPaneInfoPayload,
+        GetPaneInfoResponse as ProtobufGetPaneInfoResponse, GetPanePidPayload,
         GetPanePidResponse as ProtobufGetPanePidResponse, GetPaneScrollbackPayload,
         GroupAndUngroupPanesPayload, HidePaneWithIdPayload, HighlightAndUnhighlightPanesPayload,
         HttpVerb as ProtobufHttpVerb, IdAndNewName, KeyToRebind, KeyToUnbind, KillSessionsPayload,
@@ -2140,6 +2141,16 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
             Some(CommandName::CurrentSessionLastSavedTime) => {
                 Ok(PluginCommand::CurrentSessionLastSavedTime)
             },
+            Some(CommandName::GetPaneInfo) => match protobuf_plugin_command.payload {
+                Some(Payload::GetPaneInfoPayload(get_pane_info_payload)) => {
+                    let pane_id = get_pane_info_payload
+                        .pane_id
+                        .ok_or("Malformed pane_id for GetPaneInfo")
+                        .and_then(|p| p.try_into())?;
+                    Ok(PluginCommand::GetPaneInfo(pane_id))
+                },
+                _ => Err("Malformed payload for GetPaneInfo"),
+            },
             None => Err("Unrecognized plugin command"),
         }
     }
@@ -3490,6 +3501,15 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     CurrentSessionLastSavedTimePayload {},
                 )),
             }),
+            PluginCommand::GetPaneInfo(pane_id) => {
+                let protobuf_pane_id: ProtobufPaneId = pane_id.try_into()?;
+                Ok(ProtobufPluginCommand {
+                    name: CommandName::GetPaneInfo as i32,
+                    payload: Some(Payload::GetPaneInfoPayload(GetPaneInfoPayload {
+                        pane_id: Some(protobuf_pane_id),
+                    })),
+                })
+            },
         }
     }
 }

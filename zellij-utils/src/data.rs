@@ -3401,6 +3401,7 @@ pub enum PluginCommand {
     GetFocusedPaneInfo,
     SaveSession,
     CurrentSessionLastSavedTime,
+    GetPaneInfo(PaneId),
 }
 
 // Response types for plugin API methods that create tabs

@@ -77,7 +77,8 @@ use zellij_utils::{
             ProtobufDumpLayoutResponse, ProtobufDumpSessionLayoutResponse,
             ProtobufEditLayoutResponse, ProtobufFocusOrCreateTabResponse,
             ProtobufGenerateRandomNameResponse, ProtobufGetFocusedPaneInfoResponse,
-            ProtobufGetLayoutDirResponse, ProtobufGetPanePidResponse, ProtobufNewTabResponse,
+            ProtobufGetLayoutDirResponse, ProtobufGetPaneInfoResponse, ProtobufGetPanePidResponse,
+            ProtobufNewTabResponse,
             ProtobufNewTabsResponse, ProtobufOpenCommandPaneBackgroundResponse,
             ProtobufOpenCommandPaneFloatingNearPluginResponse,
             ProtobufOpenCommandPaneFloatingResponse, ProtobufOpenCommandPaneInPlaceOfPluginResponse,
@@ -160,6 +161,7 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::CurrentSessionLastSavedTime => {
                         current_session_last_saved_time(env)
                     },
+                    PluginCommand::GetPaneInfo(pane_id) => get_pane_info(env, pane_id),
                     PluginCommand::OpenFile(file_to_open, context) => {
                         open_file(env, file_to_open, context)
                     },
@@ -2893,6 +2895,71 @@ fn current_session_last_saved_time(env: &PluginEnv) {
     let _ = wasi_write_object(env, &response.encode_to_vec());
 }
 
+fn get_pane_info(env: &PluginEnv, pane_id: zellij_utils::data::PaneId) {
+    use crossbeam::channel::RecvTimeoutError;
+    use std::time::Duration;
+
+    let err_context = || {
+        format!(
+            "failed to get pane info for pane {:?} from plugin {}",
+            pane_id,
+            env.name()
+        )
+    };
+
+    // Create channel for response
+    let (response_sender, response_receiver) = crossbeam::channel::bounded(1);
+
+    // Convert from plugin PaneId to server PaneId
+    let server_pane_id: PaneId = pane_id.into();
+
+    // Send request to screen thread
+    env.senders
+        .send_to_screen(ScreenInstruction::GetPaneInfo {
+            pane_id: server_pane_id,
+            response_channel: response_sender,
+        })
+        .with_context(err_context)
+        .non_fatal();
+
+    // Block waiting for response with 100ms timeout
+    let pane_info = match response_receiver.recv_timeout(Duration::from_millis(100)) {
+        Ok(Some(pane_info)) => {
+            // Convert PaneInfo to ProtobufPaneInfo
+            match pane_info.try_into() {
+                Ok(protobuf_pane_info) => Some(protobuf_pane_info),
+                Err(e) => {
+                    log::error!(
+                        "Failed to convert PaneInfo to protobuf for pane {:?}: {}",
+                        pane_id,
+                        e
+                    );
+                    None
+                },
+            }
+        },
+        Ok(None) => None, // Pane not found
+        Err(RecvTimeoutError::Timeout) => {
+            log::error!(
+                "GetPaneInfo timed out for pane {:?} from plugin {}",
+                pane_id,
+                env.plugin_id
+            );
+            None
+        },
+        Err(RecvTimeoutError::Disconnected) => {
+            log::error!(
+                "GetPaneInfo channel disconnected for plugin {}",
+                env.plugin_id
+            );
+            None
+        },
+    };
+
+    let response = ProtobufGetPaneInfoResponse { pane_info };
+    let _ = wasi_write_object(env, &response.encode_to_vec());
+}
+
 fn list_clients(env: &PluginEnv) {
     let _ = env.senders.to_screen.as_ref().map(|sender| {
         sender.send(ScreenInstruction::ListClientsToPlugin(
@@ -4204,7 +4271,8 @@ fn check_command_permission(
         | PluginCommand::DumpLayout(..)
         | PluginCommand::ParseLayout(..)
         | PluginCommand::SaveSession
-        | PluginCommand::CurrentSessionLastSavedTime => PermissionType::ReadApplicationState,
+        | PluginCommand::CurrentSessionLastSavedTime
+        | PluginCommand::GetPaneInfo(..) => PermissionType::ReadApplicationState,
         PluginCommand::RebindKeys { .. } | PluginCommand::Reconfigure(..) => {
             PermissionType::Reconfigure
         },

@@ -3538,6 +3538,44 @@ impl Tab {
             .copied()
             .collect()
     }
+    pub fn get_pane_info(&self, pane_id: PaneId) -> Option<PaneInfo> {
+        let current_pane_group: HashMap<ClientId, Vec<PaneId>> =
+            { self.current_pane_group.borrow().clone_inner() };
+
+        // Check tiled panes
+        if let Some(pane) = self.tiled_panes.get_pane(pane_id) {
+            let mut info = pane_info_for_pane(&pane_id, pane, &current_pane_group);
+            // Note: is_focused will be false since we don't have a specific client_id context
+            // Plugins calling this API would need to compare the pane_id with their own focused pane
+            info.is_focused = false;
+            info.is_fullscreen = self.tiled_panes.fullscreen_is_active();
+            info.is_floating = false;
+            info.is_suppressed = false;
+            return Some(info);
+        }
+
+        // Check floating panes
+        if let Some(pane) = self.floating_panes.get_pane(pane_id) {
+            let mut info = pane_info_for_pane(&pane_id, pane, &current_pane_group);
+            info.is_focused = false;
+            info.is_fullscreen = false;
+            info.is_floating = true;
+            info.is_suppressed = false;
+            return Some(info);
+        }
+
+        // Check suppressed panes
+        if let Some((_previous_id, pane)) = self.suppressed_panes.get(&pane_id) {
+            let mut info = pane_info_for_pane(&pane_id, pane, &current_pane_group);
+            info.is_focused = false;
+            info.is_fullscreen = false;
+            info.is_floating = false;
+            info.is_suppressed = true;
+            return Some(info);
+        }
+
+        None
+    }
     pub fn set_pane_selectable(&mut self, id: PaneId, selectable: bool) {
         if self.is_pending {
             self.pending_instructions
