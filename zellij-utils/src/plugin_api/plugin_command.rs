@@ -6,7 +6,8 @@ pub use super::generated_api::api::{
         break_panes_to_new_tab_response, break_panes_to_tab_with_index_response,
         delete_layout_response, dump_layout_response, dump_session_layout_response,
         edit_layout_response, focus_or_create_tab_response, get_focused_pane_info_response,
-        get_pane_pid_response, new_tab_response, parse_layout_response, plugin_command::Payload,
+        get_pane_pid_response, get_pane_running_command_response, get_pane_cwd_response,
+        new_tab_response, parse_layout_response, plugin_command::Payload,
         rename_layout_response, save_layout_response, save_session_response,
         BreakPanesToNewTabPayload, BreakPanesToNewTabResponse as ProtobufBreakPanesToNewTabResponse,
         BreakPanesToTabWithIndexPayload,
@@ -33,6 +34,11 @@ pub use super::generated_api::api::{
         GetLayoutDirResponse as ProtobufGetLayoutDirResponse, GetPaneInfoPayload,
         GetPaneInfoResponse as ProtobufGetPaneInfoResponse, GetPanePidPayload,
         GetPanePidResponse as ProtobufGetPanePidResponse, GetPaneScrollbackPayload,
+        GetPaneRunningCommandPayload as ProtobufGetPaneRunningCommandPayload,
+        GetPaneRunningCommandResponse as ProtobufGetPaneRunningCommandResponse,
+        GetPaneCwdPayload as ProtobufGetPaneCwdPayload,
+        GetPaneCwdResponse as ProtobufGetPaneCwdResponse,
+        RunningCommand as ProtobufRunningCommand,
         GetTabInfoPayload, GetTabInfoResponse as ProtobufGetTabInfoResponse,
         GroupAndUngroupPanesPayload, HidePaneWithIdPayload, HighlightAndUnhighlightPanesPayload,
         HttpVerb as ProtobufHttpVerb, IdAndNewName, KeyToRebind, KeyToUnbind, KillSessionsPayload,
@@ -94,7 +100,8 @@ pub use super::generated_api::api::{
 
 use crate::data::{
     ConnectToSession, DeleteLayoutResponse, EditLayoutResponse, FloatingPaneCoordinates,
-    GetFocusedPaneInfoResponse, GetPanePidResponse, HttpVerb, InputMode, KeyWithModifier,
+    GetFocusedPaneInfoResponse, GetPanePidResponse, GetPaneRunningCommandResponse,
+    GetPaneCwdResponse, HttpVerb, InputMode, KeyWithModifier,
     MessageToPlugin, NewPluginArgs, PaneId, PermissionType, PluginCommand, RenameLayoutResponse,
     SaveLayoutResponse,
 };
@@ -279,6 +286,48 @@ impl From<GetPanePidResponse> for ProtobufGetPanePidResponse {
             },
             GetPanePidResponse::Err(error) => ProtobufGetPanePidResponse {
                 result: Some(get_pane_pid_response::Result::Error(error)),
+            },
+        }
+    }
+}
+
+impl From<GetPaneRunningCommandResponse> for ProtobufGetPaneRunningCommandResponse {
+    fn from(response: GetPaneRunningCommandResponse) -> Self {
+        match response {
+            GetPaneRunningCommandResponse::Ok(args) => {
+                ProtobufGetPaneRunningCommandResponse {
+                    result: Some(
+                        get_pane_running_command_response::Result::Command(
+                            ProtobufRunningCommand { args }
+                        )
+                    ),
+                }
+            },
+            GetPaneRunningCommandResponse::Err(err) => {
+                ProtobufGetPaneRunningCommandResponse {
+                    result: Some(get_pane_running_command_response::Result::Error(err)),
+                }
+            },
+        }
+    }
+}
+
+impl From<GetPaneCwdResponse> for ProtobufGetPaneCwdResponse {
+    fn from(response: GetPaneCwdResponse) -> Self {
+        match response {
+            GetPaneCwdResponse::Ok(path) => {
+                let cwd_string = path
+                    .to_str()
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| String::from(""));
+                ProtobufGetPaneCwdResponse {
+                    result: Some(get_pane_cwd_response::Result::Cwd(cwd_string)),
+                }
+            },
+            GetPaneCwdResponse::Err(err) => {
+                ProtobufGetPaneCwdResponse {
+                    result: Some(get_pane_cwd_response::Result::Error(err)),
+                }
             },
         }
     }
@@ -1405,6 +1454,26 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                     }
                 },
                 _ => Err("Mismatched payload for GetPanePid"),
+            },
+            Some(CommandName::GetPaneRunningCommand) => match protobuf_plugin_command.payload {
+                Some(Payload::GetPaneRunningCommandPayload(payload)) => {
+                    Ok(PluginCommand::GetPaneRunningCommand {
+                        pane_id: payload.pane_id
+                            .ok_or("Malformed GetPaneRunningCommand: missing pane_id")?
+                            .try_into()?,
+                    })
+                },
+                _ => Err("Malformed GetPaneRunningCommand payload"),
+            },
+            Some(CommandName::GetPaneCwd) => match protobuf_plugin_command.payload {
+                Some(Payload::GetPaneCwdPayload(payload)) => {
+                    Ok(PluginCommand::GetPaneCwd {
+                        pane_id: payload.pane_id
+                            .ok_or("Malformed GetPaneCwd: missing pane_id")?
+                            .try_into()?,
+                    })
+                },
+                _ => Err("Malformed GetPaneCwd payload"),
             },
             Some(CommandName::OverrideLayout) => match protobuf_plugin_command.payload {
                 Some(Payload::OverrideLayoutPayload(override_layout_payload)) => {
@@ -2862,6 +2931,22 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                 payload: Some(Payload::GetPanePidPayload(GetPanePidPayload {
                     pane_id: Some(pane_id.try_into()?),
                 })),
+            }),
+            PluginCommand::GetPaneRunningCommand { pane_id } => Ok(ProtobufPluginCommand {
+                name: CommandName::GetPaneRunningCommand as i32,
+                payload: Some(Payload::GetPaneRunningCommandPayload(
+                    ProtobufGetPaneRunningCommandPayload {
+                        pane_id: Some(pane_id.try_into()?),
+                    },
+                )),
+            }),
+            PluginCommand::GetPaneCwd { pane_id } => Ok(ProtobufPluginCommand {
+                name: CommandName::GetPaneCwd as i32,
+                payload: Some(Payload::GetPaneCwdPayload(
+                    ProtobufGetPaneCwdPayload {
+                        pane_id: Some(pane_id.try_into()?),
+                    },
+                )),
             }),
             PluginCommand::OverrideLayout(
                 layout_info,

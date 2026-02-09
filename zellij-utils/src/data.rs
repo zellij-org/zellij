@@ -2462,6 +2462,18 @@ pub enum GetPanePidResponse {
     Err(String),
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum GetPaneRunningCommandResponse {
+    Ok(Vec<String>),
+    Err(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum GetPaneCwdResponse {
+    Ok(PathBuf),
+    Err(String),
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum GetFocusedPaneInfoResponse {
     Ok { tab_index: usize, pane_id: PaneId },
@@ -3298,6 +3310,12 @@ pub enum PluginCommand {
     SendSigintToPaneId(PaneId),
     SendSigkillToPaneId(PaneId),
     GetPanePid {
+        pane_id: PaneId,
+    },
+    GetPaneRunningCommand {
+        pane_id: PaneId,
+    },
+    GetPaneCwd {
         pane_id: PaneId,
     },
     MovePaneWithPaneId(PaneId),

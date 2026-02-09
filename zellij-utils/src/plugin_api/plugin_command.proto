@@ -182,6 +182,8 @@ enum CommandName {
   CurrentSessionLastSavedTime = 187;
   GetPaneInfo = 188;
   GetTabInfo = 189;
+  GetPaneRunningCommand = 190;
+  GetPaneCwd = 191;
 }
 
 message PluginCommand {
@@ -313,6 +315,8 @@ message PluginCommand {
     CurrentSessionLastSavedTimePayload current_session_last_saved_time_payload = 138;
     GetPaneInfoPayload get_pane_info_payload = 139;
     GetTabInfoPayload get_tab_info_payload = 140;
+    GetPaneRunningCommandPayload get_pane_running_command_payload = 141;
+    GetPaneCwdPayload get_pane_cwd_payload = 142;
   }
 }
 
@@ -799,6 +803,32 @@ message GetPanePidPayload {
 message GetPanePidResponse {
   oneof result {
     int32 pid = 1;
+    string error = 2;
+  }
+}
+
+message GetPaneRunningCommandPayload {
+  PaneId pane_id = 1;
+}
+
+message GetPaneRunningCommandResponse {
+  oneof result {
+    RunningCommand command = 1;
+    string error = 2;
+  }
+}
+
+message RunningCommand {
+  repeated string args = 1;
+}
+
+message GetPaneCwdPayload {
+  PaneId pane_id = 1;
+}
+
+message GetPaneCwdResponse {
+  oneof result {
+    string cwd = 1;
     string error = 2;
   }
 }

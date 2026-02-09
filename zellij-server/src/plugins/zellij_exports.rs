@@ -23,7 +23,8 @@ use wasmi::{Caller, Linker};
 use zellij_utils::data::{
     BreakPanesToNewTabResponse, BreakPanesToTabWithIndexResponse, CommandType, ConnectToSession,
     DeleteLayoutResponse, EditLayoutResponse, Event, FocusOrCreateTabResponse,
-    FloatingPaneCoordinates, GetFocusedPaneInfoResponse, GetPanePidResponse, HttpVerb,
+    FloatingPaneCoordinates, GetFocusedPaneInfoResponse, GetPanePidResponse,
+    GetPaneRunningCommandResponse, GetPaneCwdResponse, HttpVerb,
     KeyWithModifier, LayoutInfo, LayoutMetadata, LayoutParsingError, MessageToPlugin,
     NewPanePlacement, NewTabResponse, NewTabsResponse, OpenCommandPaneBackgroundResponse,
     OpenCommandPaneFloatingNearPluginResponse, OpenCommandPaneFloatingResponse,
@@ -78,6 +79,7 @@ use zellij_utils::{
             ProtobufEditLayoutResponse, ProtobufFocusOrCreateTabResponse,
             ProtobufGenerateRandomNameResponse, ProtobufGetFocusedPaneInfoResponse,
             ProtobufGetLayoutDirResponse, ProtobufGetPaneInfoResponse, ProtobufGetPanePidResponse,
+            ProtobufGetPaneRunningCommandResponse, ProtobufGetPaneCwdResponse,
             ProtobufGetTabInfoResponse, ProtobufNewTabResponse,
             ProtobufNewTabsResponse, ProtobufOpenCommandPaneBackgroundResponse,
             ProtobufOpenCommandPaneFloatingNearPluginResponse,
@@ -458,6 +460,10 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                         send_sigkill_to_pane_id(env, pane_id.into())
                     },
                     PluginCommand::GetPanePid { pane_id } => get_pane_pid(env, pane_id.into()),
+                    PluginCommand::GetPaneRunningCommand { pane_id } => {
+                        get_pane_running_command(env, pane_id.into())
+                    },
+                    PluginCommand::GetPaneCwd { pane_id } => get_pane_cwd(env, pane_id.into()),
                     PluginCommand::MovePaneWithPaneId(pane_id) => {
                         move_pane_with_pane_id(env, pane_id.into())
                     },
@@ -3327,6 +3333,110 @@ fn get_pane_pid(env: &PluginEnv, pane_id: PaneId) {
         .non_fatal();
 }
 
+fn get_pane_running_command(env: &PluginEnv, pane_id: PaneId) {
+    use crossbeam::channel::RecvTimeoutError;
+    use std::time::Duration;
+
+    let err_context = || format!("Failed to get running command for pane {:?}", pane_id);
+
+    let (response_sender, response_receiver) = crossbeam::channel::bounded(1);
+
+    // Send request to PTY thread
+    env.senders
+        .send_to_pty(PtyInstruction::GetPaneRunningCommand {
+            pane_id,
+            response_channel: response_sender,
+        })
+        .with_context(err_context)
+        .non_fatal();
+
+    // Wait for response with timeout
+    let response = match response_receiver.recv_timeout(Duration::from_millis(100)) {
+        Ok(response) => response,
+        Err(RecvTimeoutError::Timeout) => {
+            log::error!(
+                "GetPaneRunningCommand timed out for plugin {} requesting pane {:?}",
+                env.plugin_id,
+                pane_id
+            );
+            GetPaneRunningCommandResponse::Err(format!(
+                "Timeout retrieving running command for pane {:?}",
+                pane_id
+            ))
+        },
+        Err(RecvTimeoutError::Disconnected) => {
+            log::error!(
+                "GetPaneRunningCommand channel disconnected for plugin {} requesting pane {:?}",
+                env.plugin_id,
+                pane_id
+            );
+            GetPaneRunningCommandResponse::Err(format!(
+                "Channel disconnected while retrieving running command for pane {:?}",
+                pane_id
+            ))
+        },
+    };
+
+    // Encode response and write to plugin's stdin
+    let protobuf_response = ProtobufGetPaneRunningCommandResponse::from(response);
+    let serialized = protobuf_response.encode_to_vec();
+    wasi_write_object(env, &serialized)
+        .with_context(err_context)
+        .non_fatal();
+}
+
+fn get_pane_cwd(env: &PluginEnv, pane_id: PaneId) {
+    use crossbeam::channel::RecvTimeoutError;
+    use std::time::Duration;
+
+    let err_context = || format!("Failed to get CWD for pane {:?}", pane_id);
+
+    let (response_sender, response_receiver) = crossbeam::channel::bounded(1);
+
+    // Send request to PTY thread
+    env.senders
+        .send_to_pty(PtyInstruction::GetPaneCwd {
+            pane_id,
+            response_channel: response_sender,
+        })
+        .with_context(err_context)
+        .non_fatal();
+
+    // Wait for response with timeout
+    let response = match response_receiver.recv_timeout(Duration::from_millis(100)) {
+        Ok(response) => response,
+        Err(RecvTimeoutError::Timeout) => {
+            log::error!(
+                "GetPaneCwd timed out for plugin {} requesting pane {:?}",
+                env.plugin_id,
+                pane_id
+            );
+            GetPaneCwdResponse::Err(format!(
+                "Timeout retrieving CWD for pane {:?}",
+                pane_id
+            ))
+        },
+        Err(RecvTimeoutError::Disconnected) => {
+            log::error!(
+                "GetPaneCwd channel disconnected for plugin {} requesting pane {:?}",
+                env.plugin_id,
+                pane_id
+            );
+            GetPaneCwdResponse::Err(format!(
+                "Channel disconnected while retrieving CWD for pane {:?}",
+                pane_id
+            ))
+        },
+    };
+
+    // Encode response and write to plugin's stdin
+    let protobuf_response = ProtobufGetPaneCwdResponse::from(response);
+    let serialized = protobuf_response.encode_to_vec();
+    wasi_write_object(env, &serialized)
+        .with_context(err_context)
+        .non_fatal();
+}
+
 fn save_layout(env: &PluginEnv, layout_name: String, layout_kdl: String, overwrite: bool) {
     let err_context = || format!("Failed to save layout '{}'", layout_name);
 
@@ -4328,6 +4438,8 @@ fn check_command_permission(
         PluginCommand::ListClients
         | PluginCommand::DumpSessionLayout { .. }
         | PluginCommand::GetPanePid { .. }
+        | PluginCommand::GetPaneRunningCommand { .. }
+        | PluginCommand::GetPaneCwd { .. }
         | PluginCommand::GenerateRandomName
         | PluginCommand::GetLayoutDir
         | PluginCommand::GetFocusedPaneInfo

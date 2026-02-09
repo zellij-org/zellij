@@ -19,7 +19,8 @@ use std::sync::Arc;
 use std::{collections::HashMap, os::unix::io::RawFd, path::PathBuf};
 use zellij_utils::{
     data::{
-        CommandOrPlugin, Event, FloatingPaneCoordinates, GetPanePidResponse, NewPanePlacement,
+        CommandOrPlugin, Event, FloatingPaneCoordinates, GetPanePidResponse,
+        GetPaneRunningCommandResponse, GetPaneCwdResponse, NewPanePlacement,
         OriginatingPlugin, SessionInfo,
     },
     errors::prelude::*,
@@ -146,6 +147,14 @@ pub enum PtyInstruction {
         pane_id: PaneId,
         response_channel: crossbeam::channel::Sender<GetPanePidResponse>,
     },
+    GetPaneRunningCommand {
+        pane_id: PaneId,
+        response_channel: crossbeam::channel::Sender<GetPaneRunningCommandResponse>,
+    },
+    GetPaneCwd {
+        pane_id: PaneId,
+        response_channel: crossbeam::channel::Sender<GetPaneCwdResponse>,
+    },
     UpdateAndReportCwds,
     Exit,
 }
@@ -176,6 +185,8 @@ impl From<&PtyInstruction> for PtyContext {
             PtyInstruction::SendSigintToPaneId(..) => PtyContext::SendSigintToPaneId,
             PtyInstruction::SendSigkillToPaneId(..) => PtyContext::SendSigkillToPaneId,
             PtyInstruction::GetPanePid { .. } => PtyContext::GetPanePid,
+            PtyInstruction::GetPaneRunningCommand { .. } => PtyContext::GetPaneRunningCommand,
+            PtyInstruction::GetPaneCwd { .. } => PtyContext::GetPaneCwd,
             PtyInstruction::UpdateAndReportCwds => PtyContext::UpdateAndReportCwds,
             PtyInstruction::Exit => PtyContext::Exit,
         }
@@ -852,6 +863,20 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                 response_channel,
             } => {
                 let response = pty.get_pane_pid(pane_id);
+                let _ = response_channel.send(response);
+            },
+            PtyInstruction::GetPaneRunningCommand {
+                pane_id,
+                response_channel,
+            } => {
+                let response = pty.get_pane_running_command(pane_id);
+                let _ = response_channel.send(response);
+            },
+            PtyInstruction::GetPaneCwd {
+                pane_id,
+                response_channel,
+            } => {
+                let response = pty.get_pane_cwd(pane_id);
                 let _ = response_channel.send(response);
             },
             PtyInstruction::UpdateAndReportCwds => {
@@ -2083,6 +2108,85 @@ impl Pty {
             },
             PaneId::Plugin(plugin_id) => {
                 GetPanePidResponse::Err(format!("Cannot get PID for plugin pane {}", plugin_id))
+            },
+        }
+    }
+    pub fn get_pane_running_command(&self, pane_id: PaneId) -> GetPaneRunningCommandResponse {
+        match pane_id {
+            PaneId::Terminal(terminal_id) => {
+                if let Some(&child_pid) = self.id_to_child_pid.get(&terminal_id) {
+                    // Query OS for current running command
+                    let pid = Pid::from_raw(child_pid);
+                    if let Some(os_input) = self.bus.os_input.as_ref() {
+                        // First, try to get child process command (e.g., nvim running in bash)
+                        let ppids_to_cmds = os_input.get_all_cmds_by_ppid(&self.post_command_discovery_hook);
+                        let cmd_ps = ppids_to_cmds.get(&format!("{}", child_pid));
+
+                        // If no child process, fall back to parent process (e.g., the shell itself)
+                        let (_cwds, cmds) = os_input.get_cwds(vec![pid]);
+                        let cmd_sysinfo = cmds.get(&pid);
+
+                        if let Some(command_args) = cmd_ps {
+                            GetPaneRunningCommandResponse::Ok(command_args.clone())
+                        } else if let Some(command_args) = cmd_sysinfo {
+                            GetPaneRunningCommandResponse::Ok(command_args.clone())
+                        } else {
+                            GetPaneRunningCommandResponse::Err(format!(
+                                "Could not retrieve running command for terminal pane {}",
+                                terminal_id
+                            ))
+                        }
+                    } else {
+                        GetPaneRunningCommandResponse::Err(
+                            "OS input not available".to_string()
+                        )
+                    }
+                } else {
+                    GetPaneRunningCommandResponse::Err(format!(
+                        "Terminal pane {} not found or not running",
+                        terminal_id
+                    ))
+                }
+            },
+            PaneId::Plugin(plugin_id) => {
+                GetPaneRunningCommandResponse::Err(format!(
+                    "Cannot get running command for plugin pane {}",
+                    plugin_id
+                ))
+            },
+        }
+    }
+    pub fn get_pane_cwd(&self, pane_id: PaneId) -> GetPaneCwdResponse {
+        match pane_id {
+            PaneId::Terminal(terminal_id) => {
+                if let Some(&child_pid) = self.id_to_child_pid.get(&terminal_id) {
+                    // Query OS for current working directory
+                    let pid = Pid::from_raw(child_pid);
+                    if let Some(os_input) = self.bus.os_input.as_ref() {
+                        let (cwds, _cmds) = os_input.get_cwds(vec![pid]);
+                        if let Some(cwd) = cwds.get(&pid) {
+                            GetPaneCwdResponse::Ok(cwd.clone())
+                        } else {
+                            GetPaneCwdResponse::Err(format!(
+                                "Could not retrieve CWD for terminal pane {}",
+                                terminal_id
+                            ))
+                        }
+                    } else {
+                        GetPaneCwdResponse::Err("OS input not available".to_string())
+                    }
+                } else {
+                    GetPaneCwdResponse::Err(format!(
+                        "Terminal pane {} not found or not running",
+                        terminal_id
+                    ))
+                }
+            },
+            PaneId::Plugin(plugin_id) => {
+                GetPaneCwdResponse::Err(format!(
+                    "Cannot get CWD for plugin pane {}",
+                    plugin_id
+                ))
             },
         }
     }

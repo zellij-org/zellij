@@ -12,13 +12,15 @@ use zellij_utils::plugin_api::event::ProtobufPaneScrollbackResponse;
 use zellij_utils::plugin_api::generated_api::api::plugin_command::save_session_response;
 use zellij_utils::plugin_api::plugin_command::{
     dump_layout_response, dump_session_layout_response, get_focused_pane_info_response,
+    get_pane_running_command_response, get_pane_cwd_response,
     parse_layout_response, CreateTokenResponse, ListTokensResponse,
     ProtobufBreakPanesToNewTabResponse, ProtobufBreakPanesToTabWithIndexResponse,
     ProtobufCurrentSessionLastSavedTimeResponse, ProtobufDeleteLayoutResponse,
     ProtobufDumpLayoutResponse, ProtobufDumpSessionLayoutResponse, ProtobufEditLayoutResponse,
     ProtobufFocusOrCreateTabResponse, ProtobufGenerateRandomNameResponse,
     ProtobufGetFocusedPaneInfoResponse, ProtobufGetLayoutDirResponse, ProtobufGetPaneInfoResponse,
-    ProtobufGetPanePidResponse, ProtobufGetTabInfoResponse, ProtobufNewTabResponse,
+    ProtobufGetPanePidResponse, ProtobufGetPaneRunningCommandResponse, ProtobufGetPaneCwdResponse,
+    ProtobufGetTabInfoResponse, ProtobufNewTabResponse,
     ProtobufNewTabsResponse, ProtobufOpenCommandPaneBackgroundResponse,
     ProtobufOpenCommandPaneFloatingNearPluginResponse, ProtobufOpenCommandPaneFloatingResponse,
     ProtobufOpenCommandPaneInPlaceOfPluginResponse, ProtobufOpenCommandPaneInPlaceResponse,
@@ -1635,6 +1637,104 @@ pub fn get_pane_pid(pane_id: PaneId) -> Result<i32, String> {
     match response {
         GetPanePidResponse::Ok(pid) => Ok(pid),
         GetPanePidResponse::Err(error_msg) => Err(error_msg),
+    }
+}
+
+/// Gets the current running command for a specific pane by its ID.
+///
+/// This queries the operating system for the **current** running command,
+/// not the initial command used to launch the pane. The command is returned
+/// as a vector of strings (argv-style), where the first element is the
+/// executable and subsequent elements are arguments.
+///
+/// # Arguments
+/// * `pane_id` - The ID of the pane to query
+///
+/// # Returns
+/// * `Ok(Vec<String>)` - The command and arguments as separate strings
+/// * `Err(String)` - Error message if:
+///   - Pane is a plugin (only terminal panes have commands)
+///   - Pane doesn't exist
+///   - OS query failed
+///
+/// # Permissions Required
+/// * `ReadApplicationState`
+///
+/// # Example
+/// ```no_run
+/// use zellij_tile::prelude::*;
+///
+/// let pane_id = PaneId::Terminal(1);
+/// match get_pane_running_command(pane_id) {
+///     Ok(cmd) => eprintln!("Running: {} {}", cmd[0], cmd[1..].join(" ")),
+///     Err(e) => eprintln!("Error: {}", e),
+/// }
+/// ```
+pub fn get_pane_running_command(pane_id: PaneId) -> Result<Vec<String>, String> {
+    let plugin_command = PluginCommand::GetPaneRunningCommand { pane_id };
+    let protobuf_plugin_command: ProtobufPluginCommand =
+        plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+
+    let protobuf_response = ProtobufGetPaneRunningCommandResponse::decode(
+        bytes_from_stdin().unwrap().as_slice(),
+    )
+    .unwrap();
+
+    match protobuf_response.result {
+        Some(get_pane_running_command_response::Result::Command(cmd)) => Ok(cmd.args),
+        Some(get_pane_running_command_response::Result::Error(err)) => Err(err),
+        None => Err("Empty response from server".to_string()),
+    }
+}
+
+/// Gets the current working directory for a specific pane by its ID.
+///
+/// This queries the operating system for the **current** working directory
+/// of the process running in the pane. The CWD may change as the user
+/// navigates directories within the terminal.
+///
+/// # Arguments
+/// * `pane_id` - The ID of the pane to query
+///
+/// # Returns
+/// * `Ok(PathBuf)` - The current working directory
+/// * `Err(String)` - Error message if:
+///   - Pane is a plugin (only terminal panes have CWDs)
+///   - Pane doesn't exist
+///   - OS query failed (process may have exited)
+///   - CWD is inaccessible (permissions, deleted directory)
+///
+/// # Permissions Required
+/// * `ReadApplicationState`
+///
+/// # Example
+/// ```no_run
+/// use zellij_tile::prelude::*;
+///
+/// let pane_id = PaneId::Terminal(1);
+/// match get_pane_cwd(pane_id) {
+///     Ok(cwd) => eprintln!("CWD: {}", cwd.display()),
+///     Err(e) => eprintln!("Error: {}", e),
+/// }
+/// ```
+pub fn get_pane_cwd(pane_id: PaneId) -> Result<PathBuf, String> {
+    let plugin_command = PluginCommand::GetPaneCwd { pane_id };
+    let protobuf_plugin_command: ProtobufPluginCommand =
+        plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+
+    let protobuf_response =
+        ProtobufGetPaneCwdResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
+
+    match protobuf_response.result {
+        Some(get_pane_cwd_response::Result::Cwd(cwd_str)) => {
+            Ok(PathBuf::from(cwd_str))
+        },
+        Some(get_pane_cwd_response::Result::Error(err)) => Err(err),
+        None => Err("Empty response from server".to_string()),
     }
 }
 
