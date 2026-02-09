@@ -1099,6 +1099,34 @@ tail -f /tmp/my-live-logfile | zellij action pipe --name logs --plugin https://e
         plugin_title: Option<String>,
     },
     ListClients,
+    /// List all panes in the current session
+    ///
+    /// Returns: Formatted list of panes (table or JSON) to stdout
+    ListPanes {
+        /// Include tab information (name, position, ID)
+        #[clap(short, long, value_parser)]
+        tab: bool,
+
+        /// Include running command information
+        #[clap(short, long, value_parser)]
+        command: bool,
+
+        /// Include pane state (focused, floating, exited, etc.)
+        #[clap(short, long, value_parser)]
+        state: bool,
+
+        /// Include geometry (position, size)
+        #[clap(short, long, value_parser)]
+        geometry: bool,
+
+        /// Include all available fields
+        #[clap(short, long, value_parser)]
+        all: bool,
+
+        /// Output as JSON
+        #[clap(short, long, value_parser)]
+        json: bool,
+    },
     TogglePanePinned,
     /// Stack pane ids
     /// Ids are a space separated list of pane ids.

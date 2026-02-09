@@ -2255,6 +2255,22 @@ pub struct PaneInfo {
     /// the index is kept track of in order to preserve the pane group order
     pub index_in_pane_group: BTreeMap<ClientId, usize>,
 }
+
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+pub struct PaneListEntry {
+    #[serde(flatten)]
+    pub pane_info: PaneInfo,
+    pub tab_id: usize,
+    pub tab_position: usize,
+    pub tab_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pane_command: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pane_cwd: Option<String>,
+}
+
+pub type ListPanesResponse = Vec<PaneListEntry>;
+
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct ClientInfo {
     pub client_id: ClientId,

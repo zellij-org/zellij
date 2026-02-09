@@ -457,6 +457,14 @@ pub enum Action {
         pane_title: Option<String>,
     },
     ListClients,
+    ListPanes {
+        show_tab: bool,
+        show_command: bool,
+        show_state: bool,
+        show_geometry: bool,
+        show_all: bool,
+        output_json: bool,
+    },
     TogglePanePinned,
     StackPanes {
         pane_ids: Vec<PaneId>,
@@ -1212,6 +1220,16 @@ impl Action {
                 }])
             },
             CliAction::ListClients => Ok(vec![Action::ListClients]),
+            CliAction::ListPanes { tab, command, state, geometry, all, json } => {
+                Ok(vec![Action::ListPanes {
+                    show_tab: tab,
+                    show_command: command,
+                    show_state: state,
+                    show_geometry: geometry,
+                    show_all: all,
+                    output_json: json,
+                }])
+            },
             CliAction::TogglePanePinned => Ok(vec![Action::TogglePanePinned]),
             CliAction::StackPanes { pane_ids } => {
                 let mut malformed_ids = vec![];

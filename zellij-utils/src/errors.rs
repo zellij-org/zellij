@@ -358,6 +358,7 @@ pub enum ScreenContext {
     GetPaneInfo,
     GetTabInfo,
     ListClientsMetadata,
+    ListPanes,
     Reconfigure,
     RerunCommandPane,
     ResizePaneWithId,

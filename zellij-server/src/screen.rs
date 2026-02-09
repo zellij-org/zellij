@@ -41,9 +41,9 @@ use crate::route::NotificationEnd;
 use log::{debug, warn};
 use zellij_utils::data::{
     CommandOrPlugin, Direction, FloatingPaneCoordinates, GetFocusedPaneInfoResponse,
-    KeyWithModifier, LayoutInfo, NewPanePlacement, PaneContents, PaneInfo, PaneManifest,
-    PaneScrollbackResponse, PluginPermission, Resize, ResizeStrategy, SessionInfo, Styling,
-    WebSharing,
+    KeyWithModifier, LayoutInfo, ListPanesResponse, NewPanePlacement, PaneContents, PaneInfo,
+    PaneListEntry, PaneManifest, PaneScrollbackResponse, PluginPermission, Resize, ResizeStrategy,
+    SessionInfo, Styling, WebSharing,
 };
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
@@ -538,6 +538,10 @@ pub enum ScreenInstruction {
     SerializeLayoutForResurrection,
     RenameSession(String, ClientId, Option<NotificationEnd>), // String -> new name
     ListClientsMetadata(Option<PathBuf>, ClientId, Option<NotificationEnd>), // Option<PathBuf> - default shell
+    ListPanes {
+        show_all: bool,
+        response_channel: crossbeam::channel::Sender<ListPanesResponse>,
+    },
     Reconfigure {
         client_id: ClientId,
         keybinds: Keybinds,
@@ -800,6 +804,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             },
             ScreenInstruction::RenameSession(..) => ScreenContext::RenameSession,
             ScreenInstruction::ListClientsMetadata(..) => ScreenContext::ListClientsMetadata,
+            ScreenInstruction::ListPanes { .. } => ScreenContext::ListPanes,
             ScreenInstruction::Reconfigure { .. } => ScreenContext::Reconfigure,
             ScreenInstruction::RerunCommandPane { .. } => ScreenContext::RerunCommandPane,
             ScreenInstruction::ResizePaneWithId(..) => ScreenContext::ResizePaneWithId,
@@ -2254,6 +2259,43 @@ impl Screen {
 
         Ok(pane_manifest)
     }
+
+    fn collect_pane_list(&self, show_all: bool) -> Result<ListPanesResponse> {
+        fn should_include_pane(pane_info: &PaneInfo, show_all: bool) -> bool {
+            pane_info.is_selectable || show_all
+        }
+
+        fn create_pane_list_entry(pane_info: PaneInfo, tab: &crate::tab::Tab) -> PaneListEntry {
+            PaneListEntry {
+                pane_info,
+                tab_id: tab.id,
+                tab_position: tab.position,
+                tab_name: tab.name.clone(),
+                pane_command: None,
+                pane_cwd: None,
+            }
+        }
+
+        fn sort_panes_by_tab_and_type(pane_entries: &mut [PaneListEntry]) {
+            pane_entries.sort_by_key(|e| (e.tab_position, !e.pane_info.is_plugin, e.pane_info.id));
+        }
+
+        let mut pane_entries = Vec::new();
+
+        for tab in self.tabs.values() {
+            let pane_infos = tab.pane_infos();
+
+            for pane_info in pane_infos {
+                if should_include_pane(&pane_info, show_all) {
+                    pane_entries.push(create_pane_list_entry(pane_info, tab));
+                }
+            }
+        }
+
+        sort_panes_by_tab_and_type(&mut pane_entries);
+        Ok(pane_entries)
+    }
+
     fn log_and_report_session_state(&mut self, skip_querying_layouts: bool) -> Result<()> {
         let err_context = || format!("Failed to log and report session state");
 
@@ -4510,6 +4552,14 @@ pub(crate) fn screen_thread_main(
                     ))
                     .with_context(err_context)?;
             },
+            ScreenInstruction::ListPanes {
+                show_all,
+                response_channel,
+            } => {
+                let err_context = || "Failed to list panes";
+                let pane_entries = screen.collect_pane_list(show_all).with_context(err_context)?;
+                let _ = response_channel.send(pane_entries);
+            }
             ScreenInstruction::DumpLayoutToPlugin {
                 plugin_id,
                 tab_index,
