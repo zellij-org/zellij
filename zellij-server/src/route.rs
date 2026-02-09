@@ -1621,6 +1621,19 @@ pub(crate) fn route_action(
             }
         }
     }
+    // Return pane ID to CLI clients as plain text
+    if let Some(pane_id) = result.affected_pane_id {
+        if let Some(cli_client_id) = cli_client_id {
+            if let Some(ref os_input) = os_input {
+                let _ = os_input.send_to_client(
+                    cli_client_id,
+                    ServerToClientMsg::Log {
+                        lines: vec![pane_id.to_string()],
+                    },
+                );
+            }
+        }
+    }
     Ok((should_break, Some(result)))
 }
 

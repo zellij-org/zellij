@@ -2690,6 +2690,15 @@ impl FromStr for PaneId {
     }
 }
 
+impl std::fmt::Display for PaneId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PaneId::Terminal(id) => write!(f, "terminal_{}", id),
+            PaneId::Plugin(id) => write!(f, "plugin_{}", id),
+        }
+    }
+}
+
 impl MessageToPlugin {
     pub fn new(message_name: impl Into<String>) -> Self {
         MessageToPlugin {

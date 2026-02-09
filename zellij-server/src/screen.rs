@@ -2699,6 +2699,7 @@ impl Screen {
         move_to_focused_tab: bool,
         should_be_in_place: bool,
         client_id: ClientId,
+        completion_tx: &mut Option<NotificationEnd>,
     ) -> Result<bool> {
         // true => found and focused, false => not
         let err_context = || format!("failed to focus_plugin_pane");
@@ -2738,6 +2739,10 @@ impl Screen {
                     Some(client_id),
                 )?;
             }
+            // Set affected pane ID for CLI client output
+            if let Some(ref mut completion) = completion_tx {
+                completion.set_affected_pane_id(pane_id);
+            }
             return Ok(true);
         }
         match tab_index_and_plugin_pane_id {
@@ -2750,6 +2755,10 @@ impl Screen {
                     .context("failed to focus plugin pane")?;
                 self.log_and_report_session_state(false)
                     .with_context(err_context)?;
+                // Set affected pane ID for CLI client output
+                if let Some(ref mut completion) = completion_tx {
+                    completion.set_affected_pane_id(plugin_pane_id);
+                }
                 Ok(true)
             },
             None => Ok(false),
@@ -5823,7 +5832,7 @@ pub(crate) fn screen_thread_main(
                 floating_pane_coordinates,
                 should_focus_plugin,
                 client_id,
-                completion_tx,
+                mut completion_tx,
             ) => {
                 let close_replaced_pane = false; // TODO: support this
                 let mut new_pane_placement = NewPanePlacement::default();
@@ -5874,6 +5883,11 @@ pub(crate) fn screen_thread_main(
                     )
                 });
                 let run_plugin = Run::Plugin(run_plugin_or_alias);
+
+                // Set affected pane ID for CLI client output
+                if let Some(ref mut completion) = completion_tx {
+                    completion.set_affected_pane_id(PaneId::Plugin(plugin_id));
+                }
 
                 let close_replaced_pane = false;
                 if should_be_in_place {
@@ -5981,7 +5995,7 @@ pub(crate) fn screen_thread_main(
                 pane_id_to_replace,
                 skip_cache,
                 client_id,
-                completion_tx,
+                mut completion_tx,
             ) => match pane_id_to_replace {
                 Some(pane_id_to_replace) if should_open_in_place => {
                     match screen.active_tab_ids.values().next() {
@@ -6033,6 +6047,7 @@ pub(crate) fn screen_thread_main(
                                 move_to_focused_tab,
                                 should_open_in_place,
                                 client_id,
+                                &mut completion_tx,
                             )? {
                                 screen.render(None)?;
                                 screen.log_and_report_session_state(false)?;
