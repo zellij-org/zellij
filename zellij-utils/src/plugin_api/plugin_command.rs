@@ -6,17 +6,17 @@ pub use super::generated_api::api::{
         break_panes_to_new_tab_response, break_panes_to_tab_with_index_response,
         delete_layout_response, dump_layout_response, dump_session_layout_response,
         edit_layout_response, focus_or_create_tab_response, get_focused_pane_info_response,
-        get_pane_pid_response, get_pane_running_command_response, get_pane_cwd_response,
-        new_tab_response, parse_layout_response, plugin_command::Payload,
-        rename_layout_response, save_layout_response, save_session_response,
-        BreakPanesToNewTabPayload, BreakPanesToNewTabResponse as ProtobufBreakPanesToNewTabResponse,
+        get_pane_cwd_response, get_pane_pid_response, get_pane_running_command_response,
+        new_tab_response, parse_layout_response, plugin_command::Payload, rename_layout_response,
+        save_layout_response, save_session_response, BreakPanesToNewTabPayload,
+        BreakPanesToNewTabResponse as ProtobufBreakPanesToNewTabResponse,
         BreakPanesToTabWithIndexPayload,
         BreakPanesToTabWithIndexResponse as ProtobufBreakPanesToTabWithIndexResponse,
-        ChangeFloatingPanesCoordinatesPayload,
-        ChangeHostFolderPayload, ClearScreenForPaneIdPayload, CliPipeOutputPayload,
-        CloseMultiplePanesPayload, CloseTabWithIndexPayload, CommandName, ContextItem,
-        CopyToClipboardPayload, CreateTokenResponse as ProtobufCreateTokenResponse,
-        CreateTokenResponse, CurrentSessionLastSavedTimePayload,
+        ChangeFloatingPanesCoordinatesPayload, ChangeHostFolderPayload,
+        ClearScreenForPaneIdPayload, CliPipeOutputPayload, CloseMultiplePanesPayload,
+        CloseTabWithIndexPayload, CommandName, ContextItem, CopyToClipboardPayload,
+        CreateTokenResponse as ProtobufCreateTokenResponse, CreateTokenResponse,
+        CurrentSessionLastSavedTimePayload,
         CurrentSessionLastSavedTimeResponse as ProtobufCurrentSessionLastSavedTimeResponse,
         CursorPosition, DeleteLayoutPayload, DeleteLayoutResponse as ProtobufDeleteLayoutResponse,
         DumpLayoutPayload, DumpLayoutResponse as ProtobufDumpLayoutResponse,
@@ -31,22 +31,21 @@ pub use super::generated_api::api::{
         GenerateRandomNameResponse as ProtobufGenerateRandomNameResponse,
         GenerateWebLoginTokenPayload, GetFocusedPaneInfoPayload,
         GetFocusedPaneInfoResponse as ProtobufGetFocusedPaneInfoResponse, GetLayoutDirPayload,
-        GetLayoutDirResponse as ProtobufGetLayoutDirResponse, GetPaneInfoPayload,
+        GetLayoutDirResponse as ProtobufGetLayoutDirResponse,
+        GetPaneCwdPayload as ProtobufGetPaneCwdPayload,
+        GetPaneCwdResponse as ProtobufGetPaneCwdResponse, GetPaneInfoPayload,
         GetPaneInfoResponse as ProtobufGetPaneInfoResponse, GetPanePidPayload,
-        GetPanePidResponse as ProtobufGetPanePidResponse, GetPaneScrollbackPayload,
+        GetPanePidResponse as ProtobufGetPanePidResponse,
         GetPaneRunningCommandPayload as ProtobufGetPaneRunningCommandPayload,
         GetPaneRunningCommandResponse as ProtobufGetPaneRunningCommandResponse,
-        GetPaneCwdPayload as ProtobufGetPaneCwdPayload,
-        GetPaneCwdResponse as ProtobufGetPaneCwdResponse,
-        RunningCommand as ProtobufRunningCommand,
-        GetTabInfoPayload, GetTabInfoResponse as ProtobufGetTabInfoResponse,
-        GroupAndUngroupPanesPayload, HidePaneWithIdPayload, HighlightAndUnhighlightPanesPayload,
-        HttpVerb as ProtobufHttpVerb, IdAndNewName, KeyToRebind, KeyToUnbind, KillSessionsPayload,
-        ListTokensResponse, LoadNewPluginPayload, MessageToPluginPayload,
-        MovePaneWithPaneIdInDirectionPayload, MovePaneWithPaneIdPayload, MovePayload,
-        NewPluginArgs as ProtobufNewPluginArgs, NewTabPayload,
-        NewTabResponse as ProtobufNewTabResponse, NewTabsResponse as ProtobufNewTabsResponse,
-        NewTabsWithLayoutInfoPayload,
+        GetPaneScrollbackPayload, GetTabInfoPayload,
+        GetTabInfoResponse as ProtobufGetTabInfoResponse, GroupAndUngroupPanesPayload,
+        HidePaneWithIdPayload, HighlightAndUnhighlightPanesPayload, HttpVerb as ProtobufHttpVerb,
+        IdAndNewName, KeyToRebind, KeyToUnbind, KillSessionsPayload, ListTokensResponse,
+        LoadNewPluginPayload, MessageToPluginPayload, MovePaneWithPaneIdInDirectionPayload,
+        MovePaneWithPaneIdPayload, MovePayload, NewPluginArgs as ProtobufNewPluginArgs,
+        NewTabPayload, NewTabResponse as ProtobufNewTabResponse,
+        NewTabsResponse as ProtobufNewTabsResponse, NewTabsWithLayoutInfoPayload,
         OpenCommandPaneBackgroundResponse as ProtobufOpenCommandPaneBackgroundResponse,
         OpenCommandPaneFloatingNearPluginPayload,
         OpenCommandPaneFloatingNearPluginResponse as ProtobufOpenCommandPaneFloatingNearPluginResponse,
@@ -62,11 +61,9 @@ pub use super::generated_api::api::{
         OpenFileFloatingResponse as ProtobufOpenFileFloatingResponse,
         OpenFileInPlaceOfPluginPayload,
         OpenFileInPlaceOfPluginResponse as ProtobufOpenFileInPlaceOfPluginResponse,
-        OpenFileInPlaceResponse as ProtobufOpenFileInPlaceResponse,
-        OpenFileNearPluginPayload,
+        OpenFileInPlaceResponse as ProtobufOpenFileInPlaceResponse, OpenFileNearPluginPayload,
         OpenFileNearPluginResponse as ProtobufOpenFileNearPluginResponse, OpenFilePayload,
-        OpenFileResponse as ProtobufOpenFileResponse,
-        OpenTerminalFloatingNearPluginPayload,
+        OpenFileResponse as ProtobufOpenFileResponse, OpenTerminalFloatingNearPluginPayload,
         OpenTerminalFloatingNearPluginResponse as ProtobufOpenTerminalFloatingNearPluginResponse,
         OpenTerminalFloatingResponse as ProtobufOpenTerminalFloatingResponse,
         OpenTerminalInPlaceOfPluginPayload,
@@ -83,8 +80,8 @@ pub use super::generated_api::api::{
         RenameWebLoginTokenPayload, RenameWebTokenResponse, ReplacePaneWithExistingPanePayload,
         RequestPluginPermissionPayload, RerunCommandPanePayload, ResizePaneIdWithDirectionPayload,
         ResizePayload, RevokeAllWebTokensResponse, RevokeTokenResponse, RevokeWebLoginTokenPayload,
-        RunActionPayload, RunCommandPayload, SaveLayoutPayload,
-        SaveLayoutResponse as ProtobufSaveLayoutResponse, SaveSessionPayload,
+        RunActionPayload, RunCommandPayload, RunningCommand as ProtobufRunningCommand,
+        SaveLayoutPayload, SaveLayoutResponse as ProtobufSaveLayoutResponse, SaveSessionPayload,
         SaveSessionResponse as ProtobufSaveSessionResponse, ScrollDownInPaneIdPayload,
         ScrollToBottomInPaneIdPayload, ScrollToTopInPaneIdPayload, ScrollUpInPaneIdPayload,
         SetFloatingPanePinnedPayload, SetPaneBorderlessPayload,
@@ -100,10 +97,9 @@ pub use super::generated_api::api::{
 
 use crate::data::{
     ConnectToSession, DeleteLayoutResponse, EditLayoutResponse, FloatingPaneCoordinates,
-    GetFocusedPaneInfoResponse, GetPanePidResponse, GetPaneRunningCommandResponse,
-    GetPaneCwdResponse, HttpVerb, InputMode, KeyWithModifier,
-    MessageToPlugin, NewPluginArgs, PaneId, PermissionType, PluginCommand, RenameLayoutResponse,
-    SaveLayoutResponse,
+    GetFocusedPaneInfoResponse, GetPaneCwdResponse, GetPanePidResponse,
+    GetPaneRunningCommandResponse, HttpVerb, InputMode, KeyWithModifier, MessageToPlugin,
+    NewPluginArgs, PaneId, PermissionType, PluginCommand, RenameLayoutResponse, SaveLayoutResponse,
 };
 use crate::input::actions::Action;
 use crate::input::layout::PercentOrFixed;
@@ -294,19 +290,13 @@ impl From<GetPanePidResponse> for ProtobufGetPanePidResponse {
 impl From<GetPaneRunningCommandResponse> for ProtobufGetPaneRunningCommandResponse {
     fn from(response: GetPaneRunningCommandResponse) -> Self {
         match response {
-            GetPaneRunningCommandResponse::Ok(args) => {
-                ProtobufGetPaneRunningCommandResponse {
-                    result: Some(
-                        get_pane_running_command_response::Result::Command(
-                            ProtobufRunningCommand { args }
-                        )
-                    ),
-                }
+            GetPaneRunningCommandResponse::Ok(args) => ProtobufGetPaneRunningCommandResponse {
+                result: Some(get_pane_running_command_response::Result::Command(
+                    ProtobufRunningCommand { args },
+                )),
             },
-            GetPaneRunningCommandResponse::Err(err) => {
-                ProtobufGetPaneRunningCommandResponse {
-                    result: Some(get_pane_running_command_response::Result::Error(err)),
-                }
+            GetPaneRunningCommandResponse::Err(err) => ProtobufGetPaneRunningCommandResponse {
+                result: Some(get_pane_running_command_response::Result::Error(err)),
             },
         }
     }
@@ -324,10 +314,8 @@ impl From<GetPaneCwdResponse> for ProtobufGetPaneCwdResponse {
                     result: Some(get_pane_cwd_response::Result::Cwd(cwd_string)),
                 }
             },
-            GetPaneCwdResponse::Err(err) => {
-                ProtobufGetPaneCwdResponse {
-                    result: Some(get_pane_cwd_response::Result::Error(err)),
-                }
+            GetPaneCwdResponse::Err(err) => ProtobufGetPaneCwdResponse {
+                result: Some(get_pane_cwd_response::Result::Error(err)),
             },
         }
     }
@@ -1458,7 +1446,8 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
             Some(CommandName::GetPaneRunningCommand) => match protobuf_plugin_command.payload {
                 Some(Payload::GetPaneRunningCommandPayload(payload)) => {
                     Ok(PluginCommand::GetPaneRunningCommand {
-                        pane_id: payload.pane_id
+                        pane_id: payload
+                            .pane_id
                             .ok_or("Malformed GetPaneRunningCommand: missing pane_id")?
                             .try_into()?,
                     })
@@ -1466,13 +1455,12 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 _ => Err("Malformed GetPaneRunningCommand payload"),
             },
             Some(CommandName::GetPaneCwd) => match protobuf_plugin_command.payload {
-                Some(Payload::GetPaneCwdPayload(payload)) => {
-                    Ok(PluginCommand::GetPaneCwd {
-                        pane_id: payload.pane_id
-                            .ok_or("Malformed GetPaneCwd: missing pane_id")?
-                            .try_into()?,
-                    })
-                },
+                Some(Payload::GetPaneCwdPayload(payload)) => Ok(PluginCommand::GetPaneCwd {
+                    pane_id: payload
+                        .pane_id
+                        .ok_or("Malformed GetPaneCwd: missing pane_id")?
+                        .try_into()?,
+                }),
                 _ => Err("Malformed GetPaneCwd payload"),
             },
             Some(CommandName::OverrideLayout) => match protobuf_plugin_command.payload {
@@ -2942,11 +2930,9 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
             }),
             PluginCommand::GetPaneCwd { pane_id } => Ok(ProtobufPluginCommand {
                 name: CommandName::GetPaneCwd as i32,
-                payload: Some(Payload::GetPaneCwdPayload(
-                    ProtobufGetPaneCwdPayload {
-                        pane_id: Some(pane_id.try_into()?),
-                    },
-                )),
+                payload: Some(Payload::GetPaneCwdPayload(ProtobufGetPaneCwdPayload {
+                    pane_id: Some(pane_id.try_into()?),
+                })),
             }),
             PluginCommand::OverrideLayout(
                 layout_info,
@@ -3619,11 +3605,10 @@ use crate::data::{
     NewTabResponse, NewTabsResponse, OpenCommandPaneBackgroundResponse,
     OpenCommandPaneFloatingNearPluginResponse, OpenCommandPaneFloatingResponse,
     OpenCommandPaneInPlaceOfPluginResponse, OpenCommandPaneInPlaceResponse,
-    OpenCommandPaneNearPluginResponse, OpenCommandPaneResponse,
-    OpenFileFloatingNearPluginResponse, OpenFileFloatingResponse, OpenFileInPlaceOfPluginResponse,
-    OpenFileInPlaceResponse, OpenFileNearPluginResponse, OpenFileResponse,
-    OpenTerminalFloatingNearPluginResponse, OpenTerminalFloatingResponse,
-    OpenTerminalInPlaceOfPluginResponse, OpenTerminalInPlaceResponse,
+    OpenCommandPaneNearPluginResponse, OpenCommandPaneResponse, OpenFileFloatingNearPluginResponse,
+    OpenFileFloatingResponse, OpenFileInPlaceOfPluginResponse, OpenFileInPlaceResponse,
+    OpenFileNearPluginResponse, OpenFileResponse, OpenTerminalFloatingNearPluginResponse,
+    OpenTerminalFloatingResponse, OpenTerminalInPlaceOfPluginResponse, OpenTerminalInPlaceResponse,
     OpenTerminalNearPluginResponse, OpenTerminalResponse,
 };
 
@@ -3702,7 +3687,9 @@ impl From<BreakPanesToNewTabResponse> for ProtobufBreakPanesToNewTabResponse {
     fn from(response: BreakPanesToNewTabResponse) -> Self {
         match response {
             Some(tab_id) => ProtobufBreakPanesToNewTabResponse {
-                result: Some(break_panes_to_new_tab_response::Result::TabId(tab_id as u64)),
+                result: Some(break_panes_to_new_tab_response::Result::TabId(
+                    tab_id as u64,
+                )),
             },
             None => ProtobufBreakPanesToNewTabResponse {
                 result: Some(break_panes_to_new_tab_response::Result::None(true)),
@@ -3713,9 +3700,7 @@ impl From<BreakPanesToNewTabResponse> for ProtobufBreakPanesToNewTabResponse {
 
 impl TryFrom<ProtobufBreakPanesToTabWithIndexResponse> for BreakPanesToTabWithIndexResponse {
     type Error = &'static str;
-    fn try_from(
-        protobuf: ProtobufBreakPanesToTabWithIndexResponse,
-    ) -> Result<Self, Self::Error> {
+    fn try_from(protobuf: ProtobufBreakPanesToTabWithIndexResponse) -> Result<Self, Self::Error> {
         match protobuf.result {
             Some(break_panes_to_tab_with_index_response::Result::TabId(id)) => {
                 Ok(Some(id as usize))
@@ -3816,9 +3801,7 @@ impl From<OpenFileNearPluginResponse> for ProtobufOpenFileNearPluginResponse {
 
 impl TryFrom<ProtobufOpenFileFloatingNearPluginResponse> for OpenFileFloatingNearPluginResponse {
     type Error = &'static str;
-    fn try_from(
-        protobuf: ProtobufOpenFileFloatingNearPluginResponse,
-    ) -> Result<Self, Self::Error> {
+    fn try_from(protobuf: ProtobufOpenFileFloatingNearPluginResponse) -> Result<Self, Self::Error> {
         match protobuf.pane_id {
             Some(pane_id) => Ok(Some(pane_id.try_into()?)),
             None => Ok(None),
@@ -3948,9 +3931,7 @@ impl From<OpenTerminalFloatingNearPluginResponse>
     }
 }
 
-impl TryFrom<ProtobufOpenTerminalInPlaceOfPluginResponse>
-    for OpenTerminalInPlaceOfPluginResponse
-{
+impl TryFrom<ProtobufOpenTerminalInPlaceOfPluginResponse> for OpenTerminalInPlaceOfPluginResponse {
     type Error = &'static str;
     fn try_from(
         protobuf: ProtobufOpenTerminalInPlaceOfPluginResponse,

@@ -99,7 +99,7 @@ pub struct NotificationEnd {
     exit_status: Option<i32>,
     unblock_condition: Option<UnblockCondition>,
     affected_pane_id: Option<PaneId>, // optional payload of the pane id affected by this action
-    affected_tab_id: Option<usize>, // optional payload of the tab id affected by this action
+    affected_tab_id: Option<usize>,   // optional payload of the tab id affected by this action
 }
 
 impl Clone for NotificationEnd {
@@ -1536,8 +1536,8 @@ pub(crate) fn route_action(
             show_all,
             output_json,
         } => {
-            let maybe_panes = request_panes_from_screen(&senders, show_all)
-                .with_context(err_context)?;
+            let maybe_panes =
+                request_panes_from_screen(&senders, show_all).with_context(err_context)?;
 
             if let Some(mut pane_entries) = maybe_panes {
                 if show_command || show_all || output_json {
@@ -1559,11 +1559,7 @@ pub(crate) fn route_action(
 
                 send_output_to_client(cli_client_id, os_input.as_ref(), output_lines);
             } else {
-                send_error_to_client(
-                    cli_client_id,
-                    os_input.as_ref(),
-                    "Timeout listing panes",
-                );
+                send_error_to_client(cli_client_id, os_input.as_ref(), "Timeout listing panes");
             }
             drop(NotificationEnd::new(completion_tx));
         },
@@ -2270,8 +2266,7 @@ fn enrich_pane_with_cwd(
         response_channel: cwd_sender,
     })?;
 
-    if let Ok(GetPaneCwdResponse::Ok(cwd)) = cwd_receiver.recv_timeout(Duration::from_millis(100))
-    {
+    if let Ok(GetPaneCwdResponse::Ok(cwd)) = cwd_receiver.recv_timeout(Duration::from_millis(100)) {
         entry.pane_cwd = Some(cwd.to_string_lossy().to_string());
     }
 

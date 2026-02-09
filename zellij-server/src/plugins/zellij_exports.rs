@@ -22,17 +22,16 @@ use tokio::sync::oneshot;
 use wasmi::{Caller, Linker};
 use zellij_utils::data::{
     BreakPanesToNewTabResponse, BreakPanesToTabWithIndexResponse, CommandType, ConnectToSession,
-    DeleteLayoutResponse, EditLayoutResponse, Event, FocusOrCreateTabResponse,
-    FloatingPaneCoordinates, GetFocusedPaneInfoResponse, GetPanePidResponse,
-    GetPaneRunningCommandResponse, GetPaneCwdResponse, HttpVerb,
-    KeyWithModifier, LayoutInfo, LayoutMetadata, LayoutParsingError, MessageToPlugin,
-    NewPanePlacement, NewTabResponse, NewTabsResponse, OpenCommandPaneBackgroundResponse,
-    OpenCommandPaneFloatingNearPluginResponse, OpenCommandPaneFloatingResponse,
-    OpenCommandPaneInPlaceOfPluginResponse, OpenCommandPaneInPlaceResponse,
-    OpenCommandPaneNearPluginResponse, OpenCommandPaneResponse,
-    OpenFileFloatingNearPluginResponse, OpenFileFloatingResponse,
-    OpenFileInPlaceOfPluginResponse, OpenFileInPlaceResponse, OpenFileNearPluginResponse,
-    OpenFileResponse, OpenTerminalFloatingNearPluginResponse, OpenTerminalFloatingResponse,
+    DeleteLayoutResponse, EditLayoutResponse, Event, FloatingPaneCoordinates,
+    FocusOrCreateTabResponse, GetFocusedPaneInfoResponse, GetPaneCwdResponse, GetPanePidResponse,
+    GetPaneRunningCommandResponse, HttpVerb, KeyWithModifier, LayoutInfo, LayoutMetadata,
+    LayoutParsingError, MessageToPlugin, NewPanePlacement, NewTabResponse, NewTabsResponse,
+    OpenCommandPaneBackgroundResponse, OpenCommandPaneFloatingNearPluginResponse,
+    OpenCommandPaneFloatingResponse, OpenCommandPaneInPlaceOfPluginResponse,
+    OpenCommandPaneInPlaceResponse, OpenCommandPaneNearPluginResponse, OpenCommandPaneResponse,
+    OpenFileFloatingNearPluginResponse, OpenFileFloatingResponse, OpenFileInPlaceOfPluginResponse,
+    OpenFileInPlaceResponse, OpenFileNearPluginResponse, OpenFileResponse,
+    OpenTerminalFloatingNearPluginResponse, OpenTerminalFloatingResponse,
     OpenTerminalInPlaceOfPluginResponse, OpenTerminalInPlaceResponse,
     OpenTerminalNearPluginResponse, OpenTerminalResponse, OriginatingPlugin,
     PaneScrollbackResponse, PermissionStatus, PermissionType, PluginPermission,
@@ -78,21 +77,22 @@ use zellij_utils::{
             ProtobufDumpLayoutResponse, ProtobufDumpSessionLayoutResponse,
             ProtobufEditLayoutResponse, ProtobufFocusOrCreateTabResponse,
             ProtobufGenerateRandomNameResponse, ProtobufGetFocusedPaneInfoResponse,
-            ProtobufGetLayoutDirResponse, ProtobufGetPaneInfoResponse, ProtobufGetPanePidResponse,
-            ProtobufGetPaneRunningCommandResponse, ProtobufGetPaneCwdResponse,
-            ProtobufGetTabInfoResponse, ProtobufNewTabResponse,
-            ProtobufNewTabsResponse, ProtobufOpenCommandPaneBackgroundResponse,
+            ProtobufGetLayoutDirResponse, ProtobufGetPaneCwdResponse, ProtobufGetPaneInfoResponse,
+            ProtobufGetPanePidResponse, ProtobufGetPaneRunningCommandResponse,
+            ProtobufGetTabInfoResponse, ProtobufNewTabResponse, ProtobufNewTabsResponse,
+            ProtobufOpenCommandPaneBackgroundResponse,
             ProtobufOpenCommandPaneFloatingNearPluginResponse,
-            ProtobufOpenCommandPaneFloatingResponse, ProtobufOpenCommandPaneInPlaceOfPluginResponse,
-            ProtobufOpenCommandPaneInPlaceResponse, ProtobufOpenCommandPaneNearPluginResponse,
-            ProtobufOpenCommandPaneResponse, ProtobufOpenFileFloatingNearPluginResponse,
-            ProtobufOpenFileFloatingResponse, ProtobufOpenFileInPlaceOfPluginResponse,
-            ProtobufOpenFileInPlaceResponse, ProtobufOpenFileNearPluginResponse,
-            ProtobufOpenFileResponse, ProtobufOpenTerminalFloatingNearPluginResponse,
-            ProtobufOpenTerminalFloatingResponse, ProtobufOpenTerminalInPlaceOfPluginResponse,
-            ProtobufOpenTerminalInPlaceResponse, ProtobufOpenTerminalNearPluginResponse,
-            ProtobufOpenTerminalResponse, ProtobufParseLayoutResponse, ProtobufPluginCommand,
-            ProtobufRenameLayoutResponse, ProtobufSaveLayoutResponse, ProtobufSaveSessionResponse,
+            ProtobufOpenCommandPaneFloatingResponse,
+            ProtobufOpenCommandPaneInPlaceOfPluginResponse, ProtobufOpenCommandPaneInPlaceResponse,
+            ProtobufOpenCommandPaneNearPluginResponse, ProtobufOpenCommandPaneResponse,
+            ProtobufOpenFileFloatingNearPluginResponse, ProtobufOpenFileFloatingResponse,
+            ProtobufOpenFileInPlaceOfPluginResponse, ProtobufOpenFileInPlaceResponse,
+            ProtobufOpenFileNearPluginResponse, ProtobufOpenFileResponse,
+            ProtobufOpenTerminalFloatingNearPluginResponse, ProtobufOpenTerminalFloatingResponse,
+            ProtobufOpenTerminalInPlaceOfPluginResponse, ProtobufOpenTerminalInPlaceResponse,
+            ProtobufOpenTerminalNearPluginResponse, ProtobufOpenTerminalResponse,
+            ProtobufParseLayoutResponse, ProtobufPluginCommand, ProtobufRenameLayoutResponse,
+            ProtobufSaveLayoutResponse, ProtobufSaveSessionResponse,
         },
         plugin_ids::{ProtobufPluginIds, ProtobufZellijVersion},
     },
@@ -125,7 +125,7 @@ macro_rules! apply_action {
             Err(e) => {
                 log::error!("{}: {:?}", $error_message(), e);
                 None
-            }
+            },
         }
     };
 }
@@ -1160,7 +1160,8 @@ fn open_file_floating(
     let result = apply_action!(action, error_msg, env);
 
     // Extract pane_id from result and convert to zellij_utils PaneId
-    let pane_id: OpenFileFloatingResponse = result.and_then(|r| r.affected_pane_id).map(|p| p.into());
+    let pane_id: OpenFileFloatingResponse =
+        result.and_then(|r| r.affected_pane_id).map(|p| p.into());
 
     // Write response to plugin
     let response = ProtobufOpenFileFloatingResponse::from(pane_id);
@@ -1198,7 +1199,8 @@ fn open_file_in_place(
     let result = apply_action!(action, error_msg, env);
 
     // Extract pane_id from result and convert to zellij_utils PaneId
-    let pane_id: OpenFileInPlaceResponse = result.and_then(|r| r.affected_pane_id).map(|p| p.into());
+    let pane_id: OpenFileInPlaceResponse =
+        result.and_then(|r| r.affected_pane_id).map(|p| p.into());
 
     // Write response to plugin
     let response = ProtobufOpenFileInPlaceResponse::from(pane_id);
@@ -1432,7 +1434,8 @@ fn open_terminal_floating(
     let result = apply_action!(action, error_msg, env);
 
     // Extract pane_id from result and convert to zellij_utils PaneId
-    let pane_id: OpenTerminalFloatingResponse = result.and_then(|r| r.affected_pane_id).map(|p| p.into());
+    let pane_id: OpenTerminalFloatingResponse =
+        result.and_then(|r| r.affected_pane_id).map(|p| p.into());
 
     // Write response to plugin
     let response = ProtobufOpenTerminalFloatingResponse::from(pane_id);
@@ -1470,7 +1473,8 @@ fn open_terminal_floating_near_plugin(
     ));
 
     // Wait for completion
-    let result = wait_for_action_completion(completion_rx, "open_terminal_floating_near_plugin", false);
+    let result =
+        wait_for_action_completion(completion_rx, "open_terminal_floating_near_plugin", false);
     let pane_id: OpenTerminalFloatingNearPluginResponse = result.affected_pane_id.map(|p| p.into());
 
     // Write response to plugin
@@ -1505,7 +1509,8 @@ fn open_terminal_in_place(env: &PluginEnv, cwd: PathBuf) {
     let result = apply_action!(action, error_msg, env);
 
     // Extract pane_id from result and convert to zellij_utils PaneId
-    let pane_id: OpenTerminalInPlaceResponse = result.and_then(|r| r.affected_pane_id).map(|p| p.into());
+    let pane_id: OpenTerminalInPlaceResponse =
+        result.and_then(|r| r.affected_pane_id).map(|p| p.into());
 
     // Write response to plugin
     let response = ProtobufOpenTerminalInPlaceResponse::from(pane_id);
@@ -1543,7 +1548,8 @@ fn open_terminal_in_place_of_plugin(
         ));
 
     // Wait for completion
-    let result = wait_for_action_completion(completion_rx, "open_terminal_in_place_of_plugin", false);
+    let result =
+        wait_for_action_completion(completion_rx, "open_terminal_in_place_of_plugin", false);
     let pane_id: OpenTerminalInPlaceOfPluginResponse = result.affected_pane_id.map(|p| p.into());
 
     // Write response to plugin
@@ -1596,7 +1602,8 @@ fn open_command_pane_in_place_of_plugin(
         ));
 
     // Wait for completion
-    let result = wait_for_action_completion(completion_rx, "open_command_pane_in_place_of_plugin", false);
+    let result =
+        wait_for_action_completion(completion_rx, "open_command_pane_in_place_of_plugin", false);
     let pane_id: OpenCommandPaneInPlaceOfPluginResponse = result.affected_pane_id.map(|p| p.into());
 
     // Write response to plugin
@@ -1644,7 +1651,8 @@ fn open_command_pane(
     let result = apply_action!(action, error_msg, env);
 
     // Extract pane_id from result and convert to zellij_utils PaneId
-    let pane_id: OpenCommandPaneResponse = result.and_then(|r| r.affected_pane_id).map(|p| p.into());
+    let pane_id: OpenCommandPaneResponse =
+        result.and_then(|r| r.affected_pane_id).map(|p| p.into());
 
     // Write response to plugin
     let response = ProtobufOpenCommandPaneResponse::from(pane_id);
@@ -1746,7 +1754,8 @@ fn open_command_pane_floating(
     let result = apply_action!(action, error_msg, env);
 
     // Extract pane_id from result and convert to zellij_utils PaneId
-    let pane_id: OpenCommandPaneFloatingResponse = result.and_then(|r| r.affected_pane_id).map(|p| p.into());
+    let pane_id: OpenCommandPaneFloatingResponse =
+        result.and_then(|r| r.affected_pane_id).map(|p| p.into());
 
     // Write response to plugin
     let response = ProtobufOpenCommandPaneFloatingResponse::from(pane_id);
@@ -1798,8 +1807,13 @@ fn open_command_pane_floating_near_plugin(
     ));
 
     // Wait for completion
-    let result = wait_for_action_completion(completion_rx, "open_command_pane_floating_near_plugin", false);
-    let pane_id: OpenCommandPaneFloatingNearPluginResponse = result.affected_pane_id.map(|p| p.into());
+    let result = wait_for_action_completion(
+        completion_rx,
+        "open_command_pane_floating_near_plugin",
+        false,
+    );
+    let pane_id: OpenCommandPaneFloatingNearPluginResponse =
+        result.affected_pane_id.map(|p| p.into());
 
     // Write response to plugin
     let response = ProtobufOpenCommandPaneFloatingNearPluginResponse::from(pane_id);
@@ -1846,7 +1860,8 @@ fn open_command_pane_in_place(
     let result = apply_action!(action, error_msg, env);
 
     // Extract pane_id from result and convert to zellij_utils PaneId
-    let pane_id: OpenCommandPaneInPlaceResponse = result.and_then(|r| r.affected_pane_id).map(|p| p.into());
+    let pane_id: OpenCommandPaneInPlaceResponse =
+        result.and_then(|r| r.affected_pane_id).map(|p| p.into());
 
     // Write response to plugin
     let response = ProtobufOpenCommandPaneInPlaceResponse::from(pane_id);
@@ -2621,8 +2636,7 @@ fn focus_or_create_tab(env: &PluginEnv, tab_name: String) {
     let tab_id: FocusOrCreateTabResponse = result.and_then(|r| r.affected_tab_id);
 
     let response = ProtobufFocusOrCreateTabResponse::from(tab_id);
-    wasi_write_object(env, &response.encode_to_vec())
-        .non_fatal();
+    wasi_write_object(env, &response.encode_to_vec()).non_fatal();
 }
 
 fn go_to_tab(env: &PluginEnv, tab_index: u32) {
@@ -3334,24 +3348,36 @@ fn get_pane_pid(env: &PluginEnv, pane_id: PaneId) {
 }
 
 fn get_pane_running_command(env: &PluginEnv, pane_id: PaneId) {
-    use crossbeam::channel::RecvTimeoutError;
-    use std::time::Duration;
+    let (sender, receiver) = crossbeam::channel::bounded(1);
 
-    let err_context = || format!("Failed to get running command for pane {:?}", pane_id);
+    send_get_pane_running_command_request(env, pane_id, sender);
+    let response = await_pane_running_command_response(env, pane_id, receiver);
+    write_pane_running_command_response(env, pane_id, response);
+}
 
-    let (response_sender, response_receiver) = crossbeam::channel::bounded(1);
-
-    // Send request to PTY thread
+fn send_get_pane_running_command_request(
+    env: &PluginEnv,
+    pane_id: PaneId,
+    sender: crossbeam::channel::Sender<GetPaneRunningCommandResponse>,
+) {
     env.senders
         .send_to_pty(PtyInstruction::GetPaneRunningCommand {
             pane_id,
-            response_channel: response_sender,
+            response_channel: sender,
         })
-        .with_context(err_context)
+        .with_context(|| format!("Failed to get running command for pane {:?}", pane_id))
         .non_fatal();
+}
 
-    // Wait for response with timeout
-    let response = match response_receiver.recv_timeout(Duration::from_millis(100)) {
+fn await_pane_running_command_response(
+    env: &PluginEnv,
+    pane_id: PaneId,
+    receiver: crossbeam::channel::Receiver<GetPaneRunningCommandResponse>,
+) -> GetPaneRunningCommandResponse {
+    use crossbeam::channel::RecvTimeoutError;
+    use std::time::Duration;
+
+    match receiver.recv_timeout(Duration::from_millis(100)) {
         Ok(response) => response,
         Err(RecvTimeoutError::Timeout) => {
             log::error!(
@@ -3375,35 +3401,51 @@ fn get_pane_running_command(env: &PluginEnv, pane_id: PaneId) {
                 pane_id
             ))
         },
-    };
+    }
+}
 
-    // Encode response and write to plugin's stdin
+fn write_pane_running_command_response(
+    env: &PluginEnv,
+    pane_id: PaneId,
+    response: GetPaneRunningCommandResponse,
+) {
     let protobuf_response = ProtobufGetPaneRunningCommandResponse::from(response);
-    let serialized = protobuf_response.encode_to_vec();
-    wasi_write_object(env, &serialized)
-        .with_context(err_context)
+    wasi_write_object(env, &protobuf_response.encode_to_vec())
+        .with_context(|| format!("Failed to get running command for pane {:?}", pane_id))
         .non_fatal();
 }
 
 fn get_pane_cwd(env: &PluginEnv, pane_id: PaneId) {
-    use crossbeam::channel::RecvTimeoutError;
-    use std::time::Duration;
+    let (sender, receiver) = crossbeam::channel::bounded(1);
 
-    let err_context = || format!("Failed to get CWD for pane {:?}", pane_id);
+    send_get_pane_cwd_request(env, pane_id, sender);
+    let response = await_pane_cwd_response(env, pane_id, receiver);
+    write_pane_cwd_response(env, pane_id, response);
+}
 
-    let (response_sender, response_receiver) = crossbeam::channel::bounded(1);
-
-    // Send request to PTY thread
+fn send_get_pane_cwd_request(
+    env: &PluginEnv,
+    pane_id: PaneId,
+    sender: crossbeam::channel::Sender<GetPaneCwdResponse>,
+) {
     env.senders
         .send_to_pty(PtyInstruction::GetPaneCwd {
             pane_id,
-            response_channel: response_sender,
+            response_channel: sender,
         })
-        .with_context(err_context)
+        .with_context(|| format!("Failed to get CWD for pane {:?}", pane_id))
         .non_fatal();
+}
 
-    // Wait for response with timeout
-    let response = match response_receiver.recv_timeout(Duration::from_millis(100)) {
+fn await_pane_cwd_response(
+    env: &PluginEnv,
+    pane_id: PaneId,
+    receiver: crossbeam::channel::Receiver<GetPaneCwdResponse>,
+) -> GetPaneCwdResponse {
+    use crossbeam::channel::RecvTimeoutError;
+    use std::time::Duration;
+
+    match receiver.recv_timeout(Duration::from_millis(100)) {
         Ok(response) => response,
         Err(RecvTimeoutError::Timeout) => {
             log::error!(
@@ -3411,10 +3453,7 @@ fn get_pane_cwd(env: &PluginEnv, pane_id: PaneId) {
                 env.plugin_id,
                 pane_id
             );
-            GetPaneCwdResponse::Err(format!(
-                "Timeout retrieving CWD for pane {:?}",
-                pane_id
-            ))
+            GetPaneCwdResponse::Err(format!("Timeout retrieving CWD for pane {:?}", pane_id))
         },
         Err(RecvTimeoutError::Disconnected) => {
             log::error!(
@@ -3427,13 +3466,13 @@ fn get_pane_cwd(env: &PluginEnv, pane_id: PaneId) {
                 pane_id
             ))
         },
-    };
+    }
+}
 
-    // Encode response and write to plugin's stdin
+fn write_pane_cwd_response(env: &PluginEnv, pane_id: PaneId, response: GetPaneCwdResponse) {
     let protobuf_response = ProtobufGetPaneCwdResponse::from(response);
-    let serialized = protobuf_response.encode_to_vec();
-    wasi_write_object(env, &serialized)
-        .with_context(err_context)
+    wasi_write_object(env, &protobuf_response.encode_to_vec())
+        .with_context(|| format!("Failed to get CWD for pane {:?}", pane_id))
         .non_fatal();
 }
 
@@ -3839,8 +3878,7 @@ fn break_panes_to_new_tab(
     };
 
     let response = ProtobufBreakPanesToNewTabResponse::from(tab_id);
-    wasi_write_object(env, &response.encode_to_vec())
-        .non_fatal();
+    wasi_write_object(env, &response.encode_to_vec()).non_fatal();
 }
 
 fn break_panes_to_tab_with_index(
@@ -3870,8 +3908,7 @@ fn break_panes_to_tab_with_index(
     };
 
     let response = ProtobufBreakPanesToTabWithIndexResponse::from(tab_id);
-    wasi_write_object(env, &response.encode_to_vec())
-        .non_fatal();
+    wasi_write_object(env, &response.encode_to_vec()).non_fatal();
 }
 
 fn reload_plugin(env: &PluginEnv, plugin_id: u32) {

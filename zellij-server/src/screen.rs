@@ -4557,9 +4557,11 @@ pub(crate) fn screen_thread_main(
                 response_channel,
             } => {
                 let err_context = || "Failed to list panes";
-                let pane_entries = screen.collect_pane_list(show_all).with_context(err_context)?;
+                let pane_entries = screen
+                    .collect_pane_list(show_all)
+                    .with_context(err_context)?;
                 let _ = response_channel.send(pane_entries);
-            }
+            },
             ScreenInstruction::DumpLayoutToPlugin {
                 plugin_id,
                 tab_index,
@@ -5128,7 +5130,9 @@ pub(crate) fn screen_thread_main(
                         .map(|c| c.set_affected_pane_id(PaneId::Terminal(first_terminal_pane.0)));
                 }
                 // Set the affected tab ID for plugin API return value
-                completion_tx.as_mut().map(|c| c.set_affected_tab_id(tab_id));
+                completion_tx
+                    .as_mut()
+                    .map(|c| c.set_affected_tab_id(tab_id));
                 screen.apply_layout(
                     layout,
                     floating_panes_layout,
@@ -5261,8 +5265,12 @@ pub(crate) fn screen_thread_main(
                         screen.render(None)?;
                         if tab_exists {
                             // Tab already exists - find its ID and set in completion
-                            if let Some(existing_tab) = screen.tabs.values().find(|t| t.name == tab_name) {
-                                completion_tx.as_mut().map(|c| c.set_affected_tab_id(existing_tab.id));
+                            if let Some(existing_tab) =
+                                screen.tabs.values().find(|t| t.name == tab_name)
+                            {
+                                completion_tx
+                                    .as_mut()
+                                    .map(|c| c.set_affected_tab_id(existing_tab.id));
                             }
                         }
                         if create && !tab_exists {
@@ -6847,7 +6855,9 @@ pub(crate) fn screen_thread_main(
                     client_id,
                 )?;
                 // Set affected tab ID for plugin API return value
-                completion_tx.as_mut().map(|c| c.set_affected_tab_id(tab_id));
+                completion_tx
+                    .as_mut()
+                    .map(|c| c.set_affected_tab_id(tab_id));
                 // TODO: is this a race?
                 let pane_group = screen.get_client_pane_group(&client_id);
                 if !pane_group.is_empty() {
@@ -6875,7 +6885,9 @@ pub(crate) fn screen_thread_main(
                     client_id,
                 )?;
                 // Set affected tab ID (tab_index is the ID here)
-                completion_tx.as_mut().map(|c| c.set_affected_tab_id(tab_index));
+                completion_tx
+                    .as_mut()
+                    .map(|c| c.set_affected_tab_id(tab_index));
                 let pane_group = screen.get_client_pane_group(&client_id);
                 if !pane_group.is_empty() {
                     let _ = screen.bus.senders.send_to_background_jobs(

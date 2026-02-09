@@ -12,16 +12,15 @@ use zellij_utils::plugin_api::event::ProtobufPaneScrollbackResponse;
 use zellij_utils::plugin_api::generated_api::api::plugin_command::save_session_response;
 use zellij_utils::plugin_api::plugin_command::{
     dump_layout_response, dump_session_layout_response, get_focused_pane_info_response,
-    get_pane_running_command_response, get_pane_cwd_response,
-    parse_layout_response, CreateTokenResponse, ListTokensResponse,
-    ProtobufBreakPanesToNewTabResponse, ProtobufBreakPanesToTabWithIndexResponse,
-    ProtobufCurrentSessionLastSavedTimeResponse, ProtobufDeleteLayoutResponse,
-    ProtobufDumpLayoutResponse, ProtobufDumpSessionLayoutResponse, ProtobufEditLayoutResponse,
-    ProtobufFocusOrCreateTabResponse, ProtobufGenerateRandomNameResponse,
-    ProtobufGetFocusedPaneInfoResponse, ProtobufGetLayoutDirResponse, ProtobufGetPaneInfoResponse,
-    ProtobufGetPanePidResponse, ProtobufGetPaneRunningCommandResponse, ProtobufGetPaneCwdResponse,
-    ProtobufGetTabInfoResponse, ProtobufNewTabResponse,
-    ProtobufNewTabsResponse, ProtobufOpenCommandPaneBackgroundResponse,
+    get_pane_cwd_response, get_pane_running_command_response, parse_layout_response,
+    CreateTokenResponse, ListTokensResponse, ProtobufBreakPanesToNewTabResponse,
+    ProtobufBreakPanesToTabWithIndexResponse, ProtobufCurrentSessionLastSavedTimeResponse,
+    ProtobufDeleteLayoutResponse, ProtobufDumpLayoutResponse, ProtobufDumpSessionLayoutResponse,
+    ProtobufEditLayoutResponse, ProtobufFocusOrCreateTabResponse,
+    ProtobufGenerateRandomNameResponse, ProtobufGetFocusedPaneInfoResponse,
+    ProtobufGetLayoutDirResponse, ProtobufGetPaneCwdResponse, ProtobufGetPaneInfoResponse,
+    ProtobufGetPanePidResponse, ProtobufGetPaneRunningCommandResponse, ProtobufGetTabInfoResponse,
+    ProtobufNewTabResponse, ProtobufNewTabsResponse, ProtobufOpenCommandPaneBackgroundResponse,
     ProtobufOpenCommandPaneFloatingNearPluginResponse, ProtobufOpenCommandPaneFloatingResponse,
     ProtobufOpenCommandPaneInPlaceOfPluginResponse, ProtobufOpenCommandPaneInPlaceResponse,
     ProtobufOpenCommandPaneNearPluginResponse, ProtobufOpenCommandPaneResponse,
@@ -371,15 +370,11 @@ pub fn open_file(file_to_open: FileToOpen, context: BTreeMap<String, String>) ->
     unsafe { host_run_plugin_command() };
 
     let response = match bytes_from_stdin() {
-        Ok(bytes_from_stdin) => {
-            ProtobufOpenFileResponse::decode(
-                bytes_from_stdin.as_slice()
-            ).ok()
-        },
+        Ok(bytes_from_stdin) => ProtobufOpenFileResponse::decode(bytes_from_stdin.as_slice()).ok(),
         Err(e) => {
             eprintln!("{}", e);
             None
-        }
+        },
     };
     response.and_then(|r| OpenFileResponse::try_from(r).ok().flatten())
 }
@@ -395,35 +390,38 @@ pub fn open_file_floating(
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
 
-    let response = ProtobufOpenFileFloatingResponse::decode(
-        bytes_from_stdin().unwrap().as_slice()
-    ).unwrap();
+    let response =
+        ProtobufOpenFileFloatingResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
     OpenFileFloatingResponse::try_from(response).unwrap()
 }
 
 /// Open a file in the user's default `$EDITOR`, replacing the focused pane
-pub fn open_file_in_place(file_to_open: FileToOpen, context: BTreeMap<String, String>) -> Option<PaneId> {
+pub fn open_file_in_place(
+    file_to_open: FileToOpen,
+    context: BTreeMap<String, String>,
+) -> Option<PaneId> {
     let plugin_command = PluginCommand::OpenFileInPlace(file_to_open, context);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
 
-    let response = ProtobufOpenFileInPlaceResponse::decode(
-        bytes_from_stdin().unwrap().as_slice()
-    ).unwrap();
+    let response =
+        ProtobufOpenFileInPlaceResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
     OpenFileInPlaceResponse::try_from(response).unwrap()
 }
 
 /// Open a file in the user's default `$EDITOR` in a new pane near th eplugin
-pub fn open_file_near_plugin(file_to_open: FileToOpen, context: BTreeMap<String, String>) -> Option<PaneId> {
+pub fn open_file_near_plugin(
+    file_to_open: FileToOpen,
+    context: BTreeMap<String, String>,
+) -> Option<PaneId> {
     let plugin_command = PluginCommand::OpenFileNearPlugin(file_to_open, context);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
 
-    let response = ProtobufOpenFileNearPluginResponse::decode(
-        bytes_from_stdin().unwrap().as_slice()
-    ).unwrap();
+    let response =
+        ProtobufOpenFileNearPluginResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
     OpenFileNearPluginResponse::try_from(response).unwrap()
 }
 
@@ -439,9 +437,9 @@ pub fn open_file_floating_near_plugin(
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
 
-    let response = ProtobufOpenFileFloatingNearPluginResponse::decode(
-        bytes_from_stdin().unwrap().as_slice()
-    ).unwrap();
+    let response =
+        ProtobufOpenFileFloatingNearPluginResponse::decode(bytes_from_stdin().unwrap().as_slice())
+            .unwrap();
     OpenFileFloatingNearPluginResponse::try_from(response).unwrap()
 }
 
@@ -457,9 +455,9 @@ pub fn open_file_in_place_of_plugin(
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
 
-    let response = ProtobufOpenFileInPlaceOfPluginResponse::decode(
-        bytes_from_stdin().unwrap().as_slice()
-    ).unwrap();
+    let response =
+        ProtobufOpenFileInPlaceOfPluginResponse::decode(bytes_from_stdin().unwrap().as_slice())
+            .unwrap();
     OpenFileInPlaceOfPluginResponse::try_from(response).unwrap()
 }
 /// Open a new terminal pane to the specified location on the host filesystem
@@ -470,9 +468,8 @@ pub fn open_terminal<P: AsRef<Path>>(path: P) -> Option<PaneId> {
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
 
-    let response = ProtobufOpenTerminalResponse::decode(
-        bytes_from_stdin().unwrap().as_slice()
-    ).unwrap();
+    let response =
+        ProtobufOpenTerminalResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
     OpenTerminalResponse::try_from(response).unwrap()
 }
 
@@ -486,9 +483,9 @@ pub fn open_terminal_near_plugin<P: AsRef<Path>>(path: P) -> Option<PaneId> {
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
 
-    let response = ProtobufOpenTerminalNearPluginResponse::decode(
-        bytes_from_stdin().unwrap().as_slice()
-    ).unwrap();
+    let response =
+        ProtobufOpenTerminalNearPluginResponse::decode(bytes_from_stdin().unwrap().as_slice())
+            .unwrap();
     OpenTerminalNearPluginResponse::try_from(response).unwrap()
 }
 
@@ -503,9 +500,9 @@ pub fn open_terminal_floating<P: AsRef<Path>>(
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
 
-    let response = ProtobufOpenTerminalFloatingResponse::decode(
-        bytes_from_stdin().unwrap().as_slice()
-    ).unwrap();
+    let response =
+        ProtobufOpenTerminalFloatingResponse::decode(bytes_from_stdin().unwrap().as_slice())
+            .unwrap();
     OpenTerminalFloatingResponse::try_from(response).unwrap()
 }
 
@@ -523,8 +520,9 @@ pub fn open_terminal_floating_near_plugin<P: AsRef<Path>>(
     unsafe { host_run_plugin_command() };
 
     let response = ProtobufOpenTerminalFloatingNearPluginResponse::decode(
-        bytes_from_stdin().unwrap().as_slice()
-    ).unwrap();
+        bytes_from_stdin().unwrap().as_slice(),
+    )
+    .unwrap();
     OpenTerminalFloatingNearPluginResponse::try_from(response).unwrap()
 }
 
@@ -537,15 +535,18 @@ pub fn open_terminal_in_place<P: AsRef<Path>>(path: P) -> Option<PaneId> {
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
 
-    let response = ProtobufOpenTerminalInPlaceResponse::decode(
-        bytes_from_stdin().unwrap().as_slice()
-    ).unwrap();
+    let response =
+        ProtobufOpenTerminalInPlaceResponse::decode(bytes_from_stdin().unwrap().as_slice())
+            .unwrap();
     OpenTerminalInPlaceResponse::try_from(response).unwrap()
 }
 
 /// Open a new terminal pane to the specified location on the host filesystem, temporarily
 /// replacing the plugin pane
-pub fn open_terminal_in_place_of_plugin<P: AsRef<Path>>(path: P, close_plugin_after_replace: bool) -> Option<PaneId> {
+pub fn open_terminal_in_place_of_plugin<P: AsRef<Path>>(
+    path: P,
+    close_plugin_after_replace: bool,
+) -> Option<PaneId> {
     let file_to_open = FileToOpen::new(path.as_ref().to_path_buf());
     let plugin_command =
         PluginCommand::OpenTerminalInPlaceOfPlugin(file_to_open, close_plugin_after_replace);
@@ -553,22 +554,24 @@ pub fn open_terminal_in_place_of_plugin<P: AsRef<Path>>(path: P, close_plugin_af
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
 
-    let response = ProtobufOpenTerminalInPlaceOfPluginResponse::decode(
-        bytes_from_stdin().unwrap().as_slice()
-    ).unwrap();
+    let response =
+        ProtobufOpenTerminalInPlaceOfPluginResponse::decode(bytes_from_stdin().unwrap().as_slice())
+            .unwrap();
     OpenTerminalInPlaceOfPluginResponse::try_from(response).unwrap()
 }
 
 /// Open a new command pane with the specified command and args (this sort of pane allows the user to control the command, re-run it and see its exit status through the Zellij UI).
-pub fn open_command_pane(command_to_run: CommandToRun, context: BTreeMap<String, String>) -> Option<PaneId> {
+pub fn open_command_pane(
+    command_to_run: CommandToRun,
+    context: BTreeMap<String, String>,
+) -> Option<PaneId> {
     let plugin_command = PluginCommand::OpenCommandPane(command_to_run, context);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
 
-    let response = ProtobufOpenCommandPaneResponse::decode(
-        bytes_from_stdin().unwrap().as_slice()
-    ).unwrap();
+    let response =
+        ProtobufOpenCommandPaneResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
     OpenCommandPaneResponse::try_from(response).unwrap()
 }
 
@@ -584,9 +587,9 @@ pub fn open_command_pane_near_plugin(
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
 
-    let response = ProtobufOpenCommandPaneNearPluginResponse::decode(
-        bytes_from_stdin().unwrap().as_slice()
-    ).unwrap();
+    let response =
+        ProtobufOpenCommandPaneNearPluginResponse::decode(bytes_from_stdin().unwrap().as_slice())
+            .unwrap();
     OpenCommandPaneNearPluginResponse::try_from(response).unwrap()
 }
 
@@ -602,9 +605,9 @@ pub fn open_command_pane_floating(
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
 
-    let response = ProtobufOpenCommandPaneFloatingResponse::decode(
-        bytes_from_stdin().unwrap().as_slice()
-    ).unwrap();
+    let response =
+        ProtobufOpenCommandPaneFloatingResponse::decode(bytes_from_stdin().unwrap().as_slice())
+            .unwrap();
     OpenCommandPaneFloatingResponse::try_from(response).unwrap()
 }
 
@@ -623,21 +626,25 @@ pub fn open_command_pane_floating_near_plugin(
     unsafe { host_run_plugin_command() };
 
     let response = ProtobufOpenCommandPaneFloatingNearPluginResponse::decode(
-        bytes_from_stdin().unwrap().as_slice()
-    ).unwrap();
+        bytes_from_stdin().unwrap().as_slice(),
+    )
+    .unwrap();
     OpenCommandPaneFloatingNearPluginResponse::try_from(response).unwrap()
 }
 
 /// Open a new in place command pane with the specified command and args (this sort of pane allows the user to control the command, re-run it and see its exit status through the Zellij UI).
-pub fn open_command_pane_in_place(command_to_run: CommandToRun, context: BTreeMap<String, String>) -> Option<PaneId> {
+pub fn open_command_pane_in_place(
+    command_to_run: CommandToRun,
+    context: BTreeMap<String, String>,
+) -> Option<PaneId> {
     let plugin_command = PluginCommand::OpenCommandPaneInPlace(command_to_run, context);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
 
-    let response = ProtobufOpenCommandPaneInPlaceResponse::decode(
-        bytes_from_stdin().unwrap().as_slice()
-    ).unwrap();
+    let response =
+        ProtobufOpenCommandPaneInPlaceResponse::decode(bytes_from_stdin().unwrap().as_slice())
+            .unwrap();
     OpenCommandPaneInPlaceResponse::try_from(response).unwrap()
 }
 
@@ -659,8 +666,9 @@ pub fn open_command_pane_in_place_of_plugin(
     unsafe { host_run_plugin_command() };
 
     let response = ProtobufOpenCommandPaneInPlaceOfPluginResponse::decode(
-        bytes_from_stdin().unwrap().as_slice()
-    ).unwrap();
+        bytes_from_stdin().unwrap().as_slice(),
+    )
+    .unwrap();
     OpenCommandPaneInPlaceOfPluginResponse::try_from(response).unwrap()
 }
 
@@ -674,9 +682,9 @@ pub fn open_command_pane_background(
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
 
-    let response = ProtobufOpenCommandPaneBackgroundResponse::decode(
-        bytes_from_stdin().unwrap().as_slice()
-    ).unwrap();
+    let response =
+        ProtobufOpenCommandPaneBackgroundResponse::decode(bytes_from_stdin().unwrap().as_slice())
+            .unwrap();
     OpenCommandPaneBackgroundResponse::try_from(response).unwrap()
 }
 
@@ -812,8 +820,7 @@ pub fn new_tabs_with_layout(layout: &str) -> Vec<usize> {
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
 
-    let response =
-        ProtobufNewTabsResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
+    let response = ProtobufNewTabsResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
     NewTabsResponse::try_from(response).unwrap()
 }
 
@@ -824,8 +831,7 @@ pub fn new_tabs_with_layout_info<L: AsRef<LayoutInfo>>(layout_info: L) -> Vec<us
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
 
-    let response =
-        ProtobufNewTabsResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
+    let response = ProtobufNewTabsResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
     NewTabsResponse::try_from(response).unwrap()
 }
 
@@ -841,8 +847,7 @@ where
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
 
-    let response =
-        ProtobufNewTabResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
+    let response = ProtobufNewTabResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
     NewTabResponse::try_from(response).unwrap()
 }
 
@@ -1672,15 +1677,13 @@ pub fn get_pane_pid(pane_id: PaneId) -> Result<i32, String> {
 /// ```
 pub fn get_pane_running_command(pane_id: PaneId) -> Result<Vec<String>, String> {
     let plugin_command = PluginCommand::GetPaneRunningCommand { pane_id };
-    let protobuf_plugin_command: ProtobufPluginCommand =
-        plugin_command.try_into().unwrap();
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
 
-    let protobuf_response = ProtobufGetPaneRunningCommandResponse::decode(
-        bytes_from_stdin().unwrap().as_slice(),
-    )
-    .unwrap();
+    let protobuf_response =
+        ProtobufGetPaneRunningCommandResponse::decode(bytes_from_stdin().unwrap().as_slice())
+            .unwrap();
 
     match protobuf_response.result {
         Some(get_pane_running_command_response::Result::Command(cmd)) => Ok(cmd.args),
@@ -1721,8 +1724,7 @@ pub fn get_pane_running_command(pane_id: PaneId) -> Result<Vec<String>, String> 
 /// ```
 pub fn get_pane_cwd(pane_id: PaneId) -> Result<PathBuf, String> {
     let plugin_command = PluginCommand::GetPaneCwd { pane_id };
-    let protobuf_plugin_command: ProtobufPluginCommand =
-        plugin_command.try_into().unwrap();
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
 
@@ -1730,9 +1732,7 @@ pub fn get_pane_cwd(pane_id: PaneId) -> Result<PathBuf, String> {
         ProtobufGetPaneCwdResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
 
     match protobuf_response.result {
-        Some(get_pane_cwd_response::Result::Cwd(cwd_str)) => {
-            Ok(PathBuf::from(cwd_str))
-        },
+        Some(get_pane_cwd_response::Result::Cwd(cwd_str)) => Ok(PathBuf::from(cwd_str)),
         Some(get_pane_cwd_response::Result::Error(err)) => Err(err),
         None => Err("Empty response from server".to_string()),
     }
@@ -2061,8 +2061,8 @@ pub fn break_panes_to_new_tab(
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
 
-    let response = ProtobufBreakPanesToNewTabResponse::decode(bytes_from_stdin().unwrap().as_slice())
-        .unwrap();
+    let response =
+        ProtobufBreakPanesToNewTabResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
     BreakPanesToNewTabResponse::try_from(response).unwrap()
 }
 
@@ -2081,10 +2081,9 @@ pub fn break_panes_to_tab_with_index(
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
 
-    let response = ProtobufBreakPanesToTabWithIndexResponse::decode(
-        bytes_from_stdin().unwrap().as_slice(),
-    )
-    .unwrap();
+    let response =
+        ProtobufBreakPanesToTabWithIndexResponse::decode(bytes_from_stdin().unwrap().as_slice())
+            .unwrap();
     BreakPanesToTabWithIndexResponse::try_from(response).unwrap()
 }
 

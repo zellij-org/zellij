@@ -19,9 +19,8 @@ use std::sync::Arc;
 use std::{collections::HashMap, os::unix::io::RawFd, path::PathBuf};
 use zellij_utils::{
     data::{
-        CommandOrPlugin, Event, FloatingPaneCoordinates, GetPanePidResponse,
-        GetPaneRunningCommandResponse, GetPaneCwdResponse, NewPanePlacement,
-        OriginatingPlugin, SessionInfo,
+        CommandOrPlugin, Event, FloatingPaneCoordinates, GetPaneCwdResponse, GetPanePidResponse,
+        GetPaneRunningCommandResponse, NewPanePlacement, OriginatingPlugin, SessionInfo,
     },
     errors::prelude::*,
     errors::{ContextType, PtyContext},
@@ -2119,7 +2118,8 @@ impl Pty {
                     let pid = Pid::from_raw(child_pid);
                     if let Some(os_input) = self.bus.os_input.as_ref() {
                         // First, try to get child process command (e.g., nvim running in bash)
-                        let ppids_to_cmds = os_input.get_all_cmds_by_ppid(&self.post_command_discovery_hook);
+                        let ppids_to_cmds =
+                            os_input.get_all_cmds_by_ppid(&self.post_command_discovery_hook);
                         let cmd_ps = ppids_to_cmds.get(&format!("{}", child_pid));
 
                         // If no child process, fall back to parent process (e.g., the shell itself)
@@ -2137,9 +2137,7 @@ impl Pty {
                             ))
                         }
                     } else {
-                        GetPaneRunningCommandResponse::Err(
-                            "OS input not available".to_string()
-                        )
+                        GetPaneRunningCommandResponse::Err("OS input not available".to_string())
                     }
                 } else {
                     GetPaneRunningCommandResponse::Err(format!(
@@ -2148,12 +2146,10 @@ impl Pty {
                     ))
                 }
             },
-            PaneId::Plugin(plugin_id) => {
-                GetPaneRunningCommandResponse::Err(format!(
-                    "Cannot get running command for plugin pane {}",
-                    plugin_id
-                ))
-            },
+            PaneId::Plugin(plugin_id) => GetPaneRunningCommandResponse::Err(format!(
+                "Cannot get running command for plugin pane {}",
+                plugin_id
+            )),
         }
     }
     pub fn get_pane_cwd(&self, pane_id: PaneId) -> GetPaneCwdResponse {
@@ -2183,10 +2179,7 @@ impl Pty {
                 }
             },
             PaneId::Plugin(plugin_id) => {
-                GetPaneCwdResponse::Err(format!(
-                    "Cannot get CWD for plugin pane {}",
-                    plugin_id
-                ))
+                GetPaneCwdResponse::Err(format!("Cannot get CWD for plugin pane {}", plugin_id))
             },
         }
     }
