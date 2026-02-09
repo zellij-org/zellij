@@ -18,8 +18,8 @@ use zellij_utils::plugin_api::plugin_command::{
     ProtobufDumpLayoutResponse, ProtobufDumpSessionLayoutResponse, ProtobufEditLayoutResponse,
     ProtobufFocusOrCreateTabResponse, ProtobufGenerateRandomNameResponse,
     ProtobufGetFocusedPaneInfoResponse, ProtobufGetLayoutDirResponse, ProtobufGetPaneInfoResponse,
-    ProtobufGetPanePidResponse, ProtobufNewTabResponse, ProtobufNewTabsResponse,
-    ProtobufOpenCommandPaneBackgroundResponse,
+    ProtobufGetPanePidResponse, ProtobufGetTabInfoResponse, ProtobufNewTabResponse,
+    ProtobufNewTabsResponse, ProtobufOpenCommandPaneBackgroundResponse,
     ProtobufOpenCommandPaneFloatingNearPluginResponse, ProtobufOpenCommandPaneFloatingResponse,
     ProtobufOpenCommandPaneInPlaceOfPluginResponse, ProtobufOpenCommandPaneInPlaceResponse,
     ProtobufOpenCommandPaneNearPluginResponse, ProtobufOpenCommandPaneResponse,
@@ -243,6 +243,51 @@ pub fn get_pane_info(pane_id: PaneId) -> Option<PaneInfo> {
     protobuf_response
         .pane_info
         .and_then(|pb_pane_info| pb_pane_info.try_into().ok())
+}
+
+/// Query information about a specific tab by its tab ID.
+///
+/// This synchronously queries Zellij for detailed information about the tab with the given ID,
+/// including its name, position, active state, pane counts, and other metadata.
+///
+/// # Parameters
+///
+/// - `tab_id`: The stable ID of the tab to query
+///
+/// # Returns
+///
+/// - `Some(TabInfo)` if the tab exists and information was successfully retrieved
+/// - `None` if the tab does not exist or could not be found
+///
+/// # Example
+///
+/// ```no_run
+/// use zellij_tile::prelude::*;
+///
+/// // Query info for a specific tab
+/// let tab_id = 3;
+/// match get_tab_info(tab_id) {
+///     Some(info) => {
+///         println!("Tab name: {}", info.name);
+///         println!("Tab position: {}", info.position);
+///         println!("Tab is active: {}", info.active);
+///         println!("Tiled panes: {}", info.selectable_tiled_panes_count);
+///     },
+///     None => println!("Tab not found"),
+/// }
+/// ```
+pub fn get_tab_info(tab_id: usize) -> Option<TabInfo> {
+    let plugin_command = PluginCommand::GetTabInfo(tab_id);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+
+    let protobuf_response =
+        ProtobufGetTabInfoResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
+
+    protobuf_response
+        .tab_info
+        .and_then(|pb_tab_info| pb_tab_info.try_into().ok())
 }
 
 /// Save the current session state to disk immediately.

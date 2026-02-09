@@ -3,7 +3,7 @@
 pub struct PluginCommand {
     #[prost(enumeration="CommandName", tag="1")]
     pub name: i32,
-    #[prost(oneof="plugin_command::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139")]
+    #[prost(oneof="plugin_command::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140")]
     pub payload: ::core::option::Option<plugin_command::Payload>,
 }
 /// Nested message and enum types in `PluginCommand`.
@@ -261,6 +261,8 @@ pub mod plugin_command {
         CurrentSessionLastSavedTimePayload(super::CurrentSessionLastSavedTimePayload),
         #[prost(message, tag="139")]
         GetPaneInfoPayload(super::GetPaneInfoPayload),
+        #[prost(message, tag="140")]
+        GetTabInfoPayload(super::GetTabInfoPayload),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -1299,6 +1301,19 @@ pub struct GetPaneInfoResponse {
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetTabInfoPayload {
+    #[prost(uint64, tag="1")]
+    pub tab_id: u64,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetTabInfoResponse {
+    /// None if tab not found
+    #[prost(message, optional, tag="1")]
+    pub tab_info: ::core::option::Option<super::event::TabInfo>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct NewTabResponse {
     #[prost(oneof="new_tab_response::Result", tags="1, 2")]
     pub result: ::core::option::Option<new_tab_response::Result>,
@@ -1661,6 +1676,7 @@ pub enum CommandName {
     SaveSession = 186,
     CurrentSessionLastSavedTime = 187,
     GetPaneInfo = 188,
+    GetTabInfo = 189,
 }
 impl CommandName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -1837,6 +1853,7 @@ impl CommandName {
             CommandName::SaveSession => "SaveSession",
             CommandName::CurrentSessionLastSavedTime => "CurrentSessionLastSavedTime",
             CommandName::GetPaneInfo => "GetPaneInfo",
+            CommandName::GetTabInfo => "GetTabInfo",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -2010,6 +2027,7 @@ impl CommandName {
             "SaveSession" => Some(Self::SaveSession),
             "CurrentSessionLastSavedTime" => Some(Self::CurrentSessionLastSavedTime),
             "GetPaneInfo" => Some(Self::GetPaneInfo),
+            "GetTabInfo" => Some(Self::GetTabInfo),
             _ => None,
         }
     }

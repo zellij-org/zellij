@@ -356,6 +356,7 @@ pub enum ScreenContext {
     DumpLayoutToPlugin,
     GetFocusedPaneInfo,
     GetPaneInfo,
+    GetTabInfo,
     ListClientsMetadata,
     Reconfigure,
     RerunCommandPane,

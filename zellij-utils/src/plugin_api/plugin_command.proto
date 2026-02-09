@@ -181,6 +181,7 @@ enum CommandName {
   SaveSession = 186;
   CurrentSessionLastSavedTime = 187;
   GetPaneInfo = 188;
+  GetTabInfo = 189;
 }
 
 message PluginCommand {
@@ -311,6 +312,7 @@ message PluginCommand {
     SaveSessionPayload save_session_payload = 137;
     CurrentSessionLastSavedTimePayload current_session_last_saved_time_payload = 138;
     GetPaneInfoPayload get_pane_info_payload = 139;
+    GetTabInfoPayload get_tab_info_payload = 140;
   }
 }
 
@@ -934,6 +936,14 @@ message GetPaneInfoPayload {
 
 message GetPaneInfoResponse {
   optional event.PaneInfo pane_info = 1; // None if pane not found
+}
+
+message GetTabInfoPayload {
+  uint64 tab_id = 1;
+}
+
+message GetTabInfoResponse {
+  optional event.TabInfo tab_info = 1; // None if tab not found
 }
 
 message NewTabResponse {

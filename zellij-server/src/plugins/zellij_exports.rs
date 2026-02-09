@@ -78,7 +78,7 @@ use zellij_utils::{
             ProtobufEditLayoutResponse, ProtobufFocusOrCreateTabResponse,
             ProtobufGenerateRandomNameResponse, ProtobufGetFocusedPaneInfoResponse,
             ProtobufGetLayoutDirResponse, ProtobufGetPaneInfoResponse, ProtobufGetPanePidResponse,
-            ProtobufNewTabResponse,
+            ProtobufGetTabInfoResponse, ProtobufNewTabResponse,
             ProtobufNewTabsResponse, ProtobufOpenCommandPaneBackgroundResponse,
             ProtobufOpenCommandPaneFloatingNearPluginResponse,
             ProtobufOpenCommandPaneFloatingResponse, ProtobufOpenCommandPaneInPlaceOfPluginResponse,
@@ -162,6 +162,7 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                         current_session_last_saved_time(env)
                     },
                     PluginCommand::GetPaneInfo(pane_id) => get_pane_info(env, pane_id),
+                    PluginCommand::GetTabInfo(tab_id) => get_tab_info(env, tab_id),
                     PluginCommand::OpenFile(file_to_open, context) => {
                         open_file(env, file_to_open, context)
                     },
@@ -2960,6 +2961,68 @@ fn get_pane_info(env: &PluginEnv, pane_id: zellij_utils::data::PaneId) {
     let _ = wasi_write_object(env, &response.encode_to_vec());
 }
 
+fn get_tab_info(env: &PluginEnv, tab_id: usize) {
+    use crossbeam::channel::RecvTimeoutError;
+    use std::time::Duration;
+
+    let err_context = || {
+        format!(
+            "failed to get tab info for tab {} from plugin {}",
+            tab_id,
+            env.name()
+        )
+    };
+
+    // Create channel for response
+    let (response_sender, response_receiver) = crossbeam::channel::bounded(1);
+
+    // Send request to screen thread
+    env.senders
+        .send_to_screen(ScreenInstruction::GetTabInfo {
+            tab_id,
+            response_channel: response_sender,
+        })
+        .with_context(err_context)
+        .non_fatal();
+
+    // Block waiting for response with 100ms timeout
+    let tab_info = match response_receiver.recv_timeout(Duration::from_millis(100)) {
+        Ok(Some(tab_info)) => {
+            // Convert TabInfo to ProtobufTabInfo
+            match tab_info.try_into() {
+                Ok(protobuf_tab_info) => Some(protobuf_tab_info),
+                Err(e) => {
+                    log::error!(
+                        "Failed to convert TabInfo to protobuf for tab {}: {}",
+                        tab_id,
+                        e
+                    );
+                    None
+                },
+            }
+        },
+        Ok(None) => None, // Tab not found
+        Err(RecvTimeoutError::Timeout) => {
+            log::error!(
+                "GetTabInfo timed out for tab {} from plugin {}",
+                tab_id,
+                env.plugin_id
+            );
+            None
+        },
+        Err(RecvTimeoutError::Disconnected) => {
+            log::error!(
+                "GetTabInfo channel disconnected for plugin {}",
+                env.plugin_id
+            );
+            None
+        },
+    };
+
+    let response = ProtobufGetTabInfoResponse { tab_info };
+    let _ = wasi_write_object(env, &response.encode_to_vec());
+}
+
 fn list_clients(env: &PluginEnv) {
     let _ = env.senders.to_screen.as_ref().map(|sender| {
         sender.send(ScreenInstruction::ListClientsToPlugin(
@@ -4272,7 +4335,8 @@ fn check_command_permission(
         | PluginCommand::ParseLayout(..)
         | PluginCommand::SaveSession
         | PluginCommand::CurrentSessionLastSavedTime
-        | PluginCommand::GetPaneInfo(..) => PermissionType::ReadApplicationState,
+        | PluginCommand::GetPaneInfo(..)
+        | PluginCommand::GetTabInfo(..) => PermissionType::ReadApplicationState,
         PluginCommand::RebindKeys { .. } | PluginCommand::Reconfigure(..) => {
             PermissionType::Reconfigure
         },

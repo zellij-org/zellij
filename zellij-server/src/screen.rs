@@ -305,6 +305,10 @@ pub enum ScreenInstruction {
         pane_id: PaneId,
         response_channel: crossbeam::channel::Sender<Option<PaneInfo>>,
     },
+    GetTabInfo {
+        tab_id: usize,
+        response_channel: crossbeam::channel::Sender<Option<TabInfo>>,
+    },
     EditScrollback(ClientId, Option<NotificationEnd>),
     GetPaneScrollback {
         pane_id: PaneId,
@@ -680,6 +684,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::DumpLayoutToPlugin { .. } => ScreenContext::DumpLayoutToPlugin,
             ScreenInstruction::GetFocusedPaneInfo { .. } => ScreenContext::GetFocusedPaneInfo,
             ScreenInstruction::GetPaneInfo { .. } => ScreenContext::GetPaneInfo,
+            ScreenInstruction::GetTabInfo { .. } => ScreenContext::GetTabInfo,
             ScreenInstruction::EditScrollback(..) => ScreenContext::EditScrollback,
             ScreenInstruction::GetPaneScrollback { .. } => ScreenContext::GetPaneScrollback,
             ScreenInstruction::ScrollUp(..) => ScreenContext::ScrollUp,
@@ -3734,6 +3739,44 @@ impl Screen {
         None
     }
 
+    fn get_tab_info(&self, tab_id: usize) -> Option<TabInfo> {
+        // Look up tab by its stable ID
+        self.tabs.get(&tab_id).map(|tab| {
+            let all_focused_clients: Vec<ClientId> = self
+                .active_tab_ids
+                .iter()
+                .filter(|(_c_id, active_tab_id)| **active_tab_id == tab.id)
+                .map(|(c_id, _)| c_id)
+                .copied()
+                .collect();
+            let (active_swap_layout_name, is_swap_layout_dirty) = tab.swap_layout_info();
+            let tab_viewport = tab.get_viewport();
+            let tab_display_area = tab.get_display_area();
+            let selectable_tiled_panes_count = tab.get_selectable_tiled_panes_count();
+            let selectable_floating_panes_count = tab.get_selectable_floating_panes_count();
+
+            TabInfo {
+                position: tab.position,
+                name: tab.name.clone(),
+                active: self.active_tab_ids.values().any(|i| i == &tab.id),
+                panes_to_hide: tab.panes_to_hide_count(),
+                is_fullscreen_active: tab.is_fullscreen_active(),
+                is_sync_panes_active: tab.is_sync_panes_active(),
+                are_floating_panes_visible: tab.are_floating_panes_visible(),
+                other_focused_clients: all_focused_clients,
+                active_swap_layout_name,
+                is_swap_layout_dirty,
+                viewport_rows: tab_viewport.rows,
+                viewport_columns: tab_viewport.cols,
+                display_area_rows: tab_display_area.rows,
+                display_area_columns: tab_display_area.cols,
+                selectable_tiled_panes_count,
+                selectable_floating_panes_count,
+                tab_id: tab.id,
+            }
+        })
+    }
+
     fn group_and_ungroup_panes(
         &mut self,
         pane_ids_to_group: Vec<PaneId>,
@@ -4514,6 +4557,13 @@ pub(crate) fn screen_thread_main(
             } => {
                 let pane_info = screen.get_pane_info(pane_id);
                 let _ = response_channel.send(pane_info);
+            },
+            ScreenInstruction::GetTabInfo {
+                tab_id,
+                response_channel,
+            } => {
+                let tab_info = screen.get_tab_info(tab_id);
+                let _ = response_channel.send(tab_info);
             },
             ScreenInstruction::ListClientsToPlugin(plugin_id, client_id) => {
                 let err_context = || format!("Failed to dump layout");

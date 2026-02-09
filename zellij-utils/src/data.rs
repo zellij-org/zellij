@@ -3402,6 +3402,7 @@ pub enum PluginCommand {
     SaveSession,
     CurrentSessionLastSavedTime,
     GetPaneInfo(PaneId),
+    GetTabInfo(usize), // tab_id
 }
 
 // Response types for plugin API methods that create tabs

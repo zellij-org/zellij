@@ -33,6 +33,7 @@ pub use super::generated_api::api::{
         GetLayoutDirResponse as ProtobufGetLayoutDirResponse, GetPaneInfoPayload,
         GetPaneInfoResponse as ProtobufGetPaneInfoResponse, GetPanePidPayload,
         GetPanePidResponse as ProtobufGetPanePidResponse, GetPaneScrollbackPayload,
+        GetTabInfoPayload, GetTabInfoResponse as ProtobufGetTabInfoResponse,
         GroupAndUngroupPanesPayload, HidePaneWithIdPayload, HighlightAndUnhighlightPanesPayload,
         HttpVerb as ProtobufHttpVerb, IdAndNewName, KeyToRebind, KeyToUnbind, KillSessionsPayload,
         ListTokensResponse, LoadNewPluginPayload, MessageToPluginPayload,
@@ -2151,6 +2152,13 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 },
                 _ => Err("Malformed payload for GetPaneInfo"),
             },
+            Some(CommandName::GetTabInfo) => match protobuf_plugin_command.payload {
+                Some(Payload::GetTabInfoPayload(get_tab_info_payload)) => {
+                    let tab_id = get_tab_info_payload.tab_id as usize;
+                    Ok(PluginCommand::GetTabInfo(tab_id))
+                },
+                _ => Err("Malformed payload for GetTabInfo"),
+            },
             None => Err("Unrecognized plugin command"),
         }
     }
@@ -3510,6 +3518,12 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     })),
                 })
             },
+            PluginCommand::GetTabInfo(tab_id) => Ok(ProtobufPluginCommand {
+                name: CommandName::GetTabInfo as i32,
+                payload: Some(Payload::GetTabInfoPayload(GetTabInfoPayload {
+                    tab_id: tab_id as u64,
+                })),
+            }),
         }
     }
 }
