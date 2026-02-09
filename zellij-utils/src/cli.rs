@@ -646,6 +646,8 @@ pub enum CliAction {
         #[clap(long, value_parser, default_value("false"), takes_value(false))]
         with_ids: bool,
     },
+    /// Save the current session state to disk immediately
+    SaveSession,
     /// Open the pane scrollback in your default editor
     EditScrollback,
     /// Scroll up in the focused pane
@@ -767,7 +769,7 @@ pub enum CliAction {
         near_current_pane: bool,
         /// start this pane without a border (warning: will make it impossible to move with the
         /// mouse)
-        #[clap(short, long, value_parser)]
+        #[clap(long, value_parser)]
         borderless: Option<bool>,
     },
     /// Open the specified file in a new zellij pane with your default EDITOR

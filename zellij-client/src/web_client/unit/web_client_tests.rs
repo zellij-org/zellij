@@ -88,6 +88,8 @@ mod web_client_tests {
             None,
             Some(session_manager),
             Some(client_os_api_factory),
+            addr.ip(),
+            port,
         ));
 
         wait_for_server(port, Duration::from_secs(5))
@@ -147,6 +149,8 @@ mod web_client_tests {
                 None,
                 Some(session_manager),
                 Some(client_os_api_factory),
+                addr.ip(),
+                port,
             )
             .await;
         });
@@ -216,6 +220,8 @@ mod web_client_tests {
                 None,
                 Some(session_manager),
                 Some(client_os_api_factory),
+                addr.ip(),
+                port,
             )
             .await;
         });
@@ -281,6 +287,8 @@ mod web_client_tests {
                 None,
                 Some(session_manager),
                 Some(client_os_api_factory),
+                addr.ip(),
+                port,
             )
             .await;
         });
@@ -480,6 +488,8 @@ mod web_client_tests {
                 None,
                 Some(session_manager),
                 Some(client_os_api_factory),
+                addr.ip(),
+                port,
             )
             .await;
         });
@@ -528,6 +538,8 @@ mod web_client_tests {
                 None,
                 Some(session_manager),
                 Some(client_os_api_factory),
+                addr.ip(),
+                port,
             )
             .await;
         });
@@ -588,6 +600,8 @@ mod web_client_tests {
                 None,
                 Some(session_manager),
                 Some(client_os_api_factory),
+                addr.ip(),
+                port,
             )
             .await;
         });
@@ -733,6 +747,8 @@ mod web_client_tests {
                 None,
                 Some(session_manager),
                 Some(client_os_api_factory),
+                addr.ip(),
+                port,
             )
             .await;
         });
@@ -905,6 +921,8 @@ mod web_client_tests {
                 None,
                 Some(session_manager),
                 Some(client_os_api_factory),
+                addr.ip(),
+                port,
             )
             .await;
         });
@@ -1049,6 +1067,8 @@ mod web_client_tests {
                 None,
                 Some(session_manager),
                 Some(client_os_api_factory),
+                addr.ip(),
+                port,
             )
             .await;
         });
@@ -1166,6 +1186,7 @@ mod web_client_tests {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let addr = listener.local_addr().unwrap();
         let port = addr.port();
+        let ip = addr.ip();
 
         let temp_config_path = std::env::temp_dir().join("test_config.kdl");
         let server_handle = tokio::spawn(async move {
@@ -1177,6 +1198,8 @@ mod web_client_tests {
                 None,
                 Some(mock_session_manager),
                 Some(mock_os_api_factory),
+                ip,
+                port,
             )
             .await;
         });
@@ -1263,6 +1286,7 @@ mod web_client_tests {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let addr = listener.local_addr().unwrap();
         let port = addr.port();
+        let ip = addr.ip();
 
         let temp_config_path = std::env::temp_dir().join("test_config.kdl");
         let server_handle = tokio::spawn(async move {
@@ -1274,6 +1298,8 @@ mod web_client_tests {
                 None,
                 Some(mock_session_manager),
                 Some(mock_os_api_factory),
+                ip,
+                port,
             )
             .await;
         });
@@ -1436,6 +1462,7 @@ mod web_client_tests {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let addr = listener.local_addr().unwrap();
         let port = addr.port();
+        let ip = addr.ip();
 
         let temp_config_path = std::env::temp_dir().join("test_config.kdl");
         let server_handle = tokio::spawn(async move {
@@ -1447,6 +1474,8 @@ mod web_client_tests {
                 None,
                 Some(mock_session_manager),
                 Some(mock_os_api_factory),
+                ip,
+                port,
             )
             .await;
         });
@@ -1544,6 +1573,7 @@ mod web_client_tests {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let addr = listener.local_addr().unwrap();
         let port = addr.port();
+        let ip = addr.ip();
 
         let temp_config_path = std::env::temp_dir().join("test_config.kdl");
         let server_handle = tokio::spawn(async move {
@@ -1555,6 +1585,8 @@ mod web_client_tests {
                 None,
                 Some(mock_session_manager),
                 Some(mock_os_api_factory),
+                ip,
+                port,
             )
             .await;
         });
@@ -1895,8 +1927,5 @@ impl ClientOsApi for MockClientOsApi {
     }
     fn disable_mouse(&self) -> anyhow::Result<()> {
         Ok(())
-    }
-    fn stdin_poller(&self) -> crate::os_input_output::StdinPoller {
-        crate::os_input_output::StdinPoller::default()
     }
 }

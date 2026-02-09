@@ -21,6 +21,7 @@ tabs {
         is_swap_layout_dirty true
         selectable_tiled_panes_count 10
         selectable_floating_panes_count 10
+        tab_id 0
     }
     tab {
         position 1
@@ -38,6 +39,7 @@ tabs {
         is_swap_layout_dirty false
         selectable_tiled_panes_count 10
         selectable_floating_panes_count 10
+        tab_id 1
     }
 }
 panes {

@@ -157,6 +157,8 @@ pub fn start_web_client(
         tls_config,
         None,
         None,
+        web_server_ip,
+        web_server_port,
     ));
 }
 
@@ -168,6 +170,8 @@ pub async fn serve_web_client(
     rustls_config: Option<RustlsConfig>,
     session_manager: Option<Arc<dyn SessionManager>>,
     client_os_api_factory: Option<Arc<dyn ClientOsApiFactory>>,
+    web_server_ip: IpAddr,
+    web_server_port: u16,
 ) {
     let Some(config_file_path) = config_file_path.or_else(|| Config::default_config_file_path())
     else {
@@ -204,7 +208,13 @@ pub async fn serve_web_client(
     tokio::spawn({
         let server_handle = server_handle.clone();
         async move {
-            listen_to_web_server_instructions(server_handle, &format!("{}", id)).await;
+            listen_to_web_server_instructions(
+                server_handle,
+                &format!("{}", id),
+                web_server_ip,
+                web_server_port,
+            )
+            .await;
         }
     });
 

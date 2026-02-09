@@ -232,7 +232,8 @@ message Action {
     SwitchSessionAction switch_session = 92;
     NewBlockingPaneAction new_blocking_pane = 93;
     OverrideLayoutAction override_layout = 94;
-    RenameTabByNameAction rename_tab_by_name = 97;
+    SaveSessionAction save_session = 97;
+    RenameTabByNameAction rename_tab_by_name = 98;
   }
 }
 
@@ -248,6 +249,7 @@ message ClearScreenAction {}
 message DumpLayoutAction {
   bool with_ids = 1;
 }
+message SaveSessionAction {}
 message EditScrollbackAction {}
 message ScrollUpAction {}
 message ScrollDownAction {}
@@ -1031,6 +1033,8 @@ message Options {
   optional string web_server_key = 37;
   optional bool enforce_https_for_localhost = 38;
   optional string post_command_discovery_hook = 39;
+  optional bool osc8_hyperlinks = 40;
+  optional bool mouse_hover_effects = 41;
 }
 
 enum OnForceClose {

@@ -2004,34 +2004,115 @@ impl LayoutInfo {
             LayoutInfo::Stringified(_stringified) => false,
         }
     }
-    pub fn from_config(
+    pub fn from_cli(
         layout_dir: &Option<PathBuf>,
-        layout_path: &Option<PathBuf>,
+        maybe_layout_path: &Option<PathBuf>,
+        cwd: PathBuf,
     ) -> Option<Self> {
-        match layout_path {
-            Some(layout_path) => {
-                if layout_path.extension().is_some() || layout_path.components().count() > 1 {
-                    let Some(layout_dir) = layout_dir
-                        .as_ref()
-                        .map(|l| l.clone())
-                        .or_else(default_layout_dir)
-                    else {
-                        return None;
-                    };
-                    let file_path = layout_dir.join(layout_path);
-                    Some(LayoutInfo::File(
-                        // layout_dir.join(layout_path).display().to_string(),
+        // If we're not given a layout path, fall back to "default". Since we cannot tell ahead of
+        // time whether the user has a layout named "default.kdl" in their layout directory, we
+        // cannot blindly assume that this is indeed the builtin default layout. The layout
+        // resolution below will correctly handle this.
+        // The docs promise this behavior, so we have to abide:
+        // <https://zellij.dev/documentation/layouts.html#layout-default-directory>
+        let layout_path = maybe_layout_path
+            .clone()
+            .unwrap_or(PathBuf::from("default"));
+
+        if layout_path.starts_with("http://") || layout_path.starts_with("https://") {
+            Some(LayoutInfo::Url(layout_path.display().to_string()))
+        } else if layout_path.extension().is_some() || layout_path.components().count() > 1 {
+            let layout_dir = cwd;
+            let file_path = layout_dir.join(layout_path);
+            Some(LayoutInfo::File(
+                // layout_dir.join(layout_path).display().to_string(),
+                file_path.display().to_string(),
+                LayoutMetadata::from(&file_path),
+            ))
+        } else {
+            // Attempt to interpret the layout as bare layout name from the layout application
+            // directory. This is described in the docs:
+            // <https://zellij.dev/documentation/layouts.html#layout-default-directory>
+            if let Some(layout_dir) = layout_dir
+                .as_ref()
+                .map(|l| l.clone())
+                .or_else(default_layout_dir)
+            {
+                let file_path = layout_dir.join(&layout_path);
+                if file_path.exists() {
+                    return Some(LayoutInfo::File(
                         file_path.display().to_string(),
                         LayoutMetadata::from(&file_path),
-                    ))
-                } else if layout_path.starts_with("http://") || layout_path.starts_with("https://")
-                {
-                    Some(LayoutInfo::Url(layout_path.display().to_string()))
-                } else {
-                    Some(LayoutInfo::BuiltIn(layout_path.display().to_string()))
+                    ));
                 }
-            },
-            None => None,
+                let file_path_with_ext = file_path.with_extension("kdl");
+                if file_path_with_ext.exists() {
+                    return Some(LayoutInfo::File(
+                        file_path_with_ext.display().to_string(),
+                        LayoutMetadata::from(&file_path_with_ext),
+                    ));
+                }
+            }
+            // Assume a builtin layout by default
+            Some(LayoutInfo::BuiltIn(layout_path.display().to_string()))
+        }
+    }
+    pub fn from_config(
+        layout_dir: &Option<PathBuf>,
+        maybe_layout_path: &Option<PathBuf>,
+    ) -> Option<Self> {
+        // If we're not given a layout path, fall back to "default". Since we cannot tell ahead of
+        // time whether the user has a layout named "default.kdl" in their layout directory, we
+        // cannot blindly assume that this is indeed the builtin default layout. The layout
+        // resolution below will correctly handle this.
+        // The docs promise this behavior, so we have to abide:
+        // <https://zellij.dev/documentation/layouts.html#layout-default-directory>
+        let layout_path = maybe_layout_path
+            .clone()
+            .unwrap_or(PathBuf::from("default"));
+
+        if layout_path.starts_with("http://") || layout_path.starts_with("https://") {
+            Some(LayoutInfo::Url(layout_path.display().to_string()))
+        } else if layout_path.extension().is_some() || layout_path.components().count() > 1 {
+            let Some(layout_dir) = layout_dir
+                .as_ref()
+                .map(|l| l.clone())
+                .or_else(default_layout_dir)
+            else {
+                return None;
+            };
+            let file_path = layout_dir.join(layout_path);
+            Some(LayoutInfo::File(
+                // layout_dir.join(layout_path).display().to_string(),
+                file_path.display().to_string(),
+                LayoutMetadata::from(&file_path),
+            ))
+        } else {
+            // Attempt to interpret the layout as bare layout name from the layout application
+            // directory. This is described in the docs:
+            // <https://zellij.dev/documentation/layouts.html#layout-default-directory>
+            if let Some(layout_dir) = layout_dir
+                .as_ref()
+                .map(|l| l.clone())
+                .or_else(default_layout_dir)
+            {
+                let file_path = layout_dir.join(&layout_path);
+                if file_path.exists() {
+                    return Some(LayoutInfo::File(
+                        file_path.display().to_string(),
+                        LayoutMetadata::from(&file_path),
+                    ));
+                }
+                let file_path_with_ext = file_path.with_extension("kdl");
+                if file_path_with_ext.exists() {
+                    return Some(LayoutInfo::File(
+                        file_path_with_ext.display().to_string(),
+                        LayoutMetadata::from(&file_path_with_ext),
+                    ));
+                }
+            }
+            // Assume a builtin layout by default
+            Some(LayoutInfo::BuiltIn(layout_path.display().to_string()))
         }
     }
 }
@@ -2103,6 +2184,8 @@ pub struct TabInfo {
     pub selectable_tiled_panes_count: usize,
     /// The number of selectable (eg. not the UI bars) floating panes currently in this tab
     pub selectable_floating_panes_count: usize,
+    /// The stable identifier for this tab
+    pub tab_id: usize,
 }
 
 /// The `PaneManifest` contains a dictionary of panes, indexed by the tab position (0 indexed).
@@ -2673,6 +2756,12 @@ impl MessageToPlugin {
         let new_plugin_args = self.new_plugin_args.get_or_insert_with(Default::default);
         new_plugin_args.should_focus = Some(true);
         self
+    }
+    pub fn has_cwd(&self) -> bool {
+        self.new_plugin_args
+            .as_ref()
+            .map(|n| n.cwd.is_some())
+            .unwrap_or(false)
     }
 }
 
@@ -3301,4 +3390,6 @@ pub enum PluginCommand {
     ParseLayout(String), // String contains raw KDL layout
     GetLayoutDir,
     GetFocusedPaneInfo,
+    SaveSession,
+    CurrentSessionLastSavedTime,
 }

@@ -168,6 +168,8 @@ pub enum Action {
     DumpLayout {
         with_ids: bool,
     },
+    /// Save the current session state to disk
+    SaveSession,
     /// Scroll up in focus pane.
     EditScrollback,
     ScrollUp,
@@ -525,6 +527,7 @@ impl Action {
                 include_scrollback: full,
             }]),
             CliAction::DumpLayout { with_ids } => Ok(vec![Action::DumpLayout { with_ids }]),
+            CliAction::SaveSession => Ok(vec![Action::SaveSession]),
             CliAction::EditScrollback => Ok(vec![Action::EditScrollback]),
             CliAction::ScrollUp => Ok(vec![Action::ScrollUp]),
             CliAction::ScrollDown => Ok(vec![Action::ScrollDown]),

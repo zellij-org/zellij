@@ -1605,6 +1605,7 @@ impl TryFrom<ProtobufTabInfo> for TabInfo {
             selectable_tiled_panes_count: protobuf_tab_info.selectable_tiled_panes_count as usize,
             selectable_floating_panes_count: protobuf_tab_info.selectable_floating_panes_count
                 as usize,
+            tab_id: protobuf_tab_info.tab_id as usize,
         })
     }
 }
@@ -1633,6 +1634,7 @@ impl TryFrom<TabInfo> for ProtobufTabInfo {
             display_area_columns: tab_info.display_area_columns as u32,
             selectable_tiled_panes_count: tab_info.selectable_tiled_panes_count as u32,
             selectable_floating_panes_count: tab_info.selectable_floating_panes_count as u32,
+            tab_id: tab_info.tab_id as u32,
         })
     }
 }
@@ -2118,6 +2120,7 @@ fn serialize_tab_update_event_with_non_default_values() {
             display_area_columns: 10,
             selectable_tiled_panes_count: 10,
             selectable_floating_panes_count: 10,
+            tab_id: 0,
         },
         TabInfo {
             position: 1,
@@ -2136,6 +2139,7 @@ fn serialize_tab_update_event_with_non_default_values() {
             display_area_columns: 10,
             selectable_tiled_panes_count: 10,
             selectable_floating_panes_count: 10,
+            tab_id: 1,
         },
         TabInfo::default(),
     ]);
@@ -2409,6 +2413,7 @@ fn serialize_session_update_event_with_non_default_values() {
             display_area_columns: 10,
             selectable_tiled_panes_count: 10,
             selectable_floating_panes_count: 10,
+            tab_id: 0,
         },
         TabInfo {
             position: 1,
@@ -2427,6 +2432,7 @@ fn serialize_session_update_event_with_non_default_values() {
             display_area_columns: 10,
             selectable_tiled_panes_count: 10,
             selectable_floating_panes_count: 10,
+            tab_id: 1,
         },
         TabInfo::default(),
     ];

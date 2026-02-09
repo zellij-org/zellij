@@ -2,7 +2,7 @@
 name: "\U0001F41B Bug Report"
 about: If something isn't working as expected.
 title: ''
-labels: bug
+labels: ["suspected bug"]
 assignees: ''
 
 ---

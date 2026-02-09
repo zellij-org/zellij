@@ -9,14 +9,17 @@ use zellij_utils::errors::prelude::*;
 use zellij_utils::input::actions::Action;
 pub use zellij_utils::plugin_api;
 use zellij_utils::plugin_api::event::ProtobufPaneScrollbackResponse;
+use zellij_utils::plugin_api::generated_api::api::plugin_command::save_session_response;
 use zellij_utils::plugin_api::plugin_command::{
     dump_layout_response, dump_session_layout_response, get_focused_pane_info_response,
-    parse_layout_response, CreateTokenResponse, ListTokensResponse, ProtobufDeleteLayoutResponse,
+    parse_layout_response, CreateTokenResponse, ListTokensResponse,
+    ProtobufCurrentSessionLastSavedTimeResponse, ProtobufDeleteLayoutResponse,
     ProtobufDumpLayoutResponse, ProtobufDumpSessionLayoutResponse, ProtobufEditLayoutResponse,
     ProtobufGenerateRandomNameResponse, ProtobufGetFocusedPaneInfoResponse,
     ProtobufGetLayoutDirResponse, ProtobufGetPanePidResponse, ProtobufParseLayoutResponse,
     ProtobufPluginCommand, ProtobufRenameLayoutResponse, ProtobufSaveLayoutResponse,
-    RenameWebTokenResponse, RevokeAllWebTokensResponse, RevokeTokenResponse,
+    ProtobufSaveSessionResponse, RenameWebTokenResponse, RevokeAllWebTokensResponse,
+    RevokeTokenResponse,
 };
 use zellij_utils::plugin_api::plugin_ids::{ProtobufPluginIds, ProtobufZellijVersion};
 
@@ -184,6 +187,75 @@ pub fn get_focused_pane_info() -> Result<(usize, PaneId), String> {
         Some(get_focused_pane_info_response::Result::Error(err)) => Err(err),
         None => Err("Empty response from host".to_string()),
     }
+}
+
+/// Save the current session state to disk immediately.
+///
+/// This triggers an immediate write of the current session metadata and layout
+/// to the session cache directory (~/.cache/zellij/contract_version_1/session_info/<session_name>/).
+///
+/// # Returns
+///
+/// - `Ok(())` if the save request was successfully sent
+/// - `Err(String)` if there was an error sending the request
+///
+/// # Example
+///
+/// ```no_run
+/// use zellij_tile::prelude::*;
+///
+/// // Save the current session
+/// match save_session() {
+///     Ok(()) => println!("Session saved successfully"),
+///     Err(e) => eprintln!("Failed to save session: {}", e),
+/// }
+/// ```
+pub fn save_session() -> Result<(), String> {
+    let plugin_command = PluginCommand::SaveSession;
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+
+    unsafe { host_run_plugin_command() };
+
+    let response_bytes =
+        bytes_from_stdin().map_err(|e| format!("Failed to read response: {:?}", e))?;
+    let protobuf_response = ProtobufSaveSessionResponse::decode(response_bytes.as_slice())
+        .map_err(|e| format!("Failed to decode response: {}", e))?;
+
+    match protobuf_response.result {
+        Some(save_session_response::Result::Success(_)) => Ok(()),
+        Some(save_session_response::Result::Error(error)) => Err(error),
+        None => Err("Server returned empty response".to_string()),
+    }
+}
+
+/// Returns the elapsed time in milliseconds since the current session state was last saved to disk.
+///
+/// Returns `None` if the session has never been saved during this session.
+/// The returned value is the number of milliseconds elapsed since the last save, not a Unix epoch timestamp.
+///
+/// # Example
+///
+/// ```no_run
+/// use zellij_tile::prelude::*;
+///
+/// if let Some(elapsed_millis) = current_session_last_saved_time() {
+///     println!("Session was last saved {} ms ago", elapsed_millis);
+/// } else {
+///     println!("Session has not been saved yet");
+/// }
+/// ```
+pub fn current_session_last_saved_time() -> Option<u64> {
+    let plugin_command = PluginCommand::CurrentSessionLastSavedTime;
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+
+    let protobuf_response =
+        ProtobufCurrentSessionLastSavedTimeResponse::decode(bytes_from_stdin().unwrap().as_slice())
+            .unwrap();
+
+    protobuf_response.timestamp_millis
 }
 
 // Host Functions

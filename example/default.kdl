@@ -514,6 +514,11 @@ load_plugins {
 //
 // advanced_mouse_actions false
 
+// Whether to enable mouse hover visual effects (frame highlight and help text)
+// Default: true
+//
+// mouse_hover_effects false
+
 // A command to run (will be wrapped with sh -c and provided the RESURRECT_COMMAND env variable)
 // after Zellij attempts to discover a command inside a pane when resurrecting sessions, the STDOUT
 // of this command will be used instead of the discovered RESURRECT_COMMAND

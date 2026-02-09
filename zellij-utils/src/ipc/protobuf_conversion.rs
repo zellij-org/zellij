@@ -579,6 +579,7 @@ impl From<crate::input::options::Options>
                 crate::input::options::Clipboard::Primary => ProtoClipboard::Primary as i32,
             }),
             copy_on_select: options.copy_on_select,
+            osc8_hyperlinks: options.osc8_hyperlinks,
             scrollback_editor: options
                 .scrollback_editor
                 .map(|p| p.to_string_lossy().to_string()),
@@ -602,6 +603,7 @@ impl From<crate::input::options::Options>
             show_startup_tips: options.show_startup_tips,
             show_release_notes: options.show_release_notes,
             advanced_mouse_actions: options.advanced_mouse_actions,
+            mouse_hover_effects: options.mouse_hover_effects,
             web_server_ip: options.web_server_ip.map(|ip| ip.to_string()),
             web_server_port: options.web_server_port.map(|p| p as u32),
             web_server_cert: options
@@ -664,6 +666,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
                 })
                 .transpose()?,
             copy_on_select: options.copy_on_select,
+            osc8_hyperlinks: options.osc8_hyperlinks,
             scrollback_editor: options.scrollback_editor.map(std::path::PathBuf::from),
             session_name: options.session_name,
             attach_to_session: options.attach_to_session,
@@ -691,6 +694,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
             show_startup_tips: options.show_startup_tips,
             show_release_notes: options.show_release_notes,
             advanced_mouse_actions: options.advanced_mouse_actions,
+            mouse_hover_effects: options.mouse_hover_effects,
             web_server_ip: options
                 .web_server_ip
                 .map(|ip| ip.parse())
@@ -728,16 +732,16 @@ impl From<crate::input::actions::Action>
             PageScrollDownAction, PageScrollUpAction, PaneIdWithPlugin, PaneNameInputAction,
             PreviousSwapLayoutAction, QueryTabNamesAction, QuitAction, RenamePluginPaneAction,
             RenameSessionAction, RenameTabAction, RenameTerminalPaneAction, ResizeAction,
-            RunAction, ScrollDownAction, ScrollDownAtAction, ScrollToBottomAction,
-            ScrollToTopAction, ScrollUpAction, ScrollUpAtAction, SearchAction, SearchInputAction,
-            SearchToggleOptionAction, SetPaneBorderlessAction, SkipConfirmAction, StackPanesAction,
-            StartOrReloadPluginAction, SwitchFocusAction, SwitchModeForAllClientsAction,
-            SwitchSessionAction, SwitchToModeAction, TabNameInputAction, ToggleActiveSyncTabAction,
-            ToggleFloatingPanesAction, ToggleFocusFullscreenAction, ToggleGroupMarkingAction,
-            ToggleMouseModeAction, TogglePaneBorderlessAction, TogglePaneEmbedOrFloatingAction,
-            TogglePaneFramesAction, TogglePaneInGroupAction, TogglePanePinnedAction,
-            ToggleTabAction, UndoRenamePaneAction, UndoRenameTabAction, WriteAction,
-            WriteCharsAction,
+            RunAction, SaveSessionAction, ScrollDownAction, ScrollDownAtAction,
+            ScrollToBottomAction, ScrollToTopAction, ScrollUpAction, ScrollUpAtAction,
+            SearchAction, SearchInputAction, SearchToggleOptionAction, SetPaneBorderlessAction,
+            SkipConfirmAction, StackPanesAction, StartOrReloadPluginAction, SwitchFocusAction,
+            SwitchModeForAllClientsAction, SwitchSessionAction, SwitchToModeAction,
+            TabNameInputAction, ToggleActiveSyncTabAction, ToggleFloatingPanesAction,
+            ToggleFocusFullscreenAction, ToggleGroupMarkingAction, ToggleMouseModeAction,
+            TogglePaneBorderlessAction, TogglePaneEmbedOrFloatingAction, TogglePaneFramesAction,
+            TogglePaneInGroupAction, TogglePanePinnedAction, ToggleTabAction, UndoRenamePaneAction,
+            UndoRenameTabAction, WriteAction, WriteCharsAction,
         };
         use std::collections::HashMap;
 
@@ -1303,6 +1307,9 @@ impl From<crate::input::actions::Action>
             crate::input::actions::Action::ToggleGroupMarking => {
                 ActionType::ToggleGroupMarking(ToggleGroupMarkingAction {})
             },
+            crate::input::actions::Action::SaveSession => {
+                ActionType::SaveSession(SaveSessionAction {})
+            },
         };
 
         Self {
@@ -1390,6 +1397,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
             ActionType::DumpLayout(action) => Ok(crate::input::actions::Action::DumpLayout {
                 with_ids: action.with_ids,
             }),
+            ActionType::SaveSession(_) => Ok(crate::input::actions::Action::SaveSession),
             ActionType::EditScrollback(_) => Ok(crate::input::actions::Action::EditScrollback),
             ActionType::ScrollUp(_) => Ok(crate::input::actions::Action::ScrollUp),
             ActionType::ScrollUpAt(scroll_action) => {

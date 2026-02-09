@@ -175,6 +175,7 @@ fn create_new_tab(size: Size, stacked_resize: bool) -> Tab {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let osc8_hyperlinks = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let advanced_mouse_actions = true;
     let web_sharing = WebSharing::Off;
@@ -206,6 +207,7 @@ fn create_new_tab(size: Size, stacked_resize: bool) -> Tab {
         debug,
         arrow_fonts,
         styled_underlines,
+        osc8_hyperlinks,
         explicitly_disable_kitty_keyboard_protocol,
         None,
         false,
@@ -213,6 +215,7 @@ fn create_new_tab(size: Size, stacked_resize: bool) -> Tab {
         current_pane_group,
         currently_marking_pane_group,
         advanced_mouse_actions,
+        true, // mouse_hover_effects
         web_server_ip,
         web_server_port,
     );
@@ -256,6 +259,7 @@ fn create_new_tab_with_layout(size: Size, layout: TiledPaneLayout) -> Tab {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let osc8_hyperlinks = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let advanced_mouse_actions = true;
     let web_sharing = WebSharing::Off;
@@ -287,6 +291,7 @@ fn create_new_tab_with_layout(size: Size, layout: TiledPaneLayout) -> Tab {
         debug,
         arrow_fonts,
         styled_underlines,
+        osc8_hyperlinks,
         explicitly_disable_kitty_keyboard_protocol,
         None,
         false,
@@ -294,6 +299,7 @@ fn create_new_tab_with_layout(size: Size, layout: TiledPaneLayout) -> Tab {
         current_pane_group,
         currently_marking_pane_group,
         advanced_mouse_actions,
+        true, // mouse_hover_effects
         web_server_ip,
         web_server_port,
     );
@@ -343,6 +349,7 @@ fn create_new_tab_with_cell_size(
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let osc8_hyperlinks = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let advanced_mouse_actions = true;
     let web_sharing = WebSharing::Off;
@@ -374,6 +381,7 @@ fn create_new_tab_with_cell_size(
         debug,
         arrow_fonts,
         styled_underlines,
+        osc8_hyperlinks,
         explicitly_disable_kitty_keyboard_protocol,
         None,
         false,
@@ -381,6 +389,7 @@ fn create_new_tab_with_cell_size(
         current_pane_group,
         currently_marking_pane_group,
         advanced_mouse_actions,
+        true, // mouse_hover_effects
         web_server_ip,
         web_server_port,
     );
@@ -15059,4 +15068,191 @@ fn correctly_resize_frameless_panes_on_pane_close() {
     let pane = tab.tiled_panes.panes.get(&PaneId::Terminal(1)).unwrap();
     let content_size = (pane.get_content_columns(), pane.get_content_rows());
     assert_eq!(content_size, (cols, rows));
+}
+
+#[test]
+fn floating_pane_z_index_is_tracked() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let stacked_resize = false;
+    let mut tab = create_new_tab(size, stacked_resize);
+    let _client_id = 1;
+
+    // Create first floating pane (should_float = true means it will be a floating pane)
+    tab.new_floating_pane(PaneId::Terminal(2), None, None, false, true, None, None)
+        .unwrap();
+
+    // Create second floating pane
+    tab.new_floating_pane(PaneId::Terminal(3), None, None, false, true, None, None)
+        .unwrap();
+
+    // Verify z-indices exist and are different
+    let z_index_pane2 = tab.floating_panes.get_pane_z_index(PaneId::Terminal(2));
+    let z_index_pane3 = tab.floating_panes.get_pane_z_index(PaneId::Terminal(3));
+
+    assert!(
+        z_index_pane2.is_some(),
+        "First floating pane should have a z-index"
+    );
+    assert!(
+        z_index_pane3.is_some(),
+        "Second floating pane should have a z-index"
+    );
+    assert_ne!(
+        z_index_pane2, z_index_pane3,
+        "Different panes should have different z-indices"
+    );
+}
+
+#[test]
+fn pinned_floating_pane_has_higher_z_index() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let stacked_resize = false;
+    let mut tab = create_new_tab(size, stacked_resize);
+    let _client_id = 1;
+
+    // Create first floating pane (will be unpinned)
+    tab.new_floating_pane(PaneId::Terminal(2), None, None, false, true, None, None)
+        .unwrap();
+
+    // Create second floating pane and pin it
+    tab.new_floating_pane(PaneId::Terminal(3), None, None, false, true, None, None)
+        .unwrap();
+    tab.set_floating_pane_pinned(PaneId::Terminal(3), true);
+
+    // Get z-indices
+    let z_index_unpinned = tab
+        .floating_panes
+        .get_pane_z_index(PaneId::Terminal(2))
+        .expect("Unpinned pane should have z-index");
+    let z_index_pinned = tab
+        .floating_panes
+        .get_pane_z_index(PaneId::Terminal(3))
+        .expect("Pinned pane should have z-index");
+
+    assert!(
+        z_index_pinned > z_index_unpinned,
+        "Pinned pane should have higher z-index than unpinned pane (pinned: {}, unpinned: {})",
+        z_index_pinned,
+        z_index_unpinned
+    );
+}
+
+#[test]
+fn pinned_pane_z_index_higher_than_regular_floating_panes() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let stacked_resize = false;
+    let mut tab = create_new_tab(size, stacked_resize);
+    let _client_id = 1;
+
+    // Create first floating pane
+    tab.new_floating_pane(PaneId::Terminal(2), None, None, false, true, None, None)
+        .unwrap();
+
+    // Create second floating pane
+    tab.new_floating_pane(PaneId::Terminal(3), None, None, false, true, None, None)
+        .unwrap();
+
+    // Pin the second pane so it's on top
+    tab.set_floating_pane_pinned(PaneId::Terminal(3), true);
+
+    // Verify that get_pane_z_index returns correct values for both panes
+    let z_index_bottom = tab.floating_panes.get_pane_z_index(PaneId::Terminal(2));
+    let z_index_top = tab.floating_panes.get_pane_z_index(PaneId::Terminal(3));
+
+    assert!(
+        z_index_bottom.is_some(),
+        "Regular floating pane should have z-index"
+    );
+    assert!(
+        z_index_top.is_some(),
+        "Pinned floating pane should have z-index"
+    );
+    assert!(
+        z_index_top.unwrap() > z_index_bottom.unwrap(),
+        "Pinned pane should have higher z-index than regular floating pane (pinned: {}, regular: {})",
+        z_index_top.unwrap(),
+        z_index_bottom.unwrap()
+    );
+}
+
+#[test]
+fn active_pane_z_index_retrieved_for_cursor_visibility() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let stacked_resize = false;
+    let mut tab = create_new_tab(size, stacked_resize);
+    let client_id = 1;
+
+    // Start with tiled panes - active pane should not have z-index
+    let active_pane_id_tiled = tab.get_active_pane_id(client_id).unwrap();
+    let z_index_tiled = tab.floating_panes.get_pane_z_index(active_pane_id_tiled);
+    assert!(
+        z_index_tiled.is_none(),
+        "Tiled pane should not have z-index in floating panes"
+    );
+
+    // Create a floating pane
+    tab.new_floating_pane(PaneId::Terminal(2), None, None, false, true, None, None)
+        .unwrap();
+
+    // Active pane should now have a z-index
+    let active_pane_id_floating = tab.get_active_pane_id(client_id).unwrap();
+    let z_index_floating = tab.floating_panes.get_pane_z_index(active_pane_id_floating);
+    assert!(
+        z_index_floating.is_some(),
+        "Active floating pane should have a z-index"
+    );
+}
+
+#[test]
+fn get_pane_z_index_returns_none_for_nonexistent_pane() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let stacked_resize = false;
+    let mut tab = create_new_tab(size, stacked_resize);
+    let _client_id = 1;
+
+    // Create two floating panes
+    tab.new_floating_pane(PaneId::Terminal(2), None, None, false, true, None, None)
+        .unwrap();
+    tab.new_floating_pane(PaneId::Terminal(3), None, None, false, true, None, None)
+        .unwrap();
+
+    // Query for a pane that doesn't exist
+    let z_index_nonexistent = tab.floating_panes.get_pane_z_index(PaneId::Terminal(999));
+
+    assert!(
+        z_index_nonexistent.is_none(),
+        "Non-existent pane should return None for z-index"
+    );
+
+    // Query for existing panes
+    let z_index_2 = tab.floating_panes.get_pane_z_index(PaneId::Terminal(2));
+    let z_index_3 = tab.floating_panes.get_pane_z_index(PaneId::Terminal(3));
+
+    assert!(
+        z_index_2.is_some(),
+        "Existing floating pane 2 should return Some for z-index"
+    );
+    assert!(
+        z_index_3.is_some(),
+        "Existing floating pane 3 should return Some for z-index"
+    );
+    assert_ne!(
+        z_index_2, z_index_3,
+        "Different floating panes should have different z-indices"
+    );
 }

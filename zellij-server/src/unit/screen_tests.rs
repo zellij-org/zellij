@@ -79,6 +79,7 @@ fn take_snapshots_and_cursor_coordinates_from_render_events<'a>(
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let osc8_hyperlinks = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         screen_size.rows,
@@ -92,6 +93,7 @@ fn take_snapshots_and_cursor_coordinates_from_render_events<'a>(
         debug,
         arrow_fonts,
         styled_underlines,
+        osc8_hyperlinks,
         explicitly_disable_kitty_keyboard_protocol,
     );
     let snapshots: Vec<(Option<(usize, usize)>, String)> = all_events
@@ -254,7 +256,11 @@ impl ServerOsApi for FakeInputOutput {
     }
 }
 
-fn create_new_screen(size: Size, advanced_mouse_actions: bool) -> Screen {
+fn create_new_screen(
+    size: Size,
+    advanced_mouse_actions: bool,
+    mouse_hover_effects: bool,
+) -> Screen {
     let mut bus: Bus<ScreenInstruction> = Bus::empty();
     let fake_os_input = FakeInputOutput::default();
     bus.os_input = Some(Box::new(fake_os_input));
@@ -279,6 +285,7 @@ fn create_new_screen(size: Size, advanced_mouse_actions: bool) -> Screen {
 
     let debug = false;
     let styled_underlines = true;
+    let osc8_hyperlinks = true;
     let arrow_fonts = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let stacked_resize = true;
@@ -302,6 +309,7 @@ fn create_new_screen(size: Size, advanced_mouse_actions: bool) -> Screen {
         serialize_pane_viewport,
         scrollback_lines_to_serialize,
         styled_underlines,
+        osc8_hyperlinks,
         arrow_fonts,
         layout_dir,
         explicitly_disable_kitty_keyboard_protocol,
@@ -310,6 +318,7 @@ fn create_new_screen(size: Size, advanced_mouse_actions: bool) -> Screen {
         false,
         web_sharing,
         advanced_mouse_actions,
+        mouse_hover_effects,
         web_server_ip,
         web_server_port,
     );
@@ -779,7 +788,7 @@ fn open_new_tab() {
         cols: 121,
         rows: 20,
     };
-    let mut screen = create_new_screen(size, true);
+    let mut screen = create_new_screen(size, true, true);
 
     new_tab(&mut screen, 1, 0);
     new_tab(&mut screen, 2, 1);
@@ -798,7 +807,7 @@ pub fn switch_to_prev_tab() {
         cols: 121,
         rows: 20,
     };
-    let mut screen = create_new_screen(size, true);
+    let mut screen = create_new_screen(size, true, true);
 
     new_tab(&mut screen, 1, 1);
     new_tab(&mut screen, 2, 2);
@@ -817,7 +826,7 @@ pub fn switch_to_next_tab() {
         cols: 121,
         rows: 20,
     };
-    let mut screen = create_new_screen(size, true);
+    let mut screen = create_new_screen(size, true, true);
 
     new_tab(&mut screen, 1, 1);
     new_tab(&mut screen, 2, 2);
@@ -837,7 +846,7 @@ pub fn switch_to_tab_name() {
         cols: 121,
         rows: 20,
     };
-    let mut screen = create_new_screen(size, true);
+    let mut screen = create_new_screen(size, true, true);
 
     new_tab(&mut screen, 1, 1);
     new_tab(&mut screen, 2, 2);
@@ -871,7 +880,7 @@ pub fn close_tab() {
         cols: 121,
         rows: 20,
     };
-    let mut screen = create_new_screen(size, true);
+    let mut screen = create_new_screen(size, true, true);
 
     new_tab(&mut screen, 1, 1);
     new_tab(&mut screen, 2, 2);
@@ -891,7 +900,7 @@ pub fn close_the_middle_tab() {
         cols: 121,
         rows: 20,
     };
-    let mut screen = create_new_screen(size, true);
+    let mut screen = create_new_screen(size, true, true);
 
     new_tab(&mut screen, 1, 1);
     new_tab(&mut screen, 2, 2);
@@ -913,7 +922,7 @@ fn move_focus_left_at_left_screen_edge_changes_tab() {
         cols: 121,
         rows: 20,
     };
-    let mut screen = create_new_screen(size, true);
+    let mut screen = create_new_screen(size, true, true);
 
     new_tab(&mut screen, 1, 1);
     new_tab(&mut screen, 2, 2);
@@ -950,6 +959,7 @@ fn create_fixed_size_screen() -> Screen {
             cols: 121,
             rows: 20,
         },
+        true,
         true,
     )
 }
@@ -1076,12 +1086,97 @@ fn wrapping_move_of_active_tab_to_right() {
 }
 
 #[test]
+fn tab_id_remains_stable_after_switch() {
+    // Test that tab IDs remain stable when switching tabs, only positions change
+    let mut screen = create_fixed_size_screen();
+
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+    new_tab(&mut screen, 3, 2);
+
+    // Verify initial state: IDs should be 0, 1, 2
+    let initial_tab_ids: Vec<usize> = screen.tabs.keys().copied().collect();
+    assert_eq!(
+        initial_tab_ids,
+        vec![0, 1, 2],
+        "Initial tab IDs should be 0, 1, 2"
+    );
+
+    // Verify initial positions match IDs
+    assert_eq!(screen.tabs.get(&0).unwrap().id, 0);
+    assert_eq!(screen.tabs.get(&0).unwrap().position, 0);
+    assert_eq!(screen.tabs.get(&1).unwrap().id, 1);
+    assert_eq!(screen.tabs.get(&1).unwrap().position, 1);
+    assert_eq!(screen.tabs.get(&2).unwrap().id, 2);
+    assert_eq!(screen.tabs.get(&2).unwrap().position, 2);
+
+    // Move active tab (position 2, ID 2) to right, which wraps to position 0
+    // This switches tabs at positions 2 and 0 (tab IDs 2 and 0)
+    screen.move_active_tab_to_right(1).expect("TEST");
+
+    // Verify BTreeMap keys (IDs) remain unchanged
+    let after_switch_tab_ids: Vec<usize> = screen.tabs.keys().copied().collect();
+    assert_eq!(
+        after_switch_tab_ids,
+        vec![0, 1, 2],
+        "Tab IDs in BTreeMap should remain 0, 1, 2 after switch"
+    );
+
+    // Verify IDs remain stable but positions are swapped
+    // Tab 0: was at position 0, now at position 2 (swapped with tab 2)
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().id,
+        0,
+        "Tab with ID 0 should still have ID 0"
+    );
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().position,
+        2,
+        "Tab with ID 0 should now be at position 2"
+    );
+
+    // Tab 1: remains unchanged at position 1
+    assert_eq!(
+        screen.tabs.get(&1).unwrap().id,
+        1,
+        "Tab with ID 1 should still have ID 1"
+    );
+    assert_eq!(
+        screen.tabs.get(&1).unwrap().position,
+        1,
+        "Tab with ID 1 should remain at position 1"
+    );
+
+    // Tab 2: was at position 2, now at position 0 (swapped with tab 0)
+    assert_eq!(
+        screen.tabs.get(&2).unwrap().id,
+        2,
+        "Tab with ID 2 should still have ID 2"
+    );
+    assert_eq!(
+        screen.tabs.get(&2).unwrap().position,
+        0,
+        "Tab with ID 2 should now be at position 0"
+    );
+
+    // Verify that lookup by position works correctly after switch
+    let tab_at_pos_0 = screen.tabs.values().find(|t| t.position == 0).unwrap();
+    assert_eq!(tab_at_pos_0.id, 2, "Tab at position 0 should have ID 2");
+
+    let tab_at_pos_1 = screen.tabs.values().find(|t| t.position == 1).unwrap();
+    assert_eq!(tab_at_pos_1.id, 1, "Tab at position 1 should have ID 1");
+
+    let tab_at_pos_2 = screen.tabs.values().find(|t| t.position == 2).unwrap();
+    assert_eq!(tab_at_pos_2.id, 0, "Tab at position 2 should have ID 0");
+}
+
+#[test]
 fn move_focus_right_at_right_screen_edge_changes_tab() {
     let size = Size {
         cols: 121,
         rows: 20,
     };
-    let mut screen = create_new_screen(size, true);
+    let mut screen = create_new_screen(size, true, true);
 
     new_tab(&mut screen, 1, 1);
     new_tab(&mut screen, 2, 2);
@@ -1102,7 +1197,7 @@ pub fn toggle_to_previous_tab_simple() {
         cols: 121,
         rows: 20,
     };
-    let mut screen = create_new_screen(position_and_size, true);
+    let mut screen = create_new_screen(position_and_size, true, true);
 
     new_tab(&mut screen, 1, 1);
     new_tab(&mut screen, 2, 2);
@@ -1130,7 +1225,7 @@ pub fn toggle_to_previous_tab_create_tabs_only() {
         cols: 121,
         rows: 20,
     };
-    let mut screen = create_new_screen(position_and_size, true);
+    let mut screen = create_new_screen(position_and_size, true, true);
 
     new_tab(&mut screen, 1, 0);
     new_tab(&mut screen, 2, 1);
@@ -1180,7 +1275,7 @@ pub fn toggle_to_previous_tab_delete() {
         cols: 121,
         rows: 20,
     };
-    let mut screen = create_new_screen(position_and_size, true);
+    let mut screen = create_new_screen(position_and_size, true, true);
 
     new_tab(&mut screen, 1, 0);
     new_tab(&mut screen, 2, 1);
@@ -1276,7 +1371,7 @@ fn switch_to_tab_with_fullscreen() {
         cols: 121,
         rows: 20,
     };
-    let mut screen = create_new_screen(size, true);
+    let mut screen = create_new_screen(size, true, true);
 
     new_tab(&mut screen, 1, 1);
     {
@@ -1321,7 +1416,7 @@ fn update_screen_pixel_dimensions() {
         cols: 121,
         rows: 20,
     };
-    let mut screen = create_new_screen(size, true);
+    let mut screen = create_new_screen(size, true, true);
     let initial_pixel_dimensions = screen.pixel_dimensions;
     screen.update_pixel_dimensions(PixelDimensions {
         character_cell_size: Some(SizeInPixels {
@@ -1400,7 +1495,7 @@ fn attach_after_first_tab_closed() {
         cols: 121,
         rows: 20,
     };
-    let mut screen = create_new_screen(size, true);
+    let mut screen = create_new_screen(size, true, true);
 
     new_tab(&mut screen, 1, 0);
     {
@@ -1421,7 +1516,7 @@ fn attach_after_first_tab_closed() {
     }
     new_tab(&mut screen, 2, 1);
 
-    screen.close_tab_at_index(0).expect("TEST");
+    screen.close_tab_by_id(0).expect("TEST");
     screen.remove_client(1).expect("TEST");
     screen.add_client(1, false).expect("TEST");
 }
@@ -1432,7 +1527,7 @@ fn open_new_floating_pane_with_custom_coordinates() {
         cols: 121,
         rows: 20,
     };
-    let mut screen = create_new_screen(size, true);
+    let mut screen = create_new_screen(size, true, true);
 
     new_tab(&mut screen, 1, 0);
     let active_tab = screen.get_active_tab_mut(1).unwrap();
@@ -1468,7 +1563,7 @@ fn open_new_floating_pane_with_custom_coordinates_exceeding_viewport() {
         cols: 121,
         rows: 20,
     };
-    let mut screen = create_new_screen(size, true);
+    let mut screen = create_new_screen(size, true, true);
 
     new_tab(&mut screen, 1, 0);
     let active_tab = screen.get_active_tab_mut(1).unwrap();
@@ -1504,7 +1599,7 @@ fn floating_pane_auto_centers_horizontally_with_only_width() {
         cols: 120,
         rows: 20,
     };
-    let mut screen = create_new_screen(size, true);
+    let mut screen = create_new_screen(size, true, true);
 
     new_tab(&mut screen, 1, 0);
     let active_tab = screen.get_active_tab_mut(1).unwrap();
@@ -1540,7 +1635,7 @@ fn floating_pane_auto_centers_vertically_with_only_height() {
         cols: 120,
         rows: 40,
     };
-    let mut screen = create_new_screen(size, true);
+    let mut screen = create_new_screen(size, true, true);
 
     new_tab(&mut screen, 1, 0);
     let active_tab = screen.get_active_tab_mut(1).unwrap();
@@ -1576,7 +1671,7 @@ fn floating_pane_auto_centers_both_axes_with_only_size() {
         cols: 120,
         rows: 40,
     };
-    let mut screen = create_new_screen(size, true);
+    let mut screen = create_new_screen(size, true, true);
 
     new_tab(&mut screen, 1, 0);
     let active_tab = screen.get_active_tab_mut(1).unwrap();
@@ -1612,7 +1707,7 @@ fn floating_pane_respects_explicit_coordinates_with_size() {
         cols: 120,
         rows: 40,
     };
-    let mut screen = create_new_screen(size, true);
+    let mut screen = create_new_screen(size, true, true);
 
     new_tab(&mut screen, 1, 0);
     let active_tab = screen.get_active_tab_mut(1).unwrap();
@@ -1648,7 +1743,7 @@ fn floating_pane_centers_with_percentage_width() {
         cols: 120,
         rows: 40,
     };
-    let mut screen = create_new_screen(size, true);
+    let mut screen = create_new_screen(size, true, true);
 
     new_tab(&mut screen, 1, 0);
     let active_tab = screen.get_active_tab_mut(1).unwrap();
@@ -1689,7 +1784,7 @@ fn floating_pane_centers_large_pane_safely() {
         cols: 100,
         rows: 30,
     };
-    let mut screen = create_new_screen(size, true);
+    let mut screen = create_new_screen(size, true, true);
 
     new_tab(&mut screen, 1, 0);
     let active_tab = screen.get_active_tab_mut(1).unwrap();
@@ -1809,7 +1904,7 @@ fn group_panes_with_mouse() {
         rows: 20,
     };
     let client_id = 1;
-    let mut screen = create_new_screen(size, true);
+    let mut screen = create_new_screen(size, true, true);
 
     new_tab(&mut screen, 1, 0);
     new_tab(&mut screen, 2, 1);
@@ -1851,7 +1946,7 @@ fn group_panes_with_keyboard() {
         rows: 20,
     };
     let client_id = 1;
-    let mut screen = create_new_screen(size, true);
+    let mut screen = create_new_screen(size, true, true);
 
     new_tab(&mut screen, 1, 0);
     new_tab(&mut screen, 2, 1);
@@ -1887,7 +1982,7 @@ fn group_panes_following_focus() {
         rows: 20,
     };
     let client_id = 1;
-    let mut screen = create_new_screen(size, true);
+    let mut screen = create_new_screen(size, true, true);
 
     new_tab(&mut screen, 1, 0);
 
@@ -1948,7 +2043,7 @@ fn break_group_with_mouse() {
         rows: 20,
     };
     let client_id = 1;
-    let mut screen = create_new_screen(size, true);
+    let mut screen = create_new_screen(size, true, true);
 
     new_tab(&mut screen, 1, 0);
 
@@ -4076,10 +4171,8 @@ pub fn screen_can_break_floating_pane_to_a_new_tab() {
     let _ = mock_screen.to_screen.send(ScreenInstruction::ApplyLayout(
         TiledPaneLayout::default(),
         floating_panes_layout,
-        vec![(1, None)], // tiled pane ids - send these because one needs to be created under the
-        // ejected floating pane, lest the tab be closed as having no tiled panes
-        // (this happens in prod in the pty thread)
-        vec![], // floating panes ids
+        vec![], // tiled pane ids
+        vec![], // floating pane ids
         Default::default(),
         1,
         true,
@@ -4230,10 +4323,8 @@ pub fn screen_can_break_floating_plugin_pane_to_a_new_tab() {
     let _ = mock_screen.to_screen.send(ScreenInstruction::ApplyLayout(
         TiledPaneLayout::default(),
         floating_panes_layout,
-        vec![(1, None)], // tiled pane ids - send these because one needs to be created under the
-        // ejected floating pane, lest the tab be closed as having no tiled panes
-        // (this happens in prod in the pty thread)
-        vec![], // floating panes ids
+        vec![], // tiled pane ids
+        vec![], // floating pane ids
         Default::default(),
         1,
         true,
@@ -4292,6 +4383,20 @@ pub fn screen_can_move_pane_to_a_new_tab_right() {
         1,
         None,
     ));
+
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let _ = mock_screen.to_screen.send(ScreenInstruction::ApplyLayout(
+        TiledPaneLayout::default(),
+        Default::default(),
+        vec![], // tiled pane ids
+        vec![], // floating pane ids
+        Default::default(),
+        1,
+        true,
+        (1, false),
+        None,
+        None,
+    ));
     std::thread::sleep(std::time::Duration::from_millis(100));
     let _ = mock_screen
         .to_screen
@@ -4339,6 +4444,18 @@ pub fn screen_can_move_pane_to_a_new_tab_left() {
         Box::new(Layout::default()),
         Default::default(),
         1,
+        None,
+    ));
+    let _ = mock_screen.to_screen.send(ScreenInstruction::ApplyLayout(
+        TiledPaneLayout::default(),
+        Default::default(),
+        vec![], // tiled pane ids
+        vec![], // floating pane ids
+        Default::default(),
+        1,
+        true,
+        (1, false),
+        None,
         None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(100));

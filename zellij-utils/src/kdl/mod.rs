@@ -2616,6 +2616,9 @@ impl Options {
             };
         let copy_on_select =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "copy_on_select").map(|(v, _)| v);
+        let osc8_hyperlinks =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "osc8_hyperlinks")
+                .map(|(v, _)| v);
         let scrollback_editor =
             kdl_property_first_arg_as_string_or_error!(kdl_options, "scrollback_editor")
                 .map(|(string, _entry)| PathBuf::from(string));
@@ -2672,6 +2675,9 @@ impl Options {
         let advanced_mouse_actions =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "advanced_mouse_actions")
                 .map(|(v, _)| v);
+        let mouse_hover_effects =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "mouse_hover_effects")
+                .map(|(v, _)| v);
         let web_server_ip =
             match kdl_property_first_arg_as_string_or_error!(kdl_options, "web_server_ip") {
                 Some((string, entry)) => Some(IpAddr::from_str(string).map_err(|_| {
@@ -2715,6 +2721,7 @@ impl Options {
             copy_command,
             copy_clipboard,
             copy_on_select,
+            osc8_hyperlinks,
             scrollback_editor,
             session_name,
             attach_to_session,
@@ -2732,6 +2739,7 @@ impl Options {
             show_startup_tips,
             show_release_notes,
             advanced_mouse_actions,
+            mouse_hover_effects,
             web_server_ip,
             web_server_port,
             web_server_cert,
@@ -2762,6 +2770,36 @@ impl Options {
         };
         if let Some(simplified_ui) = self.simplified_ui {
             let mut node = create_node(simplified_ui);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(true);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
+    fn osc8_hyperlinks_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!(
+            "{}\n{}\n{}\n{}\n{}\n{}",
+            " ",
+            "// Enable OSC8 hyperlink output",
+            "// Options:",
+            "//   - true (Default)",
+            "//   - false",
+            "// ",
+        );
+
+        let create_node = |node_value: bool| -> KdlNode {
+            let mut node = KdlNode::new("osc8_hyperlinks");
+            node.push(KdlValue::Bool(node_value));
+            node
+        };
+        if let Some(osc8_hyperlinks) = self.osc8_hyperlinks {
+            let mut node = create_node(osc8_hyperlinks);
             if add_comments {
                 node.set_leading(format!("{}\n", comment_text));
             }
@@ -3805,6 +3843,33 @@ impl Options {
             None
         }
     }
+    fn mouse_hover_effects_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!(
+            "{}\n{}\n{}",
+            " ",
+            "// Whether to enable mouse hover visual effects (frame highlight and help text)",
+            "// default is true",
+        );
+
+        let create_node = |node_value: bool| -> KdlNode {
+            let mut node = KdlNode::new("mouse_hover_effects");
+            node.push(KdlValue::Bool(node_value));
+            node
+        };
+        if let Some(mouse_hover_effects) = self.mouse_hover_effects {
+            let mut node = create_node(mouse_hover_effects);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(false);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
     fn web_server_ip_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
         let comment_text = format!(
             "{}\n{}\n{}\n{}",
@@ -3895,6 +3960,9 @@ impl Options {
         let mut nodes = vec![];
         if let Some(simplified_ui_node) = self.simplified_ui_to_kdl(add_comments) {
             nodes.push(simplified_ui_node);
+        }
+        if let Some(osc8_hyperlinks_node) = self.osc8_hyperlinks_to_kdl(add_comments) {
+            nodes.push(osc8_hyperlinks_node);
         }
         if let Some(theme_node) = self.theme_to_kdl(add_comments) {
             nodes.push(theme_node);
@@ -4006,6 +4074,9 @@ impl Options {
         }
         if let Some(advanced_mouse_actions) = self.advanced_mouse_actions_to_kdl(add_comments) {
             nodes.push(advanced_mouse_actions);
+        }
+        if let Some(mouse_hover_effects) = self.mouse_hover_effects_to_kdl(add_comments) {
+            nodes.push(mouse_hover_effects);
         }
         if let Some(web_server_ip) = self.web_server_ip_to_kdl(add_comments) {
             nodes.push(web_server_ip);
@@ -5460,6 +5531,7 @@ impl TabInfo {
             optional_int_node!("selectable_tiled_panes_count", usize).unwrap_or(0);
         let selectable_floating_panes_count =
             optional_int_node!("selectable_floating_panes_count", usize).unwrap_or(0);
+        let tab_id = optional_int_node!("tab_id", usize).unwrap_or(0);
         Ok(TabInfo {
             position,
             name,
@@ -5477,6 +5549,7 @@ impl TabInfo {
             display_area_columns,
             selectable_tiled_panes_count,
             selectable_floating_panes_count,
+            tab_id,
         })
     }
     pub fn encode_to_kdl(&self) -> KdlDocument {
@@ -5553,6 +5626,10 @@ impl TabInfo {
         kdl_doucment
             .nodes_mut()
             .push(selectable_floating_panes_count);
+
+        let mut tab_id = KdlNode::new("tab_id");
+        tab_id.push(self.tab_id as i64);
+        kdl_doucment.nodes_mut().push(tab_id);
 
         kdl_doucment
     }
@@ -5903,6 +5980,7 @@ fn serialize_and_deserialize_session_info_with_data() {
                 display_area_columns: 10,
                 selectable_tiled_panes_count: 10,
                 selectable_floating_panes_count: 10,
+                tab_id: 0,
             },
             TabInfo {
                 position: 1,
@@ -5921,6 +5999,7 @@ fn serialize_and_deserialize_session_info_with_data() {
                 display_area_columns: 10,
                 selectable_tiled_panes_count: 10,
                 selectable_floating_panes_count: 10,
+                tab_id: 1,
             },
         ],
         panes: PaneManifest { panes },
@@ -6821,4 +6900,24 @@ fn bare_config_from_default_assets_to_string_with_comments() {
         "Deserialized serialized config equals original config"
     );
     insta::assert_snapshot!(fake_config_stringified);
+}
+
+#[test]
+fn osc8_hyperlinks_config_parsing() {
+    let config_with_osc8_disabled = r#"
+        osc8_hyperlinks false
+    "#;
+    let config = Config::from_kdl(config_with_osc8_disabled, None).unwrap();
+    assert_eq!(config.options.osc8_hyperlinks, Some(false));
+
+    let config_with_osc8_enabled = r#"
+        osc8_hyperlinks true
+    "#;
+    let config = Config::from_kdl(config_with_osc8_enabled, None).unwrap();
+    assert_eq!(config.options.osc8_hyperlinks, Some(true));
+
+    // Test serialization roundtrip
+    let serialized = config.to_string(false);
+    let deserialized = Config::from_kdl(&serialized, None).unwrap();
+    assert_eq!(deserialized.options.osc8_hyperlinks, Some(true));
 }

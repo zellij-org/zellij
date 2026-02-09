@@ -647,7 +647,11 @@ pub fn start_client(
                     .layout
                     .as_ref()
                     .and_then(|l| {
-                        LayoutInfo::from_config(&config_options.layout_dir, &Some(l.clone()))
+                        LayoutInfo::from_cli(
+                            &config_options.layout_dir,
+                            &Some(l.clone()),
+                            std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+                        )
                     })
                     .or_else(|| {
                         LayoutInfo::from_config(
@@ -741,7 +745,11 @@ pub fn start_client(
                         .layout
                         .as_ref()
                         .and_then(|l| {
-                            LayoutInfo::from_config(&config_options.layout_dir, &Some(l.clone()))
+                            LayoutInfo::from_cli(
+                                &config_options.layout_dir,
+                                &Some(l.clone()),
+                                std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+                            )
                         })
                         .or_else(|| {
                             LayoutInfo::from_config(
@@ -1177,7 +1185,11 @@ pub fn start_server_detached(
                         .layout
                         .as_ref()
                         .and_then(|l| {
-                            LayoutInfo::from_config(&config_options.layout_dir, &Some(l.clone()))
+                            LayoutInfo::from_cli(
+                                &config_options.layout_dir,
+                                &Some(l.clone()),
+                                std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+                            )
                         })
                         .or_else(|| {
                             LayoutInfo::from_config(

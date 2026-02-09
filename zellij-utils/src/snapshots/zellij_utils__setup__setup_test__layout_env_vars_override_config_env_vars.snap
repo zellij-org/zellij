@@ -6012,6 +6012,7 @@ Config {
         copy_command: None,
         copy_clipboard: None,
         copy_on_select: None,
+        osc8_hyperlinks: None,
         scrollback_editor: None,
         session_name: None,
         attach_to_session: None,
@@ -6029,6 +6030,7 @@ Config {
         show_startup_tips: None,
         show_release_notes: None,
         advanced_mouse_actions: None,
+        mouse_hover_effects: None,
         web_server_ip: None,
         web_server_port: None,
         web_server_cert: None,
@@ -6196,5 +6198,6 @@ Config {
         cursor_inactive_style: None,
         cursor_style: None,
         mac_option_is_meta: true,
+        base_url: None,
     },
 }

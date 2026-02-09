@@ -8,6 +8,7 @@ use crate::{
         FEATURES, SYSTEM_DEFAULT_CONFIG_DIR, SYSTEM_DEFAULT_DATA_DIR_PREFIX, VERSION,
         ZELLIJ_CACHE_DIR, ZELLIJ_DEFAULT_THEMES, ZELLIJ_PROJ_DIR,
     },
+    data::LayoutInfo,
     errors::prelude::*,
     home::*,
     input::{
@@ -368,7 +369,7 @@ impl Setup {
     /// 3. config options (`config.kdl`)
     pub fn from_cli_args(
         cli_args: &CliArgs,
-    ) -> Result<(Config, Layout, Options, Config, Options), ConfigError> {
+    ) -> Result<(Config, Option<LayoutInfo>, Options, Config, Options), ConfigError> {
         // note that this can potentially exit the process
         Setup::handle_setup_commands(cli_args);
         let config = Config::try_from(cli_args)?;
@@ -384,7 +385,7 @@ impl Setup {
         let cli_config_options = merge_attach_command_options(cli_config_options, &cli_args);
 
         let mut config_without_layout = config.clone();
-        let (layout, mut config) =
+        let (layout_info, mut config) =
             Setup::parse_layout_and_override_config(cli_config_options.as_ref(), config, cli_args)?;
 
         let config_options =
@@ -426,7 +427,7 @@ impl Setup {
         };
         Ok((
             config,
-            layout,
+            layout_info,
             config_options,
             config_without_layout,
             config_options_without_layout,
@@ -666,43 +667,40 @@ impl Setup {
         cli_config_options: Option<&Options>,
         config: Config,
         cli_args: &CliArgs,
-    ) -> Result<(Layout, Config), ConfigError> {
+    ) -> Result<(Option<LayoutInfo>, Config), ConfigError> {
         // find the layout folder relative to which we'll look for our layout
         let layout_dir = cli_config_options
             .as_ref()
             .and_then(|cli_options| cli_options.layout_dir.clone())
             .or_else(|| config.options.layout_dir.clone())
-            .or_else(|| {
-                get_layout_dir(cli_args.config_dir.clone().or_else(find_default_config_dir))
-            });
+            .or_else(|| get_layout_dir(cli_args.config_dir.clone()))
+            .or_else(|| get_layout_dir(find_default_config_dir()))
+            // Try to get an absolute path, else let the resolution code figure this out.
+            .map(|d| d.canonicalize().unwrap_or(d));
         // the chosen layout can either be a path relative to the layout_dir or a name of one
         // of our assets, this distinction is made when parsing the layout - TODO: ideally, this
         // logic should not be split up and all the decisions should happen here
-        let chosen_layout = cli_args
-            .layout
-            .clone()
-            .or_else(|| {
-                cli_config_options
-                    .as_ref()
-                    .and_then(|cli_options| cli_options.default_layout.clone())
-            })
-            .or_else(|| config.options.default_layout.clone());
-        if let Some(layout_url) = chosen_layout
-            .as_ref()
-            .and_then(|l| l.to_str())
-            .and_then(|l| {
-                if l.starts_with("http://") || l.starts_with("https://") {
-                    Some(l)
-                } else {
-                    None
-                }
-            })
-        {
-            Layout::from_url(layout_url, config)
+        let (layout_info, chosen_layout) = if let Some(chosen_layout) = cli_args.layout.clone() {
+            let layout_info = LayoutInfo::from_cli(
+                &layout_dir,
+                &Some(chosen_layout.clone()),
+                std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+            );
+            (layout_info, Some(chosen_layout))
         } else {
-            // we merge-override the config here because the layout might contain configuration
-            // that needs to take precedence
-            Layout::from_path_or_default(chosen_layout.as_ref(), layout_dir.clone(), config)
+            let chosen_layout = cli_config_options
+                .as_ref()
+                .and_then(|cli_options| cli_options.default_layout.clone())
+                .or_else(|| config.options.default_layout.clone());
+            let layout_info = LayoutInfo::from_config(&layout_dir, &chosen_layout);
+            (layout_info, chosen_layout)
+        };
+        match layout_info {
+            Some(LayoutInfo::Url(ref layout_url)) => {
+                Layout::from_url(layout_url, config).map(|(_layout, config)| (layout_info, config))
+            },
+            _ => Layout::from_path_or_default(chosen_layout.as_ref(), layout_dir.clone(), config)
+                .map(|(_layout, config)| (layout_info, config)),
         }
     }
     fn handle_setup_commands(cli_args: &CliArgs) {
@@ -744,6 +742,7 @@ fn merge_attach_command_options(
 mod setup_test {
     use super::Setup;
     use crate::cli::{CliArgs, Command};
+    use crate::data::LayoutInfo;
     use crate::input::options::Options;
     use insta::assert_snapshot;
     use std::path::PathBuf;
@@ -751,9 +750,9 @@ mod setup_test {
     #[test]
     fn default_config_with_no_cli_arguments() {
         let cli_args = CliArgs::default();
-        let (config, layout, options, _, _) = Setup::from_cli_args(&cli_args).unwrap();
+        let (config, layout_info, options, _, _) = Setup::from_cli_args(&cli_args).unwrap();
         assert_snapshot!(format!("{:#?}", config));
-        assert_snapshot!(format!("{:#?}", layout));
+        assert_snapshot!(format!("{:#?}", layout_info));
         assert_snapshot!(format!("{:#?}", options));
     }
     #[test]
@@ -763,7 +762,7 @@ mod setup_test {
             simplified_ui: Some(true),
             ..Default::default()
         }));
-        let (_config, _layout, options, _, _) = Setup::from_cli_args(&cli_args).unwrap();
+        let (_config, _layout_info, options, _, _) = Setup::from_cli_args(&cli_args).unwrap();
         assert_snapshot!(format!("{:#?}", options));
     }
     #[test]
@@ -773,9 +772,18 @@ mod setup_test {
             "{}/src/test-fixtures/layout-with-options.kdl",
             env!("CARGO_MANIFEST_DIR")
         )));
-        let (_config, layout, options, _, _) = Setup::from_cli_args(&cli_args).unwrap();
+        let (_config, layout_info, options, _, _) = Setup::from_cli_args(&cli_args).unwrap();
         assert_snapshot!(format!("{:#?}", options));
-        assert_snapshot!(format!("{:#?}", layout));
+        let Some(LayoutInfo::File(layout_path, _)) = layout_info else {
+            panic!("layout info doesn't have expected format");
+        };
+        assert_eq!(
+            layout_path,
+            format!(
+                "{}/src/test-fixtures/layout-with-options.kdl",
+                env!("CARGO_MANIFEST_DIR")
+            )
+        );
     }
     #[test]
     fn cli_arguments_override_layout_options() {
@@ -788,9 +796,18 @@ mod setup_test {
             pane_frames: Some(true),
             ..Default::default()
         }));
-        let (_config, layout, options, _, _) = Setup::from_cli_args(&cli_args).unwrap();
+        let (_config, layout_info, options, _, _) = Setup::from_cli_args(&cli_args).unwrap();
         assert_snapshot!(format!("{:#?}", options));
-        assert_snapshot!(format!("{:#?}", layout));
+        let Some(LayoutInfo::File(layout_path, _)) = layout_info else {
+            panic!("layout info doesn't have expected format");
+        };
+        assert_eq!(
+            layout_path,
+            format!(
+                "{}/src/test-fixtures/layout-with-options.kdl",
+                env!("CARGO_MANIFEST_DIR")
+            )
+        );
     }
     #[test]
     fn layout_env_vars_override_config_env_vars() {
@@ -803,7 +820,7 @@ mod setup_test {
             "{}/src/test-fixtures/layout-with-env-vars.kdl",
             env!("CARGO_MANIFEST_DIR")
         )));
-        let (config, _layout, _options, _, _) = Setup::from_cli_args(&cli_args).unwrap();
+        let (config, _layout_info, _options, _, _) = Setup::from_cli_args(&cli_args).unwrap();
         assert_snapshot!(format!("{:#?}", config));
     }
     #[test]
@@ -817,7 +834,7 @@ mod setup_test {
             "{}/src/test-fixtures/layout-with-ui-config.kdl",
             env!("CARGO_MANIFEST_DIR")
         )));
-        let (config, _layout, _options, _, _) = Setup::from_cli_args(&cli_args).unwrap();
+        let (config, _layout_info, _options, _, _) = Setup::from_cli_args(&cli_args).unwrap();
         assert_snapshot!(format!("{:#?}", config));
     }
     #[test]
@@ -831,7 +848,7 @@ mod setup_test {
             "{}/src/test-fixtures/layout-with-themes-config.kdl",
             env!("CARGO_MANIFEST_DIR")
         )));
-        let (config, _layout, _options, _, _) = Setup::from_cli_args(&cli_args).unwrap();
+        let (config, _layout_info, _options, _, _) = Setup::from_cli_args(&cli_args).unwrap();
         assert_snapshot!(format!("{:#?}", config));
     }
     #[test]
@@ -845,7 +862,101 @@ mod setup_test {
             "{}/src/test-fixtures/layout-with-keybindings-config.kdl",
             env!("CARGO_MANIFEST_DIR")
         )));
-        let (config, _layout, _options, _, _) = Setup::from_cli_args(&cli_args).unwrap();
+        let (config, _layout_info, _options, _, _) = Setup::from_cli_args(&cli_args).unwrap();
         assert_snapshot!(format!("{:#?}", config));
+    }
+    #[test]
+    fn cli_config_dir_overrides_defaults() {
+        let cli_args = CliArgs {
+            config_dir: Some(PathBuf::from(format!(
+                "{}/src/test-fixtures/config-dirs/layout-upside-down",
+                env!("CARGO_MANIFEST_DIR")
+            ))),
+            ..Default::default()
+        };
+        let (_, layout_info, _, _, _) = Setup::from_cli_args(&cli_args).unwrap();
+        let Some(LayoutInfo::File(layout_path, _)) = layout_info else {
+            panic!("layout info has unexpected format");
+        };
+        assert_eq!(
+            layout_path,
+            format!(
+                "{}/src/test-fixtures/config-dirs/layout-upside-down/layouts/upside-down.kdl",
+                env!("CARGO_MANIFEST_DIR")
+            )
+        );
+    }
+    #[test]
+    fn cli_config_dir_finds_custom_default() {
+        let cli_args = CliArgs {
+            config_dir: Some(PathBuf::from(format!(
+                "{}/src/test-fixtures/config-dirs/custom-default-layout",
+                env!("CARGO_MANIFEST_DIR")
+            ))),
+            ..Default::default()
+        };
+        let (_, layout_info, _, _, _) = Setup::from_cli_args(&cli_args).unwrap();
+        let Some(LayoutInfo::File(layout_path, _)) = layout_info else {
+            panic!("layout info has unexpected format");
+        };
+        assert_eq!(
+            layout_path,
+            format!(
+                "{}/src/test-fixtures/config-dirs/custom-default-layout/layouts/default.kdl",
+                env!("CARGO_MANIFEST_DIR")
+            )
+        );
+    }
+
+    #[test]
+    fn cli_with_relative_layout_and_extension() {
+        // NOTE: We assume to be in `zellij-utils` root directory. If this doesn't hold, path
+        // resolution cannot work (as it actually reads path to ensure they exist).
+        assert_eq!(
+            std::env::current_dir().unwrap(),
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        );
+
+        let cli_args = CliArgs {
+            layout: Some(PathBuf::from("assets/layouts/compact.kdl")),
+            ..Default::default()
+        };
+        let (_, layout_info, _, _, _) = Setup::from_cli_args(&cli_args).unwrap();
+        let Some(LayoutInfo::File(layout_path, _)) = layout_info else {
+            panic!("layout info has unexpected format: {:?}", &layout_info);
+        };
+        assert_eq!(
+            layout_path,
+            format!(
+                "{}/assets/layouts/compact.kdl",
+                std::env::current_dir().unwrap().display()
+            ),
+        );
+    }
+
+    #[test]
+    fn cli_with_relative_layout_and_separator() {
+        // NOTE: We assume to be in `zellij-utils` root directory. If this doesn't hold, path
+        // resolution cannot work (as it actually reads path to ensure they exist).
+        assert_eq!(
+            std::env::current_dir().unwrap(),
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        );
+
+        let cli_args = CliArgs {
+            layout: Some(PathBuf::from("assets/layouts/compact")),
+            ..Default::default()
+        };
+        let (_, layout_info, _, _, _) = Setup::from_cli_args(&cli_args).unwrap();
+        let Some(LayoutInfo::File(layout_path, _)) = layout_info else {
+            panic!("layout info has unexpected format");
+        };
+        assert_eq!(
+            layout_path,
+            format!(
+                "{}/assets/layouts/compact",
+                std::env::current_dir().unwrap().display()
+            ),
+        );
     }
 }

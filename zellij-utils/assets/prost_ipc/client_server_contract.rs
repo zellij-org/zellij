@@ -320,6 +320,8 @@ pub mod action {
         #[prost(message, tag="94")]
         OverrideLayout(super::OverrideLayoutAction),
         #[prost(message, tag="97")]
+        SaveSession(super::SaveSessionAction),
+        #[prost(message, tag="98")]
         RenameTabByName(super::RenameTabByNameAction),
     }
 }
@@ -355,6 +357,10 @@ pub struct ClearScreenAction {
 pub struct DumpLayoutAction {
     #[prost(bool, tag="1")]
     pub with_ids: bool,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SaveSessionAction {
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1673,6 +1679,10 @@ pub struct Options {
     pub enforce_https_for_localhost: ::core::option::Option<bool>,
     #[prost(string, optional, tag="39")]
     pub post_command_discovery_hook: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(bool, optional, tag="40")]
+    pub osc8_hyperlinks: ::core::option::Option<bool>,
+    #[prost(bool, optional, tag="41")]
+    pub mouse_hover_effects: ::core::option::Option<bool>,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
