@@ -21,11 +21,13 @@ use std::{
 use tokio::sync::oneshot;
 use wasmi::{Caller, Linker};
 use zellij_utils::data::{
-    CommandType, ConnectToSession, DeleteLayoutResponse, EditLayoutResponse, Event,
+    BreakPanesToNewTabResponse, BreakPanesToTabWithIndexResponse, CommandType, ConnectToSession,
+    DeleteLayoutResponse, EditLayoutResponse, Event, FocusOrCreateTabResponse,
     FloatingPaneCoordinates, GetFocusedPaneInfoResponse, GetPanePidResponse, HttpVerb,
     KeyWithModifier, LayoutInfo, LayoutMetadata, LayoutParsingError, MessageToPlugin,
-    NewPanePlacement, OriginatingPlugin, PaneScrollbackResponse, PermissionStatus, PermissionType,
-    PluginPermission, RenameLayoutResponse, SaveLayoutResponse, TabMetadata,
+    NewPanePlacement, NewTabResponse, NewTabsResponse, OriginatingPlugin, PaneScrollbackResponse,
+    PermissionStatus, PermissionType, PluginPermission, RenameLayoutResponse, SaveLayoutResponse,
+    TabMetadata,
 };
 use zellij_utils::home::default_layout_dir;
 use zellij_utils::input::permission::PermissionCache;
@@ -62,12 +64,14 @@ use zellij_utils::{
         },
         plugin_command::{
             dump_layout_response, dump_session_layout_response, parse_layout_response,
-            save_session_response, ProtobufDeleteLayoutResponse, ProtobufDumpLayoutResponse,
-            ProtobufDumpSessionLayoutResponse, ProtobufEditLayoutResponse,
+            save_session_response, ProtobufBreakPanesToNewTabResponse,
+            ProtobufBreakPanesToTabWithIndexResponse, ProtobufDeleteLayoutResponse,
+            ProtobufDumpLayoutResponse, ProtobufDumpSessionLayoutResponse,
+            ProtobufEditLayoutResponse, ProtobufFocusOrCreateTabResponse,
             ProtobufGenerateRandomNameResponse, ProtobufGetFocusedPaneInfoResponse,
-            ProtobufGetLayoutDirResponse, ProtobufGetPanePidResponse, ProtobufParseLayoutResponse,
-            ProtobufPluginCommand, ProtobufRenameLayoutResponse, ProtobufSaveLayoutResponse,
-            ProtobufSaveSessionResponse,
+            ProtobufGetLayoutDirResponse, ProtobufGetPanePidResponse, ProtobufNewTabResponse,
+            ProtobufNewTabsResponse, ProtobufParseLayoutResponse, ProtobufPluginCommand,
+            ProtobufRenameLayoutResponse, ProtobufSaveLayoutResponse, ProtobufSaveSessionResponse,
         },
         plugin_ids::{ProtobufPluginIds, ProtobufZellijVersion},
     },
@@ -81,7 +85,7 @@ use zellij_utils::plugin_api::plugin_command::{
 
 macro_rules! apply_action {
     ($action:ident, $error_message:ident, $env: ident) => {
-        if let Err(e) = route_action(
+        match route_action(
             $action,
             $env.client_id,
             None,
@@ -96,7 +100,11 @@ macro_rules! apply_action {
             $env.default_mode.clone(),
             None,
         ) {
-            log::error!("{}: {:?}", $error_message(), e);
+            Ok((_, result)) => result,
+            Err(e) => {
+                log::error!("{}: {:?}", $error_message(), e);
+                None
+            }
         }
     };
 }
@@ -1989,10 +1997,23 @@ fn apply_layout(env: &PluginEnv, layout: Layout) {
             tabs_to_open.push(action);
         }
     }
+    let mut tab_ids = Vec::new();
+
     for action in tabs_to_open {
         let error_msg = || format!("Failed to create layout tab");
-        apply_action!(action, error_msg, env);
+        let result = apply_action!(action, error_msg, env);
+
+        // Collect tab ID from each action
+        if let Some(tab_id) = result.and_then(|r| r.affected_tab_id) {
+            tab_ids.push(tab_id);
+        }
     }
+
+    // Write response
+    let response = ProtobufNewTabsResponse::from(tab_ids);
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to write layout tabs response"))
+        .non_fatal();
 }
 
 fn new_tab(env: &PluginEnv, name: Option<String>, cwd: Option<String>) {
@@ -2009,7 +2030,16 @@ fn new_tab(env: &PluginEnv, name: Option<String>, cwd: Option<String>) {
         first_pane_unblock_condition: None,
     };
     let error_msg = || format!("Failed to open new tab");
-    apply_action!(action, error_msg, env);
+    let result = apply_action!(action, error_msg, env);
+
+    // Extract tab_id from result - return None if not present
+    let tab_id: NewTabResponse = result.and_then(|r| r.affected_tab_id);
+
+    // Write response to plugin
+    let response = ProtobufNewTabResponse::from(tab_id);
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to write new_tab response"))
+        .non_fatal();
 }
 
 fn go_to_next_tab(env: &PluginEnv) {
@@ -2347,7 +2377,14 @@ fn focus_or_create_tab(env: &PluginEnv, tab_name: String) {
         name: tab_name,
         create,
     };
-    apply_action!(action, error_msg, env);
+    let result = apply_action!(action, error_msg, env);
+
+    // Return Some(tab_id) if tab was created or focused, None on error
+    let tab_id: FocusOrCreateTabResponse = result.and_then(|r| r.affected_tab_id);
+
+    let response = ProtobufFocusOrCreateTabResponse::from(tab_id);
+    wasi_write_object(env, &response.encode_to_vec())
+        .non_fatal();
 }
 
 fn go_to_tab(env: &PluginEnv, tab_index: u32) {
@@ -3310,7 +3347,12 @@ fn break_panes_to_new_tab(
             ..Default::default()
         }))
     });
-    let _ = env
+
+    // Create completion channel to receive tab ID
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let completion_tx = Some(NotificationEnd::new(tx));
+
+    let result = env
         .senders
         .send_to_screen(ScreenInstruction::BreakPanesToNewTab {
             pane_ids,
@@ -3318,7 +3360,18 @@ fn break_panes_to_new_tab(
             new_tab_name,
             should_change_focus_to_new_tab,
             client_id: env.client_id,
+            completion_tx,
         });
+
+    let tab_id: BreakPanesToNewTabResponse = if result.is_ok() {
+        wait_for_action_completion(rx, "break_panes_to_new_tab", false).affected_tab_id
+    } else {
+        None
+    };
+
+    let response = ProtobufBreakPanesToNewTabResponse::from(tab_id);
+    wasi_write_object(env, &response.encode_to_vec())
+        .non_fatal();
 }
 
 fn break_panes_to_tab_with_index(
@@ -3327,14 +3380,29 @@ fn break_panes_to_tab_with_index(
     should_change_focus_to_new_tab: bool,
     tab_index: usize,
 ) {
-    let _ = env
+    // Create completion channel to receive tab ID
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let completion_tx = Some(NotificationEnd::new(tx));
+
+    let result = env
         .senders
         .send_to_screen(ScreenInstruction::BreakPanesToTabWithIndex {
             pane_ids,
             tab_index,
             client_id: env.client_id,
             should_change_focus_to_new_tab,
+            completion_tx,
         });
+
+    let tab_id: BreakPanesToTabWithIndexResponse = if result.is_ok() {
+        wait_for_action_completion(rx, "break_panes_to_tab_with_index", false).affected_tab_id
+    } else {
+        None
+    };
+
+    let response = ProtobufBreakPanesToTabWithIndexResponse::from(tab_id);
+    wasi_write_object(env, &response.encode_to_vec())
+        .non_fatal();
 }
 
 fn reload_plugin(env: &PluginEnv, plugin_id: u32) {

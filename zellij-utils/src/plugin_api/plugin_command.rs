@@ -3,11 +3,15 @@ pub use super::generated_api::api::{
     event::{EventNameList as ProtobufEventNameList, Header},
     input_mode::InputMode as ProtobufInputMode,
     plugin_command::{
+        break_panes_to_new_tab_response, break_panes_to_tab_with_index_response,
         delete_layout_response, dump_layout_response, dump_session_layout_response,
-        edit_layout_response, get_focused_pane_info_response, get_pane_pid_response,
-        parse_layout_response, plugin_command::Payload, rename_layout_response,
-        save_layout_response, save_session_response, BreakPanesToNewTabPayload,
-        BreakPanesToTabWithIndexPayload, ChangeFloatingPanesCoordinatesPayload,
+        edit_layout_response, focus_or_create_tab_response, get_focused_pane_info_response,
+        get_pane_pid_response, new_tab_response, parse_layout_response, plugin_command::Payload,
+        rename_layout_response, save_layout_response, save_session_response,
+        BreakPanesToNewTabPayload, BreakPanesToNewTabResponse as ProtobufBreakPanesToNewTabResponse,
+        BreakPanesToTabWithIndexPayload,
+        BreakPanesToTabWithIndexResponse as ProtobufBreakPanesToTabWithIndexResponse,
+        ChangeFloatingPanesCoordinatesPayload,
         ChangeHostFolderPayload, ClearScreenForPaneIdPayload, CliPipeOutputPayload,
         CloseMultiplePanesPayload, CloseTabWithIndexPayload, CommandName, ContextItem,
         CopyToClipboardPayload, CreateTokenResponse as ProtobufCreateTokenResponse,
@@ -20,7 +24,8 @@ pub use super::generated_api::api::{
         EditScrollbackForPaneWithIdPayload, EmbedMultiplePanesPayload, EnvVariable, ExecCmdPayload,
         FixedOrPercent as ProtobufFixedOrPercent,
         FixedOrPercentValue as ProtobufFixedOrPercentValue, FloatMultiplePanesPayload,
-        FloatingPaneCoordinates as ProtobufFloatingPaneCoordinates, FocusedPaneInfo,
+        FloatingPaneCoordinates as ProtobufFloatingPaneCoordinates,
+        FocusOrCreateTabResponse as ProtobufFocusOrCreateTabResponse, FocusedPaneInfo,
         GenerateRandomNamePayload,
         GenerateRandomNameResponse as ProtobufGenerateRandomNameResponse,
         GenerateWebLoginTokenPayload, GetFocusedPaneInfoPayload,
@@ -31,7 +36,9 @@ pub use super::generated_api::api::{
         HttpVerb as ProtobufHttpVerb, IdAndNewName, KeyToRebind, KeyToUnbind, KillSessionsPayload,
         ListTokensResponse, LoadNewPluginPayload, MessageToPluginPayload,
         MovePaneWithPaneIdInDirectionPayload, MovePaneWithPaneIdPayload, MovePayload,
-        NewPluginArgs as ProtobufNewPluginArgs, NewTabPayload, NewTabsWithLayoutInfoPayload,
+        NewPluginArgs as ProtobufNewPluginArgs, NewTabPayload,
+        NewTabResponse as ProtobufNewTabResponse, NewTabsResponse as ProtobufNewTabsResponse,
+        NewTabsWithLayoutInfoPayload,
         OpenCommandPaneFloatingNearPluginPayload, OpenCommandPaneInPlaceOfPluginPayload,
         OpenCommandPaneNearPluginPayload, OpenCommandPanePayload,
         OpenFileFloatingNearPluginPayload, OpenFileInPlaceOfPluginPayload,
@@ -3460,6 +3467,125 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     CurrentSessionLastSavedTimePayload {},
                 )),
             }),
+        }
+    }
+}
+
+// Conversion implementations for tab creation response types
+use crate::data::{
+    BreakPanesToNewTabResponse, BreakPanesToTabWithIndexResponse, FocusOrCreateTabResponse,
+    NewTabResponse, NewTabsResponse,
+};
+
+impl TryFrom<ProtobufNewTabResponse> for NewTabResponse {
+    type Error = &'static str;
+    fn try_from(protobuf: ProtobufNewTabResponse) -> Result<Self, Self::Error> {
+        match protobuf.result {
+            Some(new_tab_response::Result::TabId(id)) => Ok(Some(id as usize)),
+            Some(new_tab_response::Result::None(_)) | None => Ok(None),
+        }
+    }
+}
+
+impl From<NewTabResponse> for ProtobufNewTabResponse {
+    fn from(response: NewTabResponse) -> Self {
+        match response {
+            Some(tab_id) => ProtobufNewTabResponse {
+                result: Some(new_tab_response::Result::TabId(tab_id as u64)),
+            },
+            None => ProtobufNewTabResponse {
+                result: Some(new_tab_response::Result::None(true)),
+            },
+        }
+    }
+}
+
+impl TryFrom<ProtobufNewTabsResponse> for NewTabsResponse {
+    type Error = &'static str;
+    fn try_from(protobuf: ProtobufNewTabsResponse) -> Result<Self, Self::Error> {
+        Ok(protobuf.tab_ids.into_iter().map(|id| id as usize).collect())
+    }
+}
+
+impl From<NewTabsResponse> for ProtobufNewTabsResponse {
+    fn from(response: NewTabsResponse) -> Self {
+        ProtobufNewTabsResponse {
+            tab_ids: response.into_iter().map(|id| id as u64).collect(),
+        }
+    }
+}
+
+impl TryFrom<ProtobufFocusOrCreateTabResponse> for FocusOrCreateTabResponse {
+    type Error = &'static str;
+    fn try_from(protobuf: ProtobufFocusOrCreateTabResponse) -> Result<Self, Self::Error> {
+        match protobuf.result {
+            Some(focus_or_create_tab_response::Result::TabId(id)) => Ok(Some(id as usize)),
+            Some(focus_or_create_tab_response::Result::None(_)) | None => Ok(None),
+        }
+    }
+}
+
+impl From<FocusOrCreateTabResponse> for ProtobufFocusOrCreateTabResponse {
+    fn from(response: FocusOrCreateTabResponse) -> Self {
+        match response {
+            Some(tab_id) => ProtobufFocusOrCreateTabResponse {
+                result: Some(focus_or_create_tab_response::Result::TabId(tab_id as u64)),
+            },
+            None => ProtobufFocusOrCreateTabResponse {
+                result: Some(focus_or_create_tab_response::Result::None(true)),
+            },
+        }
+    }
+}
+
+impl TryFrom<ProtobufBreakPanesToNewTabResponse> for BreakPanesToNewTabResponse {
+    type Error = &'static str;
+    fn try_from(protobuf: ProtobufBreakPanesToNewTabResponse) -> Result<Self, Self::Error> {
+        match protobuf.result {
+            Some(break_panes_to_new_tab_response::Result::TabId(id)) => Ok(Some(id as usize)),
+            Some(break_panes_to_new_tab_response::Result::None(_)) | None => Ok(None),
+        }
+    }
+}
+
+impl From<BreakPanesToNewTabResponse> for ProtobufBreakPanesToNewTabResponse {
+    fn from(response: BreakPanesToNewTabResponse) -> Self {
+        match response {
+            Some(tab_id) => ProtobufBreakPanesToNewTabResponse {
+                result: Some(break_panes_to_new_tab_response::Result::TabId(tab_id as u64)),
+            },
+            None => ProtobufBreakPanesToNewTabResponse {
+                result: Some(break_panes_to_new_tab_response::Result::None(true)),
+            },
+        }
+    }
+}
+
+impl TryFrom<ProtobufBreakPanesToTabWithIndexResponse> for BreakPanesToTabWithIndexResponse {
+    type Error = &'static str;
+    fn try_from(
+        protobuf: ProtobufBreakPanesToTabWithIndexResponse,
+    ) -> Result<Self, Self::Error> {
+        match protobuf.result {
+            Some(break_panes_to_tab_with_index_response::Result::TabId(id)) => {
+                Ok(Some(id as usize))
+            },
+            Some(break_panes_to_tab_with_index_response::Result::None(_)) | None => Ok(None),
+        }
+    }
+}
+
+impl From<BreakPanesToTabWithIndexResponse> for ProtobufBreakPanesToTabWithIndexResponse {
+    fn from(response: BreakPanesToTabWithIndexResponse) -> Self {
+        match response {
+            Some(tab_id) => ProtobufBreakPanesToTabWithIndexResponse {
+                result: Some(break_panes_to_tab_with_index_response::Result::TabId(
+                    tab_id as u64,
+                )),
+            },
+            None => ProtobufBreakPanesToTabWithIndexResponse {
+                result: Some(break_panes_to_tab_with_index_response::Result::None(true)),
+            },
         }
     }
 }

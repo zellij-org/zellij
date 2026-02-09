@@ -3393,3 +3393,10 @@ pub enum PluginCommand {
     SaveSession,
     CurrentSessionLastSavedTime,
 }
+
+// Response types for plugin API methods that create tabs
+pub type NewTabResponse = Option<usize>;
+pub type NewTabsResponse = Vec<usize>;
+pub type FocusOrCreateTabResponse = Option<usize>;
+pub type BreakPanesToNewTabResponse = Option<usize>;
+pub type BreakPanesToTabWithIndexResponse = Option<usize>;

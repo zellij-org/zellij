@@ -1282,6 +1282,85 @@ pub struct CurrentSessionLastSavedTimeResponse {
     #[prost(uint64, optional, tag="1")]
     pub timestamp_millis: ::core::option::Option<u64>,
 }
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct NewTabResponse {
+    #[prost(oneof="new_tab_response::Result", tags="1, 2")]
+    pub result: ::core::option::Option<new_tab_response::Result>,
+}
+/// Nested message and enum types in `NewTabResponse`.
+pub mod new_tab_response {
+    #[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Result {
+        #[prost(uint64, tag="1")]
+        TabId(u64),
+        /// Indicates None
+        #[prost(bool, tag="2")]
+        None(bool),
+    }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct NewTabsResponse {
+    /// Only includes successfully created tabs
+    #[prost(uint64, repeated, tag="1")]
+    pub tab_ids: ::prost::alloc::vec::Vec<u64>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct FocusOrCreateTabResponse {
+    #[prost(oneof="focus_or_create_tab_response::Result", tags="1, 2")]
+    pub result: ::core::option::Option<focus_or_create_tab_response::Result>,
+}
+/// Nested message and enum types in `FocusOrCreateTabResponse`.
+pub mod focus_or_create_tab_response {
+    #[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Result {
+        #[prost(uint64, tag="1")]
+        TabId(u64),
+        /// Indicates None
+        #[prost(bool, tag="2")]
+        None(bool),
+    }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BreakPanesToNewTabResponse {
+    #[prost(oneof="break_panes_to_new_tab_response::Result", tags="1, 2")]
+    pub result: ::core::option::Option<break_panes_to_new_tab_response::Result>,
+}
+/// Nested message and enum types in `BreakPanesToNewTabResponse`.
+pub mod break_panes_to_new_tab_response {
+    #[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Result {
+        #[prost(uint64, tag="1")]
+        TabId(u64),
+        /// Indicates None
+        #[prost(bool, tag="2")]
+        None(bool),
+    }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BreakPanesToTabWithIndexResponse {
+    #[prost(oneof="break_panes_to_tab_with_index_response::Result", tags="1, 2")]
+    pub result: ::core::option::Option<break_panes_to_tab_with_index_response::Result>,
+}
+/// Nested message and enum types in `BreakPanesToTabWithIndexResponse`.
+pub mod break_panes_to_tab_with_index_response {
+    #[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Result {
+        #[prost(uint64, tag="1")]
+        TabId(u64),
+        /// Indicates None
+        #[prost(bool, tag="2")]
+        None(bool),
+    }
+}
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
 pub enum CommandName {

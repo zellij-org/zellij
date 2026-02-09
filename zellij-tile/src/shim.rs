@@ -13,10 +13,12 @@ use zellij_utils::plugin_api::generated_api::api::plugin_command::save_session_r
 use zellij_utils::plugin_api::plugin_command::{
     dump_layout_response, dump_session_layout_response, get_focused_pane_info_response,
     parse_layout_response, CreateTokenResponse, ListTokensResponse,
+    ProtobufBreakPanesToNewTabResponse, ProtobufBreakPanesToTabWithIndexResponse,
     ProtobufCurrentSessionLastSavedTimeResponse, ProtobufDeleteLayoutResponse,
     ProtobufDumpLayoutResponse, ProtobufDumpSessionLayoutResponse, ProtobufEditLayoutResponse,
-    ProtobufGenerateRandomNameResponse, ProtobufGetFocusedPaneInfoResponse,
-    ProtobufGetLayoutDirResponse, ProtobufGetPanePidResponse, ProtobufParseLayoutResponse,
+    ProtobufFocusOrCreateTabResponse, ProtobufGenerateRandomNameResponse,
+    ProtobufGetFocusedPaneInfoResponse, ProtobufGetLayoutDirResponse, ProtobufGetPanePidResponse,
+    ProtobufNewTabResponse, ProtobufNewTabsResponse, ProtobufParseLayoutResponse,
     ProtobufPluginCommand, ProtobufRenameLayoutResponse, ProtobufSaveLayoutResponse,
     ProtobufSaveSessionResponse, RenameWebTokenResponse, RevokeAllWebTokensResponse,
     RevokeTokenResponse,
@@ -600,23 +602,31 @@ pub fn switch_to_input_mode(mode: &InputMode) {
 }
 
 /// Provide a stringified [`layout`](https://zellij.dev/documentation/layouts.html) to be applied to the current session. If the layout has multiple tabs, they will all be opened.
-pub fn new_tabs_with_layout(layout: &str) {
+pub fn new_tabs_with_layout(layout: &str) -> Vec<usize> {
     let plugin_command = PluginCommand::NewTabsWithLayout(layout.to_owned());
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
+
+    let response =
+        ProtobufNewTabsResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
+    NewTabsResponse::try_from(response).unwrap()
 }
 
 /// Provide a LayoutInfo to be applied to the current session in a new tab. If the layout has multiple tabs, they will all be opened.
-pub fn new_tabs_with_layout_info<L: AsRef<LayoutInfo>>(layout_info: L) {
+pub fn new_tabs_with_layout_info<L: AsRef<LayoutInfo>>(layout_info: L) -> Vec<usize> {
     let plugin_command = PluginCommand::NewTabsWithLayoutInfo(layout_info.as_ref().clone());
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
+
+    let response =
+        ProtobufNewTabsResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
+    NewTabsResponse::try_from(response).unwrap()
 }
 
 /// Open a new tab with the default layout
-pub fn new_tab<S: AsRef<str>>(name: Option<S>, cwd: Option<S>)
+pub fn new_tab<S: AsRef<str>>(name: Option<S>, cwd: Option<S>) -> Option<usize>
 where
     S: ToString,
 {
@@ -626,6 +636,10 @@ where
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
+
+    let response =
+        ProtobufNewTabResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
+    NewTabResponse::try_from(response).unwrap()
 }
 
 /// Change focus to the next tab or loop back to the first
@@ -928,11 +942,15 @@ pub fn go_to_tab_name(tab_name: &str) {
 }
 
 /// Change focus to the tab with the specified name or create it if it does not exist
-pub fn focus_or_create_tab(tab_name: &str) {
+pub fn focus_or_create_tab(tab_name: &str) -> Option<usize> {
     let plugin_command = PluginCommand::FocusOrCreateTab(tab_name.to_owned());
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
+
+    let response =
+        ProtobufFocusOrCreateTabResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
+    FocusOrCreateTabResponse::try_from(response).unwrap()
 }
 
 pub fn go_to_tab(tab_index: u32) {
@@ -1731,7 +1749,7 @@ pub fn break_panes_to_new_tab(
     pane_ids: &[PaneId],
     new_tab_name: Option<String>,
     should_change_focus_to_new_tab: bool,
-) {
+) -> Option<usize> {
     let plugin_command = PluginCommand::BreakPanesToNewTab(
         pane_ids.to_vec(),
         new_tab_name,
@@ -1740,6 +1758,10 @@ pub fn break_panes_to_new_tab(
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
+
+    let response = ProtobufBreakPanesToNewTabResponse::decode(bytes_from_stdin().unwrap().as_slice())
+        .unwrap();
+    BreakPanesToNewTabResponse::try_from(response).unwrap()
 }
 
 /// Move the pane ids to the tab with the specified index
@@ -1747,7 +1769,7 @@ pub fn break_panes_to_tab_with_index(
     pane_ids: &[PaneId],
     tab_index: usize,
     should_change_focus_to_new_tab: bool,
-) {
+) -> Option<usize> {
     let plugin_command = PluginCommand::BreakPanesToTabWithIndex(
         pane_ids.to_vec(),
         tab_index,
@@ -1756,6 +1778,12 @@ pub fn break_panes_to_tab_with_index(
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
+
+    let response = ProtobufBreakPanesToTabWithIndexResponse::decode(
+        bytes_from_stdin().unwrap().as_slice(),
+    )
+    .unwrap();
+    BreakPanesToTabWithIndexResponse::try_from(response).unwrap()
 }
 
 /// Reload an already-running in this session, optionally skipping the cache

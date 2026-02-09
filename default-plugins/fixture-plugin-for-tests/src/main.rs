@@ -99,7 +99,7 @@ impl ZellijPlugin for State {
                     );
                 },
                 BareKey::Char('c') if key.has_no_modifiers() => {
-                    new_tab(Some("new_tab_name"), Some("/path/to/my/cwd"))
+                    new_tab(Some("new_tab_name"), Some("/path/to/my/cwd"));
                 },
                 BareKey::Char('d') if key.has_no_modifiers() => go_to_next_tab(),
                 BareKey::Char('e') if key.has_no_modifiers() => go_to_previous_tab(),
@@ -166,7 +166,7 @@ impl ZellijPlugin for State {
                 },
                 BareKey::Char('d') if key.has_only_modifiers(&[KeyModifier::Ctrl]) => {
                     let tab_name = "my tab name";
-                    focus_or_create_tab(tab_name)
+                    focus_or_create_tab(tab_name);
                 },
                 BareKey::Char('e') if key.has_only_modifiers(&[KeyModifier::Ctrl]) => {
                     let tab_index = 2;

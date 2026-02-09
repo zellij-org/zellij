@@ -572,12 +572,14 @@ pub enum ScreenInstruction {
         should_change_focus_to_new_tab: bool,
         new_tab_name: Option<String>,
         client_id: ClientId,
+        completion_tx: Option<NotificationEnd>,
     },
     BreakPanesToTabWithIndex {
         pane_ids: Vec<PaneId>,
         tab_index: usize,
         should_change_focus_to_new_tab: bool,
         client_id: ClientId,
+        completion_tx: Option<NotificationEnd>,
     },
     ListClientsToPlugin(PluginId, ClientId),
     TogglePanePinned(ClientId, Option<NotificationEnd>),
@@ -1131,11 +1133,6 @@ impl Screen {
         }
     }
 
-    /// Generates the next available stable tab ID.
-    ///
-    /// IDs are monotonically increasing and never reused, even after tabs are closed.
-    /// Currently, this is one more than the last currently existing tab ID, or `0` if
-    /// no tabs exist in this screen yet.
     fn get_new_tab_id(&self) -> usize {
         if let Some(id) = self.tabs.keys().last() {
             *id + 1
@@ -2902,7 +2899,7 @@ impl Screen {
         should_change_focus_to_new_tab: bool,
         new_tab_name: Option<String>,
         client_id: ClientId,
-    ) -> Result<()> {
+    ) -> Result<usize> {
         let err_context = || "failed break multiple panes to a new tab".to_string();
 
         let all_tabs = self.get_tabs_mut();
@@ -2960,7 +2957,7 @@ impl Screen {
             (client_id, is_web_client),
             None,
         ))?;
-        Ok(())
+        Ok(tab_index)
     }
     pub fn break_pane_to_new_tab(
         &mut self,
@@ -4999,6 +4996,8 @@ pub(crate) fn screen_thread_main(
                         .as_mut()
                         .map(|c| c.set_affected_pane_id(PaneId::Terminal(first_terminal_pane.0)));
                 }
+                // Set the affected tab ID for plugin API return value
+                completion_tx.as_mut().map(|c| c.set_affected_tab_id(tab_id));
                 screen.apply_layout(
                     layout,
                     floating_panes_layout,
@@ -5108,7 +5107,7 @@ pub(crate) fn screen_thread_main(
                 default_shell,
                 create,
                 client_id,
-                completion_tx,
+                mut completion_tx,
             ) => {
                 let client_id = if client_id.is_none() {
                     None
@@ -5129,6 +5128,12 @@ pub(crate) fn screen_thread_main(
                         .unwrap_or(false);
                     if let Ok(tab_exists) = screen.go_to_tab_name(tab_name.clone(), client_id) {
                         screen.render(None)?;
+                        if tab_exists {
+                            // Tab already exists - find its ID and set in completion
+                            if let Some(existing_tab) = screen.tabs.values().find(|t| t.name == tab_name) {
+                                completion_tx.as_mut().map(|c| c.set_affected_tab_id(existing_tab.id));
+                            }
+                        }
                         if create && !tab_exists {
                             let tab_index = screen.get_new_tab_id();
                             let should_change_focus_to_new_tab = true;
@@ -6695,14 +6700,17 @@ pub(crate) fn screen_thread_main(
                 should_change_focus_to_new_tab,
                 new_tab_name,
                 client_id,
+                mut completion_tx,
             } => {
-                screen.break_multiple_panes_to_new_tab(
+                let tab_id = screen.break_multiple_panes_to_new_tab(
                     pane_ids,
                     default_shell,
                     should_change_focus_to_new_tab,
                     new_tab_name,
                     client_id,
                 )?;
+                // Set affected tab ID for plugin API return value
+                completion_tx.as_mut().map(|c| c.set_affected_tab_id(tab_id));
                 // TODO: is this a race?
                 let pane_group = screen.get_client_pane_group(&client_id);
                 if !pane_group.is_empty() {
@@ -6720,13 +6728,17 @@ pub(crate) fn screen_thread_main(
                 tab_index,
                 should_change_focus_to_new_tab,
                 client_id,
+                mut completion_tx,
             } => {
+                // tab_index is the target tab ID
                 screen.break_multiple_panes_to_tab_with_index(
                     pane_ids,
                     tab_index,
                     should_change_focus_to_new_tab,
                     client_id,
                 )?;
+                // Set affected tab ID (tab_index is the ID here)
+                completion_tx.as_mut().map(|c| c.set_affected_tab_id(tab_index));
                 let pane_group = screen.get_client_pane_group(&client_id);
                 if !pane_group.is_empty() {
                     let _ = screen.bus.senders.send_to_background_jobs(

@@ -43,6 +43,7 @@ const ACTION_COMPLETION_TIMEOUT: Duration = Duration::from_secs(1);
 pub struct ActionCompletionResult {
     pub exit_status: Option<i32>,
     pub affected_pane_id: Option<PaneId>,
+    pub affected_tab_id: Option<usize>,
 }
 
 pub fn wait_for_action_completion(
@@ -60,6 +61,7 @@ pub fn wait_for_action_completion(
                     ActionCompletionResult {
                         exit_status: None,
                         affected_pane_id: None,
+                        affected_tab_id: None,
                     }
                 },
             }
@@ -78,6 +80,7 @@ pub fn wait_for_action_completion(
                 ActionCompletionResult {
                     exit_status: None,
                     affected_pane_id: None,
+                    affected_tab_id: None,
                 }
             },
         }
@@ -96,6 +99,7 @@ pub struct NotificationEnd {
     exit_status: Option<i32>,
     unblock_condition: Option<UnblockCondition>,
     affected_pane_id: Option<PaneId>, // optional payload of the pane id affected by this action
+    affected_tab_id: Option<usize>, // optional payload of the tab id affected by this action
 }
 
 impl Clone for NotificationEnd {
@@ -106,6 +110,7 @@ impl Clone for NotificationEnd {
             exit_status: self.exit_status,
             unblock_condition: self.unblock_condition,
             affected_pane_id: self.affected_pane_id,
+            affected_tab_id: self.affected_tab_id,
         }
     }
 }
@@ -117,6 +122,7 @@ impl NotificationEnd {
             exit_status: None,
             unblock_condition: None,
             affected_pane_id: None,
+            affected_tab_id: None,
         }
     }
 
@@ -129,6 +135,7 @@ impl NotificationEnd {
             exit_status: None,
             unblock_condition: Some(unblock_condition),
             affected_pane_id: None,
+            affected_tab_id: None,
         }
     }
 
@@ -138,6 +145,10 @@ impl NotificationEnd {
 
     pub fn set_affected_pane_id(&mut self, pane_id: PaneId) {
         self.affected_pane_id = Some(pane_id);
+    }
+
+    pub fn set_affected_tab_id(&mut self, tab_id: usize) {
+        self.affected_tab_id = Some(tab_id);
     }
 
     pub fn unblock_condition(&self) -> Option<UnblockCondition> {
@@ -151,6 +162,7 @@ impl Drop for NotificationEnd {
             let result = ActionCompletionResult {
                 exit_status: self.exit_status,
                 affected_pane_id: self.affected_pane_id,
+                affected_tab_id: self.affected_tab_id,
             };
             let _ = tx.send(result);
         }
@@ -2112,4 +2124,73 @@ pub(crate) fn route_thread_main(
     // route thread exited, make sure we clean up
     let _ = to_server.send(ServerInstruction::RemoveClient(client_id));
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_notification_end_sets_affected_tab_id() {
+        let (tx, rx) = oneshot::channel();
+        let mut notification_end = NotificationEnd::new(tx);
+
+        notification_end.set_affected_tab_id(42);
+
+        drop(notification_end);
+
+        let result = rx.blocking_recv().unwrap();
+        assert_eq!(result.affected_tab_id, Some(42));
+    }
+
+    #[test]
+    fn test_notification_end_default_affected_tab_id_none() {
+        let (tx, rx) = oneshot::channel();
+        let notification_end = NotificationEnd::new(tx);
+
+        drop(notification_end);
+
+        let result = rx.blocking_recv().unwrap();
+        assert_eq!(result.affected_tab_id, None);
+    }
+
+    #[test]
+    fn test_action_completion_result_includes_tab_id() {
+        let result = ActionCompletionResult {
+            exit_status: None,
+            affected_pane_id: None,
+            affected_tab_id: Some(123),
+        };
+
+        assert_eq!(result.affected_tab_id, Some(123));
+    }
+
+    #[test]
+    fn test_notification_end_with_pane_and_tab_ids() {
+        let (tx, rx) = oneshot::channel();
+        let mut notification_end = NotificationEnd::new(tx);
+
+        notification_end.set_affected_pane_id(PaneId::Terminal(10));
+        notification_end.set_affected_tab_id(5);
+
+        drop(notification_end);
+
+        let result = rx.blocking_recv().unwrap();
+        assert_eq!(result.affected_pane_id, Some(PaneId::Terminal(10)));
+        assert_eq!(result.affected_tab_id, Some(5));
+    }
+
+    #[test]
+    fn test_notification_end_clone_does_not_copy_channel() {
+        let (tx, _rx) = oneshot::channel();
+        let mut notification_end = NotificationEnd::new(tx);
+        notification_end.set_affected_tab_id(99);
+
+        let cloned = notification_end.clone();
+
+        // Verify the clone has the same data
+        assert_eq!(cloned.affected_tab_id, Some(99));
+        // But channel should be None (as per the Clone implementation comment)
+        assert!(cloned.channel.is_none());
+    }
 }
