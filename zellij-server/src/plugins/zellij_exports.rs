@@ -25,9 +25,17 @@ use zellij_utils::data::{
     DeleteLayoutResponse, EditLayoutResponse, Event, FocusOrCreateTabResponse,
     FloatingPaneCoordinates, GetFocusedPaneInfoResponse, GetPanePidResponse, HttpVerb,
     KeyWithModifier, LayoutInfo, LayoutMetadata, LayoutParsingError, MessageToPlugin,
-    NewPanePlacement, NewTabResponse, NewTabsResponse, OriginatingPlugin, PaneScrollbackResponse,
-    PermissionStatus, PermissionType, PluginPermission, RenameLayoutResponse, SaveLayoutResponse,
-    TabMetadata,
+    NewPanePlacement, NewTabResponse, NewTabsResponse, OpenCommandPaneBackgroundResponse,
+    OpenCommandPaneFloatingNearPluginResponse, OpenCommandPaneFloatingResponse,
+    OpenCommandPaneInPlaceOfPluginResponse, OpenCommandPaneInPlaceResponse,
+    OpenCommandPaneNearPluginResponse, OpenCommandPaneResponse,
+    OpenFileFloatingNearPluginResponse, OpenFileFloatingResponse,
+    OpenFileInPlaceOfPluginResponse, OpenFileInPlaceResponse, OpenFileNearPluginResponse,
+    OpenFileResponse, OpenTerminalFloatingNearPluginResponse, OpenTerminalFloatingResponse,
+    OpenTerminalInPlaceOfPluginResponse, OpenTerminalInPlaceResponse,
+    OpenTerminalNearPluginResponse, OpenTerminalResponse, OriginatingPlugin,
+    PaneScrollbackResponse, PermissionStatus, PermissionType, PluginPermission,
+    RenameLayoutResponse, SaveLayoutResponse, TabMetadata,
 };
 use zellij_utils::home::default_layout_dir;
 use zellij_utils::input::permission::PermissionCache;
@@ -70,7 +78,17 @@ use zellij_utils::{
             ProtobufEditLayoutResponse, ProtobufFocusOrCreateTabResponse,
             ProtobufGenerateRandomNameResponse, ProtobufGetFocusedPaneInfoResponse,
             ProtobufGetLayoutDirResponse, ProtobufGetPanePidResponse, ProtobufNewTabResponse,
-            ProtobufNewTabsResponse, ProtobufParseLayoutResponse, ProtobufPluginCommand,
+            ProtobufNewTabsResponse, ProtobufOpenCommandPaneBackgroundResponse,
+            ProtobufOpenCommandPaneFloatingNearPluginResponse,
+            ProtobufOpenCommandPaneFloatingResponse, ProtobufOpenCommandPaneInPlaceOfPluginResponse,
+            ProtobufOpenCommandPaneInPlaceResponse, ProtobufOpenCommandPaneNearPluginResponse,
+            ProtobufOpenCommandPaneResponse, ProtobufOpenFileFloatingNearPluginResponse,
+            ProtobufOpenFileFloatingResponse, ProtobufOpenFileInPlaceOfPluginResponse,
+            ProtobufOpenFileInPlaceResponse, ProtobufOpenFileNearPluginResponse,
+            ProtobufOpenFileResponse, ProtobufOpenTerminalFloatingNearPluginResponse,
+            ProtobufOpenTerminalFloatingResponse, ProtobufOpenTerminalInPlaceOfPluginResponse,
+            ProtobufOpenTerminalInPlaceResponse, ProtobufOpenTerminalNearPluginResponse,
+            ProtobufOpenTerminalResponse, ProtobufParseLayoutResponse, ProtobufPluginCommand,
             ProtobufRenameLayoutResponse, ProtobufSaveLayoutResponse, ProtobufSaveSessionResponse,
         },
         plugin_ids::{ProtobufPluginIds, ProtobufZellijVersion},
@@ -1029,7 +1047,16 @@ fn open_file(env: &PluginEnv, file_to_open: FileToOpen, context: BTreeMap<String
         coordinates: None,
         near_current_pane: false,
     };
-    apply_action!(action, error_msg, env);
+    let result = apply_action!(action, error_msg, env);
+
+    // Extract pane_id from result and convert to zellij_utils PaneId
+    let pane_id: OpenFileResponse = result.and_then(|r| r.affected_pane_id).map(|p| p.into());
+
+    // Write response to plugin
+    let response = ProtobufOpenFileResponse::from(pane_id);
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to write open_file response"))
+        .non_fatal();
 }
 
 fn run_action(env: &PluginEnv, mut action: Action, context: BTreeMap<String, String>) {
@@ -1121,7 +1148,16 @@ fn open_file_floating(
         coordinates: floating_pane_coordinates,
         near_current_pane: false,
     };
-    apply_action!(action, error_msg, env);
+    let result = apply_action!(action, error_msg, env);
+
+    // Extract pane_id from result and convert to zellij_utils PaneId
+    let pane_id: OpenFileFloatingResponse = result.and_then(|r| r.affected_pane_id).map(|p| p.into());
+
+    // Write response to plugin
+    let response = ProtobufOpenFileFloatingResponse::from(pane_id);
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to write open_file_floating response"))
+        .non_fatal();
 }
 
 fn open_file_in_place(
@@ -1150,7 +1186,16 @@ fn open_file_in_place(
         coordinates: None,
         near_current_pane: false,
     };
-    apply_action!(action, error_msg, env);
+    let result = apply_action!(action, error_msg, env);
+
+    // Extract pane_id from result and convert to zellij_utils PaneId
+    let pane_id: OpenFileInPlaceResponse = result.and_then(|r| r.affected_pane_id).map(|p| p.into());
+
+    // Write response to plugin
+    let response = ProtobufOpenFileInPlaceResponse::from(pane_id);
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to write open_file_in_place response"))
+        .non_fatal();
 }
 
 fn open_file_near_plugin(
@@ -1170,16 +1215,29 @@ fn open_file_near_plugin(
     let title = format!("Editing: {}", open_file_payload.path.display());
     let start_suppressed = false;
     let open_file = TerminalAction::OpenFile(open_file_payload);
+
+    // Create completion channel
+    let (completion_tx, completion_rx) = oneshot::channel();
     let pty_instr = PtyInstruction::SpawnTerminal(
         Some(open_file),
         Some(title),
         NewPanePlacement::default(),
         start_suppressed,
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
-        None,  // no completion signal needed for plugin calls
+        Some(NotificationEnd::new(completion_tx)),
         false, // set_blocking
     );
     let _ = env.senders.send_to_pty(pty_instr);
+
+    // Wait for completion
+    let result = wait_for_action_completion(completion_rx, "open_file_near_plugin", false);
+    let pane_id: OpenFileNearPluginResponse = result.affected_pane_id.map(|p| p.into());
+
+    // Write response to plugin
+    let response = ProtobufOpenFileNearPluginResponse::from(pane_id);
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to write open_file_near_plugin response"))
+        .non_fatal();
 }
 
 fn open_file_floating_near_plugin(
@@ -1200,16 +1258,29 @@ fn open_file_floating_near_plugin(
     let title = format!("Editing: {}", open_file_payload.path.display());
     let start_suppressed = false;
     let open_file = TerminalAction::OpenFile(open_file_payload);
+
+    // Create completion channel
+    let (completion_tx, completion_rx) = oneshot::channel();
     let pty_instr = PtyInstruction::SpawnTerminal(
         Some(open_file),
         Some(title),
         NewPanePlacement::Floating(floating_pane_coordinates),
         start_suppressed,
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
-        None,  // no completion signal needed for plugin calls
+        Some(NotificationEnd::new(completion_tx)),
         false, // set_blocking
     );
     let _ = env.senders.send_to_pty(pty_instr);
+
+    // Wait for completion
+    let result = wait_for_action_completion(completion_rx, "open_file_floating_near_plugin", false);
+    let pane_id: OpenFileFloatingNearPluginResponse = result.affected_pane_id.map(|p| p.into());
+
+    // Write response to plugin
+    let response = ProtobufOpenFileFloatingNearPluginResponse::from(pane_id);
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to write open_file_floating_near_plugin response"))
+        .non_fatal();
 }
 
 fn open_file_in_place_of_plugin(
@@ -1229,14 +1300,27 @@ fn open_file_in_place_of_plugin(
         );
     let title = format!("Editing: {}", open_file_payload.path.display());
     let open_file = TerminalAction::OpenFile(open_file_payload);
+
+    // Create completion channel
+    let (completion_tx, completion_rx) = oneshot::channel();
     let pty_instr = PtyInstruction::SpawnInPlaceTerminal(
         Some(open_file),
         Some(title),
         close_plugin_after_replace,
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
-        None, // no completion signal needed for plugin calls
+        Some(NotificationEnd::new(completion_tx)),
     );
     let _ = env.senders.send_to_pty(pty_instr);
+
+    // Wait for completion
+    let result = wait_for_action_completion(completion_rx, "open_file_in_place_of_plugin", false);
+    let pane_id: OpenFileInPlaceOfPluginResponse = result.affected_pane_id.map(|p| p.into());
+
+    // Write response to plugin
+    let response = ProtobufOpenFileInPlaceOfPluginResponse::from(pane_id);
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to write open_file_in_place_of_plugin response"))
+        .non_fatal();
 }
 
 fn open_terminal(env: &PluginEnv, cwd: PathBuf) {
@@ -1261,7 +1345,16 @@ fn open_terminal(env: &PluginEnv, cwd: PathBuf) {
         near_current_pane: false,
         borderless: None,
     };
-    apply_action!(action, error_msg, env);
+    let result = apply_action!(action, error_msg, env);
+
+    // Extract pane_id from result and convert to zellij_utils PaneId
+    let pane_id: OpenTerminalResponse = result.and_then(|r| r.affected_pane_id).map(|p| p.into());
+
+    // Write response to plugin
+    let response = ProtobufOpenTerminalResponse::from(pane_id);
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to write open_terminal response"))
+        .non_fatal();
 }
 
 fn open_terminal_near_plugin(env: &PluginEnv, cwd: PathBuf) {
@@ -1275,6 +1368,9 @@ fn open_terminal_near_plugin(env: &PluginEnv, cwd: PathBuf) {
     });
     let name = None;
     default_shell.change_cwd(cwd);
+
+    // Create completion channel
+    let (completion_tx, completion_rx) = oneshot::channel();
     let _ = env.senders.send_to_pty(PtyInstruction::SpawnTerminal(
         Some(default_shell),
         name,
@@ -1284,9 +1380,19 @@ fn open_terminal_near_plugin(env: &PluginEnv, cwd: PathBuf) {
         },
         false,
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
-        None,  // no completion signal needed for plugin calls
+        Some(NotificationEnd::new(completion_tx)),
         false, // set_blocking
     ));
+
+    // Wait for completion
+    let result = wait_for_action_completion(completion_rx, "open_terminal_near_plugin", false);
+    let pane_id: OpenTerminalNearPluginResponse = result.affected_pane_id.map(|p| p.into());
+
+    // Write response to plugin
+    let response = ProtobufOpenTerminalNearPluginResponse::from(pane_id);
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to write open_terminal_near_plugin response"))
+        .non_fatal();
 }
 
 fn open_terminal_floating(
@@ -1314,7 +1420,16 @@ fn open_terminal_floating(
         coordinates: floating_pane_coordinates,
         near_current_pane: false,
     };
-    apply_action!(action, error_msg, env);
+    let result = apply_action!(action, error_msg, env);
+
+    // Extract pane_id from result and convert to zellij_utils PaneId
+    let pane_id: OpenTerminalFloatingResponse = result.and_then(|r| r.affected_pane_id).map(|p| p.into());
+
+    // Write response to plugin
+    let response = ProtobufOpenTerminalFloatingResponse::from(pane_id);
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to write open_terminal_floating response"))
+        .non_fatal();
 }
 
 fn open_terminal_floating_near_plugin(
@@ -1332,15 +1447,28 @@ fn open_terminal_floating_near_plugin(
     });
     default_shell.change_cwd(cwd);
     let name = None;
+
+    // Create completion channel
+    let (completion_tx, completion_rx) = oneshot::channel();
     let _ = env.senders.send_to_pty(PtyInstruction::SpawnTerminal(
         Some(default_shell),
         name,
         NewPanePlacement::Floating(floating_pane_coordinates),
         false,
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
-        None,  // no completion signal needed for plugin calls
+        Some(NotificationEnd::new(completion_tx)),
         false, // set_blocking
     ));
+
+    // Wait for completion
+    let result = wait_for_action_completion(completion_rx, "open_terminal_floating_near_plugin", false);
+    let pane_id: OpenTerminalFloatingNearPluginResponse = result.affected_pane_id.map(|p| p.into());
+
+    // Write response to plugin
+    let response = ProtobufOpenTerminalFloatingNearPluginResponse::from(pane_id);
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to write open_terminal_floating_near_plugin response"))
+        .non_fatal();
 }
 
 fn open_terminal_in_place(env: &PluginEnv, cwd: PathBuf) {
@@ -1365,7 +1493,16 @@ fn open_terminal_in_place(env: &PluginEnv, cwd: PathBuf) {
         pane_id_to_replace: None,
         close_replace_pane: false,
     };
-    apply_action!(action, error_msg, env);
+    let result = apply_action!(action, error_msg, env);
+
+    // Extract pane_id from result and convert to zellij_utils PaneId
+    let pane_id: OpenTerminalInPlaceResponse = result.and_then(|r| r.affected_pane_id).map(|p| p.into());
+
+    // Write response to plugin
+    let response = ProtobufOpenTerminalInPlaceResponse::from(pane_id);
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to write open_terminal_in_place response"))
+        .non_fatal();
 }
 
 fn open_terminal_in_place_of_plugin(
@@ -1383,6 +1520,9 @@ fn open_terminal_in_place_of_plugin(
     });
     default_shell.change_cwd(cwd);
     let name = None;
+
+    // Create completion channel
+    let (completion_tx, completion_rx) = oneshot::channel();
     let _ = env
         .senders
         .send_to_pty(PtyInstruction::SpawnInPlaceTerminal(
@@ -1390,8 +1530,18 @@ fn open_terminal_in_place_of_plugin(
             name,
             close_plugin_after_replace,
             ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
-            None, // no completion signal needed for plugin calls
+            Some(NotificationEnd::new(completion_tx)),
         ));
+
+    // Wait for completion
+    let result = wait_for_action_completion(completion_rx, "open_terminal_in_place_of_plugin", false);
+    let pane_id: OpenTerminalInPlaceOfPluginResponse = result.affected_pane_id.map(|p| p.into());
+
+    // Write response to plugin
+    let response = ProtobufOpenTerminalInPlaceOfPluginResponse::from(pane_id);
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to write open_terminal_in_place_of_plugin response"))
+        .non_fatal();
 }
 
 fn open_command_pane_in_place_of_plugin(
@@ -1423,6 +1573,9 @@ fn open_command_pane_in_place_of_plugin(
         use_terminal_title,
     };
     let run_cmd = TerminalAction::RunCommand(run_command_action.into());
+
+    // Create completion channel
+    let (completion_tx, completion_rx) = oneshot::channel();
     let _ = env
         .senders
         .send_to_pty(PtyInstruction::SpawnInPlaceTerminal(
@@ -1430,8 +1583,18 @@ fn open_command_pane_in_place_of_plugin(
             name,
             close_plugin_after_replace,
             ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
-            None, // no completion signal needed for plugin calls
+            Some(NotificationEnd::new(completion_tx)),
         ));
+
+    // Wait for completion
+    let result = wait_for_action_completion(completion_rx, "open_command_pane_in_place_of_plugin", false);
+    let pane_id: OpenCommandPaneInPlaceOfPluginResponse = result.affected_pane_id.map(|p| p.into());
+
+    // Write response to plugin
+    let response = ProtobufOpenCommandPaneInPlaceOfPluginResponse::from(pane_id);
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to write open_command_pane_in_place_of_plugin response"))
+        .non_fatal();
 }
 
 fn open_command_pane(
@@ -1469,7 +1632,16 @@ fn open_command_pane(
         near_current_pane: false,
         borderless: None,
     };
-    apply_action!(action, error_msg, env);
+    let result = apply_action!(action, error_msg, env);
+
+    // Extract pane_id from result and convert to zellij_utils PaneId
+    let pane_id: OpenCommandPaneResponse = result.and_then(|r| r.affected_pane_id).map(|p| p.into());
+
+    // Write response to plugin
+    let response = ProtobufOpenCommandPaneResponse::from(pane_id);
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to write open_command_pane response"))
+        .non_fatal();
 }
 
 fn open_command_pane_near_plugin(
@@ -1500,6 +1672,9 @@ fn open_command_pane_near_plugin(
         use_terminal_title,
     };
     let run_cmd = TerminalAction::RunCommand(run_command_action.into());
+
+    // Create completion channel
+    let (completion_tx, completion_rx) = oneshot::channel();
     let _ = env.senders.send_to_pty(PtyInstruction::SpawnTerminal(
         Some(run_cmd),
         name,
@@ -1509,9 +1684,19 @@ fn open_command_pane_near_plugin(
         },
         false,
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
-        None,  // no completion signal needed for plugin calls
+        Some(NotificationEnd::new(completion_tx)),
         false, // set_blocking
     ));
+
+    // Wait for completion
+    let result = wait_for_action_completion(completion_rx, "open_command_pane_near_plugin", false);
+    let pane_id: OpenCommandPaneNearPluginResponse = result.affected_pane_id.map(|p| p.into());
+
+    // Write response to plugin
+    let response = ProtobufOpenCommandPaneNearPluginResponse::from(pane_id);
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to write open_command_pane_near_plugin response"))
+        .non_fatal();
 }
 
 fn open_command_pane_floating(
@@ -1549,7 +1734,16 @@ fn open_command_pane_floating(
         coordinates: floating_pane_coordinates,
         near_current_pane: false,
     };
-    apply_action!(action, error_msg, env);
+    let result = apply_action!(action, error_msg, env);
+
+    // Extract pane_id from result and convert to zellij_utils PaneId
+    let pane_id: OpenCommandPaneFloatingResponse = result.and_then(|r| r.affected_pane_id).map(|p| p.into());
+
+    // Write response to plugin
+    let response = ProtobufOpenCommandPaneFloatingResponse::from(pane_id);
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to write open_command_pane_floating response"))
+        .non_fatal();
 }
 
 fn open_command_pane_floating_near_plugin(
@@ -1581,15 +1775,28 @@ fn open_command_pane_floating_near_plugin(
         use_terminal_title,
     };
     let run_cmd = TerminalAction::RunCommand(run_command_action.into());
+
+    // Create completion channel
+    let (completion_tx, completion_rx) = oneshot::channel();
     let _ = env.senders.send_to_pty(PtyInstruction::SpawnTerminal(
         Some(run_cmd),
         name,
         NewPanePlacement::Floating(floating_pane_coordinates),
         false,
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
-        None,  // no completion signal needed for plugin calls
+        Some(NotificationEnd::new(completion_tx)),
         false, // set_blocking
     ));
+
+    // Wait for completion
+    let result = wait_for_action_completion(completion_rx, "open_command_pane_floating_near_plugin", false);
+    let pane_id: OpenCommandPaneFloatingNearPluginResponse = result.affected_pane_id.map(|p| p.into());
+
+    // Write response to plugin
+    let response = ProtobufOpenCommandPaneFloatingNearPluginResponse::from(pane_id);
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to write open_command_pane_floating_near_plugin response"))
+        .non_fatal();
 }
 
 fn open_command_pane_in_place(
@@ -1627,7 +1834,16 @@ fn open_command_pane_in_place(
         pane_id_to_replace: None,
         close_replace_pane: false,
     };
-    apply_action!(action, error_msg, env);
+    let result = apply_action!(action, error_msg, env);
+
+    // Extract pane_id from result and convert to zellij_utils PaneId
+    let pane_id: OpenCommandPaneInPlaceResponse = result.and_then(|r| r.affected_pane_id).map(|p| p.into());
+
+    // Write response to plugin
+    let response = ProtobufOpenCommandPaneInPlaceResponse::from(pane_id);
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to write open_command_pane_in_place response"))
+        .non_fatal();
 }
 
 fn open_command_pane_background(
@@ -1662,15 +1878,28 @@ fn open_command_pane_background(
         use_terminal_title,
     };
     let run_cmd = TerminalAction::RunCommand(run_command_action.into());
+
+    // Create completion channel
+    let (completion_tx, completion_rx) = oneshot::channel();
     let _ = env.senders.send_to_pty(PtyInstruction::SpawnTerminal(
         Some(run_cmd),
         name,
         NewPanePlacement::default(),
         start_suppressed,
         ClientTabIndexOrPaneId::ClientId(env.client_id),
-        None,  // no completion signal needed for plugin calls
+        Some(NotificationEnd::new(completion_tx)),
         false, // set_blocking
     ));
+
+    // Wait for completion
+    let result = wait_for_action_completion(completion_rx, "open_command_pane_background", false);
+    let pane_id: OpenCommandPaneBackgroundResponse = result.affected_pane_id.map(|p| p.into());
+
+    // Write response to plugin
+    let response = ProtobufOpenCommandPaneBackgroundResponse::from(pane_id);
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to write open_command_pane_background response"))
+        .non_fatal();
 }
 
 fn rerun_command_pane(env: &PluginEnv, terminal_pane_id: u32) {

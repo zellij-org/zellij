@@ -3400,3 +3400,26 @@ pub type NewTabsResponse = Vec<usize>;
 pub type FocusOrCreateTabResponse = Option<usize>;
 pub type BreakPanesToNewTabResponse = Option<usize>;
 pub type BreakPanesToTabWithIndexResponse = Option<usize>;
+
+// Response types for plugin API methods that create panes
+pub type OpenFileResponse = Option<PaneId>;
+pub type OpenFileFloatingResponse = Option<PaneId>;
+pub type OpenFileInPlaceResponse = Option<PaneId>;
+pub type OpenFileNearPluginResponse = Option<PaneId>;
+pub type OpenFileFloatingNearPluginResponse = Option<PaneId>;
+pub type OpenFileInPlaceOfPluginResponse = Option<PaneId>;
+
+pub type OpenTerminalResponse = Option<PaneId>;
+pub type OpenTerminalFloatingResponse = Option<PaneId>;
+pub type OpenTerminalInPlaceResponse = Option<PaneId>;
+pub type OpenTerminalNearPluginResponse = Option<PaneId>;
+pub type OpenTerminalFloatingNearPluginResponse = Option<PaneId>;
+pub type OpenTerminalInPlaceOfPluginResponse = Option<PaneId>;
+
+pub type OpenCommandPaneResponse = Option<PaneId>;
+pub type OpenCommandPaneFloatingResponse = Option<PaneId>;
+pub type OpenCommandPaneInPlaceResponse = Option<PaneId>;
+pub type OpenCommandPaneNearPluginResponse = Option<PaneId>;
+pub type OpenCommandPaneFloatingNearPluginResponse = Option<PaneId>;
+pub type OpenCommandPaneInPlaceOfPluginResponse = Option<PaneId>;
+pub type OpenCommandPaneBackgroundResponse = Option<PaneId>;

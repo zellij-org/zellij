@@ -957,3 +957,79 @@ message BreakPanesToTabWithIndexResponse {
     bool none = 2;  // Indicates None
   }
 }
+
+message OpenFileResponse {
+  optional PaneId pane_id = 1;
+}
+
+message OpenFileFloatingResponse {
+  optional PaneId pane_id = 1;
+}
+
+message OpenFileInPlaceResponse {
+  optional PaneId pane_id = 1;
+}
+
+message OpenFileNearPluginResponse {
+  optional PaneId pane_id = 1;
+}
+
+message OpenFileFloatingNearPluginResponse {
+  optional PaneId pane_id = 1;
+}
+
+message OpenFileInPlaceOfPluginResponse {
+  optional PaneId pane_id = 1;
+}
+
+message OpenTerminalResponse {
+  optional PaneId pane_id = 1;
+}
+
+message OpenTerminalFloatingResponse {
+  optional PaneId pane_id = 1;
+}
+
+message OpenTerminalInPlaceResponse {
+  optional PaneId pane_id = 1;
+}
+
+message OpenTerminalNearPluginResponse {
+  optional PaneId pane_id = 1;
+}
+
+message OpenTerminalFloatingNearPluginResponse {
+  optional PaneId pane_id = 1;
+}
+
+message OpenTerminalInPlaceOfPluginResponse {
+  optional PaneId pane_id = 1;
+}
+
+message OpenCommandPaneResponse {
+  optional PaneId pane_id = 1;
+}
+
+message OpenCommandPaneFloatingResponse {
+  optional PaneId pane_id = 1;
+}
+
+message OpenCommandPaneInPlaceResponse {
+  optional PaneId pane_id = 1;
+}
+
+message OpenCommandPaneNearPluginResponse {
+  optional PaneId pane_id = 1;
+}
+
+message OpenCommandPaneFloatingNearPluginResponse {
+  optional PaneId pane_id = 1;
+}
+
+message OpenCommandPaneInPlaceOfPluginResponse {
+  optional PaneId pane_id = 1;
+}
+
+message OpenCommandPaneBackgroundResponse {
+  optional PaneId pane_id = 1;
+}

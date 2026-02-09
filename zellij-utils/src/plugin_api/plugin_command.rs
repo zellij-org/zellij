@@ -39,11 +39,34 @@ pub use super::generated_api::api::{
         NewPluginArgs as ProtobufNewPluginArgs, NewTabPayload,
         NewTabResponse as ProtobufNewTabResponse, NewTabsResponse as ProtobufNewTabsResponse,
         NewTabsWithLayoutInfoPayload,
-        OpenCommandPaneFloatingNearPluginPayload, OpenCommandPaneInPlaceOfPluginPayload,
-        OpenCommandPaneNearPluginPayload, OpenCommandPanePayload,
-        OpenFileFloatingNearPluginPayload, OpenFileInPlaceOfPluginPayload,
-        OpenFileNearPluginPayload, OpenFilePayload, OpenTerminalFloatingNearPluginPayload,
-        OpenTerminalInPlaceOfPluginPayload, OpenTerminalNearPluginPayload, OverrideLayoutPayload,
+        OpenCommandPaneBackgroundResponse as ProtobufOpenCommandPaneBackgroundResponse,
+        OpenCommandPaneFloatingNearPluginPayload,
+        OpenCommandPaneFloatingNearPluginResponse as ProtobufOpenCommandPaneFloatingNearPluginResponse,
+        OpenCommandPaneFloatingResponse as ProtobufOpenCommandPaneFloatingResponse,
+        OpenCommandPaneInPlaceOfPluginPayload,
+        OpenCommandPaneInPlaceOfPluginResponse as ProtobufOpenCommandPaneInPlaceOfPluginResponse,
+        OpenCommandPaneInPlaceResponse as ProtobufOpenCommandPaneInPlaceResponse,
+        OpenCommandPaneNearPluginPayload,
+        OpenCommandPaneNearPluginResponse as ProtobufOpenCommandPaneNearPluginResponse,
+        OpenCommandPanePayload, OpenCommandPaneResponse as ProtobufOpenCommandPaneResponse,
+        OpenFileFloatingNearPluginPayload,
+        OpenFileFloatingNearPluginResponse as ProtobufOpenFileFloatingNearPluginResponse,
+        OpenFileFloatingResponse as ProtobufOpenFileFloatingResponse,
+        OpenFileInPlaceOfPluginPayload,
+        OpenFileInPlaceOfPluginResponse as ProtobufOpenFileInPlaceOfPluginResponse,
+        OpenFileInPlaceResponse as ProtobufOpenFileInPlaceResponse,
+        OpenFileNearPluginPayload,
+        OpenFileNearPluginResponse as ProtobufOpenFileNearPluginResponse, OpenFilePayload,
+        OpenFileResponse as ProtobufOpenFileResponse,
+        OpenTerminalFloatingNearPluginPayload,
+        OpenTerminalFloatingNearPluginResponse as ProtobufOpenTerminalFloatingNearPluginResponse,
+        OpenTerminalFloatingResponse as ProtobufOpenTerminalFloatingResponse,
+        OpenTerminalInPlaceOfPluginPayload,
+        OpenTerminalInPlaceOfPluginResponse as ProtobufOpenTerminalInPlaceOfPluginResponse,
+        OpenTerminalInPlaceResponse as ProtobufOpenTerminalInPlaceResponse,
+        OpenTerminalNearPluginPayload,
+        OpenTerminalNearPluginResponse as ProtobufOpenTerminalNearPluginResponse,
+        OpenTerminalResponse as ProtobufOpenTerminalResponse, OverrideLayoutPayload,
         PageScrollDownInPaneIdPayload, PageScrollUpInPaneIdPayload, PaneId as ProtobufPaneId,
         PaneIdAndFloatingPaneCoordinates, PaneType as ProtobufPaneType, ParseLayoutPayload,
         ParseLayoutResponse as ProtobufParseLayoutResponse, PluginCommand as ProtobufPluginCommand,
@@ -3474,7 +3497,15 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
 // Conversion implementations for tab creation response types
 use crate::data::{
     BreakPanesToNewTabResponse, BreakPanesToTabWithIndexResponse, FocusOrCreateTabResponse,
-    NewTabResponse, NewTabsResponse,
+    NewTabResponse, NewTabsResponse, OpenCommandPaneBackgroundResponse,
+    OpenCommandPaneFloatingNearPluginResponse, OpenCommandPaneFloatingResponse,
+    OpenCommandPaneInPlaceOfPluginResponse, OpenCommandPaneInPlaceResponse,
+    OpenCommandPaneNearPluginResponse, OpenCommandPaneResponse,
+    OpenFileFloatingNearPluginResponse, OpenFileFloatingResponse, OpenFileInPlaceOfPluginResponse,
+    OpenFileInPlaceResponse, OpenFileNearPluginResponse, OpenFileResponse,
+    OpenTerminalFloatingNearPluginResponse, OpenTerminalFloatingResponse,
+    OpenTerminalInPlaceOfPluginResponse, OpenTerminalInPlaceResponse,
+    OpenTerminalNearPluginResponse, OpenTerminalResponse,
 };
 
 impl TryFrom<ProtobufNewTabResponse> for NewTabResponse {
@@ -3586,6 +3617,374 @@ impl From<BreakPanesToTabWithIndexResponse> for ProtobufBreakPanesToTabWithIndex
             None => ProtobufBreakPanesToTabWithIndexResponse {
                 result: Some(break_panes_to_tab_with_index_response::Result::None(true)),
             },
+        }
+    }
+}
+
+// Pane-creating command response conversions
+
+impl TryFrom<ProtobufOpenFileResponse> for OpenFileResponse {
+    type Error = &'static str;
+    fn try_from(protobuf: ProtobufOpenFileResponse) -> Result<Self, Self::Error> {
+        match protobuf.pane_id {
+            Some(pane_id) => Ok(Some(pane_id.try_into()?)),
+            None => Ok(None),
+        }
+    }
+}
+
+impl From<OpenFileResponse> for ProtobufOpenFileResponse {
+    fn from(response: OpenFileResponse) -> Self {
+        ProtobufOpenFileResponse {
+            pane_id: response.map(|p| p.try_into().unwrap()),
+        }
+    }
+}
+
+impl TryFrom<ProtobufOpenFileFloatingResponse> for OpenFileFloatingResponse {
+    type Error = &'static str;
+    fn try_from(protobuf: ProtobufOpenFileFloatingResponse) -> Result<Self, Self::Error> {
+        match protobuf.pane_id {
+            Some(pane_id) => Ok(Some(pane_id.try_into()?)),
+            None => Ok(None),
+        }
+    }
+}
+
+impl From<OpenFileFloatingResponse> for ProtobufOpenFileFloatingResponse {
+    fn from(response: OpenFileFloatingResponse) -> Self {
+        ProtobufOpenFileFloatingResponse {
+            pane_id: response.map(|p| p.try_into().unwrap()),
+        }
+    }
+}
+
+impl TryFrom<ProtobufOpenFileInPlaceResponse> for OpenFileInPlaceResponse {
+    type Error = &'static str;
+    fn try_from(protobuf: ProtobufOpenFileInPlaceResponse) -> Result<Self, Self::Error> {
+        match protobuf.pane_id {
+            Some(pane_id) => Ok(Some(pane_id.try_into()?)),
+            None => Ok(None),
+        }
+    }
+}
+
+impl From<OpenFileInPlaceResponse> for ProtobufOpenFileInPlaceResponse {
+    fn from(response: OpenFileInPlaceResponse) -> Self {
+        ProtobufOpenFileInPlaceResponse {
+            pane_id: response.map(|p| p.try_into().unwrap()),
+        }
+    }
+}
+
+impl TryFrom<ProtobufOpenFileNearPluginResponse> for OpenFileNearPluginResponse {
+    type Error = &'static str;
+    fn try_from(protobuf: ProtobufOpenFileNearPluginResponse) -> Result<Self, Self::Error> {
+        match protobuf.pane_id {
+            Some(pane_id) => Ok(Some(pane_id.try_into()?)),
+            None => Ok(None),
+        }
+    }
+}
+
+impl From<OpenFileNearPluginResponse> for ProtobufOpenFileNearPluginResponse {
+    fn from(response: OpenFileNearPluginResponse) -> Self {
+        ProtobufOpenFileNearPluginResponse {
+            pane_id: response.map(|p| p.try_into().unwrap()),
+        }
+    }
+}
+
+impl TryFrom<ProtobufOpenFileFloatingNearPluginResponse> for OpenFileFloatingNearPluginResponse {
+    type Error = &'static str;
+    fn try_from(
+        protobuf: ProtobufOpenFileFloatingNearPluginResponse,
+    ) -> Result<Self, Self::Error> {
+        match protobuf.pane_id {
+            Some(pane_id) => Ok(Some(pane_id.try_into()?)),
+            None => Ok(None),
+        }
+    }
+}
+
+impl From<OpenFileFloatingNearPluginResponse> for ProtobufOpenFileFloatingNearPluginResponse {
+    fn from(response: OpenFileFloatingNearPluginResponse) -> Self {
+        ProtobufOpenFileFloatingNearPluginResponse {
+            pane_id: response.map(|p| p.try_into().unwrap()),
+        }
+    }
+}
+
+impl TryFrom<ProtobufOpenFileInPlaceOfPluginResponse> for OpenFileInPlaceOfPluginResponse {
+    type Error = &'static str;
+    fn try_from(protobuf: ProtobufOpenFileInPlaceOfPluginResponse) -> Result<Self, Self::Error> {
+        match protobuf.pane_id {
+            Some(pane_id) => Ok(Some(pane_id.try_into()?)),
+            None => Ok(None),
+        }
+    }
+}
+
+impl From<OpenFileInPlaceOfPluginResponse> for ProtobufOpenFileInPlaceOfPluginResponse {
+    fn from(response: OpenFileInPlaceOfPluginResponse) -> Self {
+        ProtobufOpenFileInPlaceOfPluginResponse {
+            pane_id: response.map(|p| p.try_into().unwrap()),
+        }
+    }
+}
+
+impl TryFrom<ProtobufOpenTerminalResponse> for OpenTerminalResponse {
+    type Error = &'static str;
+    fn try_from(protobuf: ProtobufOpenTerminalResponse) -> Result<Self, Self::Error> {
+        match protobuf.pane_id {
+            Some(pane_id) => Ok(Some(pane_id.try_into()?)),
+            None => Ok(None),
+        }
+    }
+}
+
+impl From<OpenTerminalResponse> for ProtobufOpenTerminalResponse {
+    fn from(response: OpenTerminalResponse) -> Self {
+        ProtobufOpenTerminalResponse {
+            pane_id: response.map(|p| p.try_into().unwrap()),
+        }
+    }
+}
+
+impl TryFrom<ProtobufOpenTerminalFloatingResponse> for OpenTerminalFloatingResponse {
+    type Error = &'static str;
+    fn try_from(protobuf: ProtobufOpenTerminalFloatingResponse) -> Result<Self, Self::Error> {
+        match protobuf.pane_id {
+            Some(pane_id) => Ok(Some(pane_id.try_into()?)),
+            None => Ok(None),
+        }
+    }
+}
+
+impl From<OpenTerminalFloatingResponse> for ProtobufOpenTerminalFloatingResponse {
+    fn from(response: OpenTerminalFloatingResponse) -> Self {
+        ProtobufOpenTerminalFloatingResponse {
+            pane_id: response.map(|p| p.try_into().unwrap()),
+        }
+    }
+}
+
+impl TryFrom<ProtobufOpenTerminalInPlaceResponse> for OpenTerminalInPlaceResponse {
+    type Error = &'static str;
+    fn try_from(protobuf: ProtobufOpenTerminalInPlaceResponse) -> Result<Self, Self::Error> {
+        match protobuf.pane_id {
+            Some(pane_id) => Ok(Some(pane_id.try_into()?)),
+            None => Ok(None),
+        }
+    }
+}
+
+impl From<OpenTerminalInPlaceResponse> for ProtobufOpenTerminalInPlaceResponse {
+    fn from(response: OpenTerminalInPlaceResponse) -> Self {
+        ProtobufOpenTerminalInPlaceResponse {
+            pane_id: response.map(|p| p.try_into().unwrap()),
+        }
+    }
+}
+
+impl TryFrom<ProtobufOpenTerminalNearPluginResponse> for OpenTerminalNearPluginResponse {
+    type Error = &'static str;
+    fn try_from(protobuf: ProtobufOpenTerminalNearPluginResponse) -> Result<Self, Self::Error> {
+        match protobuf.pane_id {
+            Some(pane_id) => Ok(Some(pane_id.try_into()?)),
+            None => Ok(None),
+        }
+    }
+}
+
+impl From<OpenTerminalNearPluginResponse> for ProtobufOpenTerminalNearPluginResponse {
+    fn from(response: OpenTerminalNearPluginResponse) -> Self {
+        ProtobufOpenTerminalNearPluginResponse {
+            pane_id: response.map(|p| p.try_into().unwrap()),
+        }
+    }
+}
+
+impl TryFrom<ProtobufOpenTerminalFloatingNearPluginResponse>
+    for OpenTerminalFloatingNearPluginResponse
+{
+    type Error = &'static str;
+    fn try_from(
+        protobuf: ProtobufOpenTerminalFloatingNearPluginResponse,
+    ) -> Result<Self, Self::Error> {
+        match protobuf.pane_id {
+            Some(pane_id) => Ok(Some(pane_id.try_into()?)),
+            None => Ok(None),
+        }
+    }
+}
+
+impl From<OpenTerminalFloatingNearPluginResponse>
+    for ProtobufOpenTerminalFloatingNearPluginResponse
+{
+    fn from(response: OpenTerminalFloatingNearPluginResponse) -> Self {
+        ProtobufOpenTerminalFloatingNearPluginResponse {
+            pane_id: response.map(|p| p.try_into().unwrap()),
+        }
+    }
+}
+
+impl TryFrom<ProtobufOpenTerminalInPlaceOfPluginResponse>
+    for OpenTerminalInPlaceOfPluginResponse
+{
+    type Error = &'static str;
+    fn try_from(
+        protobuf: ProtobufOpenTerminalInPlaceOfPluginResponse,
+    ) -> Result<Self, Self::Error> {
+        match protobuf.pane_id {
+            Some(pane_id) => Ok(Some(pane_id.try_into()?)),
+            None => Ok(None),
+        }
+    }
+}
+
+impl From<OpenTerminalInPlaceOfPluginResponse> for ProtobufOpenTerminalInPlaceOfPluginResponse {
+    fn from(response: OpenTerminalInPlaceOfPluginResponse) -> Self {
+        ProtobufOpenTerminalInPlaceOfPluginResponse {
+            pane_id: response.map(|p| p.try_into().unwrap()),
+        }
+    }
+}
+
+impl TryFrom<ProtobufOpenCommandPaneResponse> for OpenCommandPaneResponse {
+    type Error = &'static str;
+    fn try_from(protobuf: ProtobufOpenCommandPaneResponse) -> Result<Self, Self::Error> {
+        match protobuf.pane_id {
+            Some(pane_id) => Ok(Some(pane_id.try_into()?)),
+            None => Ok(None),
+        }
+    }
+}
+
+impl From<OpenCommandPaneResponse> for ProtobufOpenCommandPaneResponse {
+    fn from(response: OpenCommandPaneResponse) -> Self {
+        ProtobufOpenCommandPaneResponse {
+            pane_id: response.map(|p| p.try_into().unwrap()),
+        }
+    }
+}
+
+impl TryFrom<ProtobufOpenCommandPaneFloatingResponse> for OpenCommandPaneFloatingResponse {
+    type Error = &'static str;
+    fn try_from(protobuf: ProtobufOpenCommandPaneFloatingResponse) -> Result<Self, Self::Error> {
+        match protobuf.pane_id {
+            Some(pane_id) => Ok(Some(pane_id.try_into()?)),
+            None => Ok(None),
+        }
+    }
+}
+
+impl From<OpenCommandPaneFloatingResponse> for ProtobufOpenCommandPaneFloatingResponse {
+    fn from(response: OpenCommandPaneFloatingResponse) -> Self {
+        ProtobufOpenCommandPaneFloatingResponse {
+            pane_id: response.map(|p| p.try_into().unwrap()),
+        }
+    }
+}
+
+impl TryFrom<ProtobufOpenCommandPaneInPlaceResponse> for OpenCommandPaneInPlaceResponse {
+    type Error = &'static str;
+    fn try_from(protobuf: ProtobufOpenCommandPaneInPlaceResponse) -> Result<Self, Self::Error> {
+        match protobuf.pane_id {
+            Some(pane_id) => Ok(Some(pane_id.try_into()?)),
+            None => Ok(None),
+        }
+    }
+}
+
+impl From<OpenCommandPaneInPlaceResponse> for ProtobufOpenCommandPaneInPlaceResponse {
+    fn from(response: OpenCommandPaneInPlaceResponse) -> Self {
+        ProtobufOpenCommandPaneInPlaceResponse {
+            pane_id: response.map(|p| p.try_into().unwrap()),
+        }
+    }
+}
+
+impl TryFrom<ProtobufOpenCommandPaneNearPluginResponse> for OpenCommandPaneNearPluginResponse {
+    type Error = &'static str;
+    fn try_from(protobuf: ProtobufOpenCommandPaneNearPluginResponse) -> Result<Self, Self::Error> {
+        match protobuf.pane_id {
+            Some(pane_id) => Ok(Some(pane_id.try_into()?)),
+            None => Ok(None),
+        }
+    }
+}
+
+impl From<OpenCommandPaneNearPluginResponse> for ProtobufOpenCommandPaneNearPluginResponse {
+    fn from(response: OpenCommandPaneNearPluginResponse) -> Self {
+        ProtobufOpenCommandPaneNearPluginResponse {
+            pane_id: response.map(|p| p.try_into().unwrap()),
+        }
+    }
+}
+
+impl TryFrom<ProtobufOpenCommandPaneFloatingNearPluginResponse>
+    for OpenCommandPaneFloatingNearPluginResponse
+{
+    type Error = &'static str;
+    fn try_from(
+        protobuf: ProtobufOpenCommandPaneFloatingNearPluginResponse,
+    ) -> Result<Self, Self::Error> {
+        match protobuf.pane_id {
+            Some(pane_id) => Ok(Some(pane_id.try_into()?)),
+            None => Ok(None),
+        }
+    }
+}
+
+impl From<OpenCommandPaneFloatingNearPluginResponse>
+    for ProtobufOpenCommandPaneFloatingNearPluginResponse
+{
+    fn from(response: OpenCommandPaneFloatingNearPluginResponse) -> Self {
+        ProtobufOpenCommandPaneFloatingNearPluginResponse {
+            pane_id: response.map(|p| p.try_into().unwrap()),
+        }
+    }
+}
+
+impl TryFrom<ProtobufOpenCommandPaneInPlaceOfPluginResponse>
+    for OpenCommandPaneInPlaceOfPluginResponse
+{
+    type Error = &'static str;
+    fn try_from(
+        protobuf: ProtobufOpenCommandPaneInPlaceOfPluginResponse,
+    ) -> Result<Self, Self::Error> {
+        match protobuf.pane_id {
+            Some(pane_id) => Ok(Some(pane_id.try_into()?)),
+            None => Ok(None),
+        }
+    }
+}
+
+impl From<OpenCommandPaneInPlaceOfPluginResponse>
+    for ProtobufOpenCommandPaneInPlaceOfPluginResponse
+{
+    fn from(response: OpenCommandPaneInPlaceOfPluginResponse) -> Self {
+        ProtobufOpenCommandPaneInPlaceOfPluginResponse {
+            pane_id: response.map(|p| p.try_into().unwrap()),
+        }
+    }
+}
+
+impl TryFrom<ProtobufOpenCommandPaneBackgroundResponse> for OpenCommandPaneBackgroundResponse {
+    type Error = &'static str;
+    fn try_from(protobuf: ProtobufOpenCommandPaneBackgroundResponse) -> Result<Self, Self::Error> {
+        match protobuf.pane_id {
+            Some(pane_id) => Ok(Some(pane_id.try_into()?)),
+            None => Ok(None),
+        }
+    }
+}
+
+impl From<OpenCommandPaneBackgroundResponse> for ProtobufOpenCommandPaneBackgroundResponse {
+    fn from(response: OpenCommandPaneBackgroundResponse) -> Self {
+        ProtobufOpenCommandPaneBackgroundResponse {
+            pane_id: response.map(|p| p.try_into().unwrap()),
         }
     }
 }
