@@ -1598,11 +1598,24 @@ pub(crate) fn route_action(
     let result = wait_for_action_completion(completion_rx, &action_name, wait_forever);
     if let Some(exit_status) = result.exit_status {
         if let Some(cli_client_id) = cli_client_id {
-            if let Some(os_input) = os_input {
+            if let Some(ref os_input) = os_input {
                 let _ = os_input.send_to_client(
                     cli_client_id,
                     ServerToClientMsg::Exit {
                         exit_reason: ExitReason::CustomExitStatus(exit_status),
+                    },
+                );
+            }
+        }
+    }
+    // Return tab ID to CLI clients as plain text
+    if let Some(tab_id) = result.affected_tab_id {
+        if let Some(cli_client_id) = cli_client_id {
+            if let Some(ref os_input) = os_input {
+                let _ = os_input.send_to_client(
+                    cli_client_id,
+                    ServerToClientMsg::Log {
+                        lines: vec![tab_id.to_string()],
                     },
                 );
             }

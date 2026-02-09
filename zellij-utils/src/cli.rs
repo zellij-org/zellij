@@ -849,6 +849,8 @@ pub enum CliAction {
         index: u32,
     },
     /// Go to tab with name [name]
+    ///
+    /// Returns: When --create is used and tab is created, outputs the tab ID as a single number
     GoToTabName {
         name: String,
         /// Create a tab if one does not exist.
@@ -862,6 +864,8 @@ pub enum CliAction {
     /// Remove a previously set tab name
     UndoRenameTab,
     /// Create a new tab, optionally with a specified tab layout and name
+    ///
+    /// Returns: The created tab's ID as a single number on stdout
     NewTab {
         /// Layout to use for the new tab
         #[clap(short, long, value_parser)]
