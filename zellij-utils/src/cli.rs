@@ -329,6 +329,7 @@ pub enum Sessions {
     #[clap(subcommand)]
     Action(CliAction),
     /// Run a command in a new pane
+    /// Returns: Created pane ID (format: terminal_<id>)
     #[clap(visible_alias = "r")]
     Run {
         /// Command to run
@@ -444,6 +445,7 @@ pub enum Sessions {
         borderless: Option<bool>,
     },
     /// Load a plugin
+    /// Returns: Created pane ID (format: plugin_<id>)
     #[clap(visible_alias = "p")]
     Plugin {
         /// Plugin URL, can either start with http(s), file: or zellij:
@@ -493,6 +495,7 @@ pub enum Sessions {
         borderless: Option<bool>,
     },
     /// Edit file with default $EDITOR / $VISUAL
+    /// Returns: Created pane ID (format: terminal_<id>)
     #[clap(visible_alias = "e")]
     Edit {
         file: PathBuf,
@@ -670,6 +673,7 @@ pub enum CliAction {
     ToggleActiveSyncTab,
     /// Open a new pane in the specified direction [right|down]
     /// If no direction is specified, will try to use the biggest available space.
+    /// Returns: Created pane ID (format: terminal_<id> or plugin_<id>)
     NewPane {
         /// Direction to open the new pane in
         #[clap(short, long, value_parser, conflicts_with("floating"))]
@@ -769,6 +773,7 @@ pub enum CliAction {
         borderless: Option<bool>,
     },
     /// Open the specified file in a new zellij pane with your default EDITOR
+    /// Returns: Created pane ID (format: terminal_<id>)
     Edit {
         file: PathBuf,
 
@@ -849,6 +854,8 @@ pub enum CliAction {
         index: u32,
     },
     /// Go to tab with name [name]
+    ///
+    /// Returns: When --create is used and tab is created, outputs the tab ID as a single number
     GoToTabName {
         name: String,
         /// Create a tab if one does not exist.
@@ -862,6 +869,8 @@ pub enum CliAction {
     /// Remove a previously set tab name
     UndoRenameTab,
     /// Create a new tab, optionally with a specified tab layout and name
+    ///
+    /// Returns: The created tab's ID as a single number on stdout
     NewTab {
         /// Layout to use for the new tab
         #[clap(short, long, value_parser)]
@@ -985,6 +994,7 @@ pub enum CliAction {
         #[clap(short, long, value_parser)]
         configuration: Option<PluginUserConfiguration>,
     },
+    /// Returns: Plugin pane ID (format: plugin_<id>) when creating or focusing plugin
     LaunchOrFocusPlugin {
         #[clap(short, long, value_parser)]
         floating: bool,
@@ -998,6 +1008,7 @@ pub enum CliAction {
         #[clap(short, long, value_parser)]
         skip_plugin_cache: bool,
     },
+    /// Returns: Plugin pane ID (format: plugin_<id>)
     LaunchPlugin {
         #[clap(short, long, value_parser)]
         floating: bool,
@@ -1088,6 +1099,34 @@ tail -f /tmp/my-live-logfile | zellij action pipe --name logs --plugin https://e
         plugin_title: Option<String>,
     },
     ListClients,
+    /// List all panes in the current session
+    ///
+    /// Returns: Formatted list of panes (table or JSON) to stdout
+    ListPanes {
+        /// Include tab information (name, position, ID)
+        #[clap(short, long, value_parser)]
+        tab: bool,
+
+        /// Include running command information
+        #[clap(short, long, value_parser)]
+        command: bool,
+
+        /// Include pane state (focused, floating, exited, etc.)
+        #[clap(short, long, value_parser)]
+        state: bool,
+
+        /// Include geometry (position, size)
+        #[clap(short, long, value_parser)]
+        geometry: bool,
+
+        /// Include all available fields
+        #[clap(short, long, value_parser)]
+        all: bool,
+
+        /// Output as JSON
+        #[clap(short, long, value_parser)]
+        json: bool,
+    },
     TogglePanePinned,
     /// Stack pane ids
     /// Ids are a space separated list of pane ids.

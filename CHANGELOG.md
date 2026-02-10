@@ -44,6 +44,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: don't trim empty colored cells when resizing terminal grid (https://github.com/zellij-org/zellij/pull/4680)
 * fix: prevent selection from scrolling up after double/triple-click (https://github.com/zellij-org/zellij/pull/4681)
 * refactor: canonicalize tab_id vs. tab_position and expose tab_id to plugins (https://github.com/zellij-org/zellij/pull/4685)
+* feat: `zellij action list-panes` + return pane/tab IDs from plugin and CLI methods creating them (https://github.com/zellij-org/zellij/pull/4690)
 
 
 ## [0.43.1] - 2025-08-08

@@ -206,6 +206,7 @@ pub enum Action {
         pane_name: Option<String>,
         start_suppressed: bool,
     },
+    /// Returns: Created pane ID (format: terminal_<id>)
     NewBlockingPane {
         placement: NewPanePlacement,
         pane_name: Option<String>,
@@ -214,6 +215,7 @@ pub enum Action {
         near_current_pane: bool,
     },
     /// Open the file in a new pane using the default editor
+    /// Returns: Created pane ID (format: terminal_<id>)
     EditFile {
         payload: OpenFilePayload,
         direction: Option<Direction>,
@@ -224,6 +226,7 @@ pub enum Action {
         near_current_pane: bool,
     },
     /// Open a new floating pane
+    /// Returns: Created pane ID (format: terminal_<id> or plugin_<id>)
     NewFloatingPane {
         command: Option<RunCommandAction>,
         pane_name: Option<String>,
@@ -231,6 +234,7 @@ pub enum Action {
         near_current_pane: bool,
     },
     /// Open a new tiled (embedded, non-floating) pane
+    /// Returns: Created pane ID (format: terminal_<id> or plugin_<id>)
     NewTiledPane {
         direction: Option<Direction>,
         command: Option<RunCommandAction>,
@@ -239,6 +243,7 @@ pub enum Action {
         borderless: Option<bool>,
     },
     /// Open a new pane in place of the focused one, suppressing it instead
+    /// Returns: Created pane ID (format: terminal_<id> or plugin_<id>)
     NewInPlacePane {
         command: Option<RunCommandAction>,
         pane_name: Option<String>,
@@ -246,6 +251,7 @@ pub enum Action {
         pane_id_to_replace: Option<PaneId>,
         close_replace_pane: bool,
     },
+    /// Returns: Created pane ID (format: terminal_<id> or plugin_<id>)
     NewStackedPane {
         command: Option<RunCommandAction>,
         pane_name: Option<String>,
@@ -311,6 +317,7 @@ pub enum Action {
         layout: Option<LayoutInfo>,
         cwd: Option<PathBuf>,
     },
+    /// Returns: Plugin pane ID (format: plugin_<id>) when creating or focusing plugin
     LaunchOrFocusPlugin {
         plugin: RunPluginOrAlias,
         should_float: bool,
@@ -318,6 +325,7 @@ pub enum Action {
         should_open_in_place: bool,
         skip_cache: bool,
     },
+    /// Returns: Plugin pane ID (format: plugin_<id>)
     LaunchPlugin {
         plugin: RunPluginOrAlias,
         should_float: bool,
@@ -362,12 +370,14 @@ pub enum Action {
     /// Query all tab names
     QueryTabNames,
     /// Open a new tiled (embedded, non-floating) plugin pane
+    /// Returns: Created pane ID (format: plugin_<id>)
     NewTiledPluginPane {
         plugin: RunPluginOrAlias,
         pane_name: Option<String>,
         skip_cache: bool,
         cwd: Option<PathBuf>,
     },
+    /// Returns: Created pane ID (format: plugin_<id>)
     NewFloatingPluginPane {
         plugin: RunPluginOrAlias,
         pane_name: Option<String>,
@@ -375,6 +385,7 @@ pub enum Action {
         cwd: Option<PathBuf>,
         coordinates: Option<FloatingPaneCoordinates>,
     },
+    /// Returns: Created pane ID (format: plugin_<id>)
     NewInPlacePluginPane {
         plugin: RunPluginOrAlias,
         pane_name: Option<String>,
@@ -446,6 +457,14 @@ pub enum Action {
         pane_title: Option<String>,
     },
     ListClients,
+    ListPanes {
+        show_tab: bool,
+        show_command: bool,
+        show_state: bool,
+        show_geometry: bool,
+        show_all: bool,
+        output_json: bool,
+    },
     TogglePanePinned,
     StackPanes {
         pane_ids: Vec<PaneId>,
@@ -1201,6 +1220,21 @@ impl Action {
                 }])
             },
             CliAction::ListClients => Ok(vec![Action::ListClients]),
+            CliAction::ListPanes {
+                tab,
+                command,
+                state,
+                geometry,
+                all,
+                json,
+            } => Ok(vec![Action::ListPanes {
+                show_tab: tab,
+                show_command: command,
+                show_state: state,
+                show_geometry: geometry,
+                show_all: all,
+                output_json: json,
+            }]),
             CliAction::TogglePanePinned => Ok(vec![Action::TogglePanePinned]),
             CliAction::StackPanes { pane_ids } => {
                 let mut malformed_ids = vec![];

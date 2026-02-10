@@ -723,9 +723,9 @@ impl From<crate::input::actions::Action>
             FocusPluginPaneWithIdAction, FocusPreviousPaneAction, FocusTerminalPaneWithIdAction,
             GoToNextTabAction, GoToPreviousTabAction, GoToTabAction, GoToTabNameAction,
             HalfPageScrollDownAction, HalfPageScrollUpAction, KeybindPipeAction,
-            LaunchOrFocusPluginAction, LaunchPluginAction, ListClientsAction, MouseEventAction,
-            MoveFocusAction, MoveFocusOrTabAction, MovePaneAction, MovePaneBackwardsAction,
-            MoveTabAction, NewBlockingPaneAction, NewFloatingPaneAction,
+            LaunchOrFocusPluginAction, LaunchPluginAction, ListClientsAction, ListPanesAction,
+            MouseEventAction, MoveFocusAction, MoveFocusOrTabAction, MovePaneAction,
+            MovePaneBackwardsAction, MoveTabAction, NewBlockingPaneAction, NewFloatingPaneAction,
             NewFloatingPluginPaneAction, NewInPlacePaneAction, NewInPlacePluginPaneAction,
             NewPaneAction, NewStackedPaneAction, NewTabAction, NewTiledPaneAction,
             NewTiledPluginPaneAction, NextSwapLayoutAction, NoOpAction, OverrideLayoutAction,
@@ -1274,6 +1274,21 @@ impl From<crate::input::actions::Action>
             crate::input::actions::Action::ListClients => {
                 ActionType::ListClients(ListClientsAction {})
             },
+            crate::input::actions::Action::ListPanes {
+                show_tab,
+                show_command,
+                show_state,
+                show_geometry,
+                show_all,
+                output_json,
+            } => ActionType::ListPanes(ListPanesAction {
+                show_tab,
+                show_command,
+                show_state,
+                show_geometry,
+                show_all,
+                output_json,
+            }),
             crate::input::actions::Action::TogglePanePinned => {
                 ActionType::TogglePanePinned(TogglePanePinnedAction {})
             },
@@ -1876,6 +1891,16 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                 })
             },
             ActionType::ListClients(_) => Ok(crate::input::actions::Action::ListClients),
+            ActionType::ListPanes(list_panes_action) => {
+                Ok(crate::input::actions::Action::ListPanes {
+                    show_tab: list_panes_action.show_tab,
+                    show_command: list_panes_action.show_command,
+                    show_state: list_panes_action.show_state,
+                    show_geometry: list_panes_action.show_geometry,
+                    show_all: list_panes_action.show_all,
+                    output_json: list_panes_action.output_json,
+                })
+            },
             ActionType::TogglePanePinned(_) => Ok(crate::input::actions::Action::TogglePanePinned),
             ActionType::StackPanes(stack_panes_action) => {
                 Ok(crate::input::actions::Action::StackPanes {
