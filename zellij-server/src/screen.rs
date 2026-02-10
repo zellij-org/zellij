@@ -564,7 +564,7 @@ pub enum ScreenInstruction {
     RerunCommandPane(u32, Option<NotificationEnd>), // u32 - terminal pane id
     ResizePaneWithId(ResizeStrategy, PaneId),
     EditScrollbackForPaneWithId(PaneId, Option<NotificationEnd>),
-    WriteToPaneId(Vec<u8>, PaneId),
+    WriteToPaneId(Vec<u8>, PaneId, Option<NotificationEnd>),
     CopyTextToClipboard(String, u32), // String - text to copy, u32 - plugin_id
     MovePaneWithPaneId(PaneId),
     MovePaneWithPaneIdInDirection(PaneId, Direction),
@@ -6638,7 +6638,7 @@ pub(crate) fn screen_thread_main(
                 }
                 screen.render(None)?;
             },
-            ScreenInstruction::WriteToPaneId(bytes, pane_id) => {
+            ScreenInstruction::WriteToPaneId(bytes, pane_id, _completion) => {
                 let all_tabs = screen.get_tabs_mut();
                 for tab in all_tabs.values_mut() {
                     if tab.has_pane_with_pid(&pane_id) {

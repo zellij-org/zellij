@@ -603,10 +603,16 @@ pub enum CliAction {
     /// Write bytes to the terminal.
     Write {
         bytes: Vec<u8>,
+        /// The pane_id of the pane, eg. terminal_1, plugin_2 or 3 (equivalent to terminal_3)
+        #[clap(short, long, value_parser)]
+        pane_id: Option<String>,
     },
     /// Write characters to the terminal.
     WriteChars {
         chars: String,
+        /// The pane_id of the pane, eg. terminal_1, plugin_2 or 3 (equivalent to terminal_3)
+        #[clap(short, long, value_parser)]
+        pane_id: Option<String>,
     },
     /// [increase|decrease] the focused panes area at the [left|down|up|right] border.
     Resize {

@@ -127,6 +127,16 @@ pub enum Action {
     WriteChars {
         chars: String,
     },
+    /// Write to a specific pane by ID.
+    WriteToPaneId {
+        bytes: Vec<u8>,
+        pane_id: PaneId,
+    },
+    /// Write Characters to a specific pane by ID.
+    WriteCharsToPaneId {
+        chars: String,
+        pane_id: PaneId,
+    },
     /// Switch to the specified input mode.
     SwitchToMode {
         input_mode: InputMode,
@@ -520,12 +530,58 @@ impl Action {
         config: Option<Config>,
     ) -> Result<Vec<Action>, String> {
         match cli_action {
-            CliAction::Write { bytes } => Ok(vec![Action::Write {
-                key_with_modifier: None,
-                bytes,
-                is_kitty_keyboard_protocol: false,
-            }]),
-            CliAction::WriteChars { chars } => Ok(vec![Action::WriteChars { chars }]),
+            CliAction::Write { bytes, pane_id } => {
+                match pane_id {
+                    Some(pane_id_str) => {
+                        let parsed_pane_id = PaneId::from_str(&pane_id_str);
+                        match parsed_pane_id {
+                            Ok(parsed_pane_id) => {
+                                Ok(vec![Action::WriteToPaneId {
+                                    bytes,
+                                    pane_id: parsed_pane_id,
+                                }])
+                            },
+                            Err(_e) => {
+                                Err(format!(
+                                    "Malformed pane id: {}, expecting either a bare integer (eg. 1), a terminal pane id (eg. terminal_1) or a plugin pane id (eg. plugin_1)",
+                                    pane_id_str
+                                ))
+                            }
+                        }
+                    },
+                    None => {
+                        Ok(vec![Action::Write {
+                            key_with_modifier: None,
+                            bytes,
+                            is_kitty_keyboard_protocol: false,
+                        }])
+                    }
+                }
+            },
+            CliAction::WriteChars { chars, pane_id } => {
+                match pane_id {
+                    Some(pane_id_str) => {
+                        let parsed_pane_id = PaneId::from_str(&pane_id_str);
+                        match parsed_pane_id {
+                            Ok(parsed_pane_id) => {
+                                Ok(vec![Action::WriteCharsToPaneId {
+                                    chars,
+                                    pane_id: parsed_pane_id,
+                                }])
+                            },
+                            Err(_e) => {
+                                Err(format!(
+                                    "Malformed pane id: {}, expecting either a bare integer (eg. 1), a terminal pane id (eg. terminal_1) or a plugin pane id (eg. plugin_1)",
+                                    pane_id_str
+                                ))
+                            }
+                        }
+                    },
+                    None => {
+                        Ok(vec![Action::WriteChars { chars }])
+                    }
+                }
+            },
             CliAction::Resize { resize, direction } => {
                 Ok(vec![Action::Resize { resize, direction }])
             },
