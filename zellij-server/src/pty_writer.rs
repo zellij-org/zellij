@@ -1,7 +1,7 @@
 use zellij_utils::errors::{prelude::*, ContextType, PtyWriteContext};
 
-use crate::thread_bus::Bus;
 use crate::route::NotificationEnd;
+use crate::thread_bus::Bus;
 
 // we separate these instruction to a different thread because some programs get deadlocked if
 // you write into their STDIN while reading from their STDOUT (I'm looking at you, vim)

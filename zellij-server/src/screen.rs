@@ -6662,7 +6662,7 @@ pub(crate) fn screen_thread_main(
                 bytes,
                 is_kitty,
                 pane_id,
-                _completion
+                _completion,
             ) => {
                 let all_tabs = screen.get_tabs_mut();
                 for tab in all_tabs.values_mut() {
@@ -6674,7 +6674,8 @@ pub(crate) fn screen_thread_main(
                             pane_id,
                             None, // client_id not needed for targeted write
                             None, // completion handled by instruction
-                        ).non_fatal();
+                        )
+                        .non_fatal();
                         break;
                     }
                 }

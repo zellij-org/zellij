@@ -741,8 +741,8 @@ impl From<crate::input::actions::Action>
             ToggleFocusFullscreenAction, ToggleGroupMarkingAction, ToggleMouseModeAction,
             TogglePaneBorderlessAction, TogglePaneEmbedOrFloatingAction, TogglePaneFramesAction,
             TogglePaneInGroupAction, TogglePanePinnedAction, ToggleTabAction, UndoRenamePaneAction,
-            UndoRenameTabAction, WriteAction, WriteCharsAction, WriteToPaneIdAction,
-            WriteCharsToPaneIdAction,
+            UndoRenameTabAction, WriteAction, WriteCharsAction, WriteCharsToPaneIdAction,
+            WriteToPaneIdAction,
         };
         use std::collections::HashMap;
 
@@ -1376,7 +1376,11 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
             },
             ActionType::WriteToPaneId(write_to_pane_id_action) => {
                 Ok(crate::input::actions::Action::WriteToPaneId {
-                    bytes: write_to_pane_id_action.bytes.into_iter().map(|b| b as u8).collect(),
+                    bytes: write_to_pane_id_action
+                        .bytes
+                        .into_iter()
+                        .map(|b| b as u8)
+                        .collect(),
                     pane_id: write_to_pane_id_action
                         .pane_id
                         .ok_or_else(|| anyhow!("WriteToPaneId missing pane_id"))?
