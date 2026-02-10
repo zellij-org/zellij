@@ -1,15 +1,16 @@
 use zellij_utils::errors::{prelude::*, ContextType, PtyWriteContext};
 
 use crate::thread_bus::Bus;
+use crate::route::NotificationEnd;
 
 // we separate these instruction to a different thread because some programs get deadlocked if
 // you write into their STDIN while reading from their STDOUT (I'm looking at you, vim)
 // while the same has not been observed to happen with resizes, it could conceivably happen and we have this
 // here anyway, so
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum PtyWriteInstruction {
-    Write(Vec<u8>, u32),
-    ResizePty(u32, u16, u16, Option<u16>, Option<u16>), // terminal_id, columns, rows, pixel width, pixel height
+    Write(Vec<u8>, u32, Option<NotificationEnd>),
+    ResizePty(u32, u16, u16, Option<u16>, Option<u16>),
     StartCachingResizes,
     ApplyCachedResizes,
     Exit,
@@ -39,7 +40,7 @@ pub(crate) fn pty_writer_main(bus: Bus<PtyWriteInstruction>) -> Result<()> {
             .context("no OS input API found")
             .with_context(err_context)?;
         match event {
-            PtyWriteInstruction::Write(bytes, terminal_id) => {
+            PtyWriteInstruction::Write(bytes, terminal_id, _completion) => {
                 os_input
                     .write_to_tty_stdin(terminal_id, &bytes)
                     .with_context(err_context)

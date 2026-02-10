@@ -614,6 +614,16 @@ pub enum CliAction {
         #[clap(short, long, value_parser)]
         pane_id: Option<String>,
     },
+    /// Send one or more keys to the terminal (e.g., "Ctrl a", "F1", "Alt Shift b")
+    SendKeys {
+        /// Keys to send as space-separated strings
+        #[clap(value_parser, required = true)]
+        keys: Vec<String>,
+
+        /// The pane_id of the pane, eg. terminal_1, plugin_2 or 3 (equivalent to terminal_3)
+        #[clap(short, long, value_parser)]
+        pane_id: Option<String>,
+    },
     /// [increase|decrease] the focused panes area at the [left|down|up|right] border.
     Resize {
         resize: Resize,
