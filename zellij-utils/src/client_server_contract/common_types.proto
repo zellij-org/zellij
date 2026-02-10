@@ -222,18 +222,20 @@ message Action {
     CliPipeAction cli_pipe = 84;
     KeybindPipeAction keybind_pipe = 85;
     ListClientsAction list_clients = 86;
-    ListPanesAction list_panes = 98;
     TogglePanePinnedAction toggle_pane_pinned = 87;
     StackPanesAction stack_panes = 88;
     ChangeFloatingPaneCoordinatesAction change_floating_pane_coordinates = 89;
-    TogglePaneBorderlessAction toggle_pane_borderless = 95;
-    SetPaneBorderlessAction set_pane_borderless = 96;
     TogglePaneInGroupAction toggle_pane_in_group = 90;
     ToggleGroupMarkingAction toggle_group_marking = 91;
     SwitchSessionAction switch_session = 92;
     NewBlockingPaneAction new_blocking_pane = 93;
     OverrideLayoutAction override_layout = 94;
+    TogglePaneBorderlessAction toggle_pane_borderless = 95;
+    SetPaneBorderlessAction set_pane_borderless = 96;
     SaveSessionAction save_session = 97;
+    ListPanesAction list_panes = 98;
+    WriteCharsToPaneIdAction write_chars_to_pane_id = 99;
+    WriteToPaneIdAction write_to_pane_id = 100;
   }
 }
 
@@ -318,6 +320,16 @@ message WriteAction {
 
 message WriteCharsAction {
   string chars = 1;
+}
+
+message WriteToPaneIdAction {
+  PaneId pane_id = 1;
+  repeated uint32 bytes = 2;
+}
+
+message WriteCharsToPaneIdAction {
+  PaneId pane_id = 1;
+  string chars = 2;
 }
 
 message SwitchToModeAction {

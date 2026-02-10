@@ -2706,6 +2706,7 @@ impl Tab {
                             .send_to_pty_writer(PtyWriteInstruction::Write(
                                 adjusted_input,
                                 active_terminal_id,
+                                completion_tx,
                             ))
                             .with_context(err_context)?;
                     },
@@ -2803,6 +2804,7 @@ impl Tab {
                     .send_to_pty_writer(PtyWriteInstruction::Write(
                         raw_input_bytes,
                         active_terminal_id,
+                        None,
                     ))
                     .with_context(err_context)?;
                 should_update_ui = true;

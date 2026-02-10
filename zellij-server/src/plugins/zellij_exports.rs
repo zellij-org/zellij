@@ -3249,16 +3249,30 @@ fn get_pane_scrollback(env: &PluginEnv, pane_id: PaneId, get_full_scrollback: bo
 }
 
 fn write_to_pane_id(env: &PluginEnv, bytes: Vec<u8>, pane_id: PaneId) {
-    let _ = env
-        .senders
-        .send_to_screen(ScreenInstruction::WriteToPaneId(bytes, pane_id));
+    let (completion_tx, completion_rx) = oneshot::channel();
+    let send_result = env.senders.send_to_screen(ScreenInstruction::WriteToPaneId(
+        bytes,
+        pane_id,
+        Some(NotificationEnd::new(completion_tx)),
+    ));
+    if send_result.is_ok() {
+        let wait_forever = false;
+        let _ = wait_for_action_completion(completion_rx, "write_to_pane_id", wait_forever);
+    }
 }
 
 fn write_chars_to_pane_id(env: &PluginEnv, chars: String, pane_id: PaneId) {
     let bytes = chars.into_bytes();
-    let _ = env
-        .senders
-        .send_to_screen(ScreenInstruction::WriteToPaneId(bytes, pane_id));
+    let (completion_tx, completion_rx) = oneshot::channel();
+    let send_result = env.senders.send_to_screen(ScreenInstruction::WriteToPaneId(
+        bytes,
+        pane_id,
+        Some(NotificationEnd::new(completion_tx)),
+    ));
+    if send_result.is_ok() {
+        let wait_forever = false;
+        let _ = wait_for_action_completion(completion_rx, "write_chars_to_pane_id", wait_forever);
+    }
 }
 
 fn send_sigint_to_pane_id(env: &PluginEnv, pane_id: PaneId) {

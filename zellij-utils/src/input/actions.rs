@@ -127,6 +127,16 @@ pub enum Action {
     WriteChars {
         chars: String,
     },
+    /// Write to a specific pane by ID.
+    WriteToPaneId {
+        bytes: Vec<u8>,
+        pane_id: PaneId,
+    },
+    /// Write Characters to a specific pane by ID.
+    WriteCharsToPaneId {
+        chars: String,
+        pane_id: PaneId,
+    },
     /// Switch to the specified input mode.
     SwitchToMode {
         input_mode: InputMode,
@@ -520,12 +530,98 @@ impl Action {
         config: Option<Config>,
     ) -> Result<Vec<Action>, String> {
         match cli_action {
-            CliAction::Write { bytes } => Ok(vec![Action::Write {
-                key_with_modifier: None,
-                bytes,
-                is_kitty_keyboard_protocol: false,
-            }]),
-            CliAction::WriteChars { chars } => Ok(vec![Action::WriteChars { chars }]),
+            CliAction::Write { bytes, pane_id } => match pane_id {
+                Some(pane_id_str) => {
+                    let parsed_pane_id = PaneId::from_str(&pane_id_str);
+                    match parsed_pane_id {
+                            Ok(parsed_pane_id) => {
+                                Ok(vec![Action::WriteToPaneId {
+                                    bytes,
+                                    pane_id: parsed_pane_id,
+                                }])
+                            },
+                            Err(_e) => {
+                                Err(format!(
+                                    "Malformed pane id: {}, expecting either a bare integer (eg. 1), a terminal pane id (eg. terminal_1) or a plugin pane id (eg. plugin_1)",
+                                    pane_id_str
+                                ))
+                            }
+                        }
+                },
+                None => Ok(vec![Action::Write {
+                    key_with_modifier: None,
+                    bytes,
+                    is_kitty_keyboard_protocol: false,
+                }]),
+            },
+            CliAction::WriteChars { chars, pane_id } => match pane_id {
+                Some(pane_id_str) => {
+                    let parsed_pane_id = PaneId::from_str(&pane_id_str);
+                    match parsed_pane_id {
+                            Ok(parsed_pane_id) => {
+                                Ok(vec![Action::WriteCharsToPaneId {
+                                    chars,
+                                    pane_id: parsed_pane_id,
+                                }])
+                            },
+                            Err(_e) => {
+                                Err(format!(
+                                    "Malformed pane id: {}, expecting either a bare integer (eg. 1), a terminal pane id (eg. terminal_1) or a plugin pane id (eg. plugin_1)",
+                                    pane_id_str
+                                ))
+                            }
+                        }
+                },
+                None => Ok(vec![Action::WriteChars { chars }]),
+            },
+            CliAction::SendKeys { keys, pane_id } => {
+                let mut actions = Vec::new();
+
+                for (index, key_str) in keys.iter().enumerate() {
+                    let key = KeyWithModifier::from_str(key_str).map_err(|e| {
+                        let suggestion = suggest_key_fix(key_str);
+                        format!(
+                            "Invalid key at position {}: \"{}\"\n  Error: {}\n{}",
+                            index + 1,
+                            key_str,
+                            e,
+                            suggestion
+                        )
+                    })?;
+
+                    #[cfg(not(target_family = "wasm"))]
+                    let bytes = key
+                        .serialize_kitty()
+                        .map(|s| s.into_bytes())
+                        .unwrap_or_else(Vec::new);
+
+                    #[cfg(target_family = "wasm")]
+                    let bytes = vec![];
+
+                    match &pane_id {
+                        Some(pane_id_str) => {
+                            let parsed_pane_id = PaneId::from_str(pane_id_str)
+                                .map_err(|_| format!(
+                                    "Malformed pane id: {}, expecting either a bare integer (eg. 1), a terminal pane id (eg. terminal_1) or a plugin pane id (eg. plugin_1)",
+                                    pane_id_str
+                                ))?;
+                            actions.push(Action::WriteToPaneId {
+                                bytes,
+                                pane_id: parsed_pane_id,
+                            });
+                        },
+                        None => {
+                            actions.push(Action::Write {
+                                key_with_modifier: Some(key),
+                                bytes,
+                                is_kitty_keyboard_protocol: true,
+                            });
+                        },
+                    }
+                }
+
+                Ok(actions)
+            },
             CliAction::Resize { resize, direction } => {
                 Ok(vec![Action::Resize { resize, direction }])
             },
@@ -1426,11 +1522,176 @@ impl Action {
     }
 }
 
+fn suggest_key_fix(key_str: &str) -> String {
+    if key_str.contains('-') {
+        return "  Hint: Use spaces instead of hyphens (e.g., \"Ctrl a\" not \"Ctrl-a\")"
+            .to_string();
+    }
+
+    if key_str.trim().is_empty() {
+        return "  Hint: Key string cannot be empty".to_string();
+    }
+
+    let parts: Vec<&str> = key_str.split_whitespace().collect();
+    if parts.len() > 1 {
+        for part in &parts[..parts.len() - 1] {
+            let lower = part.to_ascii_lowercase();
+            if lower.starts_with("ctr") && lower != "ctrl" {
+                return format!("  Hint: Did you mean \"Ctrl\" instead of \"{}\"?", part);
+            }
+            if !matches!(lower.as_str(), "ctrl" | "alt" | "shift" | "super") {
+                return "  Hint: Valid modifiers are: Ctrl, Alt, Shift, Super".to_string();
+            }
+        }
+    }
+
+    "  Hint: Use format like \"Ctrl a\", \"Alt Shift F1\", or \"Enter\"".to_string()
+}
+
 impl From<OnForceClose> for Action {
     fn from(ofc: OnForceClose) -> Action {
         match ofc {
             OnForceClose::Quit => Action::Quit,
             OnForceClose::Detach => Action::Detach,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::data::BareKey;
+    use crate::data::KeyModifier;
+    use std::path::PathBuf;
+
+    #[test]
+    fn test_send_keys_single_key() {
+        let cli_action = CliAction::SendKeys {
+            keys: vec!["Enter".to_string()],
+            pane_id: None,
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::Write {
+                key_with_modifier,
+                bytes,
+                is_kitty_keyboard_protocol,
+            } => {
+                assert!(key_with_modifier.is_some());
+                let key = key_with_modifier.as_ref().unwrap();
+                assert_eq!(key.bare_key, BareKey::Enter);
+                assert!(key.key_modifiers.is_empty());
+                assert!(!bytes.is_empty());
+                assert_eq!(*is_kitty_keyboard_protocol, true);
+            },
+            _ => panic!("Expected Write action"),
+        }
+    }
+
+    #[test]
+    fn test_send_keys_with_modifier() {
+        let cli_action = CliAction::SendKeys {
+            keys: vec!["Ctrl a".to_string()],
+            pane_id: None,
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::Write {
+                key_with_modifier,
+                is_kitty_keyboard_protocol,
+                ..
+            } => {
+                assert!(key_with_modifier.is_some());
+                let key = key_with_modifier.as_ref().unwrap();
+                assert_eq!(key.bare_key, BareKey::Char('a'));
+                assert!(key.key_modifiers.contains(&KeyModifier::Ctrl));
+                assert_eq!(*is_kitty_keyboard_protocol, true);
+            },
+            _ => panic!("Expected Write action"),
+        }
+    }
+
+    #[test]
+    fn test_send_keys_multiple_keys() {
+        let cli_action = CliAction::SendKeys {
+            keys: vec!["Ctrl a".to_string(), "F1".to_string(), "Enter".to_string()],
+            pane_id: None,
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 3);
+        for action in &actions {
+            match action {
+                Action::Write {
+                    is_kitty_keyboard_protocol,
+                    ..
+                } => {
+                    assert_eq!(*is_kitty_keyboard_protocol, true);
+                },
+                _ => panic!("Expected Write action"),
+            }
+        }
+    }
+
+    #[test]
+    fn test_send_keys_error_hyphen_syntax() {
+        let cli_action = CliAction::SendKeys {
+            keys: vec!["Ctrl-a".to_string()],
+            pane_id: None,
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("Use spaces instead of hyphens"));
+    }
+
+    #[test]
+    fn test_send_keys_error_typo() {
+        let cli_action = CliAction::SendKeys {
+            keys: vec!["Ctrll a".to_string()],
+            pane_id: None,
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("Ctrl") || err.contains("modifier"));
+    }
+
+    #[test]
+    fn test_send_keys_with_pane_id() {
+        let cli_action = CliAction::SendKeys {
+            keys: vec!["a".to_string()],
+            pane_id: Some("terminal_1".to_string()),
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::WriteToPaneId { pane_id, bytes } => {
+                assert!(matches!(pane_id, PaneId::Terminal(1)));
+                assert!(!bytes.is_empty());
+            },
+            _ => panic!("Expected WriteToPaneId action"),
+        }
+    }
+
+    #[test]
+    fn test_send_keys_error_invalid_pane_id() {
+        let cli_action = CliAction::SendKeys {
+            keys: vec!["a".to_string()],
+            pane_id: Some("invalid_id".to_string()),
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("Malformed pane id"));
     }
 }

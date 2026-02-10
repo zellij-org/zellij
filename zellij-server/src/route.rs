@@ -251,6 +251,31 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
         },
+        Action::WriteToPaneId { bytes, pane_id } => {
+            senders
+                .send_to_screen(ScreenInstruction::ClearScroll(client_id))
+                .with_context(err_context)?;
+            senders
+                .send_to_screen(ScreenInstruction::WriteToPaneId(
+                    bytes,
+                    pane_id.into(),
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
+        Action::WriteCharsToPaneId { chars, pane_id } => {
+            senders
+                .send_to_screen(ScreenInstruction::ClearScroll(client_id))
+                .with_context(err_context)?;
+            let bytes = chars.into_bytes();
+            senders
+                .send_to_screen(ScreenInstruction::WriteToPaneId(
+                    bytes,
+                    pane_id.into(),
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
         Action::SwitchToMode { input_mode } => {
             let attrs = &client_attributes;
             senders
