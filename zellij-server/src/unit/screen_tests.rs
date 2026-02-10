@@ -2137,6 +2137,7 @@ pub fn send_cli_write_chars_action_to_screen() {
     );
     let cli_action = CliAction::WriteChars {
         chars: "input from the cli".into(),
+        pane_id: None,
     };
     send_cli_action_to_server(&session_metadata, cli_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -2163,6 +2164,7 @@ pub fn send_cli_write_action_to_screen() {
     );
     let cli_action = CliAction::Write {
         bytes: vec![102, 111, 111],
+        pane_id: None,
     };
     send_cli_action_to_server(&session_metadata, cli_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -2926,6 +2928,7 @@ pub fn send_cli_toggle_active_tab_sync_action() {
     let cli_toggle_active_tab_sync_action = CliAction::ToggleActiveSyncTab;
     let cli_write_action = CliAction::Write {
         bytes: vec![102, 111, 111],
+        pane_id: None,
     };
     send_cli_action_to_server(
         &session_metadata,
