@@ -281,7 +281,7 @@ pub async fn run_remote_client_terminal_loop(
 
     let synchronised_output = match os_input.env_variable("TERM").as_deref() {
         Some("alacritty") => Some(SyncOutput::DCS),
-        _ => None,
+        _ => Some(SyncOutput::CSI),
     };
 
     let mut async_stdin: Box<dyn AsyncStdin> = os_input.get_async_stdin_reader();
@@ -950,7 +950,7 @@ pub fn start_client(
     let mut pending_instructions = vec![];
     let mut synchronised_output = match os_input.env_variable("TERM").as_deref() {
         Some("alacritty") => Some(SyncOutput::DCS),
-        _ => None,
+        _ => Some(SyncOutput::CSI),
     };
 
     let mut stdout = os_input.get_stdout_writer();
