@@ -22,18 +22,17 @@ use tokio::sync::oneshot;
 use wasmi::{Caller, Linker};
 use zellij_utils::data::{
     BreakPanesToNewTabResponse, BreakPanesToTabWithIdResponse, BreakPanesToTabWithIndexResponse,
-    CommandType, ConnectToSession,
-    DeleteLayoutResponse, EditLayoutResponse, Event, FloatingPaneCoordinates,
-    FocusOrCreateTabResponse, GetFocusedPaneInfoResponse, GetPaneCwdResponse, GetPanePidResponse,
-    GetPaneRunningCommandResponse, HttpVerb, KeyWithModifier, LayoutInfo, LayoutMetadata,
-    LayoutParsingError, MessageToPlugin, NewPanePlacement, NewTabResponse, NewTabsResponse,
-    OpenCommandPaneBackgroundResponse, OpenCommandPaneFloatingNearPluginResponse,
-    OpenCommandPaneFloatingResponse, OpenCommandPaneInPlaceOfPluginResponse,
-    OpenCommandPaneInPlaceResponse, OpenCommandPaneNearPluginResponse, OpenCommandPaneResponse,
-    OpenFileFloatingNearPluginResponse, OpenFileFloatingResponse, OpenFileInPlaceOfPluginResponse,
-    OpenFileInPlaceResponse, OpenFileNearPluginResponse, OpenFileResponse,
-    OpenTerminalFloatingNearPluginResponse, OpenTerminalFloatingResponse,
-    OpenTerminalInPlaceOfPluginResponse, OpenTerminalInPlaceResponse,
+    CommandType, ConnectToSession, DeleteLayoutResponse, EditLayoutResponse, Event,
+    FloatingPaneCoordinates, FocusOrCreateTabResponse, GetFocusedPaneInfoResponse,
+    GetPaneCwdResponse, GetPanePidResponse, GetPaneRunningCommandResponse, HttpVerb,
+    KeyWithModifier, LayoutInfo, LayoutMetadata, LayoutParsingError, MessageToPlugin,
+    NewPanePlacement, NewTabResponse, NewTabsResponse, OpenCommandPaneBackgroundResponse,
+    OpenCommandPaneFloatingNearPluginResponse, OpenCommandPaneFloatingResponse,
+    OpenCommandPaneInPlaceOfPluginResponse, OpenCommandPaneInPlaceResponse,
+    OpenCommandPaneNearPluginResponse, OpenCommandPaneResponse, OpenFileFloatingNearPluginResponse,
+    OpenFileFloatingResponse, OpenFileInPlaceOfPluginResponse, OpenFileInPlaceResponse,
+    OpenFileNearPluginResponse, OpenFileResponse, OpenTerminalFloatingNearPluginResponse,
+    OpenTerminalFloatingResponse, OpenTerminalInPlaceOfPluginResponse, OpenTerminalInPlaceResponse,
     OpenTerminalNearPluginResponse, OpenTerminalResponse, OriginatingPlugin,
     PaneScrollbackResponse, PermissionStatus, PermissionType, PluginPermission,
     RenameLayoutResponse, SaveLayoutResponse, TabMetadata,
@@ -75,13 +74,13 @@ use zellij_utils::{
             dump_layout_response, dump_session_layout_response, parse_layout_response,
             save_session_response, ProtobufBreakPanesToNewTabResponse,
             ProtobufBreakPanesToTabWithIdResponse, ProtobufBreakPanesToTabWithIndexResponse,
-            ProtobufDeleteLayoutResponse,
-            ProtobufDumpLayoutResponse, ProtobufDumpSessionLayoutResponse,
-            ProtobufEditLayoutResponse, ProtobufFocusOrCreateTabResponse,
-            ProtobufGenerateRandomNameResponse, ProtobufGetFocusedPaneInfoResponse,
-            ProtobufGetLayoutDirResponse, ProtobufGetPaneCwdResponse, ProtobufGetPaneInfoResponse,
-            ProtobufGetPanePidResponse, ProtobufGetPaneRunningCommandResponse,
-            ProtobufGetTabInfoResponse, ProtobufNewTabResponse, ProtobufNewTabsResponse,
+            ProtobufDeleteLayoutResponse, ProtobufDumpLayoutResponse,
+            ProtobufDumpSessionLayoutResponse, ProtobufEditLayoutResponse,
+            ProtobufFocusOrCreateTabResponse, ProtobufGenerateRandomNameResponse,
+            ProtobufGetFocusedPaneInfoResponse, ProtobufGetLayoutDirResponse,
+            ProtobufGetPaneCwdResponse, ProtobufGetPaneInfoResponse, ProtobufGetPanePidResponse,
+            ProtobufGetPaneRunningCommandResponse, ProtobufGetTabInfoResponse,
+            ProtobufNewTabResponse, ProtobufNewTabsResponse,
             ProtobufOpenCommandPaneBackgroundResponse,
             ProtobufOpenCommandPaneFloatingNearPluginResponse,
             ProtobufOpenCommandPaneFloatingResponse,
@@ -528,16 +527,14 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::RenameTabWithId(tab_id, new_name) => {
                         rename_tab_with_id(env, tab_id, &new_name)
                     },
-                    PluginCommand::BreakPanesToTabWithId(
-                        pane_ids,
-                        tab_id,
-                        should_change_focus,
-                    ) => break_panes_to_tab_with_id(
-                        env,
-                        pane_ids.into_iter().map(|p_id| p_id.into()).collect(),
-                        should_change_focus,
-                        tab_id,
-                    ),
+                    PluginCommand::BreakPanesToTabWithId(pane_ids, tab_id, should_change_focus) => {
+                        break_panes_to_tab_with_id(
+                            env,
+                            pane_ids.into_iter().map(|p_id| p_id.into()).collect(),
+                            should_change_focus,
+                            tab_id,
+                        )
+                    },
                     PluginCommand::ReloadPlugin(plugin_id) => reload_plugin(env, plugin_id),
                     PluginCommand::LoadNewPlugin {
                         url,
@@ -3951,7 +3948,13 @@ fn switch_tab_to_id(env: &PluginEnv, tab_id: u64) {
             Some(env.client_id),
             None,
         ))
-        .with_context(|| format!("failed to switch to tab {} from plugin {}", tab_id, env.name()))
+        .with_context(|| {
+            format!(
+                "failed to switch to tab {} from plugin {}",
+                tab_id,
+                env.name()
+            )
+        })
         .non_fatal();
 }
 
@@ -3976,11 +3979,8 @@ fn close_tab_with_id(env: &PluginEnv, tab_id: u64) {
 
 fn rename_tab_with_id(env: &PluginEnv, tab_id: u64, new_name: &str) {
     let tab_id = tab_id as usize;
-    let rename_tab_action = ScreenInstruction::RenameTabWithId(
-        tab_id,
-        new_name.as_bytes().to_vec(),
-        None,
-    );
+    let rename_tab_action =
+        ScreenInstruction::RenameTabWithId(tab_id, new_name.as_bytes().to_vec(), None);
     env.senders
         .send_to_screen(rename_tab_action)
         .with_context(|| format!("Failed to rename tab {}", tab_id))

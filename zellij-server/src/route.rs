@@ -1646,8 +1646,8 @@ pub(crate) fn route_action(
             drop(NotificationEnd::new(completion_tx));
         },
         Action::CurrentTabInfo { output_json } => {
-            let maybe_tab_info =
-                request_current_tab_info_from_screen(&senders, client_id).with_context(err_context)?;
+            let maybe_tab_info = request_current_tab_info_from_screen(&senders, client_id)
+                .with_context(err_context)?;
 
             match maybe_tab_info {
                 Some(tab_info) => {

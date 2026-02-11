@@ -4595,21 +4595,26 @@ pub fn send_cli_change_floating_pane_coordinates_action() {
 
 #[test]
 pub fn go_to_tab_by_id_verifies_screen_state() {
-    let size = Size { cols: 121, rows: 20 };
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
     let client_id = 1;
     let mut screen = create_new_screen(size, true, true);
 
     // Create multiple tabs with known IDs
-    new_tab(&mut screen, 1, 0);  // ID 0
-    new_tab(&mut screen, 2, 1);  // ID 1
-    new_tab(&mut screen, 3, 2);  // ID 2
+    new_tab(&mut screen, 1, 0); // ID 0
+    new_tab(&mut screen, 2, 1); // ID 1
+    new_tab(&mut screen, 3, 2); // ID 2
 
     // Active tab should be the last one created (ID 2)
     assert_eq!(screen.get_active_tab(client_id).unwrap().id, 2);
 
     // Switch to tab with ID 0
     if let Some(tab_position) = screen.get_tab_position_by_id(0) {
-        screen.switch_active_tab(tab_position, None, true, client_id).expect("TEST");
+        screen
+            .switch_active_tab(tab_position, None, true, client_id)
+            .expect("TEST");
     }
 
     // Verify active tab is now ID 0
@@ -4621,7 +4626,9 @@ pub fn go_to_tab_by_id_verifies_screen_state() {
 
     // Switch to tab with ID 1
     if let Some(tab_position) = screen.get_tab_position_by_id(1) {
-        screen.switch_active_tab(tab_position, None, true, client_id).expect("TEST");
+        screen
+            .switch_active_tab(tab_position, None, true, client_id)
+            .expect("TEST");
     }
 
     // Verify active tab is now ID 1
@@ -4634,7 +4641,10 @@ pub fn go_to_tab_by_id_verifies_screen_state() {
 
 #[test]
 pub fn send_cli_go_to_tab_by_id_action() {
-    let size = Size { cols: 121, rows: 20 };
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
     let client_id = 10;
     let mut mock_screen = MockScreen::new(size);
     let session_metadata = mock_screen.clone_session_metadata();
@@ -4678,12 +4688,15 @@ pub fn send_cli_go_to_tab_by_id_action() {
 
 #[test]
 pub fn rename_tab_by_id_verifies_screen_state() {
-    let size = Size { cols: 121, rows: 20 };
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
     let mut screen = create_new_screen(size, true, true);
 
     // Create tabs with known IDs
-    new_tab(&mut screen, 1, 0);  // ID 0
-    new_tab(&mut screen, 2, 1);  // ID 1
+    new_tab(&mut screen, 1, 0); // ID 0
+    new_tab(&mut screen, 2, 1); // ID 1
 
     // Verify initial tab names
     assert_eq!(screen.get_tab_by_id(0).unwrap().name, "Tab #1");
@@ -4711,7 +4724,10 @@ pub fn rename_tab_by_id_verifies_screen_state() {
 
 #[test]
 pub fn send_cli_rename_tab_by_id_action() {
-    let size = Size { cols: 121, rows: 20 };
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
     let client_id = 10;
     let mut mock_screen = MockScreen::new(size);
     let session_metadata = mock_screen.clone_session_metadata();
@@ -4747,20 +4763,32 @@ pub fn send_cli_rename_tab_by_id_action() {
 
 #[test]
 pub fn close_tab_by_id_verifies_screen_state() {
-    let size = Size { cols: 121, rows: 20 };
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
     let mut screen = create_new_screen(size, true, true);
 
     // Create multiple tabs with known IDs
-    new_tab(&mut screen, 1, 0);  // ID 0
-    new_tab(&mut screen, 2, 1);  // ID 1
-    new_tab(&mut screen, 3, 2);  // ID 2
+    new_tab(&mut screen, 1, 0); // ID 0
+    new_tab(&mut screen, 2, 1); // ID 1
+    new_tab(&mut screen, 3, 2); // ID 2
 
     assert_eq!(screen.tabs.len(), 3, "Should have 3 tabs initially");
 
     // Verify all tabs exist
-    assert!(screen.get_tab_by_id(0).is_some(), "Tab with ID 0 should exist");
-    assert!(screen.get_tab_by_id(1).is_some(), "Tab with ID 1 should exist");
-    assert!(screen.get_tab_by_id(2).is_some(), "Tab with ID 2 should exist");
+    assert!(
+        screen.get_tab_by_id(0).is_some(),
+        "Tab with ID 0 should exist"
+    );
+    assert!(
+        screen.get_tab_by_id(1).is_some(),
+        "Tab with ID 1 should exist"
+    );
+    assert!(
+        screen.get_tab_by_id(2).is_some(),
+        "Tab with ID 2 should exist"
+    );
 
     // Close tab with ID 1
     screen.close_tab_by_id(1).expect("TEST");
@@ -4768,16 +4796,28 @@ pub fn close_tab_by_id_verifies_screen_state() {
     assert_eq!(screen.tabs.len(), 2, "Should have 2 tabs after closing one");
 
     // Verify tab with ID 1 no longer exists
-    assert!(screen.get_tab_by_id(1).is_none(), "Tab with ID 1 should not exist");
+    assert!(
+        screen.get_tab_by_id(1).is_none(),
+        "Tab with ID 1 should not exist"
+    );
 
     // Verify other tabs still exist
-    assert!(screen.get_tab_by_id(0).is_some(), "Tab with ID 0 should still exist");
-    assert!(screen.get_tab_by_id(2).is_some(), "Tab with ID 2 should still exist");
+    assert!(
+        screen.get_tab_by_id(0).is_some(),
+        "Tab with ID 0 should still exist"
+    );
+    assert!(
+        screen.get_tab_by_id(2).is_some(),
+        "Tab with ID 2 should still exist"
+    );
 }
 
 #[test]
 pub fn send_cli_close_tab_by_id_action() {
-    let size = Size { cols: 121, rows: 20 };
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
     let client_id = 10;
     let mut mock_screen = MockScreen::new(size);
     let session_metadata = mock_screen.clone_session_metadata();

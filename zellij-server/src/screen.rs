@@ -42,8 +42,8 @@ use log::{debug, warn};
 use zellij_utils::data::{
     CommandOrPlugin, Direction, FloatingPaneCoordinates, GetFocusedPaneInfoResponse,
     KeyWithModifier, LayoutInfo, ListPanesResponse, ListTabsResponse, NewPanePlacement,
-    PaneContents, PaneInfo, PaneListEntry, PaneManifest, PaneScrollbackResponse,
-    PluginPermission, Resize, ResizeStrategy, SessionInfo, Styling, TabInfo, WebSharing,
+    PaneContents, PaneInfo, PaneListEntry, PaneManifest, PaneScrollbackResponse, PluginPermission,
+    Resize, ResizeStrategy, SessionInfo, Styling, TabInfo, WebSharing,
 };
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
@@ -6502,13 +6502,12 @@ pub(crate) fn screen_thread_main(
                     // Don't set affected_tab_id, it will remain None to signal failure
                 } else {
                     // break_multiple_panes_to_tab_with_index uses tab ID
-                    screen
-                        .break_multiple_panes_to_tab_with_index(
-                            pane_ids,
-                            tab_id,
-                            should_change_focus_to_target_tab,
-                            client_id,
-                        )?;
+                    screen.break_multiple_panes_to_tab_with_index(
+                        pane_ids,
+                        tab_id,
+                        should_change_focus_to_target_tab,
+                        client_id,
+                    )?;
                     // Set affected tab ID (tab_id is the ID here)
                     completion_tx
                         .as_mut()

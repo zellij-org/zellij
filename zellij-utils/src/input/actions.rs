@@ -1370,9 +1370,9 @@ impl Action {
                 show_all: all,
                 output_json: json,
             }]),
-            CliAction::CurrentTabInfo { json } => Ok(vec![Action::CurrentTabInfo {
-                output_json: json,
-            }]),
+            CliAction::CurrentTabInfo { json } => {
+                Ok(vec![Action::CurrentTabInfo { output_json: json }])
+            },
             CliAction::TogglePanePinned => Ok(vec![Action::TogglePanePinned]),
             CliAction::StackPanes { pane_ids } => {
                 let mut malformed_ids = vec![];

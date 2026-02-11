@@ -3353,10 +3353,10 @@ pub enum PluginCommand {
     // the new tab
     BreakPanesToTabWithIndex(Vec<PaneId>, usize, bool), // usize - tab_index, bool -
     // should_change_focus_to_new_tab
-    SwitchTabToId(u64),                    // u64 - tab_id
-    GoToTabWithId(u64),                    // u64 - tab_id
-    CloseTabWithId(u64),                   // u64 - tab_id
-    RenameTabWithId(u64, String),          // u64 - tab_id, String - new name
+    SwitchTabToId(u64),                            // u64 - tab_id
+    GoToTabWithId(u64),                            // u64 - tab_id
+    CloseTabWithId(u64),                           // u64 - tab_id
+    RenameTabWithId(u64, String),                  // u64 - tab_id, String - new name
     BreakPanesToTabWithId(Vec<PaneId>, u64, bool), // u64 - tab_id, bool -
     // should_change_focus_to_target_tab
     ReloadPlugin(u32), // u32 - plugin pane id
