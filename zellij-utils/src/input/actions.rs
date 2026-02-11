@@ -485,6 +485,17 @@ pub enum Action {
         show_all: bool,
         output_json: bool,
     },
+    ListTabs {
+        show_state: bool,
+        show_dimensions: bool,
+        show_panes: bool,
+        show_layout: bool,
+        show_all: bool,
+        output_json: bool,
+    },
+    CurrentTabInfo {
+        output_json: bool,
+    },
     TogglePanePinned,
     StackPanes {
         pane_ids: Vec<PaneId>,
@@ -1342,6 +1353,24 @@ impl Action {
                 show_state: state,
                 show_geometry: geometry,
                 show_all: all,
+                output_json: json,
+            }]),
+            CliAction::ListTabs {
+                state,
+                dimensions,
+                panes,
+                layout,
+                all,
+                json,
+            } => Ok(vec![Action::ListTabs {
+                show_state: state,
+                show_dimensions: dimensions,
+                show_panes: panes,
+                show_layout: layout,
+                show_all: all,
+                output_json: json,
+            }]),
+            CliAction::CurrentTabInfo { json } => Ok(vec![Action::CurrentTabInfo {
                 output_json: json,
             }]),
             CliAction::TogglePanePinned => Ok(vec![Action::TogglePanePinned]),

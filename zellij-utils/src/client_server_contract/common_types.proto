@@ -239,6 +239,8 @@ message Action {
     GoToTabByIdAction go_to_tab_by_id = 101;
     CloseTabByIdAction close_tab_by_id = 102;
     RenameTabByIdAction rename_tab_by_id = 103;
+    ListTabsAction list_tabs = 104;
+    CurrentTabInfoAction current_tab_info = 105;
   }
 }
 
@@ -309,6 +311,17 @@ message ListPanesAction {
   bool show_geometry = 4;
   bool show_all = 5;
   bool output_json = 6;
+}
+message ListTabsAction {
+  bool show_state = 1;
+  bool show_dimensions = 2;
+  bool show_panes = 3;
+  bool show_layout = 4;
+  bool show_all = 5;
+  bool output_json = 6;
+}
+message CurrentTabInfoAction {
+  bool output_json = 1;
 }
 message TogglePanePinnedAction {}
 message TogglePaneInGroupAction {}

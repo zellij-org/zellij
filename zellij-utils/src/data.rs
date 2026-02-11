@@ -2270,6 +2270,7 @@ pub struct PaneListEntry {
 }
 
 pub type ListPanesResponse = Vec<PaneListEntry>;
+pub type ListTabsResponse = Vec<TabInfo>;
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct ClientInfo {

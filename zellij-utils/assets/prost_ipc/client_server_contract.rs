@@ -119,7 +119,7 @@ pub struct RgbColor {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Action {
-    #[prost(oneof="action::ActionType", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103")]
+    #[prost(oneof="action::ActionType", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105")]
     pub action_type: ::core::option::Option<action::ActionType>,
 }
 /// Nested message and enum types in `Action`.
@@ -333,6 +333,10 @@ pub mod action {
         CloseTabById(super::CloseTabByIdAction),
         #[prost(message, tag="103")]
         RenameTabById(super::RenameTabByIdAction),
+        #[prost(message, tag="104")]
+        ListTabs(super::ListTabsAction),
+        #[prost(message, tag="105")]
+        CurrentTabInfo(super::CurrentTabInfoAction),
     }
 }
 // Action message definitions (all 92 variants)
@@ -548,6 +552,28 @@ pub struct ListPanesAction {
     #[prost(bool, tag="5")]
     pub show_all: bool,
     #[prost(bool, tag="6")]
+    pub output_json: bool,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ListTabsAction {
+    #[prost(bool, tag="1")]
+    pub show_state: bool,
+    #[prost(bool, tag="2")]
+    pub show_dimensions: bool,
+    #[prost(bool, tag="3")]
+    pub show_panes: bool,
+    #[prost(bool, tag="4")]
+    pub show_layout: bool,
+    #[prost(bool, tag="5")]
+    pub show_all: bool,
+    #[prost(bool, tag="6")]
+    pub output_json: bool,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CurrentTabInfoAction {
+    #[prost(bool, tag="1")]
     pub output_json: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]

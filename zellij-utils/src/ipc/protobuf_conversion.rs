@@ -725,7 +725,8 @@ impl From<crate::input::actions::Action>
             GoToNextTabAction, GoToPreviousTabAction, GoToTabAction, GoToTabByIdAction,
             GoToTabNameAction, HalfPageScrollDownAction, HalfPageScrollUpAction, KeybindPipeAction,
             LaunchOrFocusPluginAction, LaunchPluginAction, ListClientsAction, ListPanesAction,
-            MouseEventAction, MoveFocusAction, MoveFocusOrTabAction, MovePaneAction,
+            ListTabsAction, CurrentTabInfoAction, MouseEventAction, MoveFocusAction,
+            MoveFocusOrTabAction, MovePaneAction,
             MovePaneBackwardsAction, MoveTabAction, NewBlockingPaneAction, NewFloatingPaneAction,
             NewFloatingPluginPaneAction, NewInPlacePaneAction, NewInPlacePluginPaneAction,
             NewPaneAction, NewStackedPaneAction, NewTabAction, NewTiledPaneAction,
@@ -1349,6 +1350,24 @@ impl From<crate::input::actions::Action>
             crate::input::actions::Action::SaveSession => {
                 ActionType::SaveSession(SaveSessionAction {})
             },
+            crate::input::actions::Action::ListTabs {
+                show_state,
+                show_dimensions,
+                show_panes,
+                show_layout,
+                show_all,
+                output_json,
+            } => ActionType::ListTabs(ListTabsAction {
+                show_state,
+                show_dimensions,
+                show_panes,
+                show_layout,
+                show_all,
+                output_json,
+            }),
+            crate::input::actions::Action::CurrentTabInfo { output_json } => {
+                ActionType::CurrentTabInfo(CurrentTabInfoAction { output_json })
+            },
         };
 
         Self {
@@ -1961,6 +1980,21 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                     show_geometry: list_panes_action.show_geometry,
                     show_all: list_panes_action.show_all,
                     output_json: list_panes_action.output_json,
+                })
+            },
+            ActionType::ListTabs(list_tabs_action) => {
+                Ok(crate::input::actions::Action::ListTabs {
+                    show_state: list_tabs_action.show_state,
+                    show_dimensions: list_tabs_action.show_dimensions,
+                    show_panes: list_tabs_action.show_panes,
+                    show_layout: list_tabs_action.show_layout,
+                    show_all: list_tabs_action.show_all,
+                    output_json: list_tabs_action.output_json,
+                })
+            },
+            ActionType::CurrentTabInfo(current_tab_info_action) => {
+                Ok(crate::input::actions::Action::CurrentTabInfo {
+                    output_json: current_tab_info_action.output_json,
                 })
             },
             ActionType::TogglePanePinned(_) => Ok(crate::input::actions::Action::TogglePanePinned),

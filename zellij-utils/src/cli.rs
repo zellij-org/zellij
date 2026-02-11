@@ -1156,6 +1156,42 @@ tail -f /tmp/my-live-logfile | zellij action pipe --name logs --plugin https://e
         #[clap(short, long, value_parser)]
         json: bool,
     },
+    /// List all tabs with their information
+    ///
+    /// Returns: Tab information in table or JSON format
+    ListTabs {
+        /// Include state information (active, fullscreen, sync, floating visibility)
+        #[clap(short, long, value_parser)]
+        state: bool,
+
+        /// Include dimension information (viewport, display area)
+        #[clap(short, long, value_parser)]
+        dimensions: bool,
+
+        /// Include pane counts
+        #[clap(short, long, value_parser)]
+        panes: bool,
+
+        /// Include layout information (swap layout name and dirty state)
+        #[clap(short, long, value_parser)]
+        layout: bool,
+
+        /// Include all available fields
+        #[clap(short, long, value_parser)]
+        all: bool,
+
+        /// Output as JSON
+        #[clap(short, long, value_parser)]
+        json: bool,
+    },
+    /// Get information about the currently active tab
+    ///
+    /// Returns: Tab name and ID by default, or full info in JSON
+    CurrentTabInfo {
+        /// Output as JSON with full TabInfo
+        #[clap(short, long, value_parser)]
+        json: bool,
+    },
     TogglePanePinned,
     /// Stack pane ids
     /// Ids are a space separated list of pane ids.

@@ -41,9 +41,9 @@ use crate::route::NotificationEnd;
 use log::{debug, warn};
 use zellij_utils::data::{
     CommandOrPlugin, Direction, FloatingPaneCoordinates, GetFocusedPaneInfoResponse,
-    KeyWithModifier, LayoutInfo, ListPanesResponse, NewPanePlacement, PaneContents, PaneInfo,
-    PaneListEntry, PaneManifest, PaneScrollbackResponse, PluginPermission, Resize, ResizeStrategy,
-    SessionInfo, Styling, WebSharing,
+    KeyWithModifier, LayoutInfo, ListPanesResponse, ListTabsResponse, NewPanePlacement,
+    PaneContents, PaneInfo, PaneListEntry, PaneManifest, PaneScrollbackResponse,
+    PluginPermission, Resize, ResizeStrategy, SessionInfo, Styling, TabInfo, WebSharing,
 };
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
@@ -84,7 +84,7 @@ use crate::{
     ClientId, ServerInstruction,
 };
 use zellij_utils::{
-    data::{Event, InputMode, ModeInfo, Palette, PaletteColor, PluginCapabilities, Style, TabInfo},
+    data::{Event, InputMode, ModeInfo, Palette, PaletteColor, PluginCapabilities, Style},
     errors::{ContextType, ScreenContext},
     input::get_mode_info,
     ipc::{ClientAttributes, PixelDimensions, ServerToClientMsg},
@@ -552,6 +552,14 @@ pub enum ScreenInstruction {
         show_all: bool,
         response_channel: crossbeam::channel::Sender<ListPanesResponse>,
     },
+    ListTabs {
+        client_id: ClientId,
+        response_channel: crossbeam::channel::Sender<ListTabsResponse>,
+    },
+    GetCurrentTabInfo {
+        client_id: ClientId,
+        response_channel: crossbeam::channel::Sender<Option<TabInfo>>,
+    },
     Reconfigure {
         client_id: ClientId,
         keybinds: Keybinds,
@@ -826,6 +834,8 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::RenameSession(..) => ScreenContext::RenameSession,
             ScreenInstruction::ListClientsMetadata(..) => ScreenContext::ListClientsMetadata,
             ScreenInstruction::ListPanes { .. } => ScreenContext::ListPanes,
+            ScreenInstruction::ListTabs { .. } => ScreenContext::ListTabs,
+            ScreenInstruction::GetCurrentTabInfo { .. } => ScreenContext::GetCurrentTabInfo,
             ScreenInstruction::Reconfigure { .. } => ScreenContext::Reconfigure,
             ScreenInstruction::RerunCommandPane { .. } => ScreenContext::RerunCommandPane,
             ScreenInstruction::ResizePaneWithId(..) => ScreenContext::ResizePaneWithId,
@@ -2316,6 +2326,28 @@ impl Screen {
 
         sort_panes_by_tab_and_type(&mut pane_entries);
         Ok(pane_entries)
+    }
+
+    fn collect_tab_list(&self, _client_id: ClientId) -> Result<ListTabsResponse> {
+        let mut tab_infos = Vec::new();
+
+        for tab in self.tabs.values() {
+            if let Some(tab_info) = self.get_tab_info(tab.id) {
+                tab_infos.push(tab_info);
+            }
+        }
+
+        // Sort by position (display order)
+        tab_infos.sort_by_key(|t| t.position);
+
+        Ok(tab_infos)
+    }
+
+    fn get_current_tab_info(&self, client_id: ClientId) -> Result<Option<TabInfo>> {
+        match self.active_tab_ids.get(&client_id) {
+            Some(active_tab_id) => Ok(self.get_tab_info(*active_tab_id)),
+            None => Ok(None),
+        }
     }
 
     fn log_and_report_session_state(&mut self, skip_querying_layouts: bool) -> Result<()> {
@@ -4583,6 +4615,26 @@ pub(crate) fn screen_thread_main(
                     .collect_pane_list(show_all)
                     .with_context(err_context)?;
                 let _ = response_channel.send(pane_entries);
+            },
+            ScreenInstruction::ListTabs {
+                client_id,
+                response_channel,
+            } => {
+                let err_context = || "Failed to list tabs";
+                let tab_infos = screen
+                    .collect_tab_list(client_id)
+                    .with_context(err_context)?;
+                let _ = response_channel.send(tab_infos);
+            },
+            ScreenInstruction::GetCurrentTabInfo {
+                client_id,
+                response_channel,
+            } => {
+                let err_context = || "Failed to get current tab info";
+                let tab_info = screen
+                    .get_current_tab_info(client_id)
+                    .with_context(err_context)?;
+                let _ = response_channel.send(tab_info);
             },
             ScreenInstruction::DumpLayoutToPlugin {
                 plugin_id,
