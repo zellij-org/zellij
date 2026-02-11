@@ -432,6 +432,16 @@ pub enum Action {
         tab_index: u32,
         name: Vec<u8>,
     },
+    GoToTabById {
+        id: u64,
+    },
+    CloseTabById {
+        id: u64,
+    },
+    RenameTabById {
+        id: u64,
+        name: String,
+    },
     BreakPane,
     BreakPaneRight,
     BreakPaneLeft,
@@ -473,6 +483,17 @@ pub enum Action {
         show_state: bool,
         show_geometry: bool,
         show_all: bool,
+        output_json: bool,
+    },
+    ListTabs {
+        show_state: bool,
+        show_dimensions: bool,
+        show_panes: bool,
+        show_layout: bool,
+        show_all: bool,
+        output_json: bool,
+    },
+    CurrentTabInfo {
         output_json: bool,
     },
     TogglePanePinned,
@@ -933,6 +954,9 @@ impl Action {
                 },
             ]),
             CliAction::UndoRenameTab => Ok(vec![Action::UndoRenameTab]),
+            CliAction::GoToTabById { id } => Ok(vec![Action::GoToTabById { id }]),
+            CliAction::CloseTabById { id } => Ok(vec![Action::CloseTabById { id }]),
+            CliAction::RenameTabById { id, name } => Ok(vec![Action::RenameTabById { id, name }]),
             CliAction::NewTab {
                 name,
                 layout,
@@ -1331,6 +1355,24 @@ impl Action {
                 show_all: all,
                 output_json: json,
             }]),
+            CliAction::ListTabs {
+                state,
+                dimensions,
+                panes,
+                layout,
+                all,
+                json,
+            } => Ok(vec![Action::ListTabs {
+                show_state: state,
+                show_dimensions: dimensions,
+                show_panes: panes,
+                show_layout: layout,
+                show_all: all,
+                output_json: json,
+            }]),
+            CliAction::CurrentTabInfo { json } => {
+                Ok(vec![Action::CurrentTabInfo { output_json: json }])
+            },
             CliAction::TogglePanePinned => Ok(vec![Action::TogglePanePinned]),
             CliAction::StackPanes { pane_ids } => {
                 let mut malformed_ids = vec![];

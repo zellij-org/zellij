@@ -184,6 +184,11 @@ enum CommandName {
   GetTabInfo = 189;
   GetPaneRunningCommand = 190;
   GetPaneCwd = 191;
+  SwitchTabToId = 192;
+  GoToTabWithId = 193;
+  CloseTabWithId = 194;
+  RenameTabWithId = 195;
+  BreakPanesToTabWithId = 196;
 }
 
 message PluginCommand {
@@ -317,6 +322,11 @@ message PluginCommand {
     GetTabInfoPayload get_tab_info_payload = 140;
     GetPaneRunningCommandPayload get_pane_running_command_payload = 141;
     GetPaneCwdPayload get_pane_cwd_payload = 142;
+    SwitchTabToIdPayload switch_tab_to_id_payload = 143;
+    GoToTabWithIdPayload go_to_tab_with_id_payload = 144;
+    CloseTabWithIdPayload close_tab_with_id_payload = 145;
+    RenameTabWithIdPayload rename_tab_with_id_payload = 146;
+    BreakPanesToTabWithIdPayload break_panes_to_tab_with_id_payload = 147;
   }
 }
 
@@ -747,6 +757,36 @@ message FixedOrPercentValue {
 enum FixedOrPercent {
   Fixed = 0;
   Percent = 1;
+}
+
+message SwitchTabToIdPayload {
+  uint64 tab_id = 1;
+}
+
+message GoToTabWithIdPayload {
+  uint64 tab_id = 1;
+}
+
+message CloseTabWithIdPayload {
+  uint64 tab_id = 1;
+}
+
+message RenameTabWithIdPayload {
+  uint64 tab_id = 1;
+  string new_name = 2;
+}
+
+message BreakPanesToTabWithIdPayload {
+  repeated PaneId pane_ids = 1;
+  uint64 tab_id = 2;
+  bool should_change_focus_to_target_tab = 3;
+}
+
+message BreakPanesToTabWithIdResponse {
+  oneof result {
+    uint64 tab_id = 1;
+    bool none = 2;
+  }
 }
 
 message CreateTokenResponse {

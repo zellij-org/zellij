@@ -19,7 +19,8 @@ use zellij_utils::{
     channels::SenderWithContext,
     data::{
         BareKey, ConnectToSession, Direction, Event, InputMode, KeyModifier, ListPanesResponse,
-        NewPanePlacement, PaneListEntry, PluginCapabilities, ResizeStrategy, UnblockCondition,
+        ListTabsResponse, NewPanePlacement, PaneListEntry, PluginCapabilities, ResizeStrategy,
+        TabInfo, UnblockCondition,
     },
     envs,
     errors::prelude::*,
@@ -1024,6 +1025,32 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
         },
+        Action::GoToTabById { id } => {
+            senders
+                .send_to_screen(ScreenInstruction::GoToTabWithId(
+                    id as usize,
+                    Some(client_id),
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
+        Action::CloseTabById { id } => {
+            senders
+                .send_to_screen(ScreenInstruction::CloseTabWithId(
+                    id as usize,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
+        Action::RenameTabById { id, name } => {
+            senders
+                .send_to_screen(ScreenInstruction::RenameTabWithId(
+                    id as usize,
+                    name.into_bytes(),
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
         Action::MoveTab { direction } => {
             let screen_instr = match direction {
                 Direction::Left | Direction::Up => ScreenInstruction::MoveTabLeft(
@@ -1585,6 +1612,59 @@ pub(crate) fn route_action(
                 send_output_to_client(cli_client_id, os_input.as_ref(), output_lines);
             } else {
                 send_error_to_client(cli_client_id, os_input.as_ref(), "Timeout listing panes");
+            }
+            drop(NotificationEnd::new(completion_tx));
+        },
+        Action::ListTabs {
+            show_state,
+            show_dimensions,
+            show_panes,
+            show_layout,
+            show_all,
+            output_json,
+        } => {
+            let maybe_tabs =
+                request_tabs_from_screen(&senders, client_id).with_context(err_context)?;
+
+            if let Some(tab_infos) = maybe_tabs {
+                let output_lines = if output_json {
+                    format_tabs_as_json(&tab_infos)
+                } else {
+                    format_tabs_table(
+                        &tab_infos,
+                        show_state || show_all,
+                        show_dimensions || show_all,
+                        show_panes || show_all,
+                        show_layout || show_all,
+                    )
+                };
+
+                send_output_to_client(cli_client_id, os_input.as_ref(), output_lines);
+            } else {
+                send_error_to_client(cli_client_id, os_input.as_ref(), "Timeout listing tabs");
+            }
+            drop(NotificationEnd::new(completion_tx));
+        },
+        Action::CurrentTabInfo { output_json } => {
+            let maybe_tab_info = request_current_tab_info_from_screen(&senders, client_id)
+                .with_context(err_context)?;
+
+            match maybe_tab_info {
+                Some(tab_info) => {
+                    let output_lines = if output_json {
+                        format_current_tab_info_as_json(&tab_info)
+                    } else {
+                        format_current_tab_info_plain(&tab_info)
+                    };
+                    send_output_to_client(cli_client_id, os_input.as_ref(), output_lines);
+                },
+                None => {
+                    send_error_to_client(
+                        cli_client_id,
+                        os_input.as_ref(),
+                        "No active tab found for current client",
+                    );
+                },
             }
             drop(NotificationEnd::new(completion_tx));
         },
@@ -2238,6 +2318,58 @@ fn request_panes_from_screen(
     }
 }
 
+fn request_tabs_from_screen(
+    senders: &ThreadSenders,
+    client_id: ClientId,
+) -> Result<Option<ListTabsResponse>> {
+    use crossbeam::channel::{unbounded, RecvTimeoutError};
+    use std::time::Duration;
+
+    let (response_sender, response_receiver) = unbounded();
+    senders.send_to_screen(ScreenInstruction::ListTabs {
+        client_id,
+        response_channel: response_sender,
+    })?;
+
+    match response_receiver.recv_timeout(Duration::from_secs(1)) {
+        Ok(entries) => Ok(Some(entries)),
+        Err(RecvTimeoutError::Timeout) => {
+            log::error!("ListTabs timed out waiting for Screen response");
+            Ok(None)
+        },
+        Err(RecvTimeoutError::Disconnected) => {
+            log::error!("ListTabs channel disconnected");
+            Ok(None)
+        },
+    }
+}
+
+fn request_current_tab_info_from_screen(
+    senders: &ThreadSenders,
+    client_id: ClientId,
+) -> Result<Option<TabInfo>> {
+    use crossbeam::channel::{unbounded, RecvTimeoutError};
+    use std::time::Duration;
+
+    let (response_sender, response_receiver) = unbounded();
+    senders.send_to_screen(ScreenInstruction::GetCurrentTabInfo {
+        client_id,
+        response_channel: response_sender,
+    })?;
+
+    match response_receiver.recv_timeout(Duration::from_secs(1)) {
+        Ok(tab_info_opt) => Ok(tab_info_opt),
+        Err(RecvTimeoutError::Timeout) => {
+            log::error!("GetCurrentTabInfo timed out waiting for Screen response");
+            Ok(None)
+        },
+        Err(RecvTimeoutError::Disconnected) => {
+            log::error!("GetCurrentTabInfo channel disconnected");
+            Ok(None)
+        },
+    }
+}
+
 fn enrich_panes_with_pty_data(
     pane_entries: &mut [PaneListEntry],
     senders: &ThreadSenders,
@@ -2443,6 +2575,139 @@ fn extract_cwd(entry: &PaneListEntry) -> String {
         .map(|s| s.as_str())
         .unwrap_or("-")
         .to_string()
+}
+
+fn format_tabs_as_json(tab_infos: &[TabInfo]) -> Vec<String> {
+    vec![serde_json::to_string_pretty(tab_infos).unwrap_or_else(|_| "[]".to_string())]
+}
+
+fn format_tabs_table(
+    tabs: &[TabInfo],
+    show_state: bool,
+    show_dimensions: bool,
+    show_panes: bool,
+    show_layout: bool,
+) -> Vec<String> {
+    let mut lines = Vec::new();
+    lines.push(build_tabs_table_header(
+        show_state,
+        show_dimensions,
+        show_panes,
+        show_layout,
+    ));
+
+    for tab_info in tabs {
+        lines.push(build_tabs_table_row(
+            tab_info,
+            show_state,
+            show_dimensions,
+            show_panes,
+            show_layout,
+        ));
+    }
+
+    lines
+}
+
+fn build_tabs_table_header(
+    show_state: bool,
+    show_dimensions: bool,
+    show_panes: bool,
+    show_layout: bool,
+) -> String {
+    let mut header = Vec::new();
+
+    // Core fields (always shown)
+    header.push("TAB_ID");
+    header.push("POSITION");
+    header.push("NAME");
+
+    if show_state {
+        header.push("ACTIVE");
+        header.push("FULLSCREEN");
+        header.push("SYNC_PANES");
+        header.push("FLOATING_VIS");
+    }
+
+    if show_dimensions {
+        header.push("VP_ROWS");
+        header.push("VP_COLS");
+        header.push("DA_ROWS");
+        header.push("DA_COLS");
+    }
+
+    if show_panes {
+        header.push("TILED_PANES");
+        header.push("FLOAT_PANES");
+        header.push("HIDDEN_PANES");
+    }
+
+    if show_layout {
+        header.push("SWAP_LAYOUT");
+        header.push("LAYOUT_DIRTY");
+    }
+
+    header.join("  ")
+}
+
+fn build_tabs_table_row(
+    tab_info: &TabInfo,
+    show_state: bool,
+    show_dimensions: bool,
+    show_panes: bool,
+    show_layout: bool,
+) -> String {
+    let mut row = Vec::new();
+
+    // Core fields
+    row.push(tab_info.tab_id.to_string());
+    row.push(tab_info.position.to_string());
+    row.push(tab_info.name.clone());
+
+    if show_state {
+        row.push(tab_info.active.to_string());
+        row.push(tab_info.is_fullscreen_active.to_string());
+        row.push(tab_info.is_sync_panes_active.to_string());
+        row.push(tab_info.are_floating_panes_visible.to_string());
+    }
+
+    if show_dimensions {
+        row.push(tab_info.viewport_rows.to_string());
+        row.push(tab_info.viewport_columns.to_string());
+        row.push(tab_info.display_area_rows.to_string());
+        row.push(tab_info.display_area_columns.to_string());
+    }
+
+    if show_panes {
+        row.push(tab_info.selectable_tiled_panes_count.to_string());
+        row.push(tab_info.selectable_floating_panes_count.to_string());
+        row.push(tab_info.panes_to_hide.to_string());
+    }
+
+    if show_layout {
+        row.push(
+            tab_info
+                .active_swap_layout_name
+                .as_deref()
+                .unwrap_or("-")
+                .to_string(),
+        );
+        row.push(tab_info.is_swap_layout_dirty.to_string());
+    }
+
+    row.join("  ")
+}
+
+fn format_current_tab_info_as_json(tab_info: &TabInfo) -> Vec<String> {
+    vec![serde_json::to_string_pretty(tab_info).unwrap_or_else(|_| "{}".to_string())]
+}
+
+fn format_current_tab_info_plain(tab_info: &TabInfo) -> Vec<String> {
+    vec![
+        format!("name: {}", tab_info.name),
+        format!("id: {}", tab_info.tab_id),
+        format!("position: {}", tab_info.position),
+    ]
 }
 
 fn send_error_to_client(

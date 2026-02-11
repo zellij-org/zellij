@@ -3,20 +3,23 @@ pub use super::generated_api::api::{
     event::{EventNameList as ProtobufEventNameList, Header},
     input_mode::InputMode as ProtobufInputMode,
     plugin_command::{
-        break_panes_to_new_tab_response, break_panes_to_tab_with_index_response,
-        delete_layout_response, dump_layout_response, dump_session_layout_response,
-        edit_layout_response, focus_or_create_tab_response, get_focused_pane_info_response,
-        get_pane_cwd_response, get_pane_pid_response, get_pane_running_command_response,
-        new_tab_response, parse_layout_response, plugin_command::Payload, rename_layout_response,
-        save_layout_response, save_session_response, BreakPanesToNewTabPayload,
+        break_panes_to_new_tab_response, break_panes_to_tab_with_id_response,
+        break_panes_to_tab_with_index_response, delete_layout_response, dump_layout_response,
+        dump_session_layout_response, edit_layout_response, focus_or_create_tab_response,
+        get_focused_pane_info_response, get_pane_cwd_response, get_pane_pid_response,
+        get_pane_running_command_response, new_tab_response, parse_layout_response,
+        plugin_command::Payload, rename_layout_response, save_layout_response,
+        save_session_response, BreakPanesToNewTabPayload,
         BreakPanesToNewTabResponse as ProtobufBreakPanesToNewTabResponse,
+        BreakPanesToTabWithIdPayload,
+        BreakPanesToTabWithIdResponse as ProtobufBreakPanesToTabWithIdResponse,
         BreakPanesToTabWithIndexPayload,
         BreakPanesToTabWithIndexResponse as ProtobufBreakPanesToTabWithIndexResponse,
         ChangeFloatingPanesCoordinatesPayload, ChangeHostFolderPayload,
         ClearScreenForPaneIdPayload, CliPipeOutputPayload, CloseMultiplePanesPayload,
-        CloseTabWithIndexPayload, CommandName, ContextItem, CopyToClipboardPayload,
-        CreateTokenResponse as ProtobufCreateTokenResponse, CreateTokenResponse,
-        CurrentSessionLastSavedTimePayload,
+        CloseTabWithIdPayload, CloseTabWithIndexPayload, CommandName, ContextItem,
+        CopyToClipboardPayload, CreateTokenResponse as ProtobufCreateTokenResponse,
+        CreateTokenResponse, CurrentSessionLastSavedTimePayload,
         CurrentSessionLastSavedTimeResponse as ProtobufCurrentSessionLastSavedTimeResponse,
         CursorPosition, DeleteLayoutPayload, DeleteLayoutResponse as ProtobufDeleteLayoutResponse,
         DumpLayoutPayload, DumpLayoutResponse as ProtobufDumpLayoutResponse,
@@ -39,13 +42,14 @@ pub use super::generated_api::api::{
         GetPaneRunningCommandPayload as ProtobufGetPaneRunningCommandPayload,
         GetPaneRunningCommandResponse as ProtobufGetPaneRunningCommandResponse,
         GetPaneScrollbackPayload, GetTabInfoPayload,
-        GetTabInfoResponse as ProtobufGetTabInfoResponse, GroupAndUngroupPanesPayload,
-        HidePaneWithIdPayload, HighlightAndUnhighlightPanesPayload, HttpVerb as ProtobufHttpVerb,
-        IdAndNewName, KeyToRebind, KeyToUnbind, KillSessionsPayload, ListTokensResponse,
-        LoadNewPluginPayload, MessageToPluginPayload, MovePaneWithPaneIdInDirectionPayload,
-        MovePaneWithPaneIdPayload, MovePayload, NewPluginArgs as ProtobufNewPluginArgs,
-        NewTabPayload, NewTabResponse as ProtobufNewTabResponse,
-        NewTabsResponse as ProtobufNewTabsResponse, NewTabsWithLayoutInfoPayload,
+        GetTabInfoResponse as ProtobufGetTabInfoResponse, GoToTabWithIdPayload,
+        GroupAndUngroupPanesPayload, HidePaneWithIdPayload, HighlightAndUnhighlightPanesPayload,
+        HttpVerb as ProtobufHttpVerb, IdAndNewName, KeyToRebind, KeyToUnbind, KillSessionsPayload,
+        ListTokensResponse, LoadNewPluginPayload, MessageToPluginPayload,
+        MovePaneWithPaneIdInDirectionPayload, MovePaneWithPaneIdPayload, MovePayload,
+        NewPluginArgs as ProtobufNewPluginArgs, NewTabPayload,
+        NewTabResponse as ProtobufNewTabResponse, NewTabsResponse as ProtobufNewTabsResponse,
+        NewTabsWithLayoutInfoPayload,
         OpenCommandPaneBackgroundResponse as ProtobufOpenCommandPaneBackgroundResponse,
         OpenCommandPaneFloatingNearPluginPayload,
         OpenCommandPaneFloatingNearPluginResponse as ProtobufOpenCommandPaneFloatingNearPluginResponse,
@@ -77,9 +81,10 @@ pub use super::generated_api::api::{
         ParseLayoutResponse as ProtobufParseLayoutResponse, PluginCommand as ProtobufPluginCommand,
         PluginMessagePayload, RebindKeysPayload, ReconfigurePayload, ReloadPluginPayload,
         RenameLayoutPayload, RenameLayoutResponse as ProtobufRenameLayoutResponse,
-        RenameWebLoginTokenPayload, RenameWebTokenResponse, ReplacePaneWithExistingPanePayload,
-        RequestPluginPermissionPayload, RerunCommandPanePayload, ResizePaneIdWithDirectionPayload,
-        ResizePayload, RevokeAllWebTokensResponse, RevokeTokenResponse, RevokeWebLoginTokenPayload,
+        RenameTabWithIdPayload, RenameWebLoginTokenPayload, RenameWebTokenResponse,
+        ReplacePaneWithExistingPanePayload, RequestPluginPermissionPayload,
+        RerunCommandPanePayload, ResizePaneIdWithDirectionPayload, ResizePayload,
+        RevokeAllWebTokensResponse, RevokeTokenResponse, RevokeWebLoginTokenPayload,
         RunActionPayload, RunCommandPayload, RunningCommand as ProtobufRunningCommand,
         SaveLayoutPayload, SaveLayoutResponse as ProtobufSaveLayoutResponse, SaveSessionPayload,
         SaveSessionResponse as ProtobufSaveSessionResponse, ScrollDownInPaneIdPayload,
@@ -87,9 +92,9 @@ pub use super::generated_api::api::{
         SetFloatingPanePinnedPayload, SetPaneBorderlessPayload,
         SetSelfMouseSelectionSupportPayload, SetTimeoutPayload, ShowCursorPayload,
         ShowPaneWithIdPayload, StackPanesPayload, SubscribePayload, SwitchSessionPayload,
-        SwitchTabToPayload, TogglePaneBorderlessPayload, TogglePaneEmbedOrEjectForPaneIdPayload,
-        TogglePaneIdFullscreenPayload, UnsubscribePayload, WebRequestPayload,
-        WriteCharsToPaneIdPayload, WriteToPaneIdPayload,
+        SwitchTabToIdPayload, SwitchTabToPayload, TogglePaneBorderlessPayload,
+        TogglePaneEmbedOrEjectForPaneIdPayload, TogglePaneIdFullscreenPayload, UnsubscribePayload,
+        WebRequestPayload, WriteCharsToPaneIdPayload, WriteToPaneIdPayload,
     },
     plugin_permission::PermissionType as ProtobufPermissionType,
     resize::ResizeAction as ProtobufResizeAction,
@@ -1679,6 +1684,44 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 )),
                 _ => Err("Mismatched payload for BreakPanesToTabWithIndex"),
             },
+            Some(CommandName::SwitchTabToId) => match protobuf_plugin_command.payload {
+                Some(Payload::SwitchTabToIdPayload(payload)) => {
+                    Ok(PluginCommand::SwitchTabToId(payload.tab_id))
+                },
+                _ => Err("Mismatched payload for SwitchTabToId"),
+            },
+            Some(CommandName::GoToTabWithId) => match protobuf_plugin_command.payload {
+                Some(Payload::GoToTabWithIdPayload(payload)) => {
+                    Ok(PluginCommand::GoToTabWithId(payload.tab_id))
+                },
+                _ => Err("Mismatched payload for GoToTabWithId"),
+            },
+            Some(CommandName::CloseTabWithId) => match protobuf_plugin_command.payload {
+                Some(Payload::CloseTabWithIdPayload(payload)) => {
+                    Ok(PluginCommand::CloseTabWithId(payload.tab_id))
+                },
+                _ => Err("Mismatched payload for CloseTabWithId"),
+            },
+            Some(CommandName::RenameTabWithId) => match protobuf_plugin_command.payload {
+                Some(Payload::RenameTabWithIdPayload(payload)) => Ok(
+                    PluginCommand::RenameTabWithId(payload.tab_id, payload.new_name),
+                ),
+                _ => Err("Mismatched payload for RenameTabWithId"),
+            },
+            Some(CommandName::BreakPanesToTabWithId) => match protobuf_plugin_command.payload {
+                Some(Payload::BreakPanesToTabWithIdPayload(payload)) => {
+                    Ok(PluginCommand::BreakPanesToTabWithId(
+                        payload
+                            .pane_ids
+                            .into_iter()
+                            .filter_map(|p_id| p_id.try_into().ok())
+                            .collect(),
+                        payload.tab_id,
+                        payload.should_change_focus_to_target_tab,
+                    ))
+                },
+                _ => Err("Mismatched payload for BreakPanesToTabWithId"),
+            },
             Some(CommandName::ReloadPlugin) => match protobuf_plugin_command.payload {
                 Some(Payload::ReloadPluginPayload(reload_plugin_payload)) => {
                     Ok(PluginCommand::ReloadPlugin(reload_plugin_payload.plugin_id))
@@ -3128,6 +3171,48 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     },
                 )),
             }),
+            PluginCommand::SwitchTabToId(tab_id) => Ok(ProtobufPluginCommand {
+                name: CommandName::SwitchTabToId as i32,
+                payload: Some(Payload::SwitchTabToIdPayload(SwitchTabToIdPayload {
+                    tab_id,
+                })),
+            }),
+            PluginCommand::GoToTabWithId(tab_id) => Ok(ProtobufPluginCommand {
+                name: CommandName::GoToTabWithId as i32,
+                payload: Some(Payload::GoToTabWithIdPayload(GoToTabWithIdPayload {
+                    tab_id,
+                })),
+            }),
+            PluginCommand::CloseTabWithId(tab_id) => Ok(ProtobufPluginCommand {
+                name: CommandName::CloseTabWithId as i32,
+                payload: Some(Payload::CloseTabWithIdPayload(CloseTabWithIdPayload {
+                    tab_id,
+                })),
+            }),
+            PluginCommand::RenameTabWithId(tab_id, new_name) => Ok(ProtobufPluginCommand {
+                name: CommandName::RenameTabWithId as i32,
+                payload: Some(Payload::RenameTabWithIdPayload(RenameTabWithIdPayload {
+                    tab_id,
+                    new_name,
+                })),
+            }),
+            PluginCommand::BreakPanesToTabWithId(
+                pane_ids,
+                tab_id,
+                should_change_focus_to_target_tab,
+            ) => Ok(ProtobufPluginCommand {
+                name: CommandName::BreakPanesToTabWithId as i32,
+                payload: Some(Payload::BreakPanesToTabWithIdPayload(
+                    BreakPanesToTabWithIdPayload {
+                        pane_ids: pane_ids
+                            .into_iter()
+                            .filter_map(|p_id| p_id.try_into().ok())
+                            .collect(),
+                        tab_id,
+                        should_change_focus_to_target_tab,
+                    },
+                )),
+            }),
             PluginCommand::ReloadPlugin(plugin_id) => Ok(ProtobufPluginCommand {
                 name: CommandName::ReloadPlugin as i32,
                 payload: Some(Payload::ReloadPluginPayload(ReloadPluginPayload {
@@ -3601,8 +3686,8 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
 
 // Conversion implementations for tab creation response types
 use crate::data::{
-    BreakPanesToNewTabResponse, BreakPanesToTabWithIndexResponse, FocusOrCreateTabResponse,
-    NewTabResponse, NewTabsResponse, OpenCommandPaneBackgroundResponse,
+    BreakPanesToNewTabResponse, BreakPanesToTabWithIdResponse, BreakPanesToTabWithIndexResponse,
+    FocusOrCreateTabResponse, NewTabResponse, NewTabsResponse, OpenCommandPaneBackgroundResponse,
     OpenCommandPaneFloatingNearPluginResponse, OpenCommandPaneFloatingResponse,
     OpenCommandPaneInPlaceOfPluginResponse, OpenCommandPaneInPlaceResponse,
     OpenCommandPaneNearPluginResponse, OpenCommandPaneResponse, OpenFileFloatingNearPluginResponse,
@@ -3720,6 +3805,21 @@ impl From<BreakPanesToTabWithIndexResponse> for ProtobufBreakPanesToTabWithIndex
             },
             None => ProtobufBreakPanesToTabWithIndexResponse {
                 result: Some(break_panes_to_tab_with_index_response::Result::None(true)),
+            },
+        }
+    }
+}
+
+impl From<BreakPanesToTabWithIdResponse> for ProtobufBreakPanesToTabWithIdResponse {
+    fn from(response: BreakPanesToTabWithIdResponse) -> Self {
+        match response {
+            Some(tab_id) => ProtobufBreakPanesToTabWithIdResponse {
+                result: Some(break_panes_to_tab_with_id_response::Result::TabId(
+                    tab_id as u64,
+                )),
+            },
+            None => ProtobufBreakPanesToTabWithIdResponse {
+                result: Some(break_panes_to_tab_with_id_response::Result::None(true)),
             },
         }
     }

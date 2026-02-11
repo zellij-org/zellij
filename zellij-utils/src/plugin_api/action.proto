@@ -232,6 +232,9 @@ message Action {
     NewInPlacePanePayload new_in_place_pane_payload = 52;
     OverrideLayoutPayload override_layout_payload = 53;
     SetPaneBorderlessPayload set_pane_borderless_payload = 54;
+    uint64 go_to_tab_by_id_payload = 55;
+    uint64 close_tab_by_id_payload = 56;
+    TabIdAndName rename_tab_by_id_payload = 57;
   }
 }
 
@@ -245,6 +248,11 @@ message CliPipePayload {
 message IdAndName {
   bytes name = 1;
   uint32 id = 2;
+}
+
+message TabIdAndName {
+  uint64 tab_id = 1;
+  string name = 2;
 }
 
 message PaneIdAndShouldFloat {
@@ -451,6 +459,9 @@ enum ActionName {
     NewInPlacePane = 92;
     OverrideLayout = 93;
     SetPaneBorderless = 94;
+    GoToTabById = 95;
+    CloseTabById = 96;
+    RenameTabById = 97;
 }
 
 message Position {
