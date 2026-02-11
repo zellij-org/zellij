@@ -1030,8 +1030,12 @@ impl TryFrom<Action> for ProtobufAction {
                     chars: chars_to_write,
                 })),
             }),
-            Action::WriteToPaneId { .. } | Action::WriteCharsToPaneId { .. } => {
-                Err("WriteToPaneId and WriteCharsToPaneId are CLI-only actions, not available in keybindings")
+            Action::WriteToPaneId { .. }
+            | Action::WriteCharsToPaneId { .. }
+            | Action::GoToTabById { .. }
+            | Action::CloseTabById { .. }
+            | Action::RenameTabById { .. } => {
+                Err("WriteToPaneId, WriteCharsToPaneId, GoToTabById, CloseTabById, and RenameTabById are CLI-only actions, not available in keybindings")
             },
             Action::SwitchToMode { input_mode } => {
                 let input_mode: ProtobufInputMode = input_mode.try_into()?;

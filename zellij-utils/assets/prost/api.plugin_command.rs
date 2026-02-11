@@ -3,7 +3,7 @@
 pub struct PluginCommand {
     #[prost(enumeration="CommandName", tag="1")]
     pub name: i32,
-    #[prost(oneof="plugin_command::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142")]
+    #[prost(oneof="plugin_command::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147")]
     pub payload: ::core::option::Option<plugin_command::Payload>,
 }
 /// Nested message and enum types in `PluginCommand`.
@@ -267,6 +267,16 @@ pub mod plugin_command {
         GetPaneRunningCommandPayload(super::GetPaneRunningCommandPayload),
         #[prost(message, tag="142")]
         GetPaneCwdPayload(super::GetPaneCwdPayload),
+        #[prost(message, tag="143")]
+        SwitchTabToIdPayload(super::SwitchTabToIdPayload),
+        #[prost(message, tag="144")]
+        GoToTabWithIdPayload(super::GoToTabWithIdPayload),
+        #[prost(message, tag="145")]
+        CloseTabWithIdPayload(super::CloseTabWithIdPayload),
+        #[prost(message, tag="146")]
+        RenameTabWithIdPayload(super::RenameTabWithIdPayload),
+        #[prost(message, tag="147")]
+        BreakPanesToTabWithIdPayload(super::BreakPanesToTabWithIdPayload),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -931,6 +941,59 @@ pub struct FixedOrPercentValue {
     pub r#type: i32,
     #[prost(uint32, tag="2")]
     pub value: u32,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SwitchTabToIdPayload {
+    #[prost(uint64, tag="1")]
+    pub tab_id: u64,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GoToTabWithIdPayload {
+    #[prost(uint64, tag="1")]
+    pub tab_id: u64,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CloseTabWithIdPayload {
+    #[prost(uint64, tag="1")]
+    pub tab_id: u64,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RenameTabWithIdPayload {
+    #[prost(uint64, tag="1")]
+    pub tab_id: u64,
+    #[prost(string, tag="2")]
+    pub new_name: ::prost::alloc::string::String,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BreakPanesToTabWithIdPayload {
+    #[prost(message, repeated, tag="1")]
+    pub pane_ids: ::prost::alloc::vec::Vec<PaneId>,
+    #[prost(uint64, tag="2")]
+    pub tab_id: u64,
+    #[prost(bool, tag="3")]
+    pub should_change_focus_to_target_tab: bool,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BreakPanesToTabWithIdResponse {
+    #[prost(oneof="break_panes_to_tab_with_id_response::Result", tags="1, 2")]
+    pub result: ::core::option::Option<break_panes_to_tab_with_id_response::Result>,
+}
+/// Nested message and enum types in `BreakPanesToTabWithIdResponse`.
+pub mod break_panes_to_tab_with_id_response {
+    #[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Result {
+        #[prost(uint64, tag="1")]
+        TabId(u64),
+        #[prost(bool, tag="2")]
+        None(bool),
+    }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1735,6 +1798,11 @@ pub enum CommandName {
     GetTabInfo = 189,
     GetPaneRunningCommand = 190,
     GetPaneCwd = 191,
+    SwitchTabToId = 192,
+    GoToTabWithId = 193,
+    CloseTabWithId = 194,
+    RenameTabWithId = 195,
+    BreakPanesToTabWithId = 196,
 }
 impl CommandName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -1914,6 +1982,11 @@ impl CommandName {
             CommandName::GetTabInfo => "GetTabInfo",
             CommandName::GetPaneRunningCommand => "GetPaneRunningCommand",
             CommandName::GetPaneCwd => "GetPaneCwd",
+            CommandName::SwitchTabToId => "SwitchTabToId",
+            CommandName::GoToTabWithId => "GoToTabWithId",
+            CommandName::CloseTabWithId => "CloseTabWithId",
+            CommandName::RenameTabWithId => "RenameTabWithId",
+            CommandName::BreakPanesToTabWithId => "BreakPanesToTabWithId",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -2090,6 +2163,11 @@ impl CommandName {
             "GetTabInfo" => Some(Self::GetTabInfo),
             "GetPaneRunningCommand" => Some(Self::GetPaneRunningCommand),
             "GetPaneCwd" => Some(Self::GetPaneCwd),
+            "SwitchTabToId" => Some(Self::SwitchTabToId),
+            "GoToTabWithId" => Some(Self::GoToTabWithId),
+            "CloseTabWithId" => Some(Self::CloseTabWithId),
+            "RenameTabWithId" => Some(Self::RenameTabWithId),
+            "BreakPanesToTabWithId" => Some(Self::BreakPanesToTabWithId),
             _ => None,
         }
     }

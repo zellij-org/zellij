@@ -884,6 +884,19 @@ pub enum CliAction {
     },
     /// Remove a previously set tab name
     UndoRenameTab,
+    /// Go to tab with stable ID
+    GoToTabById {
+        id: u64,
+    },
+    /// Close tab with stable ID
+    CloseTabById {
+        id: u64,
+    },
+    /// Rename tab by stable ID
+    RenameTabById {
+        id: u64,
+        name: String,
+    },
     /// Create a new tab, optionally with a specified tab layout and name
     ///
     /// Returns: The created tab's ID as a single number on stdout

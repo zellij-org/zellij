@@ -389,6 +389,16 @@ pub enum ScreenInstruction {
     UndoRenameTab(ClientId, Option<NotificationEnd>),
     MoveTabLeft(ClientId, Option<NotificationEnd>),
     MoveTabRight(ClientId, Option<NotificationEnd>),
+    GoToTabWithId(usize, Option<ClientId>, Option<NotificationEnd>),
+    CloseTabWithId(usize, Option<NotificationEnd>),
+    RenameTabWithId(usize, Vec<u8>, Option<NotificationEnd>),
+    BreakPanesToTabWithId {
+        pane_ids: Vec<PaneId>,
+        tab_id: usize,
+        should_change_focus_to_target_tab: bool,
+        client_id: ClientId,
+        completion_tx: Option<NotificationEnd>,
+    },
     TerminalResize(Size),
     TerminalPixelDimensions(PixelDimensions),
     TerminalBackgroundColor(String),
@@ -729,6 +739,10 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::UndoRenameTab(..) => ScreenContext::UndoRenameTab,
             ScreenInstruction::MoveTabLeft(..) => ScreenContext::MoveTabLeft,
             ScreenInstruction::MoveTabRight(..) => ScreenContext::MoveTabRight,
+            ScreenInstruction::GoToTabWithId(..) => ScreenContext::GoToTabWithId,
+            ScreenInstruction::CloseTabWithId(..) => ScreenContext::CloseTabWithId,
+            ScreenInstruction::RenameTabWithId(..) => ScreenContext::RenameTabWithId,
+            ScreenInstruction::BreakPanesToTabWithId { .. } => ScreenContext::BreakPanesToTabWithId,
             ScreenInstruction::TerminalResize(..) => ScreenContext::TerminalResize,
             ScreenInstruction::TerminalPixelDimensions(..) => {
                 ScreenContext::TerminalPixelDimensions
@@ -6378,6 +6392,86 @@ pub(crate) fn screen_thread_main(
                     },
                 }
                 screen.log_and_report_session_state(false)?;
+            },
+            ScreenInstruction::GoToTabWithId(tab_id, client_id, _completion_tx) => {
+                let client_id_to_switch = client_id
+                    .and_then(|cid| {
+                        if screen.active_tab_ids.contains_key(&cid) {
+                            Some(cid)
+                        } else {
+                            screen.active_tab_ids.keys().next().copied()
+                        }
+                    })
+                    .or_else(|| screen.active_tab_ids.keys().next().copied());
+
+                if let Some(client_id) = client_id_to_switch {
+                    // Get the position from the ID
+                    if let Some(tab_position) = screen.get_tab_position_by_id(tab_id) {
+                        // switch_active_tab expects 0-based position
+                        screen.switch_active_tab(tab_position, None, true, client_id)?;
+                        screen.render(None)?;
+
+                        screen
+                            .tab_history
+                            .entry(client_id)
+                            .or_insert_with(Vec::new)
+                            .push(tab_id);
+                    } else {
+                        log::error!("Tab with ID {} not found", tab_id);
+                    }
+                }
+            },
+            ScreenInstruction::RenameTabWithId(tab_id, new_name, _completion_tx) => {
+                // Use get_tab_by_id_mut() helper method
+                if let Some(tab) = screen.get_tab_by_id_mut(tab_id) {
+                    tab.name = String::from_utf8_lossy(&new_name).to_string();
+                    screen.log_and_report_session_state(false)?;
+                } else {
+                    log::error!("Failed to find tab with ID: {}", tab_id);
+                }
+            },
+            ScreenInstruction::CloseTabWithId(tab_id, _completion_tx) => {
+                if screen.get_tab_by_id(tab_id).is_some() {
+                    screen.close_tab_by_id(tab_id).non_fatal();
+                } else {
+                    log::error!("Failed to find tab with ID: {}", tab_id);
+                }
+            },
+            ScreenInstruction::BreakPanesToTabWithId {
+                pane_ids,
+                tab_id,
+                should_change_focus_to_target_tab,
+                client_id,
+                mut completion_tx,
+            } => {
+                // Verify tab exists
+                if screen.get_tab_by_id(tab_id).is_none() {
+                    log::error!("Tab with ID {} not found", tab_id);
+                    // Don't set affected_tab_id, it will remain None to signal failure
+                } else {
+                    // break_multiple_panes_to_tab_with_index uses tab ID
+                    screen
+                        .break_multiple_panes_to_tab_with_index(
+                            pane_ids,
+                            tab_id,
+                            should_change_focus_to_target_tab,
+                            client_id,
+                        )?;
+                    // Set affected tab ID (tab_id is the ID here)
+                    completion_tx
+                        .as_mut()
+                        .map(|c| c.set_affected_tab_id(tab_id));
+                    let pane_group = screen.get_client_pane_group(&client_id);
+                    if !pane_group.is_empty() {
+                        let _ = screen.bus.senders.send_to_background_jobs(
+                            BackgroundJob::HighlightPanesWithMessage(
+                                pane_group.iter().copied().collect(),
+                                "BROKEN OUT".to_owned(),
+                            ),
+                        );
+                    }
+                    screen.clear_pane_group(&client_id);
+                }
             },
             ScreenInstruction::RequestPluginPermissions(plugin_id, plugin_permission) => {
                 let all_tabs = screen.get_tabs_mut();

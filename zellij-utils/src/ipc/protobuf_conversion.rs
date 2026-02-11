@@ -717,12 +717,13 @@ impl From<crate::input::actions::Action>
         use crate::client_server_contract::client_server_contract::{
             action::ActionType, BreakPaneAction, BreakPaneLeftAction, BreakPaneRightAction,
             ChangeFloatingPaneCoordinatesAction, ClearScreenAction, CliPipeAction,
-            CloseFocusAction, ClosePluginPaneAction, CloseTabAction, CloseTerminalPaneAction,
-            ConfirmAction, CopyAction, DenyAction, DetachAction, DumpLayoutAction,
+            CloseFocusAction, ClosePluginPaneAction, CloseTabAction, CloseTabByIdAction,
+            CloseTerminalPaneAction, ConfirmAction, CopyAction, DenyAction, DetachAction,
+            DumpLayoutAction,
             DumpScreenAction, EditFileAction, EditScrollbackAction, FocusNextPaneAction,
             FocusPluginPaneWithIdAction, FocusPreviousPaneAction, FocusTerminalPaneWithIdAction,
-            GoToNextTabAction, GoToPreviousTabAction, GoToTabAction, GoToTabNameAction,
-            HalfPageScrollDownAction, HalfPageScrollUpAction, KeybindPipeAction,
+            GoToNextTabAction, GoToPreviousTabAction, GoToTabAction, GoToTabByIdAction,
+            GoToTabNameAction, HalfPageScrollDownAction, HalfPageScrollUpAction, KeybindPipeAction,
             LaunchOrFocusPluginAction, LaunchPluginAction, ListClientsAction, ListPanesAction,
             MouseEventAction, MoveFocusAction, MoveFocusOrTabAction, MovePaneAction,
             MovePaneBackwardsAction, MoveTabAction, NewBlockingPaneAction, NewFloatingPaneAction,
@@ -731,7 +732,8 @@ impl From<crate::input::actions::Action>
             NewTiledPluginPaneAction, NextSwapLayoutAction, NoOpAction, OverrideLayoutAction,
             PageScrollDownAction, PageScrollUpAction, PaneIdWithPlugin, PaneNameInputAction,
             PreviousSwapLayoutAction, QueryTabNamesAction, QuitAction, RenamePluginPaneAction,
-            RenameSessionAction, RenameTabAction, RenameTerminalPaneAction, ResizeAction,
+            RenameSessionAction, RenameTabAction, RenameTabByIdAction, RenameTerminalPaneAction,
+            ResizeAction,
             RunAction, SaveSessionAction, ScrollDownAction, ScrollDownAtAction,
             ScrollToBottomAction, ScrollToTopAction, ScrollUpAction, ScrollUpAtAction,
             SearchAction, SearchInputAction, SearchToggleOptionAction, SetPaneBorderlessAction,
@@ -1211,6 +1213,15 @@ impl From<crate::input::actions::Action>
                     tab_index,
                     name: name.into_iter().map(|b| b as u32).collect(),
                 })
+            },
+            crate::input::actions::Action::GoToTabById { id } => {
+                ActionType::GoToTabById(GoToTabByIdAction { id })
+            },
+            crate::input::actions::Action::CloseTabById { id } => {
+                ActionType::CloseTabById(CloseTabByIdAction { id })
+            },
+            crate::input::actions::Action::RenameTabById { id, name } => {
+                ActionType::RenameTabById(RenameTabByIdAction { id, name })
             },
             crate::input::actions::Action::BreakPane => ActionType::BreakPane(BreakPaneAction {}),
             crate::input::actions::Action::BreakPaneRight => {
@@ -1869,6 +1880,22 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                         .into_iter()
                         .map(|b| b as u8)
                         .collect(),
+                })
+            },
+            ActionType::GoToTabById(go_to_tab_by_id_action) => {
+                Ok(crate::input::actions::Action::GoToTabById {
+                    id: go_to_tab_by_id_action.id,
+                })
+            },
+            ActionType::CloseTabById(close_tab_by_id_action) => {
+                Ok(crate::input::actions::Action::CloseTabById {
+                    id: close_tab_by_id_action.id,
+                })
+            },
+            ActionType::RenameTabById(rename_tab_by_id_action) => {
+                Ok(crate::input::actions::Action::RenameTabById {
+                    id: rename_tab_by_id_action.id,
+                    name: rename_tab_by_id_action.name,
                 })
             },
             ActionType::BreakPane(_) => Ok(crate::input::actions::Action::BreakPane),

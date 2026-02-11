@@ -236,6 +236,9 @@ message Action {
     ListPanesAction list_panes = 98;
     WriteCharsToPaneIdAction write_chars_to_pane_id = 99;
     WriteToPaneIdAction write_to_pane_id = 100;
+    GoToTabByIdAction go_to_tab_by_id = 101;
+    CloseTabByIdAction close_tab_by_id = 102;
+    RenameTabByIdAction rename_tab_by_id = 103;
   }
 }
 
@@ -556,6 +559,19 @@ message RenamePluginPaneAction {
 message RenameTabAction {
   uint32 tab_index = 1;
   repeated uint32 name = 2;
+}
+
+message GoToTabByIdAction {
+  uint64 id = 1;
+}
+
+message CloseTabByIdAction {
+  uint64 id = 1;
+}
+
+message RenameTabByIdAction {
+  uint64 id = 1;
+  string name = 2;
 }
 
 message RenameSessionAction {

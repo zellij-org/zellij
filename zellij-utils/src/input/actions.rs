@@ -432,6 +432,16 @@ pub enum Action {
         tab_index: u32,
         name: Vec<u8>,
     },
+    GoToTabById {
+        id: u64,
+    },
+    CloseTabById {
+        id: u64,
+    },
+    RenameTabById {
+        id: u64,
+        name: String,
+    },
     BreakPane,
     BreakPaneRight,
     BreakPaneLeft,
@@ -933,6 +943,9 @@ impl Action {
                 },
             ]),
             CliAction::UndoRenameTab => Ok(vec![Action::UndoRenameTab]),
+            CliAction::GoToTabById { id } => Ok(vec![Action::GoToTabById { id }]),
+            CliAction::CloseTabById { id } => Ok(vec![Action::CloseTabById { id }]),
+            CliAction::RenameTabById { id, name } => Ok(vec![Action::RenameTabById { id, name }]),
             CliAction::NewTab {
                 name,
                 layout,

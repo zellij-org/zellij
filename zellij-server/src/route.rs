@@ -1024,6 +1024,32 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
         },
+        Action::GoToTabById { id } => {
+            senders
+                .send_to_screen(ScreenInstruction::GoToTabWithId(
+                    id as usize,
+                    Some(client_id),
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
+        Action::CloseTabById { id } => {
+            senders
+                .send_to_screen(ScreenInstruction::CloseTabWithId(
+                    id as usize,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
+        Action::RenameTabById { id, name } => {
+            senders
+                .send_to_screen(ScreenInstruction::RenameTabWithId(
+                    id as usize,
+                    name.into_bytes(),
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
         Action::MoveTab { direction } => {
             let screen_instr = match direction {
                 Direction::Left | Direction::Up => ScreenInstruction::MoveTabLeft(
