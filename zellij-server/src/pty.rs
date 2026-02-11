@@ -1767,7 +1767,7 @@ impl Pty {
                         .fatal()
                         .kill(Pid::from_raw(child_fd))
                         .with_context(err_context)
-                        .fatal();
+                        .non_fatal();
                 }
                 self.bus
                     .os_input
