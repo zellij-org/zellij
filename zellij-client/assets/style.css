@@ -4,10 +4,18 @@
 }
 
 html,
-body,
+body {
+    height: var(--dynamic-vh, 100vh);
+    width: var(--dynamic-vw, 100vw);
+    margin: 0;
+    overflow: hidden;
+}
+
 #terminal {
     height: var(--dynamic-vh, 100vh);
     width: var(--dynamic-vw, 100vw);
     margin: 0;
     overflow: hidden;
+    overscroll-behavior: contain;
+    touch-action: pan-y;
 }
