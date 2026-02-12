@@ -2012,6 +2012,12 @@ fn should_show_release_notes(
     if ZELLIJ_SEEN_RELEASE_NOTES_CACHE_FILE.exists() {
         return false;
     } else {
+        if let Some(parent) = ZELLIJ_SEEN_RELEASE_NOTES_CACHE_FILE.parent() {
+            if let Err(e) = std::fs::create_dir_all(parent) {
+                log::error!("Failed to create release notes cache directory: {}", e);
+                return false;
+            }
+        }
         if let Err(e) = std::fs::write(&*ZELLIJ_SEEN_RELEASE_NOTES_CACHE_FILE, &[]) {
             log::error!(
                 "Failed to write seen release notes indication to disk: {}",
