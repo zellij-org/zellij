@@ -353,6 +353,7 @@ pub enum ScreenContext {
     BreakPaneRight,
     BreakPaneLeft,
     UpdateSessionInfos,
+    UpdateAvailableLayouts,
     ReplacePane,
     NewInPlacePluginPane,
     SerializeLayoutForResurrection,
