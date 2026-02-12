@@ -41,9 +41,9 @@ use crate::route::NotificationEnd;
 use log::{debug, warn};
 use zellij_utils::data::{
     CommandOrPlugin, Direction, FloatingPaneCoordinates, GetFocusedPaneInfoResponse,
-    KeyWithModifier, LayoutInfo, LayoutWithError, ListPanesResponse, ListTabsResponse, NewPanePlacement,
-    PaneContents, PaneInfo, PaneListEntry, PaneManifest, PaneScrollbackResponse, PluginPermission,
-    Resize, ResizeStrategy, SessionInfo, Styling, TabInfo, WebSharing,
+    KeyWithModifier, LayoutInfo, LayoutWithError, ListPanesResponse, ListTabsResponse,
+    NewPanePlacement, PaneContents, PaneInfo, PaneListEntry, PaneManifest, PaneScrollbackResponse,
+    PluginPermission, Resize, ResizeStrategy, SessionInfo, Styling, TabInfo, WebSharing,
 };
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
@@ -2369,7 +2369,7 @@ impl Screen {
             {
                 let (layouts, errors) = Layout::list_available_layouts(
                     self.layout_dir.clone(),
-                    &self.default_layout_name
+                    &self.default_layout_name,
                 );
                 self.cached_layouts = layouts;
                 self.cached_layout_errors = errors;

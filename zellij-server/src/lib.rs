@@ -1906,7 +1906,12 @@ fn init_session(
 
         // Watch layout directory for changes
         if let Some(layout_dir_path) = layout_dir {
-            report_changes_in_layout_dir(layout_dir_path, default_layout_name, to_plugin.clone(), to_screen.clone());
+            report_changes_in_layout_dir(
+                layout_dir_path,
+                default_layout_name,
+                to_plugin.clone(),
+                to_screen.clone(),
+            );
         }
     }
 
