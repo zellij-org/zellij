@@ -79,8 +79,8 @@ use zellij_utils::{
             ProtobufFocusOrCreateTabResponse, ProtobufGenerateRandomNameResponse,
             ProtobufGetFocusedPaneInfoResponse, ProtobufGetLayoutDirResponse,
             ProtobufGetPaneCwdResponse, ProtobufGetPaneInfoResponse, ProtobufGetPanePidResponse,
-            ProtobufGetPaneRunningCommandResponse, ProtobufGetTabInfoResponse,
-            ProtobufNewTabResponse, ProtobufNewTabsResponse,
+            ProtobufGetPaneRunningCommandResponse, ProtobufGetSessionEnvironmentVariablesResponse,
+            ProtobufGetTabInfoResponse, ProtobufNewTabResponse, ProtobufNewTabsResponse,
             ProtobufOpenCommandPaneBackgroundResponse,
             ProtobufOpenCommandPaneFloatingNearPluginResponse,
             ProtobufOpenCommandPaneFloatingResponse,
@@ -660,6 +660,9 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                         suppress_replaced_pane,
                     ),
                     PluginCommand::RunAction(action, context) => run_action(&env, action, context),
+                    PluginCommand::GetSessionEnvironmentVariables => {
+                        get_session_environment_variables(env);
+                    },
                 },
                 (PermissionStatus::Denied, permission) => {
                     log::error!(
@@ -884,6 +887,30 @@ fn get_layout_dir(env: &PluginEnv) {
 
     wasi_write_object(env, &response.encode_to_vec())
         .with_context(|| format!("failed to send layout dir to plugin {}", env.name()))
+        .non_fatal();
+}
+
+fn get_session_environment_variables(env: &PluginEnv) {
+    use zellij_utils::plugin_api::plugin_command::EnvVariable as ProtobufEnvVariable;
+
+    let env_vars: Vec<ProtobufEnvVariable> = env
+        .session_env_vars
+        .iter()
+        .map(|(name, value)| ProtobufEnvVariable {
+            name: name.clone(),
+            value: value.clone(),
+        })
+        .collect();
+
+    let response = ProtobufGetSessionEnvironmentVariablesResponse { env_vars };
+
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| {
+            format!(
+                "failed to send session environment variables to plugin {}",
+                env.name()
+            )
+        })
         .non_fatal();
 }
 
@@ -4618,6 +4645,9 @@ fn check_command_permission(
         },
         PluginCommand::GetPaneScrollback { .. } => PermissionType::ReadPaneContents,
         PluginCommand::RunAction(..) => PermissionType::RunActionsAsUser,
+        PluginCommand::GetSessionEnvironmentVariables => {
+            PermissionType::ReadSessionEnvironmentVariables
+        },
         _ => return (PermissionStatus::Granted, None),
     };
 

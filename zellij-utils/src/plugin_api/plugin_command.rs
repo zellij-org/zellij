@@ -41,8 +41,10 @@ pub use super::generated_api::api::{
         GetPanePidResponse as ProtobufGetPanePidResponse,
         GetPaneRunningCommandPayload as ProtobufGetPaneRunningCommandPayload,
         GetPaneRunningCommandResponse as ProtobufGetPaneRunningCommandResponse,
-        GetPaneScrollbackPayload, GetTabInfoPayload,
-        GetTabInfoResponse as ProtobufGetTabInfoResponse, GoToTabWithIdPayload,
+        GetPaneScrollbackPayload,
+        GetSessionEnvironmentVariablesPayload as ProtobufGetSessionEnvironmentVariablesPayload,
+        GetSessionEnvironmentVariablesResponse as ProtobufGetSessionEnvironmentVariablesResponse,
+        GetTabInfoPayload, GetTabInfoResponse as ProtobufGetTabInfoResponse, GoToTabWithIdPayload,
         GroupAndUngroupPanesPayload, HidePaneWithIdPayload, HighlightAndUnhighlightPanesPayload,
         HttpVerb as ProtobufHttpVerb, IdAndNewName, KeyToRebind, KeyToUnbind, KillSessionsPayload,
         ListTokensResponse, LoadNewPluginPayload, MessageToPluginPayload,
@@ -2259,6 +2261,14 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 },
                 _ => Err("Malformed payload for GetTabInfo"),
             },
+            Some(CommandName::GetSessionEnvironmentVariables) => {
+                match protobuf_plugin_command.payload {
+                    Some(Payload::GetSessionEnvironmentVariablesPayload(_)) => {
+                        Ok(PluginCommand::GetSessionEnvironmentVariables)
+                    },
+                    _ => Err("Mismatched payload for GetSessionEnvironmentVariables"),
+                }
+            },
             None => Err("Unrecognized plugin command"),
         }
     }
@@ -3680,6 +3690,13 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     tab_id: tab_id as u64,
                 })),
             }),
+            PluginCommand::GetSessionEnvironmentVariables => {
+                let payload = ProtobufGetSessionEnvironmentVariablesPayload {};
+                Ok(ProtobufPluginCommand {
+                    name: CommandName::GetSessionEnvironmentVariables as i32,
+                    payload: Some(Payload::GetSessionEnvironmentVariablesPayload(payload)),
+                })
+            },
         }
     }
 }

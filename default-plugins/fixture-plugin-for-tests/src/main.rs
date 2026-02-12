@@ -63,6 +63,7 @@ impl ZellijPlugin for State {
             PermissionType::Reconfigure,
             PermissionType::WriteToClipboard,
             PermissionType::RunActionsAsUser,
+            PermissionType::ReadSessionEnvironmentVariables,
         ]);
         self.configuration = configuration;
         subscribe(&[
@@ -722,6 +723,17 @@ impl ZellijPlugin for State {
                         Err(e) => {
                             self.explicit_string_to_render = Some(format!("Parse error: {:?}", e))
                         },
+                    }
+                },
+                BareKey::Char('j')
+                    if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Shift]) =>
+                {
+                    let env_vars = get_session_environment_variables();
+                    if !env_vars.is_empty() {
+                        self.explicit_string_to_render =
+                            Some(format!("Got environment variables: {:#?}", env_vars,));
+                    } else {
+                        self.explicit_string_to_render = Some(format!("Error: Got empty env vars"));
                     }
                 },
                 BareKey::Char('a')

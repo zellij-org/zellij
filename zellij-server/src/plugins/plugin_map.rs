@@ -291,6 +291,7 @@ pub struct PluginEnv {
     pub default_layout: Box<Layout>,
     pub layout_dir: Option<PathBuf>,
     pub plugin_cwd: PathBuf,
+    pub session_env_vars: std::collections::BTreeMap<String, String>,
     pub input_pipes_to_unblock: Arc<Mutex<HashSet<String>>>,
     pub input_pipes_to_block: Arc<Mutex<HashSet<String>>>,
     pub default_mode: InputMode,

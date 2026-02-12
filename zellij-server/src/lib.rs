@@ -1809,6 +1809,7 @@ fn init_session(
         .unwrap();
 
     let zellij_cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    let session_env_vars: std::collections::BTreeMap<String, String> = std::env::vars().collect();
 
     let (available_layouts, available_layout_errors) = get_available_layouts(&config_options);
 
@@ -1836,6 +1837,7 @@ fn init_session(
                 .clone()
                 .or_else(|| default_layout_dir());
             let background_plugins = config.background_plugins.clone();
+            let session_env_vars = session_env_vars.clone();
             move || {
                 plugin_thread_main(
                     plugin_bus,
@@ -1847,6 +1849,7 @@ fn init_session(
                     available_layout_errors,
                     path_to_default_shell,
                     zellij_cwd,
+                    session_env_vars,
                     capabilities,
                     client_attributes,
                     default_shell,
