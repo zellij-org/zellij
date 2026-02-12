@@ -360,7 +360,12 @@ impl SessionMetaData {
         config_changes: Vec<(ClientId, Config)>,
         config_was_written_to_disk: bool,
     ) {
+        let mut new_plugin_config = None;
         for (client_id, new_config) in config_changes {
+            if new_plugin_config.is_none() {
+                new_plugin_config = Some(new_config.plugins.clone());
+            }
+
             self.default_shell = new_config.options.default_shell.as_ref().map(|shell| {
                 TerminalAction::RunCommand(RunCommand {
                     command: shell.clone(),
@@ -415,6 +420,15 @@ impl SessionMetaData {
                     post_command_discovery_hook: new_config.options.post_command_discovery_hook,
                 })
                 .unwrap();
+        }
+
+        // Detect and notify plugins of configuration changes
+        if config_was_written_to_disk {
+            if let Some(new_plugins) = new_plugin_config {
+                self.senders
+                    .send_to_plugin(PluginInstruction::DetectPluginConfigChanges(new_plugins))
+                    .unwrap();
+            }
         }
     }
 }

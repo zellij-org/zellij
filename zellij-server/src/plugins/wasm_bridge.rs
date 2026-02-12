@@ -44,7 +44,7 @@ use zellij_utils::{
     input::{
         command::TerminalAction,
         layout::{Layout, PluginUserConfiguration, RunPlugin, RunPluginLocation, RunPluginOrAlias},
-        plugins::PluginConfig,
+        plugins::{PluginAliases, PluginConfig},
     },
     ipc::ClientAttributes,
     pane_size::Size,
@@ -1883,6 +1883,45 @@ impl WasmBridge {
             ),
         )]));
     }
+    pub fn detect_and_notify_plugin_config_changes(
+        &mut self,
+        new_plugins: &PluginAliases,
+        shutdown_send: Sender<()>,
+    ) -> Result<()> {
+        let err_context = || "failed to detect plugin config changes";
+
+        // Get all running plugins
+        let running_plugins = self.plugin_map.lock().unwrap().running_plugins();
+
+        for (plugin_id, client_id, running_plugin) in running_plugins {
+            let running_plugin = running_plugin.lock().unwrap();
+            let plugin_env = &running_plugin.store.data();
+            let current_config = &plugin_env.plugin.initial_userspace_configuration;
+            let plugin_location = &plugin_env.plugin.location;
+
+            // Look up this plugin in the new config by location
+            // Note: PluginAliases is HashMap<String, RunPlugin>, so we need to iterate
+            let new_config_for_location = new_plugins
+                .aliases
+                .values()
+                .find(|run_plugin| &run_plugin.location == plugin_location)
+                .map(|run_plugin| &run_plugin.configuration);
+
+            if let Some(new_config) = new_config_for_location {
+                // Compare configurations - only fire event if changed
+                if current_config != new_config {
+                    drop(running_plugin); // Release lock before sending
+
+                    let event = Event::PluginConfigurationChanged(new_config.inner().clone());
+                    let updates = vec![(Some(plugin_id), Some(client_id), event)];
+                    self.update_plugins(updates, shutdown_send.clone())
+                        .with_context(err_context)?;
+                }
+            }
+        }
+
+        Ok(())
+    }
 }
 
 fn handle_plugin_successful_loading(
@@ -1945,6 +1984,7 @@ fn check_event_permission(
         | Event::CommandPaneReRun(..)
         | Event::CwdChanged(..)
         | Event::AvailableLayoutInfo(..)
+        | Event::PluginConfigurationChanged(..)
         | Event::InputReceived => PermissionType::ReadApplicationState,
         Event::WebServerStatus(..) => PermissionType::StartWebServer,
         Event::PaneRenderReport(..) => PermissionType::ReadPaneContents,

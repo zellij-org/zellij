@@ -47,6 +47,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat: `zellij action list-panes` + return pane/tab IDs from plugin and CLI methods creating them (https://github.com/zellij-org/zellij/pull/4690)
 * feat: allow sending keys to other panes from the CLI (https://github.com/zellij-org/zellij/pull/4691)
 * feat: allow querying tab info (id, name and position) from the CLI as well as general info about all tabs (https://github.com/zellij-org/zellij/pull/4695)
+* feat: propagate plugin configuration changes to plugins (https://github.com/zellij-org/zellij/pull/4698)
 
 
 ## [0.43.1] - 2025-08-08

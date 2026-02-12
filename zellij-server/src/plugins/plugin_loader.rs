@@ -216,7 +216,7 @@ impl<'a> PluginLoader<'a> {
 
         let protobuf_plugin_configuration: ProtobufPluginConfiguration = self
             .plugin_config
-            .userspace_configuration
+            .initial_userspace_configuration
             .clone()
             .try_into()
             .map_err(|e| anyhow!("Failed to serialize user configuration: {:?}", e))?;

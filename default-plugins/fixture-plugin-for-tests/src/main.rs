@@ -74,6 +74,7 @@ impl ZellijPlugin for State {
             EventType::FileSystemUpdate,
             EventType::FileSystemDelete,
             EventType::BeforeClose,
+            EventType::PluginConfigurationChanged,
         ]);
         watch_filesystem();
     }
@@ -896,6 +897,9 @@ impl ZellijPlugin for State {
             Event::BeforeClose => {
                 // this is just to assert something to make sure this event was triggered
                 highlight_and_unhighlight_panes(vec![PaneId::Terminal(1)], vec![PaneId::Plugin(1)]);
+            },
+            Event::PluginConfigurationChanged(new_config) => {
+                self.configuration = new_config.clone();
             },
             Event::SystemClipboardFailure => {
                 // this is just to trigger the worker message
