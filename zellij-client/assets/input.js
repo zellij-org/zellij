@@ -89,6 +89,62 @@ export function setupInputHandlers(term, sendFunction) {
         }
     });
 
+    // Touch scroll handler (convert vertical swipes to mouse wheel events)
+    let last_touch_y = null;
+    let pending_scroll = 0;
+    const touch_scroll_threshold = 24;
+    const sendWheelEvent = (direction, touch) => {
+        let { col, row } = term._core._mouseService.getMouseReportCoords(
+            { clientX: touch.clientX, clientY: touch.clientY },
+            terminal_element
+        );
+        const button = direction < 0 ? 65 : 64; // inverted: swipe up => wheel down
+        sendFunction(`\x1b[<${button};${col + 1};${row + 1}M`);
+    };
+
+    terminal_element.addEventListener(
+        "touchstart",
+        (event) => {
+            if (event.touches.length > 0) {
+                last_touch_y = event.touches[0].clientY;
+                pending_scroll = 0;
+            }
+        },
+        { passive: true }
+    );
+
+    terminal_element.addEventListener(
+        "touchmove",
+        (event) => {
+            if (event.touches.length === 0 || last_touch_y === null) {
+                return;
+            }
+            event.preventDefault();
+            const touch = event.touches[0];
+            const delta = touch.clientY - last_touch_y;
+            last_touch_y = touch.clientY;
+            pending_scroll += delta;
+            while (pending_scroll <= -touch_scroll_threshold) {
+                sendWheelEvent(-1, touch);
+                pending_scroll += touch_scroll_threshold;
+            }
+            while (pending_scroll >= touch_scroll_threshold) {
+                sendWheelEvent(1, touch);
+                pending_scroll -= touch_scroll_threshold;
+            }
+        },
+        { passive: false }
+    );
+
+    terminal_element.addEventListener(
+        "touchend",
+        () => {
+            last_touch_y = null;
+            pending_scroll = 0;
+        },
+        { passive: true }
+    );
+
     // Context menu handler
     document.addEventListener("contextmenu", function (event) {
         if (event.altKey) {
