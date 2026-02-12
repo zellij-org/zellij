@@ -5,6 +5,7 @@ pub use super::generated_api::api::{
         layout_parsing_error::ErrorType as ProtobufLayoutParsingErrorType,
         pane_scrollback_response, ActionCompletePayload as ProtobufActionCompletePayload,
         AvailableLayoutInfoPayload as ProtobufAvailableLayoutInfoPayload,
+        PluginConfigurationChangedPayload as ProtobufPluginConfigurationChangedPayload,
         ClientInfo as ProtobufClientInfo, ClientPaneHistory as ProtobufClientPaneHistory,
         ClientTabHistory as ProtobufClientTabHistory, ContextItem as ProtobufContextItem,
         CopyDestination as ProtobufCopyDestination, CwdChangedPayload as ProtobufCwdChangedPayload,
@@ -488,6 +489,19 @@ impl TryFrom<ProtobufEvent> for Event {
                 },
                 _ => Err("Malformed payload for the AvailableLayoutInfo Event"),
             },
+            Some(ProtobufEventType::PluginConfigurationChanged) => {
+                match protobuf_event.payload {
+                    Some(ProtobufEventPayload::PluginConfigurationChangedPayload(payload)) => {
+                        let configuration = payload
+                            .configuration
+                            .into_iter()
+                            .map(|item| (item.name, item.value))
+                            .collect();
+                        Ok(Event::PluginConfigurationChanged(configuration))
+                    },
+                    _ => Err("Malformed payload for PluginConfigurationChanged Event"),
+                }
+            },
             None => Err("Unknown Protobuf Event"),
         }
     }
@@ -962,6 +976,21 @@ impl TryFrom<Event> for ProtobufEvent {
                     payload: Some(event::Payload::AvailableLayoutInfoPayload(
                         available_layout_info_payload,
                     )),
+                })
+            },
+            Event::PluginConfigurationChanged(configuration) => {
+                let configuration_items: Vec<ProtobufContextItem> = configuration
+                    .into_iter()
+                    .map(|(name, value)| ProtobufContextItem { name, value })
+                    .collect();
+
+                let payload = ProtobufPluginConfigurationChangedPayload {
+                    configuration: configuration_items,
+                };
+
+                Ok(ProtobufEvent {
+                    name: ProtobufEventType::PluginConfigurationChanged as i32,
+                    payload: Some(event::Payload::PluginConfigurationChangedPayload(payload)),
                 })
             },
         }
@@ -1865,6 +1894,7 @@ impl TryFrom<ProtobufEventType> for EventType {
             ProtobufEventType::ActionComplete => EventType::ActionComplete,
             ProtobufEventType::CwdChanged => EventType::CwdChanged,
             ProtobufEventType::AvailableLayoutInfo => EventType::AvailableLayoutInfo,
+            ProtobufEventType::PluginConfigurationChanged => EventType::PluginConfigurationChanged,
         })
     }
 }
@@ -1913,6 +1943,7 @@ impl TryFrom<EventType> for ProtobufEventType {
             EventType::ActionComplete => ProtobufEventType::ActionComplete,
             EventType::CwdChanged => ProtobufEventType::CwdChanged,
             EventType::AvailableLayoutInfo => ProtobufEventType::AvailableLayoutInfo,
+            EventType::PluginConfigurationChanged => ProtobufEventType::PluginConfigurationChanged,
         })
     }
 }

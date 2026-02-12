@@ -162,7 +162,7 @@ impl PluginMap {
                 let running_plugin = running_plugin.lock().unwrap();
                 let plugin_config = &running_plugin.store.data().plugin;
                 let running_plugin_location = &plugin_config.location;
-                let running_plugin_configuration = &plugin_config.userspace_configuration;
+                let running_plugin_configuration = &plugin_config.initial_userspace_configuration;
                 running_plugin_location == plugin_location
                     && running_plugin_configuration == plugin_configuration
             })
@@ -185,7 +185,7 @@ impl PluginMap {
             let running_plugin = running_plugin.lock().unwrap();
             let plugin_config = &running_plugin.store.data().plugin;
             let running_plugin_location = &plugin_config.location;
-            let running_plugin_configuration = &plugin_config.userspace_configuration;
+            let running_plugin_configuration = &plugin_config.initial_userspace_configuration;
             match cloned_plugin_assets.get_mut(running_plugin_location) {
                 Some(location_map) => match location_map.get_mut(running_plugin_configuration) {
                     Some(plugin_instances_info) => {
@@ -237,7 +237,7 @@ impl PluginMap {
                     let running_plugin = running_plugin.lock().unwrap();
                     let plugin_config = &running_plugin.store.data().plugin;
                     let run_plugin_location = plugin_config.location.clone();
-                    let run_plugin_configuration = plugin_config.userspace_configuration.clone();
+                    let run_plugin_configuration = plugin_config.initial_userspace_configuration.clone();
                     let initial_cwd = plugin_config.initial_cwd.clone();
                     Some(RunPlugin {
                         _allow_exec_host_cmd: false,

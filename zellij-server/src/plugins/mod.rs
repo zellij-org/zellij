@@ -211,6 +211,7 @@ pub enum PluginInstruction {
     GetLastSessionSaveTime {
         response_channel: crossbeam::channel::Sender<Option<u64>>,
     },
+    DetectPluginConfigChanges(PluginAliases),
     Exit,
 }
 
@@ -270,6 +271,9 @@ impl From<&PluginInstruction> for PluginContext {
             PluginInstruction::UpdateSessionSaveTime(..) => PluginContext::UpdateSessionSaveTime,
             PluginInstruction::GetLastSessionSaveTime { .. } => {
                 PluginContext::GetLastSessionSaveTime
+            },
+            PluginInstruction::DetectPluginConfigChanges(..) => {
+                PluginContext::DetectPluginConfigChanges
             },
         }
     }
@@ -1218,6 +1222,10 @@ pub(crate) fn plugin_thread_main(
             PluginInstruction::GetLastSessionSaveTime { response_channel } => {
                 let timestamp = *wasm_bridge.last_session_save_time.lock().unwrap();
                 let _ = response_channel.send(timestamp);
+            },
+            PluginInstruction::DetectPluginConfigChanges(new_plugins) => {
+                wasm_bridge
+                    .detect_and_notify_plugin_config_changes(&new_plugins, shutdown_send.clone())?;
             },
             PluginInstruction::Exit => {
                 break;
