@@ -1055,6 +1055,7 @@ pub enum Permission {
     ReadPaneContents,
     RunActionsAsUser,
     WriteToClipboard,
+    ReadSessionEnvironmentVariables,
 }
 
 impl PermissionType {
@@ -1086,6 +1087,9 @@ impl PermissionType {
             },
             PermissionType::RunActionsAsUser => "Execute actions as the user".to_owned(),
             PermissionType::WriteToClipboard => "Write to clipboard".to_owned(),
+            PermissionType::ReadSessionEnvironmentVariables => {
+                "Read environment variables present upon session creation".to_owned()
+            },
         }
     }
 }
@@ -3445,6 +3449,7 @@ pub enum PluginCommand {
     CurrentSessionLastSavedTime,
     GetPaneInfo(PaneId),
     GetTabInfo(usize), // tab_id
+    GetSessionEnvironmentVariables,
 }
 
 // Response types for plugin API methods that create tabs

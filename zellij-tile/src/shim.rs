@@ -19,7 +19,8 @@ use zellij_utils::plugin_api::plugin_command::{
     ProtobufEditLayoutResponse, ProtobufFocusOrCreateTabResponse,
     ProtobufGenerateRandomNameResponse, ProtobufGetFocusedPaneInfoResponse,
     ProtobufGetLayoutDirResponse, ProtobufGetPaneCwdResponse, ProtobufGetPaneInfoResponse,
-    ProtobufGetPanePidResponse, ProtobufGetPaneRunningCommandResponse, ProtobufGetTabInfoResponse,
+    ProtobufGetPanePidResponse, ProtobufGetPaneRunningCommandResponse,
+    ProtobufGetSessionEnvironmentVariablesResponse, ProtobufGetTabInfoResponse,
     ProtobufNewTabResponse, ProtobufNewTabsResponse, ProtobufOpenCommandPaneBackgroundResponse,
     ProtobufOpenCommandPaneFloatingNearPluginResponse, ProtobufOpenCommandPaneFloatingResponse,
     ProtobufOpenCommandPaneInPlaceOfPluginResponse, ProtobufOpenCommandPaneInPlaceResponse,
@@ -174,6 +175,25 @@ pub fn get_layout_dir() -> String {
     let response =
         ProtobufGetLayoutDirResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
     response.layout_dir
+}
+
+pub fn get_session_environment_variables() -> BTreeMap<String, String> {
+    let plugin_command = PluginCommand::GetSessionEnvironmentVariables;
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+
+    let response = ProtobufGetSessionEnvironmentVariablesResponse::decode(
+        bytes_from_stdin().unwrap().as_slice(),
+    )
+    .unwrap();
+
+    response
+        .env_vars
+        .into_iter()
+        .map(|env_var| (env_var.name, env_var.value))
+        .collect()
 }
 
 /// Returns the focused pane ID and tab index for the client associated with this plugin.

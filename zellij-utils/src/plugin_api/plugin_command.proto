@@ -189,6 +189,7 @@ enum CommandName {
   CloseTabWithId = 194;
   RenameTabWithId = 195;
   BreakPanesToTabWithId = 196;
+  GetSessionEnvironmentVariables = 197;
 }
 
 message PluginCommand {
@@ -327,6 +328,7 @@ message PluginCommand {
     CloseTabWithIdPayload close_tab_with_id_payload = 145;
     RenameTabWithIdPayload rename_tab_with_id_payload = 146;
     BreakPanesToTabWithIdPayload break_panes_to_tab_with_id_payload = 147;
+    GetSessionEnvironmentVariablesPayload get_session_environment_variables_payload = 148;
   }
 }
 
@@ -1122,4 +1124,10 @@ message OpenCommandPaneInPlaceOfPluginResponse {
 
 message OpenCommandPaneBackgroundResponse {
   optional PaneId pane_id = 1;
+}
+
+message GetSessionEnvironmentVariablesPayload {}
+
+message GetSessionEnvironmentVariablesResponse {
+  repeated EnvVariable env_vars = 1;
 }
