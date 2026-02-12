@@ -5,7 +5,6 @@ pub use super::generated_api::api::{
         layout_parsing_error::ErrorType as ProtobufLayoutParsingErrorType,
         pane_scrollback_response, ActionCompletePayload as ProtobufActionCompletePayload,
         AvailableLayoutInfoPayload as ProtobufAvailableLayoutInfoPayload,
-        PluginConfigurationChangedPayload as ProtobufPluginConfigurationChangedPayload,
         ClientInfo as ProtobufClientInfo, ClientPaneHistory as ProtobufClientPaneHistory,
         ClientTabHistory as ProtobufClientTabHistory, ContextItem as ProtobufContextItem,
         CopyDestination as ProtobufCopyDestination, CwdChangedPayload as ProtobufCwdChangedPayload,
@@ -21,6 +20,7 @@ pub use super::generated_api::api::{
         PaneManifest as ProtobufPaneManifest, PaneMetadata as ProtobufPaneMetadata,
         PaneRenderReportPayload as ProtobufPaneRenderReportPayload,
         PaneScrollbackResponse as ProtobufPaneScrollbackResponse, PaneType as ProtobufPaneType,
+        PluginConfigurationChangedPayload as ProtobufPluginConfigurationChangedPayload,
         PluginInfo as ProtobufPluginInfo, ResurrectableSession as ProtobufResurrectableSession,
         SelectedText as ProtobufSelectedText, SessionManifest as ProtobufSessionManifest,
         SyntaxError as ProtobufSyntaxError, TabInfo as ProtobufTabInfo,
@@ -489,18 +489,16 @@ impl TryFrom<ProtobufEvent> for Event {
                 },
                 _ => Err("Malformed payload for the AvailableLayoutInfo Event"),
             },
-            Some(ProtobufEventType::PluginConfigurationChanged) => {
-                match protobuf_event.payload {
-                    Some(ProtobufEventPayload::PluginConfigurationChangedPayload(payload)) => {
-                        let configuration = payload
-                            .configuration
-                            .into_iter()
-                            .map(|item| (item.name, item.value))
-                            .collect();
-                        Ok(Event::PluginConfigurationChanged(configuration))
-                    },
-                    _ => Err("Malformed payload for PluginConfigurationChanged Event"),
-                }
+            Some(ProtobufEventType::PluginConfigurationChanged) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::PluginConfigurationChangedPayload(payload)) => {
+                    let configuration = payload
+                        .configuration
+                        .into_iter()
+                        .map(|item| (item.name, item.value))
+                        .collect();
+                    Ok(Event::PluginConfigurationChanged(configuration))
+                },
+                _ => Err("Malformed payload for PluginConfigurationChanged Event"),
             },
             None => Err("Unknown Protobuf Event"),
         }

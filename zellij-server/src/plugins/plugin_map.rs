@@ -237,7 +237,8 @@ impl PluginMap {
                     let running_plugin = running_plugin.lock().unwrap();
                     let plugin_config = &running_plugin.store.data().plugin;
                     let run_plugin_location = plugin_config.location.clone();
-                    let run_plugin_configuration = plugin_config.initial_userspace_configuration.clone();
+                    let run_plugin_configuration =
+                        plugin_config.initial_userspace_configuration.clone();
                     let initial_cwd = plugin_config.initial_cwd.clone();
                     Some(RunPlugin {
                         _allow_exec_host_cmd: false,

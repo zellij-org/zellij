@@ -11898,8 +11898,8 @@ pub fn plugin_receives_config_change_event() {
     std::thread::sleep(std::time::Duration::from_millis(500));
 
     let mut new_config = BTreeMap::new();
-    new_config.insert("theme".to_owned(), "light".to_owned());  // Changed
-    new_config.insert("size".to_owned(), "small".to_owned());   // Changed
+    new_config.insert("theme".to_owned(), "light".to_owned()); // Changed
+    new_config.insert("size".to_owned(), "small".to_owned()); // Changed
 
     let mut plugin_aliases = PluginAliases::default();
     plugin_aliases.aliases.insert(
@@ -11912,9 +11912,7 @@ pub fn plugin_receives_config_change_event() {
         },
     );
 
-    let _ = plugin_thread_sender.send(PluginInstruction::DetectPluginConfigChanges(
-        plugin_aliases
-    ));
+    let _ = plugin_thread_sender.send(PluginInstruction::DetectPluginConfigChanges(plugin_aliases));
 
     screen_thread.join().unwrap();
     teardown();
@@ -11927,7 +11925,8 @@ pub fn plugin_receives_config_change_event() {
             if let ScreenInstruction::PluginBytes(plugin_render_assets) = i {
                 for plugin_render_asset in plugin_render_assets {
                     let plugin_bytes = plugin_render_asset.bytes.clone();
-                    let plugin_output = String::from_utf8_lossy(plugin_bytes.as_slice()).to_string();
+                    let plugin_output =
+                        String::from_utf8_lossy(plugin_bytes.as_slice()).to_string();
                     return Some(plugin_output);
                 }
             }
@@ -11936,11 +11935,15 @@ pub fn plugin_receives_config_change_event() {
         .collect::<Vec<_>>();
 
     assert!(
-        plugin_renders.iter().any(|r| r.contains("PluginConfigurationChanged")),
+        plugin_renders
+            .iter()
+            .any(|r| r.contains("PluginConfigurationChanged")),
         "Plugin should receive PluginConfigurationChanged event"
     );
 
-    let last_render = plugin_renders.last().expect("Should have at least one render");
+    let last_render = plugin_renders
+        .last()
+        .expect("Should have at least one render");
     assert!(
         last_render.contains("theme") && last_render.contains("light"),
         "Plugin should render with new theme=light config"
@@ -11987,7 +11990,7 @@ pub fn plugin_does_not_receive_event_when_config_unchanged() {
         received_screen_instructions,
         ScreenInstruction::PluginBytes,
         screen_receiver,
-        2,  // Only expect initial load and one update, no config change event
+        2, // Only expect initial load and one update, no config change event
         &PermissionType::ReadApplicationState,
         cache_path,
         plugin_thread_sender,
@@ -12022,14 +12025,12 @@ pub fn plugin_does_not_receive_event_when_config_unchanged() {
         RunPlugin {
             _allow_exec_host_cmd: false,
             location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
-            configuration: PluginUserConfiguration::new(initial_config.clone()),  // SAME config
+            configuration: PluginUserConfiguration::new(initial_config.clone()), // SAME config
             ..Default::default()
         },
     );
 
-    let _ = plugin_thread_sender.send(PluginInstruction::DetectPluginConfigChanges(
-        plugin_aliases
-    ));
+    let _ = plugin_thread_sender.send(PluginInstruction::DetectPluginConfigChanges(plugin_aliases));
 
     // Send an unrelated event to trigger a render
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
@@ -12050,7 +12051,8 @@ pub fn plugin_does_not_receive_event_when_config_unchanged() {
             if let ScreenInstruction::PluginBytes(plugin_render_assets) = i {
                 for plugin_render_asset in plugin_render_assets {
                     let plugin_bytes = plugin_render_asset.bytes.clone();
-                    let plugin_output = String::from_utf8_lossy(plugin_bytes.as_slice()).to_string();
+                    let plugin_output =
+                        String::from_utf8_lossy(plugin_bytes.as_slice()).to_string();
                     return Some(plugin_output);
                 }
             }
@@ -12059,7 +12061,9 @@ pub fn plugin_does_not_receive_event_when_config_unchanged() {
         .collect::<Vec<_>>();
 
     assert!(
-        !plugin_renders.iter().any(|r| r.contains("PluginConfigurationChanged")),
+        !plugin_renders
+            .iter()
+            .any(|r| r.contains("PluginConfigurationChanged")),
         "Plugin should NOT receive PluginConfigurationChanged when config unchanged"
     );
 }
