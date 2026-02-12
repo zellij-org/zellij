@@ -1906,7 +1906,7 @@ fn init_session(
 
         // Watch layout directory for changes
         if let Some(layout_dir_path) = layout_dir {
-            report_changes_in_layout_dir(layout_dir_path, default_layout_name, to_plugin.clone());
+            report_changes_in_layout_dir(layout_dir_path, default_layout_name, to_plugin.clone(), to_screen.clone());
         }
     }
 
@@ -2035,18 +2035,25 @@ fn report_changes_in_layout_dir(
     layout_dir: PathBuf,
     default_layout_name: Option<String>,
     to_plugin: SenderWithContext<PluginInstruction>,
+    to_screen: SenderWithContext<ScreenInstruction>,
 ) {
     std::thread::spawn(move || {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async move {
             let to_plugin = to_plugin.clone();
+            let to_screen = to_screen.clone();
             watch_layout_dir_changes(
                 layout_dir,
                 default_layout_name,
                 move |new_layouts, layout_errors| {
                     let to_plugin = to_plugin.clone();
+                    let to_screen = to_screen.clone();
                     async move {
                         let _ = to_plugin.send(PluginInstruction::LayoutListUpdate(
+                            new_layouts.clone(),
+                            layout_errors.clone(),
+                        ));
+                        let _ = to_screen.send(ScreenInstruction::UpdateAvailableLayouts(
                             new_layouts,
                             layout_errors,
                         ));
