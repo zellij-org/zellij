@@ -730,10 +730,8 @@ impl ZellijPlugin for State {
                 {
                     let env_vars = get_session_environment_variables();
                     if !env_vars.is_empty() {
-                        self.explicit_string_to_render = Some(format!(
-                            "Got environment variables: {:#?}",
-                            env_vars,
-                        ));
+                        self.explicit_string_to_render =
+                            Some(format!("Got environment variables: {:#?}", env_vars,));
                     } else {
                         self.explicit_string_to_render = Some(format!("Error: Got empty env vars"));
                     }

@@ -11483,7 +11483,11 @@ pub fn edit_layout_plugin_command() {
     let layout_folder_path = PathBuf::from(temp_layout_folder.path());
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
     let (plugin_thread_sender, pty_receiver, screen_receiver, teardown) =
-        create_plugin_thread_with_pty_receiver(Some(plugin_host_folder), Some(layout_folder_path), None);
+        create_plugin_thread_with_pty_receiver(
+            Some(plugin_host_folder),
+            Some(layout_folder_path),
+            None,
+        );
 
     let received_screen_instructions = Arc::new(Mutex::new(vec![]));
     let received_pty_instructions = Arc::new(Mutex::new(vec![]));
@@ -12089,7 +12093,10 @@ pub fn get_session_environment_variables_plugin_command() {
 
     let mut test_env_vars = std::collections::BTreeMap::new();
     test_env_vars.insert("TEST_ENV_VAR_1".to_string(), "test_value_123".to_string());
-    test_env_vars.insert("TEST_ENV_VAR_2".to_string(), "another_test_value".to_string());
+    test_env_vars.insert(
+        "TEST_ENV_VAR_2".to_string(),
+        "another_test_value".to_string(),
+    );
     test_env_vars.insert("PATH".to_string(), "/usr/bin:/bin".to_string());
 
     let (plugin_thread_sender, screen_receiver, teardown) =
@@ -12164,7 +12171,9 @@ pub fn get_session_environment_variables_plugin_command() {
                 for plugin_render_asset in plugin_render_assets {
                     let plugin_bytes = plugin_render_asset.bytes.clone();
                     let plugin_bytes = String::from_utf8_lossy(plugin_bytes.as_slice()).to_string();
-                    if plugin_bytes.contains("Got") && plugin_bytes.contains("environment variables") {
+                    if plugin_bytes.contains("Got")
+                        && plugin_bytes.contains("environment variables")
+                    {
                         return Some(plugin_bytes);
                     }
                 }
