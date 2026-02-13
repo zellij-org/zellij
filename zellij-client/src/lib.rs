@@ -83,7 +83,7 @@ use crate::{
 use termwiz::input::InputEvent;
 use zellij_utils::cli::CliArgs;
 use zellij_utils::{
-    channels::{self, ChannelWithContext, SenderWithContext},
+    channels::{self, ChannelWithContext, RecvTimeoutError, SenderWithContext},
     consts::{set_permissions, ZELLIJ_SOCK_DIR},
     data::{ClientId, ConnectToSession, KeyWithModifier, LayoutInfo, LayoutMetadata},
     envs,
@@ -947,6 +947,9 @@ pub fn start_client(
 
     let mut exit_msg = String::new();
     let mut loading = true;
+    let mut showed_loading_message = false;
+    let loading_start = std::time::Instant::now();
+    let loading_delay = std::time::Duration::from_millis(400);
     let mut pending_instructions = vec![];
     let mut synchronised_output = match os_input.env_variable("TERM").as_deref() {
         Some("alacritty") => Some(SyncOutput::DCS),
@@ -954,16 +957,34 @@ pub fn start_client(
     };
 
     let mut stdout = os_input.get_stdout_writer();
-    stdout
-        .write_all("\u{1b}[1m\u{1b}[HLoading Zellij\u{1b}[m\n\r".as_bytes())
-        .expect("cannot write to stdout");
-    stdout.flush().expect("could not flush");
 
     loop {
         let (client_instruction, mut err_ctx) = if !loading && !pending_instructions.is_empty() {
             // there are buffered instructions, we need to go through them before processing the
             // new ones
             pending_instructions.remove(0)
+        } else if loading && !showed_loading_message {
+            let remaining = loading_delay
+                .checked_sub(loading_start.elapsed())
+                .unwrap_or(std::time::Duration::ZERO);
+            match receive_client_instructions.recv_timeout(remaining) {
+                Ok(instruction) => instruction,
+                Err(RecvTimeoutError::Timeout) => {
+                    // 400ms elapsed with no completion — show loading UI
+                    stdout
+                        .write_all("\u{1b}[1m\u{1b}[HLoading Zellij\u{1b}[m\n\r".as_bytes())
+                        .expect("cannot write to stdout");
+                    stdout.flush().expect("could not flush");
+                    showed_loading_message = true;
+                    // Now block normally
+                    receive_client_instructions
+                        .recv()
+                        .expect("failed to receive app instruction on channel")
+                },
+                Err(RecvTimeoutError::Disconnected) => {
+                    panic!("client instruction channel disconnected");
+                },
+            }
         } else {
             receive_client_instructions
                 .recv()
@@ -974,16 +995,20 @@ pub fn start_client(
             // when the app is still loading, we buffer instructions and show a loading screen
             match client_instruction {
                 ClientInstruction::StartedParsingStdinQuery => {
-                    stdout
-                        .write_all("Querying terminal emulator for \u{1b}[32;1mdefault colors\u{1b}[m and \u{1b}[32;1mpixel/cell\u{1b}[m ratio...".as_bytes())
-                        .expect("cannot write to stdout");
-                    stdout.flush().expect("could not flush");
+                    if showed_loading_message {
+                        stdout
+                            .write_all("Querying terminal emulator for \u{1b}[32;1mdefault colors\u{1b}[m and \u{1b}[32;1mpixel/cell\u{1b}[m ratio...".as_bytes())
+                            .expect("cannot write to stdout");
+                        stdout.flush().expect("could not flush");
+                    }
                 },
                 ClientInstruction::DoneParsingStdinQuery => {
-                    stdout
-                        .write_all("done".as_bytes())
-                        .expect("cannot write to stdout");
-                    stdout.flush().expect("could not flush");
+                    if showed_loading_message {
+                        stdout
+                            .write_all("done".as_bytes())
+                            .expect("cannot write to stdout");
+                        stdout.flush().expect("could not flush");
+                    }
                     loading = false;
                 },
                 instruction => {
