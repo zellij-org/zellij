@@ -1,6 +1,5 @@
 ---
 source: zellij-server/src/./unit/screen_tests.rs
-assertion_line: 2979
 expression: "format!(\"{:#?}\", plugin_undo_rename_tab_instruction)"
 ---
 Some(
@@ -32,6 +31,7 @@ Some(
                             display_area_columns: 80,
                             selectable_tiled_panes_count: 2,
                             selectable_floating_panes_count: 0,
+                            tab_id: 0,
                         },
                     ],
                 ),

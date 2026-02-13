@@ -42,6 +42,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: proper error handling in route (https://github.com/zellij-org/zellij/pull/4655)
 * feat: allow resizing panes with the mouse (https://github.com/zellij-org/zellij/pull/4678)
 * fix: don't trim empty colored cells when resizing terminal grid (https://github.com/zellij-org/zellij/pull/4680)
+* fix: prevent selection from scrolling up after double/triple-click (https://github.com/zellij-org/zellij/pull/4681)
+* refactor: canonicalize tab_id vs. tab_position and expose tab_id to plugins (https://github.com/zellij-org/zellij/pull/4685)
+* feat: `zellij action list-panes` + return pane/tab IDs from plugin and CLI methods creating them (https://github.com/zellij-org/zellij/pull/4690)
+* feat: allow sending keys to other panes from the CLI (https://github.com/zellij-org/zellij/pull/4691)
+* feat: allow querying tab info (id, name and position) from the CLI as well as general info about all tabs (https://github.com/zellij-org/zellij/pull/4695)
+* feat: propagate plugin configuration changes to plugins (https://github.com/zellij-org/zellij/pull/4698)
+* feat: allow plugins to query env vars set upon session creation (gated behind a relevant permission) (https://github.com/zellij-org/zellij/pull/4700)
 
 
 ## [0.43.1] - 2025-08-08

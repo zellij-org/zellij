@@ -1030,6 +1030,13 @@ impl TryFrom<Action> for ProtobufAction {
                     chars: chars_to_write,
                 })),
             }),
+            Action::WriteToPaneId { .. }
+            | Action::WriteCharsToPaneId { .. }
+            | Action::GoToTabById { .. }
+            | Action::CloseTabById { .. }
+            | Action::RenameTabById { .. } => {
+                Err("WriteToPaneId, WriteCharsToPaneId, GoToTabById, CloseTabById, and RenameTabById are CLI-only actions, not available in keybindings")
+            },
             Action::SwitchToMode { input_mode } => {
                 let input_mode: ProtobufInputMode = input_mode.try_into()?;
                 Ok(ProtobufAction {
@@ -1773,6 +1780,7 @@ impl TryFrom<Action> for ProtobufAction {
             | Action::DumpLayout
             | Action::CliPipe { .. }
             | Action::ListClients
+            | Action::ListPanes { .. }
             | Action::StackPanes { pane_ids: _ }
             | Action::ChangeFloatingPaneCoordinates {
                 pane_id: _,
@@ -1782,7 +1790,9 @@ impl TryFrom<Action> for ProtobufAction {
             | Action::SetPaneBorderless { .. }
             | Action::SkipConfirm { action: _ }
             | Action::SwitchSession { .. }
-            | Action::SaveSession => Err("Unsupported action"),
+            | Action::SaveSession
+            | Action::ListTabs { .. }
+            | Action::CurrentTabInfo { .. } => Err("Unsupported action"),
         }
     }
 }

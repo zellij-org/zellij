@@ -20,6 +20,7 @@ pub use super::generated_api::api::{
         PaneManifest as ProtobufPaneManifest, PaneMetadata as ProtobufPaneMetadata,
         PaneRenderReportPayload as ProtobufPaneRenderReportPayload,
         PaneScrollbackResponse as ProtobufPaneScrollbackResponse, PaneType as ProtobufPaneType,
+        PluginConfigurationChangedPayload as ProtobufPluginConfigurationChangedPayload,
         PluginInfo as ProtobufPluginInfo, ResurrectableSession as ProtobufResurrectableSession,
         SelectedText as ProtobufSelectedText, SessionManifest as ProtobufSessionManifest,
         SyntaxError as ProtobufSyntaxError, TabInfo as ProtobufTabInfo,
@@ -487,6 +488,17 @@ impl TryFrom<ProtobufEvent> for Event {
                     ))
                 },
                 _ => Err("Malformed payload for the AvailableLayoutInfo Event"),
+            },
+            Some(ProtobufEventType::PluginConfigurationChanged) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::PluginConfigurationChangedPayload(payload)) => {
+                    let configuration = payload
+                        .configuration
+                        .into_iter()
+                        .map(|item| (item.name, item.value))
+                        .collect();
+                    Ok(Event::PluginConfigurationChanged(configuration))
+                },
+                _ => Err("Malformed payload for PluginConfigurationChanged Event"),
             },
             None => Err("Unknown Protobuf Event"),
         }
@@ -962,6 +974,21 @@ impl TryFrom<Event> for ProtobufEvent {
                     payload: Some(event::Payload::AvailableLayoutInfoPayload(
                         available_layout_info_payload,
                     )),
+                })
+            },
+            Event::PluginConfigurationChanged(configuration) => {
+                let configuration_items: Vec<ProtobufContextItem> = configuration
+                    .into_iter()
+                    .map(|(name, value)| ProtobufContextItem { name, value })
+                    .collect();
+
+                let payload = ProtobufPluginConfigurationChangedPayload {
+                    configuration: configuration_items,
+                };
+
+                Ok(ProtobufEvent {
+                    name: ProtobufEventType::PluginConfigurationChanged as i32,
+                    payload: Some(event::Payload::PluginConfigurationChangedPayload(payload)),
                 })
             },
         }
@@ -1605,6 +1632,7 @@ impl TryFrom<ProtobufTabInfo> for TabInfo {
             selectable_tiled_panes_count: protobuf_tab_info.selectable_tiled_panes_count as usize,
             selectable_floating_panes_count: protobuf_tab_info.selectable_floating_panes_count
                 as usize,
+            tab_id: protobuf_tab_info.tab_id as usize,
         })
     }
 }
@@ -1633,6 +1661,7 @@ impl TryFrom<TabInfo> for ProtobufTabInfo {
             display_area_columns: tab_info.display_area_columns as u32,
             selectable_tiled_panes_count: tab_info.selectable_tiled_panes_count as u32,
             selectable_floating_panes_count: tab_info.selectable_floating_panes_count as u32,
+            tab_id: tab_info.tab_id as u32,
         })
     }
 }
@@ -1863,6 +1892,7 @@ impl TryFrom<ProtobufEventType> for EventType {
             ProtobufEventType::ActionComplete => EventType::ActionComplete,
             ProtobufEventType::CwdChanged => EventType::CwdChanged,
             ProtobufEventType::AvailableLayoutInfo => EventType::AvailableLayoutInfo,
+            ProtobufEventType::PluginConfigurationChanged => EventType::PluginConfigurationChanged,
         })
     }
 }
@@ -1911,6 +1941,7 @@ impl TryFrom<EventType> for ProtobufEventType {
             EventType::ActionComplete => ProtobufEventType::ActionComplete,
             EventType::CwdChanged => ProtobufEventType::CwdChanged,
             EventType::AvailableLayoutInfo => ProtobufEventType::AvailableLayoutInfo,
+            EventType::PluginConfigurationChanged => ProtobufEventType::PluginConfigurationChanged,
         })
     }
 }
@@ -2118,6 +2149,7 @@ fn serialize_tab_update_event_with_non_default_values() {
             display_area_columns: 10,
             selectable_tiled_panes_count: 10,
             selectable_floating_panes_count: 10,
+            tab_id: 0,
         },
         TabInfo {
             position: 1,
@@ -2136,6 +2168,7 @@ fn serialize_tab_update_event_with_non_default_values() {
             display_area_columns: 10,
             selectable_tiled_panes_count: 10,
             selectable_floating_panes_count: 10,
+            tab_id: 1,
         },
         TabInfo::default(),
     ]);
@@ -2409,6 +2442,7 @@ fn serialize_session_update_event_with_non_default_values() {
             display_area_columns: 10,
             selectable_tiled_panes_count: 10,
             selectable_floating_panes_count: 10,
+            tab_id: 0,
         },
         TabInfo {
             position: 1,
@@ -2427,6 +2461,7 @@ fn serialize_session_update_event_with_non_default_values() {
             display_area_columns: 10,
             selectable_tiled_panes_count: 10,
             selectable_floating_panes_count: 10,
+            tab_id: 1,
         },
         TabInfo::default(),
     ];

@@ -360,7 +360,12 @@ impl SessionMetaData {
         config_changes: Vec<(ClientId, Config)>,
         config_was_written_to_disk: bool,
     ) {
+        let mut new_plugin_config = None;
         for (client_id, new_config) in config_changes {
+            if new_plugin_config.is_none() {
+                new_plugin_config = Some(new_config.plugins.clone());
+            }
+
             self.default_shell = new_config.options.default_shell.as_ref().map(|shell| {
                 TerminalAction::RunCommand(RunCommand {
                     command: shell.clone(),
@@ -415,6 +420,15 @@ impl SessionMetaData {
                     post_command_discovery_hook: new_config.options.post_command_discovery_hook,
                 })
                 .unwrap();
+        }
+
+        // Detect and notify plugins of configuration changes
+        if config_was_written_to_disk {
+            if let Some(new_plugins) = new_plugin_config {
+                self.senders
+                    .send_to_plugin(PluginInstruction::DetectPluginConfigChanges(new_plugins))
+                    .unwrap();
+            }
         }
     }
 }
@@ -1795,6 +1809,7 @@ fn init_session(
         .unwrap();
 
     let zellij_cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    let session_env_vars: std::collections::BTreeMap<String, String> = std::env::vars().collect();
 
     let (available_layouts, available_layout_errors) = get_available_layouts(&config_options);
 
@@ -1822,6 +1837,7 @@ fn init_session(
                 .clone()
                 .or_else(|| default_layout_dir());
             let background_plugins = config.background_plugins.clone();
+            let session_env_vars = session_env_vars.clone();
             move || {
                 plugin_thread_main(
                     plugin_bus,
@@ -1833,6 +1849,7 @@ fn init_session(
                     available_layout_errors,
                     path_to_default_shell,
                     zellij_cwd,
+                    session_env_vars,
                     capabilities,
                     client_attributes,
                     default_shell,
@@ -1906,7 +1923,12 @@ fn init_session(
 
         // Watch layout directory for changes
         if let Some(layout_dir_path) = layout_dir {
-            report_changes_in_layout_dir(layout_dir_path, default_layout_name, to_plugin.clone());
+            report_changes_in_layout_dir(
+                layout_dir_path,
+                default_layout_name,
+                to_plugin.clone(),
+                to_screen.clone(),
+            );
         }
     }
 
@@ -2035,18 +2057,25 @@ fn report_changes_in_layout_dir(
     layout_dir: PathBuf,
     default_layout_name: Option<String>,
     to_plugin: SenderWithContext<PluginInstruction>,
+    to_screen: SenderWithContext<ScreenInstruction>,
 ) {
     std::thread::spawn(move || {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async move {
             let to_plugin = to_plugin.clone();
+            let to_screen = to_screen.clone();
             watch_layout_dir_changes(
                 layout_dir,
                 default_layout_name,
                 move |new_layouts, layout_errors| {
                     let to_plugin = to_plugin.clone();
+                    let to_screen = to_screen.clone();
                     async move {
                         let _ = to_plugin.send(PluginInstruction::LayoutListUpdate(
+                            new_layouts.clone(),
+                            layout_errors.clone(),
+                        ));
+                        let _ = to_screen.send(ScreenInstruction::UpdateAvailableLayouts(
                             new_layouts,
                             layout_errors,
                         ));

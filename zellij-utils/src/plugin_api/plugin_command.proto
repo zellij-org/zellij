@@ -180,6 +180,16 @@ enum CommandName {
   SetPaneBorderless = 185;
   SaveSession = 186;
   CurrentSessionLastSavedTime = 187;
+  GetPaneInfo = 188;
+  GetTabInfo = 189;
+  GetPaneRunningCommand = 190;
+  GetPaneCwd = 191;
+  SwitchTabToId = 192;
+  GoToTabWithId = 193;
+  CloseTabWithId = 194;
+  RenameTabWithId = 195;
+  BreakPanesToTabWithId = 196;
+  GetSessionEnvironmentVariables = 197;
 }
 
 message PluginCommand {
@@ -309,6 +319,16 @@ message PluginCommand {
     SetPaneBorderlessPayload set_pane_borderless_payload = 136;
     SaveSessionPayload save_session_payload = 137;
     CurrentSessionLastSavedTimePayload current_session_last_saved_time_payload = 138;
+    GetPaneInfoPayload get_pane_info_payload = 139;
+    GetTabInfoPayload get_tab_info_payload = 140;
+    GetPaneRunningCommandPayload get_pane_running_command_payload = 141;
+    GetPaneCwdPayload get_pane_cwd_payload = 142;
+    SwitchTabToIdPayload switch_tab_to_id_payload = 143;
+    GoToTabWithIdPayload go_to_tab_with_id_payload = 144;
+    CloseTabWithIdPayload close_tab_with_id_payload = 145;
+    RenameTabWithIdPayload rename_tab_with_id_payload = 146;
+    BreakPanesToTabWithIdPayload break_panes_to_tab_with_id_payload = 147;
+    GetSessionEnvironmentVariablesPayload get_session_environment_variables_payload = 148;
   }
 }
 
@@ -741,6 +761,36 @@ enum FixedOrPercent {
   Percent = 1;
 }
 
+message SwitchTabToIdPayload {
+  uint64 tab_id = 1;
+}
+
+message GoToTabWithIdPayload {
+  uint64 tab_id = 1;
+}
+
+message CloseTabWithIdPayload {
+  uint64 tab_id = 1;
+}
+
+message RenameTabWithIdPayload {
+  uint64 tab_id = 1;
+  string new_name = 2;
+}
+
+message BreakPanesToTabWithIdPayload {
+  repeated PaneId pane_ids = 1;
+  uint64 tab_id = 2;
+  bool should_change_focus_to_target_tab = 3;
+}
+
+message BreakPanesToTabWithIdResponse {
+  oneof result {
+    uint64 tab_id = 1;
+    bool none = 2;
+  }
+}
+
 message CreateTokenResponse {
   optional string token = 1;
   optional string token_label = 2;
@@ -795,6 +845,32 @@ message GetPanePidPayload {
 message GetPanePidResponse {
   oneof result {
     int32 pid = 1;
+    string error = 2;
+  }
+}
+
+message GetPaneRunningCommandPayload {
+  PaneId pane_id = 1;
+}
+
+message GetPaneRunningCommandResponse {
+  oneof result {
+    RunningCommand command = 1;
+    string error = 2;
+  }
+}
+
+message RunningCommand {
+  repeated string args = 1;
+}
+
+message GetPaneCwdPayload {
+  PaneId pane_id = 1;
+}
+
+message GetPaneCwdResponse {
+  oneof result {
+    string cwd = 1;
     string error = 2;
   }
 }
@@ -924,4 +1000,134 @@ message CurrentSessionLastSavedTimePayload {}
 
 message CurrentSessionLastSavedTimeResponse {
   optional uint64 timestamp_millis = 1; // None if never saved, otherwise milliseconds elapsed since last save
+}
+
+message GetPaneInfoPayload {
+  PaneId pane_id = 1;
+}
+
+message GetPaneInfoResponse {
+  optional event.PaneInfo pane_info = 1; // None if pane not found
+}
+
+message GetTabInfoPayload {
+  uint64 tab_id = 1;
+}
+
+message GetTabInfoResponse {
+  optional event.TabInfo tab_info = 1; // None if tab not found
+}
+
+message NewTabResponse {
+  oneof result {
+    uint64 tab_id = 1;
+    bool none = 2;  // Indicates None
+  }
+}
+
+message NewTabsResponse {
+  repeated uint64 tab_ids = 1;  // Only includes successfully created tabs
+}
+
+message FocusOrCreateTabResponse {
+  oneof result {
+    uint64 tab_id = 1;
+    bool none = 2;  // Indicates None
+  }
+}
+
+message BreakPanesToNewTabResponse {
+  oneof result {
+    uint64 tab_id = 1;
+    bool none = 2;  // Indicates None
+  }
+}
+
+message BreakPanesToTabWithIndexResponse {
+  oneof result {
+    uint64 tab_id = 1;
+    bool none = 2;  // Indicates None
+  }
+}
+
+message OpenFileResponse {
+  optional PaneId pane_id = 1;
+}
+
+message OpenFileFloatingResponse {
+  optional PaneId pane_id = 1;
+}
+
+message OpenFileInPlaceResponse {
+  optional PaneId pane_id = 1;
+}
+
+message OpenFileNearPluginResponse {
+  optional PaneId pane_id = 1;
+}
+
+message OpenFileFloatingNearPluginResponse {
+  optional PaneId pane_id = 1;
+}
+
+message OpenFileInPlaceOfPluginResponse {
+  optional PaneId pane_id = 1;
+}
+
+message OpenTerminalResponse {
+  optional PaneId pane_id = 1;
+}
+
+message OpenTerminalFloatingResponse {
+  optional PaneId pane_id = 1;
+}
+
+message OpenTerminalInPlaceResponse {
+  optional PaneId pane_id = 1;
+}
+
+message OpenTerminalNearPluginResponse {
+  optional PaneId pane_id = 1;
+}
+
+message OpenTerminalFloatingNearPluginResponse {
+  optional PaneId pane_id = 1;
+}
+
+message OpenTerminalInPlaceOfPluginResponse {
+  optional PaneId pane_id = 1;
+}
+
+message OpenCommandPaneResponse {
+  optional PaneId pane_id = 1;
+}
+
+message OpenCommandPaneFloatingResponse {
+  optional PaneId pane_id = 1;
+}
+
+message OpenCommandPaneInPlaceResponse {
+  optional PaneId pane_id = 1;
+}
+
+message OpenCommandPaneNearPluginResponse {
+  optional PaneId pane_id = 1;
+}
+
+message OpenCommandPaneFloatingNearPluginResponse {
+  optional PaneId pane_id = 1;
+}
+
+message OpenCommandPaneInPlaceOfPluginResponse {
+  optional PaneId pane_id = 1;
+}
+
+message OpenCommandPaneBackgroundResponse {
+  optional PaneId pane_id = 1;
+}
+
+message GetSessionEnvironmentVariablesPayload {}
+
+message GetSessionEnvironmentVariablesResponse {
+  repeated EnvVariable env_vars = 1;
 }

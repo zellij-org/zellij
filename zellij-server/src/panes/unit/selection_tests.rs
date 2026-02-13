@@ -454,3 +454,80 @@ fn add_line_to_position_reduce_from_above() {
     assert_eq!(selection.start, Position::new(line_index_to_add as i32, 0));
     assert_eq!(selection.end, selection_end);
 }
+
+#[test]
+fn finalize_sets_active_to_false() {
+    let mut selection = Selection::default();
+    selection.start(Position::new(10, 10));
+    assert!(selection.active);
+
+    selection.finalize();
+    assert!(!selection.active);
+}
+
+#[test]
+fn finalize_preserves_positions() {
+    let start = Position::new(5, 10);
+    let end = Position::new(15, 20);
+    let mut selection = Selection {
+        start,
+        end,
+        active: true,
+        last_added_word_position: Some((start, end)),
+        last_added_line_index: None,
+    };
+
+    selection.finalize();
+
+    assert_eq!(selection.start, start);
+    assert_eq!(selection.end, end);
+    assert!(!selection.active);
+}
+
+#[test]
+fn double_click_then_scroll_moves_both_positions() {
+    let word_start = Position::new(10, 5);
+    let word_end = Position::new(10, 15);
+    let mut selection = Selection::default();
+
+    selection.set_start_and_end_positions(word_start, word_end);
+    assert!(selection.active);
+
+    selection.finalize();
+    assert!(!selection.active);
+
+    selection.move_down(3);
+
+    assert_eq!(selection.start, Position::new(13, 5));
+    assert_eq!(selection.end, Position::new(13, 15));
+}
+
+#[test]
+fn triple_click_then_scroll_moves_both_positions() {
+    let line_start = Position::new(10, 0);
+    let line_end = Position::new(10, 80);
+    let mut selection = Selection::default();
+
+    selection.set_start_and_end_positions(line_start, line_end);
+    selection.finalize();
+
+    selection.move_up(5);
+
+    assert_eq!(selection.start, Position::new(5, 0));
+    assert_eq!(selection.end, Position::new(5, 80));
+}
+
+#[test]
+fn set_start_and_end_without_finalize_only_moves_start() {
+    let word_start = Position::new(10, 5);
+    let word_end = Position::new(10, 15);
+    let mut selection = Selection::default();
+
+    selection.set_start_and_end_positions(word_start, word_end);
+    assert!(selection.active);
+
+    selection.move_down(3);
+
+    assert_eq!(selection.start, Position::new(13, 5));
+    assert_eq!(selection.end, word_end);
+}

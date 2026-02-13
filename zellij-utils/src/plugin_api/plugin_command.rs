@@ -3,13 +3,21 @@ pub use super::generated_api::api::{
     event::{EventNameList as ProtobufEventNameList, Header},
     input_mode::InputMode as ProtobufInputMode,
     plugin_command::{
-        delete_layout_response, dump_layout_response, dump_session_layout_response,
-        edit_layout_response, get_focused_pane_info_response, get_pane_pid_response,
-        parse_layout_response, plugin_command::Payload, rename_layout_response,
-        save_layout_response, save_session_response, BreakPanesToNewTabPayload,
-        BreakPanesToTabWithIndexPayload, ChangeFloatingPanesCoordinatesPayload,
-        ChangeHostFolderPayload, ClearScreenForPaneIdPayload, CliPipeOutputPayload,
-        CloseMultiplePanesPayload, CloseTabWithIndexPayload, CommandName, ContextItem,
+        break_panes_to_new_tab_response, break_panes_to_tab_with_id_response,
+        break_panes_to_tab_with_index_response, delete_layout_response, dump_layout_response,
+        dump_session_layout_response, edit_layout_response, focus_or_create_tab_response,
+        get_focused_pane_info_response, get_pane_cwd_response, get_pane_pid_response,
+        get_pane_running_command_response, new_tab_response, parse_layout_response,
+        plugin_command::Payload, rename_layout_response, save_layout_response,
+        save_session_response, BreakPanesToNewTabPayload,
+        BreakPanesToNewTabResponse as ProtobufBreakPanesToNewTabResponse,
+        BreakPanesToTabWithIdPayload,
+        BreakPanesToTabWithIdResponse as ProtobufBreakPanesToTabWithIdResponse,
+        BreakPanesToTabWithIndexPayload,
+        BreakPanesToTabWithIndexResponse as ProtobufBreakPanesToTabWithIndexResponse,
+        ChangeFloatingPanesCoordinatesPayload, ChangeHostFolderPayload,
+        ClearScreenForPaneIdPayload, CliPipeOutputPayload, CloseMultiplePanesPayload,
+        CloseTabWithIdPayload, CloseTabWithIndexPayload, CommandName, ContextItem,
         CopyToClipboardPayload, CreateTokenResponse as ProtobufCreateTokenResponse,
         CreateTokenResponse, CurrentSessionLastSavedTimePayload,
         CurrentSessionLastSavedTimeResponse as ProtobufCurrentSessionLastSavedTimeResponse,
@@ -20,41 +28,75 @@ pub use super::generated_api::api::{
         EditScrollbackForPaneWithIdPayload, EmbedMultiplePanesPayload, EnvVariable, ExecCmdPayload,
         FixedOrPercent as ProtobufFixedOrPercent,
         FixedOrPercentValue as ProtobufFixedOrPercentValue, FloatMultiplePanesPayload,
-        FloatingPaneCoordinates as ProtobufFloatingPaneCoordinates, FocusedPaneInfo,
+        FloatingPaneCoordinates as ProtobufFloatingPaneCoordinates,
+        FocusOrCreateTabResponse as ProtobufFocusOrCreateTabResponse, FocusedPaneInfo,
         GenerateRandomNamePayload,
         GenerateRandomNameResponse as ProtobufGenerateRandomNameResponse,
         GenerateWebLoginTokenPayload, GetFocusedPaneInfoPayload,
         GetFocusedPaneInfoResponse as ProtobufGetFocusedPaneInfoResponse, GetLayoutDirPayload,
-        GetLayoutDirResponse as ProtobufGetLayoutDirResponse, GetPanePidPayload,
-        GetPanePidResponse as ProtobufGetPanePidResponse, GetPaneScrollbackPayload,
+        GetLayoutDirResponse as ProtobufGetLayoutDirResponse,
+        GetPaneCwdPayload as ProtobufGetPaneCwdPayload,
+        GetPaneCwdResponse as ProtobufGetPaneCwdResponse, GetPaneInfoPayload,
+        GetPaneInfoResponse as ProtobufGetPaneInfoResponse, GetPanePidPayload,
+        GetPanePidResponse as ProtobufGetPanePidResponse,
+        GetPaneRunningCommandPayload as ProtobufGetPaneRunningCommandPayload,
+        GetPaneRunningCommandResponse as ProtobufGetPaneRunningCommandResponse,
+        GetPaneScrollbackPayload,
+        GetSessionEnvironmentVariablesPayload as ProtobufGetSessionEnvironmentVariablesPayload,
+        GetSessionEnvironmentVariablesResponse as ProtobufGetSessionEnvironmentVariablesResponse,
+        GetTabInfoPayload, GetTabInfoResponse as ProtobufGetTabInfoResponse, GoToTabWithIdPayload,
         GroupAndUngroupPanesPayload, HidePaneWithIdPayload, HighlightAndUnhighlightPanesPayload,
         HttpVerb as ProtobufHttpVerb, IdAndNewName, KeyToRebind, KeyToUnbind, KillSessionsPayload,
         ListTokensResponse, LoadNewPluginPayload, MessageToPluginPayload,
         MovePaneWithPaneIdInDirectionPayload, MovePaneWithPaneIdPayload, MovePayload,
-        NewPluginArgs as ProtobufNewPluginArgs, NewTabPayload, NewTabsWithLayoutInfoPayload,
-        OpenCommandPaneFloatingNearPluginPayload, OpenCommandPaneInPlaceOfPluginPayload,
-        OpenCommandPaneNearPluginPayload, OpenCommandPanePayload,
-        OpenFileFloatingNearPluginPayload, OpenFileInPlaceOfPluginPayload,
-        OpenFileNearPluginPayload, OpenFilePayload, OpenTerminalFloatingNearPluginPayload,
-        OpenTerminalInPlaceOfPluginPayload, OpenTerminalNearPluginPayload, OverrideLayoutPayload,
+        NewPluginArgs as ProtobufNewPluginArgs, NewTabPayload,
+        NewTabResponse as ProtobufNewTabResponse, NewTabsResponse as ProtobufNewTabsResponse,
+        NewTabsWithLayoutInfoPayload,
+        OpenCommandPaneBackgroundResponse as ProtobufOpenCommandPaneBackgroundResponse,
+        OpenCommandPaneFloatingNearPluginPayload,
+        OpenCommandPaneFloatingNearPluginResponse as ProtobufOpenCommandPaneFloatingNearPluginResponse,
+        OpenCommandPaneFloatingResponse as ProtobufOpenCommandPaneFloatingResponse,
+        OpenCommandPaneInPlaceOfPluginPayload,
+        OpenCommandPaneInPlaceOfPluginResponse as ProtobufOpenCommandPaneInPlaceOfPluginResponse,
+        OpenCommandPaneInPlaceResponse as ProtobufOpenCommandPaneInPlaceResponse,
+        OpenCommandPaneNearPluginPayload,
+        OpenCommandPaneNearPluginResponse as ProtobufOpenCommandPaneNearPluginResponse,
+        OpenCommandPanePayload, OpenCommandPaneResponse as ProtobufOpenCommandPaneResponse,
+        OpenFileFloatingNearPluginPayload,
+        OpenFileFloatingNearPluginResponse as ProtobufOpenFileFloatingNearPluginResponse,
+        OpenFileFloatingResponse as ProtobufOpenFileFloatingResponse,
+        OpenFileInPlaceOfPluginPayload,
+        OpenFileInPlaceOfPluginResponse as ProtobufOpenFileInPlaceOfPluginResponse,
+        OpenFileInPlaceResponse as ProtobufOpenFileInPlaceResponse, OpenFileNearPluginPayload,
+        OpenFileNearPluginResponse as ProtobufOpenFileNearPluginResponse, OpenFilePayload,
+        OpenFileResponse as ProtobufOpenFileResponse, OpenTerminalFloatingNearPluginPayload,
+        OpenTerminalFloatingNearPluginResponse as ProtobufOpenTerminalFloatingNearPluginResponse,
+        OpenTerminalFloatingResponse as ProtobufOpenTerminalFloatingResponse,
+        OpenTerminalInPlaceOfPluginPayload,
+        OpenTerminalInPlaceOfPluginResponse as ProtobufOpenTerminalInPlaceOfPluginResponse,
+        OpenTerminalInPlaceResponse as ProtobufOpenTerminalInPlaceResponse,
+        OpenTerminalNearPluginPayload,
+        OpenTerminalNearPluginResponse as ProtobufOpenTerminalNearPluginResponse,
+        OpenTerminalResponse as ProtobufOpenTerminalResponse, OverrideLayoutPayload,
         PageScrollDownInPaneIdPayload, PageScrollUpInPaneIdPayload, PaneId as ProtobufPaneId,
         PaneIdAndFloatingPaneCoordinates, PaneType as ProtobufPaneType, ParseLayoutPayload,
         ParseLayoutResponse as ProtobufParseLayoutResponse, PluginCommand as ProtobufPluginCommand,
         PluginMessagePayload, RebindKeysPayload, ReconfigurePayload, ReloadPluginPayload,
         RenameLayoutPayload, RenameLayoutResponse as ProtobufRenameLayoutResponse,
-        RenameWebLoginTokenPayload, RenameWebTokenResponse, ReplacePaneWithExistingPanePayload,
-        RequestPluginPermissionPayload, RerunCommandPanePayload, ResizePaneIdWithDirectionPayload,
-        ResizePayload, RevokeAllWebTokensResponse, RevokeTokenResponse, RevokeWebLoginTokenPayload,
-        RunActionPayload, RunCommandPayload, SaveLayoutPayload,
-        SaveLayoutResponse as ProtobufSaveLayoutResponse, SaveSessionPayload,
+        RenameTabWithIdPayload, RenameWebLoginTokenPayload, RenameWebTokenResponse,
+        ReplacePaneWithExistingPanePayload, RequestPluginPermissionPayload,
+        RerunCommandPanePayload, ResizePaneIdWithDirectionPayload, ResizePayload,
+        RevokeAllWebTokensResponse, RevokeTokenResponse, RevokeWebLoginTokenPayload,
+        RunActionPayload, RunCommandPayload, RunningCommand as ProtobufRunningCommand,
+        SaveLayoutPayload, SaveLayoutResponse as ProtobufSaveLayoutResponse, SaveSessionPayload,
         SaveSessionResponse as ProtobufSaveSessionResponse, ScrollDownInPaneIdPayload,
         ScrollToBottomInPaneIdPayload, ScrollToTopInPaneIdPayload, ScrollUpInPaneIdPayload,
         SetFloatingPanePinnedPayload, SetPaneBorderlessPayload,
         SetSelfMouseSelectionSupportPayload, SetTimeoutPayload, ShowCursorPayload,
         ShowPaneWithIdPayload, StackPanesPayload, SubscribePayload, SwitchSessionPayload,
-        SwitchTabToPayload, TogglePaneBorderlessPayload, TogglePaneEmbedOrEjectForPaneIdPayload,
-        TogglePaneIdFullscreenPayload, UnsubscribePayload, WebRequestPayload,
-        WriteCharsToPaneIdPayload, WriteToPaneIdPayload,
+        SwitchTabToIdPayload, SwitchTabToPayload, TogglePaneBorderlessPayload,
+        TogglePaneEmbedOrEjectForPaneIdPayload, TogglePaneIdFullscreenPayload, UnsubscribePayload,
+        WebRequestPayload, WriteCharsToPaneIdPayload, WriteToPaneIdPayload,
     },
     plugin_permission::PermissionType as ProtobufPermissionType,
     resize::ResizeAction as ProtobufResizeAction,
@@ -62,9 +104,9 @@ pub use super::generated_api::api::{
 
 use crate::data::{
     ConnectToSession, DeleteLayoutResponse, EditLayoutResponse, FloatingPaneCoordinates,
-    GetFocusedPaneInfoResponse, GetPanePidResponse, HttpVerb, InputMode, KeyWithModifier,
-    MessageToPlugin, NewPluginArgs, PaneId, PermissionType, PluginCommand, RenameLayoutResponse,
-    SaveLayoutResponse,
+    GetFocusedPaneInfoResponse, GetPaneCwdResponse, GetPanePidResponse,
+    GetPaneRunningCommandResponse, HttpVerb, InputMode, KeyWithModifier, MessageToPlugin,
+    NewPluginArgs, PaneId, PermissionType, PluginCommand, RenameLayoutResponse, SaveLayoutResponse,
 };
 use crate::input::actions::Action;
 use crate::input::layout::PercentOrFixed;
@@ -247,6 +289,40 @@ impl From<GetPanePidResponse> for ProtobufGetPanePidResponse {
             },
             GetPanePidResponse::Err(error) => ProtobufGetPanePidResponse {
                 result: Some(get_pane_pid_response::Result::Error(error)),
+            },
+        }
+    }
+}
+
+impl From<GetPaneRunningCommandResponse> for ProtobufGetPaneRunningCommandResponse {
+    fn from(response: GetPaneRunningCommandResponse) -> Self {
+        match response {
+            GetPaneRunningCommandResponse::Ok(args) => ProtobufGetPaneRunningCommandResponse {
+                result: Some(get_pane_running_command_response::Result::Command(
+                    ProtobufRunningCommand { args },
+                )),
+            },
+            GetPaneRunningCommandResponse::Err(err) => ProtobufGetPaneRunningCommandResponse {
+                result: Some(get_pane_running_command_response::Result::Error(err)),
+            },
+        }
+    }
+}
+
+impl From<GetPaneCwdResponse> for ProtobufGetPaneCwdResponse {
+    fn from(response: GetPaneCwdResponse) -> Self {
+        match response {
+            GetPaneCwdResponse::Ok(path) => {
+                let cwd_string = path
+                    .to_str()
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| String::from(""));
+                ProtobufGetPaneCwdResponse {
+                    result: Some(get_pane_cwd_response::Result::Cwd(cwd_string)),
+                }
+            },
+            GetPaneCwdResponse::Err(err) => ProtobufGetPaneCwdResponse {
+                result: Some(get_pane_cwd_response::Result::Error(err)),
             },
         }
     }
@@ -1374,6 +1450,26 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 },
                 _ => Err("Mismatched payload for GetPanePid"),
             },
+            Some(CommandName::GetPaneRunningCommand) => match protobuf_plugin_command.payload {
+                Some(Payload::GetPaneRunningCommandPayload(payload)) => {
+                    Ok(PluginCommand::GetPaneRunningCommand {
+                        pane_id: payload
+                            .pane_id
+                            .ok_or("Malformed GetPaneRunningCommand: missing pane_id")?
+                            .try_into()?,
+                    })
+                },
+                _ => Err("Malformed GetPaneRunningCommand payload"),
+            },
+            Some(CommandName::GetPaneCwd) => match protobuf_plugin_command.payload {
+                Some(Payload::GetPaneCwdPayload(payload)) => Ok(PluginCommand::GetPaneCwd {
+                    pane_id: payload
+                        .pane_id
+                        .ok_or("Malformed GetPaneCwd: missing pane_id")?
+                        .try_into()?,
+                }),
+                _ => Err("Malformed GetPaneCwd payload"),
+            },
             Some(CommandName::OverrideLayout) => match protobuf_plugin_command.payload {
                 Some(Payload::OverrideLayoutPayload(override_layout_payload)) => {
                     let layout_info = override_layout_payload
@@ -1589,6 +1685,44 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                     break_panes_to_tab_with_index_payload.should_change_focus_to_target_tab,
                 )),
                 _ => Err("Mismatched payload for BreakPanesToTabWithIndex"),
+            },
+            Some(CommandName::SwitchTabToId) => match protobuf_plugin_command.payload {
+                Some(Payload::SwitchTabToIdPayload(payload)) => {
+                    Ok(PluginCommand::SwitchTabToId(payload.tab_id))
+                },
+                _ => Err("Mismatched payload for SwitchTabToId"),
+            },
+            Some(CommandName::GoToTabWithId) => match protobuf_plugin_command.payload {
+                Some(Payload::GoToTabWithIdPayload(payload)) => {
+                    Ok(PluginCommand::GoToTabWithId(payload.tab_id))
+                },
+                _ => Err("Mismatched payload for GoToTabWithId"),
+            },
+            Some(CommandName::CloseTabWithId) => match protobuf_plugin_command.payload {
+                Some(Payload::CloseTabWithIdPayload(payload)) => {
+                    Ok(PluginCommand::CloseTabWithId(payload.tab_id))
+                },
+                _ => Err("Mismatched payload for CloseTabWithId"),
+            },
+            Some(CommandName::RenameTabWithId) => match protobuf_plugin_command.payload {
+                Some(Payload::RenameTabWithIdPayload(payload)) => Ok(
+                    PluginCommand::RenameTabWithId(payload.tab_id, payload.new_name),
+                ),
+                _ => Err("Mismatched payload for RenameTabWithId"),
+            },
+            Some(CommandName::BreakPanesToTabWithId) => match protobuf_plugin_command.payload {
+                Some(Payload::BreakPanesToTabWithIdPayload(payload)) => {
+                    Ok(PluginCommand::BreakPanesToTabWithId(
+                        payload
+                            .pane_ids
+                            .into_iter()
+                            .filter_map(|p_id| p_id.try_into().ok())
+                            .collect(),
+                        payload.tab_id,
+                        payload.should_change_focus_to_target_tab,
+                    ))
+                },
+                _ => Err("Mismatched payload for BreakPanesToTabWithId"),
             },
             Some(CommandName::ReloadPlugin) => match protobuf_plugin_command.payload {
                 Some(Payload::ReloadPluginPayload(reload_plugin_payload)) => {
@@ -2109,6 +2243,31 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
             Some(CommandName::SaveSession) => Ok(PluginCommand::SaveSession),
             Some(CommandName::CurrentSessionLastSavedTime) => {
                 Ok(PluginCommand::CurrentSessionLastSavedTime)
+            },
+            Some(CommandName::GetPaneInfo) => match protobuf_plugin_command.payload {
+                Some(Payload::GetPaneInfoPayload(get_pane_info_payload)) => {
+                    let pane_id = get_pane_info_payload
+                        .pane_id
+                        .ok_or("Malformed pane_id for GetPaneInfo")
+                        .and_then(|p| p.try_into())?;
+                    Ok(PluginCommand::GetPaneInfo(pane_id))
+                },
+                _ => Err("Malformed payload for GetPaneInfo"),
+            },
+            Some(CommandName::GetTabInfo) => match protobuf_plugin_command.payload {
+                Some(Payload::GetTabInfoPayload(get_tab_info_payload)) => {
+                    let tab_id = get_tab_info_payload.tab_id as usize;
+                    Ok(PluginCommand::GetTabInfo(tab_id))
+                },
+                _ => Err("Malformed payload for GetTabInfo"),
+            },
+            Some(CommandName::GetSessionEnvironmentVariables) => {
+                match protobuf_plugin_command.payload {
+                    Some(Payload::GetSessionEnvironmentVariablesPayload(_)) => {
+                        Ok(PluginCommand::GetSessionEnvironmentVariables)
+                    },
+                    _ => Err("Mismatched payload for GetSessionEnvironmentVariables"),
+                }
             },
             None => Err("Unrecognized plugin command"),
         }
@@ -2814,6 +2973,20 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     pane_id: Some(pane_id.try_into()?),
                 })),
             }),
+            PluginCommand::GetPaneRunningCommand { pane_id } => Ok(ProtobufPluginCommand {
+                name: CommandName::GetPaneRunningCommand as i32,
+                payload: Some(Payload::GetPaneRunningCommandPayload(
+                    ProtobufGetPaneRunningCommandPayload {
+                        pane_id: Some(pane_id.try_into()?),
+                    },
+                )),
+            }),
+            PluginCommand::GetPaneCwd { pane_id } => Ok(ProtobufPluginCommand {
+                name: CommandName::GetPaneCwd as i32,
+                payload: Some(Payload::GetPaneCwdPayload(ProtobufGetPaneCwdPayload {
+                    pane_id: Some(pane_id.try_into()?),
+                })),
+            }),
             PluginCommand::OverrideLayout(
                 layout_info,
                 retain_existing_terminal_panes,
@@ -3004,6 +3177,48 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                             .filter_map(|p_id| p_id.try_into().ok())
                             .collect(),
                         tab_index: tab_index as u32,
+                        should_change_focus_to_target_tab,
+                    },
+                )),
+            }),
+            PluginCommand::SwitchTabToId(tab_id) => Ok(ProtobufPluginCommand {
+                name: CommandName::SwitchTabToId as i32,
+                payload: Some(Payload::SwitchTabToIdPayload(SwitchTabToIdPayload {
+                    tab_id,
+                })),
+            }),
+            PluginCommand::GoToTabWithId(tab_id) => Ok(ProtobufPluginCommand {
+                name: CommandName::GoToTabWithId as i32,
+                payload: Some(Payload::GoToTabWithIdPayload(GoToTabWithIdPayload {
+                    tab_id,
+                })),
+            }),
+            PluginCommand::CloseTabWithId(tab_id) => Ok(ProtobufPluginCommand {
+                name: CommandName::CloseTabWithId as i32,
+                payload: Some(Payload::CloseTabWithIdPayload(CloseTabWithIdPayload {
+                    tab_id,
+                })),
+            }),
+            PluginCommand::RenameTabWithId(tab_id, new_name) => Ok(ProtobufPluginCommand {
+                name: CommandName::RenameTabWithId as i32,
+                payload: Some(Payload::RenameTabWithIdPayload(RenameTabWithIdPayload {
+                    tab_id,
+                    new_name,
+                })),
+            }),
+            PluginCommand::BreakPanesToTabWithId(
+                pane_ids,
+                tab_id,
+                should_change_focus_to_target_tab,
+            ) => Ok(ProtobufPluginCommand {
+                name: CommandName::BreakPanesToTabWithId as i32,
+                payload: Some(Payload::BreakPanesToTabWithIdPayload(
+                    BreakPanesToTabWithIdPayload {
+                        pane_ids: pane_ids
+                            .into_iter()
+                            .filter_map(|p_id| p_id.try_into().ok())
+                            .collect(),
+                        tab_id,
                         should_change_focus_to_target_tab,
                     },
                 )),
@@ -3460,6 +3675,533 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     CurrentSessionLastSavedTimePayload {},
                 )),
             }),
+            PluginCommand::GetPaneInfo(pane_id) => {
+                let protobuf_pane_id: ProtobufPaneId = pane_id.try_into()?;
+                Ok(ProtobufPluginCommand {
+                    name: CommandName::GetPaneInfo as i32,
+                    payload: Some(Payload::GetPaneInfoPayload(GetPaneInfoPayload {
+                        pane_id: Some(protobuf_pane_id),
+                    })),
+                })
+            },
+            PluginCommand::GetTabInfo(tab_id) => Ok(ProtobufPluginCommand {
+                name: CommandName::GetTabInfo as i32,
+                payload: Some(Payload::GetTabInfoPayload(GetTabInfoPayload {
+                    tab_id: tab_id as u64,
+                })),
+            }),
+            PluginCommand::GetSessionEnvironmentVariables => {
+                let payload = ProtobufGetSessionEnvironmentVariablesPayload {};
+                Ok(ProtobufPluginCommand {
+                    name: CommandName::GetSessionEnvironmentVariables as i32,
+                    payload: Some(Payload::GetSessionEnvironmentVariablesPayload(payload)),
+                })
+            },
+        }
+    }
+}
+
+// Conversion implementations for tab creation response types
+use crate::data::{
+    BreakPanesToNewTabResponse, BreakPanesToTabWithIdResponse, BreakPanesToTabWithIndexResponse,
+    FocusOrCreateTabResponse, NewTabResponse, NewTabsResponse, OpenCommandPaneBackgroundResponse,
+    OpenCommandPaneFloatingNearPluginResponse, OpenCommandPaneFloatingResponse,
+    OpenCommandPaneInPlaceOfPluginResponse, OpenCommandPaneInPlaceResponse,
+    OpenCommandPaneNearPluginResponse, OpenCommandPaneResponse, OpenFileFloatingNearPluginResponse,
+    OpenFileFloatingResponse, OpenFileInPlaceOfPluginResponse, OpenFileInPlaceResponse,
+    OpenFileNearPluginResponse, OpenFileResponse, OpenTerminalFloatingNearPluginResponse,
+    OpenTerminalFloatingResponse, OpenTerminalInPlaceOfPluginResponse, OpenTerminalInPlaceResponse,
+    OpenTerminalNearPluginResponse, OpenTerminalResponse,
+};
+
+impl TryFrom<ProtobufNewTabResponse> for NewTabResponse {
+    type Error = &'static str;
+    fn try_from(protobuf: ProtobufNewTabResponse) -> Result<Self, Self::Error> {
+        match protobuf.result {
+            Some(new_tab_response::Result::TabId(id)) => Ok(Some(id as usize)),
+            Some(new_tab_response::Result::None(_)) | None => Ok(None),
+        }
+    }
+}
+
+impl From<NewTabResponse> for ProtobufNewTabResponse {
+    fn from(response: NewTabResponse) -> Self {
+        match response {
+            Some(tab_id) => ProtobufNewTabResponse {
+                result: Some(new_tab_response::Result::TabId(tab_id as u64)),
+            },
+            None => ProtobufNewTabResponse {
+                result: Some(new_tab_response::Result::None(true)),
+            },
+        }
+    }
+}
+
+impl TryFrom<ProtobufNewTabsResponse> for NewTabsResponse {
+    type Error = &'static str;
+    fn try_from(protobuf: ProtobufNewTabsResponse) -> Result<Self, Self::Error> {
+        Ok(protobuf.tab_ids.into_iter().map(|id| id as usize).collect())
+    }
+}
+
+impl From<NewTabsResponse> for ProtobufNewTabsResponse {
+    fn from(response: NewTabsResponse) -> Self {
+        ProtobufNewTabsResponse {
+            tab_ids: response.into_iter().map(|id| id as u64).collect(),
+        }
+    }
+}
+
+impl TryFrom<ProtobufFocusOrCreateTabResponse> for FocusOrCreateTabResponse {
+    type Error = &'static str;
+    fn try_from(protobuf: ProtobufFocusOrCreateTabResponse) -> Result<Self, Self::Error> {
+        match protobuf.result {
+            Some(focus_or_create_tab_response::Result::TabId(id)) => Ok(Some(id as usize)),
+            Some(focus_or_create_tab_response::Result::None(_)) | None => Ok(None),
+        }
+    }
+}
+
+impl From<FocusOrCreateTabResponse> for ProtobufFocusOrCreateTabResponse {
+    fn from(response: FocusOrCreateTabResponse) -> Self {
+        match response {
+            Some(tab_id) => ProtobufFocusOrCreateTabResponse {
+                result: Some(focus_or_create_tab_response::Result::TabId(tab_id as u64)),
+            },
+            None => ProtobufFocusOrCreateTabResponse {
+                result: Some(focus_or_create_tab_response::Result::None(true)),
+            },
+        }
+    }
+}
+
+impl TryFrom<ProtobufBreakPanesToNewTabResponse> for BreakPanesToNewTabResponse {
+    type Error = &'static str;
+    fn try_from(protobuf: ProtobufBreakPanesToNewTabResponse) -> Result<Self, Self::Error> {
+        match protobuf.result {
+            Some(break_panes_to_new_tab_response::Result::TabId(id)) => Ok(Some(id as usize)),
+            Some(break_panes_to_new_tab_response::Result::None(_)) | None => Ok(None),
+        }
+    }
+}
+
+impl From<BreakPanesToNewTabResponse> for ProtobufBreakPanesToNewTabResponse {
+    fn from(response: BreakPanesToNewTabResponse) -> Self {
+        match response {
+            Some(tab_id) => ProtobufBreakPanesToNewTabResponse {
+                result: Some(break_panes_to_new_tab_response::Result::TabId(
+                    tab_id as u64,
+                )),
+            },
+            None => ProtobufBreakPanesToNewTabResponse {
+                result: Some(break_panes_to_new_tab_response::Result::None(true)),
+            },
+        }
+    }
+}
+
+impl TryFrom<ProtobufBreakPanesToTabWithIndexResponse> for BreakPanesToTabWithIndexResponse {
+    type Error = &'static str;
+    fn try_from(protobuf: ProtobufBreakPanesToTabWithIndexResponse) -> Result<Self, Self::Error> {
+        match protobuf.result {
+            Some(break_panes_to_tab_with_index_response::Result::TabId(id)) => {
+                Ok(Some(id as usize))
+            },
+            Some(break_panes_to_tab_with_index_response::Result::None(_)) | None => Ok(None),
+        }
+    }
+}
+
+impl From<BreakPanesToTabWithIndexResponse> for ProtobufBreakPanesToTabWithIndexResponse {
+    fn from(response: BreakPanesToTabWithIndexResponse) -> Self {
+        match response {
+            Some(tab_id) => ProtobufBreakPanesToTabWithIndexResponse {
+                result: Some(break_panes_to_tab_with_index_response::Result::TabId(
+                    tab_id as u64,
+                )),
+            },
+            None => ProtobufBreakPanesToTabWithIndexResponse {
+                result: Some(break_panes_to_tab_with_index_response::Result::None(true)),
+            },
+        }
+    }
+}
+
+impl From<BreakPanesToTabWithIdResponse> for ProtobufBreakPanesToTabWithIdResponse {
+    fn from(response: BreakPanesToTabWithIdResponse) -> Self {
+        match response {
+            Some(tab_id) => ProtobufBreakPanesToTabWithIdResponse {
+                result: Some(break_panes_to_tab_with_id_response::Result::TabId(
+                    tab_id as u64,
+                )),
+            },
+            None => ProtobufBreakPanesToTabWithIdResponse {
+                result: Some(break_panes_to_tab_with_id_response::Result::None(true)),
+            },
+        }
+    }
+}
+
+// Pane-creating command response conversions
+
+impl TryFrom<ProtobufOpenFileResponse> for OpenFileResponse {
+    type Error = &'static str;
+    fn try_from(protobuf: ProtobufOpenFileResponse) -> Result<Self, Self::Error> {
+        match protobuf.pane_id {
+            Some(pane_id) => Ok(Some(pane_id.try_into()?)),
+            None => Ok(None),
+        }
+    }
+}
+
+impl From<OpenFileResponse> for ProtobufOpenFileResponse {
+    fn from(response: OpenFileResponse) -> Self {
+        ProtobufOpenFileResponse {
+            pane_id: response.map(|p| p.try_into().unwrap()),
+        }
+    }
+}
+
+impl TryFrom<ProtobufOpenFileFloatingResponse> for OpenFileFloatingResponse {
+    type Error = &'static str;
+    fn try_from(protobuf: ProtobufOpenFileFloatingResponse) -> Result<Self, Self::Error> {
+        match protobuf.pane_id {
+            Some(pane_id) => Ok(Some(pane_id.try_into()?)),
+            None => Ok(None),
+        }
+    }
+}
+
+impl From<OpenFileFloatingResponse> for ProtobufOpenFileFloatingResponse {
+    fn from(response: OpenFileFloatingResponse) -> Self {
+        ProtobufOpenFileFloatingResponse {
+            pane_id: response.map(|p| p.try_into().unwrap()),
+        }
+    }
+}
+
+impl TryFrom<ProtobufOpenFileInPlaceResponse> for OpenFileInPlaceResponse {
+    type Error = &'static str;
+    fn try_from(protobuf: ProtobufOpenFileInPlaceResponse) -> Result<Self, Self::Error> {
+        match protobuf.pane_id {
+            Some(pane_id) => Ok(Some(pane_id.try_into()?)),
+            None => Ok(None),
+        }
+    }
+}
+
+impl From<OpenFileInPlaceResponse> for ProtobufOpenFileInPlaceResponse {
+    fn from(response: OpenFileInPlaceResponse) -> Self {
+        ProtobufOpenFileInPlaceResponse {
+            pane_id: response.map(|p| p.try_into().unwrap()),
+        }
+    }
+}
+
+impl TryFrom<ProtobufOpenFileNearPluginResponse> for OpenFileNearPluginResponse {
+    type Error = &'static str;
+    fn try_from(protobuf: ProtobufOpenFileNearPluginResponse) -> Result<Self, Self::Error> {
+        match protobuf.pane_id {
+            Some(pane_id) => Ok(Some(pane_id.try_into()?)),
+            None => Ok(None),
+        }
+    }
+}
+
+impl From<OpenFileNearPluginResponse> for ProtobufOpenFileNearPluginResponse {
+    fn from(response: OpenFileNearPluginResponse) -> Self {
+        ProtobufOpenFileNearPluginResponse {
+            pane_id: response.map(|p| p.try_into().unwrap()),
+        }
+    }
+}
+
+impl TryFrom<ProtobufOpenFileFloatingNearPluginResponse> for OpenFileFloatingNearPluginResponse {
+    type Error = &'static str;
+    fn try_from(protobuf: ProtobufOpenFileFloatingNearPluginResponse) -> Result<Self, Self::Error> {
+        match protobuf.pane_id {
+            Some(pane_id) => Ok(Some(pane_id.try_into()?)),
+            None => Ok(None),
+        }
+    }
+}
+
+impl From<OpenFileFloatingNearPluginResponse> for ProtobufOpenFileFloatingNearPluginResponse {
+    fn from(response: OpenFileFloatingNearPluginResponse) -> Self {
+        ProtobufOpenFileFloatingNearPluginResponse {
+            pane_id: response.map(|p| p.try_into().unwrap()),
+        }
+    }
+}
+
+impl TryFrom<ProtobufOpenFileInPlaceOfPluginResponse> for OpenFileInPlaceOfPluginResponse {
+    type Error = &'static str;
+    fn try_from(protobuf: ProtobufOpenFileInPlaceOfPluginResponse) -> Result<Self, Self::Error> {
+        match protobuf.pane_id {
+            Some(pane_id) => Ok(Some(pane_id.try_into()?)),
+            None => Ok(None),
+        }
+    }
+}
+
+impl From<OpenFileInPlaceOfPluginResponse> for ProtobufOpenFileInPlaceOfPluginResponse {
+    fn from(response: OpenFileInPlaceOfPluginResponse) -> Self {
+        ProtobufOpenFileInPlaceOfPluginResponse {
+            pane_id: response.map(|p| p.try_into().unwrap()),
+        }
+    }
+}
+
+impl TryFrom<ProtobufOpenTerminalResponse> for OpenTerminalResponse {
+    type Error = &'static str;
+    fn try_from(protobuf: ProtobufOpenTerminalResponse) -> Result<Self, Self::Error> {
+        match protobuf.pane_id {
+            Some(pane_id) => Ok(Some(pane_id.try_into()?)),
+            None => Ok(None),
+        }
+    }
+}
+
+impl From<OpenTerminalResponse> for ProtobufOpenTerminalResponse {
+    fn from(response: OpenTerminalResponse) -> Self {
+        ProtobufOpenTerminalResponse {
+            pane_id: response.map(|p| p.try_into().unwrap()),
+        }
+    }
+}
+
+impl TryFrom<ProtobufOpenTerminalFloatingResponse> for OpenTerminalFloatingResponse {
+    type Error = &'static str;
+    fn try_from(protobuf: ProtobufOpenTerminalFloatingResponse) -> Result<Self, Self::Error> {
+        match protobuf.pane_id {
+            Some(pane_id) => Ok(Some(pane_id.try_into()?)),
+            None => Ok(None),
+        }
+    }
+}
+
+impl From<OpenTerminalFloatingResponse> for ProtobufOpenTerminalFloatingResponse {
+    fn from(response: OpenTerminalFloatingResponse) -> Self {
+        ProtobufOpenTerminalFloatingResponse {
+            pane_id: response.map(|p| p.try_into().unwrap()),
+        }
+    }
+}
+
+impl TryFrom<ProtobufOpenTerminalInPlaceResponse> for OpenTerminalInPlaceResponse {
+    type Error = &'static str;
+    fn try_from(protobuf: ProtobufOpenTerminalInPlaceResponse) -> Result<Self, Self::Error> {
+        match protobuf.pane_id {
+            Some(pane_id) => Ok(Some(pane_id.try_into()?)),
+            None => Ok(None),
+        }
+    }
+}
+
+impl From<OpenTerminalInPlaceResponse> for ProtobufOpenTerminalInPlaceResponse {
+    fn from(response: OpenTerminalInPlaceResponse) -> Self {
+        ProtobufOpenTerminalInPlaceResponse {
+            pane_id: response.map(|p| p.try_into().unwrap()),
+        }
+    }
+}
+
+impl TryFrom<ProtobufOpenTerminalNearPluginResponse> for OpenTerminalNearPluginResponse {
+    type Error = &'static str;
+    fn try_from(protobuf: ProtobufOpenTerminalNearPluginResponse) -> Result<Self, Self::Error> {
+        match protobuf.pane_id {
+            Some(pane_id) => Ok(Some(pane_id.try_into()?)),
+            None => Ok(None),
+        }
+    }
+}
+
+impl From<OpenTerminalNearPluginResponse> for ProtobufOpenTerminalNearPluginResponse {
+    fn from(response: OpenTerminalNearPluginResponse) -> Self {
+        ProtobufOpenTerminalNearPluginResponse {
+            pane_id: response.map(|p| p.try_into().unwrap()),
+        }
+    }
+}
+
+impl TryFrom<ProtobufOpenTerminalFloatingNearPluginResponse>
+    for OpenTerminalFloatingNearPluginResponse
+{
+    type Error = &'static str;
+    fn try_from(
+        protobuf: ProtobufOpenTerminalFloatingNearPluginResponse,
+    ) -> Result<Self, Self::Error> {
+        match protobuf.pane_id {
+            Some(pane_id) => Ok(Some(pane_id.try_into()?)),
+            None => Ok(None),
+        }
+    }
+}
+
+impl From<OpenTerminalFloatingNearPluginResponse>
+    for ProtobufOpenTerminalFloatingNearPluginResponse
+{
+    fn from(response: OpenTerminalFloatingNearPluginResponse) -> Self {
+        ProtobufOpenTerminalFloatingNearPluginResponse {
+            pane_id: response.map(|p| p.try_into().unwrap()),
+        }
+    }
+}
+
+impl TryFrom<ProtobufOpenTerminalInPlaceOfPluginResponse> for OpenTerminalInPlaceOfPluginResponse {
+    type Error = &'static str;
+    fn try_from(
+        protobuf: ProtobufOpenTerminalInPlaceOfPluginResponse,
+    ) -> Result<Self, Self::Error> {
+        match protobuf.pane_id {
+            Some(pane_id) => Ok(Some(pane_id.try_into()?)),
+            None => Ok(None),
+        }
+    }
+}
+
+impl From<OpenTerminalInPlaceOfPluginResponse> for ProtobufOpenTerminalInPlaceOfPluginResponse {
+    fn from(response: OpenTerminalInPlaceOfPluginResponse) -> Self {
+        ProtobufOpenTerminalInPlaceOfPluginResponse {
+            pane_id: response.map(|p| p.try_into().unwrap()),
+        }
+    }
+}
+
+impl TryFrom<ProtobufOpenCommandPaneResponse> for OpenCommandPaneResponse {
+    type Error = &'static str;
+    fn try_from(protobuf: ProtobufOpenCommandPaneResponse) -> Result<Self, Self::Error> {
+        match protobuf.pane_id {
+            Some(pane_id) => Ok(Some(pane_id.try_into()?)),
+            None => Ok(None),
+        }
+    }
+}
+
+impl From<OpenCommandPaneResponse> for ProtobufOpenCommandPaneResponse {
+    fn from(response: OpenCommandPaneResponse) -> Self {
+        ProtobufOpenCommandPaneResponse {
+            pane_id: response.map(|p| p.try_into().unwrap()),
+        }
+    }
+}
+
+impl TryFrom<ProtobufOpenCommandPaneFloatingResponse> for OpenCommandPaneFloatingResponse {
+    type Error = &'static str;
+    fn try_from(protobuf: ProtobufOpenCommandPaneFloatingResponse) -> Result<Self, Self::Error> {
+        match protobuf.pane_id {
+            Some(pane_id) => Ok(Some(pane_id.try_into()?)),
+            None => Ok(None),
+        }
+    }
+}
+
+impl From<OpenCommandPaneFloatingResponse> for ProtobufOpenCommandPaneFloatingResponse {
+    fn from(response: OpenCommandPaneFloatingResponse) -> Self {
+        ProtobufOpenCommandPaneFloatingResponse {
+            pane_id: response.map(|p| p.try_into().unwrap()),
+        }
+    }
+}
+
+impl TryFrom<ProtobufOpenCommandPaneInPlaceResponse> for OpenCommandPaneInPlaceResponse {
+    type Error = &'static str;
+    fn try_from(protobuf: ProtobufOpenCommandPaneInPlaceResponse) -> Result<Self, Self::Error> {
+        match protobuf.pane_id {
+            Some(pane_id) => Ok(Some(pane_id.try_into()?)),
+            None => Ok(None),
+        }
+    }
+}
+
+impl From<OpenCommandPaneInPlaceResponse> for ProtobufOpenCommandPaneInPlaceResponse {
+    fn from(response: OpenCommandPaneInPlaceResponse) -> Self {
+        ProtobufOpenCommandPaneInPlaceResponse {
+            pane_id: response.map(|p| p.try_into().unwrap()),
+        }
+    }
+}
+
+impl TryFrom<ProtobufOpenCommandPaneNearPluginResponse> for OpenCommandPaneNearPluginResponse {
+    type Error = &'static str;
+    fn try_from(protobuf: ProtobufOpenCommandPaneNearPluginResponse) -> Result<Self, Self::Error> {
+        match protobuf.pane_id {
+            Some(pane_id) => Ok(Some(pane_id.try_into()?)),
+            None => Ok(None),
+        }
+    }
+}
+
+impl From<OpenCommandPaneNearPluginResponse> for ProtobufOpenCommandPaneNearPluginResponse {
+    fn from(response: OpenCommandPaneNearPluginResponse) -> Self {
+        ProtobufOpenCommandPaneNearPluginResponse {
+            pane_id: response.map(|p| p.try_into().unwrap()),
+        }
+    }
+}
+
+impl TryFrom<ProtobufOpenCommandPaneFloatingNearPluginResponse>
+    for OpenCommandPaneFloatingNearPluginResponse
+{
+    type Error = &'static str;
+    fn try_from(
+        protobuf: ProtobufOpenCommandPaneFloatingNearPluginResponse,
+    ) -> Result<Self, Self::Error> {
+        match protobuf.pane_id {
+            Some(pane_id) => Ok(Some(pane_id.try_into()?)),
+            None => Ok(None),
+        }
+    }
+}
+
+impl From<OpenCommandPaneFloatingNearPluginResponse>
+    for ProtobufOpenCommandPaneFloatingNearPluginResponse
+{
+    fn from(response: OpenCommandPaneFloatingNearPluginResponse) -> Self {
+        ProtobufOpenCommandPaneFloatingNearPluginResponse {
+            pane_id: response.map(|p| p.try_into().unwrap()),
+        }
+    }
+}
+
+impl TryFrom<ProtobufOpenCommandPaneInPlaceOfPluginResponse>
+    for OpenCommandPaneInPlaceOfPluginResponse
+{
+    type Error = &'static str;
+    fn try_from(
+        protobuf: ProtobufOpenCommandPaneInPlaceOfPluginResponse,
+    ) -> Result<Self, Self::Error> {
+        match protobuf.pane_id {
+            Some(pane_id) => Ok(Some(pane_id.try_into()?)),
+            None => Ok(None),
+        }
+    }
+}
+
+impl From<OpenCommandPaneInPlaceOfPluginResponse>
+    for ProtobufOpenCommandPaneInPlaceOfPluginResponse
+{
+    fn from(response: OpenCommandPaneInPlaceOfPluginResponse) -> Self {
+        ProtobufOpenCommandPaneInPlaceOfPluginResponse {
+            pane_id: response.map(|p| p.try_into().unwrap()),
+        }
+    }
+}
+
+impl TryFrom<ProtobufOpenCommandPaneBackgroundResponse> for OpenCommandPaneBackgroundResponse {
+    type Error = &'static str;
+    fn try_from(protobuf: ProtobufOpenCommandPaneBackgroundResponse) -> Result<Self, Self::Error> {
+        match protobuf.pane_id {
+            Some(pane_id) => Ok(Some(pane_id.try_into()?)),
+            None => Ok(None),
+        }
+    }
+}
+
+impl From<OpenCommandPaneBackgroundResponse> for ProtobufOpenCommandPaneBackgroundResponse {
+    fn from(response: OpenCommandPaneBackgroundResponse) -> Self {
+        ProtobufOpenCommandPaneBackgroundResponse {
+            pane_id: response.map(|p| p.try_into().unwrap()),
         }
     }
 }

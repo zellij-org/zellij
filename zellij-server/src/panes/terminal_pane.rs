@@ -110,6 +110,15 @@ impl Into<ZellijUtilsPaneId> for PaneId {
     }
 }
 
+impl std::fmt::Display for PaneId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PaneId::Terminal(id) => write!(f, "terminal_{}", id),
+            PaneId::Plugin(id) => write!(f, "plugin_{}", id),
+        }
+    }
+}
+
 type IsFirstRun = bool;
 
 // FIXME: This should hold an os_api handle so that terminal panes can set their own size via FD in

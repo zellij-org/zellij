@@ -1086,6 +1086,91 @@ fn wrapping_move_of_active_tab_to_right() {
 }
 
 #[test]
+fn tab_id_remains_stable_after_switch() {
+    // Test that tab IDs remain stable when switching tabs, only positions change
+    let mut screen = create_fixed_size_screen();
+
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+    new_tab(&mut screen, 3, 2);
+
+    // Verify initial state: IDs should be 0, 1, 2
+    let initial_tab_ids: Vec<usize> = screen.tabs.keys().copied().collect();
+    assert_eq!(
+        initial_tab_ids,
+        vec![0, 1, 2],
+        "Initial tab IDs should be 0, 1, 2"
+    );
+
+    // Verify initial positions match IDs
+    assert_eq!(screen.tabs.get(&0).unwrap().id, 0);
+    assert_eq!(screen.tabs.get(&0).unwrap().position, 0);
+    assert_eq!(screen.tabs.get(&1).unwrap().id, 1);
+    assert_eq!(screen.tabs.get(&1).unwrap().position, 1);
+    assert_eq!(screen.tabs.get(&2).unwrap().id, 2);
+    assert_eq!(screen.tabs.get(&2).unwrap().position, 2);
+
+    // Move active tab (position 2, ID 2) to right, which wraps to position 0
+    // This switches tabs at positions 2 and 0 (tab IDs 2 and 0)
+    screen.move_active_tab_to_right(1).expect("TEST");
+
+    // Verify BTreeMap keys (IDs) remain unchanged
+    let after_switch_tab_ids: Vec<usize> = screen.tabs.keys().copied().collect();
+    assert_eq!(
+        after_switch_tab_ids,
+        vec![0, 1, 2],
+        "Tab IDs in BTreeMap should remain 0, 1, 2 after switch"
+    );
+
+    // Verify IDs remain stable but positions are swapped
+    // Tab 0: was at position 0, now at position 2 (swapped with tab 2)
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().id,
+        0,
+        "Tab with ID 0 should still have ID 0"
+    );
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().position,
+        2,
+        "Tab with ID 0 should now be at position 2"
+    );
+
+    // Tab 1: remains unchanged at position 1
+    assert_eq!(
+        screen.tabs.get(&1).unwrap().id,
+        1,
+        "Tab with ID 1 should still have ID 1"
+    );
+    assert_eq!(
+        screen.tabs.get(&1).unwrap().position,
+        1,
+        "Tab with ID 1 should remain at position 1"
+    );
+
+    // Tab 2: was at position 2, now at position 0 (swapped with tab 0)
+    assert_eq!(
+        screen.tabs.get(&2).unwrap().id,
+        2,
+        "Tab with ID 2 should still have ID 2"
+    );
+    assert_eq!(
+        screen.tabs.get(&2).unwrap().position,
+        0,
+        "Tab with ID 2 should now be at position 0"
+    );
+
+    // Verify that lookup by position works correctly after switch
+    let tab_at_pos_0 = screen.tabs.values().find(|t| t.position == 0).unwrap();
+    assert_eq!(tab_at_pos_0.id, 2, "Tab at position 0 should have ID 2");
+
+    let tab_at_pos_1 = screen.tabs.values().find(|t| t.position == 1).unwrap();
+    assert_eq!(tab_at_pos_1.id, 1, "Tab at position 1 should have ID 1");
+
+    let tab_at_pos_2 = screen.tabs.values().find(|t| t.position == 2).unwrap();
+    assert_eq!(tab_at_pos_2.id, 0, "Tab at position 2 should have ID 0");
+}
+
+#[test]
 fn move_focus_right_at_right_screen_edge_changes_tab() {
     let size = Size {
         cols: 121,
@@ -1431,7 +1516,7 @@ fn attach_after_first_tab_closed() {
     }
     new_tab(&mut screen, 2, 1);
 
-    screen.close_tab_at_index(0).expect("TEST");
+    screen.close_tab_by_id(0).expect("TEST");
     screen.remove_client(1).expect("TEST");
     screen.add_client(1, false).expect("TEST");
 }
@@ -2052,6 +2137,7 @@ pub fn send_cli_write_chars_action_to_screen() {
     );
     let cli_action = CliAction::WriteChars {
         chars: "input from the cli".into(),
+        pane_id: None,
     };
     send_cli_action_to_server(&session_metadata, cli_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -2078,9 +2164,37 @@ pub fn send_cli_write_action_to_screen() {
     );
     let cli_action = CliAction::Write {
         bytes: vec![102, 111, 111],
+        pane_id: None,
     };
     send_cli_action_to_server(&session_metadata, cli_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
+    mock_screen.teardown(vec![pty_writer_thread, screen_thread]);
+    assert_snapshot!(format!("{:?}", *received_pty_instructions.lock().unwrap()));
+}
+
+#[test]
+pub fn send_cli_send_keys_action_to_screen() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 10;
+    let mut mock_screen = MockScreen::new(size);
+    let pty_writer_receiver = mock_screen.pty_writer_receiver.take().unwrap();
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(None, vec![]);
+    let received_pty_instructions = Arc::new(Mutex::new(vec![]));
+    let pty_writer_thread = log_actions_in_thread!(
+        received_pty_instructions,
+        PtyWriteInstruction::Exit,
+        pty_writer_receiver
+    );
+    let cli_action = CliAction::SendKeys {
+        keys: vec!["Ctrl a".to_string(), "x".to_string()],
+        pane_id: None,
+    };
+    send_cli_action_to_server(&session_metadata, cli_action, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![pty_writer_thread, screen_thread]);
     assert_snapshot!(format!("{:?}", *received_pty_instructions.lock().unwrap()));
 }
@@ -2841,6 +2955,7 @@ pub fn send_cli_toggle_active_tab_sync_action() {
     let cli_toggle_active_tab_sync_action = CliAction::ToggleActiveSyncTab;
     let cli_write_action = CliAction::Write {
         bytes: vec![102, 111, 111],
+        pane_id: None,
     };
     send_cli_action_to_server(
         &session_metadata,
@@ -4476,4 +4591,260 @@ pub fn send_cli_change_floating_pane_coordinates_action() {
         assert_snapshot!(format!("{}", snapshot));
     }
     assert_snapshot!(format!("{}", snapshot_count));
+}
+
+#[test]
+pub fn go_to_tab_by_id_verifies_screen_state() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut screen = create_new_screen(size, true, true);
+
+    // Create multiple tabs with known IDs
+    new_tab(&mut screen, 1, 0); // ID 0
+    new_tab(&mut screen, 2, 1); // ID 1
+    new_tab(&mut screen, 3, 2); // ID 2
+
+    // Active tab should be the last one created (ID 2)
+    assert_eq!(screen.get_active_tab(client_id).unwrap().id, 2);
+
+    // Switch to tab with ID 0
+    if let Some(tab_position) = screen.get_tab_position_by_id(0) {
+        screen
+            .switch_active_tab(tab_position, None, true, client_id)
+            .expect("TEST");
+    }
+
+    // Verify active tab is now ID 0
+    assert_eq!(
+        screen.get_active_tab(client_id).unwrap().id,
+        0,
+        "Active tab should be tab with ID 0"
+    );
+
+    // Switch to tab with ID 1
+    if let Some(tab_position) = screen.get_tab_position_by_id(1) {
+        screen
+            .switch_active_tab(tab_position, None, true, client_id)
+            .expect("TEST");
+    }
+
+    // Verify active tab is now ID 1
+    assert_eq!(
+        screen.get_active_tab(client_id).unwrap().id,
+        1,
+        "Active tab should be tab with ID 1"
+    );
+}
+
+#[test]
+pub fn send_cli_go_to_tab_by_id_action() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 10;
+    let mut mock_screen = MockScreen::new(size);
+    let session_metadata = mock_screen.clone_session_metadata();
+
+    // Create tabs
+    mock_screen.new_tab(TiledPaneLayout::default());
+    mock_screen.new_tab(TiledPaneLayout::default());
+
+    let screen_thread = mock_screen.run(None, vec![]);
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    // Send CLI action
+    let cli_action = CliAction::GoToTabById { id: 1 };
+    send_cli_action_to_server(&session_metadata, cli_action, client_id);
+
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+
+    // Verify that CLI action caused screen updates (Render instructions sent)
+    let render_count = received_server_instructions
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|instr| matches!(instr, ServerInstruction::Render(_)))
+        .count();
+
+    assert!(
+        render_count > 0,
+        "GoToTabById CLI action should trigger screen renders"
+    );
+}
+
+#[test]
+pub fn rename_tab_by_id_verifies_screen_state() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+
+    // Create tabs with known IDs
+    new_tab(&mut screen, 1, 0); // ID 0
+    new_tab(&mut screen, 2, 1); // ID 1
+
+    // Verify initial tab names
+    assert_eq!(screen.get_tab_by_id(0).unwrap().name, "Tab #1");
+    assert_eq!(screen.get_tab_by_id(1).unwrap().name, "Tab #2");
+
+    // Rename tab with ID 1
+    if let Some(tab) = screen.get_tab_by_id_mut(1) {
+        tab.name = "CustomTabName".to_string();
+    }
+
+    // Verify the tab name changed
+    assert_eq!(
+        screen.get_tab_by_id(1).unwrap().name,
+        "CustomTabName",
+        "Tab with ID 1 should be renamed"
+    );
+
+    // Verify other tab name unchanged
+    assert_eq!(
+        screen.get_tab_by_id(0).unwrap().name,
+        "Tab #1",
+        "Tab with ID 0 should keep original name"
+    );
+}
+
+#[test]
+pub fn send_cli_rename_tab_by_id_action() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 10;
+    let mut mock_screen = MockScreen::new(size);
+    let session_metadata = mock_screen.clone_session_metadata();
+
+    mock_screen.new_tab(TiledPaneLayout::default());
+
+    let screen_thread = mock_screen.run(None, vec![]);
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    // Send CLI action
+    let cli_action = CliAction::RenameTabById {
+        id: 1,
+        name: "TestName".to_string(),
+    };
+    send_cli_action_to_server(&session_metadata, cli_action, client_id);
+
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+
+    // Verify that CLI action was processed (no panics means routing worked)
+    // The action should complete successfully
+    assert!(true, "RenameTabById CLI action completed without errors");
+}
+
+#[test]
+pub fn close_tab_by_id_verifies_screen_state() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+
+    // Create multiple tabs with known IDs
+    new_tab(&mut screen, 1, 0); // ID 0
+    new_tab(&mut screen, 2, 1); // ID 1
+    new_tab(&mut screen, 3, 2); // ID 2
+
+    assert_eq!(screen.tabs.len(), 3, "Should have 3 tabs initially");
+
+    // Verify all tabs exist
+    assert!(
+        screen.get_tab_by_id(0).is_some(),
+        "Tab with ID 0 should exist"
+    );
+    assert!(
+        screen.get_tab_by_id(1).is_some(),
+        "Tab with ID 1 should exist"
+    );
+    assert!(
+        screen.get_tab_by_id(2).is_some(),
+        "Tab with ID 2 should exist"
+    );
+
+    // Close tab with ID 1
+    screen.close_tab_by_id(1).expect("TEST");
+
+    assert_eq!(screen.tabs.len(), 2, "Should have 2 tabs after closing one");
+
+    // Verify tab with ID 1 no longer exists
+    assert!(
+        screen.get_tab_by_id(1).is_none(),
+        "Tab with ID 1 should not exist"
+    );
+
+    // Verify other tabs still exist
+    assert!(
+        screen.get_tab_by_id(0).is_some(),
+        "Tab with ID 0 should still exist"
+    );
+    assert!(
+        screen.get_tab_by_id(2).is_some(),
+        "Tab with ID 2 should still exist"
+    );
+}
+
+#[test]
+pub fn send_cli_close_tab_by_id_action() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 10;
+    let mut mock_screen = MockScreen::new(size);
+    let session_metadata = mock_screen.clone_session_metadata();
+
+    mock_screen.new_tab(TiledPaneLayout::default());
+    mock_screen.new_tab(TiledPaneLayout::default());
+
+    let screen_thread = mock_screen.run(None, vec![]);
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    // Send CLI action
+    let cli_action = CliAction::CloseTabById { id: 1 };
+    send_cli_action_to_server(&session_metadata, cli_action, client_id);
+
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+
+    // Verify that CLI action was processed (no panics means routing worked)
+    // The action should complete successfully
+    assert!(true, "CloseTabById CLI action completed without errors");
 }

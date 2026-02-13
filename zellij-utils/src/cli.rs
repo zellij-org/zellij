@@ -329,6 +329,7 @@ pub enum Sessions {
     #[clap(subcommand)]
     Action(CliAction),
     /// Run a command in a new pane
+    /// Returns: Created pane ID (format: terminal_<id>)
     #[clap(visible_alias = "r")]
     Run {
         /// Command to run
@@ -444,6 +445,7 @@ pub enum Sessions {
         borderless: Option<bool>,
     },
     /// Load a plugin
+    /// Returns: Created pane ID (format: plugin_<id>)
     #[clap(visible_alias = "p")]
     Plugin {
         /// Plugin URL, can either start with http(s), file: or zellij:
@@ -493,6 +495,7 @@ pub enum Sessions {
         borderless: Option<bool>,
     },
     /// Edit file with default $EDITOR / $VISUAL
+    /// Returns: Created pane ID (format: terminal_<id>)
     #[clap(visible_alias = "e")]
     Edit {
         file: PathBuf,
@@ -600,10 +603,26 @@ pub enum CliAction {
     /// Write bytes to the terminal.
     Write {
         bytes: Vec<u8>,
+        /// The pane_id of the pane, eg. terminal_1, plugin_2 or 3 (equivalent to terminal_3)
+        #[clap(short, long, value_parser)]
+        pane_id: Option<String>,
     },
     /// Write characters to the terminal.
     WriteChars {
         chars: String,
+        /// The pane_id of the pane, eg. terminal_1, plugin_2 or 3 (equivalent to terminal_3)
+        #[clap(short, long, value_parser)]
+        pane_id: Option<String>,
+    },
+    /// Send one or more keys to the terminal (e.g., "Ctrl a", "F1", "Alt Shift b")
+    SendKeys {
+        /// Keys to send as space-separated strings
+        #[clap(value_parser, required = true)]
+        keys: Vec<String>,
+
+        /// The pane_id of the pane, eg. terminal_1, plugin_2 or 3 (equivalent to terminal_3)
+        #[clap(short, long, value_parser)]
+        pane_id: Option<String>,
     },
     /// [increase|decrease] the focused panes area at the [left|down|up|right] border.
     Resize {
@@ -670,6 +689,7 @@ pub enum CliAction {
     ToggleActiveSyncTab,
     /// Open a new pane in the specified direction [right|down]
     /// If no direction is specified, will try to use the biggest available space.
+    /// Returns: Created pane ID (format: terminal_<id> or plugin_<id>)
     NewPane {
         /// Direction to open the new pane in
         #[clap(short, long, value_parser, conflicts_with("floating"))]
@@ -769,6 +789,7 @@ pub enum CliAction {
         borderless: Option<bool>,
     },
     /// Open the specified file in a new zellij pane with your default EDITOR
+    /// Returns: Created pane ID (format: terminal_<id>)
     Edit {
         file: PathBuf,
 
@@ -849,6 +870,8 @@ pub enum CliAction {
         index: u32,
     },
     /// Go to tab with name [name]
+    ///
+    /// Returns: When --create is used and tab is created, outputs the tab ID as a single number
     GoToTabName {
         name: String,
         /// Create a tab if one does not exist.
@@ -861,7 +884,22 @@ pub enum CliAction {
     },
     /// Remove a previously set tab name
     UndoRenameTab,
+    /// Go to tab with stable ID
+    GoToTabById {
+        id: u64,
+    },
+    /// Close tab with stable ID
+    CloseTabById {
+        id: u64,
+    },
+    /// Rename tab by stable ID
+    RenameTabById {
+        id: u64,
+        name: String,
+    },
     /// Create a new tab, optionally with a specified tab layout and name
+    ///
+    /// Returns: The created tab's ID as a single number on stdout
     NewTab {
         /// Layout to use for the new tab
         #[clap(short, long, value_parser)]
@@ -985,6 +1023,7 @@ pub enum CliAction {
         #[clap(short, long, value_parser)]
         configuration: Option<PluginUserConfiguration>,
     },
+    /// Returns: Plugin pane ID (format: plugin_<id>) when creating or focusing plugin
     LaunchOrFocusPlugin {
         #[clap(short, long, value_parser)]
         floating: bool,
@@ -998,6 +1037,7 @@ pub enum CliAction {
         #[clap(short, long, value_parser)]
         skip_plugin_cache: bool,
     },
+    /// Returns: Plugin pane ID (format: plugin_<id>)
     LaunchPlugin {
         #[clap(short, long, value_parser)]
         floating: bool,
@@ -1088,6 +1128,70 @@ tail -f /tmp/my-live-logfile | zellij action pipe --name logs --plugin https://e
         plugin_title: Option<String>,
     },
     ListClients,
+    /// List all panes in the current session
+    ///
+    /// Returns: Formatted list of panes (table or JSON) to stdout
+    ListPanes {
+        /// Include tab information (name, position, ID)
+        #[clap(short, long, value_parser)]
+        tab: bool,
+
+        /// Include running command information
+        #[clap(short, long, value_parser)]
+        command: bool,
+
+        /// Include pane state (focused, floating, exited, etc.)
+        #[clap(short, long, value_parser)]
+        state: bool,
+
+        /// Include geometry (position, size)
+        #[clap(short, long, value_parser)]
+        geometry: bool,
+
+        /// Include all available fields
+        #[clap(short, long, value_parser)]
+        all: bool,
+
+        /// Output as JSON
+        #[clap(short, long, value_parser)]
+        json: bool,
+    },
+    /// List all tabs with their information
+    ///
+    /// Returns: Tab information in table or JSON format
+    ListTabs {
+        /// Include state information (active, fullscreen, sync, floating visibility)
+        #[clap(short, long, value_parser)]
+        state: bool,
+
+        /// Include dimension information (viewport, display area)
+        #[clap(short, long, value_parser)]
+        dimensions: bool,
+
+        /// Include pane counts
+        #[clap(short, long, value_parser)]
+        panes: bool,
+
+        /// Include layout information (swap layout name and dirty state)
+        #[clap(short, long, value_parser)]
+        layout: bool,
+
+        /// Include all available fields
+        #[clap(short, long, value_parser)]
+        all: bool,
+
+        /// Output as JSON
+        #[clap(short, long, value_parser)]
+        json: bool,
+    },
+    /// Get information about the currently active tab
+    ///
+    /// Returns: Tab name and ID by default, or full info in JSON
+    CurrentTabInfo {
+        /// Output as JSON with full TabInfo
+        #[clap(short, long, value_parser)]
+        json: bool,
+    },
     TogglePanePinned,
     /// Stack pane ids
     /// Ids are a space separated list of pane ids.

@@ -5536,6 +5536,7 @@ impl TabInfo {
             optional_int_node!("selectable_tiled_panes_count", usize).unwrap_or(0);
         let selectable_floating_panes_count =
             optional_int_node!("selectable_floating_panes_count", usize).unwrap_or(0);
+        let tab_id = optional_int_node!("tab_id", usize).unwrap_or(0);
         Ok(TabInfo {
             position,
             name,
@@ -5553,6 +5554,7 @@ impl TabInfo {
             display_area_columns,
             selectable_tiled_panes_count,
             selectable_floating_panes_count,
+            tab_id,
         })
     }
     pub fn encode_to_kdl(&self) -> KdlDocument {
@@ -5629,6 +5631,10 @@ impl TabInfo {
         kdl_doucment
             .nodes_mut()
             .push(selectable_floating_panes_count);
+
+        let mut tab_id = KdlNode::new("tab_id");
+        tab_id.push(self.tab_id as i64);
+        kdl_doucment.nodes_mut().push(tab_id);
 
         kdl_doucment
     }
@@ -5979,6 +5985,7 @@ fn serialize_and_deserialize_session_info_with_data() {
                 display_area_columns: 10,
                 selectable_tiled_panes_count: 10,
                 selectable_floating_panes_count: 10,
+                tab_id: 0,
             },
             TabInfo {
                 position: 1,
@@ -5997,6 +6004,7 @@ fn serialize_and_deserialize_session_info_with_data() {
                 display_area_columns: 10,
                 selectable_tiled_panes_count: 10,
                 selectable_floating_panes_count: 10,
+                tab_id: 1,
             },
         ],
         panes: PaneManifest { panes },

@@ -94,7 +94,7 @@ pub enum PluginInstruction {
         Option<TerminalAction>,
         Option<TiledPaneLayout>,
         Vec<FloatingPaneLayout>,
-        usize,                        // tab_index
+        usize,                        // tab_id
         Option<Vec<CommandOrPlugin>>, // initial_panes
         bool,                         // block_on_first_terminal
         bool,                         // should change focus to new tab
@@ -211,6 +211,7 @@ pub enum PluginInstruction {
     GetLastSessionSaveTime {
         response_channel: crossbeam::channel::Sender<Option<u64>>,
     },
+    DetectPluginConfigChanges(PluginAliases),
     Exit,
 }
 
@@ -271,6 +272,9 @@ impl From<&PluginInstruction> for PluginContext {
             PluginInstruction::GetLastSessionSaveTime { .. } => {
                 PluginContext::GetLastSessionSaveTime
             },
+            PluginInstruction::DetectPluginConfigChanges(..) => {
+                PluginContext::DetectPluginConfigChanges
+            },
         }
     }
 }
@@ -285,6 +289,7 @@ pub(crate) fn plugin_thread_main(
     available_layout_errors: Vec<LayoutWithError>,
     path_to_default_shell: PathBuf,
     zellij_cwd: PathBuf,
+    session_env_vars: std::collections::BTreeMap<String, String>,
     capabilities: PluginCapabilities,
     client_attributes: ClientAttributes,
     default_shell: Option<TerminalAction>,
@@ -313,6 +318,7 @@ pub(crate) fn plugin_thread_main(
         plugin_dir,
         path_to_default_shell,
         zellij_cwd.clone(),
+        session_env_vars,
         capabilities,
         client_attributes,
         default_shell,
@@ -502,7 +508,7 @@ pub(crate) fn plugin_thread_main(
                 terminal_action,
                 mut tab_layout,
                 mut floating_panes_layout,
-                tab_index,
+                tab_id,
                 initial_panes,
                 block_on_first_terminal,
                 should_change_focus_to_new_tab,
@@ -580,7 +586,7 @@ pub(crate) fn plugin_thread_main(
                         let skip_cache = false;
                         match wasm_bridge.load_plugin(
                             &run_plugin,
-                            Some(tab_index),
+                            Some(tab_id),
                             size,
                             cwd,
                             skip_cache,
@@ -603,7 +609,7 @@ pub(crate) fn plugin_thread_main(
                     terminal_action,
                     tab_layout,
                     floating_panes_layout,
-                    tab_index,
+                    tab_id,
                     plugin_ids,
                     initial_panes,
                     block_on_first_terminal,
@@ -1218,6 +1224,10 @@ pub(crate) fn plugin_thread_main(
             PluginInstruction::GetLastSessionSaveTime { response_channel } => {
                 let timestamp = *wasm_bridge.last_session_save_time.lock().unwrap();
                 let _ = response_channel.send(timestamp);
+            },
+            PluginInstruction::DetectPluginConfigChanges(new_plugins) => {
+                wasm_bridge
+                    .detect_and_notify_plugin_config_changes(&new_plugins, shutdown_send.clone())?;
             },
             PluginInstruction::Exit => {
                 break;

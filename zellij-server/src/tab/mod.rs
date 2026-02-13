@@ -154,7 +154,7 @@ enum BufferedTabInstruction {
 }
 
 pub(crate) struct Tab {
-    pub index: usize,
+    pub id: usize,
     pub position: usize,
     pub name: String,
     pub prev_name: String,
@@ -628,7 +628,7 @@ impl Tab {
     // FIXME: Still too many arguments for clippy to be happy...
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        index: usize,
+        id: usize,
         position: usize,
         name: String,
         display_area: Size,
@@ -666,7 +666,7 @@ impl Tab {
         web_server_port: u16,
     ) -> Self {
         let name = if name.is_empty() {
-            format!("Tab #{}", index + 1)
+            format!("Tab #{}", id + 1)
         } else {
             name
         };
@@ -717,7 +717,7 @@ impl Tab {
         let swap_layouts = SwapLayouts::new(swap_layouts, display_area.clone());
 
         Tab {
-            index,
+            id,
             position,
             tiled_panes,
             floating_panes,
@@ -1328,7 +1328,7 @@ impl Tab {
                     let name = None;
                     let client_id_or_tab_index = match client_id {
                         Some(client_id) => ClientTabIndexOrPaneId::ClientId(client_id),
-                        None => ClientTabIndexOrPaneId::TabIndex(self.index),
+                        None => ClientTabIndexOrPaneId::TabIndex(self.id),
                     };
                     let should_start_suppressed = false;
                     let instruction = PtyInstruction::SpawnTerminal(
@@ -2709,6 +2709,7 @@ impl Tab {
                             .send_to_pty_writer(PtyWriteInstruction::Write(
                                 adjusted_input,
                                 active_terminal_id,
+                                completion_tx,
                             ))
                             .with_context(err_context)?;
                     },
@@ -2806,6 +2807,7 @@ impl Tab {
                     .send_to_pty_writer(PtyWriteInstruction::Write(
                         raw_input_bytes,
                         active_terminal_id,
+                        None,
                     ))
                     .with_context(err_context)?;
                 should_update_ui = true;
@@ -3158,7 +3160,7 @@ impl Tab {
         selectable_tiled_panes.count() > 0
     }
     pub fn resize_whole_tab(&mut self, new_screen_size: Size) -> Result<()> {
-        let err_context = || format!("failed to resize whole tab (index {})", self.index);
+        let err_context = || format!("failed to resize whole tab (id {})", self.id);
         self.floating_panes.resize(new_screen_size);
         // we need to do this explicitly because floating_panes.resize does not do this
         self.floating_panes
@@ -3540,6 +3542,44 @@ impl Tab {
             .chain(self.floating_panes.pane_ids())
             .copied()
             .collect()
+    }
+    pub fn get_pane_info(&self, pane_id: PaneId) -> Option<PaneInfo> {
+        let current_pane_group: HashMap<ClientId, Vec<PaneId>> =
+            { self.current_pane_group.borrow().clone_inner() };
+
+        // Check tiled panes
+        if let Some(pane) = self.tiled_panes.get_pane(pane_id) {
+            let mut info = pane_info_for_pane(&pane_id, pane, &current_pane_group);
+            // Note: is_focused will be false since we don't have a specific client_id context
+            // Plugins calling this API would need to compare the pane_id with their own focused pane
+            info.is_focused = false;
+            info.is_fullscreen = self.tiled_panes.fullscreen_is_active();
+            info.is_floating = false;
+            info.is_suppressed = false;
+            return Some(info);
+        }
+
+        // Check floating panes
+        if let Some(pane) = self.floating_panes.get_pane(pane_id) {
+            let mut info = pane_info_for_pane(&pane_id, pane, &current_pane_group);
+            info.is_focused = false;
+            info.is_fullscreen = false;
+            info.is_floating = true;
+            info.is_suppressed = false;
+            return Some(info);
+        }
+
+        // Check suppressed panes
+        if let Some((_previous_id, pane)) = self.suppressed_panes.get(&pane_id) {
+            let mut info = pane_info_for_pane(&pane_id, pane, &current_pane_group);
+            info.is_focused = false;
+            info.is_fullscreen = false;
+            info.is_floating = false;
+            info.is_suppressed = true;
+            return Some(info);
+        }
+
+        None
     }
     pub fn set_pane_selectable(&mut self, id: PaneId, selectable: bool) {
         if self.is_pending {

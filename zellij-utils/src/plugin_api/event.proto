@@ -63,6 +63,7 @@ enum EventType {
     ActionComplete = 38;
     CwdChanged = 39;
     AvailableLayoutInfo = 40;
+    PluginConfigurationChanged = 41;
 }
 
 message EventNameList {
@@ -105,6 +106,7 @@ message Event {
     ActionCompletePayload action_complete_payload = 32;
     CwdChangedPayload cwd_changed_payload = 33;
     AvailableLayoutInfoPayload available_layout_info_payload = 34;
+    PluginConfigurationChangedPayload plugin_configuration_changed_payload = 35;
   }
 }
 
@@ -428,6 +430,7 @@ message TabInfo {
     uint32 display_area_columns = 14;
     uint32 selectable_tiled_panes_count = 15;
     uint32 selectable_floating_panes_count = 16;
+    uint32 tab_id = 17;
 }
 
 message ModeUpdatePayload {
@@ -503,5 +506,9 @@ message ActionCompletePayload {
   action.Action action = 1;
   optional PaneId pane_id = 2;
   repeated ContextItem context = 3;
+}
+
+message PluginConfigurationChangedPayload {
+  repeated ContextItem configuration = 1;
 }
 
