@@ -323,7 +323,7 @@ fn main() {
             let config_options = commands::get_config_options_from_cli_args(&opts)
                 .expect("Can't find config options");
             let web_server_base_url = web_server_base_url_from_config(config_options);
-            match commands::web_server_status(&web_server_base_url) {
+            match commands::web_server_status(&web_server_base_url, web_opts.timeout) {
                 Ok(version) => {
                     let version = version.trim();
                     println!(
