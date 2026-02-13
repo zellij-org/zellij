@@ -1,5 +1,20 @@
 ---
 source: zellij-server/src/./unit/screen_tests.rs
-expression: "format!(\"{:?}\", *received_pty_instructions.lock().unwrap())"
+expression: "format!(\"{:#?}\", received_write_instructions)"
 ---
-[StartCachingResizes, ApplyCachedResizes, StartCachingResizes, ResizePty(0, 119, 18, None, None), ResizePty(0, 119, 18, None, None), ResizePty(0, 119, 18, None, None), ResizePty(0, 119, 18, None, None), ApplyCachedResizes, ResizePty(0, 119, 18, None, None), ResizePty(0, 119, 18, None, None), ResizePty(0, 119, 18, None, None), ResizePty(0, 119, 18, None, None), ResizePty(0, 119, 18, None, None), ApplyCachedResizes, ApplyCachedResizes, ApplyCachedResizes, StartCachingResizes, ApplyCachedResizes, StartCachingResizes, ApplyCachedResizes, StartCachingResizes, ApplyCachedResizes, StartCachingResizes, Write([1], 0, None), ApplyCachedResizes, StartCachingResizes, ApplyCachedResizes, StartCachingResizes, ApplyCachedResizes, StartCachingResizes, ApplyCachedResizes, StartCachingResizes, Write([120], 0, None), ApplyCachedResizes, StartCachingResizes, ApplyCachedResizes, StartCachingResizes, ApplyCachedResizes, Exit]
+[
+    Write(
+        [
+            1,
+        ],
+        0,
+        None,
+    ),
+    Write(
+        [
+            120,
+        ],
+        0,
+        None,
+    ),
+]
