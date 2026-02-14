@@ -1230,7 +1230,20 @@ impl Screen {
         )
         };
 
-        if let Some(new_tab) = self.tabs.values().find(|t| t.position == new_tab_pos) {
+        // Capture the new tab's index before any mutable borrows
+        let new_tab_index = self
+            .tabs
+            .values()
+            .find(|t| t.position == new_tab_pos)
+            .map(|t| t.index);
+
+        let Some(new_tab_index) = new_tab_index else {
+            return Ok(());
+        };
+
+        let effective_client_id = self.client_id(client_id);
+
+        if let Some(client_id) = effective_client_id {
             match self.get_active_tab(client_id) {
                 Ok(current_tab) => {
                     // If new active tab is same as the current one, do nothing.
@@ -1239,7 +1252,6 @@ impl Screen {
                     }
 
                     let current_tab_index = current_tab.index;
-                    let new_tab_index = new_tab.index;
                     if self.session_is_mirrored {
                         self.move_clients_between_tabs(
                             current_tab_index,
@@ -1302,6 +1314,9 @@ impl Screen {
                 },
                 Err(err) => Err::<(), _>(err).with_context(err_context).non_fatal(),
             }
+        } else {
+            // No clients connected - update global_last_active_tab_index directly
+            self.global_last_active_tab_index = new_tab_index;
         }
         Ok(())
     }
@@ -5076,7 +5091,12 @@ pub(crate) fn screen_thread_main(
                     },
                     _ => {
                         if let Some(client_id) = client_id {
-                            pending_tab_switches.insert((tab_index as usize, client_id));
+                            if screen.active_tab_indices.is_empty() {
+                                // No clients connected - perform tab switch directly
+                                screen.go_to_tab(tab_index as usize, client_id)?;
+                            } else {
+                                pending_tab_switches.insert((tab_index as usize, client_id));
+                            }
                         }
                     },
                 }
@@ -5089,6 +5109,7 @@ pub(crate) fn screen_thread_main(
                 client_id,
                 completion_tx,
             ) => {
+                let original_client_id = client_id;
                 let client_id = if client_id.is_none() {
                     None
                 } else if screen
@@ -5134,6 +5155,11 @@ pub(crate) fn screen_thread_main(
                                 ))?;
                             continue; // so we don't get to the completion signalling below
                         }
+                    }
+                } else if let Some(client_id) = original_client_id {
+                    // No clients connected - still attempt the tab switch
+                    if screen.active_tab_indices.is_empty() {
+                        let _ = screen.go_to_tab_name(tab_name, client_id);
                     }
                 }
             },
