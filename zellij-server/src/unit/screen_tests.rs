@@ -2196,7 +2196,16 @@ pub fn send_cli_send_keys_action_to_screen() {
     send_cli_action_to_server(&session_metadata, cli_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![pty_writer_thread, screen_thread]);
-    assert_snapshot!(format!("{:?}", *received_pty_instructions.lock().unwrap()));
+    let received_write_instructions: Vec<_> = received_pty_instructions
+        .lock()
+        .unwrap()
+        .clone()
+        .into_iter()
+        .filter(|i| matches!(i, PtyWriteInstruction::Write(..)))
+        .collect();
+    // here we assert only the write instructions to make sure they arrived properly and in
+    // sequence to the pane
+    assert_snapshot!(format!("{:#?}", received_write_instructions));
 }
 
 #[test]
@@ -2965,7 +2974,15 @@ pub fn send_cli_toggle_active_tab_sync_action() {
     send_cli_action_to_server(&session_metadata, cli_write_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
     mock_screen.teardown(vec![pty_writer_thread, screen_thread]);
-    assert_snapshot!(format!("{:?}", *received_pty_instructions.lock().unwrap()));
+    let received_write_instructions: Vec<_> = received_pty_instructions
+        .lock()
+        .unwrap()
+        .clone()
+        .into_iter()
+        .filter(|i| matches!(i, PtyWriteInstruction::Write(..)))
+        .collect();
+    // here we should have 2 Write instructions, one for each pane
+    assert_snapshot!(format!("{:?}", received_write_instructions));
 }
 
 #[test]

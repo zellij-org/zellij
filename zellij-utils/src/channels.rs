@@ -5,7 +5,8 @@ use std::cell::RefCell;
 
 use crate::errors::{get_current_ctx, ErrorContext};
 pub use crossbeam::channel::{
-    bounded, unbounded, Receiver, RecvError, Select, SendError, Sender, TrySendError,
+    bounded, unbounded, Receiver, RecvError, RecvTimeoutError, Select, SendError, Sender,
+    TrySendError,
 };
 
 /// An [MPSC](mpsc) asynchronous channel with added error context.
