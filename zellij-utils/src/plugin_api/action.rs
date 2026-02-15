@@ -2724,6 +2724,13 @@ impl TryFrom<ProtobufCommandOrPlugin> for CommandOrPlugin {
             Some(CommandOrPluginType::Plugin(plugin)) => {
                 Ok(CommandOrPlugin::Plugin(plugin.try_into()?))
             },
+            Some(CommandOrPluginType::File(f)) => {
+                Ok(CommandOrPlugin::File(crate::data::FileToOpen {
+                    path: std::path::PathBuf::from(&f.path),
+                    line_number: f.line_number.map(|n| n as usize),
+                    cwd: f.cwd.map(std::path::PathBuf::from),
+                }))
+            },
             None => Err("CommandOrPlugin must have command_or_plugin_type"),
         }
     }
@@ -2733,11 +2740,17 @@ impl TryFrom<CommandOrPlugin> for ProtobufCommandOrPlugin {
     type Error = &'static str;
     fn try_from(internal: CommandOrPlugin) -> Result<Self, Self::Error> {
         use super::generated_api::api::action::command_or_plugin::CommandOrPluginType;
+        use super::generated_api::api::action::CommandOrPluginFile;
         let command_or_plugin_type = match internal {
             CommandOrPlugin::Command(cmd) => Some(CommandOrPluginType::Command(cmd.try_into()?)),
             CommandOrPlugin::Plugin(plugin) => {
                 Some(CommandOrPluginType::Plugin(plugin.try_into()?))
             },
+            CommandOrPlugin::File(f) => Some(CommandOrPluginType::File(CommandOrPluginFile {
+                path: f.path.display().to_string(),
+                line_number: f.line_number.map(|n| n as i32),
+                cwd: f.cwd.map(|c| c.display().to_string()),
+            })),
         };
         Ok(ProtobufCommandOrPlugin {
             command_or_plugin_type,

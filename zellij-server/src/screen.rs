@@ -5220,6 +5220,12 @@ pub(crate) fn screen_thread_main(
                     completion_tx
                         .as_mut()
                         .map(|c| c.set_affected_pane_id(PaneId::Terminal(first_terminal_pane.0)));
+                } else if let Some(plugin_id) =
+                    new_plugin_ids.values().next().and_then(|v| v.first())
+                {
+                    completion_tx
+                        .as_mut()
+                        .map(|c| c.set_affected_pane_id(PaneId::Plugin(*plugin_id)));
                 }
                 // Set the affected tab ID for plugin API return value
                 completion_tx

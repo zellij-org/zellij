@@ -903,10 +903,17 @@ message PluginAlias {
   optional RunPlugin run_plugin = 4;
 }
 
+message CommandOrPluginFile {
+  string path = 1;
+  optional int32 line_number = 2;
+  optional string cwd = 3;
+}
+
 message CommandOrPlugin {
   oneof command_or_plugin_type {
     RunCommandAction command = 1;
     RunPluginOrAlias plugin = 2;
+    CommandOrPluginFile file = 3;
   }
 }
 

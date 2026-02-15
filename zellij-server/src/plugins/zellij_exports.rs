@@ -31,7 +31,8 @@ use zellij_utils::data::{
     OpenCommandPaneInPlaceOfPluginResponse, OpenCommandPaneInPlaceResponse,
     OpenCommandPaneNearPluginResponse, OpenCommandPaneResponse, OpenFileFloatingNearPluginResponse,
     OpenFileFloatingResponse, OpenFileInPlaceOfPluginResponse, OpenFileInPlaceResponse,
-    OpenFileNearPluginResponse, OpenFileResponse, OpenTerminalFloatingNearPluginResponse,
+    OpenFileNearPluginResponse, OpenFileResponse, OpenPaneInNewTabResponse,
+    OpenTerminalFloatingNearPluginResponse,
     OpenTerminalFloatingResponse, OpenTerminalInPlaceOfPluginResponse, OpenTerminalInPlaceResponse,
     OpenTerminalNearPluginResponse, OpenTerminalResponse, OriginatingPlugin,
     PaneScrollbackResponse, PermissionStatus, PermissionType, PluginPermission,
@@ -55,7 +56,8 @@ use prost::Message;
 use zellij_utils::{
     consts::{VERSION, ZELLIJ_SESSION_INFO_CACHE_DIR, ZELLIJ_SOCK_DIR},
     data::{
-        CommandToRun, Direction, EventType, FileToOpen, InputMode, PluginCommand, PluginIds,
+        CommandOrPlugin, CommandToRun, Direction, EventType, FileToOpen, InputMode, PluginCommand,
+        PluginIds,
         PluginMessage, Resize, ResizeStrategy,
     },
     errors::prelude::*,
@@ -81,7 +83,7 @@ use zellij_utils::{
             ProtobufGetPaneCwdResponse, ProtobufGetPaneInfoResponse, ProtobufGetPanePidResponse,
             ProtobufGetPaneRunningCommandResponse, ProtobufGetSessionEnvironmentVariablesResponse,
             ProtobufGetTabInfoResponse, ProtobufNewTabResponse, ProtobufNewTabsResponse,
-            ProtobufOpenCommandPaneBackgroundResponse,
+            ProtobufOpenCommandPaneBackgroundResponse, ProtobufOpenPaneInNewTabResponse,
             ProtobufOpenCommandPaneFloatingNearPluginResponse,
             ProtobufOpenCommandPaneFloatingResponse,
             ProtobufOpenCommandPaneInPlaceOfPluginResponse, ProtobufOpenCommandPaneInPlaceResponse,
@@ -663,6 +665,19 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::GetSessionEnvironmentVariables => {
                         get_session_environment_variables(env);
                     },
+                    PluginCommand::OpenCommandPaneInNewTab(command_to_run, context) => {
+                        open_command_pane_in_new_tab(env, command_to_run, context);
+                    },
+                    PluginCommand::OpenPluginPaneInNewTab {
+                        plugin_url,
+                        configuration,
+                        context,
+                    } => {
+                        open_plugin_pane_in_new_tab(env, plugin_url, configuration, context);
+                    },
+                    PluginCommand::OpenEditorPaneInNewTab(file_to_open, context) => {
+                        open_editor_pane_in_new_tab(env, file_to_open, context);
+                    },
                 },
                 (PermissionStatus::Denied, permission) => {
                     log::error!(
@@ -911,6 +926,144 @@ fn get_session_environment_variables(env: &PluginEnv) {
                 env.name()
             )
         })
+        .non_fatal();
+}
+
+fn open_command_pane_in_new_tab(
+    env: &PluginEnv,
+    command_to_run: CommandToRun,
+    context: BTreeMap<String, String>,
+) {
+    let command = command_to_run.path;
+    let cwd = command_to_run
+        .cwd
+        .map(|cwd| env.plugin_cwd.join(cwd))
+        .or_else(|| Some(env.plugin_cwd.clone()));
+    let args = command_to_run.args;
+    let hold_on_close = true;
+    let hold_on_start = false;
+    let run_command_action = RunCommandAction {
+        command,
+        args,
+        cwd,
+        direction: None,
+        hold_on_close,
+        hold_on_start,
+        originating_plugin: Some(OriginatingPlugin::new(
+            env.plugin_id,
+            env.client_id,
+            context,
+        )),
+        use_terminal_title: false,
+    };
+    let initial_panes = Some(vec![CommandOrPlugin::Command(run_command_action)]);
+    let action = Action::NewTab {
+        tiled_layout: None,
+        floating_layouts: vec![],
+        swap_tiled_layouts: None,
+        swap_floating_layouts: None,
+        tab_name: None,
+        should_change_focus_to_new_tab: true,
+        cwd: None,
+        initial_panes,
+        first_pane_unblock_condition: None,
+    };
+    let error_msg = || format!("Failed to open command pane in new tab");
+    let result = apply_action!(action, error_msg, env);
+
+    let tab_id = result.as_ref().and_then(|r| r.affected_tab_id);
+    let pane_id = result.as_ref().and_then(|r| r.affected_pane_id).map(|p| p.into());
+    let response = ProtobufOpenPaneInNewTabResponse::from(OpenPaneInNewTabResponse {
+        tab_id,
+        pane_id,
+    });
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to write open_command_pane_in_new_tab response"))
+        .non_fatal();
+}
+
+fn open_plugin_pane_in_new_tab(
+    env: &PluginEnv,
+    plugin_url: String,
+    configuration: BTreeMap<String, String>,
+    context: BTreeMap<String, String>,
+) {
+    let run_plugin_or_alias = RunPluginOrAlias::from_url(
+        &plugin_url,
+        &Some(configuration),
+        None,
+        Some(env.plugin_cwd.clone()),
+    );
+    let run_plugin_or_alias = match run_plugin_or_alias {
+        Ok(r) => r,
+        Err(e) => {
+            log::error!("Failed to parse plugin url '{}': {}", plugin_url, e);
+            let response =
+                ProtobufOpenPaneInNewTabResponse::from(OpenPaneInNewTabResponse::default());
+            wasi_write_object(env, &response.encode_to_vec())
+                .with_context(|| {
+                    format!("failed to write open_plugin_pane_in_new_tab error response")
+                })
+                .non_fatal();
+            return;
+        },
+    };
+    let _ = context; // context is not currently used for plugin panes
+    let initial_panes = Some(vec![CommandOrPlugin::Plugin(run_plugin_or_alias)]);
+    let action = Action::NewTab {
+        tiled_layout: None,
+        floating_layouts: vec![],
+        swap_tiled_layouts: None,
+        swap_floating_layouts: None,
+        tab_name: None,
+        should_change_focus_to_new_tab: true,
+        cwd: None,
+        initial_panes,
+        first_pane_unblock_condition: None,
+    };
+    let error_msg = || format!("Failed to open plugin pane in new tab");
+    let result = apply_action!(action, error_msg, env);
+
+    let tab_id = result.as_ref().and_then(|r| r.affected_tab_id);
+    let pane_id = result.as_ref().and_then(|r| r.affected_pane_id).map(|p| p.into());
+    let response = ProtobufOpenPaneInNewTabResponse::from(OpenPaneInNewTabResponse {
+        tab_id,
+        pane_id,
+    });
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to write open_plugin_pane_in_new_tab response"))
+        .non_fatal();
+}
+
+fn open_editor_pane_in_new_tab(
+    env: &PluginEnv,
+    file_to_open: FileToOpen,
+    context: BTreeMap<String, String>,
+) {
+    let _ = context; // context is not currently used for editor panes in new tab
+    let initial_panes = Some(vec![CommandOrPlugin::File(file_to_open)]);
+    let action = Action::NewTab {
+        tiled_layout: None,
+        floating_layouts: vec![],
+        swap_tiled_layouts: None,
+        swap_floating_layouts: None,
+        tab_name: None,
+        should_change_focus_to_new_tab: true,
+        cwd: None,
+        initial_panes,
+        first_pane_unblock_condition: None,
+    };
+    let error_msg = || format!("Failed to open editor pane in new tab");
+    let result = apply_action!(action, error_msg, env);
+
+    let tab_id = result.as_ref().and_then(|r| r.affected_tab_id);
+    let pane_id = result.as_ref().and_then(|r| r.affected_pane_id).map(|p| p.into());
+    let response = ProtobufOpenPaneInNewTabResponse::from(OpenPaneInNewTabResponse {
+        tab_id,
+        pane_id,
+    });
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to write open_editor_pane_in_new_tab response"))
         .non_fatal();
 }
 
@@ -4648,6 +4801,9 @@ fn check_command_permission(
         PluginCommand::GetSessionEnvironmentVariables => {
             PermissionType::ReadSessionEnvironmentVariables
         },
+        PluginCommand::OpenCommandPaneInNewTab(..)
+        | PluginCommand::OpenPluginPaneInNewTab { .. }
+        | PluginCommand::OpenEditorPaneInNewTab(..) => PermissionType::ChangeApplicationState,
         _ => return (PermissionStatus::Granted, None),
     };
 

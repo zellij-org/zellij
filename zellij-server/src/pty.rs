@@ -1164,6 +1164,15 @@ impl Pty {
                         log::warn!("More initial_panes provided than empty slots available");
                         break;
                     }
+                } else if let CommandOrPlugin::File(file_to_open) = initial_pane {
+                    if !layout.replace_next_empty_slot_with_run(Run::EditFile(
+                        file_to_open.path.clone(),
+                        file_to_open.line_number,
+                        file_to_open.cwd.clone(),
+                    )) {
+                        log::warn!("More initial_panes provided than empty slots available");
+                        break;
+                    }
                 }
                 // Skip CommandOrPlugin::Plugin entries (already handled by plugin thread)
             }

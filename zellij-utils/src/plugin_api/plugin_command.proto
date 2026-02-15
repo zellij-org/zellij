@@ -190,6 +190,9 @@ enum CommandName {
   RenameTabWithId = 195;
   BreakPanesToTabWithId = 196;
   GetSessionEnvironmentVariables = 197;
+  OpenCommandPaneInNewTab = 198;
+  OpenPluginPaneInNewTab = 199;
+  OpenEditorPaneInNewTab = 200;
 }
 
 message PluginCommand {
@@ -329,6 +332,9 @@ message PluginCommand {
     RenameTabWithIdPayload rename_tab_with_id_payload = 146;
     BreakPanesToTabWithIdPayload break_panes_to_tab_with_id_payload = 147;
     GetSessionEnvironmentVariablesPayload get_session_environment_variables_payload = 148;
+    OpenCommandPanePayload open_command_pane_in_new_tab_payload = 149;
+    OpenPluginPaneInNewTabPayload open_plugin_pane_in_new_tab_payload = 150;
+    OpenFilePayload open_editor_pane_in_new_tab_payload = 151;
   }
 }
 
@@ -1130,4 +1136,15 @@ message GetSessionEnvironmentVariablesPayload {}
 
 message GetSessionEnvironmentVariablesResponse {
   repeated EnvVariable env_vars = 1;
+}
+
+message OpenPluginPaneInNewTabPayload {
+  string plugin_url = 1;
+  map<string, string> configuration = 2;
+  repeated ContextItem context = 3;
+}
+
+message OpenPaneInNewTabResponse {
+  optional uint64 tab_id = 1;
+  optional PaneId pane_id = 2;
 }

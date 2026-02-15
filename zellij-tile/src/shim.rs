@@ -22,6 +22,7 @@ use zellij_utils::plugin_api::plugin_command::{
     ProtobufGetPanePidResponse, ProtobufGetPaneRunningCommandResponse,
     ProtobufGetSessionEnvironmentVariablesResponse, ProtobufGetTabInfoResponse,
     ProtobufNewTabResponse, ProtobufNewTabsResponse, ProtobufOpenCommandPaneBackgroundResponse,
+    ProtobufOpenPaneInNewTabResponse,
     ProtobufOpenCommandPaneFloatingNearPluginResponse, ProtobufOpenCommandPaneFloatingResponse,
     ProtobufOpenCommandPaneInPlaceOfPluginResponse, ProtobufOpenCommandPaneInPlaceResponse,
     ProtobufOpenCommandPaneNearPluginResponse, ProtobufOpenCommandPaneResponse,
@@ -869,6 +870,63 @@ where
 
     let response = ProtobufNewTabResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
     NewTabResponse::try_from(response).unwrap()
+}
+
+/// Opens a new tab with a command pane running `command_to_run`.
+/// Returns `(tab_id, pane_id)` of the created tab and pane, or `None` if unavailable.
+pub fn open_command_pane_in_new_tab(
+    command_to_run: CommandToRun,
+    context: BTreeMap<String, String>,
+) -> (Option<usize>, Option<PaneId>) {
+    let plugin_command = PluginCommand::OpenCommandPaneInNewTab(command_to_run, context);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+
+    let response =
+        ProtobufOpenPaneInNewTabResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
+    let result = OpenPaneInNewTabResponse::try_from(response).unwrap();
+    (result.tab_id, result.pane_id)
+}
+
+/// Opens a new tab with a plugin pane loaded from `plugin_url`.
+/// `plugin_url` can be a path (`file:/path/to/plugin.wasm`) or a named alias.
+/// Returns `(tab_id, pane_id)` of the created tab and pane.
+pub fn open_plugin_pane_in_new_tab(
+    plugin_url: impl ToString,
+    configuration: BTreeMap<String, String>,
+    context: BTreeMap<String, String>,
+) -> (Option<usize>, Option<PaneId>) {
+    let plugin_command = PluginCommand::OpenPluginPaneInNewTab {
+        plugin_url: plugin_url.to_string(),
+        configuration,
+        context,
+    };
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+
+    let response =
+        ProtobufOpenPaneInNewTabResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
+    let result = OpenPaneInNewTabResponse::try_from(response).unwrap();
+    (result.tab_id, result.pane_id)
+}
+
+/// Opens a new tab with an editor pane for `file_to_open`.
+/// Returns `(tab_id, pane_id)` of the created tab and pane.
+pub fn open_editor_pane_in_new_tab(
+    file_to_open: FileToOpen,
+    context: BTreeMap<String, String>,
+) -> (Option<usize>, Option<PaneId>) {
+    let plugin_command = PluginCommand::OpenEditorPaneInNewTab(file_to_open, context);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+
+    let response =
+        ProtobufOpenPaneInNewTabResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
+    let result = OpenPaneInNewTabResponse::try_from(response).unwrap();
+    (result.tab_id, result.pane_id)
 }
 
 /// Change focus to the next tab or loop back to the first
