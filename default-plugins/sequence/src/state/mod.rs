@@ -24,6 +24,7 @@ use crate::ui::text_input::TextInput;
 use std::path::PathBuf;
 use zellij_tile::prelude::*;
 
+#[derive(Default)]
 pub struct State {
     pub shell: Option<PathBuf>,
     pub plugin_id: Option<u32>,
@@ -31,10 +32,6 @@ pub struct State {
     pub own_rows: Option<usize>,
     pub own_columns: Option<usize>,
     pub cwd: Option<PathBuf>,
-    pub original_pane_id: Option<PaneId>,
-    pub primary_pane_id: Option<PaneId>,
-    pub is_first_run: bool,
-    pub pane_manifest: Option<PaneManifest>,
     pub total_viewport_columns: Option<usize>,
     pub total_viewport_rows: Option<usize>,
     pub selection: Selection,
@@ -45,28 +42,6 @@ pub struct State {
 }
 
 impl State {
-    pub fn new() -> Self {
-        Self {
-            shell: None,
-            plugin_id: None,
-            client_id: None,
-            own_rows: None,
-            own_columns: None,
-            cwd: None,
-            original_pane_id: None,
-            primary_pane_id: None,
-            is_first_run: true,
-            pane_manifest: None,
-            total_viewport_columns: None,
-            total_viewport_rows: None,
-            selection: Selection::new(),
-            editing: Editing::new(),
-            execution: Execution::new(),
-            layout: Layout::new(),
-            current_position: None,
-        }
-    }
-
     pub fn set_plugin_id(&mut self, plugin_id: u32) {
         self.plugin_id = Some(plugin_id);
     }
@@ -284,37 +259,46 @@ impl State {
         handled_internally
     }
 
-    pub fn update_pane_id_for_command(&mut self, pane_id: PaneId, command_text: &str) {
-        self.execution
-            .update_pane_id_for_command(pane_id, command_text);
-    }
-    pub fn update_exited_command_statuses(&mut self, pane_manifest: &PaneManifest) -> bool {
-        self.execution.update_exited_command_statuses(pane_manifest)
-    }
-    pub fn update_sequence_stopped_state(&mut self) -> bool {
-        self.execution.update_sequence_stopped_state()
-    }
-
     pub fn cycle_chain_type(&mut self) {
         self.current_selected_command_mut()
             .map(|c| c.cycle_chain_type());
     }
 
-    pub fn set_primary_pane_id_before_sequence(&mut self, pane_id: Option<PaneId>) {
-        if pane_id.is_some() {
-            self.execution.primary_pane_id_before_sequence = pane_id;
-        }
-    }
     pub fn clear_all_commands(&mut self) {
         self.execution.all_commands = vec![CommandEntry::new("", self.cwd.clone())];
         self.editing.editing_input = Some(TextInput::new("".to_owned()));
         self.selection.current_selected_command_index = Some(0);
         self.execution.current_running_command_index = 0;
     }
-    pub fn update_running_state(&mut self, primary_pane_id: Option<PaneId>) {
+
+    pub fn load_from_pipe(&mut self, command_string: &str, cwd_override: Option<PathBuf>) {
+        let effective_cwd = cwd_override.or_else(|| self.cwd.clone());
+        let segments = split_by_chain_operators(command_string);
+        eprintln!("segments: {:?}", segments);
+        if segments.is_empty() {
+            return;
+        }
+
+        let commands: Vec<CommandEntry> = segments
+            .into_iter()
+            .map(|(text, chain_type_opt)| {
+                let mut entry = CommandEntry::new(&text, effective_cwd.clone());
+                if let Some(chain_type) = chain_type_opt {
+                    entry.set_chain_type(chain_type);
+                }
+                entry
+            })
+            .collect();
+        eprintln!("commands: {:#?}", commands);
+
+        self.execution.all_commands = commands;
+        self.execution.current_running_command_index = 0;
+        self.selection.current_selected_command_index = Some(0);
+        self.editing.editing_input = None; // no text cursor when auto-running
+    }
+
+    pub fn update_running_state(&mut self) {
         self.remove_empty_commands();
-        self.set_primary_pane_id_before_sequence(primary_pane_id);
-        self.layout.needs_reposition = true;
         self.execution.is_running = true;
     }
 
@@ -390,9 +374,9 @@ impl State {
             );
 
             let ui_width = std::cmp::max(longest_line, 50) + 4; // 2 for ui-padding, 2 for pane frame
-            let width = std::cmp::min(ui_width, total_viewport_columns / 2);
+            let width = std::cmp::min(ui_width, total_viewport_columns.saturating_sub(2));
 
-            let height = (height_padding + total_commands).min((total_viewport_rows * 25) / 100);
+            let height = (height_padding + total_commands).min((total_viewport_rows * 50) / 100);
 
             // Position: top-right with 1-space margins
             let x = total_viewport_columns.saturating_sub(width);
@@ -435,14 +419,7 @@ impl State {
 
     pub fn execute_command_sequence(&mut self) {
         self.execution
-            .execute_command_sequence(&self.shell, &self.cwd, self.primary_pane_id);
+            .execute_command_sequence(&self.shell, &self.cwd);
     }
 }
 
-impl Default for State {
-    fn default() -> Self {
-        let mut state = Self::new();
-        state.is_first_run = true;
-        state
-    }
-}
