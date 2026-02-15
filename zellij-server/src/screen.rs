@@ -1310,6 +1310,10 @@ impl Screen {
 
                     self.log_and_report_session_state()
                         .with_context(err_context)?;
+                    // Update global_last_active_tab_index to track the current tab
+                    // This ensures subsequent actions target the correct tab even after
+                    // ephemeral clients (like CLI action clients) disconnect
+                    self.global_last_active_tab_index = new_tab_index;
                     return self.render(None).with_context(err_context);
                 },
                 Err(err) => Err::<(), _>(err).with_context(err_context).non_fatal(),
