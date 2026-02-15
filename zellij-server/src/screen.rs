@@ -154,13 +154,15 @@ macro_rules! active_tab_and_connected_client_id_with_first_tab_fallback {
                         Err(err) => Err::<(), _>(err).non_fatal(),
                     }
                 } else {
-                    match $screen.get_indexed_tab_mut(0) {
-                        Some(first_tab) => {
-                            $closure(first_tab, None);
-                        },
-                        None => {
-                            log::error!("Not tabs found!");
-                        },
+                    // No clients connected - use fallback to find the appropriate tab
+                    if let Some(fallback_tab_index) = $screen.get_active_tab_index_with_fallback($client_id) {
+                        if let Some(fallback_tab) = $screen.get_indexed_tab_mut(fallback_tab_index) {
+                            $closure(fallback_tab, None);
+                        } else {
+                            log::error!("Failed to get tab at fallback index: {}", fallback_tab_index);
+                        }
+                    } else {
+                        log::error!("No tabs found!");
                     }
                 };
             },
@@ -181,13 +183,15 @@ macro_rules! active_tab_and_connected_client_id_with_first_tab_fallback {
                         Err(err) => Err::<(), _>(err).non_fatal(),
                     }
                 } else {
-                    match $screen.get_indexed_tab_mut(0) {
-                        Some(first_tab) => {
-                            $closure(first_tab, None)?;
-                        },
-                        None => {
-                            log::error!("Not tabs found!");
-                        },
+                    // No clients connected - use fallback to find the appropriate tab
+                    if let Some(fallback_tab_index) = $screen.get_active_tab_index_with_fallback($client_id) {
+                        if let Some(fallback_tab) = $screen.get_indexed_tab_mut(fallback_tab_index) {
+                            $closure(fallback_tab, None)?;
+                        } else {
+                            log::error!("Failed to get tab at fallback index: {}", fallback_tab_index);
+                        }
+                    } else {
+                        log::error!("No tabs found!");
                     }
                 };
             },
