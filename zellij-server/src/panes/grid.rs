@@ -304,7 +304,10 @@ macro_rules! dump_screen_with_ansi {
             let last_non_space = line
                 .columns
                 .iter()
-                .rposition(|tc| tc.character != ' ')
+                .rposition(|tc| {
+                    tc.character != ' '
+                        || !matches!(tc.styles.background, Some(AnsiCode::Reset) | None)
+                })
                 .map(|i| i + 1)
                 .unwrap_or(0);
 
