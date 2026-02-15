@@ -1445,6 +1445,18 @@ impl Tab {
                             borderless,
                         )?;
                     }
+                } else {
+                    // No client connected - fall back to directionless tiled pane
+                    self.new_tiled_pane(
+                        pid,
+                        initial_pane_title,
+                        invoked_with,
+                        start_suppressed,
+                        should_focus_pane,
+                        client_id,
+                        blocking_notification,
+                        borderless,
+                    )?;
                 }
                 Ok(())
             },
