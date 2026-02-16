@@ -324,7 +324,8 @@ pub fn add_command_row(
         None => return table,
     };
 
-    let cmd_text = &command.get_text();
+    let cmd_text = command.get_text();
+    let cmd_text = cmd_text.trim();
     let chain_type = &command.get_chain_type();
     let status = &command.get_status();
     let command_cwd = command.get_cwd().or_else(|| state.cwd.clone());

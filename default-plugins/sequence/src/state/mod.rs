@@ -113,21 +113,31 @@ impl State {
 
     pub fn load_from_pipe(&mut self, command_string: &str, cwd_override: Option<PathBuf>) {
         let effective_cwd = cwd_override.or_else(|| self.cwd.clone());
-        let segments = split_by_chain_operators(command_string);
-        if segments.is_empty() {
-            return;
-        }
 
-        let commands: Vec<CommandEntry> = segments
-            .into_iter()
-            .map(|(text, chain_type_opt)| {
-                let mut entry = CommandEntry::new(&text, effective_cwd.clone());
-                if let Some(chain_type) = chain_type_opt {
-                    entry.set_chain_type(chain_type);
+        let commands: Vec<CommandEntry> = command_string
+            .lines()
+            .flat_map(|line| {
+                let trimmed = line.trim();
+                if trimmed.is_empty() || trimmed.starts_with('#') {
+                    return vec![];
                 }
-                entry
+                split_by_chain_operators(trimmed)
+                    .into_iter()
+                    .filter(|(text, _)| !text.trim().is_empty())
+                    .map(|(text, chain_type_opt)| {
+                        let mut entry = CommandEntry::new(&text, effective_cwd.clone());
+                        if let Some(chain_type) = chain_type_opt {
+                            entry.set_chain_type(chain_type);
+                        }
+                        entry
+                    })
+                    .collect()
             })
             .collect();
+
+        if commands.is_empty() {
+            return;
+        }
 
         self.execution.all_commands = commands;
         self.execution.current_running_command_index = 0;
