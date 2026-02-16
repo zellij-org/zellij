@@ -342,10 +342,15 @@ fn handle_key_event(state: &mut State, key: KeyWithModifier) -> bool {
         return true;
     }
 
-    // Ctrl+C — interrupt sequence when running
+    // Ctrl+C — interrupt if running; clear all commands if not running and all are pending
     if key.has_modifiers(&[KeyModifier::Ctrl]) && matches!(key.bare_key, BareKey::Char('c')) {
         if state.execution.is_running {
             interrupt_sequence(state);
+            return true;
+        } else if state.all_commands_are_pending()
+            && state.execution.all_commands.iter().any(|c| !c.is_empty())
+        {
+            close_panes_and_return_to_shell(state);
             return true;
         }
     }
