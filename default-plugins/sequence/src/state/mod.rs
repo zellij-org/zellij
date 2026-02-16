@@ -4,7 +4,6 @@ mod command_parser;
 mod command_status;
 mod execution;
 mod layout;
-pub mod positioning;
 mod selection;
 mod sequence_mode;
 
@@ -46,14 +45,6 @@ pub struct State {
 impl State {
     pub fn set_plugin_id(&mut self, plugin_id: u32) {
         self.plugin_id = Some(plugin_id);
-    }
-
-    /// Check if the sequence has finished executing (all commands are done)
-    pub fn has_finished(&self) -> bool {
-        self.execution
-            .all_commands
-            .iter()
-            .all(|command| matches!(command.status, CommandStatus::Exited(_, _)))
     }
 
     pub fn move_selection_up(&mut self) {
@@ -143,11 +134,6 @@ impl State {
         self.execution.all_commands = commands;
         self.execution.current_running_command_index = 0;
         self.selection.current_selected_command_index = None;
-    }
-
-    pub fn update_running_state(&mut self) {
-        self.remove_empty_commands();
-        self.execution.is_running = true;
     }
 
     pub fn can_run_sequence(&self) -> bool {

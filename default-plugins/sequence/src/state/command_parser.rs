@@ -104,50 +104,6 @@ pub fn split_by_chain_operators(text: &str) -> Vec<(String, Option<ChainType>)> 
     segments
 }
 
-pub fn detect_chain_operator_at_end(text: &str) -> Option<(String, ChainType)> {
-    let segments = split_by_chain_operators(text);
-
-    if segments.is_empty() {
-        return None;
-    }
-
-    if segments.len() == 1 {
-        if let Some((text, Some(chain_type))) = segments.first() {
-            return Some((text.clone(), *chain_type));
-        }
-        return None;
-    }
-
-    if let Some((first_text, Some(chain_type))) = segments.first() {
-        return Some((first_text.clone(), *chain_type));
-    }
-
-    None
-}
-
-pub fn get_remaining_after_first_segment(text: &str) -> Option<String> {
-    let segments = split_by_chain_operators(text);
-
-    if segments.len() <= 1 {
-        return None;
-    }
-
-    let mut result = String::new();
-    for (i, (segment_text, chain_type_opt)) in segments.iter().enumerate().skip(1) {
-        if i > 1 {
-            if let Some(chain_type) = chain_type_opt {
-                result.push_str(&format!(" {} ", chain_type.as_str()));
-            }
-        }
-        result.push_str(segment_text);
-        if let Some(chain_type) = chain_type_opt {
-            result.push_str(&format!(" {} ", chain_type.as_str()));
-        }
-    }
-
-    Some(result.trim().to_string())
-}
-
 pub fn detect_cd_command(text: &str) -> Option<String> {
     let trimmed = text.trim();
 
@@ -353,36 +309,6 @@ mod tests {
                 ("cmd2".to_string(), None)
             ]
         );
-    }
-
-    #[test]
-    fn test_detect_operator_just_typed_and() {
-        let result = detect_chain_operator_at_end("ls &&");
-        assert_eq!(result, Some(("ls".to_string(), ChainType::And)));
-    }
-
-    #[test]
-    fn test_detect_operator_just_typed_or() {
-        let result = detect_chain_operator_at_end("cmd ||");
-        assert_eq!(result, Some(("cmd".to_string(), ChainType::Or)));
-    }
-
-    #[test]
-    fn test_detect_operator_just_typed_semicolon() {
-        let result = detect_chain_operator_at_end("echo ;");
-        assert_eq!(result, Some(("echo".to_string(), ChainType::Then)));
-    }
-
-    #[test]
-    fn test_detect_operator_no_operator() {
-        let result = detect_chain_operator_at_end("ls");
-        assert_eq!(result, None);
-    }
-
-    #[test]
-    fn test_detect_operator_in_quotes() {
-        let result = detect_chain_operator_at_end("echo '&&'");
-        assert_eq!(result, None);
     }
 
     #[test]

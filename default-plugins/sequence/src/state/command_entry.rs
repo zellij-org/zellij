@@ -1,6 +1,5 @@
 use super::{ChainType, CommandStatus};
 use std::path::PathBuf;
-use std::time::Instant;
 use zellij_tile::prelude::PaneId;
 
 #[derive(Debug, Clone)]
@@ -9,7 +8,6 @@ pub struct CommandEntry {
     cwd: Option<PathBuf>,
     pub(super) chain_type: ChainType,
     pub(super) status: CommandStatus,
-    pub(super) start_time: std::time::Instant,
 }
 
 impl Default for CommandEntry {
@@ -19,7 +17,6 @@ impl Default for CommandEntry {
             cwd: None,
             chain_type: ChainType::default(),
             status: CommandStatus::default(),
-            start_time: Instant::now(),
         }
     }
 }
@@ -31,10 +28,6 @@ impl CommandEntry {
             cwd,
             ..Default::default()
         }
-    }
-    pub fn with_and(mut self) -> Self {
-        self.chain_type = ChainType::And;
-        self
     }
     pub fn get_text(&self) -> String {
         self.text.clone()
@@ -73,9 +66,6 @@ impl CommandEntry {
     }
     pub fn clear_status(&mut self) {
         self.status = CommandStatus::Pending;
-    }
-    pub fn cycle_chain_type(&mut self) {
-        self.chain_type.cycle_next();
     }
     pub fn get_cwd(&self) -> Option<PathBuf> {
         self.cwd.clone()

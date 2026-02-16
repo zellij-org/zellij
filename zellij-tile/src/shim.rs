@@ -2205,6 +2205,18 @@ pub fn close_tab_with_index(tab_index: usize) {
     unsafe { host_run_plugin_command() };
 }
 
+/// Close the tab with the given stable ID.
+///
+/// Unlike `close_tab_with_index`, this function identifies the tab by its stable
+/// `tab_id` rather than its display position, which may change as tabs are moved
+/// or closed. The tab_id can be obtained from `TabInfo.tab_id`.
+pub fn close_tab_with_id(tab_id: u64) {
+    let plugin_command = PluginCommand::CloseTabWithId(tab_id);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 /// Rename the specified pane
 pub fn rename_pane_with_id<S: AsRef<str>>(pane_id: PaneId, new_name: S)
 where

@@ -2,14 +2,12 @@ use super::CommandEntry;
 
 pub struct Selection {
     pub current_selected_command_index: Option<usize>,
-    pub scroll_offset: usize,
 }
 
 impl Selection {
     pub fn new() -> Self {
         Self {
             current_selected_command_index: None,
-            scroll_offset: 0,
         }
     }
 

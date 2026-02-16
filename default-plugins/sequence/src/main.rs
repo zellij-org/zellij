@@ -67,11 +67,7 @@ impl ZellijPlugin for State {
 
         let cwd_override = pipe_message.args.get("cwd").map(PathBuf::from);
         self.load_from_pipe(&payload, cwd_override);
-        self.update_running_state();
-        launch_command_at_index(self, 0, None, true);
-        ensure_spinner_running(self);
-
-        self.reposition_plugin();
+        show_self(true);
 
         true
     }
@@ -400,22 +396,26 @@ fn handle_key_event(state: &mut State, key: KeyWithModifier) -> bool {
         return false;
     }
 
-    // Ctrl+W — close all panes and return to shell
+    // Ctrl+W — close tab if sequence has run; close plugin if staging; no-op if running
     if key.has_modifiers(&[KeyModifier::Ctrl]) && matches!(key.bare_key, BareKey::Char('w')) {
-        if !state.execution.is_running && !state.all_commands_are_pending() {
+        if state.all_commands_are_pending() {
+            if let Some(plugin_id) = state.plugin_id {
+                close_pane_with_id(PaneId::Plugin(plugin_id));
+            }
+        } else if !state.execution.is_running {
             close_panes_and_return_to_shell(state);
         }
         return true;
     }
 
-    // Ctrl+C — interrupt if running; clear commands if pending; close plugin if empty
+    // Ctrl+C — interrupt if running; clear commands if staging; close plugin if empty
     if key.has_modifiers(&[KeyModifier::Ctrl]) && matches!(key.bare_key, BareKey::Char('c')) {
         if state.execution.is_running {
             interrupt_sequence(state);
             return true;
         } else if state.all_commands_are_pending() {
             if state.execution.all_commands.iter().any(|c| !c.is_empty()) {
-                close_panes_and_return_to_shell(state);
+                state.clear_all_commands();
             } else if let Some(plugin_id) = state.plugin_id {
                 close_pane_with_id(PaneId::Plugin(plugin_id));
             }
@@ -475,18 +475,9 @@ fn handle_key_event(state: &mut State, key: KeyWithModifier) -> bool {
 }
 
 fn close_panes_and_return_to_shell(state: &mut State) -> bool {
-    for command in &state.execution.all_commands {
-        let pane_id = match command.get_status() {
-            CommandStatus::Running(p) | CommandStatus::Exited(_, p) | CommandStatus::Interrupted(p) => p,
-            _ => None,
-        };
-        if let Some(pane_id) = pane_id {
-            close_pane_with_id(pane_id);
-        }
+    if let Some(tab_id) = state.sequence_tab_id {
+        close_tab_with_id(tab_id as u64);
     }
-    state.clear_all_commands();
-    state.current_position = None;
-    update_title(state);
     true
 }
 
