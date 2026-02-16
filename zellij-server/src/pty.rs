@@ -1565,6 +1565,15 @@ impl Pty {
                 ));
             }
         });
+
+        let originating_plugin = run_instruction.as_ref().and_then(|r| {
+            if let Run::Command(run_command) = r {
+                run_command.originating_plugin.clone()
+            } else {
+                None
+            }
+        });
+
         match run_instruction {
             Some(Run::Command(mut command)) => {
                 let starts_held = command.hold_on_start;
@@ -1572,6 +1581,22 @@ impl Pty {
                 let quit_cb = Box::new({
                     let senders = self.bus.senders.clone();
                     move |pane_id, exit_status, command| {
+
+                        if let PaneId::Terminal(terminal_pane_id) = pane_id {
+                            if let Some(originating_plugin) = originating_plugin.as_ref() {
+                                let update_event = Event::CommandPaneExited(
+                                    terminal_pane_id,
+                                    exit_status,
+                                    originating_plugin.context.clone(),
+                                );
+                                let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
+                                    Some(originating_plugin.plugin_id),
+                                    Some(originating_plugin.client_id),
+                                    update_event,
+                                )]));
+                            }
+                        }
+
                         if hold_on_close {
                             let _ = senders.send_to_screen(ScreenInstruction::HoldPane(
                                 pane_id,

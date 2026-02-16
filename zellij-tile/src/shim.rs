@@ -14,7 +14,8 @@ use zellij_utils::plugin_api::plugin_command::{
     dump_layout_response, dump_session_layout_response, get_focused_pane_info_response,
     get_pane_cwd_response, get_pane_running_command_response, parse_layout_response,
     CreateTokenResponse, ListTokensResponse, ProtobufBreakPanesToNewTabResponse,
-    ProtobufBreakPanesToTabWithIndexResponse, ProtobufCurrentSessionLastSavedTimeResponse,
+    ProtobufBreakPanesToTabWithIdResponse, ProtobufBreakPanesToTabWithIndexResponse,
+    ProtobufCurrentSessionLastSavedTimeResponse,
     ProtobufDeleteLayoutResponse, ProtobufDumpLayoutResponse, ProtobufDumpSessionLayoutResponse,
     ProtobufEditLayoutResponse, ProtobufFocusOrCreateTabResponse,
     ProtobufGenerateRandomNameResponse, ProtobufGetFocusedPaneInfoResponse,
@@ -2163,6 +2164,27 @@ pub fn break_panes_to_tab_with_index(
         ProtobufBreakPanesToTabWithIndexResponse::decode(bytes_from_stdin().unwrap().as_slice())
             .unwrap();
     BreakPanesToTabWithIndexResponse::try_from(response).unwrap()
+}
+
+/// Move the pane ids to the tab with the specified id
+pub fn break_panes_to_tab_with_id(
+    pane_ids: &[PaneId],
+    tab_id: usize,
+    should_change_focus_to_target_tab: bool,
+) -> Option<usize> {
+    let plugin_command = PluginCommand::BreakPanesToTabWithId(
+        pane_ids.to_vec(),
+        tab_id as u64,
+        should_change_focus_to_target_tab,
+    );
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+
+    let response =
+        ProtobufBreakPanesToTabWithIdResponse::decode(bytes_from_stdin().unwrap().as_slice())
+            .unwrap();
+    BreakPanesToTabWithIdResponse::try_from(response).unwrap()
 }
 
 /// Reload an already-running in this session, optionally skipping the cache

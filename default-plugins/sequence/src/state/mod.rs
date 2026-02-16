@@ -274,7 +274,6 @@ impl State {
     pub fn load_from_pipe(&mut self, command_string: &str, cwd_override: Option<PathBuf>) {
         let effective_cwd = cwd_override.or_else(|| self.cwd.clone());
         let segments = split_by_chain_operators(command_string);
-        eprintln!("segments: {:?}", segments);
         if segments.is_empty() {
             return;
         }
@@ -289,7 +288,6 @@ impl State {
                 entry
             })
             .collect();
-        eprintln!("commands: {:#?}", commands);
 
         self.execution.all_commands = commands;
         self.execution.current_running_command_index = 0;
@@ -419,7 +417,7 @@ impl State {
 
     pub fn execute_command_sequence(&mut self) {
         self.execution
-            .execute_command_sequence(&self.shell, &self.cwd);
+            .execute_command_sequence(&self.shell, &self.cwd, self.plugin_id);
     }
 }
 

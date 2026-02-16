@@ -3943,6 +3943,18 @@ impl From<BreakPanesToTabWithIndexResponse> for ProtobufBreakPanesToTabWithIndex
     }
 }
 
+impl TryFrom<ProtobufBreakPanesToTabWithIdResponse> for BreakPanesToTabWithIdResponse {
+    type Error = &'static str;
+    fn try_from(protobuf: ProtobufBreakPanesToTabWithIdResponse) -> Result<Self, Self::Error> {
+        match protobuf.result {
+            Some(break_panes_to_tab_with_id_response::Result::TabId(id)) => {
+                Ok(Some(id as usize))
+            },
+            Some(break_panes_to_tab_with_id_response::Result::None(_)) | None => Ok(None),
+        }
+    }
+}
+
 impl From<BreakPanesToTabWithIdResponse> for ProtobufBreakPanesToTabWithIdResponse {
     fn from(response: BreakPanesToTabWithIdResponse) -> Self {
         match response {

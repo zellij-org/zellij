@@ -82,6 +82,7 @@ impl Execution {
         &mut self,
         shell: &Option<PathBuf>,
         global_cwd: &Option<PathBuf>,
+        plugin_id: Option<u32>,
     ) {
         self.all_commands.retain(|c| !c.is_empty());
 
@@ -98,9 +99,13 @@ impl Execution {
             cwd: command_cwd,
         };
 
-        if let Some(pane_id) = open_command_pane_near_plugin(command, BTreeMap::new()) {
+        let (tab_id, pane_id) = open_command_pane_in_new_tab(command, BTreeMap::new());
+        if let Some(pane_id) = pane_id {
             self.set_command_status(0, CommandStatus::Running(Some(pane_id)));
             self.current_running_command_index = 0;
+        }
+        if let (Some(tab_id), Some(plugin_id)) = (tab_id, plugin_id) {
+            break_panes_to_tab_with_id(&[PaneId::Plugin(plugin_id)], tab_id, true);
         }
     }
 }

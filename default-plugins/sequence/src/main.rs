@@ -46,7 +46,6 @@ impl ZellijPlugin for State {
     }
 
     fn pipe(&mut self, pipe_message: PipeMessage) -> bool {
-        eprintln!("pipe_message: {:#?}", pipe_message);
         if !pipe_message.is_private {
             return false;
         }
