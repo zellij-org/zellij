@@ -167,6 +167,10 @@ pub fn detect_cd_command(text: &str) -> Option<String> {
 /// CWD changes are emitted as `cd <path>` lines; chain type as trailing ` &&`, ` ||`, ` ;`.
 pub fn serialize_sequence_to_editor(commands: &[CommandEntry]) -> String {
     let mut result = String::new();
+
+    result.push_str("# One cmd per line. Use && || ; to chain. cd <path> sets cwd.\n");
+    result.push_str("\n");
+
     let mut prev_cwd: Option<std::path::PathBuf> = None;
 
     for cmd in commands {

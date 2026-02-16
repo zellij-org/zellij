@@ -8,7 +8,7 @@ pub struct Selection {
 impl Selection {
     pub fn new() -> Self {
         Self {
-            current_selected_command_index: Some(0),
+            current_selected_command_index: None,
             scroll_offset: 0,
         }
     }

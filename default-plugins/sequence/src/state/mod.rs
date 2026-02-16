@@ -108,7 +108,7 @@ impl State {
 
     pub fn clear_all_commands(&mut self) {
         self.execution.all_commands = vec![CommandEntry::new("", self.cwd.clone())];
-        self.selection.current_selected_command_index = Some(0);
+        self.selection.current_selected_command_index = None;
         self.execution.current_running_command_index = 0;
     }
 
@@ -142,7 +142,7 @@ impl State {
 
         self.execution.all_commands = commands;
         self.execution.current_running_command_index = 0;
-        self.selection.current_selected_command_index = Some(0);
+        self.selection.current_selected_command_index = None;
     }
 
     pub fn update_running_state(&mut self) {
@@ -201,80 +201,62 @@ impl State {
         let Some(total_viewport_columns) = self.total_viewport_columns else {
             return repositioned;
         };
+        if self.all_commands_are_pending() {
+            return false;
+        }
+
         let total_commands = std::cmp::max(self.execution.all_commands.iter().len(), 1);
         let height_padding = 7;
-        if self.all_commands_are_pending() {
-            let initial_height = total_commands + height_padding;
-            let y = total_viewport_rows.saturating_sub(initial_height) / 2;
-            let coordinates = FloatingPaneCoordinates::new(
-                Some(format!("25%")),
-                Some(format!("{}", y)),
-                Some(format!("50%")),
-                Some(format!("{}", initial_height)),
-                Some(false), // should not be pinned when running sequence
-                Some(false),
-            );
-            coordinates.map(|coordinates| {
-                if Some(&coordinates) != self.current_position.as_ref() {
-                    repositioned = true;
-                    self.current_position = Some(coordinates.clone());
-                    change_floating_panes_coordinates(vec![(
-                        PaneId::Plugin(plugin_id),
-                        coordinates,
-                    )]);
-                }
-            });
-        } else {
-            // Calculate longest table row width
-            let longest_cwd_display = self.execution.longest_cwd_display(&self.cwd);
-            let longest_command = self
-                .execution
-                .all_commands
-                .iter()
-                .map(|cmd| cmd.get_text().chars().count())
-                .max()
-                .unwrap_or(1);
 
-            let (max_chain_width, max_status_width) = crate::ui::components::calculate_max_widths(
-                &self.execution.all_commands,
-                self.layout.spinner_frame,
-            );
+        // Calculate longest table row width
+        let longest_cwd_display = self.execution.longest_cwd_display(&self.cwd);
+        let longest_command = self
+            .execution
+            .all_commands
+            .iter()
+            .map(|cmd| cmd.get_text().chars().count())
+            .max()
+            .unwrap_or(1);
 
-            let longest_line = crate::ui::components::calculate_longest_line(
-                &longest_cwd_display,
-                longest_command,
-                max_chain_width,
-                max_status_width,
-            );
+        let (max_chain_width, max_status_width) = crate::ui::components::calculate_max_widths(
+            &self.execution.all_commands,
+            self.layout.spinner_frame,
+        );
 
-            let ui_width = std::cmp::max(longest_line, 50) + 4; // 2 for ui-padding, 2 for pane frame
-            let width = std::cmp::min(ui_width, total_viewport_columns.saturating_sub(2));
+        let longest_line = crate::ui::components::calculate_longest_line(
+            &longest_cwd_display,
+            longest_command,
+            max_chain_width,
+            max_status_width,
+        );
 
-            let height = (height_padding + total_commands).min((total_viewport_rows * 50) / 100);
+        let ui_width = std::cmp::max(longest_line, 50) + 4; // 2 for ui-padding, 2 for pane frame
+        let width = std::cmp::min(ui_width, total_viewport_columns.saturating_sub(2));
 
-            // Position: top-right with 1-space margins
-            let x = total_viewport_columns.saturating_sub(width);
-            let y = 1;
+        let height = (height_padding + total_commands).min((total_viewport_rows * 50) / 100);
 
-            let coordinates = FloatingPaneCoordinates::new(
-                Some(x.to_string()),
-                Some(y.to_string()),
-                Some(width.to_string()),
-                Some(height.to_string()),
-                Some(true), // should be pinned for sequence
-                Some(false),
-            );
-            coordinates.map(|coordinates| {
-                if Some(&coordinates) != self.current_position.as_ref() {
-                    self.current_position = Some(coordinates.clone());
-                    repositioned = true;
-                    change_floating_panes_coordinates(vec![(
-                        PaneId::Plugin(plugin_id),
-                        coordinates,
-                    )]);
-                }
-            });
-        }
+        // Position: top-right with 1-space margins
+        let x = total_viewport_columns.saturating_sub(width);
+        let y = 1;
+
+        let coordinates = FloatingPaneCoordinates::new(
+            Some(x.to_string()),
+            Some(y.to_string()),
+            Some(width.to_string()),
+            Some(height.to_string()),
+            Some(true), // should be pinned for sequence
+            Some(false),
+        );
+        coordinates.map(|coordinates| {
+            if Some(&coordinates) != self.current_position.as_ref() {
+                self.current_position = Some(coordinates.clone());
+                repositioned = true;
+                change_floating_panes_coordinates(vec![(
+                    PaneId::Plugin(plugin_id),
+                    coordinates,
+                )]);
+            }
+        });
         repositioned
     }
 

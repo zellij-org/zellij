@@ -231,6 +231,7 @@ fn handle_command_pane_exited(
         launch_command_at_index(state, next_index, Some(pane_id), false);
     } else {
         state.execution.is_running = false;
+        state.selection.current_selected_command_index = None;
     }
     true
 }
@@ -265,13 +266,13 @@ fn handle_editor_pane_exited(state: &mut State, terminal_pane_id: u32) -> bool {
     if !commands.is_empty() {
         state.execution.all_commands = commands;
         state.execution.current_running_command_index = 0;
-        state.selection.current_selected_command_index = Some(0);
+        state.selection.current_selected_command_index = None;
         state.execution.is_running = false;
     } else {
         // Reset to empty pending state
         state.execution.all_commands = vec![CommandEntry::new("", state.cwd.clone())];
         state.execution.current_running_command_index = 0;
-        state.selection.current_selected_command_index = Some(0);
+        state.selection.current_selected_command_index = None;
         state.execution.is_running = false;
     }
 
@@ -342,15 +343,17 @@ fn handle_key_event(state: &mut State, key: KeyWithModifier) -> bool {
         return true;
     }
 
-    // Ctrl+C — interrupt if running; clear all commands if not running and all are pending
+    // Ctrl+C — interrupt if running; clear commands if pending; close plugin if empty
     if key.has_modifiers(&[KeyModifier::Ctrl]) && matches!(key.bare_key, BareKey::Char('c')) {
         if state.execution.is_running {
             interrupt_sequence(state);
             return true;
-        } else if state.all_commands_are_pending()
-            && state.execution.all_commands.iter().any(|c| !c.is_empty())
-        {
-            close_panes_and_return_to_shell(state);
+        } else if state.all_commands_are_pending() {
+            if state.execution.all_commands.iter().any(|c| !c.is_empty()) {
+                close_panes_and_return_to_shell(state);
+            } else if let Some(plugin_id) = state.plugin_id {
+                close_pane_with_id(PaneId::Plugin(plugin_id));
+            }
             return true;
         }
     }
@@ -409,34 +412,11 @@ fn close_panes_and_return_to_shell(state: &mut State) -> bool {
         }
     }
     state.clear_all_commands();
-    // Reposition plugin back to center
-    if let Some(plugin_id) = state.plugin_id {
-        change_floating_pane_coordinates(plugin_id, Some(25), Some(25), Some(50), Some(50), false);
-    }
+    state.current_position = None;
     update_title(state);
     true
 }
 
-fn change_floating_pane_coordinates(
-    own_plugin_id: u32,
-    x: Option<usize>,
-    y: Option<usize>,
-    width: Option<usize>,
-    height: Option<usize>,
-    should_be_pinned: bool,
-) {
-    let coordinates = FloatingPaneCoordinates::new(
-        x.map(|x| format!("{}%", x)),
-        y.map(|y| format!("{}%", y)),
-        width.map(|width| format!("{}%", width)),
-        height.map(|height| format!("{}%", height)),
-        Some(should_be_pinned),
-        Some(false),
-    );
-    if let Some(coordinates) = coordinates {
-        change_floating_panes_coordinates(vec![(PaneId::Plugin(own_plugin_id), coordinates)]);
-    }
-}
 
 fn update_spinner(state: &mut State) -> bool {
     // Advance spinner frame for RUNNING animation
@@ -593,6 +573,7 @@ fn interrupt_sequence(state: &mut State) {
             }
         }
         state.execution.is_running = false;
+        state.selection.current_selected_command_index = None;
     } else {
         eprintln!("Cannot interrupt a sequence that is not running.");
     }
