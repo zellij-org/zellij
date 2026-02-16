@@ -8,6 +8,7 @@ pub struct Execution {
     pub all_commands: Vec<CommandEntry>,
     pub current_running_command_index: usize,
     pub is_running: bool,
+    pub displayed_pane_id: Option<PaneId>,
 }
 
 impl Execution {
@@ -16,6 +17,7 @@ impl Execution {
             all_commands: vec![CommandEntry::default()],
             current_running_command_index: 0,
             is_running: false,
+            displayed_pane_id: None,
         }
     }
 
@@ -103,6 +105,7 @@ impl Execution {
         if let Some(pane_id) = pane_id {
             self.set_command_status(0, CommandStatus::Running(Some(pane_id)));
             self.current_running_command_index = 0;
+            self.displayed_pane_id = Some(pane_id);
         }
         if let (Some(tab_id), Some(plugin_id)) = (tab_id, plugin_id) {
             break_panes_to_tab_with_id(&[PaneId::Plugin(plugin_id)], tab_id, true);

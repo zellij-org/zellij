@@ -7,6 +7,7 @@ mod execution;
 mod layout;
 pub mod positioning;
 mod selection;
+mod sequence_mode;
 
 pub use chain_type::ChainType;
 pub use command_entry::CommandEntry;
@@ -19,6 +20,7 @@ pub use editing::Editing;
 pub use execution::Execution;
 pub use layout::Layout;
 pub use selection::Selection;
+pub use sequence_mode::SequenceMode;
 
 use crate::ui::text_input::TextInput;
 use std::path::PathBuf;
@@ -39,6 +41,7 @@ pub struct State {
     pub execution: Execution,
     pub layout: Layout,
     pub current_position: Option<FloatingPaneCoordinates>,
+    pub mode: SequenceMode,
 }
 
 impl State {
@@ -83,22 +86,34 @@ impl State {
     pub fn move_selection_up(&mut self) {
         self.selection
             .move_up(&mut self.execution.all_commands, &mut self.editing);
-        if let Some(pane_id) = self
-            .current_selected_command()
-            .and_then(|c| c.get_pane_id())
-        {
-            show_pane_with_id(pane_id, true, false);
-        }
+        self.show_selected_pane();
     }
 
     pub fn move_selection_down(&mut self) {
         self.selection
             .move_down(&mut self.execution.all_commands, &mut self.editing);
-        if let Some(pane_id) = self
+        self.show_selected_pane();
+    }
+
+    fn show_selected_pane(&mut self) {
+        if self.mode == SequenceMode::Spread {
+            return;
+        }
+        let target_pane_id = self
             .current_selected_command()
-            .and_then(|c| c.get_pane_id())
+            .and_then(|c| c.get_pane_id());
+        if let (Some(displayed), Some(target)) =
+            (self.execution.displayed_pane_id, target_pane_id)
         {
-            show_pane_with_id(pane_id, true, false);
+            if displayed != target {
+                replace_pane_with_existing_pane(displayed, target, true);
+                self.execution.displayed_pane_id = Some(target);
+            }
+        } else if let Some(target) = target_pane_id {
+            // No currently displayed pane — just show it
+            // Kept for future configurability: show_pane_with_id(target, true, false)
+            replace_pane_with_existing_pane(target, target, false);
+            self.execution.displayed_pane_id = Some(target);
         }
     }
     pub fn start_editing_selected(&mut self) {

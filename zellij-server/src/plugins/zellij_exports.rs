@@ -4687,13 +4687,16 @@ fn replace_pane_with_existing_pane(
     existing_pane: PaneId,
     suppress_replaced_pane: bool,
 ) {
+    let (completion_tx, completion_rx) = oneshot::channel();
     let _ = env
         .senders
         .send_to_screen(ScreenInstruction::ReplacePaneWithExistingPane(
             pane_to_replace,
             existing_pane,
             suppress_replaced_pane,
+            Some(NotificationEnd::new(completion_tx)),
         ));
+    let _ = wait_for_action_completion(completion_rx, "replace_pane_with_existing_pane", false);
 }
 
 fn override_layout(

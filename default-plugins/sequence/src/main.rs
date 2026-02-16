@@ -8,7 +8,7 @@ use crate::ui::fuzzy_complete;
 use crate::ui::layout_calculations::calculate_viewport;
 use crate::ui::text_input::InputAction;
 use crate::ui::truncation::truncate_middle;
-use state::{ChainType, State};
+use state::{ChainType, SequenceMode, State};
 use zellij_tile::prelude::*;
 
 use std::collections::BTreeMap;
@@ -239,23 +239,52 @@ fn handle_command_pane_exited(
 
     let next_index = cmd_index + 1;
     if should_continue && next_index < state.execution.all_commands.len() {
-        launch_command_at_index(state, next_index);
+        launch_command_at_index(state, next_index, Some(pane_id), false);
     } else {
         state.execution.is_running = false;
     }
     true
 }
 
-fn launch_command_at_index(state: &mut State, index: usize) {
+fn launch_command_at_index(
+    state: &mut State,
+    index: usize,
+    replace_pane_id: Option<PaneId>,
+    force_visible: bool,
+) {
     let cmd = &state.execution.all_commands[index];
     let command = CommandToRun {
         path: state.shell.clone().unwrap_or_else(|| PathBuf::from("/bin/bash")),
         args: vec!["-ic".to_string(), cmd.get_text().trim().to_string()],
         cwd: cmd.get_cwd(),
     };
-    if let Some(pane_id) = open_command_pane_near_plugin(command, BTreeMap::new()) {
+    let user_is_watching = replace_pane_id.is_some()
+        && replace_pane_id == state.execution.displayed_pane_id;
+    let new_pane_id = if state.mode == SequenceMode::Spread {
+        open_command_pane_near_plugin(command, BTreeMap::new())
+    } else if user_is_watching {
+        let prev_pane_id = replace_pane_id.unwrap();
+        let pane_id =
+            open_command_pane_in_place_of_pane_id(prev_pane_id, command, false, BTreeMap::new());
+        if let Some(pane_id) = pane_id {
+            state.execution.displayed_pane_id = Some(pane_id);
+        }
+        pane_id
+    } else if force_visible {
+        let pane_id = open_command_pane_near_plugin(command, BTreeMap::new());
+        if let Some(pane_id) = pane_id {
+            state.execution.displayed_pane_id = Some(pane_id);
+        }
+        pane_id
+    } else {
+        // User navigated away — open in background, invisible until they navigate to it
+        // Kept for future configurability: open_command_pane_near_plugin(command, BTreeMap::new())
+        open_command_pane_background(command, BTreeMap::new())
+    };
+    if let Some(pane_id) = new_pane_id {
         state.execution.all_commands[index].set_status(CommandStatus::Running(Some(pane_id)));
         state.execution.current_running_command_index = index;
+        state.selection.current_selected_command_index = Some(index);
     }
 }
 
@@ -364,6 +393,15 @@ fn handle_key_event(state: &mut State, key: KeyWithModifier) -> bool {
         && matches!(key.bare_key, BareKey::Enter)
     {
         rerun_sequence(state);
+        return true;
+    }
+
+    if state.editing.editing_input.is_none()
+        && key.has_no_modifiers()
+        && matches!(key.bare_key, BareKey::Tab)
+        && !state.all_commands_are_pending()
+    {
+        toggle_spread_mode(state);
         return true;
     }
 
@@ -650,7 +688,7 @@ fn update_spinner(state: &mut State) -> bool {
         .all_commands
         .iter()
         .any(|command| matches!(command.get_status(), CommandStatus::Running(_)));
-    if has_running && !state.layout.spinner_timer_scheduled {
+    if has_running {
         set_timeout(0.1);
         state.layout.spinner_timer_scheduled = true;
     }
@@ -674,6 +712,7 @@ fn rerun_sequence(state: &mut State) {
         .unwrap_or(0)
         .min(state.execution.all_commands.len().saturating_sub(1));
 
+
     // Close and reset commands after selected
     for i in (selected_index + 1)..state.execution.all_commands.len() {
         if let Some(pane_id) = state.execution.all_commands[i].get_pane_id() {
@@ -684,18 +723,89 @@ fn rerun_sequence(state: &mut State) {
 
     state.execution.is_running = true;
     state.execution.current_running_command_index = selected_index;
-
-    // Reuse existing pane if available, otherwise open new one
     match state.execution.all_commands[selected_index].get_pane_id() {
         Some(PaneId::Terminal(id)) => {
+            let pane_id = PaneId::Terminal(id);
+
+            if state.mode == SequenceMode::SinglePane {
+                if let Some(displayed) = state.execution.displayed_pane_id {
+                    if displayed != pane_id {
+                        replace_pane_with_existing_pane(displayed, pane_id, true);
+                    }
+                }
+                state.execution.displayed_pane_id = Some(pane_id);
+            }
             state.execution.all_commands[selected_index]
-                .set_status(CommandStatus::Running(Some(PaneId::Terminal(id))));
+                .set_status(CommandStatus::Running(Some(pane_id)));
+            state.selection.current_selected_command_index = Some(selected_index);
             rerun_command_pane(id);
         },
         _ => {
-            launch_command_at_index(state, selected_index);
+            let replace_pane_id = state.execution.displayed_pane_id;
+            launch_command_at_index(state, selected_index, replace_pane_id, true);
         },
     }
+}
+
+fn toggle_spread_mode(state: &mut State) {
+    match state.mode {
+        SequenceMode::SinglePane => enter_spread_mode(state),
+        SequenceMode::Spread => exit_spread_mode(state),
+    }
+}
+
+fn enter_spread_mode(state: &mut State) {
+    state.mode = SequenceMode::Spread;
+
+    let first_pane_id = state.execution.all_commands.first().and_then(|c| c.get_pane_id());
+    let Some(first_pane_id) = first_pane_id else {
+        return;
+    };
+
+    if let Some(displayed) = state.execution.displayed_pane_id {
+        if displayed != first_pane_id {
+            replace_pane_with_existing_pane(displayed, first_pane_id, true);
+        }
+    }
+    state.execution.displayed_pane_id = Some(first_pane_id);
+
+    for cmd in state.execution.all_commands.iter().skip(1) {
+        if let Some(pane_id) = cmd.get_pane_id() {
+            show_pane_with_id(pane_id, false, false);
+        }
+    }
+}
+
+fn exit_spread_mode(state: &mut State) {
+    state.mode = SequenceMode::SinglePane;
+
+    let first_pane_id = state.execution.all_commands.first().and_then(|c| c.get_pane_id());
+    let selected_pane_id = state
+        .selection
+        .current_selected_command_index
+        .and_then(|i| state.execution.all_commands.get(i))
+        .and_then(|c| c.get_pane_id())
+        .or(first_pane_id);
+
+    let Some(selected_pane_id) = selected_pane_id else {
+        return;
+    };
+
+    if let Some(first_pane_id) = first_pane_id {
+        if first_pane_id != selected_pane_id {
+            replace_pane_with_existing_pane(first_pane_id, selected_pane_id, true);
+        }
+    }
+
+    for cmd in &state.execution.all_commands {
+        if let Some(pane_id) = cmd.get_pane_id() {
+            if pane_id != selected_pane_id {
+                hide_pane_with_id(pane_id);
+            }
+        }
+    }
+
+    state.execution.displayed_pane_id = Some(selected_pane_id);
 }
 
 fn interrupt_sequence(state: &mut State) {
