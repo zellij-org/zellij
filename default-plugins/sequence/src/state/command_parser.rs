@@ -1,4 +1,4 @@
-use super::ChainType;
+use super::{ChainType, CommandEntry};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum ParseState {
@@ -161,6 +161,77 @@ pub fn detect_cd_command(text: &str) -> Option<String> {
     }
 
     None
+}
+
+/// Serialize a sequence of commands to editor format.
+/// CWD changes are emitted as `cd <path>` lines; chain type as trailing ` &&`, ` ||`, ` ;`.
+pub fn serialize_sequence_to_editor(commands: &[CommandEntry]) -> String {
+    let mut result = String::new();
+    let mut prev_cwd: Option<std::path::PathBuf> = None;
+
+    for cmd in commands {
+        if cmd.get_text().trim().is_empty() {
+            continue;
+        }
+
+        let cmd_cwd = cmd.get_cwd();
+        if cmd_cwd != prev_cwd && cmd_cwd.is_some() {
+            let path = cmd_cwd.as_ref().unwrap();
+            result.push_str(&format!("cd {}\n", path.display()));
+        }
+        prev_cwd = cmd_cwd;
+
+        let op_suffix = match cmd.get_chain_type() {
+            ChainType::And => " &&",
+            ChainType::Or => " ||",
+            ChainType::Then => " ;",
+            ChainType::None => "",
+        };
+
+        result.push_str(&format!("{}{}\n", cmd.get_text(), op_suffix));
+    }
+
+    result
+}
+
+/// Parse editor file contents back into a Vec<CommandEntry>.
+/// `cd <path>` lines set the cwd for subsequent commands.
+/// Blank lines and `#` comment lines are ignored.
+pub fn load_from_editor_file(
+    contents: &str,
+    initial_cwd: Option<std::path::PathBuf>,
+) -> Vec<CommandEntry> {
+    use crate::path_formatting;
+    let mut commands = Vec::new();
+    let mut current_cwd = initial_cwd;
+
+    for line in contents.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+
+        if let Some(path) = detect_cd_command(trimmed) {
+            if let Some(new_cwd) = path_formatting::resolve_path(current_cwd.as_ref(), &path) {
+                current_cwd = Some(new_cwd);
+            }
+            continue;
+        }
+
+        let segments = split_by_chain_operators(trimmed);
+        for (text, chain_type_opt) in segments {
+            if text.trim().is_empty() {
+                continue;
+            }
+            let mut entry = CommandEntry::new(&text, current_cwd.clone());
+            if let Some(chain_type) = chain_type_opt {
+                entry.set_chain_type(chain_type);
+            }
+            commands.push(entry);
+        }
+    }
+
+    commands
 }
 
 #[cfg(test)]

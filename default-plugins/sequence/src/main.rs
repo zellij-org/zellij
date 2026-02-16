@@ -4,17 +4,12 @@ mod ui;
 
 use crate::state::CommandStatus;
 use crate::ui::components;
-use crate::ui::fuzzy_complete;
 use crate::ui::layout_calculations::calculate_viewport;
-use crate::ui::text_input::InputAction;
-use crate::ui::truncation::truncate_middle;
-use state::{ChainType, SequenceMode, State};
+use state::{load_from_editor_file, ChainType, CommandEntry, SequenceMode, State};
 use zellij_tile::prelude::*;
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
-
-use unicode_width::UnicodeWidthStr;
 
 register_plugin!(State);
 
@@ -25,9 +20,9 @@ impl ZellijPlugin for State {
             EventType::Key,
             EventType::PermissionRequestResult,
             EventType::HostFolderChanged,
-            EventType::RunCommandResult,
             EventType::CommandPaneExited,
             EventType::CommandPaneOpened,
+            EventType::EditPaneExited,
             EventType::Timer,
             EventType::PastedText,
             EventType::TabUpdate,
@@ -79,7 +74,7 @@ impl ZellijPlugin for State {
     }
 
     fn render(&mut self, rows: usize, cols: usize) {
-        // Store dimensions for use in cursor calculations
+        // Store dimensions for use in calculations
         self.own_rows = Some(rows);
         self.own_columns = Some(cols);
 
@@ -138,51 +133,40 @@ pub fn handle_event(state: &mut State, event: Event) -> bool {
         },
         Event::ModeUpdate(mode_info) => {
             state.shell = mode_info.shell.clone();
-
             false
         },
         Event::Key(key) => {
-            let mut should_render = handle_key_event(state, key);
+            let should_render = handle_key_event(state, key);
             let repositioned = state.reposition_plugin();
             if repositioned {
                 // we only want to render once we have repositioned, we will do this in TabUpdate
-                should_render = false;
+                return false;
             }
-            update_cursor(state);
+            show_cursor(None);
             should_render
         },
         Event::Timer(_elapsed) => {
-            // Timer events are used for lock backoff
             let should_render = update_spinner(state);
             should_render
         },
         Event::PastedText(pasted_text) => {
-            // Split pasted text into lines
-            let mut should_render = true;
-            let lines: Vec<&str> = pasted_text
-                .lines()
-                .map(|line| line.trim())
-                .filter(|line| !line.is_empty())
-                .collect();
-
-            if lines.is_empty() {
+            if state.execution.is_running {
                 return false;
             }
-            state.pasted_lines(lines);
-            let repositioned = state.reposition_plugin();
-            if repositioned {
-                // we only want to render once we have repositioned, we will do this in TabUpdate
-                should_render = false;
+            let payload = pasted_text.trim().to_string();
+            if payload.is_empty() {
+                return false;
             }
-            update_cursor(state);
-
-            should_render
+            state.load_from_pipe(&payload, None);
+            state.update_running_state();
+            launch_command_at_index(state, 0, None, true);
+            let repositioned = state.reposition_plugin();
+            !repositioned
         },
         Event::TabUpdate(tab_infos) => {
             if let Some(tab_info) = tab_infos.iter().find(|t| t.active) {
                 state.total_viewport_columns = Some(tab_info.viewport_columns);
                 state.total_viewport_rows = Some(tab_info.viewport_rows);
-                update_cursor(state);
             }
             state.reposition_plugin()
         },
@@ -200,6 +184,11 @@ pub fn handle_event(state: &mut State, event: Event) -> bool {
             }
             update_title(state);
             true
+        },
+        Event::EditPaneExited(terminal_pane_id, _exit_code, _context) => {
+            let should_render = handle_editor_pane_exited(state, terminal_pane_id);
+            let repositioned = state.reposition_plugin();
+            should_render || repositioned
         },
         _ => false,
     }
@@ -246,6 +235,52 @@ fn handle_command_pane_exited(
     true
 }
 
+fn handle_editor_pane_exited(state: &mut State, terminal_pane_id: u32) -> bool {
+    let pane_id = PaneId::Terminal(terminal_pane_id);
+
+    // Ignore events from unrelated panes
+    if state.editor_pane_id != Some(pane_id) {
+        return false;
+    }
+
+    // Read the temp file contents
+    let contents = if let Some(ref path) = state.editor_temp_file {
+        std::fs::read_to_string(path).unwrap_or_default()
+    } else {
+        String::new()
+    };
+
+    // Delete the temp file
+    if let Some(ref path) = state.editor_temp_file {
+        let _ = std::fs::remove_file(path);
+    }
+
+    // Clear editor state
+    state.editor_pane_id = None;
+    state.editor_temp_file = None;
+
+    // Parse file into commands
+    let commands = load_from_editor_file(&contents, state.cwd.clone());
+
+    if !commands.is_empty() {
+        state.execution.all_commands = commands;
+        state.execution.current_running_command_index = 0;
+        state.selection.current_selected_command_index = Some(0);
+        state.update_running_state();
+        launch_command_at_index(state, 0, None, true);
+    } else {
+        // Reset to empty pending state
+        state.execution.all_commands = vec![CommandEntry::new("", state.cwd.clone())];
+        state.execution.current_running_command_index = 0;
+        state.selection.current_selected_command_index = Some(0);
+        state.execution.is_running = false;
+    }
+
+    show_self(true);
+
+    true
+}
+
 fn launch_command_at_index(
     state: &mut State,
     index: usize,
@@ -282,7 +317,6 @@ fn launch_command_at_index(
         pane_id
     } else {
         // User navigated away — open in background, invisible until they navigate to it
-        // Kept for future configurability: open_command_pane_near_plugin(command, BTreeMap::new())
         open_command_pane_background(command, BTreeMap::new())
     };
     if let Some(pane_id) = new_pane_id {
@@ -294,48 +328,26 @@ fn launch_command_at_index(
 }
 
 fn handle_key_event(state: &mut State, key: KeyWithModifier) -> bool {
-    // Ctrl+Enter - Insert command after current with AND chain type
-    if key.has_modifiers(&[KeyModifier::Ctrl]) && matches!(key.bare_key, BareKey::Enter) {
-        let mut is_cd = false;
-        if let Some(current_text) = state.editing_input_text() {
-            if let Some(path) = state::detect_cd_command(&current_text) {
-                if let Some(new_cwd) = path_formatting::resolve_path(state.cwd.as_ref(), &path) {
-                    state.current_selected_command_mut().map(|c| {
-                        c.set_cwd(Some(new_cwd));
-                        c.set_text("".to_owned());
-                    });
-                    state.editing.editing_input.as_mut().map(|i| i.clear());
-                    is_cd = true
-                }
-            }
-        };
-
-        state.add_empty_command_after_current_selected();
-        if is_cd {
-            state.start_editing_selected();
-        }
-        return true;
-    }
-
-    // Ctrl+X - Cycle chain type
-    if key.has_modifiers(&[KeyModifier::Ctrl]) && matches!(key.bare_key, BareKey::Char('x')) {
-        // return state.ui.command_sequence.cycle_current_chain_type();
-        state.cycle_chain_type();
-        return true;
-    }
-
-    // Ctrl+Space, copy to clipboard
+    // Ctrl+Space — copy to clipboard
     if key.has_modifiers(&[KeyModifier::Ctrl]) && matches!(key.bare_key, BareKey::Char(' ')) {
         state.copy_to_clipboard();
         return false;
     }
 
-    // Ctrl+w, close all panes and clear sequence
+    // Ctrl+W — close all panes and return to shell
     if key.has_modifiers(&[KeyModifier::Ctrl]) && matches!(key.bare_key, BareKey::Char('w')) {
         if !state.execution.is_running && !state.all_commands_are_pending() {
             close_panes_and_return_to_shell(state);
         }
         return true;
+    }
+
+    // Ctrl+C — interrupt sequence when running
+    if key.has_modifiers(&[KeyModifier::Ctrl]) && matches!(key.bare_key, BareKey::Char('c')) {
+        if state.execution.is_running {
+            interrupt_sequence(state);
+            return true;
+        }
     }
 
     if matches!(key.bare_key, BareKey::Up)
@@ -354,55 +366,23 @@ fn handle_key_event(state: &mut State, key: KeyWithModifier) -> bool {
         return true;
     }
 
-    // Del - delete current command
-    if matches!(key.bare_key, BareKey::Delete)
-        && !key.has_modifiers(&[KeyModifier::Ctrl])
-        && !key.has_modifiers(&[KeyModifier::Alt])
-    {
-        state.remove_current_selected_command();
-        return true;
-    }
-
-    // Ctrl+C - Clear currently focused command, or remove it if already empty
-    if key.has_modifiers(&[KeyModifier::Ctrl]) && matches!(key.bare_key, BareKey::Char('c')) {
-        if state.execution.is_running {
-            interrupt_sequence(state);
-            return true;
-        } else if state.editing.editing_input.is_some() {
-            let is_empty = state.current_selected_command_is_empty();
-            let has_more_than_one_command = state.execution.all_commands.len() > 1;
-
-            if is_empty && has_more_than_one_command {
-                state.remove_current_selected_command();
-            } else if is_empty {
-                // last command, return to shell
-                close_panes_and_return_to_shell(state);
-            } else {
-                // If not empty, clear it
-                state.clear_current_selected_command();
-            }
-            return true;
-        }
-    }
-
-    if state.editing.editing_input.is_none()
+    // e — open external editor (when not running)
+    if !state.execution.is_running
         && key.has_no_modifiers()
         && matches!(key.bare_key, BareKey::Char('e'))
     {
-        state.start_editing_selected();
+        state.open_editor();
         return true;
     }
 
-    if state.editing.editing_input.is_none()
-        && key.has_no_modifiers()
-        && matches!(key.bare_key, BareKey::Enter)
-    {
+    // Enter — rerun sequence
+    if key.has_no_modifiers() && matches!(key.bare_key, BareKey::Enter) {
         rerun_sequence(state);
         return true;
     }
 
-    if state.editing.editing_input.is_none()
-        && key.has_no_modifiers()
+    // Tab — toggle spread mode (when sequence has run)
+    if key.has_no_modifiers()
         && matches!(key.bare_key, BareKey::Tab)
         && !state.all_commands_are_pending()
     {
@@ -410,232 +390,7 @@ fn handle_key_event(state: &mut State, key: KeyWithModifier) -> bool {
         return true;
     }
 
-    // Handle input actions from TextInput
-    let is_backspace = matches!(key.bare_key, BareKey::Backspace);
-
-    if let Some(action) = state
-        .editing
-        .editing_input
-        .as_mut()
-        .map(|i| i.handle_key(key))
-    {
-        match action {
-            InputAction::Submit => {
-                return handle_submit(state);
-            },
-            InputAction::Cancel => {
-                state.cancel_editing_selected();
-                if state.all_commands_are_pending() {
-                    // we always want to stay in editing mode in main screen
-                    state.start_editing_selected();
-                }
-                true
-            },
-            InputAction::Complete => {
-                state
-                    .editing_input_text()
-                    .map(|current_text| {
-                        if let Some(completed) = fuzzy_complete::fuzzy_complete(
-                            &current_text,
-                            &Default::default(), // TODO: get rid of this whoel thing?
-                            state.cwd.as_ref(),
-                        ) {
-                            state.set_editing_input_text(completed);
-                            true
-                        } else {
-                            false
-                        }
-                    })
-                    .unwrap_or(false)
-            },
-            InputAction::Continue => {
-                if let Some(current_text) = state.editing_input_text() {
-                    if let Some((cmd_text, chain_type)) =
-                        state::detect_chain_operator_at_end(&current_text)
-                    {
-                        let mut should_add_empty_line = true;
-                        if let Some(path) = state::detect_cd_command(&cmd_text) {
-                            if let Some(new_cwd) =
-                                path_formatting::resolve_path(state.cwd.as_ref(), &path)
-                            {
-                                let remaining_text =
-                                    state::get_remaining_after_first_segment(&current_text)
-                                        .unwrap_or_else(|| "".to_owned());
-                                if remaining_text.len() > 0 {
-                                    should_add_empty_line = false;
-                                }
-                                state.current_selected_command_mut().map(|c| {
-                                    c.set_cwd(Some(new_cwd));
-                                    c.set_text(remaining_text);
-                                });
-                            }
-                        } else {
-                            state.current_selected_command_mut().map(|c| {
-                                c.set_text(cmd_text);
-                                c.set_chain_type(chain_type);
-                            });
-                        };
-                        state.cancel_editing_selected();
-                        if should_add_empty_line {
-                            state.add_empty_command_after_current_selected();
-                        }
-                        state.start_editing_selected();
-                    }
-                }
-
-                // Handle backspace on empty command
-                if is_backspace {
-                    let is_empty = state.current_selected_command_is_empty()
-                        || state
-                            .editing_input_text()
-                            .map(|i| i.is_empty())
-                            .unwrap_or(false);
-                    let has_more_than_one_command = state.execution.all_commands.len() > 1;
-
-                    if is_empty && has_more_than_one_command {
-                        let current_index =
-                            state.selection.current_selected_command_index.unwrap_or(0);
-                        if current_index > 0 {
-                            state.remove_current_selected_command();
-                            return true;
-                        }
-                    } else if is_empty {
-                        // last command
-                        close_panes_and_return_to_shell(state);
-                    }
-                }
-
-                true
-            },
-            InputAction::NoAction => false,
-        }
-    } else {
-        false
-    }
-}
-
-/// Handle Enter key - submit and execute the command sequence
-fn handle_submit(state: &mut State) -> bool {
-    let cwd = state.cwd.clone();
-    if state.handle_editing_submit(&cwd) {
-        // handled the command internally (eg. cd) no need to run sequence
-        return true;
-    }
-
-    if state.execution.all_commands.len() == 1 && state.can_run_sequence() {
-        rerun_sequence(state);
-    } else if state.execution.all_commands.len() == 1 {
-        state.move_selection_down();
-        state.start_editing_selected();
-    }
-    true
-}
-
-pub fn calculate_cursor_position(state: &mut State) -> Option<(usize, usize)> {
-    // Get pane dimensions from state (must be set by render)
-    let Some(cols) = state.own_columns else {
-        eprintln!("Warning: own_columns not set");
-        return None;
-    };
-    let Some(rows) = state.own_rows else {
-        eprintln!("Warning: own_rows not set");
-        return None;
-    };
-
-    // Only show cursor if in edit mode
-    let (text, cursor_pos) = if let Some(text_input) = &state.editing.editing_input {
-        (
-            text_input.get_text().to_string(),
-            text_input.cursor_position(),
-        )
-    } else {
-        return None;
-    };
-
-    let Some(edit_index) = state.selection.current_selected_command_index else {
-        return None;
-    };
-
-    // Calculate folder column width using the longest cwd across all commands
-    let longest_cwd_display = state.execution.longest_cwd_display(&state.cwd);
-    let folder_display = format!("{} >", longest_cwd_display);
-    let folder_col_width = folder_display.width().max(1);
-
-    let base_x = 1;
-    let base_y = 0;
-
-    adjust_scroll_offset(state, rows);
-
-    let max_visible_rows = state.own_rows.map(|r| r.saturating_sub(5)).unwrap_or(0);
-
-    let (offset, visible_count, hidden_above, hidden_below) = calculate_viewport(
-        state.execution.all_commands.len(),
-        max_visible_rows,
-        state.selection.current_selected_command_index,
-        state.execution.current_running_command_index,
-    );
-
-    let (max_chain_width, max_status_width) =
-        components::calculate_max_widths(&state.execution.all_commands, state.layout.spinner_frame);
-
-    let Some((_, available_cmd_width)) = components::calculate_row_layout_info(
-        edit_index,
-        offset,
-        visible_count,
-        hidden_above,
-        hidden_below,
-        cols,
-        folder_col_width,
-        max_chain_width,
-        max_status_width,
-    ) else {
-        return None;
-    };
-
-    // Get cursor position in truncated text
-    let (_, cursor_in_truncated) = truncate_middle(&text, available_cmd_width, Some(cursor_pos));
-    let Some(cursor_in_truncated) = cursor_in_truncated else {
-        return None;
-    };
-
-    // Calculate relative coordinates within the visible table
-    let relative_y = edit_index.saturating_sub(offset) + 1; // +1 for header row
-    let relative_x = folder_col_width + 1 + cursor_in_truncated;
-
-    let x = base_x + relative_x;
-    let y = base_y + relative_y;
-
-    Some((x, y))
-}
-
-/// Adjust scroll offset to keep selected or running command visible
-pub fn adjust_scroll_offset(sequence: &mut crate::state::State, rows: usize) {
-    let max_visible = rows.saturating_sub(6);
-    let total_commands = sequence.execution.all_commands.len();
-
-    if total_commands <= max_visible {
-        sequence.selection.scroll_offset = 0;
-        return;
-    }
-
-    let focus_index = sequence
-        .selection
-        .current_selected_command_index
-        .unwrap_or(sequence.execution.current_running_command_index);
-    let half_visible = max_visible / 2;
-
-    if focus_index < half_visible {
-        sequence.selection.scroll_offset = 0;
-    } else if focus_index >= total_commands.saturating_sub(half_visible) {
-        sequence.selection.scroll_offset = total_commands.saturating_sub(max_visible);
-    } else {
-        sequence.selection.scroll_offset = focus_index.saturating_sub(half_visible);
-    }
-
-    sequence.selection.scroll_offset = sequence
-        .selection
-        .scroll_offset
-        .min(total_commands.saturating_sub(max_visible));
+    false
 }
 
 fn close_panes_and_return_to_shell(state: &mut State) -> bool {
@@ -674,8 +429,6 @@ fn change_floating_pane_coordinates(
         Some(false),
     );
     if let Some(coordinates) = coordinates {
-        // TODO: better
-        // show_self(true);
         change_floating_panes_coordinates(vec![(PaneId::Plugin(own_plugin_id), coordinates)]);
     }
 }
@@ -716,7 +469,6 @@ fn rerun_sequence(state: &mut State) {
         .current_selected_command_index
         .unwrap_or(0)
         .min(state.execution.all_commands.len().saturating_sub(1));
-
 
     // Close and reset commands after selected
     for i in (selected_index + 1)..state.execution.all_commands.len() {
@@ -826,7 +578,6 @@ fn exit_spread_mode(state: &mut State) {
 
 fn interrupt_sequence(state: &mut State) {
     if state.execution.is_running {
-        // Ctrl-C press when running - interrupt the running command
         for command in state.execution.all_commands.iter_mut() {
             if let CommandStatus::Running(pane_id) = command.get_status() {
                 if let Some(pane_id) = pane_id {
@@ -838,20 +589,6 @@ fn interrupt_sequence(state: &mut State) {
         state.execution.is_running = false;
     } else {
         eprintln!("Cannot interrupt a sequence that is not running.");
-    }
-}
-
-pub fn update_cursor(state: &mut State) {
-    // Calculate new cursor position
-    let new_coords = calculate_cursor_position(state);
-
-    // Only update if the position changed
-    if new_coords != state.layout.cached_cursor_position {
-        match new_coords {
-            Some(coords) => show_cursor(Some(coords)),
-            None => show_cursor(None),
-        }
-        state.layout.cached_cursor_position = new_coords;
     }
 }
 

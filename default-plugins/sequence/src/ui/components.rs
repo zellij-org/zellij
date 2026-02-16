@@ -13,15 +13,7 @@ const HELP_STOPPED_WITH_SELECTION: &str =
 const HELP_STOPPED_NO_SELECTION: &str =
     "<Ctrl w> - close all, <↓↑> - navigate, <Enter> - run from first";
 
-const HELP_ONE_PENDING_COMMAND: &str = "<Enter> - run, <Ctrl Enter> - add command";
-
-const HELP_ALL_COMMANDS_PENDING: &str =
-    "<Enter> - run, <Ctrl Enter> - add command, <↓↑> - navigate";
-const HELP_ALL_COMMANDS_PENDING_WITH_SELECTION: &str =
-    "<Enter> - run, <Ctrl Enter> - add command, <↓↑> - navigate, <e> - edit selected";
-
-const HELP_EDITING_FIRST_LINE: &str =
-    "<Enter> - accept, <Ctrl Enter> - add command, <↓↑> - navigate";
+const HELP_PENDING: &str = "<e> - edit, <Enter> - run";
 
 fn select_help_text(sequence: &State) -> &'static str {
     let is_running = sequence
@@ -35,18 +27,9 @@ fn select_help_text(sequence: &State) -> &'static str {
         .iter()
         .all(|command| matches!(command.get_status(), CommandStatus::Pending));
     let has_selection = sequence.selection.current_selected_command_index.is_some();
-    let is_editing = sequence.editing.editing_input.is_some();
 
     if all_pending && !sequence.execution.is_running {
-        if sequence.execution.all_commands.len() == 1 {
-            HELP_ONE_PENDING_COMMAND
-        } else if has_selection && !is_editing {
-            HELP_ALL_COMMANDS_PENDING_WITH_SELECTION
-        } else if is_editing {
-            HELP_EDITING_FIRST_LINE
-        } else {
-            HELP_ALL_COMMANDS_PENDING
-        }
+        HELP_PENDING
     } else if is_running {
         if has_selection {
             HELP_RUNNING_WITH_SELECTION
@@ -54,10 +37,8 @@ fn select_help_text(sequence: &State) -> &'static str {
             HELP_RUNNING_NO_SELECTION
         }
     } else {
-        if has_selection && !is_editing {
+        if has_selection {
             HELP_STOPPED_WITH_SELECTION
-        } else if is_editing {
-            HELP_EDITING_FIRST_LINE
         } else {
             HELP_STOPPED_NO_SELECTION
         }
@@ -71,7 +52,6 @@ fn style_help_text(text: &str) -> Text {
         .color_substring(3, "<↓↑>")
         .color_substring(3, "<Esc>")
         .color_substring(3, "<Enter>")
-        .color_substring(3, "<Ctrl Enter>")
         .color_substring(3, "<e>")
 }
 
@@ -79,33 +59,6 @@ pub fn render_help_lines(
     sequence: &State,
     max_width: Option<usize>,
 ) -> (Text, usize, Option<(Text, usize)>) {
-    let is_editing = sequence.editing.editing_input.is_some();
-
-    if is_editing {
-        let help_text = select_help_text(sequence);
-        let (truncated_text, help_len) = if let Some(width) = max_width {
-            truncate_help_line(help_text, width)
-        } else {
-            (help_text.to_string(), help_text.chars().count())
-        };
-        let first_line = (style_help_text(&truncated_text).unbold_all(), help_len);
-
-        let editing_help_text = "Navigate with cd, chain with ||, &&, ; ";
-        let editing_help = Text::new(editing_help_text)
-            .color_substring(3, "cd")
-            .color_substring(3, "||")
-            .color_substring(3, "&&")
-            .color_substring(3, ";")
-            .unbold_all();
-        let editing_len = editing_help_text.len();
-
-        return (
-            first_line.0,
-            first_line.1,
-            Some((editing_help, editing_len)),
-        );
-    }
-
     let help_text = select_help_text(sequence);
 
     if let Some(width) = max_width {
@@ -397,26 +350,6 @@ pub fn add_command_row(
     ) else {
         return table;
     };
-
-    if let Some(text_input) = &state.editing.editing_input {
-        if state.selection.current_selected_command_index == Some(index) {
-            let (truncated_editing_text, _) = truncate_middle(
-                text_input.get_text(),
-                available_cmd_width,
-                Some(text_input.cursor_position()),
-            );
-            let (row, _) = command_sequence_row(
-                state,
-                &command_cwd,
-                &truncated_editing_text,
-                chain_type,
-                &CommandStatus::Pending,
-                false,
-                overflow_indicator,
-            );
-            return table.add_styled_row(row);
-        }
-    }
 
     let truncated_cmd_text = truncate_middle(cmd_text, available_cmd_width, None).0;
 

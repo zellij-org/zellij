@@ -2,7 +2,6 @@ mod chain_type;
 mod command_entry;
 mod command_parser;
 mod command_status;
-mod editing;
 mod execution;
 mod layout;
 pub mod positioning;
@@ -12,17 +11,15 @@ mod sequence_mode;
 pub use chain_type::ChainType;
 pub use command_entry::CommandEntry;
 pub use command_parser::{
-    detect_cd_command, detect_chain_operator_at_end, get_remaining_after_first_segment,
-    split_by_chain_operators,
+    load_from_editor_file, serialize_sequence_to_editor, split_by_chain_operators,
 };
 pub use command_status::CommandStatus;
-pub use editing::Editing;
 pub use execution::Execution;
 pub use layout::Layout;
 pub use selection::Selection;
 pub use sequence_mode::SequenceMode;
 
-use crate::ui::text_input::TextInput;
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use zellij_tile::prelude::*;
 
@@ -37,11 +34,12 @@ pub struct State {
     pub total_viewport_columns: Option<usize>,
     pub total_viewport_rows: Option<usize>,
     pub selection: Selection,
-    pub editing: Editing,
     pub execution: Execution,
     pub layout: Layout,
     pub current_position: Option<FloatingPaneCoordinates>,
     pub mode: SequenceMode,
+    pub editor_pane_id: Option<PaneId>,
+    pub editor_temp_file: Option<PathBuf>,
 }
 
 impl State {
@@ -56,42 +54,14 @@ impl State {
             .iter()
             .all(|command| matches!(command.status, CommandStatus::Exited(_, _)))
     }
-    pub fn add_empty_command_after_current_selected(&mut self) {
-        self.selection.add_empty_command_after_current_selected(
-            &mut self.execution.all_commands,
-            &mut self.editing,
-            &self.cwd,
-        );
-    }
-
-    pub fn current_selected_command_is_empty(&self) -> bool {
-        self.selection
-            .current_selected_command_is_empty(&self.execution.all_commands, &self.editing)
-    }
-
-    pub fn remove_current_selected_command(&mut self) {
-        let removed_pane_id = self
-            .selection
-            .remove_current_selected_command(&mut self.execution.all_commands, &mut self.editing);
-        if let Some(removed_pane_id) = removed_pane_id {
-            close_pane_with_id(removed_pane_id);
-        }
-    }
-
-    pub fn clear_current_selected_command(&mut self) {
-        self.selection
-            .clear_current_selected_command(&mut self.execution.all_commands, &mut self.editing);
-    }
 
     pub fn move_selection_up(&mut self) {
-        self.selection
-            .move_up(&mut self.execution.all_commands, &mut self.editing);
+        self.selection.move_up(&self.execution.all_commands);
         self.show_selected_pane();
     }
 
     pub fn move_selection_down(&mut self) {
-        self.selection
-            .move_down(&mut self.execution.all_commands, &mut self.editing);
+        self.selection.move_down(&self.execution.all_commands);
         self.show_selected_pane();
     }
 
@@ -126,178 +96,17 @@ impl State {
                 self.execution.displayed_pane_id = Some(target);
             }
         } else if let Some(target) = target_pane_id {
-            // No currently displayed pane — just show it
-            // Kept for future configurability: show_pane_with_id(target, true, false)
             replace_pane_with_existing_pane(target, target, false);
             self.execution.displayed_pane_id = Some(target);
         }
     }
-    pub fn start_editing_selected(&mut self) {
-        if let Some(current_command_text) = self.current_selected_command().map(|c| c.get_text()) {
-            self.editing.start_editing(current_command_text);
-        }
-    }
 
-    pub fn cancel_editing_selected(&mut self) {
-        self.editing.cancel_editing();
-    }
-
-    pub fn editing_input_text(&self) -> Option<String> {
-        self.editing.input_text()
-    }
-
-    pub fn set_editing_input_text(&mut self, text: String) {
-        self.editing.set_input_text(text);
-    }
-    fn handle_first_pasted_segment(
-        &mut self,
-        current_text: &str,
-        segment_text: &str,
-        chain_type_opt: &Option<ChainType>,
-    ) {
-        let new_text = if current_text.trim().is_empty() {
-            segment_text.to_string()
-        } else {
-            format!("{}{}", current_text, segment_text)
-        };
-
-        if let Some(path) = detect_cd_command(&new_text) {
-            use crate::path_formatting;
-            if let Some(new_cwd) = path_formatting::resolve_path(self.cwd.as_ref(), &path) {
-                self.current_selected_command_mut().map(|c| {
-                    c.set_cwd(Some(new_cwd));
-                    c.set_text("".to_owned());
-                    if let Some(chain_type) = chain_type_opt {
-                        c.set_chain_type(*chain_type);
-                    }
-                });
-                return;
-            }
-        }
-
-        self.current_selected_command_mut().map(|c| {
-            c.set_text(new_text);
-            if let Some(chain_type) = chain_type_opt {
-                c.set_chain_type(*chain_type);
-            }
-        });
-    }
-
-    fn insert_new_pasted_segment(
-        &mut self,
-        segment_text: &str,
-        chain_type_opt: &Option<ChainType>,
-        is_last_line: bool,
-    ) {
-        use crate::path_formatting;
-
-        let cd_path = detect_cd_command(segment_text);
-
-        if let Some(path) = cd_path {
-            if let Some(new_cwd) = path_formatting::resolve_path(self.cwd.as_ref(), &path) {
-                self.current_selected_command_mut().map(|c| {
-                    c.set_cwd(Some(new_cwd));
-                    if let Some(chain_type) = chain_type_opt {
-                        c.set_chain_type(*chain_type);
-                    }
-                });
-                return;
-            }
-        }
-
-        let Some(new_selected_index) = self.selection.current_selected_command_index.map(|i| i + 1)
-        else {
-            return;
-        };
-
-        let mut new_command = CommandEntry::new(segment_text, self.cwd.clone());
-        if let Some(chain_type) = chain_type_opt {
-            new_command.set_chain_type(*chain_type);
-        } else if !is_last_line {
-            new_command.set_chain_type(ChainType::And);
-        }
-
-        self.execution
-            .all_commands
-            .insert(new_selected_index, new_command);
-        self.selection.current_selected_command_index = Some(new_selected_index);
-    }
-
-    fn ensure_line_end_chain_type(&mut self) {
-        if let Some(last_cmd_index) = self.selection.current_selected_command_index {
-            self.execution
-                .all_commands
-                .get_mut(last_cmd_index)
-                .map(|c| {
-                    if matches!(c.get_chain_type(), ChainType::None) {
-                        c.set_chain_type(ChainType::And);
-                    }
-                });
-        }
-    }
-
-    pub fn pasted_lines(&mut self, lines: Vec<&str>) {
-        let Some(current_text) = self.editing_input_text() else {
-            return;
-        };
-
-        for (line_index, line) in lines.iter().enumerate() {
-            let segments = split_by_chain_operators(line);
-            let is_last_line = line_index == lines.len().saturating_sub(1);
-
-            for (seg_index, (segment_text, chain_type_opt)) in segments.iter().enumerate() {
-                if line_index == 0 && seg_index == 0 {
-                    self.handle_first_pasted_segment(&current_text, segment_text, chain_type_opt);
-                } else {
-                    self.insert_new_pasted_segment(segment_text, chain_type_opt, is_last_line);
-                }
-            }
-
-            if !is_last_line {
-                self.ensure_line_end_chain_type();
-            }
-        }
-
-        self.start_editing_selected();
-    }
     pub fn remove_empty_commands(&mut self) {
         self.execution.remove_empty_commands();
     }
 
-    pub fn get_first_command(&self) -> Option<CommandEntry> {
-        self.execution.get_first_command()
-    }
-
-    pub fn set_command_status(&mut self, command_index: usize, status: CommandStatus) {
-        self.execution.set_command_status(command_index, status);
-    }
-
-    pub fn set_current_running_command_status(&mut self, status: CommandStatus) {
-        self.execution.set_current_running_command_status(status);
-    }
-
-    pub fn get_current_running_command_status(&mut self) -> Option<CommandStatus> {
-        self.execution.get_current_running_command_status()
-    }
-
-    pub fn handle_editing_submit(&mut self, current_cwd: &Option<PathBuf>) -> bool {
-        let (handled_internally, new_selection_index) = self.editing.handle_submit(
-            self.selection.current_selected_command_index,
-            &mut self.execution.all_commands,
-            current_cwd,
-        );
-        self.selection.current_selected_command_index = new_selection_index;
-        handled_internally
-    }
-
-    pub fn cycle_chain_type(&mut self) {
-        self.current_selected_command_mut()
-            .map(|c| c.cycle_chain_type());
-    }
-
     pub fn clear_all_commands(&mut self) {
         self.execution.all_commands = vec![CommandEntry::new("", self.cwd.clone())];
-        self.editing.editing_input = Some(TextInput::new("".to_owned()));
         self.selection.current_selected_command_index = Some(0);
         self.execution.current_running_command_index = 0;
     }
@@ -323,7 +132,6 @@ impl State {
         self.execution.all_commands = commands;
         self.execution.current_running_command_index = 0;
         self.selection.current_selected_command_index = Some(0);
-        self.editing.editing_input = None; // no text cursor when auto-running
     }
 
     pub fn update_running_state(&mut self) {
@@ -345,6 +153,32 @@ impl State {
         };
         self.execution.all_commands.get_mut(i)
     }
+
+    /// Serialize current sequence to a temp file and open it in the user's $EDITOR.
+    /// Stores the editor pane id and temp file path for later retrieval.
+    pub fn open_editor(&mut self) {
+        if self.execution.is_running {
+            return;
+        }
+        let Some(plugin_id) = self.plugin_id else {
+            return;
+        };
+
+        let serialized = serialize_sequence_to_editor(&self.execution.all_commands);
+        let temp_path = PathBuf::from(format!("/tmp/zellij-sequence-{}.sh", plugin_id));
+
+        if let Err(e) = std::fs::write(&temp_path, &serialized) {
+            eprintln!("Failed to write sequence to temp file: {}", e);
+            return;
+        }
+
+        let file_to_open = FileToOpen::new(temp_path.clone());
+        let editor_pane_id =
+            open_file_in_place_of_plugin(file_to_open, false, BTreeMap::new());
+        self.editor_pane_id = editor_pane_id;
+        self.editor_temp_file = Some(temp_path);
+    }
+
     pub fn reposition_plugin(&mut self) -> bool {
         let mut repositioned = false;
         let Some(plugin_id) = self.plugin_id else {
@@ -432,6 +266,7 @@ impl State {
         }
         repositioned
     }
+
     pub fn all_commands_are_pending(&self) -> bool {
         self.execution
             .all_commands
@@ -445,6 +280,4 @@ impl State {
         };
         self.execution.all_commands.get(i)
     }
-
 }
-
