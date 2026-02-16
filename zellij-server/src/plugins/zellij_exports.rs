@@ -56,7 +56,7 @@ use kdl::KdlDocument;
 
 use prost::Message;
 use zellij_utils::{
-    consts::{VERSION, ZELLIJ_SESSION_INFO_CACHE_DIR, ZELLIJ_SOCK_DIR},
+    consts::{VERSION, ZELLIJ_SESSION_INFO_CACHE_DIR, ZELLIJ_SOCK_DIR, ZELLIJ_TMP_DIR},
     data::{
         CommandOrPlugin, CommandToRun, Direction, EventType, FileToOpen, InputMode, PluginCommand,
         PluginIds,
@@ -136,6 +136,23 @@ macro_rules! apply_action {
             },
         }
     };
+}
+
+fn translate_plugin_path(env: &PluginEnv, path: PathBuf) -> PathBuf {
+    if let Ok(stripped) = path.strip_prefix("/host") {
+        env.plugin_cwd.join(stripped)
+    } else if let Ok(stripped) = path.strip_prefix("/data") {
+        env.plugin_own_data_dir.join(stripped)
+    } else if let Ok(stripped) = path.strip_prefix("/cache") {
+        env.plugin_own_cache_dir.join(stripped)
+    } else if let Ok(stripped) = path.strip_prefix("/tmp") {
+        ZELLIJ_TMP_DIR.join(stripped)
+    } else if path.is_relative() {
+        env.plugin_cwd.join(path)
+    } else {
+        // Absolute path not in any plugin special folder — pass through
+        path
+    }
 }
 
 pub fn zellij_exports(linker: &mut Linker<PluginEnv>) {
@@ -971,7 +988,7 @@ fn open_command_pane_in_new_tab(
     let command = command_to_run.path;
     let cwd = command_to_run
         .cwd
-        .map(|cwd| env.plugin_cwd.join(cwd))
+        .map(|cwd| translate_plugin_path(env, cwd))
         .or_else(|| Some(env.plugin_cwd.clone()));
     let args = command_to_run.args;
     let hold_on_close = true;
@@ -1269,10 +1286,10 @@ fn open_file(env: &PluginEnv, file_to_open: FileToOpen, context: BTreeMap<String
     let floating = false;
     let in_place = false;
     let start_suppressed = false;
-    let path = env.plugin_cwd.join(file_to_open.path);
+    let path = translate_plugin_path(env, file_to_open.path);
     let cwd = file_to_open
         .cwd
-        .map(|cwd| env.plugin_cwd.join(cwd))
+        .map(|cwd| translate_plugin_path(env, cwd))
         .or_else(|| Some(env.plugin_cwd.clone()));
     let action = Action::EditFile {
         payload: OpenFilePayload::new(path, file_to_open.line_number, cwd).with_originating_plugin(
@@ -1370,10 +1387,10 @@ fn open_file_floating(
     let floating = true;
     let in_place = false;
     let start_suppressed = false;
-    let path = env.plugin_cwd.join(file_to_open.path);
+    let path = translate_plugin_path(env, file_to_open.path);
     let cwd = file_to_open
         .cwd
-        .map(|cwd| env.plugin_cwd.join(cwd))
+        .map(|cwd| translate_plugin_path(env, cwd))
         .or_else(|| Some(env.plugin_cwd.clone()));
     let action = Action::EditFile {
         payload: OpenFilePayload::new(path, file_to_open.line_number, cwd).with_originating_plugin(
@@ -1408,10 +1425,10 @@ fn open_file_in_place(
     let floating = false;
     let in_place = true;
     let start_suppressed = false;
-    let path = env.plugin_cwd.join(file_to_open.path);
+    let path = translate_plugin_path(env, file_to_open.path);
     let cwd = file_to_open
         .cwd
-        .map(|cwd| env.plugin_cwd.join(cwd))
+        .map(|cwd| translate_plugin_path(env, cwd))
         .or_else(|| Some(env.plugin_cwd.clone()));
 
     let action = Action::EditFile {
@@ -1445,9 +1462,9 @@ fn open_file_near_plugin(
 ) {
     let cwd = file_to_open
         .cwd
-        .map(|cwd| env.plugin_cwd.join(cwd))
+        .map(|cwd| translate_plugin_path(env, cwd))
         .or_else(|| Some(env.plugin_cwd.clone()));
-    let path = env.plugin_cwd.join(file_to_open.path);
+    let path = translate_plugin_path(env, file_to_open.path);
     let open_file_payload =
         OpenFilePayload::new(path, file_to_open.line_number, cwd).with_originating_plugin(
             OriginatingPlugin::new(env.plugin_id, env.client_id, context),
@@ -1488,9 +1505,9 @@ fn open_file_floating_near_plugin(
 ) {
     let cwd = file_to_open
         .cwd
-        .map(|cwd| env.plugin_cwd.join(cwd))
+        .map(|cwd| translate_plugin_path(env, cwd))
         .or_else(|| Some(env.plugin_cwd.clone()));
-    let path = env.plugin_cwd.join(file_to_open.path);
+    let path = translate_plugin_path(env, file_to_open.path);
     let open_file_payload =
         OpenFilePayload::new(path, file_to_open.line_number, cwd).with_originating_plugin(
             OriginatingPlugin::new(env.plugin_id, env.client_id, context),
@@ -1531,9 +1548,9 @@ fn open_file_in_place_of_plugin(
 ) {
     let cwd = file_to_open
         .cwd
-        .map(|cwd| env.plugin_cwd.join(cwd))
+        .map(|cwd| translate_plugin_path(env, cwd))
         .or_else(|| Some(env.plugin_cwd.clone()));
-    let path = env.plugin_cwd.join(file_to_open.path);
+    let path = translate_plugin_path(env, file_to_open.path);
     let open_file_payload =
         OpenFilePayload::new(path, file_to_open.line_number, cwd).with_originating_plugin(
             OriginatingPlugin::new(env.plugin_id, env.client_id, context),
@@ -1565,7 +1582,7 @@ fn open_file_in_place_of_plugin(
 
 fn open_terminal(env: &PluginEnv, cwd: PathBuf) {
     let error_msg = || format!("failed to open file in plugin {}", env.name());
-    let cwd = env.plugin_cwd.join(cwd);
+    let cwd = translate_plugin_path(env, cwd);
     let mut default_shell = env.default_shell.clone().unwrap_or_else(|| {
         TerminalAction::RunCommand(RunCommand {
             command: env.path_to_default_shell.clone(),
@@ -1598,7 +1615,7 @@ fn open_terminal(env: &PluginEnv, cwd: PathBuf) {
 }
 
 fn open_terminal_near_plugin(env: &PluginEnv, cwd: PathBuf) {
-    let cwd = env.plugin_cwd.join(cwd);
+    let cwd = translate_plugin_path(env, cwd);
     let mut default_shell = env.default_shell.clone().unwrap_or_else(|| {
         TerminalAction::RunCommand(RunCommand {
             command: env.path_to_default_shell.clone(),
@@ -1641,7 +1658,7 @@ fn open_terminal_floating(
     floating_pane_coordinates: Option<FloatingPaneCoordinates>,
 ) {
     let error_msg = || format!("failed to open file in plugin {}", env.name());
-    let cwd = env.plugin_cwd.join(cwd);
+    let cwd = translate_plugin_path(env, cwd);
     let mut default_shell = env.default_shell.clone().unwrap_or_else(|| {
         TerminalAction::RunCommand(RunCommand {
             command: env.path_to_default_shell.clone(),
@@ -1678,7 +1695,7 @@ fn open_terminal_floating_near_plugin(
     cwd: PathBuf,
     floating_pane_coordinates: Option<FloatingPaneCoordinates>,
 ) {
-    let cwd = env.plugin_cwd.join(cwd);
+    let cwd = translate_plugin_path(env, cwd);
     let mut default_shell = env.default_shell.clone().unwrap_or_else(|| {
         TerminalAction::RunCommand(RunCommand {
             command: env.path_to_default_shell.clone(),
@@ -1715,7 +1732,7 @@ fn open_terminal_floating_near_plugin(
 
 fn open_terminal_in_place(env: &PluginEnv, cwd: PathBuf) {
     let error_msg = || format!("failed to open file in plugin {}", env.name());
-    let cwd = env.plugin_cwd.join(cwd);
+    let cwd = translate_plugin_path(env, cwd);
     let mut default_shell = env.default_shell.clone().unwrap_or_else(|| {
         TerminalAction::RunCommand(RunCommand {
             command: env.path_to_default_shell.clone(),
@@ -1753,7 +1770,7 @@ fn open_terminal_in_place_of_plugin(
     cwd: PathBuf,
     close_plugin_after_replace: bool,
 ) {
-    let cwd = env.plugin_cwd.join(cwd);
+    let cwd = translate_plugin_path(env, cwd);
     let mut default_shell = env.default_shell.clone().unwrap_or_else(|| {
         TerminalAction::RunCommand(RunCommand {
             command: env.path_to_default_shell.clone(),
@@ -1795,7 +1812,7 @@ fn open_command_pane_in_place_of_plugin(
     context: BTreeMap<String, String>,
 ) {
     let command = command_to_run.path;
-    let cwd = command_to_run.cwd.map(|cwd| env.plugin_cwd.join(cwd));
+    let cwd = command_to_run.cwd.map(|cwd| translate_plugin_path(env, cwd));
     let args = command_to_run.args;
     let direction = None;
     let hold_on_close = true;
@@ -1848,7 +1865,7 @@ fn open_terminal_pane_in_place_of_pane_id(
     cwd: FileToOpen,
     close_replaced_pane: bool,
 ) {
-    let cwd_path = env.plugin_cwd.join(cwd.path);
+    let cwd_path = translate_plugin_path(env, cwd.path);
     let mut default_shell = env.default_shell.clone().unwrap_or_else(|| {
         TerminalAction::RunCommand(RunCommand {
             command: env.path_to_default_shell.clone(),
@@ -1890,7 +1907,7 @@ fn open_command_pane_in_place_of_pane_id(
     context: BTreeMap<String, String>,
 ) {
     let command = command_to_run.path;
-    let cwd = command_to_run.cwd.map(|cwd| env.plugin_cwd.join(cwd));
+    let cwd = command_to_run.cwd.map(|cwd| translate_plugin_path(env, cwd));
     let args = command_to_run.args;
     let direction = None;
     let hold_on_close = true;
@@ -1945,9 +1962,9 @@ fn open_edit_pane_in_place_of_pane_id(
 ) {
     let cwd = file_to_open
         .cwd
-        .map(|cwd| env.plugin_cwd.join(cwd))
+        .map(|cwd| translate_plugin_path(env, cwd))
         .or_else(|| Some(env.plugin_cwd.clone()));
-    let path = env.plugin_cwd.join(file_to_open.path);
+    let path = translate_plugin_path(env, file_to_open.path);
     let open_file_payload =
         OpenFilePayload::new(path, file_to_open.line_number, cwd).with_originating_plugin(
             OriginatingPlugin::new(env.plugin_id, env.client_id, context),
@@ -1984,7 +2001,7 @@ fn open_command_pane(
 ) {
     let error_msg = || format!("failed to open command in plugin {}", env.name());
     let command = command_to_run.path;
-    let cwd = command_to_run.cwd.map(|cwd| env.plugin_cwd.join(cwd));
+    let cwd = command_to_run.cwd.map(|cwd| translate_plugin_path(env, cwd));
     let args = command_to_run.args;
     let direction = None;
     let hold_on_close = true;
@@ -2031,7 +2048,7 @@ fn open_command_pane_near_plugin(
     context: BTreeMap<String, String>,
 ) {
     let command = command_to_run.path;
-    let cwd = command_to_run.cwd.map(|cwd| env.plugin_cwd.join(cwd));
+    let cwd = command_to_run.cwd.map(|cwd| translate_plugin_path(env, cwd));
     let args = command_to_run.args;
     let direction = None;
     let hold_on_close = true;
@@ -2088,7 +2105,7 @@ fn open_command_pane_floating(
 ) {
     let error_msg = || format!("failed to open command in plugin {}", env.name());
     let command = command_to_run.path;
-    let cwd = command_to_run.cwd.map(|cwd| env.plugin_cwd.join(cwd));
+    let cwd = command_to_run.cwd.map(|cwd| translate_plugin_path(env, cwd));
     let args = command_to_run.args;
     let direction = None;
     let hold_on_close = true;
@@ -2135,7 +2152,7 @@ fn open_command_pane_floating_near_plugin(
     context: BTreeMap<String, String>,
 ) {
     let command = command_to_run.path;
-    let cwd = command_to_run.cwd.map(|cwd| env.plugin_cwd.join(cwd));
+    let cwd = command_to_run.cwd.map(|cwd| translate_plugin_path(env, cwd));
     let args = command_to_run.args;
     let direction = None;
     let hold_on_close = true;
@@ -2193,7 +2210,7 @@ fn open_command_pane_in_place(
 ) {
     let error_msg = || format!("failed to open command in plugin {}", env.name());
     let command = command_to_run.path;
-    let cwd = command_to_run.cwd.map(|cwd| env.plugin_cwd.join(cwd));
+    let cwd = command_to_run.cwd.map(|cwd| translate_plugin_path(env, cwd));
     let args = command_to_run.args;
     let direction = None;
     let hold_on_close = true;
@@ -2242,7 +2259,7 @@ fn open_command_pane_background(
     let command = command_to_run.path;
     let cwd = command_to_run
         .cwd
-        .map(|cwd| env.plugin_cwd.join(cwd))
+        .map(|cwd| translate_plugin_path(env, cwd))
         .or_else(|| Some(env.plugin_cwd.clone()));
     let args = command_to_run.args;
     let direction = None;
@@ -2382,7 +2399,7 @@ fn run_command(
         log::error!("Command cannot be empty");
     } else {
         let command = command_line.remove(0);
-        let cwd = env.plugin_cwd.join(cwd);
+        let cwd = translate_plugin_path(env, cwd);
         let _ = env
             .senders
             .send_to_background_jobs(BackgroundJob::RunCommand(
