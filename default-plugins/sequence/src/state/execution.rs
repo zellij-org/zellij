@@ -1,6 +1,5 @@
 use crate::path_formatting::format_cwd;
 use crate::state::{CommandEntry, CommandStatus};
-use std::collections::BTreeMap;
 use std::path::PathBuf;
 use zellij_tile::prelude::*;
 
@@ -80,38 +79,6 @@ impl Execution {
         }
     }
 
-    pub fn execute_command_sequence(
-        &mut self,
-        shell: &Option<PathBuf>,
-        global_cwd: &Option<PathBuf>,
-        plugin_id: Option<u32>,
-    ) {
-        self.all_commands.retain(|c| !c.is_empty());
-
-        let Some(first_cmd) = self.get_first_command() else {
-            return;
-        };
-
-        let shell = shell.clone().unwrap_or_else(|| PathBuf::from("/bin/bash"));
-        let command_cwd = first_cmd.get_cwd().or_else(|| global_cwd.clone());
-
-        let command = CommandToRun {
-            path: shell,
-            args: vec!["-ic".to_string(), first_cmd.get_text().trim().to_string()],
-            cwd: command_cwd,
-        };
-
-        let (tab_id, pane_id) = open_command_pane_in_new_tab(command, BTreeMap::new());
-        if let Some(pane_id) = pane_id {
-            self.set_command_status(0, CommandStatus::Running(Some(pane_id)));
-            self.current_running_command_index = 0;
-            self.displayed_pane_id = Some(pane_id);
-        }
-        if let (Some(tab_id), Some(plugin_id)) = (tab_id, plugin_id) {
-            break_panes_to_tab_with_id(&[PaneId::Plugin(plugin_id)], tab_id, true);
-            focus_pane_with_id(PaneId::Plugin(plugin_id), false, false); // focus self
-        }
-    }
 }
 
 impl Default for Execution {

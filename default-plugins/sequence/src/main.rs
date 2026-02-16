@@ -71,7 +71,7 @@ impl ZellijPlugin for State {
         let cwd_override = pipe_message.args.get("cwd").map(PathBuf::from);
         self.load_from_pipe(&payload, cwd_override);
         self.update_running_state();
-        self.execute_command_sequence();
+        launch_command_at_index(self, 0, None, true);
 
         self.reposition_plugin();
 
@@ -271,9 +271,13 @@ fn launch_command_at_index(
         }
         pane_id
     } else if force_visible {
-        let pane_id = open_command_pane_near_plugin(command, BTreeMap::new());
+        let (tab_id, pane_id) = open_command_pane_in_new_tab(command, BTreeMap::new());
         if let Some(pane_id) = pane_id {
             state.execution.displayed_pane_id = Some(pane_id);
+        }
+        if let (Some(tab_id), Some(plugin_id)) = (tab_id, state.plugin_id) {
+            break_panes_to_tab_with_id(&[PaneId::Plugin(plugin_id)], tab_id, true);
+            focus_pane_with_id(PaneId::Plugin(plugin_id), false, false);
         }
         pane_id
     } else {

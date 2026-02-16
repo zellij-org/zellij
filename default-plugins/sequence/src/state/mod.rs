@@ -430,9 +430,5 @@ impl State {
         self.execution.all_commands.get(i)
     }
 
-    pub fn execute_command_sequence(&mut self) {
-        self.execution
-            .execute_command_sequence(&self.shell, &self.cwd, self.plugin_id);
-    }
 }
 
