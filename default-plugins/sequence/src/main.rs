@@ -41,6 +41,7 @@ impl ZellijPlugin for State {
         handle_event(self, event)
     }
 
+    #[cfg(target_family = "wasm")]
     fn pipe(&mut self, pipe_message: PipeMessage) -> bool {
         if !pipe_message.is_private {
             return false;
