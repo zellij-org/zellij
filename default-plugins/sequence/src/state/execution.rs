@@ -109,6 +109,7 @@ impl Execution {
         }
         if let (Some(tab_id), Some(plugin_id)) = (tab_id, plugin_id) {
             break_panes_to_tab_with_id(&[PaneId::Plugin(plugin_id)], tab_id, true);
+            focus_pane_with_id(PaneId::Plugin(plugin_id), false, false); // focus self
         }
     }
 }
