@@ -34,7 +34,9 @@ use zellij_utils::data::{
     OpenFileNearPluginResponse, OpenFileResponse, OpenPaneInNewTabResponse,
     OpenTerminalFloatingNearPluginResponse,
     OpenTerminalFloatingResponse, OpenTerminalInPlaceOfPluginResponse, OpenTerminalInPlaceResponse,
-    OpenTerminalNearPluginResponse, OpenTerminalResponse, OriginatingPlugin,
+    OpenTerminalNearPluginResponse, OpenTerminalResponse,
+    OpenCommandPaneInPlaceOfPaneIdResponse, OpenTerminalPaneInPlaceOfPaneIdResponse,
+    OpenEditPaneInPlaceOfPaneIdResponse, OriginatingPlugin,
     PaneScrollbackResponse, PermissionStatus, PermissionType, PluginPermission,
     RenameLayoutResponse, SaveLayoutResponse, TabMetadata,
 };
@@ -94,6 +96,9 @@ use zellij_utils::{
             ProtobufOpenTerminalFloatingNearPluginResponse, ProtobufOpenTerminalFloatingResponse,
             ProtobufOpenTerminalInPlaceOfPluginResponse, ProtobufOpenTerminalInPlaceResponse,
             ProtobufOpenTerminalNearPluginResponse, ProtobufOpenTerminalResponse,
+            ProtobufOpenCommandPaneInPlaceOfPaneIdResponse,
+            ProtobufOpenTerminalPaneInPlaceOfPaneIdResponse,
+            ProtobufOpenEditPaneInPlaceOfPaneIdResponse,
             ProtobufParseLayoutResponse, ProtobufPluginCommand, ProtobufRenameLayoutResponse,
             ProtobufSaveLayoutResponse, ProtobufSaveSessionResponse,
         },
@@ -678,6 +683,35 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::OpenEditorPaneInNewTab(file_to_open, context) => {
                         open_editor_pane_in_new_tab(env, file_to_open, context);
                     },
+                    PluginCommand::OpenCommandPaneInPlaceOfPaneId(
+                        pane_id,
+                        command_to_run,
+                        close_replaced_pane,
+                        context,
+                    ) => open_command_pane_in_place_of_pane_id(
+                        env,
+                        pane_id,
+                        command_to_run,
+                        close_replaced_pane,
+                        context,
+                    ),
+                    PluginCommand::OpenTerminalPaneInPlaceOfPaneId(
+                        pane_id,
+                        cwd,
+                        close_replaced_pane,
+                    ) => open_terminal_pane_in_place_of_pane_id(env, pane_id, cwd, close_replaced_pane),
+                    PluginCommand::OpenEditPaneInPlaceOfPaneId(
+                        pane_id,
+                        file_to_open,
+                        close_replaced_pane,
+                        context,
+                    ) => open_edit_pane_in_place_of_pane_id(
+                        env,
+                        pane_id,
+                        file_to_open,
+                        close_replaced_pane,
+                        context,
+                    ),
                 },
                 (PermissionStatus::Denied, permission) => {
                     log::error!(
@@ -1805,6 +1839,141 @@ fn open_command_pane_in_place_of_plugin(
     let response = ProtobufOpenCommandPaneInPlaceOfPluginResponse::from(pane_id);
     wasi_write_object(env, &response.encode_to_vec())
         .with_context(|| format!("failed to write open_command_pane_in_place_of_plugin response"))
+        .non_fatal();
+}
+
+fn open_terminal_pane_in_place_of_pane_id(
+    env: &PluginEnv,
+    pane_id_to_replace: zellij_utils::data::PaneId,
+    cwd: FileToOpen,
+    close_replaced_pane: bool,
+) {
+    let cwd_path = env.plugin_cwd.join(cwd.path);
+    let mut default_shell = env.default_shell.clone().unwrap_or_else(|| {
+        TerminalAction::RunCommand(RunCommand {
+            command: env.path_to_default_shell.clone(),
+            use_terminal_title: true,
+            ..Default::default()
+        })
+    });
+    default_shell.change_cwd(cwd_path);
+    let name = None;
+
+    let (completion_tx, completion_rx) = oneshot::channel();
+    let _ = env
+        .senders
+        .send_to_pty(PtyInstruction::SpawnInPlaceTerminal(
+            Some(default_shell),
+            name,
+            close_replaced_pane,
+            ClientTabIndexOrPaneId::PaneId(pane_id_to_replace.into()),
+            Some(NotificationEnd::new(completion_tx)),
+        ));
+
+    let result =
+        wait_for_action_completion(completion_rx, "open_terminal_pane_in_place_of_pane_id", false);
+    let pane_id: OpenTerminalPaneInPlaceOfPaneIdResponse = result.affected_pane_id.map(|p| p.into());
+
+    let response = ProtobufOpenTerminalPaneInPlaceOfPaneIdResponse::from(pane_id);
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| {
+            format!("failed to write open_terminal_pane_in_place_of_pane_id response")
+        })
+        .non_fatal();
+}
+
+fn open_command_pane_in_place_of_pane_id(
+    env: &PluginEnv,
+    pane_id_to_replace: zellij_utils::data::PaneId,
+    command_to_run: CommandToRun,
+    close_replaced_pane: bool,
+    context: BTreeMap<String, String>,
+) {
+    let command = command_to_run.path;
+    let cwd = command_to_run.cwd.map(|cwd| env.plugin_cwd.join(cwd));
+    let args = command_to_run.args;
+    let direction = None;
+    let hold_on_close = true;
+    let hold_on_start = false;
+    let name = None;
+    let use_terminal_title = false;
+    let run_command_action = RunCommandAction {
+        command,
+        args,
+        cwd,
+        direction,
+        hold_on_close,
+        hold_on_start,
+        originating_plugin: Some(OriginatingPlugin::new(
+            env.plugin_id,
+            env.client_id,
+            context,
+        )),
+        use_terminal_title,
+    };
+    let run_cmd = TerminalAction::RunCommand(run_command_action.into());
+
+    let (completion_tx, completion_rx) = oneshot::channel();
+    let _ = env
+        .senders
+        .send_to_pty(PtyInstruction::SpawnInPlaceTerminal(
+            Some(run_cmd),
+            name,
+            close_replaced_pane,
+            ClientTabIndexOrPaneId::PaneId(pane_id_to_replace.into()),
+            Some(NotificationEnd::new(completion_tx)),
+        ));
+
+    let result =
+        wait_for_action_completion(completion_rx, "open_command_pane_in_place_of_pane_id", false);
+    let pane_id: OpenCommandPaneInPlaceOfPaneIdResponse = result.affected_pane_id.map(|p| p.into());
+
+    let response = ProtobufOpenCommandPaneInPlaceOfPaneIdResponse::from(pane_id);
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| {
+            format!("failed to write open_command_pane_in_place_of_pane_id response")
+        })
+        .non_fatal();
+}
+
+fn open_edit_pane_in_place_of_pane_id(
+    env: &PluginEnv,
+    pane_id_to_replace: zellij_utils::data::PaneId,
+    file_to_open: FileToOpen,
+    close_replaced_pane: bool,
+    context: BTreeMap<String, String>,
+) {
+    let cwd = file_to_open
+        .cwd
+        .map(|cwd| env.plugin_cwd.join(cwd))
+        .or_else(|| Some(env.plugin_cwd.clone()));
+    let path = env.plugin_cwd.join(file_to_open.path);
+    let open_file_payload =
+        OpenFilePayload::new(path, file_to_open.line_number, cwd).with_originating_plugin(
+            OriginatingPlugin::new(env.plugin_id, env.client_id, context),
+        );
+    let title = format!("Editing: {}", open_file_payload.path.display());
+    let open_file = TerminalAction::OpenFile(open_file_payload);
+
+    let (completion_tx, completion_rx) = oneshot::channel();
+    let pty_instr = PtyInstruction::SpawnInPlaceTerminal(
+        Some(open_file),
+        Some(title),
+        close_replaced_pane,
+        ClientTabIndexOrPaneId::PaneId(pane_id_to_replace.into()),
+        Some(NotificationEnd::new(completion_tx)),
+    );
+    let _ = env.senders.send_to_pty(pty_instr);
+
+    let result =
+        wait_for_action_completion(completion_rx, "open_edit_pane_in_place_of_pane_id", false);
+    let pane_id: OpenEditPaneInPlaceOfPaneIdResponse = result.affected_pane_id.map(|p| p.into());
+
+    let response = ProtobufOpenEditPaneInPlaceOfPaneIdResponse::from(pane_id);
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| {
+            format!("failed to write open_edit_pane_in_place_of_pane_id response")
+        })
         .non_fatal();
 }
 
@@ -4643,14 +4812,18 @@ fn check_command_permission(
         | PluginCommand::OpenFileNearPlugin(..)
         | PluginCommand::OpenFileFloatingNearPlugin(..)
         | PluginCommand::OpenFileInPlaceOfPlugin(..)
-        | PluginCommand::OpenFileInPlace(..) => PermissionType::OpenFiles,
+        | PluginCommand::OpenFileInPlace(..)
+        | PluginCommand::OpenEditPaneInPlaceOfPaneId(..) => PermissionType::OpenFiles,
         PluginCommand::OpenTerminal(..)
         | PluginCommand::OpenTerminalNearPlugin(..)
         | PluginCommand::StartOrReloadPlugin(..)
         | PluginCommand::OpenTerminalFloating(..)
         | PluginCommand::OpenTerminalFloatingNearPlugin(..)
         | PluginCommand::OpenTerminalInPlace(..)
-        | PluginCommand::OpenTerminalInPlaceOfPlugin(..) => PermissionType::OpenTerminalsOrPlugins,
+        | PluginCommand::OpenTerminalInPlaceOfPlugin(..)
+        | PluginCommand::OpenTerminalPaneInPlaceOfPaneId(..) => {
+            PermissionType::OpenTerminalsOrPlugins
+        },
         PluginCommand::OpenCommandPane(..)
         | PluginCommand::OpenCommandPaneNearPlugin(..)
         | PluginCommand::OpenCommandPaneFloating(..)
@@ -4658,6 +4831,7 @@ fn check_command_permission(
         | PluginCommand::OpenCommandPaneInPlace(..)
         | PluginCommand::OpenCommandPaneInPlaceOfPlugin(..)
         | PluginCommand::OpenCommandPaneBackground(..)
+        | PluginCommand::OpenCommandPaneInPlaceOfPaneId(..)
         | PluginCommand::RunCommand(..)
         | PluginCommand::ExecCmd(..) => PermissionType::RunCommands,
         PluginCommand::WebRequest(..) => PermissionType::WebAccess,

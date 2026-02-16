@@ -3458,6 +3458,9 @@ pub enum PluginCommand {
         context: Context,
     },
     OpenEditorPaneInNewTab(FileToOpen, Context),
+    OpenCommandPaneInPlaceOfPaneId(PaneId, CommandToRun, bool, Context), // bool = close_replaced_pane
+    OpenTerminalPaneInPlaceOfPaneId(PaneId, FileToOpen, bool),
+    OpenEditPaneInPlaceOfPaneId(PaneId, FileToOpen, bool, Context),
 }
 
 // Response type for plugin API methods that open a pane in a new tab
@@ -3497,3 +3500,6 @@ pub type OpenCommandPaneNearPluginResponse = Option<PaneId>;
 pub type OpenCommandPaneFloatingNearPluginResponse = Option<PaneId>;
 pub type OpenCommandPaneInPlaceOfPluginResponse = Option<PaneId>;
 pub type OpenCommandPaneBackgroundResponse = Option<PaneId>;
+pub type OpenCommandPaneInPlaceOfPaneIdResponse = Option<PaneId>;
+pub type OpenTerminalPaneInPlaceOfPaneIdResponse = Option<PaneId>;
+pub type OpenEditPaneInPlaceOfPaneIdResponse = Option<PaneId>;

@@ -193,6 +193,9 @@ enum CommandName {
   OpenCommandPaneInNewTab = 198;
   OpenPluginPaneInNewTab = 199;
   OpenEditorPaneInNewTab = 200;
+  OpenCommandPaneInPlaceOfPaneId = 201;
+  OpenTerminalPaneInPlaceOfPaneId = 202;
+  OpenEditPaneInPlaceOfPaneId = 203;
 }
 
 message PluginCommand {
@@ -335,6 +338,9 @@ message PluginCommand {
     OpenCommandPanePayload open_command_pane_in_new_tab_payload = 149;
     OpenPluginPaneInNewTabPayload open_plugin_pane_in_new_tab_payload = 150;
     OpenFilePayload open_editor_pane_in_new_tab_payload = 151;
+    OpenCommandPaneInPlaceOfPaneIdPayload open_command_pane_in_place_of_pane_id_payload = 152;
+    OpenTerminalPaneInPlaceOfPaneIdPayload open_terminal_pane_in_place_of_pane_id_payload = 153;
+    OpenEditPaneInPlaceOfPaneIdPayload open_edit_pane_in_place_of_pane_id_payload = 154;
   }
 }
 
@@ -1147,4 +1153,36 @@ message OpenPluginPaneInNewTabPayload {
 message OpenPaneInNewTabResponse {
   optional uint64 tab_id = 1;
   optional PaneId pane_id = 2;
+}
+
+message OpenCommandPaneInPlaceOfPaneIdPayload {
+  PaneId pane_id_to_replace = 1;
+  command.Command command_to_run = 2;
+  bool close_replaced_pane = 3;
+  repeated ContextItem context = 4;
+}
+
+message OpenTerminalPaneInPlaceOfPaneIdPayload {
+  PaneId pane_id_to_replace = 1;
+  optional file.File cwd = 2;
+  bool close_replaced_pane = 3;
+}
+
+message OpenEditPaneInPlaceOfPaneIdPayload {
+  PaneId pane_id_to_replace = 1;
+  file.File file_to_open = 2;
+  bool close_replaced_pane = 3;
+  repeated ContextItem context = 4;
+}
+
+message OpenCommandPaneInPlaceOfPaneIdResponse {
+  optional PaneId pane_id = 1;
+}
+
+message OpenTerminalPaneInPlaceOfPaneIdResponse {
+  optional PaneId pane_id = 1;
+}
+
+message OpenEditPaneInPlaceOfPaneIdResponse {
+  optional PaneId pane_id = 1;
 }
