@@ -67,6 +67,7 @@ impl ZellijPlugin for State {
         self.load_from_pipe(&payload, cwd_override);
         self.update_running_state();
         launch_command_at_index(self, 0, None, true);
+        ensure_spinner_running(self);
 
         self.reposition_plugin();
 
@@ -147,6 +148,7 @@ pub fn handle_event(state: &mut State, event: Event) -> bool {
         },
         Event::Timer(_elapsed) => {
             let should_render = update_spinner(state);
+            update_title(state);
             should_render
         },
         Event::PastedText(pasted_text) => {
@@ -158,8 +160,6 @@ pub fn handle_event(state: &mut State, event: Event) -> bool {
                 return false;
             }
             state.load_from_pipe(&payload, None);
-            state.update_running_state();
-            launch_command_at_index(state, 0, None, true);
             let repositioned = state.reposition_plugin();
             !repositioned
         },
@@ -266,8 +266,7 @@ fn handle_editor_pane_exited(state: &mut State, terminal_pane_id: u32) -> bool {
         state.execution.all_commands = commands;
         state.execution.current_running_command_index = 0;
         state.selection.current_selected_command_index = Some(0);
-        state.update_running_state();
-        launch_command_at_index(state, 0, None, true);
+        state.execution.is_running = false;
     } else {
         // Reset to empty pending state
         state.execution.all_commands = vec![CommandEntry::new("", state.cwd.clone())];
@@ -311,6 +310,7 @@ fn launch_command_at_index(
             state.execution.displayed_pane_id = Some(pane_id);
         }
         if let (Some(tab_id), Some(plugin_id)) = (tab_id, state.plugin_id) {
+            state.sequence_tab_id = Some(tab_id);
             break_panes_to_tab_with_id(&[PaneId::Plugin(plugin_id)], tab_id, true);
             focus_pane_with_id(PaneId::Plugin(plugin_id), false, false);
         }
@@ -480,6 +480,7 @@ fn rerun_sequence(state: &mut State) {
 
     state.execution.is_running = true;
     state.execution.current_running_command_index = selected_index;
+    ensure_spinner_running(state);
     match state.execution.all_commands[selected_index].get_pane_id() {
         Some(PaneId::Terminal(id)) => {
             let pane_id = PaneId::Terminal(id);
@@ -593,39 +594,104 @@ fn interrupt_sequence(state: &mut State) {
 }
 
 pub fn update_title(state: &mut State) {
-    let Some(plugin_id) = state.plugin_id else {
+    let Some(tab_id) = state.sequence_tab_id else {
         return;
     };
+    let tab_id_u64 = tab_id as u64;
 
-    let title = if state.all_commands_are_pending() {
-        "Run one or more commands in sequence"
-    } else {
-        let has_running_commands = state
+    // All pending and not yet running
+    if state.all_commands_are_pending() && !state.execution.is_running {
+        rename_tab_with_id(tab_id_u64, "Run one or more commands in sequence");
+        return;
+    }
+
+    // Currently running: "<cmd> <n>/<total> <spinner>"
+    let has_running = state
+        .execution
+        .all_commands
+        .iter()
+        .any(|c| matches!(c.get_status(), CommandStatus::Running(..)));
+    if has_running {
+        let idx = state.execution.current_running_command_index;
+        let total = state.execution.all_commands.len();
+        let cmd_text = state
+            .execution
+            .all_commands
+            .get(idx)
+            .map(|c| c.get_text())
+            .unwrap_or_default();
+        let spinner = components::get_spinner_frame(state.layout.spinner_frame);
+        rename_tab_with_id(
+            tab_id_u64,
+            &format!("{} {}/{} {}", cmd_text, idx + 1, total, spinner),
+        );
+        return;
+    }
+
+    // Interrupted: "<cmd> [INTERRUPTED]"
+    if let Some(cmd) = state
+        .execution
+        .all_commands
+        .iter()
+        .find(|c| matches!(c.get_status(), CommandStatus::Interrupted(_)))
+    {
+        let status_str =
+            components::format_status_text(&cmd.get_status(), state.layout.spinner_frame);
+        rename_tab_with_id(tab_id_u64, &format!("{} {}", cmd.get_text(), status_str));
+        return;
+    }
+
+    // All exited
+    let all_exited = state
+        .execution
+        .all_commands
+        .iter()
+        .all(|c| matches!(c.get_status(), CommandStatus::Exited(..)));
+    if all_exited {
+        let all_success = state
             .execution
             .all_commands
             .iter()
-            .any(|c| matches!(c.get_status(), CommandStatus::Running(..)));
-        let has_interrupted_commands = state
-            .execution
-            .all_commands
-            .iter()
-            .any(|c| matches!(c.get_status(), CommandStatus::Interrupted(..)));
-        let all_commands_complete = state
-            .execution
-            .all_commands
-            .iter()
-            .all(|c| matches!(c.get_status(), CommandStatus::Exited(..)));
-        if has_running_commands {
-            let current = state.execution.current_running_command_index + 1;
-            let total = state.execution.all_commands.len();
-            return rename_plugin_pane(plugin_id, &format!("Running {}/{}", current, total));
-        } else if has_interrupted_commands {
-            "Sequence Interrupted"
-        } else if all_commands_complete {
-            "Sequence Complete"
+            .all(|c| matches!(c.get_status(), CommandStatus::Exited(Some(0), _)));
+        if all_success {
+            rename_tab_with_id(tab_id_u64, "Sequence Complete");
         } else {
-            "Stopped"
+            // Show first command with non-zero or unknown exit
+            if let Some(cmd) = state
+                .execution
+                .all_commands
+                .iter()
+                .find(|c| !matches!(c.get_status(), CommandStatus::Exited(Some(0), _)))
+            {
+                let status_str =
+                    components::format_status_text(&cmd.get_status(), state.layout.spinner_frame);
+                rename_tab_with_id(tab_id_u64, &format!("{} {}", cmd.get_text(), status_str));
+            } else {
+                rename_tab_with_id(tab_id_u64, "Sequence Complete");
+            }
         }
-    };
-    rename_plugin_pane(plugin_id, title);
+        return;
+    }
+
+    // Partial (chain condition failed): show last exited command with its status
+    if let Some(cmd) = state
+        .execution
+        .all_commands
+        .iter()
+        .rev()
+        .find(|c| matches!(c.get_status(), CommandStatus::Exited(..)))
+    {
+        let status_str =
+            components::format_status_text(&cmd.get_status(), state.layout.spinner_frame);
+        rename_tab_with_id(tab_id_u64, &format!("{} {}", cmd.get_text(), status_str));
+    } else {
+        rename_tab_with_id(tab_id_u64, "Stopped");
+    }
+}
+
+fn ensure_spinner_running(state: &mut State) {
+    if !state.layout.spinner_timer_scheduled {
+        set_timeout(0.1);
+        state.layout.spinner_timer_scheduled = true;
+    }
 }

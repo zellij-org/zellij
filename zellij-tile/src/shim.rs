@@ -1423,6 +1423,17 @@ where
     unsafe { host_run_plugin_command() };
 }
 
+/// Changes the name (the title that appears in the UI) of the tab with the specified id.
+pub fn rename_tab_with_id<S: AsRef<str>>(tab_id: u64, new_name: S)
+where
+    S: ToString,
+{
+    let plugin_command = PluginCommand::RenameTabWithId(tab_id, new_name.to_string());
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 /// Switch to a session with the given name, create one if no name is given
 pub fn switch_session(name: Option<&str>) {
     let plugin_command = PluginCommand::SwitchSession(ConnectToSession {

@@ -40,6 +40,7 @@ pub struct State {
     pub mode: SequenceMode,
     pub editor_pane_id: Option<PaneId>,
     pub editor_temp_file: Option<PathBuf>,
+    pub sequence_tab_id: Option<usize>,
 }
 
 impl State {

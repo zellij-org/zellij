@@ -211,23 +211,26 @@ pub fn load_from_editor_file(
             continue;
         }
 
-        if let Some(path) = detect_cd_command(trimmed) {
-            if let Some(new_cwd) = path_formatting::resolve_path(current_cwd.as_ref(), &path) {
-                current_cwd = Some(new_cwd);
-            }
-            continue;
-        }
-
+        // Split by chain operators first so that "cd /path &&" doesn't absorb the operator
+        // into the path. Each resulting segment is then checked for cd independently.
         let segments = split_by_chain_operators(trimmed);
         for (text, chain_type_opt) in segments {
-            if text.trim().is_empty() {
+            let text = text.trim().to_string();
+            if text.is_empty() {
                 continue;
             }
-            let mut entry = CommandEntry::new(&text, current_cwd.clone());
-            if let Some(chain_type) = chain_type_opt {
-                entry.set_chain_type(chain_type);
+            if let Some(path) = detect_cd_command(&text) {
+                if let Some(new_cwd) = path_formatting::resolve_path(current_cwd.as_ref(), &path) {
+                    current_cwd = Some(new_cwd);
+                }
+                // cd segments are not added as command entries; their chain type is discarded
+            } else {
+                let mut entry = CommandEntry::new(&text, current_cwd.clone());
+                if let Some(chain_type) = chain_type_opt {
+                    entry.set_chain_type(chain_type);
+                }
+                commands.push(entry);
             }
-            commands.push(entry);
         }
     }
 
@@ -394,5 +397,17 @@ mod tests {
     fn test_trailing_operator_with_space() {
         let result = split_by_chain_operators("ls && ");
         assert_eq!(result, vec![("ls".to_string(), Some(ChainType::And))]);
+    }
+
+    #[test]
+    fn test_cd_with_chain_operator_does_not_absorb_operator_into_path() {
+        use super::super::CommandEntry;
+        use std::path::PathBuf;
+
+        let contents = "cd /some/path && cargo build";
+        let result = load_from_editor_file(contents, None);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].get_text(), "cargo build");
+        assert_eq!(result[0].get_cwd(), Some(PathBuf::from("/some/path")));
     }
 }

@@ -153,7 +153,7 @@ fn chain_cell(chain_type: &crate::state::ChainType) -> Text {
     }
 }
 
-fn get_spinner_frame(frame: usize) -> &'static str {
+pub fn get_spinner_frame(frame: usize) -> &'static str {
     SPINNER_FRAMES[frame % SPINNER_FRAMES.len()]
 }
 
