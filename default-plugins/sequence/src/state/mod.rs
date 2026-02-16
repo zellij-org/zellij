@@ -106,7 +106,7 @@ impl State {
     pub fn load_from_pipe(&mut self, command_string: &str, cwd_override: Option<PathBuf>) {
         let effective_cwd = cwd_override.or_else(|| self.cwd.clone());
 
-        let commands: Vec<CommandEntry> = command_string
+        let mut commands: Vec<CommandEntry> = command_string
             .lines()
             .flat_map(|line| {
                 let trimmed = line.trim();
@@ -129,6 +129,12 @@ impl State {
 
         if commands.is_empty() {
             return;
+        }
+
+        // Commands with no explicit operator default to &&
+        let last_idx = commands.len() - 1;
+        for cmd in &mut commands[..last_idx] {
+            cmd.fill_chain_type_if_empty();
         }
 
         self.execution.all_commands = commands;

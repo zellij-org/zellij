@@ -194,6 +194,14 @@ pub fn load_from_editor_file(
         }
     }
 
+    // Commands with no explicit operator default to &&
+    if !commands.is_empty() {
+        let last_idx = commands.len() - 1;
+        for cmd in &mut commands[..last_idx] {
+            cmd.fill_chain_type_if_empty();
+        }
+    }
+
     commands
 }
 
@@ -327,6 +335,25 @@ mod tests {
     fn test_trailing_operator_with_space() {
         let result = split_by_chain_operators("ls && ");
         assert_eq!(result, vec![("ls".to_string(), Some(ChainType::And))]);
+    }
+
+    #[test]
+    fn test_editor_file_no_operator_defaults_to_and() {
+        let contents = "cmd1\ncmd2\ncmd3";
+        let result = load_from_editor_file(contents, None);
+        assert_eq!(result.len(), 3);
+        assert_eq!(result[0].get_chain_type(), ChainType::And);
+        assert_eq!(result[1].get_chain_type(), ChainType::And);
+        assert_eq!(result[2].get_chain_type(), ChainType::None);
+    }
+
+    #[test]
+    fn test_editor_file_explicit_operator_preserved() {
+        let contents = "cmd1 ||\ncmd2";
+        let result = load_from_editor_file(contents, None);
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0].get_chain_type(), ChainType::Or);
+        assert_eq!(result[1].get_chain_type(), ChainType::None);
     }
 
     #[test]
