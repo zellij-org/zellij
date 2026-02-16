@@ -33,6 +33,7 @@ impl ZellijPlugin for State {
         self.plugin_id = Some(plugin_ids.plugin_id);
         self.client_id = Some(plugin_ids.client_id);
         self.cwd = Some(plugin_ids.initial_cwd);
+        rename_plugin_pane(plugin_ids.plugin_id, "Sequence");
         update_title(self);
     }
 
@@ -79,10 +80,17 @@ impl ZellijPlugin for State {
         self.own_rows = Some(rows);
         self.own_columns = Some(cols);
 
-        let max_visible_rows = rows.saturating_sub(5);
+        // Main screen: plugin just opened, no commands entered yet
+        if self.all_commands_are_pending() && !self.execution.can_run_sequence() {
+            for (text, x, y) in components::render_intro_hint(rows, cols) {
+                print_text_with_coordinates(text, x, y, None, None);
+            }
+            return;
+        }
 
-        let base_x = 1;
-        let base_y = 0;
+        let is_staging = self.all_commands_are_pending() && self.execution.can_run_sequence();
+
+        let max_visible_rows = rows.saturating_sub(5);
 
         let (offset, visible_count, hidden_above, hidden_below) = calculate_viewport(
             self.execution.all_commands.len(),
@@ -90,6 +98,37 @@ impl ZellijPlugin for State {
             self.selection.current_selected_command_index,
             self.execution.current_running_command_index,
         );
+
+        // For the staging screen, center the content both horizontally and vertically.
+        // Content height: 1 header row + visible_count command rows + 1 gap + 1 help row = visible_count + 3
+        let (base_x, base_y, table_max_width) = if is_staging {
+            let longest_cwd = self.execution.longest_cwd_display(&self.cwd);
+            let longest_cmd = self
+                .execution
+                .all_commands
+                .iter()
+                .map(|c| c.get_text().chars().count())
+                .max()
+                .unwrap_or(1);
+            let (max_chain_w, max_status_w) = components::calculate_max_widths(
+                &self.execution.all_commands,
+                self.layout.spinner_frame,
+            );
+            let content_width = components::calculate_longest_line(
+                &longest_cwd,
+                longest_cmd,
+                max_chain_w,
+                max_status_w,
+            )
+            .min(cols);
+            // header + commands + gap + help + gap + ribbon = visible_count + 5
+            let content_height = visible_count + 5;
+            let bx = cols.saturating_sub(content_width) / 2;
+            let by = rows.saturating_sub(content_height) / 2;
+            (bx, by, Some(content_width))
+        } else {
+            (1, 0, self.own_columns.map(|o| o.saturating_sub(1)))
+        };
 
         let mut table = components::build_table_header(hidden_above > 0 || hidden_below > 0);
 
@@ -105,20 +144,45 @@ impl ZellijPlugin for State {
             );
         }
 
-        print_table_with_coordinates(
-            table,
-            base_x,
-            base_y,
-            self.own_columns.map(|o| o.saturating_sub(base_x)),
-            None,
-        );
+        print_table_with_coordinates(table, base_x, base_y, table_max_width, None);
 
         let help_y = base_y + visible_count + 2;
-        let (first_help, _, second_help) = components::render_help_lines(self, Some(cols));
-        print_text_with_coordinates(first_help, base_x, help_y, None, None);
+        let (first_help, first_help_len, second_help) =
+            components::render_help_lines(self, Some(cols));
+        let help_x = if is_staging {
+            cols.saturating_sub(first_help_len) / 2
+        } else {
+            base_x
+        };
+        print_text_with_coordinates(first_help, help_x, help_y, None, None);
 
-        if let Some((second_help_text, _)) = second_help {
-            print_text_with_coordinates(second_help_text, base_x, help_y + 1, None, None);
+        if let Some((second_help_text, second_help_len)) = second_help {
+            let second_help_x = if is_staging {
+                cols.saturating_sub(second_help_len) / 2
+            } else {
+                base_x
+            };
+            print_text_with_coordinates(second_help_text, second_help_x, help_y + 1, None, None);
+        }
+
+        // Mode ribbon: "<Tab> [Single Pane] [Spread]" — only while running
+        if self.execution.is_running {
+            let ribbon_y = help_y + 2;
+            print_text_with_coordinates(
+                Text::new("<Tab>").color_all(3),
+                base_x,
+                ribbon_y,
+                None,
+                None,
+            );
+            let ribbon_x = base_x + 6; // "<Tab>" (5) + space (1)
+            let (single_ribbon, spread_ribbon) = if self.mode == SequenceMode::SinglePane {
+                (Text::new("Single Pane").selected(), Text::new("Spread"))
+            } else {
+                (Text::new("Single Pane"), Text::new("Spread").selected())
+            };
+            print_ribbon_with_coordinates(single_ribbon, ribbon_x, ribbon_y, Some(15), None);
+            print_ribbon_with_coordinates(spread_ribbon, ribbon_x + 15, ribbon_y, Some(10), None);
         }
     }
 }
@@ -358,20 +422,28 @@ fn handle_key_event(state: &mut State, key: KeyWithModifier) -> bool {
         }
     }
 
+    let is_staging = state.all_commands_are_pending() && state.execution.can_run_sequence();
+
     if matches!(key.bare_key, BareKey::Up)
         && !key.has_modifiers(&[KeyModifier::Ctrl])
         && !key.has_modifiers(&[KeyModifier::Alt])
     {
-        state.move_selection_up();
-        return true;
+        if !is_staging {
+            state.move_selection_up();
+            return true;
+        }
+        return false;
     }
 
     if matches!(key.bare_key, BareKey::Down)
         && !key.has_modifiers(&[KeyModifier::Ctrl])
         && !key.has_modifiers(&[KeyModifier::Alt])
     {
-        state.move_selection_down();
-        return true;
+        if !is_staging {
+            state.move_selection_down();
+            return true;
+        }
+        return false;
     }
 
     // e — open external editor (when not running)

@@ -6,6 +6,11 @@ use zellij_tile::prelude::*;
 
 const SPINNER_FRAMES: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧"];
 
+const INTRO_PART1: &str = "Paste a series of commands to run in sequence";
+const INTRO_PART2: &str = "or <e> to edit in your editor";
+const INTRO_FULL: &str =
+    "Paste a series of commands to run in sequence or <e> to edit in your editor";
+
 const HELP_RUNNING_WITH_SELECTION: &str = "<Ctrl c> - interrupt, <Enter> - run from selected";
 const HELP_RUNNING_NO_SELECTION: &str = "<Ctrl c> - interrupt, <↓↑> - navigate";
 const HELP_STOPPED_WITH_SELECTION: &str =
@@ -89,6 +94,38 @@ pub fn render_help_lines(
     } else {
         let help_len = help_text.chars().count();
         (style_help_text(help_text).unbold_all(), help_len, None)
+    }
+}
+
+/// Returns `(text, x, y)` tuples for the main screen intro hint.
+/// The text is centered horizontally; if it does not fit on one line, two lines
+/// are returned separated by one blank line (1-line padding).
+pub fn render_intro_hint(rows: usize, cols: usize) -> Vec<(Text, usize, usize)> {
+    let full_len = INTRO_FULL.chars().count();
+
+    if full_len <= cols {
+        let x = cols.saturating_sub(full_len) / 2;
+        let y = rows / 2;
+        vec![(Text::new(INTRO_FULL).color_substring(3, "<e>"), x, y)]
+    } else {
+        let p1_len = INTRO_PART1.chars().count();
+        let p2_len = INTRO_PART2.chars().count();
+        let x1 = cols.saturating_sub(p1_len) / 2;
+        let x2 = cols.saturating_sub(p2_len) / 2;
+        // 3 display rows: line1, padding, line2 — center the group vertically
+        let start_y = rows.saturating_sub(3) / 2;
+        vec![
+            (
+                Text::new(INTRO_PART1).color_substring(3, "<e>"),
+                x1,
+                start_y,
+            ),
+            (
+                Text::new(INTRO_PART2).color_substring(3, "<e>"),
+                x2,
+                start_y + 2,
+            ),
+        ]
     }
 }
 
