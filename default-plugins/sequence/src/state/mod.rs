@@ -95,8 +95,24 @@ impl State {
         self.show_selected_pane();
     }
 
-    fn show_selected_pane(&mut self) {
+    pub fn show_selected_pane(&mut self) {
         if self.mode == SequenceMode::Spread {
+            let all_pane_ids: Vec<PaneId> = self
+                .execution
+                .all_commands
+                .iter()
+                .filter_map(|c| c.get_pane_id())
+                .collect();
+            let selected_pane_id = self
+                .current_selected_command()
+                .and_then(|c| c.get_pane_id());
+            if let Some(selected) = selected_pane_id {
+                let to_unhighlight: Vec<PaneId> = all_pane_ids
+                    .into_iter()
+                    .filter(|&p| p != selected)
+                    .collect();
+                highlight_and_unhighlight_panes(vec![selected], to_unhighlight);
+            }
             return;
         }
         let target_pane_id = self

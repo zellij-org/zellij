@@ -289,6 +289,7 @@ fn launch_command_at_index(
         state.execution.all_commands[index].set_status(CommandStatus::Running(Some(pane_id)));
         state.execution.current_running_command_index = index;
         state.selection.current_selected_command_index = Some(index);
+        state.show_selected_pane();
     }
 }
 
@@ -778,9 +779,20 @@ fn enter_spread_mode(state: &mut State) {
             show_pane_with_id(pane_id, false, false);
         }
     }
+    state.show_selected_pane();
 }
 
 fn exit_spread_mode(state: &mut State) {
+    // Remove all highlights before leaving spread mode
+    let all_pane_ids: Vec<PaneId> = state
+        .execution
+        .all_commands
+        .iter()
+        .filter_map(|c| c.get_pane_id())
+        .collect();
+    if !all_pane_ids.is_empty() {
+        highlight_and_unhighlight_panes(vec![], all_pane_ids);
+    }
     state.mode = SequenceMode::SinglePane;
 
     let first_pane_id = state.execution.all_commands.first().and_then(|c| c.get_pane_id());
