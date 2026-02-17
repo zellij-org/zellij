@@ -4427,8 +4427,8 @@ impl Tab {
         let viewport = self.viewport.borrow();
         Ok(line >= viewport.y
             && column >= viewport.x
-            && line <= viewport.y + viewport.rows
-            && column <= viewport.x + viewport.cols)
+            && line < viewport.y + viewport.rows
+            && column < viewport.x + viewport.cols)
     }
 
     pub fn set_pane_frames(&mut self, should_set_pane_frames: bool) {
