@@ -597,7 +597,7 @@ tail -f /tmp/my-live-logfile | zellij pipe --name logs --plugin https://example.
         plugin_configuration: Option<PluginUserConfiguration>,
     },
     /// Send commands to the sequence plugin (sugar for: zellij pipe --plugin zellij:sequence)
-    #[clap(override_usage(
+    #[clap(visible_alias = "seq", override_usage(
 r#"
 zellij sequence [OPTIONS] [--] <COMMANDS>
 
