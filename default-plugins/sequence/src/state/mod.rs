@@ -40,6 +40,7 @@ pub struct State {
     pub editor_pane_id: Option<PaneId>,
     pub editor_temp_file: Option<PathBuf>,
     pub sequence_tab_id: Option<usize>,
+    pub blocking_pipe_id: Option<String>,
 }
 
 impl State {

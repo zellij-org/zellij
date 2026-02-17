@@ -596,6 +596,30 @@ tail -f /tmp/my-live-logfile | zellij pipe --name logs --plugin https://example.
         #[clap(short('c'), long, value_parser, display_order(4))]
         plugin_configuration: Option<PluginUserConfiguration>,
     },
+    /// Send commands to the sequence plugin (sugar for: zellij pipe --plugin zellij:sequence)
+    #[clap(override_usage(
+r#"
+zellij sequence [OPTIONS] [--] <COMMANDS>
+
+* Run a sequence of commands:
+
+zellij sequence -- 'echo hello && echo world'
+
+* Pipe commands from STDIN:
+
+echo 'echo hello && echo world' | zellij sequence
+
+* Wait for the sequence to complete before returning:
+
+zellij sequence --blocking -- 'echo hello && echo world'
+"#))]
+    Sequence {
+        /// The commands to run (if blank, will listen to STDIN)
+        payload: Option<String>,
+        /// Block until the sequence finishes before exiting
+        #[clap(short, long, value_parser, takes_value(false), default_value("false"))]
+        blocking: bool,
+    },
 }
 
 #[derive(Debug, Subcommand, Clone, Serialize, Deserialize)]

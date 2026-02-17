@@ -26,6 +26,7 @@ impl ZellijPlugin for State {
             EventType::Timer,
             EventType::PastedText,
             EventType::TabUpdate,
+            EventType::BeforeClose,
         ]);
 
         // Store our own plugin ID and client ID
@@ -65,8 +66,16 @@ impl ZellijPlugin for State {
             return false;
         }
 
-        let cwd_override = pipe_message.args.get("cwd").map(PathBuf::from);
-        self.load_from_pipe(&payload, cwd_override);
+        self.load_from_pipe(&payload, None);
+
+        // Handle blocking: keep CLI alive until sequence finishes
+        if pipe_message.args.get("blocking").map(|v| v == "true").unwrap_or(false) {
+            if let PipeSource::Cli(pipe_id) = &pipe_message.source {
+                block_cli_pipe_input(pipe_id);
+                self.blocking_pipe_id = Some(pipe_id.clone());
+            }
+        }
+
         show_self(true);
 
         true
@@ -251,6 +260,12 @@ pub fn handle_event(state: &mut State, event: Event) -> bool {
             let repositioned = state.reposition_plugin();
             should_render || repositioned
         },
+        Event::BeforeClose => {
+            if let Some(pipe_id) = state.blocking_pipe_id.take() {
+                unblock_cli_pipe_input(&pipe_id);
+            }
+            false
+        },
         _ => false,
     }
 }
@@ -293,6 +308,10 @@ fn handle_command_pane_exited(
     } else {
         state.execution.is_running = false;
         state.selection.current_selected_command_index = None;
+        // Unblock blocking CLI pipe if one is waiting
+        if let Some(pipe_id) = state.blocking_pipe_id.take() {
+            unblock_cli_pipe_input(&pipe_id);
+        }
     }
     true
 }
@@ -638,6 +657,10 @@ fn interrupt_sequence(state: &mut State) {
         }
         state.execution.is_running = false;
         state.selection.current_selected_command_index = None;
+        // Unblock blocking CLI pipe if interrupted
+        if let Some(pipe_id) = state.blocking_pipe_id.take() {
+            unblock_cli_pipe_input(&pipe_id);
+        }
     } else {
         eprintln!("Cannot interrupt a sequence that is not running.");
     }
