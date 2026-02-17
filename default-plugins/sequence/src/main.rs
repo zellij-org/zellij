@@ -69,7 +69,12 @@ impl ZellijPlugin for State {
         self.load_commands(&payload, None);
 
         // Handle blocking: keep CLI alive until sequence finishes
-        if pipe_message.args.get("blocking").map(|v| v == "true").unwrap_or(false) {
+        if pipe_message
+            .args
+            .get("blocking")
+            .map(|v| v == "true")
+            .unwrap_or(false)
+        {
             if let PipeSource::Cli(pipe_id) = &pipe_message.source {
                 block_cli_pipe_input(pipe_id);
                 self.blocking_pipe_id = Some(pipe_id.clone());
@@ -278,11 +283,10 @@ fn handle_command_pane_exited(
     let pane_id = PaneId::Terminal(terminal_pane_id);
 
     // Find which command this pane belongs to — stale events produce no match
-    let Some(cmd_index) = state
-        .execution
-        .all_commands
-        .iter()
-        .position(|c| matches!(c.get_status(), CommandStatus::Running(Some(id)) if id == pane_id))
+    let Some(cmd_index) =
+        state.execution.all_commands.iter().position(
+            |c| matches!(c.get_status(), CommandStatus::Running(Some(id)) if id == pane_id),
+        )
     else {
         return false;
     };
@@ -369,12 +373,15 @@ fn launch_command_at_index(
 ) {
     let cmd = &state.execution.all_commands[index];
     let command = CommandToRun {
-        path: state.shell.clone().unwrap_or_else(|| PathBuf::from("/bin/bash")),
+        path: state
+            .shell
+            .clone()
+            .unwrap_or_else(|| PathBuf::from("/bin/bash")),
         args: vec!["-ic".to_string(), cmd.get_text().trim().to_string()],
         cwd: cmd.get_cwd(),
     };
-    let user_is_watching = replace_pane_id.is_some()
-        && replace_pane_id == state.execution.displayed_pane_id;
+    let user_is_watching =
+        replace_pane_id.is_some() && replace_pane_id == state.execution.displayed_pane_id;
     let new_pane_id = if state.mode == SequenceMode::Spread {
         open_command_pane_near_plugin(command, BTreeMap::new())
     } else if user_is_watching {
@@ -500,7 +507,6 @@ fn close_panes_and_return_to_shell(state: &mut State) -> bool {
     true
 }
 
-
 fn update_spinner(state: &mut State) -> bool {
     // Advance spinner frame for RUNNING animation
     state.layout.spinner_frame = (state.layout.spinner_frame + 1) % 8;
@@ -583,7 +589,11 @@ fn toggle_spread_mode(state: &mut State) {
 fn enter_spread_mode(state: &mut State) {
     state.mode = SequenceMode::Spread;
 
-    let first_pane_id = state.execution.all_commands.first().and_then(|c| c.get_pane_id());
+    let first_pane_id = state
+        .execution
+        .all_commands
+        .first()
+        .and_then(|c| c.get_pane_id());
     let Some(first_pane_id) = first_pane_id else {
         return;
     };
@@ -616,7 +626,11 @@ fn exit_spread_mode(state: &mut State) {
     }
     state.mode = SequenceMode::SinglePane;
 
-    let first_pane_id = state.execution.all_commands.first().and_then(|c| c.get_pane_id());
+    let first_pane_id = state
+        .execution
+        .all_commands
+        .first()
+        .and_then(|c| c.get_pane_id());
     let selected_pane_id = state
         .selection
         .current_selected_command_index

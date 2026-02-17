@@ -78,7 +78,6 @@ impl Execution {
             copy_to_clipboard(text_to_copy);
         }
     }
-
 }
 
 impl Default for Execution {

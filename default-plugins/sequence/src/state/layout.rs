@@ -1,4 +1,3 @@
-
 pub struct Layout {
     pub spinner_frame: usize,
     pub spinner_timer_scheduled: bool,

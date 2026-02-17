@@ -3302,7 +3302,10 @@ impl Screen {
             .find(|(_tab_index, tab)| tab.has_pane_with_pid(&pane_id_to_replace))
             .map(|(_tab_index, tab)| tab.position)
         else {
-            log::error!("Could not find tab with pane_id: {:?} to replace", pane_id_to_replace);
+            log::error!(
+                "Could not find tab with pane_id: {:?} to replace",
+                pane_id_to_replace
+            );
             return;
         };
         let Some(tab_index_of_existing_pane) = self
@@ -3311,7 +3314,10 @@ impl Screen {
             .find(|(_tab_index, tab)| tab.has_pane_with_pid(&pane_id_of_existing_pane))
             .map(|(_tab_index, tab)| tab.position)
         else {
-            log::error!("Could not find tab with pane_id: {:?} to be replaced by", pane_id_of_existing_pane);
+            log::error!(
+                "Could not find tab with pane_id: {:?} to be replaced by",
+                pane_id_of_existing_pane
+            );
             return;
         };
         let Some(extracted_pane_from_other_tab) = self

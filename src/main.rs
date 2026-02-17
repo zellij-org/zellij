@@ -212,9 +212,12 @@ fn main() {
         }
         if let Some(Command::Sessions(Sessions::Sequence { payload, blocking })) = opts.command {
             let args = if blocking {
-                let mut args: std::collections::BTreeMap<String, String> = std::collections::BTreeMap::new();
+                let mut args: std::collections::BTreeMap<String, String> =
+                    std::collections::BTreeMap::new();
                 args.insert("blocking".to_string(), "true".to_string());
-                Some(zellij_utils::input::layout::PluginUserConfiguration::new(args))
+                Some(zellij_utils::input::layout::PluginUserConfiguration::new(
+                    args,
+                ))
             } else {
                 None
             };

@@ -1581,7 +1581,6 @@ impl Pty {
                 let quit_cb = Box::new({
                     let senders = self.bus.senders.clone();
                     move |pane_id, exit_status, command| {
-
                         if let PaneId::Terminal(terminal_pane_id) = pane_id {
                             if let Some(originating_plugin) = originating_plugin.as_ref() {
                                 let update_event = Event::CommandPaneExited(

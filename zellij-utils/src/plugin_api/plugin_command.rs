@@ -53,17 +53,19 @@ pub use super::generated_api::api::{
         NewTabResponse as ProtobufNewTabResponse, NewTabsResponse as ProtobufNewTabsResponse,
         NewTabsWithLayoutInfoPayload,
         OpenCommandPaneBackgroundResponse as ProtobufOpenCommandPaneBackgroundResponse,
-        OpenPaneInNewTabResponse as ProtobufOpenPaneInNewTabResponse,
-        OpenPluginPaneInNewTabPayload as ProtobufOpenPluginPaneInNewTabPayload,
         OpenCommandPaneFloatingNearPluginPayload,
         OpenCommandPaneFloatingNearPluginResponse as ProtobufOpenCommandPaneFloatingNearPluginResponse,
         OpenCommandPaneFloatingResponse as ProtobufOpenCommandPaneFloatingResponse,
+        OpenCommandPaneInPlaceOfPaneIdPayload,
+        OpenCommandPaneInPlaceOfPaneIdResponse as ProtobufOpenCommandPaneInPlaceOfPaneIdResponse,
         OpenCommandPaneInPlaceOfPluginPayload,
         OpenCommandPaneInPlaceOfPluginResponse as ProtobufOpenCommandPaneInPlaceOfPluginResponse,
         OpenCommandPaneInPlaceResponse as ProtobufOpenCommandPaneInPlaceResponse,
         OpenCommandPaneNearPluginPayload,
         OpenCommandPaneNearPluginResponse as ProtobufOpenCommandPaneNearPluginResponse,
         OpenCommandPanePayload, OpenCommandPaneResponse as ProtobufOpenCommandPaneResponse,
+        OpenEditPaneInPlaceOfPaneIdPayload,
+        OpenEditPaneInPlaceOfPaneIdResponse as ProtobufOpenEditPaneInPlaceOfPaneIdResponse,
         OpenFileFloatingNearPluginPayload,
         OpenFileFloatingNearPluginResponse as ProtobufOpenFileFloatingNearPluginResponse,
         OpenFileFloatingResponse as ProtobufOpenFileFloatingResponse,
@@ -71,20 +73,19 @@ pub use super::generated_api::api::{
         OpenFileInPlaceOfPluginResponse as ProtobufOpenFileInPlaceOfPluginResponse,
         OpenFileInPlaceResponse as ProtobufOpenFileInPlaceResponse, OpenFileNearPluginPayload,
         OpenFileNearPluginResponse as ProtobufOpenFileNearPluginResponse, OpenFilePayload,
-        OpenFileResponse as ProtobufOpenFileResponse, OpenTerminalFloatingNearPluginPayload,
+        OpenFileResponse as ProtobufOpenFileResponse,
+        OpenPaneInNewTabResponse as ProtobufOpenPaneInNewTabResponse,
+        OpenPluginPaneInNewTabPayload as ProtobufOpenPluginPaneInNewTabPayload,
+        OpenTerminalFloatingNearPluginPayload,
         OpenTerminalFloatingNearPluginResponse as ProtobufOpenTerminalFloatingNearPluginResponse,
         OpenTerminalFloatingResponse as ProtobufOpenTerminalFloatingResponse,
         OpenTerminalInPlaceOfPluginPayload,
         OpenTerminalInPlaceOfPluginResponse as ProtobufOpenTerminalInPlaceOfPluginResponse,
         OpenTerminalInPlaceResponse as ProtobufOpenTerminalInPlaceResponse,
-        OpenCommandPaneInPlaceOfPaneIdPayload,
-        OpenCommandPaneInPlaceOfPaneIdResponse as ProtobufOpenCommandPaneInPlaceOfPaneIdResponse,
-        OpenTerminalPaneInPlaceOfPaneIdPayload,
-        OpenTerminalPaneInPlaceOfPaneIdResponse as ProtobufOpenTerminalPaneInPlaceOfPaneIdResponse,
-        OpenEditPaneInPlaceOfPaneIdPayload,
-        OpenEditPaneInPlaceOfPaneIdResponse as ProtobufOpenEditPaneInPlaceOfPaneIdResponse,
         OpenTerminalNearPluginPayload,
         OpenTerminalNearPluginResponse as ProtobufOpenTerminalNearPluginResponse,
+        OpenTerminalPaneInPlaceOfPaneIdPayload,
+        OpenTerminalPaneInPlaceOfPaneIdResponse as ProtobufOpenTerminalPaneInPlaceOfPaneIdResponse,
         OpenTerminalResponse as ProtobufOpenTerminalResponse, OverrideLayoutPayload,
         PageScrollDownInPaneIdPayload, PageScrollUpInPaneIdPayload, PaneId as ProtobufPaneId,
         PaneIdAndFloatingPaneCoordinates, PaneType as ProtobufPaneType, ParseLayoutPayload,
@@ -2277,66 +2278,60 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                     _ => Err("Mismatched payload for GetSessionEnvironmentVariables"),
                 }
             },
-            Some(CommandName::OpenCommandPaneInNewTab) => {
-                match protobuf_plugin_command.payload {
-                    Some(Payload::OpenCommandPaneInNewTabPayload(payload)) => {
-                        match payload.command_to_run {
-                            Some(command_to_run) => {
-                                let context: BTreeMap<String, String> = payload
-                                    .context
-                                    .into_iter()
-                                    .map(|e| (e.name, e.value))
-                                    .collect();
-                                Ok(PluginCommand::OpenCommandPaneInNewTab(
-                                    command_to_run.try_into()?,
-                                    context,
-                                ))
-                            },
-                            None => Err("Malformed open_command_pane_in_new_tab payload"),
-                        }
-                    },
-                    _ => Err("Mismatched payload for OpenCommandPaneInNewTab"),
-                }
+            Some(CommandName::OpenCommandPaneInNewTab) => match protobuf_plugin_command.payload {
+                Some(Payload::OpenCommandPaneInNewTabPayload(payload)) => {
+                    match payload.command_to_run {
+                        Some(command_to_run) => {
+                            let context: BTreeMap<String, String> = payload
+                                .context
+                                .into_iter()
+                                .map(|e| (e.name, e.value))
+                                .collect();
+                            Ok(PluginCommand::OpenCommandPaneInNewTab(
+                                command_to_run.try_into()?,
+                                context,
+                            ))
+                        },
+                        None => Err("Malformed open_command_pane_in_new_tab payload"),
+                    }
+                },
+                _ => Err("Mismatched payload for OpenCommandPaneInNewTab"),
             },
-            Some(CommandName::OpenPluginPaneInNewTab) => {
-                match protobuf_plugin_command.payload {
-                    Some(Payload::OpenPluginPaneInNewTabPayload(payload)) => {
-                        let configuration: BTreeMap<String, String> =
-                            payload.configuration.into_iter().collect();
-                        let context: BTreeMap<String, String> = payload
-                            .context
-                            .into_iter()
-                            .map(|e| (e.name, e.value))
-                            .collect();
-                        Ok(PluginCommand::OpenPluginPaneInNewTab {
-                            plugin_url: payload.plugin_url,
-                            configuration,
-                            context,
-                        })
-                    },
-                    _ => Err("Mismatched payload for OpenPluginPaneInNewTab"),
-                }
+            Some(CommandName::OpenPluginPaneInNewTab) => match protobuf_plugin_command.payload {
+                Some(Payload::OpenPluginPaneInNewTabPayload(payload)) => {
+                    let configuration: BTreeMap<String, String> =
+                        payload.configuration.into_iter().collect();
+                    let context: BTreeMap<String, String> = payload
+                        .context
+                        .into_iter()
+                        .map(|e| (e.name, e.value))
+                        .collect();
+                    Ok(PluginCommand::OpenPluginPaneInNewTab {
+                        plugin_url: payload.plugin_url,
+                        configuration,
+                        context,
+                    })
+                },
+                _ => Err("Mismatched payload for OpenPluginPaneInNewTab"),
             },
-            Some(CommandName::OpenEditorPaneInNewTab) => {
-                match protobuf_plugin_command.payload {
-                    Some(Payload::OpenEditorPaneInNewTabPayload(payload)) => {
-                        match payload.file_to_open {
-                            Some(file) => {
-                                let context: BTreeMap<String, String> = payload
-                                    .context
-                                    .into_iter()
-                                    .map(|e| (e.name, e.value))
-                                    .collect();
-                                Ok(PluginCommand::OpenEditorPaneInNewTab(
-                                    file.try_into()?,
-                                    context,
-                                ))
-                            },
-                            None => Err("Malformed open_editor_pane_in_new_tab payload"),
-                        }
-                    },
-                    _ => Err("Mismatched payload for OpenEditorPaneInNewTab"),
-                }
+            Some(CommandName::OpenEditorPaneInNewTab) => match protobuf_plugin_command.payload {
+                Some(Payload::OpenEditorPaneInNewTabPayload(payload)) => {
+                    match payload.file_to_open {
+                        Some(file) => {
+                            let context: BTreeMap<String, String> = payload
+                                .context
+                                .into_iter()
+                                .map(|e| (e.name, e.value))
+                                .collect();
+                            Ok(PluginCommand::OpenEditorPaneInNewTab(
+                                file.try_into()?,
+                                context,
+                            ))
+                        },
+                        None => Err("Malformed open_editor_pane_in_new_tab payload"),
+                    }
+                },
+                _ => Err("Mismatched payload for OpenEditorPaneInNewTab"),
             },
             Some(CommandName::OpenCommandPaneInPlaceOfPaneId) => {
                 match protobuf_plugin_command.payload {
@@ -2367,11 +2362,9 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                         match payload.pane_id_to_replace {
                             Some(pane_id) => {
                                 let cwd = payload.cwd.map(|f| f.try_into()).transpose()?;
-                                let cwd = cwd.unwrap_or_else(|| {
-                                    crate::data::FileToOpen {
-                                        path: std::path::PathBuf::from("."),
-                                        ..Default::default()
-                                    }
+                                let cwd = cwd.unwrap_or_else(|| crate::data::FileToOpen {
+                                    path: std::path::PathBuf::from("."),
+                                    ..Default::default()
                                 });
                                 Ok(PluginCommand::OpenTerminalPaneInPlaceOfPaneId(
                                     pane_id.try_into()?,
@@ -3953,15 +3946,14 @@ use crate::data::{
     BreakPanesToNewTabResponse, BreakPanesToTabWithIdResponse, BreakPanesToTabWithIndexResponse,
     FocusOrCreateTabResponse, NewTabResponse, NewTabsResponse, OpenCommandPaneBackgroundResponse,
     OpenCommandPaneFloatingNearPluginResponse, OpenCommandPaneFloatingResponse,
-    OpenCommandPaneInPlaceOfPluginResponse, OpenCommandPaneInPlaceResponse,
-    OpenCommandPaneNearPluginResponse, OpenCommandPaneResponse, OpenFileFloatingNearPluginResponse,
+    OpenCommandPaneInPlaceOfPaneIdResponse, OpenCommandPaneInPlaceOfPluginResponse,
+    OpenCommandPaneInPlaceResponse, OpenCommandPaneNearPluginResponse, OpenCommandPaneResponse,
+    OpenEditPaneInPlaceOfPaneIdResponse, OpenFileFloatingNearPluginResponse,
     OpenFileFloatingResponse, OpenFileInPlaceOfPluginResponse, OpenFileInPlaceResponse,
     OpenFileNearPluginResponse, OpenFileResponse, OpenPaneInNewTabResponse,
     OpenTerminalFloatingNearPluginResponse, OpenTerminalFloatingResponse,
     OpenTerminalInPlaceOfPluginResponse, OpenTerminalInPlaceResponse,
-    OpenTerminalNearPluginResponse, OpenTerminalResponse,
-    OpenCommandPaneInPlaceOfPaneIdResponse, OpenTerminalPaneInPlaceOfPaneIdResponse,
-    OpenEditPaneInPlaceOfPaneIdResponse,
+    OpenTerminalNearPluginResponse, OpenTerminalPaneInPlaceOfPaneIdResponse, OpenTerminalResponse,
 };
 
 impl TryFrom<ProtobufNewTabResponse> for NewTabResponse {
@@ -4081,9 +4073,7 @@ impl TryFrom<ProtobufBreakPanesToTabWithIdResponse> for BreakPanesToTabWithIdRes
     type Error = &'static str;
     fn try_from(protobuf: ProtobufBreakPanesToTabWithIdResponse) -> Result<Self, Self::Error> {
         match protobuf.result {
-            Some(break_panes_to_tab_with_id_response::Result::TabId(id)) => {
-                Ok(Some(id as usize))
-            },
+            Some(break_panes_to_tab_with_id_response::Result::TabId(id)) => Ok(Some(id as usize)),
             Some(break_panes_to_tab_with_id_response::Result::None(_)) | None => Ok(None),
         }
     }

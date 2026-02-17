@@ -9,9 +9,7 @@ mod sequence_mode;
 
 pub use chain_type::ChainType;
 pub use command_entry::CommandEntry;
-pub use command_parser::{
-    parse_commands, serialize_sequence_to_editor,
-};
+pub use command_parser::{parse_commands, serialize_sequence_to_editor};
 pub use command_status::CommandStatus;
 pub use execution::Execution;
 pub use layout::Layout;
@@ -81,8 +79,7 @@ impl State {
         let target_pane_id = self
             .current_selected_command()
             .and_then(|c| c.get_pane_id());
-        if let (Some(displayed), Some(target)) =
-            (self.execution.displayed_pane_id, target_pane_id)
+        if let (Some(displayed), Some(target)) = (self.execution.displayed_pane_id, target_pane_id)
         {
             if displayed != target {
                 replace_pane_with_existing_pane(displayed, target, true);
@@ -149,8 +146,7 @@ impl State {
         }
 
         let file_to_open = FileToOpen::new(temp_path.clone());
-        let editor_pane_id =
-            open_file_in_place_of_plugin(file_to_open, false, BTreeMap::new());
+        let editor_pane_id = open_file_in_place_of_plugin(file_to_open, false, BTreeMap::new());
         self.editor_pane_id = editor_pane_id;
         self.editor_temp_file = Some(temp_path);
     }
@@ -216,10 +212,7 @@ impl State {
             if Some(&coordinates) != self.current_position.as_ref() {
                 self.current_position = Some(coordinates.clone());
                 repositioned = true;
-                change_floating_panes_coordinates(vec![(
-                    PaneId::Plugin(plugin_id),
-                    coordinates,
-                )]);
+                change_floating_panes_coordinates(vec![(PaneId::Plugin(plugin_id), coordinates)]);
             }
         });
         repositioned
