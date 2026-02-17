@@ -50,6 +50,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat: propagate plugin configuration changes to plugins (https://github.com/zellij-org/zellij/pull/4698)
 * feat: allow plugins to query env vars set upon session creation (gated behind a relevant permission) (https://github.com/zellij-org/zellij/pull/4700)
 * fix: make sure cache folders exist in all startup paths (https://github.com/zellij-org/zellij/pull/4705)
+* fix: off-by-1 in mouse events sent to plugins when clicking on a fullscreen pane (https://github.com/zellij-org/zellij/pull/4715)
 
 
 ## [0.43.1] - 2025-08-08
