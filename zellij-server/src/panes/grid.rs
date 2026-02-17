@@ -1746,6 +1746,7 @@ impl Grid {
     pub fn reset_terminal_state(&mut self) {
         self.lines_above = VecDeque::new();
         self.lines_below = vec![];
+        self.is_scrolled = false;
         self.viewport = vec![Row::new().canonical()];
         self.alternate_screen_state = None;
         self.cursor_key_mode = false;

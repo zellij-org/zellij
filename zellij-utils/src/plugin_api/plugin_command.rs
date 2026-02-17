@@ -56,12 +56,16 @@ pub use super::generated_api::api::{
         OpenCommandPaneFloatingNearPluginPayload,
         OpenCommandPaneFloatingNearPluginResponse as ProtobufOpenCommandPaneFloatingNearPluginResponse,
         OpenCommandPaneFloatingResponse as ProtobufOpenCommandPaneFloatingResponse,
+        OpenCommandPaneInPlaceOfPaneIdPayload,
+        OpenCommandPaneInPlaceOfPaneIdResponse as ProtobufOpenCommandPaneInPlaceOfPaneIdResponse,
         OpenCommandPaneInPlaceOfPluginPayload,
         OpenCommandPaneInPlaceOfPluginResponse as ProtobufOpenCommandPaneInPlaceOfPluginResponse,
         OpenCommandPaneInPlaceResponse as ProtobufOpenCommandPaneInPlaceResponse,
         OpenCommandPaneNearPluginPayload,
         OpenCommandPaneNearPluginResponse as ProtobufOpenCommandPaneNearPluginResponse,
         OpenCommandPanePayload, OpenCommandPaneResponse as ProtobufOpenCommandPaneResponse,
+        OpenEditPaneInPlaceOfPaneIdPayload,
+        OpenEditPaneInPlaceOfPaneIdResponse as ProtobufOpenEditPaneInPlaceOfPaneIdResponse,
         OpenFileFloatingNearPluginPayload,
         OpenFileFloatingNearPluginResponse as ProtobufOpenFileFloatingNearPluginResponse,
         OpenFileFloatingResponse as ProtobufOpenFileFloatingResponse,
@@ -69,7 +73,10 @@ pub use super::generated_api::api::{
         OpenFileInPlaceOfPluginResponse as ProtobufOpenFileInPlaceOfPluginResponse,
         OpenFileInPlaceResponse as ProtobufOpenFileInPlaceResponse, OpenFileNearPluginPayload,
         OpenFileNearPluginResponse as ProtobufOpenFileNearPluginResponse, OpenFilePayload,
-        OpenFileResponse as ProtobufOpenFileResponse, OpenTerminalFloatingNearPluginPayload,
+        OpenFileResponse as ProtobufOpenFileResponse,
+        OpenPaneInNewTabResponse as ProtobufOpenPaneInNewTabResponse,
+        OpenPluginPaneInNewTabPayload as ProtobufOpenPluginPaneInNewTabPayload,
+        OpenTerminalFloatingNearPluginPayload,
         OpenTerminalFloatingNearPluginResponse as ProtobufOpenTerminalFloatingNearPluginResponse,
         OpenTerminalFloatingResponse as ProtobufOpenTerminalFloatingResponse,
         OpenTerminalInPlaceOfPluginPayload,
@@ -77,6 +84,8 @@ pub use super::generated_api::api::{
         OpenTerminalInPlaceResponse as ProtobufOpenTerminalInPlaceResponse,
         OpenTerminalNearPluginPayload,
         OpenTerminalNearPluginResponse as ProtobufOpenTerminalNearPluginResponse,
+        OpenTerminalPaneInPlaceOfPaneIdPayload,
+        OpenTerminalPaneInPlaceOfPaneIdResponse as ProtobufOpenTerminalPaneInPlaceOfPaneIdResponse,
         OpenTerminalResponse as ProtobufOpenTerminalResponse, OverrideLayoutPayload,
         PageScrollDownInPaneIdPayload, PageScrollUpInPaneIdPayload, PaneId as ProtobufPaneId,
         PaneIdAndFloatingPaneCoordinates, PaneType as ProtobufPaneType, ParseLayoutPayload,
@@ -2269,6 +2278,129 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                     _ => Err("Mismatched payload for GetSessionEnvironmentVariables"),
                 }
             },
+            Some(CommandName::OpenCommandPaneInNewTab) => match protobuf_plugin_command.payload {
+                Some(Payload::OpenCommandPaneInNewTabPayload(payload)) => {
+                    match payload.command_to_run {
+                        Some(command_to_run) => {
+                            let context: BTreeMap<String, String> = payload
+                                .context
+                                .into_iter()
+                                .map(|e| (e.name, e.value))
+                                .collect();
+                            Ok(PluginCommand::OpenCommandPaneInNewTab(
+                                command_to_run.try_into()?,
+                                context,
+                            ))
+                        },
+                        None => Err("Malformed open_command_pane_in_new_tab payload"),
+                    }
+                },
+                _ => Err("Mismatched payload for OpenCommandPaneInNewTab"),
+            },
+            Some(CommandName::OpenPluginPaneInNewTab) => match protobuf_plugin_command.payload {
+                Some(Payload::OpenPluginPaneInNewTabPayload(payload)) => {
+                    let configuration: BTreeMap<String, String> =
+                        payload.configuration.into_iter().collect();
+                    let context: BTreeMap<String, String> = payload
+                        .context
+                        .into_iter()
+                        .map(|e| (e.name, e.value))
+                        .collect();
+                    Ok(PluginCommand::OpenPluginPaneInNewTab {
+                        plugin_url: payload.plugin_url,
+                        configuration,
+                        context,
+                    })
+                },
+                _ => Err("Mismatched payload for OpenPluginPaneInNewTab"),
+            },
+            Some(CommandName::OpenEditorPaneInNewTab) => match protobuf_plugin_command.payload {
+                Some(Payload::OpenEditorPaneInNewTabPayload(payload)) => {
+                    match payload.file_to_open {
+                        Some(file) => {
+                            let context: BTreeMap<String, String> = payload
+                                .context
+                                .into_iter()
+                                .map(|e| (e.name, e.value))
+                                .collect();
+                            Ok(PluginCommand::OpenEditorPaneInNewTab(
+                                file.try_into()?,
+                                context,
+                            ))
+                        },
+                        None => Err("Malformed open_editor_pane_in_new_tab payload"),
+                    }
+                },
+                _ => Err("Mismatched payload for OpenEditorPaneInNewTab"),
+            },
+            Some(CommandName::OpenCommandPaneInPlaceOfPaneId) => {
+                match protobuf_plugin_command.payload {
+                    Some(Payload::OpenCommandPaneInPlaceOfPaneIdPayload(payload)) => {
+                        match (payload.pane_id_to_replace, payload.command_to_run) {
+                            (Some(pane_id), Some(command_to_run)) => {
+                                let context: BTreeMap<String, String> = payload
+                                    .context
+                                    .into_iter()
+                                    .map(|e| (e.name, e.value))
+                                    .collect();
+                                Ok(PluginCommand::OpenCommandPaneInPlaceOfPaneId(
+                                    pane_id.try_into()?,
+                                    command_to_run.try_into()?,
+                                    payload.close_replaced_pane,
+                                    context,
+                                ))
+                            },
+                            _ => Err("Malformed open_command_pane_in_place_of_pane_id payload"),
+                        }
+                    },
+                    _ => Err("Mismatched payload for OpenCommandPaneInPlaceOfPaneId"),
+                }
+            },
+            Some(CommandName::OpenTerminalPaneInPlaceOfPaneId) => {
+                match protobuf_plugin_command.payload {
+                    Some(Payload::OpenTerminalPaneInPlaceOfPaneIdPayload(payload)) => {
+                        match payload.pane_id_to_replace {
+                            Some(pane_id) => {
+                                let cwd = payload.cwd.map(|f| f.try_into()).transpose()?;
+                                let cwd = cwd.unwrap_or_else(|| crate::data::FileToOpen {
+                                    path: std::path::PathBuf::from("."),
+                                    ..Default::default()
+                                });
+                                Ok(PluginCommand::OpenTerminalPaneInPlaceOfPaneId(
+                                    pane_id.try_into()?,
+                                    cwd,
+                                    payload.close_replaced_pane,
+                                ))
+                            },
+                            None => Err("Malformed open_terminal_pane_in_place_of_pane_id payload"),
+                        }
+                    },
+                    _ => Err("Mismatched payload for OpenTerminalPaneInPlaceOfPaneId"),
+                }
+            },
+            Some(CommandName::OpenEditPaneInPlaceOfPaneId) => {
+                match protobuf_plugin_command.payload {
+                    Some(Payload::OpenEditPaneInPlaceOfPaneIdPayload(payload)) => {
+                        match (payload.pane_id_to_replace, payload.file_to_open) {
+                            (Some(pane_id), Some(file_to_open)) => {
+                                let context: BTreeMap<String, String> = payload
+                                    .context
+                                    .into_iter()
+                                    .map(|e| (e.name, e.value))
+                                    .collect();
+                                Ok(PluginCommand::OpenEditPaneInPlaceOfPaneId(
+                                    pane_id.try_into()?,
+                                    file_to_open.try_into()?,
+                                    payload.close_replaced_pane,
+                                    context,
+                                ))
+                            },
+                            _ => Err("Malformed open_edit_pane_in_place_of_pane_id payload"),
+                        }
+                    },
+                    _ => Err("Mismatched payload for OpenEditPaneInPlaceOfPaneId"),
+                }
+            },
             None => Err("Unrecognized plugin command"),
         }
     }
@@ -3697,6 +3829,114 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     payload: Some(Payload::GetSessionEnvironmentVariablesPayload(payload)),
                 })
             },
+            PluginCommand::OpenCommandPaneInNewTab(command_to_run, context) => {
+                let context: Vec<_> = context
+                    .into_iter()
+                    .map(|(name, value)| ContextItem { name, value })
+                    .collect();
+                Ok(ProtobufPluginCommand {
+                    name: CommandName::OpenCommandPaneInNewTab as i32,
+                    payload: Some(Payload::OpenCommandPaneInNewTabPayload(
+                        OpenCommandPanePayload {
+                            command_to_run: Some(command_to_run.try_into()?),
+                            floating_pane_coordinates: None,
+                            context,
+                        },
+                    )),
+                })
+            },
+            PluginCommand::OpenPluginPaneInNewTab {
+                plugin_url,
+                configuration,
+                context,
+            } => {
+                let context: Vec<_> = context
+                    .into_iter()
+                    .map(|(name, value)| ContextItem { name, value })
+                    .collect();
+                let configuration: std::collections::HashMap<String, String> =
+                    configuration.into_iter().collect();
+                Ok(ProtobufPluginCommand {
+                    name: CommandName::OpenPluginPaneInNewTab as i32,
+                    payload: Some(Payload::OpenPluginPaneInNewTabPayload(
+                        ProtobufOpenPluginPaneInNewTabPayload {
+                            plugin_url,
+                            configuration,
+                            context,
+                        },
+                    )),
+                })
+            },
+            PluginCommand::OpenEditorPaneInNewTab(file_to_open, context) => {
+                let context: Vec<_> = context
+                    .into_iter()
+                    .map(|(name, value)| ContextItem { name, value })
+                    .collect();
+                Ok(ProtobufPluginCommand {
+                    name: CommandName::OpenEditorPaneInNewTab as i32,
+                    payload: Some(Payload::OpenEditorPaneInNewTabPayload(OpenFilePayload {
+                        file_to_open: Some(file_to_open.try_into()?),
+                        floating_pane_coordinates: None,
+                        context,
+                    })),
+                })
+            },
+            PluginCommand::OpenCommandPaneInPlaceOfPaneId(
+                pane_id,
+                command_to_run,
+                close_replaced_pane,
+                context,
+            ) => {
+                let context: Vec<_> = context
+                    .into_iter()
+                    .map(|(name, value)| ContextItem { name, value })
+                    .collect();
+                Ok(ProtobufPluginCommand {
+                    name: CommandName::OpenCommandPaneInPlaceOfPaneId as i32,
+                    payload: Some(Payload::OpenCommandPaneInPlaceOfPaneIdPayload(
+                        OpenCommandPaneInPlaceOfPaneIdPayload {
+                            pane_id_to_replace: Some(pane_id.try_into()?),
+                            command_to_run: Some(command_to_run.try_into()?),
+                            close_replaced_pane,
+                            context,
+                        },
+                    )),
+                })
+            },
+            PluginCommand::OpenTerminalPaneInPlaceOfPaneId(pane_id, cwd, close_replaced_pane) => {
+                Ok(ProtobufPluginCommand {
+                    name: CommandName::OpenTerminalPaneInPlaceOfPaneId as i32,
+                    payload: Some(Payload::OpenTerminalPaneInPlaceOfPaneIdPayload(
+                        OpenTerminalPaneInPlaceOfPaneIdPayload {
+                            pane_id_to_replace: Some(pane_id.try_into()?),
+                            cwd: Some(cwd.try_into()?),
+                            close_replaced_pane,
+                        },
+                    )),
+                })
+            },
+            PluginCommand::OpenEditPaneInPlaceOfPaneId(
+                pane_id,
+                file_to_open,
+                close_replaced_pane,
+                context,
+            ) => {
+                let context: Vec<_> = context
+                    .into_iter()
+                    .map(|(name, value)| ContextItem { name, value })
+                    .collect();
+                Ok(ProtobufPluginCommand {
+                    name: CommandName::OpenEditPaneInPlaceOfPaneId as i32,
+                    payload: Some(Payload::OpenEditPaneInPlaceOfPaneIdPayload(
+                        OpenEditPaneInPlaceOfPaneIdPayload {
+                            pane_id_to_replace: Some(pane_id.try_into()?),
+                            file_to_open: Some(file_to_open.try_into()?),
+                            close_replaced_pane,
+                            context,
+                        },
+                    )),
+                })
+            },
         }
     }
 }
@@ -3706,12 +3946,14 @@ use crate::data::{
     BreakPanesToNewTabResponse, BreakPanesToTabWithIdResponse, BreakPanesToTabWithIndexResponse,
     FocusOrCreateTabResponse, NewTabResponse, NewTabsResponse, OpenCommandPaneBackgroundResponse,
     OpenCommandPaneFloatingNearPluginResponse, OpenCommandPaneFloatingResponse,
-    OpenCommandPaneInPlaceOfPluginResponse, OpenCommandPaneInPlaceResponse,
-    OpenCommandPaneNearPluginResponse, OpenCommandPaneResponse, OpenFileFloatingNearPluginResponse,
+    OpenCommandPaneInPlaceOfPaneIdResponse, OpenCommandPaneInPlaceOfPluginResponse,
+    OpenCommandPaneInPlaceResponse, OpenCommandPaneNearPluginResponse, OpenCommandPaneResponse,
+    OpenEditPaneInPlaceOfPaneIdResponse, OpenFileFloatingNearPluginResponse,
     OpenFileFloatingResponse, OpenFileInPlaceOfPluginResponse, OpenFileInPlaceResponse,
-    OpenFileNearPluginResponse, OpenFileResponse, OpenTerminalFloatingNearPluginResponse,
-    OpenTerminalFloatingResponse, OpenTerminalInPlaceOfPluginResponse, OpenTerminalInPlaceResponse,
-    OpenTerminalNearPluginResponse, OpenTerminalResponse,
+    OpenFileNearPluginResponse, OpenFileResponse, OpenPaneInNewTabResponse,
+    OpenTerminalFloatingNearPluginResponse, OpenTerminalFloatingResponse,
+    OpenTerminalInPlaceOfPluginResponse, OpenTerminalInPlaceResponse,
+    OpenTerminalNearPluginResponse, OpenTerminalPaneInPlaceOfPaneIdResponse, OpenTerminalResponse,
 };
 
 impl TryFrom<ProtobufNewTabResponse> for NewTabResponse {
@@ -3823,6 +4065,16 @@ impl From<BreakPanesToTabWithIndexResponse> for ProtobufBreakPanesToTabWithIndex
             None => ProtobufBreakPanesToTabWithIndexResponse {
                 result: Some(break_panes_to_tab_with_index_response::Result::None(true)),
             },
+        }
+    }
+}
+
+impl TryFrom<ProtobufBreakPanesToTabWithIdResponse> for BreakPanesToTabWithIdResponse {
+    type Error = &'static str;
+    fn try_from(protobuf: ProtobufBreakPanesToTabWithIdResponse) -> Result<Self, Self::Error> {
+        match protobuf.result {
+            Some(break_panes_to_tab_with_id_response::Result::TabId(id)) => Ok(Some(id as usize)),
+            Some(break_panes_to_tab_with_id_response::Result::None(_)) | None => Ok(None),
         }
     }
 }
@@ -4201,6 +4453,95 @@ impl TryFrom<ProtobufOpenCommandPaneBackgroundResponse> for OpenCommandPaneBackg
 impl From<OpenCommandPaneBackgroundResponse> for ProtobufOpenCommandPaneBackgroundResponse {
     fn from(response: OpenCommandPaneBackgroundResponse) -> Self {
         ProtobufOpenCommandPaneBackgroundResponse {
+            pane_id: response.map(|p| p.try_into().unwrap()),
+        }
+    }
+}
+
+impl TryFrom<ProtobufOpenPaneInNewTabResponse> for OpenPaneInNewTabResponse {
+    type Error = &'static str;
+    fn try_from(protobuf: ProtobufOpenPaneInNewTabResponse) -> Result<Self, Self::Error> {
+        let tab_id = protobuf.tab_id.map(|id| id as usize);
+        let pane_id = match protobuf.pane_id {
+            Some(pane_id) => Some(pane_id.try_into()?),
+            None => None,
+        };
+        Ok(OpenPaneInNewTabResponse { tab_id, pane_id })
+    }
+}
+
+impl From<OpenPaneInNewTabResponse> for ProtobufOpenPaneInNewTabResponse {
+    fn from(response: OpenPaneInNewTabResponse) -> Self {
+        ProtobufOpenPaneInNewTabResponse {
+            tab_id: response.tab_id.map(|id| id as u64),
+            pane_id: response.pane_id.map(|p| p.try_into().unwrap()),
+        }
+    }
+}
+
+impl TryFrom<ProtobufOpenCommandPaneInPlaceOfPaneIdResponse>
+    for OpenCommandPaneInPlaceOfPaneIdResponse
+{
+    type Error = &'static str;
+    fn try_from(
+        protobuf: ProtobufOpenCommandPaneInPlaceOfPaneIdResponse,
+    ) -> Result<Self, Self::Error> {
+        match protobuf.pane_id {
+            Some(pane_id) => Ok(Some(pane_id.try_into()?)),
+            None => Ok(None),
+        }
+    }
+}
+
+impl From<OpenCommandPaneInPlaceOfPaneIdResponse>
+    for ProtobufOpenCommandPaneInPlaceOfPaneIdResponse
+{
+    fn from(response: OpenCommandPaneInPlaceOfPaneIdResponse) -> Self {
+        ProtobufOpenCommandPaneInPlaceOfPaneIdResponse {
+            pane_id: response.map(|p| p.try_into().unwrap()),
+        }
+    }
+}
+
+impl TryFrom<ProtobufOpenTerminalPaneInPlaceOfPaneIdResponse>
+    for OpenTerminalPaneInPlaceOfPaneIdResponse
+{
+    type Error = &'static str;
+    fn try_from(
+        protobuf: ProtobufOpenTerminalPaneInPlaceOfPaneIdResponse,
+    ) -> Result<Self, Self::Error> {
+        match protobuf.pane_id {
+            Some(pane_id) => Ok(Some(pane_id.try_into()?)),
+            None => Ok(None),
+        }
+    }
+}
+
+impl From<OpenTerminalPaneInPlaceOfPaneIdResponse>
+    for ProtobufOpenTerminalPaneInPlaceOfPaneIdResponse
+{
+    fn from(response: OpenTerminalPaneInPlaceOfPaneIdResponse) -> Self {
+        ProtobufOpenTerminalPaneInPlaceOfPaneIdResponse {
+            pane_id: response.map(|p| p.try_into().unwrap()),
+        }
+    }
+}
+
+impl TryFrom<ProtobufOpenEditPaneInPlaceOfPaneIdResponse> for OpenEditPaneInPlaceOfPaneIdResponse {
+    type Error = &'static str;
+    fn try_from(
+        protobuf: ProtobufOpenEditPaneInPlaceOfPaneIdResponse,
+    ) -> Result<Self, Self::Error> {
+        match protobuf.pane_id {
+            Some(pane_id) => Ok(Some(pane_id.try_into()?)),
+            None => Ok(None),
+        }
+    }
+}
+
+impl From<OpenEditPaneInPlaceOfPaneIdResponse> for ProtobufOpenEditPaneInPlaceOfPaneIdResponse {
+    fn from(response: OpenEditPaneInPlaceOfPaneIdResponse) -> Self {
+        ProtobufOpenEditPaneInPlaceOfPaneIdResponse {
             pane_id: response.map(|p| p.try_into().unwrap()),
         }
     }

@@ -14,26 +14,27 @@ use zellij_utils::plugin_api::plugin_command::{
     dump_layout_response, dump_session_layout_response, get_focused_pane_info_response,
     get_pane_cwd_response, get_pane_running_command_response, parse_layout_response,
     CreateTokenResponse, ListTokensResponse, ProtobufBreakPanesToNewTabResponse,
-    ProtobufBreakPanesToTabWithIndexResponse, ProtobufCurrentSessionLastSavedTimeResponse,
-    ProtobufDeleteLayoutResponse, ProtobufDumpLayoutResponse, ProtobufDumpSessionLayoutResponse,
-    ProtobufEditLayoutResponse, ProtobufFocusOrCreateTabResponse,
-    ProtobufGenerateRandomNameResponse, ProtobufGetFocusedPaneInfoResponse,
-    ProtobufGetLayoutDirResponse, ProtobufGetPaneCwdResponse, ProtobufGetPaneInfoResponse,
-    ProtobufGetPanePidResponse, ProtobufGetPaneRunningCommandResponse,
+    ProtobufBreakPanesToTabWithIdResponse, ProtobufBreakPanesToTabWithIndexResponse,
+    ProtobufCurrentSessionLastSavedTimeResponse, ProtobufDeleteLayoutResponse,
+    ProtobufDumpLayoutResponse, ProtobufDumpSessionLayoutResponse, ProtobufEditLayoutResponse,
+    ProtobufFocusOrCreateTabResponse, ProtobufGenerateRandomNameResponse,
+    ProtobufGetFocusedPaneInfoResponse, ProtobufGetLayoutDirResponse, ProtobufGetPaneCwdResponse,
+    ProtobufGetPaneInfoResponse, ProtobufGetPanePidResponse, ProtobufGetPaneRunningCommandResponse,
     ProtobufGetSessionEnvironmentVariablesResponse, ProtobufGetTabInfoResponse,
     ProtobufNewTabResponse, ProtobufNewTabsResponse, ProtobufOpenCommandPaneBackgroundResponse,
     ProtobufOpenCommandPaneFloatingNearPluginResponse, ProtobufOpenCommandPaneFloatingResponse,
-    ProtobufOpenCommandPaneInPlaceOfPluginResponse, ProtobufOpenCommandPaneInPlaceResponse,
-    ProtobufOpenCommandPaneNearPluginResponse, ProtobufOpenCommandPaneResponse,
+    ProtobufOpenCommandPaneInPlaceOfPaneIdResponse, ProtobufOpenCommandPaneInPlaceOfPluginResponse,
+    ProtobufOpenCommandPaneInPlaceResponse, ProtobufOpenCommandPaneNearPluginResponse,
+    ProtobufOpenCommandPaneResponse, ProtobufOpenEditPaneInPlaceOfPaneIdResponse,
     ProtobufOpenFileFloatingNearPluginResponse, ProtobufOpenFileFloatingResponse,
     ProtobufOpenFileInPlaceOfPluginResponse, ProtobufOpenFileInPlaceResponse,
-    ProtobufOpenFileNearPluginResponse, ProtobufOpenFileResponse,
+    ProtobufOpenFileNearPluginResponse, ProtobufOpenFileResponse, ProtobufOpenPaneInNewTabResponse,
     ProtobufOpenTerminalFloatingNearPluginResponse, ProtobufOpenTerminalFloatingResponse,
     ProtobufOpenTerminalInPlaceOfPluginResponse, ProtobufOpenTerminalInPlaceResponse,
-    ProtobufOpenTerminalNearPluginResponse, ProtobufOpenTerminalResponse,
-    ProtobufParseLayoutResponse, ProtobufPluginCommand, ProtobufRenameLayoutResponse,
-    ProtobufSaveLayoutResponse, ProtobufSaveSessionResponse, RenameWebTokenResponse,
-    RevokeAllWebTokensResponse, RevokeTokenResponse,
+    ProtobufOpenTerminalNearPluginResponse, ProtobufOpenTerminalPaneInPlaceOfPaneIdResponse,
+    ProtobufOpenTerminalResponse, ProtobufParseLayoutResponse, ProtobufPluginCommand,
+    ProtobufRenameLayoutResponse, ProtobufSaveLayoutResponse, ProtobufSaveSessionResponse,
+    RenameWebTokenResponse, RevokeAllWebTokensResponse, RevokeTokenResponse,
 };
 use zellij_utils::plugin_api::plugin_ids::{ProtobufPluginIds, ProtobufZellijVersion};
 
@@ -692,6 +693,89 @@ pub fn open_command_pane_in_place_of_plugin(
     OpenCommandPaneInPlaceOfPluginResponse::try_from(response).unwrap()
 }
 
+/// Opens a command pane in place of the pane identified by `pane_id`.
+/// Unlike `open_command_pane_in_place`, this targets an arbitrary pane by ID rather than the
+/// focused pane, and does not change focus. If `close_replaced_pane` is false, the replaced
+/// pane is suppressed and restored when the new pane closes; if true, it is permanently closed.
+/// Returns the `PaneId` of the newly opened pane, or `None` if the operation failed.
+pub fn open_command_pane_in_place_of_pane_id(
+    pane_id: PaneId,
+    command_to_run: CommandToRun,
+    close_replaced_pane: bool,
+    context: BTreeMap<String, String>,
+) -> Option<PaneId> {
+    let plugin_command = PluginCommand::OpenCommandPaneInPlaceOfPaneId(
+        pane_id,
+        command_to_run,
+        close_replaced_pane,
+        context,
+    );
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+
+    let response = ProtobufOpenCommandPaneInPlaceOfPaneIdResponse::decode(
+        bytes_from_stdin().unwrap().as_slice(),
+    )
+    .unwrap();
+    OpenCommandPaneInPlaceOfPaneIdResponse::try_from(response).unwrap()
+}
+
+/// Opens a terminal pane in place of the pane identified by `pane_id`.
+/// Unlike `open_terminal_in_place`, this targets an arbitrary pane by ID rather than the
+/// focused pane, and does not change focus. If `close_replaced_pane` is false, the replaced
+/// pane is suppressed and restored when the new pane closes; if true, it is permanently closed.
+/// `cwd` sets the working directory for the new terminal. Returns the `PaneId` of the newly
+/// opened pane, or `None` if the operation failed.
+pub fn open_terminal_pane_in_place_of_pane_id<P: AsRef<Path>>(
+    pane_id: PaneId,
+    cwd: P,
+    close_replaced_pane: bool,
+) -> Option<PaneId> {
+    let file_to_open = FileToOpen {
+        path: cwd.as_ref().to_path_buf(),
+        ..Default::default()
+    };
+    let plugin_command =
+        PluginCommand::OpenTerminalPaneInPlaceOfPaneId(pane_id, file_to_open, close_replaced_pane);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+
+    let response = ProtobufOpenTerminalPaneInPlaceOfPaneIdResponse::decode(
+        bytes_from_stdin().unwrap().as_slice(),
+    )
+    .unwrap();
+    OpenTerminalPaneInPlaceOfPaneIdResponse::try_from(response).unwrap()
+}
+
+/// Opens an editor pane in place of the pane identified by `pane_id`.
+/// Unlike `open_file_in_place`, this targets an arbitrary pane by ID rather than the
+/// focused pane, and does not change focus. If `close_replaced_pane` is false, the replaced
+/// pane is suppressed and restored when the new pane closes; if true, it is permanently closed.
+/// Returns the `PaneId` of the newly opened pane, or `None` if the operation failed.
+pub fn open_edit_pane_in_place_of_pane_id(
+    pane_id: PaneId,
+    file_to_open: FileToOpen,
+    close_replaced_pane: bool,
+    context: BTreeMap<String, String>,
+) -> Option<PaneId> {
+    let plugin_command = PluginCommand::OpenEditPaneInPlaceOfPaneId(
+        pane_id,
+        file_to_open,
+        close_replaced_pane,
+        context,
+    );
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+
+    let response =
+        ProtobufOpenEditPaneInPlaceOfPaneIdResponse::decode(bytes_from_stdin().unwrap().as_slice())
+            .unwrap();
+    OpenEditPaneInPlaceOfPaneIdResponse::try_from(response).unwrap()
+}
+
 /// Open a new hidden (background) command pane with the specified command and args (this sort of pane allows the user to control the command, re-run it and see its exit status through the Zellij UI).
 pub fn open_command_pane_background(
     command_to_run: CommandToRun,
@@ -869,6 +953,63 @@ where
 
     let response = ProtobufNewTabResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
     NewTabResponse::try_from(response).unwrap()
+}
+
+/// Opens a new tab with a command pane running `command_to_run`.
+/// Returns `(tab_id, pane_id)` of the created tab and pane, or `None` if unavailable.
+pub fn open_command_pane_in_new_tab(
+    command_to_run: CommandToRun,
+    context: BTreeMap<String, String>,
+) -> (Option<usize>, Option<PaneId>) {
+    let plugin_command = PluginCommand::OpenCommandPaneInNewTab(command_to_run, context);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+
+    let response =
+        ProtobufOpenPaneInNewTabResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
+    let result = OpenPaneInNewTabResponse::try_from(response).unwrap();
+    (result.tab_id, result.pane_id)
+}
+
+/// Opens a new tab with a plugin pane loaded from `plugin_url`.
+/// `plugin_url` can be a path (`file:/path/to/plugin.wasm`) or a named alias.
+/// Returns `(tab_id, pane_id)` of the created tab and pane.
+pub fn open_plugin_pane_in_new_tab(
+    plugin_url: impl ToString,
+    configuration: BTreeMap<String, String>,
+    context: BTreeMap<String, String>,
+) -> (Option<usize>, Option<PaneId>) {
+    let plugin_command = PluginCommand::OpenPluginPaneInNewTab {
+        plugin_url: plugin_url.to_string(),
+        configuration,
+        context,
+    };
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+
+    let response =
+        ProtobufOpenPaneInNewTabResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
+    let result = OpenPaneInNewTabResponse::try_from(response).unwrap();
+    (result.tab_id, result.pane_id)
+}
+
+/// Opens a new tab with an editor pane for `file_to_open`.
+/// Returns `(tab_id, pane_id)` of the created tab and pane.
+pub fn open_editor_pane_in_new_tab(
+    file_to_open: FileToOpen,
+    context: BTreeMap<String, String>,
+) -> (Option<usize>, Option<PaneId>) {
+    let plugin_command = PluginCommand::OpenEditorPaneInNewTab(file_to_open, context);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+
+    let response =
+        ProtobufOpenPaneInNewTabResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
+    let result = OpenPaneInNewTabResponse::try_from(response).unwrap();
+    (result.tab_id, result.pane_id)
 }
 
 /// Change focus to the next tab or loop back to the first
@@ -1272,6 +1413,17 @@ where
     S: ToString,
 {
     let plugin_command = PluginCommand::RenameTab(tab_position, new_name.to_string());
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+/// Changes the name (the title that appears in the UI) of the tab with the specified id.
+pub fn rename_tab_with_id<S: AsRef<str>>(tab_id: u64, new_name: S)
+where
+    S: ToString,
+{
+    let plugin_command = PluginCommand::RenameTabWithId(tab_id, new_name.to_string());
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
@@ -2048,6 +2200,18 @@ pub fn close_tab_with_index(tab_index: usize) {
     unsafe { host_run_plugin_command() };
 }
 
+/// Close the tab with the given stable ID.
+///
+/// Unlike `close_tab_with_index`, this function identifies the tab by its stable
+/// `tab_id` rather than its display position, which may change as tabs are moved
+/// or closed. The tab_id can be obtained from `TabInfo.tab_id`.
+pub fn close_tab_with_id(tab_id: u64) {
+    let plugin_command = PluginCommand::CloseTabWithId(tab_id);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 /// Rename the specified pane
 pub fn rename_pane_with_id<S: AsRef<str>>(pane_id: PaneId, new_name: S)
 where
@@ -2105,6 +2269,27 @@ pub fn break_panes_to_tab_with_index(
         ProtobufBreakPanesToTabWithIndexResponse::decode(bytes_from_stdin().unwrap().as_slice())
             .unwrap();
     BreakPanesToTabWithIndexResponse::try_from(response).unwrap()
+}
+
+/// Move the pane ids to the tab with the specified id
+pub fn break_panes_to_tab_with_id(
+    pane_ids: &[PaneId],
+    tab_id: usize,
+    should_change_focus_to_target_tab: bool,
+) -> Option<usize> {
+    let plugin_command = PluginCommand::BreakPanesToTabWithId(
+        pane_ids.to_vec(),
+        tab_id as u64,
+        should_change_focus_to_target_tab,
+    );
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+
+    let response =
+        ProtobufBreakPanesToTabWithIdResponse::decode(bytes_from_stdin().unwrap().as_slice())
+            .unwrap();
+    BreakPanesToTabWithIdResponse::try_from(response).unwrap()
 }
 
 /// Reload an already-running in this session, optionally skipping the cache

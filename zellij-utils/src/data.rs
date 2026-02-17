@@ -54,6 +54,7 @@ impl UnblockCondition {
 pub enum CommandOrPlugin {
     Command(RunCommandAction),
     Plugin(RunPluginOrAlias),
+    File(FileToOpen), // open file in configured editor
 }
 
 impl CommandOrPlugin {
@@ -2622,7 +2623,7 @@ pub enum PermissionStatus {
     Denied,
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FileToOpen {
     pub path: PathBuf,
     pub line_number: Option<usize>,
@@ -3450,6 +3451,23 @@ pub enum PluginCommand {
     GetPaneInfo(PaneId),
     GetTabInfo(usize), // tab_id
     GetSessionEnvironmentVariables,
+    OpenCommandPaneInNewTab(CommandToRun, Context),
+    OpenPluginPaneInNewTab {
+        plugin_url: String,
+        configuration: BTreeMap<String, String>,
+        context: Context,
+    },
+    OpenEditorPaneInNewTab(FileToOpen, Context),
+    OpenCommandPaneInPlaceOfPaneId(PaneId, CommandToRun, bool, Context), // bool = close_replaced_pane
+    OpenTerminalPaneInPlaceOfPaneId(PaneId, FileToOpen, bool),
+    OpenEditPaneInPlaceOfPaneId(PaneId, FileToOpen, bool, Context),
+}
+
+// Response type for plugin API methods that open a pane in a new tab
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct OpenPaneInNewTabResponse {
+    pub tab_id: Option<usize>,
+    pub pane_id: Option<PaneId>,
 }
 
 // Response types for plugin API methods that create tabs
@@ -3482,3 +3500,6 @@ pub type OpenCommandPaneNearPluginResponse = Option<PaneId>;
 pub type OpenCommandPaneFloatingNearPluginResponse = Option<PaneId>;
 pub type OpenCommandPaneInPlaceOfPluginResponse = Option<PaneId>;
 pub type OpenCommandPaneBackgroundResponse = Option<PaneId>;
+pub type OpenCommandPaneInPlaceOfPaneIdResponse = Option<PaneId>;
+pub type OpenTerminalPaneInPlaceOfPaneIdResponse = Option<PaneId>;
+pub type OpenEditPaneInPlaceOfPaneIdResponse = Option<PaneId>;
