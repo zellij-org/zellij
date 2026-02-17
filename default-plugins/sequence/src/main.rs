@@ -5,7 +5,7 @@ mod ui;
 use crate::state::CommandStatus;
 use crate::ui::components;
 use crate::ui::layout_calculations::calculate_viewport;
-use state::{load_from_editor_file, ChainType, CommandEntry, SequenceMode, State};
+use state::{parse_commands, ChainType, CommandEntry, SequenceMode, State};
 use zellij_tile::prelude::*;
 
 use std::collections::BTreeMap;
@@ -66,7 +66,7 @@ impl ZellijPlugin for State {
             return false;
         }
 
-        self.load_from_pipe(&payload, None);
+        self.load_commands(&payload, None);
 
         // Handle blocking: keep CLI alive until sequence finishes
         if pipe_message.args.get("blocking").map(|v| v == "true").unwrap_or(false) {
@@ -229,7 +229,7 @@ pub fn handle_event(state: &mut State, event: Event) -> bool {
             if payload.is_empty() {
                 return false;
             }
-            state.load_from_pipe(&payload, None);
+            state.load_commands(&payload, None);
             let repositioned = state.reposition_plugin();
             !repositioned
         },
@@ -341,7 +341,7 @@ fn handle_editor_pane_exited(state: &mut State, terminal_pane_id: u32) -> bool {
     state.editor_temp_file = None;
 
     // Parse file into commands
-    let commands = load_from_editor_file(&contents, state.cwd.clone());
+    let commands = parse_commands(&contents, state.cwd.clone());
 
     if !commands.is_empty() {
         state.execution.all_commands = commands;

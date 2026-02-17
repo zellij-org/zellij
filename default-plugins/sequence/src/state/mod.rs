@@ -10,7 +10,7 @@ mod sequence_mode;
 pub use chain_type::ChainType;
 pub use command_entry::CommandEntry;
 pub use command_parser::{
-    load_from_editor_file, serialize_sequence_to_editor, split_by_chain_operators,
+    parse_commands, serialize_sequence_to_editor,
 };
 pub use command_status::CommandStatus;
 pub use execution::Execution;
@@ -104,40 +104,12 @@ impl State {
         self.execution.current_running_command_index = 0;
     }
 
-    pub fn load_from_pipe(&mut self, command_string: &str, cwd_override: Option<PathBuf>) {
+    pub fn load_commands(&mut self, command_string: &str, cwd_override: Option<PathBuf>) {
         let effective_cwd = cwd_override.or_else(|| self.cwd.clone());
-
-        let mut commands: Vec<CommandEntry> = command_string
-            .lines()
-            .flat_map(|line| {
-                let trimmed = line.trim();
-                if trimmed.is_empty() || trimmed.starts_with('#') {
-                    return vec![];
-                }
-                split_by_chain_operators(trimmed)
-                    .into_iter()
-                    .filter(|(text, _)| !text.trim().is_empty())
-                    .map(|(text, chain_type_opt)| {
-                        let mut entry = CommandEntry::new(&text, effective_cwd.clone());
-                        if let Some(chain_type) = chain_type_opt {
-                            entry.set_chain_type(chain_type);
-                        }
-                        entry
-                    })
-                    .collect()
-            })
-            .collect();
-
+        let commands = parse_commands(command_string, effective_cwd);
         if commands.is_empty() {
             return;
         }
-
-        // Commands with no explicit operator default to &&
-        let last_idx = commands.len() - 1;
-        for cmd in &mut commands[..last_idx] {
-            cmd.fill_chain_type_if_empty();
-        }
-
         self.execution.all_commands = commands;
         self.execution.current_running_command_index = 0;
         self.selection.current_selected_command_index = None;

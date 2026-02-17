@@ -154,10 +154,10 @@ pub fn serialize_sequence_to_editor(commands: &[CommandEntry]) -> String {
     result
 }
 
-/// Parse editor file contents back into a Vec<CommandEntry>.
+/// Parse command text into a Vec<CommandEntry>.
 /// `cd <path>` lines set the cwd for subsequent commands.
 /// Blank lines and `#` comment lines are ignored.
-pub fn load_from_editor_file(
+pub fn parse_commands(
     contents: &str,
     initial_cwd: Option<std::path::PathBuf>,
 ) -> Vec<CommandEntry> {
@@ -340,7 +340,7 @@ mod tests {
     #[test]
     fn test_editor_file_no_operator_defaults_to_and() {
         let contents = "cmd1\ncmd2\ncmd3";
-        let result = load_from_editor_file(contents, None);
+        let result = parse_commands(contents, None);
         assert_eq!(result.len(), 3);
         assert_eq!(result[0].get_chain_type(), ChainType::And);
         assert_eq!(result[1].get_chain_type(), ChainType::And);
@@ -350,7 +350,7 @@ mod tests {
     #[test]
     fn test_editor_file_explicit_operator_preserved() {
         let contents = "cmd1 ||\ncmd2";
-        let result = load_from_editor_file(contents, None);
+        let result = parse_commands(contents, None);
         assert_eq!(result.len(), 2);
         assert_eq!(result[0].get_chain_type(), ChainType::Or);
         assert_eq!(result[1].get_chain_type(), ChainType::None);
@@ -362,7 +362,7 @@ mod tests {
         use std::path::PathBuf;
 
         let contents = "cd /some/path && cargo build";
-        let result = load_from_editor_file(contents, None);
+        let result = parse_commands(contents, None);
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].get_text(), "cargo build");
         assert_eq!(result[0].get_cwd(), Some(PathBuf::from("/some/path")));
