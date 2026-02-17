@@ -101,7 +101,8 @@ impl ZellijPlugin for State {
 
         let is_staging = self.all_commands_are_pending() && self.execution.can_run_sequence();
 
-        let max_visible_rows = rows.saturating_sub(5);
+        // Reserve: 1 header above + 1 padding-to-controls + 1 controls + 1 below/ribbon
+        let max_visible_rows = rows.saturating_sub(4);
 
         let (offset, visible_count, hidden_above, hidden_below) = calculate_viewport(
             self.execution.all_commands.len(),
@@ -132,8 +133,8 @@ impl ZellijPlugin for State {
                 max_status_w,
             )
             .min(cols);
-            // header + commands + gap + help + gap + ribbon = visible_count + 5
-            let content_height = visible_count + 5;
+            // header + commands + gap + help + ribbon/below = visible_count + 4
+            let content_height = visible_count + 4;
             let bx = cols.saturating_sub(content_width) / 2;
             let by = rows.saturating_sub(content_height) / 2;
             (bx, by, Some(content_width))
@@ -178,7 +179,7 @@ impl ZellijPlugin for State {
 
         // Mode ribbon: "<Tab> [Single Pane] [Spread]" — only while running
         if self.execution.is_running {
-            let ribbon_y = help_y + 2;
+            let ribbon_y = help_y + 1;
             print_text_with_coordinates(
                 Text::new("<Tab>").color_all(3),
                 base_x,
@@ -372,12 +373,13 @@ fn launch_command_at_index(
     force_visible: bool,
 ) {
     let cmd = &state.execution.all_commands[index];
+    let cmd_text = cmd.get_text().trim().to_string();
     let command = CommandToRun {
         path: state
             .shell
             .clone()
             .unwrap_or_else(|| PathBuf::from("/bin/bash")),
-        args: vec!["-ic".to_string(), cmd.get_text().trim().to_string()],
+        args: vec!["-ic".to_string(), cmd_text.clone()],
         cwd: cmd.get_cwd(),
     };
     let user_is_watching =
@@ -408,6 +410,7 @@ fn launch_command_at_index(
         open_command_pane_background(command, BTreeMap::new())
     };
     if let Some(pane_id) = new_pane_id {
+        rename_pane_with_id(pane_id, &cmd_text);
         state.execution.all_commands[index].set_status(CommandStatus::Running(Some(pane_id)));
         state.execution.current_running_command_index = index;
         state.selection.current_selected_command_index = Some(index);
