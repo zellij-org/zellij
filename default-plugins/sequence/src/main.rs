@@ -547,14 +547,6 @@ fn rerun_sequence(state: &mut State) {
         .unwrap_or(0)
         .min(state.execution.all_commands.len().saturating_sub(1));
 
-    // Close and reset commands after selected
-    for i in (selected_index + 1)..state.execution.all_commands.len() {
-        if let Some(pane_id) = state.execution.all_commands[i].get_pane_id() {
-            close_pane_with_id(pane_id);
-        }
-        state.execution.all_commands[i].set_status(CommandStatus::Pending);
-    }
-
     state.execution.is_running = true;
     state.execution.current_running_command_index = selected_index;
     ensure_spinner_running(state);
@@ -562,6 +554,9 @@ fn rerun_sequence(state: &mut State) {
         Some(PaneId::Terminal(id)) => {
             let pane_id = PaneId::Terminal(id);
 
+            // Replace the displayed pane with the starting pane first, while
+            // displayed_pane_id is still valid. The replaced pane is suppressed
+            // and can then be closed safely below.
             if state.mode == SequenceMode::SinglePane {
                 if let Some(displayed) = state.execution.displayed_pane_id {
                     if displayed != pane_id {
@@ -570,12 +565,28 @@ fn rerun_sequence(state: &mut State) {
                 }
                 state.execution.displayed_pane_id = Some(pane_id);
             }
+
+            // Close and reset commands after selected (now suppressed).
+            for i in (selected_index + 1)..state.execution.all_commands.len() {
+                if let Some(p) = state.execution.all_commands[i].get_pane_id() {
+                    close_pane_with_id(p);
+                }
+                state.execution.all_commands[i].set_status(CommandStatus::Pending);
+            }
+
             state.execution.all_commands[selected_index]
                 .set_status(CommandStatus::Running(Some(pane_id)));
             state.selection.current_selected_command_index = Some(selected_index);
             rerun_command_pane(id);
         },
         _ => {
+            // Close and reset commands after selected.
+            for i in (selected_index + 1)..state.execution.all_commands.len() {
+                if let Some(p) = state.execution.all_commands[i].get_pane_id() {
+                    close_pane_with_id(p);
+                }
+                state.execution.all_commands[i].set_status(CommandStatus::Pending);
+            }
             let replace_pane_id = state.execution.displayed_pane_id;
             launch_command_at_index(state, selected_index, replace_pane_id, true);
         },

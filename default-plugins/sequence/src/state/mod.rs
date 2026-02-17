@@ -85,9 +85,6 @@ impl State {
                 replace_pane_with_existing_pane(displayed, target, true);
                 self.execution.displayed_pane_id = Some(target);
             }
-        } else if let Some(target) = target_pane_id {
-            replace_pane_with_existing_pane(target, target, false);
-            self.execution.displayed_pane_id = Some(target);
         }
     }
 
