@@ -1586,12 +1586,14 @@ impl Grid {
             if current_line_index == scroll_region_top {
                 // if we're at the top line, we create a new line and remove the last line that
                 // would otherwise overflow
-                if scroll_region_bottom < self.viewport.len() {
+                if !self.lines_above.is_empty() && self.viewport.len() == self.height {
+                    self.scroll_up_one_line();
+                } else if scroll_region_bottom < self.viewport.len() {
                     self.viewport.remove(scroll_region_bottom);
+                    self.viewport
+                        .insert(current_line_index, Row::new().canonical());
                 }
 
-                self.viewport
-                    .insert(current_line_index, Row::new().canonical());
             } else if current_line_index > scroll_region_top
                 && current_line_index <= scroll_region_bottom
             {
@@ -2809,21 +2811,20 @@ impl Perform for Grid {
             self.move_cursor_forward_until_edge(move_by);
         } else if c == 'K' {
             // clear line (0 => right, 1 => left, 2 => all)
-            if let Some(clear_type) = params_iter.next().map(|param| param[0]) {
-                let mut char_to_replace = EMPTY_TERMINAL_CHARACTER;
-                if let Some(background_color) = self.cursor.pending_styles.background {
-                    char_to_replace
-                        .styles
-                        .update(|styles| styles.background = Some(background_color));
-                }
-                if clear_type == 0 {
-                    self.replace_characters_in_line_after_cursor(char_to_replace);
-                } else if clear_type == 1 {
-                    self.replace_characters_in_line_before_cursor(char_to_replace);
-                } else if clear_type == 2 {
-                    self.clear_cursor_line();
-                }
-            };
+            let clear_type = params_iter.next().map(|param| param[0]).unwrap_or(0);
+            let mut char_to_replace = EMPTY_TERMINAL_CHARACTER;
+            if let Some(background_color) = self.cursor.pending_styles.background {
+                char_to_replace
+                    .styles
+                    .update(|styles| styles.background = Some(background_color));
+            }
+            if clear_type == 0 {
+                self.replace_characters_in_line_after_cursor(char_to_replace);
+            } else if clear_type == 1 {
+                self.replace_characters_in_line_before_cursor(char_to_replace);
+            } else if clear_type == 2 {
+                self.clear_cursor_line();
+            }
         } else if c == 'J' {
             // clear all (0 => below, 1 => above, 2 => all, 3 => saved)
             let mut char_to_replace = EMPTY_TERMINAL_CHARACTER;
@@ -3444,7 +3445,6 @@ impl Perform for Grid {
                 self.move_cursor_to_beginning_of_line();
             },
             (b'M', None) => {
-                // TODO: if cursor is at the top, it should go down one
                 self.move_cursor_up_with_scrolling(1);
             },
             (b'c', None) => {
