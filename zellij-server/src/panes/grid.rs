@@ -305,8 +305,9 @@ macro_rules! dump_screen_with_ansi {
                 .columns
                 .iter()
                 .rposition(|tc| {
-                    tc.character != ' '
-                        || !matches!(tc.styles.background, Some(AnsiCode::Reset) | None)
+                    let space = tc.character == ' ';
+                    let styled = !matches!(tc.styles.background, Some(AnsiCode::Reset) | None);
+                    !space || styled // it's, something drawable
                 })
                 .map(|i| i + 1)
                 .unwrap_or(0);
