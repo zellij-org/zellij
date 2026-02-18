@@ -740,7 +740,7 @@ impl Grid {
     }
     pub fn scroll_down_one_line(&mut self) -> bool {
         let mut found_something = false;
-        if !self.lines_below.is_empty() && self.viewport.len() == self.height {
+        if !self.lines_below.is_empty() && self.viewport.len() == self.height && !self.viewport.is_empty() {
             let mut line_to_push_up = self.viewport.remove(0);
 
             self.scrollback_buffer_lines +=
@@ -1333,14 +1333,16 @@ impl Grid {
             if scroll_region_bottom == self.height.saturating_sub(1) && scroll_region_top == 0 {
                 if self.alternate_screen_state.is_none() {
                     self.transfer_rows_to_lines_above(1);
-                } else {
+                } else if !self.viewport.is_empty() {
                     self.viewport.remove(0);
                 }
 
                 self.viewport.push(Row::new().canonical());
                 self.selection.move_up(1);
             } else {
-                self.viewport.remove(scroll_region_top);
+                if scroll_region_top < self.viewport.len() {
+                    self.viewport.remove(scroll_region_top);
+                }
                 if self.viewport.len() >= scroll_region_bottom {
                     self.viewport
                         .insert(scroll_region_bottom, Row::new().canonical());
@@ -1510,7 +1512,7 @@ impl Grid {
             if self.alternate_screen_state.is_none() {
                 self.transfer_rows_to_lines_above(1);
                 self.hyperlink_tracker.offset_cursor_lines(1);
-            } else {
+            } else if !self.viewport.is_empty() {
                 self.viewport.remove(0);
             }
             let wrapped_row = Row::new();
@@ -1653,7 +1655,9 @@ impl Grid {
             // so we delete the current line(s) and add an empty line at the end of the scroll
             // region
             for _ in 0..count {
-                self.viewport.remove(current_line_index);
+                if current_line_index < self.viewport.len() {
+                    self.viewport.remove(current_line_index);
+                }
                 let columns = VecDeque::from(vec![pad_character.clone(); self.width]);
                 if self.viewport.len() > scroll_region_bottom {
                     self.viewport
