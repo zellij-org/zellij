@@ -716,13 +716,7 @@ mod tests {
     fn session_with_editor(editor: &str, panes: Vec<PaneLayoutMetadata>) -> SessionLayoutMetadata {
         let mut meta = SessionLayoutMetadata::default();
         meta.default_editor = Some(PathBuf::from(editor));
-        meta.add_tab(
-            "tab1".to_string(),
-            true,
-            false,
-            panes,
-            vec![],
-        );
+        meta.add_tab("tab1".to_string(), true, false, panes, vec![]);
         meta
     }
 
