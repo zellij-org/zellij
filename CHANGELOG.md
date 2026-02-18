@@ -54,6 +54,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: invalid state crashes in grid (https://github.com/zellij-org/zellij/pull/4718)
 * fix: properly detect editor panes when serializing sessions (https://github.com/zellij-org/zellij/pull/4717)
 * fix: add timeout to `zellij web --status` (https://github.com/zellij-org/zellij/pull/4706)
+* feat: when dumping pane viewport, allow including the styles (ansi escape codes) for color rendering in editors that support it (https://github.com/zellij-org/zellij/pull/4617)
 
 
 ## [0.43.1] - 2025-08-08
