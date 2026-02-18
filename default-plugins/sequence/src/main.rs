@@ -4,18 +4,12 @@ mod ui;
 
 use crate::state::CommandStatus;
 use crate::ui::components;
-use crate::ui::fuzzy_complete;
 use crate::ui::layout_calculations::calculate_viewport;
-use crate::ui::text_input::InputAction;
-use crate::ui::truncation::truncate_middle;
-use state::State;
-use zellij_tile::prelude::actions::Action;
+use state::{parse_commands, ChainType, CommandEntry, SequenceMode, State};
 use zellij_tile::prelude::*;
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
-
-use unicode_width::UnicodeWidthStr;
 
 register_plugin!(State);
 
@@ -23,17 +17,16 @@ impl ZellijPlugin for State {
     fn load(&mut self, _configuration: BTreeMap<String, String>) {
         subscribe(&[
             EventType::ModeUpdate,
-            EventType::SessionUpdate,
             EventType::Key,
             EventType::PermissionRequestResult,
             EventType::HostFolderChanged,
-            EventType::RunCommandResult,
-            EventType::ActionComplete,
-            EventType::PaneUpdate,
+            EventType::CommandPaneExited,
+            EventType::CommandPaneOpened,
+            EventType::EditPaneExited,
             EventType::Timer,
             EventType::PastedText,
             EventType::TabUpdate,
-            EventType::CommandPaneOpened,
+            EventType::BeforeClose,
         ]);
 
         // Store our own plugin ID and client ID
@@ -41,6 +34,7 @@ impl ZellijPlugin for State {
         self.plugin_id = Some(plugin_ids.plugin_id);
         self.client_id = Some(plugin_ids.client_id);
         self.cwd = Some(plugin_ids.initial_cwd);
+        rename_plugin_pane(plugin_ids.plugin_id, "Sequence");
         update_title(self);
     }
 
@@ -48,15 +42,67 @@ impl ZellijPlugin for State {
         handle_event(self, event)
     }
 
+    #[cfg(target_family = "wasm")]
+    fn pipe(&mut self, pipe_message: PipeMessage) -> bool {
+        if !pipe_message.is_private {
+            return false;
+        }
+
+        let Some(payload) = pipe_message.payload else {
+            return false;
+        };
+
+        let payload = payload.trim().to_string();
+        if payload.is_empty() {
+            return false;
+        }
+
+        // If already running, emit error
+        if self.execution.is_running {
+            if let PipeSource::Cli(pipe_id) = &pipe_message.source {
+                #[cfg(target_family = "wasm")]
+                cli_pipe_output(pipe_id, "error: sequence already running\n");
+            }
+            return false;
+        }
+
+        self.load_commands(&payload, None);
+
+        // Handle blocking: keep CLI alive until sequence finishes
+        if pipe_message
+            .args
+            .get("blocking")
+            .map(|v| v == "true")
+            .unwrap_or(false)
+        {
+            if let PipeSource::Cli(pipe_id) = &pipe_message.source {
+                block_cli_pipe_input(pipe_id);
+                self.blocking_pipe_id = Some(pipe_id.clone());
+            }
+        }
+
+        show_self(true);
+
+        true
+    }
+
     fn render(&mut self, rows: usize, cols: usize) {
-        // Store dimensions for use in cursor calculations
+        // Store dimensions for use in calculations
         self.own_rows = Some(rows);
         self.own_columns = Some(cols);
 
-        let max_visible_rows = rows.saturating_sub(5);
+        // Main screen: plugin just opened, no commands entered yet
+        if self.all_commands_are_pending() && !self.execution.can_run_sequence() {
+            for (text, x, y) in components::render_intro_hint(rows, cols) {
+                print_text_with_coordinates(text, x, y, None, None);
+            }
+            return;
+        }
 
-        let base_x = 1;
-        let base_y = 0;
+        let is_staging = self.all_commands_are_pending() && self.execution.can_run_sequence();
+
+        // Reserve: 1 header above + 1 padding-to-controls + 1 controls + 1 below/ribbon
+        let max_visible_rows = rows.saturating_sub(4);
 
         let (offset, visible_count, hidden_above, hidden_below) = calculate_viewport(
             self.execution.all_commands.len(),
@@ -64,6 +110,37 @@ impl ZellijPlugin for State {
             self.selection.current_selected_command_index,
             self.execution.current_running_command_index,
         );
+
+        // For the staging screen, center the content both horizontally and vertically.
+        // Content height: 1 header row + visible_count command rows + 1 gap + 1 help row = visible_count + 3
+        let (base_x, base_y, table_max_width) = if is_staging {
+            let longest_cwd = self.execution.longest_cwd_display(&self.cwd);
+            let longest_cmd = self
+                .execution
+                .all_commands
+                .iter()
+                .map(|c| c.get_text().chars().count())
+                .max()
+                .unwrap_or(1);
+            let (max_chain_w, max_status_w) = components::calculate_max_widths(
+                &self.execution.all_commands,
+                self.layout.spinner_frame,
+            );
+            let content_width = components::calculate_longest_line(
+                &longest_cwd,
+                longest_cmd,
+                max_chain_w,
+                max_status_w,
+            )
+            .min(cols);
+            // header + commands + gap + help + ribbon/below = visible_count + 4
+            let content_height = visible_count + 4;
+            let bx = cols.saturating_sub(content_width) / 2;
+            let by = rows.saturating_sub(content_height) / 2;
+            (bx, by, Some(content_width))
+        } else {
+            (1, 0, self.own_columns.map(|o| o.saturating_sub(1)))
+        };
 
         let mut table = components::build_table_header(hidden_above > 0 || hidden_below > 0);
 
@@ -79,20 +156,45 @@ impl ZellijPlugin for State {
             );
         }
 
-        print_table_with_coordinates(
-            table,
-            base_x,
-            base_y,
-            self.own_columns.map(|o| o.saturating_sub(base_x)),
-            None,
-        );
+        print_table_with_coordinates(table, base_x, base_y, table_max_width, None);
 
         let help_y = base_y + visible_count + 2;
-        let (first_help, _, second_help) = components::render_help_lines(self, Some(cols));
-        print_text_with_coordinates(first_help, base_x, help_y, None, None);
+        let (first_help, first_help_len, second_help) =
+            components::render_help_lines(self, Some(cols));
+        let help_x = if is_staging {
+            cols.saturating_sub(first_help_len) / 2
+        } else {
+            base_x
+        };
+        print_text_with_coordinates(first_help, help_x, help_y, None, None);
 
-        if let Some((second_help_text, _)) = second_help {
-            print_text_with_coordinates(second_help_text, base_x, help_y + 1, None, None);
+        if let Some((second_help_text, second_help_len)) = second_help {
+            let second_help_x = if is_staging {
+                cols.saturating_sub(second_help_len) / 2
+            } else {
+                base_x
+            };
+            print_text_with_coordinates(second_help_text, second_help_x, help_y + 1, None, None);
+        }
+
+        // Mode ribbon: "<Tab> [Single Pane] [Spread]" — only while running
+        if self.execution.is_running {
+            let ribbon_y = help_y + 1;
+            print_text_with_coordinates(
+                Text::new("<Tab>").color_all(3),
+                base_x,
+                ribbon_y,
+                None,
+                None,
+            );
+            let ribbon_x = base_x + 6; // "<Tab>" (5) + space (1)
+            let (single_ribbon, spread_ribbon) = if self.mode == SequenceMode::SinglePane {
+                (Text::new("Single Pane").selected(), Text::new("Spread"))
+            } else {
+                (Text::new("Single Pane"), Text::new("Spread").selected())
+            };
+            print_ribbon_with_coordinates(single_ribbon, ribbon_x, ribbon_y, Some(15), None);
+            print_ribbon_with_coordinates(spread_ribbon, ribbon_x + 15, ribbon_y, Some(10), None);
         }
     }
 }
@@ -108,789 +210,304 @@ pub fn handle_event(state: &mut State, event: Event) -> bool {
         },
         Event::ModeUpdate(mode_info) => {
             state.shell = mode_info.shell.clone();
-
             false
         },
         Event::Key(key) => {
-            let mut should_render = handle_key_event(state, key);
+            let should_render = handle_key_event(state, key);
             let repositioned = state.reposition_plugin();
             if repositioned {
                 // we only want to render once we have repositioned, we will do this in TabUpdate
-                should_render = false;
-            }
-            update_cursor(state);
-            should_render
-        },
-        Event::SessionUpdate(session_infos, _resurrectable_sessions) => {
-            if state.is_first_run {
-                // Find the current session
-                let current_session = session_infos.iter().find(|s| s.is_current_session);
-
-                if let Some(session) = current_session {
-                    // Get the pane history for this client
-                    if let Some(client_id) = state.client_id {
-                        if let Some(pane_history) = session.pane_history.get(&client_id) {
-                            let own_pane_id = state.plugin_id.map(|id| PaneId::Plugin(id));
-                            state.primary_pane_id = select_primary_pane_from_history(
-                                pane_history,
-                                &session.panes,
-                                own_pane_id,
-                            );
-                            state.original_pane_id = state.primary_pane_id; // pane id focused
-                                                                            // before plugin
-                                                                            // launched
-                            state.is_first_run = false;
-                        }
-                    }
-                }
-            }
-            false
-        },
-        Event::Timer(_elapsed) => {
-            // Timer events are used for lock backoff
-
-            let should_render = update_spinner(state);
-
-            should_render
-        },
-        Event::PastedText(pasted_text) => {
-            // Split pasted text into lines
-            let mut should_render = true;
-            let lines: Vec<&str> = pasted_text
-                .lines()
-                .map(|line| line.trim())
-                .filter(|line| !line.is_empty())
-                .collect();
-
-            if lines.is_empty() {
                 return false;
             }
-            state.pasted_lines(lines);
-            let repositioned = state.reposition_plugin();
-            if repositioned {
-                // we only want to render once we have repositioned, we will do this in TabUpdate
-                should_render = false;
-            }
-            update_cursor(state);
-
+            show_cursor(None);
             should_render
         },
-        Event::TabUpdate(tab_infos) => {
-            if let Some(tab_info) = tab_infos.iter().find(|t| t.active) {
-                let new_cols = Some(tab_info.viewport_columns);
-                let new_rows = Some(tab_info.viewport_rows);
-
-                // Check if dimensions changed
-                let dimensions_changed = new_cols != state.total_viewport_columns
-                    || new_rows != state.total_viewport_rows;
-
-                state.total_viewport_columns = new_cols;
-                state.total_viewport_rows = new_rows;
-
-                if dimensions_changed {
-                    state.reposition_plugin();
-                }
-                update_cursor(state);
-            }
-
-            false
-        },
-        Event::PaneUpdate(pane_manifest) => handle_pane_update(state, pane_manifest),
-        Event::ActionComplete(_action, pane_id, context) => {
-            let should_render = handle_action_complete(state, pane_id, context);
+        Event::Timer(_elapsed) => {
+            let should_render = update_spinner(state);
             update_title(state);
             should_render
         },
-        Event::CommandPaneOpened(terminal_pane_id, context) => {
-            // we get this event immediately as the pane opens, we use it to associate the
-            // pane's id with our state
-
-            if !is_running_sequence(&context, state.execution.sequence_id) {
-                // action from previous sequence or unrelated
+        Event::PastedText(pasted_text) => {
+            if state.execution.is_running {
                 return false;
             }
-            if let Some(command_text) = context.get("command_text") {
-                state.update_pane_id_for_command(PaneId::Terminal(terminal_pane_id), command_text);
-                if !state.layout.spinner_timer_scheduled {
-                    set_timeout(0.1);
-                    state.layout.spinner_timer_scheduled = true;
-                }
-                update_title(state);
+            let payload = pasted_text.trim().to_string();
+            if payload.is_empty() {
+                return false;
             }
-
+            state.load_commands(&payload, None);
+            let repositioned = state.reposition_plugin();
+            !repositioned
+        },
+        Event::TabUpdate(tab_infos) => {
+            if let Some(tab_info) = tab_infos.iter().find(|t| t.active) {
+                state.total_viewport_columns = Some(tab_info.viewport_columns);
+                state.total_viewport_rows = Some(tab_info.viewport_rows);
+            }
+            state.reposition_plugin()
+        },
+        Event::CommandPaneExited(terminal_pane_id, exit_code, _context) => {
+            let should_render = handle_command_pane_exited(state, terminal_pane_id, exit_code);
+            let repositioned = state.reposition_plugin();
+            update_title(state);
+            should_render || repositioned
+        },
+        Event::CommandPaneOpened(_terminal_pane_id, _context) => {
+            // Schedule spinner on first pane open
+            if !state.layout.spinner_timer_scheduled {
+                set_timeout(0.1);
+                state.layout.spinner_timer_scheduled = true;
+            }
+            update_title(state);
             true
+        },
+        Event::EditPaneExited(terminal_pane_id, _exit_code, _context) => {
+            let should_render = handle_editor_pane_exited(state, terminal_pane_id);
+            let repositioned = state.reposition_plugin();
+            should_render || repositioned
+        },
+        Event::BeforeClose => {
+            if let Some(pipe_id) = state.blocking_pipe_id.take() {
+                unblock_cli_pipe_input(&pipe_id);
+            }
+            false
         },
         _ => false,
     }
 }
 
-fn handle_key_event(state: &mut State, key: KeyWithModifier) -> bool {
-    // Ctrl+Enter - Insert command after current with AND chain type
-    if key.has_modifiers(&[KeyModifier::Ctrl]) && matches!(key.bare_key, BareKey::Enter) {
-        let mut is_cd = false;
-        if let Some(current_text) = state.editing_input_text() {
-            if let Some(path) = state::detect_cd_command(&current_text) {
-                if let Some(new_cwd) = path_formatting::resolve_path(state.cwd.as_ref(), &path) {
-                    state.current_selected_command_mut().map(|c| {
-                        c.set_cwd(Some(new_cwd));
-                        c.set_text("".to_owned());
-                    });
-                    state.editing.editing_input.as_mut().map(|i| i.clear());
-                    is_cd = true
-                }
-            }
-        };
+fn handle_command_pane_exited(
+    state: &mut State,
+    terminal_pane_id: u32,
+    exit_code: Option<i32>,
+) -> bool {
+    let pane_id = PaneId::Terminal(terminal_pane_id);
 
-        state.add_empty_command_after_current_selected();
-        if is_cd {
-            state.start_editing_selected();
+    // Find which command this pane belongs to — stale events produce no match
+    let Some(cmd_index) =
+        state.execution.all_commands.iter().position(
+            |c| matches!(c.get_status(), CommandStatus::Running(Some(id)) if id == pane_id),
+        )
+    else {
+        return false;
+    };
+
+    state.execution.all_commands[cmd_index]
+        .set_status(CommandStatus::Exited(exit_code, Some(pane_id)));
+
+    if !state.execution.is_running {
+        return true;
+    }
+
+    let chain_type = state.execution.all_commands[cmd_index].get_chain_type();
+    let should_continue = match chain_type {
+        ChainType::And => exit_code.unwrap_or(0) == 0,
+        ChainType::Or => exit_code.unwrap_or(0) != 0,
+        ChainType::Then => true,
+        ChainType::None => false,
+    };
+
+    let next_index = cmd_index + 1;
+    if should_continue && next_index < state.execution.all_commands.len() {
+        launch_command_at_index(state, next_index, Some(pane_id), false);
+    } else {
+        state.execution.is_running = false;
+        state.selection.current_selected_command_index = None;
+        // Unblock blocking CLI pipe if one is waiting
+        if let Some(pipe_id) = state.blocking_pipe_id.take() {
+            unblock_cli_pipe_input(&pipe_id);
         }
-        return true;
+    }
+    true
+}
+
+fn handle_editor_pane_exited(state: &mut State, terminal_pane_id: u32) -> bool {
+    let pane_id = PaneId::Terminal(terminal_pane_id);
+
+    // Ignore events from unrelated panes
+    if state.editor_pane_id != Some(pane_id) {
+        return false;
     }
 
-    // Ctrl+X - Cycle chain type
-    if key.has_modifiers(&[KeyModifier::Ctrl]) && matches!(key.bare_key, BareKey::Char('x')) {
-        // return state.ui.command_sequence.cycle_current_chain_type();
-        state.cycle_chain_type();
-        return true;
+    // Read the temp file contents
+    let contents = if let Some(ref path) = state.editor_temp_file {
+        std::fs::read_to_string(path).unwrap_or_default()
+    } else {
+        String::new()
+    };
+
+    // Delete the temp file
+    if let Some(ref path) = state.editor_temp_file {
+        let _ = std::fs::remove_file(path);
     }
 
-    // Ctrl+Space, copy to clipboard
+    // Clear editor state
+    state.editor_pane_id = None;
+    state.editor_temp_file = None;
+
+    // Parse file into commands
+    let commands = parse_commands(&contents, state.cwd.clone());
+
+    if !commands.is_empty() {
+        state.execution.all_commands = commands;
+        state.execution.current_running_command_index = 0;
+        state.selection.current_selected_command_index = None;
+        state.execution.is_running = false;
+    } else {
+        // Reset to empty pending state
+        state.execution.all_commands = vec![CommandEntry::new("", state.cwd.clone())];
+        state.execution.current_running_command_index = 0;
+        state.selection.current_selected_command_index = None;
+        state.execution.is_running = false;
+    }
+
+    show_self(true);
+
+    true
+}
+
+fn launch_command_at_index(
+    state: &mut State,
+    index: usize,
+    replace_pane_id: Option<PaneId>,
+    force_visible: bool,
+) {
+    let cmd = &state.execution.all_commands[index];
+    let cmd_text = cmd.get_text().trim().to_string();
+    let command = CommandToRun {
+        path: state
+            .shell
+            .clone()
+            .unwrap_or_else(|| PathBuf::from("/bin/bash")),
+        args: vec!["-ic".to_string(), cmd_text.clone()],
+        cwd: cmd.get_cwd(),
+    };
+    let user_is_watching =
+        replace_pane_id.is_some() && replace_pane_id == state.execution.displayed_pane_id;
+    let new_pane_id = if state.mode == SequenceMode::Spread {
+        open_command_pane_near_plugin(command, BTreeMap::new())
+    } else if user_is_watching {
+        let prev_pane_id = replace_pane_id.unwrap();
+        let pane_id =
+            open_command_pane_in_place_of_pane_id(prev_pane_id, command, false, BTreeMap::new());
+        if let Some(pane_id) = pane_id {
+            state.execution.displayed_pane_id = Some(pane_id);
+        }
+        pane_id
+    } else if force_visible {
+        let (tab_id, pane_id) = open_command_pane_in_new_tab(command, BTreeMap::new());
+        if let Some(pane_id) = pane_id {
+            state.execution.displayed_pane_id = Some(pane_id);
+        }
+        if let (Some(tab_id), Some(plugin_id)) = (tab_id, state.plugin_id) {
+            state.sequence_tab_id = Some(tab_id);
+            break_panes_to_tab_with_id(&[PaneId::Plugin(plugin_id)], tab_id, true);
+            focus_pane_with_id(PaneId::Plugin(plugin_id), false, false);
+        }
+        pane_id
+    } else {
+        // User navigated away — open in background, invisible until they navigate to it
+        open_command_pane_background(command, BTreeMap::new())
+    };
+    if let Some(pane_id) = new_pane_id {
+        rename_pane_with_id(pane_id, &cmd_text);
+        state.execution.all_commands[index].set_status(CommandStatus::Running(Some(pane_id)));
+        state.execution.current_running_command_index = index;
+        state.selection.current_selected_command_index = Some(index);
+        state.show_selected_pane();
+    }
+}
+
+fn handle_key_event(state: &mut State, key: KeyWithModifier) -> bool {
+    // Ctrl+Space — copy to clipboard
     if key.has_modifiers(&[KeyModifier::Ctrl]) && matches!(key.bare_key, BareKey::Char(' ')) {
         state.copy_to_clipboard();
         return false;
     }
 
-    // Ctrl+w, close all panes and clear sequence
+    // Ctrl+W — close tab if sequence has run; close plugin if staging; no-op if running
     if key.has_modifiers(&[KeyModifier::Ctrl]) && matches!(key.bare_key, BareKey::Char('w')) {
-        if !state.execution.is_running && !state.all_commands_are_pending() {
+        if state.all_commands_are_pending() {
+            if let Some(plugin_id) = state.plugin_id {
+                close_pane_with_id(PaneId::Plugin(plugin_id));
+            }
+        } else if !state.execution.is_running {
             close_panes_and_return_to_shell(state);
         }
         return true;
     }
 
+    // Ctrl+C — interrupt if running; clear commands if staging; close plugin if empty
+    if key.has_modifiers(&[KeyModifier::Ctrl]) && matches!(key.bare_key, BareKey::Char('c')) {
+        if state.execution.is_running {
+            interrupt_sequence(state);
+            return true;
+        } else if state.all_commands_are_pending() {
+            if state.execution.all_commands.iter().any(|c| !c.is_empty()) {
+                state.clear_all_commands();
+            } else if let Some(plugin_id) = state.plugin_id {
+                close_pane_with_id(PaneId::Plugin(plugin_id));
+            }
+            return true;
+        }
+    }
+
+    let is_staging = state.all_commands_are_pending() && state.execution.can_run_sequence();
+
     if matches!(key.bare_key, BareKey::Up)
         && !key.has_modifiers(&[KeyModifier::Ctrl])
         && !key.has_modifiers(&[KeyModifier::Alt])
     {
-        state.move_selection_up();
-        return true;
+        if !is_staging {
+            state.move_selection_up();
+            return true;
+        }
+        return false;
     }
 
     if matches!(key.bare_key, BareKey::Down)
         && !key.has_modifiers(&[KeyModifier::Ctrl])
         && !key.has_modifiers(&[KeyModifier::Alt])
     {
-        state.move_selection_down();
-        return true;
-    }
-
-    // Del - delete current command
-    if matches!(key.bare_key, BareKey::Delete)
-        && !key.has_modifiers(&[KeyModifier::Ctrl])
-        && !key.has_modifiers(&[KeyModifier::Alt])
-    {
-        state.remove_current_selected_command();
-        return true;
-    }
-
-    // Ctrl+C - Clear currently focused command, or remove it if already empty
-    if key.has_modifiers(&[KeyModifier::Ctrl]) && matches!(key.bare_key, BareKey::Char('c')) {
-        if state.execution.is_running {
-            interrupt_sequence(state);
-            return true;
-        } else if state.editing.editing_input.is_some() {
-            let is_empty = state.current_selected_command_is_empty();
-            let has_more_than_one_command = state.execution.all_commands.len() > 1;
-
-            if is_empty && has_more_than_one_command {
-                state.remove_current_selected_command();
-            } else if is_empty {
-                // last command, return to shell
-                close_panes_and_return_to_shell(state);
-            } else {
-                // If not empty, clear it
-                state.clear_current_selected_command();
-            }
+        if !is_staging {
+            state.move_selection_down();
             return true;
         }
+        return false;
     }
 
-    if state.editing.editing_input.is_none()
+    // e — open external editor (when not running)
+    if !state.execution.is_running
         && key.has_no_modifiers()
         && matches!(key.bare_key, BareKey::Char('e'))
     {
-        state.start_editing_selected();
+        state.open_editor();
         return true;
     }
 
-    if state.editing.editing_input.is_none()
-        && key.has_no_modifiers()
-        && matches!(key.bare_key, BareKey::Enter)
-    {
+    // Enter — rerun sequence
+    if key.has_no_modifiers() && matches!(key.bare_key, BareKey::Enter) {
         rerun_sequence(state);
         return true;
     }
 
-    // Handle input actions from TextInput
-    let is_backspace = matches!(key.bare_key, BareKey::Backspace);
-
-    if let Some(action) = state
-        .editing
-        .editing_input
-        .as_mut()
-        .map(|i| i.handle_key(key))
+    // Tab — toggle spread mode (when sequence has run)
+    if key.has_no_modifiers()
+        && matches!(key.bare_key, BareKey::Tab)
+        && !state.all_commands_are_pending()
     {
-        match action {
-            InputAction::Submit => {
-                return handle_submit(state);
-            },
-            InputAction::Cancel => {
-                state.cancel_editing_selected();
-                if state.all_commands_are_pending() {
-                    // we always want to stay in editing mode in main screen
-                    state.start_editing_selected();
-                }
-                true
-            },
-            InputAction::Complete => {
-                state
-                    .editing_input_text()
-                    .map(|current_text| {
-                        if let Some(completed) = fuzzy_complete::fuzzy_complete(
-                            &current_text,
-                            &Default::default(), // TODO: get rid of this whoel thing?
-                            state.cwd.as_ref(),
-                        ) {
-                            state.set_editing_input_text(completed);
-                            true
-                        } else {
-                            false
-                        }
-                    })
-                    .unwrap_or(false)
-            },
-            InputAction::Continue => {
-                if let Some(current_text) = state.editing_input_text() {
-                    if let Some((cmd_text, chain_type)) =
-                        state::detect_chain_operator_at_end(&current_text)
-                    {
-                        let mut should_add_empty_line = true;
-                        if let Some(path) = state::detect_cd_command(&cmd_text) {
-                            if let Some(new_cwd) =
-                                path_formatting::resolve_path(state.cwd.as_ref(), &path)
-                            {
-                                let remaining_text =
-                                    state::get_remaining_after_first_segment(&current_text)
-                                        .unwrap_or_else(|| "".to_owned());
-                                if remaining_text.len() > 0 {
-                                    should_add_empty_line = false;
-                                }
-                                state.current_selected_command_mut().map(|c| {
-                                    c.set_cwd(Some(new_cwd));
-                                    c.set_text(remaining_text);
-                                });
-                            }
-                        } else {
-                            state.current_selected_command_mut().map(|c| {
-                                c.set_text(cmd_text);
-                                c.set_chain_type(chain_type);
-                            });
-                        };
-                        state.cancel_editing_selected();
-                        if should_add_empty_line {
-                            state.add_empty_command_after_current_selected();
-                        }
-                        state.start_editing_selected();
-                    }
-                }
-
-                // Handle backspace on empty command
-                if is_backspace {
-                    let is_empty = state.current_selected_command_is_empty()
-                        || state
-                            .editing_input_text()
-                            .map(|i| i.is_empty())
-                            .unwrap_or(false);
-                    let has_more_than_one_command = state.execution.all_commands.len() > 1;
-
-                    if is_empty && has_more_than_one_command {
-                        let current_index =
-                            state.selection.current_selected_command_index.unwrap_or(0);
-                        if current_index > 0 {
-                            state.remove_current_selected_command();
-                            return true;
-                        }
-                    } else if is_empty {
-                        // last command
-                        close_panes_and_return_to_shell(state);
-                    }
-                }
-
-                true
-            },
-            InputAction::NoAction => false,
-        }
-    } else {
-        false
-    }
-}
-
-/// Handle Enter key - submit and execute the command sequence
-fn handle_submit(state: &mut State) -> bool {
-    let cwd = state.cwd.clone();
-    if state.handle_editing_submit(&cwd) {
-        // handled the command internally (eg. cd) no need to run sequence
+        toggle_spread_mode(state);
         return true;
     }
 
-    if state.execution.all_commands.len() == 1 && state.can_run_sequence() {
-        rerun_sequence(state);
-    } else if state.execution.all_commands.len() == 1 {
-        state.move_selection_down();
-        state.start_editing_selected();
-    }
-    true
-}
-
-pub fn handle_pane_update(state: &mut State, pane_manifest: PaneManifest) -> bool {
-    // Store the manifest for later use
-    state.pane_manifest = Some(pane_manifest.clone());
-    let mut needs_rerender = false;
-    if state.update_exited_command_statuses(&pane_manifest) {
-        needs_rerender = true;
-    }
-    if state.update_sequence_stopped_state() {
-        needs_rerender = true;
-    }
-    state.reposition_plugin();
-    update_primary_and_original_pane_ids(state, &pane_manifest);
-    needs_rerender
-}
-
-pub fn calculate_cursor_position(state: &mut State) -> Option<(usize, usize)> {
-    // Get pane dimensions from state (must be set by render)
-    let Some(cols) = state.own_columns else {
-        eprintln!("Warning: own_columns not set");
-        return None;
-    };
-    let Some(rows) = state.own_rows else {
-        eprintln!("Warning: own_rows not set");
-        return None;
-    };
-
-    // Only show cursor if in edit mode
-    let (text, cursor_pos) = if let Some(text_input) = &state.editing.editing_input {
-        (
-            text_input.get_text().to_string(),
-            text_input.cursor_position(),
-        )
-    } else {
-        return None;
-    };
-
-    let Some(edit_index) = state.selection.current_selected_command_index else {
-        return None;
-    };
-
-    // Calculate folder column width using the longest cwd across all commands
-    let longest_cwd_display = state.execution.longest_cwd_display(&state.cwd);
-    let folder_display = format!("{} >", longest_cwd_display);
-    let folder_col_width = folder_display.width().max(1);
-
-    let base_x = 1;
-    let base_y = 0;
-
-    adjust_scroll_offset(state, rows);
-
-    let max_visible_rows = state.own_rows.map(|r| r.saturating_sub(5)).unwrap_or(0);
-
-    let (offset, visible_count, hidden_above, hidden_below) = calculate_viewport(
-        state.execution.all_commands.len(),
-        max_visible_rows,
-        state.selection.current_selected_command_index,
-        state.execution.current_running_command_index,
-    );
-
-    let (max_chain_width, max_status_width) =
-        components::calculate_max_widths(&state.execution.all_commands, state.layout.spinner_frame);
-
-    let Some((_, available_cmd_width)) = components::calculate_row_layout_info(
-        edit_index,
-        offset,
-        visible_count,
-        hidden_above,
-        hidden_below,
-        cols,
-        folder_col_width,
-        max_chain_width,
-        max_status_width,
-    ) else {
-        return None;
-    };
-
-    // Get cursor position in truncated text
-    let (_, cursor_in_truncated) = truncate_middle(&text, available_cmd_width, Some(cursor_pos));
-    let Some(cursor_in_truncated) = cursor_in_truncated else {
-        return None;
-    };
-
-    // Calculate relative coordinates within the visible table
-    let relative_y = edit_index.saturating_sub(offset) + 1; // +1 for header row
-    let relative_x = folder_col_width + 1 + cursor_in_truncated;
-
-    let x = base_x + relative_x;
-    let y = base_y + relative_y;
-
-    Some((x, y))
-}
-
-pub fn handle_action_complete(
-    state: &mut State,
-    pane_id: Option<PaneId>,
-    context: BTreeMap<String, String>,
-) -> bool {
-    // Update primary_pane_id to the pane that just completed the action
-    // This ensures we always have a valid pane to target for InPlace launches
-    // But only if it's not a floating pane
-    if let (Some(pane_id), Some(manifest)) = (pane_id, &state.pane_manifest) {
-        if !is_pane_floating(pane_id, manifest) {
-            state.primary_pane_id = Some(pane_id);
-        } else {
-            eprintln!("Not setting primary_pane_id to floating pane {:?}", pane_id);
-        }
-    }
-
-    if !is_running_sequence(&context, state.execution.sequence_id) {
-        // action from previous sequence or unrelated
-        return false;
-    }
-
-    // If the sequence has been stopped (e.g., via Ctrl+C), don't continue
-    if !state.execution.is_running {
-        return true; // Re-render to show the stopped state
-    }
-
-    // Move to the next command
-    let next_index = state.execution.current_running_command_index + 1;
-
-    if next_index < state.execution.all_commands.len() {
-        // Execute the next command
-        // let (next_command, next_chain_type) = &state.execution.all_commands[next_index];
-        let Some(next_command) = state.execution.all_commands.get(next_index) else {
-            // invalid state
-            return true;
-        };
-        let next_chain_type = next_command.get_chain_type();
-        let next_command_cwd = next_command.get_cwd();
-        let next_command_text = next_command.get_text();
-
-        let shell = state
-            .shell
-            .clone()
-            .unwrap_or_else(|| PathBuf::from("/bin/bash"));
-
-        let command = zellij_tile::prelude::actions::RunCommandAction {
-            command: shell,
-            args: vec!["-ic".to_string(), next_command_text.trim().to_string()],
-            cwd: next_command_cwd,
-            hold_on_close: true,
-            ..Default::default()
-        };
-
-        // Determine placement based on layout mode
-        let placement = NewPanePlacement::Stacked {
-            pane_id_to_stack_under: pane_id,
-            borderless: Some(false),
-        };
-
-        // Update status: mark current command as completed
-        // Use the pane_id from ActionComplete if the status is still Pending
-        let pane_id_to_mark = state
-            .execution
-            .all_commands
-            .get(state.execution.current_running_command_index)
-            .and_then(|c| match c.get_status() {
-                CommandStatus::Running(pid) => pid,
-                CommandStatus::Pending => pane_id, // Use the pane from ActionComplete
-                CommandStatus::Exited(_, pid) => pid, // Already marked, keep it
-                CommandStatus::Interrupted(pid) => pid, // Already marked, keep it
-            });
-
-        state
-            .execution
-            .all_commands
-            .get_mut(state.execution.current_running_command_index)
-            .map(|c| c.set_status(CommandStatus::Exited(None, pane_id_to_mark)));
-        state.execution.current_running_command_index = next_index;
-
-        // Determine unblock_condition based on whether this is the last command
-        let unblock_condition = if next_index < state.execution.all_commands.len() - 1 {
-            // Not the last command - use the chain type's unblock condition
-            next_chain_type.to_unblock_condition()
-        } else {
-            // Last command - use UnblockCondition::OnAnyExit
-            Some(UnblockCondition::OnAnyExit)
-        };
-
-        let action = Action::NewBlockingPane {
-            placement,
-            command: Some(command),
-            pane_name: Some(next_command_text.trim().to_string()),
-            unblock_condition,
-            near_current_pane: true,
-        };
-
-        // Pass the sequence ID in the context
-        let mut context = BTreeMap::new();
-        context.insert(
-            "sequence_id".to_string(),
-            state.execution.sequence_id.to_string(),
-        );
-        context.insert("command_text".to_string(), next_command_text.to_string());
-
-        // Put the sequence back with updated index
-        run_action(action, context);
-    } else {
-        // Sequence complete - mark the last command as Exited
-
-        let pane_id_to_mark = state
-            .execution
-            .all_commands
-            .get(state.execution.current_running_command_index)
-            .and_then(|c| match c.get_status() {
-                CommandStatus::Running(pid) => pid,
-                CommandStatus::Pending => pane_id, // Use the pane from ActionComplete
-                CommandStatus::Exited(_, pid) => pid, // Already marked, keep it
-                CommandStatus::Interrupted(pid) => pid, // Already marked, keep it
-            });
-
-        state
-            .execution
-            .all_commands
-            .get_mut(state.execution.current_running_command_index)
-            .map(|c| c.set_status(CommandStatus::Exited(None, pane_id_to_mark)));
-    }
-    true
-}
-
-/// Adjust scroll offset to keep selected or running command visible
-pub fn adjust_scroll_offset(sequence: &mut crate::state::State, rows: usize) {
-    let max_visible = rows.saturating_sub(6);
-    let total_commands = sequence.execution.all_commands.len();
-
-    if total_commands <= max_visible {
-        sequence.selection.scroll_offset = 0;
-        return;
-    }
-
-    let focus_index = sequence
-        .selection
-        .current_selected_command_index
-        .unwrap_or(sequence.execution.current_running_command_index);
-    let half_visible = max_visible / 2;
-
-    if focus_index < half_visible {
-        sequence.selection.scroll_offset = 0;
-    } else if focus_index >= total_commands.saturating_sub(half_visible) {
-        sequence.selection.scroll_offset = total_commands.saturating_sub(max_visible);
-    } else {
-        sequence.selection.scroll_offset = focus_index.saturating_sub(half_visible);
-    }
-
-    sequence.selection.scroll_offset = sequence
-        .selection
-        .scroll_offset
-        .min(total_commands.saturating_sub(max_visible));
-}
-
-pub fn is_pane_floating(pane_id: PaneId, pane_manifest: &PaneManifest) -> bool {
-    pane_manifest
-        .panes
-        .iter()
-        .flat_map(|(_, panes)| panes.iter())
-        .find(|pane_info| match pane_id {
-            PaneId::Terminal(id) => !pane_info.is_plugin && pane_info.id == id,
-            PaneId::Plugin(id) => pane_info.is_plugin && pane_info.id == id,
-        })
-        .map(|pane_info| pane_info.is_floating)
-        .unwrap_or(false)
-}
-
-fn is_running_sequence(context: &BTreeMap<String, String>, running_sequence_id: u64) -> bool {
-    if let Some(context_sequence_id) = context.get("sequence_id") {
-        if let Ok(context_id) = context_sequence_id.parse::<u64>() {
-            if context_id != running_sequence_id {
-                // This action is from a different sequence, ignore it
-                return false;
-            } else {
-                return true;
-            }
-        } else {
-            // Failed to parse sequence_id, ignore this action
-            return false;
-        }
-    } else {
-        return false;
-    }
-}
-
-fn update_primary_and_original_pane_ids(state: &mut State, pane_manifest: &PaneManifest) {
-    if let Some(primary_pane_id) = state.primary_pane_id {
-        let mut primary_pane_found = false;
-
-        // Check if the primary pane still exists
-        for (_tab_index, panes) in &pane_manifest.panes {
-            for pane_info in panes {
-                let pane_matches = match primary_pane_id {
-                    PaneId::Terminal(id) => !pane_info.is_plugin && pane_info.id == id,
-                    PaneId::Plugin(id) => pane_info.is_plugin && pane_info.id == id,
-                };
-
-                if pane_matches {
-                    primary_pane_found = true;
-                    break;
-                }
-            }
-            if primary_pane_found {
-                break;
-            }
-        }
-
-        // If primary pane was not found, select a new one
-        if !primary_pane_found {
-            state.primary_pane_id = None;
-        }
-    }
-    if let Some(original_pane_id) = state.original_pane_id {
-        let mut original_pane_found = false;
-
-        // Check if the original pane still exists
-        for (_tab_index, panes) in &pane_manifest.panes {
-            for pane_info in panes {
-                let pane_matches = match original_pane_id {
-                    PaneId::Terminal(id) => !pane_info.is_plugin && pane_info.id == id,
-                    PaneId::Plugin(id) => pane_info.is_plugin && pane_info.id == id,
-                };
-
-                if pane_matches {
-                    original_pane_found = true;
-                    break;
-                }
-            }
-            if original_pane_found {
-                break;
-            }
-        }
-
-        // If original pane was not found, select a new one
-        if !original_pane_found {
-            state.original_pane_id = None;
-        }
-    }
-}
-
-pub fn select_primary_pane_from_history(
-    pane_history: &[PaneId],
-    pane_manifest: &PaneManifest,
-    own_pane_id: Option<PaneId>,
-) -> Option<PaneId> {
-    pane_history
-        .iter()
-        .rev() // Most recent first
-        .find(|&id| {
-            // Skip self
-            if Some(*id) == own_pane_id {
-                return false;
-            }
-
-            // Skip floating panes
-            !is_pane_floating(*id, pane_manifest)
-        })
-        .copied()
+    false
 }
 
 fn close_panes_and_return_to_shell(state: &mut State) -> bool {
-    // Close all panes in the sequence before clearing it
-    // Handle the first pane: replace it with the primary_pane_id_before_sequence if available
-    if let Some(first_pane_id) = state.execution.all_commands.iter().find_map(|command| {
-        // we look for the first command in the sequence that has a pane that's
-        // actually open
-        match command.get_status() {
-            CommandStatus::Running(pane_id) => pane_id,
-            CommandStatus::Exited(_, pane_id) => pane_id,
-            CommandStatus::Interrupted(pane_id) => pane_id,
-            _ => None,
-        }
-    }) {
-        if let Some(original_pane_id) = state.original_pane_id {
-            replace_pane_with_existing_pane(
-                first_pane_id,
-                original_pane_id,
-                true, // suppress_replaced_pane (closes the first pane)
-            );
-        } else {
-            // Fallback: if we don't have a saved primary pane, just close it
-            close_pane_with_id(first_pane_id);
-        }
+    if let Some(tab_id) = state.sequence_tab_id {
+        close_tab_with_id(tab_id as u64);
     }
-
-    // Close all other panes (starting from index 1)
-    for (idx, command) in state.execution.all_commands.iter().skip(1).enumerate() {
-        let pane_id = match command.get_status() {
-            CommandStatus::Running(pane_id) => pane_id,
-            CommandStatus::Exited(_, pane_id) => pane_id,
-            CommandStatus::Interrupted(pane_id) => pane_id,
-            _ => None,
-        };
-
-        if let Some(pane_id) = pane_id {
-            close_pane_with_id(pane_id);
-        } else {
-            eprintln!(
-                "Warning: Cannot close pane at index {}: pane_id is None",
-                idx + 1
-            );
-        }
-    }
-
-    state.clear_all_commands();
-    // Transition back to shell screen
-    if let Some(plugin_id) = state.plugin_id {
-        change_floating_pane_coordinates(
-            plugin_id,
-            Some(25),
-            Some(25),
-            Some(50),
-            Some(50),
-            false, // pinned (this should unpin it)
-        );
-    }
-    update_title(state);
     true
-}
-
-fn change_floating_pane_coordinates(
-    own_plugin_id: u32,
-    x: Option<usize>,
-    y: Option<usize>,
-    width: Option<usize>,
-    height: Option<usize>,
-    should_be_pinned: bool,
-) {
-    let coordinates = FloatingPaneCoordinates::new(
-        x.map(|x| format!("{}%", x)),
-        y.map(|y| format!("{}%", y)),
-        width.map(|width| format!("{}%", width)),
-        height.map(|height| format!("{}%", height)),
-        Some(should_be_pinned),
-        Some(false),
-    );
-    if let Some(coordinates) = coordinates {
-        // TODO: better
-        // show_self(true);
-        change_floating_panes_coordinates(vec![(PaneId::Plugin(own_plugin_id), coordinates)]);
-    }
 }
 
 fn update_spinner(state: &mut State) -> bool {
@@ -906,7 +523,7 @@ fn update_spinner(state: &mut State) -> bool {
         .all_commands
         .iter()
         .any(|command| matches!(command.get_status(), CommandStatus::Running(_)));
-    if has_running && !state.layout.spinner_timer_scheduled {
+    if has_running {
         set_timeout(0.1);
         state.layout.spinner_timer_scheduled = true;
     }
@@ -930,148 +547,134 @@ fn rerun_sequence(state: &mut State) {
         .unwrap_or(0)
         .min(state.execution.all_commands.len().saturating_sub(1));
 
-    let mut close_replaced_pane = true;
-
-    // Extract the selected pane's ID BEFORE resetting statuses (needed for in-place replacement)
-    let selected_pane_id_for_replacement = &state
-        .execution
-        .all_commands
-        .get(selected_index)
-        .and_then(|c| match c.get_status() {
-            CommandStatus::Running(pane_id) => pane_id,
-            CommandStatus::Exited(_, pane_id) => pane_id,
-            CommandStatus::Interrupted(pane_id) => pane_id,
-            _ => None,
-        })
-        .or_else(|| {
-            if state.all_commands_are_pending() {
-                close_replaced_pane = false; // we should never close the original pane_id
-                state.original_pane_id
-            } else {
-                None
-            }
-        });
-
-    // Close all panes AFTER the selected one (selected will be replaced in-place)
-    for i in (selected_index + 1)..state.execution.all_commands.len() {
-        // Extract pane_id from the command status
-        let pane_id = state
-            .execution
-            .all_commands
-            .get(i)
-            .and_then(|c| match c.get_status() {
-                CommandStatus::Running(pane_id) => pane_id,
-                CommandStatus::Exited(_, pane_id) => pane_id,
-                CommandStatus::Interrupted(pane_id) => pane_id,
-                _ => None,
-            });
-
-        // Close the pane if we have a pane_id
-        if let Some(pane_id) = pane_id {
-            close_pane_with_id(pane_id);
-        } else {
-            eprintln!(
-                "Warning: Cannot close pane for command at index {}: pane_id is None",
-                i
-            );
-        }
-
-        // Reset the command status to Pending
-        state
-            .execution
-            .all_commands
-            .get_mut(i)
-            .map(|c| c.set_status(CommandStatus::Pending));
-    }
-
-    // Reset the selected pane's status to Pending (it will be replaced in-place)
-    state
-        .execution
-        .all_commands
-        .get_mut(selected_index)
-        .map(|c| c.set_status(CommandStatus::Pending));
-
-    // Set the current command index to the selected command
+    state.execution.is_running = true;
     state.execution.current_running_command_index = selected_index;
+    ensure_spinner_running(state);
+    match state.execution.all_commands[selected_index].get_pane_id() {
+        Some(PaneId::Terminal(id)) => {
+            let pane_id = PaneId::Terminal(id);
 
-    // Execute the command at the selected index
-    if let Some((command_text, chain_type, command_cwd)) = state
+            // Replace the displayed pane with the starting pane first, while
+            // displayed_pane_id is still valid. The replaced pane is suppressed
+            // and can then be closed safely below.
+            if state.mode == SequenceMode::SinglePane {
+                if let Some(displayed) = state.execution.displayed_pane_id {
+                    if displayed != pane_id {
+                        replace_pane_with_existing_pane(displayed, pane_id, true);
+                    }
+                }
+                state.execution.displayed_pane_id = Some(pane_id);
+            }
+
+            // Close and reset commands after selected (now suppressed).
+            for i in (selected_index + 1)..state.execution.all_commands.len() {
+                if let Some(p) = state.execution.all_commands[i].get_pane_id() {
+                    close_pane_with_id(p);
+                }
+                state.execution.all_commands[i].set_status(CommandStatus::Pending);
+            }
+
+            state.execution.all_commands[selected_index]
+                .set_status(CommandStatus::Running(Some(pane_id)));
+            state.selection.current_selected_command_index = Some(selected_index);
+            rerun_command_pane(id);
+        },
+        _ => {
+            // Close and reset commands after selected.
+            for i in (selected_index + 1)..state.execution.all_commands.len() {
+                if let Some(p) = state.execution.all_commands[i].get_pane_id() {
+                    close_pane_with_id(p);
+                }
+                state.execution.all_commands[i].set_status(CommandStatus::Pending);
+            }
+            let replace_pane_id = state.execution.displayed_pane_id;
+            launch_command_at_index(state, selected_index, replace_pane_id, true);
+        },
+    }
+}
+
+fn toggle_spread_mode(state: &mut State) {
+    match state.mode {
+        SequenceMode::SinglePane => enter_spread_mode(state),
+        SequenceMode::Spread => exit_spread_mode(state),
+    }
+}
+
+fn enter_spread_mode(state: &mut State) {
+    state.mode = SequenceMode::Spread;
+
+    let first_pane_id = state
         .execution
         .all_commands
-        .get(selected_index)
-        .map(|c| (c.get_text(), c.get_chain_type(), c.get_cwd()))
-    {
-        let shell = state
-            .shell
-            .clone()
-            .unwrap_or_else(|| PathBuf::from("/bin/bash"));
+        .first()
+        .and_then(|c| c.get_pane_id());
+    let Some(first_pane_id) = first_pane_id else {
+        return;
+    };
 
-        let command = zellij_tile::prelude::actions::RunCommandAction {
-            command: shell,
-            args: vec!["-ic".to_string(), command_text.trim().to_string()],
-            cwd: command_cwd,
-            hold_on_close: true,
-            ..Default::default()
-        };
-
-        // Determine placement - always replace the selected pane in-place if we have its ID
-        let placement = if let Some(pane_id) = selected_pane_id_for_replacement {
-            NewPanePlacement::InPlace {
-                pane_id_to_replace: Some(*pane_id),
-                close_replaced_pane,
-                borderless: Some(false),
-            }
-        } else {
-            let pane_id_to_stack_under = state
-                .execution
-                .all_commands
-                .iter()
-                .find_map(|c| c.get_pane_id());
-            NewPanePlacement::Stacked {
-                pane_id_to_stack_under,
-                borderless: Some(false),
-            }
-        };
-
-        // Determine unblock_condition based on whether this is the last command
-        let unblock_condition = if selected_index < state.execution.all_commands.len() - 1 {
-            // Not the last command - use the chain type's unblock condition
-            chain_type.to_unblock_condition()
-        } else {
-            // Last command - use UnblockCondition::OnAnyExit
-            Some(UnblockCondition::OnAnyExit)
-        };
-
-        let action = Action::NewBlockingPane {
-            placement,
-            command: Some(command),
-            pane_name: Some(command_text.trim().to_string()),
-            unblock_condition,
-            near_current_pane: true,
-        };
-
-        // Generate a new sequence ID for the restart
-        state.execution.sequence_id += 1;
-
-        // Reset the stopped flag so the sequence can run
-        state.execution.is_running = true;
-        state.layout.needs_reposition = true;
-        state.execution.primary_pane_id_before_sequence = state.primary_pane_id;
-
-        // Pass the sequence ID in the context
-        let mut context = BTreeMap::new();
-        context.insert(
-            "sequence_id".to_string(),
-            state.execution.sequence_id.to_string(),
-        );
-        context.insert("command_text".to_string(), command_text.to_string());
-        run_action(action, context);
+    if let Some(displayed) = state.execution.displayed_pane_id {
+        if displayed != first_pane_id {
+            replace_pane_with_existing_pane(displayed, first_pane_id, true);
+        }
     }
+    state.execution.displayed_pane_id = Some(first_pane_id);
+
+    for cmd in state.execution.all_commands.iter().skip(1) {
+        if let Some(pane_id) = cmd.get_pane_id() {
+            show_pane_with_id(pane_id, false, false);
+        }
+    }
+    state.show_selected_pane();
+}
+
+fn exit_spread_mode(state: &mut State) {
+    // Remove all highlights before leaving spread mode
+    let all_pane_ids: Vec<PaneId> = state
+        .execution
+        .all_commands
+        .iter()
+        .filter_map(|c| c.get_pane_id())
+        .collect();
+    if !all_pane_ids.is_empty() {
+        highlight_and_unhighlight_panes(vec![], all_pane_ids);
+    }
+    state.mode = SequenceMode::SinglePane;
+
+    let first_pane_id = state
+        .execution
+        .all_commands
+        .first()
+        .and_then(|c| c.get_pane_id());
+    let selected_pane_id = state
+        .selection
+        .current_selected_command_index
+        .and_then(|i| state.execution.all_commands.get(i))
+        .and_then(|c| c.get_pane_id())
+        .or(first_pane_id);
+
+    let Some(selected_pane_id) = selected_pane_id else {
+        return;
+    };
+
+    if let Some(first_pane_id) = first_pane_id {
+        if first_pane_id != selected_pane_id {
+            replace_pane_with_existing_pane(first_pane_id, selected_pane_id, true);
+        }
+    }
+
+    for cmd in &state.execution.all_commands {
+        if let Some(pane_id) = cmd.get_pane_id() {
+            if pane_id != selected_pane_id {
+                hide_pane_with_id(pane_id);
+            }
+        }
+    }
+
+    state.execution.displayed_pane_id = Some(selected_pane_id);
 }
 
 fn interrupt_sequence(state: &mut State) {
     if state.execution.is_running {
-        // Ctrl-C press when running - interrupt the running command
         for command in state.execution.all_commands.iter_mut() {
             if let CommandStatus::Running(pane_id) = command.get_status() {
                 if let Some(pane_id) = pane_id {
@@ -1081,59 +684,115 @@ fn interrupt_sequence(state: &mut State) {
             }
         }
         state.execution.is_running = false;
+        state.selection.current_selected_command_index = None;
+        // Unblock blocking CLI pipe if interrupted
+        if let Some(pipe_id) = state.blocking_pipe_id.take() {
+            unblock_cli_pipe_input(&pipe_id);
+        }
     } else {
         eprintln!("Cannot interrupt a sequence that is not running.");
     }
 }
 
-pub fn update_cursor(state: &mut State) {
-    // Calculate new cursor position
-    let new_coords = calculate_cursor_position(state);
+pub fn update_title(state: &mut State) {
+    let Some(tab_id) = state.sequence_tab_id else {
+        return;
+    };
+    let tab_id_u64 = tab_id as u64;
 
-    // Only update if the position changed
-    if new_coords != state.layout.cached_cursor_position {
-        match new_coords {
-            Some(coords) => show_cursor(Some(coords)),
-            None => show_cursor(None),
+    // All pending and not yet running
+    if state.all_commands_are_pending() && !state.execution.is_running {
+        rename_tab_with_id(tab_id_u64, "Run one or more commands in sequence");
+        return;
+    }
+
+    // Currently running: "<cmd> <n>/<total> <spinner>"
+    let has_running = state
+        .execution
+        .all_commands
+        .iter()
+        .any(|c| matches!(c.get_status(), CommandStatus::Running(..)));
+    if has_running {
+        let idx = state.execution.current_running_command_index;
+        let total = state.execution.all_commands.len();
+        let cmd_text = state
+            .execution
+            .all_commands
+            .get(idx)
+            .map(|c| c.get_text())
+            .unwrap_or_default();
+        let spinner = components::get_spinner_frame(state.layout.spinner_frame);
+        rename_tab_with_id(
+            tab_id_u64,
+            &format!("{} {}/{} {}", cmd_text, idx + 1, total, spinner),
+        );
+        return;
+    }
+
+    // Interrupted: "<cmd> [INTERRUPTED]"
+    if let Some(cmd) = state
+        .execution
+        .all_commands
+        .iter()
+        .find(|c| matches!(c.get_status(), CommandStatus::Interrupted(_)))
+    {
+        let status_str =
+            components::format_status_text(&cmd.get_status(), state.layout.spinner_frame);
+        rename_tab_with_id(tab_id_u64, &format!("{} {}", cmd.get_text(), status_str));
+        return;
+    }
+
+    // All exited
+    let all_exited = state
+        .execution
+        .all_commands
+        .iter()
+        .all(|c| matches!(c.get_status(), CommandStatus::Exited(..)));
+    if all_exited {
+        let all_success = state
+            .execution
+            .all_commands
+            .iter()
+            .all(|c| matches!(c.get_status(), CommandStatus::Exited(Some(0), _)));
+        if all_success {
+            rename_tab_with_id(tab_id_u64, "Sequence Complete");
+        } else {
+            // Show first command with non-zero or unknown exit
+            if let Some(cmd) = state
+                .execution
+                .all_commands
+                .iter()
+                .find(|c| !matches!(c.get_status(), CommandStatus::Exited(Some(0), _)))
+            {
+                let status_str =
+                    components::format_status_text(&cmd.get_status(), state.layout.spinner_frame);
+                rename_tab_with_id(tab_id_u64, &format!("{} {}", cmd.get_text(), status_str));
+            } else {
+                rename_tab_with_id(tab_id_u64, "Sequence Complete");
+            }
         }
-        state.layout.cached_cursor_position = new_coords;
+        return;
+    }
+
+    // Partial (chain condition failed): show last exited command with its status
+    if let Some(cmd) = state
+        .execution
+        .all_commands
+        .iter()
+        .rev()
+        .find(|c| matches!(c.get_status(), CommandStatus::Exited(..)))
+    {
+        let status_str =
+            components::format_status_text(&cmd.get_status(), state.layout.spinner_frame);
+        rename_tab_with_id(tab_id_u64, &format!("{} {}", cmd.get_text(), status_str));
+    } else {
+        rename_tab_with_id(tab_id_u64, "Stopped");
     }
 }
 
-pub fn update_title(state: &mut State) {
-    let Some(plugin_id) = state.plugin_id else {
-        return;
-    };
-
-    let title = if state.all_commands_are_pending() {
-        "Run one or more commands in sequence"
-    } else {
-        let has_running_commands = state
-            .execution
-            .all_commands
-            .iter()
-            .any(|c| matches!(c.get_status(), CommandStatus::Running(..)));
-        let has_interrupted_commands = state
-            .execution
-            .all_commands
-            .iter()
-            .any(|c| matches!(c.get_status(), CommandStatus::Interrupted(..)));
-        let all_commands_complete = state
-            .execution
-            .all_commands
-            .iter()
-            .all(|c| matches!(c.get_status(), CommandStatus::Exited(..)));
-        if has_running_commands {
-            let current = state.execution.current_running_command_index + 1;
-            let total = state.execution.all_commands.len();
-            return rename_plugin_pane(plugin_id, &format!("Running {}/{}", current, total));
-        } else if has_interrupted_commands {
-            "Sequence Interrupted"
-        } else if all_commands_complete {
-            "Sequence Complete"
-        } else {
-            "Stopped"
-        }
-    };
-    rename_plugin_pane(plugin_id, title);
+fn ensure_spinner_running(state: &mut State) {
+    if !state.layout.spinner_timer_scheduled {
+        set_timeout(0.1);
+        state.layout.spinner_timer_scheduled = true;
+    }
 }

@@ -3276,12 +3276,20 @@ impl From<crate::data::CommandOrPlugin>
 {
     fn from(cmd_or_plugin: crate::data::CommandOrPlugin) -> Self {
         use crate::client_server_contract::client_server_contract::command_or_plugin::CommandOrPluginType;
+        use crate::client_server_contract::client_server_contract::CommandOrPluginFile;
         match cmd_or_plugin {
             crate::data::CommandOrPlugin::Command(cmd) => Self {
                 command_or_plugin_type: Some(CommandOrPluginType::Command(cmd.into())),
             },
             crate::data::CommandOrPlugin::Plugin(plugin) => Self {
                 command_or_plugin_type: Some(CommandOrPluginType::Plugin(plugin.into())),
+            },
+            crate::data::CommandOrPlugin::File(f) => Self {
+                command_or_plugin_type: Some(CommandOrPluginType::File(CommandOrPluginFile {
+                    path: f.path.display().to_string(),
+                    line_number: f.line_number.map(|n| n as i32),
+                    cwd: f.cwd.map(|c| c.display().to_string()),
+                })),
             },
         }
     }
@@ -3307,6 +3315,13 @@ impl TryFrom<crate::client_server_contract::client_server_contract::CommandOrPlu
             CommandOrPluginType::Plugin(plugin) => {
                 Ok(crate::data::CommandOrPlugin::Plugin(plugin.try_into()?))
             },
+            CommandOrPluginType::File(f) => Ok(crate::data::CommandOrPlugin::File(
+                crate::data::FileToOpen {
+                    path: std::path::PathBuf::from(&f.path),
+                    line_number: f.line_number.map(|n| n as usize),
+                    cwd: f.cwd.map(std::path::PathBuf::from),
+                },
+            )),
         }
     }
 }
