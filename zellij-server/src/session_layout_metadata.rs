@@ -119,25 +119,33 @@ impl SessionLayoutMetadata {
         }
         for tab in &self.tabs {
             for tiled_pane in &tab.tiled_panes {
-                if let Some(Run::Command(run_command)) = tiled_pane.run.as_ref() {
-                    if !Self::is_default_shell(
-                        self.default_shell.as_ref(),
-                        &run_command.command.display().to_string(),
-                        &run_command.args,
-                    ) {
-                        return true;
-                    }
+                match tiled_pane.run.as_ref() {
+                    Some(Run::Command(run_command)) => {
+                        if !Self::is_default_shell(
+                            self.default_shell.as_ref(),
+                            &run_command.command.display().to_string(),
+                            &run_command.args,
+                        ) {
+                            return true;
+                        }
+                    },
+                    Some(Run::EditFile(_, _, _)) => return true,
+                    _ => {},
                 }
             }
             for floating_pane in &tab.floating_panes {
-                if let Some(Run::Command(run_command)) = floating_pane.run.as_ref() {
-                    if !Self::is_default_shell(
-                        self.default_shell.as_ref(),
-                        &run_command.command.display().to_string(),
-                        &run_command.args,
-                    ) {
-                        return true;
-                    }
+                match floating_pane.run.as_ref() {
+                    Some(Run::Command(run_command)) => {
+                        if !Self::is_default_shell(
+                            self.default_shell.as_ref(),
+                            &run_command.command.display().to_string(),
+                            &run_command.args,
+                        ) {
+                            return true;
+                        }
+                    },
+                    Some(Run::EditFile(_, _, _)) => return true,
+                    _ => {},
                 }
             }
         }
@@ -348,6 +356,103 @@ impl SessionLayoutMetadata {
             )
         });
         self.default_editor = Some(default_editor);
+    }
+    pub fn detect_editor_panes(&mut self) {
+        let default_editor = match &self.default_editor {
+            Some(e) => e.clone(),
+            None => return,
+        };
+        let editor_binary_name = default_editor
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("")
+            .to_string();
+
+        let is_vim_family = |name: &str| matches!(name, "vim" | "nvim" | "emacs" | "nano" | "kak");
+        let is_helix = |name: &str| matches!(name, "hx" | "helix");
+        // Narrow vi/vim lineage used for cross-matching.
+        // These are argument-compatible and commonly aliased to one another.
+        let is_vi_vim = |name: &str| matches!(name, "vi" | "vim" | "nvim");
+
+        let configured_is_vi_vim = is_vi_vim(&editor_binary_name);
+        let configured_is_helix = is_helix(&editor_binary_name);
+
+        let upgrade_pane = |pane: &mut PaneLayoutMetadata| {
+            if let Some(Run::Command(run_command)) = &pane.run {
+                let command_binary_name = run_command
+                    .command
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("")
+                    .to_string();
+                let is_editor = !editor_binary_name.is_empty()
+                    && (command_binary_name == editor_binary_name
+                        || run_command.command == default_editor
+                        || (configured_is_vi_vim && is_vi_vim(&command_binary_name))
+                        || (configured_is_helix && is_helix(&command_binary_name)));
+                if !is_editor {
+                    return;
+                }
+
+                let args = &run_command.args;
+                let binary = &command_binary_name;
+
+                let edit_file: Option<(PathBuf, Option<usize>)> = if is_vim_family(binary) {
+                    match args.len() {
+                        1 => args
+                            .first()
+                            .filter(|f| !f.starts_with('-'))
+                            .map(|f| (PathBuf::from(f), None)),
+                        2 => match (args.first(), args.get(1)) {
+                            (Some(line_arg), Some(file)) => line_arg
+                                .strip_prefix('+')
+                                .and_then(|n| n.parse::<usize>().ok())
+                                .map(|line| (PathBuf::from(file), Some(line))),
+                            _ => None,
+                        },
+                        _ => None,
+                    }
+                } else if is_helix(binary) {
+                    if args.len() == 1 {
+                        args.first().and_then(|arg| {
+                            if let Some(colon_pos) = arg.rfind(':') {
+                                let file_part = &arg[..colon_pos];
+                                if let Some(line) = arg
+                                    .get(colon_pos + 1..)
+                                    .and_then(|s| s.parse::<usize>().ok())
+                                {
+                                    return Some((PathBuf::from(file_part), Some(line)));
+                                }
+                            }
+                            Some((PathBuf::from(arg.as_str()), None))
+                        })
+                    } else {
+                        None
+                    }
+                } else {
+                    if args.len() == 1 {
+                        args.first()
+                            .filter(|f| !f.starts_with('-'))
+                            .map(|f| (PathBuf::from(f), None))
+                    } else {
+                        None
+                    }
+                };
+
+                if let Some((file_path, line_number)) = edit_file {
+                    pane.run = Some(Run::EditFile(file_path, line_number, None));
+                }
+            }
+        };
+
+        for tab in self.tabs.iter_mut() {
+            for pane in tab.tiled_panes.iter_mut() {
+                upgrade_pane(pane);
+            }
+            for pane in tab.floating_panes.iter_mut() {
+                upgrade_pane(pane);
+            }
+        }
     }
     pub fn update_plugin_aliases_in_default_layout(&mut self, plugin_aliases: &PluginAliases) {
         self.default_layout
@@ -568,5 +673,225 @@ impl ClientMetadata {
             ));
         }
         lines.join("\n")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use zellij_utils::pane_size::PaneGeom;
+
+    fn make_command_pane(terminal_id: u32, command: &str, args: Vec<&str>) -> PaneLayoutMetadata {
+        let mut run_command = RunCommand::new(PathBuf::from(command));
+        run_command.args = args.into_iter().map(|s| s.to_string()).collect();
+        PaneLayoutMetadata::new(
+            PaneId::Terminal(terminal_id),
+            PaneGeom::default(),
+            false,
+            Some(Run::Command(run_command)),
+            None,
+            false,
+            None,
+            vec![],
+        )
+    }
+
+    fn make_edit_file_pane(
+        terminal_id: u32,
+        path: &str,
+        line_number: Option<usize>,
+    ) -> PaneLayoutMetadata {
+        PaneLayoutMetadata::new(
+            PaneId::Terminal(terminal_id),
+            PaneGeom::default(),
+            false,
+            Some(Run::EditFile(PathBuf::from(path), line_number, None)),
+            None,
+            false,
+            None,
+            vec![],
+        )
+    }
+
+    fn session_with_editor(editor: &str, panes: Vec<PaneLayoutMetadata>) -> SessionLayoutMetadata {
+        let mut meta = SessionLayoutMetadata::default();
+        meta.default_editor = Some(PathBuf::from(editor));
+        meta.add_tab("tab1".to_string(), true, false, panes, vec![]);
+        meta
+    }
+
+    fn get_first_tiled_run(meta: &SessionLayoutMetadata) -> Option<&Run> {
+        meta.tabs[0].tiled_panes[0].run.as_ref()
+    }
+
+    #[test]
+    fn detects_editor_pane_no_line_number() {
+        let pane = make_command_pane(1, "nvim", vec!["file.txt"]);
+        let mut meta = session_with_editor("nvim", vec![pane]);
+        meta.detect_editor_panes();
+        assert_eq!(
+            get_first_tiled_run(&meta),
+            Some(&Run::EditFile(PathBuf::from("file.txt"), None, None))
+        );
+    }
+
+    #[test]
+    fn detects_editor_pane_with_line_number_vim_family() {
+        let pane = make_command_pane(1, "nvim", vec!["+50", "file.txt"]);
+        let mut meta = session_with_editor("nvim", vec![pane]);
+        meta.detect_editor_panes();
+        assert_eq!(
+            get_first_tiled_run(&meta),
+            Some(&Run::EditFile(PathBuf::from("file.txt"), Some(50), None))
+        );
+    }
+
+    #[test]
+    fn detects_editor_pane_with_line_number_helix() {
+        let pane = make_command_pane(1, "hx", vec!["file.txt:50"]);
+        let mut meta = session_with_editor("hx", vec![pane]);
+        meta.detect_editor_panes();
+        assert_eq!(
+            get_first_tiled_run(&meta),
+            Some(&Run::EditFile(PathBuf::from("file.txt"), Some(50), None))
+        );
+    }
+
+    #[test]
+    fn detects_editor_pane_helix_no_line_number() {
+        let pane = make_command_pane(1, "helix", vec!["file.txt"]);
+        let mut meta = session_with_editor("helix", vec![pane]);
+        meta.detect_editor_panes();
+        assert_eq!(
+            get_first_tiled_run(&meta),
+            Some(&Run::EditFile(PathBuf::from("file.txt"), None, None))
+        );
+    }
+
+    #[test]
+    fn skips_non_editor_command() {
+        let pane = make_command_pane(1, "grep", vec!["pattern", "file.txt"]);
+        let mut meta = session_with_editor("nvim", vec![pane]);
+        meta.detect_editor_panes();
+        // Run::Command(grep ...) unchanged
+        match get_first_tiled_run(&meta) {
+            Some(Run::Command(rc)) => {
+                assert_eq!(rc.command, PathBuf::from("grep"));
+            },
+            other => panic!("expected Command, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn skips_editor_with_no_args() {
+        let pane = make_command_pane(1, "nvim", vec![]);
+        let mut meta = session_with_editor("nvim", vec![pane]);
+        meta.detect_editor_panes();
+        match get_first_tiled_run(&meta) {
+            Some(Run::Command(rc)) => {
+                assert_eq!(rc.command, PathBuf::from("nvim"));
+                assert!(rc.args.is_empty());
+            },
+            other => panic!("expected Command, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn skips_editor_with_multiple_files() {
+        let pane = make_command_pane(1, "nvim", vec!["a.txt", "b.txt"]);
+        let mut meta = session_with_editor("nvim", vec![pane]);
+        meta.detect_editor_panes();
+        match get_first_tiled_run(&meta) {
+            Some(Run::Command(rc)) => {
+                assert_eq!(rc.command, PathBuf::from("nvim"));
+                assert_eq!(rc.args, vec!["a.txt", "b.txt"]);
+            },
+            other => panic!("expected Command, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn detects_editor_matching_by_binary_name() {
+        // configured as /usr/bin/nvim, running as nvim
+        let pane = make_command_pane(1, "nvim", vec!["file.txt"]);
+        let mut meta = session_with_editor("/usr/bin/nvim", vec![pane]);
+        meta.detect_editor_panes();
+        assert_eq!(
+            get_first_tiled_run(&meta),
+            Some(&Run::EditFile(PathBuf::from("file.txt"), None, None))
+        );
+    }
+
+    #[test]
+    fn does_not_affect_existing_edit_file_run() {
+        let pane = make_edit_file_pane(1, "file.txt", Some(10));
+        let mut meta = session_with_editor("nvim", vec![pane]);
+        meta.detect_editor_panes();
+        assert_eq!(
+            get_first_tiled_run(&meta),
+            Some(&Run::EditFile(PathBuf::from("file.txt"), Some(10), None))
+        );
+    }
+
+    #[test]
+    fn detects_vi_when_editor_is_vim() {
+        // configured as vim, pane running vi (common alias)
+        let pane = make_command_pane(1, "vi", vec!["file.txt"]);
+        let mut meta = session_with_editor("vim", vec![pane]);
+        meta.detect_editor_panes();
+        assert_eq!(
+            get_first_tiled_run(&meta),
+            Some(&Run::EditFile(PathBuf::from("file.txt"), None, None))
+        );
+    }
+
+    #[test]
+    fn detects_nvim_when_editor_is_vi() {
+        // configured as vi, pane running nvim
+        let pane = make_command_pane(1, "nvim", vec!["file.txt"]);
+        let mut meta = session_with_editor("vi", vec![pane]);
+        meta.detect_editor_panes();
+        assert_eq!(
+            get_first_tiled_run(&meta),
+            Some(&Run::EditFile(PathBuf::from("file.txt"), None, None))
+        );
+    }
+
+    #[test]
+    fn does_not_cross_match_vim_with_emacs() {
+        // configured as emacs, pane running vim — NOT cross-matched
+        let pane = make_command_pane(1, "vim", vec!["file.txt"]);
+        let mut meta = session_with_editor("emacs", vec![pane]);
+        meta.detect_editor_panes();
+        match get_first_tiled_run(&meta) {
+            Some(Run::Command(rc)) => assert_eq!(rc.command, PathBuf::from("vim")),
+            other => panic!("expected Command, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn detects_hx_when_editor_is_helix() {
+        let pane = make_command_pane(1, "hx", vec!["file.txt"]);
+        let mut meta = session_with_editor("helix", vec![pane]);
+        meta.detect_editor_panes();
+        assert_eq!(
+            get_first_tiled_run(&meta),
+            Some(&Run::EditFile(PathBuf::from("file.txt"), None, None))
+        );
+    }
+
+    #[test]
+    fn absolute_file_path_preserved() {
+        let pane = make_command_pane(1, "nvim", vec!["/home/user/file.txt"]);
+        let mut meta = session_with_editor("nvim", vec![pane]);
+        meta.detect_editor_panes();
+        assert_eq!(
+            get_first_tiled_run(&meta),
+            Some(&Run::EditFile(
+                PathBuf::from("/home/user/file.txt"),
+                None,
+                None
+            ))
+        );
     }
 }

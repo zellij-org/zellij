@@ -28,13 +28,15 @@ use zellij_utils::data::{
     KeyWithModifier, LayoutInfo, LayoutMetadata, LayoutParsingError, MessageToPlugin,
     NewPanePlacement, NewTabResponse, NewTabsResponse, OpenCommandPaneBackgroundResponse,
     OpenCommandPaneFloatingNearPluginResponse, OpenCommandPaneFloatingResponse,
-    OpenCommandPaneInPlaceOfPluginResponse, OpenCommandPaneInPlaceResponse,
-    OpenCommandPaneNearPluginResponse, OpenCommandPaneResponse, OpenFileFloatingNearPluginResponse,
+    OpenCommandPaneInPlaceOfPaneIdResponse, OpenCommandPaneInPlaceOfPluginResponse,
+    OpenCommandPaneInPlaceResponse, OpenCommandPaneNearPluginResponse, OpenCommandPaneResponse,
+    OpenEditPaneInPlaceOfPaneIdResponse, OpenFileFloatingNearPluginResponse,
     OpenFileFloatingResponse, OpenFileInPlaceOfPluginResponse, OpenFileInPlaceResponse,
-    OpenFileNearPluginResponse, OpenFileResponse, OpenTerminalFloatingNearPluginResponse,
-    OpenTerminalFloatingResponse, OpenTerminalInPlaceOfPluginResponse, OpenTerminalInPlaceResponse,
-    OpenTerminalNearPluginResponse, OpenTerminalResponse, OriginatingPlugin,
-    PaneScrollbackResponse, PermissionStatus, PermissionType, PluginPermission,
+    OpenFileNearPluginResponse, OpenFileResponse, OpenPaneInNewTabResponse,
+    OpenTerminalFloatingNearPluginResponse, OpenTerminalFloatingResponse,
+    OpenTerminalInPlaceOfPluginResponse, OpenTerminalInPlaceResponse,
+    OpenTerminalNearPluginResponse, OpenTerminalPaneInPlaceOfPaneIdResponse, OpenTerminalResponse,
+    OriginatingPlugin, PaneScrollbackResponse, PermissionStatus, PermissionType, PluginPermission,
     RenameLayoutResponse, SaveLayoutResponse, TabMetadata,
 };
 use zellij_utils::home::default_layout_dir;
@@ -53,10 +55,10 @@ use kdl::KdlDocument;
 
 use prost::Message;
 use zellij_utils::{
-    consts::{VERSION, ZELLIJ_SESSION_INFO_CACHE_DIR, ZELLIJ_SOCK_DIR},
+    consts::{VERSION, ZELLIJ_SESSION_INFO_CACHE_DIR, ZELLIJ_SOCK_DIR, ZELLIJ_TMP_DIR},
     data::{
-        CommandToRun, Direction, EventType, FileToOpen, InputMode, PluginCommand, PluginIds,
-        PluginMessage, Resize, ResizeStrategy,
+        CommandOrPlugin, CommandToRun, Direction, EventType, FileToOpen, InputMode, PluginCommand,
+        PluginIds, PluginMessage, Resize, ResizeStrategy,
     },
     errors::prelude::*,
     input::{
@@ -84,14 +86,17 @@ use zellij_utils::{
             ProtobufOpenCommandPaneBackgroundResponse,
             ProtobufOpenCommandPaneFloatingNearPluginResponse,
             ProtobufOpenCommandPaneFloatingResponse,
+            ProtobufOpenCommandPaneInPlaceOfPaneIdResponse,
             ProtobufOpenCommandPaneInPlaceOfPluginResponse, ProtobufOpenCommandPaneInPlaceResponse,
             ProtobufOpenCommandPaneNearPluginResponse, ProtobufOpenCommandPaneResponse,
+            ProtobufOpenEditPaneInPlaceOfPaneIdResponse,
             ProtobufOpenFileFloatingNearPluginResponse, ProtobufOpenFileFloatingResponse,
             ProtobufOpenFileInPlaceOfPluginResponse, ProtobufOpenFileInPlaceResponse,
             ProtobufOpenFileNearPluginResponse, ProtobufOpenFileResponse,
-            ProtobufOpenTerminalFloatingNearPluginResponse, ProtobufOpenTerminalFloatingResponse,
-            ProtobufOpenTerminalInPlaceOfPluginResponse, ProtobufOpenTerminalInPlaceResponse,
-            ProtobufOpenTerminalNearPluginResponse, ProtobufOpenTerminalResponse,
+            ProtobufOpenPaneInNewTabResponse, ProtobufOpenTerminalFloatingNearPluginResponse,
+            ProtobufOpenTerminalFloatingResponse, ProtobufOpenTerminalInPlaceOfPluginResponse,
+            ProtobufOpenTerminalInPlaceResponse, ProtobufOpenTerminalNearPluginResponse,
+            ProtobufOpenTerminalPaneInPlaceOfPaneIdResponse, ProtobufOpenTerminalResponse,
             ProtobufParseLayoutResponse, ProtobufPluginCommand, ProtobufRenameLayoutResponse,
             ProtobufSaveLayoutResponse, ProtobufSaveSessionResponse,
         },
@@ -129,6 +134,23 @@ macro_rules! apply_action {
             },
         }
     };
+}
+
+fn translate_plugin_path(env: &PluginEnv, path: PathBuf) -> PathBuf {
+    if let Ok(stripped) = path.strip_prefix("/host") {
+        env.plugin_cwd.join(stripped)
+    } else if let Ok(stripped) = path.strip_prefix("/data") {
+        env.plugin_own_data_dir.join(stripped)
+    } else if let Ok(stripped) = path.strip_prefix("/cache") {
+        env.plugin_own_cache_dir.join(stripped)
+    } else if let Ok(stripped) = path.strip_prefix("/tmp") {
+        ZELLIJ_TMP_DIR.join(stripped)
+    } else if path.is_relative() {
+        env.plugin_cwd.join(path)
+    } else {
+        // Absolute path not in any plugin special folder — pass through
+        path
+    }
 }
 
 pub fn zellij_exports(linker: &mut Linker<PluginEnv>) {
@@ -663,6 +685,53 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::GetSessionEnvironmentVariables => {
                         get_session_environment_variables(env);
                     },
+                    PluginCommand::OpenCommandPaneInNewTab(command_to_run, context) => {
+                        open_command_pane_in_new_tab(env, command_to_run, context);
+                    },
+                    PluginCommand::OpenPluginPaneInNewTab {
+                        plugin_url,
+                        configuration,
+                        context,
+                    } => {
+                        open_plugin_pane_in_new_tab(env, plugin_url, configuration, context);
+                    },
+                    PluginCommand::OpenEditorPaneInNewTab(file_to_open, context) => {
+                        open_editor_pane_in_new_tab(env, file_to_open, context);
+                    },
+                    PluginCommand::OpenCommandPaneInPlaceOfPaneId(
+                        pane_id,
+                        command_to_run,
+                        close_replaced_pane,
+                        context,
+                    ) => open_command_pane_in_place_of_pane_id(
+                        env,
+                        pane_id,
+                        command_to_run,
+                        close_replaced_pane,
+                        context,
+                    ),
+                    PluginCommand::OpenTerminalPaneInPlaceOfPaneId(
+                        pane_id,
+                        cwd,
+                        close_replaced_pane,
+                    ) => open_terminal_pane_in_place_of_pane_id(
+                        env,
+                        pane_id,
+                        cwd,
+                        close_replaced_pane,
+                    ),
+                    PluginCommand::OpenEditPaneInPlaceOfPaneId(
+                        pane_id,
+                        file_to_open,
+                        close_replaced_pane,
+                        context,
+                    ) => open_edit_pane_in_place_of_pane_id(
+                        env,
+                        pane_id,
+                        file_to_open,
+                        close_replaced_pane,
+                        context,
+                    ),
                 },
                 (PermissionStatus::Denied, permission) => {
                     log::error!(
@@ -914,6 +983,147 @@ fn get_session_environment_variables(env: &PluginEnv) {
         .non_fatal();
 }
 
+fn open_command_pane_in_new_tab(
+    env: &PluginEnv,
+    command_to_run: CommandToRun,
+    context: BTreeMap<String, String>,
+) {
+    let command = command_to_run.path;
+    let cwd = command_to_run
+        .cwd
+        .map(|cwd| translate_plugin_path(env, cwd))
+        .or_else(|| Some(env.plugin_cwd.clone()));
+    let args = command_to_run.args;
+    let hold_on_close = true;
+    let hold_on_start = false;
+    let run_command_action = RunCommandAction {
+        command,
+        args,
+        cwd,
+        direction: None,
+        hold_on_close,
+        hold_on_start,
+        originating_plugin: Some(OriginatingPlugin::new(
+            env.plugin_id,
+            env.client_id,
+            context,
+        )),
+        use_terminal_title: false,
+    };
+    let initial_panes = Some(vec![CommandOrPlugin::Command(run_command_action)]);
+    let action = Action::NewTab {
+        tiled_layout: None,
+        floating_layouts: vec![],
+        swap_tiled_layouts: None,
+        swap_floating_layouts: None,
+        tab_name: None,
+        should_change_focus_to_new_tab: true,
+        cwd: None,
+        initial_panes,
+        first_pane_unblock_condition: None,
+    };
+    let error_msg = || format!("Failed to open command pane in new tab");
+    let result = apply_action!(action, error_msg, env);
+
+    let tab_id = result.as_ref().and_then(|r| r.affected_tab_id);
+    let pane_id = result
+        .as_ref()
+        .and_then(|r| r.affected_pane_id)
+        .map(|p| p.into());
+    let response =
+        ProtobufOpenPaneInNewTabResponse::from(OpenPaneInNewTabResponse { tab_id, pane_id });
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to write open_command_pane_in_new_tab response"))
+        .non_fatal();
+}
+
+fn open_plugin_pane_in_new_tab(
+    env: &PluginEnv,
+    plugin_url: String,
+    configuration: BTreeMap<String, String>,
+    context: BTreeMap<String, String>,
+) {
+    let run_plugin_or_alias = RunPluginOrAlias::from_url(
+        &plugin_url,
+        &Some(configuration),
+        None,
+        Some(env.plugin_cwd.clone()),
+    );
+    let run_plugin_or_alias = match run_plugin_or_alias {
+        Ok(r) => r,
+        Err(e) => {
+            log::error!("Failed to parse plugin url '{}': {}", plugin_url, e);
+            let response =
+                ProtobufOpenPaneInNewTabResponse::from(OpenPaneInNewTabResponse::default());
+            wasi_write_object(env, &response.encode_to_vec())
+                .with_context(|| {
+                    format!("failed to write open_plugin_pane_in_new_tab error response")
+                })
+                .non_fatal();
+            return;
+        },
+    };
+    let _ = context; // context is not currently used for plugin panes
+    let initial_panes = Some(vec![CommandOrPlugin::Plugin(run_plugin_or_alias)]);
+    let action = Action::NewTab {
+        tiled_layout: None,
+        floating_layouts: vec![],
+        swap_tiled_layouts: None,
+        swap_floating_layouts: None,
+        tab_name: None,
+        should_change_focus_to_new_tab: true,
+        cwd: None,
+        initial_panes,
+        first_pane_unblock_condition: None,
+    };
+    let error_msg = || format!("Failed to open plugin pane in new tab");
+    let result = apply_action!(action, error_msg, env);
+
+    let tab_id = result.as_ref().and_then(|r| r.affected_tab_id);
+    let pane_id = result
+        .as_ref()
+        .and_then(|r| r.affected_pane_id)
+        .map(|p| p.into());
+    let response =
+        ProtobufOpenPaneInNewTabResponse::from(OpenPaneInNewTabResponse { tab_id, pane_id });
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to write open_plugin_pane_in_new_tab response"))
+        .non_fatal();
+}
+
+fn open_editor_pane_in_new_tab(
+    env: &PluginEnv,
+    file_to_open: FileToOpen,
+    context: BTreeMap<String, String>,
+) {
+    let _ = context; // context is not currently used for editor panes in new tab
+    let initial_panes = Some(vec![CommandOrPlugin::File(file_to_open)]);
+    let action = Action::NewTab {
+        tiled_layout: None,
+        floating_layouts: vec![],
+        swap_tiled_layouts: None,
+        swap_floating_layouts: None,
+        tab_name: None,
+        should_change_focus_to_new_tab: true,
+        cwd: None,
+        initial_panes,
+        first_pane_unblock_condition: None,
+    };
+    let error_msg = || format!("Failed to open editor pane in new tab");
+    let result = apply_action!(action, error_msg, env);
+
+    let tab_id = result.as_ref().and_then(|r| r.affected_tab_id);
+    let pane_id = result
+        .as_ref()
+        .and_then(|r| r.affected_pane_id)
+        .map(|p| p.into());
+    let response =
+        ProtobufOpenPaneInNewTabResponse::from(OpenPaneInNewTabResponse { tab_id, pane_id });
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to write open_editor_pane_in_new_tab response"))
+        .non_fatal();
+}
+
 fn get_focused_pane_info(env: &PluginEnv) {
     use crossbeam::channel::RecvTimeoutError;
     use std::time::Duration;
@@ -1082,10 +1292,10 @@ fn open_file(env: &PluginEnv, file_to_open: FileToOpen, context: BTreeMap<String
     let floating = false;
     let in_place = false;
     let start_suppressed = false;
-    let path = env.plugin_cwd.join(file_to_open.path);
+    let path = translate_plugin_path(env, file_to_open.path);
     let cwd = file_to_open
         .cwd
-        .map(|cwd| env.plugin_cwd.join(cwd))
+        .map(|cwd| translate_plugin_path(env, cwd))
         .or_else(|| Some(env.plugin_cwd.clone()));
     let action = Action::EditFile {
         payload: OpenFilePayload::new(path, file_to_open.line_number, cwd).with_originating_plugin(
@@ -1183,10 +1393,10 @@ fn open_file_floating(
     let floating = true;
     let in_place = false;
     let start_suppressed = false;
-    let path = env.plugin_cwd.join(file_to_open.path);
+    let path = translate_plugin_path(env, file_to_open.path);
     let cwd = file_to_open
         .cwd
-        .map(|cwd| env.plugin_cwd.join(cwd))
+        .map(|cwd| translate_plugin_path(env, cwd))
         .or_else(|| Some(env.plugin_cwd.clone()));
     let action = Action::EditFile {
         payload: OpenFilePayload::new(path, file_to_open.line_number, cwd).with_originating_plugin(
@@ -1221,10 +1431,10 @@ fn open_file_in_place(
     let floating = false;
     let in_place = true;
     let start_suppressed = false;
-    let path = env.plugin_cwd.join(file_to_open.path);
+    let path = translate_plugin_path(env, file_to_open.path);
     let cwd = file_to_open
         .cwd
-        .map(|cwd| env.plugin_cwd.join(cwd))
+        .map(|cwd| translate_plugin_path(env, cwd))
         .or_else(|| Some(env.plugin_cwd.clone()));
 
     let action = Action::EditFile {
@@ -1258,9 +1468,9 @@ fn open_file_near_plugin(
 ) {
     let cwd = file_to_open
         .cwd
-        .map(|cwd| env.plugin_cwd.join(cwd))
+        .map(|cwd| translate_plugin_path(env, cwd))
         .or_else(|| Some(env.plugin_cwd.clone()));
-    let path = env.plugin_cwd.join(file_to_open.path);
+    let path = translate_plugin_path(env, file_to_open.path);
     let open_file_payload =
         OpenFilePayload::new(path, file_to_open.line_number, cwd).with_originating_plugin(
             OriginatingPlugin::new(env.plugin_id, env.client_id, context),
@@ -1301,9 +1511,9 @@ fn open_file_floating_near_plugin(
 ) {
     let cwd = file_to_open
         .cwd
-        .map(|cwd| env.plugin_cwd.join(cwd))
+        .map(|cwd| translate_plugin_path(env, cwd))
         .or_else(|| Some(env.plugin_cwd.clone()));
-    let path = env.plugin_cwd.join(file_to_open.path);
+    let path = translate_plugin_path(env, file_to_open.path);
     let open_file_payload =
         OpenFilePayload::new(path, file_to_open.line_number, cwd).with_originating_plugin(
             OriginatingPlugin::new(env.plugin_id, env.client_id, context),
@@ -1344,9 +1554,9 @@ fn open_file_in_place_of_plugin(
 ) {
     let cwd = file_to_open
         .cwd
-        .map(|cwd| env.plugin_cwd.join(cwd))
+        .map(|cwd| translate_plugin_path(env, cwd))
         .or_else(|| Some(env.plugin_cwd.clone()));
-    let path = env.plugin_cwd.join(file_to_open.path);
+    let path = translate_plugin_path(env, file_to_open.path);
     let open_file_payload =
         OpenFilePayload::new(path, file_to_open.line_number, cwd).with_originating_plugin(
             OriginatingPlugin::new(env.plugin_id, env.client_id, context),
@@ -1378,7 +1588,7 @@ fn open_file_in_place_of_plugin(
 
 fn open_terminal(env: &PluginEnv, cwd: PathBuf) {
     let error_msg = || format!("failed to open file in plugin {}", env.name());
-    let cwd = env.plugin_cwd.join(cwd);
+    let cwd = translate_plugin_path(env, cwd);
     let mut default_shell = env.default_shell.clone().unwrap_or_else(|| {
         TerminalAction::RunCommand(RunCommand {
             command: env.path_to_default_shell.clone(),
@@ -1411,7 +1621,7 @@ fn open_terminal(env: &PluginEnv, cwd: PathBuf) {
 }
 
 fn open_terminal_near_plugin(env: &PluginEnv, cwd: PathBuf) {
-    let cwd = env.plugin_cwd.join(cwd);
+    let cwd = translate_plugin_path(env, cwd);
     let mut default_shell = env.default_shell.clone().unwrap_or_else(|| {
         TerminalAction::RunCommand(RunCommand {
             command: env.path_to_default_shell.clone(),
@@ -1454,7 +1664,7 @@ fn open_terminal_floating(
     floating_pane_coordinates: Option<FloatingPaneCoordinates>,
 ) {
     let error_msg = || format!("failed to open file in plugin {}", env.name());
-    let cwd = env.plugin_cwd.join(cwd);
+    let cwd = translate_plugin_path(env, cwd);
     let mut default_shell = env.default_shell.clone().unwrap_or_else(|| {
         TerminalAction::RunCommand(RunCommand {
             command: env.path_to_default_shell.clone(),
@@ -1491,7 +1701,7 @@ fn open_terminal_floating_near_plugin(
     cwd: PathBuf,
     floating_pane_coordinates: Option<FloatingPaneCoordinates>,
 ) {
-    let cwd = env.plugin_cwd.join(cwd);
+    let cwd = translate_plugin_path(env, cwd);
     let mut default_shell = env.default_shell.clone().unwrap_or_else(|| {
         TerminalAction::RunCommand(RunCommand {
             command: env.path_to_default_shell.clone(),
@@ -1528,7 +1738,7 @@ fn open_terminal_floating_near_plugin(
 
 fn open_terminal_in_place(env: &PluginEnv, cwd: PathBuf) {
     let error_msg = || format!("failed to open file in plugin {}", env.name());
-    let cwd = env.plugin_cwd.join(cwd);
+    let cwd = translate_plugin_path(env, cwd);
     let mut default_shell = env.default_shell.clone().unwrap_or_else(|| {
         TerminalAction::RunCommand(RunCommand {
             command: env.path_to_default_shell.clone(),
@@ -1566,7 +1776,7 @@ fn open_terminal_in_place_of_plugin(
     cwd: PathBuf,
     close_plugin_after_replace: bool,
 ) {
-    let cwd = env.plugin_cwd.join(cwd);
+    let cwd = translate_plugin_path(env, cwd);
     let mut default_shell = env.default_shell.clone().unwrap_or_else(|| {
         TerminalAction::RunCommand(RunCommand {
             command: env.path_to_default_shell.clone(),
@@ -1608,7 +1818,9 @@ fn open_command_pane_in_place_of_plugin(
     context: BTreeMap<String, String>,
 ) {
     let command = command_to_run.path;
-    let cwd = command_to_run.cwd.map(|cwd| env.plugin_cwd.join(cwd));
+    let cwd = command_to_run
+        .cwd
+        .map(|cwd| translate_plugin_path(env, cwd));
     let args = command_to_run.args;
     let direction = None;
     let hold_on_close = true;
@@ -1655,6 +1867,144 @@ fn open_command_pane_in_place_of_plugin(
         .non_fatal();
 }
 
+fn open_terminal_pane_in_place_of_pane_id(
+    env: &PluginEnv,
+    pane_id_to_replace: zellij_utils::data::PaneId,
+    cwd: FileToOpen,
+    close_replaced_pane: bool,
+) {
+    let cwd_path = translate_plugin_path(env, cwd.path);
+    let mut default_shell = env.default_shell.clone().unwrap_or_else(|| {
+        TerminalAction::RunCommand(RunCommand {
+            command: env.path_to_default_shell.clone(),
+            use_terminal_title: true,
+            ..Default::default()
+        })
+    });
+    default_shell.change_cwd(cwd_path);
+    let name = None;
+
+    let (completion_tx, completion_rx) = oneshot::channel();
+    let _ = env
+        .senders
+        .send_to_pty(PtyInstruction::SpawnInPlaceTerminal(
+            Some(default_shell),
+            name,
+            close_replaced_pane,
+            ClientTabIndexOrPaneId::PaneId(pane_id_to_replace.into()),
+            Some(NotificationEnd::new(completion_tx)),
+        ));
+
+    let result = wait_for_action_completion(
+        completion_rx,
+        "open_terminal_pane_in_place_of_pane_id",
+        false,
+    );
+    let pane_id: OpenTerminalPaneInPlaceOfPaneIdResponse =
+        result.affected_pane_id.map(|p| p.into());
+
+    let response = ProtobufOpenTerminalPaneInPlaceOfPaneIdResponse::from(pane_id);
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to write open_terminal_pane_in_place_of_pane_id response"))
+        .non_fatal();
+}
+
+fn open_command_pane_in_place_of_pane_id(
+    env: &PluginEnv,
+    pane_id_to_replace: zellij_utils::data::PaneId,
+    command_to_run: CommandToRun,
+    close_replaced_pane: bool,
+    context: BTreeMap<String, String>,
+) {
+    let command = command_to_run.path;
+    let cwd = command_to_run
+        .cwd
+        .map(|cwd| translate_plugin_path(env, cwd));
+    let args = command_to_run.args;
+    let direction = None;
+    let hold_on_close = true;
+    let hold_on_start = false;
+    let name = None;
+    let use_terminal_title = false;
+    let run_command_action = RunCommandAction {
+        command,
+        args,
+        cwd,
+        direction,
+        hold_on_close,
+        hold_on_start,
+        originating_plugin: Some(OriginatingPlugin::new(
+            env.plugin_id,
+            env.client_id,
+            context,
+        )),
+        use_terminal_title,
+    };
+    let run_cmd = TerminalAction::RunCommand(run_command_action.into());
+
+    let (completion_tx, completion_rx) = oneshot::channel();
+    let _ = env
+        .senders
+        .send_to_pty(PtyInstruction::SpawnInPlaceTerminal(
+            Some(run_cmd),
+            name,
+            close_replaced_pane,
+            ClientTabIndexOrPaneId::PaneId(pane_id_to_replace.into()),
+            Some(NotificationEnd::new(completion_tx)),
+        ));
+
+    let result = wait_for_action_completion(
+        completion_rx,
+        "open_command_pane_in_place_of_pane_id",
+        false,
+    );
+    let pane_id: OpenCommandPaneInPlaceOfPaneIdResponse = result.affected_pane_id.map(|p| p.into());
+
+    let response = ProtobufOpenCommandPaneInPlaceOfPaneIdResponse::from(pane_id);
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to write open_command_pane_in_place_of_pane_id response"))
+        .non_fatal();
+}
+
+fn open_edit_pane_in_place_of_pane_id(
+    env: &PluginEnv,
+    pane_id_to_replace: zellij_utils::data::PaneId,
+    file_to_open: FileToOpen,
+    close_replaced_pane: bool,
+    context: BTreeMap<String, String>,
+) {
+    let cwd = file_to_open
+        .cwd
+        .map(|cwd| translate_plugin_path(env, cwd))
+        .or_else(|| Some(env.plugin_cwd.clone()));
+    let path = translate_plugin_path(env, file_to_open.path);
+    let open_file_payload =
+        OpenFilePayload::new(path, file_to_open.line_number, cwd).with_originating_plugin(
+            OriginatingPlugin::new(env.plugin_id, env.client_id, context),
+        );
+    let title = format!("Editing: {}", open_file_payload.path.display());
+    let open_file = TerminalAction::OpenFile(open_file_payload);
+
+    let (completion_tx, completion_rx) = oneshot::channel();
+    let pty_instr = PtyInstruction::SpawnInPlaceTerminal(
+        Some(open_file),
+        Some(title),
+        close_replaced_pane,
+        ClientTabIndexOrPaneId::PaneId(pane_id_to_replace.into()),
+        Some(NotificationEnd::new(completion_tx)),
+    );
+    let _ = env.senders.send_to_pty(pty_instr);
+
+    let result =
+        wait_for_action_completion(completion_rx, "open_edit_pane_in_place_of_pane_id", false);
+    let pane_id: OpenEditPaneInPlaceOfPaneIdResponse = result.affected_pane_id.map(|p| p.into());
+
+    let response = ProtobufOpenEditPaneInPlaceOfPaneIdResponse::from(pane_id);
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to write open_edit_pane_in_place_of_pane_id response"))
+        .non_fatal();
+}
+
 fn open_command_pane(
     env: &PluginEnv,
     command_to_run: CommandToRun,
@@ -1662,7 +2012,9 @@ fn open_command_pane(
 ) {
     let error_msg = || format!("failed to open command in plugin {}", env.name());
     let command = command_to_run.path;
-    let cwd = command_to_run.cwd.map(|cwd| env.plugin_cwd.join(cwd));
+    let cwd = command_to_run
+        .cwd
+        .map(|cwd| translate_plugin_path(env, cwd));
     let args = command_to_run.args;
     let direction = None;
     let hold_on_close = true;
@@ -1709,7 +2061,9 @@ fn open_command_pane_near_plugin(
     context: BTreeMap<String, String>,
 ) {
     let command = command_to_run.path;
-    let cwd = command_to_run.cwd.map(|cwd| env.plugin_cwd.join(cwd));
+    let cwd = command_to_run
+        .cwd
+        .map(|cwd| translate_plugin_path(env, cwd));
     let args = command_to_run.args;
     let direction = None;
     let hold_on_close = true;
@@ -1766,7 +2120,9 @@ fn open_command_pane_floating(
 ) {
     let error_msg = || format!("failed to open command in plugin {}", env.name());
     let command = command_to_run.path;
-    let cwd = command_to_run.cwd.map(|cwd| env.plugin_cwd.join(cwd));
+    let cwd = command_to_run
+        .cwd
+        .map(|cwd| translate_plugin_path(env, cwd));
     let args = command_to_run.args;
     let direction = None;
     let hold_on_close = true;
@@ -1813,7 +2169,9 @@ fn open_command_pane_floating_near_plugin(
     context: BTreeMap<String, String>,
 ) {
     let command = command_to_run.path;
-    let cwd = command_to_run.cwd.map(|cwd| env.plugin_cwd.join(cwd));
+    let cwd = command_to_run
+        .cwd
+        .map(|cwd| translate_plugin_path(env, cwd));
     let args = command_to_run.args;
     let direction = None;
     let hold_on_close = true;
@@ -1871,7 +2229,9 @@ fn open_command_pane_in_place(
 ) {
     let error_msg = || format!("failed to open command in plugin {}", env.name());
     let command = command_to_run.path;
-    let cwd = command_to_run.cwd.map(|cwd| env.plugin_cwd.join(cwd));
+    let cwd = command_to_run
+        .cwd
+        .map(|cwd| translate_plugin_path(env, cwd));
     let args = command_to_run.args;
     let direction = None;
     let hold_on_close = true;
@@ -1920,7 +2280,7 @@ fn open_command_pane_background(
     let command = command_to_run.path;
     let cwd = command_to_run
         .cwd
-        .map(|cwd| env.plugin_cwd.join(cwd))
+        .map(|cwd| translate_plugin_path(env, cwd))
         .or_else(|| Some(env.plugin_cwd.clone()));
     let args = command_to_run.args;
     let direction = None;
@@ -2060,7 +2420,7 @@ fn run_command(
         log::error!("Command cannot be empty");
     } else {
         let command = command_line.remove(0);
-        let cwd = env.plugin_cwd.join(cwd);
+        let cwd = translate_plugin_path(env, cwd);
         let _ = env
             .senders
             .send_to_background_jobs(BackgroundJob::RunCommand(
@@ -4365,13 +4725,16 @@ fn replace_pane_with_existing_pane(
     existing_pane: PaneId,
     suppress_replaced_pane: bool,
 ) {
+    let (completion_tx, completion_rx) = oneshot::channel();
     let _ = env
         .senders
         .send_to_screen(ScreenInstruction::ReplacePaneWithExistingPane(
             pane_to_replace,
             existing_pane,
             suppress_replaced_pane,
+            Some(NotificationEnd::new(completion_tx)),
         ));
+    let _ = wait_for_action_completion(completion_rx, "replace_pane_with_existing_pane", false);
 }
 
 fn override_layout(
@@ -4490,14 +4853,18 @@ fn check_command_permission(
         | PluginCommand::OpenFileNearPlugin(..)
         | PluginCommand::OpenFileFloatingNearPlugin(..)
         | PluginCommand::OpenFileInPlaceOfPlugin(..)
-        | PluginCommand::OpenFileInPlace(..) => PermissionType::OpenFiles,
+        | PluginCommand::OpenFileInPlace(..)
+        | PluginCommand::OpenEditPaneInPlaceOfPaneId(..) => PermissionType::OpenFiles,
         PluginCommand::OpenTerminal(..)
         | PluginCommand::OpenTerminalNearPlugin(..)
         | PluginCommand::StartOrReloadPlugin(..)
         | PluginCommand::OpenTerminalFloating(..)
         | PluginCommand::OpenTerminalFloatingNearPlugin(..)
         | PluginCommand::OpenTerminalInPlace(..)
-        | PluginCommand::OpenTerminalInPlaceOfPlugin(..) => PermissionType::OpenTerminalsOrPlugins,
+        | PluginCommand::OpenTerminalInPlaceOfPlugin(..)
+        | PluginCommand::OpenTerminalPaneInPlaceOfPaneId(..) => {
+            PermissionType::OpenTerminalsOrPlugins
+        },
         PluginCommand::OpenCommandPane(..)
         | PluginCommand::OpenCommandPaneNearPlugin(..)
         | PluginCommand::OpenCommandPaneFloating(..)
@@ -4505,6 +4872,7 @@ fn check_command_permission(
         | PluginCommand::OpenCommandPaneInPlace(..)
         | PluginCommand::OpenCommandPaneInPlaceOfPlugin(..)
         | PluginCommand::OpenCommandPaneBackground(..)
+        | PluginCommand::OpenCommandPaneInPlaceOfPaneId(..)
         | PluginCommand::RunCommand(..)
         | PluginCommand::ExecCmd(..) => PermissionType::RunCommands,
         PluginCommand::WebRequest(..) => PermissionType::WebAccess,
@@ -4648,6 +5016,9 @@ fn check_command_permission(
         PluginCommand::GetSessionEnvironmentVariables => {
             PermissionType::ReadSessionEnvironmentVariables
         },
+        PluginCommand::OpenCommandPaneInNewTab(..)
+        | PluginCommand::OpenPluginPaneInNewTab { .. }
+        | PluginCommand::OpenEditorPaneInNewTab(..) => PermissionType::ChangeApplicationState,
         _ => return (PermissionStatus::Granted, None),
     };
 

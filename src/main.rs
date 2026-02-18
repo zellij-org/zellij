@@ -210,6 +210,33 @@ fn main() {
             commands::send_action_to_session(command_cli_action, opts.session, config);
             std::process::exit(0);
         }
+        if let Some(Command::Sessions(Sessions::Sequence { payload, blocking })) = opts.command {
+            let args = if blocking {
+                let mut args: std::collections::BTreeMap<String, String> =
+                    std::collections::BTreeMap::new();
+                args.insert("blocking".to_string(), "true".to_string());
+                Some(zellij_utils::input::layout::PluginUserConfiguration::new(
+                    args,
+                ))
+            } else {
+                None
+            };
+            let command_cli_action = CliAction::Pipe {
+                name: None,
+                payload,
+                args,
+                plugin: Some("zellij:sequence".to_string()),
+                plugin_configuration: None,
+                force_launch_plugin: true,
+                skip_plugin_cache: false,
+                floating_plugin: None,
+                in_place_plugin: None,
+                plugin_cwd: None,
+                plugin_title: None,
+            };
+            commands::send_action_to_session(command_cli_action, opts.session, config);
+            std::process::exit(0);
+        }
     }
 
     if let Some(Command::Sessions(Sessions::ListSessions {
@@ -296,7 +323,7 @@ fn main() {
             let config_options = commands::get_config_options_from_cli_args(&opts)
                 .expect("Can't find config options");
             let web_server_base_url = web_server_base_url_from_config(config_options);
-            match commands::web_server_status(&web_server_base_url) {
+            match commands::web_server_status(&web_server_base_url, web_opts.timeout) {
                 Ok(version) => {
                     let version = version.trim();
                     println!(

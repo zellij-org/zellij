@@ -1492,8 +1492,18 @@ pub struct PluginAlias {
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CommandOrPluginFile {
+    #[prost(string, tag="1")]
+    pub path: ::prost::alloc::string::String,
+    #[prost(int32, optional, tag="2")]
+    pub line_number: ::core::option::Option<i32>,
+    #[prost(string, optional, tag="3")]
+    pub cwd: ::core::option::Option<::prost::alloc::string::String>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct CommandOrPlugin {
-    #[prost(oneof="command_or_plugin::CommandOrPluginType", tags="1, 2")]
+    #[prost(oneof="command_or_plugin::CommandOrPluginType", tags="1, 2, 3")]
     pub command_or_plugin_type: ::core::option::Option<command_or_plugin::CommandOrPluginType>,
 }
 /// Nested message and enum types in `CommandOrPlugin`.
@@ -1505,6 +1515,8 @@ pub mod command_or_plugin {
         Command(super::RunCommandAction),
         #[prost(message, tag="2")]
         Plugin(super::RunPluginOrAlias),
+        #[prost(message, tag="3")]
+        File(super::CommandOrPluginFile),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]

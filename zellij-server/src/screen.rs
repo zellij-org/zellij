@@ -641,7 +641,7 @@ pub enum ScreenInstruction {
     SetMouseSelectionSupport(PaneId, bool),
     InterceptKeyPresses(PluginId, ClientId),
     ClearKeyPressesIntercepts(ClientId),
-    ReplacePaneWithExistingPane(PaneId, PaneId, bool), // bool -> suppress_replaced_pane
+    ReplacePaneWithExistingPane(PaneId, PaneId, bool, Option<NotificationEnd>), // bool -> suppress_replaced_pane
     AddWatcherClient(ClientId, Size),
     RemoveWatcherClient(ClientId),
     SetFollowedClient(ClientId),
@@ -3296,6 +3296,7 @@ impl Screen {
         pane_id_to_replace: PaneId,
         pane_id_of_existing_pane: PaneId,
         suppress_replaced_pane: bool,
+        _completion_tx: Option<NotificationEnd>, // ends here
     ) {
         let Some(tab_index_of_pane_id_to_replace) = self
             .tabs
@@ -3303,7 +3304,10 @@ impl Screen {
             .find(|(_tab_index, tab)| tab.has_pane_with_pid(&pane_id_to_replace))
             .map(|(_tab_index, tab)| tab.position)
         else {
-            log::error!("Could not find tab");
+            log::error!(
+                "Could not find tab with pane_id: {:?} to replace",
+                pane_id_to_replace
+            );
             return;
         };
         let Some(tab_index_of_existing_pane) = self
@@ -3312,7 +3316,10 @@ impl Screen {
             .find(|(_tab_index, tab)| tab.has_pane_with_pid(&pane_id_of_existing_pane))
             .map(|(_tab_index, tab)| tab.position)
         else {
-            log::error!("Could not find tab");
+            log::error!(
+                "Could not find tab with pane_id: {:?} to be replaced by",
+                pane_id_of_existing_pane
+            );
             return;
         };
         let Some(extracted_pane_from_other_tab) = self
@@ -5232,6 +5239,12 @@ pub(crate) fn screen_thread_main(
                     completion_tx
                         .as_mut()
                         .map(|c| c.set_affected_pane_id(PaneId::Terminal(first_terminal_pane.0)));
+                } else if let Some(plugin_id) =
+                    new_plugin_ids.values().next().and_then(|v| v.first())
+                {
+                    completion_tx
+                        .as_mut()
+                        .map(|c| c.set_affected_pane_id(PaneId::Plugin(*plugin_id)));
                 }
                 // Set the affected tab ID for plugin API return value
                 completion_tx
@@ -7298,10 +7311,12 @@ pub(crate) fn screen_thread_main(
                 old_pane_id,
                 new_pane_id,
                 suppress_replaced_pane,
+                completion_tx,
             ) => screen.replace_pane_with_existing_pane(
                 old_pane_id,
                 new_pane_id,
                 suppress_replaced_pane,
+                completion_tx,
             ),
             ScreenInstruction::AddWatcherClient(client_id, size) => {
                 screen

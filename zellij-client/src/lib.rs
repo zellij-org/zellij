@@ -83,7 +83,7 @@ use crate::{
 use termwiz::input::InputEvent;
 use zellij_utils::cli::CliArgs;
 use zellij_utils::{
-    channels::{self, ChannelWithContext, SenderWithContext},
+    channels::{self, ChannelWithContext, RecvTimeoutError, SenderWithContext},
     consts::{set_permissions, ZELLIJ_SOCK_DIR},
     data::{ClientId, ConnectToSession, KeyWithModifier, LayoutInfo, LayoutMetadata},
     envs,
@@ -300,7 +300,7 @@ pub async fn run_remote_client_terminal_loop(
     };
 
     // send size on startup
-    let new_size = os_input.get_terminal_size_using_fd(0);
+    let new_size = os_input.get_terminal_size();
     if let Err(e) = connections
         .control_ws
         .send(create_resize_message(new_size))
@@ -335,7 +335,7 @@ pub async fn run_remote_client_terminal_loop(
             Some(signal) = async_signals.recv() => {
                 match signal {
                     crate::os_input_output::SignalEvent::Resize => {
-                        let new_size = os_input.get_terminal_size_using_fd(0);
+                        let new_size = os_input.get_terminal_size();
                         if let Err(e) = connections.control_ws.send(create_resize_message(new_size)).await {
                             log::error!("Failed to send resize message: {}", e);
                             break;
@@ -409,7 +409,7 @@ pub async fn run_remote_client_terminal_loop(
                                 // no-op
                             }
                             Ok(WebServerToWebClientControlMessage::QueryTerminalSize) => {
-                                let new_size = os_input.get_terminal_size_using_fd(0);
+                                let new_size = os_input.get_terminal_size();
                                 if let Err(e) = connections.control_ws.send(create_resize_message(new_size)).await {
                                     log::error!("Failed to send resize message: {}", e);
                                 }
@@ -477,7 +477,7 @@ pub fn start_remote_client(
     let take_snapshot = "\u{1b}[?1049h";
     let bracketed_paste = "\u{1b}[?2004h";
     let enter_kitty_keyboard_mode = "\u{1b}[>1u";
-    os_input.unset_raw_mode(0).unwrap();
+    os_input.unset_raw_mode().unwrap();
 
     let _ = os_input
         .get_stdout_writer()
@@ -494,9 +494,9 @@ pub fn start_remote_client(
 
     envs::set_zellij("0".to_string());
 
-    let full_screen_ws = os_input.get_terminal_size_using_fd(0);
+    let full_screen_ws = os_input.get_terminal_size();
 
-    os_input.set_raw_mode(0);
+    os_input.set_raw_mode();
     let _ = os_input
         .get_stdout_writer()
         .write(bracketed_paste.as_bytes())
@@ -506,14 +506,14 @@ pub fn start_remote_client(
         use zellij_utils::errors::handle_panic;
         let os_input = os_input.clone();
         Box::new(move |info| {
-            if let Ok(()) = os_input.unset_raw_mode(0) {
+            if let Ok(()) = os_input.unset_raw_mode() {
                 handle_panic::<ClientInstruction>(info, None);
             }
         })
     });
 
     let reset_controlling_terminal_state = |e: String, exit_status: i32| {
-        os_input.unset_raw_mode(0).unwrap();
+        os_input.unset_raw_mode().unwrap();
         let goto_start_of_last_line = format!("\u{1b}[{};{}H", full_screen_ws.rows, 1);
         let restore_alternate_screen = "\u{1b}[?1049l";
         let exit_kitty_keyboard_mode = "\u{1b}[<1u";
@@ -589,7 +589,7 @@ pub fn start_client(
     let take_snapshot = "\u{1b}[?1049h";
     let bracketed_paste = "\u{1b}[?2004h";
     let enter_kitty_keyboard_mode = "\u{1b}[>1u";
-    os_input.unset_raw_mode(0).unwrap();
+    os_input.unset_raw_mode().unwrap();
 
     if !is_a_reconnect {
         // we don't do this for a reconnect because our controlling terminal already has the
@@ -613,7 +613,7 @@ pub fn start_client(
     envs::set_zellij("0".to_string());
     config.env.set_vars();
 
-    let full_screen_ws = os_input.get_terminal_size_using_fd(0);
+    let full_screen_ws = os_input.get_terminal_size();
 
     let web_server_ip = config_options
         .web_server_ip
@@ -793,7 +793,7 @@ pub fn start_client(
 
     let mut command_is_executing = CommandIsExecuting::new();
 
-    os_input.set_raw_mode(0);
+    os_input.set_raw_mode();
     let _ = os_input
         .get_stdout_writer()
         .write(bracketed_paste.as_bytes())
@@ -814,7 +814,7 @@ pub fn start_client(
         let send_client_instructions = send_client_instructions.clone();
         let os_input = os_input.clone();
         Box::new(move |info| {
-            if let Ok(()) = os_input.unset_raw_mode(0) {
+            if let Ok(()) = os_input.unset_raw_mode() {
                 handle_panic(info, Some(&send_client_instructions));
             }
         })
@@ -869,7 +869,7 @@ pub fn start_client(
                         let os_api = os_input.clone();
                         move || {
                             os_api.send_to_server(ClientToServerMsg::TerminalResize {
-                                new_size: os_api.get_terminal_size_using_fd(0),
+                                new_size: os_api.get_terminal_size(),
                             });
                         }
                     }),
@@ -929,7 +929,7 @@ pub fn start_client(
         .unwrap();
 
     let handle_error = |backtrace: String| {
-        os_input.unset_raw_mode(0).unwrap();
+        os_input.unset_raw_mode().unwrap();
         let goto_start_of_last_line = format!("\u{1b}[{};{}H", full_screen_ws.rows, 1);
         let restore_snapshot = "\u{1b}[?1049l";
         os_input.disable_mouse().non_fatal();
@@ -947,6 +947,9 @@ pub fn start_client(
 
     let mut exit_msg = String::new();
     let mut loading = true;
+    let mut showed_loading_message = false;
+    let loading_start = std::time::Instant::now();
+    let loading_delay = std::time::Duration::from_millis(400);
     let mut pending_instructions = vec![];
     let mut synchronised_output = match os_input.env_variable("TERM").as_deref() {
         Some("alacritty") => Some(SyncOutput::DCS),
@@ -954,16 +957,34 @@ pub fn start_client(
     };
 
     let mut stdout = os_input.get_stdout_writer();
-    stdout
-        .write_all("\u{1b}[1m\u{1b}[HLoading Zellij\u{1b}[m\n\r".as_bytes())
-        .expect("cannot write to stdout");
-    stdout.flush().expect("could not flush");
 
     loop {
         let (client_instruction, mut err_ctx) = if !loading && !pending_instructions.is_empty() {
             // there are buffered instructions, we need to go through them before processing the
             // new ones
             pending_instructions.remove(0)
+        } else if loading && !showed_loading_message {
+            let remaining = loading_delay
+                .checked_sub(loading_start.elapsed())
+                .unwrap_or(std::time::Duration::ZERO);
+            match receive_client_instructions.recv_timeout(remaining) {
+                Ok(instruction) => instruction,
+                Err(RecvTimeoutError::Timeout) => {
+                    // 400ms elapsed with no completion — show loading UI
+                    stdout
+                        .write_all("\u{1b}[1m\u{1b}[HLoading Zellij\u{1b}[m\n\r".as_bytes())
+                        .expect("cannot write to stdout");
+                    stdout.flush().expect("could not flush");
+                    showed_loading_message = true;
+                    // Now block normally
+                    receive_client_instructions
+                        .recv()
+                        .expect("failed to receive app instruction on channel")
+                },
+                Err(RecvTimeoutError::Disconnected) => {
+                    panic!("client instruction channel disconnected");
+                },
+            }
         } else {
             receive_client_instructions
                 .recv()
@@ -974,16 +995,20 @@ pub fn start_client(
             // when the app is still loading, we buffer instructions and show a loading screen
             match client_instruction {
                 ClientInstruction::StartedParsingStdinQuery => {
-                    stdout
-                        .write_all("Querying terminal emulator for \u{1b}[32;1mdefault colors\u{1b}[m and \u{1b}[32;1mpixel/cell\u{1b}[m ratio...".as_bytes())
-                        .expect("cannot write to stdout");
-                    stdout.flush().expect("could not flush");
+                    if showed_loading_message {
+                        stdout
+                            .write_all("Querying terminal emulator for \u{1b}[32;1mdefault colors\u{1b}[m and \u{1b}[32;1mpixel/cell\u{1b}[m ratio...".as_bytes())
+                            .expect("cannot write to stdout");
+                        stdout.flush().expect("could not flush");
+                    }
                 },
                 ClientInstruction::DoneParsingStdinQuery => {
-                    stdout
-                        .write_all("done".as_bytes())
-                        .expect("cannot write to stdout");
-                    stdout.flush().expect("could not flush");
+                    if showed_loading_message {
+                        stdout
+                            .write_all("done".as_bytes())
+                            .expect("cannot write to stdout");
+                        stdout.flush().expect("could not flush");
+                    }
                     loading = false;
                 },
                 instruction => {
@@ -1048,7 +1073,7 @@ pub fn start_client(
             },
             ClientInstruction::QueryTerminalSize => {
                 os_input.send_to_server(ClientToServerMsg::TerminalResize {
-                    new_size: os_input.get_terminal_size_using_fd(0),
+                    new_size: os_input.get_terminal_size(),
                 });
             },
             ClientInstruction::StartWebServer => {
@@ -1089,7 +1114,7 @@ pub fn start_client(
 
         os_input.disable_mouse().non_fatal();
         info!("{}", exit_msg);
-        os_input.unset_raw_mode(0).unwrap();
+        os_input.unset_raw_mode().unwrap();
         let mut stdout = os_input.get_stdout_writer();
         let exit_kitty_keyboard_mode = "\u{1b}[<1u";
         if !explicitly_disable_kitty_keyboard_protocol {

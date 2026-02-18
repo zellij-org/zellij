@@ -3,7 +3,7 @@
 pub struct PluginCommand {
     #[prost(enumeration="CommandName", tag="1")]
     pub name: i32,
-    #[prost(oneof="plugin_command::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148")]
+    #[prost(oneof="plugin_command::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154")]
     pub payload: ::core::option::Option<plugin_command::Payload>,
 }
 /// Nested message and enum types in `PluginCommand`.
@@ -279,6 +279,18 @@ pub mod plugin_command {
         BreakPanesToTabWithIdPayload(super::BreakPanesToTabWithIdPayload),
         #[prost(message, tag="148")]
         GetSessionEnvironmentVariablesPayload(super::GetSessionEnvironmentVariablesPayload),
+        #[prost(message, tag="149")]
+        OpenCommandPaneInNewTabPayload(super::OpenCommandPanePayload),
+        #[prost(message, tag="150")]
+        OpenPluginPaneInNewTabPayload(super::OpenPluginPaneInNewTabPayload),
+        #[prost(message, tag="151")]
+        OpenEditorPaneInNewTabPayload(super::OpenFilePayload),
+        #[prost(message, tag="152")]
+        OpenCommandPaneInPlaceOfPaneIdPayload(super::OpenCommandPaneInPlaceOfPaneIdPayload),
+        #[prost(message, tag="153")]
+        OpenTerminalPaneInPlaceOfPaneIdPayload(super::OpenTerminalPaneInPlaceOfPaneIdPayload),
+        #[prost(message, tag="154")]
+        OpenEditPaneInPlaceOfPaneIdPayload(super::OpenEditPaneInPlaceOfPaneIdPayload),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -1636,6 +1648,76 @@ pub struct GetSessionEnvironmentVariablesResponse {
     #[prost(message, repeated, tag="1")]
     pub env_vars: ::prost::alloc::vec::Vec<EnvVariable>,
 }
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct OpenPluginPaneInNewTabPayload {
+    #[prost(string, tag="1")]
+    pub plugin_url: ::prost::alloc::string::String,
+    #[prost(map="string, string", tag="2")]
+    pub configuration: ::std::collections::HashMap<::prost::alloc::string::String, ::prost::alloc::string::String>,
+    #[prost(message, repeated, tag="3")]
+    pub context: ::prost::alloc::vec::Vec<ContextItem>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct OpenPaneInNewTabResponse {
+    #[prost(uint64, optional, tag="1")]
+    pub tab_id: ::core::option::Option<u64>,
+    #[prost(message, optional, tag="2")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct OpenCommandPaneInPlaceOfPaneIdPayload {
+    #[prost(message, optional, tag="1")]
+    pub pane_id_to_replace: ::core::option::Option<PaneId>,
+    #[prost(message, optional, tag="2")]
+    pub command_to_run: ::core::option::Option<super::command::Command>,
+    #[prost(bool, tag="3")]
+    pub close_replaced_pane: bool,
+    #[prost(message, repeated, tag="4")]
+    pub context: ::prost::alloc::vec::Vec<ContextItem>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct OpenTerminalPaneInPlaceOfPaneIdPayload {
+    #[prost(message, optional, tag="1")]
+    pub pane_id_to_replace: ::core::option::Option<PaneId>,
+    #[prost(message, optional, tag="2")]
+    pub cwd: ::core::option::Option<super::file::File>,
+    #[prost(bool, tag="3")]
+    pub close_replaced_pane: bool,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct OpenEditPaneInPlaceOfPaneIdPayload {
+    #[prost(message, optional, tag="1")]
+    pub pane_id_to_replace: ::core::option::Option<PaneId>,
+    #[prost(message, optional, tag="2")]
+    pub file_to_open: ::core::option::Option<super::file::File>,
+    #[prost(bool, tag="3")]
+    pub close_replaced_pane: bool,
+    #[prost(message, repeated, tag="4")]
+    pub context: ::prost::alloc::vec::Vec<ContextItem>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct OpenCommandPaneInPlaceOfPaneIdResponse {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct OpenTerminalPaneInPlaceOfPaneIdResponse {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct OpenEditPaneInPlaceOfPaneIdResponse {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
 pub enum CommandName {
@@ -1816,6 +1898,12 @@ pub enum CommandName {
     RenameTabWithId = 195,
     BreakPanesToTabWithId = 196,
     GetSessionEnvironmentVariables = 197,
+    OpenCommandPaneInNewTab = 198,
+    OpenPluginPaneInNewTab = 199,
+    OpenEditorPaneInNewTab = 200,
+    OpenCommandPaneInPlaceOfPaneId = 201,
+    OpenTerminalPaneInPlaceOfPaneId = 202,
+    OpenEditPaneInPlaceOfPaneId = 203,
 }
 impl CommandName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -2001,6 +2089,12 @@ impl CommandName {
             CommandName::RenameTabWithId => "RenameTabWithId",
             CommandName::BreakPanesToTabWithId => "BreakPanesToTabWithId",
             CommandName::GetSessionEnvironmentVariables => "GetSessionEnvironmentVariables",
+            CommandName::OpenCommandPaneInNewTab => "OpenCommandPaneInNewTab",
+            CommandName::OpenPluginPaneInNewTab => "OpenPluginPaneInNewTab",
+            CommandName::OpenEditorPaneInNewTab => "OpenEditorPaneInNewTab",
+            CommandName::OpenCommandPaneInPlaceOfPaneId => "OpenCommandPaneInPlaceOfPaneId",
+            CommandName::OpenTerminalPaneInPlaceOfPaneId => "OpenTerminalPaneInPlaceOfPaneId",
+            CommandName::OpenEditPaneInPlaceOfPaneId => "OpenEditPaneInPlaceOfPaneId",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -2183,6 +2277,12 @@ impl CommandName {
             "RenameTabWithId" => Some(Self::RenameTabWithId),
             "BreakPanesToTabWithId" => Some(Self::BreakPanesToTabWithId),
             "GetSessionEnvironmentVariables" => Some(Self::GetSessionEnvironmentVariables),
+            "OpenCommandPaneInNewTab" => Some(Self::OpenCommandPaneInNewTab),
+            "OpenPluginPaneInNewTab" => Some(Self::OpenPluginPaneInNewTab),
+            "OpenEditorPaneInNewTab" => Some(Self::OpenEditorPaneInNewTab),
+            "OpenCommandPaneInPlaceOfPaneId" => Some(Self::OpenCommandPaneInPlaceOfPaneId),
+            "OpenTerminalPaneInPlaceOfPaneId" => Some(Self::OpenTerminalPaneInPlaceOfPaneId),
+            "OpenEditPaneInPlaceOfPaneId" => Some(Self::OpenEditPaneInPlaceOfPaneId),
             _ => None,
         }
     }
