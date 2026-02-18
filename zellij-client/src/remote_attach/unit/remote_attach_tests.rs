@@ -235,7 +235,7 @@ impl crate::os_input_output::ClientOsApi for MockClientOsApi {
 
     fn set_raw_mode(&mut self, _fd: i32) {}
 
-    fn unset_raw_mode(&self, _fd: i32) -> Result<(), nix::Error> {
+    fn unset_raw_mode(&self, _fd: i32) -> Result<(), std::io::Error> {
         Ok(())
     }
 

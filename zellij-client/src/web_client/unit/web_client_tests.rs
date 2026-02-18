@@ -1895,7 +1895,7 @@ impl ClientOsApi for MockClientOsApi {
         self.terminal_size
     }
     fn set_raw_mode(&mut self, _fd: std::os::unix::io::RawFd) {}
-    fn unset_raw_mode(&self, _fd: std::os::unix::io::RawFd) -> Result<(), nix::Error> {
+    fn unset_raw_mode(&self, _fd: std::os::unix::io::RawFd) -> Result<(), std::io::Error> {
         Ok(())
     }
     fn get_stdout_writer(&self) -> Box<dyn std::io::Write> {

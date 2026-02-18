@@ -83,7 +83,7 @@ impl ClientOsApi for TestClientOsApi {
 
     fn set_raw_mode(&mut self, _fd: RawFd) {}
 
-    fn unset_raw_mode(&self, _fd: RawFd) -> Result<(), nix::Error> {
+    fn unset_raw_mode(&self, _fd: RawFd) -> Result<(), std::io::Error> {
         Ok(())
     }
 
