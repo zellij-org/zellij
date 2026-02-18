@@ -185,6 +185,7 @@ fn handle_openpty(
             }
             command
                 .args(&cmd.args)
+                .envs(&cmd.env_vars)
                 .env("ZELLIJ_PANE_ID", &format!("{}", terminal_id))
                 .pre_exec(move || -> std::io::Result<()> {
                     if libc::login_tty(pid_secondary) != 0 {

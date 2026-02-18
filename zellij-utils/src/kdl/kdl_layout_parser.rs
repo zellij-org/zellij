@@ -14,8 +14,8 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::str::FromStr;
 
 use crate::{
-    kdl_child_with_name, kdl_children_nodes, kdl_first_entry_as_bool, kdl_first_entry_as_i64,
-    kdl_first_entry_as_string, kdl_get_bool_property_or_child_value,
+    kdl_child_with_name, kdl_children_nodes, kdl_children_nodes_or_error, kdl_first_entry_as_bool,
+    kdl_first_entry_as_i64, kdl_first_entry_as_string, kdl_get_bool_property_or_child_value,
     kdl_get_bool_property_or_child_value_with_error, kdl_get_child,
     kdl_get_int_property_or_child_value, kdl_get_property_or_child,
     kdl_get_string_property_or_child_value, kdl_get_string_property_or_child_value_with_error,
@@ -74,6 +74,7 @@ impl<'a> KdlLayoutParser<'a> {
             || word == "children"
             || word == "tab"
             || word == "args"
+            || word == "env_vars"
             || word == "close_on_exit"
             || word == "start_suspended"
             || word == "borderless"
@@ -97,6 +98,7 @@ impl<'a> KdlLayoutParser<'a> {
             || property_name == "edit"
             || property_name == "cwd"
             || property_name == "args"
+            || property_name == "env_vars"
             || property_name == "close_on_exit"
             || property_name == "start_suspended"
             || property_name == "split_direction"
@@ -116,6 +118,7 @@ impl<'a> KdlLayoutParser<'a> {
             || property_name == "edit"
             || property_name == "cwd"
             || property_name == "args"
+            || property_name == "env_vars"
             || property_name == "close_on_exit"
             || property_name == "start_suspended"
             || property_name == "x"
@@ -403,6 +406,40 @@ impl<'a> KdlLayoutParser<'a> {
             None => Ok(None),
         }
     }
+    fn parse_env_vars(
+        &self,
+        pane_node: &KdlNode,
+    ) -> Result<Option<HashMap<String, String>>, ConfigError> {
+        match kdl_get_child!(pane_node, "env_vars") {
+            Some(kdl_env_vars) => {
+                if !kdl_env_vars.entries().is_empty() {
+                    return Err(kdl_parsing_error!(format!("environment variables must be defined in a node (eg. env_vars {{ NAME \"VALUE\" }})"), kdl_env_vars));
+                }
+                let kdl_env_vars_nodes = kdl_children_nodes_or_error!(kdl_env_vars, "environment variables must be defined in a node (eg. env_vars { NAME \"VALUE\" })");
+
+                if kdl_env_vars_nodes.is_empty() {
+                    return Err(kdl_parsing_error!(
+                        format!("environment variables node cannot be empty"),
+                        kdl_env_vars
+                    ));
+                }
+                Ok(Some(
+                    kdl_env_vars_nodes
+                        .iter()
+                        .map(|s| {
+                            (
+                                kdl_name!(s).to_string(),
+                                kdl_first_entry_as_string!(s)
+                                    .map(str::to_string)
+                                    .unwrap_or_default(),
+                            )
+                        })
+                        .collect::<HashMap<String, String>>(),
+                ))
+            },
+            None => Ok(None),
+        }
+    }
     fn cwd_prefix(&self, tab_cwd: Option<&PathBuf>) -> Result<Option<PathBuf>, ConfigError> {
         Ok(match (&self.global_cwd, tab_cwd) {
             (Some(global_cwd), Some(tab_cwd)) => Some(global_cwd.join(tab_cwd)),
@@ -433,6 +470,7 @@ impl<'a> KdlLayoutParser<'a> {
         let edit = self.parse_path(pane_node, "edit")?;
         let cwd = self.parse_path(pane_node, "cwd")?;
         let args = self.parse_args(pane_node)?;
+        let env_vars = self.parse_env_vars(pane_node)?;
         let close_on_exit =
             kdl_get_bool_property_or_child_value_with_error!(pane_node, "close_on_exit");
         let start_suspended =
@@ -453,6 +491,7 @@ impl<'a> KdlLayoutParser<'a> {
             (Some(command), None, cwd) => Ok(Some(Run::Command(RunCommand {
                 command,
                 args: args.unwrap_or_else(|| vec![]),
+                env_vars: env_vars.unwrap_or_default(),
                 cwd,
                 hold_on_close,
                 hold_on_start,
