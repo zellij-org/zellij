@@ -1947,7 +1947,8 @@ impl Pty {
         session_layout_metadata.update_default_shell(get_default_shell());
         session_layout_metadata.update_terminal_commands(terminal_ids_to_commands);
         session_layout_metadata.update_terminal_cwds(terminal_ids_to_cwds);
-        session_layout_metadata.update_default_editor(&self.default_editor)
+        session_layout_metadata.update_default_editor(&self.default_editor);
+        session_layout_metadata.detect_editor_panes();
     }
     pub fn fill_plugin_cwd(
         &self,
