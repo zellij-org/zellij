@@ -1,0 +1,1 @@
+Short-hand aliases for `zellij setup --generate-aliases`.
