@@ -17,11 +17,12 @@ pub struct SessionList {
 }
 
 impl SessionList {
+    /// Returns a boolean indicating whether the sessions have changed
     pub fn set_sessions(
         &mut self,
         mut session_ui_infos: Vec<SessionUiInfo>,
         mut forbidden_sessions: Vec<SessionUiInfo>,
-    ) {
+    ) -> bool {
         session_ui_infos.sort_unstable_by(|a, b| {
             if a.is_current_session {
                 std::cmp::Ordering::Less
@@ -32,8 +33,12 @@ impl SessionList {
             }
         });
         forbidden_sessions.sort_unstable_by(|a, b| a.name.cmp(&b.name));
+        if self.session_ui_infos == session_ui_infos && self.forbidden_sessions == forbidden_sessions {
+            return false;
+        }
         self.session_ui_infos = session_ui_infos;
         self.forbidden_sessions = forbidden_sessions;
+        true
     }
     pub fn update_search_term(&mut self, search_term: &str, colors: &Colors) {
         let mut flattened_assets = self.flatten_assets(colors);

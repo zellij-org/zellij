@@ -221,7 +221,7 @@ impl SessionList {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SessionUiInfo {
     pub name: String,
     pub tabs: Vec<TabUiInfo>,
@@ -278,7 +278,7 @@ impl SessionUiInfo {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TabUiInfo {
     pub name: String,
     pub panes: Vec<PaneUiInfo>,
@@ -335,7 +335,7 @@ impl TabUiInfo {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PaneUiInfo {
     pub name: String,
     pub exit_code: Option<i32>,
