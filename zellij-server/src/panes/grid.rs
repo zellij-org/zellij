@@ -740,7 +740,10 @@ impl Grid {
     }
     pub fn scroll_down_one_line(&mut self) -> bool {
         let mut found_something = false;
-        if !self.lines_below.is_empty() && self.viewport.len() == self.height && !self.viewport.is_empty() {
+        if !self.lines_below.is_empty()
+            && self.viewport.len() == self.height
+            && !self.viewport.is_empty()
+        {
             let mut line_to_push_up = self.viewport.remove(0);
 
             self.scrollback_buffer_lines +=
