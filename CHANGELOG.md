@@ -53,6 +53,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: off-by-1 in mouse events sent to plugins when clicking on a fullscreen pane (https://github.com/zellij-org/zellij/pull/4715)
 * fix: invalid state crashes in grid (https://github.com/zellij-org/zellij/pull/4718)
 * fix: properly detect editor panes when serializing sessions (https://github.com/zellij-org/zellij/pull/4717)
+* fix: add timeout to `zellij web --status` (https://github.com/zellij-org/zellij/pull/4706)
 
 
 ## [0.43.1] - 2025-08-08
