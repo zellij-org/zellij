@@ -323,10 +323,18 @@ pub(crate) fn list_auth_tokens() -> Result<Vec<String>, String> {
     std::process::exit(2);
 }
 
+/// Default timeout for web server status check (in seconds)
+pub const DEFAULT_WEB_SERVER_STATUS_TIMEOUT_SECS: u64 = 30;
+
 #[cfg(feature = "web_server_capability")]
-pub(crate) fn web_server_status(web_server_base_url: &str) -> Result<String, String> {
+pub(crate) fn web_server_status(
+    web_server_base_url: &str,
+    timeout_secs: Option<u64>,
+) -> Result<String, String> {
+    let timeout =
+        Duration::from_secs(timeout_secs.unwrap_or(DEFAULT_WEB_SERVER_STATUS_TIMEOUT_SECS));
     let http_client = HttpClient::builder()
-        // TODO: timeout?
+        .timeout(timeout)
         .redirect_policy(RedirectPolicy::Follow)
         .build()
         .map_err(|e| e.to_string())?;
@@ -346,7 +354,10 @@ pub(crate) fn web_server_status(web_server_base_url: &str) -> Result<String, Str
 }
 
 #[cfg(not(feature = "web_server_capability"))]
-pub(crate) fn web_server_status(_web_server_base_url: &str) -> Result<String, String> {
+pub(crate) fn web_server_status(
+    _web_server_base_url: &str,
+    _timeout_secs: Option<u64>,
+) -> Result<String, String> {
     log::error!(
         "This version of Zellij was compiled without web server support, cannot get web server status!"
     );
