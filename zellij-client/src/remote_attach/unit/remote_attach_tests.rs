@@ -229,13 +229,13 @@ fn cleanup_test_db(server_url: &str) {
 struct MockClientOsApi;
 
 impl crate::os_input_output::ClientOsApi for MockClientOsApi {
-    fn get_terminal_size_using_fd(&self, _fd: i32) -> zellij_utils::pane_size::Size {
+    fn get_terminal_size(&self) -> zellij_utils::pane_size::Size {
         zellij_utils::pane_size::Size { rows: 24, cols: 80 }
     }
 
-    fn set_raw_mode(&mut self, _fd: i32) {}
+    fn set_raw_mode(&mut self) {}
 
-    fn unset_raw_mode(&self, _fd: i32) -> Result<(), std::io::Error> {
+    fn unset_raw_mode(&self) -> Result<(), std::io::Error> {
         Ok(())
     }
 
