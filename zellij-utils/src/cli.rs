@@ -127,7 +127,7 @@ pub struct WebCli {
     pub stop: bool,
 
     /// Get the server status
-    #[clap(long, value_parser, exclusive(true), display_order = 3)]
+    #[clap(long, value_parser, conflicts_with("start"), display_order = 3)]
     pub status: bool,
 
     /// Timeout in seconds for the status check (default: 30)
