@@ -1728,6 +1728,336 @@ mod web_client_tests {
         client_data["web_client_id"].as_str().unwrap().to_string()
     }
 
+    #[tokio::test]
+    #[serial]
+    async fn test_kicked_by_host_sends_close_code_4001() {
+        let _ = delete_db();
+
+        let test_token_name = "test_token_kicked_by_host";
+        let read_only = false;
+        let (auth_token, _) = create_token(Some(test_token_name.to_string()), read_only)
+            .expect("Failed to create test token");
+
+        let session_manager = Arc::new(MockSessionManager::new());
+        let client_os_api_factory = Arc::new(MockClientOsApiFactory::new());
+        let factory_for_verification = client_os_api_factory.clone();
+
+        let config = Config::default();
+        let options = Options::default();
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let port = addr.port();
+
+        let temp_config_path = std::env::temp_dir().join("test_config.kdl");
+        let server_handle = tokio::spawn(async move {
+            serve_web_client(
+                config,
+                options,
+                Some(temp_config_path),
+                listener,
+                None,
+                Some(session_manager),
+                Some(client_os_api_factory),
+                addr.ip(),
+                port,
+            )
+            .await;
+        });
+
+        wait_for_server(port, Duration::from_secs(5))
+            .await
+            .expect("Server failed to start");
+
+        let session_token = login_and_get_session_token(port, &auth_token).await;
+        let web_client_id = create_client_session(port, &session_token).await;
+
+        // Establish terminal WebSocket connection
+        let terminal_ws_url = format!(
+            "ws://127.0.0.1:{}/ws/terminal?web_client_id={}",
+            port, web_client_id
+        );
+        let (terminal_ws, _) = timeout(
+            Duration::from_secs(5),
+            connect_async_with_cookie(&terminal_ws_url, &session_token),
+        )
+        .await
+        .expect("Terminal WebSocket connection timed out")
+        .expect("Failed to connect to terminal WebSocket");
+
+        let (_terminal_sink, mut terminal_stream) = terminal_ws.split();
+
+        // Establish control WebSocket connection
+        let control_ws_url = format!("ws://127.0.0.1:{}/ws/control", port);
+        let (control_ws, _) = timeout(
+            Duration::from_secs(5),
+            connect_async_with_cookie(&control_ws_url, &session_token),
+        )
+        .await
+        .expect("Control WebSocket connection timed out")
+        .expect("Failed to connect to control WebSocket");
+
+        let (mut control_sink, mut control_stream) = control_ws.split();
+
+        // Wait for initial SetConfig and send resize to register client_id on the control channel
+        let _initial_msg = timeout(Duration::from_secs(2), control_stream.next()).await;
+        let resize_msg = WebClientToWebServerControlMessage {
+            web_client_id: web_client_id.clone(),
+            payload: WebClientToWebServerControlMessagePayload::TerminalResize(Size {
+                rows: 30,
+                cols: 100,
+            }),
+        };
+        control_sink
+            .send(Message::Text(serde_json::to_string(&resize_msg).unwrap()))
+            .await
+            .expect("Failed to send resize message");
+
+        // Allow connection to stabilize
+        tokio::time::sleep(Duration::from_millis(200)).await;
+
+        // Queue KickedByHost exit message into the mock API
+        {
+            let mock_apis = factory_for_verification.mock_apis.lock().unwrap();
+            assert!(
+                !mock_apis.is_empty(),
+                "Expected at least one mock API to be registered"
+            );
+            if let Some((_, mock_api)) = mock_apis.iter().next() {
+                mock_api.queue_server_message(ServerToClientMsg::Exit {
+                    exit_reason: zellij_utils::ipc::ExitReason::KickedByHost,
+                });
+            }
+        }
+
+        // Wait for terminal WebSocket to close with code 4001
+        // Use a polling loop to handle any non-close messages that may arrive first
+        let mut terminal_got_4001 = false;
+        let mut terminal_closed = false;
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(8);
+        while tokio::time::Instant::now() < deadline {
+            match timeout(Duration::from_millis(500), terminal_stream.next()).await {
+                Ok(Some(Ok(Message::Close(Some(frame))))) => {
+                    terminal_got_4001 = frame.code
+                        == tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode::Library(4001);
+                    terminal_closed = true;
+                    break;
+                },
+                Ok(Some(Ok(Message::Close(None)))) => {
+                    terminal_closed = true;
+                    break;
+                },
+                Ok(Some(Ok(_other))) => {
+                    // skip non-close messages (e.g. buffered render data)
+                    continue;
+                },
+                Ok(Some(Err(_))) | Ok(None) => {
+                    terminal_closed = true;
+                    break;
+                },
+                Err(_) => {
+                    // timeout on this iteration, continue polling
+                    continue;
+                },
+            }
+        }
+        assert!(
+            terminal_closed,
+            "Terminal WebSocket should have been closed within the timeout"
+        );
+        assert!(
+            terminal_got_4001,
+            "Terminal WebSocket should close with code 4001 when kicked by host"
+        );
+
+        // Wait for control WebSocket to close with code 4001 (skip any pending non-Close messages)
+        let mut control_got_4001 = false;
+        let mut control_closed = false;
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        while tokio::time::Instant::now() < deadline {
+            match timeout(Duration::from_millis(500), control_stream.next()).await {
+                Ok(Some(Ok(Message::Close(Some(frame))))) => {
+                    control_got_4001 = frame.code
+                        == tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode::Library(4001);
+                    control_closed = true;
+                    break;
+                },
+                Ok(Some(Ok(Message::Close(None)))) => {
+                    control_closed = true;
+                    break;
+                },
+                Ok(Some(Ok(_msg))) => {
+                    // Skip non-Close messages
+                    continue;
+                },
+                Ok(Some(Err(_))) | Ok(None) => {
+                    control_closed = true;
+                    break;
+                },
+                Err(_) => continue,
+            }
+        }
+        assert!(
+            control_closed,
+            "Control WebSocket should have been closed within the timeout"
+        );
+        assert!(
+            control_got_4001,
+            "Control WebSocket should close with code 4001 when kicked by host"
+        );
+
+        let _ = control_sink.close().await;
+        server_handle.abort();
+        revoke_token(test_token_name).expect("Failed to revoke test token");
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_normal_exit_sends_normal_close_code() {
+        let _ = delete_db();
+
+        let test_token_name = "test_token_normal_exit_close_code";
+        let read_only = false;
+        let (auth_token, _) = create_token(Some(test_token_name.to_string()), read_only)
+            .expect("Failed to create test token");
+
+        let session_manager = Arc::new(MockSessionManager::new());
+        let client_os_api_factory = Arc::new(MockClientOsApiFactory::new());
+        let factory_for_verification = client_os_api_factory.clone();
+
+        let config = Config::default();
+        let options = Options::default();
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let port = addr.port();
+
+        let temp_config_path = std::env::temp_dir().join("test_config.kdl");
+        let server_handle = tokio::spawn(async move {
+            serve_web_client(
+                config,
+                options,
+                Some(temp_config_path),
+                listener,
+                None,
+                Some(session_manager),
+                Some(client_os_api_factory),
+                addr.ip(),
+                port,
+            )
+            .await;
+        });
+
+        wait_for_server(port, Duration::from_secs(5))
+            .await
+            .expect("Server failed to start");
+
+        let session_token = login_and_get_session_token(port, &auth_token).await;
+        let web_client_id = create_client_session(port, &session_token).await;
+
+        // Establish terminal WebSocket connection
+        let terminal_ws_url = format!(
+            "ws://127.0.0.1:{}/ws/terminal?web_client_id={}",
+            port, web_client_id
+        );
+        let (terminal_ws, _) = timeout(
+            Duration::from_secs(5),
+            connect_async_with_cookie(&terminal_ws_url, &session_token),
+        )
+        .await
+        .expect("Terminal WebSocket connection timed out")
+        .expect("Failed to connect to terminal WebSocket");
+
+        let (_terminal_sink, mut terminal_stream) = terminal_ws.split();
+
+        // Establish control WebSocket connection
+        let control_ws_url = format!("ws://127.0.0.1:{}/ws/control", port);
+        let (control_ws, _) = timeout(
+            Duration::from_secs(5),
+            connect_async_with_cookie(&control_ws_url, &session_token),
+        )
+        .await
+        .expect("Control WebSocket connection timed out")
+        .expect("Failed to connect to control WebSocket");
+
+        let (mut control_sink, mut control_stream) = control_ws.split();
+
+        // Wait for initial SetConfig and send resize to register client_id on the control channel
+        let _initial_msg = timeout(Duration::from_secs(2), control_stream.next()).await;
+        let resize_msg = WebClientToWebServerControlMessage {
+            web_client_id: web_client_id.clone(),
+            payload: WebClientToWebServerControlMessagePayload::TerminalResize(Size {
+                rows: 30,
+                cols: 100,
+            }),
+        };
+        control_sink
+            .send(Message::Text(serde_json::to_string(&resize_msg).unwrap()))
+            .await
+            .expect("Failed to send resize message");
+
+        // Allow connection to stabilize
+        tokio::time::sleep(Duration::from_millis(200)).await;
+
+        // Queue Normal exit message into the mock API
+        {
+            let mock_apis = factory_for_verification.mock_apis.lock().unwrap();
+            assert!(
+                !mock_apis.is_empty(),
+                "Expected at least one mock API to be registered"
+            );
+            if let Some((_, mock_api)) = mock_apis.iter().next() {
+                mock_api.queue_server_message(ServerToClientMsg::Exit {
+                    exit_reason: zellij_utils::ipc::ExitReason::Normal,
+                });
+            }
+        }
+
+        // Wait for terminal WebSocket to close with NORMAL (1000) close code
+        // Use a polling loop to handle any non-close messages that may arrive first
+        let mut terminal_got_normal = false;
+        let mut terminal_closed = false;
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(8);
+        while tokio::time::Instant::now() < deadline {
+            match timeout(Duration::from_millis(500), terminal_stream.next()).await {
+                Ok(Some(Ok(Message::Close(Some(frame))))) => {
+                    terminal_got_normal = frame.code
+                        == tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode::Normal;
+                    terminal_closed = true;
+                    break;
+                },
+                Ok(Some(Ok(Message::Close(None)))) => {
+                    // Close with no code also counts as a normal close
+                    terminal_got_normal = true;
+                    terminal_closed = true;
+                    break;
+                },
+                Ok(Some(Ok(_other))) => {
+                    continue;
+                },
+                Ok(Some(Err(_))) | Ok(None) => {
+                    terminal_closed = true;
+                    break;
+                },
+                Err(_) => continue,
+            }
+        }
+        assert!(
+            terminal_closed,
+            "Terminal WebSocket should have been closed within the timeout"
+        );
+        assert!(
+            terminal_got_normal,
+            "Terminal WebSocket should close with NORMAL code for non-kicked exit"
+        );
+
+        let _ = control_sink.close().await;
+        server_handle.abort();
+        revoke_token(test_token_name).expect("Failed to revoke test token");
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+
     async fn connect_async_with_cookie(
         url: &str,
         session_token: &str,
@@ -1888,6 +2218,13 @@ impl MockClientOsApi {
     fn get_sent_messages(&self) -> Vec<ClientToServerMsg> {
         self.messages_to_server.lock().unwrap().clone()
     }
+
+    fn queue_server_message(&self, msg: ServerToClientMsg) {
+        self.messages_from_server
+            .lock()
+            .unwrap()
+            .push_back((msg, ErrorContext::default()));
+    }
 }
 
 impl ClientOsApi for MockClientOsApi {
@@ -1915,7 +2252,11 @@ impl ClientOsApi for MockClientOsApi {
         self.messages_to_server.lock().unwrap().push(msg);
     }
     fn recv_from_server(&self) -> Option<(ServerToClientMsg, ErrorContext)> {
-        self.messages_from_server.lock().unwrap().pop_front()
+        let msg = self.messages_from_server.lock().unwrap().pop_front();
+        if msg.is_none() {
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+        msg
     }
     fn handle_signals(&self, _sigwinch_cb: Box<dyn Fn()>, _quit_cb: Box<dyn Fn()>) {}
     fn connect_to_server(&self, _path: &std::path::Path) {}

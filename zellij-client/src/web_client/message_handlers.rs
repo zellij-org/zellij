@@ -3,6 +3,10 @@ use crate::keyboard_parser::KittyKeyboardParser;
 use crate::os_input_output::ClientOsApi;
 use crate::web_client::types::BRACKETED_PASTE_END;
 use crate::web_client::types::BRACKETED_PASTE_START;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 
 use zellij_utils::{
     input::{actions::Action, cast_termwiz_key, mouse::MouseEvent},
@@ -19,10 +23,32 @@ pub fn render_to_client(
     mut stdout_channel_rx: UnboundedReceiver<String>,
     mut client_channel_tx: SplitSink<WebSocket, Message>,
     cancellation_token: CancellationToken,
+    should_not_reconnect: Arc<AtomicBool>,
 ) {
     tokio::spawn(async move {
         loop {
             tokio::select! {
+                biased;
+                _ = cancellation_token.cancelled() => {
+                    let code = if should_not_reconnect.load(Ordering::Relaxed) {
+                        4001u16
+                    } else {
+                        axum::extract::ws::close_code::NORMAL
+                    };
+                    let close_frame = CloseFrame {
+                        code,
+                        reason: "Connection closed".into(),
+                    };
+                    let close_message = Message::Close(Some(close_frame));
+                    if client_channel_tx
+                        .send(close_message)
+                        .await
+                        .is_err()
+                    {
+                        break;
+                    }
+                    break;
+                }
                 result = stdout_channel_rx.recv() => {
                     match result {
                         Some(rendered_bytes) => {
@@ -36,21 +62,6 @@ pub fn render_to_client(
                         }
                         None => break,
                     }
-                }
-                _ = cancellation_token.cancelled() => {
-                    let close_frame = CloseFrame {
-                        code: axum::extract::ws::close_code::NORMAL,
-                        reason: "Connection closed".into(),
-                    };
-                    let close_message = Message::Close(Some(close_frame));
-                    if client_channel_tx
-                        .send(close_message)
-                        .await
-                        .is_err()
-                    {
-                        break;
-                    }
-                    break;
                 }
             }
         }

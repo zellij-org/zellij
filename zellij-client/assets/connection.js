@@ -7,6 +7,7 @@ import { getBaseUrl } from "./utils.js";
 // Connection state
 let reconnectionAttempt = 0;
 let isReconnecting = false;
+let isDisconnected = false;
 let reconnectionTimeout = null;
 let hasConnectedBefore = false;
 let isPageUnloading = false;
@@ -36,6 +37,19 @@ export async function checkConnection() {
     } catch (error) {
         return false;
     }
+}
+
+/**
+ * Handle intentional disconnection by the host (close code 4001)
+ * @returns {Promise<void>}
+ */
+export async function handleDisconnected() {
+    if (isDisconnected || isPageUnloading) {
+        return;
+    }
+    isDisconnected = true;
+    await showErrorModal("Disconnected", "You have been disconnected by the host.");
+    isDisconnected = false;
 }
 
 /**
@@ -110,6 +124,7 @@ export function markConnectionEstablished() {
 export function resetConnectionState() {
     reconnectionAttempt = 0;
     isReconnecting = false;
+    isDisconnected = false;
     reconnectionTimeout = null;
     hasConnectedBefore = false;
     isPageUnloading = false;

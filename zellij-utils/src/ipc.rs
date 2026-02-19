@@ -183,6 +183,7 @@ pub enum ExitReason {
     CannotAttach,
     Disconnect,
     WebClientsForbidden,
+    KickedByHost,
     CustomExitStatus(i32),
     Error(String),
 }
@@ -228,6 +229,7 @@ There are a few things you can try now:
     "
                 )
             },
+            Self::KickedByHost => write!(f, "Disconnected by host"),
             Self::CustomExitStatus(exit_status) => write!(f, "Exit {}", exit_status),
             Self::Error(e) => write!(f, "Error occurred in server:\n{}", e),
         }
