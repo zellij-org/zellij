@@ -4256,9 +4256,18 @@ pub fn screen_can_break_multiple_stacked_panes_to_a_new_tab() {
     let mut stacked_parent = TiledPaneLayout::default();
     stacked_parent.children_are_stacked = true;
     stacked_parent.children = vec![
-        TiledPaneLayout { name: Some("pane_to_stay".to_owned()),    ..Default::default() },
-        TiledPaneLayout { name: Some("pane_to_break_1".to_owned()), ..Default::default() },
-        TiledPaneLayout { name: Some("pane_to_break_2".to_owned()), ..Default::default() },
+        TiledPaneLayout {
+            name: Some("pane_to_stay".to_owned()),
+            ..Default::default()
+        },
+        TiledPaneLayout {
+            name: Some("pane_to_break_1".to_owned()),
+            ..Default::default()
+        },
+        TiledPaneLayout {
+            name: Some("pane_to_break_2".to_owned()),
+            ..Default::default()
+        },
     ];
     let mut initial_layout = TiledPaneLayout::default();
     initial_layout.children = vec![stacked_parent];
@@ -4276,14 +4285,16 @@ pub fn screen_can_break_multiple_stacked_panes_to_a_new_tab() {
         server_receiver
     );
 
-    let _ = mock_screen.to_screen.send(ScreenInstruction::BreakPanesToNewTab {
-        pane_ids: vec![PaneId::Terminal(1), PaneId::Terminal(2)],
-        default_shell: None,
-        should_change_focus_to_new_tab: true,
-        new_tab_name: None,
-        client_id: 1,
-        completion_tx: None,
-    });
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::BreakPanesToNewTab {
+            pane_ids: vec![PaneId::Terminal(1), PaneId::Terminal(2)],
+            default_shell: None,
+            should_change_focus_to_new_tab: true,
+            new_tab_name: None,
+            client_id: 1,
+            completion_tx: None,
+        });
     std::thread::sleep(std::time::Duration::from_millis(100));
     // we send ApplyLayout, because in prod this is eventually received after the message traverses
     // through the plugin and pty threads (to open extra stuff we need in the layout, eg. the

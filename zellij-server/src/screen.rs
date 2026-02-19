@@ -51,7 +51,7 @@ use zellij_utils::input::config::Config;
 use zellij_utils::input::keybinds::Keybinds;
 use zellij_utils::input::mouse::MouseEvent;
 use zellij_utils::input::options::Clipboard;
-use zellij_utils::pane_size::{Size, SizeInPixels, PaneGeom};
+use zellij_utils::pane_size::{PaneGeom, Size, SizeInPixels};
 use zellij_utils::shared::clean_string_from_control_and_linebreak;
 use zellij_utils::{
     consts::{session_info_folder_for_session, ZELLIJ_SOCK_DIR},
@@ -3229,8 +3229,6 @@ impl Screen {
                     // the layout to this new tab
                     let new_geom = PaneGeom::from(&screen_size);
                     pane.set_geom(new_geom);
-
-
 
                     new_active_tab.add_tiled_pane(pane, pane_id, false, None)?;
                 }
