@@ -4251,6 +4251,84 @@ pub fn screen_can_break_floating_pane_to_a_new_tab() {
 }
 
 #[test]
+pub fn screen_can_break_multiple_stacked_panes_to_a_new_tab() {
+    let size = Size { cols: 80, rows: 20 };
+    let mut stacked_parent = TiledPaneLayout::default();
+    stacked_parent.children_are_stacked = true;
+    stacked_parent.children = vec![
+        TiledPaneLayout { name: Some("pane_to_stay".to_owned()),    ..Default::default() },
+        TiledPaneLayout { name: Some("pane_to_break_1".to_owned()), ..Default::default() },
+        TiledPaneLayout { name: Some("pane_to_break_2".to_owned()), ..Default::default() },
+    ];
+    let mut initial_layout = TiledPaneLayout::default();
+    initial_layout.children = vec![stacked_parent];
+
+    let mut mock_screen = MockScreen::new(size);
+    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for the async render
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
+    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for the async render
+
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+
+    let _ = mock_screen.to_screen.send(ScreenInstruction::BreakPanesToNewTab {
+        pane_ids: vec![PaneId::Terminal(1), PaneId::Terminal(2)],
+        default_shell: None,
+        should_change_focus_to_new_tab: true,
+        new_tab_name: None,
+        client_id: 1,
+        completion_tx: None,
+    });
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    // we send ApplyLayout, because in prod this is eventually received after the message traverses
+    // through the plugin and pty threads (to open extra stuff we need in the layout, eg. the
+    // default plugins)
+    let _ = mock_screen.to_screen.send(ScreenInstruction::ApplyLayout(
+        TiledPaneLayout::default(),
+        vec![],
+        Default::default(),
+        vec![],
+        Default::default(),
+        1,
+        true,
+        (1, false),
+        None,
+        None,
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    // move back to make sure the other pane is in the previous tab
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::MoveFocusLeftOrPreviousTab(1, None));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    // move forward to make sure the broken panes are in the next tab
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::MoveFocusRightOrNextTab(1, None));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+
+    let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
+        received_server_instructions.lock().unwrap().iter(),
+        size,
+    );
+    let snapshot_count = snapshots.len();
+    for (_cursor_coordinates, snapshot) in &snapshots {
+        eprintln!("{}", snapshot);
+    }
+    for (_cursor_coordinates, snapshot) in snapshots {
+        assert_snapshot!(format!("{}", snapshot));
+    }
+    assert_snapshot!(format!("{}", snapshot_count));
+}
+
+#[test]
 pub fn screen_can_break_plugin_pane_to_a_new_tab() {
     let size = Size { cols: 80, rows: 20 };
     let mut initial_layout = TiledPaneLayout::default();

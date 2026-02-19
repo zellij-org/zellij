@@ -51,7 +51,7 @@ use zellij_utils::input::config::Config;
 use zellij_utils::input::keybinds::Keybinds;
 use zellij_utils::input::mouse::MouseEvent;
 use zellij_utils::input::options::Clipboard;
-use zellij_utils::pane_size::{Size, SizeInPixels};
+use zellij_utils::pane_size::{Size, SizeInPixels, PaneGeom};
 use zellij_utils::shared::clean_string_from_control_and_linebreak;
 use zellij_utils::{
     consts::{session_info_folder_for_session, ZELLIJ_SOCK_DIR},
@@ -3063,12 +3063,20 @@ impl Screen {
         if let Some(new_tab_name) = new_tab_name {
             tab.name = new_tab_name.clone();
         }
-        for pane in extracted_panes {
+        for mut pane in extracted_panes {
             let run_instruction = pane.invoked_with().clone();
             let pane_id = pane.pid();
+            let without_relayout = true;
+
+            // we reset the pane geom here to screen size so that we won't have trouble adding it
+            // temporarily to the new tab (eg. if it was stacked or had a fixed size), the size
+            // will be adjusted before the next render, further down the pipeline, when we apply
+            // the layout to this new tab
+            let new_geom = PaneGeom::from(&self.size);
+            pane.set_geom(new_geom);
+
             // here we pass None instead of the ClientId, because we do not want this pane to be
             // necessarily focused
-            let without_relayout = true;
             tab.add_tiled_pane(pane, pane_id, without_relayout, None)?;
             tiled_panes_layout.ignore_run_instruction(run_instruction.clone());
         }
@@ -3192,8 +3200,9 @@ impl Screen {
             // nothing to do here...
             return Ok(());
         }
+        let screen_size = self.size;
         if let Some(new_active_tab) = self.get_indexed_tab_mut(tab_index) {
-            for (pane_was_floating, pane) in extracted_panes {
+            for (pane_was_floating, mut pane) in extracted_panes {
                 let pane_id = pane.pid();
                 if pane_was_floating {
                     let floating_pane_coordinates = FloatingPaneCoordinates {
@@ -3213,6 +3222,16 @@ impl Screen {
                 } else {
                     // here we pass None instead of the ClientId, because we do not want this pane to be
                     // necessarily focused
+
+                    // we reset the pane geom here to screen size so that we won't have trouble adding it
+                    // temporarily to the new tab (eg. if it was stacked or had a fixed size), the size
+                    // will be adjusted before the next render, further down the pipeline, when we apply
+                    // the layout to this new tab
+                    let new_geom = PaneGeom::from(&screen_size);
+                    pane.set_geom(new_geom);
+
+
+
                     new_active_tab.add_tiled_pane(pane, pane_id, false, None)?;
                 }
             }
