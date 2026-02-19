@@ -246,6 +246,7 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::WebRequest(url, verb, headers, body, context) => {
                         web_request(env, url, verb, headers, body, context)
                     },
+                    PluginCommand::OpenExternal { url } => open_external(env, url),
                     PluginCommand::PostMessageTo(plugin_message) => {
                         post_message_to(env, plugin_message)?
                     },
@@ -2454,6 +2455,36 @@ fn web_request(
             body,
             context,
         ));
+}
+
+fn open_external(_env: &PluginEnv, url: String) {
+    if url.is_empty() {
+        log::error!("URL cannot be empty");
+        return;
+    }
+    std::thread::spawn(move || {
+        #[cfg(target_os = "macos")]
+        let cmd = "open";
+        #[cfg(not(target_os = "macos"))]
+        let cmd = if url.starts_with("mailto:") {
+            "xdg-email"
+        } else {
+            "xdg-open"
+        };
+
+        match std::process::Command::new(cmd)
+            .arg(&url)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+        {
+            Ok(mut child) => {
+                let _ = child.wait();
+            },
+            Err(e) => log::error!("Failed to open external URL: {}", e),
+        }
+    });
 }
 
 fn post_message_to(env: &PluginEnv, plugin_message: PluginMessage) -> Result<()> {
@@ -4885,7 +4916,8 @@ fn check_command_permission(
         | PluginCommand::OpenCommandPaneBackground(..)
         | PluginCommand::OpenCommandPaneInPlaceOfPaneId(..)
         | PluginCommand::RunCommand(..)
-        | PluginCommand::ExecCmd(..) => PermissionType::RunCommands,
+        | PluginCommand::ExecCmd(..)
+        | PluginCommand::OpenExternal { .. } => PermissionType::RunCommands,
         PluginCommand::WebRequest(..) => PermissionType::WebAccess,
         PluginCommand::Write(..)
         | PluginCommand::WriteChars(..)

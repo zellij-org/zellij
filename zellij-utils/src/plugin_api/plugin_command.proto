@@ -185,17 +185,18 @@ enum CommandName {
   GetPaneRunningCommand = 190;
   GetPaneCwd = 191;
   SwitchTabToId = 192;
-  GoToTabWithId = 193;
-  CloseTabWithId = 194;
-  RenameTabWithId = 195;
-  BreakPanesToTabWithId = 196;
-  GetSessionEnvironmentVariables = 197;
-  OpenCommandPaneInNewTab = 198;
-  OpenPluginPaneInNewTab = 199;
-  OpenEditorPaneInNewTab = 200;
-  OpenCommandPaneInPlaceOfPaneId = 201;
-  OpenTerminalPaneInPlaceOfPaneId = 202;
-  OpenEditPaneInPlaceOfPaneId = 203;
+   GoToTabWithId = 193;
+   CloseTabWithId = 194;
+   RenameTabWithId = 195;
+   BreakPanesToTabWithId = 196;
+   GetSessionEnvironmentVariables = 197;
+   OpenCommandPaneInNewTab = 198;
+   OpenPluginPaneInNewTab = 199;
+   OpenEditorPaneInNewTab = 200;
+   OpenCommandPaneInPlaceOfPaneId = 201;
+   OpenTerminalPaneInPlaceOfPaneId = 202;
+   OpenEditPaneInPlaceOfPaneId = 203;
+   OpenExternal = 204;
 }
 
 message PluginCommand {
@@ -341,7 +342,12 @@ message PluginCommand {
     OpenCommandPaneInPlaceOfPaneIdPayload open_command_pane_in_place_of_pane_id_payload = 152;
     OpenTerminalPaneInPlaceOfPaneIdPayload open_terminal_pane_in_place_of_pane_id_payload = 153;
     OpenEditPaneInPlaceOfPaneIdPayload open_edit_pane_in_place_of_pane_id_payload = 154;
+    OpenExternalPayload open_external_payload = 155;
   }
+}
+
+message OpenExternalPayload {
+  string url = 1;
 }
 
 message NewTabPayload {
