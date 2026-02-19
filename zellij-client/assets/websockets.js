@@ -144,6 +144,18 @@ function startWsControl(wsControl, term, fitAddon, ownWebClientId) {
 
     wsControl.onmessage = function (event) {
         const msg = JSON.parse(event.data);
+        if (msg.type === "Heartbeat") {
+            wsControl.send(
+                JSON.stringify({
+                    web_client_id: ownWebClientId,
+                    payload: {
+                        type: "HeartbeatResponse",
+                        timestamp: msg.timestamp,
+                    },
+                })
+            );
+            return;
+        }
         if (msg.type === "SetConfig") {
             const {
                 font,
