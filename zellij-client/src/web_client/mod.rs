@@ -23,6 +23,7 @@ use axum::{
     routing::{any, get, post},
     Router,
 };
+use tokio::runtime::Runtime;
 
 use axum_server::tls_rustls::RustlsConfig;
 use axum_server::Handle;
@@ -32,7 +33,6 @@ use nix::sys::stat::{umask, Mode};
 
 use interprocess::unnamed_pipe::pipe;
 use std::io::{prelude::*, BufRead, BufReader};
-use tokio::runtime::Runtime;
 use zellij_utils::input::{config::Config, options::Options};
 
 use authentication::auth_middleware;

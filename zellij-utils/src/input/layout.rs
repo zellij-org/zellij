@@ -20,8 +20,6 @@ use crate::{
     pane_size::{Constraint, Dimension, PaneGeom},
     setup::{self},
 };
-#[cfg(not(target_family = "wasm"))]
-use async_std::task;
 
 use std::cmp::Ordering;
 use std::fmt::{Display, Formatter};
@@ -1431,14 +1429,8 @@ impl Layout {
     }
     #[cfg(not(target_family = "wasm"))]
     pub fn stringified_from_url(url: &str) -> Result<String, ConfigError> {
-        let raw_layout = task::block_on(async move {
-            let download = Downloader::download_without_cache(url).await;
-            match download {
-                Ok(stringified) => Ok(stringified),
-                Err(e) => Err(ConfigError::DownloadError(format!("{}", e))),
-            }
-        })?;
-        Ok(raw_layout)
+        Downloader::download_without_cache_blocking(url)
+            .map_err(|e| ConfigError::DownloadError(format!("{}", e)))
     }
     #[cfg(target_family = "wasm")]
     pub fn stringified_from_url(_url: &str) -> Result<String, ConfigError> {
@@ -1479,13 +1471,8 @@ impl Layout {
     }
     #[cfg(not(target_family = "wasm"))]
     pub fn from_url(url: &str, config: Config) -> Result<(Layout, Config), ConfigError> {
-        let raw_layout = task::block_on(async move {
-            let download = Downloader::download_without_cache(url).await;
-            match download {
-                Ok(stringified) => Ok(stringified),
-                Err(e) => Err(ConfigError::DownloadError(format!("{}", e))),
-            }
-        })?;
+        let raw_layout = Downloader::download_without_cache_blocking(url)
+            .map_err(|e| ConfigError::DownloadError(format!("{}", e)))?;
         let mut layout = Layout::from_kdl(&raw_layout, Some(url.into()), None, None)?;
         layout.recursively_add_start_suspended_including_template(Some(true));
         let config = Config::from_kdl(&raw_layout, Some(config))?; // this merges the two config, with

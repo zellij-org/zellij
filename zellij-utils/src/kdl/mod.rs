@@ -2708,6 +2708,21 @@ impl Options {
         let post_command_discovery_hook =
             kdl_property_first_arg_as_string_or_error!(kdl_options, "post_command_discovery_hook")
                 .map(|(hook, _entry)| hook.to_string());
+        let client_async_worker_tasks =
+            match kdl_property_first_arg_as_i64_or_error!(kdl_options, "client_async_worker_tasks")
+            {
+                Some((value, _)) if value >= 0 => Some(value as usize),
+                Some((value, entry)) => {
+                    return Err(kdl_parsing_error!(
+                        format!(
+                        "Number of client async worker tasks must be greater than 0, found '{}'",
+                        value
+                    ),
+                        entry
+                    ));
+                },
+                None => None,
+            };
 
         Ok(Options {
             simplified_ui,
@@ -2751,6 +2766,7 @@ impl Options {
             web_server_key,
             enforce_https_for_localhost,
             post_command_discovery_hook,
+            client_async_worker_tasks,
         })
     }
     pub fn from_string(stringified_keybindings: &String) -> Result<Self, ConfigError> {
@@ -3961,6 +3977,32 @@ impl Options {
             None
         }
     }
+    fn client_async_worker_tasks_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = r#"
+// Number of async worker tasks to spawn per active client.
+//
+// Allocating few tasks may result in resource contention and lags. Small values (around 4) should
+// typically work best. Set to 0 to use the number of (physical) CPU cores.
+// Note: This only applies to web clients at the moment."#;
+        let create_node = |node_value: usize| -> KdlNode {
+            let mut node = KdlNode::new("client_async_worker_tasks");
+            node.push(KdlValue::Base10(node_value as i64));
+            node
+        };
+        if let Some(client_async_worker_tasks) = self.client_async_worker_tasks {
+            let mut node = create_node(client_async_worker_tasks);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(4usize);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
     pub fn to_kdl(&self, add_comments: bool) -> Vec<KdlNode> {
         let mut nodes = vec![];
         if let Some(simplified_ui_node) = self.simplified_ui_to_kdl(add_comments) {
@@ -4093,6 +4135,10 @@ impl Options {
             self.post_command_discovery_hook_to_kdl(add_comments)
         {
             nodes.push(post_command_discovery_hook);
+        }
+        if let Some(client_async_worker_tasks) = self.client_async_worker_tasks_to_kdl(add_comments)
+        {
+            nodes.push(client_async_worker_tasks);
         }
         nodes
     }

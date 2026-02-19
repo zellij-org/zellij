@@ -16,11 +16,11 @@ pub mod shared;
 
 // The following modules can't be used when targeting wasm
 #[cfg(not(target_family = "wasm"))]
-pub mod channels; // Requires async_std
+pub mod channels; // Requires tokio
 #[cfg(not(target_family = "wasm"))]
 pub mod common_path;
 #[cfg(not(target_family = "wasm"))]
-pub mod downloader; // Requires async_std
+pub mod downloader; // Requires tokio
 #[cfg(not(target_family = "wasm"))]
 pub mod ipc; // Requires interprocess
 #[cfg(not(target_family = "wasm"))]

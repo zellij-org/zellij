@@ -131,6 +131,7 @@ Config {
         web_server_key: None,
         enforce_https_for_localhost: None,
         post_command_discovery_hook: None,
+        client_async_worker_tasks: None,
     },
     themes: {},
     plugins: PluginAliases {

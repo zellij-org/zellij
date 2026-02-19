@@ -12,8 +12,6 @@ license.workspace = true
 ansi_term = { workspace = true }
 anyhow = { workspace = true }
 arrayvec = { version = "0.7.2", default-features = false, features = ["std"] }
-async-channel = { version = "1.8.0", default-features = false }
-async-std = { workspace = true }
 async-trait = { version = "0.1.50", default-features = false }
 base64 = { version = "0.13.0", default-features = false, features = ["std"] }
 byteorder = { version = "1.4.3", default-features = false, features = ["std"] }
@@ -42,6 +40,7 @@ sixel-image = { version = "0.1.0", default-features = false }
 sixel-tokenizer = { version = "0.1.0", default-features = false }
 sysinfo = { version = "0.22.5", default-features = false }
 tempfile = { workspace = true }
+tokio = { workspace = true }
 typetag = { version = "0.1.7", default-features = false }
 unicode-width = { workspace = true }
 url = { workspace = true }
@@ -49,9 +48,8 @@ uuid = { workspace = true }
 vte = { workspace = true }
 wasmi_wasi = { version = "0.51.3" }
 zellij-utils = { workspace = true }
-tokio = { workspace = true }
 once_cell = "1.19"
-num_cpus = "1.16"
+num_cpus = { workspace = true }
 
 [dependencies.wasmi]
 version = "0.51.3"

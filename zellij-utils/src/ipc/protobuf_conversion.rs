@@ -614,6 +614,7 @@ impl From<crate::input::options::Options>
                 .map(|p| p.to_string_lossy().to_string()),
             enforce_https_for_localhost: options.enforce_https_for_localhost,
             post_command_discovery_hook: options.post_command_discovery_hook,
+            client_async_worker_tasks: options.client_async_worker_tasks.map(|v| v as u64),
         }
     }
 }
@@ -705,6 +706,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
             web_server_key: options.web_server_key.map(std::path::PathBuf::from),
             enforce_https_for_localhost: options.enforce_https_for_localhost,
             post_command_discovery_hook: options.post_command_discovery_hook,
+            client_async_worker_tasks: options.client_async_worker_tasks.map(|v| v as usize),
         })
     }
 }

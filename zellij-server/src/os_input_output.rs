@@ -1,6 +1,5 @@
 use crate::{panes::PaneId, ClientId};
 
-use async_std::{fs::File as AsyncFile, io::ReadExt, os::unix::io::FromRawFd};
 use interprocess::local_socket::LocalSocketStream;
 use nix::{
     pty::{openpty, OpenptyResult, Winsize},
@@ -10,8 +9,8 @@ use nix::{
     },
     unistd,
 };
+use tokio::{fs::File as AsyncFile, io::AsyncReadExt};
 
-use async_std;
 use interprocess;
 use libc;
 use nix;
@@ -37,6 +36,7 @@ use std::{
     env,
     fs::File,
     io::Write,
+    os::fd::FromRawFd,
     os::unix::{io::RawFd, process::CommandExt},
     path::PathBuf,
     process::{Child, Command},
@@ -445,7 +445,7 @@ pub trait AsyncReader: Send + Sync {
 
 /// An `AsyncReader` that wraps a `RawFd`
 struct RawFdAsyncReader {
-    fd: async_std::fs::File,
+    fd: tokio::fs::File,
 }
 
 impl RawFdAsyncReader {

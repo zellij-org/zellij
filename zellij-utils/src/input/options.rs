@@ -242,6 +242,14 @@ pub struct Options {
     /// of manipulating the command (eg. with a regex) before it gets serialized
     #[clap(long, value_parser)]
     pub post_command_discovery_hook: Option<String>,
+
+    /// Number of async worker tasks to spawn per active client.
+    ///
+    /// Allocating few tasks may result in resource contention and lags. Small values (around 4)
+    /// should typically work best. Set to 0 to use the number of (physical) CPU cores.
+    /// NOTE: This only applies to web clients at the moment.
+    #[clap(long)]
+    pub client_async_worker_tasks: Option<usize>,
 }
 
 #[derive(ArgEnum, Deserialize, Serialize, Debug, Clone, Copy, PartialEq)]
@@ -340,6 +348,9 @@ impl Options {
         let post_command_discovery_hook = other
             .post_command_discovery_hook
             .or(self.post_command_discovery_hook.clone());
+        let client_async_worker_tasks = other
+            .client_async_worker_tasks
+            .or(self.client_async_worker_tasks);
 
         Options {
             simplified_ui,
@@ -383,6 +394,7 @@ impl Options {
             web_server_key,
             enforce_https_for_localhost,
             post_command_discovery_hook,
+            client_async_worker_tasks,
         }
     }
 
@@ -461,6 +473,9 @@ impl Options {
         let post_command_discovery_hook = other
             .post_command_discovery_hook
             .or_else(|| self.post_command_discovery_hook.clone());
+        let client_async_worker_tasks = other
+            .client_async_worker_tasks
+            .or(self.client_async_worker_tasks);
 
         Options {
             simplified_ui,
@@ -504,6 +519,7 @@ impl Options {
             web_server_key,
             enforce_https_for_localhost,
             post_command_discovery_hook,
+            client_async_worker_tasks,
         }
     }
 
