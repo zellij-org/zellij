@@ -1084,6 +1084,7 @@ message Options {
   optional string post_command_discovery_hook = 39;
   optional bool osc8_hyperlinks = 40;
   optional bool mouse_hover_effects = 41;
+  optional uint64 client_async_worker_tasks = 42;
 }
 
 enum OnForceClose {

@@ -31,6 +31,7 @@ log = { workspace = true }
 mio = { version = "0.8.11", default-features = false, features = ['os-ext'] }
 nix = { workspace = true }
 notify = { workspace = true }
+num_cpus = { workspace = true }
 regex = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

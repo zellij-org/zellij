@@ -5160,6 +5160,7 @@ dependencies = [
  "mio 0.8.11",
  "nix 0.23.1",
  "notify",
+ "num_cpus",
  "regex",
  "serde",
  "serde_json",

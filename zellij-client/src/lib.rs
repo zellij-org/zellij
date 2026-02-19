@@ -37,13 +37,34 @@ use crate::web_client::control_message::{
 static ASYNC_RUNTIME: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
 use std::sync::OnceLock;
 
-pub(crate) fn async_runtime() -> tokio::runtime::Handle {
+/// Spawn an async runtime for this client instance.
+///
+/// The number of workers can be configured to any nonzero value. Passing zero or `None` will spawn
+/// one worker per physical CPU on the current machine.
+pub(crate) fn async_runtime(maybe_number_of_workers: Option<usize>) -> tokio::runtime::Handle {
     match tokio::runtime::Handle::try_current() {
         Ok(handle) => handle.clone(),
         _ => {
+            let number_of_workers = match maybe_number_of_workers {
+                Some(value) if value > 0 => {
+                    log::debug!(
+                        "Creating client async runtime with {} tasks based on user request",
+                        value
+                    );
+                    value
+                },
+                _ => {
+                    let cpus = num_cpus::get_physical();
+                    log::debug!(
+                        "Creating client async runtime with {} tasks based on CPU count",
+                        cpus
+                    );
+                    cpus
+                },
+            };
             let runtime = ASYNC_RUNTIME.get_or_init(|| {
                 tokio::runtime::Builder::new_multi_thread()
-                    .worker_threads(4)
+                    .worker_threads(number_of_workers)
                     .thread_name("zellij client async-runtime")
                     .enable_all()
                     .build()
@@ -476,10 +497,11 @@ pub fn start_remote_client(
     token: Option<String>,
     remember: bool,
     forget: bool,
+    async_worker_tasks: Option<usize>,
 ) -> Result<Option<ConnectToSession>, RemoteClientError> {
     info!("Starting Zellij client!");
 
-    let runtime = crate::async_runtime();
+    let runtime = crate::async_runtime(async_worker_tasks);
 
     let connections = remote_attach::attach_to_remote_session(
         runtime.clone(),
