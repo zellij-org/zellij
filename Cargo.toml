@@ -99,7 +99,7 @@ strum_macros = { version = "0.27.2", default-features = false }
 suggest = { version = "0.4.0", default-features = false }
 tempfile = { version = "3.2.0", default-features = false }
 termwiz = { version = "0.23.2", default-features = false }
-tokio = { version = "1.40", default-features = false, features = ["fs", "rt-multi-thread", "macros", "time", "process", "signal", "io-util", "io-std"] }
+tokio = { version = "1.40", default-features = false, features = ["fs", "rt-multi-thread", "macros", "time", "process", "signal", "io-util", "io-std", "net"] }
 thiserror = { version = "1.0.40", default-features = false }
 tokio-util = { version = "0.7.15" }
 unicode-width = { version = "0.1.8", default-features = false }
