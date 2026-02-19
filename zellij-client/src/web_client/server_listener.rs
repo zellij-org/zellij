@@ -244,6 +244,10 @@ pub fn zellij_server_listener(
 
 fn handle_exit_reason(client_connection_bus: &mut ClientConnectionBus, exit_reason: ExitReason) {
     match exit_reason {
+        ExitReason::KickedByHost => {
+            client_connection_bus.close_connection_kicked();
+            return;
+        },
         ExitReason::WebClientsForbidden => {
             client_connection_bus.send_stdout(format!(
                 "\u{1b}[2J\n Web Clients are not allowed to attach to this session."

@@ -1249,7 +1249,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     let _ = os_input.send_to_client(
                         client_id,
                         ServerToClientMsg::Exit {
-                            exit_reason: ExitReason::Normal,
+                            exit_reason: ExitReason::KickedByHost,
                         },
                     );
                     remove_client!(client_id, os_input, session_state);

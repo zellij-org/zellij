@@ -2279,6 +2279,7 @@ impl From<ExitReason> for ProtoExitReason {
             ExitReason::CannotAttach => ProtoExitReason::CannotAttach,
             ExitReason::Disconnect => ProtoExitReason::Disconnect,
             ExitReason::WebClientsForbidden => ProtoExitReason::WebClientsForbidden,
+            ExitReason::KickedByHost => ProtoExitReason::KickedByHost,
             ExitReason::Error(_msg) => ProtoExitReason::Error,
             ExitReason::CustomExitStatus(_status) => ProtoExitReason::CustomExitStatus,
         }
@@ -2295,6 +2296,7 @@ impl TryFrom<ProtoExitReason> for ExitReason {
             ProtoExitReason::CannotAttach => Ok(ExitReason::CannotAttach),
             ProtoExitReason::Disconnect => Ok(ExitReason::Disconnect),
             ProtoExitReason::WebClientsForbidden => Ok(ExitReason::WebClientsForbidden),
+            ProtoExitReason::KickedByHost => Ok(ExitReason::KickedByHost),
             ProtoExitReason::Error => Ok(ExitReason::Error("Protobuf error".to_string())),
             ProtoExitReason::CustomExitStatus => Ok(ExitReason::CustomExitStatus(0)),
             ProtoExitReason::Unspecified => Err(anyhow!("Unspecified exit reason")),

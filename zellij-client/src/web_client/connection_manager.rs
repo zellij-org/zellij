@@ -2,6 +2,7 @@ use crate::os_input_output::ClientOsApi;
 use crate::web_client::control_message::WebServerToWebClientControlMessage;
 use crate::web_client::types::{ClientChannels, ClientConnectionBus, ConnectionTable};
 use axum::extract::ws::{CloseFrame, Message};
+use std::sync::{atomic::AtomicBool, Arc};
 use tokio::sync::mpsc::UnboundedSender;
 use tokio_util::sync::CancellationToken;
 
@@ -76,6 +77,12 @@ impl ConnectionTable {
         }
         self.client_read_only_status.remove(client_id);
     }
+
+    pub fn get_should_not_reconnect_flag(&self, client_id: &str) -> Option<Arc<AtomicBool>> {
+        self.client_id_to_channels
+            .get(client_id)
+            .map(|c| c.should_not_reconnect.clone())
+    }
 }
 
 impl ClientConnectionBus {
@@ -112,8 +119,20 @@ impl ClientConnectionBus {
         }
     }
     pub fn close_connection(&mut self) {
+        let should_not_reconnect = self
+            .connection_table
+            .lock()
+            .unwrap()
+            .get_should_not_reconnect_flag(&self.web_client_id)
+            .map(|f| f.load(std::sync::atomic::Ordering::Relaxed))
+            .unwrap_or(false);
+        let code = if should_not_reconnect {
+            4001u16
+        } else {
+            axum::extract::ws::close_code::NORMAL
+        };
         let close_frame = CloseFrame {
-            code: axum::extract::ws::close_code::NORMAL,
+            code,
             reason: "Connection closed".into(),
         };
         let close_message = Message::Close(Some(close_frame));
@@ -134,6 +153,18 @@ impl ClientConnectionBus {
             .lock()
             .unwrap()
             .remove_client(&self.web_client_id);
+    }
+
+    pub fn close_connection_kicked(&mut self) {
+        if let Some(flag) = self
+            .connection_table
+            .lock()
+            .unwrap()
+            .get_should_not_reconnect_flag(&self.web_client_id)
+        {
+            flag.store(true, std::sync::atomic::Ordering::Relaxed);
+        }
+        self.close_connection();
     }
 
     fn get_control_channel_tx(&mut self) {
