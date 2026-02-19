@@ -178,8 +178,9 @@ pub enum Action {
     DumpLayout,
     /// Save the current session state to disk
     SaveSession,
-    /// Scroll up in focus pane.
     EditScrollback,
+    EditScrollbackRaw,
+    /// Scroll up in focus pane.
     ScrollUp,
     /// Scroll up at point
     ScrollUpAt {
