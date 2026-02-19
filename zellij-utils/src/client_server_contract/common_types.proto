@@ -791,6 +791,7 @@ enum ExitReason {
   EXIT_REASON_WEB_CLIENTS_FORBIDDEN = 6;
   EXIT_REASON_ERROR = 7;
   EXIT_REASON_CUSTOM_EXIT_STATUS = 8;
+  EXIT_REASON_KICKED_BY_HOST = 9;
 }
 
 // Additional supporting types for Action messages
