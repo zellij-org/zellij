@@ -62,6 +62,7 @@ pub fn create_first_message(
     mut config_opts: Options,
     should_create_session: bool,
     session_name: &str,
+    initial_layout: Option<LayoutInfo>,
 ) -> ClientToServerMsg {
     let resurrection_layout = resurrection_layout(&session_name).ok().flatten();
 
@@ -73,7 +74,7 @@ pub fn create_first_message(
             LayoutMetadata::default(),
         ))
     } else {
-        None
+        initial_layout
     };
 
     config_opts.web_server = Some(true);
