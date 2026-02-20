@@ -47,6 +47,7 @@ pub fn zellij_server_listener(
                 let mut attachment_complete_tx = attachment_complete_tx;
                 'reconnect_loop: loop {
                     let reconnect_info = reconnect_to_session.take();
+                    let initial_layout = reconnect_info.as_ref().and_then(|r| r.layout.clone());
                     let path = {
                         let Some(session_name) = reconnect_info
                             .as_ref()
@@ -102,7 +103,7 @@ pub fn zellij_server_listener(
                     }
 
                     let should_create_new_session = !session_exists;
-                    let first_message = create_first_message(is_read_only, config_file_path.clone(), client_attributes.clone(), config_options.clone(), should_create_new_session, &session_name);
+                    let first_message = create_first_message(is_read_only, config_file_path.clone(), client_attributes.clone(), config_options.clone(), should_create_new_session, &session_name, initial_layout);
                     let zellij_ipc_pipe = create_ipc_pipe(&session_name);
 
                     session_manager.spawn_session_if_needed(
