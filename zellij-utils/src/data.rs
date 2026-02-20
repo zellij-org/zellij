@@ -2264,6 +2264,10 @@ pub struct PaneInfo {
     /// Grouped panes (usually through an explicit user action) that are staged for a bulk action
     /// the index is kept track of in order to preserve the pane group order
     pub index_in_pane_group: BTreeMap<ClientId, usize>,
+    /// The default foreground color of this pane, if set (e.g. "#00e000")
+    pub default_fg: Option<String>,
+    /// The default background color of this pane, if set (e.g. "#001a3a")
+    pub default_bg: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
@@ -3471,6 +3475,7 @@ pub enum PluginCommand {
     ShowFloatingPanes {
         tab_id: Option<usize>,
     },
+    SetPaneColor(PaneId, Option<String>, Option<String>), // (pane_id, fg, bg)
 }
 
 // Response type for plugin API methods that open a pane in a new tab

@@ -243,6 +243,7 @@ message Action {
     CurrentTabInfoAction current_tab_info = 105;
     ShowFloatingPanesAction show_floating_panes = 106;
     HideFloatingPanesAction hide_floating_panes = 107;
+    SetPaneColorAction set_pane_color = 108;
   }
 }
 
@@ -649,6 +650,12 @@ message TogglePaneBorderlessAction {
 message SetPaneBorderlessAction {
   PaneId pane_id = 1;
   bool borderless = 2;
+}
+
+message SetPaneColorAction {
+  PaneId pane_id = 1;
+  optional string fg = 2;
+  optional string bg = 3;
 }
 
 // Supporting enums and messages

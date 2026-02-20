@@ -4362,3 +4362,197 @@ fn single_click_drag_selection_preserved_after_scroll() {
     assert_eq!(grid.selection.start.column, start_before.column);
     assert_eq!(grid.selection.end.column, end_before.column);
 }
+
+#[test]
+fn osc_11_set_and_query_pane_default_bg() {
+    use crate::panes::terminal_character::AnsiCode;
+
+    let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let mut grid = Grid::new(
+        10,
+        20,
+        Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
+        sixel_image_store,
+        Style::default(),
+        false,
+        true,
+        true,
+        true,
+        false,
+    );
+
+    // Set background via OSC 11
+    let set_bg = b"\x1b]11;#001a3a\x07";
+    for byte in set_bg.iter() {
+        vte_parser.advance(&mut grid, *byte);
+    }
+
+    assert_eq!(grid.pane_default_bg, Some(AnsiCode::RgbCode((0, 26, 58))));
+
+    // Query background via OSC 11
+    let query_bg = b"\x1b]11;?\x07";
+    for byte in query_bg.iter() {
+        vte_parser.advance(&mut grid, *byte);
+    }
+
+    assert_eq!(grid.pending_messages_to_pty.len(), 1);
+    let response = String::from_utf8(grid.pending_messages_to_pty[0].clone()).unwrap();
+    assert!(
+        response.contains("11;rgb:0000/1a1a/3a3a"),
+        "Response was: {}",
+        response
+    );
+}
+
+#[test]
+fn osc_10_set_and_query_pane_default_fg() {
+    use crate::panes::terminal_character::AnsiCode;
+
+    let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let mut grid = Grid::new(
+        10,
+        20,
+        Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
+        sixel_image_store,
+        Style::default(),
+        false,
+        true,
+        true,
+        true,
+        false,
+    );
+
+    // Set foreground via OSC 10
+    let set_fg = b"\x1b]10;#00e000\x07";
+    for byte in set_fg.iter() {
+        vte_parser.advance(&mut grid, *byte);
+    }
+
+    assert_eq!(grid.pane_default_fg, Some(AnsiCode::RgbCode((0, 224, 0))));
+
+    // Query foreground via OSC 10
+    let query_fg = b"\x1b]10;?\x07";
+    for byte in query_fg.iter() {
+        vte_parser.advance(&mut grid, *byte);
+    }
+
+    assert_eq!(grid.pending_messages_to_pty.len(), 1);
+    let response = String::from_utf8(grid.pending_messages_to_pty[0].clone()).unwrap();
+    assert!(
+        response.contains("10;rgb:0000/e0e0/0000"),
+        "Response was: {}",
+        response
+    );
+}
+
+#[test]
+fn osc_110_111_reset_pane_default_colors() {
+    use crate::panes::terminal_character::AnsiCode;
+
+    let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let mut grid = Grid::new(
+        10,
+        20,
+        Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
+        sixel_image_store,
+        Style::default(),
+        false,
+        true,
+        true,
+        true,
+        false,
+    );
+
+    // Set both fg and bg
+    let set_fg = b"\x1b]10;#00e000\x07";
+    for byte in set_fg.iter() {
+        vte_parser.advance(&mut grid, *byte);
+    }
+    let set_bg = b"\x1b]11;#001a3a\x07";
+    for byte in set_bg.iter() {
+        vte_parser.advance(&mut grid, *byte);
+    }
+
+    assert_eq!(grid.pane_default_fg, Some(AnsiCode::RgbCode((0, 224, 0))));
+    assert_eq!(grid.pane_default_bg, Some(AnsiCode::RgbCode((0, 26, 58))));
+
+    // Reset foreground via OSC 110
+    let reset_fg = b"\x1b]110\x07";
+    for byte in reset_fg.iter() {
+        vte_parser.advance(&mut grid, *byte);
+    }
+    assert_eq!(grid.pane_default_fg, None);
+    assert_eq!(grid.pane_default_bg, Some(AnsiCode::RgbCode((0, 26, 58))));
+
+    // Reset background via OSC 111
+    let reset_bg = b"\x1b]111\x07";
+    for byte in reset_bg.iter() {
+        vte_parser.advance(&mut grid, *byte);
+    }
+    assert_eq!(grid.pane_default_fg, None);
+    assert_eq!(grid.pane_default_bg, None);
+}
+
+#[test]
+fn osc_11_set_bg_produces_ansi_in_render_output() {
+    use crate::panes::terminal_character::AnsiCode;
+
+    let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let mut grid = Grid::new(
+        5,
+        10,
+        Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
+        sixel_image_store,
+        Style::default(),
+        false,
+        true,
+        true,
+        true,
+        false,
+    );
+
+    // Set background via OSC 11
+    let set_bg = b"\x1b]11;#001a3a\x07";
+    for byte in set_bg.iter() {
+        vte_parser.advance(&mut grid, *byte);
+    }
+
+    assert_eq!(grid.pane_default_bg, Some(AnsiCode::RgbCode((0, 26, 58))));
+
+    // Render the grid and check that the pane defaults are stamped on chunks
+    let style = Style::default();
+    let render_result = grid.render(0, 0, &style).unwrap();
+    assert!(render_result.is_some(), "Expected render output");
+
+    let (chunks, _, _) = render_result.unwrap();
+    assert!(!chunks.is_empty(), "Expected at least one character chunk");
+
+    // All chunks should carry the pane default bg
+    for chunk in &chunks {
+        assert_eq!(
+            chunk.pane_default_bg,
+            Some(AnsiCode::RgbCode((0, 26, 58))),
+            "Chunk should carry pane default background"
+        );
+    }
+}

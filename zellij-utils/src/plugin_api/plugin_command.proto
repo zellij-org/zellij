@@ -198,6 +198,7 @@ enum CommandName {
   OpenEditPaneInPlaceOfPaneId = 203;
   HideFloatingPanes = 204;
   ShowFloatingPanes = 205;
+  SetPaneColor = 206;
 }
 
 message PluginCommand {
@@ -345,6 +346,7 @@ message PluginCommand {
     OpenEditPaneInPlaceOfPaneIdPayload open_edit_pane_in_place_of_pane_id_payload = 154;
     HideFloatingPanesPayload hide_floating_panes_payload = 155;
     ShowFloatingPanesPayload show_floating_panes_payload = 156;
+    SetPaneColorPayload set_pane_color_payload = 157;
   }
 }
 
@@ -1211,4 +1213,10 @@ message HideFloatingPanesResponse {
     bool success = 1;
     string error = 2;
   }
+}
+
+message SetPaneColorPayload {
+  PaneId pane_id = 1;
+  optional string fg = 2;
+  optional string bg = 3;
 }
