@@ -2004,6 +2004,7 @@ fn group_panes_following_focus() {
                     NewPanePlacement::Tiled {
                         direction: None,
                         borderless: None,
+                        size: None,
                     },
                     Some(client_id),
                     None,
@@ -2065,6 +2066,7 @@ fn break_group_with_mouse() {
                     NewPanePlacement::Tiled {
                         direction: None,
                         borderless: None,
+                        size: None,
                     },
                     Some(client_id),
                     None,
@@ -3034,6 +3036,7 @@ pub fn send_cli_new_pane_action_with_default_parameters() {
         unblock_condition: None,
         near_current_pane: false,
         borderless: Some(false),
+        size: None,
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -3084,6 +3087,7 @@ pub fn send_cli_new_pane_action_with_split_direction() {
         unblock_condition: None,
         near_current_pane: false,
         borderless: Some(false),
+        size: None,
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -3134,6 +3138,7 @@ pub fn send_cli_new_pane_action_with_command_and_cwd() {
         unblock_condition: None,
         near_current_pane: false,
         borderless: Some(false),
+        size: None,
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -3195,6 +3200,7 @@ pub fn send_cli_new_pane_action_with_floating_pane_and_coordinates() {
         unblock_condition: None,
         near_current_pane: false,
         borderless: Some(false),
+        size: None,
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
