@@ -1,19 +1,15 @@
+use crate::os_input_output::AsyncReader;
 use crate::panes::sixel::SixelImageStore;
 use crate::panes::{FloatingPanes, TiledPanes};
 use crate::panes::{LinkHandler, PaneId};
 use crate::plugins::PluginInstruction;
 use crate::pty::PtyInstruction;
 use crate::tab::layout_applier::LayoutApplier;
-use crate::{
-    os_input_output::{AsyncReader, Pid, ServerOsApi},
-    thread_bus::ThreadSenders,
-    ClientId,
-};
+use crate::{os_input_output::ServerOsApi, thread_bus::ThreadSenders, ClientId};
 use insta::assert_snapshot;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
-use std::os::unix::io::RawFd;
 use std::path::PathBuf;
 use std::rc::Rc;
 
@@ -49,15 +45,7 @@ impl ServerOsApi for FakeInputOutput {
         _file_to_open: TerminalAction,
         _quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
         _default_editor: Option<PathBuf>,
-    ) -> Result<(u32, RawFd, RawFd)> {
-        unimplemented!()
-    }
-
-    fn read_from_tty_stdout(&self, _fd: RawFd, _buf: &mut [u8]) -> Result<usize> {
-        unimplemented!()
-    }
-
-    fn async_file_reader(&self, _fd: RawFd) -> Box<dyn AsyncReader> {
+    ) -> Result<(u32, Box<dyn AsyncReader>, Option<u32>)> {
         unimplemented!()
     }
 
@@ -69,11 +57,11 @@ impl ServerOsApi for FakeInputOutput {
         unimplemented!()
     }
 
-    fn kill(&self, _pid: Pid) -> Result<()> {
+    fn kill(&self, _pid: u32) -> Result<()> {
         unimplemented!()
     }
 
-    fn force_kill(&self, _pid: Pid) -> Result<()> {
+    fn force_kill(&self, _pid: u32) -> Result<()> {
         unimplemented!()
     }
 
@@ -101,7 +89,7 @@ impl ServerOsApi for FakeInputOutput {
         unimplemented!()
     }
 
-    fn get_cwd(&self, _pid: Pid) -> Option<PathBuf> {
+    fn get_cwd(&self, _pid: u32) -> Option<PathBuf> {
         unimplemented!()
     }
 
@@ -114,7 +102,7 @@ impl ServerOsApi for FakeInputOutput {
         _terminal_id: u32,
         _run_command: RunCommand,
         _quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
-    ) -> Result<(RawFd, RawFd)> {
+    ) -> Result<(Box<dyn AsyncReader>, Option<u32>)> {
         unimplemented!()
     }
 
@@ -122,7 +110,7 @@ impl ServerOsApi for FakeInputOutput {
         unimplemented!()
     }
 
-    fn send_sigint(&self, _pid: Pid) -> Result<()> {
+    fn send_sigint(&self, _pid: u32) -> Result<()> {
         unimplemented!()
     }
 }

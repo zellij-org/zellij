@@ -1,51 +1,68 @@
 use super::*;
 
-use nix::{pty::openpty, unistd::close};
-
-struct TestTerminal {
-    openpty: OpenptyResult,
-}
-
-impl TestTerminal {
-    pub fn new() -> TestTerminal {
-        let openpty = openpty(None, None).expect("Could not create openpty");
-        TestTerminal { openpty }
-    }
-
-    #[allow(dead_code)]
-    pub fn master(&self) -> RawFd {
-        self.openpty.master
-    }
-
-    pub fn slave(&self) -> RawFd {
-        self.openpty.slave
-    }
-}
-
-impl Drop for TestTerminal {
-    fn drop(&mut self) {
-        close(self.openpty.master).expect("Failed to close the master");
-        close(self.openpty.slave).expect("Failed to close the slave");
-    }
+fn make_server() -> ServerOsInputOutput {
+    get_server_os_input().expect("failed to create server os input")
 }
 
 #[test]
 fn get_cwd() {
-    let test_terminal = TestTerminal::new();
-    let test_termios =
-        termios::tcgetattr(test_terminal.slave()).expect("Could not configure the termios");
+    let server = make_server();
 
-    let server = ServerOsInputOutput {
-        orig_termios: Arc::new(Mutex::new(Some(test_termios))),
-        client_senders: Arc::default(),
-        terminal_id_to_raw_fd: Arc::default(),
-        cached_resizes: Arc::default(),
-    };
-
-    let pid = nix::unistd::getpid();
+    let pid = std::process::id();
     assert!(
         server.get_cwd(pid).is_some(),
         "Get current working directory from PID {}",
         pid
     );
+}
+
+// --- Signal delivery tests ---
+
+#[cfg(not(windows))]
+#[test]
+fn kill_sends_sighup_to_process() {
+    let child = Command::new("sleep")
+        .arg("60")
+        .spawn()
+        .expect("failed to spawn sleep");
+    let pid = child.id();
+
+    let server = make_server();
+
+    server.kill(pid).expect("kill should succeed");
+
+    // Give the signal time to be delivered
+    std::thread::sleep(std::time::Duration::from_millis(100));
+}
+
+#[cfg(not(windows))]
+#[test]
+fn force_kill_sends_sigkill_to_process() {
+    let child = Command::new("sleep")
+        .arg("60")
+        .spawn()
+        .expect("failed to spawn sleep");
+    let pid = child.id();
+
+    let server = make_server();
+
+    server.force_kill(pid).expect("force_kill should succeed");
+
+    std::thread::sleep(std::time::Duration::from_millis(100));
+}
+
+#[cfg(not(windows))]
+#[test]
+fn send_sigint_to_process() {
+    let child = Command::new("cat")
+        .stdin(std::process::Stdio::piped())
+        .spawn()
+        .expect("failed to spawn cat");
+    let pid = child.id();
+
+    let server = make_server();
+
+    server.send_sigint(pid).expect("send_sigint should succeed");
+
+    std::thread::sleep(std::time::Duration::from_millis(100));
 }

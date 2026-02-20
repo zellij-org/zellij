@@ -18,7 +18,6 @@ byteorder = { version = "1.4.3", default-features = false, features = ["std"] }
 bytes = { version = "1.6.0", default-features = false, features = ["std"] }
 cassowary = { version = "0.3.0", default-features = false }
 chrono = { version = "0.4.19", default-features = false, features = ["std", "clock"] }
-close_fds = { version = "0.3.2", default-features = false }
 crossbeam = { version = "0.8", default-features = false, features = ["crossbeam-channel", "std"] }
 daemonize = { workspace = true }
 highway = { version = "0.6.4", default-features = false, features = ["std"] }
@@ -30,6 +29,7 @@ libc = { workspace = true }
 log = { workspace = true }
 nix = { workspace = true }
 notify-debouncer-full = { workspace = true }
+close_fds = "0.3.2"
 prost = { workspace = true }
 regex = { workspace = true }
 semver = { version = "0.11.0", default-features = false }

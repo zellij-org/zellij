@@ -1,3 +1,10 @@
+#[cfg(not(windows))]
+#[path = "os_input_output_unix.rs"]
+mod os_input_output_unix;
+#[cfg(windows)]
+#[path = "os_input_output_windows.rs"]
+mod os_input_output_windows;
+
 pub mod os_input_output;
 pub mod output;
 pub mod panes;

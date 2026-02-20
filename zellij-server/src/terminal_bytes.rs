@@ -1,20 +1,12 @@
-use crate::{
-    os_input_output::{AsyncReader, ServerOsApi},
-    screen::ScreenInstruction,
-    thread_bus::ThreadSenders,
-};
-use std::{
-    os::unix::io::RawFd,
-    time::{Duration, Instant},
-};
-use tokio::{task, time::timeout as async_timeout};
+use crate::{os_input_output::AsyncReader, screen::ScreenInstruction, thread_bus::ThreadSenders};
+use std::time::{Duration, Instant};
+use tokio::task;
 use zellij_utils::{
     errors::{get_current_ctx, prelude::*, ContextType},
     logging::debug_to_file,
 };
 
 pub(crate) struct TerminalBytes {
-    pid: RawFd,
     terminal_id: u32,
     senders: ThreadSenders,
     async_reader: Box<dyn AsyncReader>,
@@ -23,18 +15,16 @@ pub(crate) struct TerminalBytes {
 
 impl TerminalBytes {
     pub fn new(
-        pid: RawFd,
-        senders: ThreadSenders,
-        os_input: Box<dyn ServerOsApi>,
-        debug: bool,
         terminal_id: u32,
+        async_reader: Box<dyn AsyncReader>,
+        senders: ThreadSenders,
+        debug: bool,
     ) -> Self {
         TerminalBytes {
-            pid,
             terminal_id,
             senders,
             debug,
-            async_reader: os_input.async_file_reader(pid),
+            async_reader,
         }
     }
     pub async fn listen(&mut self) -> Result<()> {
@@ -64,7 +54,7 @@ impl TerminalBytes {
                 Ok(n_bytes) => {
                     let bytes = &buf[..n_bytes];
                     if self.debug {
-                        let _ = debug_to_file(bytes, self.pid);
+                        let _ = debug_to_file(bytes, self.terminal_id as i32);
                     }
                     self.async_send_to_screen(ScreenInstruction::PtyBytes(
                         self.terminal_id,
