@@ -2373,45 +2373,57 @@ pub fn split_with_size(
         SplitDirection::Vertical => rect.cols,
         SplitDirection::Horizontal => rect.rows,
     };
-    let Some(p) = space.as_percent() else {
-        return split(direction, rect);
-    };
-    let requested_percent = match split_size {
-        SplitSize::Percent(percent) => percent,
-        // fixed sizing is not currently supported in the percent-based grid split logic
-        SplitSize::Fixed(_) => return split(direction, rect),
-    };
-    // ensure we always leave at least 1% for the existing pane
-    let requested_percent = requested_percent.clamp(1, 99) as f64;
-    let mut second_percent = (p * (requested_percent / 100.0)).floor();
-    if second_percent <= 0.0 {
-        second_percent = 1.0;
+    let total = space.as_usize();
+    if total == 0 {
+        return None;
     }
-    if second_percent >= p {
-        second_percent = (p - 1.0).max(1.0);
-    }
-    let first_percent = (p - second_percent).max(1.0);
-
+    let (first_dim, second_dim) = match split_size {
+        SplitSize::Fixed(requested) => {
+            // New pane gets requested rows/cols; leave at least 1 for the existing pane.
+            let second_size = requested.min(total.saturating_sub(1)).max(1);
+            let first_size = total - second_size;
+            (Dimension::fixed(first_size), Dimension::fixed(second_size))
+        },
+        SplitSize::Percent(percent) => {
+            let Some(p) = space.as_percent() else {
+                return split(direction, rect);
+            };
+            // Leave at least 1% for the existing pane.
+            let requested_percent = percent.clamp(1, 99) as f64;
+            let mut second_percent = (p * (requested_percent / 100.0)).floor();
+            if second_percent <= 0.0 {
+                second_percent = 1.0;
+            }
+            if second_percent >= p {
+                second_percent = (p - 1.0).max(1.0);
+            }
+            let first_percent = (p - second_percent).max(1.0);
+            (
+                Dimension::percent(first_percent),
+                Dimension::percent(second_percent),
+            )
+        },
+    };
     let first_rect = match direction {
         SplitDirection::Vertical => PaneGeom {
-            cols: Dimension::percent(first_percent),
+            cols: first_dim,
             ..*rect
         },
         SplitDirection::Horizontal => PaneGeom {
-            rows: Dimension::percent(first_percent),
+            rows: first_dim,
             ..*rect
         },
     };
     let second_rect = match direction {
         SplitDirection::Vertical => PaneGeom {
             x: first_rect.x + 1,
-            cols: Dimension::percent(second_percent),
+            cols: second_dim,
             logical_position: None,
             ..*rect
         },
         SplitDirection::Horizontal => PaneGeom {
             y: first_rect.y + 1,
-            rows: Dimension::percent(second_percent),
+            rows: second_dim,
             logical_position: None,
             ..*rect
         },

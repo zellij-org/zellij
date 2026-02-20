@@ -561,14 +561,27 @@ impl Action {
                 borderless,
             } => {
                 let current_dir = get_current_dir();
-                let split_size = match size {
-                    Some(percent) if (1..=99).contains(&percent) => Some(SplitSize::Percent(percent)),
-                    Some(_) => {
-                        return Err(
-                            "Invalid --size, must be a percentage between 1 and 99".to_string()
-                        );
-                    },
+                // Same convention as layout/floating: bare number = fixed (rows/cols), "40%" = percent
+                let split_size = match size.as_deref() {
                     None => None,
+                    Some(s) => {
+                        let parsed = SplitSize::from_str(s.trim()).map_err(|e| {
+                            format!(
+                                "Invalid --size: {}. Use a number for fixed size (e.g. 40) or a \
+                                 percentage (e.g. 40%)",
+                                e
+                            )
+                        })?;
+                        if let SplitSize::Percent(p) = parsed {
+                            if !(1..=99).contains(&p) {
+                                return Err(
+                                    "Invalid --size, percentage must be between 1 and 99 (e.g. 40%)"
+                                        .to_string(),
+                                );
+                            }
+                        }
+                        Some(parsed)
+                    },
                 };
                 // cwd should only be specified in a plugin alias if it was explicitly given to us,
                 // otherwise the current_dir might override a cwd defined in the alias itself
