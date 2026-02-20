@@ -1706,6 +1706,8 @@ impl Screen {
         // Track whether non-watcher output was dirty for conditional watcher rendering
         let non_watcher_output_was_dirty;
 
+        let mut tabs_to_close = vec![];
+
         // === PHASE 1: Render for regular clients ===
         if has_regular_clients {
             let mut output = Output::new(
@@ -1715,7 +1717,6 @@ impl Screen {
                 self.osc8_hyperlinks,
             );
 
-            let mut tabs_to_close = vec![];
             for (tab_index, tab) in &mut self.tabs {
                 if tab.has_selectable_tiled_panes() {
                     // Pass None for normal client rendering
@@ -1723,11 +1724,6 @@ impl Screen {
                 } else if !tab.is_pending() {
                     tabs_to_close.push(*tab_index);
                 }
-            }
-            for tab_index in tabs_to_close {
-                self.close_tab_by_id(tab_index)
-                    .context(err_context)
-                    .non_fatal();
             }
 
             let pane_render_report = output.drain_pane_render_report();
@@ -1823,6 +1819,11 @@ impl Screen {
                     }
                 }
             }
+        }
+        for tab_index in tabs_to_close {
+            self.close_tab_by_id(tab_index)
+                .context(err_context)
+                .non_fatal();
         }
 
         Ok(())
