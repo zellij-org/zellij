@@ -737,14 +737,15 @@ impl From<crate::input::actions::Action>
             RenameTabByIdAction, RenameTerminalPaneAction, ResizeAction, RunAction,
             SaveSessionAction, ScrollDownAction, ScrollDownAtAction, ScrollToBottomAction,
             ScrollToTopAction, ScrollUpAction, ScrollUpAtAction, SearchAction, SearchInputAction,
-            SearchToggleOptionAction, SetPaneBorderlessAction, SkipConfirmAction, StackPanesAction,
-            StartOrReloadPluginAction, SwitchFocusAction, SwitchModeForAllClientsAction,
-            SwitchSessionAction, SwitchToModeAction, TabNameInputAction, ToggleActiveSyncTabAction,
-            ToggleFloatingPanesAction, ToggleFocusFullscreenAction, ToggleGroupMarkingAction,
-            ToggleMouseModeAction, TogglePaneBorderlessAction, TogglePaneEmbedOrFloatingAction,
-            TogglePaneFramesAction, TogglePaneInGroupAction, TogglePanePinnedAction,
-            ToggleTabAction, UndoRenamePaneAction, UndoRenameTabAction, WriteAction,
-            WriteCharsAction, WriteCharsToPaneIdAction, WriteToPaneIdAction,
+            SearchToggleOptionAction, SetPaneBorderlessAction, SetPaneColorAction,
+            SkipConfirmAction, StackPanesAction, StartOrReloadPluginAction, SwitchFocusAction,
+            SwitchModeForAllClientsAction, SwitchSessionAction, SwitchToModeAction,
+            TabNameInputAction, ToggleActiveSyncTabAction, ToggleFloatingPanesAction,
+            ToggleFocusFullscreenAction, ToggleGroupMarkingAction, ToggleMouseModeAction,
+            TogglePaneBorderlessAction, TogglePaneEmbedOrFloatingAction, TogglePaneFramesAction,
+            TogglePaneInGroupAction, TogglePanePinnedAction, ToggleTabAction, UndoRenamePaneAction,
+            UndoRenameTabAction, WriteAction, WriteCharsAction, WriteCharsToPaneIdAction,
+            WriteToPaneIdAction,
         };
         use std::collections::HashMap;
 
@@ -1369,6 +1370,13 @@ impl From<crate::input::actions::Action>
             }),
             crate::input::actions::Action::CurrentTabInfo { output_json } => {
                 ActionType::CurrentTabInfo(CurrentTabInfoAction { output_json })
+            },
+            crate::input::actions::Action::SetPaneColor { pane_id, fg, bg } => {
+                ActionType::SetPaneColor(SetPaneColorAction {
+                    pane_id: Some(pane_id.into()),
+                    fg,
+                    bg,
+                })
             },
         };
 
@@ -2043,6 +2051,16 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
             },
             ActionType::ToggleGroupMarking(_) => {
                 Ok(crate::input::actions::Action::ToggleGroupMarking)
+            },
+            ActionType::SetPaneColor(set_pane_color_action) => {
+                Ok(crate::input::actions::Action::SetPaneColor {
+                    pane_id: set_pane_color_action
+                        .pane_id
+                        .ok_or_else(|| anyhow!("SetPaneColor missing pane_id"))?
+                        .try_into()?,
+                    fg: set_pane_color_action.fg,
+                    bg: set_pane_color_action.bg,
+                })
             },
         }
     }
@@ -3523,6 +3541,8 @@ impl TryFrom<crate::client_server_contract::client_server_contract::TiledPaneLay
             run_instructions_to_ignore: vec![], // not represented in protobuf
             hide_floating_panes: layout.hide_floating_panes,
             pane_initial_contents: layout.pane_initial_contents,
+            default_fg: None,
+            default_bg: None,
         })
     }
 }
@@ -3555,6 +3575,8 @@ impl TryFrom<crate::client_server_contract::client_server_contract::FloatingPane
             pane_initial_contents: layout.pane_initial_contents,
             logical_position: layout.logical_position.map(|p| p as usize),
             borderless: layout.borderless,
+            default_fg: None,
+            default_bg: None,
         })
     }
 }

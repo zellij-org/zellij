@@ -318,6 +318,12 @@ pub enum Action {
         command: RunCommandAction,
         near_current_pane: bool,
     },
+    /// Set pane default foreground/background color
+    SetPaneColor {
+        pane_id: PaneId,
+        fg: Option<String>,
+        bg: Option<String>,
+    },
     /// Detach session and exit
     Detach,
     /// Switch to a different session
@@ -1464,6 +1470,38 @@ impl Action {
                             pane_id
                         ))
                     }
+                }
+            },
+            CliAction::SetPaneColor {
+                pane_id,
+                fg,
+                bg,
+                reset,
+            } => {
+                let pane_id_str = match pane_id {
+                    Some(id) => id,
+                    None => std::env::var("ZELLIJ_PANE_ID").map_err(|_| {
+                        "No --pane-id provided and ZELLIJ_PANE_ID is not set".to_string()
+                    })?,
+                };
+                let parsed_pane_id = PaneId::from_str(&pane_id_str);
+                match parsed_pane_id {
+                    Ok(parsed_pane_id) => {
+                        let (fg, bg) = if reset {
+                            (None, None)
+                        } else {
+                            (fg, bg)
+                        };
+                        Ok(vec![Action::SetPaneColor {
+                            pane_id: parsed_pane_id,
+                            fg,
+                            bg,
+                        }])
+                    },
+                    Err(_e) => Err(format!(
+                        "Malformed pane id: {}, expecting either a bare integer (eg. 1), a terminal pane id (eg. terminal_1) or a plugin pane id (eg. plugin_1)",
+                        pane_id_str
+                    )),
                 }
             },
             CliAction::Detach => Ok(vec![Action::Detach]),

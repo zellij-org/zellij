@@ -277,6 +277,16 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
         },
+        Action::SetPaneColor { pane_id, fg, bg } => {
+            senders
+                .send_to_screen(ScreenInstruction::SetPaneColor(
+                    pane_id.into(),
+                    fg,
+                    bg,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
         Action::SwitchToMode { input_mode } => {
             let attrs = &client_attributes;
             senders

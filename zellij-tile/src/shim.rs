@@ -2389,6 +2389,19 @@ pub fn set_pane_borderless(pane_id: PaneId, borderless: bool) {
     unsafe { host_run_plugin_command() };
 }
 
+/// Set the default foreground and/or background color of a pane
+///
+/// # Arguments
+/// * `pane_id` - The ID of the pane (PaneId::Terminal or PaneId::Plugin)
+/// * `fg` - Optional foreground color string (e.g. "#00e000"), None to leave unchanged
+/// * `bg` - Optional background color string (e.g. "#001a3a"), None to leave unchanged
+pub fn set_pane_color(pane_id: PaneId, fg: Option<String>, bg: Option<String>) {
+    let plugin_command = PluginCommand::SetPaneColor(pane_id, fg, bg);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 pub fn start_web_server() {
     let plugin_command = PluginCommand::StartWebServer;
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();

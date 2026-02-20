@@ -594,6 +594,9 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::SetPaneBorderless(pane_id, borderless) => {
                         set_pane_borderless(env, pane_id.into(), borderless)
                     },
+                    PluginCommand::SetPaneColor(pane_id, fg, bg) => {
+                        set_pane_color(env, pane_id.into(), fg, bg)
+                    },
                     PluginCommand::OpenFileNearPlugin(file_to_open, context) => {
                         open_file_near_plugin(env, file_to_open, context)
                     },
@@ -3505,6 +3508,12 @@ fn set_pane_borderless(env: &PluginEnv, pane_id: PaneId, borderless: bool) {
         ));
 }
 
+fn set_pane_color(env: &PluginEnv, pane_id: PaneId, fg: Option<String>, bg: Option<String>) {
+    let _ = env
+        .senders
+        .send_to_screen(ScreenInstruction::SetPaneColor(pane_id, fg, bg, None));
+}
+
 fn scan_host_folder(env: &PluginEnv, folder_to_scan: PathBuf) {
     if !folder_to_scan.starts_with("/host") {
         log::error!(
@@ -4962,6 +4971,7 @@ fn check_command_permission(
         | PluginCommand::ChangeFloatingPanesCoordinates(..)
         | PluginCommand::TogglePaneBorderless(..)
         | PluginCommand::SetPaneBorderless(..)
+        | PluginCommand::SetPaneColor(..)
         | PluginCommand::GroupAndUngroupPanes(..)
         | PluginCommand::HighlightAndUnhighlightPanes(..)
         | PluginCommand::CloseMultiplePanes(..)

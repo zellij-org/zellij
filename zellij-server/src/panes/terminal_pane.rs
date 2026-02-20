@@ -3,7 +3,9 @@ use crate::panes::sixel::SixelImageStore;
 use crate::panes::LinkHandler;
 use crate::panes::{
     grid::Grid,
-    terminal_character::{render_first_run_banner, TerminalCharacter, EMPTY_TERMINAL_CHARACTER},
+    terminal_character::{
+        render_first_run_banner, AnsiCode, TerminalCharacter, EMPTY_TERMINAL_CHARACTER,
+    },
 };
 use crate::pty::VteBytes;
 use crate::route::NotificationEnd;
@@ -315,6 +317,12 @@ impl Pane for TerminalPane {
     }
     fn set_selectable(&mut self, selectable: bool) {
         self.selectable = selectable;
+    }
+    fn set_pane_default_colors(&mut self, fg: Option<AnsiCode>, bg: Option<AnsiCode>) {
+        self.set_pane_default_colors(fg, bg);
+    }
+    fn get_pane_default_colors(&self) -> (Option<AnsiCode>, Option<AnsiCode>) {
+        (self.grid.pane_default_fg, self.grid.pane_default_bg)
     }
     fn render(
         &mut self,
@@ -1048,6 +1056,12 @@ impl TerminalPane {
             return None;
         }
         self.grid.cursor_coordinates()
+    }
+    pub fn set_pane_default_colors(&mut self, fg: Option<AnsiCode>, bg: Option<AnsiCode>) {
+        self.grid.pane_default_fg = fg;
+        self.grid.pane_default_bg = bg;
+        self.grid.output_buffer.update_all_lines();
+        self.set_should_render(true);
     }
     fn render_first_run_banner(&mut self) {
         let columns = self.get_content_columns();

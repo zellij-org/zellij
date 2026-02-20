@@ -1,0 +1,7 @@
+layout {
+    pane split_direction="Vertical" {
+        pane name="dark-blue-bg" default_bg="#001a3a"
+        pane name="green-on-black" default_fg="#00e000" default_bg="#0a0a0a"
+    }
+    pane name="default-colors"
+}

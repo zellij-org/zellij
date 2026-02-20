@@ -404,6 +404,8 @@ pub struct Grid {
     // disabled by user config?
     click: Click,
     hyperlink_tracker: HyperlinkTracker,
+    pub pane_default_fg: Option<AnsiCode>,
+    pub pane_default_bg: Option<AnsiCode>,
 }
 
 const CLICK_TIME_THRESHOLD: u128 = 400; // Doherty Threshold
@@ -594,6 +596,8 @@ impl Grid {
             explicitly_disable_kitty_keyboard_protocol,
             click: Click::default(),
             hyperlink_tracker: HyperlinkTracker::new(),
+            pane_default_fg: None,
+            pane_default_bg: None,
         }
     }
     pub fn render_full_viewport(&mut self) {
@@ -1186,6 +1190,7 @@ impl Grid {
         let (mut character_chunks, sixel_image_chunks) = self.read_changes(content_x, content_y);
         for character_chunk in character_chunks.iter_mut() {
             character_chunk.add_changed_colors(self.changed_colors);
+            character_chunk.add_pane_defaults(self.pane_default_fg, self.pane_default_bg);
             if self
                 .selection
                 .contains_row(character_chunk.y.saturating_sub(content_y))
@@ -1828,6 +1833,8 @@ impl Grid {
         self.cursor_is_hidden = false;
         self.supports_kitty_keyboard_protocol = false;
         self.set_scroll_region_to_viewport_size();
+        self.pane_default_fg = None;
+        self.pane_default_bg = None;
         if let Some(images_to_reap) = self.sixel_grid.clear() {
             self.sixel_grid.reap_images(images_to_reap);
         }
@@ -2716,34 +2723,44 @@ impl Perform for Grid {
                 if params.len() >= 2 {
                     if let Some(mut dynamic_code) = parse_number(params[0]) {
                         for param in &params[1..] {
-                            // currently only getting the color sequence is supported,
-                            // setting still isn't
                             if param == b"?" {
-                                let saved_terminal_color = if dynamic_code == 10 {
-                                    Some(self.terminal_emulator_colors.borrow().fg)
+                                // Query: respond with pane default if set, else terminal default
+                                let color_rgb = if dynamic_code == 10 {
+                                    match self.pane_default_fg {
+                                        Some(AnsiCode::RgbCode((r, g, b))) => Some((r, g, b)),
+                                        _ => match self.terminal_emulator_colors.borrow().fg {
+                                            PaletteColor::Rgb((r, g, b)) => Some((r, g, b)),
+                                            _ => None,
+                                        },
+                                    }
                                 } else if dynamic_code == 11 {
-                                    Some(self.terminal_emulator_colors.borrow().bg)
+                                    match self.pane_default_bg {
+                                        Some(AnsiCode::RgbCode((r, g, b))) => Some((r, g, b)),
+                                        _ => match self.terminal_emulator_colors.borrow().bg {
+                                            PaletteColor::Rgb((r, g, b)) => Some((r, g, b)),
+                                            _ => None,
+                                        },
+                                    }
                                 } else {
                                     None
                                 };
-                                let color_response_message = match saved_terminal_color {
-                                    Some(PaletteColor::Rgb((r, g, b))) => {
-                                        format!(
-                                            "\u{1b}]{};rgb:{1:02x}{1:02x}/{2:02x}{2:02x}/{3:02x}{3:02x}{4}",
-                                            // dynamic_code, color.r, color.g, color.b, terminator
-                                            dynamic_code, r, g, b, terminator
-                                        )
-                                    },
-                                    _ => {
-                                        format!(
-                                            "\u{1b}]{};rgb:{1:02x}{1:02x}/{2:02x}{2:02x}/{3:02x}{3:02x}{4}",
-                                            // dynamic_code, color.r, color.g, color.b, terminator
-                                            dynamic_code, 0, 0, 0, terminator
-                                        )
-                                    },
-                                };
+                                let (r, g, b) = color_rgb.unwrap_or((0, 0, 0));
+                                let color_response_message = format!(
+                                    "\u{1b}]{};rgb:{1:02x}{1:02x}/{2:02x}{2:02x}/{3:02x}{3:02x}{4}",
+                                    dynamic_code, r, g, b, terminator
+                                );
                                 self.pending_messages_to_pty
                                     .push(color_response_message.as_bytes().to_vec());
+                            } else {
+                                // Set: parse color and store as pane default
+                                if let Some(color) = xparse_color(param) {
+                                    if dynamic_code == 10 {
+                                        self.pane_default_fg = Some(color);
+                                    } else if dynamic_code == 11 {
+                                        self.pane_default_bg = Some(color);
+                                    }
+                                    self.output_buffer.update_all_lines();
+                                }
                             }
                             dynamic_code += 1;
                         }
@@ -2827,12 +2844,14 @@ impl Perform for Grid {
 
             // Reset foreground color.
             b"110" => {
-                // TBD - reset foreground color - currently unimplemented
+                self.pane_default_fg = None;
+                self.output_buffer.update_all_lines();
             },
 
             // Reset background color.
             b"111" => {
-                // TBD - reset background color - currently unimplemented
+                self.pane_default_bg = None;
+                self.output_buffer.update_all_lines();
             },
 
             // Reset text cursor color.

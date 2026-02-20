@@ -106,6 +106,8 @@ impl<'a> KdlLayoutParser<'a> {
             || property_name == "expanded"
             || property_name == "exclude_from_sync"
             || property_name == "contents_file"
+            || property_name == "default_fg"
+            || property_name == "default_bg"
     }
     fn is_a_valid_floating_pane_property(&self, property_name: &str) -> bool {
         property_name == "borderless"
@@ -124,6 +126,8 @@ impl<'a> KdlLayoutParser<'a> {
             || property_name == "height"
             || property_name == "pinned"
             || property_name == "contents_file"
+            || property_name == "default_fg"
+            || property_name == "default_bg"
     }
     fn is_a_valid_tab_property(&self, property_name: &str) -> bool {
         property_name == "focus"
@@ -563,6 +567,10 @@ impl<'a> KdlLayoutParser<'a> {
                 kdl_node.span().len(),
             ));
         }
+        let default_fg = kdl_get_string_property_or_child_value_with_error!(kdl_node, "default_fg")
+            .map(|s| s.to_string());
+        let default_bg = kdl_get_string_property_or_child_value_with_error!(kdl_node, "default_bg")
+            .map(|s| s.to_string());
         self.assert_no_mixed_children_and_properties(kdl_node)?;
         let pane_initial_contents = contents_file.and_then(|contents_file| {
             self.file_name
@@ -585,6 +593,8 @@ impl<'a> KdlLayoutParser<'a> {
             children_are_stacked,
             is_expanded_in_stack,
             pane_initial_contents,
+            default_fg,
+            default_bg,
             ..Default::default()
         })
     }
@@ -605,6 +615,10 @@ impl<'a> KdlLayoutParser<'a> {
             .map(|name| name.to_string());
         let contents_file =
             kdl_get_string_property_or_child_value_with_error!(kdl_node, "contents_file");
+        let default_fg = kdl_get_string_property_or_child_value_with_error!(kdl_node, "default_fg")
+            .map(|s| s.to_string());
+        let default_bg = kdl_get_string_property_or_child_value_with_error!(kdl_node, "default_bg")
+            .map(|s| s.to_string());
         self.assert_no_mixed_children_and_properties(kdl_node)?;
         let pane_initial_contents = contents_file.and_then(|contents_file| {
             self.file_name
@@ -625,6 +639,8 @@ impl<'a> KdlLayoutParser<'a> {
             pinned,
             borderless,
             pane_initial_contents,
+            default_fg,
+            default_bg,
             ..Default::default()
         })
     }
