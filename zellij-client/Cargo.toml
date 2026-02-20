@@ -36,7 +36,6 @@ regex = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_yaml = { version = "0.8", default-features = false }
-signal-hook = { workspace = true }
 termwiz = { workspace = true }
 url = { workspace = true }
 uuid = { workspace = true }
@@ -48,6 +47,9 @@ isahc = { workspace = true }
 tokio-tungstenite = { version = "0.20", features = ["native-tls"] } #TODO: see about this native-tls...
 futures-util = "0.3"
 urlencoding = "2.1"
+
+[target.'cfg(not(windows))'.dependencies]
+signal-hook = { workspace = true }
 
 [dev-dependencies]
 insta = "1.6.0"
