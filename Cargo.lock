@@ -5323,6 +5323,7 @@ dependencies = [
  "colored",
  "colorsys",
  "crossbeam",
+ "crossterm",
  "curl-sys",
  "directories",
  "expect-test",

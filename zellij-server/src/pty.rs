@@ -2249,5 +2249,8 @@ pub fn get_default_shell() -> PathBuf {
 
 #[cfg(windows)]
 pub fn get_default_shell() -> PathBuf {
-    unimplemented!("Windows get_default_shell not yet implemented")
+    PathBuf::from(std::env::var("COMSPEC").unwrap_or_else(|_| {
+        log::warn!("Cannot read COMSPEC env, falling back to use cmd.exe");
+        "cmd.exe".to_string()
+    }))
 }

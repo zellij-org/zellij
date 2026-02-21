@@ -563,8 +563,46 @@ impl ServerOsApi for ServerOsInputOutput {
     }
 
     #[cfg(not(unix))]
-    fn get_all_cmds_by_ppid(&self, _post_hook: &Option<String>) -> HashMap<String, Vec<String>> {
-        unimplemented!("Windows get_all_cmds_by_ppid not yet implemented")
+    fn get_all_cmds_by_ppid(&self, post_hook: &Option<String>) -> HashMap<String, Vec<String>> {
+        let mut system_info = System::new();
+        let refresh_kind = ProcessRefreshKind::nothing().with_cmd(UpdateKind::Always);
+        system_info.refresh_processes_specifics(ProcessesToUpdate::All, true, refresh_kind);
+        let mut cmds = HashMap::new();
+        for (_pid, process) in system_info.processes() {
+            if let Some(parent_pid) = process.parent() {
+                let ppid_str = format!("{}", parent_pid);
+                let command: Vec<String> = process
+                    .cmd()
+                    .iter()
+                    .map(|s| s.to_string_lossy().into_owned())
+                    .collect();
+                if command.is_empty() {
+                    continue;
+                }
+                match post_hook {
+                    Some(post_hook) => {
+                        let stringified = command.join(" ");
+                        let cmd = match run_command_hook(&stringified, post_hook) {
+                            Ok(command) => command,
+                            Err(e) => {
+                                log::error!("Post command hook failed to run: {}", e);
+                                stringified.to_owned()
+                            },
+                        };
+                        let line_parts: Vec<String> = cmd
+                            .trim()
+                            .split_ascii_whitespace()
+                            .map(|p| p.to_owned())
+                            .collect();
+                        cmds.insert(ppid_str, line_parts);
+                    },
+                    None => {
+                        cmds.insert(ppid_str, command);
+                    },
+                }
+            }
+        }
+        cmds
     }
 
     fn write_to_file(&mut self, buf: String, name: Option<String>) -> Result<()> {
@@ -676,10 +714,18 @@ fn run_command_hook(
 
 #[cfg(windows)]
 fn run_command_hook(
-    _original_command: &str,
-    _hook_script: &str,
+    original_command: &str,
+    hook_script: &str,
 ) -> Result<String, Box<dyn std::error::Error>> {
-    unimplemented!("Windows run_command_hook not yet implemented")
+    let output = Command::new("cmd")
+        .arg("/C")
+        .arg(hook_script)
+        .env("RESURRECT_COMMAND", original_command)
+        .output()?;
+    if !output.status.success() {
+        return Err(format!("Hook failed: {}", String::from_utf8_lossy(&output.stderr)).into());
+    }
+    Ok(String::from_utf8(output.stdout)?.trim().to_string())
 }
 
 #[cfg(test)]
