@@ -66,7 +66,7 @@ use zellij_utils::{
         },
         parse_keys,
     },
-    pane_size::{Offset, PaneGeom, Size, SizeInPixels, Viewport},
+    pane_size::{Dimension, Offset, PaneGeom, Size, SizeInPixels, Viewport},
 };
 
 #[macro_export]
@@ -2772,6 +2772,13 @@ impl Tab {
                     if active_pane.query_should_be_suppressed() {
                         active_pane.set_should_be_suppressed(false);
                         self.suppress_pane(PaneId::Plugin(pid), client_id);
+                    } else if active_pane.geom_override().is_some() {
+                        active_pane.reset_size_and_position_override();
+                        active_pane.set_borderless(true);
+                        active_pane.set_content_offset(Offset::default());
+                        active_pane.set_selectable(false);
+                        let display_area = { *self.display_area.borrow() };
+                        self.tiled_panes.resize(display_area);
                     }
                     self.request_plugin_permissions(pid, None);
                     self.senders
@@ -5011,6 +5018,26 @@ impl Tab {
         Ok(())
     }
     pub fn request_plugin_permissions(&mut self, pid: u32, permissions: Option<PluginPermission>) {
+        let mut enlarged_small_pane = false;
+        // if the tiled pane is too small for the permission prompt, temporarily
+        // enlarge it with a frame so the user can see and respond to the prompt
+        if let (Some(ref perms), Some(plugin_pane)) = (
+            &permissions,
+            self.tiled_panes.get_pane_mut(PaneId::Plugin(pid)),
+        ) {
+            let min_row_count = perms.permissions.len() + 4;
+            if plugin_pane.rows() < min_row_count {
+                let mut geom = plugin_pane.position_and_size();
+                geom.rows = Dimension::fixed(min_row_count + 2);
+                plugin_pane.set_geom_override(geom);
+                plugin_pane.set_borderless(false);
+                plugin_pane.set_content_offset(Offset::frame(1));
+                plugin_pane.set_selectable(true);
+                enlarged_small_pane = true;
+            }
+        }
+        // existing logic: find the pane (tiled, floating, or suppressed) and
+        // request permissions — the pane renders the prompt at its current size
         let mut should_focus_pane = false;
         if let Some(plugin_pane) = self
             .tiled_panes
@@ -5040,6 +5067,20 @@ impl Tab {
         }
         if should_focus_pane {
             self.focus_suppressed_pane_for_all_clients(PaneId::Plugin(pid));
+        }
+        if enlarged_small_pane {
+            let display_area = { *self.display_area.borrow() };
+            self.tiled_panes.resize(display_area);
+            // create grids for connected clients if the plugin requested
+            // permissions from load() before any client rendered it
+            let clients: Vec<ClientId> = self.connected_clients.borrow().iter().copied().collect();
+            if let Some(p) = self.tiled_panes.get_pane_mut(PaneId::Plugin(pid)) {
+                for &c in &clients {
+                    p.handle_plugin_bytes(c, Default::default());
+                }
+            }
+            self.tiled_panes
+                .focus_pane_for_all_clients(PaneId::Plugin(pid));
         }
     }
     pub fn rerun_terminal_pane_with_id(
