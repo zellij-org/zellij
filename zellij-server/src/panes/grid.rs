@@ -861,6 +861,8 @@ impl Grid {
             // is in control now...
             self.height = new_rows;
             self.width = new_columns;
+            self.set_scroll_region_to_viewport_size();
+            self.output_buffer.update_all_lines();
             return;
         }
         self.selection.reset();
