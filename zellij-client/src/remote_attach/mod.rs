@@ -114,7 +114,7 @@ fn authenticate_with_retry(
             None => Password::new()
                 .with_prompt("Enter authentication token")
                 .interact()
-                .map_err(|e| RemoteClientError::IoError(e))?,
+                .map_err(RemoteClientError::IoError)?,
         };
 
         match runtime

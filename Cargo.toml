@@ -76,7 +76,7 @@ async-trait = { version = "0.1", default-features = false }
 clap = { version = "3.2.2", default-features = false, features = ["env", "derive", "color", "std", "suggestions"] }
 crossterm = { version = "0.28", default-features = false }
 daemonize = { version = "0.5", default-features = false }
-dialoguer = { version = "0.10.4", default-features = false, features = ["password", "completion"] }
+dialoguer = { version = "0.12.0", default-features = false, features = ["password", "completion"] }
 humantime = { version = "2.1.0", default-features = false }
 interprocess = { version = "2.2", default-features = false }
 isahc = { version = "1.7.2", default-features = false, features = ["http2", "text-decoding"] }
