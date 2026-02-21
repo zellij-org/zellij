@@ -15,6 +15,25 @@ use zellij_utils::{
 };
 
 fn main() {
+    // Windows default stack is 1MB vs 8MB on Linux. Zellij's layout/KDL parsing
+    // uses deep recursion that needs more stack space. Spawn the real main on a
+    // thread with an explicit 8MB stack to match Linux behavior.
+    #[cfg(windows)]
+    {
+        const STACK_SIZE: usize = 8 * 1024 * 1024; // 8 MB
+        let builder = std::thread::Builder::new().stack_size(STACK_SIZE);
+        let handler = builder
+            .spawn(real_main)
+            .expect("failed to spawn main thread with larger stack");
+        handler.join().unwrap();
+        return;
+    }
+
+    #[cfg(not(windows))]
+    real_main();
+}
+
+fn real_main() {
     configure_logger();
     create_config_and_cache_folders();
     let opts = CliArgs::parse();

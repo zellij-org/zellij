@@ -262,17 +262,37 @@ pub fn spawn_server(socket_path: &Path, debug: bool) -> io::Result<()> {
     if debug {
         cmd.arg("--debug");
     }
-    let status = cmd.status()?;
 
-    if status.success() {
+    // On Unix the server daemonizes (double-fork) inside start_server(), so
+    // the intermediate child exits immediately and cmd.status() returns.
+    // On Windows there is no daemonize — we launch the server as a background
+    // process and return immediately.  We use CREATE_NO_WINDOW (not
+    // DETACHED_PROCESS) so the server gets a hidden console with valid
+    // standard handles; DETACHED_PROCESS leaves stdin/stdout/stderr as NULL,
+    // which breaks PTY creation, WASM plugin loading, and logging.
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        const CREATE_NEW_PROCESS_GROUP: u32 = 0x00000200;
+        cmd.creation_flags(CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP);
+        cmd.spawn()?;
         Ok(())
-    } else {
-        let msg = "Process returned non-zero exit code";
-        let err_msg = match status.code() {
-            Some(c) => format!("{}: {}", msg, c),
-            None => msg.to_string(),
-        };
-        Err(io::Error::new(io::ErrorKind::Other, err_msg))
+    }
+
+    #[cfg(not(windows))]
+    {
+        let status = cmd.status()?;
+        if status.success() {
+            Ok(())
+        } else {
+            let msg = "Process returned non-zero exit code";
+            let err_msg = match status.code() {
+                Some(c) => format!("{}: {}", msg, c),
+                None => msg.to_string(),
+            };
+            Err(io::Error::new(io::ErrorKind::Other, err_msg))
+        }
     }
 }
 
@@ -311,7 +331,7 @@ impl ClientInfo {
 #[derive(Debug, Clone)]
 pub(crate) enum InputInstruction {
     KeyEvent(InputEvent, Vec<u8>),
-    KeyWithModifierEvent(KeyWithModifier, Vec<u8>),
+    KeyWithModifierEvent(KeyWithModifier, Vec<u8>, bool), // bool = is_kitty_keyboard_protocol
     AnsiStdinInstructions(Vec<AnsiStdinInstruction>),
     StartedParsing,
     DoneParsing,
