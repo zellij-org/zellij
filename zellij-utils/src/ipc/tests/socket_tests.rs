@@ -6,10 +6,10 @@ use interprocess::local_socket::{prelude::*, GenericFilePath, ListenerOptions, S
 #[cfg(not(windows))]
 use std::os::unix::fs::FileTypeExt;
 use std::path::PathBuf;
-use tempfile::TempDir;
+use tempfile::{tempdir, TempDir};
 
 fn socket_path() -> (TempDir, PathBuf) {
-    let dir = TempDir::new().expect("failed to create temp dir");
+    let dir = tempdir().expect("failed to create temp dir");
     let path = dir.path().join("test.sock");
     (dir, path)
 }
