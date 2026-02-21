@@ -3069,11 +3069,20 @@ impl Tab {
                         .unwrap_or(false);
 
                     if active_terminal_is_mid_frame {
-                        // no-op, this means the active terminal is currently rendering a frame,
-                        // which means the cursor can be jumping around and we definitely do not
-                        // want to render it
-                        //
-                        // (I felt this was clearer than expanding the if conditional below)
+                        // Cursor is jumping during mid-frame - don't show it visually,
+                        // but restore the last known stable cursor position so that host
+                        // terminals can report the correct location to the OS IME system
+                        // (e.g. macOS IME candidate window on Alacritty).
+                        if let Some((prev_x, prev_y, _)) =
+                            self.cursor_positions_and_shape.get(&client_id).cloned()
+                        {
+                            let goto_cursor_position =
+                                format!("\u{1b}[{};{}H", prev_y + 1, prev_x + 1);
+                            output.add_post_vte_instruction_to_client(
+                                client_id,
+                                &goto_cursor_position,
+                            );
+                        }
                     } else if output.is_dirty() || cursor_changed_position_or_shape {
                         let show_cursor = "\u{1b}[?25h";
                         let goto_cursor_position = &format!(

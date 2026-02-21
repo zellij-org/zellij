@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+* fix: IME candidate window now appears near cursor position on macOS/Alacritty when using apps with synchronized output mode (ESC[?2026h) - during mid-frame rendering, restore last cached cursor position (without showing cursor) so host terminal always has correct position for OS IME system
 * fix: meta key handling in web client (https://github.com/zellij-org/zellij/pull/4376)
 * refactor: move logical structures from client to server (https://github.com/zellij-org/zellij/pull/4383)
 * fix: make sessions compatible across versions (https://github.com/zellij-org/zellij/pull/4439)
