@@ -483,6 +483,7 @@ impl ServerOsApi for ServerOsInputOutput {
 
         (cwds, cmds)
     }
+    #[cfg(unix)]
     fn get_all_cmds_by_ppid(&self, post_hook: &Option<String>) -> HashMap<String, Vec<String>> {
         // the key is the stringified ppid
         let mut cmds = HashMap::new();
@@ -528,6 +529,11 @@ impl ServerOsApi for ServerOsInputOutput {
             }
         }
         cmds
+    }
+
+    #[cfg(not(unix))]
+    fn get_all_cmds_by_ppid(&self, _post_hook: &Option<String>) -> HashMap<String, Vec<String>> {
+        unimplemented!("Windows get_all_cmds_by_ppid not yet implemented")
     }
 
     fn write_to_file(&mut self, buf: String, name: Option<String>) -> Result<()> {
@@ -620,6 +626,7 @@ impl Drop for ResizeCache {
     }
 }
 
+#[cfg(not(windows))]
 fn run_command_hook(
     original_command: &str,
     hook_script: &str,
@@ -634,6 +641,14 @@ fn run_command_hook(
         return Err(format!("Hook failed: {}", String::from_utf8_lossy(&output.stderr)).into());
     }
     Ok(String::from_utf8(output.stdout)?.trim().to_string())
+}
+
+#[cfg(windows)]
+fn run_command_hook(
+    _original_command: &str,
+    _hook_script: &str,
+) -> Result<String, Box<dyn std::error::Error>> {
+    unimplemented!("Windows run_command_hook not yet implemented")
 }
 
 #[cfg(test)]
