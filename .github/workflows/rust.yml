@@ -5,6 +5,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
@@ -36,6 +37,26 @@ jobs:
       - name: Build
         run: cargo xtask build
 
+  build-windows:
+    name: Build (Windows)
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          rustflags: ""
+
+      - name: Check core crates
+        run: cargo check --no-default-features
+
   test:
     name: Test
 
@@ -61,6 +82,32 @@ jobs:
 
       - name: Test
         run: cargo xtask test
+
+  test-windows:
+    name: Test (Windows)
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          rustflags: ""
+
+      - name: Test zellij-utils
+        run: cargo test --no-default-features -p zellij-utils --lib
+
+      - name: Test zellij-server
+        run: cargo test --no-default-features -p zellij-server --lib
+
+      - name: Test zellij-client
+        run: cargo test --no-default-features -p zellij-client --lib
 
   test-no-web:
     name: Test (No Web)

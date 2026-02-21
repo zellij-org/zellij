@@ -488,6 +488,10 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                 completion_tx,
             ) => {
                 let err_context = || "failed to open new tab";
+                log::info!(
+                    "PtyInstruction::NewTab: spawning terminals for tab {}",
+                    tab_index
+                );
 
                 let floating_panes_layout = if floating_panes_layout.is_empty() {
                     layout.new_tab().1
@@ -1279,6 +1283,11 @@ impl Pty {
                 (completion_tx, None)
             };
 
+        log::info!(
+            "spawn_terminals_for_layout: {} tiled + {} floating panes created, sending ApplyLayout",
+            new_tab_pane_ids.len(),
+            new_tab_floating_pane_ids.len()
+        );
         self.bus
             .senders
             .send_to_screen(ScreenInstruction::ApplyLayout(

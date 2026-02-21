@@ -1,4 +1,5 @@
 use axum_server::Handle;
+use interprocess::local_socket::traits::tokio::Listener;
 use std::net::IpAddr;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use zellij_utils::consts::{ipc_bind_async, WEBSERVER_SOCKET_PATH};
