@@ -58,6 +58,13 @@ daemonize = { workspace = true }
 libc = { workspace = true }
 nix = { workspace = true }
 
+[target.'cfg(windows)'.dependencies]
+windows-sys = { workspace = true, features = [
+    "Win32_Foundation",
+    "Win32_System_Console",
+    "Win32_System_Threading",
+] }
+
 [dev-dependencies]
 insta = "1.6.0"
 tempfile = "3.2.0"

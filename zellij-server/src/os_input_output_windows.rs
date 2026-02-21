@@ -5,6 +5,24 @@ use std::{io, path::PathBuf};
 
 use zellij_utils::{errors::prelude::*, input::command::RunCommand};
 
+fn terminate_process(pid: u32) -> std::result::Result<(), std::io::Error> {
+    use windows_sys::Win32::Foundation::CloseHandle;
+    use windows_sys::Win32::System::Threading::{OpenProcess, TerminateProcess, PROCESS_TERMINATE};
+
+    unsafe {
+        let handle = OpenProcess(PROCESS_TERMINATE, 0, pid);
+        if handle == 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        let ok = TerminateProcess(handle, 1);
+        CloseHandle(handle);
+        if ok == 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+    }
+    Ok(())
+}
+
 /// Windows PTY backend stub. Not yet implemented.
 #[derive(Clone)]
 pub(crate) struct WindowsPtyBackend;
@@ -43,16 +61,31 @@ impl WindowsPtyBackend {
         unimplemented!("Windows PTY not yet implemented")
     }
 
-    pub fn kill(&self, _pid: u32) -> Result<()> {
-        unimplemented!("Windows signals not yet implemented")
+    pub fn kill(&self, pid: u32) -> Result<()> {
+        terminate_process(pid)
+            .with_context(|| format!("failed to kill pid {}", pid))?;
+        Ok(())
     }
 
-    pub fn force_kill(&self, _pid: u32) -> Result<()> {
-        unimplemented!("Windows signals not yet implemented")
+    pub fn force_kill(&self, pid: u32) -> Result<()> {
+        terminate_process(pid)
+            .with_context(|| format!("failed to force-kill pid {}", pid))?;
+        Ok(())
     }
 
-    pub fn send_sigint(&self, _pid: u32) -> Result<()> {
-        unimplemented!("Windows signals not yet implemented")
+    pub fn send_sigint(&self, pid: u32) -> Result<()> {
+        use windows_sys::Win32::System::Console::{GenerateConsoleCtrlEvent, CTRL_C_EVENT};
+
+        let ok = unsafe { GenerateConsoleCtrlEvent(CTRL_C_EVENT, pid) };
+        if ok != 0 {
+            Ok(())
+        } else {
+            // Fallback: if GenerateConsoleCtrlEvent fails (e.g. different
+            // process group), terminate the process instead.
+            terminate_process(pid)
+                .with_context(|| format!("failed to send SIGINT to pid {}", pid))?;
+            Ok(())
+        }
     }
 
     pub fn reserve_terminal_id(&self, _terminal_id: u32) {

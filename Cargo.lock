@@ -5220,6 +5220,7 @@ dependencies = [
  "url",
  "urlencoding",
  "uuid",
+ "windows-sys 0.52.0",
  "zellij-utils",
 ]
 
@@ -5269,6 +5270,7 @@ dependencies = [
  "vte 0.11.0",
  "wasmi",
  "wasmi_wasi",
+ "windows-sys 0.52.0",
  "zellij-utils",
 ]
 

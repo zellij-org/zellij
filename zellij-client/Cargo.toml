@@ -51,6 +51,14 @@ signal-hook = { workspace = true }
 daemonize = { workspace = true }
 nix = { workspace = true }
 
+[target.'cfg(windows)'.dependencies]
+crossterm = { workspace = true }
+tokio = { workspace = true }
+windows-sys = { workspace = true, features = [
+    "Win32_Foundation",
+    "Win32_System_Console",
+] }
+
 [dev-dependencies]
 insta = "1.6.0"
 serde_json = "1.0"

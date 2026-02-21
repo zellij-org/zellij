@@ -4,28 +4,98 @@ use async_trait::async_trait;
 
 use std::io;
 
-/// Windows async signal listener stub. Not yet implemented.
-pub(crate) struct AsyncSignalListener;
+/// Windows async signal listener.
+///
+/// Polls `crossterm::terminal::size()` at 100ms intervals for resize events,
+/// and listens to `tokio::signal::windows` for ctrl_c/ctrl_break/ctrl_close.
+pub(crate) struct AsyncSignalListener {
+    interval: tokio::time::Interval,
+    last_size: (u16, u16),
+    ctrl_c: tokio::signal::windows::CtrlC,
+    ctrl_break: tokio::signal::windows::CtrlBreak,
+    ctrl_close: tokio::signal::windows::CtrlClose,
+}
 
 impl AsyncSignalListener {
     pub fn new() -> io::Result<Self> {
-        unimplemented!("Windows AsyncSignalListener not yet implemented")
+        let size = crossterm::terminal::size().unwrap_or((80, 24));
+        Ok(Self {
+            interval: tokio::time::interval(std::time::Duration::from_millis(100)),
+            last_size: size,
+            ctrl_c: tokio::signal::windows::ctrl_c()?,
+            ctrl_break: tokio::signal::windows::ctrl_break()?,
+            ctrl_close: tokio::signal::windows::ctrl_close()?,
+        })
     }
 }
 
 #[async_trait]
 impl crate::os_input_output::AsyncSignals for AsyncSignalListener {
     async fn recv(&mut self) -> Option<SignalEvent> {
-        unimplemented!("Windows AsyncSignalListener not yet implemented")
+        loop {
+            tokio::select! {
+                _ = self.interval.tick() => {
+                    if let Ok(new_size) = crossterm::terminal::size() {
+                        if new_size != self.last_size {
+                            self.last_size = new_size;
+                            return Some(SignalEvent::Resize);
+                        }
+                    }
+                }
+                result = self.ctrl_c.recv() => {
+                    return result.map(|_| SignalEvent::Quit);
+                }
+                result = self.ctrl_break.recv() => {
+                    return result.map(|_| SignalEvent::Quit);
+                }
+                result = self.ctrl_close.recv() => {
+                    return result.map(|_| SignalEvent::Quit);
+                }
+            }
+        }
     }
 }
 
-/// Windows blocking signal iterator stub. Not yet implemented.
-pub(crate) struct BlockingSignalIterator;
+/// Windows blocking signal iterator.
+///
+/// Uses `SetConsoleCtrlHandler` with an `AtomicBool` for quit signals,
+/// and polls `crossterm::terminal::size()` at 50ms intervals for resize.
+pub(crate) struct BlockingSignalIterator {
+    last_size: (u16, u16),
+}
+
+mod win_ctrl_handler {
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    use windows_sys::Win32::Foundation::BOOL;
+    use windows_sys::Win32::System::Console::{CTRL_BREAK_EVENT, CTRL_CLOSE_EVENT, CTRL_C_EVENT};
+
+    pub static CTRL_QUIT_RECEIVED: AtomicBool = AtomicBool::new(false);
+
+    pub unsafe extern "system" fn ctrl_handler(ctrl_type: u32) -> BOOL {
+        match ctrl_type {
+            CTRL_C_EVENT | CTRL_BREAK_EVENT | CTRL_CLOSE_EVENT => {
+                CTRL_QUIT_RECEIVED.store(true, Ordering::SeqCst);
+                1 // TRUE — handled
+            },
+            _ => 0, // FALSE — not handled
+        }
+    }
+}
 
 impl BlockingSignalIterator {
     pub fn new() -> io::Result<Self> {
-        unimplemented!("Windows BlockingSignalIterator not yet implemented")
+        use windows_sys::Win32::System::Console::SetConsoleCtrlHandler;
+
+        win_ctrl_handler::CTRL_QUIT_RECEIVED.store(false, std::sync::atomic::Ordering::SeqCst);
+
+        let ok = unsafe { SetConsoleCtrlHandler(Some(win_ctrl_handler::ctrl_handler), 1) };
+        if ok == 0 {
+            return Err(io::Error::last_os_error());
+        }
+
+        let size = crossterm::terminal::size().unwrap_or((80, 24));
+        Ok(Self { last_size: size })
     }
 }
 
@@ -33,6 +103,19 @@ impl Iterator for BlockingSignalIterator {
     type Item = SignalEvent;
 
     fn next(&mut self) -> Option<SignalEvent> {
-        unimplemented!("Windows BlockingSignalIterator not yet implemented")
+        loop {
+            if win_ctrl_handler::CTRL_QUIT_RECEIVED.load(std::sync::atomic::Ordering::SeqCst) {
+                return Some(SignalEvent::Quit);
+            }
+
+            if let Ok(new_size) = crossterm::terminal::size() {
+                if new_size != self.last_size {
+                    self.last_size = new_size;
+                    return Some(SignalEvent::Resize);
+                }
+            }
+
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
     }
 }
