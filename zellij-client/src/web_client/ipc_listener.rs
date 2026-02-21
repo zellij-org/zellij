@@ -1,8 +1,7 @@
 use axum_server::Handle;
 use std::net::IpAddr;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::{UnixListener, UnixStream};
-use zellij_utils::consts::WEBSERVER_SOCKET_PATH;
+use zellij_utils::consts::{ipc_bind_async, WEBSERVER_SOCKET_PATH};
 use zellij_utils::prost::Message;
 use zellij_utils::web_server_commands::{InstructionForWebServer, VersionInfo, WebServerResponse};
 use zellij_utils::web_server_contract::web_server_contract::InstructionForWebServer as ProtoInstructionForWebServer;
@@ -10,7 +9,10 @@ use zellij_utils::web_server_contract::web_server_contract::WebServerResponse as
 
 pub async fn create_webserver_receiver(
     id: &str,
-) -> Result<UnixStream, Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<
+    interprocess::local_socket::tokio::Stream,
+    Box<dyn std::error::Error + Send + Sync>,
+> {
     std::fs::create_dir_all(&WEBSERVER_SOCKET_PATH.as_path())?;
     let socket_path = WEBSERVER_SOCKET_PATH.join(format!("{}", id));
 
@@ -18,13 +20,13 @@ pub async fn create_webserver_receiver(
         tokio::fs::remove_file(&socket_path).await?;
     }
 
-    let listener = UnixListener::bind(&socket_path)?;
-    let (stream, _) = listener.accept().await?;
+    let listener = ipc_bind_async(&socket_path)?;
+    let stream = listener.accept().await?;
     Ok(stream)
 }
 
 pub async fn receive_webserver_instruction(
-    receiver: &mut UnixStream,
+    receiver: &mut interprocess::local_socket::tokio::Stream,
 ) -> std::io::Result<InstructionForWebServer> {
     // Read length prefix (4 bytes)
     let mut len_bytes = [0u8; 4];
@@ -46,7 +48,7 @@ pub async fn receive_webserver_instruction(
 }
 
 pub async fn send_webserver_response(
-    sender: &mut UnixStream,
+    sender: &mut interprocess::local_socket::tokio::Stream,
     response: WebServerResponse,
 ) -> std::io::Result<()> {
     let proto_response: ProtoWebServerResponse = response.into();

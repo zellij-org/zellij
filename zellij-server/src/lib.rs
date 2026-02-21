@@ -682,7 +682,9 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
     let _ = thread::Builder::new()
         .name("server_listener".to_string())
         .spawn({
-            use interprocess::local_socket::{prelude::*, GenericFilePath, ListenerOptions};
+            use interprocess::local_socket::prelude::*;
+            use zellij_utils::consts::ipc_bind;
+            #[cfg(unix)]
             use zellij_utils::shared::set_permissions;
 
             let os_input = os_input.clone();
@@ -692,26 +694,37 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
             let socket_path = socket_path.clone();
             move || {
                 drop(std::fs::remove_file(&socket_path));
-                let listener = ListenerOptions::new()
-                    .name(
-                        socket_path
-                            .as_path()
-                            .to_fs_name::<GenericFilePath>()
-                            .unwrap(),
-                    )
-                    .create_sync()
-                    .unwrap();
+                let listener = ipc_bind(&socket_path).unwrap();
                 // set the sticky bit to avoid the socket file being potentially cleaned up
                 // https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html states that for XDG_RUNTIME_DIR:
                 // "To ensure that your files are not removed, they should have their access time timestamp modified at least once every 6 hours of monotonic time or the 'sticky' bit should be set on the file. "
                 // It is not guaranteed that all platforms allow setting the sticky bit on sockets!
+                #[cfg(unix)]
                 drop(set_permissions(&socket_path, 0o1700));
+
+                // On Windows, named pipes are half-duplex, so we need a separate
+                // reply pipe for server→client messages.
+                #[cfg(windows)]
+                let reply_listener = zellij_utils::consts::ipc_bind_reply(&socket_path).unwrap();
+
                 for stream in listener.incoming() {
                     match stream {
                         Ok(stream) => {
                             let mut os_input = os_input.clone();
                             let client_id = session_state.write().unwrap().new_client();
+
+                            #[cfg(windows)]
+                            let reply_stream = reply_listener
+                                .accept()
+                                .expect("failed to accept reply connection");
+
+                            #[cfg(windows)]
+                            let receiver = os_input
+                                .new_client_with_reply(client_id, stream, reply_stream)
+                                .unwrap();
+                            #[cfg(not(windows))]
                             let receiver = os_input.new_client(client_id, stream).unwrap();
+
                             let session_data = session_data.clone();
                             let session_state = session_state.clone();
                             let to_server = to_server.clone();

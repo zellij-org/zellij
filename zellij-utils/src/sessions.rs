@@ -9,7 +9,6 @@ use crate::{
 };
 use anyhow;
 use humantime::format_duration;
-use interprocess::local_socket::{prelude::*, GenericFilePath, Stream as LocalSocketStream};
 use std::collections::HashMap;
 use std::time::{Duration, SystemTime};
 use std::{fs, io, process};
@@ -139,13 +138,16 @@ pub fn get_sessions_sorted_by_mtime() -> anyhow::Result<Vec<String>> {
     }
 }
 
+/// Probe a session socket to check if a server is alive.
+///
+/// On Unix, connects and sends a `ConnStatus` message to verify the server responds.
+/// On Windows, returns `true` — probing would deadlock the server's single-threaded
+/// accept loop (it blocks on `reply_listener.accept()` for each main connection).
+#[cfg(unix)]
 fn assert_socket(name: &str) -> bool {
+    use crate::consts::ipc_connect;
     let path = &*ZELLIJ_SOCK_DIR.join(name);
-    let fs_name = match path.to_fs_name::<GenericFilePath>() {
-        Ok(name) => name,
-        Err(_) => return false,
-    };
-    match LocalSocketStream::connect(fs_name) {
+    match ipc_connect(path) {
         Ok(stream) => {
             let mut sender: IpcSenderWithContext<ClientToServerMsg> =
                 IpcSenderWithContext::new(stream);
@@ -162,6 +164,11 @@ fn assert_socket(name: &str) -> bool {
         },
         Err(_) => false,
     }
+}
+
+#[cfg(not(unix))]
+fn assert_socket(_name: &str) -> bool {
+    true
 }
 
 pub fn print_sessions(
@@ -246,15 +253,9 @@ pub fn get_active_session() -> ActiveSession {
 }
 
 pub fn kill_session(name: &str) {
+    use crate::consts::ipc_connect;
     let path = &*ZELLIJ_SOCK_DIR.join(name);
-    let fs_name = match path.to_fs_name::<GenericFilePath>() {
-        Ok(name) => name,
-        Err(e) => {
-            eprintln!("Error occurred: {:?}", e);
-            process::exit(1);
-        },
-    };
-    match LocalSocketStream::connect(fs_name) {
+    match ipc_connect(path) {
         Ok(stream) => {
             let _ = IpcSenderWithContext::<ClientToServerMsg>::new(stream)
                 .send_client_msg(ClientToServerMsg::KillSession);
@@ -268,11 +269,10 @@ pub fn kill_session(name: &str) {
 
 pub fn delete_session(name: &str, force: bool) {
     if force {
+        use crate::consts::ipc_connect;
         let path = &*ZELLIJ_SOCK_DIR.join(name);
-        let _ = path
-            .to_fs_name::<GenericFilePath>()
+        let _ = ipc_connect(path)
             .ok()
-            .and_then(|fs_name| LocalSocketStream::connect(fs_name).ok())
             .map(|stream| {
                 IpcSenderWithContext::<ClientToServerMsg>::new(stream)
                     .send_client_msg(ClientToServerMsg::KillSession)

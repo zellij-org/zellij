@@ -1,6 +1,5 @@
 use anyhow::{Context, Result};
 use async_trait::async_trait;
-use interprocess;
 use zellij_utils::pane_size::Size;
 
 #[cfg(not(windows))]
@@ -8,7 +7,6 @@ use crate::os_input_output_unix::{AsyncSignalListener, BlockingSignalIterator};
 #[cfg(windows)]
 use crate::os_input_output_windows::{AsyncSignalListener, BlockingSignalIterator};
 
-use interprocess::local_socket::{prelude::*, GenericFilePath, Stream as LocalSocketStream};
 use std::io::prelude::*;
 use std::io::IsTerminal;
 use std::path::Path;
@@ -257,12 +255,9 @@ impl ClientOsApi for ClientOsInputOutput {
         }
     }
     fn connect_to_server(&self, path: &Path) {
-        let fs_name = path
-            .to_fs_name::<GenericFilePath>()
-            .expect("failed to convert path to socket name");
         let socket;
         loop {
-            match LocalSocketStream::connect(fs_name.clone()) {
+            match zellij_utils::consts::ipc_connect(path) {
                 Ok(sock) => {
                     socket = sock;
                     break;
@@ -272,10 +267,36 @@ impl ClientOsApi for ClientOsInputOutput {
                 },
             }
         }
-        let sender = IpcSenderWithContext::new(socket);
-        let receiver = sender.get_receiver();
-        *self.send_instructions_to_server.lock().unwrap() = Some(sender);
-        *self.receive_instructions_from_server.lock().unwrap() = Some(receiver);
+        // On Windows, use two separate named pipes to avoid DuplicateHandle deadlock:
+        // - command pipe (socket): client writes, server reads
+        // - reply pipe: server writes, client reads
+        // On Unix, a single socket with try_clone_stream() works fine.
+        #[cfg(windows)]
+        {
+            let reply_socket;
+            loop {
+                match zellij_utils::consts::ipc_connect_reply(path) {
+                    Ok(sock) => {
+                        reply_socket = sock;
+                        break;
+                    },
+                    Err(_) => {
+                        std::thread::sleep(std::time::Duration::from_millis(50));
+                    },
+                }
+            }
+            let sender = IpcSenderWithContext::new(socket);
+            let receiver = IpcReceiverWithContext::new(reply_socket);
+            *self.send_instructions_to_server.lock().unwrap() = Some(sender);
+            *self.receive_instructions_from_server.lock().unwrap() = Some(receiver);
+        }
+        #[cfg(not(windows))]
+        {
+            let sender = IpcSenderWithContext::new(socket);
+            let receiver = sender.get_receiver();
+            *self.send_instructions_to_server.lock().unwrap() = Some(sender);
+            *self.receive_instructions_from_server.lock().unwrap() = Some(receiver);
+        }
     }
     fn load_palette(&self) -> Palette {
         // this was removed because termbg doesn't release stdin in certain scenarios (we know of

@@ -1871,8 +1871,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "53bf2b0e0785c5394a7392f66d7c4fb9c653633c29b27a932280da3cb344c66a"
 dependencies = [
  "doctest-file",
+ "futures-core",
  "libc",
  "recvmsg",
+ "tokio",
  "widestring",
  "windows-sys 0.52.0",
 ]

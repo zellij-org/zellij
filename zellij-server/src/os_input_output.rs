@@ -298,6 +298,13 @@ pub trait ServerOsApi: Send + Sync {
         client_id: ClientId,
         stream: LocalSocketStream,
     ) -> Result<IpcReceiverWithContext<ClientToServerMsg>>;
+    /// Create a new client with a separate reply stream (Windows dual-pipe IPC).
+    fn new_client_with_reply(
+        &mut self,
+        client_id: ClientId,
+        stream: LocalSocketStream,
+        reply_stream: LocalSocketStream,
+    ) -> Result<IpcReceiverWithContext<ClientToServerMsg>>;
     fn remove_client(&mut self, client_id: ClientId) -> Result<()>;
     fn load_palette(&self) -> Palette;
     /// Returns the current working directory for a given pid
@@ -413,6 +420,22 @@ impl ServerOsApi for ServerOsInputOutput {
     ) -> Result<IpcReceiverWithContext<ClientToServerMsg>> {
         let receiver = IpcReceiverWithContext::new(stream);
         let sender = ClientSender::new(client_id, receiver.get_sender());
+        self.client_senders
+            .lock()
+            .to_anyhow()
+            .with_context(|| format!("failed to create new client {client_id}"))?
+            .insert(client_id, sender);
+        Ok(receiver)
+    }
+
+    fn new_client_with_reply(
+        &mut self,
+        client_id: ClientId,
+        stream: LocalSocketStream,
+        reply_stream: LocalSocketStream,
+    ) -> Result<IpcReceiverWithContext<ClientToServerMsg>> {
+        let receiver = IpcReceiverWithContext::new(stream);
+        let sender = ClientSender::new(client_id, IpcSenderWithContext::new(reply_stream));
         self.client_senders
             .lock()
             .to_anyhow()

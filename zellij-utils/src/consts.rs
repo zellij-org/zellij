@@ -147,7 +147,8 @@ mod not_wasm {
 /// Check if a filesystem entry is an IPC socket.
 ///
 /// On Unix, this checks `FileTypeExt::is_socket()`. On non-Unix platforms,
-/// this returns `false` — session discovery uses a different mechanism.
+/// this checks `is_file()` to detect marker files created by `ipc_bind()`
+/// and `ipc_bind_async()` alongside kernel-level named pipes.
 #[cfg(unix)]
 pub fn is_ipc_socket(file_type: &std::fs::FileType) -> bool {
     use std::os::unix::fs::FileTypeExt;
@@ -155,8 +156,101 @@ pub fn is_ipc_socket(file_type: &std::fs::FileType) -> bool {
 }
 
 #[cfg(not(unix))]
-pub fn is_ipc_socket(_file_type: &std::fs::FileType) -> bool {
-    false
+pub fn is_ipc_socket(file_type: &std::fs::FileType) -> bool {
+    file_type.is_file()
+}
+
+/// Connect to an IPC socket at the given path.
+///
+/// On Unix, this uses Unix domain sockets via `GenericFilePath`.
+/// On Windows, this uses named pipes via `GenericNamespaced`.
+#[cfg(unix)]
+pub fn ipc_connect(path: &std::path::Path) -> std::io::Result<interprocess::local_socket::Stream> {
+    use interprocess::local_socket::{prelude::*, GenericFilePath, Stream as LocalSocketStream};
+    let fs_name = path.to_fs_name::<GenericFilePath>()?;
+    LocalSocketStream::connect(fs_name)
+}
+
+#[cfg(windows)]
+pub fn ipc_connect(path: &std::path::Path) -> std::io::Result<interprocess::local_socket::Stream> {
+    use interprocess::local_socket::{prelude::*, GenericNamespaced, Stream as LocalSocketStream};
+    let name = path.to_string_lossy().to_string();
+    let ns_name = name.to_ns_name::<GenericNamespaced>()?;
+    LocalSocketStream::connect(ns_name)
+}
+
+/// Create an IPC listener bound to the given path.
+///
+/// On Unix, this uses Unix domain sockets via `GenericFilePath`.
+/// On Windows, this uses named pipes via `GenericNamespaced` and creates
+/// a marker file for session discovery.
+#[cfg(unix)]
+pub fn ipc_bind(path: &std::path::Path) -> std::io::Result<interprocess::local_socket::Listener> {
+    use interprocess::local_socket::{prelude::*, GenericFilePath, ListenerOptions};
+    let fs_name = path.to_fs_name::<GenericFilePath>()?;
+    ListenerOptions::new().name(fs_name).create_sync()
+}
+
+#[cfg(windows)]
+pub fn ipc_bind(path: &std::path::Path) -> std::io::Result<interprocess::local_socket::Listener> {
+    use interprocess::local_socket::{prelude::*, GenericNamespaced, ListenerOptions};
+    let name = path.to_string_lossy().to_string();
+    let ns_name = name.to_ns_name::<GenericNamespaced>()?;
+    let listener = ListenerOptions::new().name(ns_name).create_sync()?;
+    std::fs::File::create(path)?;
+    Ok(listener)
+}
+
+/// Create an async (tokio) IPC listener bound to the given path.
+///
+/// On Unix, this uses Unix domain sockets via `GenericFilePath`.
+/// On Windows, this uses named pipes via `GenericNamespaced` and creates
+/// a marker file for session discovery.
+#[cfg(unix)]
+pub fn ipc_bind_async(
+    path: &std::path::Path,
+) -> std::io::Result<interprocess::local_socket::tokio::Listener> {
+    use interprocess::local_socket::{prelude::*, GenericFilePath, ListenerOptions};
+    let fs_name = path.to_fs_name::<GenericFilePath>()?;
+    ListenerOptions::new().name(fs_name).create_tokio()
+}
+
+#[cfg(windows)]
+pub fn ipc_bind_async(
+    path: &std::path::Path,
+) -> std::io::Result<interprocess::local_socket::tokio::Listener> {
+    use interprocess::local_socket::{prelude::*, GenericNamespaced, ListenerOptions};
+    let name = path.to_string_lossy().to_string();
+    let ns_name = name.to_ns_name::<GenericNamespaced>()?;
+    let listener = ListenerOptions::new().name(ns_name).create_tokio()?;
+    std::fs::File::create(path)?;
+    Ok(listener)
+}
+
+/// Connect to the reply pipe for a given IPC path (Windows only).
+///
+/// Uses `path-reply` as the named pipe for the server→client direction.
+#[cfg(windows)]
+pub fn ipc_connect_reply(
+    path: &std::path::Path,
+) -> std::io::Result<interprocess::local_socket::Stream> {
+    use interprocess::local_socket::{prelude::*, GenericNamespaced, Stream as LocalSocketStream};
+    let name = format!("{}-reply", path.to_string_lossy());
+    let ns_name = name.to_ns_name::<GenericNamespaced>()?;
+    LocalSocketStream::connect(ns_name)
+}
+
+/// Create an IPC listener for the reply pipe (Windows only).
+///
+/// Binds to `path-reply` as the named pipe for the server→client direction.
+#[cfg(windows)]
+pub fn ipc_bind_reply(
+    path: &std::path::Path,
+) -> std::io::Result<interprocess::local_socket::Listener> {
+    use interprocess::local_socket::{prelude::*, GenericNamespaced, ListenerOptions};
+    let name = format!("{}-reply", path.to_string_lossy());
+    let ns_name = name.to_ns_name::<GenericNamespaced>()?;
+    ListenerOptions::new().name(ns_name).create_sync()
 }
 
 #[cfg(unix)]

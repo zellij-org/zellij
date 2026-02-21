@@ -79,7 +79,7 @@ crossterm = { version = "0.28", default-features = false, features = ["windows"]
 daemonize = { version = "0.5", default-features = false }
 dialoguer = { version = "0.10.4", default-features = false, features = ["password", "completion"] }
 humantime = { version = "2.1.0", default-features = false }
-interprocess = { version = "2.2", default-features = false }
+interprocess = { version = "2.2", default-features = false, features = ["tokio"] }
 isahc = { version = "1.7.2", default-features = false, features = ["http2", "text-decoding"] }
 kdl = { version = "4.5.0", default-features = false, features = ["span"] }
 lazy_static = { version = "1.4.0", default-features = false }
