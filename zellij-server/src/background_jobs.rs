@@ -20,13 +20,13 @@ use isahc::{config::RedirectPolicy, HttpClient, Request};
 use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::io::Write;
-use std::os::unix::fs::FileTypeExt;
 use std::path::PathBuf;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc, Mutex,
 };
 use std::time::{Duration, Instant};
+use zellij_utils::consts::is_ipc_socket;
 
 use crate::panes::PaneId;
 use crate::plugins::{PluginId, PluginInstruction};
@@ -635,7 +635,7 @@ fn read_other_live_session_states(current_session_name: &str) -> BTreeMap<String
         files.for_each(|file| {
             if let Ok(file) = file {
                 if let Ok(file_name) = file.file_name().into_string() {
-                    if file.file_type().unwrap().is_socket() {
+                    if is_ipc_socket(&file.file_type().unwrap()) {
                         other_session_names.push(file_name);
                     }
                 }

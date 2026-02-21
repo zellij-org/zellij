@@ -36,7 +36,7 @@ use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::rc::Rc;
 
-use interprocess::local_socket::LocalSocketStream;
+use interprocess::local_socket::Stream as LocalSocketStream;
 use zellij_utils::{
     data::{FloatingPaneCoordinates, InputMode, ModeInfo, NewPanePlacement, Palette, Style},
     input::command::{RunCommand, TerminalAction},
