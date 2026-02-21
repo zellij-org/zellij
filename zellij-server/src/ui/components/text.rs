@@ -53,7 +53,7 @@ pub fn stringify_text(
     };
     stringified.push_str(&format!("{}", base_text_style));
     for (i, character) in text.text.chars().enumerate() {
-        let character_width = character.width().unwrap_or(0);
+        let character_width = character.width() as usize;
         if is_too_wide(
             character_width,
             left_padding.unwrap_or(0) + text_width,

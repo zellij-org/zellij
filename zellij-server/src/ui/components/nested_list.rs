@@ -120,7 +120,7 @@ fn max_nested_item_width(contents: &Vec<NestedListItem>) -> usize {
     for line_item in contents.iter() {
         let mut line_item_text_width = 0;
         for character in line_item.text.text.chars() {
-            let character_width = character.width().unwrap_or(0);
+            let character_width = character.width() as usize;
             line_item_text_width += character_width;
         }
         let bulletin_width = 2;

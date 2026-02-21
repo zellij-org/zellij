@@ -61,7 +61,7 @@ fn truncate_minimal(
     let mut char_pos = 0;
 
     for ch in text.chars() {
-        let ch_width = ch.to_string().width();
+        let ch_width = ch.width() as usize;
         if current_width + ch_width <= max_width {
             result.push(ch);
             if let Some(cursor_char) = cursor_position {
@@ -86,7 +86,7 @@ fn truncate_no_cursor(text: &str, max_width: usize) -> (String, Option<usize>) {
     let mut left_part = String::new();
     let mut current_width = 0;
     for ch in text.chars() {
-        let ch_width = ch.to_string().width();
+        let ch_width = ch.width() as usize;
         if current_width + ch_width <= left_width {
             left_part.push(ch);
             current_width += ch_width;
@@ -99,7 +99,7 @@ fn truncate_no_cursor(text: &str, max_width: usize) -> (String, Option<usize>) {
     let mut right_part = String::new();
     let mut current_width = 0;
     for ch in chars.iter().rev() {
-        let ch_width = ch.to_string().width();
+        let ch_width = ch.width() as usize;
         if current_width + ch_width <= right_width {
             right_part.insert(0, *ch);
             current_width += ch_width;
@@ -117,7 +117,7 @@ fn truncate_with_cursor(
     cursor_char_idx: usize,
 ) -> (String, Option<usize>) {
     let chars: Vec<char> = text.chars().collect();
-    let char_widths: Vec<usize> = chars.iter().map(|ch| ch.to_string().width()).collect();
+    let char_widths: Vec<usize> = chars.iter().map(|ch| ch.width() as usize).collect();
 
     let width_before_cursor: usize = char_widths[..cursor_char_idx].iter().sum();
     let width_after_cursor: usize = char_widths[cursor_char_idx..].iter().sum();
