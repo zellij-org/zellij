@@ -108,6 +108,7 @@ pub fn start_web_client(
             web_server_port,
             web_server_cert,
             web_server_key,
+            config_file_path.clone(),
         )
     } else {
         let runtime = Runtime::new().unwrap();
@@ -258,6 +259,7 @@ fn daemonize_web_server(
     web_server_port: u16,
     web_server_cert: Option<PathBuf>,
     web_server_key: Option<PathBuf>,
+    _config_file_path: Option<PathBuf>,
 ) -> (Runtime, std::net::TcpListener, Option<RustlsConfig>) {
     let (mut exit_message_tx, exit_message_rx) = pipe().unwrap();
     let (mut exit_status_tx, mut exit_status_rx) = pipe().unwrap();
@@ -356,12 +358,73 @@ fn daemonize_web_server(
 
 #[cfg(not(unix))]
 fn daemonize_web_server(
-    _web_server_ip: IpAddr,
-    _web_server_port: u16,
-    _web_server_cert: Option<PathBuf>,
-    _web_server_key: Option<PathBuf>,
+    web_server_ip: IpAddr,
+    web_server_port: u16,
+    web_server_cert: Option<PathBuf>,
+    web_server_key: Option<PathBuf>,
+    config_file_path: Option<PathBuf>,
 ) -> (Runtime, std::net::TcpListener, Option<RustlsConfig>) {
-    unimplemented!("Non-Unix web server not yet implemented")
+    use std::env::current_exe;
+    use std::net::TcpStream;
+    use std::process::{exit, Command};
+    use std::time::{Duration, Instant};
+
+    let exe = current_exe().unwrap_or_else(|e| {
+        eprintln!("Failed to determine executable path: {}", e);
+        exit(2);
+    });
+
+    let mut cmd = Command::new(&exe);
+    if let Some(ref config_path) = config_file_path {
+        cmd.arg("--config").arg(config_path);
+    }
+    cmd.arg("web").arg("--start");
+    cmd.arg("--ip").arg(web_server_ip.to_string());
+    cmd.arg("--port").arg(web_server_port.to_string());
+    if let Some(ref cert) = web_server_cert {
+        cmd.arg("--cert").arg(cert);
+    }
+    if let Some(ref key) = web_server_key {
+        cmd.arg("--key").arg(key);
+    }
+
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NEW_PROCESS_GROUP: u32 = 0x00000200;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        cmd.creation_flags(CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP);
+    }
+
+    match cmd.spawn() {
+        Ok(_child) => {
+            let deadline = Instant::now() + Duration::from_secs(10);
+            let addr = format!("{}:{}", web_server_ip, web_server_port);
+            loop {
+                if TcpStream::connect_timeout(
+                    &addr.parse().unwrap(),
+                    Duration::from_millis(200),
+                )
+                .is_ok()
+                {
+                    println!(
+                        "Web Server started on {} port {}",
+                        web_server_ip, web_server_port
+                    );
+                    exit(0);
+                }
+                if Instant::now() > deadline {
+                    eprintln!("Timed out waiting for web server to start on {}", addr);
+                    exit(2);
+                }
+                std::thread::sleep(Duration::from_millis(100));
+            }
+        },
+        Err(e) => {
+            eprintln!("Failed to spawn web server: {}", e);
+            exit(2);
+        },
+    }
 }
 
 #[cfg(test)]
