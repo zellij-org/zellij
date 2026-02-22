@@ -3578,7 +3578,10 @@ pub fn send_cli_new_tab_action_with_name_and_layout() {
         })
         .unwrap()
         .clone();
-    assert_snapshot!(format!("{:#?}", new_tab_instruction));
+    let output = format!("{:#?}", new_tab_instruction);
+    // Normalize Windows path separators for cross-platform snapshot consistency
+    let output = output.replace("\\\\", "/");
+    assert_snapshot!(output);
 }
 
 #[test]

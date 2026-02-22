@@ -140,7 +140,7 @@ fn spawn_and_read_output() {
     let cmd = RunCommand {
         command: PathBuf::from("cmd"),
         args: vec![
-            "/C".to_string(),
+            "/K".to_string(),
             "echo".to_string(),
             test_message.to_string(),
         ],
