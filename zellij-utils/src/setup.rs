@@ -880,7 +880,11 @@ mod setup_test {
         let Some(LayoutInfo::File(layout_path, _)) = layout_info else {
             panic!("layout info has unexpected format");
         };
-        let expected = config_dir.join("layouts").join("upside-down.kdl");
+        let expected = config_dir
+            .join("layouts")
+            .join("upside-down.kdl")
+            .canonicalize()
+            .unwrap();
         assert_eq!(layout_path, expected.display().to_string());
     }
     #[test]
@@ -898,7 +902,11 @@ mod setup_test {
         let Some(LayoutInfo::File(layout_path, _)) = layout_info else {
             panic!("layout info has unexpected format");
         };
-        let expected = config_dir.join("layouts").join("default.kdl");
+        let expected = config_dir
+            .join("layouts")
+            .join("default.kdl")
+            .canonicalize()
+            .unwrap();
         assert_eq!(layout_path, expected.display().to_string());
     }
 
