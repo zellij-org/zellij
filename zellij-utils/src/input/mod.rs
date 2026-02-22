@@ -153,11 +153,9 @@ mod not_wasm {
     /// Crossterm's mouse events are richer than termwiz's (they distinguish
     /// Down/Up/Drag/Moved directly), so no state tracking is needed.
     #[cfg(windows)]
-    pub fn from_crossterm_mouse(
-        event: crossterm::event::MouseEvent,
-    ) -> super::mouse::MouseEvent {
-        use crossterm::event::{MouseButton as CButton, MouseEventKind, KeyModifiers};
+    pub fn from_crossterm_mouse(event: crossterm::event::MouseEvent) -> super::mouse::MouseEvent {
         use super::mouse;
+        use crossterm::event::{KeyModifiers, MouseButton as CButton, MouseEventKind};
 
         let position = crate::position::Position::new(event.row as i32, event.column);
         let modifiers = event.modifiers;
@@ -166,21 +164,110 @@ mod not_wasm {
         let ctrl = modifiers.contains(KeyModifiers::CONTROL);
 
         let (event_type, left, right, middle, wheel_up, wheel_down) = match event.kind {
-            MouseEventKind::Down(CButton::Left) => (mouse::MouseEventType::Press, true, false, false, false, false),
-            MouseEventKind::Down(CButton::Right) => (mouse::MouseEventType::Press, false, true, false, false, false),
-            MouseEventKind::Down(CButton::Middle) => (mouse::MouseEventType::Press, false, false, true, false, false),
-            MouseEventKind::Up(CButton::Left) => (mouse::MouseEventType::Release, true, false, false, false, false),
-            MouseEventKind::Up(CButton::Right) => (mouse::MouseEventType::Release, false, true, false, false, false),
-            MouseEventKind::Up(CButton::Middle) => (mouse::MouseEventType::Release, false, false, true, false, false),
-            MouseEventKind::Drag(CButton::Left) => (mouse::MouseEventType::Motion, true, false, false, false, false),
-            MouseEventKind::Drag(CButton::Right) => (mouse::MouseEventType::Motion, false, true, false, false, false),
-            MouseEventKind::Drag(CButton::Middle) => (mouse::MouseEventType::Motion, false, false, true, false, false),
-            MouseEventKind::Moved => (mouse::MouseEventType::Motion, false, false, false, false, false),
-            MouseEventKind::ScrollUp => (mouse::MouseEventType::Press, false, false, false, true, false),
-            MouseEventKind::ScrollDown => (mouse::MouseEventType::Press, false, false, false, false, true),
-            MouseEventKind::ScrollLeft | MouseEventKind::ScrollRight => {
-                (mouse::MouseEventType::Motion, false, false, false, false, false)
-            },
+            MouseEventKind::Down(CButton::Left) => (
+                mouse::MouseEventType::Press,
+                true,
+                false,
+                false,
+                false,
+                false,
+            ),
+            MouseEventKind::Down(CButton::Right) => (
+                mouse::MouseEventType::Press,
+                false,
+                true,
+                false,
+                false,
+                false,
+            ),
+            MouseEventKind::Down(CButton::Middle) => (
+                mouse::MouseEventType::Press,
+                false,
+                false,
+                true,
+                false,
+                false,
+            ),
+            MouseEventKind::Up(CButton::Left) => (
+                mouse::MouseEventType::Release,
+                true,
+                false,
+                false,
+                false,
+                false,
+            ),
+            MouseEventKind::Up(CButton::Right) => (
+                mouse::MouseEventType::Release,
+                false,
+                true,
+                false,
+                false,
+                false,
+            ),
+            MouseEventKind::Up(CButton::Middle) => (
+                mouse::MouseEventType::Release,
+                false,
+                false,
+                true,
+                false,
+                false,
+            ),
+            MouseEventKind::Drag(CButton::Left) => (
+                mouse::MouseEventType::Motion,
+                true,
+                false,
+                false,
+                false,
+                false,
+            ),
+            MouseEventKind::Drag(CButton::Right) => (
+                mouse::MouseEventType::Motion,
+                false,
+                true,
+                false,
+                false,
+                false,
+            ),
+            MouseEventKind::Drag(CButton::Middle) => (
+                mouse::MouseEventType::Motion,
+                false,
+                false,
+                true,
+                false,
+                false,
+            ),
+            MouseEventKind::Moved => (
+                mouse::MouseEventType::Motion,
+                false,
+                false,
+                false,
+                false,
+                false,
+            ),
+            MouseEventKind::ScrollUp => (
+                mouse::MouseEventType::Press,
+                false,
+                false,
+                false,
+                true,
+                false,
+            ),
+            MouseEventKind::ScrollDown => (
+                mouse::MouseEventType::Press,
+                false,
+                false,
+                false,
+                false,
+                true,
+            ),
+            MouseEventKind::ScrollLeft | MouseEventKind::ScrollRight => (
+                mouse::MouseEventType::Motion,
+                false,
+                false,
+                false,
+                false,
+                false,
+            ),
         };
 
         mouse::MouseEvent {

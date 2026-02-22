@@ -401,11 +401,8 @@ fn daemonize_web_server(
             let deadline = Instant::now() + Duration::from_secs(10);
             let addr = format!("{}:{}", web_server_ip, web_server_port);
             loop {
-                if TcpStream::connect_timeout(
-                    &addr.parse().unwrap(),
-                    Duration::from_millis(200),
-                )
-                .is_ok()
+                if TcpStream::connect_timeout(&addr.parse().unwrap(), Duration::from_millis(200))
+                    .is_ok()
                 {
                     println!(
                         "Web Server started on {} port {}",

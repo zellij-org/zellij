@@ -271,13 +271,11 @@ pub fn delete_session(name: &str, force: bool) {
     if force {
         use crate::consts::ipc_connect;
         let path = &*ZELLIJ_SOCK_DIR.join(name);
-        let _ = ipc_connect(path)
-            .ok()
-            .map(|stream| {
-                IpcSenderWithContext::<ClientToServerMsg>::new(stream)
-                    .send_client_msg(ClientToServerMsg::KillSession)
-                    .ok();
-            });
+        let _ = ipc_connect(path).ok().map(|stream| {
+            IpcSenderWithContext::<ClientToServerMsg>::new(stream)
+                .send_client_msg(ClientToServerMsg::KillSession)
+                .ok();
+        });
     }
     if let Err(e) = std::fs::remove_dir_all(session_info_folder_for_session(name)) {
         if e.kind() == std::io::ErrorKind::NotFound {

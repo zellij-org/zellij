@@ -10,10 +10,7 @@ use zellij_utils::web_server_contract::web_server_contract::WebServerResponse as
 
 pub async fn create_webserver_receiver(
     id: &str,
-) -> Result<
-    interprocess::local_socket::tokio::Stream,
-    Box<dyn std::error::Error + Send + Sync>,
-> {
+) -> Result<interprocess::local_socket::tokio::Stream, Box<dyn std::error::Error + Send + Sync>> {
     std::fs::create_dir_all(&WEBSERVER_SOCKET_PATH.as_path())?;
     let socket_path = WEBSERVER_SOCKET_PATH.join(format!("{}", id));
 

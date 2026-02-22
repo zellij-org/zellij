@@ -139,7 +139,11 @@ fn spawn_and_read_output() {
     #[cfg(windows)]
     let cmd = RunCommand {
         command: PathBuf::from("cmd"),
-        args: vec!["/C".to_string(), "echo".to_string(), test_message.to_string()],
+        args: vec![
+            "/C".to_string(),
+            "echo".to_string(),
+            test_message.to_string(),
+        ],
         ..Default::default()
     };
 
@@ -166,11 +170,8 @@ fn spawn_and_read_output() {
             if std::time::Instant::now() > deadline {
                 break;
             }
-            match tokio::time::timeout(
-                std::time::Duration::from_millis(500),
-                reader.read(&mut buf),
-            )
-            .await
+            match tokio::time::timeout(std::time::Duration::from_millis(500), reader.read(&mut buf))
+                .await
             {
                 Ok(Ok(0)) => break,
                 Ok(Ok(n)) => {

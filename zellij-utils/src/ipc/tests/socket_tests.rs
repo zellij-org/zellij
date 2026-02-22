@@ -48,9 +48,7 @@ fn new_ipc() -> (IpcGuard, IpcName) {
 }
 
 #[cfg(unix)]
-fn bind_listener(
-    name: &IpcName,
-) -> interprocess::local_socket::Listener {
+fn bind_listener(name: &IpcName) -> interprocess::local_socket::Listener {
     use interprocess::local_socket::GenericFilePath;
     ListenerOptions::new()
         .name(name.as_path().to_fs_name::<GenericFilePath>().unwrap())
@@ -59,9 +57,7 @@ fn bind_listener(
 }
 
 #[cfg(windows)]
-fn bind_listener(
-    name: &IpcName,
-) -> interprocess::local_socket::Listener {
+fn bind_listener(name: &IpcName) -> interprocess::local_socket::Listener {
     use interprocess::local_socket::GenericNamespaced;
     ListenerOptions::new()
         .name(name.as_str().to_ns_name::<GenericNamespaced>().unwrap())
@@ -70,35 +66,27 @@ fn bind_listener(
 }
 
 #[cfg(unix)]
-fn connect_stream(
-    name: &IpcName,
-) -> interprocess::local_socket::Stream {
+fn connect_stream(name: &IpcName) -> interprocess::local_socket::Stream {
     use interprocess::local_socket::{GenericFilePath, Stream as LocalSocketStream};
     LocalSocketStream::connect(name.as_path().to_fs_name::<GenericFilePath>().unwrap())
         .expect("connect failed")
 }
 
 #[cfg(windows)]
-fn connect_stream(
-    name: &IpcName,
-) -> interprocess::local_socket::Stream {
+fn connect_stream(name: &IpcName) -> interprocess::local_socket::Stream {
     use interprocess::local_socket::{GenericNamespaced, Stream as LocalSocketStream};
     LocalSocketStream::connect(name.as_str().to_ns_name::<GenericNamespaced>().unwrap())
         .expect("connect failed")
 }
 
 #[cfg(unix)]
-fn try_connect(
-    name: &IpcName,
-) -> std::io::Result<interprocess::local_socket::Stream> {
+fn try_connect(name: &IpcName) -> std::io::Result<interprocess::local_socket::Stream> {
     use interprocess::local_socket::{GenericFilePath, Stream as LocalSocketStream};
     LocalSocketStream::connect(name.as_path().to_fs_name::<GenericFilePath>().unwrap())
 }
 
 #[cfg(windows)]
-fn try_connect(
-    name: &IpcName,
-) -> std::io::Result<interprocess::local_socket::Stream> {
+fn try_connect(name: &IpcName) -> std::io::Result<interprocess::local_socket::Stream> {
     use interprocess::local_socket::{GenericNamespaced, Stream as LocalSocketStream};
     LocalSocketStream::connect(name.as_str().to_ns_name::<GenericNamespaced>().unwrap())
 }
@@ -143,8 +131,7 @@ fn server_to_client_message_over_socket() {
 
     let server = std::thread::spawn(move || {
         let stream = listener.incoming().next().unwrap().expect("accept failed");
-        let mut sender: IpcSenderWithContext<ServerToClientMsg> =
-            IpcSenderWithContext::new(stream);
+        let mut sender: IpcSenderWithContext<ServerToClientMsg> = IpcSenderWithContext::new(stream);
         sender
             .send_server_msg(ServerToClientMsg::Connected)
             .expect("send failed");
@@ -173,8 +160,7 @@ fn bidirectional_communication_via_fd_duplication() {
 
     let server = std::thread::spawn(move || {
         let stream = listener.incoming().next().unwrap().expect("accept failed");
-        let mut sender: IpcSenderWithContext<ServerToClientMsg> =
-            IpcSenderWithContext::new(stream);
+        let mut sender: IpcSenderWithContext<ServerToClientMsg> = IpcSenderWithContext::new(stream);
 
         // Create a receiver from the same socket via dup()
         let mut receiver: IpcReceiverWithContext<ClientToServerMsg> = sender.get_receiver();
@@ -230,7 +216,10 @@ fn multiple_messages_in_sequence() {
                 .expect("send 1 failed");
             sender
                 .send_client_msg(ClientToServerMsg::TerminalResize {
-                    new_size: Size { rows: 50, cols: 120 },
+                    new_size: Size {
+                        rows: 50,
+                        cols: 120,
+                    },
                 })
                 .expect("send 2 failed");
             sender
@@ -342,10 +331,7 @@ fn session_probe_accepts_responding_socket() {
         let mut sender: IpcSenderWithContext<ServerToClientMsg> = receiver.get_sender();
 
         let msg = receiver.recv_client_msg();
-        assert!(matches!(
-            msg,
-            Some((ClientToServerMsg::ConnStatus, _))
-        ));
+        assert!(matches!(msg, Some((ClientToServerMsg::ConnStatus, _))));
 
         sender
             .send_server_msg(ServerToClientMsg::Connected)
@@ -400,12 +386,7 @@ fn socket_directory_enumeration_finds_sockets() {
     // Create a socket
     let sock_path = dir.path().join("test-session");
     let _listener = ListenerOptions::new()
-        .name(
-            sock_path
-                .as_path()
-                .to_fs_name::<GenericFilePath>()
-                .unwrap(),
-        )
+        .name(sock_path.as_path().to_fs_name::<GenericFilePath>().unwrap())
         .create_sync()
         .expect("bind failed");
 

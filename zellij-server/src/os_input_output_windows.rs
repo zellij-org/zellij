@@ -91,8 +91,7 @@ impl ConPtyAsyncReader {
 impl AsyncReader for ConPtyAsyncReader {
     async fn read(&mut self, buf: &mut [u8]) -> Result<usize, io::Error> {
         if let Some(handle) = self.pending.take() {
-            let pipe =
-                unsafe { NamedPipeServer::from_raw_handle(handle.into_raw_handle()) }?;
+            let pipe = unsafe { NamedPipeServer::from_raw_handle(handle.into_raw_handle()) }?;
             self.pipe = Some(pipe);
         }
         let pipe = self
@@ -109,7 +108,10 @@ impl AsyncReader for ConPtyAsyncReader {
 
 /// Encode a Rust string as null-terminated UTF-16.
 fn to_wide(s: &str) -> Vec<u16> {
-    OsStr::new(s).encode_wide().chain(std::iter::once(0)).collect()
+    OsStr::new(s)
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect()
 }
 
 /// Build a Windows command-line string from a `RunCommand`, following the
@@ -210,11 +212,11 @@ fn create_overlapped_output_pipe(terminal_id: u32) -> io::Result<(HANDLE, HANDLE
         CreateFileW(
             wide_name.as_ptr(),
             GENERIC_WRITE,
-            0,                    // no sharing
-            std::ptr::null(),     // default security
-            OPEN_EXISTING,        // pipe already exists
-            0,                    // synchronous
-            0,                    // no template
+            0,                // no sharing
+            std::ptr::null(), // default security
+            OPEN_EXISTING,    // pipe already exists
+            0,                // synchronous
+            0,                // no template
         )
     };
     if client == INVALID_HANDLE_VALUE {
@@ -313,16 +315,16 @@ fn spawn_child_process(
 
     let ok = unsafe {
         CreateProcessW(
-            std::ptr::null(),               // lpApplicationName
-            cmd_line.as_mut_ptr(),           // lpCommandLine (mutable)
-            std::ptr::null(),               // lpProcessAttributes
-            std::ptr::null(),               // lpThreadAttributes
-            0,                              // bInheritHandles = FALSE
+            std::ptr::null(),      // lpApplicationName
+            cmd_line.as_mut_ptr(), // lpCommandLine (mutable)
+            std::ptr::null(),      // lpProcessAttributes
+            std::ptr::null(),      // lpThreadAttributes
+            0,                     // bInheritHandles = FALSE
             EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT,
-            env_block.as_ptr().cast(),      // lpEnvironment
-            cwd_ptr,                        // lpCurrentDirectory
+            env_block.as_ptr().cast(),              // lpEnvironment
+            cwd_ptr,                                // lpCurrentDirectory
             &si.StartupInfo as *const STARTUPINFOW, // lpStartupInfo
-            &mut pi,                        // lpProcessInformation
+            &mut pi,                                // lpProcessInformation
         )
     };
 
@@ -382,8 +384,8 @@ impl WindowsPtyBackend {
         };
 
         // 1. Output pipe pair (named, overlapped read end for IOCP)
-        let (output_read, output_write) = create_overlapped_output_pipe(terminal_id)
-            .with_context(|| err_context(&cmd))?;
+        let (output_read, output_write) =
+            create_overlapped_output_pipe(terminal_id).with_context(|| err_context(&cmd))?;
 
         // 2. Input pipe pair (anonymous, both synchronous)
         let mut input_read: HANDLE = 0;
@@ -393,8 +395,7 @@ impl WindowsPtyBackend {
                 CloseHandle(output_read);
                 CloseHandle(output_write);
             }
-            return Err(io::Error::last_os_error())
-                .with_context(|| err_context(&cmd));
+            return Err(io::Error::last_os_error()).with_context(|| err_context(&cmd));
         }
 
         // 3. Create pseudo console
@@ -461,8 +462,7 @@ impl WindowsPtyBackend {
         });
 
         // 8. Wrap the output read handle in an async reader
-        let owned =
-            unsafe { OwnedHandle::from_raw_handle(output_read as *mut core::ffi::c_void) };
+        let owned = unsafe { OwnedHandle::from_raw_handle(output_read as *mut core::ffi::c_void) };
         let reader = Box::new(ConPtyAsyncReader::new(owned)) as Box<dyn AsyncReader>;
 
         Ok((reader, child_pid))
@@ -529,12 +529,9 @@ impl WindowsPtyBackend {
                 }
             },
             _ => {
-                Err::<(), _>(anyhow!(
-                    "no ConPTY terminal found for id {}",
-                    terminal_id
-                ))
-                .with_context(err_context)
-                .non_fatal();
+                Err::<(), _>(anyhow!("no ConPTY terminal found for id {}", terminal_id))
+                    .with_context(err_context)
+                    .non_fatal();
             },
         }
         Ok(())

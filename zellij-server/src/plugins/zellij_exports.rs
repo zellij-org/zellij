@@ -6,7 +6,6 @@ use crate::plugins::wasm_bridge::handle_plugin_crash;
 use crate::pty::{ClientTabIndexOrPaneId, PtyInstruction};
 use crate::route::{route_action, wait_for_action_completion, NotificationEnd};
 use crate::ServerInstruction;
-use zellij_utils::consts::ipc_connect;
 use log::warn;
 use serde::Serialize;
 use std::{
@@ -20,6 +19,7 @@ use std::{
 };
 use tokio::sync::oneshot;
 use wasmi::{Caller, Linker};
+use zellij_utils::consts::ipc_connect;
 use zellij_utils::data::{
     BreakPanesToNewTabResponse, BreakPanesToTabWithIdResponse, BreakPanesToTabWithIndexResponse,
     CommandType, ConnectToSession, DeleteLayoutResponse, EditLayoutResponse, Event,
