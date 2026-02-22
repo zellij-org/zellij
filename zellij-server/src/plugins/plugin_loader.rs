@@ -36,6 +36,22 @@ use zellij_utils::{
     pane_size::Size,
 };
 
+/// Open a directory as a `File` handle for WASI pre-opening.
+/// On Windows, `FILE_FLAG_BACKUP_SEMANTICS` is required to open directories.
+#[cfg(not(windows))]
+fn open_dir(path: &std::path::Path) -> std::io::Result<std::fs::File> {
+    std::fs::File::open(path)
+}
+
+#[cfg(windows)]
+fn open_dir(path: &std::path::Path) -> std::io::Result<std::fs::File> {
+    use std::os::windows::fs::OpenOptionsExt;
+    std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(0x02000000) // FILE_FLAG_BACKUP_SEMANTICS
+        .open(path)
+}
+
 fn create_plugin_fs_entries(plugin_own_data_dir: &PathBuf, plugin_own_cache_dir: &PathBuf) {
     // Create filesystem entries mounted into WASM.
     // We create them here to get expressive error messages in case they fail.
@@ -452,7 +468,7 @@ impl<'a> PluginLoader<'a> {
 
         // Mount directories using the builder
         for (guest_path, host_path) in dirs {
-            match std::fs::File::open(&host_path) {
+            match open_dir(&host_path) {
                 Ok(dir_file) => {
                     let dir = Dir::from_std_file(dir_file);
                     builder.preopened_dir(dir, guest_path)?;
