@@ -91,10 +91,8 @@ impl ConPtyAsyncReader {
 impl AsyncReader for ConPtyAsyncReader {
     async fn read(&mut self, buf: &mut [u8]) -> Result<usize, io::Error> {
         if let Some(handle) = self.pending.take() {
-            log::debug!("ConPtyAsyncReader: promoting handle to NamedPipeServer");
             let pipe =
                 unsafe { NamedPipeServer::from_raw_handle(handle.into_raw_handle()) }?;
-            log::debug!("ConPtyAsyncReader: NamedPipeServer created successfully");
             self.pipe = Some(pipe);
         }
         let pipe = self
@@ -242,10 +240,8 @@ fn create_conpty(
     let mut hpcon: HPCON = 0;
     let hr = unsafe { CreatePseudoConsole(size, input_read, output_write, 0, &mut hpcon) };
     if hr != S_OK {
-        log::error!("CreatePseudoConsole failed: HRESULT={:#x}", hr);
         Err(io::Error::from_raw_os_error(hr))
     } else {
-        log::info!("CreatePseudoConsole succeeded: hpcon={:#x}", hpcon);
         Ok(hpcon)
     }
 }
@@ -298,10 +294,6 @@ fn spawn_child_process(
 
     // --- command line & environment ---
     let mut cmd_line = build_command_line(cmd);
-    let cmd_line_debug = String::from_utf16_lossy(
-        &cmd_line[..cmd_line.iter().position(|&c| c == 0).unwrap_or(cmd_line.len())],
-    );
-    log::info!("CreateProcessW command line: {:?}", cmd_line_debug);
     let env_block = build_environment_block(terminal_id);
 
     let cwd: Option<Vec<u16>> = cmd.cwd.as_ref().and_then(|p| {
@@ -389,13 +381,6 @@ impl WindowsPtyBackend {
             )
         };
 
-        log::info!(
-            "ConPTY spawn: terminal_id={}, command={:?}, args={:?}",
-            terminal_id,
-            cmd.command,
-            cmd.args
-        );
-
         // 1. Output pipe pair (named, overlapped read end for IOCP)
         let (output_read, output_write) = create_overlapped_output_pipe(terminal_id)
             .with_context(|| err_context(&cmd))?;
@@ -446,12 +431,6 @@ impl WindowsPtyBackend {
                 },
             };
 
-        log::info!(
-            "ConPTY spawn: child pid={}, process_handle={:#x}",
-            child_pid,
-            process_handle
-        );
-
         // Thread handle is not needed after spawn.
         unsafe { CloseHandle(thread_handle) };
 
@@ -468,22 +447,12 @@ impl WindowsPtyBackend {
         let cmd_for_monitor = cmd.clone();
         std::thread::spawn(move || {
             let exit_code = unsafe {
-                let wait_result = WaitForSingleObject(process_handle, INFINITE);
-                log::info!(
-                    "ConPTY monitor: child pid={} wait returned {:#x}",
-                    child_pid,
-                    wait_result
-                );
+                WaitForSingleObject(process_handle, INFINITE);
                 let mut code: u32 = 0;
                 GetExitCodeProcess(process_handle, &mut code);
                 CloseHandle(process_handle);
                 code
             };
-            log::info!(
-                "ConPTY monitor: child pid={} exited with code {}",
-                child_pid,
-                exit_code
-            );
             quit_cb(
                 PaneId::Terminal(terminal_id),
                 Some(exit_code as i32),
