@@ -1,4 +1,4 @@
-use crate::os_input_output::{command_exists, AsyncReader};
+use crate::os_input_output::{resolve_command, AsyncReader};
 use crate::panes::PaneId;
 
 use std::{
@@ -470,16 +470,18 @@ impl WindowsPtyBackend {
 
     pub fn spawn_terminal(
         &self,
-        cmd: RunCommand,
+        mut cmd: RunCommand,
         failover_cmd: Option<RunCommand>,
         quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
         terminal_id: u32,
     ) -> Result<(Box<dyn AsyncReader>, u32)> {
-        if command_exists(&cmd) {
+        if let Some(resolved) = resolve_command(&cmd) {
+            cmd.command = resolved;
             return self.do_spawn(cmd, quit_cb, terminal_id);
         }
-        if let Some(failover) = failover_cmd {
-            if command_exists(&failover) {
+        if let Some(mut failover) = failover_cmd {
+            if let Some(resolved) = resolve_command(&failover) {
+                failover.command = resolved;
                 return self.do_spawn(failover, quit_cb, terminal_id);
             }
         }

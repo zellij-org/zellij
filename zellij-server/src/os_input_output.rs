@@ -35,31 +35,62 @@ use std::{
 
 pub use async_trait::async_trait;
 
-pub(crate) fn command_exists(cmd: &RunCommand) -> bool {
-    let command = &cmd.command;
-    match cmd.cwd.as_ref() {
-        Some(cwd) => {
-            let full_command = cwd.join(&command);
-            if full_command.exists() && full_command.is_file() {
-                return true;
-            }
-        },
-        None => {
-            if command.exists() && command.is_file() {
-                return true;
-            }
-        },
+/// Check whether a candidate path refers to an executable file, considering
+/// PATHEXT extensions on Windows (e.g. `.exe`, `.cmd`).
+fn find_executable(candidate: &std::path::Path) -> Option<PathBuf> {
+    if candidate.exists() && candidate.is_file() {
+        return Some(candidate.to_path_buf());
     }
-
-    if let Some(paths) = env::var_os("PATH") {
-        for path in env::split_paths(&paths) {
-            let full_command = path.join(command);
-            if full_command.exists() && full_command.is_file() {
-                return true;
+    #[cfg(windows)]
+    {
+        if let Some(pathext) = env::var_os("PATHEXT") {
+            let pathext = pathext.to_string_lossy();
+            for ext in pathext.split(';') {
+                let ext = ext.trim();
+                if ext.is_empty() {
+                    continue;
+                }
+                let mut with_ext = candidate.as_os_str().to_os_string();
+                with_ext.push(ext);
+                let with_ext_path = PathBuf::from(with_ext);
+                if with_ext_path.exists() && with_ext_path.is_file() {
+                    return Some(with_ext_path);
+                }
             }
         }
     }
-    false
+    None
+}
+
+/// Resolve a command to its absolute path, searching the working directory,
+/// then PATH (and PATHEXT on Windows).
+pub(crate) fn resolve_command(cmd: &RunCommand) -> Option<PathBuf> {
+    let command = &cmd.command;
+    match cmd.cwd.as_ref() {
+        Some(cwd) => {
+            if let Some(resolved) = find_executable(&cwd.join(command)) {
+                return Some(resolved);
+            }
+        },
+        None => {
+            if let Some(resolved) = find_executable(command) {
+                return Some(resolved);
+            }
+        },
+    }
+    if let Some(paths) = env::var_os("PATH") {
+        for path in env::split_paths(&paths) {
+            if let Some(resolved) = find_executable(&path.join(command)) {
+                return Some(resolved);
+            }
+        }
+    }
+    None
+}
+
+#[cfg(not(windows))]
+pub(crate) fn command_exists(cmd: &RunCommand) -> bool {
+    resolve_command(cmd).is_some()
 }
 
 // this is a utility method to separate the arguments from a pathbuf before we turn it into a
