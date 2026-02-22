@@ -314,21 +314,39 @@ impl ClientOsApi for ClientOsInputOutput {
     }
     fn enable_mouse(&self) -> Result<()> {
         let err_context = "failed to enable mouse mode";
-        let mut stdout = self.get_stdout_writer();
-        stdout
-            .write_all(ENABLE_MOUSE_SUPPORT.as_bytes())
-            .context(err_context)?;
-        stdout.flush().context(err_context)?;
+        #[cfg(not(windows))]
+        {
+            let mut stdout = self.get_stdout_writer();
+            stdout
+                .write_all(ENABLE_MOUSE_SUPPORT.as_bytes())
+                .context(err_context)?;
+            stdout.flush().context(err_context)?;
+        }
+        #[cfg(windows)]
+        {
+            let mut stdout = self.get_stdout_writer();
+            crossterm::execute!(stdout, crossterm::event::EnableMouseCapture)
+                .context(err_context)?;
+        }
         Ok(())
     }
 
     fn disable_mouse(&self) -> Result<()> {
-        let err_context = "failed to enable mouse mode";
-        let mut stdout = self.get_stdout_writer();
-        stdout
-            .write_all(DISABLE_MOUSE_SUPPORT.as_bytes())
-            .context(err_context)?;
-        stdout.flush().context(err_context)?;
+        let err_context = "failed to disable mouse mode";
+        #[cfg(not(windows))]
+        {
+            let mut stdout = self.get_stdout_writer();
+            stdout
+                .write_all(DISABLE_MOUSE_SUPPORT.as_bytes())
+                .context(err_context)?;
+            stdout.flush().context(err_context)?;
+        }
+        #[cfg(windows)]
+        {
+            let mut stdout = self.get_stdout_writer();
+            crossterm::execute!(stdout, crossterm::event::DisableMouseCapture)
+                .context(err_context)?;
+        }
         Ok(())
     }
 

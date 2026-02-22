@@ -148,6 +148,55 @@ mod not_wasm {
         }
     }
 
+    /// Convert a crossterm `MouseEvent` into a zellij `MouseEvent`.
+    ///
+    /// Crossterm's mouse events are richer than termwiz's (they distinguish
+    /// Down/Up/Drag/Moved directly), so no state tracking is needed.
+    #[cfg(windows)]
+    pub fn from_crossterm_mouse(
+        event: crossterm::event::MouseEvent,
+    ) -> super::mouse::MouseEvent {
+        use crossterm::event::{MouseButton as CButton, MouseEventKind, KeyModifiers};
+        use super::mouse;
+
+        let position = crate::position::Position::new(event.row as i32, event.column);
+        let modifiers = event.modifiers;
+        let shift = modifiers.contains(KeyModifiers::SHIFT);
+        let alt = modifiers.contains(KeyModifiers::ALT);
+        let ctrl = modifiers.contains(KeyModifiers::CONTROL);
+
+        let (event_type, left, right, middle, wheel_up, wheel_down) = match event.kind {
+            MouseEventKind::Down(CButton::Left) => (mouse::MouseEventType::Press, true, false, false, false, false),
+            MouseEventKind::Down(CButton::Right) => (mouse::MouseEventType::Press, false, true, false, false, false),
+            MouseEventKind::Down(CButton::Middle) => (mouse::MouseEventType::Press, false, false, true, false, false),
+            MouseEventKind::Up(CButton::Left) => (mouse::MouseEventType::Release, true, false, false, false, false),
+            MouseEventKind::Up(CButton::Right) => (mouse::MouseEventType::Release, false, true, false, false, false),
+            MouseEventKind::Up(CButton::Middle) => (mouse::MouseEventType::Release, false, false, true, false, false),
+            MouseEventKind::Drag(CButton::Left) => (mouse::MouseEventType::Motion, true, false, false, false, false),
+            MouseEventKind::Drag(CButton::Right) => (mouse::MouseEventType::Motion, false, true, false, false, false),
+            MouseEventKind::Drag(CButton::Middle) => (mouse::MouseEventType::Motion, false, false, true, false, false),
+            MouseEventKind::Moved => (mouse::MouseEventType::Motion, false, false, false, false, false),
+            MouseEventKind::ScrollUp => (mouse::MouseEventType::Press, false, false, false, true, false),
+            MouseEventKind::ScrollDown => (mouse::MouseEventType::Press, false, false, false, false, true),
+            MouseEventKind::ScrollLeft | MouseEventKind::ScrollRight => {
+                (mouse::MouseEventType::Motion, false, false, false, false, false)
+            },
+        };
+
+        mouse::MouseEvent {
+            event_type,
+            left,
+            right,
+            middle,
+            wheel_up,
+            wheel_down,
+            shift,
+            alt,
+            ctrl,
+            position,
+        }
+    }
+
     /// Convert a crossterm `KeyEvent` into a zellij `KeyWithModifier` plus synthesized raw VT
     /// bytes suitable for PTY pass-through. Returns `None` for key codes we don't handle
     /// (e.g. media keys, bare modifier presses).

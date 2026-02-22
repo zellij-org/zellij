@@ -112,7 +112,7 @@ pub(crate) fn stdin_loop(
     #[cfg(windows)]
     if !use_vt_reader {
         use crossterm::event::{self, Event, KeyEventKind};
-        use zellij_utils::input::cast_crossterm_key;
+        use zellij_utils::input::{cast_crossterm_key, from_crossterm_mouse};
 
         let _ = (
             stdin_ansi_parser,
@@ -132,6 +132,15 @@ pub(crate) fn stdin_loop(
                         {
                             break;
                         }
+                    }
+                },
+                Ok(Event::Mouse(mouse_event)) => {
+                    let mouse_event = from_crossterm_mouse(mouse_event);
+                    if send_input_instructions
+                        .send(InputInstruction::MouseEvent(mouse_event))
+                        .is_err()
+                    {
+                        break;
                     }
                 },
                 Ok(Event::Paste(text)) => {
