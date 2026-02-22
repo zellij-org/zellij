@@ -1136,7 +1136,10 @@ impl Screen {
             max_panes,
             size: client_attributes.size,
             pixel_dimensions: Default::default(),
-            character_cell_size: Rc::new(RefCell::new(None)),
+            character_cell_size: Rc::new(RefCell::new(Some(SizeInPixels {
+                height: 16,
+                width: 8,
+            }))),
             stacked_resize: Rc::new(RefCell::new(stacked_resize)),
             sixel_image_store: Rc::new(RefCell::new(SixelImageStore::default())),
             style: client_attributes.style,
