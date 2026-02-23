@@ -313,7 +313,28 @@ mod not_wasm {
 
         let (bare_key, raw_bytes) = match event.code {
             CKeyCode::Char(c) => {
-                let bytes = if has_ctrl && has_alt && c.is_ascii_alphabetic() {
+                // On Windows, the console reports physical modifier flags alongside
+                // the already-translated character. For example, on French AZERTY:
+                //   Shift+ù → Char('%') + SHIFT
+                //   AltGr+_ → Char('\\') + CTRL+ALT  (AltGr = Ctrl+Alt on Windows)
+                //
+                // Strip modifiers that "produced" the character so the resulting
+                // KeyWithModifier matches what Unix terminals report (just the
+                // character, no redundant modifiers):
+                //   - Shift is always redundant for Char events
+                //   - Ctrl+Alt together indicates AltGr; strip both when the
+                //     character is printable (not a control code)
+                modifiers.remove(&KeyModifier::Shift);
+                let is_altgr = has_ctrl && has_alt && !c.is_ascii_control();
+                if is_altgr {
+                    modifiers.remove(&KeyModifier::Ctrl);
+                    modifiers.remove(&KeyModifier::Alt);
+                }
+
+                let bytes = if is_altgr {
+                    let mut buf = [0u8; 4];
+                    c.encode_utf8(&mut buf).as_bytes().to_vec()
+                } else if has_ctrl && has_alt && c.is_ascii_alphabetic() {
                     vec![0x1b, (c.to_ascii_lowercase() as u8) & 0x1f]
                 } else if has_ctrl && c.is_ascii_alphabetic() {
                     vec![(c.to_ascii_lowercase() as u8) & 0x1f]
