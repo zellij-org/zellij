@@ -26,7 +26,6 @@ dialoguer = { workspace = true }
 interprocess = { workspace = true }
 lazy_static = { workspace = true }
 log = { workspace = true }
-mio = { version = "0.8.11", default-features = false, features = ['os-ext'] }
 notify = { workspace = true }
 num_cpus = { workspace = true }
 regex = { workspace = true }

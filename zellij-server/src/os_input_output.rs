@@ -8,7 +8,7 @@ use crate::os_input_output_unix::UnixPtyBackend as PtyBackendImpl;
 use crate::os_input_output_windows::WindowsPtyBackend as PtyBackendImpl;
 
 use interprocess;
-use sysinfo::{ProcessExt, ProcessRefreshKind, System, SystemExt};
+use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind};
 use tempfile::tempfile;
 use zellij_utils::{
     channels,
@@ -439,16 +439,17 @@ impl ServerOsApi for ServerOsInputOutput {
 
     fn get_cwd(&self, pid: u32) -> Option<PathBuf> {
         let mut system_info = System::new();
-        // Update by minimizing information.
-        // See https://docs.rs/sysinfo/0.22.5/sysinfo/struct.ProcessRefreshKind.html#
-        let sysinfo_pid = sysinfo::Pid::from(pid as i32);
-        system_info.refresh_process_specifics(sysinfo_pid, ProcessRefreshKind::default());
+        let sysinfo_pid = sysinfo::Pid::from_u32(pid);
+        let refresh_kind = ProcessRefreshKind::nothing().with_cwd(UpdateKind::Always);
+        system_info.refresh_processes_specifics(
+            ProcessesToUpdate::Some(&[sysinfo_pid]),
+            false,
+            refresh_kind,
+        );
 
         if let Some(process) = system_info.process(sysinfo_pid) {
-            let cwd = process.cwd();
-            let cwd_is_empty = cwd.iter().next().is_none();
-            if !cwd_is_empty {
-                return Some(process.cwd().to_path_buf());
+            if let Some(cwd) = process.cwd() {
+                return Some(cwd.to_path_buf());
             }
         }
         None
@@ -459,24 +460,31 @@ impl ServerOsApi for ServerOsInputOutput {
         let mut cwds = HashMap::new();
         let mut cmds = HashMap::new();
 
+        let sysinfo_pids: Vec<sysinfo::Pid> =
+            pids.iter().map(|&p| sysinfo::Pid::from_u32(p)).collect();
+        let refresh_kind = ProcessRefreshKind::nothing()
+            .with_cwd(UpdateKind::Always)
+            .with_cmd(UpdateKind::Always);
+        system_info.refresh_processes_specifics(
+            ProcessesToUpdate::Some(&sysinfo_pids),
+            false,
+            refresh_kind,
+        );
+
         for pid in pids {
-            // Update by minimizing information.
-            // See https://docs.rs/sysinfo/0.22.5/sysinfo/struct.ProcessRefreshKind.html#
-            let sysinfo_pid = sysinfo::Pid::from(pid as i32);
-            let is_found =
-                system_info.refresh_process_specifics(sysinfo_pid, ProcessRefreshKind::default());
-            if is_found {
-                if let Some(process) = system_info.process(sysinfo_pid) {
-                    let cwd = process.cwd();
-                    let cmd = process.cmd();
-                    let cwd_is_empty = cwd.iter().next().is_none();
-                    if !cwd_is_empty {
-                        cwds.insert(pid, process.cwd().to_path_buf());
-                    }
-                    let cmd_is_empty = cmd.iter().next().is_none();
-                    if !cmd_is_empty {
-                        cmds.insert(pid, process.cmd().to_vec());
-                    }
+            let sysinfo_pid = sysinfo::Pid::from_u32(pid);
+            if let Some(process) = system_info.process(sysinfo_pid) {
+                if let Some(cwd) = process.cwd() {
+                    cwds.insert(pid, cwd.to_path_buf());
+                }
+                let cmd = process.cmd();
+                if !cmd.is_empty() {
+                    cmds.insert(
+                        pid,
+                        cmd.iter()
+                            .map(|s| s.to_string_lossy().into_owned())
+                            .collect(),
+                    );
                 }
             }
         }

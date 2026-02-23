@@ -25,10 +25,12 @@ interprocess = { workspace = true }
 log = { workspace = true }
 miette = { workspace = true }
 names = { workspace = true }
-nix = { workspace = true }
 suggest = { workspace = true }
 thiserror = { workspace = true }
 isahc = { workspace = true }
+
+[target.'cfg(unix)'.dependencies]
+nix = { workspace = true }
 
 [dev-dependencies]
 insta = { version = "1.6.0", features = ["backtrace"] }
@@ -74,7 +76,7 @@ ansi_term = { version = "0.12.1", default-features = false }
 anyhow = { version = "1.0.70", default-features = false, features = ["backtrace", "std"] }
 async-trait = { version = "0.1", default-features = false }
 clap = { version = "3.2.2", default-features = false, features = ["env", "derive", "color", "std", "suggestions"] }
-crossterm = { version = "0.28", default-features = false }
+crossterm = { version = "0.28", default-features = false, features = ["windows"] }
 daemonize = { version = "0.5", default-features = false }
 dialoguer = { version = "0.10.4", default-features = false, features = ["password", "completion"] }
 humantime = { version = "2.1.0", default-features = false }
