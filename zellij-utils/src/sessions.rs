@@ -5,7 +5,7 @@ use crate::{
     },
     envs,
     input::layout::Layout,
-    ipc::{ClientToServerMsg, IpcSenderWithContext},
+    ipc::{ClientToServerMsg, IpcReceiverWithContext, IpcSenderWithContext, ServerToClientMsg},
 };
 use anyhow;
 use humantime::format_duration;
@@ -145,7 +145,6 @@ pub fn get_sessions_sorted_by_mtime() -> anyhow::Result<Vec<String>> {
 #[cfg(unix)]
 fn assert_socket(name: &str) -> bool {
     use crate::consts::ipc_connect;
-    use crate::ipc::{IpcReceiverWithContext, ServerToClientMsg};
     let path = &*ZELLIJ_SOCK_DIR.join(name);
     match ipc_connect(path) {
         Ok(stream) => {
@@ -296,14 +295,29 @@ pub fn kill_session(name: &str) {
     let path = &*ZELLIJ_SOCK_DIR.join(name);
     match ipc_connect(path) {
         Ok(stream) => {
-            // On Windows, the server blocks on reply_listener.accept() after
-            // accepting the main pipe. Connect to the reply pipe so the server
-            // can complete the handshake and spawn a route thread to process
-            // the KillSession message.
+            // On Windows, the server uses a dual-pipe architecture: the main pipe
+            // for client→server and a reply pipe for server→client. We must:
+            // 1. Connect to the reply pipe (so the server unblocks from
+            //    reply_listener.accept() and spawns the route thread)
+            // 2. Send KillSession on the main pipe
+            // 3. Wait for the Exit response on the reply pipe (so we don't
+            //    disconnect before the server processes the message)
             #[cfg(windows)]
-            let _reply = crate::consts::ipc_connect_reply(path);
-            let _ = IpcSenderWithContext::<ClientToServerMsg>::new(stream)
-                .send_client_msg(ClientToServerMsg::KillSession);
+            {
+                let reply = crate::consts::ipc_connect_reply(path);
+                let _ = IpcSenderWithContext::<ClientToServerMsg>::new(stream)
+                    .send_client_msg(ClientToServerMsg::KillSession);
+                if let Ok(reply_stream) = reply {
+                    let mut receiver: IpcReceiverWithContext<ServerToClientMsg> =
+                        IpcReceiverWithContext::new(reply_stream);
+                    let _ = receiver.recv_server_msg();
+                }
+            }
+            #[cfg(not(windows))]
+            {
+                let _ = IpcSenderWithContext::<ClientToServerMsg>::new(stream)
+                    .send_client_msg(ClientToServerMsg::KillSession);
+            }
         },
         Err(e) => {
             eprintln!("Error occurred: {:?}", e);
@@ -318,10 +332,22 @@ pub fn delete_session(name: &str, force: bool) {
         let path = &*ZELLIJ_SOCK_DIR.join(name);
         let _ = ipc_connect(path).ok().map(|stream| {
             #[cfg(windows)]
-            let _reply = crate::consts::ipc_connect_reply(path);
-            IpcSenderWithContext::<ClientToServerMsg>::new(stream)
-                .send_client_msg(ClientToServerMsg::KillSession)
-                .ok();
+            {
+                let reply = crate::consts::ipc_connect_reply(path);
+                let _ = IpcSenderWithContext::<ClientToServerMsg>::new(stream)
+                    .send_client_msg(ClientToServerMsg::KillSession);
+                if let Ok(reply_stream) = reply {
+                    let mut receiver: IpcReceiverWithContext<ServerToClientMsg> =
+                        IpcReceiverWithContext::new(reply_stream);
+                    let _ = receiver.recv_server_msg();
+                }
+            }
+            #[cfg(not(windows))]
+            {
+                IpcSenderWithContext::<ClientToServerMsg>::new(stream)
+                    .send_client_msg(ClientToServerMsg::KillSession)
+                    .ok();
+            }
         });
     }
     if let Err(e) = std::fs::remove_dir_all(session_info_folder_for_session(name)) {
