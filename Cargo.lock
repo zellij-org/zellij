@@ -5152,7 +5152,6 @@ dependencies = [
  "interprocess",
  "isahc",
  "lazy_static",
- "libc",
  "log",
  "mio 0.8.11",
  "nix 0.23.1",

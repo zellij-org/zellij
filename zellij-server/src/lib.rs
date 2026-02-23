@@ -24,11 +24,8 @@ mod terminal_bytes;
 mod thread_bus;
 mod ui;
 
-pub use daemonize;
-
 use background_jobs::{background_jobs_main, BackgroundJob};
 use log::info;
-use nix::sys::stat::{umask, Mode};
 use pty_writer::{pty_writer_main, PtyWriteInstruction};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::{
@@ -654,14 +651,18 @@ impl SessionState {
 pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
     info!("Starting Zellij server!");
 
-    // preserve the current umask: read current value by setting to another mode, and then restoring it
-    let current_umask = umask(Mode::all());
-    umask(current_umask);
-    daemonize::Daemonize::new()
-        .working_directory(std::env::current_dir().unwrap())
-        .umask(current_umask.bits() as u32)
-        .start()
-        .expect("could not daemonize the server process");
+    #[cfg(unix)]
+    {
+        use nix::sys::stat::{umask, Mode};
+        // preserve the current umask: read current value by setting to another mode, and then restoring it
+        let current_umask = umask(Mode::all());
+        umask(current_umask);
+        daemonize::Daemonize::new()
+            .working_directory(std::env::current_dir().unwrap())
+            .umask(current_umask.bits() as u32)
+            .start()
+            .expect("could not daemonize the server process");
+    }
 
     envs::set_zellij("0".to_string());
 

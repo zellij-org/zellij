@@ -22,14 +22,11 @@ tower-http = { version = "0.6.4", features = ["cors"], optional = true }
 anyhow = { workspace = true }
 async-trait = { workspace = true }
 crossterm = { workspace = true }
-daemonize = { workspace = true }
 dialoguer = { workspace = true }
 interprocess = { workspace = true }
 lazy_static = { workspace = true }
-libc = { workspace = true }
 log = { workspace = true }
 mio = { version = "0.8.11", default-features = false, features = ['os-ext'] }
-nix = { workspace = true }
 notify = { workspace = true }
 num_cpus = { workspace = true }
 regex = { workspace = true }
@@ -50,6 +47,10 @@ urlencoding = "2.1"
 
 [target.'cfg(not(windows))'.dependencies]
 signal-hook = { workspace = true }
+
+[target.'cfg(unix)'.dependencies]
+daemonize = { workspace = true }
+nix = { workspace = true }
 
 [dev-dependencies]
 insta = "1.6.0"
