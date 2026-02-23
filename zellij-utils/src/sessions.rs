@@ -296,6 +296,12 @@ pub fn kill_session(name: &str) {
     let path = &*ZELLIJ_SOCK_DIR.join(name);
     match ipc_connect(path) {
         Ok(stream) => {
+            // On Windows, the server blocks on reply_listener.accept() after
+            // accepting the main pipe. Connect to the reply pipe so the server
+            // can complete the handshake and spawn a route thread to process
+            // the KillSession message.
+            #[cfg(windows)]
+            let _reply = crate::consts::ipc_connect_reply(path);
             let _ = IpcSenderWithContext::<ClientToServerMsg>::new(stream)
                 .send_client_msg(ClientToServerMsg::KillSession);
         },
@@ -311,6 +317,8 @@ pub fn delete_session(name: &str, force: bool) {
         use crate::consts::ipc_connect;
         let path = &*ZELLIJ_SOCK_DIR.join(name);
         let _ = ipc_connect(path).ok().map(|stream| {
+            #[cfg(windows)]
+            let _reply = crate::consts::ipc_connect_reply(path);
             IpcSenderWithContext::<ClientToServerMsg>::new(stream)
                 .send_client_msg(ClientToServerMsg::KillSession)
                 .ok();
