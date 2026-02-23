@@ -60,6 +60,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * refactor: replace `async_std` with `tokio` (https://github.com/zellij-org/zellij/pull/4672)
 * fix: do not attempt a reconnect from the web-client when explicitly kicked from the session (https://github.com/zellij-org/zellij/pull/4730)
 * fix: reset scroll region boundaries when resizing in alternate screen (https://github.com/zellij-org/zellij/pull/4748)
+* fix: preserve cwd when opening editor panes (https://github.com/zellij-org/zellij/pull/4593)
 
 
 ## [0.43.1] - 2025-08-08
