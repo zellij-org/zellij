@@ -197,7 +197,7 @@ pub fn ipc_bind(path: &std::path::Path) -> std::io::Result<interprocess::local_s
     let name = path.to_string_lossy().to_string();
     let ns_name = name.to_ns_name::<GenericNamespaced>()?;
     let listener = ListenerOptions::new().name(ns_name).create_sync()?;
-    std::fs::File::create(path)?;
+    std::fs::write(path, std::process::id().to_string())?;
     Ok(listener)
 }
 
@@ -223,7 +223,7 @@ pub fn ipc_bind_async(
     let name = path.to_string_lossy().to_string();
     let ns_name = name.to_ns_name::<GenericNamespaced>()?;
     let listener = ListenerOptions::new().name(ns_name).create_tokio()?;
-    std::fs::File::create(path)?;
+    std::fs::write(path, std::process::id().to_string())?;
     Ok(listener)
 }
 

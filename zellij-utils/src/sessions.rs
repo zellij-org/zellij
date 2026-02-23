@@ -5,7 +5,7 @@ use crate::{
     },
     envs,
     input::layout::Layout,
-    ipc::{ClientToServerMsg, IpcReceiverWithContext, IpcSenderWithContext, ServerToClientMsg},
+    ipc::{ClientToServerMsg, IpcSenderWithContext},
 };
 use anyhow;
 use humantime::format_duration;
@@ -141,11 +141,11 @@ pub fn get_sessions_sorted_by_mtime() -> anyhow::Result<Vec<String>> {
 /// Probe a session socket to check if a server is alive.
 ///
 /// On Unix, connects and sends a `ConnStatus` message to verify the server responds.
-/// On Windows, returns `true` — probing would deadlock the server's single-threaded
-/// accept loop (it blocks on `reply_listener.accept()` for each main connection).
+/// On Windows, reads the server PID from the marker file and checks process liveness.
 #[cfg(unix)]
 fn assert_socket(name: &str) -> bool {
     use crate::consts::ipc_connect;
+    use crate::ipc::{IpcReceiverWithContext, ServerToClientMsg};
     let path = &*ZELLIJ_SOCK_DIR.join(name);
     match ipc_connect(path) {
         Ok(stream) => {
@@ -166,7 +166,46 @@ fn assert_socket(name: &str) -> bool {
     }
 }
 
-#[cfg(not(unix))]
+/// On Windows, reads the server PID from the marker file and checks whether
+/// the process is still alive via `OpenProcess`. Cleans up stale marker files.
+#[cfg(windows)]
+fn assert_socket(name: &str) -> bool {
+    use windows_sys::Win32::Foundation::CloseHandle;
+    use windows_sys::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION};
+
+    let path = &*ZELLIJ_SOCK_DIR.join(name);
+    let pid_str = match fs::read_to_string(path) {
+        Ok(s) => s,
+        Err(_) => {
+            drop(fs::remove_file(path));
+            return false;
+        },
+    };
+    let pid: u32 = match pid_str.trim().parse() {
+        Ok(p) => p,
+        Err(_) => {
+            // Marker file exists but has no valid PID (e.g. empty from old version).
+            // Treat as stale.
+            drop(fs::remove_file(path));
+            return false;
+        },
+    };
+    let alive = unsafe {
+        let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+        if handle == 0 {
+            false
+        } else {
+            CloseHandle(handle);
+            true
+        }
+    };
+    if !alive {
+        drop(fs::remove_file(path));
+    }
+    alive
+}
+
+#[cfg(not(any(unix, windows)))]
 fn assert_socket(_name: &str) -> bool {
     true
 }
