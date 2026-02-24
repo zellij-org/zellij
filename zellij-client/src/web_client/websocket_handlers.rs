@@ -16,6 +16,7 @@ use axum::{
     response::IntoResponse,
 };
 use futures::StreamExt;
+use std::sync::{atomic::AtomicBool, Arc};
 use tokio_util::sync::CancellationToken;
 use zellij_utils::{input::mouse::MouseEvent, ipc::ClientToServerMsg};
 
@@ -147,10 +148,17 @@ async fn handle_ws_terminal(
     );
 
     let terminal_channel_cancellation_token = CancellationToken::new();
+    let should_not_reconnect = state
+        .connection_table
+        .lock()
+        .unwrap()
+        .get_should_not_reconnect_flag(&web_client_id)
+        .unwrap_or_else(|| Arc::new(AtomicBool::new(false)));
     render_to_client(
         stdout_channel_rx,
         client_terminal_channel_tx,
         terminal_channel_cancellation_token.clone(),
+        should_not_reconnect,
     );
     state
         .connection_table

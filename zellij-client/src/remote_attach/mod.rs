@@ -10,7 +10,7 @@ pub use websockets::WebSocketConnections;
 
 use crate::os_input_output::ClientOsApi;
 use crate::RemoteClientError;
-use tokio::runtime::Runtime;
+use tokio::runtime::Handle;
 use zellij_utils::remote_session_tokens;
 
 // In tests, only attempt once (no retries) to avoid interactive prompts
@@ -32,7 +32,7 @@ const MAX_AUTH_ATTEMPTS: u32 = 3;
 ///
 /// Returns WebSocketConnections on success
 pub fn attach_to_remote_session(
-    runtime: &Runtime,
+    runtime: Handle,
     _os_input: Box<dyn ClientOsApi>,
     remote_session_url: &str,
     token: Option<String>,
@@ -53,9 +53,11 @@ pub fn attach_to_remote_session(
     }
 
     if token.is_none() {
-        if let Some(connections) =
-            try_to_connect_with_saved_session_token(runtime, remote_session_url, &server_url)?
-        {
+        if let Some(connections) = try_to_connect_with_saved_session_token(
+            runtime.clone(),
+            remote_session_url,
+            &server_url,
+        )? {
             return Ok(connections);
         }
     }
@@ -67,7 +69,7 @@ pub fn attach_to_remote_session(
 /// Try to connect using a saved session token
 /// Returns Ok(Some(connections)) on success, Ok(None) if should retry with auth
 fn try_to_connect_with_saved_session_token(
-    runtime: &Runtime,
+    runtime: Handle,
     remote_session_url: &str,
     server_url: &str,
 ) -> Result<Option<WebSocketConnections>, RemoteClientError> {
@@ -94,7 +96,7 @@ fn try_to_connect_with_saved_session_token(
 }
 
 fn authenticate_with_retry(
-    runtime: &Runtime,
+    runtime: Handle,
     remote_session_url: &str,
     initial_token: Option<String>,
     remember: bool,

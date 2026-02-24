@@ -54,6 +54,7 @@ impl UnblockCondition {
 pub enum CommandOrPlugin {
     Command(RunCommandAction),
     Plugin(RunPluginOrAlias),
+    File(FileToOpen), // open file in configured editor
 }
 
 impl CommandOrPlugin {
@@ -1011,6 +1012,7 @@ pub enum Event {
     ActionComplete(Action, Option<PaneId>, BTreeMap<String, String>), // Action, pane_id, context
     CwdChanged(PaneId, PathBuf, Vec<ClientId>), // pane_id, cwd, focused_client_ids
     AvailableLayoutInfo(Vec<LayoutInfo>, Vec<LayoutWithError>),
+    PluginConfigurationChanged(BTreeMap<String, String>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, EnumDiscriminants, Display, Serialize, Deserialize)]
@@ -1054,6 +1056,7 @@ pub enum Permission {
     ReadPaneContents,
     RunActionsAsUser,
     WriteToClipboard,
+    ReadSessionEnvironmentVariables,
 }
 
 impl PermissionType {
@@ -1085,6 +1088,9 @@ impl PermissionType {
             },
             PermissionType::RunActionsAsUser => "Execute actions as the user".to_owned(),
             PermissionType::WriteToClipboard => "Write to clipboard".to_owned(),
+            PermissionType::ReadSessionEnvironmentVariables => {
+                "Read environment variables present upon session creation".to_owned()
+            },
         }
     }
 }
@@ -2255,6 +2261,23 @@ pub struct PaneInfo {
     /// the index is kept track of in order to preserve the pane group order
     pub index_in_pane_group: BTreeMap<ClientId, usize>,
 }
+
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+pub struct PaneListEntry {
+    #[serde(flatten)]
+    pub pane_info: PaneInfo,
+    pub tab_id: usize,
+    pub tab_position: usize,
+    pub tab_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pane_command: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pane_cwd: Option<String>,
+}
+
+pub type ListPanesResponse = Vec<PaneListEntry>;
+pub type ListTabsResponse = Vec<TabInfo>;
+
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct ClientInfo {
     pub client_id: ClientId,
@@ -2462,6 +2485,18 @@ pub enum GetPanePidResponse {
     Err(String),
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum GetPaneRunningCommandResponse {
+    Ok(Vec<String>),
+    Err(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum GetPaneCwdResponse {
+    Ok(PathBuf),
+    Err(String),
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum GetFocusedPaneInfoResponse {
     Ok { tab_index: usize, pane_id: PaneId },
@@ -2588,7 +2623,7 @@ pub enum PermissionStatus {
     Denied,
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FileToOpen {
     pub path: PathBuf,
     pub line_number: Option<usize>,
@@ -2686,6 +2721,15 @@ impl FromStr for PaneId {
             u32::from_str_radix(&stringified_pane_id, 10)
                 .map(|id| PaneId::Terminal(id))
                 .map_err(|e| e.into())
+        }
+    }
+}
+
+impl std::fmt::Display for PaneId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PaneId::Terminal(id) => write!(f, "terminal_{}", id),
+            PaneId::Plugin(id) => write!(f, "plugin_{}", id),
         }
     }
 }
@@ -3291,6 +3335,12 @@ pub enum PluginCommand {
     GetPanePid {
         pane_id: PaneId,
     },
+    GetPaneRunningCommand {
+        pane_id: PaneId,
+    },
+    GetPaneCwd {
+        pane_id: PaneId,
+    },
     MovePaneWithPaneId(PaneId),
     MovePaneWithPaneIdInDirection(PaneId, Direction),
     ClearScreenForPaneId(PaneId),
@@ -3309,6 +3359,12 @@ pub enum PluginCommand {
     // the new tab
     BreakPanesToTabWithIndex(Vec<PaneId>, usize, bool), // usize - tab_index, bool -
     // should_change_focus_to_new_tab
+    SwitchTabToId(u64),                            // u64 - tab_id
+    GoToTabWithId(u64),                            // u64 - tab_id
+    CloseTabWithId(u64),                           // u64 - tab_id
+    RenameTabWithId(u64, String),                  // u64 - tab_id, String - new name
+    BreakPanesToTabWithId(Vec<PaneId>, u64, bool), // u64 - tab_id, bool -
+    // should_change_focus_to_target_tab
     ReloadPlugin(u32), // u32 - plugin pane id
     LoadNewPlugin {
         url: String,
@@ -3392,4 +3448,58 @@ pub enum PluginCommand {
     GetFocusedPaneInfo,
     SaveSession,
     CurrentSessionLastSavedTime,
+    GetPaneInfo(PaneId),
+    GetTabInfo(usize), // tab_id
+    GetSessionEnvironmentVariables,
+    OpenCommandPaneInNewTab(CommandToRun, Context),
+    OpenPluginPaneInNewTab {
+        plugin_url: String,
+        configuration: BTreeMap<String, String>,
+        context: Context,
+    },
+    OpenEditorPaneInNewTab(FileToOpen, Context),
+    OpenCommandPaneInPlaceOfPaneId(PaneId, CommandToRun, bool, Context), // bool = close_replaced_pane
+    OpenTerminalPaneInPlaceOfPaneId(PaneId, FileToOpen, bool),
+    OpenEditPaneInPlaceOfPaneId(PaneId, FileToOpen, bool, Context),
 }
+
+// Response type for plugin API methods that open a pane in a new tab
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct OpenPaneInNewTabResponse {
+    pub tab_id: Option<usize>,
+    pub pane_id: Option<PaneId>,
+}
+
+// Response types for plugin API methods that create tabs
+pub type NewTabResponse = Option<usize>;
+pub type NewTabsResponse = Vec<usize>;
+pub type FocusOrCreateTabResponse = Option<usize>;
+pub type BreakPanesToNewTabResponse = Option<usize>;
+pub type BreakPanesToTabWithIndexResponse = Option<usize>;
+pub type BreakPanesToTabWithIdResponse = Option<usize>;
+
+// Response types for plugin API methods that create panes
+pub type OpenFileResponse = Option<PaneId>;
+pub type OpenFileFloatingResponse = Option<PaneId>;
+pub type OpenFileInPlaceResponse = Option<PaneId>;
+pub type OpenFileNearPluginResponse = Option<PaneId>;
+pub type OpenFileFloatingNearPluginResponse = Option<PaneId>;
+pub type OpenFileInPlaceOfPluginResponse = Option<PaneId>;
+
+pub type OpenTerminalResponse = Option<PaneId>;
+pub type OpenTerminalFloatingResponse = Option<PaneId>;
+pub type OpenTerminalInPlaceResponse = Option<PaneId>;
+pub type OpenTerminalNearPluginResponse = Option<PaneId>;
+pub type OpenTerminalFloatingNearPluginResponse = Option<PaneId>;
+pub type OpenTerminalInPlaceOfPluginResponse = Option<PaneId>;
+
+pub type OpenCommandPaneResponse = Option<PaneId>;
+pub type OpenCommandPaneFloatingResponse = Option<PaneId>;
+pub type OpenCommandPaneInPlaceResponse = Option<PaneId>;
+pub type OpenCommandPaneNearPluginResponse = Option<PaneId>;
+pub type OpenCommandPaneFloatingNearPluginResponse = Option<PaneId>;
+pub type OpenCommandPaneInPlaceOfPluginResponse = Option<PaneId>;
+pub type OpenCommandPaneBackgroundResponse = Option<PaneId>;
+pub type OpenCommandPaneInPlaceOfPaneIdResponse = Option<PaneId>;
+pub type OpenTerminalPaneInPlaceOfPaneIdResponse = Option<PaneId>;
+pub type OpenEditPaneInPlaceOfPaneIdResponse = Option<PaneId>;

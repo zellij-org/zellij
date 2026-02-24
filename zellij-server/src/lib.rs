@@ -1,3 +1,10 @@
+#[cfg(not(windows))]
+#[path = "os_input_output_unix.rs"]
+mod os_input_output_unix;
+#[cfg(windows)]
+#[path = "os_input_output_windows.rs"]
+mod os_input_output_windows;
+
 pub mod os_input_output;
 pub mod output;
 pub mod panes;
@@ -17,11 +24,8 @@ mod terminal_bytes;
 mod thread_bus;
 mod ui;
 
-pub use daemonize;
-
 use background_jobs::{background_jobs_main, BackgroundJob};
 use log::info;
-use nix::sys::stat::{umask, Mode};
 use pty_writer::{pty_writer_main, PtyWriteInstruction};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::{
@@ -360,7 +364,12 @@ impl SessionMetaData {
         config_changes: Vec<(ClientId, Config)>,
         config_was_written_to_disk: bool,
     ) {
+        let mut new_plugin_config = None;
         for (client_id, new_config) in config_changes {
+            if new_plugin_config.is_none() {
+                new_plugin_config = Some(new_config.plugins.clone());
+            }
+
             self.default_shell = new_config.options.default_shell.as_ref().map(|shell| {
                 TerminalAction::RunCommand(RunCommand {
                     command: shell.clone(),
@@ -415,6 +424,15 @@ impl SessionMetaData {
                     post_command_discovery_hook: new_config.options.post_command_discovery_hook,
                 })
                 .unwrap();
+        }
+
+        // Detect and notify plugins of configuration changes
+        if config_was_written_to_disk {
+            if let Some(new_plugins) = new_plugin_config {
+                self.senders
+                    .send_to_plugin(PluginInstruction::DetectPluginConfigChanges(new_plugins))
+                    .unwrap();
+            }
         }
     }
 }
@@ -633,14 +651,18 @@ impl SessionState {
 pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
     info!("Starting Zellij server!");
 
-    // preserve the current umask: read current value by setting to another mode, and then restoring it
-    let current_umask = umask(Mode::all());
-    umask(current_umask);
-    daemonize::Daemonize::new()
-        .working_directory(std::env::current_dir().unwrap())
-        .umask(current_umask.bits() as u32)
-        .start()
-        .expect("could not daemonize the server process");
+    #[cfg(unix)]
+    {
+        use nix::sys::stat::{umask, Mode};
+        // preserve the current umask: read current value by setting to another mode, and then restoring it
+        let current_umask = umask(Mode::all());
+        umask(current_umask);
+        daemonize::Daemonize::new()
+            .working_directory(std::env::current_dir().unwrap())
+            .umask(current_umask.bits() as u32)
+            .start()
+            .expect("could not daemonize the server process");
+    }
 
     envs::set_zellij("0".to_string());
 
@@ -660,7 +682,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
     let _ = thread::Builder::new()
         .name("server_listener".to_string())
         .spawn({
-            use interprocess::local_socket::LocalSocketListener;
+            use interprocess::local_socket::{prelude::*, GenericFilePath, ListenerOptions};
             use zellij_utils::shared::set_permissions;
 
             let os_input = os_input.clone();
@@ -670,7 +692,15 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
             let socket_path = socket_path.clone();
             move || {
                 drop(std::fs::remove_file(&socket_path));
-                let listener = LocalSocketListener::bind(&*socket_path).unwrap();
+                let listener = ListenerOptions::new()
+                    .name(
+                        socket_path
+                            .as_path()
+                            .to_fs_name::<GenericFilePath>()
+                            .unwrap(),
+                    )
+                    .create_sync()
+                    .unwrap();
                 // set the sticky bit to avoid the socket file being potentially cleaned up
                 // https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html states that for XDG_RUNTIME_DIR:
                 // "To ensure that your files are not removed, they should have their access time timestamp modified at least once every 6 hours of monotonic time or the 'sticky' bit should be set on the file. "
@@ -1235,7 +1265,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     let _ = os_input.send_to_client(
                         client_id,
                         ServerToClientMsg::Exit {
-                            exit_reason: ExitReason::Normal,
+                            exit_reason: ExitReason::KickedByHost,
                         },
                     );
                     remove_client!(client_id, os_input, session_state);
@@ -1795,6 +1825,7 @@ fn init_session(
         .unwrap();
 
     let zellij_cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    let session_env_vars: std::collections::BTreeMap<String, String> = std::env::vars().collect();
 
     let (available_layouts, available_layout_errors) = get_available_layouts(&config_options);
 
@@ -1822,6 +1853,7 @@ fn init_session(
                 .clone()
                 .or_else(|| default_layout_dir());
             let background_plugins = config.background_plugins.clone();
+            let session_env_vars = session_env_vars.clone();
             move || {
                 plugin_thread_main(
                     plugin_bus,
@@ -1833,6 +1865,7 @@ fn init_session(
                     available_layout_errors,
                     path_to_default_shell,
                     zellij_cwd,
+                    session_env_vars,
                     capabilities,
                     client_attributes,
                     default_shell,
@@ -1906,7 +1939,12 @@ fn init_session(
 
         // Watch layout directory for changes
         if let Some(layout_dir_path) = layout_dir {
-            report_changes_in_layout_dir(layout_dir_path, default_layout_name, to_plugin.clone());
+            report_changes_in_layout_dir(
+                layout_dir_path,
+                default_layout_name,
+                to_plugin.clone(),
+                to_screen.clone(),
+            );
         }
     }
 
@@ -1990,6 +2028,9 @@ fn should_show_release_notes(
     if ZELLIJ_SEEN_RELEASE_NOTES_CACHE_FILE.exists() {
         return false;
     } else {
+        if let Some(parent) = ZELLIJ_SEEN_RELEASE_NOTES_CACHE_FILE.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
         if let Err(e) = std::fs::write(&*ZELLIJ_SEEN_RELEASE_NOTES_CACHE_FILE, &[]) {
             log::error!(
                 "Failed to write seen release notes indication to disk: {}",
@@ -2016,18 +2057,14 @@ fn report_changes_in_config_file(
     config_file_path: PathBuf,
     to_server: SenderWithContext<ServerInstruction>,
 ) {
-    std::thread::spawn(move || {
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        rt.block_on(async move {
+    global_async_runtime::get_tokio_runtime().spawn(async move {
+        watch_config_file_changes(config_file_path, move |new_config| {
             let to_server = to_server.clone();
-            watch_config_file_changes(config_file_path, move |new_config| {
-                let to_server = to_server.clone();
-                async move {
-                    let _ = to_server.send(ServerInstruction::ConfigWrittenToDisk(new_config));
-                }
-            })
-            .await;
-        });
+            async move {
+                let _ = to_server.send(ServerInstruction::ConfigWrittenToDisk(new_config));
+            }
+        })
+        .await;
     });
 }
 
@@ -2035,18 +2072,23 @@ fn report_changes_in_layout_dir(
     layout_dir: PathBuf,
     default_layout_name: Option<String>,
     to_plugin: SenderWithContext<PluginInstruction>,
+    to_screen: SenderWithContext<ScreenInstruction>,
 ) {
     std::thread::spawn(move || {
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = crate::global_async_runtime::get_tokio_runtime();
         rt.block_on(async move {
-            let to_plugin = to_plugin.clone();
             watch_layout_dir_changes(
                 layout_dir,
                 default_layout_name,
                 move |new_layouts, layout_errors| {
                     let to_plugin = to_plugin.clone();
+                    let to_screen = to_screen.clone();
                     async move {
                         let _ = to_plugin.send(PluginInstruction::LayoutListUpdate(
+                            new_layouts.clone(),
+                            layout_errors.clone(),
+                        ));
+                        let _ = to_screen.send(ScreenInstruction::UpdateAvailableLayouts(
                             new_layouts,
                             layout_errors,
                         ));

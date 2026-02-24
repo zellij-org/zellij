@@ -4,12 +4,8 @@ use crate::screen::CopyOptions;
 use crate::Arc;
 
 use crate::{
-    os_input_output::{AsyncReader, Pid, ServerOsApi},
-    pane_groups::PaneGroups,
-    panes::PaneId,
-    plugins::PluginInstruction,
-    thread_bus::ThreadSenders,
-    ClientId,
+    os_input_output::ServerOsApi, pane_groups::PaneGroups, panes::PaneId,
+    plugins::PluginInstruction, thread_bus::ThreadSenders, ClientId,
 };
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::PathBuf;
@@ -35,12 +31,12 @@ use zellij_utils::position::Position;
 use crate::pty_writer::PtyWriteInstruction;
 use zellij_utils::channels::{self, ChannelWithContext, SenderWithContext};
 
+use crate::os_input_output::AsyncReader;
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::os::unix::io::RawFd;
 use std::rc::Rc;
 
-use interprocess::local_socket::LocalSocketStream;
+use interprocess::local_socket::Stream as LocalSocketStream;
 use zellij_utils::{
     data::{FloatingPaneCoordinates, InputMode, ModeInfo, NewPanePlacement, Palette, Style},
     input::command::{RunCommand, TerminalAction},
@@ -70,13 +66,7 @@ impl ServerOsApi for FakeInputOutput {
         _file_to_open: TerminalAction,
         _quit_db: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
         _default_editor: Option<PathBuf>,
-    ) -> Result<(u32, RawFd, RawFd)> {
-        unimplemented!()
-    }
-    fn read_from_tty_stdout(&self, _fd: RawFd, _buf: &mut [u8]) -> Result<usize> {
-        unimplemented!()
-    }
-    fn async_file_reader(&self, _fd: RawFd) -> Box<dyn AsyncReader> {
+    ) -> Result<(u32, Box<dyn AsyncReader>, Option<u32>)> {
         unimplemented!()
     }
     fn write_to_tty_stdin(&self, id: u32, buf: &[u8]) -> Result<usize> {
@@ -91,10 +81,10 @@ impl ServerOsApi for FakeInputOutput {
     fn tcdrain(&self, _id: u32) -> Result<()> {
         unimplemented!()
     }
-    fn kill(&self, _pid: Pid) -> Result<()> {
+    fn kill(&self, _pid: u32) -> Result<()> {
         unimplemented!()
     }
-    fn force_kill(&self, _pid: Pid) -> Result<()> {
+    fn force_kill(&self, _pid: u32) -> Result<()> {
         unimplemented!()
     }
     fn box_clone(&self) -> Box<dyn ServerOsApi> {
@@ -116,7 +106,7 @@ impl ServerOsApi for FakeInputOutput {
     fn load_palette(&self) -> Palette {
         unimplemented!()
     }
-    fn get_cwd(&self, _pid: Pid) -> Option<PathBuf> {
+    fn get_cwd(&self, _pid: u32) -> Option<PathBuf> {
         unimplemented!()
     }
     fn write_to_file(&mut self, buf: String, name: Option<String>) -> Result<()> {
@@ -131,14 +121,14 @@ impl ServerOsApi for FakeInputOutput {
         &self,
         _terminal_id: u32,
         _run_command: RunCommand,
-        _quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>, // u32 is the exit status
-    ) -> Result<(RawFd, RawFd)> {
+        _quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
+    ) -> Result<(Box<dyn AsyncReader>, Option<u32>)> {
         unimplemented!()
     }
     fn clear_terminal_id(&self, _terminal_id: u32) -> Result<()> {
         unimplemented!()
     }
-    fn send_sigint(&self, pid: Pid) -> Result<()> {
+    fn send_sigint(&self, _pid: u32) -> Result<()> {
         unimplemented!()
     }
 }
@@ -177,7 +167,7 @@ impl MockPtyInstructionBus {
                         .recv()
                         .expect("failed to receive event on channel");
                     match event {
-                        PtyWriteInstruction::Write(msg, _) => output
+                        PtyWriteInstruction::Write(msg, _, _) => output
                             .lock()
                             .unwrap()
                             .push(String::from_utf8_lossy(&msg).to_string()),

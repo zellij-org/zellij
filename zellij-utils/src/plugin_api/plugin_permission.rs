@@ -31,6 +31,9 @@ impl TryFrom<ProtobufPermissionType> for PermissionType {
             ProtobufPermissionType::ReadPaneContents => Ok(PermissionType::ReadPaneContents),
             ProtobufPermissionType::RunActionsAsUser => Ok(PermissionType::RunActionsAsUser),
             ProtobufPermissionType::WriteToClipboard => Ok(PermissionType::WriteToClipboard),
+            ProtobufPermissionType::ReadSessionEnvironmentVariables => {
+                Ok(PermissionType::ReadSessionEnvironmentVariables)
+            },
         }
     }
 }
@@ -63,6 +66,9 @@ impl TryFrom<PermissionType> for ProtobufPermissionType {
             PermissionType::ReadPaneContents => Ok(ProtobufPermissionType::ReadPaneContents),
             PermissionType::RunActionsAsUser => Ok(ProtobufPermissionType::RunActionsAsUser),
             PermissionType::WriteToClipboard => Ok(ProtobufPermissionType::WriteToClipboard),
+            PermissionType::ReadSessionEnvironmentVariables => {
+                Ok(ProtobufPermissionType::ReadSessionEnvironmentVariables)
+            },
         }
     }
 }

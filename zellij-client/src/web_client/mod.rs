@@ -23,16 +23,21 @@ use axum::{
     routing::{any, get, post},
     Router,
 };
+use tokio::runtime::Runtime;
 
 use axum_server::tls_rustls::RustlsConfig;
 use axum_server::Handle;
 
+#[cfg(unix)]
 use daemonize::{self, Outcome};
+#[cfg(unix)]
+use interprocess::unnamed_pipe::pipe;
+#[cfg(unix)]
 use nix::sys::stat::{umask, Mode};
 
-use interprocess::unnamed_pipe::pipe;
-use std::io::{prelude::*, BufRead, BufReader};
-use tokio::runtime::Runtime;
+use std::io::prelude::*;
+#[cfg(unix)]
+use std::io::{BufRead, BufReader};
 use zellij_utils::input::{config::Config, options::Options};
 
 use authentication::auth_middleware;
@@ -247,6 +252,7 @@ pub async fn serve_web_client(
     }
 }
 
+#[cfg(unix)]
 fn daemonize_web_server(
     web_server_ip: IpAddr,
     web_server_port: u16,
@@ -346,6 +352,16 @@ fn daemonize_web_server(
             std::process::exit(2);
         },
     }
+}
+
+#[cfg(not(unix))]
+fn daemonize_web_server(
+    _web_server_ip: IpAddr,
+    _web_server_port: u16,
+    _web_server_cert: Option<PathBuf>,
+    _web_server_key: Option<PathBuf>,
+) -> (Runtime, std::net::TcpListener, Option<RustlsConfig>) {
+    unimplemented!("Non-Unix web server not yet implemented")
 }
 
 #[cfg(test)]

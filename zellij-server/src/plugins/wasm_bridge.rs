@@ -9,7 +9,6 @@ use crate::plugins::plugin_map::{AtomicEvent, PluginEnv, PluginMap, RunningPlugi
 use crate::plugins::plugin_worker::MessageToWorker;
 use crate::plugins::watch_filesystem::watch_filesystem;
 use crate::plugins::zellij_exports::{wasi_read_string, wasi_write_object};
-use async_channel::Sender;
 use highway::{HighwayHash, PortableHash};
 use log::info;
 use notify_debouncer_full::{notify::RecommendedWatcher, Debouncer, FileIdMap};
@@ -18,6 +17,10 @@ use std::{
     path::PathBuf,
     str::FromStr,
     sync::{Arc, Mutex},
+};
+use tokio::{
+    sync::mpsc::Sender,
+    task::{self, JoinHandle},
 };
 use url::Url;
 use wasmi::{Engine, Module};
@@ -44,7 +47,7 @@ use zellij_utils::{
     input::{
         command::TerminalAction,
         layout::{Layout, PluginUserConfiguration, RunPlugin, RunPluginLocation, RunPluginOrAlias},
-        plugins::PluginConfig,
+        plugins::{PluginAliases, PluginConfig},
     },
     ipc::ClientAttributes,
     pane_size::Size,
@@ -90,6 +93,7 @@ pub struct LoadingContext {
     pub plugin_config: PluginConfig,
     pub tab_index: Option<usize>,
     pub path_to_default_shell: PathBuf,
+    pub session_env_vars: std::collections::BTreeMap<String, String>,
     pub capabilities: PluginCapabilities,
     pub client_attributes: ClientAttributes,
     pub default_shell: Option<TerminalAction>,
@@ -131,6 +135,7 @@ impl LoadingContext {
             client_id,
             plugin_id,
             path_to_default_shell: wasm_bridge.path_to_default_shell.clone(),
+            session_env_vars: wasm_bridge.session_env_vars.clone(),
             plugin_cwd: cwd.unwrap_or_else(|| wasm_bridge.zellij_cwd.clone()),
             capabilities: wasm_bridge.capabilities.clone(),
             client_attributes: wasm_bridge.client_attributes.clone(),
@@ -172,6 +177,7 @@ pub struct WasmBridge {
     path_to_default_shell: PathBuf,
     watcher: Option<Debouncer<RecommendedWatcher, FileIdMap>>,
     zellij_cwd: PathBuf,
+    session_env_vars: std::collections::BTreeMap<String, String>,
     capabilities: PluginCapabilities,
     client_attributes: ClientAttributes,
     default_shell: Option<TerminalAction>,
@@ -197,6 +203,7 @@ impl WasmBridge {
         plugin_dir: PathBuf,
         path_to_default_shell: PathBuf,
         zellij_cwd: PathBuf,
+        session_env_vars: std::collections::BTreeMap<String, String>,
         capabilities: PluginCapabilities,
         client_attributes: ClientAttributes,
         default_shell: Option<TerminalAction>,
@@ -239,6 +246,7 @@ impl WasmBridge {
             loading_plugins: HashSet::new(),
             pending_plugin_reloads: HashSet::new(),
             zellij_cwd,
+            session_env_vars,
             capabilities,
             client_attributes,
             default_shell,
@@ -1649,7 +1657,7 @@ impl WasmBridge {
         match worker {
             Some(worker) => {
                 for (message, payload) in messages.drain(..) {
-                    if let Err(e) = worker.try_send(MessageToWorker::Message(message, payload)) {
+                    if let Err(e) = worker.send(MessageToWorker::Message(message, payload)) {
                         log::error!("Failed to send message to worker: {:?}", e);
                     }
                 }
@@ -1883,6 +1891,45 @@ impl WasmBridge {
             ),
         )]));
     }
+    pub fn detect_and_notify_plugin_config_changes(
+        &mut self,
+        new_plugins: &PluginAliases,
+        shutdown_send: Sender<()>,
+    ) -> Result<()> {
+        let err_context = || "failed to detect plugin config changes";
+
+        // Get all running plugins
+        let running_plugins = self.plugin_map.lock().unwrap().running_plugins();
+
+        for (plugin_id, client_id, running_plugin) in running_plugins {
+            let running_plugin = running_plugin.lock().unwrap();
+            let plugin_env = &running_plugin.store.data();
+            let current_config = &plugin_env.plugin.initial_userspace_configuration;
+            let plugin_location = &plugin_env.plugin.location;
+
+            // Look up this plugin in the new config by location
+            // Note: PluginAliases is HashMap<String, RunPlugin>, so we need to iterate
+            let new_config_for_location = new_plugins
+                .aliases
+                .values()
+                .find(|run_plugin| &run_plugin.location == plugin_location)
+                .map(|run_plugin| &run_plugin.configuration);
+
+            if let Some(new_config) = new_config_for_location {
+                // Compare configurations - only fire event if changed
+                if current_config != new_config {
+                    drop(running_plugin); // Release lock before sending
+
+                    let event = Event::PluginConfigurationChanged(new_config.inner().clone());
+                    let updates = vec![(Some(plugin_id), Some(client_id), event)];
+                    self.update_plugins(updates, shutdown_send.clone())
+                        .with_context(err_context)?;
+                }
+            }
+        }
+
+        Ok(())
+    }
 }
 
 fn handle_plugin_successful_loading(
@@ -1945,6 +1992,7 @@ fn check_event_permission(
         | Event::CommandPaneReRun(..)
         | Event::CwdChanged(..)
         | Event::AvailableLayoutInfo(..)
+        | Event::PluginConfigurationChanged(..)
         | Event::InputReceived => PermissionType::ReadApplicationState,
         Event::WebServerStatus(..) => PermissionType::StartWebServer,
         Event::PaneRenderReport(..) => PermissionType::ReadPaneContents,

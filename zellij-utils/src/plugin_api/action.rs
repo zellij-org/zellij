@@ -1030,6 +1030,13 @@ impl TryFrom<Action> for ProtobufAction {
                     chars: chars_to_write,
                 })),
             }),
+            Action::WriteToPaneId { .. }
+            | Action::WriteCharsToPaneId { .. }
+            | Action::GoToTabById { .. }
+            | Action::CloseTabById { .. }
+            | Action::RenameTabById { .. } => {
+                Err("WriteToPaneId, WriteCharsToPaneId, GoToTabById, CloseTabById, and RenameTabById are CLI-only actions, not available in keybindings")
+            },
             Action::SwitchToMode { input_mode } => {
                 let input_mode: ProtobufInputMode = input_mode.try_into()?;
                 Ok(ProtobufAction {
@@ -1123,6 +1130,10 @@ impl TryFrom<Action> for ProtobufAction {
             }),
             Action::EditScrollback => Ok(ProtobufAction {
                 name: ProtobufActionName::EditScrollback as i32,
+                optional_payload: None,
+            }),
+            Action::EditScrollbackRaw => Ok(ProtobufAction {
+                name: ProtobufActionName::EditScrollback as i32, // fallback to default edit scrollback
                 optional_payload: None,
             }),
             Action::ScrollUp => Ok(ProtobufAction {
@@ -1769,6 +1780,7 @@ impl TryFrom<Action> for ProtobufAction {
             | Action::DumpLayout { .. }
             | Action::CliPipe { .. }
             | Action::ListClients
+            | Action::ListPanes { .. }
             | Action::StackPanes { pane_ids: _ }
             | Action::ChangeFloatingPaneCoordinates {
                 pane_id: _,
@@ -1778,7 +1790,9 @@ impl TryFrom<Action> for ProtobufAction {
             | Action::SetPaneBorderless { .. }
             | Action::SkipConfirm { action: _ }
             | Action::SwitchSession { .. }
-            | Action::SaveSession => Err("Unsupported action"),
+            | Action::SaveSession
+            | Action::ListTabs { .. }
+            | Action::CurrentTabInfo { .. } => Err("Unsupported action"),
         }
     }
 }
@@ -2714,6 +2728,13 @@ impl TryFrom<ProtobufCommandOrPlugin> for CommandOrPlugin {
             Some(CommandOrPluginType::Plugin(plugin)) => {
                 Ok(CommandOrPlugin::Plugin(plugin.try_into()?))
             },
+            Some(CommandOrPluginType::File(f)) => {
+                Ok(CommandOrPlugin::File(crate::data::FileToOpen {
+                    path: std::path::PathBuf::from(&f.path),
+                    line_number: f.line_number.map(|n| n as usize),
+                    cwd: f.cwd.map(std::path::PathBuf::from),
+                }))
+            },
             None => Err("CommandOrPlugin must have command_or_plugin_type"),
         }
     }
@@ -2723,11 +2744,17 @@ impl TryFrom<CommandOrPlugin> for ProtobufCommandOrPlugin {
     type Error = &'static str;
     fn try_from(internal: CommandOrPlugin) -> Result<Self, Self::Error> {
         use super::generated_api::api::action::command_or_plugin::CommandOrPluginType;
+        use super::generated_api::api::action::CommandOrPluginFile;
         let command_or_plugin_type = match internal {
             CommandOrPlugin::Command(cmd) => Some(CommandOrPluginType::Command(cmd.try_into()?)),
             CommandOrPlugin::Plugin(plugin) => {
                 Some(CommandOrPluginType::Plugin(plugin.try_into()?))
             },
+            CommandOrPlugin::File(f) => Some(CommandOrPluginType::File(CommandOrPluginFile {
+                path: f.path.display().to_string(),
+                line_number: f.line_number.map(|n| n as i32),
+                cwd: f.cwd.map(|c| c.display().to_string()),
+            })),
         };
         Ok(ProtobufCommandOrPlugin {
             command_or_plugin_type,

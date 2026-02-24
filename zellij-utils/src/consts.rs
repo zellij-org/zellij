@@ -145,6 +145,21 @@ mod not_wasm {
     }
 }
 
+/// Check if a filesystem entry is an IPC socket.
+///
+/// On Unix, this checks `FileTypeExt::is_socket()`. On non-Unix platforms,
+/// this returns `false` — session discovery uses a different mechanism.
+#[cfg(unix)]
+pub fn is_ipc_socket(file_type: &std::fs::FileType) -> bool {
+    use std::os::unix::fs::FileTypeExt;
+    file_type.is_socket()
+}
+
+#[cfg(not(unix))]
+pub fn is_ipc_socket(_file_type: &std::fs::FileType) -> bool {
+    false
+}
+
 #[cfg(unix)]
 pub use unix_only::*;
 
@@ -162,6 +177,39 @@ mod unix_only {
     lazy_static! {
         static ref UID: Uid = Uid::current();
         pub static ref ZELLIJ_TMP_DIR: PathBuf = temp_dir().join(format!("zellij-{}", *UID));
+        pub static ref ZELLIJ_TMP_LOG_DIR: PathBuf = ZELLIJ_TMP_DIR.join("zellij-log");
+        pub static ref ZELLIJ_TMP_LOG_FILE: PathBuf = ZELLIJ_TMP_LOG_DIR.join("zellij.log");
+        pub static ref ZELLIJ_SOCK_DIR: PathBuf = {
+            let mut ipc_dir = envs::get_socket_dir().map_or_else(
+                |_| {
+                    ZELLIJ_PROJ_DIR
+                        .runtime_dir()
+                        .map_or_else(|| ZELLIJ_TMP_DIR.clone(), |p| p.to_owned())
+                },
+                PathBuf::from,
+            );
+            ipc_dir.push(CLIENT_SERVER_CONTRACT_DIR.clone());
+            ipc_dir
+        };
+        pub static ref WEBSERVER_SOCKET_PATH: PathBuf = ZELLIJ_SOCK_DIR.join("web_server_bus");
+    }
+}
+
+#[cfg(not(unix))]
+pub use not_unix::*;
+
+#[cfg(not(unix))]
+mod not_unix {
+    use super::*;
+    use crate::envs;
+    pub use crate::shared::set_permissions;
+    use lazy_static::lazy_static;
+    use std::env::temp_dir;
+
+    pub const ZELLIJ_SOCK_MAX_LENGTH: usize = 256;
+
+    lazy_static! {
+        pub static ref ZELLIJ_TMP_DIR: PathBuf = temp_dir().join("zellij");
         pub static ref ZELLIJ_TMP_LOG_DIR: PathBuf = ZELLIJ_TMP_DIR.join("zellij-log");
         pub static ref ZELLIJ_TMP_LOG_FILE: PathBuf = ZELLIJ_TMP_LOG_DIR.join("zellij.log");
         pub static ref ZELLIJ_SOCK_DIR: PathBuf = {

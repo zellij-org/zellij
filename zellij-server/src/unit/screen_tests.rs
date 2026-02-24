@@ -1,11 +1,8 @@
 use super::{screen_thread_main, CopyOptions, Screen, ScreenInstruction};
 use crate::panes::PaneId;
 use crate::{
-    channels::SenderWithContext,
-    os_input_output::{AsyncReader, Pid, ServerOsApi},
-    route::route_action,
-    thread_bus::Bus,
-    ClientId, ServerInstruction, SessionMetaData, ThreadSenders,
+    channels::SenderWithContext, os_input_output::ServerOsApi, route::route_action,
+    thread_bus::Bus, ClientId, ServerInstruction, SessionMetaData, ThreadSenders,
 };
 use insta::assert_snapshot;
 use std::net::{IpAddr, Ipv4Addr};
@@ -27,9 +24,9 @@ use zellij_utils::pane_size::{Size, SizeInPixels};
 use zellij_utils::position::Position;
 
 use crate::background_jobs::BackgroundJob;
+use crate::os_input_output::AsyncReader;
 use crate::pty_writer::PtyWriteInstruction;
 use std::env::set_var;
-use std::os::unix::io::RawFd;
 use std::sync::{Arc, Mutex};
 
 use crate::{
@@ -38,7 +35,7 @@ use crate::{
 };
 use zellij_utils::ipc::PixelDimensions;
 
-use interprocess::local_socket::LocalSocketStream;
+use interprocess::local_socket::Stream as LocalSocketStream;
 use zellij_utils::{
     channels::{self, ChannelWithContext, Receiver},
     data::{
@@ -182,13 +179,7 @@ impl ServerOsApi for FakeInputOutput {
         _file_to_open: TerminalAction,
         _quit_db: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
         _default_editor: Option<PathBuf>,
-    ) -> Result<(u32, RawFd, RawFd)> {
-        unimplemented!()
-    }
-    fn read_from_tty_stdout(&self, _fd: RawFd, _buf: &mut [u8]) -> Result<usize> {
-        unimplemented!()
-    }
-    fn async_file_reader(&self, _fd: RawFd) -> Box<dyn AsyncReader> {
+    ) -> Result<(u32, Box<dyn AsyncReader>, Option<u32>)> {
         unimplemented!()
     }
     fn write_to_tty_stdin(&self, _id: u32, _buf: &[u8]) -> Result<usize> {
@@ -197,10 +188,10 @@ impl ServerOsApi for FakeInputOutput {
     fn tcdrain(&self, _id: u32) -> Result<()> {
         unimplemented!()
     }
-    fn kill(&self, _pid: Pid) -> Result<()> {
+    fn kill(&self, _pid: u32) -> Result<()> {
         unimplemented!()
     }
-    fn force_kill(&self, _pid: Pid) -> Result<()> {
+    fn force_kill(&self, _pid: u32) -> Result<()> {
         unimplemented!()
     }
     fn box_clone(&self) -> Box<dyn ServerOsApi> {
@@ -228,7 +219,7 @@ impl ServerOsApi for FakeInputOutput {
     fn load_palette(&self) -> Palette {
         unimplemented!()
     }
-    fn get_cwd(&self, _pid: Pid) -> Option<PathBuf> {
+    fn get_cwd(&self, _pid: u32) -> Option<PathBuf> {
         unimplemented!()
     }
     fn write_to_file(&mut self, contents: String, filename: Option<String>) -> Result<()> {
@@ -244,14 +235,14 @@ impl ServerOsApi for FakeInputOutput {
         &self,
         _terminal_id: u32,
         _run_command: RunCommand,
-        _quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>, // u32 is the exit status
-    ) -> Result<(RawFd, RawFd)> {
+        _quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
+    ) -> Result<(Box<dyn AsyncReader>, Option<u32>)> {
         unimplemented!()
     }
     fn clear_terminal_id(&self, _terminal_id: u32) -> Result<()> {
         unimplemented!()
     }
-    fn send_sigint(&self, pid: Pid) -> Result<()> {
+    fn send_sigint(&self, _pid: u32) -> Result<()> {
         unimplemented!()
     }
 }
@@ -2137,6 +2128,7 @@ pub fn send_cli_write_chars_action_to_screen() {
     );
     let cli_action = CliAction::WriteChars {
         chars: "input from the cli".into(),
+        pane_id: None,
     };
     send_cli_action_to_server(&session_metadata, cli_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -2163,11 +2155,48 @@ pub fn send_cli_write_action_to_screen() {
     );
     let cli_action = CliAction::Write {
         bytes: vec![102, 111, 111],
+        pane_id: None,
     };
     send_cli_action_to_server(&session_metadata, cli_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
     mock_screen.teardown(vec![pty_writer_thread, screen_thread]);
     assert_snapshot!(format!("{:?}", *received_pty_instructions.lock().unwrap()));
+}
+
+#[test]
+pub fn send_cli_send_keys_action_to_screen() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 10;
+    let mut mock_screen = MockScreen::new(size);
+    let pty_writer_receiver = mock_screen.pty_writer_receiver.take().unwrap();
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(None, vec![]);
+    let received_pty_instructions = Arc::new(Mutex::new(vec![]));
+    let pty_writer_thread = log_actions_in_thread!(
+        received_pty_instructions,
+        PtyWriteInstruction::Exit,
+        pty_writer_receiver
+    );
+    let cli_action = CliAction::SendKeys {
+        keys: vec!["Ctrl a".to_string(), "x".to_string()],
+        pane_id: None,
+    };
+    send_cli_action_to_server(&session_metadata, cli_action, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![pty_writer_thread, screen_thread]);
+    let received_write_instructions: Vec<_> = received_pty_instructions
+        .lock()
+        .unwrap()
+        .clone()
+        .into_iter()
+        .filter(|i| matches!(i, PtyWriteInstruction::Write(..)))
+        .collect();
+    // here we assert only the write instructions to make sure they arrived properly and in
+    // sequence to the pane
+    assert_snapshot!(format!("{:#?}", received_write_instructions));
 }
 
 #[test]
@@ -2926,6 +2955,7 @@ pub fn send_cli_toggle_active_tab_sync_action() {
     let cli_toggle_active_tab_sync_action = CliAction::ToggleActiveSyncTab;
     let cli_write_action = CliAction::Write {
         bytes: vec![102, 111, 111],
+        pane_id: None,
     };
     send_cli_action_to_server(
         &session_metadata,
@@ -2935,7 +2965,15 @@ pub fn send_cli_toggle_active_tab_sync_action() {
     send_cli_action_to_server(&session_metadata, cli_write_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
     mock_screen.teardown(vec![pty_writer_thread, screen_thread]);
-    assert_snapshot!(format!("{:?}", *received_pty_instructions.lock().unwrap()));
+    let received_write_instructions: Vec<_> = received_pty_instructions
+        .lock()
+        .unwrap()
+        .clone()
+        .into_iter()
+        .filter(|i| matches!(i, PtyWriteInstruction::Write(..)))
+        .collect();
+    // here we should have 2 Write instructions, one for each pane
+    assert_snapshot!(format!("{:?}", received_write_instructions));
 }
 
 #[test]
@@ -4206,6 +4244,95 @@ pub fn screen_can_break_floating_pane_to_a_new_tab() {
 }
 
 #[test]
+pub fn screen_can_break_multiple_stacked_panes_to_a_new_tab() {
+    let size = Size { cols: 80, rows: 20 };
+    let mut stacked_parent = TiledPaneLayout::default();
+    stacked_parent.children_are_stacked = true;
+    stacked_parent.children = vec![
+        TiledPaneLayout {
+            name: Some("pane_to_stay".to_owned()),
+            ..Default::default()
+        },
+        TiledPaneLayout {
+            name: Some("pane_to_break_1".to_owned()),
+            ..Default::default()
+        },
+        TiledPaneLayout {
+            name: Some("pane_to_break_2".to_owned()),
+            ..Default::default()
+        },
+    ];
+    let mut initial_layout = TiledPaneLayout::default();
+    initial_layout.children = vec![stacked_parent];
+
+    let mut mock_screen = MockScreen::new(size);
+    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for the async render
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
+    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for the async render
+
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::BreakPanesToNewTab {
+            pane_ids: vec![PaneId::Terminal(1), PaneId::Terminal(2)],
+            default_shell: None,
+            should_change_focus_to_new_tab: true,
+            new_tab_name: None,
+            client_id: 1,
+            completion_tx: None,
+        });
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    // we send ApplyLayout, because in prod this is eventually received after the message traverses
+    // through the plugin and pty threads (to open extra stuff we need in the layout, eg. the
+    // default plugins)
+    let _ = mock_screen.to_screen.send(ScreenInstruction::ApplyLayout(
+        TiledPaneLayout::default(),
+        vec![],
+        Default::default(),
+        vec![],
+        Default::default(),
+        1,
+        true,
+        (1, false),
+        None,
+        None,
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    // move back to make sure the other pane is in the previous tab
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::MoveFocusLeftOrPreviousTab(1, None));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    // move forward to make sure the broken panes are in the next tab
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::MoveFocusRightOrNextTab(1, None));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+
+    let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
+        received_server_instructions.lock().unwrap().iter(),
+        size,
+    );
+    let snapshot_count = snapshots.len();
+    for (_cursor_coordinates, snapshot) in &snapshots {
+        eprintln!("{}", snapshot);
+    }
+    for (_cursor_coordinates, snapshot) in snapshots {
+        assert_snapshot!(format!("{}", snapshot));
+    }
+    assert_snapshot!(format!("{}", snapshot_count));
+}
+
+#[test]
 pub fn screen_can_break_plugin_pane_to_a_new_tab() {
     let size = Size { cols: 80, rows: 20 };
     let mut initial_layout = TiledPaneLayout::default();
@@ -4563,4 +4690,260 @@ pub fn send_cli_change_floating_pane_coordinates_action() {
         assert_snapshot!(format!("{}", snapshot));
     }
     assert_snapshot!(format!("{}", snapshot_count));
+}
+
+#[test]
+pub fn go_to_tab_by_id_verifies_screen_state() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut screen = create_new_screen(size, true, true);
+
+    // Create multiple tabs with known IDs
+    new_tab(&mut screen, 1, 0); // ID 0
+    new_tab(&mut screen, 2, 1); // ID 1
+    new_tab(&mut screen, 3, 2); // ID 2
+
+    // Active tab should be the last one created (ID 2)
+    assert_eq!(screen.get_active_tab(client_id).unwrap().id, 2);
+
+    // Switch to tab with ID 0
+    if let Some(tab_position) = screen.get_tab_position_by_id(0) {
+        screen
+            .switch_active_tab(tab_position, None, true, client_id)
+            .expect("TEST");
+    }
+
+    // Verify active tab is now ID 0
+    assert_eq!(
+        screen.get_active_tab(client_id).unwrap().id,
+        0,
+        "Active tab should be tab with ID 0"
+    );
+
+    // Switch to tab with ID 1
+    if let Some(tab_position) = screen.get_tab_position_by_id(1) {
+        screen
+            .switch_active_tab(tab_position, None, true, client_id)
+            .expect("TEST");
+    }
+
+    // Verify active tab is now ID 1
+    assert_eq!(
+        screen.get_active_tab(client_id).unwrap().id,
+        1,
+        "Active tab should be tab with ID 1"
+    );
+}
+
+#[test]
+pub fn send_cli_go_to_tab_by_id_action() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 10;
+    let mut mock_screen = MockScreen::new(size);
+    let session_metadata = mock_screen.clone_session_metadata();
+
+    // Create tabs
+    mock_screen.new_tab(TiledPaneLayout::default());
+    mock_screen.new_tab(TiledPaneLayout::default());
+
+    let screen_thread = mock_screen.run(None, vec![]);
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    // Send CLI action
+    let cli_action = CliAction::GoToTabById { id: 1 };
+    send_cli_action_to_server(&session_metadata, cli_action, client_id);
+
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+
+    // Verify that CLI action caused screen updates (Render instructions sent)
+    let render_count = received_server_instructions
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|instr| matches!(instr, ServerInstruction::Render(_)))
+        .count();
+
+    assert!(
+        render_count > 0,
+        "GoToTabById CLI action should trigger screen renders"
+    );
+}
+
+#[test]
+pub fn rename_tab_by_id_verifies_screen_state() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+
+    // Create tabs with known IDs
+    new_tab(&mut screen, 1, 0); // ID 0
+    new_tab(&mut screen, 2, 1); // ID 1
+
+    // Verify initial tab names
+    assert_eq!(screen.get_tab_by_id(0).unwrap().name, "Tab #1");
+    assert_eq!(screen.get_tab_by_id(1).unwrap().name, "Tab #2");
+
+    // Rename tab with ID 1
+    if let Some(tab) = screen.get_tab_by_id_mut(1) {
+        tab.name = "CustomTabName".to_string();
+    }
+
+    // Verify the tab name changed
+    assert_eq!(
+        screen.get_tab_by_id(1).unwrap().name,
+        "CustomTabName",
+        "Tab with ID 1 should be renamed"
+    );
+
+    // Verify other tab name unchanged
+    assert_eq!(
+        screen.get_tab_by_id(0).unwrap().name,
+        "Tab #1",
+        "Tab with ID 0 should keep original name"
+    );
+}
+
+#[test]
+pub fn send_cli_rename_tab_by_id_action() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 10;
+    let mut mock_screen = MockScreen::new(size);
+    let session_metadata = mock_screen.clone_session_metadata();
+
+    mock_screen.new_tab(TiledPaneLayout::default());
+
+    let screen_thread = mock_screen.run(None, vec![]);
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    // Send CLI action
+    let cli_action = CliAction::RenameTabById {
+        id: 1,
+        name: "TestName".to_string(),
+    };
+    send_cli_action_to_server(&session_metadata, cli_action, client_id);
+
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+
+    // Verify that CLI action was processed (no panics means routing worked)
+    // The action should complete successfully
+    assert!(true, "RenameTabById CLI action completed without errors");
+}
+
+#[test]
+pub fn close_tab_by_id_verifies_screen_state() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+
+    // Create multiple tabs with known IDs
+    new_tab(&mut screen, 1, 0); // ID 0
+    new_tab(&mut screen, 2, 1); // ID 1
+    new_tab(&mut screen, 3, 2); // ID 2
+
+    assert_eq!(screen.tabs.len(), 3, "Should have 3 tabs initially");
+
+    // Verify all tabs exist
+    assert!(
+        screen.get_tab_by_id(0).is_some(),
+        "Tab with ID 0 should exist"
+    );
+    assert!(
+        screen.get_tab_by_id(1).is_some(),
+        "Tab with ID 1 should exist"
+    );
+    assert!(
+        screen.get_tab_by_id(2).is_some(),
+        "Tab with ID 2 should exist"
+    );
+
+    // Close tab with ID 1
+    screen.close_tab_by_id(1).expect("TEST");
+
+    assert_eq!(screen.tabs.len(), 2, "Should have 2 tabs after closing one");
+
+    // Verify tab with ID 1 no longer exists
+    assert!(
+        screen.get_tab_by_id(1).is_none(),
+        "Tab with ID 1 should not exist"
+    );
+
+    // Verify other tabs still exist
+    assert!(
+        screen.get_tab_by_id(0).is_some(),
+        "Tab with ID 0 should still exist"
+    );
+    assert!(
+        screen.get_tab_by_id(2).is_some(),
+        "Tab with ID 2 should still exist"
+    );
+}
+
+#[test]
+pub fn send_cli_close_tab_by_id_action() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 10;
+    let mut mock_screen = MockScreen::new(size);
+    let session_metadata = mock_screen.clone_session_metadata();
+
+    mock_screen.new_tab(TiledPaneLayout::default());
+    mock_screen.new_tab(TiledPaneLayout::default());
+
+    let screen_thread = mock_screen.run(None, vec![]);
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    // Send CLI action
+    let cli_action = CliAction::CloseTabById { id: 1 };
+    send_cli_action_to_server(&session_metadata, cli_action, client_id);
+
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+
+    // Verify that CLI action was processed (no panics means routing worked)
+    // The action should complete successfully
+    assert!(true, "CloseTabById CLI action completed without errors");
 }

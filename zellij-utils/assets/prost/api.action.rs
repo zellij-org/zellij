@@ -220,8 +220,18 @@ pub struct LayoutConstraintFloatingPair {
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CommandOrPluginFile {
+    #[prost(string, tag="1")]
+    pub path: ::prost::alloc::string::String,
+    #[prost(int32, optional, tag="2")]
+    pub line_number: ::core::option::Option<i32>,
+    #[prost(string, optional, tag="3")]
+    pub cwd: ::core::option::Option<::prost::alloc::string::String>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct CommandOrPlugin {
-    #[prost(oneof="command_or_plugin::CommandOrPluginType", tags="1, 2")]
+    #[prost(oneof="command_or_plugin::CommandOrPluginType", tags="1, 2, 3")]
     pub command_or_plugin_type: ::core::option::Option<command_or_plugin::CommandOrPluginType>,
 }
 /// Nested message and enum types in `CommandOrPlugin`.
@@ -233,6 +243,8 @@ pub mod command_or_plugin {
         Command(super::RunCommandAction),
         #[prost(message, tag="2")]
         Plugin(super::RunPluginOrAlias),
+        #[prost(message, tag="3")]
+        File(super::CommandOrPluginFile),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -290,7 +302,7 @@ pub struct OverrideLayoutPayload {
 pub struct Action {
     #[prost(enumeration="ActionName", tag="1")]
     pub name: i32,
-    #[prost(oneof="action::OptionalPayload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54")]
+    #[prost(oneof="action::OptionalPayload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57")]
     pub optional_payload: ::core::option::Option<action::OptionalPayload>,
 }
 /// Nested message and enum types in `Action`.
@@ -398,6 +410,12 @@ pub mod action {
         OverrideLayoutPayload(super::OverrideLayoutPayload),
         #[prost(message, tag="54")]
         SetPaneBorderlessPayload(super::SetPaneBorderlessPayload),
+        #[prost(uint64, tag="55")]
+        GoToTabByIdPayload(u64),
+        #[prost(uint64, tag="56")]
+        CloseTabByIdPayload(u64),
+        #[prost(message, tag="57")]
+        RenameTabByIdPayload(super::TabIdAndName),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -419,6 +437,14 @@ pub struct IdAndName {
     pub name: ::prost::alloc::vec::Vec<u8>,
     #[prost(uint32, tag="2")]
     pub id: u32,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct TabIdAndName {
+    #[prost(uint64, tag="1")]
+    pub tab_id: u64,
+    #[prost(string, tag="2")]
+    pub name: ::prost::alloc::string::String,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1055,6 +1081,9 @@ pub enum ActionName {
     NewInPlacePane = 92,
     OverrideLayout = 93,
     SetPaneBorderless = 94,
+    GoToTabById = 95,
+    CloseTabById = 96,
+    RenameTabById = 97,
 }
 impl ActionName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -1155,6 +1184,9 @@ impl ActionName {
             ActionName::NewInPlacePane => "NewInPlacePane",
             ActionName::OverrideLayout => "OverrideLayout",
             ActionName::SetPaneBorderless => "SetPaneBorderless",
+            ActionName::GoToTabById => "GoToTabById",
+            ActionName::CloseTabById => "CloseTabById",
+            ActionName::RenameTabById => "RenameTabById",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -1252,6 +1284,9 @@ impl ActionName {
             "NewInPlacePane" => Some(Self::NewInPlacePane),
             "OverrideLayout" => Some(Self::OverrideLayout),
             "SetPaneBorderless" => Some(Self::SetPaneBorderless),
+            "GoToTabById" => Some(Self::GoToTabById),
+            "CloseTabById" => Some(Self::CloseTabById),
+            "RenameTabById" => Some(Self::RenameTabById),
             _ => None,
         }
     }

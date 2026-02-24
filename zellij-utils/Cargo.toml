@@ -24,7 +24,6 @@ kdl = { version = "4.5.0", default-features = false, features = ["span"] }
 lazy_static = { workspace = true }
 log = { workspace = true }
 miette = { workspace = true }
-nix = { workspace = true }
 percent-encoding = { version = "2.1.0", default-features = false, features = ["std"] }
 prost = { workspace = true }
 serde = { workspace = true }
@@ -41,7 +40,9 @@ uuid = { workspace = true }
 sha2 = { workspace = true }
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
-async-std = { workspace = true }
+tokio = { workspace = true }
+tokio-stream = { version = "0.1" }
+tokio-util = { version = "0.7", default-features = false, features = ["compat", "io"] }
 log4rs = { version = "1.2.0", default-features = false, features = ["pattern_encoder", "rolling_file_appender", "compound_policy", "fixed_window_roller", "size_trigger"] }
 termwiz = { workspace = true }
 interprocess = { workspace = true }
@@ -53,7 +54,9 @@ suggest = { workspace = true }
 names = { workspace = true }
 rusqlite = { version = "0.30", default-features = false, features = ["bundled"], optional = true }
 notify = { workspace = true }
-tokio = { workspace = true }
+
+[target.'cfg(unix)'.dependencies]
+nix = { workspace = true }
 
 [dev-dependencies]
 insta = { version = "1.6.0", features = ["backtrace"] }

@@ -446,11 +446,11 @@ load_plugins {
 // opted in to being shared in the browser.
 // When enabled, navigate to http://127.0.0.1:8082
 // (Requires restart)
-// 
+//
 // Note: a local web server can still be manually started from within a Zellij session or from the CLI.
 // If this is not desired, one can use a version of Zellij compiled without
 // `web_server_capability`
-// 
+//
 // Possible values:
 // - true
 // - false
@@ -461,16 +461,16 @@ load_plugins {
 // Whether to allow sessions started in the terminal to be shared through a local web server, assuming one is
 // running (see the `web_server` option for more details).
 // (Requires restart)
-// 
+//
 // Note: This is an administrative separation and not intended as a security measure.
-// 
+//
 // Possible values:
 // - "on" (allow web sharing through the local web server if it
 // is online)
 // - "off" (do not allow web sharing unless sessions explicitly opt-in to it)
 // - "disabled" (do not allow web sharing and do not permit sessions started in the terminal to opt-in to it)
 // Default: "off"
-// 
+//
 // web_sharing "on"
 
 // The ip address the web server should listen on when it starts
@@ -537,6 +537,13 @@ load_plugins {
 // Note: be sure to escape backslashes and similar characters properly
 //
 // post_command_discovery_hook "echo $RESURRECT_COMMAND | sed <your_regex_here>"
+
+// Number of async worker tasks to spawn per active client.
+//
+// Allocating few tasks may result in resource contention and lags. Small values (around 4) should
+// typically work best. Set to 0 to use the number of (physical) CPU cores.
+// NOTE: This only applies to web clients at the moment."#;
+// client_async_worker_tasks 4
 
 
 web_client {

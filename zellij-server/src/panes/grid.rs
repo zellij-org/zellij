@@ -288,6 +288,45 @@ macro_rules! dump_screen {
     }};
 }
 
+macro_rules! dump_screen_with_ansi {
+    ($lines:expr) => {{
+        use std::fmt::Write;
+        let mut is_first = true;
+        let mut buf = String::new();
+        let mut last_styles: Option<RcCharacterStyles> = None;
+
+        for line in &$lines {
+            if line.is_canonical && !is_first {
+                buf.push_str("\n");
+                last_styles = None;
+            }
+
+            let last_non_space = line
+                .columns
+                .iter()
+                .rposition(|tc| {
+                    let space = tc.character == ' ';
+                    let styled = !matches!(tc.styles.background, Some(AnsiCode::Reset) | None);
+                    !space || styled // it's, something drawable
+                })
+                .map(|i| i + 1)
+                .unwrap_or(0);
+
+            for tc in line.columns.iter().take(last_non_space) {
+                // Only output style codes if style changed
+                if last_styles.as_ref() != Some(&tc.styles) {
+                    write!(buf, "{}", tc.styles).unwrap();
+                    last_styles = Some(tc.styles.clone());
+                }
+                buf.push(tc.character);
+            }
+            is_first = false;
+        }
+        buf.push_str("\u{1b}[m");
+        buf
+    }};
+}
+
 fn utf8_mouse_coordinates(column: usize, line: isize) -> Vec<u8> {
     let mut coordinates = vec![];
     let mouse_pos_encode = |pos: usize| -> Vec<u8> {
@@ -740,7 +779,10 @@ impl Grid {
     }
     pub fn scroll_down_one_line(&mut self) -> bool {
         let mut found_something = false;
-        if !self.lines_below.is_empty() && self.viewport.len() == self.height {
+        if !self.lines_below.is_empty()
+            && self.viewport.len() == self.height
+            && !self.viewport.is_empty()
+        {
             let mut line_to_push_up = self.viewport.remove(0);
 
             self.scrollback_buffer_lines +=
@@ -819,6 +861,8 @@ impl Grid {
             // is in control now...
             self.height = new_rows;
             self.width = new_columns;
+            self.set_scroll_region_to_viewport_size();
+            self.output_buffer.update_all_lines();
             return;
         }
         self.selection.reset();
@@ -1241,6 +1285,19 @@ impl Grid {
         scrollback.push_str(&viewport);
         scrollback
     }
+    /// Dumps all lines (with ansi) above terminal viewport and the viewport itself to a string
+    pub fn dump_screen_with_ansi(&self, full: bool) -> String {
+        let viewport: String = dump_screen_with_ansi!(self.viewport);
+        if !full {
+            return viewport;
+        }
+        let mut scrollback: String = dump_screen_with_ansi!(self.lines_above);
+        if !scrollback.is_empty() {
+            scrollback.push('\n');
+        }
+        scrollback.push_str(&viewport);
+        scrollback
+    }
     pub fn move_viewport_up(&mut self, count: usize) {
         for _ in 0..count {
             self.scroll_up_one_line();
@@ -1333,14 +1390,16 @@ impl Grid {
             if scroll_region_bottom == self.height.saturating_sub(1) && scroll_region_top == 0 {
                 if self.alternate_screen_state.is_none() {
                     self.transfer_rows_to_lines_above(1);
-                } else {
+                } else if !self.viewport.is_empty() {
                     self.viewport.remove(0);
                 }
 
                 self.viewport.push(Row::new().canonical());
                 self.selection.move_up(1);
             } else {
-                self.viewport.remove(scroll_region_top);
+                if scroll_region_top < self.viewport.len() {
+                    self.viewport.remove(scroll_region_top);
+                }
                 if self.viewport.len() >= scroll_region_bottom {
                     self.viewport
                         .insert(scroll_region_bottom, Row::new().canonical());
@@ -1510,7 +1569,7 @@ impl Grid {
             if self.alternate_screen_state.is_none() {
                 self.transfer_rows_to_lines_above(1);
                 self.hyperlink_tracker.offset_cursor_lines(1);
-            } else {
+            } else if !self.viewport.is_empty() {
                 self.viewport.remove(0);
             }
             let wrapped_row = Row::new();
@@ -1653,7 +1712,9 @@ impl Grid {
             // so we delete the current line(s) and add an empty line at the end of the scroll
             // region
             for _ in 0..count {
-                self.viewport.remove(current_line_index);
+                if current_line_index < self.viewport.len() {
+                    self.viewport.remove(current_line_index);
+                }
                 let columns = VecDeque::from(vec![pad_character.clone(); self.width]);
                 if self.viewport.len() > scroll_region_bottom {
                     self.viewport
@@ -1746,6 +1807,7 @@ impl Grid {
     pub fn reset_terminal_state(&mut self) {
         self.lines_above = VecDeque::new();
         self.lines_below = vec![];
+        self.is_scrolled = false;
         self.viewport = vec![Row::new().canonical()];
         self.alternate_screen_state = None;
         self.cursor_key_mode = false;

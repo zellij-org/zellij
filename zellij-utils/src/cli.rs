@@ -127,8 +127,12 @@ pub struct WebCli {
     pub stop: bool,
 
     /// Get the server status
-    #[clap(long, value_parser, exclusive(true), display_order = 3)]
+    #[clap(long, value_parser, conflicts_with("start"), display_order = 3)]
     pub status: bool,
+
+    /// Timeout in seconds for the status check (default: 30)
+    #[clap(long, value_parser, requires = "status", display_order = 4)]
+    pub timeout: Option<u64>,
 
     /// Run the server in the background
     #[clap(
@@ -136,18 +140,18 @@ pub struct WebCli {
         long,
         value_parser,
         conflicts_with_all(&["stop", "status", "create-token", "revoke-token", "revoke-all-tokens"]),
-        display_order = 4
+        display_order = 5
     )]
     pub daemonize: bool,
     /// Create a login token for the web interface, will only be displayed once and cannot later be
     /// retrieved. Returns the token name and the token.
-    #[clap(long, value_parser, exclusive(true), display_order = 5)]
+    #[clap(long, value_parser, exclusive(true), display_order = 6)]
     pub create_token: bool,
     /// Optional name for the token
-    #[clap(long, value_parser, value_name = "TOKEN_NAME", display_order = 6)]
+    #[clap(long, value_parser, value_name = "TOKEN_NAME", display_order = 7)]
     pub token_name: Option<String>,
     /// Create a read-only login token (can only attach to existing sessions as watcher)
-    #[clap(long, value_parser, exclusive(true), display_order = 7)]
+    #[clap(long, value_parser, exclusive(true), display_order = 8)]
     pub create_read_only_token: bool,
     /// Revoke a login token by its name
     #[clap(
@@ -155,21 +159,21 @@ pub struct WebCli {
         value_parser,
         exclusive(true),
         value_name = "TOKEN NAME",
-        display_order = 8
+        display_order = 9
     )]
     pub revoke_token: Option<String>,
     /// Revoke all login tokens
-    #[clap(long, value_parser, exclusive(true), display_order = 9)]
+    #[clap(long, value_parser, exclusive(true), display_order = 10)]
     pub revoke_all_tokens: bool,
     /// List token names and their creation dates (cannot show actual tokens)
-    #[clap(long, value_parser, exclusive(true), display_order = 10)]
+    #[clap(long, value_parser, exclusive(true), display_order = 11)]
     pub list_tokens: bool,
     /// The ip address to listen on locally for connections (defaults to 127.0.0.1)
     #[clap(
         long,
         value_parser,
         conflicts_with_all(&["stop", "status", "create-token", "revoke-token", "revoke-all-tokens"]),
-        display_order = 11
+        display_order = 12
     )]
     pub ip: Option<IpAddr>,
     /// The port to listen on locally for connections (defaults to 8082)
@@ -177,7 +181,7 @@ pub struct WebCli {
         long,
         value_parser,
         conflicts_with_all(&["stop", "status", "create-token", "revoke-token", "revoke-all-tokens"]),
-        display_order = 12
+        display_order = 13
     )]
     pub port: Option<u16>,
     /// The path to the SSL certificate (required if not listening on 127.0.0.1)
@@ -185,7 +189,7 @@ pub struct WebCli {
         long,
         value_parser,
         conflicts_with_all(&["stop", "status", "create-token", "revoke-token", "revoke-all-tokens"]),
-        display_order = 13
+        display_order = 14
     )]
     pub cert: Option<PathBuf>,
     /// The path to the SSL key (required if not listening on 127.0.0.1)
@@ -193,7 +197,7 @@ pub struct WebCli {
         long,
         value_parser,
         conflicts_with_all(&["stop", "status", "create-token", "revoke-token", "revoke-all-tokens"]),
-        display_order = 14
+        display_order = 15
     )]
     pub key: Option<PathBuf>,
 }
@@ -329,6 +333,7 @@ pub enum Sessions {
     #[clap(subcommand)]
     Action(CliAction),
     /// Run a command in a new pane
+    /// Returns: Created pane ID (format: terminal_<id>)
     #[clap(visible_alias = "r")]
     Run {
         /// Command to run
@@ -444,6 +449,7 @@ pub enum Sessions {
         borderless: Option<bool>,
     },
     /// Load a plugin
+    /// Returns: Created pane ID (format: plugin_<id>)
     #[clap(visible_alias = "p")]
     Plugin {
         /// Plugin URL, can either start with http(s), file: or zellij:
@@ -493,6 +499,7 @@ pub enum Sessions {
         borderless: Option<bool>,
     },
     /// Edit file with default $EDITOR / $VISUAL
+    /// Returns: Created pane ID (format: terminal_<id>)
     #[clap(visible_alias = "e")]
     Edit {
         file: PathBuf,
@@ -593,6 +600,34 @@ tail -f /tmp/my-live-logfile | zellij pipe --name logs --plugin https://example.
         #[clap(short('c'), long, value_parser, display_order(4))]
         plugin_configuration: Option<PluginUserConfiguration>,
     },
+    /// Send commands to the sequence plugin (sugar for: zellij pipe --plugin zellij:sequence)
+    #[clap(
+        visible_alias = "seq",
+        override_usage(
+            r#"
+zellij sequence [OPTIONS] [--] <COMMANDS>
+
+* Run a sequence of commands:
+
+zellij sequence -- 'echo hello && echo world'
+
+* Pipe commands from STDIN:
+
+echo 'echo hello && echo world' | zellij sequence
+
+* Wait for the sequence to complete before returning:
+
+zellij sequence --blocking -- 'echo hello && echo world'
+"#
+        )
+    )]
+    Sequence {
+        /// The commands to run (if blank, will listen to STDIN)
+        payload: Option<String>,
+        /// Block until the sequence finishes before exiting
+        #[clap(short, long, value_parser, takes_value(false), default_value("false"))]
+        blocking: bool,
+    },
 }
 
 #[derive(Debug, Subcommand, Clone, Serialize, Deserialize)]
@@ -600,10 +635,26 @@ pub enum CliAction {
     /// Write bytes to the terminal.
     Write {
         bytes: Vec<u8>,
+        /// The pane_id of the pane, eg. terminal_1, plugin_2 or 3 (equivalent to terminal_3)
+        #[clap(short, long, value_parser)]
+        pane_id: Option<String>,
     },
     /// Write characters to the terminal.
     WriteChars {
         chars: String,
+        /// The pane_id of the pane, eg. terminal_1, plugin_2 or 3 (equivalent to terminal_3)
+        #[clap(short, long, value_parser)]
+        pane_id: Option<String>,
+    },
+    /// Send one or more keys to the terminal (e.g., "Ctrl a", "F1", "Alt Shift b")
+    SendKeys {
+        /// Keys to send as space-separated strings
+        #[clap(value_parser, required = true)]
+        keys: Vec<String>,
+
+        /// The pane_id of the pane, eg. terminal_1, plugin_2 or 3 (equivalent to terminal_3)
+        #[clap(short, long, value_parser)]
+        pane_id: Option<String>,
     },
     /// [increase|decrease] the focused panes area at the [left|down|up|right] border.
     Resize {
@@ -674,6 +725,7 @@ pub enum CliAction {
     ToggleActiveSyncTab,
     /// Open a new pane in the specified direction [right|down]
     /// If no direction is specified, will try to use the biggest available space.
+    /// Returns: Created pane ID (format: terminal_<id> or plugin_<id>)
     NewPane {
         /// Direction to open the new pane in
         #[clap(short, long, value_parser, conflicts_with("floating"))]
@@ -773,6 +825,7 @@ pub enum CliAction {
         borderless: Option<bool>,
     },
     /// Open the specified file in a new zellij pane with your default EDITOR
+    /// Returns: Created pane ID (format: terminal_<id>)
     Edit {
         file: PathBuf,
 
@@ -854,6 +907,8 @@ pub enum CliAction {
         index: u32,
     },
     /// Go to tab with name [name]
+    ///
+    /// Returns: When --create is used and tab is created, outputs the tab ID as a single number
     GoToTabName {
         name: String,
         /// Create a tab if one does not exist.
@@ -867,7 +922,22 @@ pub enum CliAction {
     },
     /// Remove a previously set tab name
     UndoRenameTab,
+    /// Go to tab with stable ID
+    GoToTabById {
+        id: u64,
+    },
+    /// Close tab with stable ID
+    CloseTabById {
+        id: u64,
+    },
+    /// Rename tab by stable ID
+    RenameTabById {
+        id: u64,
+        name: String,
+    },
     /// Create a new tab, optionally with a specified tab layout and name
+    ///
+    /// Returns: The created tab's ID as a single number on stdout
     NewTab {
         /// Layout to use for the new tab
         #[clap(short, long, value_parser)]
@@ -991,6 +1061,7 @@ pub enum CliAction {
         #[clap(short, long, value_parser)]
         configuration: Option<PluginUserConfiguration>,
     },
+    /// Returns: Plugin pane ID (format: plugin_<id>) when creating or focusing plugin
     LaunchOrFocusPlugin {
         #[clap(short, long, value_parser)]
         floating: bool,
@@ -1004,6 +1075,7 @@ pub enum CliAction {
         #[clap(short, long, value_parser)]
         skip_plugin_cache: bool,
     },
+    /// Returns: Plugin pane ID (format: plugin_<id>)
     LaunchPlugin {
         #[clap(short, long, value_parser)]
         floating: bool,
@@ -1094,6 +1166,70 @@ tail -f /tmp/my-live-logfile | zellij action pipe --name logs --plugin https://e
         plugin_title: Option<String>,
     },
     ListClients,
+    /// List all panes in the current session
+    ///
+    /// Returns: Formatted list of panes (table or JSON) to stdout
+    ListPanes {
+        /// Include tab information (name, position, ID)
+        #[clap(short, long, value_parser)]
+        tab: bool,
+
+        /// Include running command information
+        #[clap(short, long, value_parser)]
+        command: bool,
+
+        /// Include pane state (focused, floating, exited, etc.)
+        #[clap(short, long, value_parser)]
+        state: bool,
+
+        /// Include geometry (position, size)
+        #[clap(short, long, value_parser)]
+        geometry: bool,
+
+        /// Include all available fields
+        #[clap(short, long, value_parser)]
+        all: bool,
+
+        /// Output as JSON
+        #[clap(short, long, value_parser)]
+        json: bool,
+    },
+    /// List all tabs with their information
+    ///
+    /// Returns: Tab information in table or JSON format
+    ListTabs {
+        /// Include state information (active, fullscreen, sync, floating visibility)
+        #[clap(short, long, value_parser)]
+        state: bool,
+
+        /// Include dimension information (viewport, display area)
+        #[clap(short, long, value_parser)]
+        dimensions: bool,
+
+        /// Include pane counts
+        #[clap(short, long, value_parser)]
+        panes: bool,
+
+        /// Include layout information (swap layout name and dirty state)
+        #[clap(short, long, value_parser)]
+        layout: bool,
+
+        /// Include all available fields
+        #[clap(short, long, value_parser)]
+        all: bool,
+
+        /// Output as JSON
+        #[clap(short, long, value_parser)]
+        json: bool,
+    },
+    /// Get information about the currently active tab
+    ///
+    /// Returns: Tab name and ID by default, or full info in JSON
+    CurrentTabInfo {
+        /// Output as JSON with full TabInfo
+        #[clap(short, long, value_parser)]
+        json: bool,
+    },
     TogglePanePinned,
     /// Stack pane ids
     /// Ids are a space separated list of pane ids.

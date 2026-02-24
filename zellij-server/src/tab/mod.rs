@@ -286,6 +286,9 @@ pub trait Pane {
     fn dump_screen(&self, _full: bool, _client_id: Option<ClientId>) -> String {
         "".to_owned()
     }
+    fn dump_screen_with_ansi(&self, _full: bool, _client_id: Option<ClientId>) -> String {
+        "".to_owned()
+    }
     fn scroll_up(&mut self, count: usize, client_id: ClientId);
     fn scroll_down(&mut self, count: usize, client_id: ClientId);
     fn clear_scroll(&mut self);
@@ -2706,6 +2709,7 @@ impl Tab {
                             .send_to_pty_writer(PtyWriteInstruction::Write(
                                 adjusted_input,
                                 active_terminal_id,
+                                completion_tx,
                             ))
                             .with_context(err_context)?;
                     },
@@ -2803,6 +2807,7 @@ impl Tab {
                     .send_to_pty_writer(PtyWriteInstruction::Write(
                         raw_input_bytes,
                         active_terminal_id,
+                        None,
                     ))
                     .with_context(err_context)?;
                 should_update_ui = true;
@@ -3538,6 +3543,44 @@ impl Tab {
             .copied()
             .collect()
     }
+    pub fn get_pane_info(&self, pane_id: PaneId) -> Option<PaneInfo> {
+        let current_pane_group: HashMap<ClientId, Vec<PaneId>> =
+            { self.current_pane_group.borrow().clone_inner() };
+
+        // Check tiled panes
+        if let Some(pane) = self.tiled_panes.get_pane(pane_id) {
+            let mut info = pane_info_for_pane(&pane_id, pane, &current_pane_group);
+            // Note: is_focused will be false since we don't have a specific client_id context
+            // Plugins calling this API would need to compare the pane_id with their own focused pane
+            info.is_focused = false;
+            info.is_fullscreen = self.tiled_panes.fullscreen_is_active();
+            info.is_floating = false;
+            info.is_suppressed = false;
+            return Some(info);
+        }
+
+        // Check floating panes
+        if let Some(pane) = self.floating_panes.get_pane(pane_id) {
+            let mut info = pane_info_for_pane(&pane_id, pane, &current_pane_group);
+            info.is_focused = false;
+            info.is_fullscreen = false;
+            info.is_floating = true;
+            info.is_suppressed = false;
+            return Some(info);
+        }
+
+        // Check suppressed panes
+        if let Some((_previous_id, pane)) = self.suppressed_panes.get(&pane_id) {
+            let mut info = pane_info_for_pane(&pane_id, pane, &current_pane_group);
+            info.is_focused = false;
+            info.is_fullscreen = false;
+            info.is_floating = false;
+            info.is_suppressed = true;
+            return Some(info);
+        }
+
+        None
+    }
     pub fn set_pane_selectable(&mut self, id: PaneId, selectable: bool) {
         if self.is_pending {
             self.pending_instructions
@@ -3844,6 +3887,23 @@ impl Tab {
         }
         Ok(())
     }
+    pub fn dump_with_ansi_active_terminal_screen(
+        &mut self,
+        file: Option<String>,
+        client_id: ClientId,
+        full: bool,
+    ) -> Result<()> {
+        let err_context =
+            || format!("failed to dump active terminal screen for client {client_id}");
+
+        if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
+            let dump = active_pane.dump_screen_with_ansi(full, Some(client_id));
+            self.os_api
+                .write_to_file(dump, file)
+                .with_context(err_context)?;
+        }
+        Ok(())
+    }
     pub fn dump_terminal_screen(
         &mut self,
         file: Option<String>,
@@ -3866,6 +3926,33 @@ impl Tab {
         let mut file = temp_dir();
         file.push(format!("{}.dump", Uuid::new_v4()));
         self.dump_active_terminal_screen(
+            Some(String::from(file.to_string_lossy())),
+            client_id,
+            true,
+        )
+        .with_context(err_context)?;
+        let line_number = self
+            .get_active_pane(client_id)
+            .and_then(|a_t| a_t.get_line_number());
+        self.senders
+            .send_to_pty(PtyInstruction::OpenInPlaceEditor(
+                file,
+                line_number,
+                ClientTabIndexOrPaneId::ClientId(client_id),
+                completion_tx,
+            ))
+            .with_context(err_context)
+    }
+    pub fn edit_scrollback_raw(
+        &mut self,
+        client_id: ClientId,
+        completion_tx: Option<NotificationEnd>,
+    ) -> Result<()> {
+        let err_context = || format!("failed to edit scrollback for client {client_id}");
+
+        let mut file = temp_dir();
+        file.push(format!("{}.dump", Uuid::new_v4()));
+        self.dump_with_ansi_active_terminal_screen(
             Some(String::from(file.to_string_lossy())),
             client_id,
             true,
@@ -4387,8 +4474,8 @@ impl Tab {
         let viewport = self.viewport.borrow();
         Ok(line >= viewport.y
             && column >= viewport.x
-            && line <= viewport.y + viewport.rows
-            && column <= viewport.x + viewport.cols)
+            && line < viewport.y + viewport.rows
+            && column < viewport.x + viewport.cols)
     }
 
     pub fn set_pane_frames(&mut self, should_set_pane_frames: bool) {

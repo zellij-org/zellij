@@ -2,7 +2,7 @@
  * WebSocket management for terminal and control connections
  */
 
-import { handleReconnection, markConnectionEstablished } from "./connection.js";
+import { handleReconnection, handleDisconnected, markConnectionEstablished } from "./connection.js";
 import { getWebSocketBaseUrl } from "./utils.js";
 
 /**
@@ -83,8 +83,12 @@ export function initWebSockets(
         term.write(data);
     };
 
-    wsTerminal.onclose = function () {
-        handleReconnection();
+    wsTerminal.onclose = function (event) {
+        if (event.code === 4001) {
+            handleDisconnected();
+        } else {
+            handleReconnection();
+        }
     };
 
     // Update sendAnsiKey to use the actual WebSocket
@@ -227,8 +231,12 @@ function startWsControl(wsControl, term, fitAddon, ownWebClientId) {
         }
     };
 
-    wsControl.onclose = function () {
-        handleReconnection();
+    wsControl.onclose = function (event) {
+        if (event.code === 4001) {
+            handleDisconnected();
+        } else {
+            handleReconnection();
+        }
     };
 }
 

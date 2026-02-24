@@ -1,0 +1,5 @@
+---
+source: zellij-server/src/plugins/./unit/plugin_tests.rs
+expression: "format!(\"{:#?}\", last_render)"
+---
+"Rows: 20, Cols: 121, Received events: [PluginConfigurationChanged({\"size\": \"small\", \"theme\": \"light\"})]\n\r"

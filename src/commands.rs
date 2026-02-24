@@ -5,7 +5,6 @@ use std::{fs::File, io::prelude::*, path::PathBuf, process, time::Duration};
 #[cfg(feature = "web_server_capability")]
 use isahc::{config::RedirectPolicy, prelude::*, HttpClient, Request};
 
-use nix;
 use zellij_client::{
     old_config_converter::{
         config_yaml_to_config_kdl, convert_old_yaml_files, layout_yaml_to_layout_kdl,
@@ -147,7 +146,7 @@ pub(crate) fn delete_session(target_session: &Option<String>, force: bool) {
 }
 
 fn get_os_input<OsInputOutput>(
-    fn_get_os_input: fn() -> Result<OsInputOutput, nix::Error>,
+    fn_get_os_input: fn() -> Result<OsInputOutput, std::io::Error>,
 ) -> OsInputOutput {
     match fn_get_os_input() {
         Ok(os_input) => os_input,
@@ -323,10 +322,18 @@ pub(crate) fn list_auth_tokens() -> Result<Vec<String>, String> {
     std::process::exit(2);
 }
 
+/// Default timeout for web server status check (in seconds)
+pub const DEFAULT_WEB_SERVER_STATUS_TIMEOUT_SECS: u64 = 30;
+
 #[cfg(feature = "web_server_capability")]
-pub(crate) fn web_server_status(web_server_base_url: &str) -> Result<String, String> {
+pub(crate) fn web_server_status(
+    web_server_base_url: &str,
+    timeout_secs: Option<u64>,
+) -> Result<String, String> {
+    let timeout =
+        Duration::from_secs(timeout_secs.unwrap_or(DEFAULT_WEB_SERVER_STATUS_TIMEOUT_SECS));
     let http_client = HttpClient::builder()
-        // TODO: timeout?
+        .timeout(timeout)
         .redirect_policy(RedirectPolicy::Follow)
         .build()
         .map_err(|e| e.to_string())?;
@@ -346,7 +353,10 @@ pub(crate) fn web_server_status(web_server_base_url: &str) -> Result<String, Str
 }
 
 #[cfg(not(feature = "web_server_capability"))]
-pub(crate) fn web_server_status(_web_server_base_url: &str) -> Result<String, String> {
+pub(crate) fn web_server_status(
+    _web_server_base_url: &str,
+    _timeout_secs: Option<u64>,
+) -> Result<String, String> {
     log::error!(
         "This version of Zellij was compiled without web server support, cannot get web server status!"
     );
@@ -698,15 +708,13 @@ pub(crate) fn start_client(opts: CliArgs) {
                 }
 
                 #[cfg(feature = "web_server_capability")]
-                use zellij_client::start_remote_client;
-
-                #[cfg(feature = "web_server_capability")]
-                if let Err(e) = start_remote_client(
+                if let Err(e) = zellij_client::start_remote_client(
                     Box::new(os_input.clone()),
                     remote_session_url,
                     token,
                     remember,
                     forget,
+                    config_options.client_async_worker_tasks,
                 ) {
                     eprintln!("{}", e);
                     std::process::exit(2);

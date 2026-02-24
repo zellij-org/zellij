@@ -614,6 +614,7 @@ impl From<crate::input::options::Options>
                 .map(|p| p.to_string_lossy().to_string()),
             enforce_https_for_localhost: options.enforce_https_for_localhost,
             post_command_discovery_hook: options.post_command_discovery_hook,
+            client_async_worker_tasks: options.client_async_worker_tasks.map(|v| v as u64),
         }
     }
 }
@@ -705,6 +706,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
             web_server_key: options.web_server_key.map(std::path::PathBuf::from),
             enforce_https_for_localhost: options.enforce_https_for_localhost,
             post_command_discovery_hook: options.post_command_discovery_hook,
+            client_async_worker_tasks: options.client_async_worker_tasks.map(|v| v as usize),
         })
     }
 }
@@ -717,31 +719,32 @@ impl From<crate::input::actions::Action>
         use crate::client_server_contract::client_server_contract::{
             action::ActionType, BreakPaneAction, BreakPaneLeftAction, BreakPaneRightAction,
             ChangeFloatingPaneCoordinatesAction, ClearScreenAction, CliPipeAction,
-            CloseFocusAction, ClosePluginPaneAction, CloseTabAction, CloseTerminalPaneAction,
-            ConfirmAction, CopyAction, DenyAction, DetachAction, DumpLayoutAction,
-            DumpScreenAction, EditFileAction, EditScrollbackAction, FocusNextPaneAction,
-            FocusPluginPaneWithIdAction, FocusPreviousPaneAction, FocusTerminalPaneWithIdAction,
-            GoToNextTabAction, GoToPreviousTabAction, GoToTabAction, GoToTabNameAction,
-            HalfPageScrollDownAction, HalfPageScrollUpAction, KeybindPipeAction,
-            LaunchOrFocusPluginAction, LaunchPluginAction, ListClientsAction, MouseEventAction,
-            MoveFocusAction, MoveFocusOrTabAction, MovePaneAction, MovePaneBackwardsAction,
-            MoveTabAction, NewBlockingPaneAction, NewFloatingPaneAction,
-            NewFloatingPluginPaneAction, NewInPlacePaneAction, NewInPlacePluginPaneAction,
-            NewPaneAction, NewStackedPaneAction, NewTabAction, NewTiledPaneAction,
-            NewTiledPluginPaneAction, NextSwapLayoutAction, NoOpAction, OverrideLayoutAction,
-            PageScrollDownAction, PageScrollUpAction, PaneIdWithPlugin, PaneNameInputAction,
-            PreviousSwapLayoutAction, QueryTabNamesAction, QuitAction, RenamePluginPaneAction,
-            RenameSessionAction, RenameTabAction, RenameTerminalPaneAction, ResizeAction,
-            RunAction, SaveSessionAction, ScrollDownAction, ScrollDownAtAction,
-            ScrollToBottomAction, ScrollToTopAction, ScrollUpAction, ScrollUpAtAction,
-            SearchAction, SearchInputAction, SearchToggleOptionAction, SetPaneBorderlessAction,
-            SkipConfirmAction, StackPanesAction, StartOrReloadPluginAction, SwitchFocusAction,
-            SwitchModeForAllClientsAction, SwitchSessionAction, SwitchToModeAction,
-            TabNameInputAction, ToggleActiveSyncTabAction, ToggleFloatingPanesAction,
-            ToggleFocusFullscreenAction, ToggleGroupMarkingAction, ToggleMouseModeAction,
-            TogglePaneBorderlessAction, TogglePaneEmbedOrFloatingAction, TogglePaneFramesAction,
-            TogglePaneInGroupAction, TogglePanePinnedAction, ToggleTabAction, UndoRenamePaneAction,
-            UndoRenameTabAction, WriteAction, WriteCharsAction,
+            CloseFocusAction, ClosePluginPaneAction, CloseTabAction, CloseTabByIdAction,
+            CloseTerminalPaneAction, ConfirmAction, CopyAction, CurrentTabInfoAction, DenyAction,
+            DetachAction, DumpLayoutAction, DumpScreenAction, EditFileAction, EditScrollbackAction,
+            FocusNextPaneAction, FocusPluginPaneWithIdAction, FocusPreviousPaneAction,
+            FocusTerminalPaneWithIdAction, GoToNextTabAction, GoToPreviousTabAction, GoToTabAction,
+            GoToTabByIdAction, GoToTabNameAction, HalfPageScrollDownAction, HalfPageScrollUpAction,
+            KeybindPipeAction, LaunchOrFocusPluginAction, LaunchPluginAction, ListClientsAction,
+            ListPanesAction, ListTabsAction, MouseEventAction, MoveFocusAction,
+            MoveFocusOrTabAction, MovePaneAction, MovePaneBackwardsAction, MoveTabAction,
+            NewBlockingPaneAction, NewFloatingPaneAction, NewFloatingPluginPaneAction,
+            NewInPlacePaneAction, NewInPlacePluginPaneAction, NewPaneAction, NewStackedPaneAction,
+            NewTabAction, NewTiledPaneAction, NewTiledPluginPaneAction, NextSwapLayoutAction,
+            NoOpAction, OverrideLayoutAction, PageScrollDownAction, PageScrollUpAction,
+            PaneIdWithPlugin, PaneNameInputAction, PreviousSwapLayoutAction, QueryTabNamesAction,
+            QuitAction, RenamePluginPaneAction, RenameSessionAction, RenameTabAction,
+            RenameTabByIdAction, RenameTerminalPaneAction, ResizeAction, RunAction,
+            SaveSessionAction, ScrollDownAction, ScrollDownAtAction, ScrollToBottomAction,
+            ScrollToTopAction, ScrollUpAction, ScrollUpAtAction, SearchAction, SearchInputAction,
+            SearchToggleOptionAction, SetPaneBorderlessAction, SkipConfirmAction, StackPanesAction,
+            StartOrReloadPluginAction, SwitchFocusAction, SwitchModeForAllClientsAction,
+            SwitchSessionAction, SwitchToModeAction, TabNameInputAction, ToggleActiveSyncTabAction,
+            ToggleFloatingPanesAction, ToggleFocusFullscreenAction, ToggleGroupMarkingAction,
+            ToggleMouseModeAction, TogglePaneBorderlessAction, TogglePaneEmbedOrFloatingAction,
+            TogglePaneFramesAction, TogglePaneInGroupAction, TogglePanePinnedAction,
+            ToggleTabAction, UndoRenamePaneAction, UndoRenameTabAction, WriteAction,
+            WriteCharsAction, WriteCharsToPaneIdAction, WriteToPaneIdAction,
         };
         use std::collections::HashMap;
 
@@ -758,6 +761,18 @@ impl From<crate::input::actions::Action>
             }),
             crate::input::actions::Action::WriteChars { chars } => {
                 ActionType::WriteChars(WriteCharsAction { chars })
+            },
+            crate::input::actions::Action::WriteToPaneId { bytes, pane_id } => {
+                ActionType::WriteToPaneId(WriteToPaneIdAction {
+                    pane_id: Some(pane_id.into()),
+                    bytes: bytes.into_iter().map(|b| b as u32).collect(),
+                })
+            },
+            crate::input::actions::Action::WriteCharsToPaneId { chars, pane_id } => {
+                ActionType::WriteCharsToPaneId(WriteCharsToPaneIdAction {
+                    pane_id: Some(pane_id.into()),
+                    chars,
+                })
             },
             crate::input::actions::Action::SwitchToMode { input_mode } => {
                 ActionType::SwitchToMode(SwitchToModeAction {
@@ -817,6 +832,9 @@ impl From<crate::input::actions::Action>
             },
             crate::input::actions::Action::EditScrollback => {
                 ActionType::EditScrollback(EditScrollbackAction {})
+            },
+            crate::input::actions::Action::EditScrollbackRaw => {
+                ActionType::EditScrollback(EditScrollbackAction {}) // fallback to default edit scrollback
             },
             crate::input::actions::Action::ScrollUp => ActionType::ScrollUp(ScrollUpAction {}),
             crate::input::actions::Action::ScrollUpAt { position } => {
@@ -1199,6 +1217,15 @@ impl From<crate::input::actions::Action>
                     name: name.into_iter().map(|b| b as u32).collect(),
                 })
             },
+            crate::input::actions::Action::GoToTabById { id } => {
+                ActionType::GoToTabById(GoToTabByIdAction { id })
+            },
+            crate::input::actions::Action::CloseTabById { id } => {
+                ActionType::CloseTabById(CloseTabByIdAction { id })
+            },
+            crate::input::actions::Action::RenameTabById { id, name } => {
+                ActionType::RenameTabById(RenameTabByIdAction { id, name })
+            },
             crate::input::actions::Action::BreakPane => ActionType::BreakPane(BreakPaneAction {}),
             crate::input::actions::Action::BreakPaneRight => {
                 ActionType::BreakPaneRight(BreakPaneRightAction {})
@@ -1274,6 +1301,21 @@ impl From<crate::input::actions::Action>
             crate::input::actions::Action::ListClients => {
                 ActionType::ListClients(ListClientsAction {})
             },
+            crate::input::actions::Action::ListPanes {
+                show_tab,
+                show_command,
+                show_state,
+                show_geometry,
+                show_all,
+                output_json,
+            } => ActionType::ListPanes(ListPanesAction {
+                show_tab,
+                show_command,
+                show_state,
+                show_geometry,
+                show_all,
+                output_json,
+            }),
             crate::input::actions::Action::TogglePanePinned => {
                 ActionType::TogglePanePinned(TogglePanePinnedAction {})
             },
@@ -1310,6 +1352,24 @@ impl From<crate::input::actions::Action>
             crate::input::actions::Action::SaveSession => {
                 ActionType::SaveSession(SaveSessionAction {})
             },
+            crate::input::actions::Action::ListTabs {
+                show_state,
+                show_dimensions,
+                show_panes,
+                show_layout,
+                show_all,
+                output_json,
+            } => ActionType::ListTabs(ListTabsAction {
+                show_state,
+                show_dimensions,
+                show_panes,
+                show_layout,
+                show_all,
+                output_json,
+            }),
+            crate::input::actions::Action::CurrentTabInfo { output_json } => {
+                ActionType::CurrentTabInfo(CurrentTabInfoAction { output_json })
+            },
         };
 
         Self {
@@ -1344,6 +1404,28 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
             ActionType::WriteChars(write_chars_action) => {
                 Ok(crate::input::actions::Action::WriteChars {
                     chars: write_chars_action.chars,
+                })
+            },
+            ActionType::WriteToPaneId(write_to_pane_id_action) => {
+                Ok(crate::input::actions::Action::WriteToPaneId {
+                    bytes: write_to_pane_id_action
+                        .bytes
+                        .into_iter()
+                        .map(|b| b as u8)
+                        .collect(),
+                    pane_id: write_to_pane_id_action
+                        .pane_id
+                        .ok_or_else(|| anyhow!("WriteToPaneId missing pane_id"))?
+                        .try_into()?,
+                })
+            },
+            ActionType::WriteCharsToPaneId(write_chars_to_pane_id_action) => {
+                Ok(crate::input::actions::Action::WriteCharsToPaneId {
+                    chars: write_chars_to_pane_id_action.chars,
+                    pane_id: write_chars_to_pane_id_action
+                        .pane_id
+                        .ok_or_else(|| anyhow!("WriteCharsToPaneId missing pane_id"))?
+                        .try_into()?,
                 })
             },
             ActionType::SwitchToMode(switch_mode_action) => {
@@ -1823,6 +1905,22 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                         .collect(),
                 })
             },
+            ActionType::GoToTabById(go_to_tab_by_id_action) => {
+                Ok(crate::input::actions::Action::GoToTabById {
+                    id: go_to_tab_by_id_action.id,
+                })
+            },
+            ActionType::CloseTabById(close_tab_by_id_action) => {
+                Ok(crate::input::actions::Action::CloseTabById {
+                    id: close_tab_by_id_action.id,
+                })
+            },
+            ActionType::RenameTabById(rename_tab_by_id_action) => {
+                Ok(crate::input::actions::Action::RenameTabById {
+                    id: rename_tab_by_id_action.id,
+                    name: rename_tab_by_id_action.name,
+                })
+            },
             ActionType::BreakPane(_) => Ok(crate::input::actions::Action::BreakPane),
             ActionType::BreakPaneRight(_) => Ok(crate::input::actions::Action::BreakPaneRight),
             ActionType::BreakPaneLeft(_) => Ok(crate::input::actions::Action::BreakPaneLeft),
@@ -1878,6 +1976,29 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                 })
             },
             ActionType::ListClients(_) => Ok(crate::input::actions::Action::ListClients),
+            ActionType::ListPanes(list_panes_action) => {
+                Ok(crate::input::actions::Action::ListPanes {
+                    show_tab: list_panes_action.show_tab,
+                    show_command: list_panes_action.show_command,
+                    show_state: list_panes_action.show_state,
+                    show_geometry: list_panes_action.show_geometry,
+                    show_all: list_panes_action.show_all,
+                    output_json: list_panes_action.output_json,
+                })
+            },
+            ActionType::ListTabs(list_tabs_action) => Ok(crate::input::actions::Action::ListTabs {
+                show_state: list_tabs_action.show_state,
+                show_dimensions: list_tabs_action.show_dimensions,
+                show_panes: list_tabs_action.show_panes,
+                show_layout: list_tabs_action.show_layout,
+                show_all: list_tabs_action.show_all,
+                output_json: list_tabs_action.output_json,
+            }),
+            ActionType::CurrentTabInfo(current_tab_info_action) => {
+                Ok(crate::input::actions::Action::CurrentTabInfo {
+                    output_json: current_tab_info_action.output_json,
+                })
+            },
             ActionType::TogglePanePinned(_) => Ok(crate::input::actions::Action::TogglePanePinned),
             ActionType::StackPanes(stack_panes_action) => {
                 Ok(crate::input::actions::Action::StackPanes {
@@ -2163,6 +2284,7 @@ impl From<ExitReason> for ProtoExitReason {
             ExitReason::CannotAttach => ProtoExitReason::CannotAttach,
             ExitReason::Disconnect => ProtoExitReason::Disconnect,
             ExitReason::WebClientsForbidden => ProtoExitReason::WebClientsForbidden,
+            ExitReason::KickedByHost => ProtoExitReason::KickedByHost,
             ExitReason::Error(_msg) => ProtoExitReason::Error,
             ExitReason::CustomExitStatus(_status) => ProtoExitReason::CustomExitStatus,
         }
@@ -2179,6 +2301,7 @@ impl TryFrom<ProtoExitReason> for ExitReason {
             ProtoExitReason::CannotAttach => Ok(ExitReason::CannotAttach),
             ProtoExitReason::Disconnect => Ok(ExitReason::Disconnect),
             ProtoExitReason::WebClientsForbidden => Ok(ExitReason::WebClientsForbidden),
+            ProtoExitReason::KickedByHost => Ok(ExitReason::KickedByHost),
             ProtoExitReason::Error => Ok(ExitReason::Error("Protobuf error".to_string())),
             ProtoExitReason::CustomExitStatus => Ok(ExitReason::CustomExitStatus(0)),
             ProtoExitReason::Unspecified => Err(anyhow!("Unspecified exit reason")),
@@ -3165,12 +3288,20 @@ impl From<crate::data::CommandOrPlugin>
 {
     fn from(cmd_or_plugin: crate::data::CommandOrPlugin) -> Self {
         use crate::client_server_contract::client_server_contract::command_or_plugin::CommandOrPluginType;
+        use crate::client_server_contract::client_server_contract::CommandOrPluginFile;
         match cmd_or_plugin {
             crate::data::CommandOrPlugin::Command(cmd) => Self {
                 command_or_plugin_type: Some(CommandOrPluginType::Command(cmd.into())),
             },
             crate::data::CommandOrPlugin::Plugin(plugin) => Self {
                 command_or_plugin_type: Some(CommandOrPluginType::Plugin(plugin.into())),
+            },
+            crate::data::CommandOrPlugin::File(f) => Self {
+                command_or_plugin_type: Some(CommandOrPluginType::File(CommandOrPluginFile {
+                    path: f.path.display().to_string(),
+                    line_number: f.line_number.map(|n| n as i32),
+                    cwd: f.cwd.map(|c| c.display().to_string()),
+                })),
             },
         }
     }
@@ -3196,6 +3327,13 @@ impl TryFrom<crate::client_server_contract::client_server_contract::CommandOrPlu
             CommandOrPluginType::Plugin(plugin) => {
                 Ok(crate::data::CommandOrPlugin::Plugin(plugin.try_into()?))
             },
+            CommandOrPluginType::File(f) => Ok(crate::data::CommandOrPlugin::File(
+                crate::data::FileToOpen {
+                    path: std::path::PathBuf::from(&f.path),
+                    line_number: f.line_number.map(|n| n as usize),
+                    cwd: f.cwd.map(std::path::PathBuf::from),
+                },
+            )),
         }
     }
 }

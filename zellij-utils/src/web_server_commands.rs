@@ -1,13 +1,13 @@
+use crate::consts::is_ipc_socket;
 use crate::consts::WEBSERVER_SOCKET_PATH;
 use crate::errors::prelude::*;
 use crate::web_server_contract::web_server_contract::InstructionForWebServer as ProtoInstructionForWebServer;
 use crate::web_server_contract::web_server_contract::WebServerResponse as ProtoWebServerResponse;
-use interprocess::local_socket::LocalSocketStream;
+use interprocess::local_socket::{prelude::*, GenericFilePath, Stream as LocalSocketStream};
 use prost::Message;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::{BufWriter, Read, Write};
-use std::os::unix::fs::FileTypeExt;
 use std::path::PathBuf;
 
 pub fn shutdown_all_webserver_instances() -> Result<()> {
@@ -22,7 +22,7 @@ pub fn shutdown_all_webserver_instances() -> Result<()> {
                 let metadata = entry.metadata()?;
                 let file_type = metadata.file_type();
 
-                if file_type.is_socket() {
+                if is_ipc_socket(&file_type) {
                     match create_webserver_sender(path.to_str().unwrap_or("")) {
                         Ok(mut sender) => {
                             let _ = send_webserver_instruction(
@@ -60,7 +60,8 @@ pub enum WebServerResponse {
 }
 
 pub fn create_webserver_sender(path: &str) -> Result<BufWriter<LocalSocketStream>> {
-    let stream = LocalSocketStream::connect(path)?;
+    let fs_name = path.to_fs_name::<GenericFilePath>()?;
+    let stream = LocalSocketStream::connect(fs_name)?;
     Ok(BufWriter::new(stream))
 }
 
@@ -92,7 +93,7 @@ pub fn discover_webserver_sockets() -> Result<Vec<PathBuf>> {
         let entry = entry?;
         let path = entry.path();
 
-        if entry.metadata()?.file_type().is_socket() {
+        if is_ipc_socket(&entry.metadata()?.file_type()) {
             sockets.push(path);
         }
     }

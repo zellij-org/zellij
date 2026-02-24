@@ -16,5 +16,6 @@ Some(
         Reconfigure,
         RunActionsAsUser,
         WriteToClipboard,
+        ReadSessionEnvironmentVariables,
     ],
 )

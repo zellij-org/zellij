@@ -471,6 +471,7 @@ fn test_client_messages() {
                 web_server_key: Some(PathBuf::from("web_server_key")),
                 enforce_https_for_localhost: Some(true),
                 post_command_discovery_hook: Some("post_command_discovery_hook".to_owned()),
+                client_async_worker_tasks: Some(16),
                 mouse_hover_effects: Some(false),
             }),
             layout: None,

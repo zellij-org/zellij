@@ -1,11 +1,11 @@
 //! Definitions and helpers for sending and receiving messages between threads.
 
-use async_std::task_local;
 use std::cell::RefCell;
 
 use crate::errors::{get_current_ctx, ErrorContext};
 pub use crossbeam::channel::{
-    bounded, unbounded, Receiver, RecvError, Select, SendError, Sender, TrySendError,
+    bounded, unbounded, Receiver, RecvError, RecvTimeoutError, Select, SendError, Sender,
+    TrySendError,
 };
 
 /// An [MPSC](mpsc) asynchronous channel with added error context.
@@ -37,8 +37,8 @@ thread_local!(
     pub static OPENCALLS: RefCell<ErrorContext> = RefCell::default()
 );
 
-task_local! {
+tokio::task_local! {
     /// A key to some task local storage that holds a representation of the task's call
     /// stack in the form of an [`ErrorContext`].
-    pub static ASYNCOPENCALLS: RefCell<ErrorContext> = RefCell::default()
+    pub static ASYNCOPENCALLS: RefCell<ErrorContext>;
 }

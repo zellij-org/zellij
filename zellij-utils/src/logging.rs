@@ -3,7 +3,6 @@
 use std::{
     fs,
     io::{self, prelude::*},
-    os::unix::io::RawFd,
     path::{Path, PathBuf},
 };
 
@@ -120,10 +119,10 @@ pub fn atomic_create_dir(dir_name: &Path) -> io::Result<()> {
     result
 }
 
-pub fn debug_to_file(message: &[u8], pid: RawFd) -> io::Result<()> {
+pub fn debug_to_file(message: &[u8], terminal_id: i32) -> io::Result<()> {
     let mut path = PathBuf::new();
     path.push(&*ZELLIJ_TMP_LOG_DIR);
-    path.push(format!("zellij-{}.log", pid));
+    path.push(format!("zellij-{}.log", terminal_id));
 
     let mut file = fs::OpenOptions::new()
         .append(true)

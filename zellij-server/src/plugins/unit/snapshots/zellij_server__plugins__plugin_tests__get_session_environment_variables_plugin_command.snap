@@ -1,0 +1,7 @@
+---
+source: zellij-server/src/plugins/./unit/plugin_tests.rs
+expression: "format!(\"{:#?}\", plugin_bytes_event)"
+---
+Some(
+    "Got environment variables: {\n\r    \"PATH\": \"/usr/bin:/bin\",\n\r    \"TEST_ENV_VAR_1\": \"test_value_123\",\n\r    \"TEST_ENV_VAR_2\": \"another_test_value\",\n\r}\n\r",
+)

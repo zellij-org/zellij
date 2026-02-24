@@ -3,7 +3,7 @@
 pub struct PluginCommand {
     #[prost(enumeration="CommandName", tag="1")]
     pub name: i32,
-    #[prost(oneof="plugin_command::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138")]
+    #[prost(oneof="plugin_command::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154")]
     pub payload: ::core::option::Option<plugin_command::Payload>,
 }
 /// Nested message and enum types in `PluginCommand`.
@@ -259,6 +259,38 @@ pub mod plugin_command {
         SaveSessionPayload(super::SaveSessionPayload),
         #[prost(message, tag="138")]
         CurrentSessionLastSavedTimePayload(super::CurrentSessionLastSavedTimePayload),
+        #[prost(message, tag="139")]
+        GetPaneInfoPayload(super::GetPaneInfoPayload),
+        #[prost(message, tag="140")]
+        GetTabInfoPayload(super::GetTabInfoPayload),
+        #[prost(message, tag="141")]
+        GetPaneRunningCommandPayload(super::GetPaneRunningCommandPayload),
+        #[prost(message, tag="142")]
+        GetPaneCwdPayload(super::GetPaneCwdPayload),
+        #[prost(message, tag="143")]
+        SwitchTabToIdPayload(super::SwitchTabToIdPayload),
+        #[prost(message, tag="144")]
+        GoToTabWithIdPayload(super::GoToTabWithIdPayload),
+        #[prost(message, tag="145")]
+        CloseTabWithIdPayload(super::CloseTabWithIdPayload),
+        #[prost(message, tag="146")]
+        RenameTabWithIdPayload(super::RenameTabWithIdPayload),
+        #[prost(message, tag="147")]
+        BreakPanesToTabWithIdPayload(super::BreakPanesToTabWithIdPayload),
+        #[prost(message, tag="148")]
+        GetSessionEnvironmentVariablesPayload(super::GetSessionEnvironmentVariablesPayload),
+        #[prost(message, tag="149")]
+        OpenCommandPaneInNewTabPayload(super::OpenCommandPanePayload),
+        #[prost(message, tag="150")]
+        OpenPluginPaneInNewTabPayload(super::OpenPluginPaneInNewTabPayload),
+        #[prost(message, tag="151")]
+        OpenEditorPaneInNewTabPayload(super::OpenFilePayload),
+        #[prost(message, tag="152")]
+        OpenCommandPaneInPlaceOfPaneIdPayload(super::OpenCommandPaneInPlaceOfPaneIdPayload),
+        #[prost(message, tag="153")]
+        OpenTerminalPaneInPlaceOfPaneIdPayload(super::OpenTerminalPaneInPlaceOfPaneIdPayload),
+        #[prost(message, tag="154")]
+        OpenEditPaneInPlaceOfPaneIdPayload(super::OpenEditPaneInPlaceOfPaneIdPayload),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -926,6 +958,59 @@ pub struct FixedOrPercentValue {
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SwitchTabToIdPayload {
+    #[prost(uint64, tag="1")]
+    pub tab_id: u64,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GoToTabWithIdPayload {
+    #[prost(uint64, tag="1")]
+    pub tab_id: u64,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CloseTabWithIdPayload {
+    #[prost(uint64, tag="1")]
+    pub tab_id: u64,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RenameTabWithIdPayload {
+    #[prost(uint64, tag="1")]
+    pub tab_id: u64,
+    #[prost(string, tag="2")]
+    pub new_name: ::prost::alloc::string::String,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BreakPanesToTabWithIdPayload {
+    #[prost(message, repeated, tag="1")]
+    pub pane_ids: ::prost::alloc::vec::Vec<PaneId>,
+    #[prost(uint64, tag="2")]
+    pub tab_id: u64,
+    #[prost(bool, tag="3")]
+    pub should_change_focus_to_target_tab: bool,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BreakPanesToTabWithIdResponse {
+    #[prost(oneof="break_panes_to_tab_with_id_response::Result", tags="1, 2")]
+    pub result: ::core::option::Option<break_panes_to_tab_with_id_response::Result>,
+}
+/// Nested message and enum types in `BreakPanesToTabWithIdResponse`.
+pub mod break_panes_to_tab_with_id_response {
+    #[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Result {
+        #[prost(uint64, tag="1")]
+        TabId(u64),
+        #[prost(bool, tag="2")]
+        None(bool),
+    }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct CreateTokenResponse {
     #[prost(string, optional, tag="1")]
     pub token: ::core::option::Option<::prost::alloc::string::String>,
@@ -1018,6 +1103,58 @@ pub mod get_pane_pid_response {
     pub enum Result {
         #[prost(int32, tag="1")]
         Pid(i32),
+        #[prost(string, tag="2")]
+        Error(::prost::alloc::string::String),
+    }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetPaneRunningCommandPayload {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetPaneRunningCommandResponse {
+    #[prost(oneof="get_pane_running_command_response::Result", tags="1, 2")]
+    pub result: ::core::option::Option<get_pane_running_command_response::Result>,
+}
+/// Nested message and enum types in `GetPaneRunningCommandResponse`.
+pub mod get_pane_running_command_response {
+    #[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Result {
+        #[prost(message, tag="1")]
+        Command(super::RunningCommand),
+        #[prost(string, tag="2")]
+        Error(::prost::alloc::string::String),
+    }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RunningCommand {
+    #[prost(string, repeated, tag="1")]
+    pub args: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetPaneCwdPayload {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetPaneCwdResponse {
+    #[prost(oneof="get_pane_cwd_response::Result", tags="1, 2")]
+    pub result: ::core::option::Option<get_pane_cwd_response::Result>,
+}
+/// Nested message and enum types in `GetPaneCwdResponse`.
+pub mod get_pane_cwd_response {
+    #[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Result {
+        #[prost(string, tag="1")]
+        Cwd(::prost::alloc::string::String),
         #[prost(string, tag="2")]
         Error(::prost::alloc::string::String),
     }
@@ -1282,6 +1419,305 @@ pub struct CurrentSessionLastSavedTimeResponse {
     #[prost(uint64, optional, tag="1")]
     pub timestamp_millis: ::core::option::Option<u64>,
 }
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetPaneInfoPayload {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetPaneInfoResponse {
+    /// None if pane not found
+    #[prost(message, optional, tag="1")]
+    pub pane_info: ::core::option::Option<super::event::PaneInfo>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetTabInfoPayload {
+    #[prost(uint64, tag="1")]
+    pub tab_id: u64,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetTabInfoResponse {
+    /// None if tab not found
+    #[prost(message, optional, tag="1")]
+    pub tab_info: ::core::option::Option<super::event::TabInfo>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct NewTabResponse {
+    #[prost(oneof="new_tab_response::Result", tags="1, 2")]
+    pub result: ::core::option::Option<new_tab_response::Result>,
+}
+/// Nested message and enum types in `NewTabResponse`.
+pub mod new_tab_response {
+    #[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Result {
+        #[prost(uint64, tag="1")]
+        TabId(u64),
+        /// Indicates None
+        #[prost(bool, tag="2")]
+        None(bool),
+    }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct NewTabsResponse {
+    /// Only includes successfully created tabs
+    #[prost(uint64, repeated, tag="1")]
+    pub tab_ids: ::prost::alloc::vec::Vec<u64>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct FocusOrCreateTabResponse {
+    #[prost(oneof="focus_or_create_tab_response::Result", tags="1, 2")]
+    pub result: ::core::option::Option<focus_or_create_tab_response::Result>,
+}
+/// Nested message and enum types in `FocusOrCreateTabResponse`.
+pub mod focus_or_create_tab_response {
+    #[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Result {
+        #[prost(uint64, tag="1")]
+        TabId(u64),
+        /// Indicates None
+        #[prost(bool, tag="2")]
+        None(bool),
+    }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BreakPanesToNewTabResponse {
+    #[prost(oneof="break_panes_to_new_tab_response::Result", tags="1, 2")]
+    pub result: ::core::option::Option<break_panes_to_new_tab_response::Result>,
+}
+/// Nested message and enum types in `BreakPanesToNewTabResponse`.
+pub mod break_panes_to_new_tab_response {
+    #[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Result {
+        #[prost(uint64, tag="1")]
+        TabId(u64),
+        /// Indicates None
+        #[prost(bool, tag="2")]
+        None(bool),
+    }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BreakPanesToTabWithIndexResponse {
+    #[prost(oneof="break_panes_to_tab_with_index_response::Result", tags="1, 2")]
+    pub result: ::core::option::Option<break_panes_to_tab_with_index_response::Result>,
+}
+/// Nested message and enum types in `BreakPanesToTabWithIndexResponse`.
+pub mod break_panes_to_tab_with_index_response {
+    #[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Result {
+        #[prost(uint64, tag="1")]
+        TabId(u64),
+        /// Indicates None
+        #[prost(bool, tag="2")]
+        None(bool),
+    }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct OpenFileResponse {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct OpenFileFloatingResponse {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct OpenFileInPlaceResponse {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct OpenFileNearPluginResponse {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct OpenFileFloatingNearPluginResponse {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct OpenFileInPlaceOfPluginResponse {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct OpenTerminalResponse {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct OpenTerminalFloatingResponse {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct OpenTerminalInPlaceResponse {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct OpenTerminalNearPluginResponse {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct OpenTerminalFloatingNearPluginResponse {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct OpenTerminalInPlaceOfPluginResponse {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct OpenCommandPaneResponse {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct OpenCommandPaneFloatingResponse {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct OpenCommandPaneInPlaceResponse {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct OpenCommandPaneNearPluginResponse {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct OpenCommandPaneFloatingNearPluginResponse {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct OpenCommandPaneInPlaceOfPluginResponse {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct OpenCommandPaneBackgroundResponse {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetSessionEnvironmentVariablesPayload {
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetSessionEnvironmentVariablesResponse {
+    #[prost(message, repeated, tag="1")]
+    pub env_vars: ::prost::alloc::vec::Vec<EnvVariable>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct OpenPluginPaneInNewTabPayload {
+    #[prost(string, tag="1")]
+    pub plugin_url: ::prost::alloc::string::String,
+    #[prost(map="string, string", tag="2")]
+    pub configuration: ::std::collections::HashMap<::prost::alloc::string::String, ::prost::alloc::string::String>,
+    #[prost(message, repeated, tag="3")]
+    pub context: ::prost::alloc::vec::Vec<ContextItem>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct OpenPaneInNewTabResponse {
+    #[prost(uint64, optional, tag="1")]
+    pub tab_id: ::core::option::Option<u64>,
+    #[prost(message, optional, tag="2")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct OpenCommandPaneInPlaceOfPaneIdPayload {
+    #[prost(message, optional, tag="1")]
+    pub pane_id_to_replace: ::core::option::Option<PaneId>,
+    #[prost(message, optional, tag="2")]
+    pub command_to_run: ::core::option::Option<super::command::Command>,
+    #[prost(bool, tag="3")]
+    pub close_replaced_pane: bool,
+    #[prost(message, repeated, tag="4")]
+    pub context: ::prost::alloc::vec::Vec<ContextItem>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct OpenTerminalPaneInPlaceOfPaneIdPayload {
+    #[prost(message, optional, tag="1")]
+    pub pane_id_to_replace: ::core::option::Option<PaneId>,
+    #[prost(message, optional, tag="2")]
+    pub cwd: ::core::option::Option<super::file::File>,
+    #[prost(bool, tag="3")]
+    pub close_replaced_pane: bool,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct OpenEditPaneInPlaceOfPaneIdPayload {
+    #[prost(message, optional, tag="1")]
+    pub pane_id_to_replace: ::core::option::Option<PaneId>,
+    #[prost(message, optional, tag="2")]
+    pub file_to_open: ::core::option::Option<super::file::File>,
+    #[prost(bool, tag="3")]
+    pub close_replaced_pane: bool,
+    #[prost(message, repeated, tag="4")]
+    pub context: ::prost::alloc::vec::Vec<ContextItem>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct OpenCommandPaneInPlaceOfPaneIdResponse {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct OpenTerminalPaneInPlaceOfPaneIdResponse {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct OpenEditPaneInPlaceOfPaneIdResponse {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
 pub enum CommandName {
@@ -1452,6 +1888,22 @@ pub enum CommandName {
     SetPaneBorderless = 185,
     SaveSession = 186,
     CurrentSessionLastSavedTime = 187,
+    GetPaneInfo = 188,
+    GetTabInfo = 189,
+    GetPaneRunningCommand = 190,
+    GetPaneCwd = 191,
+    SwitchTabToId = 192,
+    GoToTabWithId = 193,
+    CloseTabWithId = 194,
+    RenameTabWithId = 195,
+    BreakPanesToTabWithId = 196,
+    GetSessionEnvironmentVariables = 197,
+    OpenCommandPaneInNewTab = 198,
+    OpenPluginPaneInNewTab = 199,
+    OpenEditorPaneInNewTab = 200,
+    OpenCommandPaneInPlaceOfPaneId = 201,
+    OpenTerminalPaneInPlaceOfPaneId = 202,
+    OpenEditPaneInPlaceOfPaneId = 203,
 }
 impl CommandName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -1627,6 +2079,22 @@ impl CommandName {
             CommandName::SetPaneBorderless => "SetPaneBorderless",
             CommandName::SaveSession => "SaveSession",
             CommandName::CurrentSessionLastSavedTime => "CurrentSessionLastSavedTime",
+            CommandName::GetPaneInfo => "GetPaneInfo",
+            CommandName::GetTabInfo => "GetTabInfo",
+            CommandName::GetPaneRunningCommand => "GetPaneRunningCommand",
+            CommandName::GetPaneCwd => "GetPaneCwd",
+            CommandName::SwitchTabToId => "SwitchTabToId",
+            CommandName::GoToTabWithId => "GoToTabWithId",
+            CommandName::CloseTabWithId => "CloseTabWithId",
+            CommandName::RenameTabWithId => "RenameTabWithId",
+            CommandName::BreakPanesToTabWithId => "BreakPanesToTabWithId",
+            CommandName::GetSessionEnvironmentVariables => "GetSessionEnvironmentVariables",
+            CommandName::OpenCommandPaneInNewTab => "OpenCommandPaneInNewTab",
+            CommandName::OpenPluginPaneInNewTab => "OpenPluginPaneInNewTab",
+            CommandName::OpenEditorPaneInNewTab => "OpenEditorPaneInNewTab",
+            CommandName::OpenCommandPaneInPlaceOfPaneId => "OpenCommandPaneInPlaceOfPaneId",
+            CommandName::OpenTerminalPaneInPlaceOfPaneId => "OpenTerminalPaneInPlaceOfPaneId",
+            CommandName::OpenEditPaneInPlaceOfPaneId => "OpenEditPaneInPlaceOfPaneId",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -1799,6 +2267,22 @@ impl CommandName {
             "SetPaneBorderless" => Some(Self::SetPaneBorderless),
             "SaveSession" => Some(Self::SaveSession),
             "CurrentSessionLastSavedTime" => Some(Self::CurrentSessionLastSavedTime),
+            "GetPaneInfo" => Some(Self::GetPaneInfo),
+            "GetTabInfo" => Some(Self::GetTabInfo),
+            "GetPaneRunningCommand" => Some(Self::GetPaneRunningCommand),
+            "GetPaneCwd" => Some(Self::GetPaneCwd),
+            "SwitchTabToId" => Some(Self::SwitchTabToId),
+            "GoToTabWithId" => Some(Self::GoToTabWithId),
+            "CloseTabWithId" => Some(Self::CloseTabWithId),
+            "RenameTabWithId" => Some(Self::RenameTabWithId),
+            "BreakPanesToTabWithId" => Some(Self::BreakPanesToTabWithId),
+            "GetSessionEnvironmentVariables" => Some(Self::GetSessionEnvironmentVariables),
+            "OpenCommandPaneInNewTab" => Some(Self::OpenCommandPaneInNewTab),
+            "OpenPluginPaneInNewTab" => Some(Self::OpenPluginPaneInNewTab),
+            "OpenEditorPaneInNewTab" => Some(Self::OpenEditorPaneInNewTab),
+            "OpenCommandPaneInPlaceOfPaneId" => Some(Self::OpenCommandPaneInPlaceOfPaneId),
+            "OpenTerminalPaneInPlaceOfPaneId" => Some(Self::OpenTerminalPaneInPlaceOfPaneId),
+            "OpenEditPaneInPlaceOfPaneId" => Some(Self::OpenEditPaneInPlaceOfPaneId),
             _ => None,
         }
     }
