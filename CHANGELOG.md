@@ -62,6 +62,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: reset scroll region boundaries when resizing in alternate screen (https://github.com/zellij-org/zellij/pull/4748)
 * fix: preserve cwd when opening editor panes (https://github.com/zellij-org/zellij/pull/4593)
 * feat: allow specifying "close_on_exit" when opening panes in place from keybinding or cli (https://github.com/zellij-org/zellij/pull/4760)
+* fix: respect cursor blink and shape in the web client even when terminal attempts to override it (https://github.com/zellij-org/zellij/pull/4762)
 
 
 ## [0.43.1] - 2025-08-08
