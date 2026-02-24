@@ -950,7 +950,7 @@ impl Action {
                 pane_name: name,
                 near_current_pane: false,
                 pane_id_to_replace: None,
-                close_replace_pane: false,
+                close_replaced_pane,
             } => {
                 let mut node = KdlNode::new("Run");
                 let mut node_children = KdlDocument::new();
@@ -977,6 +977,11 @@ impl Action {
                         hoc_node.push(KdlValue::Bool(false));
                         node_children.nodes_mut().push(hoc_node);
                     }
+                }
+                if *close_replaced_pane {
+                    let mut crp_node = KdlNode::new("close_replaced_pane");
+                    crp_node.push(KdlValue::Bool(true));
+                    node_children.nodes_mut().push(crp_node);
                 }
                 if let Some(name) = name {
                     let mut name_node = KdlNode::new("name");
@@ -1069,6 +1074,7 @@ impl Action {
                 should_float,
                 move_to_focused_tab,
                 should_open_in_place,
+                close_replaced_pane,
                 skip_cache: skip_plugin_cache,
             } => {
                 let mut node = KdlNode::new("LaunchOrFocusPlugin");
@@ -1089,6 +1095,11 @@ impl Action {
                     let mut should_open_in_place_node = KdlNode::new("in_place");
                     should_open_in_place_node.push(KdlValue::Bool(true));
                     node_children.nodes_mut().push(should_open_in_place_node);
+                }
+                if *close_replaced_pane {
+                    let mut crp_node = KdlNode::new("close_replaced_pane");
+                    crp_node.push(KdlValue::Bool(true));
+                    node_children.nodes_mut().push(crp_node);
                 }
                 if *skip_plugin_cache {
                     let mut skip_plugin_cache_node = KdlNode::new("skip_plugin_cache");
@@ -1111,6 +1122,7 @@ impl Action {
                 plugin: run_plugin_or_alias,
                 should_float,
                 should_open_in_place,
+                close_replaced_pane,
                 skip_cache: skip_plugin_cache,
                 cwd,
             } => {
@@ -1127,6 +1139,11 @@ impl Action {
                     let mut should_open_in_place_node = KdlNode::new("in_place");
                     should_open_in_place_node.push(KdlValue::Bool(true));
                     node_children.nodes_mut().push(should_open_in_place_node);
+                }
+                if *close_replaced_pane {
+                    let mut crp_node = KdlNode::new("close_replaced_pane");
+                    crp_node.push(KdlValue::Bool(true));
+                    node_children.nodes_mut().push(crp_node);
                 }
                 if *skip_plugin_cache {
                     let mut skip_plugin_cache_node = KdlNode::new("skip_plugin_cache");
@@ -1892,6 +1909,9 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 let in_place = command_metadata
                     .and_then(|c_m| kdl_child_bool_value_for_entry(c_m, "in_place"))
                     .unwrap_or(false);
+                let close_replaced_pane = command_metadata
+                    .and_then(|c_m| kdl_child_bool_value_for_entry(c_m, "close_replaced_pane"))
+                    .unwrap_or(false);
                 let stacked = command_metadata
                     .and_then(|c_m| kdl_child_bool_value_for_entry(c_m, "stacked"))
                     .unwrap_or(false);
@@ -1935,7 +1955,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                         pane_name: name,
                         near_current_pane: false,
                         pane_id_to_replace: None,
-                        close_replace_pane: false,
+                        close_replaced_pane,
                     })
                 } else if stacked {
                     Ok(Action::NewStackedPane {
@@ -1975,6 +1995,9 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 let should_open_in_place = command_metadata
                     .and_then(|c_m| kdl_child_bool_value_for_entry(c_m, "in_place"))
                     .unwrap_or(false);
+                let close_replaced_pane = command_metadata
+                    .and_then(|c_m| kdl_child_bool_value_for_entry(c_m, "close_replaced_pane"))
+                    .unwrap_or(false);
                 let skip_plugin_cache = command_metadata
                     .and_then(|c_m| kdl_child_bool_value_for_entry(c_m, "skip_plugin_cache"))
                     .unwrap_or(false);
@@ -2001,6 +2024,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                     should_float,
                     move_to_focused_tab,
                     should_open_in_place,
+                    close_replaced_pane,
                     skip_cache: skip_plugin_cache,
                 })
             },
@@ -2022,6 +2046,9 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                     .unwrap_or(false);
                 let should_open_in_place = command_metadata
                     .and_then(|c_m| kdl_child_bool_value_for_entry(c_m, "in_place"))
+                    .unwrap_or(false);
+                let close_replaced_pane = command_metadata
+                    .and_then(|c_m| kdl_child_bool_value_for_entry(c_m, "close_replaced_pane"))
                     .unwrap_or(false);
                 let skip_plugin_cache = command_metadata
                     .and_then(|c_m| kdl_child_bool_value_for_entry(c_m, "skip_plugin_cache"))
@@ -2045,6 +2072,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                     plugin: run_plugin_or_alias,
                     should_float,
                     should_open_in_place,
+                    close_replaced_pane,
                     skip_cache: skip_plugin_cache,
                     cwd: None, // we explicitly do not send the current dir here so that it will be
                                // filled from the active pane == better UX

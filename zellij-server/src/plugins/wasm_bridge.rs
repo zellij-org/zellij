@@ -1774,6 +1774,7 @@ impl WasmBridge {
                             drop(self.senders.send_to_screen(ScreenInstruction::AddPlugin(
                                 Some(should_float),
                                 should_be_open_in_place,
+                                false, // close_replaced_pane
                                 run_plugin_or_alias,
                                 pane_title,
                                 None,

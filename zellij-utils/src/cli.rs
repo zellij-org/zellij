@@ -364,6 +364,10 @@ pub enum Sessions {
         )]
         in_place: bool,
 
+        /// Close the replaced pane instead of suspending it (only effective with --in-place)
+        #[clap(long, value_parser, default_value("false"), takes_value(false), requires("in-place"))]
+        close_replaced_pane: bool,
+
         /// Name of the new pane
         #[clap(short, long, value_parser)]
         name: Option<String>,
@@ -475,6 +479,10 @@ pub enum Sessions {
         )]
         in_place: bool,
 
+        /// Close the replaced pane instead of suspending it (only effective with --in-place)
+        #[clap(long, value_parser, default_value("false"), takes_value(false), requires("in-place"))]
+        close_replaced_pane: bool,
+
         /// Skip the memory and HD cache and force recompile of the plugin (good for development)
         #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
         skip_plugin_cache: bool,
@@ -523,6 +531,10 @@ pub enum Sessions {
             conflicts_with("direction")
         )]
         in_place: bool,
+
+        /// Close the replaced pane instead of suspending it (only effective with --in-place)
+        #[clap(long, value_parser, default_value("false"), takes_value(false), requires("in-place"))]
+        close_replaced_pane: bool,
 
         /// Open the new pane in floating mode
         #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
@@ -753,6 +765,10 @@ pub enum CliAction {
         )]
         in_place: bool,
 
+        /// Close the replaced pane instead of suspending it (only effective with --in-place)
+        #[clap(long, value_parser, default_value("false"), takes_value(false), requires("in-place"))]
+        close_replaced_pane: bool,
+
         /// Name of the new pane
         #[clap(short, long, value_parser)]
         name: Option<String>,
@@ -848,6 +864,10 @@ pub enum CliAction {
             conflicts_with("direction")
         )]
         in_place: bool,
+
+        /// Close the replaced pane instead of suspending it (only effective with --in-place)
+        #[clap(long, value_parser, default_value("false"), takes_value(false), requires("in-place"))]
+        close_replaced_pane: bool,
 
         /// Change the working directory of the editor
         #[clap(long, value_parser)]
@@ -1061,6 +1081,9 @@ pub enum CliAction {
         floating: bool,
         #[clap(short, long, value_parser)]
         in_place: bool,
+        /// Close the replaced pane instead of suspending it (only effective with --in-place)
+        #[clap(long, value_parser, default_value("false"), takes_value(false), requires("in-place"))]
+        close_replaced_pane: bool,
         #[clap(short, long, value_parser)]
         move_to_focused_tab: bool,
         url: String,
@@ -1075,6 +1098,9 @@ pub enum CliAction {
         floating: bool,
         #[clap(short, long, value_parser)]
         in_place: bool,
+        /// Close the replaced pane instead of suspending it (only effective with --in-place)
+        #[clap(long, value_parser, default_value("false"), takes_value(false), requires("in-place"))]
+        close_replaced_pane: bool,
         url: Url,
         #[clap(short, long, value_parser)]
         configuration: Option<PluginUserConfiguration>,

@@ -1,0 +1,36 @@
+---
+source: zellij-server/src/./unit/screen_tests.rs
+expression: "format!(\"{:#?}\", spawn_in_place_instruction)"
+---
+Some(
+    SpawnInPlaceTerminal(
+        Some(
+            OpenFile(
+                OpenFilePayload {
+                    path: "/some/file.txt",
+                    line_number: None,
+                    cwd: Some(
+                        ".",
+                    ),
+                    originating_plugin: None,
+                },
+            ),
+        ),
+        Some(
+            "Editing: /some/file.txt",
+        ),
+        true,
+        ClientId(
+            10,
+        ),
+        Some(
+            NotificationEnd {
+                channel: None,
+                exit_status: None,
+                unblock_condition: None,
+                affected_pane_id: None,
+                affected_tab_id: None,
+            },
+        ),
+    ),
+)

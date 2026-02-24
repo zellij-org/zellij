@@ -633,6 +633,7 @@ pub(crate) fn route_action(
             direction: split_direction,
             floating: should_float,
             in_place: should_open_in_place,
+            close_replaced_pane,
             start_suppressed,
             coordinates: floating_pane_coordinates,
             near_current_pane,
@@ -644,14 +645,14 @@ pub(crate) fn route_action(
                     Some(pane_id) if near_current_pane => PtyInstruction::SpawnInPlaceTerminal(
                         Some(open_file),
                         Some(title),
-                        false,
+                        close_replaced_pane,
                         ClientTabIndexOrPaneId::PaneId(pane_id),
                         Some(NotificationEnd::new(completion_tx)),
                     ),
                     _ => PtyInstruction::SpawnInPlaceTerminal(
                         Some(open_file),
                         Some(title),
-                        false,
+                        close_replaced_pane,
                         ClientTabIndexOrPaneId::ClientId(client_id),
                         Some(NotificationEnd::new(completion_tx)),
                     ),
@@ -740,7 +741,7 @@ pub(crate) fn route_action(
             pane_name: name,
             near_current_pane,
             pane_id_to_replace,
-            close_replace_pane,
+            close_replaced_pane,
         } => {
             let run_cmd = run_command
                 .map(|cmd| TerminalAction::RunCommand(cmd.into()))
@@ -755,7 +756,7 @@ pub(crate) fn route_action(
                         .send_to_pty(PtyInstruction::SpawnInPlaceTerminal(
                             run_cmd,
                             name,
-                            close_replace_pane,
+                            close_replaced_pane,
                             ClientTabIndexOrPaneId::PaneId(pane_id),
                             Some(NotificationEnd::new(completion_tx)),
                         ))
@@ -766,7 +767,7 @@ pub(crate) fn route_action(
                         .send_to_pty(PtyInstruction::SpawnInPlaceTerminal(
                             run_cmd,
                             name,
-                            close_replace_pane,
+                            close_replaced_pane,
                             ClientTabIndexOrPaneId::ClientId(client_id),
                             Some(NotificationEnd::new(completion_tx)),
                         ))
@@ -1284,6 +1285,7 @@ pub(crate) fn route_action(
             plugin: run_plugin,
             pane_name: name,
             skip_cache,
+            close_replaced_pane,
         } => {
             if let Some(pane_id) = pane_id {
                 senders
@@ -1292,6 +1294,7 @@ pub(crate) fn route_action(
                         name,
                         pane_id,
                         skip_cache,
+                        close_replaced_pane,
                         client_id,
                         Some(NotificationEnd::new(completion_tx)),
                     ))
@@ -1314,6 +1317,7 @@ pub(crate) fn route_action(
             should_float,
             move_to_focused_tab,
             should_open_in_place,
+            close_replaced_pane,
             skip_cache,
         } => {
             senders
@@ -1322,6 +1326,7 @@ pub(crate) fn route_action(
                     should_float,
                     move_to_focused_tab,
                     should_open_in_place,
+                    close_replaced_pane,
                     pane_id,
                     skip_cache,
                     client_id,
@@ -1333,6 +1338,7 @@ pub(crate) fn route_action(
             plugin: run_plugin,
             should_float,
             should_open_in_place,
+            close_replaced_pane,
             skip_cache,
             cwd,
         } => {
@@ -1341,6 +1347,7 @@ pub(crate) fn route_action(
                     run_plugin,
                     should_float,
                     should_open_in_place,
+                    close_replaced_pane,
                     pane_id,
                     skip_cache,
                     cwd,

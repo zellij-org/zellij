@@ -1,14 +1,14 @@
 ---
 source: zellij-server/src/./unit/screen_tests.rs
-expression: "format!(\"{:#?}\", pty_fill_plugin_cwd_instruction)"
+expression: "format!(\"{:#?}\", fill_plugin_cwd_instruction)"
 ---
 Some(
     FillPluginCwd(
         Some(
-            true,
+            false,
         ),
-        false,
-        false,
+        true,
+        true,
         None,
         RunPlugin(
             RunPlugin {

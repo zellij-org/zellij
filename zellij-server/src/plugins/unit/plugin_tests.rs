@@ -741,6 +741,7 @@ pub fn load_new_plugin_from_hd() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -825,6 +826,7 @@ pub fn load_new_plugin_with_plugin_alias() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -905,6 +907,7 @@ pub fn plugin_workers() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -989,6 +992,7 @@ pub fn plugin_workers_persist_state() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -1083,6 +1087,7 @@ pub fn can_subscribe_to_hd_events() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -1165,6 +1170,7 @@ pub fn switch_to_mode_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -1241,6 +1247,7 @@ pub fn switch_to_mode_plugin_command_permission_denied() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -1317,6 +1324,7 @@ pub fn new_tabs_with_layout_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -1407,6 +1415,7 @@ pub fn new_tab_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -1483,6 +1492,7 @@ pub fn go_to_next_tab_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -1558,6 +1568,7 @@ pub fn go_to_previous_tab_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -1633,6 +1644,7 @@ pub fn resize_focused_pane_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -1708,6 +1720,7 @@ pub fn resize_focused_pane_with_direction_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -1783,6 +1796,7 @@ pub fn focus_next_pane_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -1858,6 +1872,7 @@ pub fn focus_previous_pane_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -1933,6 +1948,7 @@ pub fn move_focus_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -2008,6 +2024,7 @@ pub fn move_focus_or_tab_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -2083,6 +2100,7 @@ pub fn edit_scrollback_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -2158,6 +2176,7 @@ pub fn write_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -2233,6 +2252,7 @@ pub fn write_chars_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -2308,6 +2328,7 @@ pub fn toggle_tab_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -2383,6 +2404,7 @@ pub fn move_pane_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -2458,6 +2480,7 @@ pub fn move_pane_with_direction_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -2534,6 +2557,7 @@ pub fn clear_screen_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -2610,6 +2634,7 @@ pub fn scroll_up_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -2685,6 +2710,7 @@ pub fn scroll_down_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -2760,6 +2786,7 @@ pub fn scroll_to_top_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -2835,6 +2862,7 @@ pub fn scroll_to_bottom_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -2910,6 +2938,7 @@ pub fn page_scroll_up_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -2985,6 +3014,7 @@ pub fn page_scroll_down_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -3060,6 +3090,7 @@ pub fn toggle_focus_fullscreen_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -3135,6 +3166,7 @@ pub fn toggle_pane_frames_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -3210,6 +3242,7 @@ pub fn toggle_pane_embed_or_eject_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -3285,6 +3318,7 @@ pub fn undo_rename_pane_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -3360,6 +3394,7 @@ pub fn close_focus_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -3435,6 +3470,7 @@ pub fn toggle_active_tab_sync_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -3510,6 +3546,7 @@ pub fn close_focused_tab_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -3585,6 +3622,7 @@ pub fn undo_rename_tab_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -3660,6 +3698,7 @@ pub fn previous_swap_layout_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -3735,6 +3774,7 @@ pub fn next_swap_layout_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -3810,6 +3850,7 @@ pub fn go_to_tab_name_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -3885,6 +3926,7 @@ pub fn focus_or_create_tab_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -3960,6 +4002,7 @@ pub fn go_to_tab() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -4035,6 +4078,7 @@ pub fn start_or_reload_plugin() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -4117,6 +4161,7 @@ pub fn quit_zellij_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -4199,6 +4244,7 @@ pub fn detach_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -4281,6 +4327,7 @@ pub fn open_file_floating_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -4367,6 +4414,7 @@ pub fn open_file_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -4454,6 +4502,7 @@ pub fn open_file_with_line_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -4540,6 +4589,7 @@ pub fn open_file_with_line_floating_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -4626,6 +4676,7 @@ pub fn open_terminal_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -4708,6 +4759,7 @@ pub fn open_terminal_floating_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -4790,6 +4842,7 @@ pub fn open_command_pane_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -4872,6 +4925,7 @@ pub fn open_command_pane_floating_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -4947,6 +5001,7 @@ pub fn switch_to_tab_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -5022,6 +5077,7 @@ pub fn hide_self_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -5096,6 +5152,7 @@ pub fn show_self_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -5171,6 +5228,7 @@ pub fn close_terminal_pane_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -5246,6 +5304,7 @@ pub fn close_plugin_pane_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -5321,6 +5380,7 @@ pub fn focus_terminal_pane_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -5396,6 +5456,7 @@ pub fn focus_plugin_pane_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -5471,6 +5532,7 @@ pub fn rename_terminal_pane_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -5546,6 +5608,7 @@ pub fn rename_plugin_pane_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -5621,6 +5684,7 @@ pub fn rename_tab_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -5705,6 +5769,7 @@ pub fn send_configuration_to_plugins() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -5777,6 +5842,7 @@ pub fn request_plugin_permissions() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -5873,6 +5939,7 @@ pub fn granted_permission_request_result() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin.clone(),
         Some(tab_index),
@@ -5968,6 +6035,7 @@ pub fn denied_permission_request_result() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin.clone(),
         Some(tab_index),
@@ -6043,6 +6111,7 @@ pub fn run_command_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -6125,6 +6194,7 @@ pub fn run_command_with_env_vars_and_cwd_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -6207,6 +6277,7 @@ pub fn web_request_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -6282,6 +6353,7 @@ pub fn unblock_input_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -6368,6 +6440,7 @@ pub fn block_input_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -6462,6 +6535,7 @@ pub fn pipe_output_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -6549,6 +6623,7 @@ pub fn pipe_message_to_plugin_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -6647,6 +6722,7 @@ pub fn switch_session_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -6735,6 +6811,7 @@ pub fn switch_session_with_layout_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -6823,6 +6900,7 @@ pub fn switch_session_with_layout_and_cwd_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -6908,6 +6986,7 @@ pub fn disconnect_other_clients_plugins_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -6993,6 +7072,7 @@ pub fn reconfigure_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -7082,6 +7162,7 @@ pub fn run_plugin_in_specific_cwd() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -7160,6 +7241,7 @@ pub fn hide_pane_with_id_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -7235,6 +7317,7 @@ pub fn show_pane_with_id_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -7317,6 +7400,7 @@ pub fn open_command_pane_background_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -7396,6 +7480,7 @@ pub fn rerun_command_pane_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -7471,6 +7556,7 @@ pub fn resize_pane_with_id_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -7546,6 +7632,7 @@ pub fn edit_scrollback_for_pane_with_id_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -7621,6 +7708,7 @@ pub fn write_to_pane_id_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -7696,6 +7784,7 @@ pub fn write_chars_to_pane_id_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -7771,6 +7860,7 @@ pub fn move_pane_with_pane_id_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -7846,6 +7936,7 @@ pub fn move_pane_with_pane_id_in_direction_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -7921,6 +8012,7 @@ pub fn clear_screen_for_pane_id_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -7996,6 +8088,7 @@ pub fn scroll_up_in_pane_id_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -8071,6 +8164,7 @@ pub fn scroll_down_in_pane_id_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -8146,6 +8240,7 @@ pub fn scroll_to_top_in_pane_id_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -8221,6 +8316,7 @@ pub fn scroll_to_bottom_in_pane_id_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -8296,6 +8392,7 @@ pub fn page_scroll_up_in_pane_id_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -8371,6 +8468,7 @@ pub fn page_scroll_down_in_pane_id_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -8446,6 +8544,7 @@ pub fn toggle_pane_id_fullscreen_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -8521,6 +8620,7 @@ pub fn toggle_pane_embed_or_eject_for_pane_id_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -8596,6 +8696,7 @@ pub fn close_tab_with_index_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -8671,6 +8772,7 @@ pub fn break_panes_to_new_tab_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -8746,6 +8848,7 @@ pub fn break_panes_to_tab_with_index_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -8821,6 +8924,7 @@ pub fn reload_plugin_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -8896,6 +9000,7 @@ pub fn load_new_plugin_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -8978,6 +9083,7 @@ pub fn rebind_keys_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -9056,6 +9162,7 @@ pub fn list_clients_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -9131,6 +9238,7 @@ pub fn before_close_plugin_event() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -9206,6 +9314,7 @@ pub fn show_cursor_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -9286,6 +9395,7 @@ pub fn hide_cursor_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -9365,6 +9475,7 @@ pub fn copy_to_clipboard_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -9444,6 +9555,7 @@ pub fn run_action_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -9533,6 +9645,7 @@ pub fn send_sigint_to_pane_id_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -9622,6 +9735,7 @@ pub fn send_sigkill_to_pane_id_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -9704,6 +9818,7 @@ pub fn copy_to_clipboard_without_permission() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -9790,6 +9905,7 @@ pub fn run_action_without_permission() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -9874,6 +9990,7 @@ pub fn generate_random_name_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -9963,6 +10080,7 @@ pub fn dump_layout_success_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -10052,6 +10170,7 @@ pub fn dump_layout_not_found_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -10141,6 +10260,7 @@ pub fn get_layout_dir_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -10230,6 +10350,7 @@ pub fn get_focused_pane_info_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -10314,6 +10435,7 @@ pub fn dump_session_layout_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -10397,6 +10519,7 @@ pub fn dump_session_layout_for_tab_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -10480,6 +10603,7 @@ pub fn parse_layout_success_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -10569,6 +10693,7 @@ pub fn parse_layout_error_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -10658,6 +10783,7 @@ pub fn save_layout_success_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -10747,6 +10873,7 @@ pub fn save_layout_already_exists_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -10850,6 +10977,7 @@ pub fn save_layout_with_overwrite_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -10939,6 +11067,7 @@ pub fn save_layout_invalid_kdl_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -11028,6 +11157,7 @@ pub fn rename_layout_success_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -11131,6 +11261,7 @@ pub fn rename_layout_not_found_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -11220,6 +11351,7 @@ pub fn delete_layout_success_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -11336,6 +11468,7 @@ pub fn delete_layout_not_found_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -11425,6 +11558,7 @@ pub fn save_layout_path_traversal_blocked_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -11527,6 +11661,7 @@ pub fn edit_layout_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -11617,6 +11752,7 @@ pub fn override_layout_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -11702,6 +11838,7 @@ pub fn generate_random_name_permission_denied() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -11798,6 +11935,7 @@ pub fn save_layout_permission_denied() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),
@@ -11897,6 +12035,7 @@ pub fn plugin_receives_config_change_event() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin.clone(),
         Some(tab_index),
@@ -12018,6 +12157,7 @@ pub fn plugin_does_not_receive_event_when_config_unchanged() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin.clone(),
         Some(tab_index),
@@ -12133,6 +12273,7 @@ pub fn get_session_environment_variables_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         false,
+        false, // close_replaced_pane
         plugin_title,
         run_plugin,
         Some(tab_index),

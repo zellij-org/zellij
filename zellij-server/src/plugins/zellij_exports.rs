@@ -1304,6 +1304,7 @@ fn open_file(env: &PluginEnv, file_to_open: FileToOpen, context: BTreeMap<String
         direction: None,
         floating,
         in_place,
+        close_replaced_pane: false,
         start_suppressed,
         coordinates: None,
         near_current_pane: false,
@@ -1405,6 +1406,7 @@ fn open_file_floating(
         direction: None,
         floating,
         in_place,
+        close_replaced_pane: false,
         start_suppressed,
         coordinates: floating_pane_coordinates,
         near_current_pane: false,
@@ -1444,6 +1446,7 @@ fn open_file_in_place(
         direction: None,
         floating,
         in_place,
+        close_replaced_pane: false,
         start_suppressed,
         coordinates: None,
         near_current_pane: false,
@@ -1756,7 +1759,7 @@ fn open_terminal_in_place(env: &PluginEnv, cwd: PathBuf) {
         pane_name: None,
         near_current_pane: false,
         pane_id_to_replace: None,
-        close_replace_pane: false,
+        close_replaced_pane: false,
     };
     let result = apply_action!(action, error_msg, env);
 
@@ -2257,7 +2260,7 @@ fn open_command_pane_in_place(
         pane_name: name,
         near_current_pane: false,
         pane_id_to_replace: None,
-        close_replace_pane: false,
+        close_replaced_pane: false,
     };
     let result = apply_action!(action, error_msg, env);
 
@@ -4132,6 +4135,7 @@ fn try_edit_layout(
         direction: None,
         floating: false,
         in_place: true,
+        close_replaced_pane: false,
         start_suppressed: false,
         coordinates: None,
         near_current_pane: true,
@@ -4464,6 +4468,7 @@ fn load_new_plugin(
                 let _ = env.senders.send_to_plugin(PluginInstruction::Load(
                     should_float,
                     should_be_open_in_place,
+                    false, // close_replaced_pane
                     pane_title,
                     run_plugin_or_alias,
                     tab_index,

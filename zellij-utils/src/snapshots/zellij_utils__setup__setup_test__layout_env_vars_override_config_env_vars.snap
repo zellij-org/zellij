@@ -4186,6 +4186,7 @@ Config {
                     should_float: true,
                     move_to_focused_tab: true,
                     should_open_in_place: false,
+                    close_replaced_pane: false,
                     skip_cache: false,
                 },
                 SwitchToMode {
@@ -4226,6 +4227,7 @@ Config {
                     should_float: true,
                     move_to_focused_tab: true,
                     should_open_in_place: false,
+                    close_replaced_pane: false,
                     skip_cache: false,
                 },
                 SwitchToMode {
@@ -4346,6 +4348,7 @@ Config {
                     should_float: true,
                     move_to_focused_tab: true,
                     should_open_in_place: false,
+                    close_replaced_pane: false,
                     skip_cache: false,
                 },
                 SwitchToMode {
@@ -4436,6 +4439,7 @@ Config {
                     should_float: true,
                     move_to_focused_tab: true,
                     should_open_in_place: false,
+                    close_replaced_pane: false,
                     skip_cache: false,
                 },
                 SwitchToMode {
@@ -4498,6 +4502,7 @@ Config {
                     ),
                     should_float: true,
                     should_open_in_place: false,
+                    close_replaced_pane: false,
                     skip_cache: false,
                     cwd: None,
                 },
@@ -4539,6 +4544,7 @@ Config {
                     should_float: true,
                     move_to_focused_tab: true,
                     should_open_in_place: false,
+                    close_replaced_pane: false,
                     skip_cache: false,
                 },
                 SwitchToMode {
@@ -4591,6 +4597,7 @@ Config {
                     should_float: true,
                     move_to_focused_tab: true,
                     should_open_in_place: false,
+                    close_replaced_pane: false,
                     skip_cache: false,
                 },
                 SwitchToMode {

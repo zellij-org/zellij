@@ -60,6 +60,7 @@ pub enum PluginInstruction {
     Load(
         Option<bool>,   // should float
         bool,           // should be opened in place
+        bool,           // close_replaced_pane
         Option<String>, // pane title
         RunPluginOrAlias,
         Option<usize>,  // tab index
@@ -346,6 +347,7 @@ pub(crate) fn plugin_thread_main(
             PluginInstruction::Load(
                 should_float,
                 should_be_open_in_place,
+                close_replaced_pane,
                 pane_title,
                 mut run_plugin_or_alias,
                 tab_index,
@@ -381,6 +383,7 @@ pub(crate) fn plugin_thread_main(
                         drop(bus.senders.send_to_screen(ScreenInstruction::AddPlugin(
                             should_float,
                             should_be_open_in_place,
+                            close_replaced_pane,
                             run_plugin_or_alias,
                             pane_title,
                             tab_index,
@@ -460,6 +463,7 @@ pub(crate) fn plugin_thread_main(
                                                 ScreenInstruction::AddPlugin(
                                                     should_float,
                                                     should_be_open_in_place,
+                                                    false, // close_replaced_pane
                                                     run_plugin_or_alias,
                                                     pane_title,
                                                     Some(tab_index),
@@ -1401,6 +1405,7 @@ fn load_background_plugin(
             drop(bus.senders.send_to_screen(ScreenInstruction::AddPlugin(
                 should_float,
                 should_be_open_in_place,
+                false, // close_replaced_pane
                 run_plugin_or_alias,
                 pane_title,
                 None,
