@@ -827,8 +827,8 @@ impl From<crate::input::actions::Action>
                 file_path,
                 include_scrollback,
             }),
-            crate::input::actions::Action::DumpLayout => {
-                ActionType::DumpLayout(DumpLayoutAction {})
+            crate::input::actions::Action::DumpLayout { with_ids } => {
+                ActionType::DumpLayout(DumpLayoutAction { with_ids })
             },
             crate::input::actions::Action::EditScrollback => {
                 ActionType::EditScrollback(EditScrollbackAction {})
@@ -1484,7 +1484,9 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                     include_scrollback: dump_screen_action.include_scrollback,
                 })
             },
-            ActionType::DumpLayout(_) => Ok(crate::input::actions::Action::DumpLayout),
+            ActionType::DumpLayout(action) => Ok(crate::input::actions::Action::DumpLayout {
+                with_ids: action.with_ids,
+            }),
             ActionType::SaveSession(_) => Ok(crate::input::actions::Action::SaveSession),
             ActionType::EditScrollback(_) => Ok(crate::input::actions::Action::EditScrollback),
             ActionType::ScrollUp(_) => Ok(crate::input::actions::Action::ScrollUp),
@@ -2056,6 +2058,9 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
             ActionType::ToggleGroupMarking(_) => {
                 Ok(crate::input::actions::Action::ToggleGroupMarking)
             },
+            ActionType::RenameTabByName(_) => Err(anyhow!(
+                "RenameTabByName is deprecated, use RenameTab with tab_index instead"
+            )),
         }
     }
 }
@@ -3535,6 +3540,8 @@ impl TryFrom<crate::client_server_contract::client_server_contract::TiledPaneLay
             run_instructions_to_ignore: vec![], // not represented in protobuf
             hide_floating_panes: layout.hide_floating_panes,
             pane_initial_contents: layout.pane_initial_contents,
+            pane_id: None,
+            is_plugin: None,
         })
     }
 }
@@ -3566,6 +3573,8 @@ impl TryFrom<crate::client_server_contract::client_server_contract::FloatingPane
             already_running: layout.already_running,
             pane_initial_contents: layout.pane_initial_contents,
             logical_position: layout.logical_position.map(|p| p as usize),
+            pane_id: None,
+            is_plugin: None,
             borderless: layout.borderless,
         })
     }

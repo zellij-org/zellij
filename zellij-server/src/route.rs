@@ -412,7 +412,7 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
         },
-        Action::DumpLayout => {
+        Action::DumpLayout { with_ids } => {
             let default_shell = match default_shell {
                 Some(TerminalAction::RunCommand(run_command)) => Some(run_command.command),
                 _ => None,
@@ -423,6 +423,7 @@ pub(crate) fn route_action(
                     cli_client_id.unwrap_or(client_id), // we prefer the cli client here because
                     // this is a cli query and we want to print
                     // it there
+                    with_ids,
                     Some(NotificationEnd::new(completion_tx)),
                 ))
                 .with_context(err_context)?;

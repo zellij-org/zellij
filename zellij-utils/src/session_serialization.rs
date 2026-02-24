@@ -25,6 +25,7 @@ pub struct TabLayoutManifest {
     pub floating_panes: Vec<PaneLayoutManifest>,
     pub is_focused: bool,
     pub hide_floating_panes: bool,
+    pub tab_index: Option<usize>,
 }
 
 #[derive(Default, Debug, Clone)]
@@ -36,10 +37,13 @@ pub struct PaneLayoutManifest {
     pub title: Option<String>,
     pub is_focused: bool,
     pub pane_contents: Option<String>,
+    pub pane_id: Option<u32>,
+    pub is_plugin: Option<bool>,
 }
 
 pub fn serialize_session_layout(
     global_layout_manifest: GlobalLayoutManifest,
+    with_ids: bool,
 ) -> Result<(String, BTreeMap<String, String>), &'static str> {
     // BTreeMap is the pane contents and their file names
     let mut document = KdlDocument::new();
@@ -49,7 +53,7 @@ pub fn serialize_session_layout(
     if let Some(global_cwd) = serialize_global_cwd(&global_layout_manifest.global_cwd) {
         layout_node_children.nodes_mut().push(global_cwd);
     }
-    match serialize_multiple_tabs(global_layout_manifest.tabs, &mut pane_contents) {
+    match serialize_multiple_tabs(global_layout_manifest.tabs, &mut pane_contents, with_ids) {
         Ok(mut serialized_tabs) => {
             layout_node_children
                 .nodes_mut()
@@ -87,6 +91,8 @@ fn serialize_tab(
     tiled_panes: &Vec<PaneLayoutManifest>,
     floating_panes: &Vec<PaneLayoutManifest>,
     pane_contents: &mut BTreeMap<String, String>,
+    with_ids: bool,
+    tab_index: Option<usize>,
 ) -> Option<KdlNode> {
     let mut serialized_tab = KdlNode::new("tab");
     let mut serialized_tab_children = KdlDocument::new();
@@ -104,6 +110,14 @@ fn serialize_tab(
             serialized_tab
                 .entries_mut()
                 .push(KdlEntry::new_prop("name", tab_name));
+            if with_ids {
+                if let Some(idx) = tab_index {
+                    serialized_tab.entries_mut().push(KdlEntry::new_prop(
+                        "tab_index",
+                        KdlValue::Base10(idx as i64),
+                    ));
+                }
+            }
             if is_focused {
                 serialized_tab
                     .entries_mut()
@@ -121,6 +135,7 @@ fn serialize_tab(
                 floating_panes_layout,
                 pane_contents,
                 &mut serialized_tab_children,
+                with_ids,
             );
 
             serialized_tab.set_children(serialized_tab_children);
@@ -137,17 +152,19 @@ fn serialize_tiled_and_floating_panes(
     floating_panes_layout: Vec<FloatingPaneLayout>,
     pane_contents: &mut BTreeMap<String, String>,
     serialized_tab_children: &mut KdlDocument,
+    with_ids: bool,
 ) {
     for tiled_pane_layout in tiled_panes {
         let ignore_size = false;
-        let tiled_pane_node = serialize_tiled_pane(tiled_pane_layout, ignore_size, pane_contents);
+        let tiled_pane_node =
+            serialize_tiled_pane(tiled_pane_layout, ignore_size, pane_contents, with_ids);
         serialized_tab_children.nodes_mut().push(tiled_pane_node);
     }
     if !floating_panes_layout.is_empty() {
         let mut floating_panes_node = KdlNode::new("floating_panes");
         let mut floating_panes_node_children = KdlDocument::new();
         for floating_pane in floating_panes_layout {
-            let pane_node = serialize_floating_pane(&floating_pane, pane_contents);
+            let pane_node = serialize_floating_pane(&floating_pane, pane_contents, with_ids);
             floating_panes_node_children.nodes_mut().push(pane_node);
         }
         floating_panes_node.set_children(floating_panes_node_children);
@@ -161,6 +178,7 @@ fn serialize_tiled_pane(
     layout: &TiledPaneLayout,
     ignore_size: bool,
     pane_contents: &mut BTreeMap<String, String>,
+    with_ids: bool,
 ) -> KdlNode {
     let (command, args) = extract_command_and_args(&layout.run);
     let (plugin, plugin_config) = extract_plugin_and_config(&layout.run);
@@ -180,6 +198,20 @@ fn serialize_tiled_pane(
         has_children,
         &mut tiled_pane_node,
     );
+
+    // Serialize pane ID and is_plugin when with_ids is true
+    if with_ids {
+        if let Some(id) = layout.pane_id {
+            tiled_pane_node
+                .entries_mut()
+                .push(KdlEntry::new_prop("pane_id", KdlValue::Base10(id as i64)));
+        }
+        if let Some(is_plugin) = layout.is_plugin {
+            tiled_pane_node
+                .entries_mut()
+                .push(KdlEntry::new_prop("is_plugin", KdlValue::Bool(is_plugin)));
+        }
+    }
 
     serialize_tiled_layout_attributes(&layout, ignore_size, &mut tiled_pane_node);
     let has_child_attributes = !layout.children.is_empty()
@@ -204,7 +236,8 @@ fn serialize_tiled_pane(
                     .push(KdlNode::new("children"));
             } else {
                 let ignore_size = layout.children_are_stacked;
-                let child_pane_node = serialize_tiled_pane(&pane, ignore_size, pane_contents);
+                let child_pane_node =
+                    serialize_tiled_pane(&pane, ignore_size, pane_contents, with_ids);
                 tiled_pane_node_children.nodes_mut().push(child_pane_node);
             }
         }
@@ -500,6 +533,7 @@ fn serialize_new_tab_template(
             floating_panes,
             pane_contents,
             &mut new_tab_template_children,
+            false, // templates don't have runtime IDs
         );
         new_tab_template_node.set_children(new_tab_template_children);
         layout_children_node.nodes_mut().push(new_tab_template_node);
@@ -539,6 +573,7 @@ fn serialize_swap_tiled_layouts(
                 vec![],
                 pane_contents,
                 &mut layout_step_node_children,
+                false, // swap layouts don't have runtime IDs
             );
             layout_step_node.set_children(layout_step_node_children);
             swap_tiled_layout_node_children
@@ -594,7 +629,7 @@ fn serialize_swap_floating_layouts(
 
             for floating_pane_layout in floating_panes_layout {
                 let floating_pane_node =
-                    serialize_floating_pane(&floating_pane_layout, pane_contents);
+                    serialize_floating_pane(&floating_pane_layout, pane_contents, false);
                 layout_step_node_children
                     .nodes_mut()
                     .push(floating_pane_node);
@@ -614,12 +649,14 @@ fn serialize_swap_floating_layouts(
 fn serialize_multiple_tabs(
     tabs: Vec<(String, TabLayoutManifest)>,
     pane_contents: &mut BTreeMap<String, String>,
+    with_ids: bool,
 ) -> Result<Vec<KdlNode>, &'static str> {
     let mut serialized_tabs: Vec<KdlNode> = vec![];
     for (tab_name, tab_layout_manifest) in tabs {
         let tiled_panes = tab_layout_manifest.tiled_panes;
         let floating_panes = tab_layout_manifest.floating_panes;
         let hide_floating_panes = tab_layout_manifest.hide_floating_panes;
+        let tab_index = tab_layout_manifest.tab_index;
         let serialized = serialize_tab(
             tab_name.clone(),
             tab_layout_manifest.is_focused,
@@ -627,6 +664,8 @@ fn serialize_multiple_tabs(
             &tiled_panes,
             &floating_panes,
             pane_contents,
+            with_ids,
+            tab_index,
         );
         if let Some(serialized) = serialized {
             serialized_tabs.push(serialized);
@@ -640,6 +679,7 @@ fn serialize_multiple_tabs(
 fn serialize_floating_pane(
     layout: &FloatingPaneLayout,
     pane_contents: &mut BTreeMap<String, String>,
+    with_ids: bool,
 ) -> KdlNode {
     let mut floating_pane_node = KdlNode::new("pane");
     let mut floating_pane_node_children = KdlDocument::new();
@@ -659,6 +699,21 @@ fn serialize_floating_pane(
         has_children,
         &mut floating_pane_node,
     );
+
+    // Serialize pane ID and is_plugin when with_ids is true
+    if with_ids {
+        if let Some(id) = layout.pane_id {
+            floating_pane_node
+                .entries_mut()
+                .push(KdlEntry::new_prop("pane_id", KdlValue::Base10(id as i64)));
+        }
+        if let Some(is_plugin) = layout.is_plugin {
+            floating_pane_node
+                .entries_mut()
+                .push(KdlEntry::new_prop("is_plugin", KdlValue::Bool(is_plugin)));
+        }
+    }
+
     serialize_start_suspended(&command, &mut floating_pane_node_children);
     serialize_floating_layout_attributes(&layout, &mut floating_pane_node_children);
     serialize_args(args, &mut floating_pane_node_children);
@@ -709,7 +764,16 @@ fn tiled_pane_layout_from_manifest(
     manifest: Option<&PaneLayoutManifest>,
     split_size: Option<SplitSize>,
 ) -> TiledPaneLayout {
-    let (run, borderless, is_expanded_in_stack, name, focus, pane_initial_contents) = manifest
+    let (
+        run,
+        borderless,
+        is_expanded_in_stack,
+        name,
+        focus,
+        pane_initial_contents,
+        pane_id,
+        is_plugin,
+    ) = manifest
         .map(|g| {
             let mut run = g.run.clone();
             if let Some(cwd) = &g.cwd {
@@ -726,9 +790,11 @@ fn tiled_pane_layout_from_manifest(
                 g.title.clone(),
                 Some(g.is_focused),
                 g.pane_contents.clone(),
+                g.pane_id,
+                g.is_plugin,
             )
         })
-        .unwrap_or((None, None, false, None, None, None));
+        .unwrap_or((None, None, false, None, None, None, None, None));
     TiledPaneLayout {
         split_size,
         run,
@@ -737,6 +803,8 @@ fn tiled_pane_layout_from_manifest(
         name,
         focus,
         pane_initial_contents,
+        pane_id,
+        is_plugin,
         ..Default::default()
     }
 }
@@ -844,6 +912,8 @@ fn get_floating_panes_layout_from_panegeoms(
                 already_running: false,
                 pane_initial_contents: m.pane_contents.clone(),
                 logical_position: None,
+                pane_id: m.pane_id,
+                is_plugin: m.is_plugin,
                 borderless: Some(m.is_borderless),
             }
         })
@@ -1157,7 +1227,7 @@ mod tests {
             tabs: vec![("Tab #1".to_owned(), tab_layout_manifest)],
             ..Default::default()
         };
-        let kdl = serialize_session_layout(global_layout_manifest).unwrap();
+        let kdl = serialize_session_layout(global_layout_manifest, false).unwrap();
         expect![[r#"
             layout {
                 tab name="Tab #1" {
@@ -1185,7 +1255,7 @@ mod tests {
             tabs: vec![("Tab #1".to_owned(), tab_layout_manifest)],
             ..Default::default()
         };
-        let kdl = serialize_session_layout(global_layout_manifest).unwrap();
+        let kdl = serialize_session_layout(global_layout_manifest, false).unwrap();
         expect![[r#"
             layout {
                 tab name="Tab #1" {
@@ -1215,7 +1285,7 @@ mod tests {
             tabs: vec![("Tab #1".to_owned(), tab_layout_manifest)],
             ..Default::default()
         };
-        let kdl = serialize_session_layout(global_layout_manifest).unwrap();
+        let kdl = serialize_session_layout(global_layout_manifest, false).unwrap();
         expect![[r#"
             layout {
                 tab name="Tab #1" {
@@ -1253,7 +1323,7 @@ mod tests {
             tabs: vec![("Tab #1".to_owned(), tab_layout_manifest)],
             ..Default::default()
         };
-        let kdl = serialize_session_layout(global_layout_manifest).unwrap();
+        let kdl = serialize_session_layout(global_layout_manifest, false).unwrap();
         expect![[r#"
             layout {
                 tab name="Tab #1" {
@@ -1292,7 +1362,7 @@ mod tests {
             tabs: vec![("Tab #1".to_owned(), tab_layout_manifest)],
             ..Default::default()
         };
-        let kdl = serialize_session_layout(global_layout_manifest).unwrap();
+        let kdl = serialize_session_layout(global_layout_manifest, false).unwrap();
         expect![[r#"
             layout {
                 tab name="Tab #1" {
@@ -1316,7 +1386,7 @@ mod tests {
             global_cwd: Some(PathBuf::from("/path/to/m\"y/global cwd")),
             ..Default::default()
         };
-        let kdl = serialize_session_layout(global_layout_manifest).unwrap();
+        let kdl = serialize_session_layout(global_layout_manifest, false).unwrap();
         assert_snapshot!(kdl.0);
     }
 
@@ -1326,7 +1396,7 @@ mod tests {
             tabs: vec![("my \"tab \\name".to_owned(), TabLayoutManifest::default())],
             ..Default::default()
         };
-        let kdl = serialize_session_layout(global_layout_manifest).unwrap();
+        let kdl = serialize_session_layout(global_layout_manifest, false).unwrap();
         assert_snapshot!(kdl.0);
     }
     #[test]
@@ -1339,7 +1409,7 @@ mod tests {
             tabs: vec![("Tab #1".to_owned(), tab_layout_manifest)],
             ..Default::default()
         };
-        let kdl = serialize_session_layout(global_layout_manifest).unwrap();
+        let kdl = serialize_session_layout(global_layout_manifest, false).unwrap();
         assert_snapshot!(kdl.0);
     }
     #[test]
@@ -1352,7 +1422,7 @@ mod tests {
             tabs: vec![("Tab #1".to_owned(), tab_layout_manifest)],
             ..Default::default()
         };
-        let kdl = serialize_session_layout(global_layout_manifest).unwrap();
+        let kdl = serialize_session_layout(global_layout_manifest, false).unwrap();
         assert_snapshot!(kdl.0);
     }
     #[test]
@@ -1510,7 +1580,7 @@ mod tests {
             tabs: vec![("Tab with \"tiled panes\"".to_owned(), tab_layout_manifest)],
             ..Default::default()
         };
-        let kdl = serialize_session_layout(global_layout_manifest).unwrap();
+        let kdl = serialize_session_layout(global_layout_manifest, false).unwrap();
         assert_snapshot!(kdl.0);
     }
     #[test]
@@ -1673,7 +1743,7 @@ mod tests {
             )],
             ..Default::default()
         };
-        let kdl = serialize_session_layout(global_layout_manifest).unwrap();
+        let kdl = serialize_session_layout(global_layout_manifest, false).unwrap();
         assert_snapshot!(kdl.0);
     }
     #[test]
@@ -1723,7 +1793,7 @@ mod tests {
             tabs: vec![("Tab with \"stacked panes\"".to_owned(), tab_layout_manifest)],
             ..Default::default()
         };
-        let kdl = serialize_session_layout(global_layout_manifest).unwrap();
+        let kdl = serialize_session_layout(global_layout_manifest, false).unwrap();
         assert_snapshot!(kdl.0);
     }
     #[test]
@@ -1821,7 +1891,7 @@ mod tests {
             tabs: vec![("Tab with \"stacked panes\"".to_owned(), tab_layout_manifest)],
             ..Default::default()
         };
-        let kdl = serialize_session_layout(global_layout_manifest).unwrap();
+        let kdl = serialize_session_layout(global_layout_manifest, false).unwrap();
         assert_snapshot!(kdl.0);
     }
     #[test]
@@ -2003,7 +2073,7 @@ mod tests {
             tabs: vec![("Tab with \"stacked panes\"".to_owned(), tab_layout_manifest)],
             ..Default::default()
         };
-        let kdl = serialize_session_layout(global_layout_manifest).unwrap();
+        let kdl = serialize_session_layout(global_layout_manifest, false).unwrap();
         assert_snapshot!(kdl.0);
     }
     #[test]
@@ -2059,7 +2129,7 @@ mod tests {
             ],
             ..Default::default()
         };
-        let kdl = serialize_session_layout(global_layout_manifest).unwrap();
+        let kdl = serialize_session_layout(global_layout_manifest, false).unwrap();
         assert_snapshot!(kdl.0);
     }
     #[test]
@@ -2081,7 +2151,7 @@ mod tests {
             default_layout,
             ..Default::default()
         };
-        let kdl = serialize_session_layout(global_layout_manifest).unwrap();
+        let kdl = serialize_session_layout(global_layout_manifest, false).unwrap();
         assert_snapshot!(kdl.0);
     }
     #[test]
@@ -2112,7 +2182,7 @@ mod tests {
             default_layout,
             ..Default::default()
         };
-        let kdl = serialize_session_layout(global_layout_manifest).unwrap();
+        let kdl = serialize_session_layout(global_layout_manifest, false).unwrap();
         assert_snapshot!(kdl.0);
     }
     #[test]
@@ -2159,7 +2229,7 @@ mod tests {
             default_layout,
             ..Default::default()
         };
-        let kdl = serialize_session_layout(global_layout_manifest).unwrap();
+        let kdl = serialize_session_layout(global_layout_manifest, false).unwrap();
         assert_snapshot!(kdl.0);
     }
 
@@ -2196,5 +2266,69 @@ mod tests {
             panic!("Constraint is nor a percent nor fixed");
         };
         dim
+    }
+
+    #[test]
+    fn serialize_with_ids_includes_pane_id_and_tab_index() {
+        let geoms = PANEGEOMS_JSON[0]
+            .iter()
+            .enumerate()
+            .map(|(i, pg)| {
+                let geom = parse_panegeom_from_json(pg);
+                PaneLayoutManifest {
+                    geom,
+                    pane_id: Some(i as u32 + 1),
+                    is_plugin: Some(i == 0), // first pane is a plugin
+                    ..Default::default()
+                }
+            })
+            .collect();
+        let tab_layout_manifest = TabLayoutManifest {
+            tiled_panes: geoms,
+            tab_index: Some(0),
+            ..Default::default()
+        };
+        let global_layout_manifest = GlobalLayoutManifest {
+            tabs: vec![("Tab #1".to_owned(), tab_layout_manifest)],
+            ..Default::default()
+        };
+
+        // Without with_ids, pane_id and tab_index should NOT appear
+        let kdl_without = serialize_session_layout(global_layout_manifest.clone(), false).unwrap();
+        assert!(!kdl_without.0.contains("pane_id="));
+        assert!(!kdl_without.0.contains("tab_index="));
+
+        // With with_ids, pane_id and tab_index SHOULD appear
+        let kdl_with = serialize_session_layout(global_layout_manifest, true).unwrap();
+        assert!(
+            kdl_with.0.contains("pane_id=1"),
+            "Should contain pane_id=1, got: {}",
+            kdl_with.0
+        );
+        assert!(
+            kdl_with.0.contains("pane_id=2"),
+            "Should contain pane_id=2, got: {}",
+            kdl_with.0
+        );
+        assert!(
+            kdl_with.0.contains("pane_id=3"),
+            "Should contain pane_id=3, got: {}",
+            kdl_with.0
+        );
+        assert!(
+            kdl_with.0.contains("tab_index=0"),
+            "Should contain tab_index=0, got: {}",
+            kdl_with.0
+        );
+        assert!(
+            kdl_with.0.contains("is_plugin=true"),
+            "Should contain is_plugin=true, got: {}",
+            kdl_with.0
+        );
+        assert!(
+            kdl_with.0.contains("is_plugin=false"),
+            "Should contain is_plugin=false, got: {}",
+            kdl_with.0
+        );
     }
 }

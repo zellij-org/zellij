@@ -3742,6 +3742,7 @@ pub fn send_cli_rename_tab() {
     );
     let rename_tab = CliAction::RenameTab {
         name: "new-tab-name".into(),
+        tab_index: None,
     };
     send_cli_action_to_server(&session_metadata, rename_tab, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -3787,6 +3788,7 @@ pub fn send_cli_undo_rename_tab() {
     );
     let rename_tab = CliAction::RenameTab {
         name: "new-tab-name".into(),
+        tab_index: None,
     };
     let undo_rename_tab = CliAction::UndoRenameTab;
     // first rename the tab

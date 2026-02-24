@@ -102,7 +102,12 @@ pub enum PtyInstruction {
         ClientTabIndexOrPaneId,
         Option<NotificationEnd>, // completion signal
     ), // String is an optional pane name
-    DumpLayout(SessionLayoutMetadata, ClientId, Option<NotificationEnd>),
+    DumpLayout(
+        SessionLayoutMetadata,
+        ClientId,
+        bool,
+        Option<NotificationEnd>,
+    ), // bool is with_ids
     DumpLayoutToPlugin {
         session_layout_metadata: SessionLayoutMetadata,
         plugin_id: PluginId,
@@ -669,11 +674,17 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     },
                 }
             },
-            PtyInstruction::DumpLayout(mut session_layout_metadata, client_id, completion_tx) => {
+            PtyInstruction::DumpLayout(
+                mut session_layout_metadata,
+                client_id,
+                with_ids,
+                completion_tx,
+            ) => {
                 let err_context = || format!("Failed to dump layout");
                 pty.populate_session_layout_metadata(&mut session_layout_metadata);
                 match session_serialization::serialize_session_layout(
                     session_layout_metadata.into(),
+                    with_ids,
                 ) {
                     Ok((kdl_layout, _pane_contents)) => {
                         pty.bus
@@ -762,6 +773,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                 if session_layout_metadata.is_dirty() {
                     match session_serialization::serialize_session_layout(
                         session_layout_metadata.into(),
+                        false, // don't include IDs for HD logging
                     ) {
                         Ok(kdl_layout_and_pane_contents) => {
                             pty.bus
@@ -786,6 +798,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                 pty.populate_session_layout_metadata(&mut session_layout_metadata);
                 match session_serialization::serialize_session_layout(
                     session_layout_metadata.into(),
+                    false, // don't include IDs for save-to-disk
                 ) {
                     Ok(kdl_and_files) => {
                         write_session_state_to_disk(

@@ -694,7 +694,11 @@ pub enum CliAction {
         full: bool,
     },
     /// Dump current layout to stdout
-    DumpLayout,
+    DumpLayout {
+        /// Include pane and tab IDs in the output (useful for scripting)
+        #[clap(long, value_parser, default_value("false"), takes_value(false))]
+        with_ids: bool,
+    },
     /// Save the current session state to disk immediately
     SaveSession,
     /// Open the pane scrollback in your default editor
@@ -910,6 +914,7 @@ pub enum CliAction {
     /// Renames the focused pane
     RenamePane {
         name: String,
+        pane_id: Option<u32>,
     },
     /// Remove a previously set pane name
     UndoRenamePane,
@@ -932,9 +937,10 @@ pub enum CliAction {
         #[clap(short, long, value_parser)]
         create: bool,
     },
-    /// Renames the focused pane
+    /// Renames a tab by index or renames the focused tab
     RenameTab {
         name: String,
+        tab_index: Option<u32>,
     },
     /// Remove a previously set tab name
     UndoRenameTab,

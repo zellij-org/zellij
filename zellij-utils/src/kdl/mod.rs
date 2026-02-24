@@ -541,7 +541,7 @@ impl Action {
                 file_path: string,
                 include_scrollback: false,
             }),
-            "DumpLayout" => Ok(Action::DumpLayout),
+            "DumpLayout" => Ok(Action::DumpLayout { with_ids: false }),
             "NewPane" => {
                 if string.is_empty() {
                     return Ok(Action::NewPane {
@@ -696,7 +696,7 @@ impl Action {
                 node.push(file.clone());
                 Some(node)
             },
-            Action::DumpLayout => Some(KdlNode::new("DumpLayout")),
+            Action::DumpLayout { .. } => Some(KdlNode::new("DumpLayout")),
             Action::EditScrollback => Some(KdlNode::new("EditScrollback")),
             Action::EditScrollbackRaw => Some(KdlNode::new("EditScrollbackRaw")),
             Action::ScrollUp => Some(KdlNode::new("ScrollUp")),

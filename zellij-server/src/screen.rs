@@ -289,8 +289,7 @@ pub enum ScreenInstruction {
     Exit,
     ClearScreen(ClientId, Option<NotificationEnd>),
     DumpScreen(String, ClientId, bool, Option<NotificationEnd>),
-    DumpLayout(Option<PathBuf>, ClientId, Option<NotificationEnd>), // PathBuf is the default configured
-    // shell
+    DumpLayout(Option<PathBuf>, ClientId, bool, Option<NotificationEnd>), // PathBuf is the default configured shell, bool is with_ids
     SaveSession(ClientId, Option<NotificationEnd>),
     DumpLayoutToPlugin {
         plugin_id: PluginId,
@@ -4629,7 +4628,7 @@ pub(crate) fn screen_thread_main(
                 );
                 screen.render(None)?;
             },
-            ScreenInstruction::DumpLayout(default_shell, client_id, completion_tx) => {
+            ScreenInstruction::DumpLayout(default_shell, client_id, with_ids, completion_tx) => {
                 let err_context = || format!("Failed to dump layout");
                 let session_layout_metadata = screen.get_layout_metadata(default_shell, None);
                 screen
@@ -4638,6 +4637,7 @@ pub(crate) fn screen_thread_main(
                     .send_to_plugin(PluginInstruction::DumpLayout(
                         session_layout_metadata,
                         client_id,
+                        with_ids,
                         completion_tx,
                     ))
                     .with_context(err_context)?;

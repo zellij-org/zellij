@@ -241,6 +241,7 @@ message Action {
     RenameTabByIdAction rename_tab_by_id = 103;
     ListTabsAction list_tabs = 104;
     CurrentTabInfoAction current_tab_info = 105;
+    RenameTabByNameAction rename_tab_by_name = 106;
   }
 }
 
@@ -253,7 +254,9 @@ message FocusPreviousPaneAction {}
 message SwitchFocusAction {}
 message MovePaneBackwardsAction {}
 message ClearScreenAction {}
-message DumpLayoutAction {}
+message DumpLayoutAction {
+  bool with_ids = 1;
+}
 message SaveSessionAction {}
 message EditScrollbackAction {}
 message ScrollUpAction {}
@@ -589,6 +592,11 @@ message CloseTabByIdAction {
 message RenameTabByIdAction {
   uint64 id = 1;
   string name = 2;
+}
+
+message RenameTabByNameAction {
+  string current_name = 1;
+  repeated uint32 new_name = 2;
 }
 
 message RenameSessionAction {
