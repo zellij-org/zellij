@@ -1,5 +1,6 @@
 use super::super::{CharacterChunk, FloatingPanesStack, Output, OutputBuffer, SixelImageChunk};
 use crate::panes::sixel::SixelImageStore;
+use crate::panes::terminal_character::AnsiCode;
 use crate::panes::{LinkHandler, Row, TerminalCharacter};
 use crate::ClientId;
 use std::cell::RefCell;
@@ -1032,4 +1033,81 @@ fn test_output_buffer_changed_chunks_in_viewport_partial() {
     assert_eq!(chunks[0].y, 2, "First chunk should be at line 2");
     assert_eq!(chunks[1].y, 5, "Second chunk should be at line 5");
     assert_eq!(chunks[2].y, 7, "Third chunk should be at line 7");
+}
+
+#[test]
+fn test_pane_defaults_preserved_when_middle_covered() {
+    let pane_geom = create_pane_geom(5, 5, 3, 1);
+    let stack = FloatingPanesStack {
+        layers: vec![pane_geom],
+    };
+
+    let pane_bg = Some(AnsiCode::RgbCode((0, 26, 58)));
+    let pane_fg = Some(AnsiCode::RgbCode((0, 224, 0)));
+
+    let mut chunk = create_character_chunk_from_str("0123456789", 0, 5);
+    chunk.pane_default_bg = pane_bg;
+    chunk.pane_default_fg = pane_fg;
+
+    let visible = stack
+        .visible_character_chunks(vec![chunk], Some(0))
+        .unwrap();
+
+    assert_eq!(visible.len(), 2, "Middle split should produce two chunks");
+    for (i, chunk) in visible.iter().enumerate() {
+        assert_eq!(
+            chunk.pane_default_bg, pane_bg,
+            "Chunk {i} should preserve pane_default_bg"
+        );
+        assert_eq!(
+            chunk.pane_default_fg, pane_fg,
+            "Chunk {i} should preserve pane_default_fg"
+        );
+    }
+}
+
+#[test]
+fn test_pane_defaults_preserved_when_left_covered() {
+    let pane_geom = create_pane_geom(0, 5, 5, 1);
+    let stack = FloatingPanesStack {
+        layers: vec![pane_geom],
+    };
+
+    let pane_bg = Some(AnsiCode::RgbCode((0, 26, 58)));
+
+    let mut chunk = create_character_chunk_from_str("0123456789", 0, 5);
+    chunk.pane_default_bg = pane_bg;
+
+    let visible = stack
+        .visible_character_chunks(vec![chunk], Some(0))
+        .unwrap();
+
+    assert_eq!(visible.len(), 1, "Left-covered should produce one chunk");
+    assert_eq!(
+        visible[0].pane_default_bg, pane_bg,
+        "Remaining chunk should preserve pane_default_bg"
+    );
+}
+
+#[test]
+fn test_pane_defaults_preserved_when_right_covered() {
+    let pane_geom = create_pane_geom(5, 5, 10, 1);
+    let stack = FloatingPanesStack {
+        layers: vec![pane_geom],
+    };
+
+    let pane_bg = Some(AnsiCode::RgbCode((0, 26, 58)));
+
+    let mut chunk = create_character_chunk_from_str("0123456789", 0, 5);
+    chunk.pane_default_bg = pane_bg;
+
+    let visible = stack
+        .visible_character_chunks(vec![chunk], Some(0))
+        .unwrap();
+
+    assert_eq!(visible.len(), 1, "Right-covered should produce one chunk");
+    assert_eq!(
+        visible[0].pane_default_bg, pane_bg,
+        "Remaining chunk should preserve pane_default_bg"
+    );
 }

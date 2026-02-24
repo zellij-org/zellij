@@ -196,6 +196,7 @@ enum CommandName {
   OpenCommandPaneInPlaceOfPaneId = 201;
   OpenTerminalPaneInPlaceOfPaneId = 202;
   OpenEditPaneInPlaceOfPaneId = 203;
+  SetPaneColor = 204;
 }
 
 message PluginCommand {
@@ -341,6 +342,7 @@ message PluginCommand {
     OpenCommandPaneInPlaceOfPaneIdPayload open_command_pane_in_place_of_pane_id_payload = 152;
     OpenTerminalPaneInPlaceOfPaneIdPayload open_terminal_pane_in_place_of_pane_id_payload = 153;
     OpenEditPaneInPlaceOfPaneIdPayload open_edit_pane_in_place_of_pane_id_payload = 154;
+    SetPaneColorPayload set_pane_color_payload = 155;
   }
 }
 
@@ -1185,4 +1187,10 @@ message OpenTerminalPaneInPlaceOfPaneIdResponse {
 
 message OpenEditPaneInPlaceOfPaneIdResponse {
   optional PaneId pane_id = 1;
+}
+
+message SetPaneColorPayload {
+  PaneId pane_id = 1;
+  optional string fg = 2;
+  optional string bg = 3;
 }

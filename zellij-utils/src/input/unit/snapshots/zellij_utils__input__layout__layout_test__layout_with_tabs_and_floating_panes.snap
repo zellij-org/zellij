@@ -1,5 +1,6 @@
 ---
 source: zellij-utils/src/input/./unit/layout_test.rs
+assertion_line: 305
 expression: "format!(\"{:#?}\", layout)"
 ---
 Layout {
@@ -25,6 +26,8 @@ Layout {
                         run_instructions_to_ignore: [],
                         hide_floating_panes: false,
                         pane_initial_contents: None,
+                        default_fg: None,
+                        default_bg: None,
                     },
                 ],
                 split_size: None,
@@ -38,6 +41,8 @@ Layout {
                 run_instructions_to_ignore: [],
                 hide_floating_panes: false,
                 pane_initial_contents: None,
+                default_fg: None,
+                default_bg: None,
             },
             [
                 FloatingPaneLayout {
@@ -53,6 +58,8 @@ Layout {
                     already_running: false,
                     pane_initial_contents: None,
                     logical_position: None,
+                    default_fg: None,
+                    default_bg: None,
                 },
             ],
         ),
@@ -77,6 +84,8 @@ Layout {
                         run_instructions_to_ignore: [],
                         hide_floating_panes: false,
                         pane_initial_contents: None,
+                        default_fg: None,
+                        default_bg: None,
                     },
                 ],
                 split_size: None,
@@ -90,6 +99,8 @@ Layout {
                 run_instructions_to_ignore: [],
                 hide_floating_panes: false,
                 pane_initial_contents: None,
+                default_fg: None,
+                default_bg: None,
             },
             [
                 FloatingPaneLayout {
@@ -105,6 +116,8 @@ Layout {
                     already_running: false,
                     pane_initial_contents: None,
                     logical_position: None,
+                    default_fg: None,
+                    default_bg: None,
                 },
                 FloatingPaneLayout {
                     name: None,
@@ -119,6 +132,8 @@ Layout {
                     already_running: false,
                     pane_initial_contents: None,
                     logical_position: None,
+                    default_fg: None,
+                    default_bg: None,
                 },
             ],
         ),
@@ -141,6 +156,8 @@ Layout {
                 run_instructions_to_ignore: [],
                 hide_floating_panes: false,
                 pane_initial_contents: None,
+                default_fg: None,
+                default_bg: None,
             },
             [],
         ),

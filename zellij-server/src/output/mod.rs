@@ -113,6 +113,8 @@ fn serialize_chunks_with_newlines(
         }
 
         let chunk_changed_colors = character_chunk.changed_colors();
+        let pane_default_fg = character_chunk.pane_default_fg;
+        let pane_default_bg = character_chunk.pane_default_bg;
         let mut character_styles = DEFAULT_STYLES.enable_styled_underlines(styled_underlines);
         vte_output.push_str("\n\r");
         let mut chunk_width = character_chunk.x;
@@ -124,12 +126,27 @@ fn serialize_chunks_with_newlines(
                 }
             }
 
-            let current_character_styles = adjust_styles_for_possible_selection(
+            let mut current_character_styles = adjust_styles_for_possible_selection(
                 character_chunk.selection_and_colors(),
                 *t_character.styles,
                 character_chunk.y,
                 chunk_width,
             );
+            // Apply pane default color fallbacks for cells with no explicit fg/bg
+            if current_character_styles.foreground.is_none()
+                || current_character_styles.foreground == Some(AnsiCode::Reset)
+            {
+                if let Some(fg) = pane_default_fg {
+                    current_character_styles.foreground = Some(fg);
+                }
+            }
+            if current_character_styles.background.is_none()
+                || current_character_styles.background == Some(AnsiCode::Reset)
+            {
+                if let Some(bg) = pane_default_bg {
+                    current_character_styles.background = Some(bg);
+                }
+            }
             write_changed_styles(
                 &mut character_styles,
                 current_character_styles,
@@ -171,6 +188,8 @@ fn serialize_chunks(
         }
 
         let chunk_changed_colors = character_chunk.changed_colors();
+        let pane_default_fg = character_chunk.pane_default_fg;
+        let pane_default_bg = character_chunk.pane_default_bg;
         let mut character_styles = DEFAULT_STYLES.enable_styled_underlines(styled_underlines);
         vte_goto_instruction(character_chunk.x, character_chunk.y, &mut vte_output)
             .with_context(err_context)?;
@@ -183,12 +202,26 @@ fn serialize_chunks(
                 }
             }
 
-            let current_character_styles = adjust_styles_for_possible_selection(
+            let mut current_character_styles = adjust_styles_for_possible_selection(
                 character_chunk.selection_and_colors(),
                 *t_character.styles,
                 character_chunk.y,
                 chunk_width,
             );
+            if current_character_styles.foreground.is_none()
+                || current_character_styles.foreground == Some(AnsiCode::Reset)
+            {
+                if let Some(fg) = pane_default_fg {
+                    current_character_styles.foreground = Some(fg);
+                }
+            }
+            if current_character_styles.background.is_none()
+                || current_character_styles.background == Some(AnsiCode::Reset)
+            {
+                if let Some(bg) = pane_default_bg {
+                    current_character_styles.background = Some(bg);
+                }
+            }
             write_changed_styles(
                 &mut character_styles,
                 current_character_styles,
@@ -745,6 +778,9 @@ impl FloatingPanesStack {
                 let right_chunk_x = pane_right_edge + 1;
                 let mut left_chunk =
                     CharacterChunk::new(left_chunk_characters, left_chunk_x, c_chunk.y);
+                left_chunk.pane_default_fg = c_chunk.pane_default_fg;
+                left_chunk.pane_default_bg = c_chunk.pane_default_bg;
+                left_chunk.changed_colors = c_chunk.changed_colors;
                 if !c_chunk.selection_and_colors.is_empty() {
                     left_chunk.selection_and_colors = c_chunk.selection_and_colors.clone();
                 }
@@ -947,6 +983,8 @@ pub struct CharacterChunk {
     pub y: usize,
     pub changed_colors: Option<[Option<AnsiCode>; 256]>,
     selection_and_colors: Vec<(Selection, AnsiCode, Option<AnsiCode>)>, // Selection, background color, optional foreground color
+    pub pane_default_fg: Option<AnsiCode>,
+    pub pane_default_bg: Option<AnsiCode>,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -989,6 +1027,10 @@ impl CharacterChunk {
     }
     pub fn add_changed_colors(&mut self, changed_colors: Option<[Option<AnsiCode>; 256]>) {
         self.changed_colors = changed_colors;
+    }
+    pub fn add_pane_defaults(&mut self, fg: Option<AnsiCode>, bg: Option<AnsiCode>) {
+        self.pane_default_fg = fg;
+        self.pane_default_bg = bg;
     }
     pub fn changed_colors(&self) -> Option<[Option<AnsiCode>; 256]> {
         self.changed_colors

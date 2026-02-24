@@ -1975,6 +1975,8 @@ fn test_client_messages() {
                     already_running: true,
                     pane_initial_contents: Some("pane_initial_contents".to_owned()),
                     logical_position: Some(15),
+                    default_fg: None,
+                    default_bg: None,
                 },
                 FloatingPaneLayout {
                     name: Some("third floating layout".to_owned()),
@@ -2720,6 +2722,26 @@ fn test_client_messages() {
         client_id: Some(100),
         is_cli_client: true,
     });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::SetPaneColor {
+            pane_id: PaneId::Terminal(0),
+            fg: Some("#00e000".to_owned()),
+            bg: Some("#001a3a".to_owned()),
+        },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::SetPaneColor {
+            pane_id: PaneId::Plugin(2),
+            fg: None,
+            bg: None,
+        },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
     test_client_roundtrip!(ClientToServerMsg::Key {
         key: KeyWithModifier {
             bare_key: BareKey::PageDown,
@@ -3128,4 +3150,42 @@ fn test_server_messages() {
             cwd: Some(PathBuf::from("/path/to/cwd")),
         }
     });
+}
+
+#[test]
+fn set_pane_color_wire_roundtrip() {
+    // Test actual byte-level encode/decode, not just struct conversion
+    use prost::Message;
+
+    let original = ClientToServerMsg::Action {
+        action: Action::SetPaneColor {
+            pane_id: PaneId::Terminal(0),
+            fg: Some("#00e000".to_owned()),
+            bg: Some("#001a3a".to_owned()),
+        },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    };
+
+    // Rust -> proto struct
+    let proto: crate::client_server_contract::client_server_contract::ClientToServerMsg =
+        original.clone().into();
+
+    // proto struct -> bytes (what goes over the wire)
+    let bytes = proto.encode_to_vec();
+
+    // bytes -> proto struct (what the server does)
+    let decoded_proto =
+        crate::client_server_contract::client_server_contract::ClientToServerMsg::decode(
+            &bytes[..],
+        )
+        .expect("Failed to decode protobuf bytes");
+
+    // proto struct -> Rust
+    let roundtrip: ClientToServerMsg = decoded_proto
+        .try_into()
+        .expect("Failed to convert decoded protobuf back to Rust");
+
+    assert_eq!(original, roundtrip);
 }

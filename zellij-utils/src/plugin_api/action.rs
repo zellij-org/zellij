@@ -1799,7 +1799,8 @@ impl TryFrom<Action> for ProtobufAction {
             | Action::SwitchSession { .. }
             | Action::SaveSession
             | Action::ListTabs { .. }
-            | Action::CurrentTabInfo { .. } => Err("Unsupported action"),
+            | Action::CurrentTabInfo { .. }
+            | Action::SetPaneColor { .. } => Err("Unsupported action"),
         }
     }
 }
@@ -2879,6 +2880,8 @@ impl TryFrom<ProtobufTiledPaneLayout> for TiledPaneLayout {
             run_instructions_to_ignore,
             hide_floating_panes: protobuf.hide_floating_panes,
             pane_initial_contents: protobuf.pane_initial_contents,
+            default_fg: None,
+            default_bg: None,
         })
     }
 }
@@ -2935,6 +2938,8 @@ impl TryFrom<ProtobufFloatingPaneLayout> for FloatingPaneLayout {
             pane_initial_contents: protobuf.pane_initial_contents,
             logical_position: protobuf.logical_position.map(|p| p as usize),
             borderless: protobuf.borderless,
+            default_fg: None,
+            default_bg: None,
         })
     }
 }

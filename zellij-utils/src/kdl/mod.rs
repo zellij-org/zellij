@@ -5862,6 +5862,8 @@ impl PaneInfo {
             plugin_url,
             is_selectable,
             index_in_pane_group: Default::default(), // we don't serialize this
+            default_fg: None,
+            default_bg: None,
         };
         Ok((tab_position, pane_info))
     }
@@ -6010,6 +6012,8 @@ fn serialize_and_deserialize_session_info_with_data() {
             plugin_url: None,
             is_selectable: true,
             index_in_pane_group: Default::default(), // we don't serialize this
+            default_fg: None,
+            default_bg: None,
         },
         PaneInfo {
             id: 1,
@@ -6035,6 +6039,8 @@ fn serialize_and_deserialize_session_info_with_data() {
             plugin_url: Some("i_am_a_fake_plugin".to_owned()),
             is_selectable: true,
             index_in_pane_group: Default::default(), // we don't serialize this
+            default_fg: None,
+            default_bg: None,
         },
     ];
     let mut panes = HashMap::new();

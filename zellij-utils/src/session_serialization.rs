@@ -845,6 +845,8 @@ fn get_floating_panes_layout_from_panegeoms(
                 pane_initial_contents: m.pane_contents.clone(),
                 logical_position: None,
                 borderless: Some(m.is_borderless),
+                default_fg: None,
+                default_bg: None,
             }
         })
         .collect()

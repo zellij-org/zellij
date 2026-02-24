@@ -588,6 +588,12 @@ pub enum ScreenInstruction {
     ResizePaneWithId(ResizeStrategy, PaneId),
     EditScrollbackForPaneWithId(PaneId, Option<NotificationEnd>),
     WriteToPaneId(Vec<u8>, PaneId, Option<NotificationEnd>),
+    SetPaneColor(
+        PaneId,
+        Option<String>,
+        Option<String>,
+        Option<NotificationEnd>,
+    ),
     WriteKeyToPaneId(
         Option<KeyWithModifier>,
         Vec<u8>,
@@ -850,6 +856,7 @@ impl From<&ScreenInstruction> for ScreenContext {
                 ScreenContext::EditScrollbackForPaneWithId
             },
             ScreenInstruction::WriteToPaneId(..) => ScreenContext::WriteToPaneId,
+            ScreenInstruction::SetPaneColor(..) => ScreenContext::SetPaneColor,
             ScreenInstruction::WriteKeyToPaneId(..) => ScreenContext::WriteKeyToPaneId,
             ScreenInstruction::CopyTextToClipboard(..) => ScreenContext::CopyTextToClipboard,
             ScreenInstruction::MovePaneWithPaneId(..) => ScreenContext::MovePaneWithPaneId,
@@ -6875,6 +6882,16 @@ pub(crate) fn screen_thread_main(
                     if tab.has_pane_with_pid(&pane_id) {
                         tab.write_to_pane_id(&None, bytes, false, pane_id, None, None)
                             .non_fatal();
+                        break;
+                    }
+                }
+                screen.render(None)?;
+            },
+            ScreenInstruction::SetPaneColor(pane_id, fg, bg, _completion) => {
+                let all_tabs = screen.get_tabs_mut();
+                for tab in all_tabs.values_mut() {
+                    if tab.has_pane_with_pid(&pane_id) {
+                        tab.set_pane_color(pane_id, fg, bg).non_fatal();
                         break;
                     }
                 }

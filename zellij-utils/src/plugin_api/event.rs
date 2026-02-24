@@ -1560,6 +1560,8 @@ impl TryFrom<ProtobufPaneInfo> for PaneInfo {
                     )
                 })
                 .collect(),
+            default_fg: protobuf_pane_info.default_fg,
+            default_bg: protobuf_pane_info.default_bg,
         })
     }
 }
@@ -1603,6 +1605,8 @@ impl TryFrom<PaneInfo> for ProtobufPaneInfo {
                     index: index as u32,
                 })
                 .collect(),
+            default_fg: pane_info.default_fg,
+            default_bg: pane_info.default_bg,
         })
     }
 }
@@ -2499,6 +2503,8 @@ fn serialize_session_update_event_with_non_default_values() {
             plugin_url: None,
             is_selectable: true,
             index_in_pane_group: index_in_pane_group_1,
+            default_fg: None,
+            default_bg: None,
         },
         PaneInfo {
             id: 1,
@@ -2524,6 +2530,8 @@ fn serialize_session_update_event_with_non_default_values() {
             plugin_url: Some("i_am_a_fake_plugin".to_owned()),
             is_selectable: true,
             index_in_pane_group: index_in_pane_group_2,
+            default_fg: None,
+            default_bg: None,
         },
     ];
     panes.insert(0, panes_list);
