@@ -198,18 +198,6 @@ Config {
                 ),
                 initial_cwd: None,
             },
-            "sequence": RunPlugin {
-                _allow_exec_host_cmd: false,
-                location: Zellij(
-                    PluginTag(
-                        "sequence",
-                    ),
-                ),
-                configuration: PluginUserConfiguration(
-                    {},
-                ),
-                initial_cwd: None,
-            },
             "session-manager": RunPlugin {
                 _allow_exec_host_cmd: false,
                 location: Zellij(

@@ -52,7 +52,6 @@ members = [
     "default-plugins/about",
     "default-plugins/share",
     "default-plugins/multiple-select",
-    "default-plugins/sequence",
     "default-plugins/layout-manager",
     "zellij-client",
     "zellij-server",
