@@ -26,6 +26,15 @@ const ENABLE_MOUSE_SUPPORT: &str =
 const DISABLE_MOUSE_SUPPORT: &str =
     "\u{1b}[?1006l\u{1b}[?1015l\u{1b}[?1003l\u{1b}[?1002l\u{1b}[?1000l";
 
+/// Enable ENABLE_VIRTUAL_TERMINAL_PROCESSING on stdout so that ConPTY enters
+/// passthrough mode and forwards DEC private mode sequences (like mouse-enable)
+/// to the terminal emulator.  Uses crossterm's safe wrapper which handles the
+/// GetConsoleMode/SetConsoleMode internally.
+#[cfg(windows)]
+fn enable_vt_processing_on_stdout() {
+    crossterm::ansi_support::supports_ansi();
+}
+
 /// Trait for async stdin reading, allowing for testable implementations
 #[async_trait]
 pub trait AsyncStdin: Send {
@@ -324,9 +333,30 @@ impl ClientOsApi for ClientOsInputOutput {
         }
         #[cfg(windows)]
         {
-            let mut stdout = self.get_stdout_writer();
-            crossterm::execute!(stdout, crossterm::event::EnableMouseCapture)
-                .context(err_context)?;
+            // When TERM is set we're on the VT input path (terminal emulator like
+            // Alacritty via ConPTY). We must NOT use crossterm's EnableMouseCapture
+            // because it does a full SetConsoleMode() that would overwrite the mode
+            // set by enable_vt_input(), clobbering ENABLE_VIRTUAL_TERMINAL_INPUT.
+            //
+            // Instead, we enable ENABLE_VIRTUAL_TERMINAL_PROCESSING on stdout so
+            // ConPTY enters passthrough mode, then write ANSI mouse-enable sequences.
+            // The terminal emulator sees these and starts sending mouse events as VT
+            // sequences, which arrive on stdin via ENABLE_VIRTUAL_TERMINAL_INPUT.
+            //
+            // When TERM is not set we're in a native console (cmd, PowerShell,
+            // Windows Terminal) and use crossterm's Console API approach.
+            if std::env::var("TERM").is_ok() {
+                enable_vt_processing_on_stdout();
+                let mut stdout = self.get_stdout_writer();
+                stdout
+                    .write_all(ENABLE_MOUSE_SUPPORT.as_bytes())
+                    .context(err_context)?;
+                stdout.flush().context(err_context)?;
+            } else {
+                let mut stdout = self.get_stdout_writer();
+                crossterm::execute!(stdout, crossterm::event::EnableMouseCapture)
+                    .context(err_context)?;
+            }
         }
         Ok(())
     }
@@ -343,9 +373,18 @@ impl ClientOsApi for ClientOsInputOutput {
         }
         #[cfg(windows)]
         {
-            let mut stdout = self.get_stdout_writer();
-            crossterm::execute!(stdout, crossterm::event::DisableMouseCapture)
-                .context(err_context)?;
+            // See enable_mouse() for rationale on VT vs Console API paths.
+            if std::env::var("TERM").is_ok() {
+                let mut stdout = self.get_stdout_writer();
+                stdout
+                    .write_all(DISABLE_MOUSE_SUPPORT.as_bytes())
+                    .context(err_context)?;
+                stdout.flush().context(err_context)?;
+            } else {
+                let mut stdout = self.get_stdout_writer();
+                crossterm::execute!(stdout, crossterm::event::DisableMouseCapture)
+                    .context(err_context)?;
+            }
         }
         Ok(())
     }

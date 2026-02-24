@@ -20,15 +20,20 @@ fn send_done_parsing_after_query_timeout(
     });
 }
 
-/// On Windows, enable ENABLE_VIRTUAL_TERMINAL_INPUT on the stdin console handle
-/// so that ReadFile/ReadConsole returns raw VT byte sequences instead of going
-/// through conpty's lossy VT→INPUT_RECORD translation.
+/// On Windows, set the stdin console mode for raw VT input.
+///
+/// Instead of just ORing in ENABLE_VIRTUAL_TERMINAL_INPUT on top of whatever
+/// the current mode happens to be, we explicitly set the exact mode we need.
+/// This avoids a TOCTOU race with crossterm's EnableMouseCapture (which also
+/// does GetConsoleMode/SetConsoleMode) and ensures flags like
+/// ENABLE_QUICK_EDIT_MODE are always cleared — that flag intercepts mouse
+/// events at the console level, breaking application mouse support.
 #[cfg(windows)]
 fn enable_vt_input() -> bool {
     use windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE;
     use windows_sys::Win32::System::Console::{
-        GetConsoleMode, GetStdHandle, SetConsoleMode, ENABLE_VIRTUAL_TERMINAL_INPUT,
-        STD_INPUT_HANDLE,
+        GetConsoleMode, GetStdHandle, SetConsoleMode, ENABLE_EXTENDED_FLAGS, ENABLE_MOUSE_INPUT,
+        ENABLE_VIRTUAL_TERMINAL_INPUT, ENABLE_WINDOW_INPUT, STD_INPUT_HANDLE,
     };
     unsafe {
         let handle = GetStdHandle(STD_INPUT_HANDLE);
@@ -39,7 +44,28 @@ fn enable_vt_input() -> bool {
         if GetConsoleMode(handle, &mut mode) == 0 {
             return false;
         }
-        if SetConsoleMode(handle, mode | ENABLE_VIRTUAL_TERMINAL_INPUT) == 0 {
+        // Explicitly set the mode we need rather than read-modify-write.
+        // This eliminates the race with crossterm's EnableMouseCapture which
+        // also calls GetConsoleMode/SetConsoleMode concurrently.
+        //
+        // Flags we set:
+        //   ENABLE_WINDOW_INPUT           (0x0008) - receive window resize events
+        //   ENABLE_MOUSE_INPUT            (0x0010) - receive mouse events; on ConPTY
+        //                                            this signals the terminal emulator
+        //                                            to capture and forward mouse input
+        //   ENABLE_EXTENDED_FLAGS         (0x0080) - required to clear QUICK_EDIT
+        //   ENABLE_VIRTUAL_TERMINAL_INPUT (0x0200) - stdin returns raw VT bytes
+        //
+        // Flags we deliberately clear:
+        //   ENABLE_PROCESSED_INPUT  (0x0001) - let VT sequences through raw
+        //   ENABLE_LINE_INPUT       (0x0002) - no line buffering
+        //   ENABLE_ECHO_INPUT       (0x0004) - no echo
+        //   ENABLE_QUICK_EDIT_MODE  (0x0040) - would intercept mouse events
+        let new_mode = ENABLE_WINDOW_INPUT
+            | ENABLE_MOUSE_INPUT
+            | ENABLE_EXTENDED_FLAGS
+            | ENABLE_VIRTUAL_TERMINAL_INPUT;
+        if SetConsoleMode(handle, new_mode) == 0 {
             return false;
         }
         true
