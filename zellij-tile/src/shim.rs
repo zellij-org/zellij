@@ -868,6 +868,19 @@ pub fn web_request<S: AsRef<str>>(
     unsafe { host_run_plugin_command() };
 }
 
+/// Open a URL or file path in the user's default external application.
+/// On macOS, this uses the `open` command.
+/// On Linux, this uses `xdg-open` (or `xdg-email` for `mailto:` URLs).
+/// This is a fire-and-forget operation — no result is returned to the plugin.
+pub fn open_external(url: &str) {
+    let plugin_command = PluginCommand::OpenExternal {
+        url: url.to_owned(),
+    };
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 /// Hide the plugin pane (suppress it) from the UI
 pub fn hide_self() {
     let plugin_command = PluginCommand::HideSelf;

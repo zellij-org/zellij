@@ -3461,6 +3461,9 @@ pub enum PluginCommand {
     OpenCommandPaneInPlaceOfPaneId(PaneId, CommandToRun, bool, Context), // bool = close_replaced_pane
     OpenTerminalPaneInPlaceOfPaneId(PaneId, FileToOpen, bool),
     OpenEditPaneInPlaceOfPaneId(PaneId, FileToOpen, bool, Context),
+    OpenExternal {
+        url: String,
+    },
 }
 
 // Response type for plugin API methods that open a pane in a new tab

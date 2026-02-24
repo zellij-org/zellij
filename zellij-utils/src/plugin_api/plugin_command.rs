@@ -66,7 +66,7 @@ pub use super::generated_api::api::{
         OpenCommandPanePayload, OpenCommandPaneResponse as ProtobufOpenCommandPaneResponse,
         OpenEditPaneInPlaceOfPaneIdPayload,
         OpenEditPaneInPlaceOfPaneIdResponse as ProtobufOpenEditPaneInPlaceOfPaneIdResponse,
-        OpenFileFloatingNearPluginPayload,
+        OpenExternalPayload, OpenFileFloatingNearPluginPayload,
         OpenFileFloatingNearPluginResponse as ProtobufOpenFileFloatingNearPluginResponse,
         OpenFileFloatingResponse as ProtobufOpenFileFloatingResponse,
         OpenFileInPlaceOfPluginPayload,
@@ -2401,6 +2401,14 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                     _ => Err("Mismatched payload for OpenEditPaneInPlaceOfPaneId"),
                 }
             },
+            Some(CommandName::OpenExternal) => match protobuf_plugin_command.payload {
+                Some(Payload::OpenExternalPayload(open_external_payload)) => {
+                    Ok(PluginCommand::OpenExternal {
+                        url: open_external_payload.url,
+                    })
+                },
+                _ => Err("Mismatched payload for OpenExternal"),
+            },
             None => Err("Unrecognized plugin command"),
         }
     }
@@ -3937,6 +3945,10 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     )),
                 })
             },
+            PluginCommand::OpenExternal { url } => Ok(ProtobufPluginCommand {
+                name: CommandName::OpenExternal as i32,
+                payload: Some(Payload::OpenExternalPayload(OpenExternalPayload { url })),
+            }),
         }
     }
 }

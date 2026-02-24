@@ -62,6 +62,7 @@ pub enum BackgroundJob {
         Vec<u8>,                  // body
         BTreeMap<String, String>, // context
     ),
+    OpenExternal(String), // url
     HighlightPanesWithMessage(Vec<PaneId>, String),
     RenderToClients,
     QueryZellijWebServerStatus,
@@ -95,6 +96,7 @@ impl From<&BackgroundJob> for BackgroundJobContext {
                 BackgroundJobContext::QueryZellijWebServerStatus
             },
             BackgroundJob::ClearHelpText { .. } => BackgroundJobContext::ClearHelpText,
+            BackgroundJob::OpenExternal(..) => BackgroundJobContext::OpenExternal,
             BackgroundJob::Exit => BackgroundJobContext::Exit,
         }
     }
@@ -556,6 +558,30 @@ pub(crate) fn background_jobs_main(
                         }
                     });
                 }
+            },
+            BackgroundJob::OpenExternal(url) => {
+                std::thread::spawn(move || {
+                    #[cfg(target_os = "macos")]
+                    let cmd = "open";
+                    #[cfg(not(target_os = "macos"))]
+                    let cmd = if url.starts_with("mailto:") {
+                        "xdg-email"
+                    } else {
+                        "xdg-open"
+                    };
+                    match std::process::Command::new(cmd)
+                        .arg(&url)
+                        .stdin(std::process::Stdio::null())
+                        .stdout(std::process::Stdio::null())
+                        .stderr(std::process::Stdio::null())
+                        .spawn()
+                    {
+                        Ok(mut child) => {
+                            let _ = child.wait();
+                        },
+                        Err(e) => log::error!("Failed to open external URL: {}", e),
+                    }
+                });
             },
             BackgroundJob::Exit => {
                 for loading_plugin in loading_plugins.values() {

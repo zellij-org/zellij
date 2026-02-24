@@ -196,6 +196,7 @@ enum CommandName {
   OpenCommandPaneInPlaceOfPaneId = 201;
   OpenTerminalPaneInPlaceOfPaneId = 202;
   OpenEditPaneInPlaceOfPaneId = 203;
+  OpenExternal = 204;
 }
 
 message PluginCommand {
@@ -341,7 +342,12 @@ message PluginCommand {
     OpenCommandPaneInPlaceOfPaneIdPayload open_command_pane_in_place_of_pane_id_payload = 152;
     OpenTerminalPaneInPlaceOfPaneIdPayload open_terminal_pane_in_place_of_pane_id_payload = 153;
     OpenEditPaneInPlaceOfPaneIdPayload open_edit_pane_in_place_of_pane_id_payload = 154;
+    OpenExternalPayload open_external_payload = 155;
   }
+}
+
+message OpenExternalPayload {
+  string url = 1;
 }
 
 message NewTabPayload {
