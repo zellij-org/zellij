@@ -291,9 +291,15 @@ pub mod plugin_command {
         OpenTerminalPaneInPlaceOfPaneIdPayload(super::OpenTerminalPaneInPlaceOfPaneIdPayload),
         #[prost(message, tag="154")]
         OpenEditPaneInPlaceOfPaneIdPayload(super::OpenEditPaneInPlaceOfPaneIdPayload),
-        #[prost(message, tag = "155")]
+        #[prost(message, tag="155")]
         OpenExternalPayload(super::OpenExternalPayload),
     }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct OpenExternalPayload {
+    #[prost(string, tag="1")]
+    pub url: ::prost::alloc::string::String,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -302,12 +308,6 @@ pub struct NewTabPayload {
     pub name: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(string, optional, tag="2")]
     pub cwd: ::core::option::Option<::prost::alloc::string::String>,
-}
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct OpenExternalPayload {
-    #[prost(string, tag="1")]
-    pub url: ::prost::alloc::string::String,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
