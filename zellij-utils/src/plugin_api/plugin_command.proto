@@ -185,18 +185,18 @@ enum CommandName {
   GetPaneRunningCommand = 190;
   GetPaneCwd = 191;
   SwitchTabToId = 192;
-   GoToTabWithId = 193;
-   CloseTabWithId = 194;
-   RenameTabWithId = 195;
-   BreakPanesToTabWithId = 196;
-   GetSessionEnvironmentVariables = 197;
-   OpenCommandPaneInNewTab = 198;
-   OpenPluginPaneInNewTab = 199;
-   OpenEditorPaneInNewTab = 200;
-   OpenCommandPaneInPlaceOfPaneId = 201;
-   OpenTerminalPaneInPlaceOfPaneId = 202;
-   OpenEditPaneInPlaceOfPaneId = 203;
-   OpenExternal = 204;
+  GoToTabWithId = 193;
+  CloseTabWithId = 194;
+  RenameTabWithId = 195;
+  BreakPanesToTabWithId = 196;
+  GetSessionEnvironmentVariables = 197;
+  OpenCommandPaneInNewTab = 198;
+  OpenPluginPaneInNewTab = 199;
+  OpenEditorPaneInNewTab = 200;
+  OpenCommandPaneInPlaceOfPaneId = 201;
+  OpenTerminalPaneInPlaceOfPaneId = 202;
+  OpenEditPaneInPlaceOfPaneId = 203;
+  OpenExternal = 204;
 }
 
 message PluginCommand {
