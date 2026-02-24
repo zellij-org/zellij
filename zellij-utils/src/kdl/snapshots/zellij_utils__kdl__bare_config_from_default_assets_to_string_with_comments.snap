@@ -129,12 +129,6 @@ keybinds clear-defaults=true {
             }
             SwitchToMode "normal"
         }
-        bind "q" {
-            LaunchPlugin "zellij:sequence" {
-                floating true
-            }
-            SwitchToMode "normal"
-        }
         bind "s" {
             LaunchOrFocusPlugin "zellij:share" {
                 floating true
@@ -271,7 +265,6 @@ plugins {
         cwd "/"
     }
     plugin-manager location="zellij:plugin-manager"
-    sequence location="zellij:sequence"
     session-manager location="zellij:session-manager"
     status-bar location="zellij:status-bar"
     strider location="zellij:strider"
