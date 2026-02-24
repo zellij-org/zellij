@@ -3174,8 +3174,24 @@ fn kill_sessions(session_names: Vec<String>) {
         let path = &*ZELLIJ_SOCK_DIR.join(&session_name);
         match ipc_connect(path) {
             Ok(stream) => {
-                let _ = IpcSenderWithContext::<ClientToServerMsg>::new(stream)
-                    .send_client_msg(ClientToServerMsg::KillSession);
+                #[cfg(windows)]
+                {
+                    use zellij_utils::consts::ipc_connect_reply;
+                    use zellij_utils::ipc::{IpcReceiverWithContext, ServerToClientMsg};
+                    let reply = ipc_connect_reply(path);
+                    let _ = IpcSenderWithContext::<ClientToServerMsg>::new(stream)
+                        .send_client_msg(ClientToServerMsg::KillSession);
+                    if let Ok(reply_stream) = reply {
+                        let mut receiver: IpcReceiverWithContext<ServerToClientMsg> =
+                            IpcReceiverWithContext::new(reply_stream);
+                        let _ = receiver.recv_server_msg();
+                    }
+                }
+                #[cfg(not(windows))]
+                {
+                    let _ = IpcSenderWithContext::<ClientToServerMsg>::new(stream)
+                        .send_client_msg(ClientToServerMsg::KillSession);
+                }
             },
             Err(e) => {
                 log::error!("Failed to kill session {}: {:?}", session_name, e);
