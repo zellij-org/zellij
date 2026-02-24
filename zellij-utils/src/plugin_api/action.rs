@@ -323,6 +323,7 @@ impl TryFrom<ProtobufAction> for Action {
                         direction,
                         floating: should_float,
                         in_place: should_be_in_place,
+                        close_replaced_pane: false,
                         start_suppressed: false,
                         coordinates: None,
                         near_current_pane,
@@ -615,6 +616,7 @@ impl TryFrom<ProtobufAction> for Action {
                             should_float,
                             move_to_focused_tab,
                             should_open_in_place,
+                            close_replaced_pane: false,
                             skip_cache: skip_plugin_cache,
                         })
                     },
@@ -643,6 +645,7 @@ impl TryFrom<ProtobufAction> for Action {
                         plugin: run_plugin_or_alias,
                         should_float,
                         should_open_in_place,
+                        close_replaced_pane: false,
                         skip_cache: skip_plugin_cache,
                         cwd: None,
                     })
@@ -971,7 +974,7 @@ impl TryFrom<ProtobufAction> for Action {
                     let near_current_pane = payload.near_current_pane;
                     let pane_id_to_replace =
                         payload.pane_id_to_replace.and_then(|p| p.try_into().ok());
-                    let close_replace_pane = payload.close_replace_pane;
+                    let close_replaced_pane = payload.close_replace_pane;
                     if let Some(command) = payload.command {
                         let pane_name = command.pane_name.clone();
                         let run_command_action: RunCommandAction = command.try_into()?;
@@ -980,7 +983,7 @@ impl TryFrom<ProtobufAction> for Action {
                             pane_name,
                             near_current_pane,
                             pane_id_to_replace,
-                            close_replace_pane,
+                            close_replaced_pane,
                         })
                     } else {
                         Ok(Action::NewInPlacePane {
@@ -988,7 +991,7 @@ impl TryFrom<ProtobufAction> for Action {
                             pane_name: payload.pane_name,
                             near_current_pane,
                             pane_id_to_replace,
-                            close_replace_pane,
+                            close_replaced_pane,
                         })
                     }
                 },
@@ -1220,6 +1223,7 @@ impl TryFrom<Action> for ProtobufAction {
                 direction,
                 floating: should_float,
                 in_place: _should_be_in_place,
+                close_replaced_pane: _close_replaced_pane,
                 start_suppressed: _start_suppressed,
                 coordinates: _floating_pane_coordinates,
                 near_current_pane,
@@ -1457,6 +1461,7 @@ impl TryFrom<Action> for ProtobufAction {
                 should_float,
                 move_to_focused_tab,
                 should_open_in_place,
+                close_replaced_pane: _close_replaced_pane,
                 skip_cache: skip_plugin_cache,
             } => {
                 let configuration = run_plugin_or_alias.get_configuration().unwrap_or_default();
@@ -1478,6 +1483,7 @@ impl TryFrom<Action> for ProtobufAction {
                 plugin: run_plugin_or_alias,
                 should_float,
                 should_open_in_place,
+                close_replaced_pane: _close_replaced_pane,
                 skip_cache: skip_plugin_cache,
                 cwd: _cwd,
             } => {
@@ -1745,7 +1751,7 @@ impl TryFrom<Action> for ProtobufAction {
                 pane_name,
                 near_current_pane,
                 pane_id_to_replace,
-                close_replace_pane,
+                close_replaced_pane,
             } => {
                 let command = run_command_action.and_then(|r| {
                     let mut protobuf_run_command_action: ProtobufRunCommandAction =
@@ -1763,7 +1769,7 @@ impl TryFrom<Action> for ProtobufAction {
                             pane_name: None, // pane_name is already embedded in command
                             near_current_pane,
                             pane_id_to_replace,
-                            close_replace_pane,
+                            close_replace_pane: close_replaced_pane,
                         },
                     )),
                 })
@@ -1774,6 +1780,7 @@ impl TryFrom<Action> for ProtobufAction {
                 plugin: _,
                 pane_name: _,
                 skip_cache: _,
+                close_replaced_pane: _,
             }
             | Action::Deny
             | Action::Copy

@@ -892,6 +892,7 @@ impl From<crate::input::actions::Action>
                 direction,
                 floating,
                 in_place,
+                close_replaced_pane,
                 start_suppressed,
                 coordinates,
                 near_current_pane,
@@ -900,6 +901,7 @@ impl From<crate::input::actions::Action>
                 direction: direction.map(|d| direction_to_proto_i32(d)),
                 floating,
                 in_place,
+                close_replaced_pane,
                 start_suppressed,
                 coordinates: coordinates.map(|c| c.into()),
                 near_current_pane,
@@ -933,13 +935,13 @@ impl From<crate::input::actions::Action>
                 pane_name,
                 near_current_pane,
                 pane_id_to_replace,
-                close_replace_pane,
+                close_replaced_pane,
             } => ActionType::NewInPlacePane(NewInPlacePaneAction {
                 command: command.map(|c| c.into()),
                 pane_name,
                 near_current_pane,
                 pane_id_to_replace: pane_id_to_replace.and_then(|p| p.try_into().ok()),
-                close_replace_pane,
+                close_replaced_pane,
             }),
             crate::input::actions::Action::NewStackedPane {
                 command,
@@ -1065,24 +1067,28 @@ impl From<crate::input::actions::Action>
                 should_float,
                 move_to_focused_tab,
                 should_open_in_place,
+                close_replaced_pane,
                 skip_cache,
             } => ActionType::LaunchOrFocusPlugin(LaunchOrFocusPluginAction {
                 plugin: Some(plugin.into()),
                 should_float,
                 move_to_focused_tab,
                 should_open_in_place,
+                close_replaced_pane,
                 skip_cache,
             }),
             crate::input::actions::Action::LaunchPlugin {
                 plugin,
                 should_float,
                 should_open_in_place,
+                close_replaced_pane,
                 skip_cache,
                 cwd,
             } => ActionType::LaunchPlugin(LaunchPluginAction {
                 plugin: Some(plugin.into()),
                 should_float,
                 should_open_in_place,
+                close_replaced_pane,
                 skip_cache,
                 cwd: cwd.map(|p| p.to_string_lossy().to_string()),
             }),
@@ -1165,10 +1171,12 @@ impl From<crate::input::actions::Action>
                 plugin,
                 pane_name,
                 skip_cache,
+                close_replaced_pane,
             } => ActionType::NewInPlacePluginPane(NewInPlacePluginPaneAction {
                 plugin: Some(plugin.into()),
                 pane_name,
                 skip_cache,
+                close_replaced_pane,
             }),
             crate::input::actions::Action::StartOrReloadPlugin { plugin } => {
                 ActionType::StartOrReloadPlugin(StartOrReloadPluginAction {
@@ -1531,6 +1539,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                     .transpose()?,
                 floating: edit_file_action.floating,
                 in_place: edit_file_action.in_place,
+                close_replaced_pane: edit_file_action.close_replaced_pane,
                 start_suppressed: edit_file_action.start_suppressed,
                 coordinates: edit_file_action
                     .coordinates
@@ -1575,7 +1584,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                     pane_id_to_replace: new_in_place_action
                         .pane_id_to_replace
                         .and_then(|p| p.try_into().ok()),
-                    close_replace_pane: new_in_place_action.close_replace_pane,
+                    close_replaced_pane: new_in_place_action.close_replaced_pane,
                 })
             },
             ActionType::NewStackedPane(new_stacked_action) => {
@@ -1730,6 +1739,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                     should_float: launch_plugin_action.should_float,
                     move_to_focused_tab: launch_plugin_action.move_to_focused_tab,
                     should_open_in_place: launch_plugin_action.should_open_in_place,
+                    close_replaced_pane: launch_plugin_action.close_replaced_pane,
                     skip_cache: launch_plugin_action.skip_cache,
                 })
             },
@@ -1741,6 +1751,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                         .try_into()?,
                     should_float: launch_plugin_action.should_float,
                     should_open_in_place: launch_plugin_action.should_open_in_place,
+                    close_replaced_pane: launch_plugin_action.close_replaced_pane,
                     skip_cache: launch_plugin_action.skip_cache,
                     cwd: launch_plugin_action.cwd.map(PathBuf::from),
                 })
@@ -1839,6 +1850,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                         .try_into()?,
                     pane_name: new_in_place_plugin_action.pane_name,
                     skip_cache: new_in_place_plugin_action.skip_cache,
+                    close_replaced_pane: new_in_place_plugin_action.close_replaced_pane,
                 })
             },
             ActionType::StartOrReloadPlugin(start_plugin_action) => {

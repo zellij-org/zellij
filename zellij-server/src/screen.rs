@@ -469,14 +469,16 @@ pub enum ScreenInstruction {
         Option<String>,
         PaneId,
         bool,
+        bool,
         ClientId,
         Option<NotificationEnd>,
     ), // Option<String> is an
-    // optional pane title, bool is skip cache
+    // optional pane title, first bool is skip cache, second bool is close_replaced_pane
     StartOrReloadPluginPane(RunPluginOrAlias, Option<String>, Option<NotificationEnd>),
     AddPlugin(
         Option<bool>, // should_float
         bool,         // should be opened in place
+        bool,         // close_replaced_pane
         RunPluginOrAlias,
         Option<String>, // pane title
         Option<usize>,  // tab index
@@ -498,13 +500,15 @@ pub enum ScreenInstruction {
         bool,
         bool,
         bool,
+        bool,
         Option<PaneId>,
         bool,
         ClientId,
         Option<NotificationEnd>,
-    ), // bools are: should_float, move_to_focused_tab, should_open_in_place, Option<PaneId> is the pane id to replace, bool following it is skip_cache
+    ), // bools are: should_float, move_to_focused_tab, should_open_in_place, close_replaced_pane, Option<PaneId> is the pane id to replace, bool following it is skip_cache
     LaunchPlugin(
         RunPluginOrAlias,
+        bool,
         bool,
         bool,
         Option<PaneId>,
@@ -512,7 +516,7 @@ pub enum ScreenInstruction {
         Option<PathBuf>,
         ClientId,
         Option<NotificationEnd>,
-    ), // bools are: should_float, should_open_in_place Option<PaneId> is the pane id to replace, Option<PathBuf> is an optional cwd, bool after is skip_cache
+    ), // bools are: should_float, should_open_in_place, close_replaced_pane, Option<PaneId> is the pane id to replace, Option<PathBuf> is an optional cwd, bool after is skip_cache
     SuppressPane(PaneId, ClientId),
     UnsuppressPane(PaneId, bool), // bool -> should float if hidden
     UnsuppressOrExpandPane(PaneId, bool), // bool -> should float if hidden
@@ -5979,6 +5983,7 @@ pub(crate) fn screen_thread_main(
                     .send_to_pty(PtyInstruction::FillPluginCwd(
                         should_float,
                         should_be_opened_in_place,
+                        false, // close_replaced_pane
                         pane_title,
                         run_plugin,
                         *tab_index,
@@ -6011,6 +6016,7 @@ pub(crate) fn screen_thread_main(
                         .send_to_pty(PtyInstruction::FillPluginCwd(
                             should_float,
                             should_be_opened_in_place,
+                            false, // close_replaced_pane
                             pane_title,
                             run_plugin,
                             *tab_index,
@@ -6035,6 +6041,7 @@ pub(crate) fn screen_thread_main(
                 pane_title,
                 pane_id_to_replace,
                 skip_cache,
+                close_replaced_pane,
                 client_id,
                 completion_tx,
             ) => match screen.active_tab_ids.values().next() {
@@ -6048,6 +6055,7 @@ pub(crate) fn screen_thread_main(
                         .send_to_pty(PtyInstruction::FillPluginCwd(
                             should_float,
                             should_be_in_place,
+                            close_replaced_pane,
                             pane_title,
                             run_plugin,
                             *tab_index,
@@ -6087,6 +6095,7 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::AddPlugin(
                 should_float,
                 should_be_in_place,
+                close_replaced_pane,
                 run_plugin_or_alias,
                 pane_title,
                 tab_index,
@@ -6099,7 +6108,6 @@ pub(crate) fn screen_thread_main(
                 client_id,
                 mut completion_tx,
             ) => {
-                let close_replaced_pane = false; // TODO: support this
                 let mut new_pane_placement = NewPanePlacement::default();
                 let maybe_should_float = should_float;
                 let should_be_tiled = maybe_should_float.map(|f| !f).unwrap_or(false);
@@ -6125,6 +6133,7 @@ pub(crate) fn screen_thread_main(
                     pending_events_waiting_for_client.push(ScreenInstruction::AddPlugin(
                         maybe_should_float,
                         should_be_in_place,
+                        close_replaced_pane,
                         run_plugin_or_alias,
                         pane_title,
                         tab_index,
@@ -6154,7 +6163,6 @@ pub(crate) fn screen_thread_main(
                     completion.set_affected_pane_id(PaneId::Plugin(plugin_id));
                 }
 
-                let close_replaced_pane = false;
                 if should_be_in_place {
                     if let Some(pane_id_to_replace) = pane_id_to_replace {
                         let client_tab_index_or_pane_id =
@@ -6257,6 +6265,7 @@ pub(crate) fn screen_thread_main(
                 should_float,
                 move_to_focused_tab,
                 should_open_in_place,
+                close_replaced_pane,
                 pane_id_to_replace,
                 skip_cache,
                 client_id,
@@ -6272,6 +6281,7 @@ pub(crate) fn screen_thread_main(
                                 .send_to_pty(PtyInstruction::FillPluginCwd(
                                     Some(should_float),
                                     should_open_in_place,
+                                    close_replaced_pane,
                                     None,
                                     run_plugin,
                                     *tab_index,
@@ -6323,6 +6333,7 @@ pub(crate) fn screen_thread_main(
                                     .send_to_pty(PtyInstruction::FillPluginCwd(
                                         Some(should_float),
                                         should_open_in_place,
+                                        close_replaced_pane,
                                         None,
                                         run_plugin,
                                         tab_index,
@@ -6347,6 +6358,7 @@ pub(crate) fn screen_thread_main(
                 run_plugin,
                 should_float,
                 should_open_in_place,
+                close_replaced_pane,
                 pane_id_to_replace,
                 skip_cache,
                 cwd,
@@ -6362,6 +6374,7 @@ pub(crate) fn screen_thread_main(
                             .send_to_pty(PtyInstruction::FillPluginCwd(
                                 Some(should_float),
                                 should_open_in_place,
+                                close_replaced_pane,
                                 None,
                                 run_plugin,
                                 *tab_index,
@@ -6401,6 +6414,7 @@ pub(crate) fn screen_thread_main(
                                 .send_to_pty(PtyInstruction::FillPluginCwd(
                                     Some(should_float),
                                     should_open_in_place,
+                                    close_replaced_pane,
                                     None,
                                     run_plugin,
                                     tab_index,

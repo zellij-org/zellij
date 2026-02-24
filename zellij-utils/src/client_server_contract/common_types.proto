@@ -401,6 +401,7 @@ message EditFileAction {
   bool start_suppressed = 5;
   optional FloatingPaneCoordinates coordinates = 6;
   bool near_current_pane = 7;
+  bool close_replaced_pane = 8;
 }
 
 message NewFloatingPaneAction {
@@ -423,7 +424,7 @@ message NewInPlacePaneAction {
   optional string pane_name = 2;
   bool near_current_pane = 3;
   optional PaneId pane_id_to_replace = 4;
-  bool close_replace_pane = 5;
+  bool close_replaced_pane = 5;
 }
 
 message NewStackedPaneAction {
@@ -484,6 +485,7 @@ message LaunchOrFocusPluginAction {
   bool move_to_focused_tab = 3;
   bool should_open_in_place = 4;
   bool skip_cache = 5;
+  bool close_replaced_pane = 6;
 }
 
 message LaunchPluginAction {
@@ -492,6 +494,7 @@ message LaunchPluginAction {
   bool should_open_in_place = 3;
   bool skip_cache = 4;
   optional string cwd = 5;
+  bool close_replaced_pane = 6;
 }
 
 message MouseEventAction {
@@ -533,6 +536,7 @@ message NewInPlacePluginPaneAction {
   RunPluginOrAlias plugin = 1;
   optional string pane_name = 2;
   bool skip_cache = 3;
+  bool close_replaced_pane = 4;
 }
 
 message StartOrReloadPluginAction {

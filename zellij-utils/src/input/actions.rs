@@ -232,6 +232,7 @@ pub enum Action {
         direction: Option<Direction>,
         floating: bool,
         in_place: bool,
+        close_replaced_pane: bool,
         start_suppressed: bool,
         coordinates: Option<FloatingPaneCoordinates>,
         near_current_pane: bool,
@@ -260,7 +261,7 @@ pub enum Action {
         pane_name: Option<String>,
         near_current_pane: bool,
         pane_id_to_replace: Option<PaneId>,
-        close_replace_pane: bool,
+        close_replaced_pane: bool,
     },
     /// Returns: Created pane ID (format: terminal_<id> or plugin_<id>)
     NewStackedPane {
@@ -334,6 +335,7 @@ pub enum Action {
         should_float: bool,
         move_to_focused_tab: bool,
         should_open_in_place: bool,
+        close_replaced_pane: bool,
         skip_cache: bool,
     },
     /// Returns: Plugin pane ID (format: plugin_<id>)
@@ -341,6 +343,7 @@ pub enum Action {
         plugin: RunPluginOrAlias,
         should_float: bool,
         should_open_in_place: bool,
+        close_replaced_pane: bool,
         skip_cache: bool,
         cwd: Option<PathBuf>,
     },
@@ -401,6 +404,7 @@ pub enum Action {
         plugin: RunPluginOrAlias,
         pane_name: Option<String>,
         skip_cache: bool,
+        close_replaced_pane: bool,
     },
     StartOrReloadPlugin {
         plugin: RunPluginOrAlias,
@@ -682,6 +686,7 @@ impl Action {
                 cwd,
                 floating,
                 in_place,
+                close_replaced_pane,
                 name,
                 close_on_exit,
                 start_suspended,
@@ -736,7 +741,7 @@ impl Action {
                     } else if in_place {
                         NewPanePlacement::InPlace {
                             pane_id_to_replace: None,
-                            close_replaced_pane: false,
+                            close_replaced_pane,
                             borderless,
                         }
                     } else if stacked {
@@ -794,6 +799,7 @@ impl Action {
                             plugin,
                             pane_name: name,
                             skip_cache: skip_plugin_cache,
+                            close_replaced_pane,
                         }])
                     } else {
                         // it is intentional that a new tiled plugin pane cannot include a
@@ -840,7 +846,7 @@ impl Action {
                             pane_name: name,
                             near_current_pane,
                             pane_id_to_replace: None, // TODO: support this
-                            close_replace_pane: false,
+                            close_replaced_pane,
                         }])
                     } else if stacked {
                         Ok(vec![Action::NewStackedPane {
@@ -873,7 +879,7 @@ impl Action {
                             pane_name: name,
                             near_current_pane,
                             pane_id_to_replace: None, // TODO: support this
-                            close_replace_pane: false,
+                            close_replaced_pane,
                         }])
                     } else if stacked {
                         Ok(vec![Action::NewStackedPane {
@@ -898,6 +904,7 @@ impl Action {
                 line_number,
                 floating,
                 in_place,
+                close_replaced_pane,
                 cwd,
                 x,
                 y,
@@ -923,6 +930,7 @@ impl Action {
                     direction,
                     floating,
                     in_place,
+                    close_replaced_pane,
                     start_suppressed,
                     coordinates: FloatingPaneCoordinates::new(
                         x, y, width, height, pinned, borderless,
@@ -1263,6 +1271,7 @@ impl Action {
                 url,
                 floating,
                 in_place,
+                close_replaced_pane,
                 move_to_focused_tab,
                 configuration,
                 skip_plugin_cache,
@@ -1279,6 +1288,7 @@ impl Action {
                     should_float: floating,
                     move_to_focused_tab,
                     should_open_in_place: in_place,
+                    close_replaced_pane,
                     skip_cache: skip_plugin_cache,
                 }])
             },
@@ -1286,6 +1296,7 @@ impl Action {
                 url,
                 floating,
                 in_place,
+                close_replaced_pane,
                 configuration,
                 skip_plugin_cache,
             } => {
@@ -1300,6 +1311,7 @@ impl Action {
                     plugin: run_plugin_or_alias,
                     should_float: floating,
                     should_open_in_place: in_place,
+                    close_replaced_pane,
                     skip_cache: skip_plugin_cache,
                     cwd: Some(current_dir),
                 }])

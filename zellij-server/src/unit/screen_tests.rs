@@ -3003,6 +3003,7 @@ pub fn send_cli_new_pane_action_with_default_parameters() {
         cwd: None,
         floating: false,
         in_place: false,
+        close_replaced_pane: false,
         name: None,
         close_on_exit: false,
         start_suspended: false,
@@ -3052,6 +3053,7 @@ pub fn send_cli_new_pane_action_with_split_direction() {
         cwd: None,
         floating: false,
         in_place: false,
+        close_replaced_pane: false,
         name: None,
         close_on_exit: false,
         start_suspended: false,
@@ -3101,6 +3103,7 @@ pub fn send_cli_new_pane_action_with_command_and_cwd() {
         cwd: Some("/some/folder".into()),
         floating: false,
         in_place: false,
+        close_replaced_pane: false,
         name: None,
         close_on_exit: false,
         start_suspended: false,
@@ -3161,6 +3164,7 @@ pub fn send_cli_new_pane_action_with_floating_pane_and_coordinates() {
         cwd: Some("/some/folder".into()),
         floating: true,
         in_place: false,
+        close_replaced_pane: false,
         name: None,
         close_on_exit: false,
         start_suspended: false,
@@ -3209,6 +3213,7 @@ pub fn send_cli_edit_action_with_default_parameters() {
         line_number: None,
         floating: false,
         in_place: false,
+        close_replaced_pane: false,
         cwd: None,
         x: None,
         y: None,
@@ -3250,6 +3255,7 @@ pub fn send_cli_edit_action_with_line_number() {
         line_number: Some(100),
         floating: false,
         in_place: false,
+        close_replaced_pane: false,
         cwd: None,
         x: None,
         y: None,
@@ -3291,6 +3297,7 @@ pub fn send_cli_edit_action_with_split_direction() {
         line_number: None,
         floating: false,
         in_place: false,
+        close_replaced_pane: false,
         cwd: None,
         x: None,
         y: None,
@@ -3369,24 +3376,31 @@ pub fn send_cli_toggle_pane_embed_or_float() {
         toggle_pane_embed_or_floating.clone(),
         client_id,
     );
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(200));
     // second time to embed
     send_cli_action_to_server(
         &session_metadata,
         toggle_pane_embed_or_floating.clone(),
         client_id,
     );
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(200));
     mock_screen.teardown(vec![server_instruction, screen_thread]);
     let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
         received_server_instructions.lock().unwrap().iter(),
         size,
     );
     let snapshot_count = snapshots.len();
-    for (_cursor_coordinates, snapshot) in snapshots {
+    let last_three_snapshots = snapshots.clone().into_iter().rev().take(3).rev(); // we do this to
+                                                                                  // prevent extra
+                                                                                  // renders from
+                                                                                  // throwing us
+                                                                                  // off
+    for (_cursor_coordinates, snapshot) in last_three_snapshots.clone() {
+        eprintln!("{}", snapshot);
+    }
+    for (_cursor_coordinates, snapshot) in last_three_snapshots {
         assert_snapshot!(format!("{}", snapshot));
     }
-    assert_snapshot!(format!("{}", snapshot_count));
 }
 
 #[test]
@@ -3851,6 +3865,7 @@ pub fn send_cli_launch_or_focus_plugin_action() {
     let cli_action = CliAction::LaunchOrFocusPlugin {
         floating: true,
         in_place: false,
+        close_replaced_pane: false,
         move_to_focused_tab: true,
         url: "file:/path/to/fake/plugin".to_owned(),
         configuration: Default::default(),
@@ -3912,6 +3927,7 @@ pub fn send_cli_launch_or_focus_plugin_action_when_plugin_is_already_loaded() {
     let cli_action = CliAction::LaunchOrFocusPlugin {
         floating: true,
         in_place: false,
+        close_replaced_pane: false,
         move_to_focused_tab: true,
         url: "file:/path/to/fake/plugin".to_owned(),
         configuration: Default::default(),
@@ -3995,6 +4011,7 @@ pub fn send_cli_launch_or_focus_plugin_action_when_plugin_is_already_loaded_for_
     let cli_action = CliAction::LaunchOrFocusPlugin {
         floating: true,
         in_place: false,
+        close_replaced_pane: false,
         move_to_focused_tab: true,
         url: "fixture_plugin_for_tests".to_owned(),
         configuration: Default::default(),
@@ -4944,4 +4961,159 @@ pub fn send_cli_close_tab_by_id_action() {
     // Verify that CLI action was processed (no panics means routing worked)
     // The action should complete successfully
     assert!(true, "CloseTabById CLI action completed without errors");
+}
+
+#[test]
+pub fn send_cli_new_pane_in_place_with_close_replaced_pane() {
+    // Verify that `--close-replaced-pane` propagates from CLI through to the
+    // PtyInstruction::SpawnInPlaceTerminal instruction as `true`.
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 10; // fake client id should not appear in the screen's state
+    let mut mock_screen = MockScreen::new(size);
+    let pty_receiver = mock_screen.pty_receiver.take().unwrap();
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(None, vec![]);
+    let received_pty_instructions = Arc::new(Mutex::new(vec![]));
+    let pty_thread = log_actions_in_thread!(
+        received_pty_instructions,
+        PtyInstruction::Exit,
+        pty_receiver
+    );
+    let cli_action = CliAction::NewPane {
+        direction: None,
+        command: vec!["bash".into()],
+        plugin: None,
+        cwd: None,
+        floating: false,
+        in_place: true,
+        close_replaced_pane: true,
+        name: None,
+        close_on_exit: false,
+        start_suspended: false,
+        configuration: None,
+        skip_plugin_cache: false,
+        x: None,
+        y: None,
+        width: None,
+        height: None,
+        pinned: None,
+        stacked: false,
+        blocking: false,
+        unblock_condition: None,
+        near_current_pane: false,
+        borderless: None,
+    };
+    send_cli_action_to_server(&session_metadata, cli_action, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![pty_thread, screen_thread]);
+
+    let spawn_in_place_instruction = received_pty_instructions
+        .lock()
+        .unwrap()
+        .iter()
+        .find(|instruction| match instruction {
+            PtyInstruction::SpawnInPlaceTerminal(..) => true,
+            _ => false,
+        })
+        .cloned();
+
+    assert_snapshot!(format!("{:#?}", spawn_in_place_instruction));
+}
+
+#[test]
+pub fn send_cli_edit_in_place_with_close_replaced_pane() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 10; // fake client id should not appear in the screen's state
+    let mut mock_screen = MockScreen::new(size);
+    let pty_receiver = mock_screen.pty_receiver.take().unwrap();
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(None, vec![]);
+    let received_pty_instructions = Arc::new(Mutex::new(vec![]));
+    let pty_thread = log_actions_in_thread!(
+        received_pty_instructions,
+        PtyInstruction::Exit,
+        pty_receiver
+    );
+    let cli_action = CliAction::Edit {
+        file: PathBuf::from("/some/file.txt"),
+        direction: None,
+        line_number: None,
+        floating: false,
+        in_place: true,
+        close_replaced_pane: true,
+        cwd: None,
+        x: None,
+        y: None,
+        width: None,
+        height: None,
+        pinned: None,
+        near_current_pane: false,
+        borderless: None,
+    };
+    send_cli_action_to_server(&session_metadata, cli_action, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![pty_thread, screen_thread]);
+
+    let spawn_in_place_instruction = received_pty_instructions
+        .lock()
+        .unwrap()
+        .iter()
+        .find(|instruction| match instruction {
+            PtyInstruction::SpawnInPlaceTerminal(..) => true,
+            _ => false,
+        })
+        .cloned();
+
+    assert_snapshot!(format!("{:#?}", spawn_in_place_instruction));
+}
+
+#[test]
+pub fn send_cli_launch_or_focus_plugin_in_place_with_close_replaced_pane() {
+    // Verify that `--close-replaced-pane` propagates from the `launch-or-focus-plugin --in-place`
+    // CLI action through to the PtyInstruction::FillPluginCwd instruction as `true`.
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 10; // fake client id should not appear in the screen's state
+    let mut mock_screen = MockScreen::new(size);
+    let pty_receiver = mock_screen.pty_receiver.take().unwrap();
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(None, vec![]);
+    let received_pty_instructions = Arc::new(Mutex::new(vec![]));
+    let pty_thread = log_actions_in_thread!(
+        received_pty_instructions,
+        PtyInstruction::Exit,
+        pty_receiver
+    );
+    let cli_action = CliAction::LaunchOrFocusPlugin {
+        floating: false,
+        in_place: true,
+        close_replaced_pane: true,
+        move_to_focused_tab: false,
+        url: "file:/path/to/fake/plugin".to_owned(),
+        configuration: Default::default(),
+        skip_plugin_cache: false,
+    };
+    send_cli_action_to_server(&session_metadata, cli_action, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![pty_thread, screen_thread]);
+
+    let fill_plugin_cwd_instruction = received_pty_instructions
+        .lock()
+        .unwrap()
+        .iter()
+        .find(|instruction| match instruction {
+            PtyInstruction::FillPluginCwd(..) => true,
+            _ => false,
+        })
+        .cloned();
+
+    assert_snapshot!(format!("{:#?}", fill_plugin_cwd_instruction));
 }

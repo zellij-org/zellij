@@ -12327,3 +12327,128 @@ fn test_ctrl_scroll_down_decreases_pinned_floating_pane_size_when_floating_panes
     eprintln!("{}", snapshot_after);
     assert_snapshot!(format!("{}", snapshot_after));
 }
+
+#[test]
+fn in_place_pane_with_close_replaced_pane_false_restores_original() {
+    // When an in-place pane is closed and close_replaced_pane=false (the default),
+    // the pane that was replaced is restored to its original position.
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let mut output = Output::default();
+
+    // Create a second tiled pane so closing the in-place pane doesn't leave an empty tab
+    tab.new_pane(
+        PaneId::Terminal(2),
+        None,
+        None,
+        false,
+        false,
+        NewPanePlacement::Tiled {
+            direction: None,
+            borderless: None,
+        },
+        Some(client_id),
+        None,
+    )
+    .unwrap();
+
+    // Write distinguishing content to each pane
+    tab.handle_pty_bytes(1, Vec::from("\n\n\nI am pane one".as_bytes()))
+        .unwrap();
+    tab.handle_pty_bytes(2, Vec::from("\n\n\nI am pane two".as_bytes()))
+        .unwrap();
+
+    // Open pane 3 in-place of pane 2 without closing the replaced pane (suppress it)
+    tab.new_in_place_pane(
+        PaneId::Terminal(3),
+        None,
+        None,
+        Some(PaneId::Terminal(2)),
+        false, // close_replaced_pane
+        Some(client_id),
+        None,
+        None,
+    )
+    .unwrap();
+    tab.handle_pty_bytes(3, Vec::from("\n\n\nI am the in-place pane".as_bytes()))
+        .unwrap();
+
+    // Close the in-place pane — pane 2 should be restored
+    tab.close_pane(PaneId::Terminal(3), false, None);
+
+    tab.render(&mut output, None).unwrap();
+    let snapshot = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    // Snapshot shows both pane 1 and the restored pane 2
+    assert_snapshot!(snapshot);
+}
+
+#[test]
+fn in_place_pane_with_close_replaced_pane_true_closes_original() {
+    // When an in-place pane is closed and close_replaced_pane=true,
+    // the replaced pane is permanently destroyed rather than restored.
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let mut output = Output::default();
+
+    // Create a second tiled pane
+    tab.new_pane(
+        PaneId::Terminal(2),
+        None,
+        None,
+        false,
+        false,
+        NewPanePlacement::Tiled {
+            direction: None,
+            borderless: None,
+        },
+        Some(client_id),
+        None,
+    )
+    .unwrap();
+
+    tab.handle_pty_bytes(1, Vec::from("\n\n\nI am pane one".as_bytes()))
+        .unwrap();
+    tab.handle_pty_bytes(2, Vec::from("\n\n\nI am pane two".as_bytes()))
+        .unwrap();
+
+    // Open pane 3 in-place of pane 2, closing the replaced pane permanently
+    tab.new_in_place_pane(
+        PaneId::Terminal(3),
+        None,
+        None,
+        Some(PaneId::Terminal(2)),
+        true, // close_replaced_pane
+        Some(client_id),
+        None,
+        None,
+    )
+    .unwrap();
+    tab.handle_pty_bytes(3, Vec::from("\n\n\nI am the in-place pane".as_bytes()))
+        .unwrap();
+
+    // Close the in-place pane — pane 2 should NOT be restored (it was closed)
+    tab.close_pane(PaneId::Terminal(3), false, None);
+
+    tab.render(&mut output, None).unwrap();
+    let snapshot = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    // Snapshot shows only pane 1 (pane 2 was permanently closed, not restored)
+    assert_snapshot!(snapshot);
+}

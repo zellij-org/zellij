@@ -118,6 +118,7 @@ pub enum PtyInstruction {
     FillPluginCwd(
         Option<bool>,   // should float
         bool,           // should be opened in place
+        bool,           // close_replaced_pane
         Option<String>, // pane title
         RunPluginOrAlias,
         usize,          // tab index
@@ -814,6 +815,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
             PtyInstruction::FillPluginCwd(
                 should_float,
                 should_be_open_in_place,
+                close_replaced_pane,
                 pane_title,
                 run,
                 tab_index,
@@ -829,6 +831,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                 pty.fill_plugin_cwd(
                     should_float,
                     should_be_open_in_place,
+                    close_replaced_pane,
                     pane_title,
                     run,
                     tab_index,
@@ -1931,6 +1934,7 @@ impl Pty {
         &self,
         should_float: Option<bool>,
         should_open_in_place: bool, // should be opened in place
+        close_replaced_pane: bool,  // close_replaced_pane
         pane_title: Option<String>, // pane title
         mut run: RunPluginOrAlias,
         tab_index: usize,                   // tab index
@@ -1979,6 +1983,7 @@ impl Pty {
         self.bus.senders.send_to_plugin(PluginInstruction::Load(
             should_float,
             should_open_in_place,
+            close_replaced_pane,
             pane_title,
             run,
             Some(tab_index),

@@ -708,6 +708,8 @@ pub struct EditFileAction {
     pub coordinates: ::core::option::Option<FloatingPaneCoordinates>,
     #[prost(bool, tag="7")]
     pub near_current_pane: bool,
+    #[prost(bool, tag="8")]
+    pub close_replaced_pane: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -747,7 +749,7 @@ pub struct NewInPlacePaneAction {
     #[prost(message, optional, tag="4")]
     pub pane_id_to_replace: ::core::option::Option<PaneId>,
     #[prost(bool, tag="5")]
-    pub close_replace_pane: bool,
+    pub close_replaced_pane: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -848,6 +850,8 @@ pub struct LaunchOrFocusPluginAction {
     pub should_open_in_place: bool,
     #[prost(bool, tag="5")]
     pub skip_cache: bool,
+    #[prost(bool, tag="6")]
+    pub close_replaced_pane: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -862,6 +866,8 @@ pub struct LaunchPluginAction {
     pub skip_cache: bool,
     #[prost(string, optional, tag="5")]
     pub cwd: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(bool, tag="6")]
+    pub close_replaced_pane: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -928,6 +934,8 @@ pub struct NewInPlacePluginPaneAction {
     pub pane_name: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(bool, tag="3")]
     pub skip_cache: bool,
+    #[prost(bool, tag="4")]
+    pub close_replaced_pane: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
