@@ -2457,34 +2457,14 @@ fn web_request(
         ));
 }
 
-fn open_external(_env: &PluginEnv, url: String) {
+fn open_external(env: &PluginEnv, url: String) {
     if url.is_empty() {
         log::error!("URL cannot be empty");
         return;
     }
-    std::thread::spawn(move || {
-        #[cfg(target_os = "macos")]
-        let cmd = "open";
-        #[cfg(not(target_os = "macos"))]
-        let cmd = if url.starts_with("mailto:") {
-            "xdg-email"
-        } else {
-            "xdg-open"
-        };
-
-        match std::process::Command::new(cmd)
-            .arg(&url)
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .spawn()
-        {
-            Ok(mut child) => {
-                let _ = child.wait();
-            },
-            Err(e) => log::error!("Failed to open external URL: {}", e),
-        }
-    });
+    let _ = env
+        .senders
+        .send_to_background_jobs(BackgroundJob::OpenExternal(url));
 }
 
 fn post_message_to(env: &PluginEnv, plugin_message: PluginMessage) -> Result<()> {

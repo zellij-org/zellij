@@ -581,6 +581,7 @@ pub enum BackgroundJobContext {
     HighlightPanesWithMessage,
     QueryZellijWebServerStatus,
     ClearHelpText,
+    OpenExternal,
     Exit,
 }
 
