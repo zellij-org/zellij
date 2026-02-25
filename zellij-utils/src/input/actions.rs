@@ -273,6 +273,14 @@ pub enum Action {
     TogglePaneEmbedOrFloating,
     /// Toggle the visibility of all floating panes (if any) in the current Tab
     ToggleFloatingPanes,
+    /// Show all floating panes in the specified tab (or active tab if tab_id is None)
+    ShowFloatingPanes {
+        tab_id: Option<usize>,
+    },
+    /// Hide all floating panes in the specified tab (or active tab if tab_id is None)
+    HideFloatingPanes {
+        tab_id: Option<usize>,
+    },
     /// Close the focus pane.
     CloseFocus,
     PaneNameInput {
@@ -941,6 +949,12 @@ impl Action {
             CliAction::SwitchMode { input_mode } => Ok(vec![Action::SwitchToMode { input_mode }]),
             CliAction::TogglePaneEmbedOrFloating => Ok(vec![Action::TogglePaneEmbedOrFloating]),
             CliAction::ToggleFloatingPanes => Ok(vec![Action::ToggleFloatingPanes]),
+            CliAction::ShowFloatingPanes { tab_id } => {
+                Ok(vec![Action::ShowFloatingPanes { tab_id }])
+            },
+            CliAction::HideFloatingPanes { tab_id } => {
+                Ok(vec![Action::HideFloatingPanes { tab_id }])
+            },
             CliAction::ClosePane => Ok(vec![Action::CloseFocus]),
             CliAction::RenamePane { name } => Ok(vec![
                 Action::UndoRenamePane,

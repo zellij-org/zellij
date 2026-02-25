@@ -63,6 +63,8 @@ macro_rules! parse_kdl_action_arguments {
                 "ToggleActiveSyncTab" => Ok(Action::ToggleActiveSyncTab),
                 "TogglePaneEmbedOrFloating" => Ok(Action::TogglePaneEmbedOrFloating),
                 "ToggleFloatingPanes" => Ok(Action::ToggleFloatingPanes),
+                "ShowFloatingPanes" => Ok(Action::ShowFloatingPanes { tab_id: None }),
+                "HideFloatingPanes" => Ok(Action::HideFloatingPanes { tab_id: None }),
                 "CloseFocus" => Ok(Action::CloseFocus),
                 "UndoRenamePane" => Ok(Action::UndoRenamePane),
                 "NoOp" => Ok(Action::NoOp),
@@ -729,6 +731,20 @@ impl Action {
             },
             Action::TogglePaneEmbedOrFloating => Some(KdlNode::new("TogglePaneEmbedOrFloating")),
             Action::ToggleFloatingPanes => Some(KdlNode::new("ToggleFloatingPanes")),
+            Action::ShowFloatingPanes { tab_id } => {
+                let mut node = KdlNode::new("ShowFloatingPanes");
+                if let Some(id) = tab_id {
+                    node.push(KdlValue::Base10(*id as i64));
+                }
+                Some(node)
+            },
+            Action::HideFloatingPanes { tab_id } => {
+                let mut node = KdlNode::new("HideFloatingPanes");
+                if let Some(id) = tab_id {
+                    node.push(KdlValue::Base10(*id as i64));
+                }
+                Some(node)
+            },
             Action::CloseFocus => Some(KdlNode::new("CloseFocus")),
             Action::PaneNameInput { input: bytes } => {
                 let mut node = KdlNode::new("PaneNameInput");
@@ -1509,6 +1525,20 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
             },
             "ToggleFloatingPanes" => {
                 parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
+            },
+            "ShowFloatingPanes" => {
+                let tab_id = action_arguments
+                    .first()
+                    .and_then(|v| v.value().as_i64())
+                    .map(|n| n as usize);
+                Ok(Action::ShowFloatingPanes { tab_id })
+            },
+            "HideFloatingPanes" => {
+                let tab_id = action_arguments
+                    .first()
+                    .and_then(|v| v.value().as_i64())
+                    .map(|n| n as usize);
+                Ok(Action::HideFloatingPanes { tab_id })
             },
             "CloseFocus" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
             "UndoRenamePane" => {

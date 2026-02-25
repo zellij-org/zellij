@@ -905,6 +905,20 @@ pub enum CliAction {
     TogglePaneEmbedOrFloating,
     /// Toggle the visibility of all floating panes in the current Tab, open one if none exist
     ToggleFloatingPanes,
+    /// Show all floating panes in the specified tab (or active tab if tab_id is not provided).
+    ///
+    /// Returns exit code 0 if state was changed, 2 if already visible, 1 if tab not found.
+    ShowFloatingPanes {
+        #[clap(short, long, value_parser)]
+        tab_id: Option<usize>,
+    },
+    /// Hide all floating panes in the specified tab (or active tab if tab_id is not provided).
+    ///
+    /// Returns exit code 0 if state was changed, 2 if already hidden, 1 if tab not found.
+    HideFloatingPanes {
+        #[clap(short, long, value_parser)]
+        tab_id: Option<usize>,
+    },
     /// Close the focused pane.
     ClosePane,
     /// Renames the focused pane

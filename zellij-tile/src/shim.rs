@@ -9,7 +9,9 @@ use zellij_utils::errors::prelude::*;
 use zellij_utils::input::actions::Action;
 pub use zellij_utils::plugin_api;
 use zellij_utils::plugin_api::event::ProtobufPaneScrollbackResponse;
-use zellij_utils::plugin_api::generated_api::api::plugin_command::save_session_response;
+use zellij_utils::plugin_api::generated_api::api::plugin_command::{
+    hide_floating_panes_response, save_session_response, show_floating_panes_response,
+};
 use zellij_utils::plugin_api::plugin_command::{
     dump_layout_response, dump_session_layout_response, get_focused_pane_info_response,
     get_pane_cwd_response, get_pane_running_command_response, parse_layout_response,
@@ -21,19 +23,20 @@ use zellij_utils::plugin_api::plugin_command::{
     ProtobufGetFocusedPaneInfoResponse, ProtobufGetLayoutDirResponse, ProtobufGetPaneCwdResponse,
     ProtobufGetPaneInfoResponse, ProtobufGetPanePidResponse, ProtobufGetPaneRunningCommandResponse,
     ProtobufGetSessionEnvironmentVariablesResponse, ProtobufGetTabInfoResponse,
-    ProtobufNewTabResponse, ProtobufNewTabsResponse, ProtobufOpenCommandPaneBackgroundResponse,
-    ProtobufOpenCommandPaneFloatingNearPluginResponse, ProtobufOpenCommandPaneFloatingResponse,
-    ProtobufOpenCommandPaneInPlaceOfPaneIdResponse, ProtobufOpenCommandPaneInPlaceOfPluginResponse,
-    ProtobufOpenCommandPaneInPlaceResponse, ProtobufOpenCommandPaneNearPluginResponse,
-    ProtobufOpenCommandPaneResponse, ProtobufOpenEditPaneInPlaceOfPaneIdResponse,
-    ProtobufOpenFileFloatingNearPluginResponse, ProtobufOpenFileFloatingResponse,
-    ProtobufOpenFileInPlaceOfPluginResponse, ProtobufOpenFileInPlaceResponse,
-    ProtobufOpenFileNearPluginResponse, ProtobufOpenFileResponse, ProtobufOpenPaneInNewTabResponse,
-    ProtobufOpenTerminalFloatingNearPluginResponse, ProtobufOpenTerminalFloatingResponse,
-    ProtobufOpenTerminalInPlaceOfPluginResponse, ProtobufOpenTerminalInPlaceResponse,
-    ProtobufOpenTerminalNearPluginResponse, ProtobufOpenTerminalPaneInPlaceOfPaneIdResponse,
-    ProtobufOpenTerminalResponse, ProtobufParseLayoutResponse, ProtobufPluginCommand,
-    ProtobufRenameLayoutResponse, ProtobufSaveLayoutResponse, ProtobufSaveSessionResponse,
+    ProtobufHideFloatingPanesResponse, ProtobufNewTabResponse, ProtobufNewTabsResponse,
+    ProtobufOpenCommandPaneBackgroundResponse, ProtobufOpenCommandPaneFloatingNearPluginResponse,
+    ProtobufOpenCommandPaneFloatingResponse, ProtobufOpenCommandPaneInPlaceOfPaneIdResponse,
+    ProtobufOpenCommandPaneInPlaceOfPluginResponse, ProtobufOpenCommandPaneInPlaceResponse,
+    ProtobufOpenCommandPaneNearPluginResponse, ProtobufOpenCommandPaneResponse,
+    ProtobufOpenEditPaneInPlaceOfPaneIdResponse, ProtobufOpenFileFloatingNearPluginResponse,
+    ProtobufOpenFileFloatingResponse, ProtobufOpenFileInPlaceOfPluginResponse,
+    ProtobufOpenFileInPlaceResponse, ProtobufOpenFileNearPluginResponse, ProtobufOpenFileResponse,
+    ProtobufOpenPaneInNewTabResponse, ProtobufOpenTerminalFloatingNearPluginResponse,
+    ProtobufOpenTerminalFloatingResponse, ProtobufOpenTerminalInPlaceOfPluginResponse,
+    ProtobufOpenTerminalInPlaceResponse, ProtobufOpenTerminalNearPluginResponse,
+    ProtobufOpenTerminalPaneInPlaceOfPaneIdResponse, ProtobufOpenTerminalResponse,
+    ProtobufParseLayoutResponse, ProtobufPluginCommand, ProtobufRenameLayoutResponse,
+    ProtobufSaveLayoutResponse, ProtobufSaveSessionResponse, ProtobufShowFloatingPanesResponse,
     RenameWebTokenResponse, RevokeAllWebTokensResponse, RevokeTokenResponse,
 };
 use zellij_utils::plugin_api::plugin_ids::{ProtobufPluginIds, ProtobufZellijVersion};
@@ -2685,6 +2688,52 @@ pub fn run_action(action: Action, context: BTreeMap<String, String>) {
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
+}
+
+/// Show all floating panes in the specified tab, or the active tab if `tab_id` is `None`.
+///
+/// Blocks until the server-side action is complete.
+///
+/// Returns `Ok(true)` if the floating panes were made visible (state changed),
+/// `Ok(false)` if the floating panes were already visible (no change),
+/// or `Err(String)` if the specified tab was not found.
+pub fn show_floating_panes(tab_id: Option<usize>) -> Result<bool, String> {
+    let plugin_command = PluginCommand::ShowFloatingPanes { tab_id };
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+    let response_bytes =
+        bytes_from_stdin().map_err(|e| format!("Failed to read response: {:?}", e))?;
+    let response = ProtobufShowFloatingPanesResponse::decode(response_bytes.as_slice())
+        .map_err(|e| format!("Failed to decode response: {}", e))?;
+    match response.result {
+        Some(show_floating_panes_response::Result::Success(changed)) => Ok(changed),
+        Some(show_floating_panes_response::Result::Error(e)) => Err(e),
+        None => Err("Empty response".to_string()),
+    }
+}
+
+/// Hide all floating panes in the specified tab, or the active tab if `tab_id` is `None`.
+///
+/// Blocks until the server-side action is complete.
+///
+/// Returns `Ok(true)` if the floating panes were hidden (state changed),
+/// `Ok(false)` if the floating panes were already hidden (no change),
+/// or `Err(String)` if the specified tab was not found.
+pub fn hide_floating_panes(tab_id: Option<usize>) -> Result<bool, String> {
+    let plugin_command = PluginCommand::HideFloatingPanes { tab_id };
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+    let response_bytes =
+        bytes_from_stdin().map_err(|e| format!("Failed to read response: {:?}", e))?;
+    let response = ProtobufHideFloatingPanesResponse::decode(response_bytes.as_slice())
+        .map_err(|e| format!("Failed to decode response: {}", e))?;
+    match response.result {
+        Some(hide_floating_panes_response::Result::Success(changed)) => Ok(changed),
+        Some(hide_floating_panes_response::Result::Error(e)) => Err(e),
+        None => Err("Empty response".to_string()),
+    }
 }
 
 #[link(wasm_import_module = "zellij")]

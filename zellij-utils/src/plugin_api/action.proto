@@ -242,6 +242,8 @@ message Action {
     uint64 go_to_tab_by_id_payload = 55;
     uint64 close_tab_by_id_payload = 56;
     TabIdAndName rename_tab_by_id_payload = 57;
+    ShowFloatingPanesPayload show_floating_panes_payload = 58;
+    HideFloatingPanesPayload hide_floating_panes_payload = 59;
   }
 }
 
@@ -260,6 +262,14 @@ message IdAndName {
 message TabIdAndName {
   uint64 tab_id = 1;
   string name = 2;
+}
+
+message ShowFloatingPanesPayload {
+  optional uint32 tab_id = 1;
+}
+
+message HideFloatingPanesPayload {
+  optional uint32 tab_id = 1;
 }
 
 message PaneIdAndShouldFloat {
@@ -469,6 +479,8 @@ enum ActionName {
     GoToTabById = 95;
     CloseTabById = 96;
     RenameTabById = 97;
+    ShowFloatingPanes = 98;
+    HideFloatingPanes = 99;
 }
 
 message Position {

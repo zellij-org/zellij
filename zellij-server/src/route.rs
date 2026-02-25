@@ -1749,6 +1749,24 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
         },
+        Action::ShowFloatingPanes { tab_id } => {
+            senders
+                .send_to_screen(ScreenInstruction::ShowFloatingPanes {
+                    client_id,
+                    tab_id,
+                    completion: Some(NotificationEnd::new(completion_tx)),
+                })
+                .with_context(err_context)?;
+        },
+        Action::HideFloatingPanes { tab_id } => {
+            senders
+                .send_to_screen(ScreenInstruction::HideFloatingPanes {
+                    client_id,
+                    tab_id,
+                    completion: Some(NotificationEnd::new(completion_tx)),
+                })
+                .with_context(err_context)?;
+        },
     }
     let result = wait_for_action_completion(completion_rx, &action_name, wait_forever);
     if let Some(exit_status) = result.exit_status {

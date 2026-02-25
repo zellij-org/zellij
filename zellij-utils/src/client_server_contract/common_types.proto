@@ -241,6 +241,8 @@ message Action {
     RenameTabByIdAction rename_tab_by_id = 103;
     ListTabsAction list_tabs = 104;
     CurrentTabInfoAction current_tab_info = 105;
+    ShowFloatingPanesAction show_floating_panes = 106;
+    HideFloatingPanesAction hide_floating_panes = 107;
   }
 }
 
@@ -269,6 +271,12 @@ message TogglePaneFramesAction {}
 message ToggleActiveSyncTabAction {}
 message TogglePaneEmbedOrFloatingAction {}
 message ToggleFloatingPanesAction {}
+message ShowFloatingPanesAction {
+  optional uint32 tab_id = 1;
+}
+message HideFloatingPanesAction {
+  optional uint32 tab_id = 1;
+}
 message CloseFocusAction {}
 message UndoRenamePaneAction {}
 message NoOpAction {}
