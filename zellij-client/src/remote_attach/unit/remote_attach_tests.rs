@@ -243,10 +243,6 @@ impl crate::os_input_output::ClientOsApi for MockClientOsApi {
         Box::new(MockClientOsApi)
     }
 
-    fn read_from_stdin(&mut self) -> Result<Vec<u8>, &'static str> {
-        Ok(Vec::new())
-    }
-
     fn get_stdin_reader(&self) -> Box<dyn std::io::BufRead> {
         Box::new(std::io::BufReader::new(std::io::empty()))
     }

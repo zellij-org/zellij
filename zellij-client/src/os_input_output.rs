@@ -84,7 +84,6 @@ pub(crate) fn get_terminal_size() -> Size {
 pub struct ClientOsInputOutput {
     send_instructions_to_server: Arc<Mutex<Option<IpcSenderWithContext<ClientToServerMsg>>>>,
     receive_instructions_from_server: Arc<Mutex<Option<IpcReceiverWithContext<ServerToClientMsg>>>>,
-    reading_from_stdin: Arc<Mutex<Option<Vec<u8>>>>,
     session_name: Arc<Mutex<Option<String>>>,
 }
 
@@ -116,8 +115,6 @@ pub trait ClientOsApi: Send + Sync + std::fmt::Debug {
         true
     }
     fn update_session_name(&mut self, new_session_name: String);
-    /// Returns the raw contents of standard input.
-    fn read_from_stdin(&mut self) -> Result<Vec<u8>, &'static str>;
     /// Returns a [`Box`] pointer to this [`ClientOsApi`] struct.
     fn box_clone(&self) -> Box<dyn ClientOsApi>;
     /// Sends a message to the server.
@@ -159,44 +156,6 @@ impl ClientOsApi for ClientOsInputOutput {
     }
     fn update_session_name(&mut self, new_session_name: String) {
         *self.session_name.lock().unwrap() = Some(new_session_name);
-    }
-    fn read_from_stdin(&mut self) -> Result<Vec<u8>, &'static str> {
-        let session_name_at_calltime = { self.session_name.lock().unwrap().clone() };
-        // here we wait for a lock in case another thread is holding stdin
-        // this can happen for example when switching sessions, the old thread will only be
-        // released once it sees input over STDIN
-        //
-        // when this happens, we detect in the other thread that our session is ended (by comparing
-        // the session name at the beginning of the call and the one after we read from STDIN), and
-        // so place what we read from STDIN inside a buffer (the "reading_from_stdin" on our state)
-        // and release the lock
-        //
-        // then, another thread will see there's something in the buffer immediately as it acquires
-        // the lock (without having to wait for STDIN itself) forward this buffer and proceed to
-        // wait for the "real" STDIN net time it is called
-        let mut buffered_bytes = self.reading_from_stdin.lock().unwrap();
-        match buffered_bytes.take() {
-            Some(buffered_bytes) => Ok(buffered_bytes),
-            None => {
-                let stdin = std::io::stdin();
-                let mut stdin = stdin.lock();
-                let buffer = stdin.fill_buf().unwrap();
-                let length = buffer.len();
-                let read_bytes = Vec::from(buffer);
-                stdin.consume(length);
-
-                let session_name_after_reading_from_stdin =
-                    { self.session_name.lock().unwrap().clone() };
-                if session_name_at_calltime.is_some()
-                    && session_name_at_calltime != session_name_after_reading_from_stdin
-                {
-                    *buffered_bytes = Some(read_bytes);
-                    Err("Session ended")
-                } else {
-                    Ok(read_bytes)
-                }
-            },
-        }
     }
     fn get_stdout_writer(&self) -> Box<dyn io::Write> {
         let stdout = ::std::io::stdout();
@@ -323,21 +282,17 @@ impl Clone for Box<dyn ClientOsApi> {
 }
 
 pub fn get_client_os_input() -> Result<ClientOsInputOutput, std::io::Error> {
-    let reading_from_stdin = Arc::new(Mutex::new(None));
     Ok(ClientOsInputOutput {
         send_instructions_to_server: Arc::new(Mutex::new(None)),
         receive_instructions_from_server: Arc::new(Mutex::new(None)),
-        reading_from_stdin,
         session_name: Arc::new(Mutex::new(None)),
     })
 }
 
 pub fn get_cli_client_os_input() -> Result<ClientOsInputOutput, std::io::Error> {
-    let reading_from_stdin = Arc::new(Mutex::new(None));
     Ok(ClientOsInputOutput {
         send_instructions_to_server: Arc::new(Mutex::new(None)),
         receive_instructions_from_server: Arc::new(Mutex::new(None)),
-        reading_from_stdin,
         session_name: Arc::new(Mutex::new(None)),
     })
 }
