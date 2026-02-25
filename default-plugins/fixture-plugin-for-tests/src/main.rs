@@ -343,7 +343,7 @@ impl ZellijPlugin for State {
                     switch_session_with_layout(
                         Some("my_other_new_session_with_cwd"),
                         LayoutInfo::BuiltIn("compact".to_owned()),
-                        Some(std::path::PathBuf::from("/tmp")),
+                        Some(std::path::PathBuf::from("/foo/bar")),
                     );
                 },
                 BareKey::Char('0') if key.has_only_modifiers(&[KeyModifier::Ctrl]) => {

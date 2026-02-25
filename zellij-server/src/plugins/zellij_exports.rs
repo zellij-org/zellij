@@ -1101,6 +1101,16 @@ fn open_editor_pane_in_new_tab(
     context: BTreeMap<String, String>,
 ) {
     let _ = context; // context is not currently used for editor panes in new tab
+    let path = translate_plugin_path(env, file_to_open.path);
+    let cwd = file_to_open
+        .cwd
+        .map(|cwd| translate_plugin_path(env, cwd))
+        .or_else(|| Some(env.plugin_cwd.clone()));
+    let file_to_open = FileToOpen {
+        path,
+        cwd,
+        ..file_to_open
+    };
     let initial_panes = Some(vec![CommandOrPlugin::File(file_to_open)]);
     let action = Action::NewTab {
         tiled_layout: None,
@@ -2679,7 +2689,7 @@ fn apply_layout(env: &PluginEnv, layout: Layout) {
 }
 
 fn new_tab(env: &PluginEnv, name: Option<String>, cwd: Option<String>) {
-    let cwd = cwd.map(|c| PathBuf::from(c));
+    let cwd = cwd.map(|c| translate_plugin_path(env, PathBuf::from(c)));
     let action = Action::NewTab {
         tiled_layout: None,
         floating_layouts: vec![],
@@ -2793,7 +2803,9 @@ fn switch_session(
     } else {
         let client_id = env.client_id;
         let tab_position = tab_position.map(|p| p + 1); // ¯\_()_/¯
-        let cwd = cwd.or_else(|| Some(env.plugin_cwd.clone()));
+        let cwd = cwd
+            .map(|c| translate_plugin_path(env, c))
+            .or_else(|| Some(env.plugin_cwd.clone()));
         let connect_to_session = ConnectToSession {
             name: session_name,
             tab_position,
