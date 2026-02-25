@@ -1,0 +1,121 @@
+// Translated from https://github.com/jacoborus/tender.vim
+themes {
+    tender {
+        text_unselected {
+            base 238 238 238        // Light foreground
+            background 40 40 40     // Dark background
+            emphasis_0 238 238 238  // Light foreground
+            emphasis_1 179 222 239  // Light blue
+            emphasis_2 153 153 153  // Light gray
+            emphasis_3 102 102 102  // Medium gray
+        }
+        text_selected {
+            base 238 238 238        // Light foreground
+            background 41 59 68     // Visual selection
+            emphasis_0 255 255 255  // White
+            emphasis_1 179 222 239  // Light blue
+            emphasis_2 115 206 244  // Cyan
+            emphasis_3 153 153 153  // Light gray
+        }
+        ribbon_selected {
+            base 29 29 29           // Darker background
+            background 115 206 244  // Cyan accent
+            emphasis_0 29 29 29     // Darker background
+            emphasis_1 40 40 40     // Dark background
+            emphasis_2 68 68 68     // Dark gray
+            emphasis_3 102 102 102  // Medium gray
+        }
+        ribbon_unselected {
+            base 153 153 153        // Light gray
+            background 51 82 97     // Selection background
+            emphasis_0 179 222 239  // Light blue
+            emphasis_1 153 153 153  // Light gray
+            emphasis_2 102 102 102  // Medium gray
+            emphasis_3 68 68 68     // Dark gray
+        }
+        table_title {
+            base 238 238 238        // Light foreground
+            background 40 40 40     // Dark background
+            emphasis_0 115 206 244  // Cyan
+            emphasis_1 179 222 239  // Light blue
+            emphasis_2 201 208 92   // Yellow-green
+            emphasis_3 211 185 135  // Tan
+        }
+        table_cell_selected {
+            base 238 238 238        // Light foreground
+            background 41 59 68     // Visual selection
+            emphasis_0 115 206 244  // Cyan
+            emphasis_1 179 222 239  // Light blue
+            emphasis_2 201 208 92   // Yellow-green
+            emphasis_3 211 185 135  // Tan
+        }
+        table_cell_unselected {
+            base 153 153 153        // Light gray
+            background 40 40 40     // Dark background
+            emphasis_0 102 102 102  // Medium gray
+            emphasis_1 68 68 68     // Dark gray
+            emphasis_2 51 82 97     // Selection background
+            emphasis_3 41 59 68     // Visual selection
+        }
+        list_selected {
+            base 238 238 238        // Light foreground
+            background 41 59 68     // Visual selection
+            emphasis_0 115 206 244  // Cyan
+            emphasis_1 179 222 239  // Light blue
+            emphasis_2 201 208 92   // Yellow-green
+            emphasis_3 255 194 75   // Orange
+        }
+        list_unselected {
+            base 153 153 153        // Light gray
+            background 40 40 40     // Dark background
+            emphasis_0 179 222 239  // Light blue
+            emphasis_1 153 153 153  // Light gray
+            emphasis_2 102 102 102  // Medium gray
+            emphasis_3 68 68 68     // Dark gray
+        }
+        frame_selected {
+            base 115 206 244        // Cyan
+            background 41 59 68     // Visual selection
+            emphasis_0 179 222 239  // Light blue
+            emphasis_1 201 208 92   // Yellow-green
+            emphasis_2 211 185 135  // Tan
+            emphasis_3 255 194 75   // Orange
+        }
+        frame_highlight {
+            base 255 194 75         // Orange
+            background 41 59 68     // Visual selection
+            emphasis_0 244 55 83    // Red
+            emphasis_1 211 185 135  // Tan
+            emphasis_2 201 208 92   // Yellow-green
+            emphasis_3 115 206 244  // Cyan
+        }
+        exit_code_success {
+            base 201 208 92         // Yellow-green
+            background 40 40 40     // Dark background
+            emphasis_0 159 170 0    // Olive green
+            emphasis_1 201 208 92   // Yellow-green
+            emphasis_2 115 206 244  // Cyan
+            emphasis_3 179 222 239  // Light blue
+        }
+        exit_code_error {
+            base 244 55 83          // Red
+            background 40 40 40     // Dark background
+            emphasis_0 121 49 60    // Dark red
+            emphasis_1 244 55 83    // Red
+            emphasis_2 255 194 75   // Orange
+            emphasis_3 211 185 135  // Tan
+        }
+        multiplayer_user_colors {
+            user_0 115 206 244      // Cyan
+            user_1 201 208 92       // Yellow-green
+            user_2 211 185 135      // Tan
+            user_3 255 194 75       // Orange
+            user_4 179 222 239      // Light blue
+            user_5 244 55 83        // Red
+            user_6 159 170 0        // Olive
+            user_7 153 153 153      // Light gray
+            user_8 244 55 83        // Red
+            user_9 51 82 97         // Teal
+        }
+    }
+}

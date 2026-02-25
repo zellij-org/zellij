@@ -1,0 +1,121 @@
+// Translated from https://github.com/EdenEast/nightfox.nvim
+themes {
+    duskfox {
+        text_unselected {
+            base 224 222 244        // white base
+            background 25 23 38     // bg0 (darkest)
+            emphasis_0 234 224 255  // white bright
+            emphasis_1 224 222 244  // white base
+            emphasis_2 205 203 224  // white dim
+            emphasis_3 110 106 134  // comment
+        }
+        text_selected {
+            base 234 224 255        // white bright
+            background 35 33 54     // bg1
+            emphasis_0 255 255 255  // pure white
+            emphasis_1 156 207 216  // cyan base
+            emphasis_2 166 218 227  // cyan bright
+            emphasis_3 123 184 193  // cyan dim
+        }
+        ribbon_selected {
+            base 25 23 38           // bg0
+            background 156 207 216  // cyan base
+            emphasis_0 25 23 38     // bg0
+            emphasis_1 35 33 54     // bg1
+            emphasis_2 45 42 69     // bg2
+            emphasis_3 55 51 115    // bg3
+        }
+        ribbon_unselected {
+            base 205 203 224        // white dim
+            background 35 33 54     // bg1
+            emphasis_0 224 222 244  // white base
+            emphasis_1 205 203 224  // white dim
+            emphasis_2 177 172 222  // white dimmer
+            emphasis_3 110 106 134  // comment
+        }
+        table_title {
+            base 224 222 244        // white base
+            background 25 23 38     // bg0
+            emphasis_0 156 207 216  // cyan base
+            emphasis_1 86 159 186   // blue base
+            emphasis_2 163 190 140  // green base
+            emphasis_3 246 193 119  // yellow base
+        }
+        table_cell_selected {
+            base 234 224 255        // white bright
+            background 35 33 54     // bg1
+            emphasis_0 156 207 216  // cyan base
+            emphasis_1 86 159 186   // blue base
+            emphasis_2 163 190 140  // green base
+            emphasis_3 246 193 119  // yellow base
+        }
+        table_cell_unselected {
+            base 205 203 224        // white dim
+            background 25 23 38     // bg0
+            emphasis_0 177 172 222  // white dimmer
+            emphasis_1 110 106 134  // comment
+            emphasis_2 75 71 115    // bg4
+            emphasis_3 55 51 115    // bg3
+        }
+        list_selected {
+            base 234 224 255        // white bright
+            background 35 33 54     // bg1
+            emphasis_0 156 207 216  // cyan base
+            emphasis_1 196 167 231  // magenta base
+            emphasis_2 235 152 195  // pink base
+            emphasis_3 240 131 162  // red bright
+        }
+        list_unselected {
+            base 205 203 224        // white dim
+            background 25 23 38     // bg0
+            emphasis_0 224 222 244  // white base
+            emphasis_1 205 203 224  // white dim
+            emphasis_2 177 172 222  // white dimmer
+            emphasis_3 110 106 134  // comment
+        }
+        frame_selected {
+            base 156 207 216        // cyan base
+            background 35 33 54     // bg1
+            emphasis_0 86 159 186   // blue base
+            emphasis_1 163 190 140  // green base
+            emphasis_2 246 193 119  // yellow base
+            emphasis_3 234 154 151  // orange base
+        }
+        frame_highlight {
+            base 246 193 119        // yellow base
+            background 35 33 54     // bg1
+            emphasis_0 234 154 151  // orange base
+            emphasis_1 235 111 146  // red base
+            emphasis_2 235 152 195  // pink base
+            emphasis_3 196 167 231  // magenta base
+        }
+        exit_code_success {
+            base 163 190 140        // green base
+            background 25 23 38     // bg0
+            emphasis_0 138 170 114  // green dim
+            emphasis_1 163 190 140  // green base
+            emphasis_2 177 209 150  // green bright
+            emphasis_3 156 207 216  // cyan base
+        }
+        exit_code_error {
+            base 235 111 146        // red base
+            background 25 23 38     // bg0
+            emphasis_0 197 78 86    // red dim
+            emphasis_1 235 111 146  // red base
+            emphasis_2 240 131 162  // red bright
+            emphasis_3 234 154 151  // orange base
+        }
+        multiplayer_user_colors {
+            user_0 156 207 216      // cyan base
+            user_1 163 190 140      // green base
+            user_2 86 159 186       // blue base
+            user_3 196 167 231      // magenta base
+            user_4 246 193 119      // yellow base
+            user_5 234 154 151      // orange base
+            user_6 235 152 195      // pink base
+            user_7 166 218 227      // cyan bright
+            user_8 235 111 146      // red base
+            user_9 204 198 142      // sel1
+        }
+    }
+}

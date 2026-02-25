@@ -1,0 +1,121 @@
+// Translated from https://github.com/vimpunk/vim-japanese-indigo
+themes {
+    japanese-indigo {
+        text_unselected {
+            base 192 197 206        // Medium Silver
+            background 37 44 55     // Indigo dark
+            emphasis_0 216 222 233  // Light Silver
+            emphasis_1 192 197 206  // Medium Silver
+            emphasis_2 167 173 186  // Dark Silver
+            emphasis_3 147 152 161  // Bone White
+        }
+        text_selected {
+            base 216 222 233        // Light Silver
+            background 44 52 62     // Medium Indigo
+            emphasis_0 255 255 255  // White
+            emphasis_1 216 222 233  // Light Silver
+            emphasis_2 192 197 206  // Medium Silver
+            emphasis_3 167 173 186  // Dark Silver
+        }
+        ribbon_selected {
+            base 37 44 55           // Indigo dark
+            background 136 192 208  // Turquoise
+            emphasis_0 37 44 55     // Indigo dark
+            emphasis_1 44 52 62     // Medium Indigo
+            emphasis_2 79 91 102    // Medium Grey
+            emphasis_3 101 115 126  // Light Indigo
+        }
+        ribbon_unselected {
+            base 192 197 206        // Medium Silver
+            background 44 52 62     // Medium Indigo
+            emphasis_0 216 222 233  // Light Silver
+            emphasis_1 192 197 206  // Medium Silver
+            emphasis_2 167 173 186  // Dark Silver
+            emphasis_3 147 152 161  // Bone White
+        }
+        table_title {
+            base 192 197 206        // Medium Silver
+            background 37 44 55     // Indigo dark
+            emphasis_0 136 192 208  // Turquoise
+            emphasis_1 129 161 193  // Light Blue
+            emphasis_2 94 129 172   // Blue
+            emphasis_3 180 142 173  // Pink
+        }
+        table_cell_selected {
+            base 216 222 233        // Light Silver
+            background 44 52 62     // Medium Indigo
+            emphasis_0 136 192 208  // Turquoise
+            emphasis_1 129 161 193  // Light Blue
+            emphasis_2 94 129 172   // Blue
+            emphasis_3 180 142 173  // Pink
+        }
+        table_cell_unselected {
+            base 192 197 206        // Medium Silver
+            background 37 44 55     // Indigo dark
+            emphasis_0 167 173 186  // Dark Silver
+            emphasis_1 147 152 161  // Bone White
+            emphasis_2 101 115 126  // Light Indigo
+            emphasis_3 79 91 102    // Medium Grey
+        }
+        list_selected {
+            base 216 222 233        // Light Silver
+            background 44 52 62     // Medium Indigo
+            emphasis_0 136 192 208  // Turquoise
+            emphasis_1 129 161 193  // Light Blue
+            emphasis_2 94 129 172   // Blue
+            emphasis_3 180 142 173  // Pink
+        }
+        list_unselected {
+            base 192 197 206        // Medium Silver
+            background 37 44 55     // Indigo dark
+            emphasis_0 216 222 233  // Light Silver
+            emphasis_1 192 197 206  // Medium Silver
+            emphasis_2 167 173 186  // Dark Silver
+            emphasis_3 147 152 161  // Bone White
+        }
+        frame_selected {
+            base 136 192 208        // Turquoise
+            background 44 52 62     // Medium Indigo
+            emphasis_0 129 161 193  // Light Blue
+            emphasis_1 94 129 172   // Blue
+            emphasis_2 180 142 173  // Pink
+            emphasis_3 163 179 140  // Green
+        }
+        frame_highlight {
+            base 235 203 139        // Nord Yellow
+            background 44 52 62     // Medium Indigo
+            emphasis_0 208 135 112  // Orange
+            emphasis_1 171 121 103  // Brown
+            emphasis_2 180 142 173  // Pink
+            emphasis_3 136 192 208  // Turquoise
+        }
+        exit_code_success {
+            base 163 179 140        // Green
+            background 37 44 55     // Indigo dark
+            emphasis_0 146 161 126  // Dark Green
+            emphasis_1 163 179 140  // Green
+            emphasis_2 136 192 208  // Turquoise
+            emphasis_3 129 161 193  // Light Blue
+        }
+        exit_code_error {
+            base 191 97 106         // Red
+            background 37 44 55     // Indigo dark
+            emphasis_0 157 80 87    // Dark Red
+            emphasis_1 191 97 106   // Red
+            emphasis_2 208 135 112  // Orange
+            emphasis_3 235 203 139  // Yellow
+        }
+        multiplayer_user_colors {
+            user_0 136 192 208      // Turquoise
+            user_1 163 179 140      // Green
+            user_2 180 142 173      // Pink
+            user_3 235 203 139      // Yellow
+            user_4 94 129 172       // Blue
+            user_5 208 135 112      // Orange
+            user_6 129 161 193      // Light Blue
+            user_7 171 121 103      // Brown
+            user_8 191 97 106       // Red
+            user_9 120 169 184      // Dark Turquoise
+        }
+    }
+}
