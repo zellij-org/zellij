@@ -73,16 +73,17 @@ use zellij_utils::{
             ProtobufLayoutParsingError, ProtobufPaneScrollbackResponse, ProtobufSyntaxError,
         },
         plugin_command::{
-            dump_layout_response, dump_session_layout_response, parse_layout_response,
-            save_session_response, ProtobufBreakPanesToNewTabResponse,
-            ProtobufBreakPanesToTabWithIdResponse, ProtobufBreakPanesToTabWithIndexResponse,
-            ProtobufDeleteLayoutResponse, ProtobufDumpLayoutResponse,
-            ProtobufDumpSessionLayoutResponse, ProtobufEditLayoutResponse,
-            ProtobufFocusOrCreateTabResponse, ProtobufGenerateRandomNameResponse,
-            ProtobufGetFocusedPaneInfoResponse, ProtobufGetLayoutDirResponse,
-            ProtobufGetPaneCwdResponse, ProtobufGetPaneInfoResponse, ProtobufGetPanePidResponse,
-            ProtobufGetPaneRunningCommandResponse, ProtobufGetSessionEnvironmentVariablesResponse,
-            ProtobufGetTabInfoResponse, ProtobufNewTabResponse, ProtobufNewTabsResponse,
+            dump_layout_response, dump_session_layout_response, hide_floating_panes_response,
+            parse_layout_response, save_session_response, show_floating_panes_response,
+            ProtobufBreakPanesToNewTabResponse, ProtobufBreakPanesToTabWithIdResponse,
+            ProtobufBreakPanesToTabWithIndexResponse, ProtobufDeleteLayoutResponse,
+            ProtobufDumpLayoutResponse, ProtobufDumpSessionLayoutResponse,
+            ProtobufEditLayoutResponse, ProtobufFocusOrCreateTabResponse,
+            ProtobufGenerateRandomNameResponse, ProtobufGetFocusedPaneInfoResponse,
+            ProtobufGetLayoutDirResponse, ProtobufGetPaneCwdResponse, ProtobufGetPaneInfoResponse,
+            ProtobufGetPanePidResponse, ProtobufGetPaneRunningCommandResponse,
+            ProtobufGetSessionEnvironmentVariablesResponse, ProtobufGetTabInfoResponse,
+            ProtobufHideFloatingPanesResponse, ProtobufNewTabResponse, ProtobufNewTabsResponse,
             ProtobufOpenCommandPaneBackgroundResponse,
             ProtobufOpenCommandPaneFloatingNearPluginResponse,
             ProtobufOpenCommandPaneFloatingResponse,
@@ -99,8 +100,7 @@ use zellij_utils::{
             ProtobufOpenTerminalPaneInPlaceOfPaneIdResponse, ProtobufOpenTerminalResponse,
             ProtobufParseLayoutResponse, ProtobufPluginCommand, ProtobufRenameLayoutResponse,
             ProtobufSaveLayoutResponse, ProtobufSaveSessionResponse,
-            hide_floating_panes_response, ProtobufHideFloatingPanesResponse,
-            show_floating_panes_response, ProtobufShowFloatingPanesResponse,
+            ProtobufShowFloatingPanesResponse,
         },
         plugin_ids::{ProtobufPluginIds, ProtobufZellijVersion},
     },
@@ -734,12 +734,8 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                         close_replaced_pane,
                         context,
                     ),
-                    PluginCommand::ShowFloatingPanes { tab_id } => {
-                        show_floating_panes(env, tab_id)
-                    },
-                    PluginCommand::HideFloatingPanes { tab_id } => {
-                        hide_floating_panes(env, tab_id)
-                    },
+                    PluginCommand::ShowFloatingPanes { tab_id } => show_floating_panes(env, tab_id),
+                    PluginCommand::HideFloatingPanes { tab_id } => hide_floating_panes(env, tab_id),
                 },
                 (PermissionStatus::Denied, permission) => {
                     log::error!(
@@ -3312,11 +3308,13 @@ fn save_session(env: &PluginEnv) {
 fn show_floating_panes(env: &PluginEnv, tab_id: Option<usize>) {
     use show_floating_panes_response::Result as ShowResult;
     let (completion_tx, completion_rx) = oneshot::channel();
-    let send_result = env.senders.send_to_screen(ScreenInstruction::ShowFloatingPanes {
-        client_id: env.client_id,
-        tab_id,
-        completion: Some(NotificationEnd::new(completion_tx)),
-    });
+    let send_result = env
+        .senders
+        .send_to_screen(ScreenInstruction::ShowFloatingPanes {
+            client_id: env.client_id,
+            tab_id,
+            completion: Some(NotificationEnd::new(completion_tx)),
+        });
     let response = if let Err(e) = send_result {
         ProtobufShowFloatingPanesResponse {
             result: Some(ShowResult::Error(format!("{}", e))),
@@ -3341,11 +3339,13 @@ fn show_floating_panes(env: &PluginEnv, tab_id: Option<usize>) {
 fn hide_floating_panes(env: &PluginEnv, tab_id: Option<usize>) {
     use hide_floating_panes_response::Result as HideResult;
     let (completion_tx, completion_rx) = oneshot::channel();
-    let send_result = env.senders.send_to_screen(ScreenInstruction::HideFloatingPanes {
-        client_id: env.client_id,
-        tab_id,
-        completion: Some(NotificationEnd::new(completion_tx)),
-    });
+    let send_result = env
+        .senders
+        .send_to_screen(ScreenInstruction::HideFloatingPanes {
+            client_id: env.client_id,
+            tab_id,
+            completion: Some(NotificationEnd::new(completion_tx)),
+        });
     let response = if let Err(e) = send_result {
         ProtobufHideFloatingPanesResponse {
             result: Some(HideResult::Error(format!("{}", e))),
