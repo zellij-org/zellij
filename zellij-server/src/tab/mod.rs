@@ -3182,6 +3182,12 @@ impl Tab {
         self.senders
             .send_to_pty_writer(PtyWriteInstruction::ApplyCachedResizes)
             .with_context(|| format!("failed to update plugins with mode info"))?;
+        LayoutApplier::offset_viewport(
+            self.viewport.clone(),
+            self.display_area.clone(),
+            &mut self.tiled_panes,
+            self.draw_pane_frames,
+        );
         Ok(())
     }
     pub fn resize(&mut self, client_id: ClientId, strategy: ResizeStrategy) -> Result<()> {
