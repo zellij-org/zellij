@@ -16,6 +16,7 @@ pub use super::generated_api::api::{
         FloatingPaneLayout as ProtobufFloatingPaneLayout,
         FloatingPlacement as ProtobufFloatingPlacement,
         GoToTabNamePayload,
+        HideFloatingPanesPayload,
         IdAndName,
         InPlaceConfig as ProtobufInPlaceConfig,
         KeyModifier as ProtobufKeyModifier,
@@ -56,12 +57,14 @@ pub use super::generated_api::api::{
         ScrollAtPayload,
         SearchDirection as ProtobufSearchDirection,
         SearchOption as ProtobufSearchOption,
+        ShowFloatingPanesPayload,
         SplitDirection as ProtobufSplitDirection,
         SplitSize as ProtobufSplitSize,
         StackedPlacement as ProtobufStackedPlacement,
         SwapFloatingLayout as ProtobufSwapFloatingLayout,
         SwapTiledLayout as ProtobufSwapTiledLayout,
         SwitchToModePayload,
+        TabIdAndName,
         TabLayoutInfo as ProtobufTabLayoutInfo,
         TiledPaneLayout as ProtobufTiledPaneLayout,
         TiledPlacement as ProtobufTiledPlacement,
@@ -395,6 +398,24 @@ impl TryFrom<ProtobufAction> for Action {
                     Some(_) => Err("ToggleFloatingPanes should not have a payload"),
                     None => Ok(Action::ToggleFloatingPanes),
                 }
+            },
+            Some(ProtobufActionName::ShowFloatingPanes) => match protobuf_action.optional_payload {
+                Some(OptionalPayload::ShowFloatingPanesPayload(payload)) => {
+                    Ok(Action::ShowFloatingPanes {
+                        tab_id: payload.tab_id.map(|id| id as usize),
+                    })
+                },
+                None => Ok(Action::ShowFloatingPanes { tab_id: None }),
+                _ => Err("Wrong payload for ShowFloatingPanes"),
+            },
+            Some(ProtobufActionName::HideFloatingPanes) => match protobuf_action.optional_payload {
+                Some(OptionalPayload::HideFloatingPanesPayload(payload)) => {
+                    Ok(Action::HideFloatingPanes {
+                        tab_id: payload.tab_id.map(|id| id as usize),
+                    })
+                },
+                None => Ok(Action::HideFloatingPanes { tab_id: None }),
+                _ => Err("Wrong payload for HideFloatingPanes"),
             },
             Some(ProtobufActionName::CloseFocus) => match protobuf_action.optional_payload {
                 Some(_) => Err("CloseFocus should not have a payload"),
@@ -1305,6 +1326,22 @@ impl TryFrom<Action> for ProtobufAction {
             Action::ToggleFloatingPanes => Ok(ProtobufAction {
                 name: ProtobufActionName::ToggleFloatingPanes as i32,
                 optional_payload: None,
+            }),
+            Action::ShowFloatingPanes { tab_id } => Ok(ProtobufAction {
+                name: ProtobufActionName::ShowFloatingPanes as i32,
+                optional_payload: Some(OptionalPayload::ShowFloatingPanesPayload(
+                    ShowFloatingPanesPayload {
+                        tab_id: tab_id.map(|id| id as u32),
+                    },
+                )),
+            }),
+            Action::HideFloatingPanes { tab_id } => Ok(ProtobufAction {
+                name: ProtobufActionName::HideFloatingPanes as i32,
+                optional_payload: Some(OptionalPayload::HideFloatingPanesPayload(
+                    HideFloatingPanesPayload {
+                        tab_id: tab_id.map(|id| id as u32),
+                    },
+                )),
             }),
             Action::CloseFocus => Ok(ProtobufAction {
                 name: ProtobufActionName::CloseFocus as i32,

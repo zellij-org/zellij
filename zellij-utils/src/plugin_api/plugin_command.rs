@@ -7,9 +7,10 @@ pub use super::generated_api::api::{
         break_panes_to_tab_with_index_response, delete_layout_response, dump_layout_response,
         dump_session_layout_response, edit_layout_response, focus_or_create_tab_response,
         get_focused_pane_info_response, get_pane_cwd_response, get_pane_pid_response,
-        get_pane_running_command_response, new_tab_response, parse_layout_response,
-        plugin_command::Payload, rename_layout_response, save_layout_response,
-        save_session_response, BreakPanesToNewTabPayload,
+        get_pane_running_command_response, hide_floating_panes_response, new_tab_response,
+        parse_layout_response, plugin_command::Payload, rename_layout_response,
+        save_layout_response, save_session_response, show_floating_panes_response,
+        BreakPanesToNewTabPayload,
         BreakPanesToNewTabResponse as ProtobufBreakPanesToNewTabResponse,
         BreakPanesToTabWithIdPayload,
         BreakPanesToTabWithIdResponse as ProtobufBreakPanesToTabWithIdResponse,
@@ -45,11 +46,12 @@ pub use super::generated_api::api::{
         GetSessionEnvironmentVariablesPayload as ProtobufGetSessionEnvironmentVariablesPayload,
         GetSessionEnvironmentVariablesResponse as ProtobufGetSessionEnvironmentVariablesResponse,
         GetTabInfoPayload, GetTabInfoResponse as ProtobufGetTabInfoResponse, GoToTabWithIdPayload,
-        GroupAndUngroupPanesPayload, HidePaneWithIdPayload, HighlightAndUnhighlightPanesPayload,
-        HttpVerb as ProtobufHttpVerb, IdAndNewName, KeyToRebind, KeyToUnbind, KillSessionsPayload,
-        ListTokensResponse, LoadNewPluginPayload, MessageToPluginPayload,
-        MovePaneWithPaneIdInDirectionPayload, MovePaneWithPaneIdPayload, MovePayload,
-        NewPluginArgs as ProtobufNewPluginArgs, NewTabPayload,
+        GroupAndUngroupPanesPayload, HideFloatingPanesPayload as ProtobufHideFloatingPanesPayload,
+        HideFloatingPanesResponse as ProtobufHideFloatingPanesResponse, HidePaneWithIdPayload,
+        HighlightAndUnhighlightPanesPayload, HttpVerb as ProtobufHttpVerb, IdAndNewName,
+        KeyToRebind, KeyToUnbind, KillSessionsPayload, ListTokensResponse, LoadNewPluginPayload,
+        MessageToPluginPayload, MovePaneWithPaneIdInDirectionPayload, MovePaneWithPaneIdPayload,
+        MovePayload, NewPluginArgs as ProtobufNewPluginArgs, NewTabPayload,
         NewTabResponse as ProtobufNewTabResponse, NewTabsResponse as ProtobufNewTabsResponse,
         NewTabsWithLayoutInfoPayload,
         OpenCommandPaneBackgroundResponse as ProtobufOpenCommandPaneBackgroundResponse,
@@ -102,10 +104,12 @@ pub use super::generated_api::api::{
         ScrollToBottomInPaneIdPayload, ScrollToTopInPaneIdPayload, ScrollUpInPaneIdPayload,
         SetFloatingPanePinnedPayload, SetPaneBorderlessPayload,
         SetSelfMouseSelectionSupportPayload, SetTimeoutPayload, ShowCursorPayload,
-        ShowPaneWithIdPayload, StackPanesPayload, SubscribePayload, SwitchSessionPayload,
-        SwitchTabToIdPayload, SwitchTabToPayload, TogglePaneBorderlessPayload,
-        TogglePaneEmbedOrEjectForPaneIdPayload, TogglePaneIdFullscreenPayload, UnsubscribePayload,
-        WebRequestPayload, WriteCharsToPaneIdPayload, WriteToPaneIdPayload,
+        ShowFloatingPanesPayload as ProtobufShowFloatingPanesPayload,
+        ShowFloatingPanesResponse as ProtobufShowFloatingPanesResponse, ShowPaneWithIdPayload,
+        StackPanesPayload, SubscribePayload, SwitchSessionPayload, SwitchTabToIdPayload,
+        SwitchTabToPayload, TogglePaneBorderlessPayload, TogglePaneEmbedOrEjectForPaneIdPayload,
+        TogglePaneIdFullscreenPayload, UnsubscribePayload, WebRequestPayload,
+        WriteCharsToPaneIdPayload, WriteToPaneIdPayload,
     },
     plugin_permission::PermissionType as ProtobufPermissionType,
     resize::ResizeAction as ProtobufResizeAction,
@@ -2401,6 +2405,24 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                     _ => Err("Mismatched payload for OpenEditPaneInPlaceOfPaneId"),
                 }
             },
+            Some(CommandName::HideFloatingPanes) => match protobuf_plugin_command.payload {
+                Some(Payload::HideFloatingPanesPayload(payload)) => {
+                    Ok(PluginCommand::HideFloatingPanes {
+                        tab_id: payload.tab_id.map(|id| id as usize),
+                    })
+                },
+                None => Ok(PluginCommand::HideFloatingPanes { tab_id: None }),
+                _ => Err("Mismatched payload for HideFloatingPanes"),
+            },
+            Some(CommandName::ShowFloatingPanes) => match protobuf_plugin_command.payload {
+                Some(Payload::ShowFloatingPanesPayload(payload)) => {
+                    Ok(PluginCommand::ShowFloatingPanes {
+                        tab_id: payload.tab_id.map(|id| id as usize),
+                    })
+                },
+                None => Ok(PluginCommand::ShowFloatingPanes { tab_id: None }),
+                _ => Err("Mismatched payload for ShowFloatingPanes"),
+            },
             None => Err("Unrecognized plugin command"),
         }
     }
@@ -3937,6 +3959,22 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     )),
                 })
             },
+            PluginCommand::HideFloatingPanes { tab_id } => Ok(ProtobufPluginCommand {
+                name: CommandName::HideFloatingPanes as i32,
+                payload: Some(Payload::HideFloatingPanesPayload(
+                    ProtobufHideFloatingPanesPayload {
+                        tab_id: tab_id.map(|id| id as u32),
+                    },
+                )),
+            }),
+            PluginCommand::ShowFloatingPanes { tab_id } => Ok(ProtobufPluginCommand {
+                name: CommandName::ShowFloatingPanes as i32,
+                payload: Some(Payload::ShowFloatingPanesPayload(
+                    ProtobufShowFloatingPanesPayload {
+                        tab_id: tab_id.map(|id| id as u32),
+                    },
+                )),
+            }),
         }
     }
 }

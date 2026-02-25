@@ -4689,6 +4689,43 @@ impl Tab {
         self.set_force_render();
     }
 
+    pub fn show_floating_panes_atomic(&mut self, mut completion: Option<NotificationEnd>) {
+        if self.floating_panes.panes_are_visible() {
+            if let Some(c) = completion.as_mut() {
+                c.set_exit_status(2);
+            }
+        } else if self
+            .floating_panes
+            .last_selectable_floating_pane_id()
+            .is_none()
+        {
+            // No selectable floating panes exist — surface must not be shown
+            if let Some(c) = completion.as_mut() {
+                c.set_exit_status(1);
+            }
+        } else {
+            self.show_floating_panes();
+            if let Some(c) = completion.as_mut() {
+                c.set_exit_status(0);
+            }
+        }
+        drop(completion);
+    }
+
+    pub fn hide_floating_panes_atomic(&mut self, mut completion: Option<NotificationEnd>) {
+        if !self.floating_panes.panes_are_visible() {
+            if let Some(c) = completion.as_mut() {
+                c.set_exit_status(2);
+            }
+        } else {
+            self.hide_floating_panes();
+            if let Some(c) = completion.as_mut() {
+                c.set_exit_status(0);
+            }
+        }
+        drop(completion);
+    }
+
     pub fn find_plugin(&self, run_plugin_or_alias: &RunPluginOrAlias) -> Option<PaneId> {
         self.tiled_panes
             .get_plugin_pane_id(run_plugin_or_alias)

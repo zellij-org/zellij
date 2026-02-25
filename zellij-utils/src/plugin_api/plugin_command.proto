@@ -196,6 +196,8 @@ enum CommandName {
   OpenCommandPaneInPlaceOfPaneId = 201;
   OpenTerminalPaneInPlaceOfPaneId = 202;
   OpenEditPaneInPlaceOfPaneId = 203;
+  HideFloatingPanes = 204;
+  ShowFloatingPanes = 205;
 }
 
 message PluginCommand {
@@ -341,6 +343,8 @@ message PluginCommand {
     OpenCommandPaneInPlaceOfPaneIdPayload open_command_pane_in_place_of_pane_id_payload = 152;
     OpenTerminalPaneInPlaceOfPaneIdPayload open_terminal_pane_in_place_of_pane_id_payload = 153;
     OpenEditPaneInPlaceOfPaneIdPayload open_edit_pane_in_place_of_pane_id_payload = 154;
+    HideFloatingPanesPayload hide_floating_panes_payload = 155;
+    ShowFloatingPanesPayload show_floating_panes_payload = 156;
   }
 }
 
@@ -1185,4 +1189,26 @@ message OpenTerminalPaneInPlaceOfPaneIdResponse {
 
 message OpenEditPaneInPlaceOfPaneIdResponse {
   optional PaneId pane_id = 1;
+}
+
+message HideFloatingPanesPayload {
+  optional uint32 tab_id = 1;
+}
+
+message ShowFloatingPanesPayload {
+  optional uint32 tab_id = 1;
+}
+
+message ShowFloatingPanesResponse {
+  oneof result {
+    bool success = 1;
+    string error = 2;
+  }
+}
+
+message HideFloatingPanesResponse {
+  oneof result {
+    bool success = 1;
+    string error = 2;
+  }
 }

@@ -73,16 +73,17 @@ use zellij_utils::{
             ProtobufLayoutParsingError, ProtobufPaneScrollbackResponse, ProtobufSyntaxError,
         },
         plugin_command::{
-            dump_layout_response, dump_session_layout_response, parse_layout_response,
-            save_session_response, ProtobufBreakPanesToNewTabResponse,
-            ProtobufBreakPanesToTabWithIdResponse, ProtobufBreakPanesToTabWithIndexResponse,
-            ProtobufDeleteLayoutResponse, ProtobufDumpLayoutResponse,
-            ProtobufDumpSessionLayoutResponse, ProtobufEditLayoutResponse,
-            ProtobufFocusOrCreateTabResponse, ProtobufGenerateRandomNameResponse,
-            ProtobufGetFocusedPaneInfoResponse, ProtobufGetLayoutDirResponse,
-            ProtobufGetPaneCwdResponse, ProtobufGetPaneInfoResponse, ProtobufGetPanePidResponse,
-            ProtobufGetPaneRunningCommandResponse, ProtobufGetSessionEnvironmentVariablesResponse,
-            ProtobufGetTabInfoResponse, ProtobufNewTabResponse, ProtobufNewTabsResponse,
+            dump_layout_response, dump_session_layout_response, hide_floating_panes_response,
+            parse_layout_response, save_session_response, show_floating_panes_response,
+            ProtobufBreakPanesToNewTabResponse, ProtobufBreakPanesToTabWithIdResponse,
+            ProtobufBreakPanesToTabWithIndexResponse, ProtobufDeleteLayoutResponse,
+            ProtobufDumpLayoutResponse, ProtobufDumpSessionLayoutResponse,
+            ProtobufEditLayoutResponse, ProtobufFocusOrCreateTabResponse,
+            ProtobufGenerateRandomNameResponse, ProtobufGetFocusedPaneInfoResponse,
+            ProtobufGetLayoutDirResponse, ProtobufGetPaneCwdResponse, ProtobufGetPaneInfoResponse,
+            ProtobufGetPanePidResponse, ProtobufGetPaneRunningCommandResponse,
+            ProtobufGetSessionEnvironmentVariablesResponse, ProtobufGetTabInfoResponse,
+            ProtobufHideFloatingPanesResponse, ProtobufNewTabResponse, ProtobufNewTabsResponse,
             ProtobufOpenCommandPaneBackgroundResponse,
             ProtobufOpenCommandPaneFloatingNearPluginResponse,
             ProtobufOpenCommandPaneFloatingResponse,
@@ -99,6 +100,7 @@ use zellij_utils::{
             ProtobufOpenTerminalPaneInPlaceOfPaneIdResponse, ProtobufOpenTerminalResponse,
             ProtobufParseLayoutResponse, ProtobufPluginCommand, ProtobufRenameLayoutResponse,
             ProtobufSaveLayoutResponse, ProtobufSaveSessionResponse,
+            ProtobufShowFloatingPanesResponse,
         },
         plugin_ids::{ProtobufPluginIds, ProtobufZellijVersion},
     },
@@ -732,6 +734,8 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                         close_replaced_pane,
                         context,
                     ),
+                    PluginCommand::ShowFloatingPanes { tab_id } => show_floating_panes(env, tab_id),
+                    PluginCommand::HideFloatingPanes { tab_id } => hide_floating_panes(env, tab_id),
                 },
                 (PermissionStatus::Denied, permission) => {
                     log::error!(
@@ -3301,6 +3305,68 @@ fn save_session(env: &PluginEnv) {
     let _ = wasi_write_object(env, &response.encode_to_vec());
 }
 
+fn show_floating_panes(env: &PluginEnv, tab_id: Option<usize>) {
+    use show_floating_panes_response::Result as ShowResult;
+    let (completion_tx, completion_rx) = oneshot::channel();
+    let send_result = env
+        .senders
+        .send_to_screen(ScreenInstruction::ShowFloatingPanes {
+            client_id: env.client_id,
+            tab_id,
+            completion: Some(NotificationEnd::new(completion_tx)),
+        });
+    let response = if let Err(e) = send_result {
+        ProtobufShowFloatingPanesResponse {
+            result: Some(ShowResult::Error(format!("{}", e))),
+        }
+    } else {
+        let result = wait_for_action_completion(completion_rx, "show_floating_panes", false);
+        match result.exit_status {
+            Some(0) => ProtobufShowFloatingPanesResponse {
+                result: Some(ShowResult::Success(true)),
+            },
+            Some(2) => ProtobufShowFloatingPanesResponse {
+                result: Some(ShowResult::Success(false)),
+            },
+            _ => ProtobufShowFloatingPanesResponse {
+                result: Some(ShowResult::Error("Tab not found".to_string())),
+            },
+        }
+    };
+    let _ = wasi_write_object(env, &response.encode_to_vec());
+}
+
+fn hide_floating_panes(env: &PluginEnv, tab_id: Option<usize>) {
+    use hide_floating_panes_response::Result as HideResult;
+    let (completion_tx, completion_rx) = oneshot::channel();
+    let send_result = env
+        .senders
+        .send_to_screen(ScreenInstruction::HideFloatingPanes {
+            client_id: env.client_id,
+            tab_id,
+            completion: Some(NotificationEnd::new(completion_tx)),
+        });
+    let response = if let Err(e) = send_result {
+        ProtobufHideFloatingPanesResponse {
+            result: Some(HideResult::Error(format!("{}", e))),
+        }
+    } else {
+        let result = wait_for_action_completion(completion_rx, "hide_floating_panes", false);
+        match result.exit_status {
+            Some(0) => ProtobufHideFloatingPanesResponse {
+                result: Some(HideResult::Success(true)),
+            },
+            Some(2) => ProtobufHideFloatingPanesResponse {
+                result: Some(HideResult::Success(false)),
+            },
+            _ => ProtobufHideFloatingPanesResponse {
+                result: Some(HideResult::Error("Tab not found".to_string())),
+            },
+        }
+    };
+    let _ = wasi_write_object(env, &response.encode_to_vec());
+}
+
 fn current_session_last_saved_time(env: &PluginEnv) {
     use zellij_utils::plugin_api::plugin_command::ProtobufCurrentSessionLastSavedTimeResponse;
 
@@ -4991,7 +5057,9 @@ fn check_command_permission(
         | PluginCommand::SaveLayout { .. }
         | PluginCommand::DeleteLayout { .. }
         | PluginCommand::RenameLayout { .. }
-        | PluginCommand::EditLayout { .. } => PermissionType::ChangeApplicationState,
+        | PluginCommand::EditLayout { .. }
+        | PluginCommand::ShowFloatingPanes { .. }
+        | PluginCommand::HideFloatingPanes { .. } => PermissionType::ChangeApplicationState,
         PluginCommand::UnblockCliPipeInput(..)
         | PluginCommand::BlockCliPipeInput(..)
         | PluginCommand::CliPipeOutput(..) => PermissionType::ReadCliPipes,

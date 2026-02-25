@@ -725,19 +725,20 @@ impl From<crate::input::actions::Action>
             FocusNextPaneAction, FocusPluginPaneWithIdAction, FocusPreviousPaneAction,
             FocusTerminalPaneWithIdAction, GoToNextTabAction, GoToPreviousTabAction, GoToTabAction,
             GoToTabByIdAction, GoToTabNameAction, HalfPageScrollDownAction, HalfPageScrollUpAction,
-            KeybindPipeAction, LaunchOrFocusPluginAction, LaunchPluginAction, ListClientsAction,
-            ListPanesAction, ListTabsAction, MouseEventAction, MoveFocusAction,
-            MoveFocusOrTabAction, MovePaneAction, MovePaneBackwardsAction, MoveTabAction,
-            NewBlockingPaneAction, NewFloatingPaneAction, NewFloatingPluginPaneAction,
-            NewInPlacePaneAction, NewInPlacePluginPaneAction, NewPaneAction, NewStackedPaneAction,
-            NewTabAction, NewTiledPaneAction, NewTiledPluginPaneAction, NextSwapLayoutAction,
-            NoOpAction, OverrideLayoutAction, PageScrollDownAction, PageScrollUpAction,
-            PaneIdWithPlugin, PaneNameInputAction, PreviousSwapLayoutAction, QueryTabNamesAction,
-            QuitAction, RenamePluginPaneAction, RenameSessionAction, RenameTabAction,
-            RenameTabByIdAction, RenameTerminalPaneAction, ResizeAction, RunAction,
-            SaveSessionAction, ScrollDownAction, ScrollDownAtAction, ScrollToBottomAction,
-            ScrollToTopAction, ScrollUpAction, ScrollUpAtAction, SearchAction, SearchInputAction,
-            SearchToggleOptionAction, SetPaneBorderlessAction, SkipConfirmAction, StackPanesAction,
+            HideFloatingPanesAction, KeybindPipeAction, LaunchOrFocusPluginAction,
+            LaunchPluginAction, ListClientsAction, ListPanesAction, ListTabsAction,
+            MouseEventAction, MoveFocusAction, MoveFocusOrTabAction, MovePaneAction,
+            MovePaneBackwardsAction, MoveTabAction, NewBlockingPaneAction, NewFloatingPaneAction,
+            NewFloatingPluginPaneAction, NewInPlacePaneAction, NewInPlacePluginPaneAction,
+            NewPaneAction, NewStackedPaneAction, NewTabAction, NewTiledPaneAction,
+            NewTiledPluginPaneAction, NextSwapLayoutAction, NoOpAction, OverrideLayoutAction,
+            PageScrollDownAction, PageScrollUpAction, PaneIdWithPlugin, PaneNameInputAction,
+            PreviousSwapLayoutAction, QueryTabNamesAction, QuitAction, RenamePluginPaneAction,
+            RenameSessionAction, RenameTabAction, RenameTabByIdAction, RenameTerminalPaneAction,
+            ResizeAction, RunAction, SaveSessionAction, ScrollDownAction, ScrollDownAtAction,
+            ScrollToBottomAction, ScrollToTopAction, ScrollUpAction, ScrollUpAtAction,
+            SearchAction, SearchInputAction, SearchToggleOptionAction, SetPaneBorderlessAction,
+            ShowFloatingPanesAction, SkipConfirmAction, StackPanesAction,
             StartOrReloadPluginAction, SwitchFocusAction, SwitchModeForAllClientsAction,
             SwitchSessionAction, SwitchToModeAction, TabNameInputAction, ToggleActiveSyncTabAction,
             ToggleFloatingPanesAction, ToggleFocusFullscreenAction, ToggleGroupMarkingAction,
@@ -970,6 +971,16 @@ impl From<crate::input::actions::Action>
             },
             crate::input::actions::Action::ToggleFloatingPanes => {
                 ActionType::ToggleFloatingPanes(ToggleFloatingPanesAction {})
+            },
+            crate::input::actions::Action::ShowFloatingPanes { tab_id } => {
+                ActionType::ShowFloatingPanes(ShowFloatingPanesAction {
+                    tab_id: tab_id.map(|id| id as u32),
+                })
+            },
+            crate::input::actions::Action::HideFloatingPanes { tab_id } => {
+                ActionType::HideFloatingPanes(HideFloatingPanesAction {
+                    tab_id: tab_id.map(|id| id as u32),
+                })
             },
             crate::input::actions::Action::CloseFocus => {
                 ActionType::CloseFocus(CloseFocusAction {})
@@ -1620,6 +1631,16 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
             },
             ActionType::ToggleFloatingPanes(_) => {
                 Ok(crate::input::actions::Action::ToggleFloatingPanes)
+            },
+            ActionType::ShowFloatingPanes(a) => {
+                Ok(crate::input::actions::Action::ShowFloatingPanes {
+                    tab_id: a.tab_id.map(|id| id as usize),
+                })
+            },
+            ActionType::HideFloatingPanes(a) => {
+                Ok(crate::input::actions::Action::HideFloatingPanes {
+                    tab_id: a.tab_id.map(|id| id as usize),
+                })
             },
             ActionType::CloseFocus(_) => Ok(crate::input::actions::Action::CloseFocus),
             ActionType::PaneNameInput(pane_name_action) => {

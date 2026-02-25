@@ -262,6 +262,16 @@ pub enum ScreenInstruction {
     OpenInPlaceEditor(PaneId, ClientTabIndexOrPaneId),
     TogglePaneEmbedOrFloating(ClientId, Option<NotificationEnd>),
     ToggleFloatingPanes(ClientId, Option<TerminalAction>, Option<NotificationEnd>),
+    ShowFloatingPanes {
+        client_id: ClientId,
+        tab_id: Option<usize>,
+        completion: Option<NotificationEnd>,
+    },
+    HideFloatingPanes {
+        client_id: ClientId,
+        tab_id: Option<usize>,
+        completion: Option<NotificationEnd>,
+    },
     WriteCharacter(
         Option<KeyWithModifier>,
         Vec<u8>,
@@ -667,6 +677,8 @@ impl From<&ScreenInstruction> for ScreenContext {
                 ScreenContext::TogglePaneEmbedOrFloating
             },
             ScreenInstruction::ToggleFloatingPanes(..) => ScreenContext::ToggleFloatingPanes,
+            ScreenInstruction::ShowFloatingPanes { .. } => ScreenContext::ShowFloatingPanes,
+            ScreenInstruction::HideFloatingPanes { .. } => ScreenContext::HideFloatingPanes,
             ScreenInstruction::WriteCharacter(..) => ScreenContext::WriteCharacter,
             ScreenInstruction::Resize(.., strategy, _) => match strategy {
                 ResizeStrategy {
@@ -1895,6 +1907,52 @@ impl Screen {
     /// Returns a mutable reference to this [`Screen`]'s indexed [`Tab`].
     pub fn get_indexed_tab_mut(&mut self, tab_index: usize) -> Option<&mut Tab> {
         self.get_tabs_mut().get_mut(&tab_index)
+    }
+
+    pub fn show_floating_panes_in_tab(
+        &mut self,
+        client_id: ClientId,
+        tab_id: Option<usize>,
+        completion: Option<NotificationEnd>,
+    ) -> Result<()> {
+        let tab = match tab_id {
+            Some(id) => self.tabs.get_mut(&id),
+            None => self.get_active_tab_mut(client_id).ok(),
+        };
+        match tab {
+            None => {
+                let mut completion = completion;
+                if let Some(c) = completion.as_mut() {
+                    c.set_exit_status(1);
+                }
+                drop(completion);
+            },
+            Some(tab) => tab.show_floating_panes_atomic(completion),
+        }
+        Ok(())
+    }
+
+    pub fn hide_floating_panes_in_tab(
+        &mut self,
+        client_id: ClientId,
+        tab_id: Option<usize>,
+        completion: Option<NotificationEnd>,
+    ) -> Result<()> {
+        let tab = match tab_id {
+            Some(id) => self.tabs.get_mut(&id),
+            None => self.get_active_tab_mut(client_id).ok(),
+        };
+        match tab {
+            None => {
+                let mut completion = completion;
+                if let Some(c) = completion.as_mut() {
+                    c.set_exit_status(1);
+                }
+                drop(completion);
+            },
+            Some(tab) => tab.hide_floating_panes_atomic(completion),
+        }
+        Ok(())
     }
 
     /// Creates a new [`Tab`] in this [`Screen`]
@@ -4370,6 +4428,24 @@ pub(crate) fn screen_thread_main(
                     .toggle_floating_panes(Some(client_id), default_shell, completion_tx), ?);
                 screen.log_and_report_session_state()?;
 
+                screen.render(None)?;
+            },
+            ScreenInstruction::ShowFloatingPanes {
+                client_id,
+                tab_id,
+                completion,
+            } => {
+                screen.show_floating_panes_in_tab(client_id, tab_id, completion)?;
+                screen.log_and_report_session_state()?;
+                screen.render(None)?;
+            },
+            ScreenInstruction::HideFloatingPanes {
+                client_id,
+                tab_id,
+                completion,
+            } => {
+                screen.hide_floating_panes_in_tab(client_id, tab_id, completion)?;
+                screen.log_and_report_session_state()?;
                 screen.render(None)?;
             },
             ScreenInstruction::WriteCharacter(
