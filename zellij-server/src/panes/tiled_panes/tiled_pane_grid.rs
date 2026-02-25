@@ -2359,3 +2359,74 @@ pub fn split(direction: SplitDirection, rect: &PaneGeom) -> Option<(PaneGeom, Pa
         None
     }
 }
+
+pub fn split_with_size(
+    direction: SplitDirection,
+    rect: &PaneGeom,
+    split_size: Option<zellij_utils::input::layout::SplitSize>,
+) -> Option<(PaneGeom, PaneGeom)> {
+    use zellij_utils::input::layout::SplitSize;
+    let Some(split_size) = split_size else {
+        return split(direction, rect);
+    };
+    let space = match direction {
+        SplitDirection::Vertical => rect.cols,
+        SplitDirection::Horizontal => rect.rows,
+    };
+    let total = space.as_usize();
+    if total == 0 {
+        return None;
+    }
+    let (first_dim, second_dim) = match split_size {
+        SplitSize::Fixed(requested) => {
+            // New pane gets requested rows/cols; leave at least 1 for the existing pane.
+            let second_size = requested.min(total.saturating_sub(1)).max(1);
+            let first_size = total - second_size;
+            (Dimension::fixed(first_size), Dimension::fixed(second_size))
+        },
+        SplitSize::Percent(percent) => {
+            let Some(p) = space.as_percent() else {
+                return split(direction, rect);
+            };
+            // Leave at least 1% for the existing pane.
+            let requested_percent = percent.clamp(1, 99) as f64;
+            let mut second_percent = (p * (requested_percent / 100.0)).floor();
+            if second_percent <= 0.0 {
+                second_percent = 1.0;
+            }
+            if second_percent >= p {
+                second_percent = (p - 1.0).max(1.0);
+            }
+            let first_percent = (p - second_percent).max(1.0);
+            (
+                Dimension::percent(first_percent),
+                Dimension::percent(second_percent),
+            )
+        },
+    };
+    let first_rect = match direction {
+        SplitDirection::Vertical => PaneGeom {
+            cols: first_dim,
+            ..*rect
+        },
+        SplitDirection::Horizontal => PaneGeom {
+            rows: first_dim,
+            ..*rect
+        },
+    };
+    let second_rect = match direction {
+        SplitDirection::Vertical => PaneGeom {
+            x: first_rect.x + 1,
+            cols: second_dim,
+            logical_position: None,
+            ..*rect
+        },
+        SplitDirection::Horizontal => PaneGeom {
+            y: first_rect.y + 1,
+            rows: second_dim,
+            logical_position: None,
+            ..*rect
+        },
+    };
+    Some((first_rect, second_rect))
+}
