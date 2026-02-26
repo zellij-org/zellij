@@ -18,12 +18,17 @@ pub struct ResurrectableSessions {
 }
 
 impl ResurrectableSessions {
-    pub fn update(&mut self, mut list: Vec<(String, Duration)>) {
+    /// Returns a boolean indicating whether the list of resurrectable sessions has changed
+    pub fn update(&mut self, mut list: Vec<(String, Duration)>) -> bool {
         list.sort_by(|a, b| a.1.cmp(&b.1));
+        if self.all_resurrectable_sessions == list {
+            return false;
+        }
         self.all_resurrectable_sessions = list;
         if self.is_searching {
             self.update_search_term();
         }
+        true
     }
     pub fn render(&self, rows: usize, columns: usize, x: usize, y: usize) {
         if self.delete_all_dead_sessions_warning {

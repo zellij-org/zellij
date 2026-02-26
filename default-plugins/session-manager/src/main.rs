@@ -116,16 +116,23 @@ impl ZellijPlugin for State {
                 should_render = true;
             },
             Event::SessionUpdate(session_infos, resurrectable_session_list) => {
+                let mut session_manager_changed = false;
                 for session_info in &session_infos {
                     if session_info.is_current_session {
-                        self.new_session_info
-                            .update_layout_list(session_info.available_layouts.clone());
+                        if self.new_session_info
+                            .update_layout_list(session_info.available_layouts.clone()) {
+                                session_manager_changed = true;
+                            }
                     }
                 }
-                self.resurrectable_sessions
-                    .update(resurrectable_session_list);
-                self.update_session_infos(session_infos);
-                should_render = true;
+                if self.resurrectable_sessions
+                    .update(resurrectable_session_list) {
+                        session_manager_changed = true;
+                    }
+                if self.update_session_infos(session_infos) {
+                    session_manager_changed = true;
+                }
+                should_render = session_manager_changed;
             },
             _ => (),
         };
@@ -607,7 +614,8 @@ impl State {
         }
         self.session_name = Some(new_name.to_owned());
     }
-    fn update_session_infos(&mut self, session_infos: Vec<SessionInfo>) {
+    /// Returns a boolean indicating whether the session infos have changed
+    fn update_session_infos(&mut self, session_infos: Vec<SessionInfo>) -> bool {
         let session_ui_infos: Vec<SessionUiInfo> = session_infos
             .iter()
             .filter_map(|s| {
@@ -646,7 +654,7 @@ impl State {
             self.session_name = Some(current_session_name);
         }
         self.sessions
-            .set_sessions(session_ui_infos, forbidden_sessions);
+            .set_sessions(session_ui_infos, forbidden_sessions)
     }
     fn main_menu_size(&self, rows: usize, cols: usize) -> (usize, usize, usize, usize) {
         // x, y, width, height

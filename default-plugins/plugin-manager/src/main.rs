@@ -3,6 +3,7 @@ use fuzzy_matcher::FuzzyMatcher;
 use uuid::Uuid;
 use zellij_tile::prelude::*;
 
+use std::collections::hash_map::Entry::{Occupied, Vacant};
 use std::collections::{BTreeMap, HashMap};
 
 pub struct SearchResult {
@@ -551,19 +552,32 @@ impl ZellijPlugin for State {
                 should_render = true;
             },
             Event::SessionUpdate(live_sessions, _dead_sessions) => {
+                let mut changed = false;
                 for session in live_sessions {
                     if session.is_current_session {
                         if session.plugins != self.plugins {
                             self.plugins = session.plugins;
                             self.reset_selection();
                             self.update_search_term();
+                            changed = true;
                         }
                         for tab in session.tabs {
-                            self.tab_position_to_tab_name.insert(tab.position, tab.name);
+                            match self.tab_position_to_tab_name.entry(tab.position) {
+                                Occupied(mut entry) => {
+                                    if entry.get() != &tab.name {
+                                        entry.insert(tab.name);
+                                        changed = true;
+                                    }
+                                }
+                                Vacant(entry) => {
+                                    entry.insert(tab.name);
+                                    changed = true;
+                                }
+                            }
                         }
                     }
                 }
-                should_render = true;
+                should_render = changed;
             },
             Event::PaneUpdate(pane_manifest) => {
                 for (tab_position, panes) in pane_manifest.panes {
