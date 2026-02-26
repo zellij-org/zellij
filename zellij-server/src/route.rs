@@ -1574,6 +1574,7 @@ pub(crate) fn route_action(
                         skip_cache,
                         cli_client_id: client_id,
                         plugin_and_client_id: plugin_id.map(|plugin_id| (plugin_id, client_id)),
+                        notification_end: Some(NotificationEnd::new(completion_tx)),
                     })
                     .with_context(err_context)?;
             } else {
