@@ -35,8 +35,9 @@ use prost::Message;
 
 use crate::panes::PaneId;
 use crate::{
-    background_jobs::BackgroundJob, screen::ScreenInstruction, thread_bus::ThreadSenders,
-    ui::loading_indication::LoadingIndication, ClientId, ServerInstruction,
+    background_jobs::BackgroundJob, route::NotificationEnd, screen::ScreenInstruction,
+    thread_bus::ThreadSenders, ui::loading_indication::LoadingIndication, ClientId,
+    ServerInstruction,
 };
 use zellij_utils::{
     data::{Event, EventType, PluginCapabilities},
@@ -1088,6 +1089,7 @@ impl WasmBridge {
         &mut self,
         messages: Vec<(Option<PluginId>, Option<ClientId>, PipeMessage)>,
         shutdown_sender: Sender<()>,
+        notification_end: Option<NotificationEnd>,
     ) -> Result<()> {
         let plugins_to_update: Vec<(
             PluginId,
@@ -1123,6 +1125,7 @@ impl WasmBridge {
                             .mark_being_processed(pipe_id, plugin_id, client_id);
                     }
                     // Execute directly on pinned thread (no async I/O needed for pipe message processing)
+                    let notification_end = notification_end.clone();
                     plugin_executor.execute_for_plugin(*plugin_id, {
                         let running_plugin = running_plugin.clone();
                         let pipe_message = pipe_message.clone();
@@ -1138,6 +1141,7 @@ impl WasmBridge {
                             let mut running_plugin = running_plugin.lock().unwrap();
                             let mut plugin_render_assets = vec![];
                             let _s = _s; // guard to allow the task to complete before cleanup/shutdown
+                            let notification_end = notification_end.clone();
                             match apply_pipe_message_to_plugin(
                                 plugin_id,
                                 client_id,
@@ -1154,7 +1158,7 @@ impl WasmBridge {
                                 Err(e) => {
                                     log::error!("{:?}", e);
 
-                                    // https://stackoverflow.com/questions/66450942/in-rust-is-there-a-way-to-make-literal-newlines-in-r-using-windows-c
+                                    // https://stackoverflow.com/questions/66450942/in-rust-is-there-a-way-to-make-literal-newlines-in-rust-using-windows
                                     let stringified_error =
                                         format!("{:?}", e).replace("\n", "\n\r");
 
@@ -1165,6 +1169,7 @@ impl WasmBridge {
                                     );
                                 },
                             }
+                            drop(notification_end);
                         }
                     });
                 }
