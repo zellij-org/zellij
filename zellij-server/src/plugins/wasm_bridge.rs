@@ -1,5 +1,4 @@
 use super::{PinnedExecutor, PluginId, PluginInstruction};
-use crate::global_async_runtime::get_tokio_runtime;
 use crate::plugins::pipes::{
     apply_pipe_message_to_plugin, pipes_to_block_or_unblock, PendingPipes, PipeStateChange,
 };
@@ -44,6 +43,7 @@ use crate::{
 use zellij_utils::{
     data::{Event, EventType, PluginCapabilities},
     errors::prelude::*,
+    global_async_runtime::get_tokio_runtime,
     input::{
         command::TerminalAction,
         layout::{Layout, PluginUserConfiguration, RunPlugin, RunPluginLocation, RunPluginOrAlias},

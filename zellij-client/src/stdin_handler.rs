@@ -4,24 +4,25 @@ use crate::stdin_ansi_parser::StdinAnsiParser;
 use crate::InputInstruction;
 use std::sync::{Arc, Mutex};
 use termwiz::input::{InputEvent, InputParser};
+use tokio::time::{Duration, Instant};
+use tokio_util::sync::CancellationToken;
 use zellij_utils::channels::SenderWithContext;
 
 fn send_done_parsing_after_query_timeout(
     send_input_instructions: SenderWithContext<InputInstruction>,
     query_duration: u64,
 ) {
-    std::thread::spawn({
-        move || {
-            std::thread::sleep(std::time::Duration::from_millis(query_duration));
-            send_input_instructions
-                .send(InputInstruction::DoneParsing)
-                .unwrap();
-        }
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(query_duration)).await;
+        send_input_instructions
+            .send(InputInstruction::DoneParsing)
+            .unwrap();
     });
 }
 
-pub(crate) fn stdin_loop(
-    mut os_input: Box<dyn ClientOsApi>,
+pub(crate) async fn stdin_loop(
+    token: CancellationToken,
+    os_input: Box<dyn ClientOsApi>,
     send_input_instructions: SenderWithContext<InputInstruction>,
     stdin_ansi_parser: Arc<Mutex<StdinAnsiParser>>,
     explicitly_disable_kitty_keyboard_protocol: bool,
@@ -59,79 +60,135 @@ pub(crate) fn stdin_loop(
         }
     }
     let mut ansi_stdin_events = vec![];
+    let mut stdin = os_input.get_async_stdin_reader();
+    let mut needs_finalization = false;
+    let finalization_timeout = tokio::time::sleep(Duration::from_hours(24));
+    tokio::pin!(finalization_timeout);
     loop {
-        match os_input.read_from_stdin() {
-            Ok(buf) => {
-                {
-                    // here we check if we need to parse specialized ANSI instructions sent over STDIN
-                    // this happens either on startup (see above) or on SIGWINCH
-                    //
-                    // if we need to parse them, we do so with an internal timeout - anything else we
-                    // receive on STDIN during that timeout is unceremoniously dropped
-                    let mut stdin_ansi_parser = stdin_ansi_parser.lock().unwrap();
-                    if stdin_ansi_parser.should_parse() {
-                        let events = stdin_ansi_parser.parse(buf);
-                        if !events.is_empty() {
-                            ansi_stdin_events.append(&mut events.clone());
-                            let _ = send_input_instructions
-                                .send(InputInstruction::AnsiStdinInstructions(events));
-                        }
-                        continue;
-                    }
-                }
-                if !ansi_stdin_events.is_empty() {
-                    stdin_ansi_parser
-                        .lock()
-                        .unwrap()
-                        .write_cache(ansi_stdin_events.drain(..).collect());
-                }
-                current_buffer.append(&mut buf.to_vec());
+        tokio::select! {
+            biased;
 
-                if !explicitly_disable_kitty_keyboard_protocol {
-                    // first we try to parse with the KittyKeyboardParser
-                    // if we fail, we try to parse normally
-                    match KittyKeyboardParser::new().parse(&buf) {
-                        Some(key_with_modifier) => {
+            _ = token.cancelled() => {
+                log::debug!("STDIN loop cancelled");
+                break;
+            }
+
+            result = stdin.read() => {
+                match result {
+                    Ok(buf) if !buf.is_empty() => {
+                        {
+                            // here we check if we need to parse specialized ANSI instructions sent over STDIN
+                            // this happens either on startup (see above) or on SIGWINCH
+                            //
+                            // if we need to parse them, we do so with an internal timeout - anything else we
+                            // receive on STDIN during that timeout is unceremoniously dropped
+                            let mut stdin_ansi_parser = stdin_ansi_parser.lock().unwrap();
+                            if stdin_ansi_parser.should_parse() {
+                                let events = stdin_ansi_parser.parse(buf);
+                                if !events.is_empty() {
+                                    ansi_stdin_events.append(&mut events.clone());
+                                    let _ = send_input_instructions
+                                        .send(InputInstruction::AnsiStdinInstructions(events));
+                                }
+                                continue;
+                            }
+                        }
+                        if !ansi_stdin_events.is_empty() {
+                            stdin_ansi_parser
+                                .lock()
+                                .unwrap()
+                                .write_cache(ansi_stdin_events.drain(..).collect());
+                        }
+                        current_buffer.append(&mut buf.to_vec());
+
+                        if !explicitly_disable_kitty_keyboard_protocol {
+                            // first we try to parse with the KittyKeyboardParser
+                            // if we fail, we try to parse normally
+                            match KittyKeyboardParser::new().parse(&buf) {
+                                Some(key_with_modifier) => {
+                                    send_input_instructions
+                                        .send(InputInstruction::KeyWithModifierEvent(
+                                            key_with_modifier,
+                                            current_buffer.drain(..).collect(),
+                                        ))
+                                        .unwrap();
+                                    continue;
+                                },
+                                None => {},
+                            }
+                        }
+
+                        // Parse with maybe_more = true - complete events sent immediately
+                        //
+                        // Ambiguous events (if any) will be finalized later only if 50ms
+                        // passes with no new input
+                        let maybe_more = true;
+                        let mut events = vec![];
+                        input_parser.parse(
+                            &buf,
+                            |input_event: InputEvent| {
+                                events.push(input_event);
+                            },
+                            maybe_more,
+                        );
+
+                        for input_event in events.into_iter() {
                             send_input_instructions
-                                .send(InputInstruction::KeyWithModifierEvent(
-                                    key_with_modifier,
+                                .send(InputInstruction::KeyEvent(
+                                    input_event,
                                     current_buffer.drain(..).collect(),
                                 ))
                                 .unwrap();
-                            continue;
-                        },
-                        None => {},
-                    }
-                }
+                        }
 
-                let maybe_more = false; // read_from_stdin should (hopefully) always empty the STDIN buffer completely
-                let mut events = vec![];
-                input_parser.parse(
-                    &buf,
-                    |input_event: InputEvent| {
-                        events.push(input_event);
+                        needs_finalization = true;
+                        finalization_timeout.as_mut().reset(Instant::now() + Duration::from_millis(50));
                     },
-                    maybe_more,
-                );
+                    Ok(_) => {
+                        log::debug!("EOF on STDIN");
+                        if needs_finalization {
+                            finalize_events(&mut input_parser, &mut current_buffer, send_input_instructions.clone());
+                        }
+                        let _ = send_input_instructions.send(InputInstruction::Exit);
+                        break;
+                    },
+                    Err(e) => {
+                        log::error!("Failed to read from STDIN: {}", e);
+                        let _ = send_input_instructions.send(InputInstruction::Exit);
+                        break;
+                    },
+                }
+            }
 
-                for input_event in events.into_iter() {
-                    send_input_instructions
-                        .send(InputInstruction::KeyEvent(
-                            input_event,
-                            current_buffer.drain(..).collect(),
-                        ))
-                        .unwrap();
-                }
-            },
-            Err(e) => {
-                if e == "Session ended" {
-                    log::debug!("Switched sessions, signing this thread off...");
-                } else {
-                    log::error!("Failed to read from STDIN: {}", e);
-                }
-                let _ = send_input_instructions.send(InputInstruction::Exit);
-                break;
-            },
+            _ = &mut finalization_timeout, if needs_finalization => {
+                finalize_events(&mut input_parser, &mut current_buffer, send_input_instructions.clone());
+                needs_finalization = false;
+                finalization_timeout.as_mut().reset(Instant::now() + Duration::from_hours(24));
+            }
         }
+    }
+    stdin.release();
+}
+
+fn finalize_events(
+    input_parser: &mut InputParser,
+    current_buffer: &mut Vec<u8>,
+    send_input_instructions: SenderWithContext<InputInstruction>,
+) {
+    let mut events = vec![];
+    input_parser.parse(
+        &[],
+        |input_event: InputEvent| {
+            events.push(input_event);
+        },
+        false,
+    );
+    for input_event in events {
+        send_input_instructions
+            .send(InputInstruction::KeyEvent(
+                input_event,
+                current_buffer.drain(..).collect(),
+            ))
+            .unwrap();
     }
 }

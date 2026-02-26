@@ -22,6 +22,8 @@ pub mod common_path;
 #[cfg(not(target_family = "wasm"))]
 pub mod downloader; // Requires tokio
 #[cfg(not(target_family = "wasm"))]
+pub mod global_async_runtime; // Requires tokio
+#[cfg(not(target_family = "wasm"))]
 pub mod ipc; // Requires interprocess
 #[cfg(not(target_family = "wasm"))]
 pub mod logging; // Requires log4rs

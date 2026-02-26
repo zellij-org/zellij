@@ -1,6 +1,5 @@
 use crate::background_jobs::write_session_state_to_disk;
 use crate::background_jobs::BackgroundJob;
-use crate::global_async_runtime::get_tokio_runtime as async_runtime;
 use crate::os_input_output::{AsyncReader, NullAsyncReader};
 use crate::route::NotificationEnd;
 use crate::terminal_bytes::TerminalBytes;
@@ -22,6 +21,7 @@ use zellij_utils::{
     },
     errors::prelude::*,
     errors::{ContextType, PtyContext},
+    global_async_runtime::get_tokio_runtime as async_runtime,
     input::{
         command::{OpenFilePayload, RunCommand, TerminalAction},
         layout::{

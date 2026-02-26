@@ -28,6 +28,7 @@ use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use zellij_utils::errors::FatalError;
+use zellij_utils::global_async_runtime;
 use zellij_utils::shared::web_server_base_url;
 
 #[cfg(feature = "web_server_capability")]
@@ -870,21 +871,23 @@ pub fn start_client(
     let on_force_close = config_options.on_force_close.unwrap_or_default();
     let stdin_ansi_parser = Arc::new(Mutex::new(StdinAnsiParser::new()));
 
-    let _stdin_thread = thread::Builder::new()
-        .name("stdin_handler".to_string())
-        .spawn({
-            let os_input = os_input.clone();
-            let send_input_instructions = send_input_instructions.clone();
-            let stdin_ansi_parser = stdin_ansi_parser.clone();
-            move || {
-                stdin_loop(
-                    os_input,
-                    send_input_instructions,
-                    stdin_ansi_parser,
-                    explicitly_disable_kitty_keyboard_protocol,
-                )
-            }
-        });
+    let stdin_cancellation_token = tokio_util::sync::CancellationToken::new();
+    let stdin_task = {
+        let token = stdin_cancellation_token.child_token();
+        let os_input = os_input.clone();
+        let send_input_instructions = send_input_instructions.clone();
+        let stdin_ansi_parser = stdin_ansi_parser.clone();
+        global_async_runtime::get_tokio_runtime().spawn(async move {
+            stdin_loop(
+                token,
+                os_input,
+                send_input_instructions,
+                stdin_ansi_parser,
+                explicitly_disable_kitty_keyboard_protocol,
+            )
+            .await
+        })
+    };
 
     let _input_thread = thread::Builder::new()
         .name("input_handler".to_string())
@@ -1148,6 +1151,11 @@ pub fn start_client(
     }
 
     router_thread.join().unwrap();
+
+    stdin_cancellation_token.cancel();
+    global_async_runtime::get_tokio_runtime()
+        .block_on(stdin_task)
+        .unwrap();
 
     if reconnect_to_session.is_none() {
         let reset_style = "\u{1b}[m";

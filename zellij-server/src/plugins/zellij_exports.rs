@@ -1,6 +1,5 @@
 use super::PluginInstruction;
 use crate::background_jobs::BackgroundJob;
-use crate::global_async_runtime::get_tokio_runtime;
 use crate::plugins::plugin_map::PluginEnv;
 use crate::plugins::wasm_bridge::handle_plugin_crash;
 use crate::pty::{ClientTabIndexOrPaneId, PtyInstruction};
@@ -61,6 +60,7 @@ use zellij_utils::{
         PluginIds, PluginMessage, Resize, ResizeStrategy,
     },
     errors::prelude::*,
+    global_async_runtime::get_tokio_runtime,
     input::{
         actions::Action,
         command::{OpenFilePayload, RunCommand, RunCommandAction, TerminalAction},

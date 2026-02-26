@@ -2,7 +2,6 @@ use std::collections::{BTreeMap, HashSet, VecDeque};
 use std::sync::{Arc, RwLock};
 use tokio::sync::oneshot;
 
-use crate::global_async_runtime::get_tokio_runtime;
 use crate::thread_bus::ThreadSenders;
 use crate::{
     os_input_output::ServerOsApi,
@@ -24,6 +23,7 @@ use zellij_utils::{
     },
     envs,
     errors::prelude::*,
+    global_async_runtime::get_tokio_runtime,
     input::{
         actions::{Action, SearchDirection, SearchOption},
         command::TerminalAction,
