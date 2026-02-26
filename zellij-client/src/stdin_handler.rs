@@ -77,6 +77,7 @@ pub(crate) fn stdin_loop(
     send_input_instructions: SenderWithContext<InputInstruction>,
     stdin_ansi_parser: Arc<Mutex<StdinAnsiParser>>,
     explicitly_disable_kitty_keyboard_protocol: bool,
+    #[cfg(windows)] resize_sender: Option<std::sync::mpsc::Sender<()>>,
 ) {
     {
         // on startup we send a query to the terminal emulator for stuff like the pixel size and colors
@@ -180,7 +181,9 @@ pub(crate) fn stdin_loop(
                     }
                 },
                 Ok(Event::Resize(..)) => {
-                    // Handled by the signal handler thread
+                    if let Some(ref tx) = resize_sender {
+                        let _ = tx.send(());
+                    }
                 },
                 Ok(_) => {},
                 Err(e) => {
@@ -192,6 +195,11 @@ pub(crate) fn stdin_loop(
         }
         return;
     }
+
+    // On Windows, drop the resize sender so the signal handler thread falls back
+    // to polling — the VT reader path doesn't produce crossterm resize events.
+    #[cfg(windows)]
+    drop(resize_sender);
 
     // Byte reader + termwiz/kitty parser path.
     // Used on Unix always, and on Windows inside terminal emulators (Alacritty,

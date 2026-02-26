@@ -132,7 +132,12 @@ pub trait ClientOsApi: Send + Sync + std::fmt::Debug {
     /// Receives a message on client-side IPC channel
     // This should be called from the client-side router thread only.
     fn recv_from_server(&self) -> Option<(ServerToClientMsg, ErrorContext)>;
-    fn handle_signals(&self, sigwinch_cb: Box<dyn Fn()>, quit_cb: Box<dyn Fn()>);
+    fn handle_signals(
+        &self,
+        sigwinch_cb: Box<dyn Fn()>,
+        quit_cb: Box<dyn Fn()>,
+        resize_receiver: Option<std::sync::mpsc::Receiver<()>>,
+    );
     /// Establish a connection with the server socket.
     fn connect_to_server(&self, path: &Path);
     fn load_palette(&self) -> Palette;
@@ -243,9 +248,19 @@ impl ClientOsApi for ClientOsInputOutput {
             .unwrap()
             .recv_server_msg()
     }
-    fn handle_signals(&self, sigwinch_cb: Box<dyn Fn()>, quit_cb: Box<dyn Fn()>) {
+    fn handle_signals(
+        &self,
+        sigwinch_cb: Box<dyn Fn()>,
+        quit_cb: Box<dyn Fn()>,
+        resize_receiver: Option<std::sync::mpsc::Receiver<()>>,
+    ) {
         let mut sigwinch_cb_timestamp = time::Instant::now();
+        #[cfg(not(windows))]
+        let _ = resize_receiver;
+        #[cfg(not(windows))]
         let signals = BlockingSignalIterator::new().unwrap();
+        #[cfg(windows)]
+        let signals = BlockingSignalIterator::new(resize_receiver).unwrap();
         for event in signals {
             match event {
                 SignalEvent::Resize => {

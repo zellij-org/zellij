@@ -891,6 +891,11 @@ pub fn start_client(
     let on_force_close = config_options.on_force_close.unwrap_or_default();
     let stdin_ansi_parser = Arc::new(Mutex::new(StdinAnsiParser::new()));
 
+    // On Windows, create a channel so the stdin thread can forward resize events
+    // from crossterm to the signal handler thread (instead of polling).
+    #[cfg(windows)]
+    let (resize_sender, resize_receiver) = std::sync::mpsc::channel::<()>();
+
     let _stdin_thread = thread::Builder::new()
         .name("stdin_handler".to_string())
         .spawn({
@@ -903,6 +908,8 @@ pub fn start_client(
                     send_input_instructions,
                     stdin_ansi_parser,
                     explicitly_disable_kitty_keyboard_protocol,
+                    #[cfg(windows)]
+                    Some(resize_sender),
                 )
             }
         });
@@ -952,6 +959,10 @@ pub fn start_client(
                             });
                         }
                     }),
+                    #[cfg(windows)]
+                    Some(resize_receiver),
+                    #[cfg(not(windows))]
+                    None,
                 );
             }
         })

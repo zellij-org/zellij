@@ -58,10 +58,17 @@ impl crate::os_input_output::AsyncSignals for AsyncSignalListener {
 
 /// Windows blocking signal iterator.
 ///
-/// Uses `SetConsoleCtrlHandler` with an `AtomicBool` for quit signals,
-/// and polls `crossterm::terminal::size()` at 50ms intervals for resize.
+/// Uses `SetConsoleCtrlHandler` with an `AtomicBool` for quit signals.
+/// For resize detection, operates in two modes:
+/// - **Channel mode**: receives resize notifications forwarded from the stdin
+///   thread (which gets `Event::Resize` from crossterm). Much more responsive
+///   than polling.
+/// - **Poll fallback**: polls `crossterm::terminal::size()` at 50ms intervals.
+///   Used when no receiver is provided or when the sender is dropped (VT reader
+///   path).
 pub(crate) struct BlockingSignalIterator {
     last_size: (u16, u16),
+    resize_receiver: Option<std::sync::mpsc::Receiver<()>>,
 }
 
 mod win_ctrl_handler {
@@ -84,7 +91,7 @@ mod win_ctrl_handler {
 }
 
 impl BlockingSignalIterator {
-    pub fn new() -> io::Result<Self> {
+    pub fn new(resize_receiver: Option<std::sync::mpsc::Receiver<()>>) -> io::Result<Self> {
         use windows_sys::Win32::System::Console::SetConsoleCtrlHandler;
 
         win_ctrl_handler::CTRL_QUIT_RECEIVED.store(false, std::sync::atomic::Ordering::SeqCst);
@@ -95,7 +102,10 @@ impl BlockingSignalIterator {
         }
 
         let size = crossterm::terminal::size().unwrap_or((80, 24));
-        Ok(Self { last_size: size })
+        Ok(Self {
+            last_size: size,
+            resize_receiver,
+        })
     }
 }
 
@@ -103,6 +113,33 @@ impl Iterator for BlockingSignalIterator {
     type Item = SignalEvent;
 
     fn next(&mut self) -> Option<SignalEvent> {
+        use std::sync::mpsc::RecvTimeoutError;
+        use std::time::Duration;
+
+        // Channel mode: block on receiver with timeout, check quit flag on each
+        // iteration. If the sender disconnects (VT reader dropped it), fall
+        // through to poll mode.
+        if let Some(ref rx) = self.resize_receiver {
+            loop {
+                if win_ctrl_handler::CTRL_QUIT_RECEIVED
+                    .load(std::sync::atomic::Ordering::SeqCst)
+                {
+                    return Some(SignalEvent::Quit);
+                }
+
+                match rx.recv_timeout(Duration::from_millis(100)) {
+                    Ok(()) => return Some(SignalEvent::Resize),
+                    Err(RecvTimeoutError::Timeout) => continue,
+                    Err(RecvTimeoutError::Disconnected) => {
+                        // Sender dropped — switch to poll mode
+                        break;
+                    },
+                }
+            }
+            self.resize_receiver = None;
+        }
+
+        // Poll fallback: same as the original implementation.
         loop {
             if win_ctrl_handler::CTRL_QUIT_RECEIVED.load(std::sync::atomic::Ordering::SeqCst) {
                 return Some(SignalEvent::Quit);
@@ -115,7 +152,7 @@ impl Iterator for BlockingSignalIterator {
                 }
             }
 
-            std::thread::sleep(std::time::Duration::from_millis(50));
+            std::thread::sleep(Duration::from_millis(50));
         }
     }
 }
