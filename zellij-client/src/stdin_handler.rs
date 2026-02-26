@@ -79,6 +79,20 @@ pub(crate) fn stdin_loop(
     explicitly_disable_kitty_keyboard_protocol: bool,
     #[cfg(windows)] resize_sender: Option<std::sync::mpsc::Sender<()>>,
 ) {
+    // On Windows, choose between two input strategies early — we need this
+    // decision before the startup ANSI query below.
+    //
+    // 1. Native console (no TERM env var): Use crossterm's event::read() which
+    //    reads INPUT_RECORDs via ReadConsoleInput. Works in cmd.exe, PowerShell,
+    //    and Windows Terminal where ALT is reported as a modifier flag.
+    //
+    // 2. Terminal emulator (TERM is set, e.g. Alacritty): Enable
+    //    ENABLE_VIRTUAL_TERMINAL_INPUT so ReadFile on stdin returns raw VT bytes,
+    //    bypassing conpty's lossy VT→INPUT_RECORD translation. Then use the
+    //    termwiz byte parser (same as Unix) which understands ESC-prefixed ALT.
+    #[cfg(windows)]
+    let use_vt_reader = std::env::var("TERM").is_ok() && enable_vt_input();
+
     {
         // on startup we send a query to the terminal emulator for stuff like the pixel size and colors
         // we get a response through STDIN, so it makes sense to do this here
@@ -92,14 +106,17 @@ pub(crate) fn stdin_loop(
                     .unwrap();
             },
             None => {
-                // On Windows, the ANSI terminal query mechanism (writing escape
-                // sequences to stdout and reading responses from stdin) does not
-                // work reliably — Windows Terminal may not deliver responses
-                // through the console input buffer in a way that fill_buf() can
-                // read, causing the startup to hang.  Skip it for now; pixel
-                // dimensions and color registers are nice-to-have, not critical.
+                // On Windows native console, the crossterm event::read() loop
+                // reads INPUT_RECORDs via ReadConsoleInput — not raw bytes — so
+                // ANSI query responses can never be read on that path. On the
+                // VT reader path (TERM is set), fill_buf() reads raw VT bytes
+                // just like Unix, so terminal queries work normally.
+                #[cfg(windows)]
+                let can_query_terminal = use_vt_reader;
                 #[cfg(not(windows))]
-                {
+                let can_query_terminal = true;
+
+                if can_query_terminal {
                     send_input_instructions
                         .send(InputInstruction::StartedParsing)
                         .unwrap();
@@ -114,27 +131,12 @@ pub(crate) fn stdin_loop(
                         send_input_instructions.clone(),
                         query_duration,
                     );
-                }
-                #[cfg(windows)]
-                {
+                } else {
                     let _ = send_input_instructions.send(InputInstruction::DoneParsing);
                 }
             },
         }
     }
-
-    // On Windows, choose between two input strategies:
-    //
-    // 1. Native console (no TERM env var): Use crossterm's event::read() which
-    //    reads INPUT_RECORDs via ReadConsoleInput. Works in cmd.exe, PowerShell,
-    //    and Windows Terminal where ALT is reported as a modifier flag.
-    //
-    // 2. Terminal emulator (TERM is set, e.g. Alacritty): Enable
-    //    ENABLE_VIRTUAL_TERMINAL_INPUT so ReadFile on stdin returns raw VT bytes,
-    //    bypassing conpty's lossy VT→INPUT_RECORD translation. Then use the
-    //    termwiz byte parser (same as Unix) which understands ESC-prefixed ALT.
-    #[cfg(windows)]
-    let use_vt_reader = std::env::var("TERM").is_ok() && enable_vt_input();
 
     #[cfg(windows)]
     if !use_vt_reader {
