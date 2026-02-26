@@ -267,7 +267,18 @@ export function setupResizeHandler(
     getWsControl,
     getOwnWebClientId
 ) {
-    addEventListener("resize", (event) => {
+    let resizeScheduled = false;
+
+    const updateViewportVars = () => {
+        const root = document.documentElement;
+        const viewport = window.visualViewport;
+        const height = viewport ? viewport.height : window.innerHeight;
+        const width = viewport ? viewport.width : window.innerWidth;
+        root.style.setProperty("--dynamic-vh", `${height}px`);
+        root.style.setProperty("--dynamic-vw", `${width}px`);
+    };
+
+    const resizeTerminal = () => {
         const ownWebClientId = getOwnWebClientId();
         if (ownWebClientId === "") {
             return;
@@ -299,5 +310,27 @@ export function setupResizeHandler(
                 })
             );
         }
-    });
+    };
+
+    const handleViewportChange = () => {
+        updateViewportVars();
+        resizeTerminal();
+    };
+
+    const scheduleResize = () => {
+        if (resizeScheduled) {
+            return;
+        }
+        resizeScheduled = true;
+        requestAnimationFrame(() => {
+            resizeScheduled = false;
+            handleViewportChange();
+        });
+    };
+
+    updateViewportVars();
+    addEventListener("resize", scheduleResize);
+    if (window.visualViewport) {
+        window.visualViewport.addEventListener("resize", scheduleResize);
+    }
 }
