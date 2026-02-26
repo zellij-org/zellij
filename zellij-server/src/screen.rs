@@ -6197,6 +6197,7 @@ pub(crate) fn screen_thread_main(
                     new_pane_placement = NewPanePlacement::Tiled {
                         direction: None,
                         borderless: None,
+                        size: None,
                     };
                 }
                 if should_be_in_place {

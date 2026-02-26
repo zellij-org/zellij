@@ -410,6 +410,15 @@ pub enum Sessions {
             takes_value(false)
         )]
         stacked: bool,
+        /// The size of the new pane as a bare integer (eg. 10) or percent (eg. 20%)
+        #[clap(
+            long,
+            conflicts_with("floating"),
+            conflicts_with("in_place"),
+            conflicts_with("stacked"),
+            requires("direction")
+        )]
+        size: Option<String>,
         /// Block until the command has finished and its pane has been closed
         #[clap(long, value_parser, default_value("false"), takes_value(false))]
         blocking: bool,
@@ -817,6 +826,15 @@ pub enum CliAction {
             takes_value(false)
         )]
         stacked: bool,
+        /// The size of the new pane as a bare integer (eg. 10) or percent (eg. 20%)
+        #[clap(
+            long,
+            conflicts_with("floating"),
+            conflicts_with("in_place"),
+            conflicts_with("stacked"),
+            requires("direction")
+        )]
+        size: Option<String>,
         #[clap(short, long)]
         blocking: bool,
 
