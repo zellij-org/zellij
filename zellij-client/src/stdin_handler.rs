@@ -167,6 +167,7 @@ pub(crate) async fn stdin_loop(
             }
         }
     }
+    stdin.release();
 }
 
 fn finalize_events(
