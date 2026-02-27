@@ -572,7 +572,7 @@ version = "0.1.0"
 dependencies = [
  "ansi_term",
  "colored",
- "unicode-width 0.1.10",
+ "unicode-width 0.2.2",
  "zellij-tile",
  "zellij-tile-utils",
 ]
@@ -1903,7 +1903,7 @@ dependencies = [
  "fuzzy-matcher",
  "miette",
  "strip-ansi-escapes 0.2.1",
- "unicode-width 0.1.10",
+ "unicode-width 0.2.2",
  "zellij-tile",
 ]
 
@@ -3141,7 +3141,7 @@ dependencies = [
  "chrono",
  "fuzzy-matcher",
  "humantime",
- "unicode-width 0.1.10",
+ "unicode-width 0.2.2",
  "uuid",
  "zellij-tile",
 ]
@@ -3338,7 +3338,7 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 1.0.61",
- "unicode-width 0.1.10",
+ "unicode-width 0.2.2",
  "zellij-tile",
  "zellij-tile-utils",
 ]
@@ -3355,7 +3355,7 @@ dependencies = [
  "serde",
  "serde_json",
  "strip-ansi-escapes 0.1.1",
- "unicode-width 0.1.10",
+ "unicode-width 0.2.2",
  "zellij-tile",
 ]
 
@@ -3529,7 +3529,7 @@ version = "0.1.0"
 dependencies = [
  "ansi_term",
  "colored",
- "unicode-width 0.1.10",
+ "unicode-width 0.2.2",
  "zellij-tile",
  "zellij-tile-utils",
 ]
@@ -3992,9 +3992,9 @@ checksum = "c0edd1e5b14653f783770bce4a4dabb4a5108a5370a5f5d8cfe8710c361f6c8b"
 
 [[package]]
 name = "unicode-width"
-version = "0.2.1"
+version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4a1a07cc7db3810833284e8d372ccdc6da29741639ecc70c9ec107df0fa6154c"
+checksum = "b4ac048d71ede7ee76d585517add45da530660ef4390e49b098733c6e897f254"
 
 [[package]]
 name = "untrusted"
@@ -4329,7 +4329,7 @@ dependencies = [
  "bumpalo",
  "leb128fmt",
  "memchr",
- "unicode-width 0.2.1",
+ "unicode-width 0.2.2",
  "wasm-encoder",
 ]
 
@@ -4901,7 +4901,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "typetag",
- "unicode-width 0.1.10",
+ "unicode-width 0.2.2",
  "url",
  "uuid",
  "vte 0.11.0",
@@ -4979,7 +4979,7 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "tokio-util",
- "unicode-width 0.1.10",
+ "unicode-width 0.2.2",
  "url",
  "uuid",
  "winapi",

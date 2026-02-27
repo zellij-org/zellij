@@ -8,6 +8,6 @@ license.workspace = true
 [dependencies]
 colored = "2"
 ansi_term = "0.12"
-unicode-width = "0.1.8"
+unicode-width = "0.2.2"
 zellij-tile = { path = "../../zellij-tile" }
 zellij-tile-utils = { path = "../../zellij-tile-utils" }
