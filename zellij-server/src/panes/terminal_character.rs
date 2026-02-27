@@ -2,6 +2,7 @@ use std::convert::From;
 use std::fmt::{self, Debug, Display, Formatter};
 use std::ops::{Index, IndexMut};
 use std::rc::Rc;
+use compact_str::CompactString;
 use unicode_width::UnicodeWidthChar;
 
 use unicode_width::UnicodeWidthStr;
@@ -13,7 +14,7 @@ use zellij_utils::input::command::RunCommand;
 use crate::panes::alacritty_functions::parse_sgr_color;
 
 pub const EMPTY_TERMINAL_CHARACTER: TerminalCharacter = TerminalCharacter {
-    character: ' ',
+    grapheme: CompactString::const_new(" "),
     width: 1,
     styles: RcCharacterStyles::Reset,
 };
@@ -924,15 +925,23 @@ impl Cursor {
 
 #[derive(Clone, PartialEq)]
 pub struct TerminalCharacter {
-    pub character: char,
+    // Stores the full Extended Grapheme Cluster (EGC) text for this cell.
+    // CompactString keeps strings ≤24 bytes inline (no heap allocation), which
+    // covers all real-world grapheme clusters. Width is computed via UnicodeWidthStr
+    // on the full grapheme string (unicode-width 0.2.x handles emoji presentation,
+    // modifier, and ZWJ sequences correctly at the string level).
+    grapheme: CompactString,
     pub styles: RcCharacterStyles,
     width: u8,
 }
 
 // This size has significant memory and CPU implications for long lines,
-// be careful about allowing it to grow
+// be careful about allowing it to grow.
+// NOTE: increased from 16 to accommodate CompactString (24 bytes inline storage)
+// for grapheme cluster support. This tradeoff is accepted: correct Unicode text
+// integrity requires storing full EGC text per cell.
 #[cfg(target_arch = "x86_64")]
-const _: [(); 16] = [(); std::mem::size_of::<TerminalCharacter>()];
+const _: [(); 40] = [(); std::mem::size_of::<TerminalCharacter>()];
 
 impl TerminalCharacter {
     #[inline]
@@ -942,10 +951,12 @@ impl TerminalCharacter {
 
     #[inline]
     pub fn new_styled(character: char, styles: RcCharacterStyles) -> Self {
+        let mut grapheme = CompactString::new("");
+        grapheme.push(character);
         TerminalCharacter {
-            character,
-            styles,
             width: character.width().unwrap_or(0) as u8,
+            grapheme,
+            styles,
         }
     }
 
@@ -956,8 +967,10 @@ impl TerminalCharacter {
 
     #[inline]
     pub fn new_singlewidth_styled(character: char, styles: RcCharacterStyles) -> Self {
+        let mut grapheme = CompactString::new("");
+        grapheme.push(character);
         TerminalCharacter {
-            character,
+            grapheme,
             styles,
             width: 1,
         }
@@ -966,11 +979,50 @@ impl TerminalCharacter {
     pub fn width(&self) -> usize {
         self.width as usize
     }
+
+    /// Returns the full grapheme cluster text for this cell.
+    #[inline]
+    pub fn grapheme(&self) -> &str {
+        &self.grapheme
+    }
+
+    /// Iterates over the Unicode scalars in this cell's grapheme cluster.
+    #[inline]
+    pub fn chars(&self) -> impl Iterator<Item = char> + '_ {
+        self.grapheme.chars()
+    }
+
+    /// Returns the first (base) character of this cell's grapheme cluster.
+    #[inline]
+    pub fn first_char(&self) -> Option<char> {
+        self.grapheme.chars().next()
+    }
+
+    /// Replaces the grapheme cluster text, recomputing width from the full string.
+    #[inline]
+    pub fn set_grapheme(&mut self, text: &str) {
+        self.grapheme.clear();
+        self.grapheme.push_str(text);
+        self.width = UnicodeWidthStr::width(text) as u8;
+    }
+
+    /// Appends a codepoint to this cell's grapheme cluster and recomputes the display width.
+    /// Width may change: e.g. U+FE0F (VS16) widens a char to 2, U+FE0E (VS15) can narrow it.
+    /// Used to attach combining marks, variation selectors, ZWJ sequences, etc. to a base character.
+    #[inline]
+    pub fn push_scalar(&mut self, c: char) {
+        self.grapheme.push(c);
+        // Recompute width from the full grapheme string. unicode-width 0.2+ handles
+        // multi-codepoint sequences (emoji presentation, ZWJ, modifier sequences) as
+        // units, so UnicodeWidthStr on the assembled EGC is more accurate than fixing
+        // width at the base scalar.
+        self.width = UnicodeWidthStr::width(self.grapheme.as_str()) as u8;
+    }
 }
 
 impl ::std::fmt::Debug for TerminalCharacter {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.character)
+        write!(f, "{}", self.grapheme)
     }
 }
 
