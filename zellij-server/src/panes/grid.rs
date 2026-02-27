@@ -278,7 +278,7 @@ macro_rules! dump_screen {
             if line.is_canonical && !is_first {
                 buf.push_str("\n");
             }
-            let s: String = (&line.columns).into_iter().map(|x| x.character).collect();
+            let s: String = (&line.columns).into_iter().map(|x| x.grapheme()).collect();
             // Replace the spaces at the end of the line. Sometimes, the lines are
             // collected with spaces until the end of the panel.
             buf.push_str(&s.trim_end_matches(' '));
@@ -305,7 +305,7 @@ macro_rules! dump_screen_with_ansi {
                 .columns
                 .iter()
                 .rposition(|tc| {
-                    let space = tc.character == ' ';
+                    let space = tc.grapheme() == " ";
                     let styled = !matches!(tc.styles.background, Some(AnsiCode::Reset) | None);
                     !space || styled // it's, something drawable
                 })
@@ -318,7 +318,7 @@ macro_rules! dump_screen_with_ansi {
                     write!(buf, "{}", tc.styles).unwrap();
                     last_styles = Some(tc.styles.clone());
                 }
-                buf.push(tc.character);
+                buf.push_str(tc.grapheme());
             }
             is_first = false;
         }
@@ -932,8 +932,8 @@ impl Grid {
             for line in &mut viewport_canonical_lines {
                 let mut trim_at = None;
                 for (index, character) in line.columns.iter().enumerate() {
-                    let is_trimmable_space = character.character
-                        == EMPTY_TERMINAL_CHARACTER.character
+                    let is_trimmable_space = character.grapheme()
+                        == EMPTY_TERMINAL_CHARACTER.grapheme()
                         && matches!(character.styles.background, Some(AnsiCode::Reset) | None);
 
                     if !is_trimmable_space {
@@ -1443,7 +1443,7 @@ impl Grid {
         should_insert_character: bool,
     ) {
         self.hyperlink_tracker.update(
-            terminal_character.character,
+            terminal_character.first_char().unwrap_or(' '),
             &self.cursor,
             &mut self.viewport,
             &mut self.lines_above,
@@ -1995,7 +1995,7 @@ impl Grid {
             let mut terminal_col = 0;
             for terminal_character in &row.columns {
                 if (start_column..end_column).contains(&terminal_col) {
-                    line_selection.push(terminal_character.character);
+                    line_selection.push_str(terminal_character.grapheme());
                 }
 
                 terminal_col += terminal_character.width();
@@ -2546,18 +2546,18 @@ impl Grid {
     pub fn pane_contents(&self, get_full_scrollback: bool) -> PaneContents {
         let mut viewport: Vec<String> = Vec::with_capacity(self.viewport.len());
         for row in &self.viewport {
-            let s: String = (&row.columns).into_iter().map(|x| x.character).collect();
+            let s: String = (&row.columns).into_iter().map(|x| x.grapheme()).collect();
             viewport.push(s);
         }
         if get_full_scrollback {
             let mut lines_above_viewport: Vec<String> = Vec::with_capacity(self.lines_above.len());
             for row in &self.lines_above {
-                let s: String = (&row.columns).into_iter().map(|x| x.character).collect();
+                let s: String = (&row.columns).into_iter().map(|x| x.grapheme()).collect();
                 lines_above_viewport.push(s);
             }
             let mut lines_below_viewport: Vec<String> = Vec::with_capacity(self.lines_below.len());
             for row in &self.lines_below {
-                let s: String = (&row.columns).into_iter().map(|x| x.character).collect();
+                let s: String = (&row.columns).into_iter().map(|x| x.grapheme()).collect();
                 lines_below_viewport.push(s);
             }
             PaneContents::new_with_scrollback(
@@ -3556,7 +3556,7 @@ impl Perform for Grid {
             },
             (b'8', Some(b'#')) => {
                 let mut fill_character = EMPTY_TERMINAL_CHARACTER;
-                fill_character.character = 'E';
+                fill_character.set_grapheme("E");
                 self.fill_viewport(fill_character);
             },
             _ => {
@@ -3951,7 +3951,7 @@ impl Row {
     pub fn word_indices_around_character_index(&self, index: usize) -> Option<(usize, usize)> {
         let absolute_character_index = self.absolute_character_index(index);
         let character_at_index = self.columns.get(absolute_character_index)?;
-        if is_selection_boundary_character(character_at_index.character) {
+        if is_selection_boundary_character(character_at_index.first_char().unwrap_or(' ')) {
             return Some((index, index + 1));
         }
         let mut end_position = self
@@ -3960,7 +3960,7 @@ impl Row {
             .enumerate()
             .skip(absolute_character_index)
             .find_map(|(i, t_c)| {
-                if is_selection_boundary_character(t_c.character) {
+                if is_selection_boundary_character(t_c.first_char().unwrap_or(' ')) {
                     Some(i + self.excess_width_until(i))
                 } else {
                     None
@@ -3974,7 +3974,7 @@ impl Row {
             .take(absolute_character_index)
             .rev()
             .find_map(|(i, t_c)| {
-                if is_selection_boundary_character(t_c.character) {
+                if is_selection_boundary_character(t_c.first_char().unwrap_or(' ')) {
                     Some(i + 1 + self.excess_width_until(i))
                 } else {
                     None
@@ -3993,7 +3993,7 @@ impl Row {
             .enumerate()
             .rev()
             .find_map(|(i, t_c)| {
-                if is_selection_boundary_character(t_c.character) {
+                if is_selection_boundary_character(t_c.first_char().unwrap_or(' ')) {
                     Some(self.absolute_character_index(i + 1))
                 } else {
                     None
@@ -4006,7 +4006,7 @@ impl Row {
             .iter()
             .enumerate()
             .find_map(|(i, t_c)| {
-                if is_selection_boundary_character(t_c.character) {
+                if is_selection_boundary_character(t_c.first_char().unwrap_or(' ')) {
                     Some(self.absolute_character_index(i))
                 } else {
                     None
