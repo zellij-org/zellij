@@ -4215,7 +4215,7 @@ fn preserve_background_color_on_resize() {
         .columns
         .iter()
         .rev()
-        .take_while(|c| c.character == EMPTY_TERMINAL_CHARACTER.character)
+        .take_while(|c| c.grapheme() == EMPTY_TERMINAL_CHARACTER.grapheme())
         .count();
     // All trailing plain spaces should be completely removed
     assert_eq!(
@@ -5374,7 +5374,7 @@ fn layer_ordering() {
 fn row_text(row: &super::super::Row) -> String {
     row.columns
         .iter()
-        .map(|c| c.character)
+        .map(|c| c.grapheme())
         .collect::<String>()
         .trim_end()
         .to_string()
