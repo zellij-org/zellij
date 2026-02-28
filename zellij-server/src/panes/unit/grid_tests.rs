@@ -5690,3 +5690,155 @@ fn row_without_scroll_has_no_bg_color() {
         "rows not created by scroll should have no bg_color"
     );
 }
+
+// ── Grapheme cluster (EGC) composition tests ─────────────────────────────────
+
+/// Returns the grapheme text of non-space cells in the first viewport row.
+fn first_row_graphemes(grid: &Grid) -> Vec<String> {
+    grid.viewport[0]
+        .columns
+        .iter()
+        .filter(|c| c.grapheme() != " ")
+        .map(|c| c.grapheme().to_owned())
+        .collect()
+}
+
+#[test]
+fn combining_mark_stored_in_base_cell() {
+    // Latin 'a' + combining grave accent (U+0300) must occupy one cell.
+    // The combining mark is zero-width and should be appended to the base cell,
+    // not dropped or placed in its own cell.
+    let content = "a\u{0300}b"; // à (decomposed) then b
+    let grid = create_grid_with_content(content);
+    let graphemes = first_row_graphemes(&grid);
+
+    assert_eq!(
+        graphemes.len(),
+        2,
+        "Expected 2 cells: [a+grave, b], got {:?}",
+        graphemes
+    );
+    assert_eq!(
+        graphemes[0], "a\u{0300}",
+        "First cell should contain base + combining mark"
+    );
+    assert_eq!(graphemes[1], "b");
+}
+
+#[test]
+fn variation_selector_preserved_in_cell() {
+    // Heart (U+2764) + variation selector-16 (U+FE0F, emoji presentation).
+    // VS-16 is zero-width and must be stored in the same cell as the base glyph.
+    let content = "\u{2764}\u{FE0F}";
+    let grid = create_grid_with_content(content);
+    let graphemes = first_row_graphemes(&grid);
+
+    assert_eq!(
+        graphemes.len(),
+        1,
+        "Heart+VS16 must be one cell, got {:?}",
+        graphemes
+    );
+    assert!(
+        graphemes[0].contains('\u{FE0F}'),
+        "Variation selector must be preserved in the cell grapheme"
+    );
+}
+
+#[test]
+fn zwj_sequence_stored_in_single_cell() {
+    // Man (U+1F468) + ZWJ (U+200D) + Woman (U+1F469).
+    // ZWJ is zero-width; the second emoji follows without a grapheme boundary (GB11).
+    let content = "\u{1F468}\u{200D}\u{1F469}";
+    let grid = create_grid_with_content(content);
+    let graphemes = first_row_graphemes(&grid);
+
+    assert_eq!(
+        graphemes.len(),
+        1,
+        "ZWJ family must be one cell, got {:?}",
+        graphemes
+    );
+    assert!(graphemes[0].contains('\u{200D}'), "ZWJ must be preserved");
+    assert!(
+        graphemes[0].contains('\u{1F469}'),
+        "Second emoji must be in same cell"
+    );
+}
+
+#[test]
+fn skin_tone_modifier_appended_to_base_emoji() {
+    // Waving hand (U+1F44B) + light skin tone (U+1F3FB).
+    // The modifier has display width 2 on its own but UAX #29 keeps it with the base emoji.
+    let content = "\u{1F44B}\u{1F3FB}x";
+    let grid = create_grid_with_content(content);
+    let graphemes = first_row_graphemes(&grid);
+
+    assert_eq!(
+        graphemes.len(),
+        2,
+        "Emoji+skin-tone and 'x' = 2 cells, got {:?}",
+        graphemes
+    );
+    assert!(
+        graphemes[0].contains('\u{1F3FB}'),
+        "Skin tone modifier must be in same cell as base emoji"
+    );
+    assert_eq!(graphemes[1], "x");
+}
+
+#[test]
+fn thai_combining_vowel_stored_in_base_cell() {
+    // Thai ก (U+0E01) + SARA AM ำ (U+0E33, combining vowel).
+    // The combining vowel is zero-width; must be in the same cell as the consonant.
+    let content = "\u{0E01}\u{0E33}x";
+    let grid = create_grid_with_content(content);
+    let graphemes = first_row_graphemes(&grid);
+
+    assert_eq!(
+        graphemes.len(),
+        2,
+        "ก+ำ and x = 2 cells, got {:?}",
+        graphemes
+    );
+    assert!(
+        graphemes[0].contains('\u{0E33}'),
+        "Thai combining vowel must be preserved with its base consonant"
+    );
+}
+
+#[test]
+fn regional_indicator_pair_stored_in_single_cell() {
+    // Two regional indicators (U+1F1EF + U+1F1F5) form the Japan flag (🇯🇵).
+    // UAX #29 keeps regional indicator pairs in one grapheme cluster.
+    let content = "\u{1F1EF}\u{1F1F5}x";
+    let grid = create_grid_with_content(content);
+    let graphemes = first_row_graphemes(&grid);
+
+    assert_eq!(
+        graphemes.len(),
+        2,
+        "Flag sequence and x = 2 cells, got {:?}",
+        graphemes
+    );
+    assert!(
+        graphemes[0].contains('\u{1F1F5}'),
+        "Second regional indicator must be in same cell as first"
+    );
+    assert_eq!(graphemes[1], "x");
+}
+
+#[test]
+fn grapheme_preserved_in_copy_output() {
+    // Combining marks must survive the selection/copy path.
+    let content = "a\u{0300}b";
+    let mut grid = create_grid_with_content(content);
+    // Select the whole first line
+    grid.start_selection(&Position::new(0, 0));
+    grid.end_selection(&Position::new(0, 2));
+    let selected = grid.get_selected_text();
+    assert!(
+        selected.as_deref().unwrap_or("").contains("a\u{0300}"),
+        "Combining mark must be present in copied text"
+    );
+}
