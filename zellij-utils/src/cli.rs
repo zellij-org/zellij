@@ -410,6 +410,9 @@ pub enum Sessions {
             takes_value(false)
         )]
         stacked: bool,
+        /// Stack the new pane with this specific pane ID (eg. terminal_1, plugin_2, or bare integer)
+        #[clap(long, requires("stacked"), value_parser)]
+        stack_with: Option<String>,
         /// Block until the command has finished and its pane has been closed
         #[clap(long, value_parser, default_value("false"), takes_value(false))]
         blocking: bool,
@@ -641,7 +644,7 @@ pub enum CliAction {
         #[clap(short, long, value_parser)]
         pane_id: Option<String>,
     },
-    /// Write characters to the terminal.
+    /// Write characters to the terminal, or to a specific pane if --pane-id is provided.
     WriteChars {
         chars: String,
         /// The pane_id of the pane, eg. terminal_1, plugin_2 or 3 (equivalent to terminal_3)
@@ -667,6 +670,12 @@ pub enum CliAction {
     FocusNextPane,
     /// Change focus to the previous pane
     FocusPreviousPane,
+    /// Focus a specific pane by its ID
+    FocusPaneById {
+        /// The pane id to focus (eg. terminal_1, plugin_2, or bare integer for terminals)
+        #[clap(value_parser)]
+        pane_id: String,
+    },
     /// Move the focused pane in the specified direction. [right|left|up|down]
     MoveFocus {
         direction: Direction,
@@ -685,13 +694,17 @@ pub enum CliAction {
     MovePaneBackwards,
     /// Clear all buffers for a focused pane
     Clear,
-    /// Dump the focused pane to a file
+    /// Dump the focused pane (or specific pane if --pane-id provided) to a file
     DumpScreen {
         path: PathBuf,
 
         /// Dump the pane with full scrollback
         #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
         full: bool,
+
+        /// The pane id to dump (eg. terminal_1, plugin_2, or bare integer for terminals)
+        #[clap(short = 'p', long, value_parser)]
+        pane_id: Option<String>,
     },
     /// Dump current layout to stdout
     DumpLayout,
@@ -817,6 +830,9 @@ pub enum CliAction {
             takes_value(false)
         )]
         stacked: bool,
+        /// Stack the new pane with this specific pane ID (eg. terminal_1, plugin_2, or bare integer)
+        #[clap(long, requires("stacked"), value_parser)]
+        stack_with: Option<String>,
         #[clap(short, long)]
         blocking: bool,
 
@@ -919,11 +935,18 @@ pub enum CliAction {
         #[clap(short, long, value_parser)]
         tab_id: Option<usize>,
     },
-    /// Close the focused pane.
-    ClosePane,
-    /// Renames the focused pane
+    /// Close the focused pane, or a specific pane if --pane-id is provided.
+    ClosePane {
+        /// The pane id to close (eg. terminal_1, plugin_2, or bare integer for terminals)
+        #[clap(short = 'p', long, value_parser)]
+        pane_id: Option<String>,
+    },
+    /// Renames the focused pane, or a specific pane if --pane-id is provided
     RenamePane {
         name: String,
+        /// The pane id to rename (eg. terminal_1, plugin_2, or bare integer for terminals)
+        #[clap(short = 'p', long, value_parser)]
+        pane_id: Option<String>,
     },
     /// Remove a previously set pane name
     UndoRenamePane,

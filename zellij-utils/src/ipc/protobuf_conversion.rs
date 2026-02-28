@@ -721,7 +721,8 @@ impl From<crate::input::actions::Action>
             ChangeFloatingPaneCoordinatesAction, ClearScreenAction, CliPipeAction,
             CloseFocusAction, ClosePluginPaneAction, CloseTabAction, CloseTabByIdAction,
             CloseTerminalPaneAction, ConfirmAction, CopyAction, CurrentTabInfoAction, DenyAction,
-            DetachAction, DumpLayoutAction, DumpScreenAction, EditFileAction, EditScrollbackAction,
+            DetachAction, DumpLayoutAction, DumpScreenAction, DumpScreenForPaneIdAction,
+            EditFileAction, EditScrollbackAction,
             FocusNextPaneAction, FocusPluginPaneWithIdAction, FocusPreviousPaneAction,
             FocusTerminalPaneWithIdAction, GoToNextTabAction, GoToPreviousTabAction, GoToTabAction,
             GoToTabByIdAction, GoToTabNameAction, HalfPageScrollDownAction, HalfPageScrollUpAction,
@@ -827,6 +828,15 @@ impl From<crate::input::actions::Action>
             } => ActionType::DumpScreen(DumpScreenAction {
                 file_path,
                 include_scrollback,
+            }),
+            crate::input::actions::Action::DumpScreenForPaneId {
+                file_path,
+                include_scrollback,
+                pane_id,
+            } => ActionType::DumpScreenForPaneId(DumpScreenForPaneIdAction {
+                file_path,
+                include_scrollback,
+                pane_id: Some(pane_id.into()),
             }),
             crate::input::actions::Action::DumpLayout => {
                 ActionType::DumpLayout(DumpLayoutAction {})
@@ -948,10 +958,12 @@ impl From<crate::input::actions::Action>
                 command,
                 pane_name,
                 near_current_pane,
+                stack_with_pane_id,
             } => ActionType::NewStackedPane(NewStackedPaneAction {
                 command: command.map(|c| c.into()),
                 pane_name,
                 near_current_pane,
+                stack_with_pane_id: stack_with_pane_id.map(|p| p.into()),
             }),
             crate::input::actions::Action::NewBlockingPane {
                 placement,
@@ -1495,6 +1507,16 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                     include_scrollback: dump_screen_action.include_scrollback,
                 })
             },
+            ActionType::DumpScreenForPaneId(dump_screen_action) => {
+                match dump_screen_action.pane_id {
+                    Some(pane_id) => Ok(crate::input::actions::Action::DumpScreenForPaneId {
+                        file_path: dump_screen_action.file_path,
+                        include_scrollback: dump_screen_action.include_scrollback,
+                        pane_id: pane_id.try_into()?,
+                    }),
+                    None => Err(anyhow!("DumpScreenForPaneId missing pane_id")),
+                }
+            },
             ActionType::DumpLayout(_) => Ok(crate::input::actions::Action::DumpLayout),
             ActionType::SaveSession(_) => Ok(crate::input::actions::Action::SaveSession),
             ActionType::EditScrollback(_) => Ok(crate::input::actions::Action::EditScrollback),
@@ -1606,6 +1628,9 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                         .transpose()?,
                     pane_name: new_stacked_action.pane_name,
                     near_current_pane: new_stacked_action.near_current_pane,
+                    stack_with_pane_id: new_stacked_action
+                        .stack_with_pane_id
+                        .and_then(|p| p.try_into().ok()),
                 })
             },
             ActionType::NewBlockingPane(new_blocking_action) => {

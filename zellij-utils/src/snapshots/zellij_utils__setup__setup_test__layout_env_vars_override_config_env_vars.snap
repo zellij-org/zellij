@@ -1,5 +1,6 @@
 ---
 source: zellij-utils/src/setup.rs
+assertion_line: 807
 expression: "format!(\"{:#?}\", config)"
 ---
 Config {
@@ -1349,6 +1350,7 @@ Config {
                     command: None,
                     pane_name: None,
                     near_current_pane: false,
+                    stack_with_pane_id: None,
                 },
                 SwitchToMode {
                     input_mode: Normal,
