@@ -689,6 +689,7 @@ impl Action {
             CliAction::ToggleActiveSyncTab => Ok(vec![Action::ToggleActiveSyncTab]),
             CliAction::NewPane {
                 direction,
+                split_size,
                 command,
                 plugin,
                 cwd,
@@ -760,6 +761,7 @@ impl Action {
                     } else {
                         NewPanePlacement::Tiled {
                             direction,
+                            split_size: split_size.clone(),
                             borderless,
                         }
                     };
