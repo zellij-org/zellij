@@ -25,6 +25,7 @@ use zellij_utils::{
 const TABSTOP_WIDTH: usize = 8; // TODO: is this always right?
 pub const MAX_TITLE_STACK_SIZE: usize = 1000;
 
+use unicode_segmentation::GraphemeCursor;
 use vte::{Params, Perform};
 use zellij_utils::{consts::VERSION, shared::version_number};
 
@@ -350,6 +351,20 @@ fn utf8_mouse_coordinates(column: usize, line: isize) -> Vec<u8> {
 }
 
 #[derive(Clone)]
+/// Tracks the last-placed cell so that subsequent codepoints can be checked for grapheme
+/// cluster boundaries before deciding whether to extend that cell or start a new one.
+#[derive(Default)]
+struct PendingGrapheme {
+    /// Accumulated EGC text placed in the cell so far.
+    text: String,
+    /// Column of the cell being accumulated into (logical x, as passed to add_character).
+    x: usize,
+    /// Row of the cell being accumulated into.
+    y: usize,
+    /// cursor.x value immediately after placing this cell (used to detect cursor movement).
+    end_x: usize,
+}
+
 pub struct Grid {
     pub(crate) lines_above: VecDeque<Row>,
     pub(crate) viewport: VecDeque<Row>,
@@ -406,6 +421,10 @@ pub struct Grid {
     hyperlink_tracker: HyperlinkTracker,
     pub pane_default_fg: Option<AnsiCode>,
     pub pane_default_bg: Option<AnsiCode>,
+    /// Streaming EGC composition state. Tracks the last-placed cell so we can append
+    /// subsequent non-boundary codepoints (combining marks, ZWJ, skin-tone modifiers, etc.)
+    /// to it instead of dropping them or placing them in a new cell.
+    egc_state: Option<PendingGrapheme>,
 }
 
 impl Grid {
@@ -621,6 +640,7 @@ impl Grid {
             hyperlink_tracker: HyperlinkTracker::new(),
             pane_default_fg: None,
             pane_default_bg: None,
+            egc_state: None,
         }
     }
     pub fn render_full_viewport(&mut self) {
@@ -1496,22 +1516,64 @@ impl Grid {
         }
     }
     pub fn add_character(&mut self, terminal_character: TerminalCharacter) {
+        let new_char = match terminal_character.first_char() {
+            Some(c) => c,
+            None => return,
+        };
+
+        // Check if new_char extends the current grapheme cluster instead of starting a new cell.
+        // This must run before the width==0 check so that combining marks / ZWJ / variation
+        // selectors that extend a preceding base character are preserved rather than dropped.
+        if let Some(state) = &self.egc_state {
+            if state.end_x == self.cursor.x && state.y == self.cursor.y {
+                let mut test = state.text.clone();
+                let boundary_offset = test.len();
+                test.push(new_char);
+                let mut gc = GraphemeCursor::new(boundary_offset, test.len(), true);
+                // Treat any error as a boundary (safe fallback: start new cell).
+                let is_boundary = gc.is_boundary(&test, 0).unwrap_or(true);
+                if !is_boundary {
+                    // new_char is part of the same EGC as the previous cell.
+                    let cell_x = state.x;
+                    let cell_y = state.y;
+                    if let Some(row) = self.viewport.get_mut(cell_y) {
+                        let abs_idx = row.absolute_character_index(cell_x);
+                        if let Some(cell) = row.columns.get_mut(abs_idx) {
+                            cell.push_scalar(new_char);
+                        }
+                    }
+                    self.egc_state.as_mut().unwrap().text.push(new_char);
+                    self.output_buffer.update_line(cell_y);
+                    return;
+                }
+            }
+        }
+
+        // new_char starts a new grapheme cluster.
         let character_width = terminal_character.width();
-        // Drop zero-width Unicode/UTF-8 codepoints, like for example Variation Selectors.
-        // This breaks unicode grapheme segmentation, and is the reason why some characters
-        // aren't displayed correctly. Refer to this issue for more information:
-        //     https://github.com/zellij-org/zellij/issues/1538
         if character_width == 0 {
+            // Zero-width codepoint that doesn't extend any preceding character
+            // (e.g. at column 0 or after cursor movement). Discard and clear state.
+            self.egc_state = None;
             return;
         }
         if self.cursor.x + character_width > self.width {
             if self.disable_linewrap {
+                self.egc_state = None;
                 return;
             }
             self.line_wrap();
         }
+        let placed_x = self.cursor.x;
+        let placed_y = self.cursor.y;
         self.add_character_at_cursor_position(terminal_character, false);
         self.move_cursor_forward_until_edge(character_width);
+        self.egc_state = Some(PendingGrapheme {
+            text: new_char.to_string(),
+            x: placed_x,
+            y: placed_y,
+            end_x: self.cursor.x,
+        });
     }
     pub fn get_character_under_cursor(&self) -> Option<TerminalCharacter> {
         let absolute_x_in_line = self.get_absolute_character_index(self.cursor.x, self.cursor.y)?;
