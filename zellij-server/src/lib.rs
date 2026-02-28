@@ -1782,14 +1782,8 @@ fn init_session(
     let default_mode = config_options.default_mode.unwrap_or_default();
     let default_keybinds = config.keybinds.clone();
 
-    // Windows default thread stack is 1MB vs 8MB on Linux. Server worker
-    // threads do heavy work (WASM compilation, layout parsing, PTY creation)
-    // that can overflow 1MB.  Use 8MB everywhere for consistency.
-    const THREAD_STACK_SIZE: usize = 8 * 1024 * 1024;
-
     let pty_thread = thread::Builder::new()
         .name("pty".to_string())
-        .stack_size(THREAD_STACK_SIZE)
         .spawn({
             let layout = layout.clone();
             let pty = Pty::new(
@@ -1814,7 +1808,6 @@ fn init_session(
 
     let screen_thread = thread::Builder::new()
         .name("screen".to_string())
-        .stack_size(THREAD_STACK_SIZE)
         .spawn({
             let screen_bus = Bus::new(
                 vec![screen_receiver, bounded_screen_receiver],
@@ -1854,7 +1847,6 @@ fn init_session(
 
     let plugin_thread = thread::Builder::new()
         .name("wasm".to_string())
-        .stack_size(THREAD_STACK_SIZE)
         .spawn({
             let plugin_bus = Bus::new(
                 vec![plugin_receiver],
