@@ -770,7 +770,6 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
         err_ctx.add_call(ContextType::IPCServer((&instruction).into()));
         match instruction {
             ServerInstruction::FirstClientConnected(cli_assets, is_web_client, client_id) => {
-                info!("FirstClientConnected: loading config and layout");
                 let (config, layout) = cli_assets.load_config_and_layout();
                 let layout_is_welcome_screen = cli_assets.layout
                     == Some(LayoutInfo::BuiltIn("welcome".to_owned()))

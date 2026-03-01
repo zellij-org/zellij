@@ -52,9 +52,7 @@ pub(crate) struct BlockingSignalIterator {
 }
 
 impl BlockingSignalIterator {
-    pub fn new(
-        _resize_receiver: Option<std::sync::mpsc::Receiver<()>>,
-    ) -> io::Result<Self> {
+    pub fn new(_resize_receiver: Option<std::sync::mpsc::Receiver<()>>) -> io::Result<Self> {
         let signals = Signals::new([SIGWINCH, SIGTERM, SIGINT, SIGQUIT, SIGHUP])?;
         Ok(Self { signals })
     }

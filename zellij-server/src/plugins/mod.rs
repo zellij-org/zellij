@@ -518,10 +518,6 @@ pub(crate) fn plugin_thread_main(
                 (client_id, is_web_client),
                 completion_tx,
             ) => {
-                log::info!(
-                    "PluginInstruction::NewTab: loading plugins for tab {}",
-                    tab_id
-                );
                 // prefer connected clients so as to avoid opening plugins in the background for
                 // CLI clients unless no-one else is connected
                 let client_id = if wasm_bridge.client_is_connected(&client_id) {
@@ -611,7 +607,6 @@ pub(crate) fn plugin_thread_main(
                         }
                     }
                 }
-                log::info!("PluginInstruction::NewTab: plugins loaded, forwarding to PTY thread");
                 drop(bus.senders.send_to_pty(PtyInstruction::NewTab(
                     cwd,
                     terminal_action,

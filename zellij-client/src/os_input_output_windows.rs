@@ -125,9 +125,7 @@ impl Iterator for BlockingSignalIterator {
         // through to poll mode.
         if let Some(ref rx) = self.resize_receiver {
             loop {
-                if win_ctrl_handler::CTRL_QUIT_RECEIVED
-                    .load(std::sync::atomic::Ordering::SeqCst)
-                {
+                if win_ctrl_handler::CTRL_QUIT_RECEIVED.load(std::sync::atomic::Ordering::SeqCst) {
                     return Some(SignalEvent::Quit);
                 }
 

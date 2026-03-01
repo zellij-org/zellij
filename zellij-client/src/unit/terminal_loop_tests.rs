@@ -112,7 +112,13 @@ impl ClientOsApi for TestClientOsApi {
         None
     }
 
-    fn handle_signals(&self, _sigwinch_cb: Box<dyn Fn()>, _quit_cb: Box<dyn Fn()>, _resize_receiver: Option<std::sync::mpsc::Receiver<()>>) {}
+    fn handle_signals(
+        &self,
+        _sigwinch_cb: Box<dyn Fn()>,
+        _quit_cb: Box<dyn Fn()>,
+        _resize_receiver: Option<std::sync::mpsc::Receiver<()>>,
+    ) {
+    }
 
     fn connect_to_server(&self, _path: &std::path::Path) {}
 
