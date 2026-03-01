@@ -16,6 +16,8 @@ pub mod old_config_converter;
 pub mod remote_attach;
 mod stdin_ansi_parser;
 mod stdin_handler;
+#[cfg(windows)]
+mod stdin_handler_windows;
 #[cfg(feature = "web_server_capability")]
 pub mod web_client;
 
@@ -255,45 +257,50 @@ fn spawn_web_server(_cli_args: &CliArgs) -> Result<String, String> {
     Ok("".to_owned())
 }
 
+/// Spawn the Zellij server process.
+///
+/// On Unix the server daemonizes (double-fork) inside start_server(), so
+/// the intermediate child exits immediately and `cmd.status()` returns.
+#[cfg(not(windows))]
 pub fn spawn_server(socket_path: &Path, debug: bool) -> io::Result<()> {
     let mut cmd = Command::new(current_exe()?);
-    cmd.arg("--server");
-    cmd.arg(socket_path);
+    cmd.arg("--server").arg(socket_path);
     if debug {
         cmd.arg("--debug");
     }
-
-    // On Unix the server daemonizes (double-fork) inside start_server(), so
-    // the intermediate child exits immediately and cmd.status() returns.
-    // On Windows there is no daemonize — we launch the server as a background
-    // process and return immediately.  We use CREATE_NO_WINDOW (not
-    // DETACHED_PROCESS) so the server gets a hidden console with valid
-    // standard handles; DETACHED_PROCESS leaves stdin/stdout/stderr as NULL,
-    // which breaks PTY creation, WASM plugin loading, and logging.
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x08000000;
-        const CREATE_NEW_PROCESS_GROUP: u32 = 0x00000200;
-        cmd.creation_flags(CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP);
-        cmd.spawn()?;
+    let status = cmd.status()?;
+    if status.success() {
         Ok(())
+    } else {
+        let msg = "Process returned non-zero exit code";
+        let err_msg = match status.code() {
+            Some(c) => format!("{}: {}", msg, c),
+            None => msg.to_string(),
+        };
+        Err(io::Error::new(io::ErrorKind::Other, err_msg))
     }
+}
 
-    #[cfg(not(windows))]
-    {
-        let status = cmd.status()?;
-        if status.success() {
-            Ok(())
-        } else {
-            let msg = "Process returned non-zero exit code";
-            let err_msg = match status.code() {
-                Some(c) => format!("{}: {}", msg, c),
-                None => msg.to_string(),
-            };
-            Err(io::Error::new(io::ErrorKind::Other, err_msg))
-        }
+/// Spawn the Zellij server process.
+///
+/// On Windows there is no daemonize — we launch the server as a background
+/// process with a hidden console.  We use CREATE_NO_WINDOW (not
+/// DETACHED_PROCESS) so the server gets valid standard handles;
+/// DETACHED_PROCESS leaves stdin/stdout/stderr as NULL, which breaks PTY
+/// creation, WASM plugin loading, and logging.
+#[cfg(windows)]
+pub fn spawn_server(socket_path: &Path, debug: bool) -> io::Result<()> {
+    use std::os::windows::process::CommandExt;
+    let mut cmd = Command::new(current_exe()?);
+    cmd.arg("--server").arg(socket_path);
+    if debug {
+        cmd.arg("--debug");
     }
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+    const CREATE_NEW_PROCESS_GROUP: u32 = 0x00000200;
+    cmd.creation_flags(CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP);
+    cmd.spawn()?;
+    Ok(())
 }
 
 #[derive(Debug, Clone)]

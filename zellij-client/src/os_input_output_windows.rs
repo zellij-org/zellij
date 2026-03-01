@@ -1,8 +1,12 @@
 use crate::os_input_output::SignalEvent;
 
+use anyhow::{Context, Result};
 use async_trait::async_trait;
 
 use std::io;
+use std::io::Write;
+use std::path::Path;
+use zellij_utils::ipc::{IpcReceiverWithContext, IpcSenderWithContext};
 
 /// Windows async signal listener.
 ///
@@ -155,4 +159,87 @@ impl Iterator for BlockingSignalIterator {
             std::thread::sleep(Duration::from_millis(50));
         }
     }
+}
+
+/// Set up client IPC channels from a connected socket.
+///
+/// On Windows we use two separate named pipes to avoid DuplicateHandle
+/// deadlock: the command pipe (socket) for client→server, and a reply pipe
+/// for server→client.
+pub(crate) fn setup_ipc(
+    socket: interprocess::local_socket::Stream,
+    path: &Path,
+) -> (
+    IpcSenderWithContext<zellij_utils::ipc::ClientToServerMsg>,
+    IpcReceiverWithContext<zellij_utils::ipc::ServerToClientMsg>,
+) {
+    let reply_socket;
+    loop {
+        match zellij_utils::consts::ipc_connect_reply(path) {
+            Ok(sock) => {
+                reply_socket = sock;
+                break;
+            },
+            Err(_) => {
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            },
+        }
+    }
+    let sender = IpcSenderWithContext::new(socket);
+    let receiver = IpcReceiverWithContext::new(reply_socket);
+    (sender, receiver)
+}
+
+/// Enable ENABLE_VIRTUAL_TERMINAL_PROCESSING on stdout so that ConPTY enters
+/// passthrough mode and forwards DEC private mode sequences (like mouse-enable)
+/// to the terminal emulator.  Uses crossterm's safe wrapper which handles the
+/// GetConsoleMode/SetConsoleMode internally.
+fn enable_vt_processing_on_stdout() {
+    crossterm::ansi_support::supports_ansi();
+}
+
+/// Enable mouse support on Windows.
+///
+/// When TERM is set we're on the VT input path (terminal emulator like
+/// Alacritty via ConPTY). We must NOT use crossterm's EnableMouseCapture
+/// because it does a full SetConsoleMode() that would overwrite the mode
+/// set by enable_vt_input(), clobbering ENABLE_VIRTUAL_TERMINAL_INPUT.
+///
+/// Instead, we enable ENABLE_VIRTUAL_TERMINAL_PROCESSING on stdout so
+/// ConPTY enters passthrough mode, then write ANSI mouse-enable sequences.
+///
+/// When TERM is not set we're in a native console (cmd, PowerShell,
+/// Windows Terminal) and use crossterm's Console API approach.
+pub(crate) fn enable_mouse_support(stdout: &mut dyn Write) -> Result<()> {
+    let err_context = "failed to enable mouse mode";
+    if std::env::var("TERM").is_ok() {
+        enable_vt_processing_on_stdout();
+        stdout
+            .write_all(super::os_input_output::ENABLE_MOUSE_SUPPORT.as_bytes())
+            .context(err_context)?;
+        stdout.flush().context(err_context)?;
+    } else {
+        // crossterm::execute! requires Sized, so we use std::io::stdout()
+        // directly rather than the trait-object writer.
+        crossterm::execute!(std::io::stdout(), crossterm::event::EnableMouseCapture)
+            .context(err_context)?;
+    }
+    Ok(())
+}
+
+/// Disable mouse support on Windows.
+///
+/// See `enable_mouse_support()` for rationale on VT vs Console API paths.
+pub(crate) fn disable_mouse_support(stdout: &mut dyn Write) -> Result<()> {
+    let err_context = "failed to disable mouse mode";
+    if std::env::var("TERM").is_ok() {
+        stdout
+            .write_all(super::os_input_output::DISABLE_MOUSE_SUPPORT.as_bytes())
+            .context(err_context)?;
+        stdout.flush().context(err_context)?;
+    } else {
+        crossterm::execute!(std::io::stdout(), crossterm::event::DisableMouseCapture)
+            .context(err_context)?;
+    }
+    Ok(())
 }

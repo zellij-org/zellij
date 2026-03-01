@@ -1,11 +1,17 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use async_trait::async_trait;
 use zellij_utils::pane_size::Size;
 
 #[cfg(not(windows))]
-use crate::os_input_output_unix::{AsyncSignalListener, BlockingSignalIterator};
+use crate::os_input_output_unix::{
+    disable_mouse_support, enable_mouse_support, setup_ipc, AsyncSignalListener,
+    BlockingSignalIterator,
+};
 #[cfg(windows)]
-use crate::os_input_output_windows::{AsyncSignalListener, BlockingSignalIterator};
+use crate::os_input_output_windows::{
+    disable_mouse_support, enable_mouse_support, setup_ipc, AsyncSignalListener,
+    BlockingSignalIterator,
+};
 
 use std::io::prelude::*;
 use std::io::IsTerminal;
@@ -21,19 +27,10 @@ use zellij_utils::{
 
 const SIGWINCH_CB_THROTTLE_DURATION: time::Duration = time::Duration::from_millis(50);
 
-const ENABLE_MOUSE_SUPPORT: &str =
+pub(crate) const ENABLE_MOUSE_SUPPORT: &str =
     "\u{1b}[?1000h\u{1b}[?1002h\u{1b}[?1003h\u{1b}[?1015h\u{1b}[?1006h";
-const DISABLE_MOUSE_SUPPORT: &str =
+pub(crate) const DISABLE_MOUSE_SUPPORT: &str =
     "\u{1b}[?1006l\u{1b}[?1015l\u{1b}[?1003l\u{1b}[?1002l\u{1b}[?1000l";
-
-/// Enable ENABLE_VIRTUAL_TERMINAL_PROCESSING on stdout so that ConPTY enters
-/// passthrough mode and forwards DEC private mode sequences (like mouse-enable)
-/// to the terminal emulator.  Uses crossterm's safe wrapper which handles the
-/// GetConsoleMode/SetConsoleMode internally.
-#[cfg(windows)]
-fn enable_vt_processing_on_stdout() {
-    crossterm::ansi_support::supports_ansi();
-}
 
 /// Trait for async stdin reading, allowing for testable implementations
 #[async_trait]
@@ -255,11 +252,6 @@ impl ClientOsApi for ClientOsInputOutput {
         resize_receiver: Option<std::sync::mpsc::Receiver<()>>,
     ) {
         let mut sigwinch_cb_timestamp = time::Instant::now();
-        #[cfg(not(windows))]
-        let _ = resize_receiver;
-        #[cfg(not(windows))]
-        let signals = BlockingSignalIterator::new().unwrap();
-        #[cfg(windows)]
         let signals = BlockingSignalIterator::new(resize_receiver).unwrap();
         for event in signals {
             match event {
@@ -291,36 +283,9 @@ impl ClientOsApi for ClientOsInputOutput {
                 },
             }
         }
-        // On Windows, use two separate named pipes to avoid DuplicateHandle deadlock:
-        // - command pipe (socket): client writes, server reads
-        // - reply pipe: server writes, client reads
-        // On Unix, a single socket with try_clone_stream() works fine.
-        #[cfg(windows)]
-        {
-            let reply_socket;
-            loop {
-                match zellij_utils::consts::ipc_connect_reply(path) {
-                    Ok(sock) => {
-                        reply_socket = sock;
-                        break;
-                    },
-                    Err(_) => {
-                        std::thread::sleep(std::time::Duration::from_millis(50));
-                    },
-                }
-            }
-            let sender = IpcSenderWithContext::new(socket);
-            let receiver = IpcReceiverWithContext::new(reply_socket);
-            *self.send_instructions_to_server.lock().unwrap() = Some(sender);
-            *self.receive_instructions_from_server.lock().unwrap() = Some(receiver);
-        }
-        #[cfg(not(windows))]
-        {
-            let sender = IpcSenderWithContext::new(socket);
-            let receiver = sender.get_receiver();
-            *self.send_instructions_to_server.lock().unwrap() = Some(sender);
-            *self.receive_instructions_from_server.lock().unwrap() = Some(receiver);
-        }
+        let (sender, receiver) = setup_ipc(socket, path);
+        *self.send_instructions_to_server.lock().unwrap() = Some(sender);
+        *self.receive_instructions_from_server.lock().unwrap() = Some(receiver);
     }
     fn load_palette(&self) -> Palette {
         // this was removed because termbg doesn't release stdin in certain scenarios (we know of
@@ -337,71 +302,13 @@ impl ClientOsApi for ClientOsInputOutput {
         default_palette()
     }
     fn enable_mouse(&self) -> Result<()> {
-        let err_context = "failed to enable mouse mode";
-        #[cfg(not(windows))]
-        {
-            let mut stdout = self.get_stdout_writer();
-            stdout
-                .write_all(ENABLE_MOUSE_SUPPORT.as_bytes())
-                .context(err_context)?;
-            stdout.flush().context(err_context)?;
-        }
-        #[cfg(windows)]
-        {
-            // When TERM is set we're on the VT input path (terminal emulator like
-            // Alacritty via ConPTY). We must NOT use crossterm's EnableMouseCapture
-            // because it does a full SetConsoleMode() that would overwrite the mode
-            // set by enable_vt_input(), clobbering ENABLE_VIRTUAL_TERMINAL_INPUT.
-            //
-            // Instead, we enable ENABLE_VIRTUAL_TERMINAL_PROCESSING on stdout so
-            // ConPTY enters passthrough mode, then write ANSI mouse-enable sequences.
-            // The terminal emulator sees these and starts sending mouse events as VT
-            // sequences, which arrive on stdin via ENABLE_VIRTUAL_TERMINAL_INPUT.
-            //
-            // When TERM is not set we're in a native console (cmd, PowerShell,
-            // Windows Terminal) and use crossterm's Console API approach.
-            if std::env::var("TERM").is_ok() {
-                enable_vt_processing_on_stdout();
-                let mut stdout = self.get_stdout_writer();
-                stdout
-                    .write_all(ENABLE_MOUSE_SUPPORT.as_bytes())
-                    .context(err_context)?;
-                stdout.flush().context(err_context)?;
-            } else {
-                let mut stdout = self.get_stdout_writer();
-                crossterm::execute!(stdout, crossterm::event::EnableMouseCapture)
-                    .context(err_context)?;
-            }
-        }
-        Ok(())
+        let mut stdout = self.get_stdout_writer();
+        enable_mouse_support(&mut *stdout)
     }
 
     fn disable_mouse(&self) -> Result<()> {
-        let err_context = "failed to disable mouse mode";
-        #[cfg(not(windows))]
-        {
-            let mut stdout = self.get_stdout_writer();
-            stdout
-                .write_all(DISABLE_MOUSE_SUPPORT.as_bytes())
-                .context(err_context)?;
-            stdout.flush().context(err_context)?;
-        }
-        #[cfg(windows)]
-        {
-            // See enable_mouse() for rationale on VT vs Console API paths.
-            if std::env::var("TERM").is_ok() {
-                let mut stdout = self.get_stdout_writer();
-                stdout
-                    .write_all(DISABLE_MOUSE_SUPPORT.as_bytes())
-                    .context(err_context)?;
-                stdout.flush().context(err_context)?;
-            } else {
-                let mut stdout = self.get_stdout_writer();
-                crossterm::execute!(stdout, crossterm::event::DisableMouseCapture)
-                    .context(err_context)?;
-            }
-        }
-        Ok(())
+        let mut stdout = self.get_stdout_writer();
+        disable_mouse_support(&mut *stdout)
     }
 
     fn env_variable(&self, name: &str) -> Option<String> {
