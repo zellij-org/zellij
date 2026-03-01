@@ -494,43 +494,48 @@ impl ServerOsApi for ServerOsInputOutput {
     #[cfg(unix)]
     fn get_all_cmds_by_ppid(&self, post_hook: &Option<String>) -> HashMap<String, Vec<String>> {
         // the key is the stringified ppid
+        // We use sysinfo to read /proc/<pid>/cmdline which preserves argument
+        // boundaries via null-byte separation. The previous approach parsed
+        // `ps -ao ppid,args` by splitting on whitespace, which destroyed
+        // boundaries for arguments containing spaces (e.g. nvim +'Foo --bar'
+        // became ["nvim", "+Foo", "--bar"] instead of ["nvim", "+Foo --bar"]).
         let mut cmds = HashMap::new();
-        if let Some(output) = Command::new("ps")
-            .args(vec!["-ao", "ppid,args"])
-            .output()
-            .ok()
-        {
-            let output = String::from_utf8(output.stdout.clone())
-                .unwrap_or_else(|_| String::from_utf8_lossy(&output.stdout).to_string());
-            for line in output.lines() {
-                let line_parts: Vec<String> = line
-                    .trim()
-                    .split_ascii_whitespace()
-                    .map(|p| p.to_owned())
+        let mut system = System::new();
+        let refresh_kind = ProcessRefreshKind::nothing().with_cmd(UpdateKind::Always);
+        system.refresh_processes_specifics(ProcessesToUpdate::All, true, refresh_kind);
+
+        for (_, process) in system.processes() {
+            if let Some(parent_pid) = process.parent() {
+                let cmd: Vec<String> = process
+                    .cmd()
+                    .iter()
+                    .map(|s| s.to_string_lossy().into_owned())
                     .collect();
-                let mut line_parts = line_parts.into_iter();
-                let ppid = line_parts.next();
-                if let Some(ppid) = ppid {
-                    match &post_hook {
+                if !cmd.is_empty() {
+                    let ppid = parent_pid.as_u32().to_string();
+                    match post_hook {
                         Some(post_hook) => {
-                            let command: Vec<String> = line_parts.clone().collect();
-                            let stringified = command.join(" ");
-                            let cmd = match run_command_hook(&stringified, post_hook) {
-                                Ok(command) => command,
-                                Err(e) => {
-                                    log::error!("Post command hook failed to run: {}", e);
-                                    stringified.to_owned()
-                                },
-                            };
-                            let line_parts: Vec<String> = cmd
+                            let stringified = cmd.join(" ");
+                            let processed =
+                                match run_command_hook(&stringified, post_hook) {
+                                    Ok(command) => command,
+                                    Err(e) => {
+                                        log::error!(
+                                            "Post command hook failed to run: {}",
+                                            e
+                                        );
+                                        stringified
+                                    },
+                                };
+                            let line_parts: Vec<String> = processed
                                 .trim()
                                 .split_ascii_whitespace()
                                 .map(|p| p.to_owned())
                                 .collect();
-                            cmds.insert(ppid.into(), line_parts);
+                            cmds.insert(ppid, line_parts);
                         },
                         None => {
-                            cmds.insert(ppid.into(), line_parts.collect());
+                            cmds.insert(ppid, cmd);
                         },
                     }
                 }
