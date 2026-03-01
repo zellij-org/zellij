@@ -155,6 +155,7 @@ pub(crate) enum ClientInstruction {
     LogError(Vec<String>),
     SwitchSession(ConnectToSession),
     SetSynchronizedOutput(Option<SyncOutput>),
+    SetGraphemeClusterMode(bool),
     UnblockCliPipeInput(()), // String -> pipe name
     CliPipeOutput((), ()),   // String -> pipe name, String -> output
     QueryTerminalSize,
@@ -205,6 +206,7 @@ impl From<&ClientInstruction> for ClientContext {
             ClientInstruction::DoneParsingStdinQuery => ClientContext::DoneParsingStdinQuery,
             ClientInstruction::SwitchSession(..) => ClientContext::SwitchSession,
             ClientInstruction::SetSynchronizedOutput(..) => ClientContext::SetSynchronisedOutput,
+            ClientInstruction::SetGraphemeClusterMode(..) => ClientContext::SetGraphemeClusterMode,
             ClientInstruction::UnblockCliPipeInput(..) => ClientContext::UnblockCliPipeInput,
             ClientInstruction::CliPipeOutput(..) => ClientContext::CliPipeOutput,
             ClientInstruction::QueryTerminalSize => ClientContext::QueryTerminalSize,
@@ -1162,6 +1164,16 @@ pub fn start_client(
             },
             ClientInstruction::SetSynchronizedOutput(enabled) => {
                 synchronised_output = enabled;
+            },
+            ClientInstruction::SetGraphemeClusterMode(supported) => {
+                if supported {
+                    // Host terminal supports 2027: enable it so both sides agree on EGC widths.
+                    let mut stdout = os_input.get_stdout_writer();
+                    stdout
+                        .write_all(b"\x1b[?2027h")
+                        .expect("cannot write to stdout");
+                    stdout.flush().expect("could not flush");
+                }
             },
             ClientInstruction::QueryTerminalSize => {
                 os_input.send_to_server(ClientToServerMsg::TerminalResize {

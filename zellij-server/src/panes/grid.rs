@@ -552,6 +552,10 @@ pub struct Grid {
     /// subsequent non-boundary codepoints (combining marks, ZWJ, skin-tone modifiers, etc.)
     /// to it instead of dropping them or placing them in a new cell.
     egc_state: Option<PendingGrapheme>,
+    /// CSI ? 2027 mode: grapheme-aware cursor/edit semantics for applications that opt in.
+    /// When enabled, cursor movement and edit operations use EGC boundaries rather than
+    /// scalar/column boundaries. Segmentation is always-on regardless of this flag.
+    pub grapheme_cluster_mode: bool,
 }
 
 impl Grid {
@@ -836,6 +840,7 @@ impl Grid {
             hover_position: None,
             cached_hover_tooltip: None,
             egc_state: None,
+            grapheme_cluster_mode: false,
         }
     }
     pub fn render_full_viewport(&mut self) {
@@ -2122,6 +2127,7 @@ impl Grid {
         self.focus_event_tracking = false;
         self.cursor_is_hidden = false;
         self.supports_kitty_keyboard_protocol = false;
+        self.grapheme_cluster_mode = false;
         self.set_scroll_region_to_viewport_size();
         self.pane_default_fg = None;
         self.pane_default_bg = None;
@@ -3559,6 +3565,9 @@ impl Perform for Grid {
                         2026 => {
                             self.unlock_renders();
                         },
+                        2027 => {
+                            self.grapheme_cluster_mode = false;
+                        },
                         2004 => {
                             self.bracketed_paste_mode = false;
                         },
@@ -3657,6 +3666,9 @@ impl Perform for Grid {
                         },
                         2026 => {
                             self.lock_renders();
+                        },
+                        2027 => {
+                            self.grapheme_cluster_mode = true;
                         },
                         2004 => {
                             self.bracketed_paste_mode = true;
@@ -3758,6 +3770,15 @@ impl Perform for Grid {
                     match param {
                         2026 => {
                             let response = "\u{1b}[?2026;2$y";
+                            self.pending_messages_to_pty
+                                .push(response.as_bytes().to_vec());
+                        },
+                        2027 => {
+                            let response = if self.grapheme_cluster_mode {
+                                "\u{1b}[?2027;1$y"
+                            } else {
+                                "\u{1b}[?2027;2$y"
+                            };
                             self.pending_messages_to_pty
                                 .push(response.as_bytes().to_vec());
                         },
