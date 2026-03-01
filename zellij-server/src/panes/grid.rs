@@ -935,27 +935,11 @@ impl Grid {
 
             let mut new_viewport_rows = vec![];
             for mut canonical_line in viewport_canonical_lines {
-                let mut canonical_line_parts: Vec<Row> = vec![];
-                if canonical_line.columns.is_empty() {
-                    canonical_line_parts.push(Row::new().canonical());
-                }
-                while !canonical_line.columns.is_empty() {
-                    let next_wrap = canonical_line.drain_until(new_columns);
-                    // If the next character is wider than the grid (i.e. there is nothing in
-                    // `next_wrap`, then just abort the resizing
-                    if next_wrap.is_empty() {
-                        break;
-                    }
-                    let row = Row::from_columns(next_wrap);
-                    // if there are no more parts, this row is canonical as long as it originally
-                    // was canonical (it might not have been for example if it's the first row in
-                    // the viewport, and the actual canonical row is above it in the scrollback)
-                    let row = if canonical_line_parts.is_empty() && canonical_line.is_canonical {
-                        row.canonical()
-                    } else {
-                        row
-                    };
-                    canonical_line_parts.push(row);
+                let mut canonical_line_parts = canonical_line.split_to_rows_of_length(new_columns);
+                // If a character is wider than the grid, split_to_rows_of_length returns an empty
+                // vec — skip the line, matching the old `break` behavior
+                if canonical_line_parts.is_empty() {
+                    continue;
                 }
                 new_viewport_rows.append(&mut canonical_line_parts);
             }
