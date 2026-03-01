@@ -664,6 +664,20 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
             .expect("could not daemonize the server process");
     }
 
+    #[cfg(windows)]
+    {
+        // The server is spawned with CREATE_NEW_PROCESS_GROUP, which disables
+        // Ctrl+C handling for the process.  Child processes inherit this
+        // disabled state, so ConPTY children (shells, commands) would silently
+        // ignore CTRL_C_EVENT signals.  Re-enable Ctrl+C here so that
+        // descendants get the normal default handler (terminate on Ctrl+C).
+        //
+        use windows_sys::Win32::System::Console::SetConsoleCtrlHandler;
+        unsafe {
+            SetConsoleCtrlHandler(None, 0);
+        }
+    }
+
     envs::set_zellij("0".to_string());
 
     let (to_server, server_receiver): ChannelWithContext<ServerInstruction> = channels::bounded(50);
