@@ -1,0 +1,19 @@
+//  gruvchad is a theme derived from gruvbox material by siduck
+// https://github.com/NvChad/base46/blob/v3.0/lua/base46/themes/gruvchad.lua
+
+themes {
+    gruvchad {
+        fg "#c7b89d"
+        bg "#404344"
+        black "#1e2122"
+        red "#ec6b64"
+        green "#89b482"
+        yellow "#d6b676"
+        blue "#6d8dad"
+        magenta "#9385b4"
+        cyan "#82b3a8"
+        white "#c7b89d"
+        orange "#e78a4e"
+    }
+}
+
