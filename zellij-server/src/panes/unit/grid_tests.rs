@@ -5517,3 +5517,93 @@ fn grapheme_preserved_in_copy_output() {
         "Combining mark must be present in copied text"
     );
 }
+
+// ── CSI 2027 mode tests ───────────────────────────────────────────────────────
+
+fn feed_bytes(grid: &mut Grid, bytes: &[u8]) {
+    let mut vte_parser = vte::Parser::new();
+    for byte in bytes {
+        vte_parser.advance(grid, *byte);
+    }
+}
+
+#[test]
+fn csi_2027_h_enables_grapheme_cluster_mode() {
+    let mut grid = create_grid_with_content("");
+    assert!(!grid.grapheme_cluster_mode, "mode should be off by default");
+    feed_bytes(&mut grid, b"\x1b[?2027h");
+    assert!(grid.grapheme_cluster_mode, "CSI ? 2027 h should enable the mode");
+}
+
+#[test]
+fn csi_2027_l_disables_grapheme_cluster_mode() {
+    let mut grid = create_grid_with_content("");
+    feed_bytes(&mut grid, b"\x1b[?2027h");
+    assert!(grid.grapheme_cluster_mode);
+    feed_bytes(&mut grid, b"\x1b[?2027l");
+    assert!(!grid.grapheme_cluster_mode, "CSI ? 2027 l should disable the mode");
+}
+
+#[test]
+fn csi_2027_decrpm_reports_disabled_when_off() {
+    let mut grid = create_grid_with_content("");
+    feed_bytes(&mut grid, b"\x1b[?2027$p");
+    let response = grid
+        .pending_messages_to_pty
+        .iter()
+        .find_map(|msg| std::str::from_utf8(msg).ok().map(|s| s.to_owned()));
+    assert_eq!(
+        response.as_deref(),
+        Some("\x1b[?2027;2$y"),
+        "DECRPM should report disabled (;2) when mode is off"
+    );
+}
+
+#[test]
+fn csi_2027_decrpm_reports_enabled_when_on() {
+    let mut grid = create_grid_with_content("");
+    feed_bytes(&mut grid, b"\x1b[?2027h");
+    grid.pending_messages_to_pty.clear(); // discard any prior messages
+    feed_bytes(&mut grid, b"\x1b[?2027$p");
+    let response = grid
+        .pending_messages_to_pty
+        .iter()
+        .find_map(|msg| std::str::from_utf8(msg).ok().map(|s| s.to_owned()));
+    assert_eq!(
+        response.as_deref(),
+        Some("\x1b[?2027;1$y"),
+        "DECRPM should report enabled (;1) when mode is on"
+    );
+}
+
+#[test]
+fn terminal_reset_clears_grapheme_cluster_mode() {
+    // ESC c (RIS — full terminal reset) must clear grapheme_cluster_mode even
+    // if it was enabled before the reset.
+    let mut grid = create_grid_with_content("");
+    feed_bytes(&mut grid, b"\x1b[?2027h");
+    assert!(grid.grapheme_cluster_mode, "mode should be on before reset");
+    // ESC c = RIS (full terminal reset)
+    feed_bytes(&mut grid, b"\x1bc");
+    assert!(!grid.grapheme_cluster_mode, "mode should be off after RIS reset");
+    // DECRPM query should also report disabled
+    feed_bytes(&mut grid, b"\x1b[?2027$p");
+    let response = grid
+        .pending_messages_to_pty
+        .iter()
+        .find_map(|msg| std::str::from_utf8(msg).ok().map(|s| s.to_owned()));
+    assert_eq!(response.as_deref(), Some("\x1b[?2027;2$y"),
+        "DECRPM after RIS should report disabled");
+}
+
+#[test]
+fn csi_2027_mode_persists_across_alternate_screen() {
+    let mut grid = create_grid_with_content("");
+    // Enable 2027 mode, then enter and exit alternate screen
+    feed_bytes(&mut grid, b"\x1b[?2027h");
+    assert!(grid.grapheme_cluster_mode);
+    feed_bytes(&mut grid, b"\x1b[?1049h"); // enter alt screen
+    assert!(grid.grapheme_cluster_mode, "mode should persist after entering alt screen");
+    feed_bytes(&mut grid, b"\x1b[?1049l"); // exit alt screen
+    assert!(grid.grapheme_cluster_mode, "mode should persist after exiting alt screen");
+}
