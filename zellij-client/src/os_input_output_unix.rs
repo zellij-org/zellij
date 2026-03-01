@@ -5,7 +5,11 @@ use signal_hook::consts::signal::*;
 use signal_hook::iterator::Signals;
 use tokio::signal::unix::{signal, SignalKind};
 
+use anyhow::{Context, Result};
 use std::io;
+use std::io::Write;
+use std::path::Path;
+use zellij_utils::ipc::{IpcReceiverWithContext, IpcSenderWithContext};
 
 /// Async signal listener that maps Unix signals to `SignalEvent` variants.
 pub(crate) struct AsyncSignalListener {
@@ -48,7 +52,7 @@ pub(crate) struct BlockingSignalIterator {
 }
 
 impl BlockingSignalIterator {
-    pub fn new() -> io::Result<Self> {
+    pub fn new(_resize_receiver: Option<std::sync::mpsc::Receiver<()>>) -> io::Result<Self> {
         let signals = Signals::new([SIGWINCH, SIGTERM, SIGINT, SIGQUIT, SIGHUP])?;
         Ok(Self { signals })
     }
@@ -67,4 +71,37 @@ impl Iterator for BlockingSignalIterator {
         }
         None
     }
+}
+
+/// Set up client IPC channels from a connected socket.
+///
+/// On Unix a single socket is cloned for both send and receive directions.
+pub(crate) fn setup_ipc(
+    socket: interprocess::local_socket::Stream,
+    _path: &Path,
+) -> (
+    IpcSenderWithContext<zellij_utils::ipc::ClientToServerMsg>,
+    IpcReceiverWithContext<zellij_utils::ipc::ServerToClientMsg>,
+) {
+    let sender = IpcSenderWithContext::new(socket);
+    let receiver = sender.get_receiver();
+    (sender, receiver)
+}
+
+pub(crate) fn enable_mouse_support(stdout: &mut dyn Write) -> Result<()> {
+    let err_context = "failed to enable mouse mode";
+    stdout
+        .write_all(super::os_input_output::ENABLE_MOUSE_SUPPORT.as_bytes())
+        .context(err_context)?;
+    stdout.flush().context(err_context)?;
+    Ok(())
+}
+
+pub(crate) fn disable_mouse_support(stdout: &mut dyn Write) -> Result<()> {
+    let err_context = "failed to disable mouse mode";
+    stdout
+        .write_all(super::os_input_output::DISABLE_MOUSE_SUPPORT.as_bytes())
+        .context(err_context)?;
+    stdout.flush().context(err_context)?;
+    Ok(())
 }

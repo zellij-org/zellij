@@ -229,10 +229,13 @@ impl InputHandler {
                     }
                 },
                 Ok((
-                    InputInstruction::KeyWithModifierEvent(key_with_modifier, raw_bytes),
+                    InputInstruction::KeyWithModifierEvent(key_with_modifier, raw_bytes, is_kitty),
                     _error_context,
                 )) => {
-                    self.handle_key(&key_with_modifier, raw_bytes, true);
+                    self.handle_key(&key_with_modifier, raw_bytes, is_kitty);
+                },
+                Ok((InputInstruction::MouseEvent(mouse_event), _error_context)) => {
+                    self.handle_mouse_event(&mouse_event);
                 },
                 Ok((
                     InputInstruction::AnsiStdinInstructions(ansi_stdin_instructions),

@@ -58,6 +58,13 @@ notify = { workspace = true }
 [target.'cfg(unix)'.dependencies]
 nix = { workspace = true }
 
+[target.'cfg(windows)'.dependencies]
+crossterm = { workspace = true, features = ["events"] }
+windows-sys = { workspace = true, features = [
+    "Win32_Foundation",
+    "Win32_System_Threading",
+] }
+
 [dev-dependencies]
 insta = { version = "1.6.0", features = ["backtrace"] }
 expect-test = "1.4.1"

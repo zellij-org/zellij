@@ -1,14 +1,18 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use async_trait::async_trait;
-use interprocess;
 use zellij_utils::pane_size::Size;
 
 #[cfg(not(windows))]
-use crate::os_input_output_unix::{AsyncSignalListener, BlockingSignalIterator};
+use crate::os_input_output_unix::{
+    disable_mouse_support, enable_mouse_support, setup_ipc, AsyncSignalListener,
+    BlockingSignalIterator,
+};
 #[cfg(windows)]
-use crate::os_input_output_windows::{AsyncSignalListener, BlockingSignalIterator};
+use crate::os_input_output_windows::{
+    disable_mouse_support, enable_mouse_support, setup_ipc, AsyncSignalListener,
+    BlockingSignalIterator,
+};
 
-use interprocess::local_socket::{prelude::*, GenericFilePath, Stream as LocalSocketStream};
 use std::io::prelude::*;
 use std::io::IsTerminal;
 use std::path::Path;
@@ -23,9 +27,9 @@ use zellij_utils::{
 
 const SIGWINCH_CB_THROTTLE_DURATION: time::Duration = time::Duration::from_millis(50);
 
-const ENABLE_MOUSE_SUPPORT: &str =
+pub(crate) const ENABLE_MOUSE_SUPPORT: &str =
     "\u{1b}[?1000h\u{1b}[?1002h\u{1b}[?1003h\u{1b}[?1015h\u{1b}[?1006h";
-const DISABLE_MOUSE_SUPPORT: &str =
+pub(crate) const DISABLE_MOUSE_SUPPORT: &str =
     "\u{1b}[?1006l\u{1b}[?1015l\u{1b}[?1003l\u{1b}[?1002l\u{1b}[?1000l";
 
 /// Trait for async stdin reading, allowing for testable implementations
@@ -125,7 +129,12 @@ pub trait ClientOsApi: Send + Sync + std::fmt::Debug {
     /// Receives a message on client-side IPC channel
     // This should be called from the client-side router thread only.
     fn recv_from_server(&self) -> Option<(ServerToClientMsg, ErrorContext)>;
-    fn handle_signals(&self, sigwinch_cb: Box<dyn Fn()>, quit_cb: Box<dyn Fn()>);
+    fn handle_signals(
+        &self,
+        sigwinch_cb: Box<dyn Fn()>,
+        quit_cb: Box<dyn Fn()>,
+        resize_receiver: Option<std::sync::mpsc::Receiver<()>>,
+    );
     /// Establish a connection with the server socket.
     fn connect_to_server(&self, path: &Path);
     fn load_palette(&self) -> Palette;
@@ -236,9 +245,14 @@ impl ClientOsApi for ClientOsInputOutput {
             .unwrap()
             .recv_server_msg()
     }
-    fn handle_signals(&self, sigwinch_cb: Box<dyn Fn()>, quit_cb: Box<dyn Fn()>) {
+    fn handle_signals(
+        &self,
+        sigwinch_cb: Box<dyn Fn()>,
+        quit_cb: Box<dyn Fn()>,
+        resize_receiver: Option<std::sync::mpsc::Receiver<()>>,
+    ) {
         let mut sigwinch_cb_timestamp = time::Instant::now();
-        let signals = BlockingSignalIterator::new().unwrap();
+        let signals = BlockingSignalIterator::new(resize_receiver).unwrap();
         for event in signals {
             match event {
                 SignalEvent::Resize => {
@@ -257,12 +271,9 @@ impl ClientOsApi for ClientOsInputOutput {
         }
     }
     fn connect_to_server(&self, path: &Path) {
-        let fs_name = path
-            .to_fs_name::<GenericFilePath>()
-            .expect("failed to convert path to socket name");
         let socket;
         loop {
-            match LocalSocketStream::connect(fs_name.clone()) {
+            match zellij_utils::consts::ipc_connect(path) {
                 Ok(sock) => {
                     socket = sock;
                     break;
@@ -272,8 +283,7 @@ impl ClientOsApi for ClientOsInputOutput {
                 },
             }
         }
-        let sender = IpcSenderWithContext::new(socket);
-        let receiver = sender.get_receiver();
+        let (sender, receiver) = setup_ipc(socket, path);
         *self.send_instructions_to_server.lock().unwrap() = Some(sender);
         *self.receive_instructions_from_server.lock().unwrap() = Some(receiver);
     }
@@ -292,23 +302,13 @@ impl ClientOsApi for ClientOsInputOutput {
         default_palette()
     }
     fn enable_mouse(&self) -> Result<()> {
-        let err_context = "failed to enable mouse mode";
         let mut stdout = self.get_stdout_writer();
-        stdout
-            .write_all(ENABLE_MOUSE_SUPPORT.as_bytes())
-            .context(err_context)?;
-        stdout.flush().context(err_context)?;
-        Ok(())
+        enable_mouse_support(&mut *stdout)
     }
 
     fn disable_mouse(&self) -> Result<()> {
-        let err_context = "failed to enable mouse mode";
         let mut stdout = self.get_stdout_writer();
-        stdout
-            .write_all(DISABLE_MOUSE_SUPPORT.as_bytes())
-            .context(err_context)?;
-        stdout.flush().context(err_context)?;
-        Ok(())
+        disable_mouse_support(&mut *stdout)
     }
 
     fn env_variable(&self, name: &str) -> Option<String> {

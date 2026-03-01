@@ -2098,23 +2098,25 @@ pub(crate) fn route_thread_main(
                                     .to_anyhow()
                                     .with_context(err_context)?
                                     .set_client_size(client_id, new_size);
-                                session_state
+                                // min_client_terminal_size() returns None when
+                                // the client hasn't been fully initialized yet
+                                // (set_client_data not called). This can happen
+                                // if a resize event arrives before the server
+                                // finishes processing the initial connection.
+                                // Skip the resize in that case — the server will
+                                // query the terminal size once setup completes.
+                                if let Some(min_size) = session_state
                                     .read()
                                     .to_anyhow()
-                                    .and_then(|state| {
-                                        state.min_client_terminal_size().ok_or(anyhow!(
-                                            "failed to determine minimal client terminal size"
+                                    .with_context(err_context)?
+                                    .min_client_terminal_size()
+                                {
+                                    let _ = senders.as_ref().map(|s| {
+                                        s.send_to_screen(ScreenInstruction::TerminalResize(
+                                            min_size,
                                         ))
-                                    })
-                                    .and_then(|min_size| {
-                                        let _ = senders.as_ref().map(|s| {
-                                            s.send_to_screen(ScreenInstruction::TerminalResize(
-                                                min_size,
-                                            ))
-                                        });
-                                        Ok(())
-                                    })
-                                    .with_context(err_context)?;
+                                    });
+                                }
                             }
                         },
                         ClientToServerMsg::TerminalPixelDimensions { pixel_dimensions } => {

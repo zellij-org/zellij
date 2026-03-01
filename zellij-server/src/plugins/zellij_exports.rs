@@ -6,7 +6,6 @@ use crate::plugins::wasm_bridge::handle_plugin_crash;
 use crate::pty::{ClientTabIndexOrPaneId, PtyInstruction};
 use crate::route::{route_action, wait_for_action_completion, NotificationEnd};
 use crate::ServerInstruction;
-use interprocess::local_socket::{prelude::*, GenericFilePath, Stream as LocalSocketStream};
 use log::warn;
 use serde::Serialize;
 use std::{
@@ -20,6 +19,7 @@ use std::{
 };
 use tokio::sync::oneshot;
 use wasmi::{Caller, Linker};
+use zellij_utils::consts::ipc_connect;
 use zellij_utils::data::{
     BreakPanesToNewTabResponse, BreakPanesToTabWithIdResponse, BreakPanesToTabWithIndexResponse,
     CommandType, ConnectToSession, DeleteLayoutResponse, EditLayoutResponse, Event,
@@ -3184,21 +3184,26 @@ fn disconnect_other_clients(env: &PluginEnv) {
 fn kill_sessions(session_names: Vec<String>) {
     for session_name in session_names {
         let path = &*ZELLIJ_SOCK_DIR.join(&session_name);
-        let fs_name = match path.to_fs_name::<GenericFilePath>() {
-            Ok(name) => name,
-            Err(e) => {
-                log::error!(
-                    "Failed to convert path for session {}: {:?}",
-                    session_name,
-                    e
-                );
-                continue;
-            },
-        };
-        match LocalSocketStream::connect(fs_name) {
+        match ipc_connect(path) {
             Ok(stream) => {
-                let _ = IpcSenderWithContext::<ClientToServerMsg>::new(stream)
-                    .send_client_msg(ClientToServerMsg::KillSession);
+                #[cfg(windows)]
+                {
+                    use zellij_utils::consts::ipc_connect_reply;
+                    use zellij_utils::ipc::{IpcReceiverWithContext, ServerToClientMsg};
+                    let reply = ipc_connect_reply(path);
+                    let _ = IpcSenderWithContext::<ClientToServerMsg>::new(stream)
+                        .send_client_msg(ClientToServerMsg::KillSession);
+                    if let Ok(reply_stream) = reply {
+                        let mut receiver: IpcReceiverWithContext<ServerToClientMsg> =
+                            IpcReceiverWithContext::new(reply_stream);
+                        let _ = receiver.recv_server_msg();
+                    }
+                }
+                #[cfg(not(windows))]
+                {
+                    let _ = IpcSenderWithContext::<ClientToServerMsg>::new(stream)
+                        .send_client_msg(ClientToServerMsg::KillSession);
+                }
             },
             Err(e) => {
                 log::error!("Failed to kill session {}: {:?}", session_name, e);

@@ -5332,6 +5332,10 @@ pub(crate) fn screen_thread_main(
                 mut completion_tx,
                 blocking_terminal,
             ) => {
+                log::info!(
+                    "ScreenInstruction::ApplyLayout: applying layout for tab {}",
+                    tab_id
+                );
                 // tab_id is a stable identifier from NewTab instruction
                 if let Some(first_terminal_pane) = new_pane_pids.iter().next() {
                     completion_tx
@@ -5413,6 +5417,10 @@ pub(crate) fn screen_thread_main(
                 // very short and cheap and shouldn't cause any trouble
                 if let Some(os_input) = &mut screen.bus.os_input {
                     for (client_id, _is_web_client) in screen.connected_clients.borrow().iter() {
+                        log::info!(
+                            "ApplyLayout: sending QueryTerminalSize to client {}",
+                            client_id
+                        );
                         let _ = os_input
                             .send_to_client(*client_id, ServerToClientMsg::QueryTerminalSize);
                     }

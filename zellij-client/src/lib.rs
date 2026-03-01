@@ -16,6 +16,8 @@ pub mod old_config_converter;
 pub mod remote_attach;
 mod stdin_ansi_parser;
 mod stdin_handler;
+#[cfg(windows)]
+mod stdin_handler_windows;
 #[cfg(feature = "web_server_capability")]
 pub mod web_client;
 
@@ -255,15 +257,18 @@ fn spawn_web_server(_cli_args: &CliArgs) -> Result<String, String> {
     Ok("".to_owned())
 }
 
+/// Spawn the Zellij server process.
+///
+/// On Unix the server daemonizes (double-fork) inside start_server(), so
+/// the intermediate child exits immediately and `cmd.status()` returns.
+#[cfg(not(windows))]
 pub fn spawn_server(socket_path: &Path, debug: bool) -> io::Result<()> {
     let mut cmd = Command::new(current_exe()?);
-    cmd.arg("--server");
-    cmd.arg(socket_path);
+    cmd.arg("--server").arg(socket_path);
     if debug {
         cmd.arg("--debug");
     }
     let status = cmd.status()?;
-
     if status.success() {
         Ok(())
     } else {
@@ -274,6 +279,28 @@ pub fn spawn_server(socket_path: &Path, debug: bool) -> io::Result<()> {
         };
         Err(io::Error::new(io::ErrorKind::Other, err_msg))
     }
+}
+
+/// Spawn the Zellij server process.
+///
+/// On Windows there is no daemonize — we launch the server as a background
+/// process with a hidden console.  We use CREATE_NO_WINDOW (not
+/// DETACHED_PROCESS) so the server gets valid standard handles;
+/// DETACHED_PROCESS leaves stdin/stdout/stderr as NULL, which breaks PTY
+/// creation, WASM plugin loading, and logging.
+#[cfg(windows)]
+pub fn spawn_server(socket_path: &Path, debug: bool) -> io::Result<()> {
+    use std::os::windows::process::CommandExt;
+    let mut cmd = Command::new(current_exe()?);
+    cmd.arg("--server").arg(socket_path);
+    if debug {
+        cmd.arg("--debug");
+    }
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+    const CREATE_NEW_PROCESS_GROUP: u32 = 0x00000200;
+    cmd.creation_flags(CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP);
+    cmd.spawn()?;
+    Ok(())
 }
 
 #[derive(Debug, Clone)]
@@ -311,7 +338,8 @@ impl ClientInfo {
 #[derive(Debug, Clone)]
 pub(crate) enum InputInstruction {
     KeyEvent(InputEvent, Vec<u8>),
-    KeyWithModifierEvent(KeyWithModifier, Vec<u8>),
+    KeyWithModifierEvent(KeyWithModifier, Vec<u8>, bool), // bool = is_kitty_keyboard_protocol
+    MouseEvent(zellij_utils::input::mouse::MouseEvent),
     AnsiStdinInstructions(Vec<AnsiStdinInstruction>),
     StartedParsing,
     DoneParsing,
@@ -870,6 +898,11 @@ pub fn start_client(
     let on_force_close = config_options.on_force_close.unwrap_or_default();
     let stdin_ansi_parser = Arc::new(Mutex::new(StdinAnsiParser::new()));
 
+    // On Windows, create a channel so the stdin thread can forward resize events
+    // from crossterm to the signal handler thread (instead of polling).
+    #[cfg(windows)]
+    let (resize_sender, resize_receiver) = std::sync::mpsc::channel::<()>();
+
     let _stdin_thread = thread::Builder::new()
         .name("stdin_handler".to_string())
         .spawn({
@@ -882,6 +915,8 @@ pub fn start_client(
                     send_input_instructions,
                     stdin_ansi_parser,
                     explicitly_disable_kitty_keyboard_protocol,
+                    #[cfg(windows)]
+                    Some(resize_sender),
                 )
             }
         });
@@ -931,6 +966,10 @@ pub fn start_client(
                             });
                         }
                     }),
+                    #[cfg(windows)]
+                    Some(resize_receiver),
+                    #[cfg(not(windows))]
+                    None,
                 );
             }
         })

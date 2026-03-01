@@ -1,6 +1,19 @@
 use super::super::layout::*;
 use insta::assert_snapshot;
 
+#[cfg(not(windows))]
+fn normalize_layout_debug(s: String) -> String {
+    s
+}
+
+#[cfg(windows)]
+fn normalize_layout_debug(s: String) -> String {
+    // On Windows, PathBuf's Debug output uses `\\` (escaped backslash).
+    // Replace `\\\\` (two escaped backslashes in Debug repr) with `/`
+    // so that snapshots match Unix-recorded baselines.
+    s.replace("\\\\", "/")
+}
+
 #[test]
 fn empty_layout() {
     let kdl_layout = "layout";
@@ -302,7 +315,7 @@ fn layout_with_tabs_and_floating_panes() {
         }
     "#;
     let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None).unwrap();
-    assert_snapshot!(format!("{:#?}", layout));
+    assert_snapshot!(normalize_layout_debug(format!("{:#?}", layout)));
 }
 
 #[test]
@@ -508,7 +521,7 @@ fn layout_with_command_panes_and_close_on_exit() {
         }
     "#;
     let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None).unwrap();
-    assert_snapshot!(format!("{:#?}", layout));
+    assert_snapshot!(normalize_layout_debug(format!("{:#?}", layout)));
 }
 
 #[test]
@@ -521,7 +534,7 @@ fn layout_with_command_panes_and_start_suspended() {
         }
     "#;
     let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None).unwrap();
-    assert_snapshot!(format!("{:#?}", layout));
+    assert_snapshot!(normalize_layout_debug(format!("{:#?}", layout)));
 }
 
 #[test]
@@ -816,7 +829,7 @@ fn layout_with_default_tab_template() {
         }
     "#;
     let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None).unwrap();
-    assert_snapshot!(format!("{:#?}", layout));
+    assert_snapshot!(normalize_layout_debug(format!("{:#?}", layout)));
 }
 
 #[test]
@@ -841,7 +854,7 @@ fn layout_with_new_tab_template() {
         }
     "#;
     let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None).unwrap();
-    assert_snapshot!(format!("{:#?}", layout));
+    assert_snapshot!(normalize_layout_debug(format!("{:#?}", layout)));
 }
 
 #[test]
@@ -868,7 +881,7 @@ fn layout_with_pane_templates() {
         }
     "#;
     let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None).unwrap();
-    assert_snapshot!(format!("{:#?}", layout));
+    assert_snapshot!(normalize_layout_debug(format!("{:#?}", layout)));
 }
 
 #[test]
@@ -889,7 +902,7 @@ fn layout_with_tab_and_pane_templates() {
         }
     "#;
     let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None).unwrap();
-    assert_snapshot!(format!("{:#?}", layout));
+    assert_snapshot!(normalize_layout_debug(format!("{:#?}", layout)));
 }
 
 #[test]
@@ -910,7 +923,7 @@ fn layout_with_nested_pane_templates() {
         }
     "#;
     let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None).unwrap();
-    assert_snapshot!(format!("{:#?}", layout));
+    assert_snapshot!(normalize_layout_debug(format!("{:#?}", layout)));
 }
 
 #[test]
@@ -936,7 +949,7 @@ fn layout_with_nested_branched_pane_templates() {
         }
     "#;
     let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None).unwrap();
-    assert_snapshot!(format!("{:#?}", layout));
+    assert_snapshot!(normalize_layout_debug(format!("{:#?}", layout)));
 }
 
 #[test]
@@ -982,7 +995,7 @@ fn children_not_as_first_child_of_tab_template() {
         }
     "#;
     let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None).unwrap();
-    assert_snapshot!(format!("{:#?}", layout));
+    assert_snapshot!(normalize_layout_debug(format!("{:#?}", layout)));
 }
 
 #[test]
@@ -1030,7 +1043,7 @@ fn children_not_as_first_child_of_pane_template() {
         }
     "#;
     let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None).unwrap();
-    assert_snapshot!(format!("{:#?}", layout));
+    assert_snapshot!(normalize_layout_debug(format!("{:#?}", layout)));
 }
 
 #[test]
@@ -1082,7 +1095,7 @@ fn combined_tab_and_pane_template_both_with_children() {
         }
     "#;
     let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None).unwrap();
-    assert_snapshot!(format!("{:#?}", layout));
+    assert_snapshot!(normalize_layout_debug(format!("{:#?}", layout)));
 }
 
 #[test]
@@ -1093,7 +1106,7 @@ fn layout_with_pane_excluded_from_sync() {
         }
     "#;
     let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None).unwrap();
-    assert_snapshot!(format!("{:#?}", layout));
+    assert_snapshot!(normalize_layout_debug(format!("{:#?}", layout)));
 }
 
 #[test]
@@ -1232,7 +1245,7 @@ fn error_on_multiple_layout_nodes_in_file() {
     );
     let layout_error =
         Layout::from_kdl(&kdl_layout, Some("layout_file_name".into()), None, None).unwrap_err();
-    assert_snapshot!(format!("{:?}", layout_error));
+    assert_snapshot!(normalize_layout_debug(format!("{:?}", layout_error)));
 }
 
 #[test]
@@ -1248,7 +1261,7 @@ fn error_on_unknown_layout_node() {
     );
     let layout_error =
         Layout::from_kdl(&kdl_layout, Some("layout_file_name".into()), None, None).unwrap_err();
-    assert_snapshot!(format!("{:?}", layout_error));
+    assert_snapshot!(normalize_layout_debug(format!("{:?}", layout_error)));
 }
 
 #[test]
@@ -1262,7 +1275,7 @@ fn error_on_unknown_layout_pane_property() {
     );
     let layout_error =
         Layout::from_kdl(&kdl_layout, Some("layout_file_name".into()), None, None).unwrap_err();
-    assert_snapshot!(format!("{:?}", layout_error));
+    assert_snapshot!(normalize_layout_debug(format!("{:?}", layout_error)));
 }
 
 #[test]
@@ -1276,7 +1289,7 @@ fn error_on_unknown_layout_pane_template_property() {
     );
     let layout_error =
         Layout::from_kdl(&kdl_layout, Some("layout_file_name".into()), None, None).unwrap_err();
-    assert_snapshot!(format!("{:?}", layout_error));
+    assert_snapshot!(normalize_layout_debug(format!("{:?}", layout_error)));
 }
 
 #[test]
@@ -1290,7 +1303,7 @@ fn error_on_unknown_layout_tab_property() {
     );
     let layout_error =
         Layout::from_kdl(&kdl_layout, Some("layout_file_name".into()), None, None).unwrap_err();
-    assert_snapshot!(format!("{:?}", layout_error));
+    assert_snapshot!(normalize_layout_debug(format!("{:?}", layout_error)));
 }
 
 #[test]
@@ -1304,7 +1317,7 @@ fn error_on_unknown_layout_tab_template_property() {
     );
     let layout_error =
         Layout::from_kdl(&kdl_layout, Some("layout_file_name".into()), None, None).unwrap_err();
-    assert_snapshot!(format!("{:?}", layout_error));
+    assert_snapshot!(normalize_layout_debug(format!("{:?}", layout_error)));
 }
 
 #[test]
@@ -1322,7 +1335,7 @@ fn error_on_pane_templates_without_a_name() {
     );
     let layout_error =
         Layout::from_kdl(&kdl_layout, Some("layout_file_name".into()), None, None).unwrap_err();
-    assert_snapshot!(format!("{:?}", layout_error));
+    assert_snapshot!(normalize_layout_debug(format!("{:?}", layout_error)));
 }
 
 #[test]
@@ -1340,7 +1353,7 @@ fn error_on_tab_templates_without_a_name() {
     );
     let layout_error =
         Layout::from_kdl(&kdl_layout, Some("layout_file_name".into()), None, None).unwrap_err();
-    assert_snapshot!(format!("{:?}", layout_error));
+    assert_snapshot!(normalize_layout_debug(format!("{:?}", layout_error)));
 }
 
 #[test]
@@ -1354,7 +1367,7 @@ fn error_on_more_than_one_focused_tab() {
     "#;
     let layout_error =
         Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None).unwrap_err();
-    assert_snapshot!(format!("{:?}", layout_error));
+    assert_snapshot!(normalize_layout_debug(format!("{:?}", layout_error)));
 }
 
 #[test]
@@ -1372,7 +1385,7 @@ fn args_override_args_in_template() {
         }
     "#;
     let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None).unwrap();
-    assert_snapshot!(format!("{:#?}", layout));
+    assert_snapshot!(normalize_layout_debug(format!("{:#?}", layout)));
 }
 
 #[test]
@@ -1390,7 +1403,7 @@ fn close_on_exit_overrides_close_on_exit_in_template() {
         }
     "#;
     let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None).unwrap();
-    assert_snapshot!(format!("{:#?}", layout));
+    assert_snapshot!(normalize_layout_debug(format!("{:#?}", layout)));
 }
 
 #[test]
@@ -1407,7 +1420,7 @@ fn args_added_to_args_in_template() {
         }
     "#;
     let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None).unwrap();
-    assert_snapshot!(format!("{:#?}", layout));
+    assert_snapshot!(normalize_layout_debug(format!("{:#?}", layout)));
 }
 
 #[test]
@@ -1424,7 +1437,7 @@ fn close_on_exit_added_to_close_on_exit_in_template() {
         }
     "#;
     let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None).unwrap();
-    assert_snapshot!(format!("{:#?}", layout));
+    assert_snapshot!(normalize_layout_debug(format!("{:#?}", layout)));
 }
 
 #[test]
@@ -1442,7 +1455,7 @@ fn cwd_override_cwd_in_template() {
         }
     "#;
     let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None).unwrap();
-    assert_snapshot!(format!("{:#?}", layout));
+    assert_snapshot!(normalize_layout_debug(format!("{:#?}", layout)));
 }
 
 #[test]
@@ -1459,7 +1472,7 @@ fn cwd_added_to_cwd_in_template() {
         }
     "#;
     let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None).unwrap();
-    assert_snapshot!(format!("{:#?}", layout));
+    assert_snapshot!(normalize_layout_debug(format!("{:#?}", layout)));
 }
 
 #[test]
@@ -1559,7 +1572,7 @@ fn pane_template_command_with_cwd_overriden_by_its_consumers_command_cwd() {
         }
     "#;
     let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None).unwrap();
-    assert_snapshot!(format!("{:#?}", layout));
+    assert_snapshot!(normalize_layout_debug(format!("{:#?}", layout)));
 }
 
 #[test]
@@ -1576,7 +1589,7 @@ fn pane_template_command_with_cwd_remains_when_its_consumer_command_does_not_hav
         }
     "#;
     let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None).unwrap();
-    assert_snapshot!(format!("{:#?}", layout));
+    assert_snapshot!(normalize_layout_debug(format!("{:#?}", layout)));
 }
 
 #[test]
@@ -1594,7 +1607,7 @@ fn pane_template_command_without_cwd_is_overriden_by_its_consumers_cwd() {
         }
     "#;
     let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None).unwrap();
-    assert_snapshot!(format!("{:#?}", layout));
+    assert_snapshot!(normalize_layout_debug(format!("{:#?}", layout)));
 }
 
 #[test]
@@ -1613,7 +1626,7 @@ fn pane_template_command_with_cwd_is_overriden_by_its_consumers_bare_cwd() {
         }
     "#;
     let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None).unwrap();
-    assert_snapshot!(format!("{:#?}", layout));
+    assert_snapshot!(normalize_layout_debug(format!("{:#?}", layout)));
 }
 
 #[test]
@@ -1631,7 +1644,7 @@ fn pane_template_command_without_cwd_receives_its_consumers_bare_cwd() {
         }
     "#;
     let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None).unwrap();
-    assert_snapshot!(format!("{:#?}", layout));
+    assert_snapshot!(normalize_layout_debug(format!("{:#?}", layout)));
 }
 
 #[test]
@@ -1649,7 +1662,7 @@ fn pane_template_with_bare_cwd_overriden_by_its_consumers_bare_cwd() {
         }
     "#;
     let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None).unwrap();
-    assert_snapshot!(format!("{:#?}", layout));
+    assert_snapshot!(normalize_layout_debug(format!("{:#?}", layout)));
 }
 
 #[test]
@@ -1665,7 +1678,7 @@ fn pane_template_with_bare_propagated_to_its_consumer_command_without_cwd() {
         }
     "#;
     let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None).unwrap();
-    assert_snapshot!(format!("{:#?}", layout));
+    assert_snapshot!(normalize_layout_debug(format!("{:#?}", layout)));
 }
 
 #[test]
@@ -1683,7 +1696,7 @@ fn pane_template_with_bare_propagated_to_its_consumer_command_with_cwd() {
         }
     "#;
     let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None).unwrap();
-    assert_snapshot!(format!("{:#?}", layout));
+    assert_snapshot!(normalize_layout_debug(format!("{:#?}", layout)));
 }
 
 #[test]
@@ -1699,7 +1712,7 @@ fn pane_template_with_bare_propagated_to_its_consumer_edit() {
         }
     "#;
     let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None).unwrap();
-    assert_snapshot!(format!("{:#?}", layout));
+    assert_snapshot!(normalize_layout_debug(format!("{:#?}", layout)));
 }
 
 #[test]
@@ -1715,7 +1728,7 @@ fn pane_template_with_command_propagated_to_its_consumer_edit() {
         }
     "#;
     let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None).unwrap();
-    assert_snapshot!(format!("{:#?}", layout));
+    assert_snapshot!(normalize_layout_debug(format!("{:#?}", layout)));
 }
 
 #[test]
@@ -1729,7 +1742,7 @@ fn global_cwd_given_to_panes_without_cwd() {
         }
     "#;
     let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None).unwrap();
-    assert_snapshot!(format!("{:#?}", layout));
+    assert_snapshot!(normalize_layout_debug(format!("{:#?}", layout)));
 }
 
 #[test]
@@ -1742,7 +1755,7 @@ fn global_cwd_prepended_to_panes_with_cwd() {
         }
     "#;
     let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None).unwrap();
-    assert_snapshot!(format!("{:#?}", layout));
+    assert_snapshot!(normalize_layout_debug(format!("{:#?}", layout)));
 }
 
 #[test]
@@ -1762,7 +1775,7 @@ fn global_cwd_passed_from_layout_constructor() {
         Some(PathBuf::from("/tmp")),
     )
     .unwrap();
-    assert_snapshot!(format!("{:#?}", layout));
+    assert_snapshot!(normalize_layout_debug(format!("{:#?}", layout)));
 }
 
 #[test]
@@ -1783,7 +1796,7 @@ fn global_cwd_passed_from_layout_constructor_overrides_global_cwd_in_layout_file
         Some(PathBuf::from("/tmp")),
     )
     .unwrap();
-    assert_snapshot!(format!("{:#?}", layout));
+    assert_snapshot!(normalize_layout_debug(format!("{:#?}", layout)));
 }
 
 #[test]
@@ -1799,7 +1812,7 @@ fn global_cwd_with_tab_cwd_given_to_panes_without_cwd() {
         }
     "#;
     let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None).unwrap();
-    assert_snapshot!(format!("{:#?}", layout));
+    assert_snapshot!(normalize_layout_debug(format!("{:#?}", layout)));
 }
 
 #[test]
@@ -1814,7 +1827,7 @@ fn tab_cwd_given_to_panes_without_cwd() {
         }
     "#;
     let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None).unwrap();
-    assert_snapshot!(format!("{:#?}", layout));
+    assert_snapshot!(normalize_layout_debug(format!("{:#?}", layout)));
 }
 
 #[test]
@@ -1829,7 +1842,7 @@ fn tab_cwd_prepended_to_panes_with_cwd() {
         }
     "#;
     let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None).unwrap();
-    assert_snapshot!(format!("{:#?}", layout));
+    assert_snapshot!(normalize_layout_debug(format!("{:#?}", layout)));
 }
 
 #[test]
@@ -1844,7 +1857,7 @@ fn global_cwd_and_tab_cwd_prepended_to_panes_with_and_without_cwd() {
         }
     "#;
     let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None).unwrap();
-    assert_snapshot!(format!("{:#?}", layout));
+    assert_snapshot!(normalize_layout_debug(format!("{:#?}", layout)));
 }
 
 #[test]
@@ -1865,7 +1878,7 @@ fn global_cwd_and_tab_cwd_prepended_to_panes_with_and_without_cwd_in_pane_templa
         }
     "#;
     let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None).unwrap();
-    assert_snapshot!(format!("{:#?}", layout));
+    assert_snapshot!(normalize_layout_debug(format!("{:#?}", layout)));
 }
 
 #[test]
@@ -1884,7 +1897,7 @@ fn global_cwd_and_tab_cwd_prepended_to_panes_with_and_without_cwd_in_tab_templat
         }
     "#;
     let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None).unwrap();
-    assert_snapshot!(format!("{:#?}", layout));
+    assert_snapshot!(normalize_layout_debug(format!("{:#?}", layout)));
 }
 
 #[test]
@@ -1935,7 +1948,7 @@ fn can_load_swap_layouts_from_a_different_file() {
         None,
     )
     .unwrap();
-    assert_snapshot!(format!("{:#?}", layout));
+    assert_snapshot!(normalize_layout_debug(format!("{:#?}", layout)));
 }
 
 #[test]
@@ -1949,7 +1962,7 @@ fn can_define_stacked_children_for_pane_node() {
         }
     "#;
     let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None).unwrap();
-    assert_snapshot!(format!("{:#?}", layout));
+    assert_snapshot!(normalize_layout_debug(format!("{:#?}", layout)));
 }
 
 #[test]
@@ -1966,7 +1979,7 @@ fn can_define_stacked_children_for_pane_template() {
         }
     "#;
     let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None).unwrap();
-    assert_snapshot!(format!("{:#?}", layout));
+    assert_snapshot!(normalize_layout_debug(format!("{:#?}", layout)));
 }
 
 #[test]
@@ -1981,7 +1994,7 @@ fn can_define_a_stack_with_an_expanded_pane() {
         }
     "#;
     let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None).unwrap();
-    assert_snapshot!(format!("{:#?}", layout));
+    assert_snapshot!(normalize_layout_debug(format!("{:#?}", layout)));
 }
 
 #[test]
@@ -2186,6 +2199,7 @@ fn run_plugin_location_parsing() {
     assert_eq!(layout, expected_layout);
 }
 
+#[cfg(unix)]
 #[test]
 fn env_var_expansion() {
     let raw_layout = r#"
@@ -2227,7 +2241,7 @@ fn env_var_expansion() {
         }
     }
     let layout = layout.unwrap();
-    assert_snapshot!(format!("{layout:#?}"));
+    assert_snapshot!(normalize_layout_debug(format!("{layout:#?}")));
 }
 
 #[test]

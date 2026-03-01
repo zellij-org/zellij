@@ -664,6 +664,20 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
             .expect("could not daemonize the server process");
     }
 
+    #[cfg(windows)]
+    {
+        // The server is spawned with CREATE_NEW_PROCESS_GROUP, which disables
+        // Ctrl+C handling for the process.  Child processes inherit this
+        // disabled state, so ConPTY children (shells, commands) would silently
+        // ignore CTRL_C_EVENT signals.  Re-enable Ctrl+C here so that
+        // descendants get the normal default handler (terminate on Ctrl+C).
+        //
+        use windows_sys::Win32::System::Console::SetConsoleCtrlHandler;
+        unsafe {
+            SetConsoleCtrlHandler(None, 0);
+        }
+    }
+
     envs::set_zellij("0".to_string());
 
     let (to_server, server_receiver): ChannelWithContext<ServerInstruction> = channels::bounded(50);
@@ -682,7 +696,9 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
     let _ = thread::Builder::new()
         .name("server_listener".to_string())
         .spawn({
-            use interprocess::local_socket::{prelude::*, GenericFilePath, ListenerOptions};
+            use interprocess::local_socket::prelude::*;
+            use zellij_utils::consts::ipc_bind;
+            #[cfg(unix)]
             use zellij_utils::shared::set_permissions;
 
             let os_input = os_input.clone();
@@ -692,26 +708,37 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
             let socket_path = socket_path.clone();
             move || {
                 drop(std::fs::remove_file(&socket_path));
-                let listener = ListenerOptions::new()
-                    .name(
-                        socket_path
-                            .as_path()
-                            .to_fs_name::<GenericFilePath>()
-                            .unwrap(),
-                    )
-                    .create_sync()
-                    .unwrap();
+                let listener = ipc_bind(&socket_path).unwrap();
                 // set the sticky bit to avoid the socket file being potentially cleaned up
                 // https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html states that for XDG_RUNTIME_DIR:
                 // "To ensure that your files are not removed, they should have their access time timestamp modified at least once every 6 hours of monotonic time or the 'sticky' bit should be set on the file. "
                 // It is not guaranteed that all platforms allow setting the sticky bit on sockets!
+                #[cfg(unix)]
                 drop(set_permissions(&socket_path, 0o1700));
+
+                // On Windows, named pipes are half-duplex, so we need a separate
+                // reply pipe for server→client messages.
+                #[cfg(windows)]
+                let reply_listener = zellij_utils::consts::ipc_bind_reply(&socket_path).unwrap();
+
                 for stream in listener.incoming() {
                     match stream {
                         Ok(stream) => {
                             let mut os_input = os_input.clone();
                             let client_id = session_state.write().unwrap().new_client();
+
+                            #[cfg(windows)]
+                            let reply_stream = reply_listener
+                                .accept()
+                                .expect("failed to accept reply connection");
+
+                            #[cfg(windows)]
+                            let receiver = os_input
+                                .new_client_with_reply(client_id, stream, reply_stream)
+                                .unwrap();
+                            #[cfg(not(windows))]
                             let receiver = os_input.new_client(client_id, stream).unwrap();
+
                             let session_data = session_data.clone();
                             let session_state = session_state.clone();
                             let to_server = to_server.clone();
@@ -778,6 +805,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     },
                 };
 
+                info!("FirstClientConnected: initializing session");
                 let mut session = init_session(
                     os_input.clone(),
                     to_server.clone(),
@@ -789,6 +817,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     config.plugins.clone(),
                     client_id,
                 );
+                info!("FirstClientConnected: session initialized, spawning tabs");
                 let mut runtime_configuration = config.clone();
                 runtime_configuration.options = runtime_config_options.clone();
                 session

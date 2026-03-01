@@ -80,6 +80,14 @@ impl ServerOsApi for FakeInputOutput {
     ) -> Result<IpcReceiverWithContext<ClientToServerMsg>> {
         unimplemented!()
     }
+    fn new_client_with_reply(
+        &mut self,
+        _client_id: ClientId,
+        _stream: LocalSocketStream,
+        _reply_stream: LocalSocketStream,
+    ) -> Result<IpcReceiverWithContext<ClientToServerMsg>> {
+        unimplemented!()
+    }
 
     fn remove_client(&mut self, _client_id: ClientId) -> Result<()> {
         unimplemented!()
