@@ -31,6 +31,12 @@ xflags::xflags! {
                 /// Compile without web server support
                 optional --no-web
             }
+
+            /// Native release build (plugins + binary, no cross-compilation)
+            cmd build-release {
+                /// Compile without web server support
+                optional --no-web
+            }
         }
 
         /// Build the manpage
@@ -150,6 +156,7 @@ pub struct Ci {
 pub enum CiCmd {
     E2e(E2e),
     Cross(Cross),
+    BuildRelease(BuildRelease),
 }
 
 #[derive(Debug)]
@@ -163,6 +170,12 @@ pub struct E2e {
 #[derive(Debug)]
 pub struct Cross {
     pub triple: OsString,
+
+    pub no_web: bool,
+}
+
+#[derive(Debug)]
+pub struct BuildRelease {
     pub no_web: bool,
 }
 
@@ -193,6 +206,7 @@ pub struct Make {
 #[derive(Debug)]
 pub struct Install {
     pub destination: PathBuf,
+
     pub no_web: bool,
 }
 
@@ -214,6 +228,7 @@ pub struct Format {
 #[derive(Debug)]
 pub struct Test {
     pub args: Vec<OsString>,
+
     pub no_web: bool,
 }
 
@@ -241,3 +256,4 @@ impl Xtask {
         Self::from_vec_(args)
     }
 }
+// generated end

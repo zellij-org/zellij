@@ -52,10 +52,14 @@ jobs:
       - name: Setup toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
+          target: wasm32-wasip1
           rustflags: ""
 
-      - name: Check core crates
-        run: cargo check --no-default-features
+      - name: Install NASM
+        uses: ilammy/setup-nasm@v1
+
+      - name: Build
+        run: cargo xtask build
 
   test:
     name: Test
