@@ -1,7 +1,7 @@
 use super::super::Grid;
 use crate::panes::grid::SixelImageStore;
 use crate::panes::link_handler::LinkHandler;
-use ::insta::assert_snapshot;
+use insta::assert_snapshot;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;

@@ -41,7 +41,7 @@ use crate::panes::Selection;
 use crate::ui::components::UiComponentParser;
 use zellij_utils::data::PaneContents;
 
-fn get_top_non_canonical_rows(rows: &mut Vec<Row>) -> Vec<Row> {
+fn get_top_non_canonical_rows(rows: &mut VecDeque<Row>) -> Vec<Row> {
     let mut index_of_last_non_canonical_row = None;
     for (i, row) in rows.iter().enumerate() {
         if row.is_canonical {
@@ -74,7 +74,7 @@ fn get_lines_above_bottom_canonical_row_and_wraps(rows: &mut VecDeque<Row>) -> V
     }
 }
 
-fn get_viewport_bottom_canonical_row_and_wraps(viewport: &mut Vec<Row>) -> Vec<Row> {
+fn get_viewport_bottom_canonical_row_and_wraps(viewport: &mut VecDeque<Row>) -> Vec<Row> {
     let mut index_of_last_non_canonical_row = None;
     for (i, row) in viewport.iter().enumerate().rev() {
         index_of_last_non_canonical_row = Some(i);
@@ -90,7 +90,7 @@ fn get_viewport_bottom_canonical_row_and_wraps(viewport: &mut Vec<Row>) -> Vec<R
     }
 }
 
-fn get_top_canonical_row_and_wraps(rows: &mut Vec<Row>) -> Vec<Row> {
+fn get_top_canonical_row_and_wraps(rows: &mut VecDeque<Row>) -> Vec<Row> {
     let mut index_of_first_non_canonical_row = None;
     let mut end_index_of_first_canonical_line = None;
     for (i, row) in rows.iter().enumerate() {
@@ -119,7 +119,7 @@ fn get_top_canonical_row_and_wraps(rows: &mut Vec<Row>) -> Vec<Row> {
 
 fn transfer_rows_from_lines_above_to_viewport(
     lines_above: &mut VecDeque<Row>,
-    viewport: &mut Vec<Row>,
+    viewport: &mut VecDeque<Row>,
     sixel_grid: &mut SixelGrid,
     count: usize,
     max_viewport_width: usize,
@@ -147,7 +147,7 @@ fn transfer_rows_from_lines_above_to_viewport(
                 None => break, // no more rows
             }
         }
-        viewport.insert(0, next_lines.pop().unwrap());
+        viewport.push_front(next_lines.pop().unwrap());
         lines_added_to_viewport += 1;
     }
     if !next_lines.is_empty() {
@@ -161,7 +161,7 @@ fn transfer_rows_from_lines_above_to_viewport(
 }
 
 fn transfer_rows_from_viewport_to_lines_above(
-    viewport: &mut Vec<Row>,
+    viewport: &mut VecDeque<Row>,
     lines_above: &mut VecDeque<Row>,
     sixel_grid: &mut SixelGrid,
     count: usize,
@@ -189,8 +189,8 @@ fn transfer_rows_from_viewport_to_lines_above(
 }
 
 fn transfer_rows_from_lines_below_to_viewport(
-    lines_below: &mut Vec<Row>,
-    viewport: &mut Vec<Row>,
+    lines_below: &mut VecDeque<Row>,
+    viewport: &mut VecDeque<Row>,
     count: usize,
     max_viewport_width: usize,
 ) {
@@ -218,13 +218,13 @@ fn transfer_rows_from_lines_below_to_viewport(
         }
         for _ in 0..(lines_pulled_from_viewport + 1) {
             if !next_lines.is_empty() {
-                viewport.push(next_lines.remove(0));
+                viewport.push_back(next_lines.remove(0));
             }
         }
     }
     if !next_lines.is_empty() {
         let excess_row = Row::from_rows(next_lines);
-        lines_below.insert(0, excess_row);
+        lines_below.push_front(excess_row);
     }
 }
 
@@ -352,8 +352,8 @@ fn utf8_mouse_coordinates(column: usize, line: isize) -> Vec<u8> {
 #[derive(Clone)]
 pub struct Grid {
     pub(crate) lines_above: VecDeque<Row>,
-    pub(crate) viewport: Vec<Row>,
-    pub(crate) lines_below: Vec<Row>,
+    pub(crate) viewport: VecDeque<Row>,
+    pub(crate) lines_below: VecDeque<Row>,
     horizontal_tabstops: BTreeSet<usize>,
     alternate_screen_state: Option<AlternateScreenState>,
     cursor: Cursor,
@@ -474,7 +474,7 @@ impl Default for MouseTracking {
 
 impl Debug for Grid {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let mut buffer: Vec<Row> = self.viewport.clone();
+        let mut buffer: Vec<Row> = Vec::from(self.viewport.clone());
         // pad buffer
         for _ in buffer.len()..self.height {
             buffer.push(Row::new().canonical());
@@ -543,8 +543,8 @@ impl Grid {
         let _ = SCROLL_BUFFER_SIZE.set(DEFAULT_SCROLL_BUFFER_SIZE);
         Grid {
             lines_above: VecDeque::new(),
-            viewport: vec![Row::new().canonical()],
-            lines_below: vec![],
+            viewport: VecDeque::from(vec![Row::new().canonical()]),
+            lines_below: VecDeque::new(),
             horizontal_tabstops: create_horizontal_tabstops(columns),
             cursor: Cursor::new(0, 0, styled_underlines),
             cursor_is_hidden: false,
@@ -754,8 +754,8 @@ impl Grid {
         let mut found_something = false;
         if !self.lines_above.is_empty() && self.viewport.len() == self.height {
             self.is_scrolled = true;
-            let line_to_push_down = self.viewport.pop().unwrap();
-            self.lines_below.insert(0, line_to_push_down);
+            let line_to_push_down = self.viewport.pop_back().unwrap();
+            self.lines_below.push_front(line_to_push_down);
 
             let transferred_rows_height = transfer_rows_from_lines_above_to_viewport(
                 &mut self.lines_above,
@@ -770,9 +770,11 @@ impl Grid {
 
             self.selection.move_down(1);
             // Move all search-selections down one line as well
-            found_something = self
-                .search_results
-                .move_down(1, &self.viewport, self.height);
+            let viewport_slice = self.viewport.make_contiguous() as *const [Row];
+            // SAFETY: viewport is not aliased by search_results
+            found_something =
+                self.search_results
+                    .move_down(1, unsafe { &*viewport_slice }, self.height);
         }
         self.output_buffer.update_all_lines();
         found_something
@@ -783,7 +785,7 @@ impl Grid {
             && self.viewport.len() == self.height
             && !self.viewport.is_empty()
         {
-            let mut line_to_push_up = self.viewport.remove(0);
+            let mut line_to_push_up = self.viewport.pop_front().unwrap();
 
             self.scrollback_buffer_lines +=
                 calculate_row_display_height(line_to_push_up.width(), self.width);
@@ -823,9 +825,15 @@ impl Grid {
 
             self.selection.move_up(1);
             // Move all search-selections up one line as well
-            found_something =
-                self.search_results
-                    .move_up(1, &self.viewport, &self.lines_below, self.height);
+            let viewport_slice = self.viewport.make_contiguous() as *const [Row];
+            let lines_below_slice = self.lines_below.make_contiguous() as *const [Row];
+            // SAFETY: viewport and lines_below are not aliased by search_results
+            found_something = self.search_results.move_up(
+                1,
+                unsafe { &*viewport_slice },
+                unsafe { &*lines_below_slice },
+                self.height,
+            );
             self.output_buffer.update_all_lines();
         }
         if self.lines_below.is_empty() {
@@ -952,7 +960,7 @@ impl Grid {
                 new_viewport_rows.append(&mut canonical_line_parts);
             }
 
-            self.viewport = new_viewport_rows;
+            self.viewport = VecDeque::from(new_viewport_rows);
 
             let mut new_cursor_y = self.canonical_line_y_coordinates(cursor_canonical_line_index)
                 + (cursor_index_in_canonical_line / new_columns);
@@ -1124,7 +1132,7 @@ impl Grid {
         y_offset: usize,
     ) -> (Vec<CharacterChunk>, Vec<SixelImageChunk>) {
         let changed_character_chunks = self.output_buffer.changed_chunks_in_viewport(
-            &self.viewport,
+            self.viewport.make_contiguous(),
             self.width,
             self.height,
             x_offset,
@@ -1168,10 +1176,12 @@ impl Grid {
                     .serialize(to_serialize.as_slice(), self.osc8_hyperlinks, None)
                     .ok()
             },
-            None => self
-                .output_buffer
-                .serialize(&self.viewport, self.osc8_hyperlinks, None)
-                .ok(),
+            None => {
+                let viewport_vec: Vec<Row> = self.viewport.iter().cloned().collect();
+                self.output_buffer
+                    .serialize(&viewport_vec, self.osc8_hyperlinks, None)
+                    .ok()
+            },
         }
     }
     pub fn render(
@@ -1363,7 +1373,8 @@ impl Grid {
 
         for _ in 0..self.height {
             let columns = VecDeque::from(vec![character.clone(); self.width]);
-            self.viewport.push(Row::from_columns(columns).canonical());
+            self.viewport
+                .push_back(Row::from_columns(columns).canonical());
         }
         self.output_buffer.update_all_lines();
     }
@@ -1391,10 +1402,10 @@ impl Grid {
                 if self.alternate_screen_state.is_none() {
                     self.transfer_rows_to_lines_above(1);
                 } else if !self.viewport.is_empty() {
-                    self.viewport.remove(0);
+                    self.viewport.pop_front();
                 }
 
-                self.viewport.push(Row::new().canonical());
+                self.viewport.push_back(Row::new().canonical());
                 self.selection.move_up(1);
             } else {
                 if scroll_region_top < self.viewport.len() {
@@ -1404,7 +1415,7 @@ impl Grid {
                     self.viewport
                         .insert(scroll_region_bottom, Row::new().canonical());
                 } else {
-                    self.viewport.push(Row::new().canonical());
+                    self.viewport.push_back(Row::new().canonical());
                 }
             }
             self.output_buffer.update_all_lines(); // TODO: only update scroll region lines
@@ -1415,7 +1426,7 @@ impl Grid {
             // but for some reason this breaks rendering in various situations
             // it needs to be investigated and fixed
             let new_row = Row::new().canonical();
-            self.viewport.push(new_row);
+            self.viewport.push_back(new_row);
         }
         if self.cursor.y == self.height.saturating_sub(1) {
             self.output_buffer.update_all_lines();
@@ -1477,10 +1488,10 @@ impl Grid {
             None => {
                 // pad lines until cursor if they do not exist
                 for _ in self.viewport.len()..self.cursor.y {
-                    self.viewport.push(Row::new().canonical());
+                    self.viewport.push_back(Row::new().canonical());
                 }
                 self.viewport
-                    .push(Row::new().with_character(terminal_character).canonical());
+                    .push_back(Row::new().with_character(terminal_character).canonical());
                 self.output_buffer.update_line(self.cursor.y);
             },
         }
@@ -1570,17 +1581,17 @@ impl Grid {
                 self.transfer_rows_to_lines_above(1);
                 self.hyperlink_tracker.offset_cursor_lines(1);
             } else if !self.viewport.is_empty() {
-                self.viewport.remove(0);
+                self.viewport.pop_front();
             }
             let wrapped_row = Row::new();
-            self.viewport.push(wrapped_row);
+            self.viewport.push_back(wrapped_row);
             self.selection.move_up(1);
             self.output_buffer.update_all_lines();
         } else {
             self.cursor.y += 1;
             if self.viewport.len() <= self.cursor.y {
                 let line_wrapped_row = Row::new();
-                self.viewport.push(line_wrapped_row);
+                self.viewport.push_back(line_wrapped_row);
                 self.output_buffer.update_line(self.cursor.y);
             } else if let Some(current_line) = self.viewport.get_mut(self.cursor.y) {
                 current_line.is_canonical = false;
@@ -1606,7 +1617,8 @@ impl Grid {
     fn pad_lines_until(&mut self, position: usize, pad_character: TerminalCharacter) {
         for _ in self.viewport.len()..=position {
             let columns = VecDeque::from(vec![pad_character.clone(); self.width]);
-            self.viewport.push(Row::from_columns(columns).canonical());
+            self.viewport
+                .push_back(Row::from_columns(columns).canonical());
             self.output_buffer.update_line(self.viewport.len() - 1);
         }
     }
@@ -1720,7 +1732,8 @@ impl Grid {
                     self.viewport
                         .insert(scroll_region_bottom, Row::from_columns(columns).canonical());
                 } else {
-                    self.viewport.push(Row::from_columns(columns).canonical());
+                    self.viewport
+                        .push_back(Row::from_columns(columns).canonical());
                 }
             }
             self.output_buffer.update_all_lines(); // TODO: move accurately
@@ -1806,9 +1819,9 @@ impl Grid {
     }
     pub fn reset_terminal_state(&mut self) {
         self.lines_above = VecDeque::new();
-        self.lines_below = vec![];
+        self.lines_below = VecDeque::new();
         self.is_scrolled = false;
-        self.viewport = vec![Row::new().canonical()];
+        self.viewport = VecDeque::from(vec![Row::new().canonical()]);
         self.alternate_screen_state = None;
         self.cursor_key_mode = false;
         self.clear_viewport_before_rendering = true;
@@ -3048,8 +3061,10 @@ impl Perform for Grid {
                             // enter alternate buffer
                             let current_lines_above =
                                 std::mem::replace(&mut self.lines_above, VecDeque::new());
-                            let current_viewport =
-                                std::mem::replace(&mut self.viewport, vec![Row::new().canonical()]);
+                            let current_viewport = std::mem::replace(
+                                &mut self.viewport,
+                                VecDeque::from(vec![Row::new().canonical()]),
+                            );
                             let current_cursor = std::mem::replace(
                                 &mut self.cursor,
                                 Cursor::new(0, 0, self.styled_underlines),
@@ -3543,7 +3558,7 @@ impl Perform for Grid {
 #[derive(Clone)]
 pub struct AlternateScreenState {
     lines_above: VecDeque<Row>,
-    viewport: Vec<Row>,
+    viewport: VecDeque<Row>,
     cursor: Cursor,
     sixel_grid: SixelGrid,
     supports_kitty_keyboard_protocol: bool,
@@ -3551,7 +3566,7 @@ pub struct AlternateScreenState {
 impl AlternateScreenState {
     pub fn new(
         lines_above: VecDeque<Row>,
-        viewport: Vec<Row>,
+        viewport: VecDeque<Row>,
         cursor: Cursor,
         sixel_grid: SixelGrid,
         supports_kitty_keyboard_protocol: bool,
@@ -3567,7 +3582,7 @@ impl AlternateScreenState {
     pub fn apply_contents_to(
         &mut self,
         lines_above: &mut VecDeque<Row>,
-        viewport: &mut Vec<Row>,
+        viewport: &mut VecDeque<Row>,
         cursor: &mut Cursor,
         sixel_grid: &mut SixelGrid,
         supports_kitty_keyboard_protocol: &mut bool,
