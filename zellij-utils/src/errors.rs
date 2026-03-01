@@ -563,6 +563,7 @@ pub enum ClientContext {
     OwnClientId,
     SwitchSession,
     SetSynchronisedOutput,
+    SetGraphemeClusterMode,
     UnblockCliPipeInput,
     CliPipeOutput,
     QueryTerminalSize,

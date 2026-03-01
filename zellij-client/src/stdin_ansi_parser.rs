@@ -61,6 +61,9 @@ pub enum HostReply {
     /// DSR 997 reply / unsolicited notification reporting the host
     /// terminal's color-palette theme mode (CSI 2031).
     HostTerminalThemeChanged(HostTerminalThemeMode),
+    /// Host terminal responded to `CSI ? 2027 $ p`. `true` means it supports grapheme
+    /// cluster mode; Zellij should enable it on the host with `CSI ? 2027 h`.
+    GraphemeClusterMode(bool),
 }
 
 /// Retained alias for the pre-refactor type name used by other modules in
@@ -101,8 +104,7 @@ impl HostReply {
     /// leading `ESC [`) into a `HostReply`, if possible.
     ///
     /// Recognised final bytes: `t` (pixel-dims reply, `CSI 4/6 ; H ; W t`),
-    /// `y` (DECRPM reply to `CSI ?2026$p` — sync-output support
-    /// advertisement).
+    /// `y` (DECRPM replies to `CSI ?2026$p` / `CSI ?2027$p`).
     pub fn from_csi_report(raw: &[u8]) -> Option<HostReply> {
         let s = std::str::from_utf8(raw).ok()?;
         lazy_static! {
@@ -110,6 +112,8 @@ impl HostReply {
             static ref PIX_RE: Regex = Regex::new(r"^\u{1b}\[(\d+);(\d+);(\d+)t$").unwrap();
             // <ESC>[?2026;Ny — DECRPM reply for sync-output (VT mode 2026)
             static ref SYNC_RE: Regex = Regex::new(r"^\u{1b}\[\?2026;([0-4])\$y$").unwrap();
+            // <ESC>[?2027;Ny — DECRPM reply for grapheme cluster mode (VT mode 2027)
+            static ref GRAPHEME_RE: Regex = Regex::new(r"^\u{1b}\[\?2027;([0-4])\$y$").unwrap();
             // <ESC>[?997;1n (dark) / <ESC>[?997;2n (light) — DSR 997 reply
             // to CSI ?996n, or unsolicited host-theme notification when
             // CSI ?2031h is enabled.
@@ -143,6 +147,10 @@ impl HostReply {
                 1 | 2 | 3 => Some(HostReply::SynchronizedOutput(Some(SyncOutput::CSI))),
                 _ => Some(HostReply::SynchronizedOutput(None)),
             };
+        }
+        if let Some(caps) = GRAPHEME_RE.captures(s) {
+            let supported = matches!(caps[1].parse::<usize>().ok()?, 1 | 2 | 3);
+            return Some(HostReply::GraphemeClusterMode(supported));
         }
         if let Some(caps) = THEME_RE.captures(s) {
             let mode = match &caps[1] {
@@ -499,6 +507,7 @@ impl StdinAnsiParser {
         }
         out
     }
+
 }
 
 /// Walk an OSC sequence starting at the head of `buf`. Returns whether
