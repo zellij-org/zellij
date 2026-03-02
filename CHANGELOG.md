@@ -66,6 +66,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat: allow cli/plugins/keybindings to atomically show/hide floating panes rather than just toggle (https://github.com/zellij-org/zellij/pull/4764)
 * fix: improve line-wrapping/resize performance (https://github.com/zellij-org/zellij/pull/4778)
 * fix: forward terminal BEL from unfocused tab (and also show visual indication in unfocused panes/tabs that have a BEL) (https://github.com/zellij-org/zellij/pull/4781)
+* fix: improve mobile web client viewport sizing and touch scrolling behavior (https://github.com/zellij-org/zellij/pull/4723)
 
 
 ## [0.43.1] - 2025-08-08
