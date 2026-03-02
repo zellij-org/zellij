@@ -1813,7 +1813,6 @@ impl Screen {
                     .context(err_context);
             }
 
-
             if bell_state_changed {
                 self.log_and_report_session_state()?;
             }

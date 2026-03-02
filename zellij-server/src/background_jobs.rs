@@ -615,9 +615,8 @@ pub(crate) fn background_jobs_main(
                         tokio::time::sleep(std::time::Duration::from_millis(FLASH_DURATION_MS))
                             .await;
                         if flag.load(Ordering::SeqCst) {
-                            let _ = senders.send_to_screen(ScreenInstruction::SetTabBellFlash(
-                                tab_id, false,
-                            ));
+                            let _ = senders
+                                .send_to_screen(ScreenInstruction::SetTabBellFlash(tab_id, false));
                         }
                     }
                 });

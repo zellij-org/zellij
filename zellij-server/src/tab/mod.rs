@@ -219,7 +219,7 @@ pub(crate) struct Tab {
     pub panes_with_pending_bell: HashSet<PaneId>,
     pub tab_has_pending_bell: bool,
     pub tab_bell_flash: bool, // currently in mid-notification-flash
-    pub tab_bell_ring: bool, // need to send ANSI BEL to the controlling terminal
+    pub tab_bell_ring: bool,  // need to send ANSI BEL to the controlling terminal
 }
 
 // FIXME: Use a struct that has a pane_type enum, to reduce all of the duplication
