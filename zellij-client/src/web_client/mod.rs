@@ -54,6 +54,8 @@ use utils::should_use_https;
 use uuid::Uuid;
 use websocket_handlers::{ws_handler_control, ws_handler_terminal};
 
+const DEFAULT_SERVER_STARTUP_TIMEOUT_SECS: u64 = 10;
+
 pub fn start_web_client(
     config: Config,
     config_options: Options,
@@ -63,6 +65,7 @@ pub fn start_web_client(
     custom_port: Option<u16>,
     custom_server_cert: Option<PathBuf>,
     custom_server_key: Option<PathBuf>,
+    startup_timeout: Option<u64>,
 ) {
     std::panic::set_hook({
         Box::new(move |info| {
@@ -109,6 +112,7 @@ pub fn start_web_client(
             web_server_cert,
             web_server_key,
             config_file_path.clone(),
+            startup_timeout,
         )
     } else {
         let runtime = Runtime::new().unwrap();
@@ -260,6 +264,7 @@ fn daemonize_web_server(
     web_server_cert: Option<PathBuf>,
     web_server_key: Option<PathBuf>,
     _config_file_path: Option<PathBuf>,
+    _startup_timeout: Option<u64>,
 ) -> (Runtime, std::net::TcpListener, Option<RustlsConfig>) {
     let (mut exit_message_tx, exit_message_rx) = pipe().unwrap();
     let (mut exit_status_tx, mut exit_status_rx) = pipe().unwrap();
@@ -363,6 +368,7 @@ fn daemonize_web_server(
     web_server_cert: Option<PathBuf>,
     web_server_key: Option<PathBuf>,
     config_file_path: Option<PathBuf>,
+    startup_timeout: Option<u64>,
 ) -> (Runtime, std::net::TcpListener, Option<RustlsConfig>) {
     use std::env::current_exe;
     use std::net::TcpStream;
@@ -398,7 +404,8 @@ fn daemonize_web_server(
 
     match cmd.spawn() {
         Ok(_child) => {
-            let deadline = Instant::now() + Duration::from_secs(10);
+            let timeout_secs = startup_timeout.unwrap_or(DEFAULT_SERVER_STARTUP_TIMEOUT_SECS);
+            let deadline = Instant::now() + Duration::from_secs(timeout_secs);
             let addr = format!("{}:{}", web_server_ip, web_server_port);
             loop {
                 if TcpStream::connect_timeout(&addr.parse().unwrap(), Duration::from_millis(200))
