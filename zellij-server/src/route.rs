@@ -2098,13 +2098,14 @@ pub(crate) fn route_thread_main(
                                     .to_anyhow()
                                     .with_context(err_context)?
                                     .set_client_size(client_id, new_size);
-                                // min_client_terminal_size() returns None when
-                                // the client hasn't been fully initialized yet
-                                // (set_client_data not called). This can happen
-                                // if a resize event arrives before the server
-                                // finishes processing the initial connection.
-                                // Skip the resize in that case — the server will
-                                // query the terminal size once setup completes.
+                                // min_client_terminal_size() skips clients whose
+                                // entry is still None — i.e. new_client() was
+                                // called but set_client_data() hasn't been yet.
+                                // set_client_size() above is a no-op in that
+                                // case (it doesn't upgrade None to Some). This
+                                // can happen if a resize arrives before the
+                                // initial connection setup completes; the server
+                                // will query the terminal size once it does.
                                 if let Some(min_size) = session_state
                                     .read()
                                     .to_anyhow()
