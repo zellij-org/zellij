@@ -1,6 +1,6 @@
 :root {
-    --dynamic-vh: 100dvh;
-    --dynamic-vw: 100dvw;
+    --dynamic-vh: 100vh;
+    --dynamic-vw: 100vw;
 }
 
 html,
