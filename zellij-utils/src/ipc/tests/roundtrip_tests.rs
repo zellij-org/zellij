@@ -473,6 +473,7 @@ fn test_client_messages() {
                 post_command_discovery_hook: Some("post_command_discovery_hook".to_owned()),
                 client_async_worker_tasks: Some(16),
                 mouse_hover_effects: Some(false),
+                visual_bell: Some(true),
             }),
             layout: None,
             terminal_window_size: Size { rows: 80, cols: 42 },

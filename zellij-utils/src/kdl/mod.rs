@@ -2781,6 +2781,8 @@ impl Options {
                 },
                 None => None,
             };
+        let visual_bell =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "visual_bell").map(|(v, _)| v);
 
         Ok(Options {
             simplified_ui,
@@ -2818,6 +2820,7 @@ impl Options {
             show_release_notes,
             advanced_mouse_actions,
             mouse_hover_effects,
+            visual_bell,
             web_server_ip,
             web_server_port,
             web_server_cert,

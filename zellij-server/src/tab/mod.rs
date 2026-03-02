@@ -2503,6 +2503,25 @@ impl Tab {
     pub fn clear_tab_bell_ring(&mut self) {
         self.tab_bell_ring = false;
     }
+    /// Checks if any pane in the tab has a pending bell, consumes all such bells, and returns
+    /// whether any were found. Does not update notification state (used when visual_bell is
+    /// disabled but ANSI BEL forwarding is still desired).
+    pub fn check_and_consume_bells_without_visual_notification(&mut self) -> bool {
+        let ringing_panes: Vec<PaneId> = self
+            .tiled_panes
+            .get_panes()
+            .chain(self.floating_panes.get_panes())
+            .filter(|(_, pane)| pane.has_bell())
+            .map(|(pane_id, _)| *pane_id)
+            .collect();
+        let had_bell = !ringing_panes.is_empty();
+        for pane_id in ringing_panes {
+            if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
+                pane.consume_bell();
+            }
+        }
+        had_bell
+    }
     pub fn has_terminal_pid(&self, pid: u32) -> bool {
         self.tiled_panes.panes_contain(&PaneId::Terminal(pid))
             || self.floating_panes.panes_contain(&PaneId::Terminal(pid))

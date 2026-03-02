@@ -594,6 +594,7 @@ pub enum ScreenInstruction {
         default_editor: Option<PathBuf>,
         advanced_mouse_actions: bool,
         mouse_hover_effects: bool,
+        visual_bell: bool,
     },
     RerunCommandPane(u32, Option<NotificationEnd>), // u32 - terminal pane id
     ResizePaneWithId(ResizeStrategy, PaneId),
@@ -1099,6 +1100,7 @@ pub(crate) struct Screen {
     current_pane_group: Rc<RefCell<PaneGroups>>,
     advanced_mouse_actions: bool,
     mouse_hover_effects: bool,
+    visual_bell: bool,
     currently_marking_pane_group: Rc<RefCell<HashMap<ClientId, bool>>>,
     // the below are the configured values - the ones that will be set if and when the web server
     // is brought online
@@ -1140,6 +1142,7 @@ impl Screen {
         web_sharing: WebSharing,
         advanced_mouse_actions: bool,
         mouse_hover_effects: bool,
+        visual_bell: bool,
         web_server_ip: IpAddr,
         web_server_port: u16,
     ) -> Self {
@@ -1194,6 +1197,7 @@ impl Screen {
             currently_marking_pane_group: Rc::new(RefCell::new(HashMap::new())),
             advanced_mouse_actions,
             mouse_hover_effects,
+            visual_bell,
             web_server_ip,
             web_server_port,
             render_blocker: RenderBlocker::new(100),
@@ -1764,39 +1768,52 @@ impl Screen {
 
             non_watcher_output_was_dirty = output.is_dirty();
 
-            let mut panes_to_flash: Vec<PaneId> = vec![];
-            let mut tabs_to_flash: Vec<usize> = vec![];
             let mut bell_state_changed = false;
+            let mut has_bell = false;
 
-            let active_tab_ids_snapshot: Vec<usize> =
-                self.active_tab_ids.values().copied().collect();
+            if self.visual_bell {
+                let mut panes_to_flash: Vec<PaneId> = vec![];
+                let mut tabs_to_flash: Vec<usize> = vec![];
 
-            for tab in self.tabs.values_mut() {
-                let is_active = active_tab_ids_snapshot.contains(&tab.id);
-                let (new_panes, tab_newly_set) = tab.check_and_handle_bell_notifications(is_active);
-                if !new_panes.is_empty() {
-                    panes_to_flash.extend(new_panes);
-                    bell_state_changed = true;
+                let active_tab_ids_snapshot: Vec<usize> =
+                    self.active_tab_ids.values().copied().collect();
+
+                for tab in self.tabs.values_mut() {
+                    let is_active = active_tab_ids_snapshot.contains(&tab.id);
+                    let (new_panes, tab_newly_set) =
+                        tab.check_and_handle_bell_notifications(is_active);
+                    if !new_panes.is_empty() {
+                        panes_to_flash.extend(new_panes);
+                        bell_state_changed = true;
+                    }
+                    if tab_newly_set {
+                        tabs_to_flash.push(tab.id);
+                        bell_state_changed = true;
+                    }
                 }
-                if tab_newly_set {
-                    tabs_to_flash.push(tab.id);
-                    bell_state_changed = true;
+
+                has_bell = !panes_to_flash.is_empty() || !tabs_to_flash.is_empty();
+                if !panes_to_flash.is_empty() {
+                    let _ = self
+                        .bus
+                        .senders
+                        .send_to_background_jobs(BackgroundJob::FlashPaneBell(panes_to_flash));
+                }
+                for tab_id in tabs_to_flash {
+                    let _ = self
+                        .bus
+                        .senders
+                        .send_to_background_jobs(BackgroundJob::FlashTabBell(tab_id));
+                }
+            } else {
+                // visual_bell disabled: still detect bell for ANSI BEL forwarding only
+                for tab in self.tabs.values_mut() {
+                    if tab.check_and_consume_bells_without_visual_notification() {
+                        has_bell = true;
+                    }
                 }
             }
 
-            let has_bell = !panes_to_flash.is_empty() || !tabs_to_flash.is_empty();
-            if !panes_to_flash.is_empty() {
-                let _ = self
-                    .bus
-                    .senders
-                    .send_to_background_jobs(BackgroundJob::FlashPaneBell(panes_to_flash));
-            }
-            for tab_id in tabs_to_flash {
-                let _ = self
-                    .bus
-                    .senders
-                    .send_to_background_jobs(BackgroundJob::FlashTabBell(tab_id));
-            }
             if has_bell {
                 output.add_post_vte_instruction_to_multiple_clients(
                     self.active_tab_ids.keys().copied(),
@@ -3570,6 +3587,7 @@ impl Screen {
         default_editor: Option<PathBuf>,
         advanced_mouse_actions: bool,
         mouse_hover_effects: bool,
+        visual_bell: bool,
         client_id: ClientId,
     ) -> Result<()> {
         let should_support_arrow_fonts = !simplified_ui;
@@ -3586,6 +3604,7 @@ impl Screen {
         self.draw_pane_frames = pane_frames;
         self.advanced_mouse_actions = advanced_mouse_actions;
         self.mouse_hover_effects = mouse_hover_effects;
+        self.visual_bell = visual_bell;
         self.default_mode_info
             .update_arrow_fonts(should_support_arrow_fonts);
         self.default_mode_info
@@ -4302,6 +4321,7 @@ pub(crate) fn screen_thread_main(
     let web_sharing = config_options.web_sharing.unwrap_or_else(Default::default);
     let advanced_mouse_actions = config_options.advanced_mouse_actions.unwrap_or(true);
     let mouse_hover_effects = config_options.mouse_hover_effects.unwrap_or(true);
+    let visual_bell = config_options.visual_bell.unwrap_or(true);
 
     let thread_senders = bus.senders.clone();
     let mut screen = Screen::new(
@@ -4340,6 +4360,7 @@ pub(crate) fn screen_thread_main(
         web_sharing,
         advanced_mouse_actions,
         mouse_hover_effects,
+        visual_bell,
         web_server_ip,
         web_server_port,
     );
@@ -7045,6 +7066,7 @@ pub(crate) fn screen_thread_main(
                 default_editor,
                 advanced_mouse_actions,
                 mouse_hover_effects,
+                visual_bell,
             } => {
                 screen
                     .reconfigure(
@@ -7064,6 +7086,7 @@ pub(crate) fn screen_thread_main(
                         default_editor,
                         advanced_mouse_actions,
                         mouse_hover_effects,
+                        visual_bell,
                         client_id,
                     )
                     .non_fatal();

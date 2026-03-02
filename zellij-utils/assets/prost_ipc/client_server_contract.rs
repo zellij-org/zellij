@@ -1799,6 +1799,8 @@ pub struct Options {
     pub mouse_hover_effects: ::core::option::Option<bool>,
     #[prost(uint64, optional, tag="42")]
     pub client_async_worker_tasks: ::core::option::Option<u64>,
+    #[prost(bool, optional, tag="43")]
+    pub visual_bell: ::core::option::Option<bool>,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
