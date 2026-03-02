@@ -77,7 +77,7 @@ pub(crate) fn stdin_loop(
     send_input_instructions: SenderWithContext<InputInstruction>,
     stdin_ansi_parser: Arc<Mutex<StdinAnsiParser>>,
     explicitly_disable_kitty_keyboard_protocol: bool,
-    #[cfg(windows)] resize_sender: Option<std::sync::mpsc::Sender<()>>,
+    resize_sender: Option<std::sync::mpsc::Sender<()>>,
 ) {
     // On Windows, choose between two input strategies early — we need this
     // decision before the startup ANSI query below.
@@ -147,9 +147,9 @@ pub(crate) fn stdin_loop(
         return;
     }
 
-    // On Windows, drop the resize sender so the signal handler thread falls back
-    // to polling — the VT reader path doesn't produce crossterm resize events.
-    #[cfg(windows)]
+    // Drop the resize sender so the signal handler thread falls back to
+    // polling. Only the Windows native console path (above) keeps it alive;
+    // the VT reader path and Unix don't produce crossterm resize events.
     drop(resize_sender);
 
     // Byte reader + termwiz/kitty parser path.
