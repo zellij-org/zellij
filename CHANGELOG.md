@@ -65,6 +65,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: respect cursor blink and shape in the web client even when terminal attempts to override it (https://github.com/zellij-org/zellij/pull/4762)
 * feat: allow cli/plugins/keybindings to atomically show/hide floating panes rather than just toggle (https://github.com/zellij-org/zellij/pull/4764)
 * fix: improve line-wrapping/resize performance (https://github.com/zellij-org/zellij/pull/4778)
+* fix: forward terminal BEL from unfocused tab (and also show visual indication in unfocused panes/tabs that have a BEL) (https://github.com/zellij-org/zellij/pull/4781)
 
 
 ## [0.43.1] - 2025-08-08
