@@ -770,11 +770,9 @@ impl Grid {
 
             self.selection.move_down(1);
             // Move all search-selections down one line as well
-            let viewport_slice = self.viewport.make_contiguous() as *const [Row];
-            // SAFETY: viewport is not aliased by search_results
-            found_something =
-                self.search_results
-                    .move_down(1, unsafe { &*viewport_slice }, self.height);
+            found_something = self
+                .search_results
+                .move_down(1, &self.viewport, self.height);
         }
         self.output_buffer.update_all_lines();
         found_something
@@ -825,15 +823,9 @@ impl Grid {
 
             self.selection.move_up(1);
             // Move all search-selections up one line as well
-            let viewport_slice = self.viewport.make_contiguous() as *const [Row];
-            let lines_below_slice = self.lines_below.make_contiguous() as *const [Row];
-            // SAFETY: viewport and lines_below are not aliased by search_results
-            found_something = self.search_results.move_up(
-                1,
-                unsafe { &*viewport_slice },
-                unsafe { &*lines_below_slice },
-                self.height,
-            );
+            found_something =
+                self.search_results
+                    .move_up(1, &self.viewport, &self.lines_below, self.height);
             self.output_buffer.update_all_lines();
         }
         if self.lines_below.is_empty() {
