@@ -3952,6 +3952,33 @@ impl Options {
             None
         }
     }
+    fn visual_bell_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!(
+            "{}\n{}\n{}",
+            " ",
+            "// Whether to show visual bell indicators (pane/tab frame flash and [!] suffix)",
+            "// default is true",
+        );
+
+        let create_node = |node_value: bool| -> KdlNode {
+            let mut node = KdlNode::new("visual_bell");
+            node.push(KdlValue::Bool(node_value));
+            node
+        };
+        if let Some(visual_bell) = self.visual_bell {
+            let mut node = create_node(visual_bell);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(true);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
     fn web_server_ip_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
         let comment_text = format!(
             "{}\n{}\n{}\n{}",
@@ -4185,6 +4212,9 @@ impl Options {
         }
         if let Some(mouse_hover_effects) = self.mouse_hover_effects_to_kdl(add_comments) {
             nodes.push(mouse_hover_effects);
+        }
+        if let Some(visual_bell) = self.visual_bell_to_kdl(add_comments) {
+            nodes.push(visual_bell);
         }
         if let Some(web_server_ip) = self.web_server_ip_to_kdl(add_comments) {
             nodes.push(web_server_ip);
