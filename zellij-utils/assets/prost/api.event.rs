@@ -589,6 +589,10 @@ pub struct TabInfo {
     pub selectable_floating_panes_count: u32,
     #[prost(uint32, tag="17")]
     pub tab_id: u32,
+    #[prost(bool, tag="18")]
+    pub has_bell_notification: bool,
+    #[prost(bool, tag="19")]
+    pub is_flashing_bell: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

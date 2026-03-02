@@ -5659,6 +5659,8 @@ impl TabInfo {
             selectable_tiled_panes_count,
             selectable_floating_panes_count,
             tab_id,
+            has_bell_notification: false,
+            is_flashing_bell: false,
         })
     }
     pub fn encode_to_kdl(&self) -> KdlDocument {
@@ -6090,6 +6092,8 @@ fn serialize_and_deserialize_session_info_with_data() {
                 selectable_tiled_panes_count: 10,
                 selectable_floating_panes_count: 10,
                 tab_id: 0,
+                is_flashing_bell: false,
+                has_bell_notification: false,
             },
             TabInfo {
                 position: 1,
@@ -6109,6 +6113,8 @@ fn serialize_and_deserialize_session_info_with_data() {
                 selectable_tiled_panes_count: 10,
                 selectable_floating_panes_count: 10,
                 tab_id: 1,
+                is_flashing_bell: false,
+                has_bell_notification: false,
             },
         ],
         panes: PaneManifest { panes },

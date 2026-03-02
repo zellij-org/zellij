@@ -431,6 +431,8 @@ message TabInfo {
     uint32 selectable_tiled_panes_count = 15;
     uint32 selectable_floating_panes_count = 16;
     uint32 tab_id = 17;
+    bool has_bell_notification = 18;
+    bool is_flashing_bell = 19;
 }
 
 message ModeUpdatePayload {

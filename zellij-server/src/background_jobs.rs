@@ -68,6 +68,10 @@ pub enum BackgroundJob {
     ClearHelpText {
         client_id: ClientId,
     },
+    FlashPaneBell(Vec<PaneId>),
+    StopFlashPaneBell(Vec<PaneId>),
+    FlashTabBell(usize),     // usize = tab_id
+    StopFlashTabBell(usize), // usize = tab_id
     Exit,
 }
 
@@ -95,6 +99,10 @@ impl From<&BackgroundJob> for BackgroundJobContext {
                 BackgroundJobContext::QueryZellijWebServerStatus
             },
             BackgroundJob::ClearHelpText { .. } => BackgroundJobContext::ClearHelpText,
+            BackgroundJob::FlashPaneBell(..) => BackgroundJobContext::FlashPaneBell,
+            BackgroundJob::StopFlashPaneBell(..) => BackgroundJobContext::StopFlashPaneBell,
+            BackgroundJob::FlashTabBell(..) => BackgroundJobContext::FlashTabBell,
+            BackgroundJob::StopFlashTabBell(..) => BackgroundJobContext::StopFlashTabBell,
             BackgroundJob::Exit => BackgroundJobContext::Exit,
         }
     }
@@ -128,6 +136,8 @@ pub(crate) fn background_jobs_main(
     let last_render_request: Arc<Mutex<Option<Instant>>> = Arc::new(Mutex::new(None));
     let pending_help_text_clear: Arc<Mutex<HashMap<ClientId, Instant>>> =
         Arc::new(Mutex::new(HashMap::new()));
+    let mut flashing_pane_bells: HashMap<PaneId, Arc<AtomicBool>> = HashMap::new();
+    let mut flashing_tab_bells: HashMap<usize, Arc<AtomicBool>> = HashMap::new();
 
     let http_client = HttpClient::builder()
         // TODO: timeout?
@@ -556,6 +566,69 @@ pub(crate) fn background_jobs_main(
                         }
                     });
                 }
+            },
+            BackgroundJob::FlashPaneBell(pane_ids) => {
+                let is_flashing = Arc::new(AtomicBool::new(true));
+                for &pane_id in &pane_ids {
+                    flashing_pane_bells.insert(pane_id, is_flashing.clone());
+                }
+                runtime.spawn({
+                    let senders = bus.senders.clone();
+                    let pane_ids_clone = pane_ids.clone();
+                    let flag = is_flashing.clone();
+                    async move {
+                        let _ = senders.send_to_screen(
+                            ScreenInstruction::AddHighlightPaneFrameColorOverride(
+                                pane_ids_clone.clone(),
+                                None,
+                            ),
+                        );
+                        tokio::time::sleep(std::time::Duration::from_millis(FLASH_DURATION_MS))
+                            .await;
+                        if flag.load(Ordering::SeqCst) {
+                            let _ = senders.send_to_screen(
+                                ScreenInstruction::ClearPaneFrameColorOverride(pane_ids_clone),
+                            );
+                        }
+                    }
+                });
+            },
+            BackgroundJob::StopFlashPaneBell(pane_ids) => {
+                for &pane_id in &pane_ids {
+                    if let Some(flag) = flashing_pane_bells.remove(&pane_id) {
+                        flag.store(false, Ordering::SeqCst);
+                    }
+                }
+                let _ = bus
+                    .senders
+                    .send_to_screen(ScreenInstruction::ClearPaneFrameColorOverride(pane_ids));
+            },
+            BackgroundJob::FlashTabBell(tab_id) => {
+                let is_flashing = Arc::new(AtomicBool::new(true));
+                flashing_tab_bells.insert(tab_id, is_flashing.clone());
+                runtime.spawn({
+                    let senders = bus.senders.clone();
+                    let flag = is_flashing.clone();
+                    async move {
+                        let _ = senders
+                            .send_to_screen(ScreenInstruction::SetTabBellFlash(tab_id, true));
+                        tokio::time::sleep(std::time::Duration::from_millis(FLASH_DURATION_MS))
+                            .await;
+                        if flag.load(Ordering::SeqCst) {
+                            let _ = senders.send_to_screen(ScreenInstruction::SetTabBellFlash(
+                                tab_id, false,
+                            ));
+                        }
+                    }
+                });
+            },
+            BackgroundJob::StopFlashTabBell(tab_id) => {
+                if let Some(flag) = flashing_tab_bells.remove(&tab_id) {
+                    flag.store(false, Ordering::SeqCst);
+                }
+                let _ = bus
+                    .senders
+                    .send_to_screen(ScreenInstruction::SetTabBellFlash(tab_id, false));
             },
             BackgroundJob::Exit => {
                 for loading_plugin in loading_plugins.values() {
