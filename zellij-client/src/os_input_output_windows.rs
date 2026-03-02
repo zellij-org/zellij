@@ -120,41 +120,36 @@ impl Iterator for BlockingSignalIterator {
         use std::sync::mpsc::RecvTimeoutError;
         use std::time::Duration;
 
-        // Channel mode: block on receiver with timeout, check quit flag on each
-        // iteration. If the sender disconnects (VT reader dropped it), fall
-        // through to poll mode.
-        if let Some(ref rx) = self.resize_receiver {
-            loop {
-                if win_ctrl_handler::CTRL_QUIT_RECEIVED.load(std::sync::atomic::Ordering::SeqCst) {
-                    return Some(SignalEvent::Quit);
-                }
-
-                match rx.recv_timeout(Duration::from_millis(100)) {
-                    Ok(()) => return Some(SignalEvent::Resize),
-                    Err(RecvTimeoutError::Timeout) => continue,
-                    Err(RecvTimeoutError::Disconnected) => {
-                        // Sender dropped — switch to poll mode
-                        break;
-                    },
-                }
-            }
-            self.resize_receiver = None;
-        }
-
-        // Poll fallback: same as the original implementation.
         loop {
             if win_ctrl_handler::CTRL_QUIT_RECEIVED.load(std::sync::atomic::Ordering::SeqCst) {
                 return Some(SignalEvent::Quit);
             }
 
-            if let Ok(new_size) = crossterm::terminal::size() {
-                if new_size != self.last_size {
-                    self.last_size = new_size;
-                    return Some(SignalEvent::Resize);
+            if let Some(ref rx) = self.resize_receiver {
+                // Channel mode: the native console stdin loop sends resize
+                // notifications through this channel. Block with a timeout so
+                // we can periodically check the quit flag above.
+                match rx.recv_timeout(Duration::from_millis(100)) {
+                    Ok(()) => return Some(SignalEvent::Resize),
+                    Err(RecvTimeoutError::Timeout) => continue,
+                    Err(RecvTimeoutError::Disconnected) => {
+                        // Sender dropped (VT reader path) — switch to poll mode.
+                        self.resize_receiver = None;
+                        continue;
+                    },
                 }
+            } else {
+                // Poll mode: used on the VT reader path where crossterm's
+                // event::read() isn't used, so resize events don't come through
+                // the channel. Periodically compare the terminal size instead.
+                if let Ok(new_size) = crossterm::terminal::size() {
+                    if new_size != self.last_size {
+                        self.last_size = new_size;
+                        return Some(SignalEvent::Resize);
+                    }
+                }
+                std::thread::sleep(Duration::from_millis(50));
             }
-
-            std::thread::sleep(Duration::from_millis(50));
         }
     }
 }
