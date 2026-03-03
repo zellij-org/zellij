@@ -2781,6 +2781,8 @@ impl Options {
                 },
                 None => None,
             };
+        let visual_bell =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "visual_bell").map(|(v, _)| v);
 
         Ok(Options {
             simplified_ui,
@@ -2818,6 +2820,7 @@ impl Options {
             show_release_notes,
             advanced_mouse_actions,
             mouse_hover_effects,
+            visual_bell,
             web_server_ip,
             web_server_port,
             web_server_cert,
@@ -3949,6 +3952,33 @@ impl Options {
             None
         }
     }
+    fn visual_bell_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!(
+            "{}\n{}\n{}",
+            " ",
+            "// Whether to show visual bell indicators (pane/tab frame flash and [!] suffix)",
+            "// default is true",
+        );
+
+        let create_node = |node_value: bool| -> KdlNode {
+            let mut node = KdlNode::new("visual_bell");
+            node.push(KdlValue::Bool(node_value));
+            node
+        };
+        if let Some(visual_bell) = self.visual_bell {
+            let mut node = create_node(visual_bell);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(true);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
     fn web_server_ip_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
         let comment_text = format!(
             "{}\n{}\n{}\n{}",
@@ -4182,6 +4212,9 @@ impl Options {
         }
         if let Some(mouse_hover_effects) = self.mouse_hover_effects_to_kdl(add_comments) {
             nodes.push(mouse_hover_effects);
+        }
+        if let Some(visual_bell) = self.visual_bell_to_kdl(add_comments) {
+            nodes.push(visual_bell);
         }
         if let Some(web_server_ip) = self.web_server_ip_to_kdl(add_comments) {
             nodes.push(web_server_ip);
@@ -5659,6 +5692,8 @@ impl TabInfo {
             selectable_tiled_panes_count,
             selectable_floating_panes_count,
             tab_id,
+            has_bell_notification: false,
+            is_flashing_bell: false,
         })
     }
     pub fn encode_to_kdl(&self) -> KdlDocument {
@@ -6090,6 +6125,8 @@ fn serialize_and_deserialize_session_info_with_data() {
                 selectable_tiled_panes_count: 10,
                 selectable_floating_panes_count: 10,
                 tab_id: 0,
+                is_flashing_bell: false,
+                has_bell_notification: false,
             },
             TabInfo {
                 position: 1,
@@ -6109,6 +6146,8 @@ fn serialize_and_deserialize_session_info_with_data() {
                 selectable_tiled_panes_count: 10,
                 selectable_floating_panes_count: 10,
                 tab_id: 1,
+                is_flashing_bell: false,
+                has_bell_notification: false,
             },
         ],
         panes: PaneManifest { panes },

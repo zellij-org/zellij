@@ -2192,6 +2192,10 @@ pub struct TabInfo {
     pub selectable_floating_panes_count: usize,
     /// The stable identifier for this tab
     pub tab_id: usize,
+    /// Whether this tab has an active (persistent) bell notification
+    pub has_bell_notification: bool,
+    /// Whether this tab is currently flashing its bell (transient 400ms state)
+    pub is_flashing_bell: bool,
 }
 
 /// The `PaneManifest` contains a dictionary of panes, indexed by the tab position (0 indexed).

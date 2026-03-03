@@ -216,6 +216,10 @@ pub(crate) struct Tab {
     // is brought online
     web_server_ip: IpAddr,
     web_server_port: u16,
+    pub panes_with_pending_bell: HashSet<PaneId>,
+    pub tab_has_pending_bell: bool,
+    pub tab_bell_flash: bool, // currently in mid-notification-flash
+    pub tab_bell_ring: bool,  // need to send ANSI BEL to the controlling terminal
 }
 
 // FIXME: Use a struct that has a pane_type enum, to reduce all of the duplication
@@ -540,6 +544,14 @@ pub trait Pane {
     fn hold(&mut self, _exit_status: Option<i32>, _is_first_run: bool, _run_command: RunCommand) {
         // No-op by default, only terminal panes support holding
     }
+    fn has_bell(&self) -> bool {
+        false
+    }
+    fn consume_bell(&mut self) {}
+    fn set_bell_notification(&mut self, _val: bool) {}
+    fn get_bell_notification(&self) -> bool {
+        false
+    }
     fn add_red_pane_frame_color_override(&mut self, _error_text: Option<String>);
     fn add_highlight_pane_frame_color_override(
         &mut self,
@@ -772,6 +784,10 @@ impl Tab {
             connected_clients_in_app,
             web_server_ip,
             web_server_port,
+            panes_with_pending_bell: HashSet::new(),
+            tab_has_pending_bell: false,
+            tab_bell_flash: false,
+            tab_bell_ring: false,
         }
     }
 
@@ -2426,6 +2442,85 @@ impl Tab {
         } else {
             None
         }
+    }
+    pub fn check_and_handle_bell_notifications(
+        &mut self,
+        is_active_tab: bool,
+    ) -> (Vec<PaneId>, bool) {
+        let mut newly_notified_panes = vec![];
+        let mut tab_bell_newly_set = false;
+
+        let focused_pane_ids: HashSet<PaneId> = self
+            .connected_clients
+            .borrow()
+            .iter()
+            .filter_map(|c_id| self.get_active_pane_id(*c_id))
+            .collect();
+
+        // Collect ringing pane IDs first (immutable borrow)
+        let ringing_panes: Vec<PaneId> = self
+            .tiled_panes
+            .get_panes()
+            .chain(self.floating_panes.get_panes())
+            .filter(|(_, pane)| pane.has_bell())
+            .map(|(pane_id, _)| *pane_id)
+            .collect();
+
+        for pane_id in ringing_panes {
+            // Consume the bell from the pane
+            if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
+                pane.consume_bell();
+            }
+            let is_focused = focused_pane_ids.contains(&pane_id);
+            if !is_focused && !self.panes_with_pending_bell.contains(&pane_id) {
+                if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
+                    pane.set_bell_notification(true);
+                }
+                self.panes_with_pending_bell.insert(pane_id);
+                newly_notified_panes.push(pane_id);
+            }
+            if !self.tab_bell_ring {
+                self.tab_bell_ring = true;
+                tab_bell_newly_set = true;
+            }
+            if !is_active_tab {
+                self.tab_has_pending_bell = true;
+            }
+        }
+        (newly_notified_panes, tab_bell_newly_set)
+    }
+    pub fn clear_bell_notification_for_pane(&mut self, pane_id: PaneId) {
+        self.panes_with_pending_bell.remove(&pane_id);
+        if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
+            pane.set_bell_notification(false);
+            pane.clear_pane_frame_color_override(None);
+        }
+        self.tab_has_pending_bell = false;
+    }
+    pub fn clear_tab_bell_notification(&mut self) {
+        self.tab_has_pending_bell = false;
+    }
+    pub fn clear_tab_bell_ring(&mut self) {
+        self.tab_bell_ring = false;
+    }
+    /// Checks if any pane in the tab has a pending bell, consumes all such bells, and returns
+    /// whether any were found. Does not update notification state (used when visual_bell is
+    /// disabled but ANSI BEL forwarding is still desired).
+    pub fn check_and_consume_bells_without_visual_notification(&mut self) -> bool {
+        let ringing_panes: Vec<PaneId> = self
+            .tiled_panes
+            .get_panes()
+            .chain(self.floating_panes.get_panes())
+            .filter(|(_, pane)| pane.has_bell())
+            .map(|(pane_id, _)| *pane_id)
+            .collect();
+        let had_bell = !ringing_panes.is_empty();
+        for pane_id in ringing_panes {
+            if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
+                pane.consume_bell();
+            }
+        }
+        had_bell
     }
     pub fn has_terminal_pid(&self, pid: u32) -> bool {
         self.tiled_panes.panes_contain(&PaneId::Terminal(pid))

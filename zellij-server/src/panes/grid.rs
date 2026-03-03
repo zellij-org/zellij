@@ -1228,11 +1228,6 @@ impl Grid {
                 }
             }
         }
-        if self.ring_bell {
-            let ring_bell = '\u{7}';
-            raw_vte_output.push(ring_bell);
-            self.ring_bell = false;
-        }
         return Ok(Some((
             character_chunks,
             Some(raw_vte_output),

@@ -148,6 +148,7 @@ pub struct TerminalPane {
     banner: Option<String>, // a banner to be rendered inside this TerminalPane, used for panes
     // held on startup and can possibly be used to display some errors
     pane_frame_color_override: Option<(PaletteColor, Option<String>)>,
+    has_bell_notification: bool,
     invoked_with: Option<Run>,
     #[allow(dead_code)]
     arrow_fonts: bool,
@@ -347,13 +348,7 @@ impl Pane for TerminalPane {
     ) -> Result<Option<(Vec<CharacterChunk>, Option<String>)>> {
         let err_context = || format!("failed to render frame for client {client_id}");
         // TODO: remove the cursor stuff from here
-        let pane_title = if let Some(text_color_override) = self
-            .pane_frame_color_override
-            .as_ref()
-            .and_then(|(_color, text)| text.as_ref())
-        {
-            text_color_override.into()
-        } else if self.pane_name.is_empty()
+        let normal_title = if self.pane_name.is_empty()
             && input_mode == InputMode::RenamePane
             && frame_params.is_main_client
         {
@@ -390,6 +385,17 @@ impl Pane for TerminalPane {
                 .unwrap_or_else(|| self.pane_title.clone())
         } else {
             self.pane_name.clone()
+        };
+        let pane_title = if let Some(text_color_override) = self
+            .pane_frame_color_override
+            .as_ref()
+            .and_then(|(_color, text)| text.as_ref())
+        {
+            text_color_override.into()
+        } else if self.has_bell_notification {
+            format!("{} [!]", normal_title)
+        } else {
+            normal_title
         };
 
         let frame_geom = self.current_geom();
@@ -772,6 +778,18 @@ impl Pane for TerminalPane {
         }
         self.set_should_render(true);
     }
+    fn has_bell(&self) -> bool {
+        self.grid.ring_bell
+    }
+    fn consume_bell(&mut self) {
+        self.grid.ring_bell = false;
+    }
+    fn set_bell_notification(&mut self, val: bool) {
+        self.has_bell_notification = val;
+    }
+    fn get_bell_notification(&self) -> bool {
+        self.has_bell_notification
+    }
     fn add_red_pane_frame_color_override(&mut self, error_text: Option<String>) {
         self.pane_frame_color_override = Some((self.style.colors.exit_code_error.base, error_text));
     }
@@ -781,7 +799,7 @@ impl Pane for TerminalPane {
         _client_id: Option<ClientId>,
     ) {
         // TODO: if we have a client_id, we should only highlight the frame for this client
-        self.pane_frame_color_override = Some((self.style.colors.frame_highlight.base, text));
+        self.pane_frame_color_override = Some((self.style.colors.frame_highlight.emphasis_0, text));
     }
     fn clear_pane_frame_color_override(&mut self, _client_id: Option<ClientId>) {
         // TODO: if we have a client_id, we should only clear the highlight for this client
@@ -999,6 +1017,7 @@ impl TerminalPane {
             is_held: None,
             banner: None,
             pane_frame_color_override: None,
+            has_bell_notification: false,
             invoked_with,
             arrow_fonts,
             notification_end,

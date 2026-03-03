@@ -327,6 +327,7 @@ pub enum ScreenContext {
     SearchToggleWrap,
     AddRedPaneFrameColorOverride,
     ClearPaneFrameColorOverride,
+    SetTabBellFlash,
     PreviousSwapLayout,
     NextSwapLayout,
     OverrideLayout,
@@ -581,6 +582,10 @@ pub enum BackgroundJobContext {
     HighlightPanesWithMessage,
     QueryZellijWebServerStatus,
     ClearHelpText,
+    FlashPaneBell,
+    StopFlashPaneBell,
+    FlashTabBell,
+    StopFlashTabBell,
     Exit,
 }
 

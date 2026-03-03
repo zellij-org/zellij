@@ -1633,6 +1633,8 @@ impl TryFrom<ProtobufTabInfo> for TabInfo {
             selectable_floating_panes_count: protobuf_tab_info.selectable_floating_panes_count
                 as usize,
             tab_id: protobuf_tab_info.tab_id as usize,
+            has_bell_notification: protobuf_tab_info.has_bell_notification,
+            is_flashing_bell: protobuf_tab_info.is_flashing_bell,
         })
     }
 }
@@ -1662,6 +1664,8 @@ impl TryFrom<TabInfo> for ProtobufTabInfo {
             selectable_tiled_panes_count: tab_info.selectable_tiled_panes_count as u32,
             selectable_floating_panes_count: tab_info.selectable_floating_panes_count as u32,
             tab_id: tab_info.tab_id as u32,
+            has_bell_notification: tab_info.has_bell_notification,
+            is_flashing_bell: tab_info.is_flashing_bell,
         })
     }
 }
@@ -2150,6 +2154,8 @@ fn serialize_tab_update_event_with_non_default_values() {
             selectable_tiled_panes_count: 10,
             selectable_floating_panes_count: 10,
             tab_id: 0,
+            has_bell_notification: false,
+            is_flashing_bell: false,
         },
         TabInfo {
             position: 1,
@@ -2169,6 +2175,8 @@ fn serialize_tab_update_event_with_non_default_values() {
             selectable_tiled_panes_count: 10,
             selectable_floating_panes_count: 10,
             tab_id: 1,
+            has_bell_notification: false,
+            is_flashing_bell: false,
         },
         TabInfo::default(),
     ]);
@@ -2443,6 +2451,8 @@ fn serialize_session_update_event_with_non_default_values() {
             selectable_tiled_panes_count: 10,
             selectable_floating_panes_count: 10,
             tab_id: 0,
+            has_bell_notification: false,
+            is_flashing_bell: false,
         },
         TabInfo {
             position: 1,
@@ -2462,6 +2472,8 @@ fn serialize_session_update_event_with_non_default_values() {
             selectable_tiled_panes_count: 10,
             selectable_floating_panes_count: 10,
             tab_id: 1,
+            has_bell_notification: false,
+            is_flashing_bell: false,
         },
         TabInfo::default(),
     ];
