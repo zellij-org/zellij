@@ -101,6 +101,8 @@ jobs:
 
       - name: Build release binary (Windows native)
         if: matrix.build == 'windows x64'
+        env:
+          RUSTFLAGS: "-C target-feature=+crt-static"
         run: cargo xtask ci build-release
 
       - name: Create artifact (Unix)
