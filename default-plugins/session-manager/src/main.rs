@@ -492,12 +492,9 @@ impl State {
     fn handle_selection(&mut self) {
         match self.active_screen {
             ActiveScreen::NewSession => {
-                if self.new_session_info.name().len() >= 108 {
-                    // this is due to socket path limitations
-                    // TODO: get this from Zellij (for reference: this is part of the interprocess
-                    // package, we should get if from there if possible because it's configurable
-                    // through the package)
-                    self.show_error("Session name must be shorter than 108 bytes");
+                if self.new_session_info.name().len() >= 80 {
+                    // conservative guard; the server does the exact socket path validation
+                    self.show_error("Session name is too long (must be under 80 characters)");
                     return;
                 } else if self.new_session_info.name().contains('/') {
                     self.show_error("Session name cannot contain '/'");

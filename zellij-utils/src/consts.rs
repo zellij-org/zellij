@@ -171,6 +171,10 @@ mod unix_only {
     use nix::unistd::Uid;
     use std::env::temp_dir;
 
+    // macOS sun_path is 104 bytes, Linux is 108 bytes
+    #[cfg(target_os = "macos")]
+    pub const ZELLIJ_SOCK_MAX_LENGTH: usize = 104;
+    #[cfg(not(target_os = "macos"))]
     pub const ZELLIJ_SOCK_MAX_LENGTH: usize = 108;
 
     lazy_static! {
