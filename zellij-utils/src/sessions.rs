@@ -457,6 +457,21 @@ pub fn validate_session_name(name: &str) -> Result<(), String> {
     if name.contains('/') {
         return Err("Session name cannot contain '/'.".to_string());
     }
+    #[cfg(unix)]
+    {
+        use crate::consts::ZELLIJ_SOCK_MAX_LENGTH;
+        let socket_path = ZELLIJ_SOCK_DIR.join(name);
+        if socket_path.as_os_str().len() >= ZELLIJ_SOCK_MAX_LENGTH {
+            let sock_dir_len = ZELLIJ_SOCK_DIR.as_os_str().len();
+            let available = ZELLIJ_SOCK_MAX_LENGTH
+                .saturating_sub(sock_dir_len + 1)
+                .saturating_sub(1);
+            return Err(format!(
+                "Session name must be less than {} characters.",
+                available,
+            ));
+        }
+    }
     Ok(())
 }
 
@@ -658,3 +673,39 @@ const NOUNS: &[&'static str] = &[
     "yak",
     "zebra",
 ];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validate_session_name_rejects_empty() {
+        assert!(validate_session_name("").is_err());
+        assert!(validate_session_name("   ").is_err());
+    }
+
+    #[test]
+    fn validate_session_name_rejects_dot_names() {
+        assert!(validate_session_name(".").is_err());
+        assert!(validate_session_name("..").is_err());
+    }
+
+    #[test]
+    fn validate_session_name_rejects_slash() {
+        assert!(validate_session_name("foo/bar").is_err());
+        assert!(validate_session_name("/").is_err());
+    }
+
+    #[test]
+    fn validate_session_name_accepts_valid() {
+        assert!(validate_session_name("my-session").is_ok());
+        assert!(validate_session_name("test_123").is_ok());
+        assert!(validate_session_name("a").is_ok());
+    }
+
+    #[test]
+    fn validate_session_name_rejects_long_names() {
+        let long_name: String = "a".repeat(200);
+        assert!(validate_session_name(&long_name).is_err());
+    }
+}

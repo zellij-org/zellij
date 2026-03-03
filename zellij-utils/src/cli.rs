@@ -19,14 +19,15 @@ fn validate_session(name: &str) -> Result<String, String> {
         socket_path.push(name);
 
         if socket_path.as_os_str().len() >= ZELLIJ_SOCK_MAX_LENGTH {
-            // socket path must be less than 108 bytes
+            let sock_dir = crate::consts::ZELLIJ_SOCK_DIR.as_os_str().len();
+            // +1 for the path separator between directory and session name
             let available_length = ZELLIJ_SOCK_MAX_LENGTH
-                .saturating_sub(socket_path.as_os_str().len())
+                .saturating_sub(sock_dir + 1)
                 .saturating_sub(1);
 
             return Err(format!(
                 "session name must be less than {} characters",
-                available_length
+                available_length,
             ));
         };
     };
@@ -1350,4 +1351,47 @@ tail -f /tmp/my-live-logfile | zellij action pipe --name logs --plugin https://e
         #[clap(short, long, value_parser)]
         cwd: Option<PathBuf>,
     },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validate_session_accepts_short_name() {
+        let result = validate_session("foo");
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "foo");
+    }
+
+    #[test]
+    fn validate_session_rejects_name_exceeding_limit() {
+        let long_name: String = "a".repeat(200);
+        assert!(validate_session(&long_name).is_err());
+    }
+
+    #[test]
+    fn validate_session_rejects_at_platform_boundary() {
+        #[cfg(target_os = "macos")]
+        const PLATFORM_LIMIT: usize = 104;
+        #[cfg(target_os = "linux")]
+        const PLATFORM_LIMIT: usize = 108;
+        #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+        const PLATFORM_LIMIT: usize = 108;
+
+        let sock_dir_len = crate::consts::ZELLIJ_SOCK_DIR.as_os_str().len();
+        let max_name_len = PLATFORM_LIMIT.saturating_sub(sock_dir_len + 1);
+        let boundary_name: String = "a".repeat(max_name_len);
+        assert!(
+            validate_session(&boundary_name).is_err(),
+            "name at platform socket path limit should be rejected"
+        );
+    }
+
+    #[test]
+    fn validate_session_error_message_reports_available_length() {
+        let long_name: String = "a".repeat(200);
+        let err_msg = validate_session(&long_name).unwrap_err();
+        assert!(!err_msg.contains("less than 0"), "{}", err_msg);
+    }
 }

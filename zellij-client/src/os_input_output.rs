@@ -260,18 +260,23 @@ impl ClientOsApi for ClientOsInputOutput {
         let fs_name = path
             .to_fs_name::<GenericFilePath>()
             .expect("failed to convert path to socket name");
-        let socket;
-        loop {
+        let timeout = std::time::Duration::from_secs(10);
+        let start = std::time::Instant::now();
+        let socket = loop {
             match LocalSocketStream::connect(fs_name.clone()) {
-                Ok(sock) => {
-                    socket = sock;
-                    break;
-                },
-                Err(_) => {
+                Ok(sock) => break sock,
+                Err(e) => {
+                    if start.elapsed() >= timeout {
+                        eprintln!(
+                            "Failed to connect to server at {:?} after {:?}: {}",
+                            path, timeout, e,
+                        );
+                        std::process::exit(1);
+                    }
                     std::thread::sleep(std::time::Duration::from_millis(50));
                 },
             }
-        }
+        };
         let sender = IpcSenderWithContext::new(socket);
         let receiver = sender.get_receiver();
         *self.send_instructions_to_server.lock().unwrap() = Some(sender);
