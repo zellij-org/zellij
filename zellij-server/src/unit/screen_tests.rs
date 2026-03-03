@@ -283,6 +283,7 @@ fn create_new_screen(
     let web_sharing = WebSharing::Off;
     let web_server_ip = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
     let web_server_port = 8080;
+    let visual_bell = true;
     let screen = Screen::new(
         bus,
         &client_attributes,
@@ -310,6 +311,7 @@ fn create_new_screen(
         web_sharing,
         advanced_mouse_actions,
         mouse_hover_effects,
+        visual_bell,
         web_server_ip,
         web_server_port,
     );
