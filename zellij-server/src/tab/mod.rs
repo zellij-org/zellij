@@ -40,7 +40,6 @@ use crate::{
     output::{CharacterChunk, Output, SixelImageChunk},
     panes::floating_panes::floating_pane_grid::half_size_middle_geom,
     panes::sixel::SixelImageStore,
-    panes::terminal_character::AnsiCode,
     panes::{FloatingPanes, TiledPanes},
     panes::{LinkHandler, PaneId, PluginPane, TerminalPane},
     plugins::PluginInstruction,
@@ -324,8 +323,8 @@ pub trait Pane {
     fn get_selected_text(&self, _client_id: ClientId) -> Option<String> {
         None
     }
-    fn set_pane_default_colors(&mut self, _fg: Option<AnsiCode>, _bg: Option<AnsiCode>) {}
-    fn get_pane_default_colors(&self) -> (Option<AnsiCode>, Option<AnsiCode>) {
+    fn set_pane_default_colors(&mut self, _fg: Option<String>, _bg: Option<String>) {}
+    fn get_pane_default_colors(&self) -> (Option<String>, Option<String>) {
         (None, None)
     }
 
@@ -2551,16 +2550,13 @@ impl Tab {
         fg: Option<String>,
         bg: Option<String>,
     ) -> Result<()> {
-        use crate::panes::xparse_color;
-        let parsed_fg = fg.as_ref().and_then(|s| xparse_color(s.as_bytes()));
-        let parsed_bg = bg.as_ref().and_then(|s| xparse_color(s.as_bytes()));
         let pane = self
             .floating_panes
             .get_mut(&pane_id)
             .or_else(|| self.tiled_panes.get_pane_mut(pane_id))
             .or_else(|| self.suppressed_panes.get_mut(&pane_id).map(|p| &mut p.1));
         if let Some(pane) = pane {
-            pane.set_pane_default_colors(parsed_fg, parsed_bg);
+            pane.set_pane_default_colors(fg, bg);
         }
         Ok(())
     }
@@ -5622,8 +5618,8 @@ pub fn pane_info_for_pane(
     pane_info.index_in_pane_group = index_in_pane_group;
 
     let (default_fg, default_bg) = pane.get_pane_default_colors();
-    pane_info.default_fg = default_fg.and_then(|c| ansi_code_to_color_string(c));
-    pane_info.default_bg = default_bg.and_then(|c| ansi_code_to_color_string(c));
+    pane_info.default_fg = default_fg;
+    pane_info.default_bg = default_bg;
 
     match pane_id {
         PaneId::Terminal(terminal_id) => {
@@ -5644,15 +5640,6 @@ pub fn pane_info_for_pane(
         },
     }
     pane_info
-}
-
-fn ansi_code_to_color_string(code: AnsiCode) -> Option<String> {
-    match code {
-        AnsiCode::RgbCode((r, g, b)) => Some(format!("#{:02x}{:02x}{:02x}", r, g, b)),
-        AnsiCode::ColorIndex(idx) => Some(format!("{}", idx)),
-        AnsiCode::NamedColor(named) => Some(format!("{:?}", named).to_lowercase()),
-        _ => None,
-    }
 }
 
 #[cfg(test)]

@@ -3146,6 +3146,8 @@ impl From<crate::input::layout::TiledPaneLayout>
             is_expanded_in_stack: layout.is_expanded_in_stack,
             hide_floating_panes: layout.hide_floating_panes,
             pane_initial_contents: layout.pane_initial_contents,
+            default_fg: layout.default_fg,
+            default_bg: layout.default_bg,
         }
     }
 }
@@ -3167,6 +3169,8 @@ impl From<crate::input::layout::FloatingPaneLayout>
             pane_initial_contents: layout.pane_initial_contents,
             logical_position: layout.logical_position.map(|l| l as u32),
             borderless: layout.borderless,
+            default_fg: layout.default_fg,
+            default_bg: layout.default_bg,
         }
     }
 }
@@ -3575,8 +3579,8 @@ impl TryFrom<crate::client_server_contract::client_server_contract::TiledPaneLay
             run_instructions_to_ignore: vec![], // not represented in protobuf
             hide_floating_panes: layout.hide_floating_panes,
             pane_initial_contents: layout.pane_initial_contents,
-            default_fg: None,
-            default_bg: None,
+            default_fg: layout.default_fg,
+            default_bg: layout.default_bg,
         })
     }
 }
@@ -3609,8 +3613,8 @@ impl TryFrom<crate::client_server_contract::client_server_contract::FloatingPane
             pane_initial_contents: layout.pane_initial_contents,
             logical_position: layout.logical_position.map(|p| p as usize),
             borderless: layout.borderless,
-            default_fg: None,
-            default_bg: None,
+            default_fg: layout.default_fg,
+            default_bg: layout.default_bg,
         })
     }
 }

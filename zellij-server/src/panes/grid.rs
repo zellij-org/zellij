@@ -408,6 +408,33 @@ pub struct Grid {
     pub pane_default_bg: Option<AnsiCode>,
 }
 
+impl Grid {
+    pub fn set_pane_default_colors(
+        &mut self,
+        fg: Option<String>,
+        bg: Option<String>,
+    ) {
+        self.pane_default_fg = fg.as_ref().and_then(|s| xparse_color(s.as_bytes()));
+        self.pane_default_bg = bg.as_ref().and_then(|s| xparse_color(s.as_bytes()));
+        self.output_buffer.update_all_lines();
+    }
+    pub fn get_pane_default_color_strings(&self) -> (Option<String>, Option<String>) {
+        (
+            self.pane_default_fg.and_then(ansi_code_to_color_string),
+            self.pane_default_bg.and_then(ansi_code_to_color_string),
+        )
+    }
+}
+
+fn ansi_code_to_color_string(code: AnsiCode) -> Option<String> {
+    match code {
+        AnsiCode::RgbCode((r, g, b)) => Some(format!("#{:02x}{:02x}{:02x}", r, g, b)),
+        AnsiCode::ColorIndex(idx) => Some(format!("{}", idx)),
+        AnsiCode::NamedColor(named) => Some(format!("{:?}", named).to_lowercase()),
+        _ => None,
+    }
+}
+
 const CLICK_TIME_THRESHOLD: u128 = 400; // Doherty Threshold
 
 #[derive(Clone, Debug, Default)]

@@ -654,15 +654,10 @@ impl<'a> LayoutApplier<'a> {
             new_pane.set_borderless(false);
         }
         if floating_pane_layout.default_fg.is_some() || floating_pane_layout.default_bg.is_some() {
-            let fg = floating_pane_layout
-                .default_fg
-                .as_ref()
-                .and_then(|s| crate::panes::xparse_color(s.as_bytes()));
-            let bg = floating_pane_layout
-                .default_bg
-                .as_ref()
-                .and_then(|s| crate::panes::xparse_color(s.as_bytes()));
-            new_pane.set_pane_default_colors(fg, bg);
+            new_pane.set_pane_default_colors(
+                floating_pane_layout.default_fg.clone(),
+                floating_pane_layout.default_bg.clone(),
+            );
         }
         if let Some(held_command) = hold_for_command {
             new_pane.hold(None, true, held_command.clone());
@@ -734,15 +729,10 @@ impl<'a> LayoutApplier<'a> {
             new_pane.set_exclude_from_sync(exclude_from_sync);
         }
         if layout.default_fg.is_some() || layout.default_bg.is_some() {
-            let fg = layout
-                .default_fg
-                .as_ref()
-                .and_then(|s| crate::panes::xparse_color(s.as_bytes()));
-            let bg = layout
-                .default_bg
-                .as_ref()
-                .and_then(|s| crate::panes::xparse_color(s.as_bytes()));
-            new_pane.set_pane_default_colors(fg, bg);
+            new_pane.set_pane_default_colors(
+                layout.default_fg.clone(),
+                layout.default_bg.clone(),
+            );
         }
         if let Some(held_command) = hold_for_command {
             new_pane.hold(None, true, held_command.clone());

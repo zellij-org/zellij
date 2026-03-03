@@ -3946,6 +3946,7 @@ impl Screen {
                             p_id.and_then(|p_id| if p_id == pane_id { Some(*c_id) } else { None })
                         })
                         .collect();
+                    let (default_fg, default_bg) = p.get_pane_default_colors();
                     PaneLayoutMetadata::new(
                         pane_id,
                         p.position_and_size(),
@@ -3959,6 +3960,8 @@ impl Screen {
                             None
                         },
                         focused_clients,
+                        default_fg,
+                        default_bg,
                     )
                 })
                 .collect();
@@ -3984,6 +3987,7 @@ impl Screen {
                             p_id.and_then(|p_id| if p_id == pane_id { Some(*c_id) } else { None })
                         })
                         .collect();
+                    let (default_fg, default_bg) = p.get_pane_default_colors();
                     PaneLayoutMetadata::new(
                         pane_id,
                         p.position_and_size(),
@@ -3997,6 +4001,8 @@ impl Screen {
                             None
                         },
                         focused_clients,
+                        default_fg,
+                        default_bg,
                     )
                 })
                 .collect();

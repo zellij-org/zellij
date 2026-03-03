@@ -36,6 +36,8 @@ pub struct PaneLayoutManifest {
     pub title: Option<String>,
     pub is_focused: bool,
     pub pane_contents: Option<String>,
+    pub default_fg: Option<String>,
+    pub default_bg: Option<String>,
 }
 
 pub fn serialize_session_layout(
@@ -182,6 +184,16 @@ fn serialize_tiled_pane(
     );
 
     serialize_tiled_layout_attributes(&layout, ignore_size, &mut tiled_pane_node);
+    if let Some(ref fg) = layout.default_fg {
+        tiled_pane_node
+            .entries_mut()
+            .push(KdlEntry::new_prop("default_fg", fg.to_owned()));
+    }
+    if let Some(ref bg) = layout.default_bg {
+        tiled_pane_node
+            .entries_mut()
+            .push(KdlEntry::new_prop("default_bg", bg.to_owned()));
+    }
     let has_child_attributes = !layout.children.is_empty()
         || layout.external_children_index.is_some()
         || !args.is_empty()
@@ -659,6 +671,16 @@ fn serialize_floating_pane(
         has_children,
         &mut floating_pane_node,
     );
+    if let Some(ref fg) = layout.default_fg {
+        floating_pane_node
+            .entries_mut()
+            .push(KdlEntry::new_prop("default_fg", fg.to_owned()));
+    }
+    if let Some(ref bg) = layout.default_bg {
+        floating_pane_node
+            .entries_mut()
+            .push(KdlEntry::new_prop("default_bg", bg.to_owned()));
+    }
     serialize_start_suspended(&command, &mut floating_pane_node_children);
     serialize_floating_layout_attributes(&layout, &mut floating_pane_node_children);
     serialize_args(args, &mut floating_pane_node_children);
@@ -709,7 +731,7 @@ fn tiled_pane_layout_from_manifest(
     manifest: Option<&PaneLayoutManifest>,
     split_size: Option<SplitSize>,
 ) -> TiledPaneLayout {
-    let (run, borderless, is_expanded_in_stack, name, focus, pane_initial_contents) = manifest
+    let (run, borderless, is_expanded_in_stack, name, focus, pane_initial_contents, default_fg, default_bg) = manifest
         .map(|g| {
             let mut run = g.run.clone();
             if let Some(cwd) = &g.cwd {
@@ -726,9 +748,11 @@ fn tiled_pane_layout_from_manifest(
                 g.title.clone(),
                 Some(g.is_focused),
                 g.pane_contents.clone(),
+                g.default_fg.clone(),
+                g.default_bg.clone(),
             )
         })
-        .unwrap_or((None, None, false, None, None, None));
+        .unwrap_or((None, None, false, None, None, None, None, None));
     TiledPaneLayout {
         split_size,
         run,
@@ -737,6 +761,8 @@ fn tiled_pane_layout_from_manifest(
         name,
         focus,
         pane_initial_contents,
+        default_fg,
+        default_bg,
         ..Default::default()
     }
 }
@@ -845,8 +871,8 @@ fn get_floating_panes_layout_from_panegeoms(
                 pane_initial_contents: m.pane_contents.clone(),
                 logical_position: None,
                 borderless: Some(m.is_borderless),
-                default_fg: None,
-                default_bg: None,
+                default_fg: m.default_fg.clone(),
+                default_bg: m.default_bg.clone(),
             }
         })
         .collect()

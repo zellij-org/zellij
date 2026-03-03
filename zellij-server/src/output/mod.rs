@@ -61,6 +61,29 @@ fn adjust_styles_for_possible_selection(
         .unwrap_or(character_styles)
 }
 
+fn adjust_styles_for_custom_bg_fg(
+    character_styles: CharacterStyles,
+    pane_default_fg: Option<AnsiCode>,
+    pane_default_bg: Option<AnsiCode>,
+) -> CharacterStyles {
+    let mut character_styles = character_styles;
+    if character_styles.foreground.is_none()
+        || character_styles.foreground == Some(AnsiCode::Reset)
+    {
+        if let Some(fg) = pane_default_fg {
+            character_styles.foreground = Some(fg);
+        }
+    }
+    if character_styles.background.is_none()
+        || character_styles.background == Some(AnsiCode::Reset)
+    {
+        if let Some(bg) = pane_default_bg {
+            character_styles.background = Some(bg);
+        }
+    }
+    character_styles
+}
+
 fn write_changed_styles(
     character_styles: &mut CharacterStyles,
     current_character_styles: CharacterStyles,
@@ -126,27 +149,16 @@ fn serialize_chunks_with_newlines(
                 }
             }
 
-            let mut current_character_styles = adjust_styles_for_possible_selection(
-                character_chunk.selection_and_colors(),
-                *t_character.styles,
-                character_chunk.y,
-                chunk_width,
+            let current_character_styles = adjust_styles_for_custom_bg_fg(
+                adjust_styles_for_possible_selection(
+                    character_chunk.selection_and_colors(),
+                    *t_character.styles,
+                    character_chunk.y,
+                    chunk_width,
+                ),
+                pane_default_fg,
+                pane_default_bg,
             );
-            // Apply pane default color fallbacks for cells with no explicit fg/bg
-            if current_character_styles.foreground.is_none()
-                || current_character_styles.foreground == Some(AnsiCode::Reset)
-            {
-                if let Some(fg) = pane_default_fg {
-                    current_character_styles.foreground = Some(fg);
-                }
-            }
-            if current_character_styles.background.is_none()
-                || current_character_styles.background == Some(AnsiCode::Reset)
-            {
-                if let Some(bg) = pane_default_bg {
-                    current_character_styles.background = Some(bg);
-                }
-            }
             write_changed_styles(
                 &mut character_styles,
                 current_character_styles,
@@ -202,26 +214,16 @@ fn serialize_chunks(
                 }
             }
 
-            let mut current_character_styles = adjust_styles_for_possible_selection(
-                character_chunk.selection_and_colors(),
-                *t_character.styles,
-                character_chunk.y,
-                chunk_width,
+            let current_character_styles = adjust_styles_for_custom_bg_fg(
+                adjust_styles_for_possible_selection(
+                    character_chunk.selection_and_colors(),
+                    *t_character.styles,
+                    character_chunk.y,
+                    chunk_width,
+                ),
+                pane_default_fg,
+                pane_default_bg,
             );
-            if current_character_styles.foreground.is_none()
-                || current_character_styles.foreground == Some(AnsiCode::Reset)
-            {
-                if let Some(fg) = pane_default_fg {
-                    current_character_styles.foreground = Some(fg);
-                }
-            }
-            if current_character_styles.background.is_none()
-                || current_character_styles.background == Some(AnsiCode::Reset)
-            {
-                if let Some(bg) = pane_default_bg {
-                    current_character_styles.background = Some(bg);
-                }
-            }
             write_changed_styles(
                 &mut character_styles,
                 current_character_styles,
