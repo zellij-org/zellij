@@ -298,7 +298,13 @@ pub enum ScreenInstruction {
     MovePaneLeft(ClientId, Option<NotificationEnd>),
     Exit,
     ClearScreen(ClientId, Option<NotificationEnd>),
-    DumpScreen(String, ClientId, bool, Option<PaneId>, Option<NotificationEnd>),
+    DumpScreen(
+        String,
+        ClientId,
+        bool,
+        Option<PaneId>,
+        Option<NotificationEnd>,
+    ),
     DumpLayout(Option<PathBuf>, ClientId, Option<NotificationEnd>), // PathBuf is the default configured
     // shell
     SaveSession(ClientId, Option<NotificationEnd>),
@@ -4696,16 +4702,14 @@ pub(crate) fn screen_thread_main(
             ) => {
                 match pane_id {
                     Some(pane_id) => {
-                        // Dump specific pane - search across all tabs
                         for tab in screen.get_tabs_mut().values_mut() {
-                            if tab.get_pane_with_id(pane_id).is_some() {
+                            if tab.has_pane_with_pid(&pane_id) {
                                 tab.dump_terminal_screen(Some(file.clone()), pane_id, full)?;
                                 break;
                             }
                         }
                     },
                     None => {
-                        // Existing behavior: dump focused pane
                         active_tab_and_connected_client_id!(
                             screen,
                             client_id,

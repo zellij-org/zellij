@@ -685,7 +685,7 @@ pub enum CliAction {
     MovePaneBackwards,
     /// Clear all buffers for a focused pane
     Clear,
-    /// Dump a pane to a file. If no pane ID is specified, dumps the focused pane.
+    /// Dumps the viewport and optionally scrollback of a pane to STDOUT
     DumpScreen {
         path: PathBuf,
 
@@ -693,9 +693,9 @@ pub enum CliAction {
         #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
         full: bool,
 
-        /// Target terminal pane ID. If not specified, dumps the focused pane.
+        /// The pane_id of the pane, eg. terminal_1, plugin_2 or 3 (equivalent to terminal_3). If not specified, dumps the focused pane.
         #[clap(short, long, value_parser)]
-        pane_id: Option<u32>,
+        pane_id: Option<String>,
     },
     /// Dump current layout to stdout
     DumpLayout,
