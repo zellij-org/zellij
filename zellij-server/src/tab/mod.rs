@@ -4591,17 +4591,14 @@ impl Tab {
 
     pub fn update_search_term(&mut self, buf: Vec<u8>, client_id: ClientId) -> Result<()> {
         if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
-            // It only allows terminating char(\0), printable unicode, delete and backspace keys.
-            // TODO: we should really remove this limitation to allow searching for emojis and
-            // other wide chars - currently the search mechanism itself ignores wide chars, so we
-            // should first fix that before removing this condition
-            let is_updatable = buf
-                .iter()
-                .all(|u| matches!(u, 0x00 | 0x20..=0x7E | 0x08 | 0x7F));
+            let s = str::from_utf8(&buf).with_context(|| {
+                format!("failed to update search term to '{buf:?}' for client {client_id}")
+            })?;
+            // Allow terminating char(\0), printable unicode, delete and backspace keys.
+            let is_updatable = s
+                .chars()
+                .all(|c| c == '\0' || c == '\u{08}' || c == '\u{7F}' || !c.is_control());
             if is_updatable {
-                let s = str::from_utf8(&buf).with_context(|| {
-                    format!("failed to update search term to '{buf:?}' for client {client_id}")
-                })?;
                 active_pane.update_search_term(s);
             }
         }
