@@ -1,5 +1,6 @@
 use zellij_utils::errors::{prelude::*, ContextType, PtyWriteContext};
 
+use crate::os_input_output::ServerOsApi;
 use crate::route::NotificationEnd;
 use crate::thread_bus::Bus;
 
@@ -28,6 +29,46 @@ impl From<&PtyWriteInstruction> for PtyWriteContext {
     }
 }
 
+fn err_is_would_block(err: &anyhow::Error) -> bool {
+    err.chain().any(|cause| {
+        cause
+            .downcast_ref::<std::io::Error>()
+            .map(|io_err| io_err.kind() == std::io::ErrorKind::WouldBlock)
+            .unwrap_or(false)
+    })
+}
+
+fn write_all_to_tty_stdin(
+    os_input: &dyn ServerOsApi,
+    terminal_id: u32,
+    bytes: &[u8],
+) -> Result<()> {
+    let err_context = || format!("failed to write to stdin of TTY ID {}", terminal_id);
+    let mut total_written = 0;
+    while total_written < bytes.len() {
+        let bytes_written = match os_input
+            .write_to_tty_stdin(terminal_id, &bytes[total_written..])
+            .with_context(err_context)
+        {
+            Ok(bytes_written) => bytes_written,
+            Err(e) if err_is_would_block(&e) => {
+                std::thread::sleep(std::time::Duration::from_millis(1));
+                continue;
+            },
+            Err(e) => return Err(e),
+        };
+        if bytes_written == 0 {
+            return Err(anyhow::anyhow!(
+                "write returned 0 bytes for TTY ID {}",
+                terminal_id
+            ))
+            .with_context(err_context);
+        }
+        total_written += bytes_written;
+    }
+    Ok(())
+}
+
 pub(crate) fn pty_writer_main(bus: Bus<PtyWriteInstruction>) -> Result<()> {
     let err_context = || "failed to write to pty".to_string();
 
@@ -41,14 +82,19 @@ pub(crate) fn pty_writer_main(bus: Bus<PtyWriteInstruction>) -> Result<()> {
             .with_context(err_context)?;
         match event {
             PtyWriteInstruction::Write(bytes, terminal_id, _completion) => {
-                os_input
-                    .write_to_tty_stdin(terminal_id, &bytes)
+                match write_all_to_tty_stdin(os_input.as_ref(), terminal_id, &bytes)
                     .with_context(err_context)
-                    .non_fatal();
-                os_input
-                    .tcdrain(terminal_id)
-                    .with_context(err_context)
-                    .non_fatal();
+                {
+                    Ok(()) => {
+                        os_input
+                            .tcdrain(terminal_id)
+                            .with_context(err_context)
+                            .non_fatal();
+                    },
+                    Err(e) => {
+                        Err::<(), _>(e).non_fatal();
+                    },
+                }
             },
             PtyWriteInstruction::ResizePty(
                 terminal_id,
