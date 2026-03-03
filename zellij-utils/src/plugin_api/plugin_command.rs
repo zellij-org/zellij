@@ -2496,6 +2496,7 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                                     pattern: h.pattern,
                                     style,
                                     context,
+                                    on_hover: h.on_hover,
                                 }
                             })
                             .collect();
@@ -4127,6 +4128,7 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                                             .into_iter()
                                             .map(|(name, value)| ContextItem { name, value })
                                             .collect(),
+                                        on_hover: h.on_hover,
                                     }
                                 })
                                 .collect(),

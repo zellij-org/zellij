@@ -4,6 +4,7 @@ use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::rc::Rc;
+use unicode_width::UnicodeWidthChar;
 use zellij_utils::data::{HighlightStyle, RegexHighlight, Style};
 use zellij_utils::errors::prelude::*;
 
@@ -350,6 +351,64 @@ fn utf8_mouse_coordinates(column: usize, line: isize) -> Vec<u8> {
     coordinates
 }
 
+/// Concatenate a canonical row and its non-canonical tail rows into one string.
+/// Returns the concatenated text and a boundary table: Vec<(viewport_row_idx, byte_start)>
+/// where byte_start is the byte offset in the returned string where that row begins.
+fn build_logical_line(
+    canonical_ridx: usize,
+    canonical_row: &Row,
+    tail: &[&Row],
+) -> (String, Vec<(usize, usize)>) {
+    let mut text = String::new();
+    let mut boundaries: Vec<(usize, usize)> = Vec::with_capacity(1 + tail.len());
+    boundaries.push((canonical_ridx, 0));
+    for ch in &canonical_row.columns {
+        text.push(ch.character);
+    }
+    for (i, row) in tail.iter().enumerate() {
+        boundaries.push((canonical_ridx + 1 + i, text.len()));
+        for ch in &row.columns {
+            text.push(ch.character);
+        }
+    }
+    (text, boundaries)
+}
+
+/// Map a byte offset in the concatenated logical-line string back to
+/// (viewport_row_idx, display_column).
+///
+/// display_column is the sum of character.width() for all characters
+/// before the target character in that row — NOT a char count or byte count.
+/// This correctly handles wide characters (CJK, emoji).
+///
+/// `boundaries` is the table produced by `build_logical_line`.
+/// `viewport` is `&self.viewport`.
+fn byte_offset_to_display_col(
+    byte_offset: usize,
+    boundaries: &[(usize, usize)],
+    viewport: &VecDeque<Row>,
+) -> (usize, usize) {
+    // Find which row the byte offset falls in (last boundary whose byte_start <= offset).
+    let boundary_idx = boundaries
+        .partition_point(|&(_, byte_start)| byte_start <= byte_offset)
+        .saturating_sub(1);
+    let (row_idx, row_byte_start) = boundaries[boundary_idx];
+    let intra_byte_offset = byte_offset - row_byte_start;
+
+    // Count display columns up to (but not including) the character at intra_byte_offset.
+    let row = &viewport[row_idx];
+    let mut display_col = 0usize;
+    let mut bytes_seen = 0usize;
+    for ch in &row.columns {
+        if bytes_seen >= intra_byte_offset {
+            break;
+        }
+        bytes_seen += ch.character.len_utf8();
+        display_col += ch.character.width().unwrap_or(1);
+    }
+    (row_idx, display_col)
+}
+
 #[derive(Clone)]
 pub struct Grid {
     pub(crate) lines_above: VecDeque<Row>,
@@ -409,6 +468,7 @@ pub struct Grid {
     pub pane_default_bg: Option<AnsiCode>,
     pub plugin_highlights: HashMap<u32, Vec<(String, CompiledHighlight)>>,
     // key: plugin_id (u32), inner vec: (pattern, compiled) pairs
+    pub hover_position: Option<Position>, // pane-relative cursor cell; None when outside pane
 }
 
 impl Grid {
@@ -440,6 +500,7 @@ pub struct CompiledHighlight {
     pub fg: Option<AnsiCode>,
     pub bg: Option<AnsiCode>,
     pub context: BTreeMap<String, String>,
+    pub on_hover: bool,
 }
 
 impl Clone for CompiledHighlight {
@@ -450,6 +511,7 @@ impl Clone for CompiledHighlight {
             fg: self.fg,
             bg: self.bg,
             context: self.context.clone(),
+            on_hover: self.on_hover,
         }
     }
 }
@@ -683,6 +745,7 @@ impl Grid {
             pane_default_fg: None,
             pane_default_bg: None,
             plugin_highlights: HashMap::new(),
+            hover_position: None,
         }
     }
     pub fn render_full_viewport(&mut self) {
@@ -1261,6 +1324,110 @@ impl Grid {
         let mut raw_vte_output = String::new();
 
         let (mut character_chunks, sixel_image_chunks) = self.read_changes(content_x, content_y);
+
+        // Pre-compute plugin highlight selections across logical line groups.
+        // This is done before the character_chunks loop so that multi-line matches
+        // (spanning a canonical row and its non-canonical tail rows) can be found
+        // by running the regex against the full concatenated logical line text,
+        // then emitted into the appropriate character_chunks below.
+        let plugin_highlight_selections: Vec<(Selection, AnsiCode, Option<AnsiCode>)> = if self
+            .plugin_highlights
+            .is_empty()
+        {
+            vec![]
+        } else {
+            let mut selections = Vec::new();
+            let viewport_len = self.viewport.len();
+            let mut ridx = 0;
+            while ridx < viewport_len {
+                let row = &self.viewport[ridx];
+                // Collect non-canonical tail rows for this logical line group.
+                let mut tail: Vec<&Row> = Vec::new();
+                loop {
+                    let tail_idx = ridx + tail.len() + 1;
+                    if tail_idx < viewport_len && !self.viewport[tail_idx].is_canonical {
+                        tail.push(&self.viewport[tail_idx]);
+                    } else {
+                        break;
+                    }
+                }
+
+                let (logical_text, boundaries) = build_logical_line(ridx, row, &tail);
+
+                for (_plugin_id, pattern_map) in &self.plugin_highlights {
+                    for (_pattern, compiled) in pattern_map {
+                        if compiled.on_hover {
+                            // Hover highlights are handled separately below.
+                            continue;
+                        }
+                        let Some(bg) = compiled.bg else { continue };
+                        for mat in compiled.regex.find_iter(&logical_text) {
+                            let (start_row, start_col) = byte_offset_to_display_col(
+                                mat.start(),
+                                &boundaries,
+                                &self.viewport,
+                            );
+                            let (end_row, end_col) =
+                                byte_offset_to_display_col(mat.end(), &boundaries, &self.viewport);
+                            let mut sel = Selection::default();
+                            sel.set_start_and_end_positions(
+                                Position::new(start_row as i32, start_col as u16),
+                                Position::new(end_row as i32, end_col as u16),
+                            );
+                            selections.push((sel, bg, compiled.fg));
+                        }
+                    }
+                }
+
+                // Hover highlights: only emit the single match overlapping hover_position,
+                // and only if hover_position falls within this logical line group.
+                if let Some(hover_pos) = self.hover_position {
+                    let hover_row = hover_pos.line.0 as usize;
+                    let group_end_row = ridx + tail.len();
+                    if hover_row >= ridx && hover_row <= group_end_row {
+                        let hover_col = hover_pos.column.0;
+                        for (_plugin_id, pattern_map) in &self.plugin_highlights {
+                            for (_pattern, compiled) in pattern_map {
+                                if !compiled.on_hover {
+                                    continue;
+                                }
+                                let Some(bg) = compiled.bg else { continue };
+                                for mat in compiled.regex.find_iter(&logical_text) {
+                                    let (start_row, start_col) = byte_offset_to_display_col(
+                                        mat.start(),
+                                        &boundaries,
+                                        &self.viewport,
+                                    );
+                                    let (end_row, end_col) = byte_offset_to_display_col(
+                                        mat.end(),
+                                        &boundaries,
+                                        &self.viewport,
+                                    );
+                                    // Check whether hover_position overlaps this match's span.
+                                    let after_start = hover_row > start_row
+                                        || (hover_row == start_row && hover_col >= start_col);
+                                    let before_end = hover_row < end_row
+                                        || (hover_row == end_row && hover_col < end_col);
+                                    if after_start && before_end {
+                                        let mut sel = Selection::default();
+                                        sel.set_start_and_end_positions(
+                                            Position::new(start_row as i32, start_col as u16),
+                                            Position::new(end_row as i32, end_col as u16),
+                                        );
+                                        selections.push((sel, bg, compiled.fg));
+                                        break; // only one match per pattern per hover
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                ridx += 1 + tail.len(); // advance past this logical line group
+            }
+            selections
+        };
+
         for character_chunk in character_chunks.iter_mut() {
             character_chunk.add_changed_colors(self.changed_colors);
             character_chunk.add_pane_defaults(self.pane_default_fg, self.pane_default_bg);
@@ -1317,32 +1484,10 @@ impl Grid {
                     }
                 }
             }
-            // Plugin regex highlights — applied after search so search takes visual priority
-            if !self.plugin_highlights.is_empty() {
-                let row_idx = character_chunk.y.saturating_sub(content_y);
-                if let Some(row) = self.viewport.get(row_idx) {
-                    let row_text: String = row.columns.iter().map(|c| c.character).collect();
-                    for (_plugin_id, pattern_map) in &self.plugin_highlights {
-                        for (_pattern, compiled) in pattern_map {
-                            for mat in compiled.regex.find_iter(&row_text) {
-                                let col_start = row_text[..mat.start()].chars().count();
-                                let col_end = row_text[..mat.end()].chars().count();
-                                let start = Position::new(row_idx as i32, col_start as u16);
-                                let end = Position::new(row_idx as i32, col_end as u16);
-                                let mut sel = Selection::default();
-                                sel.set_start_and_end_positions(start, end);
-                                if let Some(bg) = compiled.bg {
-                                    character_chunk.add_selection_and_colors(
-                                        sel,
-                                        bg,
-                                        compiled.fg,
-                                        content_x,
-                                        content_y,
-                                    );
-                                }
-                            }
-                        }
-                    }
+            // Apply pre-computed plugin highlight selections to this chunk.
+            for (sel, bg, fg) in &plugin_highlight_selections {
+                if sel.contains_row(character_chunk.y.saturating_sub(content_y)) {
+                    character_chunk.add_selection_and_colors(*sel, *bg, *fg, content_x, content_y);
                 }
             }
         }
@@ -1963,6 +2108,7 @@ impl Grid {
                         fg,
                         bg,
                         context: h.context,
+                        on_hover: h.on_hover,
                     };
                 } else {
                     slot.push((
@@ -1972,6 +2118,7 @@ impl Grid {
                             fg,
                             bg,
                             context: h.context,
+                            on_hover: h.on_hover,
                         },
                     ));
                 }
@@ -1995,22 +2142,55 @@ impl Grid {
 
     /// Returns (plugin_id, pattern, matched_string, context) if the given
     /// pane-relative position falls inside any plugin highlight match, or None.
+    /// Uses logical-line grouping so multi-line (wrapped) matches are detected.
     pub fn plugin_highlight_at(
         &self,
         position: &Position,
     ) -> Option<(u32, String, String, BTreeMap<String, String>)> {
-        let row_idx = position.line.0 as usize;
-        let col = position.column.0 as usize;
+        let click_row = position.line.0 as usize;
+        let click_col = position.column.0 as usize;
 
-        let row = self.viewport.get(row_idx)?;
-        let row_text: String = row.columns.iter().map(|c| c.character).collect();
+        // Walk backward to find the canonical root of the logical line group
+        // containing click_row.
+        let mut canonical = click_row;
+        while canonical > 0
+            && !self
+                .viewport
+                .get(canonical)
+                .map(|r| r.is_canonical)
+                .unwrap_or(true)
+        {
+            canonical -= 1;
+        }
+
+        let canonical_row = self.viewport.get(canonical)?;
+
+        // Collect non-canonical tail rows.
+        let mut tail: Vec<&Row> = Vec::new();
+        loop {
+            let tail_idx = canonical + tail.len() + 1;
+            if tail_idx < self.viewport.len() && !self.viewport[tail_idx].is_canonical {
+                tail.push(&self.viewport[tail_idx]);
+            } else {
+                break;
+            }
+        }
+
+        let (logical_text, boundaries) = build_logical_line(canonical, canonical_row, &tail);
 
         for (plugin_id, pattern_map) in &self.plugin_highlights {
             for (pattern, compiled) in pattern_map {
-                for mat in compiled.regex.find_iter(&row_text) {
-                    let col_start = row_text[..mat.start()].chars().count();
-                    let col_end = row_text[..mat.end()].chars().count();
-                    if col >= col_start && col < col_end {
+                for mat in compiled.regex.find_iter(&logical_text) {
+                    let (start_row, start_col) =
+                        byte_offset_to_display_col(mat.start(), &boundaries, &self.viewport);
+                    let (end_row, end_col) =
+                        byte_offset_to_display_col(mat.end(), &boundaries, &self.viewport);
+                    // Check whether the click position overlaps this match's span.
+                    let after_start =
+                        click_row > start_row || (click_row == start_row && click_col >= start_col);
+                    let before_end =
+                        click_row < end_row || (click_row == end_row && click_col < end_col);
+                    if after_start && before_end {
                         let matched_string = mat.as_str().to_string();
                         return Some((
                             *plugin_id,
@@ -2023,6 +2203,56 @@ impl Grid {
             }
         }
         None
+    }
+
+    pub fn set_hover_position(&mut self, new_pos: Option<Position>) {
+        if self.hover_position == new_pos {
+            return;
+        }
+
+        // Mark the canonical group containing the old hover row dirty.
+        if let Some(old_pos) = self.hover_position {
+            self.mark_logical_line_dirty(old_pos.line.0 as usize);
+        }
+        // Mark the canonical group containing the new hover row dirty.
+        if let Some(new_pos_inner) = new_pos {
+            self.mark_logical_line_dirty(new_pos_inner.line.0 as usize);
+        }
+
+        self.hover_position = new_pos;
+    }
+
+    /// Mark all physical rows belonging to the logical line group that contains
+    /// `row_idx` as dirty in the output buffer.
+    fn mark_logical_line_dirty(&mut self, row_idx: usize) {
+        if row_idx >= self.viewport.len() {
+            return;
+        }
+        // Walk backward to find the canonical root of this logical line group.
+        let mut canonical = row_idx;
+        while canonical > 0
+            && !self
+                .viewport
+                .get(canonical)
+                .map(|r| r.is_canonical)
+                .unwrap_or(true)
+        {
+            canonical -= 1;
+        }
+        // Walk forward over non-canonical tail rows.
+        let mut end = canonical;
+        while end + 1 < self.viewport.len()
+            && !self
+                .viewport
+                .get(end + 1)
+                .map(|r| r.is_canonical)
+                .unwrap_or(true)
+        {
+            end += 1;
+        }
+        for r in canonical..=end {
+            self.output_buffer.update_line(r);
+        }
     }
 
     pub fn start_selection(&mut self, start: &Position) {

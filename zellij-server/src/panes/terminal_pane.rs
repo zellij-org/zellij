@@ -972,6 +972,10 @@ impl Pane for TerminalPane {
         self.grid.clear_plugin_highlights(plugin_id);
         self.set_should_render(true);
     }
+    fn set_hover_position(&mut self, position: Option<Position>) {
+        self.grid.set_hover_position(position);
+        self.set_should_render(true);
+    }
     fn plugin_highlight_at(
         &self,
         position: &Position,

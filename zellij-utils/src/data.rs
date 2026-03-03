@@ -1227,6 +1227,7 @@ pub struct RegexHighlight {
     pub pattern: String, // key for upsert; also the regex source
     pub style: HighlightStyle,
     pub context: BTreeMap<String, String>, // arbitrary data echoed back verbatim on click
+    pub on_hover: bool, // if true, only rendered when the cursor overlaps this match
 }
 
 // these are used for the web client

@@ -137,6 +137,7 @@ enum MouseAction {
     },
     UpdateHover {
         pane_id: Option<PaneId>,
+        position: Option<Position>,
     },
     SendToTerminal {
         pane_id: PaneId,
@@ -637,7 +638,11 @@ impl MouseHandler {
                 is_floating: _,
                 position,
             } => {
-                tab.mouse_hover_pane_id.remove(&client_id);
+                if let Some(prev_pid) = tab.mouse_hover_pane_id.remove(&client_id) {
+                    if let Some(pane) = tab.get_pane_with_id_mut(prev_pid) {
+                        pane.set_hover_position(None);
+                    }
+                }
                 Self::start_pane_resize_with_mouse(tab, pane_id, edge, position, client_id)
                     .with_context(err_context)?;
                 Ok(MouseEffect::state_changed())
@@ -737,8 +742,8 @@ impl MouseHandler {
             MouseAction::ResizeScrollDown { pane_id } => {
                 Self::handle_resize_scroll_down(tab, pane_id, client_id).with_context(err_context)
             },
-            MouseAction::UpdateHover { pane_id } => {
-                Self::execute_update_hover(tab, pane_id, client_id)
+            MouseAction::UpdateHover { pane_id, position } => {
+                Self::execute_update_hover(tab, pane_id, position, client_id)
             },
             MouseAction::SendToTerminal { pane_id, event } => {
                 Self::execute_send_to_terminal(tab, pane_id, event, client_id)
@@ -781,7 +786,11 @@ impl MouseHandler {
         client_id: ClientId,
     ) -> Result<MouseEffect> {
         let err_context = || "failed to focus pane";
-        tab.mouse_hover_pane_id.remove(&client_id);
+        if let Some(prev_pid) = tab.mouse_hover_pane_id.remove(&client_id) {
+            if let Some(pane) = tab.get_pane_with_id_mut(prev_pid) {
+                pane.set_hover_position(None);
+            }
+        }
         let active_pane_id_before = tab
             .get_active_pane_id(client_id)
             .ok_or_else(|| anyhow!("Failed to find active pane"))?;
@@ -913,9 +922,11 @@ impl MouseHandler {
     fn execute_update_hover(
         tab: &mut Tab,
         pane_id: Option<PaneId>,
+        position: Option<Position>,
         client_id: ClientId,
     ) -> Result<MouseEffect> {
         let mut should_render = false;
+        let previous_hover_pane_id = tab.mouse_hover_pane_id.get(&client_id).copied();
         match pane_id {
             Some(pid) => {
                 if let Some(pane) = tab.get_pane_with_id(pid) {
@@ -934,6 +945,31 @@ impl MouseHandler {
                     should_render = true;
                 }
             },
+        }
+
+        // Clear hover position on previously hovered pane (if pane changed).
+        if let Some(prev_pane_id) = previous_hover_pane_id {
+            if Some(prev_pane_id) != pane_id {
+                if let Some(pane) = tab.get_pane_with_id_mut(prev_pane_id) {
+                    pane.set_hover_position(None);
+                }
+            }
+        }
+        // Set hover position on newly hovered pane.
+        if let Some(pid) = pane_id {
+            if let Some(raw_pos) = position {
+                if let Some(pane) = tab.get_pane_with_id_mut(pid) {
+                    let relative = pane.relative_position(&raw_pos);
+                    pane.set_hover_position(Some(relative));
+                }
+            }
+        } else {
+            // Cursor left all panes — clear the previous pane if not already cleared.
+            if let Some(prev_pane_id) = previous_hover_pane_id {
+                if let Some(pane) = tab.get_pane_with_id_mut(prev_pane_id) {
+                    pane.set_hover_position(None);
+                }
+            }
         }
 
         if tab.mouse_help_text_visible.remove(&client_id).is_some() {
@@ -973,9 +1009,20 @@ impl MouseHandler {
                         .with_context(err_context)?;
                 }
             }
-            let removed_hover = tab.mouse_hover_pane_id.remove(&client_id);
-            if removed_hover.is_some() {
+            if let Some(removed_hover_pid) = tab.mouse_hover_pane_id.remove(&client_id) {
+                if let Some(pane) = tab.get_pane_with_id_mut(removed_hover_pid) {
+                    pane.set_hover_position(None);
+                }
                 should_render = true;
+            }
+            // Update hover position on the active pane during motion events
+            // so that on_hover highlights work for the focused pane too.
+            if event.event_type == MouseEventType::Motion {
+                if let Some(pane) = tab.get_pane_with_id_mut(pane_id) {
+                    let relative = pane.relative_position(&event.position);
+                    pane.set_hover_position(Some(relative));
+                    should_render = true;
+                }
             }
 
             if event.event_type == MouseEventType::Motion && tab.mouse_hover_effects {
@@ -1222,7 +1269,10 @@ impl MouseHandler {
             && !event.middle;
         if is_buttonless_motion {
             let Some(pane_id) = ctx.pane_id_at_position else {
-                return Ok(MouseAction::UpdateHover { pane_id: None });
+                return Ok(MouseAction::UpdateHover {
+                    pane_id: None,
+                    position: None,
+                });
             };
             let is_active_pane = Some(pane_id) == ctx.active_pane_id;
             if is_active_pane {
@@ -1233,6 +1283,7 @@ impl MouseHandler {
             }
             return Ok(MouseAction::UpdateHover {
                 pane_id: Some(pane_id),
+                position: Some(event.position),
             });
         }
 

@@ -1254,6 +1254,7 @@ message RegexHighlight {
   string pattern = 1;
   HighlightStyle style = 2;
   repeated ContextItem context = 3;
+  bool on_hover = 4;
 }
 
 message SetPaneRegexHighlightsPayload {
