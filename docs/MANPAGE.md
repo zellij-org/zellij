@@ -155,7 +155,9 @@ ACTIONS
   Right, Up, Down).
 * __Clear__ - clears current screen.
 * __DumpScreen: <File\> [--pane-id <ID\>]__ - dumps the pane content to the specified file.
-  If --pane-id is provided, dumps the specified terminal pane; otherwise dumps the focused pane.
+  If --pane-id is provided, dumps the specified pane; otherwise dumps the focused pane.
+  <ID\> can be a bare integer (eg. 1), a terminal pane id (eg. terminal_1) or a plugin pane id (eg. plugin_1).
+  A bare integer is equivalent to a terminal pane id with the same number.
 * __DumpLayout: <File\>__ - dumps the screen in the specified or default file.
 * __EditScrollback__ - replaces the current pane with the scrollback buffer.
 * __ScrollUp__ - scrolls up 1 line in the focused pane.
