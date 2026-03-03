@@ -143,7 +143,9 @@ pub struct WebCli {
         display_order = 5
     )]
     pub daemonize: bool,
-    /// Timeout in seconds waiting for the server to start (default: 10)
+    /// Timeout in seconds waiting for the server to start (default: 10).
+    /// Only used on Windows where the daemonized server is polled via TCP.
+    /// On Unix, startup signaling uses pipes and this option is ignored.
     #[clap(long, value_parser, display_order = 6)]
     pub server_startup_timeout: Option<u64>,
     /// Create a login token for the web interface, will only be displayed once and cannot later be
