@@ -258,6 +258,7 @@ pub enum ScreenContext {
     Exit,
     ClearScreen,
     DumpScreen,
+    DumpScreenForPaneId,
     DumpLayout,
     SaveSession,
     EditScrollback,

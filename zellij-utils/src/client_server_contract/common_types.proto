@@ -243,6 +243,7 @@ message Action {
     CurrentTabInfoAction current_tab_info = 105;
     ShowFloatingPanesAction show_floating_panes = 106;
     HideFloatingPanesAction hide_floating_panes = 107;
+    DumpScreenForPaneIdAction dump_screen_for_pane_id = 108;
   }
 }
 
@@ -334,6 +335,7 @@ message CurrentTabInfoAction {
 message TogglePanePinnedAction {}
 message TogglePaneInGroupAction {}
 message ToggleGroupMarkingAction {}
+message ListPanesAction {}
 
 // Complex action types (with data)
 message WriteAction {
@@ -384,6 +386,12 @@ message MovePaneAction {
 message DumpScreenAction {
   string file_path = 1;
   bool include_scrollback = 2;
+}
+
+message DumpScreenForPaneIdAction {
+  string file_path = 1;
+  bool include_scrollback = 2;
+  PaneId pane_id = 3;
 }
 
 message ScrollUpAtAction {
@@ -439,6 +447,7 @@ message NewStackedPaneAction {
   optional RunCommandAction command = 1;
   optional string pane_name = 2;
   bool near_current_pane = 3;
+  optional PaneId stack_with_pane_id = 4;
 }
 
 message NewBlockingPaneAction {
