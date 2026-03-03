@@ -7,7 +7,10 @@ use std::{
     io,
     os::windows::ffi::OsStrExt,
     os::windows::io::{FromRawHandle, IntoRawHandle, OwnedHandle},
-    sync::{Arc, Mutex},
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc, Mutex,
+    },
 };
 
 use tokio::io::AsyncReadExt;
@@ -40,6 +43,11 @@ const PIPE_ACCESS_INBOUND: u32 = 0x00000001;
 const PIPE_TYPE_BYTE: u32 = 0;
 const PIPE_WAIT: u32 = 0;
 const GENERIC_WRITE: u32 = 0x40000000;
+
+/// Monotonic counter so each ConPTY output pipe gets a unique name, even when
+/// re-spawning on the same `terminal_id` (the old async reader may still hold
+/// the previous pipe handle).
+static PIPE_SEQ: AtomicU64 = AtomicU64::new(0);
 
 /// Per-terminal ConPTY state.
 struct ConPtyTerminal {
@@ -185,10 +193,12 @@ fn build_environment_block(terminal_id: u32) -> Vec<u16> {
 /// (read) end has `FILE_FLAG_OVERLAPPED` for IOCP and the client (write) end
 /// is synchronous (required by ConPTY).
 fn create_overlapped_output_pipe(terminal_id: u32) -> io::Result<(HANDLE, HANDLE)> {
+    let seq = PIPE_SEQ.fetch_add(1, Ordering::Relaxed);
     let name = format!(
-        r"\\.\pipe\zellij-pty-{}-{}",
+        r"\\.\pipe\zellij-pty-{}-{}-{}",
         std::process::id(),
-        terminal_id
+        terminal_id,
+        seq
     );
     let wide_name = to_wide(&name);
 
