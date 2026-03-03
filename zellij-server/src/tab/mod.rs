@@ -16,7 +16,7 @@ use uuid::Uuid;
 use zellij_utils::data::PaneContents;
 use zellij_utils::data::{
     Direction, KeyWithModifier, NewPanePlacement, PaneInfo, PermissionStatus, PermissionType,
-    PluginPermission, ResizeStrategy, WebSharing,
+    PluginPermission, RegexHighlight, ResizeStrategy, Style, WebSharing,
 };
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
@@ -55,9 +55,7 @@ use std::{
     str,
 };
 use zellij_utils::{
-    data::{
-        Event, FloatingPaneCoordinates, InputMode, ModeInfo, Palette, PaletteColor, Style, Styling,
-    },
+    data::{Event, FloatingPaneCoordinates, InputMode, ModeInfo, Palette, PaletteColor, Styling},
     input::{
         command::TerminalAction,
         layout::{
@@ -608,6 +606,20 @@ pub trait Pane {
         _get_full_scrollback: bool,
     ) -> PaneContents;
     fn update_exit_status(&mut self, _exit_status: i32) {}
+    fn set_plugin_regex_highlights(
+        &mut self,
+        _plugin_id: u32,
+        _highlights: Vec<RegexHighlight>,
+        _style: &Style,
+    ) {
+    }
+    fn clear_plugin_highlights(&mut self, _plugin_id: u32) {}
+    fn plugin_highlight_at(
+        &self,
+        _position: &Position,
+    ) -> Option<(u32, String, String, BTreeMap<String, String>)> {
+        None
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -4726,6 +4738,62 @@ impl Tab {
             pane.clear_pane_frame_color_override(client_id);
         }
     }
+    pub fn set_plugin_regex_highlights_for_pane(
+        &mut self,
+        pane_id: PaneId,
+        plugin_id: u32,
+        highlights: Vec<RegexHighlight>,
+        style: &Style,
+    ) {
+        if let Some(pane) = self
+            .tiled_panes
+            .get_pane_mut(pane_id)
+            .or_else(|| self.floating_panes.get_pane_mut(pane_id))
+            .or_else(|| {
+                self.suppressed_panes
+                    .values_mut()
+                    .find(|s_p| s_p.1.pid() == pane_id)
+                    .map(|s_p| &mut s_p.1)
+            })
+        {
+            pane.set_plugin_regex_highlights(plugin_id, highlights, style);
+        }
+    }
+
+    pub fn clear_all_plugin_highlights(&mut self, plugin_id: u32) {
+        for pane_id in self.get_all_pane_ids() {
+            if let Some(pane) = self
+                .tiled_panes
+                .get_pane_mut(pane_id)
+                .or_else(|| self.floating_panes.get_pane_mut(pane_id))
+                .or_else(|| {
+                    self.suppressed_panes
+                        .values_mut()
+                        .find(|s_p| s_p.1.pid() == pane_id)
+                        .map(|s_p| &mut s_p.1)
+                })
+            {
+                pane.clear_plugin_highlights(plugin_id);
+            }
+        }
+    }
+
+    pub fn clear_plugin_highlights_for_pane(&mut self, pane_id: PaneId, plugin_id: u32) {
+        if let Some(pane) = self
+            .tiled_panes
+            .get_pane_mut(pane_id)
+            .or_else(|| self.floating_panes.get_pane_mut(pane_id))
+            .or_else(|| {
+                self.suppressed_panes
+                    .values_mut()
+                    .find(|s_p| s_p.1.pid() == pane_id)
+                    .map(|s_p| &mut s_p.1)
+            })
+        {
+            pane.clear_plugin_highlights(plugin_id);
+        }
+    }
+
     pub fn update_plugin_loading_stage(&mut self, pid: u32, loading_indication: LoadingIndication) {
         if let Some(plugin_pane) = self
             .tiled_panes

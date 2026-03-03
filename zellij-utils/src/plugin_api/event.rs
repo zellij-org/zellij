@@ -500,6 +500,26 @@ impl TryFrom<ProtobufEvent> for Event {
                 },
                 _ => Err("Malformed payload for PluginConfigurationChanged Event"),
             },
+            Some(ProtobufEventType::HighlightClicked) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::HighlightClickedPayload(p)) => {
+                    let pane_id = p
+                        .pane_id
+                        .ok_or("Missing pane_id in HighlightClicked")?
+                        .try_into()?;
+                    let context = p
+                        .context
+                        .into_iter()
+                        .map(|item| (item.name, item.value))
+                        .collect();
+                    Ok(Event::HighlightClicked {
+                        pane_id,
+                        pattern: p.pattern,
+                        matched_string: p.matched_string,
+                        context,
+                    })
+                },
+                _ => Err("Malformed payload for HighlightClicked Event"),
+            },
             None => Err("Unknown Protobuf Event"),
         }
     }
@@ -991,6 +1011,25 @@ impl TryFrom<Event> for ProtobufEvent {
                     payload: Some(event::Payload::PluginConfigurationChangedPayload(payload)),
                 })
             },
+            Event::HighlightClicked {
+                pane_id,
+                pattern,
+                matched_string,
+                context,
+            } => Ok(ProtobufEvent {
+                name: ProtobufEventType::HighlightClicked as i32,
+                payload: Some(event::Payload::HighlightClickedPayload(
+                    HighlightClickedPayload {
+                        pane_id: pane_id.try_into().ok(),
+                        pattern,
+                        matched_string,
+                        context: context
+                            .into_iter()
+                            .map(|(name, value)| ProtobufContextItem { name, value })
+                            .collect(),
+                    },
+                )),
+            }),
         }
     }
 }
@@ -1901,6 +1940,7 @@ impl TryFrom<ProtobufEventType> for EventType {
             ProtobufEventType::CwdChanged => EventType::CwdChanged,
             ProtobufEventType::AvailableLayoutInfo => EventType::AvailableLayoutInfo,
             ProtobufEventType::PluginConfigurationChanged => EventType::PluginConfigurationChanged,
+            ProtobufEventType::HighlightClicked => EventType::HighlightClicked,
         })
     }
 }
@@ -1950,6 +1990,7 @@ impl TryFrom<EventType> for ProtobufEventType {
             EventType::CwdChanged => ProtobufEventType::CwdChanged,
             EventType::AvailableLayoutInfo => ProtobufEventType::AvailableLayoutInfo,
             EventType::PluginConfigurationChanged => ProtobufEventType::PluginConfigurationChanged,
+            EventType::HighlightClicked => ProtobufEventType::HighlightClicked,
         })
     }
 }

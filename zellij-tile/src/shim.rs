@@ -2749,6 +2749,37 @@ pub fn hide_floating_panes(tab_id: Option<usize>) -> Result<bool, String> {
     }
 }
 
+/// Set or update regex-based content highlights for a pane.
+///
+/// Each entry in `highlights` is keyed by its `pattern` string. Calling this
+/// function again with the same pattern updates its style; new patterns are
+/// added; patterns not present in this call are kept. To remove all highlights
+/// for this plugin on the pane, use `clear_pane_highlights`.
+///
+/// Pattern matching is performed by the server against the current viewport at
+/// render time. The plugin never handles coordinates, so there is no race
+/// condition between content changes and highlight application.
+///
+/// Requires `ChangeApplicationState` permission.
+pub fn set_pane_regex_highlights(pane_id: PaneId, highlights: Vec<RegexHighlight>) {
+    let plugin_command = PluginCommand::SetPaneRegexHighlights(pane_id, highlights);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+/// Remove all regex highlights this plugin has set on the given pane.
+///
+/// Other plugins' highlights on the same pane are not affected.
+///
+/// Requires `ChangeApplicationState` permission.
+pub fn clear_pane_highlights(pane_id: PaneId) {
+    let plugin_command = PluginCommand::ClearPaneHighlights(pane_id);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 #[link(wasm_import_module = "zellij")]
 extern "C" {
     fn host_run_plugin_command();

@@ -514,6 +514,10 @@ impl WasmBridge {
                     .senders
                     .send_to_screen(ScreenInstruction::ClearKeyPressesIntercepts(client_id));
             }
+            // Clear any regex highlights this plugin registered across all panes
+            let _ = self
+                .senders
+                .send_to_screen(ScreenInstruction::ClearAllPluginHighlights(plugin_id));
 
             // Send worker exit messages
             for (_worker_name, worker_sender) in workers {
@@ -2009,8 +2013,9 @@ fn check_event_permission(
         | Event::CommandPaneReRun(..)
         | Event::CwdChanged(..)
         | Event::AvailableLayoutInfo(..)
-        | Event::PluginConfigurationChanged(..)
-        | Event::InputReceived => PermissionType::ReadApplicationState,
+         | Event::PluginConfigurationChanged(..)
+         | Event::HighlightClicked { .. }
+         | Event::InputReceived => PermissionType::ReadApplicationState,
         Event::WebServerStatus(..) => PermissionType::StartWebServer,
         Event::PaneRenderReport(..) => PermissionType::ReadPaneContents,
         Event::UserAction(..) => PermissionType::InterceptInput,

@@ -7,7 +7,8 @@ pub use super::generated_api::api::{
         break_panes_to_tab_with_index_response, delete_layout_response, dump_layout_response,
         dump_session_layout_response, edit_layout_response, focus_or_create_tab_response,
         get_focused_pane_info_response, get_pane_cwd_response, get_pane_pid_response,
-        get_pane_running_command_response, hide_floating_panes_response, new_tab_response,
+        get_pane_running_command_response, hide_floating_panes_response,
+        highlight_style::Style as ProtobufHighlightStyleVariant, new_tab_response,
         parse_layout_response, plugin_command::Payload, rename_layout_response,
         save_layout_response, save_session_response, show_floating_panes_response,
         BreakPanesToNewTabPayload,
@@ -16,17 +17,19 @@ pub use super::generated_api::api::{
         BreakPanesToTabWithIdResponse as ProtobufBreakPanesToTabWithIdResponse,
         BreakPanesToTabWithIndexPayload,
         BreakPanesToTabWithIndexResponse as ProtobufBreakPanesToTabWithIndexResponse,
-        ChangeFloatingPanesCoordinatesPayload, ChangeHostFolderPayload,
+        ChangeFloatingPanesCoordinatesPayload, ChangeHostFolderPayload, ClearPaneHighlightsPayload,
         ClearScreenForPaneIdPayload, CliPipeOutputPayload, CloseMultiplePanesPayload,
         CloseTabWithIdPayload, CloseTabWithIndexPayload, CommandName, ContextItem,
         CopyToClipboardPayload, CreateTokenResponse as ProtobufCreateTokenResponse,
         CreateTokenResponse, CurrentSessionLastSavedTimePayload,
         CurrentSessionLastSavedTimeResponse as ProtobufCurrentSessionLastSavedTimeResponse,
-        CursorPosition, DeleteLayoutPayload, DeleteLayoutResponse as ProtobufDeleteLayoutResponse,
-        DumpLayoutPayload, DumpLayoutResponse as ProtobufDumpLayoutResponse,
-        DumpSessionLayoutPayload, DumpSessionLayoutResponse as ProtobufDumpSessionLayoutResponse,
-        EditLayoutPayload, EditLayoutResponse as ProtobufEditLayoutResponse,
-        EditScrollbackForPaneWithIdPayload, EmbedMultiplePanesPayload, EnvVariable, ExecCmdPayload,
+        CursorPosition, CustomIndexHighlight as ProtobufCustomIndexHighlight,
+        CustomRgbHighlight as ProtobufCustomRgbHighlight, DeleteLayoutPayload,
+        DeleteLayoutResponse as ProtobufDeleteLayoutResponse, DumpLayoutPayload,
+        DumpLayoutResponse as ProtobufDumpLayoutResponse, DumpSessionLayoutPayload,
+        DumpSessionLayoutResponse as ProtobufDumpSessionLayoutResponse, EditLayoutPayload,
+        EditLayoutResponse as ProtobufEditLayoutResponse, EditScrollbackForPaneWithIdPayload,
+        EmbedMultiplePanesPayload, EnvVariable, ExecCmdPayload,
         FixedOrPercent as ProtobufFixedOrPercent,
         FixedOrPercentValue as ProtobufFixedOrPercentValue, FloatMultiplePanesPayload,
         FloatingPaneCoordinates as ProtobufFloatingPaneCoordinates,
@@ -48,10 +51,11 @@ pub use super::generated_api::api::{
         GetTabInfoPayload, GetTabInfoResponse as ProtobufGetTabInfoResponse, GoToTabWithIdPayload,
         GroupAndUngroupPanesPayload, HideFloatingPanesPayload as ProtobufHideFloatingPanesPayload,
         HideFloatingPanesResponse as ProtobufHideFloatingPanesResponse, HidePaneWithIdPayload,
-        HighlightAndUnhighlightPanesPayload, HttpVerb as ProtobufHttpVerb, IdAndNewName,
-        KeyToRebind, KeyToUnbind, KillSessionsPayload, ListTokensResponse, LoadNewPluginPayload,
-        MessageToPluginPayload, MovePaneWithPaneIdInDirectionPayload, MovePaneWithPaneIdPayload,
-        MovePayload, NewPluginArgs as ProtobufNewPluginArgs, NewTabPayload,
+        HighlightAndUnhighlightPanesPayload, HighlightStyle as ProtobufHighlightStyle,
+        HttpVerb as ProtobufHttpVerb, IdAndNewName, KeyToRebind, KeyToUnbind, KillSessionsPayload,
+        ListTokensResponse, LoadNewPluginPayload, MessageToPluginPayload,
+        MovePaneWithPaneIdInDirectionPayload, MovePaneWithPaneIdPayload, MovePayload,
+        NewPluginArgs as ProtobufNewPluginArgs, NewTabPayload,
         NewTabResponse as ProtobufNewTabResponse, NewTabsResponse as ProtobufNewTabsResponse,
         NewTabsWithLayoutInfoPayload,
         OpenCommandPaneBackgroundResponse as ProtobufOpenCommandPaneBackgroundResponse,
@@ -92,19 +96,19 @@ pub use super::generated_api::api::{
         PageScrollDownInPaneIdPayload, PageScrollUpInPaneIdPayload, PaneId as ProtobufPaneId,
         PaneIdAndFloatingPaneCoordinates, PaneType as ProtobufPaneType, ParseLayoutPayload,
         ParseLayoutResponse as ProtobufParseLayoutResponse, PluginCommand as ProtobufPluginCommand,
-        PluginMessagePayload, RebindKeysPayload, ReconfigurePayload, ReloadPluginPayload,
-        RenameLayoutPayload, RenameLayoutResponse as ProtobufRenameLayoutResponse,
-        RenameTabWithIdPayload, RenameWebLoginTokenPayload, RenameWebTokenResponse,
-        ReplacePaneWithExistingPanePayload, RequestPluginPermissionPayload,
-        RerunCommandPanePayload, ResizePaneIdWithDirectionPayload, ResizePayload,
-        RevokeAllWebTokensResponse, RevokeTokenResponse, RevokeWebLoginTokenPayload,
+        PluginMessagePayload, RebindKeysPayload, ReconfigurePayload,
+        RegexHighlight as ProtobufRegexHighlight, ReloadPluginPayload, RenameLayoutPayload,
+        RenameLayoutResponse as ProtobufRenameLayoutResponse, RenameTabWithIdPayload,
+        RenameWebLoginTokenPayload, RenameWebTokenResponse, ReplacePaneWithExistingPanePayload,
+        RequestPluginPermissionPayload, RerunCommandPanePayload, ResizePaneIdWithDirectionPayload,
+        ResizePayload, RevokeAllWebTokensResponse, RevokeTokenResponse, RevokeWebLoginTokenPayload,
         RunActionPayload, RunCommandPayload, RunningCommand as ProtobufRunningCommand,
         SaveLayoutPayload, SaveLayoutResponse as ProtobufSaveLayoutResponse, SaveSessionPayload,
         SaveSessionResponse as ProtobufSaveSessionResponse, ScrollDownInPaneIdPayload,
         ScrollToBottomInPaneIdPayload, ScrollToTopInPaneIdPayload, ScrollUpInPaneIdPayload,
         SetFloatingPanePinnedPayload, SetPaneBorderlessPayload, SetPaneColorPayload,
-        SetSelfMouseSelectionSupportPayload, SetTimeoutPayload, ShowCursorPayload,
-        ShowFloatingPanesPayload as ProtobufShowFloatingPanesPayload,
+        SetPaneRegexHighlightsPayload, SetSelfMouseSelectionSupportPayload, SetTimeoutPayload,
+        ShowCursorPayload, ShowFloatingPanesPayload as ProtobufShowFloatingPanesPayload,
         ShowFloatingPanesResponse as ProtobufShowFloatingPanesResponse, ShowPaneWithIdPayload,
         StackPanesPayload, SubscribePayload, SwitchSessionPayload, SwitchTabToIdPayload,
         SwitchTabToPayload, TogglePaneBorderlessPayload, TogglePaneEmbedOrEjectForPaneIdPayload,
@@ -118,8 +122,9 @@ pub use super::generated_api::api::{
 use crate::data::{
     ConnectToSession, DeleteLayoutResponse, EditLayoutResponse, FloatingPaneCoordinates,
     GetFocusedPaneInfoResponse, GetPaneCwdResponse, GetPanePidResponse,
-    GetPaneRunningCommandResponse, HttpVerb, InputMode, KeyWithModifier, MessageToPlugin,
-    NewPluginArgs, PaneId, PermissionType, PluginCommand, RenameLayoutResponse, SaveLayoutResponse,
+    GetPaneRunningCommandResponse, HighlightStyle, HttpVerb, InputMode, KeyWithModifier,
+    MessageToPlugin, NewPluginArgs, PaneId, PermissionType, PluginCommand, RegexHighlight,
+    RenameLayoutResponse, SaveLayoutResponse,
 };
 use crate::input::actions::Action;
 use crate::input::layout::PercentOrFixed;
@@ -2434,6 +2439,81 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 },
                 _ => Err("Mismatched payload for SetPaneColor"),
             },
+            Some(CommandName::SetPaneRegexHighlights) => {
+                match protobuf_plugin_command.payload {
+                    Some(Payload::SetPaneRegexHighlightsPayload(p)) => {
+                        let pane_id: PaneId = p
+                            .pane_id
+                            .ok_or("Missing pane_id in SetPaneRegexHighlights")?
+                            .try_into()?;
+                        let highlights = p
+                            .highlights
+                            .into_iter()
+                            .map(|h| {
+                                let style = match h.style.and_then(|s| s.style) {
+                                    Some(ProtobufHighlightStyleVariant::Emphasis0(_)) => {
+                                        HighlightStyle::Emphasis0
+                                    },
+                                    Some(ProtobufHighlightStyleVariant::Emphasis1(_)) => {
+                                        HighlightStyle::Emphasis1
+                                    },
+                                    Some(ProtobufHighlightStyleVariant::Emphasis2(_)) => {
+                                        HighlightStyle::Emphasis2
+                                    },
+                                    Some(ProtobufHighlightStyleVariant::Emphasis3(_)) => {
+                                        HighlightStyle::Emphasis3
+                                    },
+                                    Some(ProtobufHighlightStyleVariant::CustomRgb(c)) => {
+                                        HighlightStyle::CustomRgb {
+                                            fg: match (c.fg_r, c.fg_g, c.fg_b) {
+                                                (Some(r), Some(g), Some(b)) => {
+                                                    Some((r as u8, g as u8, b as u8))
+                                                },
+                                                _ => None,
+                                            },
+                                            bg: match (c.bg_r, c.bg_g, c.bg_b) {
+                                                (Some(r), Some(g), Some(b)) => {
+                                                    Some((r as u8, g as u8, b as u8))
+                                                },
+                                                _ => None,
+                                            },
+                                        }
+                                    },
+                                    Some(ProtobufHighlightStyleVariant::CustomIndex(c)) => {
+                                        HighlightStyle::CustomIndex {
+                                            fg: c.fg.map(|v| v as u8),
+                                            bg: c.bg.map(|v| v as u8),
+                                        }
+                                    },
+                                    None => HighlightStyle::Emphasis0, // fallback
+                                };
+                                let context = h
+                                    .context
+                                    .into_iter()
+                                    .map(|item| (item.name, item.value))
+                                    .collect();
+                                RegexHighlight {
+                                    pattern: h.pattern,
+                                    style,
+                                    context,
+                                }
+                            })
+                            .collect();
+                        Ok(PluginCommand::SetPaneRegexHighlights(pane_id, highlights))
+                    },
+                    _ => Err("Mismatched payload for SetPaneRegexHighlights"),
+                }
+            },
+            Some(CommandName::ClearPaneHighlights) => match protobuf_plugin_command.payload {
+                Some(Payload::ClearPaneHighlightsPayload(p)) => {
+                    let pane_id: PaneId = p
+                        .pane_id
+                        .ok_or("Missing pane_id in ClearPaneHighlights")?
+                        .try_into()?;
+                    Ok(PluginCommand::ClearPaneHighlights(pane_id))
+                },
+                _ => Err("Mismatched payload for ClearPaneHighlights"),
+            },
             None => Err("Unrecognized plugin command"),
         }
     }
@@ -3993,6 +4073,74 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     fg,
                     bg,
                 })),
+            }),
+            PluginCommand::SetPaneRegexHighlights(pane_id, highlights) => {
+                Ok(ProtobufPluginCommand {
+                    name: CommandName::SetPaneRegexHighlights as i32,
+                    payload: Some(Payload::SetPaneRegexHighlightsPayload(
+                        SetPaneRegexHighlightsPayload {
+                            pane_id: pane_id.try_into().ok(),
+                            highlights: highlights
+                                .into_iter()
+                                .map(|h| {
+                                    let style_variant = match h.style {
+                                        HighlightStyle::Emphasis0 => {
+                                            ProtobufHighlightStyleVariant::Emphasis0(true)
+                                        },
+                                        HighlightStyle::Emphasis1 => {
+                                            ProtobufHighlightStyleVariant::Emphasis1(true)
+                                        },
+                                        HighlightStyle::Emphasis2 => {
+                                            ProtobufHighlightStyleVariant::Emphasis2(true)
+                                        },
+                                        HighlightStyle::Emphasis3 => {
+                                            ProtobufHighlightStyleVariant::Emphasis3(true)
+                                        },
+                                        HighlightStyle::CustomRgb { fg, bg } => {
+                                            ProtobufHighlightStyleVariant::CustomRgb(
+                                                ProtobufCustomRgbHighlight {
+                                                    fg_r: fg.map(|(r, _, _)| r as u32),
+                                                    fg_g: fg.map(|(_, g, _)| g as u32),
+                                                    fg_b: fg.map(|(_, _, b)| b as u32),
+                                                    bg_r: bg.map(|(r, _, _)| r as u32),
+                                                    bg_g: bg.map(|(_, g, _)| g as u32),
+                                                    bg_b: bg.map(|(_, _, b)| b as u32),
+                                                },
+                                            )
+                                        },
+                                        HighlightStyle::CustomIndex { fg, bg } => {
+                                            ProtobufHighlightStyleVariant::CustomIndex(
+                                                ProtobufCustomIndexHighlight {
+                                                    fg: fg.map(|v| v as u32),
+                                                    bg: bg.map(|v| v as u32),
+                                                },
+                                            )
+                                        },
+                                    };
+                                    ProtobufRegexHighlight {
+                                        pattern: h.pattern,
+                                        style: Some(ProtobufHighlightStyle {
+                                            style: Some(style_variant),
+                                        }),
+                                        context: h
+                                            .context
+                                            .into_iter()
+                                            .map(|(name, value)| ContextItem { name, value })
+                                            .collect(),
+                                    }
+                                })
+                                .collect(),
+                        },
+                    )),
+                })
+            },
+            PluginCommand::ClearPaneHighlights(pane_id) => Ok(ProtobufPluginCommand {
+                name: CommandName::ClearPaneHighlights as i32,
+                payload: Some(Payload::ClearPaneHighlightsPayload(
+                    ClearPaneHighlightsPayload {
+                        pane_id: pane_id.try_into().ok(),
+                    },
+                )),
             }),
         }
     }

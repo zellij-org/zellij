@@ -1,9 +1,10 @@
 use super::sixel::{PixelRect, SixelGrid, SixelImageStore};
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::rc::Rc;
-use zellij_utils::data::Style;
+use zellij_utils::data::{HighlightStyle, RegexHighlight, Style};
 use zellij_utils::errors::prelude::*;
 
 use std::{
@@ -406,6 +407,8 @@ pub struct Grid {
     hyperlink_tracker: HyperlinkTracker,
     pub pane_default_fg: Option<AnsiCode>,
     pub pane_default_bg: Option<AnsiCode>,
+    pub plugin_highlights: HashMap<u32, Vec<(String, CompiledHighlight)>>,
+    // key: plugin_id (u32), inner vec: (pattern, compiled) pairs
 }
 
 impl Grid {
@@ -428,6 +431,26 @@ fn ansi_code_to_color_string(code: AnsiCode) -> Option<String> {
         AnsiCode::ColorIndex(idx) => Some(format!("{}", idx)),
         AnsiCode::NamedColor(named) => Some(format!("{:?}", named).to_lowercase()),
         _ => None,
+    }
+}
+
+/// A compiled highlight entry for one plugin/pattern combination.
+pub struct CompiledHighlight {
+    pub regex: regex::Regex,
+    pub fg: Option<AnsiCode>,
+    pub bg: Option<AnsiCode>,
+    pub context: BTreeMap<String, String>,
+}
+
+impl Clone for CompiledHighlight {
+    fn clone(&self) -> Self {
+        CompiledHighlight {
+            regex: regex::Regex::new(self.regex.as_str())
+                .unwrap_or_else(|_| regex::Regex::new("").unwrap()),
+            fg: self.fg,
+            bg: self.bg,
+            context: self.context.clone(),
+        }
     }
 }
 
@@ -544,6 +567,44 @@ impl Debug for Grid {
     }
 }
 
+fn resolve_highlight_colors(
+    style_decl: &HighlightStyle,
+    style: &Style,
+) -> (Option<AnsiCode>, Option<AnsiCode>) {
+    let palette_to_ansi = |c: PaletteColor| -> AnsiCode {
+        match c {
+            PaletteColor::Rgb(rgb) => AnsiCode::RgbCode(rgb),
+            PaletteColor::EightBit(i) => AnsiCode::ColorIndex(i),
+        }
+    };
+    match style_decl {
+        HighlightStyle::Emphasis0 => (
+            Some(palette_to_ansi(style.colors.text_unselected.background)),
+            Some(palette_to_ansi(style.colors.text_unselected.emphasis_0)),
+        ),
+        HighlightStyle::Emphasis1 => (
+            Some(palette_to_ansi(style.colors.text_unselected.background)),
+            Some(palette_to_ansi(style.colors.text_unselected.emphasis_1)),
+        ),
+        HighlightStyle::Emphasis2 => (
+            Some(palette_to_ansi(style.colors.text_unselected.background)),
+            Some(palette_to_ansi(style.colors.text_unselected.emphasis_2)),
+        ),
+        HighlightStyle::Emphasis3 => (
+            Some(palette_to_ansi(style.colors.text_unselected.background)),
+            Some(palette_to_ansi(style.colors.text_unselected.emphasis_3)),
+        ),
+        HighlightStyle::CustomRgb { fg, bg } => (
+            fg.map(|rgb| AnsiCode::RgbCode(rgb)),
+            bg.map(|rgb| AnsiCode::RgbCode(rgb)),
+        ),
+        HighlightStyle::CustomIndex { fg, bg } => (
+            fg.map(|i| AnsiCode::ColorIndex(i)),
+            bg.map(|i| AnsiCode::ColorIndex(i)),
+        ),
+    }
+}
+
 impl Grid {
     pub fn new(
         rows: usize,
@@ -621,6 +682,7 @@ impl Grid {
             hyperlink_tracker: HyperlinkTracker::new(),
             pane_default_fg: None,
             pane_default_bg: None,
+            plugin_highlights: HashMap::new(),
         }
     }
     pub fn render_full_viewport(&mut self) {
@@ -1255,6 +1317,34 @@ impl Grid {
                     }
                 }
             }
+            // Plugin regex highlights — applied after search so search takes visual priority
+            if !self.plugin_highlights.is_empty() {
+                let row_idx = character_chunk.y.saturating_sub(content_y);
+                if let Some(row) = self.viewport.get(row_idx) {
+                    let row_text: String = row.columns.iter().map(|c| c.character).collect();
+                    for (_plugin_id, pattern_map) in &self.plugin_highlights {
+                        for (_pattern, compiled) in pattern_map {
+                            for mat in compiled.regex.find_iter(&row_text) {
+                                let col_start = row_text[..mat.start()].chars().count();
+                                let col_end = row_text[..mat.end()].chars().count();
+                                let start = Position::new(row_idx as i32, col_start as u16);
+                                let end = Position::new(row_idx as i32, col_end as u16);
+                                let mut sel = Selection::default();
+                                sel.set_start_and_end_positions(start, end);
+                                if let Some(bg) = compiled.bg {
+                                    character_chunk.add_selection_and_colors(
+                                        sel,
+                                        bg,
+                                        compiled.fg,
+                                        content_x,
+                                        content_y,
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
         return Ok(Some((
             character_chunks,
@@ -1851,6 +1941,90 @@ impl Grid {
     fn set_preceding_character(&mut self, terminal_character: TerminalCharacter) {
         self.preceding_char = Some(terminal_character);
     }
+    /// Called by the server-side handler for SetPaneRegexHighlights.
+    /// Upserts highlights keyed by pattern string for the given plugin.
+    pub fn set_plugin_regex_highlights(
+        &mut self,
+        plugin_id: u32,
+        highlights: Vec<RegexHighlight>,
+        style: &Style,
+    ) {
+        let slot = self
+            .plugin_highlights
+            .entry(plugin_id)
+            .or_insert_with(Vec::new);
+        for h in highlights {
+            let (fg, bg) = resolve_highlight_colors(&h.style, style);
+            if let Ok(regex) = regex::Regex::new(&h.pattern) {
+                // Upsert: replace existing entry with same pattern, or push new
+                if let Some(existing) = slot.iter_mut().find(|(p, _)| p == &h.pattern) {
+                    existing.1 = CompiledHighlight {
+                        regex,
+                        fg,
+                        bg,
+                        context: h.context,
+                    };
+                } else {
+                    slot.push((
+                        h.pattern,
+                        CompiledHighlight {
+                            regex,
+                            fg,
+                            bg,
+                            context: h.context,
+                        },
+                    ));
+                }
+            } else {
+                log::warn!(
+                    "Plugin {} supplied invalid regex: {:?}",
+                    plugin_id,
+                    h.pattern
+                );
+            }
+        }
+        self.output_buffer.update_all_lines();
+    }
+
+    /// Called by the server-side handler for ClearPaneHighlights.
+    pub fn clear_plugin_highlights(&mut self, plugin_id: u32) {
+        if self.plugin_highlights.remove(&plugin_id).is_some() {
+            self.output_buffer.update_all_lines();
+        }
+    }
+
+    /// Returns (plugin_id, pattern, matched_string, context) if the given
+    /// pane-relative position falls inside any plugin highlight match, or None.
+    pub fn plugin_highlight_at(
+        &self,
+        position: &Position,
+    ) -> Option<(u32, String, String, BTreeMap<String, String>)> {
+        let row_idx = position.line.0 as usize;
+        let col = position.column.0 as usize;
+
+        let row = self.viewport.get(row_idx)?;
+        let row_text: String = row.columns.iter().map(|c| c.character).collect();
+
+        for (plugin_id, pattern_map) in &self.plugin_highlights {
+            for (pattern, compiled) in pattern_map {
+                for mat in compiled.regex.find_iter(&row_text) {
+                    let col_start = row_text[..mat.start()].chars().count();
+                    let col_end = row_text[..mat.end()].chars().count();
+                    if col >= col_start && col < col_end {
+                        let matched_string = mat.as_str().to_string();
+                        return Some((
+                            *plugin_id,
+                            pattern.clone(),
+                            matched_string,
+                            compiled.context.clone(),
+                        ));
+                    }
+                }
+            }
+        }
+        None
+    }
+
     pub fn start_selection(&mut self, start: &Position) {
         let old_selection = self.selection;
         self.click.record_click(*start);

@@ -7,6 +7,7 @@ use zellij_utils::position::Position;
 
 use crate::background_jobs::BackgroundJob;
 use crate::panes::PaneId;
+use crate::plugins::PluginInstruction;
 use crate::ClientId;
 
 use super::{Pane, Tab};
@@ -667,6 +668,24 @@ impl MouseHandler {
                     .get_pane_with_id_mut(pane_id)
                     .ok_or_else(|| anyhow!("Failed to find pane {pane_id:?}"))?;
                 let relative_position = pane.relative_position(&position);
+
+                // Check if click lands on a plugin highlight
+                if let Some((hit_plugin_id, pattern, matched_string, context)) =
+                    pane.plugin_highlight_at(&relative_position)
+                {
+                    let _ = tab
+                        .senders
+                        .send_to_plugin(PluginInstruction::HighlightClicked {
+                            plugin_id: hit_plugin_id,
+                            client_id,
+                            pane_id,
+                            pattern,
+                            matched_string,
+                            context,
+                        });
+                    return Ok(MouseEffect::state_changed());
+                }
+
                 let mut leave_clipboard_message = false;
                 pane.start_selection(&relative_position, client_id);
                 if pane.get_selected_text(client_id).is_some() {
