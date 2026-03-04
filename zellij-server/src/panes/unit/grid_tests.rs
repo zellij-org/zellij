@@ -4800,6 +4800,15 @@ fn csi_2027_mode_persists_across_alternate_screen() {
 }
 
 // ── Grapheme-aware editing semantics ─────────────────────────────────────────
+//
+// NOTE: The tests in this section reflect observed nvim behaviour in 2027 mode,
+// not a strict reading of the CSI 2027 spec.  The Mitchell Hashimoto article
+// suggests that BS should move back by one full grapheme cluster (i.e. 2 columns
+// for a wide char).  In practice, nvim sends multiple BS characters — one per
+// display column — so it expects BS to always move back exactly 1 column.
+// If a future application relies on spec-compliant EGC-width BS, this will need
+// revisiting.  The zwj_deletion_nvim_sequence_clears_last_emoji test captures
+// the exact byte sequence that triggered the original bug report.
 
 #[test]
 fn backspace_moves_back_one_column_in_legacy_mode() {
@@ -4811,15 +4820,17 @@ fn backspace_moves_back_one_column_in_legacy_mode() {
 }
 
 #[test]
-fn backspace_moves_back_full_egc_width_in_2027_mode() {
-    // In 2027 mode, backspace over a 2-wide character should move cursor back 2 columns.
+fn backspace_moves_back_one_column_in_2027_mode_over_wide_char() {
+    // Verifies nvim-compatible BS behaviour: 1 column per BS, regardless of
+    // grapheme cluster width.  nvim sends N×BS to move back past an N-wide char.
     let mut grid = create_grid_with_content("");
     feed_bytes(&mut grid, b"\x1b[?2027h");
-    // Place a wide character (CJK, width=2) then send backspace
     feed_bytes(&mut grid, "中".as_bytes());
     assert_eq!(grid.cursor.x, 2, "cursor should be at col 2 after wide char");
     feed_bytes(&mut grid, b"\x08");
-    assert_eq!(grid.cursor.x, 0, "2027 backspace should move back 2 columns for a wide char");
+    assert_eq!(grid.cursor.x, 1, "one BS = 1 display column back (nvim sends 2×BS for a 2-wide char)");
+    feed_bytes(&mut grid, b"\x08");
+    assert_eq!(grid.cursor.x, 0, "second BS reaches col 0");
 }
 
 #[test]
@@ -4836,7 +4847,7 @@ fn backspace_moves_back_one_column_for_narrow_char_in_2027_mode() {
 #[test]
 fn cursor_left_moves_by_column_in_2027_mode() {
     // CSI D (CUB) counts display columns in all modes, including 2027.
-    // Only BS/^H steps by grapheme cluster; CUB N always means N display columns.
+    // nvim sends CUB N where N is the display-column count, not the EGC count.
     let mut grid = create_grid_with_content("");
     feed_bytes(&mut grid, b"\x1b[?2027h");
     feed_bytes(&mut grid, "中".as_bytes()); // wide char, cursor at x=2
@@ -4861,8 +4872,7 @@ fn cursor_left_count_by_column_in_2027_mode() {
 #[test]
 fn cursor_forward_moves_by_column_not_egc_width() {
     // CSI C (CUF) counts display columns in all modes, including 2027.
-    // This is intentional: applications send N=display-width for wide chars.
-    // Only BS/^H steps by grapheme cluster in 2027 mode.
+    // nvim sends N=display-width for wide chars (observed behaviour).
     let mut grid = create_grid_with_content("");
     feed_bytes(&mut grid, b"\x1b[?2027h");
     feed_bytes(&mut grid, "中".as_bytes()); // wide char at x=0, cursor at x=2
@@ -5042,18 +5052,18 @@ fn multiple_zwj_emojis_cursor_at_correct_column() {
 }
 
 #[test]
-fn backspace_in_2027_mode_over_zwj_emoji_moves_back_full_width() {
-    // In 2027 mode, BS (^H) should move the cursor back by the full EGC width.
-    // A ZWJ family emoji is 2 columns wide — BS should move back 2, not 1.
+fn backspace_moves_one_column_in_2027_mode_over_zwj_emoji() {
+    // BS (^H) always moves back exactly 1 display column in all modes.
+    // nvim sends 2×BS to move back past a 2-wide emoji (it tracks the width itself).
     let mut grid = create_grid_with_content("");
-    feed_bytes(&mut grid, b"\x1b[?2027h"); // enable 2027 mode
-    let family = "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}"; // 👨‍👩‍👧
+    feed_bytes(&mut grid, b"\x1b[?2027h");
+    let family = "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}"; // 👨‍👩‍👧, width=2
     feed_bytes(&mut grid, family.as_bytes());
     assert_eq!(grid.cursor.x, 2, "cursor should be at col 2 after one ZWJ emoji");
-    // Backspace (0x08)
-    feed_bytes(&mut grid, b"\x08");
-    assert_eq!(grid.cursor.x, 0,
-        "BS in 2027 mode should move back 2 columns over a 2-wide ZWJ emoji, got {}", grid.cursor.x);
+    feed_bytes(&mut grid, b"\x08"); // one BS = 1 column back
+    assert_eq!(grid.cursor.x, 1, "one BS moves back exactly 1 display column");
+    feed_bytes(&mut grid, b"\x08"); // second BS = 1 more column back
+    assert_eq!(grid.cursor.x, 0, "two BS moves back 2 columns total (past the 2-wide emoji)");
 }
 
 #[test]
@@ -5099,38 +5109,44 @@ fn zwj_deletion_dcb_sequence_clears_last_emoji() {
 #[test]
 fn zwj_deletion_nvim_sequence_clears_last_emoji() {
     // Simulates nvim INSERT-mode backspace in 2027 mode (the actual failing scenario).
-    // nvim sends CUB(2) meaning "2 display columns back" — NOT "2 grapheme clusters".
-    // Then writes 2 spaces to clear the emoji's columns.
-    // Then CUB(2) again to reposition cursor.
     //
-    // With the old (broken) CUB-as-grapheme-clusters handler:
-    //   CUB(2) from col 6 → 2 clusters back → 4 cols back → cursor 2
-    //   spaces at col 2 erase emoji2 instead of emoji3!
+    // Observed from debug log: nvim's delete pattern for a 2-wide emoji is:
+    //   CUP(1, end_col+1) + BS BS + SP SP
+    //   i.e. position past the emoji, move back 2 columns via 2×BS, write 2 spaces to erase.
     //
-    // With the fixed (column-based) CUB handler:
-    //   CUB(2) from col 6 → 2 display columns back → cursor 4 (emoji3's start)
-    //   spaces at col 4 erase emoji3 ✓
+    // With the old (broken) BS handler (2027 mode moved back by EGC width):
+    //   BS from col 6 → preceding char=emoji3 (width=2) → move back 2 → col 4
+    //   BS from col 4 → preceding char=emoji2 (width=2) → move back 2 → col 2
+    //   spaces at col 2 → erase emoji2 instead of emoji3!
+    //
+    // With the fixed BS handler (always move back 1 column):
+    //   BS from col 6 → col 5; BS from col 5 → col 4
+    //   spaces at col 4-5 → erase emoji3 ✓
     let mut grid = create_grid_with_content("");
     feed_bytes(&mut grid, b"\x1b[?2027h");
-    let family = "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}";
-    let content = format!("{}{}{}", family, family, family);
-    feed_bytes(&mut grid, content.as_bytes()); // cursor at col 6
+    let family = "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}"; // 👨‍👩‍👧, width=2
+    // Write 3 emojis using the same pattern nvim uses: CUP + SP SP + BS BS + emoji
+    feed_bytes(&mut grid, b"\x1b[H");   // CUP(1,1) → col 0
+    feed_bytes(&mut grid, b"  \x08\x08"); // SP SP BS BS → col 0
+    feed_bytes(&mut grid, family.as_bytes()); // emoji1 at col 0, cursor at col 2
+    feed_bytes(&mut grid, b"\x1b[1;3H"); // CUP(1,3) → col 2
+    feed_bytes(&mut grid, b"  \x08\x08"); // SP SP BS BS → col 2
+    feed_bytes(&mut grid, family.as_bytes()); // emoji2 at col 2, cursor at col 4
+    feed_bytes(&mut grid, b"\x1b[1;5H"); // CUP(1,5) → col 4
+    feed_bytes(&mut grid, b"  \x08\x08"); // SP SP BS BS → col 4
+    feed_bytes(&mut grid, family.as_bytes()); // emoji3 at col 4, cursor at col 6
+    assert_eq!(grid.cursor.x, 6, "cursor at col 6 after 3 emojis");
 
-    // nvim sends CUB(2): move back 2 display columns to start of emoji3
-    feed_bytes(&mut grid, b"\x1b[2D");
-    assert_eq!(grid.cursor.x, 4, "CUB(2) should move back 2 display columns to col 4");
-
-    // nvim writes 2 spaces to clear emoji3's columns
-    feed_bytes(&mut grid, b"  ");
-    assert_eq!(grid.cursor.x, 6);
-
-    // nvim sends CUB(2) to reposition cursor back at col 4
-    feed_bytes(&mut grid, b"\x1b[2D");
-    assert_eq!(grid.cursor.x, 4, "final CUB(2) should land at col 4");
+    // nvim DELETE sequence for one backspace: CUP(1,7) + BS BS + SP SP
+    feed_bytes(&mut grid, b"\x1b[1;7H"); // CUP(1,7) → col 6
+    feed_bytes(&mut grid, b"\x08\x08"); // BS BS → col 4 (2 × 1 column back)
+    assert_eq!(grid.cursor.x, 4, "BS BS from col 6 should land at col 4");
+    feed_bytes(&mut grid, b"  "); // erase emoji3's columns
+    assert_eq!(grid.cursor.x, 6, "after writing 2 spaces, cursor at col 6");
 
     let row = &grid.viewport[0];
-    assert!(row.columns[0].grapheme().contains('\u{1F468}'), "emoji1 should be intact");
-    assert!(row.columns[1].grapheme().contains('\u{1F468}'), "emoji2 should be intact");
+    assert!(row.columns[0].grapheme().contains('\u{1F468}'), "emoji1 at col 0 should be intact");
+    assert!(row.columns[1].grapheme().contains('\u{1F468}'), "emoji2 at col 2 should be intact");
     assert_eq!(row.columns[2].grapheme(), " ", "col 4 should now be space (emoji3 cleared)");
-    assert_eq!(row.columns[3].grapheme(), " ", "col 5 should now be space");
+    assert_eq!(row.columns[3].grapheme(), " ", "col 5 should also be space");
 }

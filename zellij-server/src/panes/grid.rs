@@ -2718,16 +2718,10 @@ impl Perform for Grid {
                 self.ring_bell = true;
             },
             8 => {
-                // backspace — in 2027 mode move back by the full EGC width
-                let back_by = if self.grapheme_cluster_mode {
-                    self.viewport
-                        .get(self.cursor.y)
-                        .map(|row| row.preceding_char_width(self.cursor.x))
-                        .unwrap_or(1)
-                } else {
-                    1
-                };
-                self.move_cursor_back(back_by);
+                // backspace — always moves back exactly one display column.
+                // Applications (e.g. nvim in 2027 mode) are responsible for sending
+                // the correct number of BS characters to reach a grapheme boundary.
+                self.move_cursor_back(1);
             },
             9 => {
                 // tab
