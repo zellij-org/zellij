@@ -225,26 +225,18 @@ impl Config {
                 match Config::from_kdl(&kdl_config, default_config) {
                     Ok(config) => Ok(config),
                     Err(ConfigError::KdlDeserializationError(kdl_error)) => {
-                        let error_message = match kdl_error.kind {
-                            kdl::KdlErrorKind::Context("valid node terminator") => {
-                                format!("Failed to deserialize KDL node. \nPossible reasons:\n{}\n{}\n{}\n{}",
-                                "- Missing `;` after a node name, eg. { node; another_node; }",
-                                "- Missing quotations (\") around an argument node eg. { first_node \"argument_node\"; }",
-                                "- Missing an equal sign (=) between node arguments on a title line. eg. argument=\"value\"",
-                                "- Found an extraneous equal sign (=) between node child arguments and their values. eg. { argument=\"value\" }")
-                            },
-                            _ => {
-                                String::from(kdl_error.help.unwrap_or("Kdl Deserialization Error"))
-                            },
-                        };
+                        let error_message = format!("{}", kdl_error);
+                        let (offset, len) = kdl_error.span
+                            .map(|s| (s.offset(), s.len()))
+                            .unwrap_or((0, 0));
                         let kdl_error = KdlError {
                             error_message,
                             src: Some(NamedSource::new(
                                 path.as_path().as_os_str().to_string_lossy(),
                                 kdl_config,
                             )),
-                            offset: Some(kdl_error.span.offset()),
-                            len: Some(kdl_error.span.len()),
+                            offset: Some(offset),
+                            len: Some(len),
                             help_message: None,
                         };
                         Err(ConfigError::KdlError(kdl_error))

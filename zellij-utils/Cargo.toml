@@ -20,7 +20,7 @@ colorsys = { version = "0.6.5", default-features = false, features = ["std"] }
 crossbeam = { version = "0.8.1", default-features = false, features = ["alloc", "std"] }
 directories = { version = "5.0", default-features = false }
 include_dir = { version = "0.7.3", default-features = false }
-kdl = { version = "4.5.0", default-features = false, features = ["span"] }
+kdl = { version = "6.5.0", default-features = false }
 lazy_static = { workspace = true }
 log = { workspace = true }
 miette = { workspace = true }
