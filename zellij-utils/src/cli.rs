@@ -111,6 +111,11 @@ pub enum Command {
     #[clap(name = "web", value_parser)]
     Web(WebCli),
 
+    /// Send actions to a specific session
+    #[clap(visible_alias = "ac")]
+    #[clap(subcommand)]
+    Action(Box<CliAction>),
+
     /// Explore existing zellij sessions
     #[clap(flatten)]
     Sessions(Sessions),
@@ -333,10 +338,6 @@ pub enum Sessions {
         force: bool,
     },
 
-    /// Send actions to a specific session
-    #[clap(visible_alias = "ac")]
-    #[clap(subcommand)]
-    Action(CliAction),
     /// Run a command in a new pane
     /// Returns: Created pane ID (format: terminal_<id>)
     #[clap(visible_alias = "r")]
