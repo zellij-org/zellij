@@ -2485,6 +2485,21 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                                             bg: c.bg.map(|v| v as u8),
                                         }
                                     },
+                                    Some(ProtobufHighlightStyleVariant::BackgroundEmphasis0(_)) => {
+                                        HighlightStyle::BackgroundEmphasis0
+                                    },
+                                    Some(ProtobufHighlightStyleVariant::BackgroundEmphasis1(_)) => {
+                                        HighlightStyle::BackgroundEmphasis1
+                                    },
+                                    Some(ProtobufHighlightStyleVariant::BackgroundEmphasis2(_)) => {
+                                        HighlightStyle::BackgroundEmphasis2
+                                    },
+                                    Some(ProtobufHighlightStyleVariant::BackgroundEmphasis3(_)) => {
+                                        HighlightStyle::BackgroundEmphasis3
+                                    },
+                                    Some(ProtobufHighlightStyleVariant::None(_)) => {
+                                        HighlightStyle::None
+                                    },
                                     None => HighlightStyle::Emphasis0, // fallback
                                 };
                                 let context = h
@@ -2497,6 +2512,9 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                                     style,
                                     context,
                                     on_hover: h.on_hover,
+                                    bold: h.bold,
+                                    italic: h.italic,
+                                    underline: h.underline,
                                 }
                             })
                             .collect();
@@ -4117,6 +4135,21 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                                                 },
                                             )
                                         },
+                                        HighlightStyle::BackgroundEmphasis0 => {
+                                            ProtobufHighlightStyleVariant::BackgroundEmphasis0(true)
+                                        },
+                                        HighlightStyle::BackgroundEmphasis1 => {
+                                            ProtobufHighlightStyleVariant::BackgroundEmphasis1(true)
+                                        },
+                                        HighlightStyle::BackgroundEmphasis2 => {
+                                            ProtobufHighlightStyleVariant::BackgroundEmphasis2(true)
+                                        },
+                                        HighlightStyle::BackgroundEmphasis3 => {
+                                            ProtobufHighlightStyleVariant::BackgroundEmphasis3(true)
+                                        },
+                                        HighlightStyle::None => {
+                                            ProtobufHighlightStyleVariant::None(true)
+                                        },
                                     };
                                     ProtobufRegexHighlight {
                                         pattern: h.pattern,
@@ -4129,6 +4162,9 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                                             .map(|(name, value)| ContextItem { name, value })
                                             .collect(),
                                         on_hover: h.on_hover,
+                                        bold: h.bold,
+                                        italic: h.italic,
+                                        underline: h.underline,
                                     }
                                 })
                                 .collect(),

@@ -501,6 +501,9 @@ pub struct CompiledHighlight {
     pub bg: Option<AnsiCode>,
     pub context: BTreeMap<String, String>,
     pub on_hover: bool,
+    pub bold: bool,
+    pub italic: bool,
+    pub underline: bool,
 }
 
 impl Clone for CompiledHighlight {
@@ -512,6 +515,9 @@ impl Clone for CompiledHighlight {
             bg: self.bg,
             context: self.context.clone(),
             on_hover: self.on_hover,
+            bold: self.bold,
+            italic: self.italic,
+            underline: self.underline,
         }
     }
 }
@@ -640,19 +646,36 @@ fn resolve_highlight_colors(
         }
     };
     match style_decl {
+        HighlightStyle::None => (None, None),
         HighlightStyle::Emphasis0 => (
+            Some(palette_to_ansi(style.colors.text_unselected.emphasis_0)),
+            None,
+        ),
+        HighlightStyle::Emphasis1 => (
+            Some(palette_to_ansi(style.colors.text_unselected.emphasis_1)),
+            None,
+        ),
+        HighlightStyle::Emphasis2 => (
+            Some(palette_to_ansi(style.colors.text_unselected.emphasis_2)),
+            None,
+        ),
+        HighlightStyle::Emphasis3 => (
+            Some(palette_to_ansi(style.colors.text_unselected.emphasis_3)),
+            None,
+        ),
+        HighlightStyle::BackgroundEmphasis0 => (
             Some(palette_to_ansi(style.colors.text_unselected.background)),
             Some(palette_to_ansi(style.colors.text_unselected.emphasis_0)),
         ),
-        HighlightStyle::Emphasis1 => (
+        HighlightStyle::BackgroundEmphasis1 => (
             Some(palette_to_ansi(style.colors.text_unselected.background)),
             Some(palette_to_ansi(style.colors.text_unselected.emphasis_1)),
         ),
-        HighlightStyle::Emphasis2 => (
+        HighlightStyle::BackgroundEmphasis2 => (
             Some(palette_to_ansi(style.colors.text_unselected.background)),
             Some(palette_to_ansi(style.colors.text_unselected.emphasis_2)),
         ),
-        HighlightStyle::Emphasis3 => (
+        HighlightStyle::BackgroundEmphasis3 => (
             Some(palette_to_ansi(style.colors.text_unselected.background)),
             Some(palette_to_ansi(style.colors.text_unselected.emphasis_3)),
         ),
@@ -1330,7 +1353,7 @@ impl Grid {
         // (spanning a canonical row and its non-canonical tail rows) can be found
         // by running the regex against the full concatenated logical line text,
         // then emitted into the appropriate character_chunks below.
-        let plugin_highlight_selections: Vec<(Selection, AnsiCode, Option<AnsiCode>)> = if self
+        let plugin_highlight_selections: Vec<(Selection, Option<AnsiCode>, Option<AnsiCode>, bool, bool, bool)> = if self
             .plugin_highlights
             .is_empty()
         {
@@ -1354,33 +1377,11 @@ impl Grid {
 
                 let (logical_text, boundaries) = build_logical_line(ridx, row, &tail);
 
-                for (_plugin_id, pattern_map) in &self.plugin_highlights {
-                    for (_pattern, compiled) in pattern_map {
-                        if compiled.on_hover {
-                            // Hover highlights are handled separately below.
-                            continue;
-                        }
-                        let Some(bg) = compiled.bg else { continue };
-                        for mat in compiled.regex.find_iter(&logical_text) {
-                            let (start_row, start_col) = byte_offset_to_display_col(
-                                mat.start(),
-                                &boundaries,
-                                &self.viewport,
-                            );
-                            let (end_row, end_col) =
-                                byte_offset_to_display_col(mat.end(), &boundaries, &self.viewport);
-                            let mut sel = Selection::default();
-                            sel.set_start_and_end_positions(
-                                Position::new(start_row as i32, start_col as u16),
-                                Position::new(end_row as i32, end_col as u16),
-                            );
-                            selections.push((sel, bg, compiled.fg));
-                        }
-                    }
-                }
-
-                // Hover highlights: only emit the single match overlapping hover_position,
-                // and only if hover_position falls within this logical line group.
+                // Hover highlights are pushed first so that `.find()` in
+                // `adjust_styles_for_possible_selection` returns the hover
+                // style when the cursor overlaps the match.  When the cursor
+                // is elsewhere, no hover selections are emitted and the
+                // non-hover selections (pushed second) apply instead.
                 if let Some(hover_pos) = self.hover_position {
                     let hover_row = hover_pos.line.0 as usize;
                     let group_end_row = ridx + tail.len();
@@ -1391,7 +1392,10 @@ impl Grid {
                                 if !compiled.on_hover {
                                     continue;
                                 }
-                                let Some(bg) = compiled.bg else { continue };
+                                // Skip highlights with no visual effect.
+                                if compiled.bg.is_none() && compiled.fg.is_none() && !compiled.bold && !compiled.italic && !compiled.underline {
+                                    continue;
+                                }
                                 for mat in compiled.regex.find_iter(&logical_text) {
                                     let (start_row, start_col) = byte_offset_to_display_col(
                                         mat.start(),
@@ -1414,11 +1418,40 @@ impl Grid {
                                             Position::new(start_row as i32, start_col as u16),
                                             Position::new(end_row as i32, end_col as u16),
                                         );
-                                        selections.push((sel, bg, compiled.fg));
+                                        selections.push((sel, compiled.bg, compiled.fg, compiled.bold, compiled.italic, compiled.underline));
                                         break; // only one match per pattern per hover
                                     }
                                 }
                             }
+                        }
+                    }
+                }
+
+                // Non-hover highlights are pushed after hover so that hover
+                // takes precedence for overlapping regions.
+                for (_plugin_id, pattern_map) in &self.plugin_highlights {
+                    for (_pattern, compiled) in pattern_map {
+                        if compiled.on_hover {
+                            continue;
+                        }
+                        // Skip highlights with no visual effect.
+                        if compiled.bg.is_none() && compiled.fg.is_none() && !compiled.bold && !compiled.italic && !compiled.underline {
+                            continue;
+                        }
+                        for mat in compiled.regex.find_iter(&logical_text) {
+                            let (start_row, start_col) = byte_offset_to_display_col(
+                                mat.start(),
+                                &boundaries,
+                                &self.viewport,
+                            );
+                            let (end_row, end_col) =
+                                byte_offset_to_display_col(mat.end(), &boundaries, &self.viewport);
+                            let mut sel = Selection::default();
+                            sel.set_start_and_end_positions(
+                                Position::new(start_row as i32, start_col as u16),
+                                Position::new(end_row as i32, end_col as u16),
+                            );
+                            selections.push((sel, compiled.bg, compiled.fg, compiled.bold, compiled.italic, compiled.underline));
                         }
                     }
                 }
@@ -1446,8 +1479,11 @@ impl Grid {
 
                 character_chunk.add_selection_and_colors(
                     self.selection,
-                    background_color,
+                    Some(background_color),
                     Some(foreground_color),
+                    false,
+                    false,
+                    false,
                     content_x,
                     content_y,
                 );
@@ -1476,8 +1512,11 @@ impl Grid {
                         };
                         character_chunk.add_selection_and_colors(
                             *res,
-                            background_color,
+                            Some(background_color),
                             Some(foreground_color),
+                            false,
+                            false,
+                            false,
                             content_x,
                             content_y,
                         );
@@ -1485,9 +1524,9 @@ impl Grid {
                 }
             }
             // Apply pre-computed plugin highlight selections to this chunk.
-            for (sel, bg, fg) in &plugin_highlight_selections {
+            for (sel, bg, fg, bold, italic, underline) in &plugin_highlight_selections {
                 if sel.contains_row(character_chunk.y.saturating_sub(content_y)) {
-                    character_chunk.add_selection_and_colors(*sel, *bg, *fg, content_x, content_y);
+                    character_chunk.add_selection_and_colors(*sel, *bg, *fg, *bold, *italic, *underline, content_x, content_y);
                 }
             }
         }
@@ -2101,14 +2140,18 @@ impl Grid {
         for h in highlights {
             let (fg, bg) = resolve_highlight_colors(&h.style, style);
             if let Ok(regex) = regex::Regex::new(&h.pattern) {
-                // Upsert: replace existing entry with same pattern, or push new
-                if let Some(existing) = slot.iter_mut().find(|(p, _)| p == &h.pattern) {
+                // Upsert: replace existing entry with same pattern and on_hover flag, or push new
+                let on_hover = h.on_hover;
+                if let Some(existing) = slot.iter_mut().find(|(p, c)| p == &h.pattern && c.on_hover == on_hover) {
                     existing.1 = CompiledHighlight {
                         regex,
                         fg,
                         bg,
                         context: h.context,
                         on_hover: h.on_hover,
+                        bold: h.bold,
+                        italic: h.italic,
+                        underline: h.underline,
                     };
                 } else {
                     slot.push((
@@ -2119,6 +2162,9 @@ impl Grid {
                             bg,
                             context: h.context,
                             on_hover: h.on_hover,
+                            bold: h.bold,
+                            italic: h.italic,
+                            underline: h.underline,
                         },
                     ));
                 }

@@ -1207,10 +1207,15 @@ impl Default for PaletteColor {
 /// Theme-based variants reference `style.colors.text_unselected.*`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum HighlightStyle {
-    Emphasis0, // bg = emphasis_0, fg = background
-    Emphasis1, // bg = emphasis_1, fg = background
-    Emphasis2, // bg = emphasis_2, fg = background
-    Emphasis3, // bg = emphasis_3, fg = background
+    None,      // no color override — use with bold/italic/underline for style-only highlights
+    Emphasis0, // fg = emphasis_0, no bg override
+    Emphasis1, // fg = emphasis_1, no bg override
+    Emphasis2, // fg = emphasis_2, no bg override
+    Emphasis3, // fg = emphasis_3, no bg override
+    BackgroundEmphasis0, // bg = emphasis_0, fg = background
+    BackgroundEmphasis1, // bg = emphasis_1, fg = background
+    BackgroundEmphasis2, // bg = emphasis_2, fg = background
+    BackgroundEmphasis3, // bg = emphasis_3, fg = background
     CustomRgb {
         fg: Option<(u8, u8, u8)>,
         bg: Option<(u8, u8, u8)>,
@@ -1228,6 +1233,9 @@ pub struct RegexHighlight {
     pub style: HighlightStyle,
     pub context: BTreeMap<String, String>, // arbitrary data echoed back verbatim on click
     pub on_hover: bool, // if true, only rendered when the cursor overlaps this match
+    pub bold: bool,
+    pub italic: bool,
+    pub underline: bool,
 }
 
 // these are used for the web client

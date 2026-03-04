@@ -1233,6 +1233,11 @@ message HighlightStyle {
     bool emphasis_3 = 4;
     CustomRgbHighlight custom_rgb = 5;
     CustomIndexHighlight custom_index = 6;
+    bool background_emphasis_0 = 7;
+    bool background_emphasis_1 = 8;
+    bool background_emphasis_2 = 9;
+    bool background_emphasis_3 = 10;
+    bool none = 11;
   }
 }
 
@@ -1255,6 +1260,9 @@ message RegexHighlight {
   HighlightStyle style = 2;
   repeated ContextItem context = 3;
   bool on_hover = 4;
+  bool bold = 5;
+  bool italic = 6;
+  bool underline = 7;
 }
 
 message SetPaneRegexHighlightsPayload {

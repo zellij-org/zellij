@@ -1787,7 +1787,7 @@ pub struct SetPaneColorPayload {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct HighlightStyle {
-    #[prost(oneof="highlight_style::Style", tags="1, 2, 3, 4, 5, 6")]
+    #[prost(oneof="highlight_style::Style", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11")]
     pub style: ::core::option::Option<highlight_style::Style>,
 }
 /// Nested message and enum types in `HighlightStyle`.
@@ -1807,6 +1807,16 @@ pub mod highlight_style {
         CustomRgb(super::CustomRgbHighlight),
         #[prost(message, tag="6")]
         CustomIndex(super::CustomIndexHighlight),
+        #[prost(bool, tag="7")]
+        BackgroundEmphasis0(bool),
+        #[prost(bool, tag="8")]
+        BackgroundEmphasis1(bool),
+        #[prost(bool, tag="9")]
+        BackgroundEmphasis2(bool),
+        #[prost(bool, tag="10")]
+        BackgroundEmphasis3(bool),
+        #[prost(bool, tag="11")]
+        None(bool),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -1844,6 +1854,12 @@ pub struct RegexHighlight {
     pub context: ::prost::alloc::vec::Vec<ContextItem>,
     #[prost(bool, tag="4")]
     pub on_hover: bool,
+    #[prost(bool, tag="5")]
+    pub bold: bool,
+    #[prost(bool, tag="6")]
+    pub italic: bool,
+    #[prost(bool, tag="7")]
+    pub underline: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

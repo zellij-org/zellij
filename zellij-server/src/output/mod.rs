@@ -41,22 +41,34 @@ fn vte_hide_cursor_instruction(vte_output: &mut String) -> Result<()> {
 }
 
 fn adjust_styles_for_possible_selection(
-    chunk_selection_and_colors: Vec<(Selection, AnsiCode, Option<AnsiCode>)>,
+    chunk_selection_and_colors: Vec<(Selection, Option<AnsiCode>, Option<AnsiCode>, bool, bool, bool)>,
     character_styles: CharacterStyles,
     chunk_y: usize,
     chunk_width: usize,
 ) -> CharacterStyles {
     chunk_selection_and_colors
         .iter()
-        .find(|(selection, _background_color, _foreground_color)| {
+        .find(|(selection, _, _, _, _, _)| {
             selection.contains(chunk_y, chunk_width)
         })
-        .map(|(_selection, background_color, foreground_color)| {
-            let mut character_styles = character_styles.background(Some(*background_color));
-            if let Some(foreground_color) = foreground_color {
-                character_styles = character_styles.foreground(Some(*foreground_color));
+        .map(|(_selection, background_color, foreground_color, bold, italic, underline)| {
+            let mut styles = character_styles;
+            if let Some(bg) = background_color {
+                styles = styles.background(Some(*bg));
             }
-            character_styles
+            if let Some(fg) = foreground_color {
+                styles = styles.foreground(Some(*fg));
+            }
+            if *bold {
+                styles = styles.bold(Some(AnsiCode::On));
+            }
+            if *italic {
+                styles = styles.italic(Some(AnsiCode::On));
+            }
+            if *underline {
+                styles = styles.underline(Some(AnsiCode::Underline(None)));
+            }
+            styles
         })
         .unwrap_or(character_styles)
 }
@@ -982,9 +994,10 @@ pub struct CharacterChunk {
     pub x: usize,
     pub y: usize,
     pub changed_colors: Option<[Option<AnsiCode>; 256]>,
-    selection_and_colors: Vec<(Selection, AnsiCode, Option<AnsiCode>)>, // Selection, background color, optional foreground color
     pub pane_default_fg: Option<AnsiCode>,
     pub pane_default_bg: Option<AnsiCode>,
+    // (Selection, optional background, optional foreground, bold, italic, underline)
+    selection_and_colors: Vec<(Selection, Option<AnsiCode>, Option<AnsiCode>, bool, bool, bool)>,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -1010,8 +1023,11 @@ impl CharacterChunk {
     pub fn add_selection_and_colors(
         &mut self,
         selection: Selection,
-        background_color: AnsiCode,
+        background_color: Option<AnsiCode>,
         foreground_color: Option<AnsiCode>,
+        bold: bool,
+        italic: bool,
+        underline: bool,
         offset_x: usize,
         offset_y: usize,
     ) {
@@ -1019,10 +1035,12 @@ impl CharacterChunk {
             selection.offset(offset_x, offset_y),
             background_color,
             foreground_color,
+            bold,
+            italic,
+            underline,
         ));
     }
-    pub fn selection_and_colors(&self) -> Vec<(Selection, AnsiCode, Option<AnsiCode>)> {
-        // Selection, background color, optional foreground color
+    pub fn selection_and_colors(&self) -> Vec<(Selection, Option<AnsiCode>, Option<AnsiCode>, bool, bool, bool)> {
         self.selection_and_colors.clone()
     }
     pub fn add_changed_colors(&mut self, changed_colors: Option<[Option<AnsiCode>; 256]>) {
