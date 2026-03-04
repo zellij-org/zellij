@@ -964,7 +964,6 @@ pub(crate) fn plugin_thread_main(
                 plugin_and_client_id,
                 notification_end,
             } => {
-                let _ = notification_end; // signal completion
                 let should_float = floating.unwrap_or(true);
                 let mut pipe_messages = vec![];
                 let floating_pane_coordinates = None; // TODO: do we want to allow this?
