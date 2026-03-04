@@ -3,9 +3,7 @@ use crate::panes::sixel::SixelImageStore;
 use crate::panes::LinkHandler;
 use crate::panes::{
     grid::Grid,
-    terminal_character::{
-        render_first_run_banner, TerminalCharacter, EMPTY_TERMINAL_CHARACTER,
-    },
+    terminal_character::{render_first_run_banner, TerminalCharacter, EMPTY_TERMINAL_CHARACTER},
 };
 use crate::pty::VteBytes;
 use crate::route::NotificationEnd;

@@ -409,11 +409,7 @@ pub struct Grid {
 }
 
 impl Grid {
-    pub fn set_pane_default_colors(
-        &mut self,
-        fg: Option<String>,
-        bg: Option<String>,
-    ) {
+    pub fn set_pane_default_colors(&mut self, fg: Option<String>, bg: Option<String>) {
         self.pane_default_fg = fg.as_ref().and_then(|s| xparse_color(s.as_bytes()));
         self.pane_default_bg = bg.as_ref().and_then(|s| xparse_color(s.as_bytes()));
         self.output_buffer.update_all_lines();

@@ -731,7 +731,16 @@ fn tiled_pane_layout_from_manifest(
     manifest: Option<&PaneLayoutManifest>,
     split_size: Option<SplitSize>,
 ) -> TiledPaneLayout {
-    let (run, borderless, is_expanded_in_stack, name, focus, pane_initial_contents, default_fg, default_bg) = manifest
+    let (
+        run,
+        borderless,
+        is_expanded_in_stack,
+        name,
+        focus,
+        pane_initial_contents,
+        default_fg,
+        default_bg,
+    ) = manifest
         .map(|g| {
             let mut run = g.run.clone();
             if let Some(cwd) = &g.cwd {

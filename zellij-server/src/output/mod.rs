@@ -67,15 +67,13 @@ fn adjust_styles_for_custom_bg_fg(
     pane_default_bg: Option<AnsiCode>,
 ) -> CharacterStyles {
     let mut character_styles = character_styles;
-    if character_styles.foreground.is_none()
-        || character_styles.foreground == Some(AnsiCode::Reset)
+    if character_styles.foreground.is_none() || character_styles.foreground == Some(AnsiCode::Reset)
     {
         if let Some(fg) = pane_default_fg {
             character_styles.foreground = Some(fg);
         }
     }
-    if character_styles.background.is_none()
-        || character_styles.background == Some(AnsiCode::Reset)
+    if character_styles.background.is_none() || character_styles.background == Some(AnsiCode::Reset)
     {
         if let Some(bg) = pane_default_bg {
             character_styles.background = Some(bg);
