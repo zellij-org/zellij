@@ -6262,7 +6262,10 @@ fn csi_2027_h_enables_grapheme_cluster_mode() {
     let mut grid = create_grid_with_content("");
     assert!(!grid.grapheme_cluster_mode, "mode should be off by default");
     feed_bytes(&mut grid, b"\x1b[?2027h");
-    assert!(grid.grapheme_cluster_mode, "CSI ? 2027 h should enable the mode");
+    assert!(
+        grid.grapheme_cluster_mode,
+        "CSI ? 2027 h should enable the mode"
+    );
 }
 
 #[test]
@@ -6271,7 +6274,10 @@ fn csi_2027_l_disables_grapheme_cluster_mode() {
     feed_bytes(&mut grid, b"\x1b[?2027h");
     assert!(grid.grapheme_cluster_mode);
     feed_bytes(&mut grid, b"\x1b[?2027l");
-    assert!(!grid.grapheme_cluster_mode, "CSI ? 2027 l should disable the mode");
+    assert!(
+        !grid.grapheme_cluster_mode,
+        "CSI ? 2027 l should disable the mode"
+    );
 }
 
 #[test]
@@ -6315,15 +6321,21 @@ fn terminal_reset_clears_grapheme_cluster_mode() {
     assert!(grid.grapheme_cluster_mode, "mode should be on before reset");
     // ESC c = RIS (full terminal reset)
     feed_bytes(&mut grid, b"\x1bc");
-    assert!(!grid.grapheme_cluster_mode, "mode should be off after RIS reset");
+    assert!(
+        !grid.grapheme_cluster_mode,
+        "mode should be off after RIS reset"
+    );
     // DECRPM query should also report disabled
     feed_bytes(&mut grid, b"\x1b[?2027$p");
     let response = grid
         .pending_messages_to_pty
         .iter()
         .find_map(|msg| std::str::from_utf8(msg).ok().map(|s| s.to_owned()));
-    assert_eq!(response.as_deref(), Some("\x1b[?2027;2$y"),
-        "DECRPM after RIS should report disabled");
+    assert_eq!(
+        response.as_deref(),
+        Some("\x1b[?2027;2$y"),
+        "DECRPM after RIS should report disabled"
+    );
 }
 
 #[test]
@@ -6333,12 +6345,25 @@ fn csi_2027_mode_persists_across_alternate_screen() {
     feed_bytes(&mut grid, b"\x1b[?2027h");
     assert!(grid.grapheme_cluster_mode);
     feed_bytes(&mut grid, b"\x1b[?1049h"); // enter alt screen
-    assert!(grid.grapheme_cluster_mode, "mode should persist after entering alt screen");
+    assert!(
+        grid.grapheme_cluster_mode,
+        "mode should persist after entering alt screen"
+    );
     feed_bytes(&mut grid, b"\x1b[?1049l"); // exit alt screen
-    assert!(grid.grapheme_cluster_mode, "mode should persist after exiting alt screen");
+    assert!(
+        grid.grapheme_cluster_mode,
+        "mode should persist after exiting alt screen"
+    );
 }
 
 // ── Grapheme-aware editing semantics ─────────────────────────────────────────
+//
+// In CSI 2027 mode, these tests treat BS, CUB, and CUF as display-column
+// movement, even when printed text is stored and rendered as grapheme clusters.
+// This matches the Ghostty behavior we probed while validating the implementation.
+//
+// Some tests below model a common application pattern: move to an absolute
+// position, clear cells with spaces, and then redraw the grapheme.
 
 #[test]
 fn backspace_moves_back_one_column_in_legacy_mode() {
@@ -6346,19 +6371,29 @@ fn backspace_moves_back_one_column_in_legacy_mode() {
     let mut grid = create_grid_with_content("ab");
     // cursor is now at x=2; send backspace
     feed_bytes(&mut grid, b"\x08");
-    assert_eq!(grid.cursor.x, 1, "legacy backspace should move back 1 column");
+    assert_eq!(
+        grid.cursor.x, 1,
+        "legacy backspace should move back 1 column"
+    );
 }
 
 #[test]
-fn backspace_moves_back_full_egc_width_in_2027_mode() {
-    // In 2027 mode, backspace over a 2-wide character should move cursor back 2 columns.
+fn backspace_moves_back_one_column_in_2027_mode_over_wide_char() {
+    // In 2027 mode, BS still moves back one display column.
     let mut grid = create_grid_with_content("");
     feed_bytes(&mut grid, b"\x1b[?2027h");
-    // Place a wide character (CJK, width=2) then send backspace
     feed_bytes(&mut grid, "中".as_bytes());
-    assert_eq!(grid.cursor.x, 2, "cursor should be at col 2 after wide char");
+    assert_eq!(
+        grid.cursor.x, 2,
+        "cursor should be at col 2 after wide char"
+    );
     feed_bytes(&mut grid, b"\x08");
-    assert_eq!(grid.cursor.x, 0, "2027 backspace should move back 2 columns for a wide char");
+    assert_eq!(
+        grid.cursor.x, 1,
+        "one BS moves back 1 display column over a wide char"
+    );
+    feed_bytes(&mut grid, b"\x08");
+    assert_eq!(grid.cursor.x, 0, "second BS reaches col 0");
 }
 
 #[test]
@@ -6369,18 +6404,24 @@ fn backspace_moves_back_one_column_for_narrow_char_in_2027_mode() {
     feed_bytes(&mut grid, b"a");
     assert_eq!(grid.cursor.x, 1);
     feed_bytes(&mut grid, b"\x08");
-    assert_eq!(grid.cursor.x, 0, "2027 backspace over narrow char moves back 1 column");
+    assert_eq!(
+        grid.cursor.x, 0,
+        "2027 backspace over narrow char moves back 1 column"
+    );
 }
 
 #[test]
 fn cursor_left_moves_by_column_in_2027_mode() {
     // CSI D (CUB) counts display columns in all modes, including 2027.
-    // Only BS/^H steps by grapheme cluster; CUB N always means N display columns.
+    // Applications send CUB N as a display-column count, not an EGC count.
     let mut grid = create_grid_with_content("");
     feed_bytes(&mut grid, b"\x1b[?2027h");
     feed_bytes(&mut grid, "中".as_bytes()); // wide char, cursor at x=2
     feed_bytes(&mut grid, b"\x1b[1D"); // CSI 1 D — 1 display column back
-    assert_eq!(grid.cursor.x, 1, "CSI 1 D moves 1 display column, not 1 EGC");
+    assert_eq!(
+        grid.cursor.x, 1,
+        "CSI 1 D moves 1 display column, not 1 EGC"
+    );
     feed_bytes(&mut grid, b"\x1b[1D"); // one more
     assert_eq!(grid.cursor.x, 0);
 }
@@ -6400,17 +6441,22 @@ fn cursor_left_count_by_column_in_2027_mode() {
 #[test]
 fn cursor_forward_moves_by_column_not_egc_width() {
     // CSI C (CUF) counts display columns in all modes, including 2027.
-    // This is intentional: applications send N=display-width for wide chars.
-    // Only BS/^H steps by grapheme cluster in 2027 mode.
+    // Applications send N as a display-column count for wide characters.
     let mut grid = create_grid_with_content("");
     feed_bytes(&mut grid, b"\x1b[?2027h");
     feed_bytes(&mut grid, "中".as_bytes()); // wide char at x=0, cursor at x=2
     feed_bytes(&mut grid, b"\x1b[2D"); // back to x=0 (2 columns)
     assert_eq!(grid.cursor.x, 0);
     feed_bytes(&mut grid, b"\x1b[1C"); // CSI 1 C — 1 display column
-    assert_eq!(grid.cursor.x, 1, "CSI C moves 1 display column even in 2027 mode");
+    assert_eq!(
+        grid.cursor.x, 1,
+        "CSI C moves 1 display column even in 2027 mode"
+    );
     feed_bytes(&mut grid, b"\x1b[1C"); // one more column
-    assert_eq!(grid.cursor.x, 2, "CSI C 1+1 = 2 display columns past wide char");
+    assert_eq!(
+        grid.cursor.x, 2,
+        "CSI C 1+1 = 2 display columns past wide char"
+    );
 }
 
 #[test]
@@ -6421,7 +6467,10 @@ fn cursor_back_moves_by_column_not_egc_width() {
     feed_bytes(&mut grid, b"\x1b[?2027h");
     feed_bytes(&mut grid, "中文".as_bytes()); // cursor at x=4
     feed_bytes(&mut grid, b"\x1b[2D"); // back 2 display columns
-    assert_eq!(grid.cursor.x, 2, "CSI 2 D moves 2 display columns, not 2 EGCs");
+    assert_eq!(
+        grid.cursor.x, 2,
+        "CSI 2 D moves 2 display columns, not 2 EGCs"
+    );
     feed_bytes(&mut grid, b"\x1b[2D"); // back 2 more
     assert_eq!(grid.cursor.x, 0);
 }
@@ -6449,9 +6498,21 @@ fn rep_repeats_full_grapheme_cluster_after_combining_mark() {
     let row = &grid.viewport[0];
     assert_eq!(row.columns.len(), 3, "REP should have produced 3 cells");
     // The cell stores the raw sequence: 'a' + U+0300 (decomposed NFD form).
-    assert_eq!(row.columns[0].grapheme(), "a\u{0300}", "cell 0 should be a+combining grave");
-    assert_eq!(row.columns[1].grapheme(), "a\u{0300}", "cell 1 should be a+combining grave (REP copy 1)");
-    assert_eq!(row.columns[2].grapheme(), "a\u{0300}", "cell 2 should be a+combining grave (REP copy 2)");
+    assert_eq!(
+        row.columns[0].grapheme(),
+        "a\u{0300}",
+        "cell 0 should be a+combining grave"
+    );
+    assert_eq!(
+        row.columns[1].grapheme(),
+        "a\u{0300}",
+        "cell 1 should be a+combining grave (REP copy 1)"
+    );
+    assert_eq!(
+        row.columns[2].grapheme(),
+        "a\u{0300}",
+        "cell 2 should be a+combining grave (REP copy 2)"
+    );
 }
 
 #[test]
@@ -6460,7 +6521,7 @@ fn replace_with_empty_chars_steps_by_egc_width_in_2027_mode() {
     let mut grid = create_grid_with_content("");
     feed_bytes(&mut grid, b"\x1b[?2027h");
     feed_bytes(&mut grid, "中文ab".as_bytes()); // display cols 0-1: 中, 2-3: 文, 4: a, 5: b
-    // Move cursor back to x=0
+                                                // Move cursor back to x=0
     feed_bytes(&mut grid, b"\x1b[6D");
     assert_eq!(grid.cursor.x, 0);
     // CSI 2 X — replace 2 EGCs starting at x=0 (should blank 中 and 文, leave a/b intact)
@@ -6469,8 +6530,11 @@ fn replace_with_empty_chars_steps_by_egc_width_in_2027_mode() {
     // Collect concatenated grapheme string: wide chars replaced by two narrow blanks each,
     // so the row looks like "    ab" (4 spaces + a + b).
     let rendered: String = row.columns.iter().map(|c| c.grapheme()).collect();
-    assert_eq!(rendered, "    ab",
-        "CSI 2 X should blank 2 EGCs (中 and 文) and leave a/b untouched; got {:?}", rendered);
+    assert_eq!(
+        rendered, "    ab",
+        "CSI 2 X should blank 2 EGCs (中 and 文) and leave a/b untouched; got {:?}",
+        rendered
+    );
 }
 
 #[test]
@@ -6485,8 +6549,11 @@ fn width_expanding_egc_does_not_overwrite_next_char() {
     // Rendered graphemes: "#\u{FE0F}" (wide, 2 cols) then "x" at col 2.
     // With the bug, 'x' overwrites col 1 and the row renders as "#x" (width 2).
     let rendered: String = row.columns.iter().map(|c| c.grapheme()).collect();
-    assert_eq!(rendered, "#\u{FE0F}x",
-        "char after width-expanding EGC should land at col 2, not overwrite it; got {:?}", rendered);
+    assert_eq!(
+        rendered, "#\u{FE0F}x",
+        "char after width-expanding EGC should land at col 2, not overwrite it; got {:?}",
+        rendered
+    );
     assert_eq!(grid.cursor.x, 3, "cursor should be at col 3 after '#FE0Fx'");
 }
 
@@ -6503,14 +6570,20 @@ fn width_expanding_egc_row_cache_invalidated_on_extension() {
     assert_eq!(grid.cursor.x, 2);
     // Move cursor back into the middle of the wide cell (legacy CSI D: 1 column)
     feed_bytes(&mut grid, b"\x1b[D");
-    assert_eq!(grid.cursor.x, 1, "cursor should be at col 1 (middle of wide cell)");
+    assert_eq!(
+        grid.cursor.x, 1,
+        "cursor should be at col 1 (middle of wide cell)"
+    );
     // Print 'y' — should replace the wide cell (splits into EMPTY + 'y'),
     // not append 'y' after it (which would happen with a stale cache).
     feed_bytes(&mut grid, b"y");
     let row = &grid.viewport[0];
     let rendered: String = row.columns.iter().map(|c| c.grapheme()).collect();
-    assert_eq!(rendered, " y",
-        "printing at col 1 should replace the wide cell, not append; got {:?}", rendered);
+    assert_eq!(
+        rendered, " y",
+        "printing at col 1 should replace the wide cell, not append; got {:?}",
+        rendered
+    );
 }
 
 #[test]
@@ -6527,16 +6600,32 @@ fn egc_state_text_uses_full_grapheme_for_ri_parity_after_rep() {
     let mut grid = create_grid_with_content("");
     // Build 🇺🇸 char-by-char so the cell is assembled correctly
     feed_bytes(&mut grid, "\u{1F1FA}\u{1F1F8}".as_bytes()); // 🇺🇸
-    // REP once (CSI 1 b) — re-inserts the full "🇺🇸" cell via add_character
+                                                            // REP once (CSI 1 b) — re-inserts the full "🇺🇸" cell via add_character
     feed_bytes(&mut grid, b"\x1b[1b");
     // Feed 🇩🇪 char-by-char
     feed_bytes(&mut grid, "\u{1F1E9}\u{1F1EA}".as_bytes()); // 🇩🇪
     let row = &grid.viewport[0];
-    assert_eq!(row.columns.len(), 3, "should have 3 flag cells, got {:?}",
-        row.columns.iter().map(|c| c.grapheme()).collect::<Vec<_>>());
-    assert_eq!(row.columns[0].grapheme(), "\u{1F1FA}\u{1F1F8}", "cell 0 should be 🇺🇸");
-    assert_eq!(row.columns[1].grapheme(), "\u{1F1FA}\u{1F1F8}", "cell 1 should be 🇺🇸 (REP)");
-    assert_eq!(row.columns[2].grapheme(), "\u{1F1E9}\u{1F1EA}", "cell 2 should be 🇩🇪");
+    assert_eq!(
+        row.columns.len(),
+        3,
+        "should have 3 flag cells, got {:?}",
+        row.columns.iter().map(|c| c.grapheme()).collect::<Vec<_>>()
+    );
+    assert_eq!(
+        row.columns[0].grapheme(),
+        "\u{1F1FA}\u{1F1F8}",
+        "cell 0 should be 🇺🇸"
+    );
+    assert_eq!(
+        row.columns[1].grapheme(),
+        "\u{1F1FA}\u{1F1F8}",
+        "cell 1 should be 🇺🇸 (REP)"
+    );
+    assert_eq!(
+        row.columns[2].grapheme(),
+        "\u{1F1E9}\u{1F1EA}",
+        "cell 2 should be 🇩🇪"
+    );
 }
 
 #[test]
@@ -6550,16 +6639,29 @@ fn width_shrinking_egc_extension_adjusts_cursor_and_cache() {
     // Feed ♈ (width 2), then VS15 (shrinks to width 1)
     feed_bytes(&mut grid, "\u{2648}\u{FE0E}".as_bytes());
     // Cursor should be at col 1 (width-1 cell), not col 2.
-    assert_eq!(grid.cursor.x, 1,
-        "cursor should retreat to col 1 after VS15 shrinks cell from width 2 to 1");
+    assert_eq!(
+        grid.cursor.x, 1,
+        "cursor should retreat to col 1 after VS15 shrinks cell from width 2 to 1"
+    );
     // Row width cache must reflect the reduced width.
     let cached = grid.viewport[0].width_cached();
-    assert_eq!(cached, 1, "row width cache should be 1 after shrink, got {}", cached);
+    assert_eq!(
+        cached, 1,
+        "row width cache should be 1 after shrink, got {}",
+        cached
+    );
     // Next char should land at col 1, not overwrite col 1 of the now-narrow cell.
     feed_bytes(&mut grid, b"x");
-    let rendered: String = grid.viewport[0].columns.iter().map(|c| c.grapheme()).collect();
-    assert_eq!(rendered, "\u{2648}\u{FE0E}x",
-        "char after width-shrinking EGC should land at col 1; got {:?}", rendered);
+    let rendered: String = grid.viewport[0]
+        .columns
+        .iter()
+        .map(|c| c.grapheme())
+        .collect();
+    assert_eq!(
+        rendered, "\u{2648}\u{FE0E}x",
+        "char after width-shrinking EGC should land at col 1; got {:?}",
+        rendered
+    );
 }
 
 #[test]
@@ -6570,29 +6672,42 @@ fn multiple_zwj_emojis_cursor_at_correct_column() {
     let family = "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}"; // 👨‍👩‍👧
     let content = format!("{}{}{}", family, family, family);
     feed_bytes(&mut grid, content.as_bytes());
-    assert_eq!(grid.cursor.x, 6,
-        "three 2-wide ZWJ emojis should place cursor at col 6, got {}", grid.cursor.x);
+    assert_eq!(
+        grid.cursor.x, 6,
+        "three 2-wide ZWJ emojis should place cursor at col 6, got {}",
+        grid.cursor.x
+    );
     // And each emoji should be in its own cell
-    assert_eq!(grid.viewport[0].columns.len(), 3,
-        "three ZWJ emojis = 3 cells, got {}", grid.viewport[0].columns.len());
+    assert_eq!(
+        grid.viewport[0].columns.len(),
+        3,
+        "three ZWJ emojis = 3 cells, got {}",
+        grid.viewport[0].columns.len()
+    );
     assert_eq!(grid.viewport[0].columns[0].width(), 2);
     assert_eq!(grid.viewport[0].columns[1].width(), 2);
     assert_eq!(grid.viewport[0].columns[2].width(), 2);
 }
 
 #[test]
-fn backspace_in_2027_mode_over_zwj_emoji_moves_back_full_width() {
-    // In 2027 mode, BS (^H) should move the cursor back by the full EGC width.
-    // A ZWJ family emoji is 2 columns wide — BS should move back 2, not 1.
+fn backspace_moves_one_column_in_2027_mode_over_zwj_emoji() {
+    // In 2027 mode, BS still moves back one display column, even over a
+    // width-2 ZWJ emoji.
     let mut grid = create_grid_with_content("");
-    feed_bytes(&mut grid, b"\x1b[?2027h"); // enable 2027 mode
-    let family = "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}"; // 👨‍👩‍👧
+    feed_bytes(&mut grid, b"\x1b[?2027h");
+    let family = "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}"; // 👨‍👩‍👧, width=2
     feed_bytes(&mut grid, family.as_bytes());
-    assert_eq!(grid.cursor.x, 2, "cursor should be at col 2 after one ZWJ emoji");
-    // Backspace (0x08)
+    assert_eq!(
+        grid.cursor.x, 2,
+        "cursor should be at col 2 after one ZWJ emoji"
+    );
     feed_bytes(&mut grid, b"\x08");
-    assert_eq!(grid.cursor.x, 0,
-        "BS in 2027 mode should move back 2 columns over a 2-wide ZWJ emoji, got {}", grid.cursor.x);
+    assert_eq!(
+        grid.cursor.x, 1,
+        "one BS moves back 1 display column over a width-2 ZWJ emoji"
+    );
+    feed_bytes(&mut grid, b"\x08");
+    assert_eq!(grid.cursor.x, 0, "second BS reaches col 0");
 }
 
 #[test]
@@ -6602,16 +6717,22 @@ fn skin_tone_emoji_cursor_at_correct_column() {
     let mut grid = create_grid_with_content("");
     let emoji_with_skin = "\u{1F44B}\u{1F3FB}"; // 👋🏻
     feed_bytes(&mut grid, emoji_with_skin.as_bytes());
-    assert_eq!(grid.cursor.x, 2,
-        "emoji+skin-tone should be width 2 total, cursor at col 2, got {}", grid.cursor.x);
+    assert_eq!(
+        grid.cursor.x, 2,
+        "emoji+skin-tone should be width 2 total, cursor at col 2, got {}",
+        grid.cursor.x
+    );
     feed_bytes(&mut grid, b"x");
-    assert_eq!(grid.cursor.x, 3,
-        "char after emoji+skin-tone should be at col 3, got {}", grid.cursor.x);
+    assert_eq!(
+        grid.cursor.x, 3,
+        "char after emoji+skin-tone should be at col 3, got {}",
+        grid.cursor.x
+    );
 }
 
 #[test]
 fn zwj_deletion_dcb_sequence_clears_last_emoji() {
-    // Simulates nvim using CUB(2) + DCH(1) to delete the last of 3 ZWJ emojis.
+    // Simulates an application using CUB(2) + DCH(1) to delete the last of 3 ZWJ emojis.
     // CUB(2) = 2 display columns back (emoji3 is 2 wide), DCH(1) = delete 1 grapheme cluster.
     let mut grid = create_grid_with_content("");
     feed_bytes(&mut grid, b"\x1b[?2027h");
@@ -6622,54 +6743,78 @@ fn zwj_deletion_dcb_sequence_clears_last_emoji() {
 
     // CUB(2): move back 2 display columns to start of emoji3
     feed_bytes(&mut grid, b"\x1b[2D");
-    assert_eq!(grid.cursor.x, 4, "CUB(2) should land at col 4 (start of emoji3)");
+    assert_eq!(
+        grid.cursor.x, 4,
+        "CUB(2) should land at col 4 (start of emoji3)"
+    );
 
     // DCH 1 at col 4: delete emoji3 (1 grapheme cluster)
     feed_bytes(&mut grid, b"\x1b[P");
     assert_eq!(grid.cursor.x, 4, "cursor should stay at col 4 after DCH");
 
     let row = &grid.viewport[0];
-    assert!(row.columns[0].grapheme().contains('\u{1F468}'), "emoji1 at index 0 should be intact");
-    assert!(row.columns[1].grapheme().contains('\u{1F468}'), "emoji2 at index 1 should be intact");
-    assert_eq!(row.columns[2].width(), 1, "col 4 (was emoji3) should be empty");
+    assert!(
+        row.columns[0].grapheme().contains('\u{1F468}'),
+        "emoji1 at index 0 should be intact"
+    );
+    assert!(
+        row.columns[1].grapheme().contains('\u{1F468}'),
+        "emoji2 at index 1 should be intact"
+    );
+    assert_eq!(
+        row.columns[2].width(),
+        1,
+        "col 4 (was emoji3) should be empty"
+    );
     assert_eq!(row.columns[3].width(), 1, "col 5 should also be empty");
 }
 
 #[test]
-fn zwj_deletion_nvim_sequence_clears_last_emoji() {
-    // Simulates nvim INSERT-mode backspace in 2027 mode (the actual failing scenario).
-    // nvim sends CUB(2) meaning "2 display columns back" — NOT "2 grapheme clusters".
-    // Then writes 2 spaces to clear the emoji's columns.
-    // Then CUB(2) again to reposition cursor.
+fn zwj_deletion_absolute_positioning_sequence_clears_last_emoji() {
+    // Simulates an application write + delete sequence in 2027 mode.
     //
-    // With the old (broken) CUB-as-grapheme-clusters handler:
-    //   CUB(2) from col 6 → 2 clusters back → 4 cols back → cursor 2
-    //   spaces at col 2 erase emoji2 instead of emoji3!
+    // One observed write pattern is: CUP + SP SP + BS BS + <emoji>
+    // The SP SP + BS BS clears the target cells before writing the emoji.
+    // Because BS operates on the just-written spaces (width=1), each BS moves
+    // back exactly 1 column — same result regardless of BS semantics.
     //
-    // With the fixed (column-based) CUB handler:
-    //   CUB(2) from col 6 → 2 display columns back → cursor 4 (emoji3's start)
-    //   spaces at col 4 erase emoji3 ✓
+    // The corresponding delete pattern uses CUP for absolute positioning,
+    // then overwrites with spaces. This test verifies both patterns.
     let mut grid = create_grid_with_content("");
     feed_bytes(&mut grid, b"\x1b[?2027h");
-    let family = "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}";
-    let content = format!("{}{}{}", family, family, family);
-    feed_bytes(&mut grid, content.as_bytes()); // cursor at col 6
+    let family = "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}"; // 👨‍👩‍👧, width=2
 
-    // nvim sends CUB(2): move back 2 display columns to start of emoji3
-    feed_bytes(&mut grid, b"\x1b[2D");
-    assert_eq!(grid.cursor.x, 4, "CUB(2) should move back 2 display columns to col 4");
+    // Write 3 emojis using that write pattern: CUP + SP SP + BS BS + emoji
+    feed_bytes(&mut grid, b"\x1b[H"); // CUP(1,1) → col 0
+    feed_bytes(&mut grid, b"  \x08\x08"); // SP SP BS BS → col 0
+    feed_bytes(&mut grid, family.as_bytes()); // emoji1 at col 0, cursor at col 2
+    feed_bytes(&mut grid, b"\x1b[1;3H"); // CUP(1,3) → col 2
+    feed_bytes(&mut grid, b"  \x08\x08"); // SP SP BS BS → col 2
+    feed_bytes(&mut grid, family.as_bytes()); // emoji2 at col 2, cursor at col 4
+    feed_bytes(&mut grid, b"\x1b[1;5H"); // CUP(1,5) → col 4
+    feed_bytes(&mut grid, b"  \x08\x08"); // SP SP BS BS → col 4
+    feed_bytes(&mut grid, family.as_bytes()); // emoji3 at col 4, cursor at col 6
+    assert_eq!(grid.cursor.x, 6, "cursor at col 6 after 3 emojis");
 
-    // nvim writes 2 spaces to clear emoji3's columns
-    feed_bytes(&mut grid, b"  ");
-    assert_eq!(grid.cursor.x, 6);
-
-    // nvim sends CUB(2) to reposition cursor back at col 4
-    feed_bytes(&mut grid, b"\x1b[2D");
-    assert_eq!(grid.cursor.x, 4, "final CUB(2) should land at col 4");
+    // Delete via absolute positioning: CUP to the start of the emoji, then overwrite with spaces.
+    feed_bytes(&mut grid, b"\x1b[1;5H"); // CUP(1,5) → col 4 (start of emoji3)
+    assert_eq!(grid.cursor.x, 4, "CUP positions at col 4");
+    feed_bytes(&mut grid, b"  "); // overwrite emoji3's columns with spaces
+    assert_eq!(grid.cursor.x, 6, "after writing 2 spaces, cursor at col 6");
 
     let row = &grid.viewport[0];
-    assert!(row.columns[0].grapheme().contains('\u{1F468}'), "emoji1 should be intact");
-    assert!(row.columns[1].grapheme().contains('\u{1F468}'), "emoji2 should be intact");
-    assert_eq!(row.columns[2].grapheme(), " ", "col 4 should now be space (emoji3 cleared)");
-    assert_eq!(row.columns[3].grapheme(), " ", "col 5 should now be space");
+    assert!(
+        row.columns[0].grapheme().contains('\u{1F468}'),
+        "emoji1 at col 0 should be intact"
+    );
+    assert!(
+        row.columns[1].grapheme().contains('\u{1F468}'),
+        "emoji2 at col 2 should be intact"
+    );
+    assert_eq!(
+        row.columns[2].grapheme(),
+        " ",
+        "col 4 should now be space (emoji3 cleared)"
+    );
+    assert_eq!(row.columns[3].grapheme(), " ", "col 5 should also be space");
 }
