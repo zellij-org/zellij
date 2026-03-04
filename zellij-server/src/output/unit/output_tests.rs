@@ -627,13 +627,13 @@ fn test_character_chunk_drain_by_width() {
         "Should have 6 characters remaining"
     );
 
-    let drained_text: String = drained.iter().map(|c| c.character).collect();
+    let drained_text: String = drained.iter().flat_map(|c| c.chars()).collect();
     assert_eq!(drained_text, "Hello", "Drained part should be 'Hello'");
 
     let remaining_text: String = chunk
         .terminal_characters
         .iter()
-        .map(|c| c.character)
+        .flat_map(|c| c.chars())
         .collect();
     assert_eq!(
         remaining_text, " World",
@@ -675,7 +675,7 @@ fn test_character_chunk_retain_by_width() {
     let text: String = chunk
         .terminal_characters
         .iter()
-        .map(|c| c.character)
+        .flat_map(|c| c.chars())
         .collect();
     assert_eq!(text, "Hello", "Should retain 'Hello'");
 }
@@ -687,10 +687,10 @@ fn test_character_chunk_cut_middle_out() {
     // Cut middle (characters 5-8)
     let (left, right) = chunk.cut_middle_out(5, 8).unwrap();
 
-    let left_text: String = left.iter().map(|c| c.character).collect();
+    let left_text: String = left.iter().flat_map(|c| c.chars()).collect();
     assert_eq!(left_text, "Hello", "Left chunk should be 'Hello'");
 
-    let right_text: String = right.iter().map(|c| c.character).collect();
+    let right_text: String = right.iter().flat_map(|c| c.chars()).collect();
     assert_eq!(right_text, "rld", "Right chunk should be 'rld'");
 }
 

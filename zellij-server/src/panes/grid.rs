@@ -3,6 +3,7 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
+use unicode_width::UnicodeWidthChar;
 use zellij_utils::data::Style;
 use zellij_utils::errors::prelude::*;
 
@@ -278,7 +279,7 @@ macro_rules! dump_screen {
             if line.is_canonical && !is_first {
                 buf.push_str("\n");
             }
-            let s: String = (&line.columns).into_iter().map(|x| x.character).collect();
+            let s: String = (&line.columns).into_iter().flat_map(|x| x.chars()).collect();
             // Replace the spaces at the end of the line. Sometimes, the lines are
             // collected with spaces until the end of the panel.
             buf.push_str(&s.trim_end_matches(' '));
@@ -318,7 +319,7 @@ macro_rules! dump_screen_with_ansi {
                     write!(buf, "{}", tc.styles).unwrap();
                     last_styles = Some(tc.styles.clone());
                 }
-                buf.push(tc.character);
+                tc.chars().for_each(|c| buf.push(c));
             }
             is_first = false;
         }
@@ -1469,13 +1470,6 @@ impl Grid {
     }
     pub fn add_character(&mut self, terminal_character: TerminalCharacter) {
         let character_width = terminal_character.width();
-        // Drop zero-width Unicode/UTF-8 codepoints, like for example Variation Selectors.
-        // This breaks unicode grapheme segmentation, and is the reason why some characters
-        // aren't displayed correctly. Refer to this issue for more information:
-        //     https://github.com/zellij-org/zellij/issues/1538
-        if character_width == 0 {
-            return;
-        }
         if self.cursor.x + character_width > self.width {
             if self.disable_linewrap {
                 return;
@@ -1491,6 +1485,23 @@ impl Grid {
             .get(self.cursor.y)
             .and_then(|current_line| current_line.columns.get(absolute_x_in_line))
             .cloned()
+    }
+    fn get_character_before_cursor_mut(&mut self) -> Option<&mut TerminalCharacter> {
+        if self.cursor.x > 0 {
+            let abs_x = self.get_absolute_character_index(self.cursor.x - 1, self.cursor.y)?;
+            self.viewport
+                .get_mut(self.cursor.y)
+                .and_then(|row| row.columns.get_mut(abs_x))
+        } else if self.cursor.y > 0 {
+            self.viewport
+                .get_mut(self.cursor.y - 1)
+                .and_then(|row| {
+                    let len = row.columns.len();
+                    if len > 0 { row.columns.get_mut(len - 1) } else { None }
+                })
+        } else {
+            None
+        }
     }
     pub fn get_absolute_character_index(&self, x: usize, y: usize) -> Option<usize> {
         Some(self.viewport.get(y)?.absolute_character_index(x))
@@ -1965,7 +1976,7 @@ impl Grid {
             let mut terminal_col = 0;
             for terminal_character in &row.columns {
                 if (start_column..end_column).contains(&terminal_col) {
-                    line_selection.push(terminal_character.character);
+                    terminal_character.chars().for_each(|c| line_selection.push(c));
                 }
 
                 terminal_col += terminal_character.width();
@@ -2516,18 +2527,18 @@ impl Grid {
     pub fn pane_contents(&self, get_full_scrollback: bool) -> PaneContents {
         let mut viewport: Vec<String> = Vec::with_capacity(self.viewport.len());
         for row in &self.viewport {
-            let s: String = (&row.columns).into_iter().map(|x| x.character).collect();
+            let s: String = (&row.columns).into_iter().flat_map(|x| x.chars()).collect();
             viewport.push(s);
         }
         if get_full_scrollback {
             let mut lines_above_viewport: Vec<String> = Vec::with_capacity(self.lines_above.len());
             for row in &self.lines_above {
-                let s: String = (&row.columns).into_iter().map(|x| x.character).collect();
+                let s: String = (&row.columns).into_iter().flat_map(|x| x.chars()).collect();
                 lines_above_viewport.push(s);
             }
             let mut lines_below_viewport: Vec<String> = Vec::with_capacity(self.lines_below.len());
             for row in &self.lines_below {
-                let s: String = (&row.columns).into_iter().map(|x| x.character).collect();
+                let s: String = (&row.columns).into_iter().flat_map(|x| x.chars()).collect();
                 lines_below_viewport.push(s);
             }
             PaneContents::new_with_scrollback(
@@ -2546,7 +2557,19 @@ impl Grid {
 impl Perform for Grid {
     fn print(&mut self, c: char) {
         let c = self.cursor.charsets[self.active_charset].map(c);
-
+        match c.width() {
+            Some(0) => {
+                if let Some(prev_char) = self.get_character_before_cursor_mut() {
+                    prev_char.append_combining(c);
+                }
+                if let Some(ref mut pc) = self.preceding_char {
+                    pc.append_combining(c);
+                }
+                return;
+            },
+            None => return,
+            _ => {},
+        }
         let terminal_character =
             TerminalCharacter::new_styled(c, self.cursor.pending_styles.clone());
         self.set_preceding_character(terminal_character.clone());
