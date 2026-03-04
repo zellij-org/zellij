@@ -468,7 +468,7 @@ impl Pane for TerminalPane {
                 self.get_content_x() + cursor_x + 1,
                 &character_under_cursor.styles,
             );
-            fake_cursor.push(character_under_cursor.character);
+            character_under_cursor.chars().for_each(|c| fake_cursor.push(c));
             vte_output = Some(fake_cursor);
         }
         vte_output

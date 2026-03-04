@@ -16,6 +16,7 @@ pub const EMPTY_TERMINAL_CHARACTER: TerminalCharacter = TerminalCharacter {
     character: ' ',
     width: 1,
     styles: RcCharacterStyles::Reset,
+    combining_chars: None,
 };
 
 pub const RESET_STYLES: CharacterStyles = CharacterStyles {
@@ -927,12 +928,13 @@ pub struct TerminalCharacter {
     pub character: char,
     pub styles: RcCharacterStyles,
     width: u8,
+    combining_chars: Option<Box<Vec<char>>>,
 }
 
 // This size has significant memory and CPU implications for long lines,
 // be careful about allowing it to grow
 #[cfg(target_arch = "x86_64")]
-const _: [(); 16] = [(); std::mem::size_of::<TerminalCharacter>()];
+const _: [(); 24] = [(); std::mem::size_of::<TerminalCharacter>()];
 
 impl TerminalCharacter {
     #[inline]
@@ -946,6 +948,7 @@ impl TerminalCharacter {
             character,
             styles,
             width: character.width().unwrap_or(0) as u8,
+            combining_chars: None,
         }
     }
 
@@ -960,17 +963,33 @@ impl TerminalCharacter {
             character,
             styles,
             width: 1,
+            combining_chars: None,
         }
     }
 
     pub fn width(&self) -> usize {
         self.width as usize
     }
+
+    pub fn append_combining(&mut self, c: char) {
+        self.combining_chars
+            .get_or_insert_with(|| Box::new(Vec::new()))
+            .push(c);
+    }
+
+    pub fn chars(&self) -> impl Iterator<Item = char> + '_ {
+        std::iter::once(self.character).chain(
+            self.combining_chars.iter().flat_map(|v| v.iter().copied()),
+        )
+    }
 }
 
 impl ::std::fmt::Debug for TerminalCharacter {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.character)
+        for c in self.chars() {
+            write!(f, "{}", c)?;
+        }
+        Ok(())
     }
 }
 

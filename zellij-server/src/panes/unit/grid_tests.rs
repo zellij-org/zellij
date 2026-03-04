@@ -4362,3 +4362,44 @@ fn single_click_drag_selection_preserved_after_scroll() {
     assert_eq!(grid.selection.start.column, start_before.column);
     assert_eq!(grid.selection.end.column, end_before.column);
 }
+
+#[test]
+fn combining_accent_appended_to_base() {
+    let grid = create_grid_with_content("o\u{0301}");
+    let row = &grid.viewport[0];
+    assert_eq!(row.columns.len(), 1);
+    assert_eq!(row.columns[0].character, 'o');
+    let combining: Vec<char> = row.columns[0].chars().skip(1).collect();
+    assert_eq!(combining, vec!['\u{0301}']);
+    assert_eq!(row.columns[0].width(), 1);
+}
+
+#[test]
+fn multiple_combining_chars_on_one_base() {
+    let grid = create_grid_with_content("a\u{0308}\u{0301}");
+    let row = &grid.viewport[0];
+    assert_eq!(row.columns.len(), 1);
+    assert_eq!(row.columns[0].character, 'a');
+    let combining: Vec<char> = row.columns[0].chars().skip(1).collect();
+    assert_eq!(combining, vec!['\u{0308}', '\u{0301}']);
+}
+
+#[test]
+fn combining_char_does_not_advance_cursor() {
+    let grid = create_grid_with_content("ab\u{0301}c");
+    let row = &grid.viewport[0];
+    assert_eq!(row.columns.len(), 3);
+    assert_eq!(row.columns[0].character, 'a');
+    assert_eq!(row.columns[1].character, 'b');
+    assert!(row.columns[1].chars().skip(1).next().is_some());
+    assert_eq!(row.columns[2].character, 'c');
+}
+
+#[test]
+fn combining_chars_included_in_selection() {
+    let mut grid = create_grid_with_content("o\u{0301}");
+    grid.start_selection(&Position::new(0, 0));
+    grid.end_selection(&Position::new(0, 1));
+    let selected = grid.get_selected_text();
+    assert_eq!(selected, Some("o\u{0301}".to_string()));
+}

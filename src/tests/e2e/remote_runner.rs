@@ -355,7 +355,7 @@ pub fn take_snapshot(terminal_output: &mut TerminalPane) -> String {
                     continue;
                 }
             }
-            snapshot.push(terminal_character.character);
+            terminal_character.chars().for_each(|c| snapshot.push(c));
         }
         if line_index != output_lines.len() - 1 {
             snapshot.push('\n');
