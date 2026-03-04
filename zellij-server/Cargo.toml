@@ -31,7 +31,6 @@ regex = { workspace = true }
 semver = { version = "0.11.0", default-features = false }
 serde = { workspace = true }
 serde_json = { workspace = true }
-signal-hook = { workspace = true }
 sixel-image = { version = "0.1.0", default-features = false }
 sixel-tokenizer = { version = "0.1.0", default-features = false }
 sysinfo = { version = "0.33", default-features = false, features = ["system"] }
@@ -57,6 +56,17 @@ close_fds = "0.3.2"
 daemonize = { workspace = true }
 libc = { workspace = true }
 nix = { workspace = true }
+signal-hook = { workspace = true }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { workspace = true, features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Console",
+    "Win32_System_Pipes",
+    "Win32_System_Threading",
+] }
 
 [dev-dependencies]
 insta = "1.6.0"

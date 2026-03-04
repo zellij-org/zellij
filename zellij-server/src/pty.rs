@@ -488,6 +488,10 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                 completion_tx,
             ) => {
                 let err_context = || "failed to open new tab";
+                log::info!(
+                    "PtyInstruction::NewTab: spawning terminals for tab {}",
+                    tab_index
+                );
 
                 let floating_panes_layout = if floating_panes_layout.is_empty() {
                     layout.new_tab().1
@@ -1279,6 +1283,11 @@ impl Pty {
                 (completion_tx, None)
             };
 
+        log::info!(
+            "spawn_terminals_for_layout: {} tiled + {} floating panes created, sending ApplyLayout",
+            new_tab_pane_ids.len(),
+            new_tab_floating_pane_ids.len()
+        );
         self.bus
             .senders
             .send_to_screen(ScreenInstruction::ApplyLayout(
@@ -2240,5 +2249,11 @@ pub fn get_default_shell() -> PathBuf {
 
 #[cfg(windows)]
 pub fn get_default_shell() -> PathBuf {
-    unimplemented!("Windows get_default_shell not yet implemented")
+    if let Ok(shell) = std::env::var("SHELL") {
+        return PathBuf::from(shell);
+    }
+    PathBuf::from(std::env::var("COMSPEC").unwrap_or_else(|_| {
+        log::warn!("Cannot read SHELL or COMSPEC env, falling back to use cmd.exe");
+        "cmd.exe".to_string()
+    }))
 }

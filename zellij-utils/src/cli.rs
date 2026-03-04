@@ -143,15 +143,20 @@ pub struct WebCli {
         display_order = 5
     )]
     pub daemonize: bool,
+    /// Timeout in seconds waiting for the server to start (default: 10).
+    /// Only used on Windows where the daemonized server is polled via TCP.
+    /// On Unix, startup signaling uses pipes and this option is ignored.
+    #[clap(long, value_parser, display_order = 6)]
+    pub server_startup_timeout: Option<u64>,
     /// Create a login token for the web interface, will only be displayed once and cannot later be
     /// retrieved. Returns the token name and the token.
-    #[clap(long, value_parser, exclusive(true), display_order = 6)]
+    #[clap(long, value_parser, exclusive(true), display_order = 7)]
     pub create_token: bool,
     /// Optional name for the token
-    #[clap(long, value_parser, value_name = "TOKEN_NAME", display_order = 7)]
+    #[clap(long, value_parser, value_name = "TOKEN_NAME", display_order = 8)]
     pub token_name: Option<String>,
     /// Create a read-only login token (can only attach to existing sessions as watcher)
-    #[clap(long, value_parser, exclusive(true), display_order = 8)]
+    #[clap(long, value_parser, exclusive(true), display_order = 9)]
     pub create_read_only_token: bool,
     /// Revoke a login token by its name
     #[clap(
@@ -159,21 +164,21 @@ pub struct WebCli {
         value_parser,
         exclusive(true),
         value_name = "TOKEN NAME",
-        display_order = 9
+        display_order = 10
     )]
     pub revoke_token: Option<String>,
     /// Revoke all login tokens
-    #[clap(long, value_parser, exclusive(true), display_order = 10)]
+    #[clap(long, value_parser, exclusive(true), display_order = 11)]
     pub revoke_all_tokens: bool,
     /// List token names and their creation dates (cannot show actual tokens)
-    #[clap(long, value_parser, exclusive(true), display_order = 11)]
+    #[clap(long, value_parser, exclusive(true), display_order = 12)]
     pub list_tokens: bool,
     /// The ip address to listen on locally for connections (defaults to 127.0.0.1)
     #[clap(
         long,
         value_parser,
         conflicts_with_all(&["stop", "status", "create-token", "revoke-token", "revoke-all-tokens"]),
-        display_order = 12
+        display_order = 13
     )]
     pub ip: Option<IpAddr>,
     /// The port to listen on locally for connections (defaults to 8082)
@@ -181,7 +186,7 @@ pub struct WebCli {
         long,
         value_parser,
         conflicts_with_all(&["stop", "status", "create-token", "revoke-token", "revoke-all-tokens"]),
-        display_order = 13
+        display_order = 14
     )]
     pub port: Option<u16>,
     /// The path to the SSL certificate (required if not listening on 127.0.0.1)
@@ -189,7 +194,7 @@ pub struct WebCli {
         long,
         value_parser,
         conflicts_with_all(&["stop", "status", "create-token", "revoke-token", "revoke-all-tokens"]),
-        display_order = 14
+        display_order = 15
     )]
     pub cert: Option<PathBuf>,
     /// The path to the SSL key (required if not listening on 127.0.0.1)
@@ -197,7 +202,7 @@ pub struct WebCli {
         long,
         value_parser,
         conflicts_with_all(&["stop", "status", "create-token", "revoke-token", "revoke-all-tokens"]),
-        display_order = 15
+        display_order = 16
     )]
     pub key: Option<PathBuf>,
 }

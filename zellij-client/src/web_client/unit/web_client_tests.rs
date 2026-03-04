@@ -2258,7 +2258,13 @@ impl ClientOsApi for MockClientOsApi {
         }
         msg
     }
-    fn handle_signals(&self, _sigwinch_cb: Box<dyn Fn()>, _quit_cb: Box<dyn Fn()>) {}
+    fn handle_signals(
+        &self,
+        _sigwinch_cb: Box<dyn Fn()>,
+        _quit_cb: Box<dyn Fn()>,
+        _resize_receiver: Option<std::sync::mpsc::Receiver<()>>,
+    ) {
+    }
     fn connect_to_server(&self, _path: &std::path::Path) {}
     fn load_palette(&self) -> Palette {
         Palette::default()

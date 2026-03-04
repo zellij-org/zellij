@@ -287,6 +287,7 @@ fn main() {
                 web_opts.port,
                 web_opts.cert.clone(),
                 web_opts.key.clone(),
+                web_opts.server_startup_timeout,
             );
         } else if web_opts.stop {
             match commands::stop_web_server() {

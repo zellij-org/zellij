@@ -172,6 +172,7 @@ pub(crate) fn start_web_server(
     port: Option<u16>,
     cert: Option<PathBuf>,
     key: Option<PathBuf>,
+    startup_timeout: Option<u64>,
 ) {
     // TODO: move this outside of this function
     let (config, _layout, config_options, _config_without_layout, _config_options_without_layout) =
@@ -196,6 +197,7 @@ pub(crate) fn start_web_server(
         port,
         cert,
         key,
+        startup_timeout,
     );
 }
 
@@ -207,6 +209,7 @@ pub(crate) fn start_web_server(
     _port: Option<u16>,
     _cert: Option<PathBuf>,
     _key: Option<PathBuf>,
+    _startup_timeout: Option<u64>,
 ) {
     log::error!(
         "This version of Zellij was compiled without web server support, cannot run web server!"
