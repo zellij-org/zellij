@@ -1541,13 +1541,40 @@ impl Grid {
                     // new_char is part of the same EGC as the previous cell.
                     let cell_x = state.x;
                     let cell_y = state.y;
+                    let mut updated_cell: Option<TerminalCharacter> = None;
+                    // Signed delta: positive = grew, negative = shrank (e.g. VS15 on
+                    // an emoji-presentation char reduces width from 2 to 1).
+                    let mut width_change: isize = 0;
                     if let Some(row) = self.viewport.get_mut(cell_y) {
                         let abs_idx = row.absolute_character_index(cell_x);
                         if let Some(cell) = row.columns.get_mut(abs_idx) {
+                            let old_width = cell.width() as isize;
                             cell.push_scalar(new_char);
+                            width_change = cell.width() as isize - old_width;
+                            updated_cell = Some(cell.clone());
+                        }
+                        if width_change != 0 {
+                            // Width changed in either direction — invalidate the row's
+                            // cached width so callers that branch on width_cached() see
+                            // the correct total.
+                            row.width = None;
                         }
                     }
                     self.egc_state.as_mut().unwrap().text.push(new_char);
+                    // Keep preceding_char in sync with the full EGC so CSI b REP
+                    // repeats the complete cluster, not just the combining codepoint.
+                    if let Some(updated) = updated_cell {
+                        self.preceding_char = Some(updated);
+                    }
+                    // Adjust cursor and egc_state.end_x for any width change so the
+                    // next character lands at the correct column.
+                    if width_change > 0 {
+                        self.move_cursor_forward_until_edge(width_change as usize);
+                        self.egc_state.as_mut().unwrap().end_x = self.cursor.x;
+                    } else if width_change < 0 {
+                        self.move_cursor_back((-width_change) as usize);
+                        self.egc_state.as_mut().unwrap().end_x = self.cursor.x;
+                    }
                     self.output_buffer.update_line(cell_y);
                     return;
                 }
@@ -1571,10 +1598,15 @@ impl Grid {
         }
         let placed_x = self.cursor.x;
         let placed_y = self.cursor.y;
+        // Capture the full grapheme text before terminal_character is moved.
+        // egc_state.text must reflect the complete EGC (not just the first scalar)
+        // so that boundary checks against subsequent codepoints use correct prior
+        // context — particularly RI parity for flag sequences repeated via CSI b.
+        let egc_text = terminal_character.grapheme().to_string();
         self.add_character_at_cursor_position(terminal_character, false);
         self.move_cursor_forward_until_edge(character_width);
         self.egc_state = Some(PendingGrapheme {
-            text: new_char.to_string(),
+            text: egc_text,
             x: placed_x,
             y: placed_y,
             end_x: self.cursor.x,
@@ -1842,13 +1874,42 @@ impl Grid {
     pub fn replace_with_empty_chars(&mut self, count: usize, empty_char_style: RcCharacterStyles) {
         let mut empty_character = EMPTY_TERMINAL_CHARACTER;
         empty_character.styles = empty_char_style;
-        let pad_until = std::cmp::min(self.width, self.cursor.x + count);
-        self.pad_current_line_until(pad_until, empty_character.clone());
-        if let Some(current_row) = self.viewport.get_mut(self.cursor.y) {
-            for i in 0..count {
-                current_row.replace_character_at(empty_character.clone(), self.cursor.x + i);
+        if self.grapheme_cluster_mode {
+            // In 2027 mode step forward by EGC width rather than by column.
+            // Compute positions in an immutable pass first to avoid borrow conflicts.
+            let positions: Vec<usize> = if let Some(row) = self.viewport.get(self.cursor.y) {
+                let mut pos = self.cursor.x;
+                let mut positions = Vec::with_capacity(count);
+                for _ in 0..count {
+                    if pos >= self.width {
+                        break;
+                    }
+                    positions.push(pos);
+                    pos += row.following_char_width(pos);
+                }
+                positions
+            } else {
+                Vec::new()
+            };
+            if let Some(&last_pos) = positions.last() {
+                let pad_until = std::cmp::min(self.width, last_pos + 1);
+                self.pad_current_line_until(pad_until, empty_character.clone());
             }
-            self.output_buffer.update_line(self.cursor.y);
+            if let Some(current_row) = self.viewport.get_mut(self.cursor.y) {
+                for pos in positions {
+                    current_row.replace_character_at(empty_character.clone(), pos);
+                }
+                self.output_buffer.update_line(self.cursor.y);
+            }
+        } else {
+            let pad_until = std::cmp::min(self.width, self.cursor.x + count);
+            self.pad_current_line_until(pad_until, empty_character.clone());
+            if let Some(current_row) = self.viewport.get_mut(self.cursor.y) {
+                for i in 0..count {
+                    current_row.replace_character_at(empty_character.clone(), self.cursor.x + i);
+                }
+                self.output_buffer.update_line(self.cursor.y);
+            }
         }
     }
     fn erase_characters(&mut self, count: usize, empty_char_style: RcCharacterStyles) {
@@ -2657,8 +2718,16 @@ impl Perform for Grid {
                 self.ring_bell = true;
             },
             8 => {
-                // backspace
-                self.move_cursor_back(1);
+                // backspace — in 2027 mode move back by the full EGC width
+                let back_by = if self.grapheme_cluster_mode {
+                    self.viewport
+                        .get(self.cursor.y)
+                        .map(|row| row.preceding_char_width(self.cursor.x))
+                        .unwrap_or(1)
+                } else {
+                    1
+                };
+                self.move_cursor_back(back_by);
             },
             9 => {
                 // tab
@@ -2961,6 +3030,7 @@ impl Perform for Grid {
             }
         } else if c == 'C' || c == 'a' {
             // move cursor forward
+            // CUF counts display columns in all modes; only BS/DEL step by grapheme cluster.
             let move_by = next_param_or(1);
             self.move_cursor_forward_until_edge(move_by);
         } else if c == 'K' {
@@ -3022,7 +3092,8 @@ impl Perform for Grid {
             let pad_character = EMPTY_TERMINAL_CHARACTER;
             self.move_cursor_down_until_edge_of_screen(move_down_count as usize, pad_character);
         } else if c == 'D' {
-            let move_back_count = next_param_or(1);
+            // CUB counts display columns in all modes; only BS/DEL step by grapheme cluster.
+            let move_back_count = next_param_or(1) as usize;
             self.move_cursor_back(move_back_count);
         } else if c == 'l' {
             let first_intermediate_is_questionmark = match intermediates.get(0) {
@@ -3781,6 +3852,39 @@ impl Row {
             }
         }
         acc
+    }
+    /// Returns the display width of the cell whose right edge is at column `cursor_x`.
+    /// Used in CSI 2027 mode to move the cursor back by a full EGC rather than 1 column.
+    pub fn preceding_char_width(&self, cursor_x: usize) -> usize {
+        if cursor_x == 0 {
+            return 1;
+        }
+        let mut accumulated: usize = 0;
+        for cell in &self.columns {
+            let w = cell.width().max(1);
+            accumulated += w;
+            if accumulated >= cursor_x {
+                return w;
+            }
+        }
+        1
+    }
+    /// Returns the display width of the cell starting at column `cursor_x`.
+    /// Used in CSI 2027 mode to move the cursor forward by a full EGC.
+    pub fn following_char_width(&self, cursor_x: usize) -> usize {
+        let mut accumulated: usize = 0;
+        for cell in &self.columns {
+            let w = cell.width().max(1);
+            if accumulated == cursor_x {
+                return w;
+            }
+            accumulated += w;
+            if accumulated > cursor_x {
+                // cursor_x lands in the middle of a wide char — shouldn't happen normally
+                return 1;
+            }
+        }
+        1
     }
     pub fn absolute_character_index(&self, x: usize) -> usize {
         // return x's width aware index
