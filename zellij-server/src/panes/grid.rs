@@ -3313,16 +3313,9 @@ impl Perform for Grid {
                 self.ring_bell = true;
             },
             8 => {
-                // backspace — in 2027 mode move back by the full EGC width
-                let back_by = if self.grapheme_cluster_mode {
-                    self.viewport
-                        .get(self.cursor.y)
-                        .map(|row| row.preceding_char_width(self.cursor.x))
-                        .unwrap_or(1)
-                } else {
-                    1
-                };
-                self.move_cursor_back(back_by);
+                // backspace
+                // BS moves back one display column, including in 2027 mode.
+                self.move_cursor_back(1);
             },
             9 => {
                 // tab
@@ -3625,7 +3618,7 @@ impl Perform for Grid {
             }
         } else if c == 'C' || c == 'a' {
             // move cursor forward
-            // CUF counts display columns in all modes; only BS/DEL step by grapheme cluster.
+            // CUF counts display columns in all modes, including 2027.
             let move_by = next_param_or(1);
             self.move_cursor_forward_until_edge(move_by);
         } else if c == 'K' {
@@ -3687,7 +3680,7 @@ impl Perform for Grid {
             let pad_character = EMPTY_TERMINAL_CHARACTER;
             self.move_cursor_down_until_edge_of_screen(move_down_count as usize, pad_character);
         } else if c == 'D' {
-            // CUB counts display columns in all modes; only BS/DEL step by grapheme cluster.
+            // CUB counts display columns in all modes, including 2027.
             let move_back_count = next_param_or(1) as usize;
             self.move_cursor_back(move_back_count);
         } else if c == 'l' {
@@ -4447,22 +4440,6 @@ impl Row {
             }
         }
         acc
-    }
-    /// Returns the display width of the cell whose right edge is at column `cursor_x`.
-    /// Used in CSI 2027 mode to move the cursor back by a full EGC rather than 1 column.
-    pub fn preceding_char_width(&self, cursor_x: usize) -> usize {
-        if cursor_x == 0 {
-            return 1;
-        }
-        let mut accumulated: usize = 0;
-        for cell in &self.columns {
-            let w = cell.width().max(1);
-            accumulated += w;
-            if accumulated >= cursor_x {
-                return w;
-            }
-        }
-        1
     }
     /// Returns the display width of the cell starting at column `cursor_x`.
     /// Used in CSI 2027 mode to move the cursor forward by a full EGC.
