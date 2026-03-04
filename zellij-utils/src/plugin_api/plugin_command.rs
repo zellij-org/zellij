@@ -102,7 +102,7 @@ pub use super::generated_api::api::{
         SaveLayoutPayload, SaveLayoutResponse as ProtobufSaveLayoutResponse, SaveSessionPayload,
         SaveSessionResponse as ProtobufSaveSessionResponse, ScrollDownInPaneIdPayload,
         ScrollToBottomInPaneIdPayload, ScrollToTopInPaneIdPayload, ScrollUpInPaneIdPayload,
-        SetFloatingPanePinnedPayload, SetPaneBorderlessPayload,
+        SetFloatingPanePinnedPayload, SetPaneBorderlessPayload, SetPaneColorPayload,
         SetSelfMouseSelectionSupportPayload, SetTimeoutPayload, ShowCursorPayload,
         ShowFloatingPanesPayload as ProtobufShowFloatingPanesPayload,
         ShowFloatingPanesResponse as ProtobufShowFloatingPanesResponse, ShowPaneWithIdPayload,
@@ -2423,6 +2423,17 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 None => Ok(PluginCommand::ShowFloatingPanes { tab_id: None }),
                 _ => Err("Mismatched payload for ShowFloatingPanes"),
             },
+            Some(CommandName::SetPaneColor) => match protobuf_plugin_command.payload {
+                Some(Payload::SetPaneColorPayload(payload)) => match payload.pane_id {
+                    Some(pane_id) => Ok(PluginCommand::SetPaneColor(
+                        pane_id.try_into()?,
+                        payload.fg,
+                        payload.bg,
+                    )),
+                    None => Err("Malformed SetPaneColor payload"),
+                },
+                _ => Err("Mismatched payload for SetPaneColor"),
+            },
             None => Err("Unrecognized plugin command"),
         }
     }
@@ -3974,6 +3985,14 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                         tab_id: tab_id.map(|id| id as u32),
                     },
                 )),
+            }),
+            PluginCommand::SetPaneColor(pane_id, fg, bg) => Ok(ProtobufPluginCommand {
+                name: CommandName::SetPaneColor as i32,
+                payload: Some(Payload::SetPaneColorPayload(SetPaneColorPayload {
+                    pane_id: Some(pane_id.try_into()?),
+                    fg,
+                    bg,
+                })),
             }),
         }
     }

@@ -243,6 +243,7 @@ message Action {
     CurrentTabInfoAction current_tab_info = 105;
     ShowFloatingPanesAction show_floating_panes = 106;
     HideFloatingPanesAction hide_floating_panes = 107;
+    SetPaneColorAction set_pane_color = 108;
   }
 }
 
@@ -651,6 +652,12 @@ message SetPaneBorderlessAction {
   bool borderless = 2;
 }
 
+message SetPaneColorAction {
+  PaneId pane_id = 1;
+  optional string fg = 2;
+  optional string bg = 3;
+}
+
 // Supporting enums and messages
 enum InputMode {
   INPUT_MODE_UNSPECIFIED = 0;
@@ -856,6 +863,8 @@ message TiledPaneLayout {
   bool is_expanded_in_stack = 11;
   bool hide_floating_panes = 12;
   optional string pane_initial_contents = 13;
+  optional string default_fg = 14;
+  optional string default_bg = 15;
   // NOTE: run_instructions_to_ignore is not represented here because it's a field used only inside the server itself and not part of the server/client contract
 }
 
@@ -872,6 +881,8 @@ message FloatingPaneLayout {
   optional string pane_initial_contents = 10;
   optional uint32 logical_position = 11;
   optional bool borderless = 12;
+  optional string default_fg = 13;
+  optional string default_bg = 14;
 }
 
 message SwapTiledLayout {

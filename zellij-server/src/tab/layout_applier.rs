@@ -653,6 +653,12 @@ impl<'a> LayoutApplier<'a> {
         } else {
             new_pane.set_borderless(false);
         }
+        if floating_pane_layout.default_fg.is_some() || floating_pane_layout.default_bg.is_some() {
+            new_pane.set_pane_default_colors(
+                floating_pane_layout.default_fg.clone(),
+                floating_pane_layout.default_bg.clone(),
+            );
+        }
         if let Some(held_command) = hold_for_command {
             new_pane.hold(None, true, held_command.clone());
         }
@@ -721,6 +727,9 @@ impl<'a> LayoutApplier<'a> {
         new_pane.set_borderless(layout.borderless.unwrap_or(false));
         if let Some(exclude_from_sync) = layout.exclude_from_sync {
             new_pane.set_exclude_from_sync(exclude_from_sync);
+        }
+        if layout.default_fg.is_some() || layout.default_bg.is_some() {
+            new_pane.set_pane_default_colors(layout.default_fg.clone(), layout.default_bg.clone());
         }
         if let Some(held_command) = hold_for_command {
             new_pane.hold(None, true, held_command.clone());

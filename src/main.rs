@@ -21,8 +21,8 @@ fn main() {
 
     {
         let config = Config::try_from(&opts).ok();
-        if let Some(Command::Sessions(Sessions::Action(cli_action))) = opts.command {
-            commands::send_action_to_session(cli_action, opts.session, config);
+        if let Some(Command::Action(cli_action)) = opts.command {
+            commands::send_action_to_session(*cli_action, opts.session, config);
             std::process::exit(0);
         }
         if let Some(Command::Sessions(Sessions::Run {

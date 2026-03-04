@@ -77,6 +77,7 @@ pub fn build(sh: &Shell, flags: flags::Build) -> anyhow::Result<()> {
                     }
                 }
             }
+            proto_files.sort();
             if needs_regeneration {
                 prost
                     .compile_protos(&proto_files, &[protobuf_source_dir])
@@ -122,6 +123,7 @@ pub fn build(sh: &Shell, flags: flags::Build) -> anyhow::Result<()> {
                     }
                 }
             }
+            proto_files.sort();
             if needs_regeneration {
                 prost
                     .compile_protos(&proto_files, &[client_server_contract_dir])
@@ -166,6 +168,7 @@ pub fn build(sh: &Shell, flags: flags::Build) -> anyhow::Result<()> {
                     }
                 }
             }
+            proto_files.sort();
             if needs_regeneration {
                 prost
                     .compile_protos(&proto_files, &[web_server_contract_dir])

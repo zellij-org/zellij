@@ -317,6 +317,13 @@ impl Pane for TerminalPane {
     fn set_selectable(&mut self, selectable: bool) {
         self.selectable = selectable;
     }
+    fn set_pane_default_colors(&mut self, fg: Option<String>, bg: Option<String>) {
+        self.grid.set_pane_default_colors(fg, bg);
+        self.set_should_render(true);
+    }
+    fn get_pane_default_colors(&self) -> (Option<String>, Option<String>) {
+        self.grid.get_pane_default_color_strings()
+    }
     fn render(
         &mut self,
         _client_id: Option<ClientId>,

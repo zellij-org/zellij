@@ -533,6 +533,8 @@ impl Into<PaneLayoutManifest> for PaneLayoutMetadata {
             title: self.title,
             is_focused: self.is_focused,
             pane_contents: self.pane_contents,
+            default_fg: self.default_fg,
+            default_bg: self.default_bg,
         }
     }
 }
@@ -557,6 +559,8 @@ pub struct PaneLayoutMetadata {
     is_focused: bool,
     pane_contents: Option<String>,
     focused_clients: Vec<ClientId>,
+    default_fg: Option<String>,
+    default_bg: Option<String>,
 }
 
 impl PaneLayoutMetadata {
@@ -569,6 +573,8 @@ impl PaneLayoutMetadata {
         is_focused: bool,
         pane_contents: Option<String>,
         focused_clients: Vec<ClientId>,
+        default_fg: Option<String>,
+        default_bg: Option<String>,
     ) -> Self {
         PaneLayoutMetadata {
             id,
@@ -580,6 +586,8 @@ impl PaneLayoutMetadata {
             is_focused,
             pane_contents,
             focused_clients,
+            default_fg,
+            default_bg,
         }
     }
     fn to_pane_metadata(&self) -> PaneMetadata {
@@ -693,6 +701,8 @@ mod tests {
             false,
             None,
             vec![],
+            None,
+            None,
         )
     }
 
@@ -710,6 +720,8 @@ mod tests {
             false,
             None,
             vec![],
+            None,
+            None,
         )
     }
 

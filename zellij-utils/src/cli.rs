@@ -111,6 +111,11 @@ pub enum Command {
     #[clap(name = "web", value_parser)]
     Web(WebCli),
 
+    /// Send actions to a specific session
+    #[clap(visible_alias = "ac")]
+    #[clap(subcommand)]
+    Action(Box<CliAction>),
+
     /// Explore existing zellij sessions
     #[clap(flatten)]
     Sessions(Sessions),
@@ -333,10 +338,6 @@ pub enum Sessions {
         force: bool,
     },
 
-    /// Send actions to a specific session
-    #[clap(visible_alias = "ac")]
-    #[clap(subcommand)]
-    Action(CliAction),
     /// Run a command in a new pane
     /// Returns: Created pane ID (format: terminal_<id>)
     #[clap(visible_alias = "r")]
@@ -1354,5 +1355,21 @@ tail -f /tmp/my-live-logfile | zellij action pipe --name logs --plugin https://e
         /// Change the working directory when switching
         #[clap(short, long, value_parser)]
         cwd: Option<PathBuf>,
+    },
+    /// Set the default foreground/background color of a pane
+    SetPaneColor {
+        /// The pane_id of the pane, eg. terminal_1, plugin_2 or 3 (equivalent to terminal_3).
+        /// Defaults to $ZELLIJ_PANE_ID if not provided.
+        #[clap(short, long, value_parser)]
+        pane_id: Option<String>,
+        /// Foreground color (e.g. "#00e000", "rgb:00/e0/00")
+        #[clap(long, value_parser)]
+        fg: Option<String>,
+        /// Background color (e.g. "#001a3a", "rgb:00/1a/3a")
+        #[clap(long, value_parser)]
+        bg: Option<String>,
+        /// Reset pane colors to terminal defaults
+        #[clap(long, value_parser, conflicts_with_all(&["fg", "bg"]))]
+        reset: bool,
     },
 }

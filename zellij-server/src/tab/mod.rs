@@ -323,6 +323,10 @@ pub trait Pane {
     fn get_selected_text(&self, _client_id: ClientId) -> Option<String> {
         None
     }
+    fn set_pane_default_colors(&mut self, _fg: Option<String>, _bg: Option<String>) {}
+    fn get_pane_default_colors(&self) -> (Option<String>, Option<String>) {
+        (None, None)
+    }
 
     fn right_boundary_x_coords(&self) -> usize {
         self.x() + self.cols()
@@ -2539,6 +2543,22 @@ impl Tab {
                 .suppressed_panes
                 .values()
                 .any(|s_p| s_p.1.pid() == PaneId::Plugin(plugin_id))
+    }
+    pub fn set_pane_color(
+        &mut self,
+        pane_id: PaneId,
+        fg: Option<String>,
+        bg: Option<String>,
+    ) -> Result<()> {
+        let pane = self
+            .floating_panes
+            .get_mut(&pane_id)
+            .or_else(|| self.tiled_panes.get_pane_mut(pane_id))
+            .or_else(|| self.suppressed_panes.get_mut(&pane_id).map(|p| &mut p.1));
+        if let Some(pane) = pane {
+            pane.set_pane_default_colors(fg, bg);
+        }
+        Ok(())
     }
     pub fn has_pane_with_pid(&self, pid: &PaneId) -> bool {
         self.tiled_panes.panes_contain(pid)
@@ -5596,6 +5616,10 @@ pub fn pane_info_for_pane(
         })
         .collect();
     pane_info.index_in_pane_group = index_in_pane_group;
+
+    let (default_fg, default_bg) = pane.get_pane_default_colors();
+    pane_info.default_fg = default_fg;
+    pane_info.default_bg = default_bg;
 
     match pane_id {
         PaneId::Terminal(terminal_id) => {
