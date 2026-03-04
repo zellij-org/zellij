@@ -67,7 +67,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: improve line-wrapping/resize performance (https://github.com/zellij-org/zellij/pull/4778)
 * fix: forward terminal BEL from unfocused tab (and also show visual indication in unfocused panes/tabs that have a BEL) (https://github.com/zellij-org/zellij/pull/4781)
 * fix: improve mobile web client viewport sizing and touch scrolling behavior (https://github.com/zellij-org/zellij/pull/4723)
-* platform: native Windows support (https://github.com/zellij-org/zellij/pull/4720, https://github.com/zellij-org/zellij/pull/4721, https://github.com/zellij-org/zellij/pull/4722, https://github.com/zellij-org/zellij/pull/4738, https://github.com/zellij-org/zellij/pull/4740, https://github.com/zellij-org/zellij/pull/4746, https://github.com/zellij-org/zellij/pull/4759)
+* platform: native Windows support (https://github.com/zellij-org/zellij/pull/4720, https://github.com/zellij-org/zellij/pull/4721, https://github.com/zellij-org/zellij/pull/4722, https://github.com/zellij-org/zellij/pull/4738, https://github.com/zellij-org/zellij/pull/4740, https://github.com/zellij-org/zellij/pull/4746, https://github.com/zellij-org/zellij/pull/4759, https://github.com/zellij-org/zellij/pull/4768)
+* feat: allow changing pane foreground/background color through the cli/plugin-api (https://github.com/zellij-org/zellij/pull/4737)
 
 
 ## [0.43.1] - 2025-08-08
