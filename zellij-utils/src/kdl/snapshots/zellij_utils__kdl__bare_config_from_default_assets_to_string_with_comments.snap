@@ -278,6 +278,7 @@ plugins {
 // eg. "file:/path/to/my-plugin.wasm"
 // eg. "https://example.com/my-plugin.wasm"
 load_plugins {
+    zellij:link
 }
 web_client {
     font "monospace"
