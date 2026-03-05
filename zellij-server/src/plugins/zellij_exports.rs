@@ -737,14 +737,14 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                         close_replaced_pane,
                         context,
                     ),
-                     PluginCommand::ShowFloatingPanes { tab_id } => show_floating_panes(env, tab_id),
-                     PluginCommand::HideFloatingPanes { tab_id } => hide_floating_panes(env, tab_id),
-                     PluginCommand::SetPaneRegexHighlights(pane_id, highlights) => {
-                         set_pane_regex_highlights(env, pane_id, highlights)
-                     },
-                     PluginCommand::ClearPaneHighlights(pane_id) => {
-                         clear_pane_highlights(env, pane_id)
-                     },
+                    PluginCommand::ShowFloatingPanes { tab_id } => show_floating_panes(env, tab_id),
+                    PluginCommand::HideFloatingPanes { tab_id } => hide_floating_panes(env, tab_id),
+                    PluginCommand::SetPaneRegexHighlights(pane_id, highlights) => {
+                        set_pane_regex_highlights(env, pane_id, highlights)
+                    },
+                    PluginCommand::ClearPaneHighlights(pane_id) => {
+                        clear_pane_highlights(env, pane_id)
+                    },
                 },
                 (PermissionStatus::Denied, permission) => {
                     log::error!(
@@ -3393,7 +3393,11 @@ fn hide_floating_panes(env: &PluginEnv, tab_id: Option<usize>) {
     let _ = wasi_write_object(env, &response.encode_to_vec());
 }
 
-fn set_pane_regex_highlights(env: &PluginEnv, pane_id: zellij_utils::data::PaneId, highlights: Vec<RegexHighlight>) {
+fn set_pane_regex_highlights(
+    env: &PluginEnv,
+    pane_id: zellij_utils::data::PaneId,
+    highlights: Vec<RegexHighlight>,
+) {
     let err_context = || "failed to set pane regex highlights".to_string();
     let pane_id: PaneId = pane_id.into();
     env.senders
@@ -5116,10 +5120,10 @@ fn check_command_permission(
         | PluginCommand::DeleteLayout { .. }
         | PluginCommand::RenameLayout { .. }
         | PluginCommand::EditLayout { .. }
-         | PluginCommand::ShowFloatingPanes { .. }
-         | PluginCommand::HideFloatingPanes { .. }
-         | PluginCommand::SetPaneRegexHighlights(..)
-         | PluginCommand::ClearPaneHighlights(..) => PermissionType::ChangeApplicationState,
+        | PluginCommand::ShowFloatingPanes { .. }
+        | PluginCommand::HideFloatingPanes { .. }
+        | PluginCommand::SetPaneRegexHighlights(..)
+        | PluginCommand::ClearPaneHighlights(..) => PermissionType::ChangeApplicationState,
         PluginCommand::UnblockCliPipeInput(..)
         | PluginCommand::BlockCliPipeInput(..)
         | PluginCommand::CliPipeOutput(..) => PermissionType::ReadCliPipes,

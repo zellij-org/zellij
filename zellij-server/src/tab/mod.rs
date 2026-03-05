@@ -621,6 +621,9 @@ pub trait Pane {
     ) -> Option<(u32, String, String, BTreeMap<String, String>)> {
         None
     }
+    fn terminal_emulator_wants_mouse(&self) -> bool {
+        false
+    }
 }
 
 #[derive(Clone, Debug)]

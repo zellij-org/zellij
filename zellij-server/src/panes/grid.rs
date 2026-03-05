@@ -574,7 +574,7 @@ impl Default for MouseMode {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum MouseTracking {
     Off,
     Normal,
@@ -1353,10 +1353,14 @@ impl Grid {
         // (spanning a canonical row and its non-canonical tail rows) can be found
         // by running the regex against the full concatenated logical line text,
         // then emitted into the appropriate character_chunks below.
-        let plugin_highlight_selections: Vec<(Selection, Option<AnsiCode>, Option<AnsiCode>, bool, bool, bool)> = if self
-            .plugin_highlights
-            .is_empty()
-        {
+        let plugin_highlight_selections: Vec<(
+            Selection,
+            Option<AnsiCode>,
+            Option<AnsiCode>,
+            bool,
+            bool,
+            bool,
+        )> = if self.plugin_highlights.is_empty() {
             vec![]
         } else {
             let mut selections = Vec::new();
@@ -1382,44 +1386,64 @@ impl Grid {
                 // style when the cursor overlaps the match.  When the cursor
                 // is elsewhere, no hover selections are emitted and the
                 // non-hover selections (pushed second) apply instead.
-                if let Some(hover_pos) = self.hover_position {
-                    let hover_row = hover_pos.line.0 as usize;
-                    let group_end_row = ridx + tail.len();
-                    if hover_row >= ridx && hover_row <= group_end_row {
-                        let hover_col = hover_pos.column.0;
-                        for (_plugin_id, pattern_map) in &self.plugin_highlights {
-                            for (_pattern, compiled) in pattern_map {
-                                if !compiled.on_hover {
-                                    continue;
-                                }
-                                // Skip highlights with no visual effect.
-                                if compiled.bg.is_none() && compiled.fg.is_none() && !compiled.bold && !compiled.italic && !compiled.underline {
-                                    continue;
-                                }
-                                for mat in compiled.regex.find_iter(&logical_text) {
-                                    let (start_row, start_col) = byte_offset_to_display_col(
-                                        mat.start(),
-                                        &boundaries,
-                                        &self.viewport,
-                                    );
-                                    let (end_row, end_col) = byte_offset_to_display_col(
-                                        mat.end(),
-                                        &boundaries,
-                                        &self.viewport,
-                                    );
-                                    // Check whether hover_position overlaps this match's span.
-                                    let after_start = hover_row > start_row
-                                        || (hover_row == start_row && hover_col >= start_col);
-                                    let before_end = hover_row < end_row
-                                        || (hover_row == end_row && hover_col < end_col);
-                                    if after_start && before_end {
-                                        let mut sel = Selection::default();
-                                        sel.set_start_and_end_positions(
-                                            Position::new(start_row as i32, start_col as u16),
-                                            Position::new(end_row as i32, end_col as u16),
+                //
+                // Hover highlights are suppressed when the terminal
+                // application has enabled mouse tracking, because mouse
+                // events should pass through to the application unimpeded.
+                // They are also suppressed on unfocused panes because
+                // hover_position is not set for those panes.
+                if self.mouse_tracking == MouseTracking::Off {
+                    if let Some(hover_pos) = self.hover_position {
+                        let hover_row = hover_pos.line.0 as usize;
+                        let group_end_row = ridx + tail.len();
+                        if hover_row >= ridx && hover_row <= group_end_row {
+                            let hover_col = hover_pos.column.0;
+                            for (_plugin_id, pattern_map) in &self.plugin_highlights {
+                                for (_pattern, compiled) in pattern_map {
+                                    if !compiled.on_hover {
+                                        continue;
+                                    }
+                                    // Skip highlights with no visual effect.
+                                    if compiled.bg.is_none()
+                                        && compiled.fg.is_none()
+                                        && !compiled.bold
+                                        && !compiled.italic
+                                        && !compiled.underline
+                                    {
+                                        continue;
+                                    }
+                                    for mat in compiled.regex.find_iter(&logical_text) {
+                                        let (start_row, start_col) = byte_offset_to_display_col(
+                                            mat.start(),
+                                            &boundaries,
+                                            &self.viewport,
                                         );
-                                        selections.push((sel, compiled.bg, compiled.fg, compiled.bold, compiled.italic, compiled.underline));
-                                        break; // only one match per pattern per hover
+                                        let (end_row, end_col) = byte_offset_to_display_col(
+                                            mat.end(),
+                                            &boundaries,
+                                            &self.viewport,
+                                        );
+                                        // Check whether hover_position overlaps this match's span.
+                                        let after_start = hover_row > start_row
+                                            || (hover_row == start_row && hover_col >= start_col);
+                                        let before_end = hover_row < end_row
+                                            || (hover_row == end_row && hover_col < end_col);
+                                        if after_start && before_end {
+                                            let mut sel = Selection::default();
+                                            sel.set_start_and_end_positions(
+                                                Position::new(start_row as i32, start_col as u16),
+                                                Position::new(end_row as i32, end_col as u16),
+                                            );
+                                            selections.push((
+                                                sel,
+                                                compiled.bg,
+                                                compiled.fg,
+                                                compiled.bold,
+                                                compiled.italic,
+                                                compiled.underline,
+                                            ));
+                                            break; // only one match per pattern per hover
+                                        }
                                     }
                                 }
                             }
@@ -1435,7 +1459,12 @@ impl Grid {
                             continue;
                         }
                         // Skip highlights with no visual effect.
-                        if compiled.bg.is_none() && compiled.fg.is_none() && !compiled.bold && !compiled.italic && !compiled.underline {
+                        if compiled.bg.is_none()
+                            && compiled.fg.is_none()
+                            && !compiled.bold
+                            && !compiled.italic
+                            && !compiled.underline
+                        {
                             continue;
                         }
                         for mat in compiled.regex.find_iter(&logical_text) {
@@ -1451,7 +1480,14 @@ impl Grid {
                                 Position::new(start_row as i32, start_col as u16),
                                 Position::new(end_row as i32, end_col as u16),
                             );
-                            selections.push((sel, compiled.bg, compiled.fg, compiled.bold, compiled.italic, compiled.underline));
+                            selections.push((
+                                sel,
+                                compiled.bg,
+                                compiled.fg,
+                                compiled.bold,
+                                compiled.italic,
+                                compiled.underline,
+                            ));
                         }
                     }
                 }
@@ -1526,7 +1562,9 @@ impl Grid {
             // Apply pre-computed plugin highlight selections to this chunk.
             for (sel, bg, fg, bold, italic, underline) in &plugin_highlight_selections {
                 if sel.contains_row(character_chunk.y.saturating_sub(content_y)) {
-                    character_chunk.add_selection_and_colors(*sel, *bg, *fg, *bold, *italic, *underline, content_x, content_y);
+                    character_chunk.add_selection_and_colors(
+                        *sel, *bg, *fg, *bold, *italic, *underline, content_x, content_y,
+                    );
                 }
             }
         }
@@ -2142,7 +2180,10 @@ impl Grid {
             if let Ok(regex) = regex::Regex::new(&h.pattern) {
                 // Upsert: replace existing entry with same pattern and on_hover flag, or push new
                 let on_hover = h.on_hover;
-                if let Some(existing) = slot.iter_mut().find(|(p, c)| p == &h.pattern && c.on_hover == on_hover) {
+                if let Some(existing) = slot
+                    .iter_mut()
+                    .find(|(p, c)| p == &h.pattern && c.on_hover == on_hover)
+                {
                     existing.1 = CompiledHighlight {
                         regex,
                         fg,

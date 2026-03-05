@@ -987,6 +987,9 @@ impl Pane for TerminalPane {
     )> {
         self.grid.plugin_highlight_at(position)
     }
+    fn terminal_emulator_wants_mouse(&self) -> bool {
+        self.grid.mouse_tracking != crate::panes::grid::MouseTracking::Off
+    }
 }
 
 impl TerminalPane {

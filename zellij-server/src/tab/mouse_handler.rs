@@ -922,7 +922,7 @@ impl MouseHandler {
     fn execute_update_hover(
         tab: &mut Tab,
         pane_id: Option<PaneId>,
-        position: Option<Position>,
+        _position: Option<Position>,
         client_id: ClientId,
     ) -> Result<MouseEffect> {
         let mut should_render = false;
@@ -955,15 +955,11 @@ impl MouseHandler {
                 }
             }
         }
-        // Set hover position on newly hovered pane.
-        if let Some(pid) = pane_id {
-            if let Some(raw_pos) = position {
-                if let Some(pane) = tab.get_pane_with_id_mut(pid) {
-                    let relative = pane.relative_position(&raw_pos);
-                    pane.set_hover_position(Some(relative));
-                }
-            }
-        } else {
+        // Hover position is intentionally not set on unfocused panes
+        // so that hover-only plugin highlights only activate on the
+        // focused pane. The focused pane's hover position is set in the
+        // SendToTerminal execution path instead.
+        if pane_id.is_none() {
             // Cursor left all panes — clear the previous pane if not already cleared.
             if let Some(prev_pane_id) = previous_hover_pane_id {
                 if let Some(pane) = tab.get_pane_with_id_mut(prev_pane_id) {
@@ -1017,11 +1013,16 @@ impl MouseHandler {
             }
             // Update hover position on the active pane during motion events
             // so that on_hover highlights work for the focused pane too.
+            // Skip when the terminal application has mouse tracking enabled,
+            // because hover highlights are suppressed in that case and the
+            // update would only trigger unnecessary re-renders.
             if event.event_type == MouseEventType::Motion {
                 if let Some(pane) = tab.get_pane_with_id_mut(pane_id) {
-                    let relative = pane.relative_position(&event.position);
-                    pane.set_hover_position(Some(relative));
-                    should_render = true;
+                    if !pane.terminal_emulator_wants_mouse() {
+                        let relative = pane.relative_position(&event.position);
+                        pane.set_hover_position(Some(relative));
+                        should_render = true;
+                    }
                 }
             }
 
