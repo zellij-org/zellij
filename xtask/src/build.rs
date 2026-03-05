@@ -29,61 +29,86 @@ pub fn build(sh: &Shell, flags: flags::Build) -> anyhow::Result<()> {
     // [1]: https://github.com/zellij-org/zellij/pull/2711#issuecomment-1695015818
     run_proto_codegen(sh);
 
-    for WorkspaceMember { crate_name, .. } in crate::workspace_members()
-        .iter()
-        .filter(|member| member.build)
-    {
-        let err_context = || format!("failed to build '{crate_name}'");
+    // Build all plugins in a single invocation so Cargo can unify transitive dependency
+    // features across all of them and compile shared crates (e.g. zellij-utils) only once.
+    if !flags.no_plugins {
+        let plugin_members: Vec<&WorkspaceMember> = crate::workspace_members()
+            .iter()
+            .filter(|m| m.build && m.crate_name.contains("plugins"))
+            .collect();
 
-        if crate_name.contains("plugins") {
-            if flags.no_plugins {
-                continue;
+        if !plugin_members.is_empty() {
+            println!();
+            let msg = ">> Building plugins";
+            crate::status(msg);
+            println!("{}", msg);
+
+            let mut base_cmd = cmd!(sh, "{cargo} build --target wasm32-wasip1");
+            if flags.release {
+                base_cmd = base_cmd.arg("--release");
             }
-        } else if flags.plugins_only {
-            continue;
-        }
-
-        let _pd = sh.push_dir(Path::new(crate_name));
-        // Tell the user where we are now
-        println!();
-        let msg = format!(">> Building '{crate_name}'");
-        crate::status(&msg);
-        println!("{}", msg);
-
-        let mut base_cmd = cmd!(sh, "{cargo} build");
-        if flags.release {
-            base_cmd = base_cmd.arg("--release");
-        }
-        if flags.no_web {
-            // Check if this crate has web features that need modification
-            match metadata::get_no_web_features(sh, crate_name)
-                .context("Failed to check web features")?
-            {
-                Some(features) => {
-                    base_cmd = base_cmd.arg("--no-default-features");
-                    if !features.is_empty() {
-                        base_cmd = base_cmd.arg("--features");
-                        base_cmd = base_cmd.arg(features);
-                    }
-                },
-                None => {
-                    // Crate doesn't have web features, build normally
-                },
+            for member in &plugin_members {
+                let plugin_name = member
+                    .crate_name
+                    .rsplit_once('/')
+                    .context("Cannot determine plugin name from crate path")?
+                    .1;
+                base_cmd = base_cmd.args(["-p", plugin_name]);
             }
-        }
-        base_cmd.run().with_context(err_context)?;
-
-        if crate_name.contains("plugins") {
-            let (_, plugin_name) = crate_name
-                .rsplit_once('/')
-                .context("Cannot determine plugin name from '{subcrate}'")?;
+            base_cmd.run().context("failed to build plugins")?;
 
             if flags.release {
-                // Move plugin into assets folder
-                move_plugin_to_assets(sh, plugin_name)?;
+                for member in &plugin_members {
+                    let plugin_name = member
+                        .crate_name
+                        .rsplit_once('/')
+                        .context("Cannot determine plugin name from crate path")?
+                        .1;
+                    move_plugin_to_assets(sh, plugin_name)?;
+                }
             }
         }
     }
+
+    // Build non-plugin crates (native target).
+    if !flags.plugins_only {
+        for WorkspaceMember { crate_name, .. } in crate::workspace_members()
+            .iter()
+            .filter(|member| member.build && !member.crate_name.contains("plugins"))
+        {
+            let err_context = || format!("failed to build '{crate_name}'");
+
+            let _pd = sh.push_dir(Path::new(crate_name));
+            println!();
+            let msg = format!(">> Building '{crate_name}'");
+            crate::status(&msg);
+            println!("{}", msg);
+
+            let mut base_cmd = cmd!(sh, "{cargo} build");
+            if flags.release {
+                base_cmd = base_cmd.arg("--release");
+            }
+            if flags.no_web {
+                // Check if this crate has web features that need modification
+                match metadata::get_no_web_features(sh, crate_name)
+                    .context("Failed to check web features")?
+                {
+                    Some(features) => {
+                        base_cmd = base_cmd.arg("--no-default-features");
+                        if !features.is_empty() {
+                            base_cmd = base_cmd.arg("--features");
+                            base_cmd = base_cmd.arg(features);
+                        }
+                    },
+                    None => {
+                        // Crate doesn't have web features, build normally
+                    },
+                }
+            }
+            base_cmd.run().with_context(err_context)?;
+        }
+    }
+
     Ok(())
 }
 
