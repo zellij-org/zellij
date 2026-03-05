@@ -87,6 +87,8 @@ pub fn build(sh: &Shell, flags: flags::Build) -> anyhow::Result<()> {
             let mut base_cmd = cmd!(sh, "{cargo} build");
             if flags.release {
                 base_cmd = base_cmd.arg("--release");
+            } else {
+                base_cmd = base_cmd.args(["--profile", "dev-opt"]);
             }
             if flags.no_web {
                 // Check if this crate has web features that need modification
