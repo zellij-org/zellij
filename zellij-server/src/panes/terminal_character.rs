@@ -1,8 +1,8 @@
+use compact_str::CompactString;
 use std::convert::From;
 use std::fmt::{self, Debug, Display, Formatter};
 use std::ops::{Index, IndexMut};
 use std::rc::Rc;
-use compact_str::CompactString;
 use unicode_width::UnicodeWidthChar;
 
 use unicode_width::UnicodeWidthStr;
