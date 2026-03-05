@@ -132,9 +132,8 @@ impl State {
         // Validate the path exists via the /host/ filesystem mapping
         // established at load time. This guards against regex false
         // positives that match non-path text in terminal output.
-        let host_path = Path::new("/host").join(
-            absolute_path.strip_prefix("/").unwrap_or(&absolute_path),
-        );
+        let host_path =
+            Path::new("/host").join(absolute_path.strip_prefix("/").unwrap_or(&absolute_path));
         let metadata = match std::fs::metadata(&host_path) {
             Ok(m) => m,
             Err(_) => return, // path does not exist — silently ignore
@@ -148,9 +147,10 @@ impl State {
             pipe_message_to_plugin(
                 MessageToPlugin::new("filepicker")
                     .with_plugin_url("filepicker")
-                    .new_plugin_instance_should_have_pane_title(
-                        &format!("Browse: {}", absolute_path.display()),
-                    )
+                    .new_plugin_instance_should_have_pane_title(&format!(
+                        "Browse: {}",
+                        absolute_path.display()
+                    ))
                     .new_plugin_instance_should_be_focused()
                     .new_plugin_instance_should_have_cwd(absolute_path)
                     .with_args(args)
@@ -296,13 +296,9 @@ fn expand_path(path: &str, env_vars: &BTreeMap<String, String>) -> String {
             } else {
                 // $VAR form — variable name is [A-Za-z_][A-Za-z0-9_]*
                 let start = i + 1;
-                if start < len
-                    && (bytes[start].is_ascii_alphabetic() || bytes[start] == b'_')
-                {
+                if start < len && (bytes[start].is_ascii_alphabetic() || bytes[start] == b'_') {
                     let mut end = start + 1;
-                    while end < len
-                        && (bytes[end].is_ascii_alphanumeric() || bytes[end] == b'_')
-                    {
+                    while end < len && (bytes[end].is_ascii_alphanumeric() || bytes[end] == b'_') {
                         end += 1;
                     }
                     (&after_tilde[start..end], end)
@@ -365,5 +361,107 @@ fn parse_path_and_line(matched_string: &str) -> (&str, Option<usize>) {
             let path = &matched_string[..colon_pos];
             (path, line_str.parse::<usize>().ok())
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // --- parse_path_and_line tests ---
+
+    #[test]
+    fn parse_path_and_line_simple_path() {
+        let (path, line) = parse_path_and_line("src/main.rs");
+        assert_eq!(path, "src/main.rs");
+        assert_eq!(line, None);
+    }
+
+    #[test]
+    fn parse_path_and_line_with_line_number() {
+        let (path, line) = parse_path_and_line("src/main.rs:42");
+        assert_eq!(path, "src/main.rs");
+        assert_eq!(line, Some(42));
+    }
+
+    #[test]
+    fn parse_path_and_line_with_line_and_col() {
+        let (path, line) = parse_path_and_line("src/main.rs:42:10");
+        assert_eq!(path, "src/main.rs");
+        assert_eq!(line, Some(42));
+    }
+
+    #[test]
+    fn parse_path_and_line_no_trailing_number() {
+        let (path, line) = parse_path_and_line("src/main.rs:");
+        assert_eq!(path, "src/main.rs:");
+        assert_eq!(line, None);
+    }
+
+    // --- expand_path tests ---
+
+    #[test]
+    fn expand_path_tilde() {
+        let mut env = BTreeMap::new();
+        env.insert("HOME".into(), "/home/user".into());
+        assert_eq!(expand_path("~/foo/bar", &env), "/home/user/foo/bar");
+    }
+
+    #[test]
+    fn expand_path_env_var() {
+        let mut env = BTreeMap::new();
+        env.insert("HOME".into(), "/home/user".into());
+        assert_eq!(expand_path("$HOME/foo", &env), "/home/user/foo");
+    }
+
+    #[test]
+    fn expand_path_braced_var() {
+        let mut env = BTreeMap::new();
+        env.insert("HOME".into(), "/home/user".into());
+        assert_eq!(expand_path("${HOME}/foo", &env), "/home/user/foo");
+    }
+
+    #[test]
+    fn expand_path_unknown_var_preserved() {
+        let env = BTreeMap::new();
+        assert_eq!(expand_path("$UNKNOWN/foo", &env), "$UNKNOWN/foo");
+    }
+
+    #[test]
+    fn expand_path_no_expansion_needed() {
+        let env = BTreeMap::new();
+        assert_eq!(expand_path("/absolute/path", &env), "/absolute/path");
+    }
+
+    // --- regex_escape tests ---
+
+    #[test]
+    fn regex_escape_special_chars() {
+        assert_eq!(regex_escape("file.txt"), r"file\.txt");
+        assert_eq!(regex_escape("a+b*c?"), r"a\+b\*c\?");
+        assert_eq!(regex_escape("(foo)[bar]{baz}"), r"\(foo\)\[bar\]\{baz\}");
+    }
+
+    #[test]
+    fn regex_escape_no_special_chars() {
+        assert_eq!(regex_escape("foobar"), "foobar");
+        assert_eq!(regex_escape("hello_world"), "hello_world");
+    }
+
+    // --- scan_directory tests ---
+
+    #[test]
+    fn scan_directory_returns_entries() {
+        use std::fs;
+        let dir = std::env::temp_dir().join("zellij_test_scan_dir");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("file1.txt"), "").unwrap();
+        fs::write(dir.join("file2.rs"), "").unwrap();
+        fs::create_dir(dir.join("subdir")).unwrap();
+        let mut entries = scan_directory(&dir);
+        entries.sort();
+        assert_eq!(entries, vec!["file1.txt", "file2.rs", "subdir"]);
+        let _ = fs::remove_dir_all(&dir);
     }
 }
