@@ -69,7 +69,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: improve mobile web client viewport sizing and touch scrolling behavior (https://github.com/zellij-org/zellij/pull/4723)
 * platform: native Windows support (https://github.com/zellij-org/zellij/pull/4720, https://github.com/zellij-org/zellij/pull/4721, https://github.com/zellij-org/zellij/pull/4722, https://github.com/zellij-org/zellij/pull/4738, https://github.com/zellij-org/zellij/pull/4740, https://github.com/zellij-org/zellij/pull/4746, https://github.com/zellij-org/zellij/pull/4759, https://github.com/zellij-org/zellij/pull/4768)
 * feat: allow changing pane foreground/background color through the cli/plugin-api (https://github.com/zellij-org/zellij/pull/4737)
-* build: fix redundant proto codegen, plugin batch building, and profile mismatch between build and run (https://github.com/zellij-org/zellij/pull/4799)
+* build: fix redundant proto codegen, plugin batch building and testing, and profile mismatch between build and run (https://github.com/zellij-org/zellij/pull/4799, https://github.com/zellij-org/zellij/pull/4801)
 
 
 ## [0.43.1] - 2025-08-08
