@@ -22,7 +22,7 @@ use zellij_utils::pane_size::Offset;
 use zellij_utils::{
     data::{
         BareKey, InputMode, KeyWithModifier, Palette, PaletteColor, PaneId as ZellijUtilsPaneId,
-        Style, Styling,
+        RegexHighlight, Style, Styling,
     },
     errors::prelude::*,
     input::layout::Run,
@@ -957,6 +957,38 @@ impl Pane for TerminalPane {
                 }
             }
         }
+    }
+    fn set_plugin_regex_highlights(
+        &mut self,
+        plugin_id: u32,
+        highlights: Vec<RegexHighlight>,
+        style: &Style,
+    ) {
+        self.grid
+            .set_plugin_regex_highlights(plugin_id, highlights, style);
+        self.set_should_render(true);
+    }
+    fn clear_plugin_highlights(&mut self, plugin_id: u32) {
+        self.grid.clear_plugin_highlights(plugin_id);
+        self.set_should_render(true);
+    }
+    fn set_hover_position(&mut self, position: Option<Position>) {
+        self.grid.set_hover_position(position);
+        self.set_should_render(true);
+    }
+    fn plugin_highlight_at(
+        &self,
+        position: &Position,
+    ) -> Option<(
+        u32,
+        String,
+        String,
+        std::collections::BTreeMap<String, String>,
+    )> {
+        self.grid.plugin_highlight_at(position)
+    }
+    fn terminal_emulator_wants_mouse(&self) -> bool {
+        self.grid.mouse_tracking != crate::panes::grid::MouseTracking::Off
     }
 }
 

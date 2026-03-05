@@ -212,6 +212,14 @@ pub enum PluginInstruction {
         response_channel: crossbeam::channel::Sender<Option<u64>>,
     },
     DetectPluginConfigChanges(PluginAliases),
+    HighlightClicked {
+        plugin_id: u32,
+        client_id: ClientId,
+        pane_id: PaneId,
+        pattern: String,
+        matched_string: String,
+        context: BTreeMap<String, String>,
+    },
     Exit,
 }
 
@@ -275,6 +283,7 @@ impl From<&PluginInstruction> for PluginContext {
             PluginInstruction::DetectPluginConfigChanges(..) => {
                 PluginContext::DetectPluginConfigChanges
             },
+            PluginInstruction::HighlightClicked { .. } => PluginContext::HighlightClicked,
         }
     }
 }
@@ -1231,6 +1240,23 @@ pub(crate) fn plugin_thread_main(
             PluginInstruction::DetectPluginConfigChanges(new_plugins) => {
                 wasm_bridge
                     .detect_and_notify_plugin_config_changes(&new_plugins, shutdown_send.clone())?;
+            },
+            PluginInstruction::HighlightClicked {
+                plugin_id,
+                client_id,
+                pane_id,
+                pattern,
+                matched_string,
+                context,
+            } => {
+                let event = Event::HighlightClicked {
+                    pane_id: pane_id.into(),
+                    pattern,
+                    matched_string,
+                    context,
+                };
+                let updates = vec![(Some(plugin_id), Some(client_id), event)];
+                wasm_bridge.update_plugins(updates, shutdown_send.clone())?;
             },
             PluginInstruction::Exit => {
                 break;

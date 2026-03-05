@@ -1,0 +1,7 @@
+---
+source: zellij-server/src/plugins/./unit/plugin_tests.rs
+expression: "format!(\"{:#?}\", plugin_bytes_event)"
+---
+Some(
+    "Rows: 20, Cols: 121, Received events: [HighlightClicked { pane_id: Terminal(1), pattern: \"test\", matched_string: \"test_match\", context: {} }]\n\r",
+)

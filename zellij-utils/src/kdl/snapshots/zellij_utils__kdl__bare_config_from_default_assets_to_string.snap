@@ -271,6 +271,7 @@ plugins {
     }
 }
 load_plugins {
+    zellij:link
 }
 web_client {
     font "monospace"

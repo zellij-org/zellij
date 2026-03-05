@@ -1013,6 +1013,12 @@ pub enum Event {
     CwdChanged(PaneId, PathBuf, Vec<ClientId>), // pane_id, cwd, focused_client_ids
     AvailableLayoutInfo(Vec<LayoutInfo>, Vec<LayoutWithError>),
     PluginConfigurationChanged(BTreeMap<String, String>),
+    HighlightClicked {
+        pane_id: PaneId,
+        pattern: String,
+        matched_string: String,
+        context: BTreeMap<String, String>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, EnumDiscriminants, Display, Serialize, Deserialize)]
@@ -1195,6 +1201,41 @@ impl Default for PaletteColor {
     fn default() -> PaletteColor {
         PaletteColor::EightBit(0)
     }
+}
+
+/// Style for a plugin-supplied regex highlight.
+/// Theme-based variants reference `style.colors.text_unselected.*`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum HighlightStyle {
+    None,      // no color override — use with bold/italic/underline for style-only highlights
+    Emphasis0, // fg = emphasis_0, no bg override
+    Emphasis1, // fg = emphasis_1, no bg override
+    Emphasis2, // fg = emphasis_2, no bg override
+    Emphasis3, // fg = emphasis_3, no bg override
+    BackgroundEmphasis0, // bg = emphasis_0, fg = background
+    BackgroundEmphasis1, // bg = emphasis_1, fg = background
+    BackgroundEmphasis2, // bg = emphasis_2, fg = background
+    BackgroundEmphasis3, // bg = emphasis_3, fg = background
+    CustomRgb {
+        fg: Option<(u8, u8, u8)>,
+        bg: Option<(u8, u8, u8)>,
+    },
+    CustomIndex {
+        fg: Option<u8>,
+        bg: Option<u8>,
+    },
+}
+
+/// One pattern + style pair sent by a plugin.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RegexHighlight {
+    pub pattern: String, // key for upsert; also the regex source
+    pub style: HighlightStyle,
+    pub context: BTreeMap<String, String>, // arbitrary data echoed back verbatim on click
+    pub on_hover: bool, // if true, only rendered when the cursor overlaps this match
+    pub bold: bool,
+    pub italic: bool,
+    pub underline: bool,
 }
 
 // these are used for the web client
@@ -3476,6 +3517,8 @@ pub enum PluginCommand {
         tab_id: Option<usize>,
     },
     SetPaneColor(PaneId, Option<String>, Option<String>), // (pane_id, fg, bg)
+    SetPaneRegexHighlights(PaneId, Vec<RegexHighlight>),
+    ClearPaneHighlights(PaneId),
 }
 
 // Response type for plugin API methods that open a pane in a new tab
