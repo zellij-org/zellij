@@ -1493,12 +1493,22 @@ impl Grid {
                 .get_mut(self.cursor.y)
                 .and_then(|row| row.columns.get_mut(abs_x))
         } else if self.cursor.y > 0 {
-            self.viewport
-                .get_mut(self.cursor.y - 1)
-                .and_then(|row| {
-                    let len = row.columns.len();
-                    if len > 0 { row.columns.get_mut(len - 1) } else { None }
-                })
+            // Only cross to previous row for wrapped continuations, not after explicit newlines
+            let is_wrapped = self
+                .viewport
+                .get(self.cursor.y)
+                .map(|row| !row.is_canonical)
+                .unwrap_or(false);
+            if is_wrapped {
+                self.viewport
+                    .get_mut(self.cursor.y - 1)
+                    .and_then(|row| {
+                        let len = row.columns.len();
+                        if len > 0 { row.columns.get_mut(len - 1) } else { None }
+                    })
+            } else {
+                None
+            }
         } else {
             None
         }
@@ -2559,11 +2569,18 @@ impl Perform for Grid {
         let c = self.cursor.charsets[self.active_charset].map(c);
         match c.width() {
             Some(0) => {
+                let line_to_update = if self.cursor.x > 0 {
+                    Some(self.cursor.y)
+                } else if self.cursor.y > 0 {
+                    Some(self.cursor.y - 1)
+                } else {
+                    None
+                };
                 if let Some(prev_char) = self.get_character_before_cursor_mut() {
                     prev_char.append_combining(c);
                 }
-                if let Some(ref mut pc) = self.preceding_char {
-                    pc.append_combining(c);
+                if let Some(line) = line_to_update {
+                    self.output_buffer.update_line(line);
                 }
                 return;
             },
