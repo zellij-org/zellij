@@ -684,7 +684,7 @@ dependencies = [
  "libc",
  "once_cell",
  "regex",
- "terminal_size",
+ "terminal_size 0.1.17",
  "unicode-width 0.1.10",
  "winapi",
 ]
@@ -930,6 +930,12 @@ dependencies = [
  "shell-words",
  "zeroize",
 ]
+
+[[package]]
+name = "diff"
+version = "0.1.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "56254986775e3233ffa9c4d7d3faaf6d36a2c09d30b20687e9f88bc8bafc16c8"
 
 [[package]]
 name = "digest"
@@ -2013,6 +2019,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "k9"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "088bcebb5b68b1b14b64d7f05b0f802719250b97fdc0338ec42529ea777ed614"
+dependencies = [
+ "anyhow",
+ "colored",
+ "diff",
+ "lazy_static",
+ "libc",
+ "proc-macro2",
+ "syn 2.0.96",
+ "terminal_size 0.2.6",
+]
+
+[[package]]
 name = "kdl"
 version = "4.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2317,7 +2339,7 @@ dependencies = [
  "supports-color",
  "supports-hyperlinks",
  "supports-unicode",
- "terminal_size",
+ "terminal_size 0.1.17",
  "textwrap",
  "thiserror 1.0.61",
  "unicode-width 0.1.10",
@@ -3880,6 +3902,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "terminal_size"
+version = "0.2.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8e6bf6f19e9f8ed8d4048dc22981458ebcf406d67e94cd422e5ecd73d63b3237"
+dependencies = [
+ "rustix 0.37.28",
+ "windows-sys 0.48.0",
+]
+
+[[package]]
 name = "terminfo"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3898,48 +3930,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "411c5bf740737c7918b8b1fe232dca4dc9f8e754b8ad5e20966814001ed0ac6b"
 dependencies = [
  "libc",
-]
-
-[[package]]
-name = "termwiz"
-version = "0.23.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4676b37242ccbd1aabf56edb093a4827dc49086c0ffd764a5705899e0f35f8f7"
-dependencies = [
- "anyhow",
- "base64 0.22.1",
- "bitflags 2.5.0",
- "fancy-regex",
- "filedescriptor",
- "finl_unicode",
- "fixedbitset",
- "hex",
- "lazy_static",
- "libc",
- "log",
- "memmem",
- "nix 0.29.0",
- "num-derive",
- "num-traits",
- "ordered-float",
- "pest",
- "pest_derive",
- "phf",
- "sha2",
- "signal-hook",
- "siphasher 1.0.1",
- "terminfo",
- "termios",
- "thiserror 1.0.61",
- "ucd-trie",
- "unicode-segmentation",
- "vtparse",
- "wezterm-bidi",
- "wezterm-blob-leases",
- "wezterm-color-types",
- "wezterm-dynamic",
- "wezterm-input-types",
- "winapi",
 ]
 
 [[package]]
@@ -4766,7 +4756,6 @@ dependencies = [
  "bitflags 1.3.2",
  "euclid",
  "lazy_static",
- "serde",
  "wezterm-dynamic",
 ]
 
@@ -5235,7 +5224,6 @@ dependencies = [
  "serde_yaml",
  "serial_test",
  "signal-hook",
- "termwiz",
  "time",
  "tokio",
  "tokio-tungstenite 0.20.1",
@@ -5324,6 +5312,7 @@ version = "0.44.0"
 dependencies = [
  "anyhow",
  "backtrace",
+ "base64 0.22.1",
  "bitflags 2.5.0",
  "clap",
  "clap_complete",
@@ -5334,40 +5323,66 @@ dependencies = [
  "curl-sys",
  "directories",
  "expect-test",
+ "fancy-regex",
+ "filedescriptor",
+ "finl_unicode",
+ "fixedbitset",
+ "hex",
  "humantime",
  "include_dir",
  "insta",
  "interprocess",
  "isahc",
+ "k9",
  "kdl",
  "lazy_static",
+ "libc",
  "log",
  "log4rs",
+ "memmem",
  "miette",
  "names",
  "nix 0.23.1",
  "notify",
+ "num-derive",
+ "num-traits",
  "openssl-sys",
+ "ordered-float",
  "percent-encoding",
+ "pest",
+ "pest_derive",
+ "phf",
  "prost",
  "rusqlite",
  "serde",
  "serde_json",
  "sha2",
  "shellexpand",
+ "signal-hook",
+ "siphasher 1.0.1",
  "strip-ansi-escapes 0.1.1",
  "strum",
  "strum_macros",
  "suggest",
  "tempfile",
- "termwiz",
+ "terminfo",
+ "termios",
  "thiserror 1.0.61",
  "tokio",
  "tokio-stream",
  "tokio-util",
+ "ucd-trie",
+ "unicode-segmentation",
  "unicode-width 0.1.10",
  "url",
  "uuid",
+ "vtparse",
+ "wezterm-bidi",
+ "wezterm-blob-leases",
+ "wezterm-color-types",
+ "wezterm-dynamic",
+ "wezterm-input-types",
+ "winapi",
  "windows-sys 0.52.0",
 ]
 

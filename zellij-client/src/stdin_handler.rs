@@ -3,8 +3,10 @@ use crate::os_input_output::ClientOsApi;
 use crate::stdin_ansi_parser::StdinAnsiParser;
 use crate::InputInstruction;
 use std::sync::{Arc, Mutex};
-use termwiz::input::{InputEvent, InputParser};
-use zellij_utils::channels::SenderWithContext;
+use zellij_utils::{
+    channels::SenderWithContext,
+    vendored::termwiz::input::{InputEvent, InputParser},
+};
 
 fn send_done_parsing_after_query_timeout(
     send_input_instructions: SenderWithContext<InputInstruction>,

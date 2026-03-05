@@ -22,7 +22,7 @@ use strum_macros::{Display, EnumDiscriminants, EnumIter, EnumString};
 use unicode_width::UnicodeWidthChar;
 
 #[cfg(not(target_family = "wasm"))]
-use termwiz::{
+use crate::vendored::termwiz::{
     escape::csi::KittyKeyboardFlags,
     input::{KeyCode, KeyCodeEncodeModes, KeyboardEncoding, Modifiers},
 };
