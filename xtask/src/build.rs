@@ -22,6 +22,13 @@ pub fn build(sh: &Shell, flags: flags::Build) -> anyhow::Result<()> {
         std::process::exit(1);
     }
 
+    // zellij-utils requires protobuf definition files to be present. Usually these are
+    // auto-generated with `build.rs`-files, but this is currently broken for us.
+    // See [this PR][1] for details.
+    //
+    // [1]: https://github.com/zellij-org/zellij/pull/2711#issuecomment-1695015818
+    run_proto_codegen(sh);
+
     for WorkspaceMember { crate_name, .. } in crate::workspace_members()
         .iter()
         .filter(|member| member.build)
@@ -34,146 +41,6 @@ pub fn build(sh: &Shell, flags: flags::Build) -> anyhow::Result<()> {
             }
         } else if flags.plugins_only {
             continue;
-        }
-
-        // zellij-utils requires protobuf definition files to be present. Usually these are
-        // auto-generated with `build.rs`-files, but this is currently broken for us.
-        // See [this PR][1] for details.
-        //
-        // [1]: https://github.com/zellij-org/zellij/pull/2711#issuecomment-1695015818
-        {
-            let zellij_utils_basedir = crate::project_root().join("zellij-utils");
-            let _pd = sh.push_dir(zellij_utils_basedir);
-
-            let prost_asset_dir = sh.current_dir().join("assets").join("prost");
-            let protobuf_source_dir = sh.current_dir().join("src").join("plugin_api");
-            std::fs::create_dir_all(&prost_asset_dir).unwrap();
-
-            let mut prost = prost_build::Config::new();
-            let last_generated = prost_asset_dir
-                .join("generated_plugin_api.rs")
-                .metadata()
-                .and_then(|m| m.modified());
-            let mut needs_regeneration = false;
-            prost.out_dir(prost_asset_dir);
-            prost.include_file("generated_plugin_api.rs");
-            let mut proto_files = vec![];
-            for entry in std::fs::read_dir(&protobuf_source_dir).unwrap() {
-                let entry_path = entry.unwrap().path();
-                if entry_path.is_file() {
-                    if !entry_path
-                        .extension()
-                        .map(|e| e == "proto")
-                        .unwrap_or(false)
-                    {
-                        continue;
-                    }
-                    proto_files.push(entry_path.display().to_string());
-                    let modified = entry_path.metadata().and_then(|m| m.modified());
-                    needs_regeneration |= match (&last_generated, modified) {
-                        (Ok(last_generated), Ok(modified)) => modified >= *last_generated,
-                        // Couldn't read some metadata, assume needs update
-                        _ => true,
-                    }
-                }
-            }
-            proto_files.sort();
-            if needs_regeneration {
-                prost
-                    .compile_protos(&proto_files, &[protobuf_source_dir])
-                    .unwrap();
-            }
-        }
-
-        // Build client-server IPC protobuf definitions
-        {
-            let zellij_utils_basedir = crate::project_root().join("zellij-utils");
-            let _pd = sh.push_dir(zellij_utils_basedir);
-
-            let prost_ipc_dir = sh.current_dir().join("assets").join("prost_ipc");
-            let client_server_contract_dir =
-                sh.current_dir().join("src").join("client_server_contract");
-            std::fs::create_dir_all(&prost_ipc_dir).unwrap();
-
-            let mut prost = prost_build::Config::new();
-            let last_generated = prost_ipc_dir
-                .join("generated_client_server_api.rs")
-                .metadata()
-                .and_then(|m| m.modified());
-            let mut needs_regeneration = false;
-            prost.out_dir(prost_ipc_dir);
-            prost.include_file("generated_client_server_api.rs");
-            let mut proto_files = vec![];
-            for entry in std::fs::read_dir(&client_server_contract_dir).unwrap() {
-                let entry_path = entry.unwrap().path();
-                if entry_path.is_file() {
-                    if !entry_path
-                        .extension()
-                        .map(|e| e == "proto")
-                        .unwrap_or(false)
-                    {
-                        continue;
-                    }
-                    proto_files.push(entry_path.display().to_string());
-                    let modified = entry_path.metadata().and_then(|m| m.modified());
-                    needs_regeneration |= match (&last_generated, modified) {
-                        (Ok(last_generated), Ok(modified)) => modified >= *last_generated,
-                        // Couldn't read some metadata, assume needs update
-                        _ => true,
-                    }
-                }
-            }
-            proto_files.sort();
-            if needs_regeneration {
-                prost
-                    .compile_protos(&proto_files, &[client_server_contract_dir])
-                    .unwrap();
-            }
-        }
-
-        // Build web server protobuf definitions
-        {
-            let zellij_utils_basedir = crate::project_root().join("zellij-utils");
-            let _pd = sh.push_dir(zellij_utils_basedir);
-
-            let prost_web_server_dir = sh.current_dir().join("assets").join("prost_web_server");
-            let web_server_contract_dir = sh.current_dir().join("src").join("web_server_contract");
-            std::fs::create_dir_all(&prost_web_server_dir).unwrap();
-
-            let mut prost = prost_build::Config::new();
-            let last_generated = prost_web_server_dir
-                .join("generated_web_server_api.rs")
-                .metadata()
-                .and_then(|m| m.modified());
-            let mut needs_regeneration = false;
-            prost.out_dir(prost_web_server_dir);
-            prost.include_file("generated_web_server_api.rs");
-            let mut proto_files = vec![];
-            for entry in std::fs::read_dir(&web_server_contract_dir).unwrap() {
-                let entry_path = entry.unwrap().path();
-                if entry_path.is_file() {
-                    if !entry_path
-                        .extension()
-                        .map(|e| e == "proto")
-                        .unwrap_or(false)
-                    {
-                        continue;
-                    }
-                    proto_files.push(entry_path.display().to_string());
-                    let modified = entry_path.metadata().and_then(|m| m.modified());
-                    needs_regeneration |= match (&last_generated, modified) {
-                        (Ok(last_generated), Ok(modified)) => modified >= *last_generated,
-                        // Couldn't read some metadata, assume needs update
-                        _ => true,
-                    }
-                }
-            }
-            proto_files.sort();
-            if needs_regeneration {
-                prost
-                    .compile_protos(&proto_files, &[web_server_contract_dir])
-                    .unwrap();
-            }
         }
 
         let _pd = sh.push_dir(Path::new(crate_name));
@@ -218,6 +85,68 @@ pub fn build(sh: &Shell, flags: flags::Build) -> anyhow::Result<()> {
         }
     }
     Ok(())
+}
+
+fn run_proto_codegen(sh: &Shell) {
+    let zellij_utils_basedir = crate::project_root().join("zellij-utils");
+    let _pd = sh.push_dir(&zellij_utils_basedir);
+
+    let specs: &[(&str, &str, &str)] = &[
+        (
+            "assets/prost",
+            "src/plugin_api",
+            "generated_plugin_api.rs",
+        ),
+        (
+            "assets/prost_ipc",
+            "src/client_server_contract",
+            "generated_client_server_api.rs",
+        ),
+        (
+            "assets/prost_web_server",
+            "src/web_server_contract",
+            "generated_web_server_api.rs",
+        ),
+    ];
+
+    for (out_subdir, src_subdir, include_file) in specs {
+        let out_dir = sh.current_dir().join(out_subdir);
+        let src_dir = sh.current_dir().join(src_subdir);
+        std::fs::create_dir_all(&out_dir).unwrap();
+
+        let last_generated = out_dir
+            .join(include_file)
+            .metadata()
+            .and_then(|m| m.modified());
+        let mut proto_files = vec![];
+        let mut needs_regeneration = false;
+
+        for entry in std::fs::read_dir(&src_dir).unwrap() {
+            let entry_path = entry.unwrap().path();
+            if entry_path.is_file()
+                && entry_path
+                    .extension()
+                    .map(|e| e == "proto")
+                    .unwrap_or(false)
+            {
+                let modified = entry_path.metadata().and_then(|m| m.modified());
+                needs_regeneration |= match (&last_generated, modified) {
+                    (Ok(last_generated), Ok(modified)) => modified > *last_generated,
+                    // Couldn't read some metadata, assume needs update
+                    _ => true,
+                };
+                proto_files.push(entry_path.display().to_string());
+            }
+        }
+        proto_files.sort();
+
+        if needs_regeneration {
+            let mut prost = prost_build::Config::new();
+            prost.out_dir(&out_dir);
+            prost.include_file(include_file);
+            prost.compile_protos(&proto_files, &[src_dir]).unwrap();
+        }
+    }
 }
 
 fn move_plugin_to_assets(sh: &Shell, plugin_name: &str) -> anyhow::Result<()> {
