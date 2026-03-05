@@ -1288,10 +1288,7 @@ impl Screen {
         // when this job decides to render, it sends back the ScreenInstruction::RenderToClients
         // message, triggering our render_to_clients method which does the actual rendering
 
-        let _ = self
-            .bus
-            .senders
-            .send_to_background_jobs(BackgroundJob::RenderToClients);
+        // Process plugin render assets even without clients to avoid blocking CLI pipes
         if let Some(plugin_render_assets) = plugin_render_assets {
             let _ = self
                 .bus
@@ -1299,12 +1296,25 @@ impl Screen {
                 .send_to_plugin(PluginInstruction::UnblockCliPipes(plugin_render_assets))
                 .context("failed to unblock input pipe");
         }
+        // Skip scheduling the render cycle when no clients are connected
+        if self.connected_clients.borrow().is_empty() {
+            return Ok(());
+        }
+        let _ = self
+            .bus
+            .senders
+            .send_to_background_jobs(BackgroundJob::RenderToClients);
         Ok(())
     }
 
     pub fn render_to_clients(&mut self) -> Result<()> {
         // this method does the actual rendering and is triggered by a debounced BackgroundJob (see
         // the render method for more details)
+
+        // Skip all rendering work when no clients are connected
+        if self.connected_clients.borrow().is_empty() {
+            return Ok(());
+        }
         let err_context = "failed to render screen";
 
         let mut output = Output::new(
