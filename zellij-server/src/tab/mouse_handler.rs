@@ -12,6 +12,20 @@ use crate::ClientId;
 
 use super::{Pane, Tab};
 
+/// Remove the hover pane tracking for `client_id` and clear the hover position
+/// on the previously hovered pane (if any).  Returns `true` if a pane was
+/// cleared.
+fn clear_hover_for_client(tab: &mut Tab, client_id: ClientId) -> bool {
+    if let Some(prev_pid) = tab.mouse_hover_pane_id.remove(&client_id) {
+        if let Some(pane) = tab.get_pane_with_id_mut(prev_pid) {
+            pane.set_hover_position(None);
+        }
+        true
+    } else {
+        false
+    }
+}
+
 #[derive(Debug, Default, Copy, Clone)]
 pub struct MouseEffect {
     pub state_changed: bool,
@@ -638,11 +652,7 @@ impl MouseHandler {
                 is_floating: _,
                 position,
             } => {
-                if let Some(prev_pid) = tab.mouse_hover_pane_id.remove(&client_id) {
-                    if let Some(pane) = tab.get_pane_with_id_mut(prev_pid) {
-                        pane.set_hover_position(None);
-                    }
-                }
+                clear_hover_for_client(tab, client_id);
                 Self::start_pane_resize_with_mouse(tab, pane_id, edge, position, client_id)
                     .with_context(err_context)?;
                 Ok(MouseEffect::state_changed())
@@ -786,11 +796,7 @@ impl MouseHandler {
         client_id: ClientId,
     ) -> Result<MouseEffect> {
         let err_context = || "failed to focus pane";
-        if let Some(prev_pid) = tab.mouse_hover_pane_id.remove(&client_id) {
-            if let Some(pane) = tab.get_pane_with_id_mut(prev_pid) {
-                pane.set_hover_position(None);
-            }
-        }
+        clear_hover_for_client(tab, client_id);
         let active_pane_id_before = tab
             .get_active_pane_id(client_id)
             .ok_or_else(|| anyhow!("Failed to find active pane"))?;
@@ -947,21 +953,12 @@ impl MouseHandler {
             },
         }
 
-        // Clear hover position on previously hovered pane (if pane changed).
+        // Clear hover position on previously hovered pane when the hovered
+        // pane has changed (or cursor left all panes).  Hover position is
+        // intentionally not set on unfocused panes so that hover-only plugin
+        // highlights only activate on the focused pane.
         if let Some(prev_pane_id) = previous_hover_pane_id {
             if Some(prev_pane_id) != pane_id {
-                if let Some(pane) = tab.get_pane_with_id_mut(prev_pane_id) {
-                    pane.set_hover_position(None);
-                }
-            }
-        }
-        // Hover position is intentionally not set on unfocused panes
-        // so that hover-only plugin highlights only activate on the
-        // focused pane. The focused pane's hover position is set in the
-        // SendToTerminal execution path instead.
-        if pane_id.is_none() {
-            // Cursor left all panes — clear the previous pane if not already cleared.
-            if let Some(prev_pane_id) = previous_hover_pane_id {
                 if let Some(pane) = tab.get_pane_with_id_mut(prev_pane_id) {
                     pane.set_hover_position(None);
                 }
@@ -1005,10 +1002,7 @@ impl MouseHandler {
                         .with_context(err_context)?;
                 }
             }
-            if let Some(removed_hover_pid) = tab.mouse_hover_pane_id.remove(&client_id) {
-                if let Some(pane) = tab.get_pane_with_id_mut(removed_hover_pid) {
-                    pane.set_hover_position(None);
-                }
+            if clear_hover_for_client(tab, client_id) {
                 should_render = true;
             }
             // Update hover position on the active pane during motion events

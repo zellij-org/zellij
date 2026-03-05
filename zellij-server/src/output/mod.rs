@@ -40,43 +40,45 @@ fn vte_hide_cursor_instruction(vte_output: &mut String) -> Result<()> {
     write!(vte_output, "\u{1b}[?25l").context("failed to execute VTE instruction to hide cursor")
 }
 
+/// A selection region with associated styling for highlights and text selection.
+#[derive(Debug, Clone, Copy)]
+pub struct HighlightSelection {
+    pub selection: Selection,
+    pub bg: Option<AnsiCode>,
+    pub fg: Option<AnsiCode>,
+    pub bold: bool,
+    pub italic: bool,
+    pub underline: bool,
+}
+
 fn adjust_styles_for_possible_selection(
-    chunk_selection_and_colors: Vec<(
-        Selection,
-        Option<AnsiCode>,
-        Option<AnsiCode>,
-        bool,
-        bool,
-        bool,
-    )>,
+    chunk_selection_and_colors: &[HighlightSelection],
     character_styles: CharacterStyles,
     chunk_y: usize,
     chunk_width: usize,
 ) -> CharacterStyles {
     chunk_selection_and_colors
         .iter()
-        .find(|(selection, _, _, _, _, _)| selection.contains(chunk_y, chunk_width))
-        .map(
-            |(_selection, background_color, foreground_color, bold, italic, underline)| {
-                let mut styles = character_styles;
-                if let Some(bg) = background_color {
-                    styles = styles.background(Some(*bg));
-                }
-                if let Some(fg) = foreground_color {
-                    styles = styles.foreground(Some(*fg));
-                }
-                if *bold {
-                    styles = styles.bold(Some(AnsiCode::On));
-                }
-                if *italic {
-                    styles = styles.italic(Some(AnsiCode::On));
-                }
-                if *underline {
-                    styles = styles.underline(Some(AnsiCode::Underline(None)));
-                }
-                styles
-            },
-        )
+        .find(|hs| hs.selection.contains(chunk_y, chunk_width))
+        .map(|hs| {
+            let mut styles = character_styles;
+            if let Some(bg) = hs.bg {
+                styles = styles.background(Some(bg));
+            }
+            if let Some(fg) = hs.fg {
+                styles = styles.foreground(Some(fg));
+            }
+            if hs.bold {
+                styles = styles.bold(Some(AnsiCode::On));
+            }
+            if hs.italic {
+                styles = styles.italic(Some(AnsiCode::On));
+            }
+            if hs.underline {
+                styles = styles.underline(Some(AnsiCode::Underline(None)));
+            }
+            styles
+        })
         .unwrap_or(character_styles)
 }
 
@@ -1003,15 +1005,7 @@ pub struct CharacterChunk {
     pub changed_colors: Option<[Option<AnsiCode>; 256]>,
     pub pane_default_fg: Option<AnsiCode>,
     pub pane_default_bg: Option<AnsiCode>,
-    // (Selection, optional background, optional foreground, bold, italic, underline)
-    selection_and_colors: Vec<(
-        Selection,
-        Option<AnsiCode>,
-        Option<AnsiCode>,
-        bool,
-        bool,
-        bool,
-    )>,
+    selection_and_colors: Vec<HighlightSelection>,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -1036,35 +1030,17 @@ impl CharacterChunk {
     }
     pub fn add_selection_and_colors(
         &mut self,
-        selection: Selection,
-        background_color: Option<AnsiCode>,
-        foreground_color: Option<AnsiCode>,
-        bold: bool,
-        italic: bool,
-        underline: bool,
+        highlight: HighlightSelection,
         offset_x: usize,
         offset_y: usize,
     ) {
-        self.selection_and_colors.push((
-            selection.offset(offset_x, offset_y),
-            background_color,
-            foreground_color,
-            bold,
-            italic,
-            underline,
-        ));
+        self.selection_and_colors.push(HighlightSelection {
+            selection: highlight.selection.offset(offset_x, offset_y),
+            ..highlight
+        });
     }
-    pub fn selection_and_colors(
-        &self,
-    ) -> Vec<(
-        Selection,
-        Option<AnsiCode>,
-        Option<AnsiCode>,
-        bool,
-        bool,
-        bool,
-    )> {
-        self.selection_and_colors.clone()
+    pub fn selection_and_colors(&self) -> &[HighlightSelection] {
+        &self.selection_and_colors
     }
     pub fn add_changed_colors(&mut self, changed_colors: Option<[Option<AnsiCode>; 256]>) {
         self.changed_colors = changed_colors;

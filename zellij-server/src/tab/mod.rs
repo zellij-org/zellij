@@ -4749,51 +4749,21 @@ impl Tab {
         highlights: Vec<RegexHighlight>,
         style: &Style,
     ) {
-        if let Some(pane) = self
-            .tiled_panes
-            .get_pane_mut(pane_id)
-            .or_else(|| self.floating_panes.get_pane_mut(pane_id))
-            .or_else(|| {
-                self.suppressed_panes
-                    .values_mut()
-                    .find(|s_p| s_p.1.pid() == pane_id)
-                    .map(|s_p| &mut s_p.1)
-            })
-        {
+        if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
             pane.set_plugin_regex_highlights(plugin_id, highlights, style);
         }
     }
 
     pub fn clear_all_plugin_highlights(&mut self, plugin_id: u32) {
         for pane_id in self.get_all_pane_ids() {
-            if let Some(pane) = self
-                .tiled_panes
-                .get_pane_mut(pane_id)
-                .or_else(|| self.floating_panes.get_pane_mut(pane_id))
-                .or_else(|| {
-                    self.suppressed_panes
-                        .values_mut()
-                        .find(|s_p| s_p.1.pid() == pane_id)
-                        .map(|s_p| &mut s_p.1)
-                })
-            {
+            if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
                 pane.clear_plugin_highlights(plugin_id);
             }
         }
     }
 
     pub fn clear_plugin_highlights_for_pane(&mut self, pane_id: PaneId, plugin_id: u32) {
-        if let Some(pane) = self
-            .tiled_panes
-            .get_pane_mut(pane_id)
-            .or_else(|| self.floating_panes.get_pane_mut(pane_id))
-            .or_else(|| {
-                self.suppressed_panes
-                    .values_mut()
-                    .find(|s_p| s_p.1.pid() == pane_id)
-                    .map(|s_p| &mut s_p.1)
-            })
-        {
+        if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
             pane.clear_plugin_highlights(plugin_id);
         }
     }

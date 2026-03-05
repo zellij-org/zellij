@@ -85,11 +85,9 @@ impl State {
             }
         }
 
-        // Clear highlights on panes that no longer exist
+        // Clean up tracking state for panes that no longer exist
         for &pane_id in &self.known_terminal_panes {
             if !current_panes.contains(&pane_id) {
-                clear_pane_highlights(pane_id); // TODO: why are we doing this if the pane is
-                                                // closed?
                 self.pane_cwds.remove(&pane_id);
                 self.pane_dir_entries.remove(&pane_id);
             }
@@ -349,15 +347,9 @@ fn parse_path_and_line(matched_string: &str) -> (&str, Option<usize>) {
 
     numeric_segments.reverse();
 
-    match numeric_segments.len() {
-        0 => (matched_string, None),
-        1 => {
-            let (colon_pos, line_str) = numeric_segments[0];
-            let path = &matched_string[..colon_pos];
-            (path, line_str.parse::<usize>().ok())
-        },
-        _ => {
-            let (colon_pos, line_str) = numeric_segments[0];
+    match numeric_segments.first() {
+        None => (matched_string, None),
+        Some(&(colon_pos, line_str)) => {
             let path = &matched_string[..colon_pos];
             (path, line_str.parse::<usize>().ok())
         },
