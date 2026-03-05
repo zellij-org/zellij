@@ -309,6 +309,11 @@ impl InputHandler {
                     .send(ClientInstruction::SetSynchronizedOutput(enabled))
                     .unwrap();
             },
+            AnsiStdinInstruction::GraphemeClusterMode(supported) => {
+                self.send_client_instructions
+                    .send(ClientInstruction::SetGraphemeClusterMode(supported))
+                    .unwrap();
+            },
         }
     }
     fn handle_mouse_event(&mut self, mouse_event: &MouseEvent) {

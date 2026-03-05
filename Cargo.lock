@@ -505,6 +505,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2698f953def977c68f935bb0dfa959375ad4638570e969e2f1e9f433cbf1af6"
 
 [[package]]
+name = "castaway"
+version = "0.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dec551ab6e7578819132c713a93c022a05d60159dc86e7a7050223577484c55a"
+dependencies = [
+ "rustversion",
+]
+
+[[package]]
 name = "cc"
 version = "1.2.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -651,9 +660,23 @@ version = "0.1.0"
 dependencies = [
  "ansi_term",
  "colored",
- "unicode-width 0.1.10",
+ "unicode-width 0.2.2",
  "zellij-tile",
  "zellij-tile-utils",
+]
+
+[[package]]
+name = "compact_str"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3b79c4069c6cad78e2e0cdfcbd26275770669fb39fd308a752dc110e83b9af32"
+dependencies = [
+ "castaway 0.2.4",
+ "cfg-if",
+ "itoa",
+ "rustversion",
+ "ryu",
+ "static_assertions",
 ]
 
 [[package]]
@@ -1950,7 +1973,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "334e04b4d781f436dc315cb1e7515bd96826426345d498149e4bde36b67f8ee9"
 dependencies = [
  "async-channel",
- "castaway",
+ "castaway 0.1.2",
  "crossbeam-utils",
  "curl",
  "curl-sys",
@@ -2056,7 +2079,7 @@ dependencies = [
  "fuzzy-matcher",
  "miette",
  "strip-ansi-escapes 0.2.1",
- "unicode-width 0.1.10",
+ "unicode-width 0.2.2",
  "zellij-tile",
 ]
 
@@ -3430,7 +3453,7 @@ dependencies = [
  "chrono",
  "fuzzy-matcher",
  "humantime",
- "unicode-width 0.1.10",
+ "unicode-width 0.2.2",
  "uuid",
  "zellij-tile",
 ]
@@ -3628,6 +3651,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 
 [[package]]
+name = "static_assertions"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
+
+[[package]]
 name = "status-bar"
 version = "0.1.0"
 dependencies = [
@@ -3639,7 +3668,7 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 1.0.61",
- "unicode-width 0.1.10",
+ "unicode-width 0.2.2",
  "zellij-tile",
  "zellij-tile-utils",
 ]
@@ -3656,7 +3685,7 @@ dependencies = [
  "serde",
  "serde_json",
  "strip-ansi-escapes 0.1.1",
- "unicode-width 0.1.10",
+ "unicode-width 0.2.2",
  "zellij-tile",
 ]
 
@@ -3836,7 +3865,7 @@ version = "0.1.0"
 dependencies = [
  "ansi_term",
  "colored",
- "unicode-width 0.1.10",
+ "unicode-width 0.2.2",
  "zellij-tile",
  "zellij-tile-utils",
 ]
@@ -4342,9 +4371,9 @@ checksum = "c0edd1e5b14653f783770bce4a4dabb4a5108a5370a5f5d8cfe8710c361f6c8b"
 
 [[package]]
 name = "unicode-width"
-version = "0.2.1"
+version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4a1a07cc7db3810833284e8d372ccdc6da29741639ecc70c9ec107df0fa6154c"
+checksum = "b4ac048d71ede7ee76d585517add45da530660ef4390e49b098733c6e897f254"
 
 [[package]]
 name = "untrusted"
@@ -4669,7 +4698,7 @@ dependencies = [
  "bumpalo",
  "leb128fmt",
  "memchr",
- "unicode-width 0.2.1",
+ "unicode-width 0.2.2",
  "wasm-encoder",
 ]
 
@@ -5255,6 +5284,7 @@ dependencies = [
  "cassowary",
  "chrono",
  "close_fds",
+ "compact_str",
  "crossbeam",
  "daemonize",
  "highway",
@@ -5281,7 +5311,8 @@ dependencies = [
  "tempfile",
  "tokio",
  "typetag",
- "unicode-width 0.1.10",
+ "unicode-segmentation",
+ "unicode-width 0.2.2",
  "url",
  "uuid",
  "vte 0.11.0",
@@ -5358,7 +5389,7 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "tokio-util",
- "unicode-width 0.1.10",
+ "unicode-width 0.2.2",
  "url",
  "uuid",
  "windows-sys 0.52.0",
