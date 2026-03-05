@@ -223,7 +223,8 @@ impl SearchResult {
                         hidx = start.unwrap().column(); // Will be incremented below
                         if start.unwrap().line() as usize == orig_ridx {
                             source = SearchSource::Main(row);
-                            haystack_char = row.columns[hidx].first_char().unwrap_or('\0'); // so that prev_char gets set correctly
+                            haystack_char = row.columns[hidx].first_char().unwrap_or('\0');
+                        // so that prev_char gets set correctly
                         } else {
                             // The -1 comes from the main row
                             let tail_idx = start.unwrap().line() as usize - orig_ridx - 1;
