@@ -2171,6 +2171,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "link"
+version = "0.1.0"
+dependencies = [
+ "zellij-tile",
+]
+
+[[package]]
 name = "linked-hash-map"
 version = "0.5.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -246,8 +246,9 @@ plugins {
 
 // Plugins to load in the background when a new session starts
 load_plugins {
-  // "file:/path/to/my-plugin.wasm"
-  // "https://example.com/my-plugin.wasm"
+    "zellij:link"
+    // "file:/path/to/my-plugin.wasm"
+    // "https://example.com/my-plugin.wasm"
 }
 
 // Choose what to do when zellij receives SIGTERM, SIGINT, SIGQUIT or SIGHUP

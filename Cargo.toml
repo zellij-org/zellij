@@ -53,6 +53,7 @@ members = [
     "default-plugins/share",
     "default-plugins/multiple-select",
     "default-plugins/layout-manager",
+    "default-plugins/link",
     "zellij-client",
     "zellij-server",
     "zellij-utils",

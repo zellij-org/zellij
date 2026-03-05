@@ -139,6 +139,7 @@ mod not_wasm {
             add_plugin!(assets, "share.wasm");
             add_plugin!(assets, "multiple-select.wasm");
             add_plugin!(assets, "layout-manager.wasm");
+            add_plugin!(assets, "link.wasm");
             assets
         };
     }
