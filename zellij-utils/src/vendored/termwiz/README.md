@@ -1,5 +1,8 @@
 # Vendored copy of `termwiz`
 
+## Why do we need this?
+We need the fix for parsing partial SGR mouse sequences from https://github.com/wezterm/wezterm/pull/7504, which is not yet part of a release.
+
 ## Origin
 This module is a copy of [`termwiz`](https://crates.io/crates/termwiz) 0.23.3. The source code was copied from the directory `termwiz/src` in the [wezterm](https://github.com/wezterm/wezterm) repository (tag `termwiz-0.23.3` / commit `4bf28e253c0167102f07bfc7e7199c13eed98012`).
 

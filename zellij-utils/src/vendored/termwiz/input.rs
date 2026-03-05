@@ -1390,6 +1390,13 @@ impl InputParser {
                             }
                             continue;
                         }
+
+                        // If we have a potential SGR mouse sequence prefix and more
+                        // data might come, wait for additional input before falling
+                        // through to keymap lookup
+                        if maybe_more && self.buf.as_slice().starts_with(b"\x1b[<") {
+                            return;
+                        }
                     }
 
                     match (
@@ -1613,6 +1620,69 @@ mod test {
                 InputEvent::Key(KeyEvent {
                     modifiers: Modifiers::NONE,
                     key: KeyCode::Char('1'),
+                }),
+            ],
+            inputs
+        );
+    }
+
+    #[test]
+    fn partial_mouse() {
+        let mut p = InputParser::new();
+        let mut inputs = Vec::new();
+        // Fragment this mouse sequence across two different pushes
+        p.parse(b"\x1b[<0;0;0", |evt| inputs.push(evt), true);
+        p.parse(b"M", |evt| inputs.push(evt), true);
+        // make sure we recognize it as just the mouse event
+        assert_eq!(
+            vec![InputEvent::Mouse(MouseEvent {
+                x: 0,
+                y: 0,
+                mouse_buttons: MouseButtons::LEFT,
+                modifiers: Modifiers::NONE,
+            })],
+            inputs
+        );
+    }
+
+    #[test]
+    fn partial_mouse_ambig() {
+        let mut p = InputParser::new();
+        let mut inputs = Vec::new();
+        // Fragment this mouse sequence across two different pushes
+        p.parse(b"\x1b[<", |evt| inputs.push(evt), MAYBE_MORE);
+        p.parse(b"0;0;0", |evt| inputs.push(evt), NO_MORE);
+        // since we finish with maybe_more false (NO_MORE), the results should be the longest matching
+        // parts of said mouse sequence
+        assert_eq!(
+            vec![
+                InputEvent::Key(KeyEvent {
+                    modifiers: Modifiers::ALT,
+                    key: KeyCode::Char('['),
+                }),
+                InputEvent::Key(KeyEvent {
+                    modifiers: Modifiers::NONE,
+                    key: KeyCode::Char('<'),
+                }),
+                InputEvent::Key(KeyEvent {
+                    modifiers: Modifiers::NONE,
+                    key: KeyCode::Char('0'),
+                }),
+                InputEvent::Key(KeyEvent {
+                    modifiers: Modifiers::NONE,
+                    key: KeyCode::Char(';'),
+                }),
+                InputEvent::Key(KeyEvent {
+                    modifiers: Modifiers::NONE,
+                    key: KeyCode::Char('0'),
+                }),
+                InputEvent::Key(KeyEvent {
+                    modifiers: Modifiers::NONE,
+                    key: KeyCode::Char(';'),
+                }),
+                InputEvent::Key(KeyEvent {
+                    modifiers: Modifiers::NONE,
+                    key: KeyCode::Char('0'),
                 }),
             ],
             inputs
