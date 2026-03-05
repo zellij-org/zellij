@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use zellij_tile::prelude::*;
 
-const FILE_PATH_REGEX: &str = r#"(?:(?:\./|\.\./|/)[^\s:"'`\)\]\}>]+|[a-zA-Z0-9_][a-zA-Z0-9_.\-]*/[^\s:"'`\)\]\}>]+)(?::\d+(?::\d+)?)?"#;
+const FILE_PATH_REGEX: &str = r#"(?:(?:\./|\.\./|/)[^\s:"'`\)\]\}>]+|~/[^\s:"'`\)\]\}>]+|\$\{?[A-Za-z_][A-Za-z0-9_]*\}?/[^\s:"'`\)\]\}>]+|[a-zA-Z0-9_][a-zA-Z0-9_.\-]*/[^\s:"'`\)\]\}>]+)(?::\d+(?::\d+)?)?"#;
 
 const CWD_CONTEXT_KEY: &str = "cwd";
 
@@ -14,6 +14,9 @@ struct State {
     /// Tracks the directory entry names highlighted for each pane,
     /// so they can be removed when the CWD changes.
     pane_dir_entries: HashMap<PaneId, Vec<String>>,
+    /// Session environment variables, fetched once on load.
+    /// Used for `~` and `$VAR` expansion in clicked paths.
+    env_vars: BTreeMap<String, String>,
 }
 
 register_plugin!(State);
@@ -28,6 +31,7 @@ impl ZellijPlugin for State {
         // Set host folder to "/" so that /host maps to the real filesystem root,
         // allowing std::fs operations on /host/<absolute_path>.
         change_host_folder(PathBuf::from("/"));
+        self.env_vars = get_session_environment_variables();
     }
 
     fn update(&mut self, event: Event) -> bool {
@@ -112,6 +116,8 @@ impl State {
     fn handle_highlight_clicked(&self, matched_string: String, context: BTreeMap<String, String>) {
         let (path_str, line_number) = parse_path_and_line(&matched_string);
         let path_str = path_str.trim();
+        let expanded = expand_path(path_str, &self.env_vars);
+        let path_str = expanded.as_str();
 
         // Resolve to a fully qualified path: if relative, join with the
         // pane CWD stored in the highlight context.
@@ -215,6 +221,84 @@ fn regex_escape(s: &str) -> String {
         }
     }
     escaped
+}
+
+/// Expand `~` and `$VAR` / `${VAR}` references in a path string.
+///
+/// - `~` at the start (followed by `/` or at end-of-string) is replaced with
+///   the value of `HOME` from `env_vars`.
+/// - `$VARNAME` and `${VARNAME}` anywhere in the string are replaced with the
+///   corresponding value from `env_vars`.
+/// - Unrecognized variables and a missing `HOME` are left as-is.
+fn expand_path(path: &str, env_vars: &BTreeMap<String, String>) -> String {
+    // Step 1: tilde expansion (only leading ~)
+    let after_tilde = if path == "~" {
+        match env_vars.get("HOME") {
+            Some(home) => home.clone(),
+            None => path.to_owned(),
+        }
+    } else if let Some(rest) = path.strip_prefix("~/") {
+        match env_vars.get("HOME") {
+            Some(home) => format!("{}/{}", home, rest),
+            None => path.to_owned(),
+        }
+    } else {
+        path.to_owned()
+    };
+
+    // Step 2: environment variable expansion ($VAR and ${VAR})
+    let bytes = after_tilde.as_bytes();
+    let len = bytes.len();
+    let mut result = String::with_capacity(len);
+    let mut i = 0;
+
+    while i < len {
+        if bytes[i] == b'$' && i + 1 < len {
+            let (var_name, end_idx) = if bytes[i + 1] == b'{' {
+                // ${VAR} form
+                if let Some(close) = after_tilde[i + 2..].find('}') {
+                    let name = &after_tilde[i + 2..i + 2 + close];
+                    (name, i + 2 + close + 1)
+                } else {
+                    // No closing brace — not a valid variable reference
+                    result.push('$');
+                    i += 1;
+                    continue;
+                }
+            } else {
+                // $VAR form — variable name is [A-Za-z_][A-Za-z0-9_]*
+                let start = i + 1;
+                if start < len
+                    && (bytes[start].is_ascii_alphabetic() || bytes[start] == b'_')
+                {
+                    let mut end = start + 1;
+                    while end < len
+                        && (bytes[end].is_ascii_alphanumeric() || bytes[end] == b'_')
+                    {
+                        end += 1;
+                    }
+                    (&after_tilde[start..end], end)
+                } else {
+                    result.push('$');
+                    i += 1;
+                    continue;
+                }
+            };
+
+            if let Some(value) = env_vars.get(var_name) {
+                result.push_str(value);
+            } else {
+                // Unknown variable — preserve the original text
+                result.push_str(&after_tilde[i..end_idx]);
+            }
+            i = end_idx;
+        } else {
+            result.push(bytes[i] as char);
+            i += 1;
+        }
+    }
+
+    result
 }
 
 fn parse_path_and_line(matched_string: &str) -> (&str, Option<usize>) {
