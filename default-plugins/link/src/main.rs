@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use zellij_tile::prelude::*;
 
-const FILE_PATH_REGEX: &str = r#"(?:(?:\./|\.\./|/)[^\s:"'`\)\]\}>]+|~/[^\s:"'`\)\]\}>]+|\$\{?[A-Za-z_][A-Za-z0-9_]*\}?/[^\s:"'`\)\]\}>]+|[a-zA-Z0-9_][a-zA-Z0-9_.\-]*/[^\s:"'`\)\]\}>]+)(?::\d+(?::\d+)?)?"#;
+const FILE_PATH_REGEX: &str = r#"(?:(?:\./|\.\./|/)[A-Za-z0-9_./\-+@%,#=~!\$\{\}\[\]]+|~/[A-Za-z0-9_./\-+@%,#=~!\$\{\}\[\]]+|\$\{?[A-Za-z_][A-Za-z0-9_]*\}?/[A-Za-z0-9_./\-+@%,#=~!\$\{\}\[\]]+|[a-zA-Z0-9_][a-zA-Z0-9_.\-]*/[A-Za-z0-9_./\-+@%,#=~!\$\{\}\[\]]+)(?::\d+(?::\d+)?)?"#;
 
 const CWD_CONTEXT_KEY: &str = "cwd";
 
@@ -129,12 +129,40 @@ impl State {
             PathBuf::from(path_str)
         };
 
-        let mut file_to_open = FileToOpen::new(&absolute_path);
-        if let Some(line) = line_number {
-            file_to_open = file_to_open.with_line_number(line);
-        }
+        // Validate the path exists via the /host/ filesystem mapping
+        // established at load time. This guards against regex false
+        // positives that match non-path text in terminal output.
+        let host_path = Path::new("/host").join(
+            absolute_path.strip_prefix("/").unwrap_or(&absolute_path),
+        );
+        let metadata = match std::fs::metadata(&host_path) {
+            Ok(m) => m,
+            Err(_) => return, // path does not exist — silently ignore
+        };
 
-        open_file_floating(file_to_open, None, BTreeMap::new());
+        if metadata.is_dir() {
+            let mut args = BTreeMap::new();
+            let mut configuration = BTreeMap::new();
+            args.insert("open_directly".to_owned(), "true".to_owned());
+            configuration.insert("caller_cwd".to_owned(), absolute_path.display().to_string());
+            pipe_message_to_plugin(
+                MessageToPlugin::new("filepicker")
+                    .with_plugin_url("filepicker")
+                    .new_plugin_instance_should_have_pane_title(
+                        &format!("Browse: {}", absolute_path.display()),
+                    )
+                    .new_plugin_instance_should_be_focused()
+                    .new_plugin_instance_should_have_cwd(absolute_path)
+                    .with_args(args)
+                    .with_plugin_config(configuration),
+            );
+        } else {
+            let mut file_to_open = FileToOpen::new(&absolute_path);
+            if let Some(line) = line_number {
+                file_to_open = file_to_open.with_line_number(line);
+            }
+            open_file_floating(file_to_open, None, BTreeMap::new());
+        }
     }
 
     /// (Re-)set all regex highlights for a pane: the general file-path regex
