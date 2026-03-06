@@ -967,6 +967,22 @@ fn generate_unique_session_name_or_exit() -> String {
     unique_session_name
 }
 
+pub(crate) fn list_builtin_plugins() {
+    use zellij_utils::consts::ASSET_MAP;
+    let mut names: Vec<String> = ASSET_MAP
+        .keys()
+        .filter_map(|p| {
+            p.file_stem()
+                .and_then(|s| s.to_str())
+                .map(|s| format!("zellij:{}", s))
+        })
+        .collect();
+    names.sort();
+    for name in names {
+        println!("{}", name);
+    }
+}
+
 pub(crate) fn list_aliases(opts: CliArgs) {
     let (config, _layout, _config_options, _config_without_layout, _config_options_without_layout) =
         match Setup::from_cli_args(&opts) {
