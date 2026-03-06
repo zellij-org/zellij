@@ -20,8 +20,8 @@ mod not_wasm {
         data::{BareKey, InputMode, KeyModifier, KeyWithModifier, ModeInfo, PluginCapabilities},
         envs,
         ipc::ClientAttributes,
+        vendored::termwiz::input::{InputEvent, InputParser, KeyCode, KeyEvent, Modifiers},
     };
-    use termwiz::input::{InputEvent, InputParser, KeyCode, KeyEvent, Modifiers};
 
     use super::keybinds::Keybinds;
     use std::collections::BTreeSet;

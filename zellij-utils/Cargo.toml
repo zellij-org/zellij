@@ -38,13 +38,13 @@ unicode-width = { workspace = true }
 url = { workspace = true }
 uuid = { workspace = true }
 sha2 = { workspace = true }
+libc = { workspace = true }
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 tokio = { workspace = true }
 tokio-stream = { version = "0.1" }
 tokio-util = { version = "0.7", default-features = false, features = ["compat", "io"] }
 log4rs = { version = "1.2.0", default-features = false, features = ["pattern_encoder", "rolling_file_appender", "compound_policy", "fixed_window_roller", "size_trigger"] }
-termwiz = { workspace = true }
 interprocess = { workspace = true }
 openssl-sys = { version = "0.9.93", default-features = false, features = ["vendored"], optional = true }
 isahc = { workspace = true }
@@ -63,6 +63,19 @@ crossterm = { workspace = true, features = ["events"] }
 windows-sys = { workspace = true, features = [
     "Win32_Foundation",
     "Win32_System_Threading",
+] }
+winapi = { version = "0.3.9", features = [
+    "winbase",
+    "winerror",
+    "winnls",
+    "winuser",
+    "consoleapi",
+    "handleapi",
+    "fileapi",
+    "synchapi",
+    "memoryapi",
+    "winnt",
+    "impl-default",
 ] }
 
 [dev-dependencies]

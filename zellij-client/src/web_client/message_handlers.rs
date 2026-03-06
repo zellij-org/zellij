@@ -11,11 +11,11 @@ use std::sync::{
 use zellij_utils::{
     input::{actions::Action, cast_termwiz_key, mouse::MouseEvent},
     ipc::ClientToServerMsg,
+    vendored::termwiz::input::{InputEvent, InputParser},
 };
 
 use axum::extract::ws::{CloseFrame, Message, WebSocket};
 use futures::{prelude::stream::SplitSink, SinkExt};
-use termwiz::input::{InputEvent, InputParser};
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio_util::sync::CancellationToken;
 

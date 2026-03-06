@@ -92,7 +92,7 @@ notify-debouncer-full = { version = "0.3.1", default-features = false }
 notify = { version = "6.1.1", default-features = false, features = ["macos_kqueue"] }
 num_cpus = { version = "1.16", default-features = false }
 prost = { version = "0.11.9", default-features = false, features = ["std", "prost-derive"] }
-regex = { version = "1.5.5", default-features = false, features = ["perf", "std"] }
+regex = { version = "1.5.5", default-features = false, features = ["perf", "std", "unicode-perl"] }
 serde = { version = "1.0", default-features = false, features = ["derive", "std"] }
 serde_json = { version = "1.0", default-features = false, features = ["std"] }
 signal-hook = { version = "0.3", default-features = false, features = ["iterator"] }
@@ -100,7 +100,6 @@ strum = { version = "0.27.2", default-features = false, features = ["std"] }
 strum_macros = { version = "0.27.2", default-features = false }
 suggest = { version = "0.4.0", default-features = false }
 tempfile = { version = "3.2.0", default-features = false }
-termwiz = { version = "0.23.2", default-features = false }
 tokio = { version = "1.40", default-features = false, features = ["fs", "rt-multi-thread", "macros", "time", "process", "signal", "io-util", "io-std", "net"] }
 thiserror = { version = "1.0.40", default-features = false }
 tokio-util = { version = "0.7.15" }

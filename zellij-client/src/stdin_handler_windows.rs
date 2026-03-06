@@ -2,6 +2,7 @@ use crate::InputInstruction;
 use crossterm::event::{self, Event, KeyEventKind};
 use zellij_utils::channels::SenderWithContext;
 use zellij_utils::input::{cast_crossterm_key, from_crossterm_mouse};
+use zellij_utils::vendored::termwiz::input::InputEvent;
 
 /// Windows native console event loop.
 ///
@@ -40,7 +41,7 @@ pub(crate) fn native_console_stdin_loop(
             },
             Ok(Event::Paste(text)) => {
                 let raw_bytes = text.as_bytes().to_vec();
-                let paste_event = termwiz::input::InputEvent::Paste(text);
+                let paste_event = InputEvent::Paste(text);
                 if send_input_instructions
                     .send(InputInstruction::KeyEvent(paste_event, raw_bytes))
                     .is_err()
