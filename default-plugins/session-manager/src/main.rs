@@ -288,7 +288,15 @@ impl State {
                 should_render = true;
             },
             BareKey::Esc if key.has_no_modifiers() => {
-                self.new_session_info.handle_key(key);
+                if self.new_session_info.entering_new_session_name()
+                    && self.new_session_info.name().is_empty()
+                {
+                    if !self.is_welcome_screen {
+                        hide_self();
+                    }
+                } else {
+                    self.new_session_info.handle_key(key);
+                }
                 should_render = true;
             },
             _ => {},
