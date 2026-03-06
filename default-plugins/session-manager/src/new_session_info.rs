@@ -137,8 +137,9 @@ impl NewSessionInfo {
             },
         }
     }
-    pub fn update_layout_list(&mut self, layout_info: Vec<LayoutInfo>) {
-        self.layout_list.update_layout_list(layout_info);
+    /// Returns a boolean indicating whether the layout list has changed
+    pub fn update_layout_list(&mut self, layout_list: Vec<LayoutInfo>) -> bool {
+        self.layout_list.update_layout_list(layout_list)
     }
     pub fn layout_list(&self, max_rows: usize) -> Vec<(LayoutInfo, bool)> {
         // bool - is_selected
@@ -263,13 +264,18 @@ pub struct LayoutList {
 }
 
 impl LayoutList {
-    pub fn update_layout_list(&mut self, layout_list: Vec<LayoutInfo>) {
+    /// Returns a boolean indicating whether the layout list has changed
+    pub fn update_layout_list(&mut self, layout_list: Vec<LayoutInfo>) -> bool {
+        if self.layout_list == layout_list {
+            return false;
+        }
         let old_layout_length = self.layout_list.len();
         self.layout_list = layout_list;
         if old_layout_length != self.layout_list.len() {
             // honestly, this is just the UX choice that sucks the least...
             self.clear_selection();
         }
+        true
     }
     pub fn selected_layout_info(&self) -> Option<LayoutInfo> {
         if !self.layout_search_term.is_empty() {
