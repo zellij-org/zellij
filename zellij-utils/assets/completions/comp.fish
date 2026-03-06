@@ -1,11 +1,12 @@
+set -g __zellij_session_subcommands attach a kill-session k watch w delete-session d
+set -g __zellij_completion_shells bash elvish fish zsh powershell
+
 function __fish_complete_sessions
     zellij list-sessions --short --no-formatting 2>/dev/null
 end
-complete -c zellij -n "__fish_seen_subcommand_from attach" -f -a "(__fish_complete_sessions)" -d "Session"
-complete -c zellij -n "__fish_seen_subcommand_from a" -f -a "(__fish_complete_sessions)" -d "Session"
-complete -c zellij -n "__fish_seen_subcommand_from kill-session" -f -a "(__fish_complete_sessions)" -d "Session"
-complete -c zellij -n "__fish_seen_subcommand_from k" -f -a "(__fish_complete_sessions)" -d "Session"
-complete -c zellij -n "__fish_seen_subcommand_from setup" -l "generate-completion" -x -a "bash elvish fish zsh powershell" -d "Shell"
+
+complete -c zellij -n "__fish_seen_subcommand_from $__zellij_session_subcommands" -f -a "(__fish_complete_sessions)" -d "Session"
+complete -c zellij -n "__fish_seen_subcommand_from setup" -l "generate-completion" -x -a "$__zellij_completion_shells" -d "Shell"
 function zr
   command zellij run --name "$argv" -- fish -c "$argv"
 end
