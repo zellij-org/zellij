@@ -1523,7 +1523,7 @@ impl Tab {
                     PaneGeom::default(), // this will be filled out later
                     self.style,
                     next_terminal_position,
-                    String::new(),
+                    initial_pane_title.clone().unwrap_or_default(),
                     self.link_handler.clone(),
                     self.character_cell_size.clone(),
                     self.sixel_image_store.clone(),
@@ -1636,7 +1636,7 @@ impl Tab {
                     PaneGeom::default(), // this will be filled out later
                     self.style,
                     next_terminal_position,
-                    String::new(),
+                    initial_pane_title.clone().unwrap_or_default(),
                     self.link_handler.clone(),
                     self.character_cell_size.clone(),
                     self.sixel_image_store.clone(),
@@ -1738,7 +1738,7 @@ impl Tab {
                     PaneGeom::default(), // this will be filled out later
                     self.style,
                     next_terminal_position,
-                    String::new(),
+                    initial_pane_title.clone().unwrap_or_default(),
                     self.link_handler.clone(),
                     self.character_cell_size.clone(),
                     self.sixel_image_store.clone(),
@@ -1884,7 +1884,7 @@ impl Tab {
                     PaneGeom::default(), // this will be filled out later
                     self.style,
                     next_terminal_position,
-                    String::new(),
+                    initial_pane_title.clone().unwrap_or_default(),
                     self.link_handler.clone(),
                     self.character_cell_size.clone(),
                     self.sixel_image_store.clone(),
@@ -2298,7 +2298,7 @@ impl Tab {
                     PaneGeom::default(), // the initial size will be set later
                     self.style,
                     next_terminal_position,
-                    String::new(),
+                    initial_pane_title.clone().unwrap_or_default(),
                     self.link_handler.clone(),
                     self.character_cell_size.clone(),
                     self.sixel_image_store.clone(),
@@ -2365,7 +2365,7 @@ impl Tab {
                     PaneGeom::default(), // the initial size will be set later
                     self.style,
                     next_terminal_position,
-                    String::new(),
+                    initial_pane_title.clone().unwrap_or_default(),
                     self.link_handler.clone(),
                     self.character_cell_size.clone(),
                     self.sixel_image_store.clone(),
