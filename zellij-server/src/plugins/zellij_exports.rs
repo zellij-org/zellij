@@ -1629,6 +1629,7 @@ fn open_terminal(env: &PluginEnv, cwd: PathBuf) {
     };
     let action = Action::NewTiledPane {
         direction: None,
+        split_size: None,
         command: run_command_action,
         pane_name: None,
         near_current_pane: false,
@@ -1665,6 +1666,7 @@ fn open_terminal_near_plugin(env: &PluginEnv, cwd: PathBuf) {
         name,
         NewPanePlacement::Tiled {
             direction: None,
+            split_size: None,
             borderless: None,
         },
         false,
@@ -2063,6 +2065,7 @@ fn open_command_pane(
     };
     let action = Action::NewTiledPane {
         direction,
+        split_size: None,
         command: Some(run_command_action),
         pane_name: name,
         near_current_pane: false,
@@ -2119,6 +2122,7 @@ fn open_command_pane_near_plugin(
         name,
         NewPanePlacement::Tiled {
             direction: None,
+            split_size: None,
             borderless: None,
         },
         false,
