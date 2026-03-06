@@ -1,22 +1,166 @@
 //! This module provides an InputParser struct to help with parsing
 //! input received from a terminal.
-use crate::vendored::termwiz::error::Result;
-use crate::vendored::termwiz::escape::csi::{KittyKeyboardFlags, MouseReport};
-use crate::vendored::termwiz::escape::parser::Parser;
-use crate::vendored::termwiz::escape::{Action, CSI};
 use crate::vendored::termwiz::keymap::{Found, KeyMap};
 use crate::vendored::termwiz::readbuf::ReadBuffer;
-use crate::vendored_termwiz_bail as bail;
 use bitflags::bitflags;
-#[cfg(feature = "use_serde")]
-use serde::{Deserialize, Serialize};
 use std::fmt::Write;
-use wezterm_input_types::ctrl_mapping;
 
-pub use wezterm_input_types::Modifiers;
+pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
+
+bitflags! {
+    #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
+    pub struct Modifiers: u16 {
+        const NONE = 0;
+        const SHIFT = 1 << 1;
+        const ALT = 1 << 2;
+        const CTRL = 1 << 3;
+        const SUPER = 1 << 4;
+        const LEFT_ALT = 1 << 5;
+        const RIGHT_ALT = 1 << 6;
+        const LEADER = 1 << 7;
+        const LEFT_CTRL = 1 << 8;
+        const RIGHT_CTRL = 1 << 9;
+        const LEFT_SHIFT = 1 << 10;
+        const RIGHT_SHIFT = 1 << 11;
+        const ENHANCED_KEY = 1 << 12;
+    }
+}
+
+impl Modifiers {
+    pub fn encode_xterm(self) -> u8 {
+        let mut number = 0;
+        if self.contains(Self::SHIFT) {
+            number |= 1;
+        }
+        if self.contains(Self::ALT) {
+            number |= 2;
+        }
+        if self.contains(Self::CTRL) {
+            number |= 4;
+        }
+        number
+    }
+
+    pub fn remove_positional_mods(self) -> Self {
+        self - (Self::LEFT_ALT
+            | Self::RIGHT_ALT
+            | Self::LEFT_CTRL
+            | Self::RIGHT_CTRL
+            | Self::LEFT_SHIFT
+            | Self::RIGHT_SHIFT
+            | Self::ENHANCED_KEY)
+    }
+}
+
+bitflags! {
+    #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+    pub struct KittyKeyboardFlags: u16 {
+        const NONE = 0;
+        const DISAMBIGUATE_ESCAPE_CODES = 1;
+        const REPORT_EVENT_TYPES = 2;
+        const REPORT_ALTERNATE_KEYS = 4;
+        const REPORT_ALL_KEYS_AS_ESCAPE_CODES = 8;
+        const REPORT_ASSOCIATED_TEXT = 16;
+    }
+}
+
+pub fn ctrl_mapping(c: char) -> Option<char> {
+    Some(match c {
+        '@' | '`' | ' ' | '2' => '\x00',
+        'A' | 'a' => '\x01',
+        'B' | 'b' => '\x02',
+        'C' | 'c' => '\x03',
+        'D' | 'd' => '\x04',
+        'E' | 'e' => '\x05',
+        'F' | 'f' => '\x06',
+        'G' | 'g' => '\x07',
+        'H' | 'h' => '\x08',
+        'I' | 'i' => '\x09',
+        'J' | 'j' => '\x0a',
+        'K' | 'k' => '\x0b',
+        'L' | 'l' => '\x0c',
+        'M' | 'm' => '\x0d',
+        'N' | 'n' => '\x0e',
+        'O' | 'o' => '\x0f',
+        'P' | 'p' => '\x10',
+        'Q' | 'q' => '\x11',
+        'R' | 'r' => '\x12',
+        'S' | 's' => '\x13',
+        'T' | 't' => '\x14',
+        'U' | 'u' => '\x15',
+        'V' | 'v' => '\x16',
+        'W' | 'w' => '\x17',
+        'X' | 'x' => '\x18',
+        'Y' | 'y' => '\x19',
+        'Z' | 'z' => '\x1a',
+        '[' | '3' | '{' => '\x1b',
+        '\\' | '4' | '|' => '\x1c',
+        ']' | '5' | '}' => '\x1d',
+        '^' | '6' | '~' => '\x1e',
+        '_' | '7' | '/' => '\x1f',
+        '8' | '?' => '\x7f',
+        _ => return None,
+    })
+}
+
+bitflags! {
+    #[derive(Debug, Default, Clone, PartialEq, Eq)]
+    pub struct MouseButtons: u8 {
+        const NONE = 0;
+        const LEFT = 1<<1;
+        const RIGHT = 1<<2;
+        const MIDDLE = 1<<3;
+        const VERT_WHEEL = 1<<4;
+        const HORZ_WHEEL = 1<<5;
+        /// if set then the wheel movement was in the positive
+        /// direction, else the negative direction
+        const WHEEL_POSITIVE = 1<<6;
+    }
+}
 
 pub const CSI: &str = "\x1b[";
 pub const SS3: &str = "\x1bO";
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InputEvent {
+    Key(KeyEvent),
+    Mouse(MouseEvent),
+    PixelMouse(PixelMouseEvent),
+    /// Detected that the user has resized the terminal
+    Resized {
+        cols: usize,
+        rows: usize,
+    },
+    /// For terminals that support Bracketed Paste mode,
+    /// pastes are collected and reported as this variant.
+    Paste(String),
+    /// The program has woken the input thread.
+    Wake,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MouseEvent {
+    pub x: u16,
+    pub y: u16,
+    pub mouse_buttons: MouseButtons,
+    pub modifiers: Modifiers,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PixelMouseEvent {
+    pub x_pixels: u16,
+    pub y_pixels: u16,
+    pub mouse_buttons: MouseButtons,
+    pub modifiers: Modifiers,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KeyEvent {
+    /// Which key was pressed
+    pub key: KeyCode,
+    /// Which modifiers are down
+    pub modifiers: Modifiers,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum KeyboardEncoding {
@@ -39,77 +183,9 @@ pub struct KeyCodeEncodeModes {
     pub modify_other_keys: Option<i64>,
 }
 
-#[cfg(windows)]
-use winapi::um::wincon::{
-    INPUT_RECORD, KEY_EVENT, KEY_EVENT_RECORD, MOUSE_EVENT, MOUSE_EVENT_RECORD,
-    WINDOW_BUFFER_SIZE_EVENT, WINDOW_BUFFER_SIZE_RECORD,
-};
-
-bitflags! {
-    #[cfg_attr(feature="use_serde", derive(Serialize, Deserialize))]
-    #[derive(Debug, Default, Clone, PartialEq, Eq)]
-    pub struct MouseButtons: u8 {
-        const NONE = 0;
-        const LEFT = 1<<1;
-        const RIGHT = 1<<2;
-        const MIDDLE = 1<<3;
-        const VERT_WHEEL = 1<<4;
-        const HORZ_WHEEL = 1<<5;
-        /// if set then the wheel movement was in the positive
-        /// direction, else the negative direction
-        const WHEEL_POSITIVE = 1<<6;
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum InputEvent {
-    Key(KeyEvent),
-    Mouse(MouseEvent),
-    PixelMouse(PixelMouseEvent),
-    /// Detected that the user has resized the terminal
-    Resized {
-        cols: usize,
-        rows: usize,
-    },
-    /// For terminals that support Bracketed Paste mode,
-    /// pastes are collected and reported as this variant.
-    Paste(String),
-    /// The program has woken the input thread.
-    Wake,
-}
-
-#[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct MouseEvent {
-    pub x: u16,
-    pub y: u16,
-    pub mouse_buttons: MouseButtons,
-    pub modifiers: Modifiers,
-}
-
-#[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PixelMouseEvent {
-    pub x_pixels: u16,
-    pub y_pixels: u16,
-    pub mouse_buttons: MouseButtons,
-    pub modifiers: Modifiers,
-}
-
-#[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct KeyEvent {
-    /// Which key was pressed
-    pub key: KeyCode,
-
-    /// Which modifiers are down
-    pub modifiers: Modifiers,
-}
-
 /// Which key is pressed.  Not all of these are probable to appear
 /// on most systems.  A lot of this list is @wez trawling docs and
 /// making an entry for things that might be possible in this first pass.
-#[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum KeyCode {
     /// The decoded unicode character
@@ -215,10 +291,6 @@ pub enum KeyCode {
 impl KeyCode {
     /// if SHIFT is held and we have KeyCode::Char('c') we want to normalize
     /// that keycode to KeyCode::Char('C'); that is what this function does.
-    /// In theory we should give the same treatment to keys like `[` -> `{`
-    /// but that assumes something about the keyboard layout and is probably
-    /// better done in the gui frontend rather than this layer.
-    /// In fact, this function might be better off if it lived elsewhere.
     pub fn normalize_shift_to_upper_case(self, modifiers: Modifiers) -> KeyCode {
         if modifiers.contains(Modifiers::SHIFT) {
             match self {
@@ -251,7 +323,7 @@ impl KeyCode {
         )
     }
 
-    /// Returns the byte sequence that represents this KeyCode and Modifier combination,
+    /// Returns the byte sequence that represents this KeyCode and Modifier combination.
     pub fn encode(
         &self,
         mods: Modifiers,
@@ -417,14 +489,7 @@ impl KeyCode {
                     _ => unreachable!(),
                 };
 
-                let csi_or_ss3 = if force_app
-                    || (
-                        modes.application_cursor_keys
-                        // Strict reading of DECCKM suggests that application_cursor_keys
-                        // only applies when DECANM and DECKPAM are active, but that seems
-                        // to break unmodified cursor keys in vim
-                        /* && self.dec_ansi_mode && self.application_keypad */
-                    ) {
+                let csi_or_ss3 = if force_app || modes.application_cursor_keys {
                     // Use SS3 in application mode
                     SS3
                 } else {
@@ -512,7 +577,7 @@ impl KeyCode {
                         22 => "\x1b[43",
                         23 => "\x1b[44",
                         24 => "\x1b[45",
-                        _ => bail!("unhandled fkey number {}", n),
+                        _ => return Err(format!("unhandled fkey number {}", n).into()),
                     };
                     let encoded_mods = mods.encode_xterm();
                     if encoded_mods == 0 {
@@ -536,8 +601,6 @@ impl KeyCode {
 
                 let encoded_mods = mods.encode_xterm();
                 if encoded_mods == 0 {
-                    // If no modifiers are held, don't send the modifier
-                    // sequence, as the modifier encoding is a CSI-u extension.
                     write!(buf, "{}~", intro)?;
                 } else {
                     write!(buf, "{};{}~", intro, 1 + encoded_mods)?;
@@ -558,7 +621,6 @@ impl KeyCode {
 
                 let encoded_mods = mods.encode_xterm();
                 if encoded_mods == 0 {
-                    // If no modifiers are held, don't send the modifier
                     write!(buf, "{}{}", CSI, c)?;
                 } else {
                     write!(buf, "{}1;{}{}", CSI, 1 + encoded_mods, c)?;
@@ -586,10 +648,7 @@ impl KeyCode {
 /// or could be a key that a user legitimately wants to process in their
 /// terminal application
 fn is_ambiguous_ascii_ctrl(c: char) -> bool {
-    match c {
-        'i' | 'I' | 'm' | 'M' | '[' | '{' | '@' => true,
-        _ => false,
-    }
+    matches!(c, 'i' | 'I' | 'm' | 'M' | '[' | '{' | '@')
 }
 
 fn is_ascii(c: char) -> bool {
@@ -632,6 +691,119 @@ fn csi_u_encode(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MouseButton {
+    Button1Press,
+    Button1Release,
+    Button1Drag,
+    Button2Press,
+    Button2Release,
+    Button2Drag,
+    Button3Press,
+    Button3Release,
+    Button3Drag,
+    Button4Press,
+    Button4Release,
+    Button5Press,
+    Button5Release,
+    Button6Press,
+    Button6Release,
+    Button7Press,
+    Button7Release,
+    None,
+}
+
+fn decode_mouse_button(control: u8, p0: i64) -> Option<MouseButton> {
+    match (control, p0 & 0b110_0011) {
+        (b'M', 0) => Some(MouseButton::Button1Press),
+        (b'm', 0) => Some(MouseButton::Button1Release),
+        (b'M', 1) => Some(MouseButton::Button2Press),
+        (b'm', 1) => Some(MouseButton::Button2Release),
+        (b'M', 2) => Some(MouseButton::Button3Press),
+        (b'm', 2) => Some(MouseButton::Button3Release),
+        (b'M', 64) => Some(MouseButton::Button4Press),
+        (b'm', 64) => Some(MouseButton::Button4Release),
+        (b'M', 65) => Some(MouseButton::Button5Press),
+        (b'm', 65) => Some(MouseButton::Button5Release),
+        (b'M', 66) => Some(MouseButton::Button6Press),
+        (b'm', 66) => Some(MouseButton::Button6Release),
+        (b'M', 67) => Some(MouseButton::Button7Press),
+        (b'm', 67) => Some(MouseButton::Button7Release),
+        (b'M', 32) => Some(MouseButton::Button1Drag),
+        (b'M', 33) => Some(MouseButton::Button2Drag),
+        (b'M', 34) => Some(MouseButton::Button3Drag),
+        (b'M', 35) | (b'm', 35) | (b'M', 3) | (b'm', 3) => Some(MouseButton::None),
+        _ => ::core::option::Option::None,
+    }
+}
+
+impl From<MouseButton> for MouseButtons {
+    fn from(button: MouseButton) -> MouseButtons {
+        match button {
+            MouseButton::Button1Press | MouseButton::Button1Drag => MouseButtons::LEFT,
+            MouseButton::Button2Press | MouseButton::Button2Drag => MouseButtons::MIDDLE,
+            MouseButton::Button3Press | MouseButton::Button3Drag => MouseButtons::RIGHT,
+            MouseButton::Button4Press => MouseButtons::VERT_WHEEL | MouseButtons::WHEEL_POSITIVE,
+            MouseButton::Button5Press => MouseButtons::VERT_WHEEL,
+            MouseButton::Button6Press => MouseButtons::HORZ_WHEEL | MouseButtons::WHEEL_POSITIVE,
+            MouseButton::Button7Press => MouseButtons::HORZ_WHEEL,
+            _ => MouseButtons::NONE,
+        }
+    }
+}
+
+fn decode_mouse_modifiers(p0: i64) -> Modifiers {
+    let mut modifiers = Modifiers::NONE;
+    if p0 & 4 != 0 {
+        modifiers |= Modifiers::SHIFT;
+    }
+    if p0 & 8 != 0 {
+        modifiers |= Modifiers::ALT;
+    }
+    if p0 & 16 != 0 {
+        modifiers |= Modifiers::CTRL;
+    }
+    modifiers
+}
+
+/// Try to parse an SGR mouse sequence from the buffer.
+/// Returns Some((InputEvent, bytes_consumed)) on success.
+/// Returns None if the buffer does not contain a complete SGR mouse sequence.
+fn parse_sgr_mouse(buf: &[u8]) -> Option<(InputEvent, usize)> {
+    // Must start with \x1b[<
+    if buf.len() < 6 || !buf.starts_with(b"\x1b[<") {
+        return None;
+    }
+    let rest = &buf[3..]; // skip \x1b[<
+
+    // Find the terminating M or m
+    let term_pos = rest.iter().position(|&b| b == b'M' || b == b'm')?;
+    let control = rest[term_pos];
+    let params_str = std::str::from_utf8(&rest[..term_pos]).ok()?;
+
+    // Parse three semicolon-separated integers
+    let mut parts = params_str.splitn(3, ';');
+    let p0: i64 = parts.next()?.parse().ok()?;
+    let p1: i64 = parts.next()?.parse().ok()?;
+    let p2: i64 = parts.next()?.parse().ok()?;
+
+    let button = decode_mouse_button(control, p0)?;
+    let modifiers = decode_mouse_modifiers(p0);
+    let mouse_buttons: MouseButtons = button.into();
+
+    let consumed = 3 + term_pos + 1; // \x1b[< + params + M/m
+
+    Some((
+        InputEvent::Mouse(MouseEvent {
+            x: p1 as u16,
+            y: p2 as u16,
+            mouse_buttons,
+            modifiers,
+        }),
+        consumed,
+    ))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum InputState {
     Normal,
     EscapeMaybeAlt,
@@ -649,6 +821,10 @@ pub struct InputParser {
 mod windows {
     use super::*;
     use std;
+    use winapi::um::wincon::{
+        INPUT_RECORD, KEY_EVENT, KEY_EVENT_RECORD, MOUSE_EVENT, MOUSE_EVENT_RECORD,
+        WINDOW_BUFFER_SIZE_EVENT, WINDOW_BUFFER_SIZE_RECORD,
+    };
     use winapi::um::winuser;
 
     fn modifiers_from_ctrl_key_state(state: u32) -> Modifiers {
@@ -668,17 +844,15 @@ mod windows {
             mods |= Modifiers::SHIFT;
         }
 
-        // TODO: we could report caps lock, numlock and scrolllock
-
         mods
     }
+
     impl InputParser {
         fn decode_key_record<F: FnMut(InputEvent)>(
             &mut self,
             event: &KEY_EVENT_RECORD,
             callback: &mut F,
         ) {
-            // TODO: do we want downs instead of ups?
             if event.bKeyDown == 0 {
                 return;
             }
@@ -915,13 +1089,6 @@ impl InputParser {
             (";7", Modifiers::CTRL | Modifiers::ALT),
             (";8", Modifiers::CTRL | Modifiers::ALT | Modifiers::SHIFT),
         ];
-        // Meta is theoretically a distinct modifier of its own, but modern systems don't
-        // have a dedicated Meta key and use the Alt/Option key instead.  The mapping
-        // below is reproduced from the xterm documentation from a time where it was
-        // possible to hold both Alt and Meta down as modifiers.  Since we define meta to
-        // ALT, the use of `meta | ALT` in the table below appears to be redundant,
-        // but makes it easier to see that the mapping matches xterm when viewing
-        // its documentation.
         let meta = Modifiers::ALT;
         let meta_modifier_combos = &[
             (";9", meta),
@@ -1254,11 +1421,6 @@ impl InputParser {
     /// This is a horrible function to pull off the first unicode character
     /// from the sequence of bytes and return it and the remaining slice.
     fn decode_one_char(bytes: &[u8]) -> Option<(char, usize)> {
-        // This has the potential to be an ugly hotspot since the complexity
-        // is a function of the length of the entire buffer rather than the length
-        // of the first char component.  A simple mitigation might be to slice off
-        // the first 4 bytes.  We pick 4 bytes because the docs for str::len_utf8()
-        // state that the maximum expansion for a `char` is 4 bytes.
         let bytes = &bytes[..bytes.len().min(4)];
         match std::str::from_utf8(bytes) {
             Ok(s) => {
@@ -1279,7 +1441,7 @@ impl InputParser {
     }
 
     fn dispatch_callback<F: FnMut(InputEvent)>(&mut self, mut callback: F, event: InputEvent) {
-        match (self.state, event) {
+        match (self.state, &event) {
             (
                 InputState::Normal,
                 InputEvent::Key(KeyEvent {
@@ -1306,13 +1468,15 @@ impl InputParser {
             },
             (InputState::EscapeMaybeAlt, InputEvent::Key(KeyEvent { key, modifiers })) => {
                 // Treat this as ALT-key
+                let key = *key;
+                let modifiers = *modifiers;
                 self.state = InputState::Normal;
                 callback(InputEvent::Key(KeyEvent {
                     key,
                     modifiers: modifiers | Modifiers::ALT,
                 }));
             },
-            (InputState::EscapeMaybeAlt, event) => {
+            (InputState::EscapeMaybeAlt, _) => {
                 // The prior ESC was not part of an ALT sequence, so emit
                 // both it and the current event
                 callback(InputEvent::Key(KeyEvent {
@@ -1321,7 +1485,7 @@ impl InputParser {
                 }));
                 callback(event);
             },
-            (_, event) => callback(event),
+            (_, _) => callback(event),
         }
     }
 
@@ -1337,12 +1501,6 @@ impl InputParser {
                         callback(InputEvent::Paste(pasted));
                         self.state = InputState::Normal;
                     } else {
-                        // Advance our offset so that in the case where we receive a paste that
-                        // is spread across N reads of size 8K, we don't need to search for the
-                        // end marker in 8K, 16K, 24K etc. of text until the final buffer is received.
-                        // Ensure that we use saturating math here for the case where the amount
-                        // of buffered data after the begin paste is smaller than the end paste marker
-                        // <https://github.com/wezterm/wezterm/pull/1832>
                         self.state =
                             InputState::Pasting(self.buf.len().saturating_sub(end_paste.len()));
                         return;
@@ -1350,50 +1508,12 @@ impl InputParser {
                 },
                 InputState::EscapeMaybeAlt | InputState::Normal => {
                     if self.state == InputState::Normal && self.buf.as_slice()[0] == b'\x1b' {
-                        // This feels a bit gross because we have two different parsers at play
-                        // here.  We want to re-use the escape sequence parser to crack the
-                        // parameters out from things like mouse reports.  The keymap tree doesn't
-                        // know how to grok this.
-                        let mut parser = Parser::new();
-                        if let Some((Action::CSI(CSI::Mouse(mouse)), len)) =
-                            parser.parse_first(self.buf.as_slice())
-                        {
+                        if let Some((event, len)) = parse_sgr_mouse(self.buf.as_slice()) {
                             self.buf.advance(len);
-
-                            match mouse {
-                                MouseReport::SGR1006 {
-                                    x,
-                                    y,
-                                    button,
-                                    modifiers,
-                                } => {
-                                    callback(InputEvent::Mouse(MouseEvent {
-                                        x,
-                                        y,
-                                        mouse_buttons: button.into(),
-                                        modifiers,
-                                    }));
-                                },
-                                MouseReport::SGR1016 {
-                                    x_pixels,
-                                    y_pixels,
-                                    button,
-                                    modifiers,
-                                } => {
-                                    callback(InputEvent::PixelMouse(PixelMouseEvent {
-                                        x_pixels: x_pixels,
-                                        y_pixels: y_pixels,
-                                        mouse_buttons: button.into(),
-                                        modifiers,
-                                    }));
-                                },
-                            }
+                            callback(event);
                             continue;
                         }
 
-                        // If we have a potential SGR mouse sequence prefix and more
-                        // data might come, wait for additional input before falling
-                        // through to keymap lookup
                         if maybe_more && self.buf.as_slice().starts_with(b"\x1b[<") {
                             return;
                         }
@@ -1477,7 +1597,10 @@ impl InputParser {
     }
 
     #[cfg(windows)]
-    pub fn decode_input_records_as_vec(&mut self, records: &[INPUT_RECORD]) -> Vec<InputEvent> {
+    pub fn decode_input_records_as_vec(
+        &mut self,
+        records: &[winapi::um::wincon::INPUT_RECORD],
+    ) -> Vec<InputEvent> {
         let mut result = Vec::new();
         self.decode_input_records(records, &mut |event| result.push(event));
         result
@@ -2002,5 +2125,171 @@ mod test {
                 mods
             );
         }
+    }
+
+    #[test]
+    fn mouse_button1_press() {
+        let mut p = InputParser::new();
+        let res = p.parse_as_vec(b"\x1b[<0;42;12M", true);
+        assert_eq!(
+            res,
+            vec![InputEvent::Mouse(MouseEvent {
+                x: 42,
+                y: 12,
+                mouse_buttons: MouseButtons::LEFT,
+                modifiers: Modifiers::NONE,
+            })]
+        );
+    }
+
+    #[test]
+    fn mouse_button1_release() {
+        let mut p = InputParser::new();
+        let res = p.parse_as_vec(b"\x1b[<0;42;12m", true);
+        assert_eq!(
+            res,
+            vec![InputEvent::Mouse(MouseEvent {
+                x: 42,
+                y: 12,
+                mouse_buttons: MouseButtons::NONE,
+                modifiers: Modifiers::NONE,
+            })]
+        );
+    }
+
+    #[test]
+    fn mouse_button3_with_shift() {
+        let mut p = InputParser::new();
+        // button 2 (right) = 2, SHIFT adds 4 to p0 -> 6
+        let res = p.parse_as_vec(b"\x1b[<6;10;20M", true);
+        assert_eq!(
+            res,
+            vec![InputEvent::Mouse(MouseEvent {
+                x: 10,
+                y: 20,
+                mouse_buttons: MouseButtons::RIGHT,
+                modifiers: Modifiers::SHIFT,
+            })]
+        );
+    }
+
+    #[test]
+    fn mouse_drag() {
+        let mut p = InputParser::new();
+        // button1 drag = 32
+        let res = p.parse_as_vec(b"\x1b[<32;5;5M", true);
+        assert_eq!(
+            res,
+            vec![InputEvent::Mouse(MouseEvent {
+                x: 5,
+                y: 5,
+                mouse_buttons: MouseButtons::LEFT,
+                modifiers: Modifiers::NONE,
+            })]
+        );
+    }
+
+    #[test]
+    fn mouse_vertical_scroll_up() {
+        let mut p = InputParser::new();
+        // button4 press = 64
+        let res = p.parse_as_vec(b"\x1b[<64;1;1M", true);
+        assert_eq!(
+            res,
+            vec![InputEvent::Mouse(MouseEvent {
+                x: 1,
+                y: 1,
+                mouse_buttons: MouseButtons::VERT_WHEEL | MouseButtons::WHEEL_POSITIVE,
+                modifiers: Modifiers::NONE,
+            })]
+        );
+    }
+
+    #[test]
+    fn mouse_vertical_scroll_down() {
+        let mut p = InputParser::new();
+        // button5 press = 65
+        let res = p.parse_as_vec(b"\x1b[<65;1;1M", true);
+        assert_eq!(
+            res,
+            vec![InputEvent::Mouse(MouseEvent {
+                x: 1,
+                y: 1,
+                mouse_buttons: MouseButtons::VERT_WHEEL,
+                modifiers: Modifiers::NONE,
+            })]
+        );
+    }
+
+    #[test]
+    fn mouse_motion_no_buttons() {
+        let mut p = InputParser::new();
+        // motion with no buttons = 35
+        let res = p.parse_as_vec(b"\x1b[<35;10;10M", true);
+        assert_eq!(
+            res,
+            vec![InputEvent::Mouse(MouseEvent {
+                x: 10,
+                y: 10,
+                mouse_buttons: MouseButtons::NONE,
+                modifiers: Modifiers::NONE,
+            })]
+        );
+    }
+
+    #[test]
+    fn mouse_with_ctrl_alt() {
+        let mut p = InputParser::new();
+        // button1 press = 0, ALT=8, CTRL=16 -> 0+8+16=24
+        let res = p.parse_as_vec(b"\x1b[<24;1;1M", true);
+        assert_eq!(
+            res,
+            vec![InputEvent::Mouse(MouseEvent {
+                x: 1,
+                y: 1,
+                mouse_buttons: MouseButtons::LEFT,
+                modifiers: Modifiers::ALT | Modifiers::CTRL,
+            })]
+        );
+    }
+
+    #[test]
+    fn mouse_large_coordinates() {
+        let mut p = InputParser::new();
+        let res = p.parse_as_vec(b"\x1b[<0;999;999M", true);
+        assert_eq!(
+            res,
+            vec![InputEvent::Mouse(MouseEvent {
+                x: 999,
+                y: 999,
+                mouse_buttons: MouseButtons::LEFT,
+                modifiers: Modifiers::NONE,
+            })]
+        );
+    }
+
+    #[test]
+    fn mouse_followed_by_key() {
+        let mut p = InputParser::new();
+        let res = p.parse_as_vec(b"\x1b[<0;1;1Mhello", false);
+        assert_eq!(res.len(), 6); // 1 mouse + 5 chars
+        assert!(matches!(res[0], InputEvent::Mouse(_)));
+        assert!(matches!(res[1], InputEvent::Key(_)));
+    }
+
+    #[test]
+    fn two_mouse_events_back_to_back() {
+        let mut p = InputParser::new();
+        let res = p.parse_as_vec(b"\x1b[<0;1;1M\x1b[<0;2;2M", true);
+        assert_eq!(res.len(), 2);
+    }
+
+    #[test]
+    fn invalid_sgr_mouse_falls_through() {
+        let mut p = InputParser::new();
+        // Invalid: missing terminator, not enough params
+        let res = p.parse_as_vec(b"\x1b[<0;1M", false);
+        // Should NOT parse as mouse - falls through to keymap
+        assert!(res.iter().all(|e| matches!(e, InputEvent::Key(_))));
     }
 }

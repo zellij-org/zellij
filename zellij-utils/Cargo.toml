@@ -38,6 +38,7 @@ unicode-width = { workspace = true }
 url = { workspace = true }
 uuid = { workspace = true }
 sha2 = { workspace = true }
+libc = { workspace = true }
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 tokio = { workspace = true }
@@ -54,38 +55,8 @@ names = { workspace = true }
 rusqlite = { version = "0.30", default-features = false, features = ["bundled"], optional = true }
 notify = { workspace = true }
 
-# termwiz dependencies
-base64 = { version = "0.22", default-features = false, features = ["std"] }
-fancy-regex = { version = "0.11", default-features = false, features = ["unicode"] }
-filedescriptor = { version = "0.8.3", default-features = false }
-finl_unicode = { version = "1.2", default-features = false, features = ["grapheme_clusters"] }
-fixedbitset = { version = "0.4", default-features = false }
-hex = { version = "0.4", default-features = false, features = ["alloc"] }
-libc = { workspace = true }
-memmem = { version = "0.1", default-features = false }
-num-derive = { version = "0.4", default-features = false }
-num-traits= { version = "0.2", default-features = false }
-ordered-float = { version = "4.1", default-features = false }
-pest = { version = "2.7", default-features = false, features = ["std"] }
-pest_derive = { version = "2.7", default-features = false, features = ["std"] }
-phf = { version = "0.11", default-features = false }
-siphasher = { version = "1.0.1", default-features = false }
-terminfo = { version = "0.9", default-features = false }
-ucd-trie = { version = "0.1", default-features = false }
-unicode-segmentation = { version = "1.12", default-features = false }
-vtparse = { version = "0.6.2", default-features = false }
-wezterm-bidi= { version = "0.2.3", default-features = false }
-wezterm-blob-leases = { version = "0.1.1", default-features = false }
-wezterm-dynamic = { version = "0.2.1", default-features = false }
-wezterm-color-types = { version = "0.3", default-features = false }
-wezterm-input-types = { version = "0.1", default-features = false }
-
 [target.'cfg(unix)'.dependencies]
 nix = { workspace = true }
-
-# termwiz dependencies
-signal-hook = { version = "0.3", default-features = false }
-termios = { version = "0.3", default-features = false }
 
 [target.'cfg(windows)'.dependencies]
 crossterm = { workspace = true, features = ["events"] }
@@ -93,8 +64,6 @@ windows-sys = { workspace = true, features = [
     "Win32_Foundation",
     "Win32_System_Threading",
 ] }
-
-# termwiz dependencies
 winapi = { version = "0.3.9", features = [
     "winbase",
     "winerror",
@@ -113,9 +82,6 @@ winapi = { version = "0.3.9", features = [
 insta = { version = "1.6.0", features = ["backtrace"] }
 expect-test = "1.4.1"
 
-# termwiz dependencies
-k9 = { version = "0.12.0", default-features = false }
-
 [features]
 # If this feature is NOT set (default):
 #   - builtin plugins (status-bar, tab-bar, ...) are loaded directly from the application binary
@@ -126,7 +92,3 @@ unstable = []
 plugins_from_target = []
 web_server_capability = ["dep:rusqlite"]
 vendored_curl = ["isahc/static-curl", "dep:openssl-sys", "dep:curl-sys"]
-
-[lints.rust]
-# Do not warn about inexistent termwiz features
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("use_image", "use_serde", "widgets"))'] }

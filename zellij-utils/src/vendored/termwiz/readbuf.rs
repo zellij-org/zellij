@@ -1,5 +1,3 @@
-use memmem::{Searcher, TwoWaySearcher};
-
 /// This is a simple, small, read buffer that always has the buffer
 /// contents available as a contiguous slice.
 #[derive(Debug)]
@@ -43,8 +41,9 @@ impl ReadBuffer {
     /// Search for `needle` starting at `offset`.  Returns its offset
     /// into the buffer if found, else None.
     pub fn find_subsequence(&self, offset: usize, needle: &[u8]) -> Option<usize> {
-        let needle = TwoWaySearcher::new(needle);
-        let haystack = &self.storage[offset..];
-        needle.search_in(haystack).map(|x| x + offset)
+        self.storage[offset..]
+            .windows(needle.len())
+            .position(|w| w == needle)
+            .map(|pos| pos + offset)
     }
 }

@@ -23,7 +23,7 @@ use unicode_width::UnicodeWidthChar;
 
 #[cfg(not(target_family = "wasm"))]
 use crate::vendored::termwiz::{
-    escape::csi::KittyKeyboardFlags,
+    input::KittyKeyboardFlags,
     input::{KeyCode, KeyCodeEncodeModes, KeyboardEncoding, Modifiers},
 };
 
