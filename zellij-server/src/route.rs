@@ -568,6 +568,7 @@ pub(crate) fn route_action(
                 Some(direction) => NewPanePlacement::Tiled {
                     direction: Some(direction),
                     borderless: None,
+                    size: None,
                 },
                 None => NewPanePlacement::NoPreference { borderless: None },
             };
@@ -677,6 +678,7 @@ pub(crate) fn route_action(
                         NewPanePlacement::Tiled {
                             direction: split_direction,
                             borderless: None,
+                            size: None,
                         }
                     },
                     start_suppressed,
@@ -835,6 +837,7 @@ pub(crate) fn route_action(
             pane_name: name,
             near_current_pane,
             borderless,
+            size,
         } => {
             let run_cmd = run_command
                 .map(|cmd| TerminalAction::RunCommand(cmd.into()))
@@ -851,6 +854,7 @@ pub(crate) fn route_action(
                     NewPanePlacement::Tiled {
                         direction,
                         borderless,
+                        size,
                     },
                     false,
                     client_tab_index_or_paneid,
@@ -910,6 +914,7 @@ pub(crate) fn route_action(
                     NewPanePlacement::Tiled {
                         direction: command.direction,
                         borderless: None,
+                        size: None,
                     },
                     false,
                     client_tab_index_or_paneid,

@@ -6,6 +6,7 @@ use crate::{panes::PaneId, tab::Pane};
 use std::cmp::{Ordering, Reverse};
 use std::collections::{HashMap, HashSet};
 use zellij_utils::data::{Direction, Resize, ResizeStrategy};
+use zellij_utils::input::layout::PercentOrFixed;
 use zellij_utils::{
     errors::prelude::*,
     input::layout::SplitDirection,
@@ -2325,31 +2326,60 @@ impl<'a> TiledPaneGrid<'a> {
 }
 
 pub fn split(direction: SplitDirection, rect: &PaneGeom) -> Option<(PaneGeom, PaneGeom)> {
+    split_with_size(direction, rect, None)
+}
+
+pub fn split_with_size(
+    direction: SplitDirection,
+    rect: &PaneGeom,
+    size: Option<PercentOrFixed>,
+) -> Option<(PaneGeom, PaneGeom)> {
     let space = match direction {
         SplitDirection::Vertical => rect.cols,
         SplitDirection::Horizontal => rect.rows,
     };
     if let Some(p) = space.as_percent() {
+        // Compute first_percent (existing pane) and second_percent (new pane)
+        let (first_percent, second_percent) = match size {
+            Some(PercentOrFixed::Percent(new_pane_percent)) => {
+                let clamped = if new_pane_percent > 100 {
+                    100
+                } else {
+                    new_pane_percent
+                };
+                let new_pane_p = p * (clamped as f64 / 100.0);
+                (p - new_pane_p, new_pane_p)
+            },
+            Some(PercentOrFixed::Fixed(_fixed)) => {
+                // For fixed sizes, we split evenly in percent space and let the
+                // layout engine handle the final sizing. A proper fixed-size split
+                // would require knowing the absolute terminal dimensions here,
+                // which is not available. The percent split is a reasonable
+                // approximation that will be adjusted during relayout.
+                (p / 2.0, p / 2.0)
+            },
+            None => (p / 2.0, p / 2.0),
+        };
         let first_rect = match direction {
             SplitDirection::Vertical => PaneGeom {
-                cols: Dimension::percent(p / 2.0),
+                cols: Dimension::percent(first_percent),
                 ..*rect
             },
             SplitDirection::Horizontal => PaneGeom {
-                rows: Dimension::percent(p / 2.0),
+                rows: Dimension::percent(first_percent),
                 ..*rect
             },
         };
         let second_rect = match direction {
             SplitDirection::Vertical => PaneGeom {
                 x: first_rect.x + 1,
-                cols: first_rect.cols,
+                cols: Dimension::percent(second_percent),
                 logical_position: None,
                 ..*rect
             },
             SplitDirection::Horizontal => PaneGeom {
                 y: first_rect.y + 1,
-                rows: first_rect.rows,
+                rows: Dimension::percent(second_percent),
                 logical_position: None,
                 ..*rect
             },
@@ -2357,5 +2387,124 @@ pub fn split(direction: SplitDirection, rect: &PaneGeom) -> Option<(PaneGeom, Pa
         Some((first_rect, second_rect))
     } else {
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_rect(x: usize, y: usize, rows_pct: f64, cols_pct: f64) -> PaneGeom {
+        PaneGeom {
+            x,
+            y,
+            rows: Dimension::percent(rows_pct),
+            cols: Dimension::percent(cols_pct),
+            stacked: None,
+            is_pinned: false,
+            logical_position: None,
+        }
+    }
+
+    #[test]
+    fn split_vertical_default_gives_equal_halves() {
+        let rect = make_rect(0, 0, 100.0, 100.0);
+        let (first, second) = split(SplitDirection::Vertical, &rect).unwrap();
+        assert_eq!(first.cols.as_percent().unwrap(), 50.0);
+        assert_eq!(second.cols.as_percent().unwrap(), 50.0);
+        assert_eq!(first.rows.as_percent().unwrap(), 100.0);
+        assert_eq!(second.rows.as_percent().unwrap(), 100.0);
+    }
+
+    #[test]
+    fn split_horizontal_default_gives_equal_halves() {
+        let rect = make_rect(0, 0, 100.0, 100.0);
+        let (first, second) = split(SplitDirection::Horizontal, &rect).unwrap();
+        assert_eq!(first.rows.as_percent().unwrap(), 50.0);
+        assert_eq!(second.rows.as_percent().unwrap(), 50.0);
+        assert_eq!(first.cols.as_percent().unwrap(), 100.0);
+        assert_eq!(second.cols.as_percent().unwrap(), 100.0);
+    }
+
+    #[test]
+    fn split_with_size_percent_vertical() {
+        let rect = make_rect(0, 0, 100.0, 100.0);
+        let size = Some(PercentOrFixed::Percent(30));
+        let (first, second) = split_with_size(SplitDirection::Vertical, &rect, size).unwrap();
+        // New pane gets 30% of the total, existing pane gets 70%
+        assert_eq!(first.cols.as_percent().unwrap(), 70.0);
+        assert_eq!(second.cols.as_percent().unwrap(), 30.0);
+    }
+
+    #[test]
+    fn split_with_size_percent_horizontal() {
+        let rect = make_rect(0, 0, 100.0, 100.0);
+        let size = Some(PercentOrFixed::Percent(25));
+        let (first, second) = split_with_size(SplitDirection::Horizontal, &rect, size).unwrap();
+        // New pane gets 25% of the total, existing pane gets 75%
+        assert_eq!(first.rows.as_percent().unwrap(), 75.0);
+        assert_eq!(second.rows.as_percent().unwrap(), 25.0);
+    }
+
+    #[test]
+    fn split_with_size_none_gives_equal_halves() {
+        let rect = make_rect(0, 0, 100.0, 100.0);
+        let (first, second) = split_with_size(SplitDirection::Vertical, &rect, None).unwrap();
+        assert_eq!(first.cols.as_percent().unwrap(), 50.0);
+        assert_eq!(second.cols.as_percent().unwrap(), 50.0);
+    }
+
+    #[test]
+    fn split_with_size_percent_clamps_over_100() {
+        let rect = make_rect(0, 0, 100.0, 100.0);
+        let size = Some(PercentOrFixed::Percent(150));
+        let (first, second) = split_with_size(SplitDirection::Vertical, &rect, size).unwrap();
+        // Clamped to 100%, so new pane gets all, existing pane gets 0
+        assert_eq!(first.cols.as_percent().unwrap(), 0.0);
+        assert_eq!(second.cols.as_percent().unwrap(), 100.0);
+    }
+
+    #[test]
+    fn split_with_size_fixed_falls_back_to_equal() {
+        let rect = make_rect(0, 0, 100.0, 100.0);
+        let size = Some(PercentOrFixed::Fixed(10));
+        let (first, second) = split_with_size(SplitDirection::Vertical, &rect, size).unwrap();
+        // Fixed falls back to 50/50 in percent space
+        assert_eq!(first.cols.as_percent().unwrap(), 50.0);
+        assert_eq!(second.cols.as_percent().unwrap(), 50.0);
+    }
+
+    #[test]
+    fn split_with_size_preserves_coordinates() {
+        let rect = make_rect(5, 10, 80.0, 60.0);
+        let size = Some(PercentOrFixed::Percent(40));
+        let (first, second) = split_with_size(SplitDirection::Vertical, &rect, size).unwrap();
+        assert_eq!(first.x, 5);
+        assert_eq!(first.y, 10);
+        assert_eq!(second.x, 6); // first.x + 1
+        assert_eq!(second.y, 10);
+        // Rows should be preserved
+        assert_eq!(first.rows.as_percent().unwrap(), 80.0);
+        assert_eq!(second.rows.as_percent().unwrap(), 80.0);
+        // Cols: 60% * 60% = 36% for existing, 60% * 40% = 24% for new
+        assert!((first.cols.as_percent().unwrap() - 36.0).abs() < 0.001);
+        assert!((second.cols.as_percent().unwrap() - 24.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn split_with_size_horizontal_preserves_coordinates() {
+        let rect = make_rect(5, 10, 80.0, 60.0);
+        let size = Some(PercentOrFixed::Percent(40));
+        let (first, second) = split_with_size(SplitDirection::Horizontal, &rect, size).unwrap();
+        assert_eq!(first.x, 5);
+        assert_eq!(first.y, 10);
+        assert_eq!(second.x, 5);
+        assert_eq!(second.y, 11); // first.y + 1
+        // Cols should be preserved
+        assert_eq!(first.cols.as_percent().unwrap(), 60.0);
+        assert_eq!(second.cols.as_percent().unwrap(), 60.0);
+        // Rows: 80% * 60% = 48% for existing, 80% * 40% = 32% for new
+        assert!((first.rows.as_percent().unwrap() - 48.0).abs() < 0.001);
+        assert!((second.rows.as_percent().unwrap() - 32.0).abs() < 0.001);
     }
 }
