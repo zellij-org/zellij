@@ -299,7 +299,13 @@ pub enum ScreenInstruction {
     MovePaneLeft(ClientId, Option<NotificationEnd>),
     Exit,
     ClearScreen(ClientId, Option<NotificationEnd>),
-    DumpScreen(String, ClientId, bool, Option<NotificationEnd>),
+    DumpScreen(
+        String,
+        ClientId,
+        bool,
+        Option<PaneId>,
+        Option<NotificationEnd>,
+    ),
     DumpLayout(Option<PathBuf>, ClientId, Option<NotificationEnd>), // PathBuf is the default configured
     // shell
     SaveSession(ClientId, Option<NotificationEnd>),
@@ -4871,19 +4877,32 @@ pub(crate) fn screen_thread_main(
                 file,
                 client_id,
                 full,
+                pane_id,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
-                active_tab_and_connected_client_id!(
-                    screen,
-                    client_id,
-                    |tab: &mut Tab, client_id: ClientId| tab.dump_active_terminal_screen(
-                        Some(file.to_string()),
-                        client_id,
-                        full
-                    ),
-                    ?
-                );
+                match pane_id {
+                    Some(pane_id) => {
+                        for tab in screen.get_tabs_mut().values_mut() {
+                            if tab.has_pane_with_pid(&pane_id) {
+                                tab.dump_terminal_screen(Some(file.clone()), pane_id, full)?;
+                                break;
+                            }
+                        }
+                    },
+                    None => {
+                        active_tab_and_connected_client_id!(
+                            screen,
+                            client_id,
+                            |tab: &mut Tab, client_id: ClientId| tab.dump_active_terminal_screen(
+                                Some(file.to_string()),
+                                client_id,
+                                full
+                            ),
+                            ?
+                        );
+                    },
+                }
                 screen.render(None)?;
             },
             ScreenInstruction::DumpLayout(default_shell, client_id, completion_tx) => {
