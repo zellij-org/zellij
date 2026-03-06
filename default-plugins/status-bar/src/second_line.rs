@@ -254,7 +254,7 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<KeyWithModifier
             action_key(&km, &[A::SearchToggleOption{option: SOpt::WholeWord}])),
     ]} else if mi.mode == IM::Session { vec![
         (s("Detach"), s("Detach"), action_key(&km, &[Action::Detach])),
-        (s("Session Manager"), s("Manager"), action_key(&km, &[A::LaunchOrFocusPlugin{plugin: Default::default(), should_float: true, move_to_focused_tab: true, should_open_in_place: false, skip_cache: false}, TO_NORMAL])), // not entirely accurate
+        (s("Session Manager"), s("Manager"), action_key(&km, &[A::LaunchOrFocusPlugin{plugin: Default::default(), should_float: true, move_to_focused_tab: true, should_open_in_place: false, close_replaced_pane: false, skip_cache: false}, TO_NORMAL])), // not entirely accurate
         (s("Select pane"), s("Select"), to_normal_key),
     ]} else if mi.mode == IM::Tmux { vec![
         (s("Move focus"), s("Move"), action_key_group(&km, &[

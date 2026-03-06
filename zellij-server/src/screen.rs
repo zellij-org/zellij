@@ -43,7 +43,8 @@ use zellij_utils::data::{
     CommandOrPlugin, Direction, FloatingPaneCoordinates, GetFocusedPaneInfoResponse,
     KeyWithModifier, LayoutInfo, LayoutWithError, ListPanesResponse, ListTabsResponse,
     NewPanePlacement, PaneContents, PaneInfo, PaneListEntry, PaneManifest, PaneScrollbackResponse,
-    PluginPermission, Resize, ResizeStrategy, SessionInfo, Styling, TabInfo, WebSharing,
+    PluginPermission, RegexHighlight, Resize, ResizeStrategy, SessionInfo, Styling, TabInfo,
+    WebSharing,
 };
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
@@ -262,6 +263,16 @@ pub enum ScreenInstruction {
     OpenInPlaceEditor(PaneId, ClientTabIndexOrPaneId),
     TogglePaneEmbedOrFloating(ClientId, Option<NotificationEnd>),
     ToggleFloatingPanes(ClientId, Option<TerminalAction>, Option<NotificationEnd>),
+    ShowFloatingPanes {
+        client_id: ClientId,
+        tab_id: Option<usize>,
+        completion: Option<NotificationEnd>,
+    },
+    HideFloatingPanes {
+        client_id: ClientId,
+        tab_id: Option<usize>,
+        completion: Option<NotificationEnd>,
+    },
     WriteCharacter(
         Option<KeyWithModifier>,
         Vec<u8>,
@@ -424,6 +435,7 @@ pub enum ScreenInstruction {
     SearchToggleWrap(ClientId, Option<NotificationEnd>),
     AddRedPaneFrameColorOverride(Vec<PaneId>, Option<String>), // Option<String> => optional error text
     ClearPaneFrameColorOverride(Vec<PaneId>),
+    SetTabBellFlash(usize, bool), // tab_id, is_flashing
     PreviousSwapLayout(ClientId, Option<NotificationEnd>),
     NextSwapLayout(ClientId, Option<NotificationEnd>),
     OverrideLayout(
@@ -469,14 +481,16 @@ pub enum ScreenInstruction {
         Option<String>,
         PaneId,
         bool,
+        bool,
         ClientId,
         Option<NotificationEnd>,
     ), // Option<String> is an
-    // optional pane title, bool is skip cache
+    // optional pane title, first bool is skip cache, second bool is close_replaced_pane
     StartOrReloadPluginPane(RunPluginOrAlias, Option<String>, Option<NotificationEnd>),
     AddPlugin(
         Option<bool>, // should_float
         bool,         // should be opened in place
+        bool,         // close_replaced_pane
         RunPluginOrAlias,
         Option<String>, // pane title
         Option<usize>,  // tab index
@@ -498,13 +512,15 @@ pub enum ScreenInstruction {
         bool,
         bool,
         bool,
+        bool,
         Option<PaneId>,
         bool,
         ClientId,
         Option<NotificationEnd>,
-    ), // bools are: should_float, move_to_focused_tab, should_open_in_place, Option<PaneId> is the pane id to replace, bool following it is skip_cache
+    ), // bools are: should_float, move_to_focused_tab, should_open_in_place, close_replaced_pane, Option<PaneId> is the pane id to replace, bool following it is skip_cache
     LaunchPlugin(
         RunPluginOrAlias,
+        bool,
         bool,
         bool,
         Option<PaneId>,
@@ -512,7 +528,7 @@ pub enum ScreenInstruction {
         Option<PathBuf>,
         ClientId,
         Option<NotificationEnd>,
-    ), // bools are: should_float, should_open_in_place Option<PaneId> is the pane id to replace, Option<PathBuf> is an optional cwd, bool after is skip_cache
+    ), // bools are: should_float, should_open_in_place, close_replaced_pane, Option<PaneId> is the pane id to replace, Option<PathBuf> is an optional cwd, bool after is skip_cache
     SuppressPane(PaneId, ClientId),
     UnsuppressPane(PaneId, bool), // bool -> should float if hidden
     UnsuppressOrExpandPane(PaneId, bool), // bool -> should float if hidden
@@ -579,11 +595,18 @@ pub enum ScreenInstruction {
         default_editor: Option<PathBuf>,
         advanced_mouse_actions: bool,
         mouse_hover_effects: bool,
+        visual_bell: bool,
     },
     RerunCommandPane(u32, Option<NotificationEnd>), // u32 - terminal pane id
     ResizePaneWithId(ResizeStrategy, PaneId),
     EditScrollbackForPaneWithId(PaneId, Option<NotificationEnd>),
     WriteToPaneId(Vec<u8>, PaneId, Option<NotificationEnd>),
+    SetPaneColor(
+        PaneId,
+        Option<String>,
+        Option<String>,
+        Option<NotificationEnd>,
+    ),
     WriteKeyToPaneId(
         Option<KeyWithModifier>,
         Vec<u8>,
@@ -648,6 +671,16 @@ pub enum ScreenInstruction {
     WatcherTerminalResize(ClientId, Size),
     ClearMouseHelpText(ClientId),
     UpdateAvailableLayouts(Vec<LayoutInfo>, Vec<LayoutWithError>),
+    SetPluginRegexHighlights {
+        pane_id: PaneId,
+        plugin_id: u32,
+        highlights: Vec<RegexHighlight>,
+    },
+    ClearPluginHighlights {
+        pane_id: PaneId,
+        plugin_id: u32,
+    },
+    ClearAllPluginHighlights(u32), // plugin_id — clears across all panes
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -663,6 +696,8 @@ impl From<&ScreenInstruction> for ScreenContext {
                 ScreenContext::TogglePaneEmbedOrFloating
             },
             ScreenInstruction::ToggleFloatingPanes(..) => ScreenContext::ToggleFloatingPanes,
+            ScreenInstruction::ShowFloatingPanes { .. } => ScreenContext::ShowFloatingPanes,
+            ScreenInstruction::HideFloatingPanes { .. } => ScreenContext::HideFloatingPanes,
             ScreenInstruction::WriteCharacter(..) => ScreenContext::WriteCharacter,
             ScreenInstruction::Resize(.., strategy, _) => match strategy {
                 ResizeStrategy {
@@ -791,6 +826,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::ClearPaneFrameColorOverride(..) => {
                 ScreenContext::ClearPaneFrameColorOverride
             },
+            ScreenInstruction::SetTabBellFlash(..) => ScreenContext::SetTabBellFlash,
             ScreenInstruction::PreviousSwapLayout(..) => ScreenContext::PreviousSwapLayout,
             ScreenInstruction::NextSwapLayout(..) => ScreenContext::NextSwapLayout,
             ScreenInstruction::OverrideLayout(..) => ScreenContext::OverrideLayout,
@@ -846,6 +882,7 @@ impl From<&ScreenInstruction> for ScreenContext {
                 ScreenContext::EditScrollbackForPaneWithId
             },
             ScreenInstruction::WriteToPaneId(..) => ScreenContext::WriteToPaneId,
+            ScreenInstruction::SetPaneColor(..) => ScreenContext::SetPaneColor,
             ScreenInstruction::WriteKeyToPaneId(..) => ScreenContext::WriteKeyToPaneId,
             ScreenInstruction::CopyTextToClipboard(..) => ScreenContext::CopyTextToClipboard,
             ScreenInstruction::MovePaneWithPaneId(..) => ScreenContext::MovePaneWithPaneId,
@@ -907,6 +944,11 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::WatcherTerminalResize(..) => ScreenContext::WatcherTerminalResize,
             ScreenInstruction::ClearMouseHelpText(..) => ScreenContext::ClearMouseHelpText,
             ScreenInstruction::UpdateAvailableLayouts(..) => ScreenContext::UpdateAvailableLayouts,
+            ScreenInstruction::SetPluginRegexHighlights { .. } => {
+                ScreenContext::SetPluginRegexHighlights
+            },
+            ScreenInstruction::ClearPluginHighlights { .. } => ScreenContext::ClearPluginHighlights,
+            ScreenInstruction::ClearAllPluginHighlights(..) => ScreenContext::ClearPluginHighlights,
         }
     }
 }
@@ -1081,6 +1123,7 @@ pub(crate) struct Screen {
     current_pane_group: Rc<RefCell<PaneGroups>>,
     advanced_mouse_actions: bool,
     mouse_hover_effects: bool,
+    visual_bell: bool,
     currently_marking_pane_group: Rc<RefCell<HashMap<ClientId, bool>>>,
     // the below are the configured values - the ones that will be set if and when the web server
     // is brought online
@@ -1122,6 +1165,7 @@ impl Screen {
         web_sharing: WebSharing,
         advanced_mouse_actions: bool,
         mouse_hover_effects: bool,
+        visual_bell: bool,
         web_server_ip: IpAddr,
         web_server_port: u16,
     ) -> Self {
@@ -1176,6 +1220,7 @@ impl Screen {
             currently_marking_pane_group: Rc::new(RefCell::new(HashMap::new())),
             advanced_mouse_actions,
             mouse_hover_effects,
+            visual_bell,
             web_server_ip,
             web_server_port,
             render_blocker: RenderBlocker::new(100),
@@ -1316,6 +1361,7 @@ impl Screen {
         let drained_clients = self
             .get_indexed_tab_mut(source_tab_index)
             .map(|t| t.drain_connected_clients(clients_to_move));
+
         if let Some(client_mode_info_in_source_tab) = drained_clients {
             let destination_tab = self
                 .get_indexed_tab_mut(destination_tab_index)
@@ -1347,6 +1393,7 @@ impl Screen {
                 self.active_tab_ids.insert(client_id, new_tab_index);
             },
         }
+        self.clear_bell_for_focused_pane(client_id);
     }
 
     /// A helper function to switch to a new tab at specified position.
@@ -1427,6 +1474,16 @@ impl Screen {
                         Err::<(), _>(anyhow!("Tab index {:?} not found", current_tab_index))
                             .with_context(err_context)
                             .non_fatal();
+                    }
+
+                    // Clear tab bell notification for the newly active tab
+                    if let Some(new_tab) = self.tabs.get_mut(&new_tab_index) {
+                        let tab_id = new_tab.id;
+                        new_tab.clear_tab_bell_notification();
+                        let _ = self
+                            .bus
+                            .senders
+                            .send_to_background_jobs(BackgroundJob::StopFlashTabBell(tab_id));
                     }
 
                     self.log_and_report_session_state()
@@ -1733,13 +1790,71 @@ impl Screen {
                 .send_to_plugin(PluginInstruction::PaneRenderReport(pane_render_report));
 
             non_watcher_output_was_dirty = output.is_dirty();
-            if non_watcher_output_was_dirty {
+
+            let mut bell_state_changed = false;
+            let mut has_bell = false;
+
+            if self.visual_bell {
+                let mut panes_to_flash: Vec<PaneId> = vec![];
+                let mut tabs_to_flash: Vec<usize> = vec![];
+
+                let active_tab_ids_snapshot: Vec<usize> =
+                    self.active_tab_ids.values().copied().collect();
+
+                for tab in self.tabs.values_mut() {
+                    let is_active = active_tab_ids_snapshot.contains(&tab.id);
+                    let (new_panes, tab_newly_set) =
+                        tab.check_and_handle_bell_notifications(is_active);
+                    if !new_panes.is_empty() {
+                        panes_to_flash.extend(new_panes);
+                        bell_state_changed = true;
+                    }
+                    if tab_newly_set {
+                        tabs_to_flash.push(tab.id);
+                        bell_state_changed = true;
+                    }
+                }
+
+                has_bell = !panes_to_flash.is_empty() || !tabs_to_flash.is_empty();
+                if !panes_to_flash.is_empty() {
+                    let _ = self
+                        .bus
+                        .senders
+                        .send_to_background_jobs(BackgroundJob::FlashPaneBell(panes_to_flash));
+                }
+                for tab_id in tabs_to_flash {
+                    let _ = self
+                        .bus
+                        .senders
+                        .send_to_background_jobs(BackgroundJob::FlashTabBell(tab_id));
+                }
+            } else {
+                // visual_bell disabled: still detect bell for ANSI BEL forwarding only
+                for tab in self.tabs.values_mut() {
+                    if tab.check_and_consume_bells_without_visual_notification() {
+                        has_bell = true;
+                    }
+                }
+            }
+
+            if has_bell {
+                output.add_post_vte_instruction_to_multiple_clients(
+                    self.active_tab_ids.keys().copied(),
+                    "\u{7}", // ANSI BEL
+                );
+            }
+
+            if non_watcher_output_was_dirty || has_bell {
                 let serialized_output = output.serialize().context(err_context)?;
                 let _ = self
                     .bus
                     .senders
                     .send_to_server(ServerInstruction::Render(Some(serialized_output)))
                     .context(err_context);
+            }
+
+            if bell_state_changed {
+                self.log_and_report_session_state()?;
             }
         } else {
             // No regular clients, output is not dirty
@@ -1891,6 +2006,107 @@ impl Screen {
     /// Returns a mutable reference to this [`Screen`]'s indexed [`Tab`].
     pub fn get_indexed_tab_mut(&mut self, tab_index: usize) -> Option<&mut Tab> {
         self.get_tabs_mut().get_mut(&tab_index)
+    }
+
+    /// Clear bell notification for the currently focused pane of the given client.
+    /// Also cancels any running flash jobs if applicable.
+    pub fn clear_bell_for_focused_pane(&mut self, client_id: ClientId) {
+        let tab_id_and_pane_id: Option<(usize, PaneId)> =
+            self.get_active_tab_mut(client_id).ok().and_then(|tab| {
+                tab.get_active_pane_id(client_id)
+                    .map(|pane_id| (tab.id, pane_id))
+            });
+        if let Some((tab_id, focused_pane_id)) = tab_id_and_pane_id {
+            if let Some(tab) = self.tabs.get_mut(&tab_id) {
+                if tab.panes_with_pending_bell.contains(&focused_pane_id) {
+                    let tab_had_bell = tab.tab_has_pending_bell;
+                    tab.clear_bell_notification_for_pane(focused_pane_id);
+                    let tab_bell_now_cleared = tab_had_bell && !tab.tab_has_pending_bell;
+                    let _ =
+                        self.bus
+                            .senders
+                            .send_to_background_jobs(BackgroundJob::StopFlashPaneBell(vec![
+                                focused_pane_id,
+                            ]));
+                    if tab_bell_now_cleared {
+                        let _ = self
+                            .bus
+                            .senders
+                            .send_to_background_jobs(BackgroundJob::StopFlashTabBell(tab_id));
+                    }
+                }
+            }
+        }
+    }
+
+    /// Clear bell notification for a specific pane ID in the given client's active tab.
+    pub fn clear_bell_for_pane_id(&mut self, pane_id: PaneId, client_id: ClientId) {
+        let tab_id: Option<usize> = self.get_active_tab_mut(client_id).ok().map(|tab| tab.id);
+        if let Some(tab_id) = tab_id {
+            if let Some(tab) = self.tabs.get_mut(&tab_id) {
+                if tab.panes_with_pending_bell.contains(&pane_id) {
+                    let tab_had_bell = tab.tab_has_pending_bell;
+                    tab.clear_bell_notification_for_pane(pane_id);
+                    let tab_bell_now_cleared = tab_had_bell && !tab.tab_has_pending_bell;
+                    let _ = self
+                        .bus
+                        .senders
+                        .send_to_background_jobs(BackgroundJob::StopFlashPaneBell(vec![pane_id]));
+                    if tab_bell_now_cleared {
+                        let _ = self
+                            .bus
+                            .senders
+                            .send_to_background_jobs(BackgroundJob::StopFlashTabBell(tab_id));
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn show_floating_panes_in_tab(
+        &mut self,
+        client_id: ClientId,
+        tab_id: Option<usize>,
+        completion: Option<NotificationEnd>,
+    ) -> Result<()> {
+        let tab = match tab_id {
+            Some(id) => self.tabs.get_mut(&id),
+            None => self.get_active_tab_mut(client_id).ok(),
+        };
+        match tab {
+            None => {
+                let mut completion = completion;
+                if let Some(c) = completion.as_mut() {
+                    c.set_exit_status(1);
+                }
+                drop(completion);
+            },
+            Some(tab) => tab.show_floating_panes_atomic(completion),
+        }
+        Ok(())
+    }
+
+    pub fn hide_floating_panes_in_tab(
+        &mut self,
+        client_id: ClientId,
+        tab_id: Option<usize>,
+        completion: Option<NotificationEnd>,
+    ) -> Result<()> {
+        let tab = match tab_id {
+            Some(id) => self.tabs.get_mut(&id),
+            None => self.get_active_tab_mut(client_id).ok(),
+        };
+        match tab {
+            None => {
+                let mut completion = completion;
+                if let Some(c) = completion.as_mut() {
+                    c.set_exit_status(1);
+                }
+                drop(completion);
+            },
+            Some(tab) => tab.hide_floating_panes_atomic(completion),
+        }
+        Ok(())
     }
 
     /// Creates a new [`Tab`] in this [`Screen`]
@@ -2229,6 +2445,10 @@ impl Screen {
                 selectable_tiled_panes_count,
                 selectable_floating_panes_count,
                 tab_id: tab.id,
+                has_bell_notification: tab.tab_has_pending_bell
+                    && !self.active_tab_ids.values().any(|i| i == &tab.id),
+                is_flashing_bell: tab.tab_bell_flash
+                    && !self.active_tab_ids.values().any(|i| i == &tab.id),
             };
             tab_infos_for_screen_state.insert(tab.position, tab_info_for_screen);
         }
@@ -2270,6 +2490,8 @@ impl Screen {
                     selectable_tiled_panes_count,
                     selectable_floating_panes_count,
                     tab_id: tab.id,
+                    has_bell_notification: tab.tab_has_pending_bell && *active_tab_index != tab.id,
+                    is_flashing_bell: tab.tab_bell_flash && *active_tab_index != tab.id,
                 };
                 plugin_tab_updates.push(tab_info_for_plugins);
             }
@@ -3388,6 +3610,7 @@ impl Screen {
         default_editor: Option<PathBuf>,
         advanced_mouse_actions: bool,
         mouse_hover_effects: bool,
+        visual_bell: bool,
         client_id: ClientId,
     ) -> Result<()> {
         let should_support_arrow_fonts = !simplified_ui;
@@ -3404,6 +3627,7 @@ impl Screen {
         self.draw_pane_frames = pane_frames;
         self.advanced_mouse_actions = advanced_mouse_actions;
         self.mouse_hover_effects = mouse_hover_effects;
+        self.visual_bell = visual_bell;
         self.default_mode_info
             .update_arrow_fonts(should_support_arrow_fonts);
         self.default_mode_info
@@ -3738,6 +3962,7 @@ impl Screen {
                             p_id.and_then(|p_id| if p_id == pane_id { Some(*c_id) } else { None })
                         })
                         .collect();
+                    let (default_fg, default_bg) = p.get_pane_default_colors();
                     PaneLayoutMetadata::new(
                         pane_id,
                         p.position_and_size(),
@@ -3751,6 +3976,8 @@ impl Screen {
                             None
                         },
                         focused_clients,
+                        default_fg,
+                        default_bg,
                     )
                 })
                 .collect();
@@ -3776,6 +4003,7 @@ impl Screen {
                             p_id.and_then(|p_id| if p_id == pane_id { Some(*c_id) } else { None })
                         })
                         .collect();
+                    let (default_fg, default_bg) = p.get_pane_default_colors();
                     PaneLayoutMetadata::new(
                         pane_id,
                         p.position_and_size(),
@@ -3789,6 +4017,8 @@ impl Screen {
                             None
                         },
                         focused_clients,
+                        default_fg,
+                        default_bg,
                     )
                 })
                 .collect();
@@ -3914,6 +4144,10 @@ impl Screen {
                 selectable_tiled_panes_count,
                 selectable_floating_panes_count,
                 tab_id: tab.id,
+                has_bell_notification: tab.tab_has_pending_bell
+                    && !self.active_tab_ids.values().any(|i| i == &tab.id),
+                is_flashing_bell: tab.tab_bell_flash
+                    && !self.active_tab_ids.values().any(|i| i == &tab.id),
             }
         })
     }
@@ -4116,6 +4350,7 @@ pub(crate) fn screen_thread_main(
     let web_sharing = config_options.web_sharing.unwrap_or_else(Default::default);
     let advanced_mouse_actions = config_options.advanced_mouse_actions.unwrap_or(true);
     let mouse_hover_effects = config_options.mouse_hover_effects.unwrap_or(true);
+    let visual_bell = config_options.visual_bell.unwrap_or(true);
 
     let thread_senders = bus.senders.clone();
     let mut screen = Screen::new(
@@ -4154,6 +4389,7 @@ pub(crate) fn screen_thread_main(
         web_sharing,
         advanced_mouse_actions,
         mouse_hover_effects,
+        visual_bell,
         web_server_ip,
         web_server_port,
     );
@@ -4364,8 +4600,27 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::ToggleFloatingPanes(client_id, default_shell, completion_tx) => {
                 active_tab_and_connected_client_id!(screen, client_id, |tab: &mut Tab, client_id: ClientId| tab
                     .toggle_floating_panes(Some(client_id), default_shell, completion_tx), ?);
+                screen.clear_bell_for_focused_pane(client_id);
                 screen.log_and_report_session_state()?;
 
+                screen.render(None)?;
+            },
+            ScreenInstruction::ShowFloatingPanes {
+                client_id,
+                tab_id,
+                completion,
+            } => {
+                screen.show_floating_panes_in_tab(client_id, tab_id, completion)?;
+                screen.log_and_report_session_state()?;
+                screen.render(None)?;
+            },
+            ScreenInstruction::HideFloatingPanes {
+                client_id,
+                tab_id,
+                completion,
+            } => {
+                screen.hide_floating_panes_in_tab(client_id, tab_id, completion)?;
+                screen.log_and_report_session_state()?;
                 screen.render(None)?;
             },
             ScreenInstruction::WriteCharacter(
@@ -4522,6 +4777,7 @@ pub(crate) fn screen_thread_main(
                     |tab: &mut Tab, client_id: ClientId| tab.move_focus_left(client_id),
                     ?
                 );
+                screen.clear_bell_for_focused_pane(client_id);
                 screen.add_active_pane_to_group_if_marking(&client_id);
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
@@ -4532,6 +4788,7 @@ pub(crate) fn screen_thread_main(
                                 // waiting for it
             ) => {
                 screen.move_focus_left_or_previous_tab(client_id)?;
+                screen.clear_bell_for_focused_pane(client_id);
                 screen.add_active_pane_to_group_if_marking(&client_id);
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
@@ -4547,6 +4804,7 @@ pub(crate) fn screen_thread_main(
                     |tab: &mut Tab, client_id: ClientId| tab.move_focus_down(client_id),
                     ?
                 );
+                screen.clear_bell_for_focused_pane(client_id);
                 screen.add_active_pane_to_group_if_marking(&client_id);
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
@@ -4562,6 +4820,7 @@ pub(crate) fn screen_thread_main(
                     |tab: &mut Tab, client_id: ClientId| tab.move_focus_right(client_id),
                     ?
                 );
+                screen.clear_bell_for_focused_pane(client_id);
                 screen.add_active_pane_to_group_if_marking(&client_id);
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
@@ -4572,6 +4831,7 @@ pub(crate) fn screen_thread_main(
                                 // waiting for it
             ) => {
                 screen.move_focus_right_or_next_tab(client_id)?;
+                screen.clear_bell_for_focused_pane(client_id);
                 screen.add_active_pane_to_group_if_marking(&client_id);
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
@@ -4587,6 +4847,7 @@ pub(crate) fn screen_thread_main(
                     |tab: &mut Tab, client_id: ClientId| tab.move_focus_up(client_id),
                     ?
                 );
+                screen.clear_bell_for_focused_pane(client_id);
                 screen.add_active_pane_to_group_if_marking(&client_id);
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
@@ -5252,6 +5513,10 @@ pub(crate) fn screen_thread_main(
                 mut completion_tx,
                 blocking_terminal,
             ) => {
+                log::info!(
+                    "ScreenInstruction::ApplyLayout: applying layout for tab {}",
+                    tab_id
+                );
                 // tab_id is a stable identifier from NewTab instruction
                 if let Some(first_terminal_pane) = new_pane_pids.iter().next() {
                     completion_tx
@@ -5333,6 +5598,10 @@ pub(crate) fn screen_thread_main(
                 // very short and cheap and shouldn't cause any trouble
                 if let Some(os_input) = &mut screen.bus.os_input {
                     for (client_id, _is_web_client) in screen.connected_clients.borrow().iter() {
+                        log::info!(
+                            "ApplyLayout: sending QueryTerminalSize to client {}",
+                            client_id
+                        );
                         let _ = os_input
                             .send_to_client(*client_id, ServerToClientMsg::QueryTerminalSize);
                     }
@@ -5708,6 +5977,14 @@ pub(crate) fn screen_thread_main(
                 }
                 screen.render(None)?;
             },
+            ScreenInstruction::SetTabBellFlash(tab_id, is_flashing) => {
+                if let Some(tab) = screen.tabs.values_mut().find(|t| t.id == tab_id) {
+                    tab.tab_bell_flash = is_flashing;
+                    tab.clear_tab_bell_ring();
+                }
+                screen.render(None)?;
+                screen.log_and_report_session_state()?;
+            },
             ScreenInstruction::PreviousSwapLayout(
                 client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
@@ -5979,6 +6256,7 @@ pub(crate) fn screen_thread_main(
                     .send_to_pty(PtyInstruction::FillPluginCwd(
                         should_float,
                         should_be_opened_in_place,
+                        false, // close_replaced_pane
                         pane_title,
                         run_plugin,
                         *tab_index,
@@ -6011,6 +6289,7 @@ pub(crate) fn screen_thread_main(
                         .send_to_pty(PtyInstruction::FillPluginCwd(
                             should_float,
                             should_be_opened_in_place,
+                            false, // close_replaced_pane
                             pane_title,
                             run_plugin,
                             *tab_index,
@@ -6035,6 +6314,7 @@ pub(crate) fn screen_thread_main(
                 pane_title,
                 pane_id_to_replace,
                 skip_cache,
+                close_replaced_pane,
                 client_id,
                 completion_tx,
             ) => match screen.active_tab_ids.values().next() {
@@ -6048,6 +6328,7 @@ pub(crate) fn screen_thread_main(
                         .send_to_pty(PtyInstruction::FillPluginCwd(
                             should_float,
                             should_be_in_place,
+                            close_replaced_pane,
                             pane_title,
                             run_plugin,
                             *tab_index,
@@ -6087,6 +6368,7 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::AddPlugin(
                 should_float,
                 should_be_in_place,
+                close_replaced_pane,
                 run_plugin_or_alias,
                 pane_title,
                 tab_index,
@@ -6099,7 +6381,6 @@ pub(crate) fn screen_thread_main(
                 client_id,
                 mut completion_tx,
             ) => {
-                let close_replaced_pane = false; // TODO: support this
                 let mut new_pane_placement = NewPanePlacement::default();
                 let maybe_should_float = should_float;
                 let should_be_tiled = maybe_should_float.map(|f| !f).unwrap_or(false);
@@ -6125,6 +6406,7 @@ pub(crate) fn screen_thread_main(
                     pending_events_waiting_for_client.push(ScreenInstruction::AddPlugin(
                         maybe_should_float,
                         should_be_in_place,
+                        close_replaced_pane,
                         run_plugin_or_alias,
                         pane_title,
                         tab_index,
@@ -6154,7 +6436,6 @@ pub(crate) fn screen_thread_main(
                     completion.set_affected_pane_id(PaneId::Plugin(plugin_id));
                 }
 
-                let close_replaced_pane = false;
                 if should_be_in_place {
                     if let Some(pane_id_to_replace) = pane_id_to_replace {
                         let client_tab_index_or_pane_id =
@@ -6257,6 +6538,7 @@ pub(crate) fn screen_thread_main(
                 should_float,
                 move_to_focused_tab,
                 should_open_in_place,
+                close_replaced_pane,
                 pane_id_to_replace,
                 skip_cache,
                 client_id,
@@ -6272,6 +6554,7 @@ pub(crate) fn screen_thread_main(
                                 .send_to_pty(PtyInstruction::FillPluginCwd(
                                     Some(should_float),
                                     should_open_in_place,
+                                    close_replaced_pane,
                                     None,
                                     run_plugin,
                                     *tab_index,
@@ -6323,6 +6606,7 @@ pub(crate) fn screen_thread_main(
                                     .send_to_pty(PtyInstruction::FillPluginCwd(
                                         Some(should_float),
                                         should_open_in_place,
+                                        close_replaced_pane,
                                         None,
                                         run_plugin,
                                         tab_index,
@@ -6347,6 +6631,7 @@ pub(crate) fn screen_thread_main(
                 run_plugin,
                 should_float,
                 should_open_in_place,
+                close_replaced_pane,
                 pane_id_to_replace,
                 skip_cache,
                 cwd,
@@ -6362,6 +6647,7 @@ pub(crate) fn screen_thread_main(
                             .send_to_pty(PtyInstruction::FillPluginCwd(
                                 Some(should_float),
                                 should_open_in_place,
+                                close_replaced_pane,
                                 None,
                                 run_plugin,
                                 *tab_index,
@@ -6401,6 +6687,7 @@ pub(crate) fn screen_thread_main(
                                 .send_to_pty(PtyInstruction::FillPluginCwd(
                                     Some(should_float),
                                     should_open_in_place,
+                                    close_replaced_pane,
                                     None,
                                     run_plugin,
                                     tab_index,
@@ -6467,6 +6754,7 @@ pub(crate) fn screen_thread_main(
                     should_be_in_place_if_hidden,
                     client_id,
                 )?;
+                screen.clear_bell_for_pane_id(pane_id, client_id);
                 screen.log_and_report_session_state()?;
             },
             ScreenInstruction::RenamePane(
@@ -6815,6 +7103,7 @@ pub(crate) fn screen_thread_main(
                 default_editor,
                 advanced_mouse_actions,
                 mouse_hover_effects,
+                visual_bell,
             } => {
                 screen
                     .reconfigure(
@@ -6834,6 +7123,7 @@ pub(crate) fn screen_thread_main(
                         default_editor,
                         advanced_mouse_actions,
                         mouse_hover_effects,
+                        visual_bell,
                         client_id,
                     )
                     .non_fatal();
@@ -6861,6 +7151,16 @@ pub(crate) fn screen_thread_main(
                     if tab.has_pane_with_pid(&pane_id) {
                         tab.write_to_pane_id(&None, bytes, false, pane_id, None, None)
                             .non_fatal();
+                        break;
+                    }
+                }
+                screen.render(None)?;
+            },
+            ScreenInstruction::SetPaneColor(pane_id, fg, bg, _completion) => {
+                let all_tabs = screen.get_tabs_mut();
+                for tab in all_tabs.values_mut() {
+                    if tab.has_pane_with_pid(&pane_id) {
+                        tab.set_pane_color(pane_id, fg, bg).non_fatal();
                         break;
                     }
                 }
@@ -7360,6 +7660,40 @@ pub(crate) fn screen_thread_main(
                     tab.clear_mouse_help_text(client_id);
                     screen.render(None)?;
                 }
+            },
+            ScreenInstruction::SetPluginRegexHighlights {
+                pane_id,
+                plugin_id,
+                highlights,
+            } => {
+                let style = screen.style.clone();
+                let all_tabs = screen.get_tabs_mut();
+                for tab in all_tabs.values_mut() {
+                    if tab.has_pane_with_pid(&pane_id) {
+                        tab.set_plugin_regex_highlights_for_pane(
+                            pane_id, plugin_id, highlights, &style,
+                        );
+                        break;
+                    }
+                }
+                screen.render(None)?;
+            },
+            ScreenInstruction::ClearPluginHighlights { pane_id, plugin_id } => {
+                let all_tabs = screen.get_tabs_mut();
+                for tab in all_tabs.values_mut() {
+                    if tab.has_pane_with_pid(&pane_id) {
+                        tab.clear_plugin_highlights_for_pane(pane_id, plugin_id);
+                        break;
+                    }
+                }
+                screen.render(None)?;
+            },
+            ScreenInstruction::ClearAllPluginHighlights(plugin_id) => {
+                let all_tabs = screen.get_tabs_mut();
+                for tab in all_tabs.values_mut() {
+                    tab.clear_all_plugin_highlights(plugin_id);
+                }
+                screen.render(None)?;
             },
         }
     }

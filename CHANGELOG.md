@@ -60,6 +60,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * refactor: replace `async_std` with `tokio` (https://github.com/zellij-org/zellij/pull/4672)
 * fix: do not attempt a reconnect from the web-client when explicitly kicked from the session (https://github.com/zellij-org/zellij/pull/4730)
 * fix: reset scroll region boundaries when resizing in alternate screen (https://github.com/zellij-org/zellij/pull/4748)
+* fix: preserve cwd when opening editor panes (https://github.com/zellij-org/zellij/pull/4593)
+* feat: allow specifying "close_on_exit" when opening panes in place from keybinding or cli (https://github.com/zellij-org/zellij/pull/4760)
+* fix: respect cursor blink and shape in the web client even when terminal attempts to override it (https://github.com/zellij-org/zellij/pull/4762)
+* feat: allow cli/plugins/keybindings to atomically show/hide floating panes rather than just toggle (https://github.com/zellij-org/zellij/pull/4764)
+* fix: improve line-wrapping/resize performance (https://github.com/zellij-org/zellij/pull/4778)
+* fix: forward terminal BEL from unfocused tab (and also show visual indication in unfocused panes/tabs that have a BEL) (https://github.com/zellij-org/zellij/pull/4781)
+* fix: improve mobile web client viewport sizing and touch scrolling behavior (https://github.com/zellij-org/zellij/pull/4723)
+* platform: native Windows support (https://github.com/zellij-org/zellij/pull/4720, https://github.com/zellij-org/zellij/pull/4721, https://github.com/zellij-org/zellij/pull/4722, https://github.com/zellij-org/zellij/pull/4738, https://github.com/zellij-org/zellij/pull/4740, https://github.com/zellij-org/zellij/pull/4746, https://github.com/zellij-org/zellij/pull/4759, https://github.com/zellij-org/zellij/pull/4768)
+* feat: allow changing pane foreground/background color through the cli/plugin-api (https://github.com/zellij-org/zellij/pull/4737)
+* build: fix redundant proto codegen, plugin batch building and testing, and profile mismatch between build and run (https://github.com/zellij-org/zellij/pull/4799, https://github.com/zellij-org/zellij/pull/4801)
+* feat: click to open file-paths in viewport, allow plugins to highlight viewport text (https://github.com/zellij-org/zellij/pull/4802)
 
 
 ## [0.43.1] - 2025-08-08

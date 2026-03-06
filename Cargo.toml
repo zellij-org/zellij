@@ -25,10 +25,12 @@ interprocess = { workspace = true }
 log = { workspace = true }
 miette = { workspace = true }
 names = { workspace = true }
-nix = { workspace = true }
 suggest = { workspace = true }
 thiserror = { workspace = true }
 isahc = { workspace = true }
+
+[target.'cfg(unix)'.dependencies]
+nix = { workspace = true }
 
 [dev-dependencies]
 insta = { version = "1.6.0", features = ["backtrace"] }
@@ -50,8 +52,8 @@ members = [
     "default-plugins/about",
     "default-plugins/share",
     "default-plugins/multiple-select",
-    "default-plugins/sequence",
     "default-plugins/layout-manager",
+    "default-plugins/link",
     "zellij-client",
     "zellij-server",
     "zellij-utils",
@@ -74,11 +76,11 @@ ansi_term = { version = "0.12.1", default-features = false }
 anyhow = { version = "1.0.70", default-features = false, features = ["backtrace", "std"] }
 async-trait = { version = "0.1", default-features = false }
 clap = { version = "3.2.2", default-features = false, features = ["env", "derive", "color", "std", "suggestions"] }
-crossterm = { version = "0.28", default-features = false }
+crossterm = { version = "0.28", default-features = false, features = ["windows"] }
 daemonize = { version = "0.5", default-features = false }
 dialoguer = { version = "0.10.4", default-features = false, features = ["password", "completion"] }
 humantime = { version = "2.1.0", default-features = false }
-interprocess = { version = "2.2", default-features = false }
+interprocess = { version = "2.2", default-features = false, features = ["tokio"] }
 isahc = { version = "1.7.2", default-features = false, features = ["http2", "text-decoding"] }
 kdl = { version = "4.5.0", default-features = false, features = ["span"] }
 lazy_static = { version = "1.4.0", default-features = false }
@@ -106,6 +108,7 @@ unicode-width = { version = "0.1.8", default-features = false }
 url = { version = "2.2.2", default-features = false, features = ["serde"] }
 uuid = { version = "1.4.1", default-features = false, features = ["serde", "v4", "std"] }
 vte = { version = "0.11.0", default-features = false }
+windows-sys = { version = "0.52", default-features = false }
 names = { version = "0.14.0", default-features = false }
 include_dir = { version = "0.7.3", default-features = false }
 sha2 = { version = "0.10", default-features = false }

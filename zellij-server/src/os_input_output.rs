@@ -8,7 +8,7 @@ use crate::os_input_output_unix::UnixPtyBackend as PtyBackendImpl;
 use crate::os_input_output_windows::WindowsPtyBackend as PtyBackendImpl;
 
 use interprocess;
-use sysinfo::{ProcessExt, ProcessRefreshKind, System, SystemExt};
+use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind};
 use tempfile::tempfile;
 use zellij_utils::{
     channels,
@@ -35,31 +35,62 @@ use std::{
 
 pub use async_trait::async_trait;
 
-pub(crate) fn command_exists(cmd: &RunCommand) -> bool {
-    let command = &cmd.command;
-    match cmd.cwd.as_ref() {
-        Some(cwd) => {
-            let full_command = cwd.join(&command);
-            if full_command.exists() && full_command.is_file() {
-                return true;
-            }
-        },
-        None => {
-            if command.exists() && command.is_file() {
-                return true;
-            }
-        },
+/// Check whether a candidate path refers to an executable file, considering
+/// PATHEXT extensions on Windows (e.g. `.exe`, `.cmd`).
+fn find_executable(candidate: &std::path::Path) -> Option<PathBuf> {
+    if candidate.exists() && candidate.is_file() {
+        return Some(candidate.to_path_buf());
     }
-
-    if let Some(paths) = env::var_os("PATH") {
-        for path in env::split_paths(&paths) {
-            let full_command = path.join(command);
-            if full_command.exists() && full_command.is_file() {
-                return true;
+    #[cfg(windows)]
+    {
+        if let Some(pathext) = env::var_os("PATHEXT") {
+            let pathext = pathext.to_string_lossy();
+            for ext in pathext.split(';') {
+                let ext = ext.trim();
+                if ext.is_empty() {
+                    continue;
+                }
+                let mut with_ext = candidate.as_os_str().to_os_string();
+                with_ext.push(ext);
+                let with_ext_path = PathBuf::from(with_ext);
+                if with_ext_path.exists() && with_ext_path.is_file() {
+                    return Some(with_ext_path);
+                }
             }
         }
     }
-    false
+    None
+}
+
+/// Resolve a command to its absolute path, searching the working directory,
+/// then PATH (and PATHEXT on Windows).
+pub(crate) fn resolve_command(cmd: &RunCommand) -> Option<PathBuf> {
+    let command = &cmd.command;
+    match cmd.cwd.as_ref() {
+        Some(cwd) => {
+            if let Some(resolved) = find_executable(&cwd.join(command)) {
+                return Some(resolved);
+            }
+        },
+        None => {
+            if let Some(resolved) = find_executable(command) {
+                return Some(resolved);
+            }
+        },
+    }
+    if let Some(paths) = env::var_os("PATH") {
+        for path in env::split_paths(&paths) {
+            if let Some(resolved) = find_executable(&path.join(command)) {
+                return Some(resolved);
+            }
+        }
+    }
+    None
+}
+
+#[cfg(not(windows))]
+pub(crate) fn command_exists(cmd: &RunCommand) -> bool {
+    resolve_command(cmd).is_some()
 }
 
 // this is a utility method to separate the arguments from a pathbuf before we turn it into a
@@ -298,6 +329,13 @@ pub trait ServerOsApi: Send + Sync {
         client_id: ClientId,
         stream: LocalSocketStream,
     ) -> Result<IpcReceiverWithContext<ClientToServerMsg>>;
+    /// Create a new client with a separate reply stream (Windows dual-pipe IPC).
+    fn new_client_with_reply(
+        &mut self,
+        client_id: ClientId,
+        stream: LocalSocketStream,
+        reply_stream: LocalSocketStream,
+    ) -> Result<IpcReceiverWithContext<ClientToServerMsg>>;
     fn remove_client(&mut self, client_id: ClientId) -> Result<()>;
     fn load_palette(&self) -> Palette;
     /// Returns the current working directory for a given pid
@@ -421,6 +459,22 @@ impl ServerOsApi for ServerOsInputOutput {
         Ok(receiver)
     }
 
+    fn new_client_with_reply(
+        &mut self,
+        client_id: ClientId,
+        stream: LocalSocketStream,
+        reply_stream: LocalSocketStream,
+    ) -> Result<IpcReceiverWithContext<ClientToServerMsg>> {
+        let receiver = IpcReceiverWithContext::new(stream);
+        let sender = ClientSender::new(client_id, IpcSenderWithContext::new(reply_stream));
+        self.client_senders
+            .lock()
+            .to_anyhow()
+            .with_context(|| format!("failed to create new client {client_id}"))?
+            .insert(client_id, sender);
+        Ok(receiver)
+    }
+
     fn remove_client(&mut self, client_id: ClientId) -> Result<()> {
         let mut client_senders = self
             .client_senders
@@ -439,16 +493,17 @@ impl ServerOsApi for ServerOsInputOutput {
 
     fn get_cwd(&self, pid: u32) -> Option<PathBuf> {
         let mut system_info = System::new();
-        // Update by minimizing information.
-        // See https://docs.rs/sysinfo/0.22.5/sysinfo/struct.ProcessRefreshKind.html#
-        let sysinfo_pid = sysinfo::Pid::from(pid as i32);
-        system_info.refresh_process_specifics(sysinfo_pid, ProcessRefreshKind::default());
+        let sysinfo_pid = sysinfo::Pid::from_u32(pid);
+        let refresh_kind = ProcessRefreshKind::nothing().with_cwd(UpdateKind::Always);
+        system_info.refresh_processes_specifics(
+            ProcessesToUpdate::Some(&[sysinfo_pid]),
+            false,
+            refresh_kind,
+        );
 
         if let Some(process) = system_info.process(sysinfo_pid) {
-            let cwd = process.cwd();
-            let cwd_is_empty = cwd.iter().next().is_none();
-            if !cwd_is_empty {
-                return Some(process.cwd().to_path_buf());
+            if let Some(cwd) = process.cwd() {
+                return Some(cwd.to_path_buf());
             }
         }
         None
@@ -459,30 +514,38 @@ impl ServerOsApi for ServerOsInputOutput {
         let mut cwds = HashMap::new();
         let mut cmds = HashMap::new();
 
+        let sysinfo_pids: Vec<sysinfo::Pid> =
+            pids.iter().map(|&p| sysinfo::Pid::from_u32(p)).collect();
+        let refresh_kind = ProcessRefreshKind::nothing()
+            .with_cwd(UpdateKind::Always)
+            .with_cmd(UpdateKind::Always);
+        system_info.refresh_processes_specifics(
+            ProcessesToUpdate::Some(&sysinfo_pids),
+            false,
+            refresh_kind,
+        );
+
         for pid in pids {
-            // Update by minimizing information.
-            // See https://docs.rs/sysinfo/0.22.5/sysinfo/struct.ProcessRefreshKind.html#
-            let sysinfo_pid = sysinfo::Pid::from(pid as i32);
-            let is_found =
-                system_info.refresh_process_specifics(sysinfo_pid, ProcessRefreshKind::default());
-            if is_found {
-                if let Some(process) = system_info.process(sysinfo_pid) {
-                    let cwd = process.cwd();
-                    let cmd = process.cmd();
-                    let cwd_is_empty = cwd.iter().next().is_none();
-                    if !cwd_is_empty {
-                        cwds.insert(pid, process.cwd().to_path_buf());
-                    }
-                    let cmd_is_empty = cmd.iter().next().is_none();
-                    if !cmd_is_empty {
-                        cmds.insert(pid, process.cmd().to_vec());
-                    }
+            let sysinfo_pid = sysinfo::Pid::from_u32(pid);
+            if let Some(process) = system_info.process(sysinfo_pid) {
+                if let Some(cwd) = process.cwd() {
+                    cwds.insert(pid, cwd.to_path_buf());
+                }
+                let cmd = process.cmd();
+                if !cmd.is_empty() {
+                    cmds.insert(
+                        pid,
+                        cmd.iter()
+                            .map(|s| s.to_string_lossy().into_owned())
+                            .collect(),
+                    );
                 }
             }
         }
 
         (cwds, cmds)
     }
+    #[cfg(unix)]
     fn get_all_cmds_by_ppid(&self, post_hook: &Option<String>) -> HashMap<String, Vec<String>> {
         // the key is the stringified ppid
         let mut cmds = HashMap::new();
@@ -524,6 +587,49 @@ impl ServerOsApi for ServerOsInputOutput {
                             cmds.insert(ppid.into(), line_parts.collect());
                         },
                     }
+                }
+            }
+        }
+        cmds
+    }
+
+    #[cfg(not(unix))]
+    fn get_all_cmds_by_ppid(&self, post_hook: &Option<String>) -> HashMap<String, Vec<String>> {
+        let mut system_info = System::new();
+        let refresh_kind = ProcessRefreshKind::nothing().with_cmd(UpdateKind::Always);
+        system_info.refresh_processes_specifics(ProcessesToUpdate::All, true, refresh_kind);
+        let mut cmds = HashMap::new();
+        for (_pid, process) in system_info.processes() {
+            if let Some(parent_pid) = process.parent() {
+                let ppid_str = format!("{}", parent_pid);
+                let command: Vec<String> = process
+                    .cmd()
+                    .iter()
+                    .map(|s| s.to_string_lossy().into_owned())
+                    .collect();
+                if command.is_empty() {
+                    continue;
+                }
+                match post_hook {
+                    Some(post_hook) => {
+                        let stringified = command.join(" ");
+                        let cmd = match run_command_hook(&stringified, post_hook) {
+                            Ok(command) => command,
+                            Err(e) => {
+                                log::error!("Post command hook failed to run: {}", e);
+                                stringified.to_owned()
+                            },
+                        };
+                        let line_parts: Vec<String> = cmd
+                            .trim()
+                            .split_ascii_whitespace()
+                            .map(|p| p.to_owned())
+                            .collect();
+                        cmds.insert(ppid_str, line_parts);
+                    },
+                    None => {
+                        cmds.insert(ppid_str, command);
+                    },
                 }
             }
         }
@@ -620,6 +726,7 @@ impl Drop for ResizeCache {
     }
 }
 
+#[cfg(not(windows))]
 fn run_command_hook(
     original_command: &str,
     hook_script: &str,
@@ -630,6 +737,22 @@ fn run_command_hook(
         .env("RESURRECT_COMMAND", original_command)
         .output()?;
 
+    if !output.status.success() {
+        return Err(format!("Hook failed: {}", String::from_utf8_lossy(&output.stderr)).into());
+    }
+    Ok(String::from_utf8(output.stdout)?.trim().to_string())
+}
+
+#[cfg(windows)]
+fn run_command_hook(
+    original_command: &str,
+    hook_script: &str,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let output = Command::new("cmd")
+        .arg("/C")
+        .arg(hook_script)
+        .env("RESURRECT_COMMAND", original_command)
+        .output()?;
     if !output.status.success() {
         return Err(format!("Hook failed: {}", String::from_utf8_lossy(&output.stderr)).into());
     }

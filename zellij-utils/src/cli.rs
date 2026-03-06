@@ -111,6 +111,11 @@ pub enum Command {
     #[clap(name = "web", value_parser)]
     Web(WebCli),
 
+    /// Send actions to a specific session
+    #[clap(visible_alias = "ac")]
+    #[clap(subcommand)]
+    Action(Box<CliAction>),
+
     /// Explore existing zellij sessions
     #[clap(flatten)]
     Sessions(Sessions),
@@ -143,15 +148,20 @@ pub struct WebCli {
         display_order = 5
     )]
     pub daemonize: bool,
+    /// Timeout in seconds waiting for the server to start (default: 10).
+    /// Only used on Windows where the daemonized server is polled via TCP.
+    /// On Unix, startup signaling uses pipes and this option is ignored.
+    #[clap(long, value_parser, display_order = 6)]
+    pub server_startup_timeout: Option<u64>,
     /// Create a login token for the web interface, will only be displayed once and cannot later be
     /// retrieved. Returns the token name and the token.
-    #[clap(long, value_parser, exclusive(true), display_order = 6)]
+    #[clap(long, value_parser, exclusive(true), display_order = 7)]
     pub create_token: bool,
     /// Optional name for the token
-    #[clap(long, value_parser, value_name = "TOKEN_NAME", display_order = 7)]
+    #[clap(long, value_parser, value_name = "TOKEN_NAME", display_order = 8)]
     pub token_name: Option<String>,
     /// Create a read-only login token (can only attach to existing sessions as watcher)
-    #[clap(long, value_parser, exclusive(true), display_order = 8)]
+    #[clap(long, value_parser, exclusive(true), display_order = 9)]
     pub create_read_only_token: bool,
     /// Revoke a login token by its name
     #[clap(
@@ -159,21 +169,21 @@ pub struct WebCli {
         value_parser,
         exclusive(true),
         value_name = "TOKEN NAME",
-        display_order = 9
+        display_order = 10
     )]
     pub revoke_token: Option<String>,
     /// Revoke all login tokens
-    #[clap(long, value_parser, exclusive(true), display_order = 10)]
+    #[clap(long, value_parser, exclusive(true), display_order = 11)]
     pub revoke_all_tokens: bool,
     /// List token names and their creation dates (cannot show actual tokens)
-    #[clap(long, value_parser, exclusive(true), display_order = 11)]
+    #[clap(long, value_parser, exclusive(true), display_order = 12)]
     pub list_tokens: bool,
     /// The ip address to listen on locally for connections (defaults to 127.0.0.1)
     #[clap(
         long,
         value_parser,
         conflicts_with_all(&["stop", "status", "create-token", "revoke-token", "revoke-all-tokens"]),
-        display_order = 12
+        display_order = 13
     )]
     pub ip: Option<IpAddr>,
     /// The port to listen on locally for connections (defaults to 8082)
@@ -181,7 +191,7 @@ pub struct WebCli {
         long,
         value_parser,
         conflicts_with_all(&["stop", "status", "create-token", "revoke-token", "revoke-all-tokens"]),
-        display_order = 13
+        display_order = 14
     )]
     pub port: Option<u16>,
     /// The path to the SSL certificate (required if not listening on 127.0.0.1)
@@ -189,7 +199,7 @@ pub struct WebCli {
         long,
         value_parser,
         conflicts_with_all(&["stop", "status", "create-token", "revoke-token", "revoke-all-tokens"]),
-        display_order = 14
+        display_order = 15
     )]
     pub cert: Option<PathBuf>,
     /// The path to the SSL key (required if not listening on 127.0.0.1)
@@ -197,7 +207,7 @@ pub struct WebCli {
         long,
         value_parser,
         conflicts_with_all(&["stop", "status", "create-token", "revoke-token", "revoke-all-tokens"]),
-        display_order = 15
+        display_order = 16
     )]
     pub key: Option<PathBuf>,
 }
@@ -328,10 +338,6 @@ pub enum Sessions {
         force: bool,
     },
 
-    /// Send actions to a specific session
-    #[clap(visible_alias = "ac")]
-    #[clap(subcommand)]
-    Action(CliAction),
     /// Run a command in a new pane
     /// Returns: Created pane ID (format: terminal_<id>)
     #[clap(visible_alias = "r")]
@@ -363,6 +369,16 @@ pub enum Sessions {
             conflicts_with("direction")
         )]
         in_place: bool,
+
+        /// Close the replaced pane instead of suspending it (only effective with --in-place)
+        #[clap(
+            long,
+            value_parser,
+            default_value("false"),
+            takes_value(false),
+            requires("in-place")
+        )]
+        close_replaced_pane: bool,
 
         /// Name of the new pane
         #[clap(short, long, value_parser)]
@@ -475,6 +491,16 @@ pub enum Sessions {
         )]
         in_place: bool,
 
+        /// Close the replaced pane instead of suspending it (only effective with --in-place)
+        #[clap(
+            long,
+            value_parser,
+            default_value("false"),
+            takes_value(false),
+            requires("in-place")
+        )]
+        close_replaced_pane: bool,
+
         /// Skip the memory and HD cache and force recompile of the plugin (good for development)
         #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
         skip_plugin_cache: bool,
@@ -523,6 +549,16 @@ pub enum Sessions {
             conflicts_with("direction")
         )]
         in_place: bool,
+
+        /// Close the replaced pane instead of suspending it (only effective with --in-place)
+        #[clap(
+            long,
+            value_parser,
+            default_value("false"),
+            takes_value(false),
+            requires("in-place")
+        )]
+        close_replaced_pane: bool,
 
         /// Open the new pane in floating mode
         #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
@@ -599,34 +635,6 @@ tail -f /tmp/my-live-logfile | zellij pipe --name logs --plugin https://example.
         /// considered a different plugin for the purposes of determining the pipe destination)
         #[clap(short('c'), long, value_parser, display_order(4))]
         plugin_configuration: Option<PluginUserConfiguration>,
-    },
-    /// Send commands to the sequence plugin (sugar for: zellij pipe --plugin zellij:sequence)
-    #[clap(
-        visible_alias = "seq",
-        override_usage(
-            r#"
-zellij sequence [OPTIONS] [--] <COMMANDS>
-
-* Run a sequence of commands:
-
-zellij sequence -- 'echo hello && echo world'
-
-* Pipe commands from STDIN:
-
-echo 'echo hello && echo world' | zellij sequence
-
-* Wait for the sequence to complete before returning:
-
-zellij sequence --blocking -- 'echo hello && echo world'
-"#
-        )
-    )]
-    Sequence {
-        /// The commands to run (if blank, will listen to STDIN)
-        payload: Option<String>,
-        /// Block until the sequence finishes before exiting
-        #[clap(short, long, value_parser, takes_value(false), default_value("false"))]
-        blocking: bool,
     },
 }
 
@@ -753,6 +761,16 @@ pub enum CliAction {
         )]
         in_place: bool,
 
+        /// Close the replaced pane instead of suspending it (only effective with --in-place)
+        #[clap(
+            long,
+            value_parser,
+            default_value("false"),
+            takes_value(false),
+            requires("in-place")
+        )]
+        close_replaced_pane: bool,
+
         /// Name of the new pane
         #[clap(short, long, value_parser)]
         name: Option<String>,
@@ -849,6 +867,16 @@ pub enum CliAction {
         )]
         in_place: bool,
 
+        /// Close the replaced pane instead of suspending it (only effective with --in-place)
+        #[clap(
+            long,
+            value_parser,
+            default_value("false"),
+            takes_value(false),
+            requires("in-place")
+        )]
+        close_replaced_pane: bool,
+
         /// Change the working directory of the editor
         #[clap(long, value_parser)]
         cwd: Option<PathBuf>,
@@ -883,6 +911,20 @@ pub enum CliAction {
     TogglePaneEmbedOrFloating,
     /// Toggle the visibility of all floating panes in the current Tab, open one if none exist
     ToggleFloatingPanes,
+    /// Show all floating panes in the specified tab (or active tab if tab_id is not provided).
+    ///
+    /// Returns exit code 0 if state was changed, 2 if already visible, 1 if tab not found.
+    ShowFloatingPanes {
+        #[clap(short, long, value_parser)]
+        tab_id: Option<usize>,
+    },
+    /// Hide all floating panes in the specified tab (or active tab if tab_id is not provided).
+    ///
+    /// Returns exit code 0 if state was changed, 2 if already hidden, 1 if tab not found.
+    HideFloatingPanes {
+        #[clap(short, long, value_parser)]
+        tab_id: Option<usize>,
+    },
     /// Close the focused pane.
     ClosePane,
     /// Renames the focused pane
@@ -1061,6 +1103,15 @@ pub enum CliAction {
         floating: bool,
         #[clap(short, long, value_parser)]
         in_place: bool,
+        /// Close the replaced pane instead of suspending it (only effective with --in-place)
+        #[clap(
+            long,
+            value_parser,
+            default_value("false"),
+            takes_value(false),
+            requires("in-place")
+        )]
+        close_replaced_pane: bool,
         #[clap(short, long, value_parser)]
         move_to_focused_tab: bool,
         url: String,
@@ -1075,6 +1126,15 @@ pub enum CliAction {
         floating: bool,
         #[clap(short, long, value_parser)]
         in_place: bool,
+        /// Close the replaced pane instead of suspending it (only effective with --in-place)
+        #[clap(
+            long,
+            value_parser,
+            default_value("false"),
+            takes_value(false),
+            requires("in-place")
+        )]
+        close_replaced_pane: bool,
         url: Url,
         #[clap(short, long, value_parser)]
         configuration: Option<PluginUserConfiguration>,
@@ -1295,5 +1355,21 @@ tail -f /tmp/my-live-logfile | zellij action pipe --name logs --plugin https://e
         /// Change the working directory when switching
         #[clap(short, long, value_parser)]
         cwd: Option<PathBuf>,
+    },
+    /// Set the default foreground/background color of a pane
+    SetPaneColor {
+        /// The pane_id of the pane, eg. terminal_1, plugin_2 or 3 (equivalent to terminal_3).
+        /// Defaults to $ZELLIJ_PANE_ID if not provided.
+        #[clap(short, long, value_parser)]
+        pane_id: Option<String>,
+        /// Foreground color (e.g. "#00e000", "rgb:00/e0/00")
+        #[clap(long, value_parser)]
+        fg: Option<String>,
+        /// Background color (e.g. "#001a3a", "rgb:00/1a/3a")
+        #[clap(long, value_parser)]
+        bg: Option<String>,
+        /// Reset pane colors to terminal defaults
+        #[clap(long, value_parser, conflicts_with_all(&["fg", "bg"]))]
+        reset: bool,
     },
 }

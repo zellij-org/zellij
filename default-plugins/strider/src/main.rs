@@ -138,11 +138,24 @@ impl ZellijPlugin for State {
 
     fn pipe(&mut self, pipe_message: PipeMessage) -> bool {
         if pipe_message.is_private && pipe_message.name == "filepicker" {
-            if let PipeSource::Cli(pipe_id) = &pipe_message.source {
-                #[cfg(target_family = "wasm")]
-                block_cli_pipe_input(pipe_id);
+            let open_directly = pipe_message
+                .args
+                .get("open_directly")
+                .map(|v| v == "true")
+                .unwrap_or(false);
+            if open_directly {
+                // Standalone mode: selecting a file opens it directly,
+                // then the plugin closes itself.
+                self.close_on_selection = true;
+            } else {
+                // Filepicker callback mode: send result back to caller.
+                if let PipeSource::Cli(pipe_id) = &pipe_message.source {
+                    #[cfg(target_family = "wasm")]
+                    block_cli_pipe_input(pipe_id);
+                }
+                self.handling_filepick_request_from =
+                    Some((pipe_message.source, pipe_message.args));
             }
-            self.handling_filepick_request_from = Some((pipe_message.source, pipe_message.args));
             true
         } else {
             false

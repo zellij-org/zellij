@@ -16,7 +16,7 @@ use uuid::Uuid;
 use zellij_utils::data::PaneContents;
 use zellij_utils::data::{
     Direction, KeyWithModifier, NewPanePlacement, PaneInfo, PermissionStatus, PermissionType,
-    PluginPermission, ResizeStrategy, WebSharing,
+    PluginPermission, RegexHighlight, ResizeStrategy, Style, WebSharing,
 };
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
@@ -55,9 +55,7 @@ use std::{
     str,
 };
 use zellij_utils::{
-    data::{
-        Event, FloatingPaneCoordinates, InputMode, ModeInfo, Palette, PaletteColor, Style, Styling,
-    },
+    data::{Event, FloatingPaneCoordinates, InputMode, ModeInfo, Palette, PaletteColor, Styling},
     input::{
         command::TerminalAction,
         layout::{
@@ -216,6 +214,10 @@ pub(crate) struct Tab {
     // is brought online
     web_server_ip: IpAddr,
     web_server_port: u16,
+    pub panes_with_pending_bell: HashSet<PaneId>,
+    pub tab_has_pending_bell: bool,
+    pub tab_bell_flash: bool, // currently in mid-notification-flash
+    pub tab_bell_ring: bool,  // need to send ANSI BEL to the controlling terminal
 }
 
 // FIXME: Use a struct that has a pane_type enum, to reduce all of the duplication
@@ -318,6 +320,10 @@ pub trait Pane {
     }
     fn get_selected_text(&self, _client_id: ClientId) -> Option<String> {
         None
+    }
+    fn set_pane_default_colors(&mut self, _fg: Option<String>, _bg: Option<String>) {}
+    fn get_pane_default_colors(&self) -> (Option<String>, Option<String>) {
+        (None, None)
     }
 
     fn right_boundary_x_coords(&self) -> usize {
@@ -540,6 +546,14 @@ pub trait Pane {
     fn hold(&mut self, _exit_status: Option<i32>, _is_first_run: bool, _run_command: RunCommand) {
         // No-op by default, only terminal panes support holding
     }
+    fn has_bell(&self) -> bool {
+        false
+    }
+    fn consume_bell(&mut self) {}
+    fn set_bell_notification(&mut self, _val: bool) {}
+    fn get_bell_notification(&self) -> bool {
+        false
+    }
     fn add_red_pane_frame_color_override(&mut self, _error_text: Option<String>);
     fn add_highlight_pane_frame_color_override(
         &mut self,
@@ -592,6 +606,24 @@ pub trait Pane {
         _get_full_scrollback: bool,
     ) -> PaneContents;
     fn update_exit_status(&mut self, _exit_status: i32) {}
+    fn set_plugin_regex_highlights(
+        &mut self,
+        _plugin_id: u32,
+        _highlights: Vec<RegexHighlight>,
+        _style: &Style,
+    ) {
+    }
+    fn clear_plugin_highlights(&mut self, _plugin_id: u32) {}
+    fn set_hover_position(&mut self, _position: Option<Position>) {}
+    fn plugin_highlight_at(
+        &self,
+        _position: &Position,
+    ) -> Option<(u32, String, String, BTreeMap<String, String>)> {
+        None
+    }
+    fn terminal_emulator_wants_mouse(&self) -> bool {
+        false
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -772,6 +804,10 @@ impl Tab {
             connected_clients_in_app,
             web_server_ip,
             web_server_port,
+            panes_with_pending_bell: HashSet::new(),
+            tab_has_pending_bell: false,
+            tab_bell_flash: false,
+            tab_bell_ring: false,
         }
     }
 
@@ -2427,6 +2463,85 @@ impl Tab {
             None
         }
     }
+    pub fn check_and_handle_bell_notifications(
+        &mut self,
+        is_active_tab: bool,
+    ) -> (Vec<PaneId>, bool) {
+        let mut newly_notified_panes = vec![];
+        let mut tab_bell_newly_set = false;
+
+        let focused_pane_ids: HashSet<PaneId> = self
+            .connected_clients
+            .borrow()
+            .iter()
+            .filter_map(|c_id| self.get_active_pane_id(*c_id))
+            .collect();
+
+        // Collect ringing pane IDs first (immutable borrow)
+        let ringing_panes: Vec<PaneId> = self
+            .tiled_panes
+            .get_panes()
+            .chain(self.floating_panes.get_panes())
+            .filter(|(_, pane)| pane.has_bell())
+            .map(|(pane_id, _)| *pane_id)
+            .collect();
+
+        for pane_id in ringing_panes {
+            // Consume the bell from the pane
+            if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
+                pane.consume_bell();
+            }
+            let is_focused = focused_pane_ids.contains(&pane_id);
+            if !is_focused && !self.panes_with_pending_bell.contains(&pane_id) {
+                if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
+                    pane.set_bell_notification(true);
+                }
+                self.panes_with_pending_bell.insert(pane_id);
+                newly_notified_panes.push(pane_id);
+            }
+            if !self.tab_bell_ring {
+                self.tab_bell_ring = true;
+                tab_bell_newly_set = true;
+            }
+            if !is_active_tab {
+                self.tab_has_pending_bell = true;
+            }
+        }
+        (newly_notified_panes, tab_bell_newly_set)
+    }
+    pub fn clear_bell_notification_for_pane(&mut self, pane_id: PaneId) {
+        self.panes_with_pending_bell.remove(&pane_id);
+        if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
+            pane.set_bell_notification(false);
+            pane.clear_pane_frame_color_override(None);
+        }
+        self.tab_has_pending_bell = false;
+    }
+    pub fn clear_tab_bell_notification(&mut self) {
+        self.tab_has_pending_bell = false;
+    }
+    pub fn clear_tab_bell_ring(&mut self) {
+        self.tab_bell_ring = false;
+    }
+    /// Checks if any pane in the tab has a pending bell, consumes all such bells, and returns
+    /// whether any were found. Does not update notification state (used when visual_bell is
+    /// disabled but ANSI BEL forwarding is still desired).
+    pub fn check_and_consume_bells_without_visual_notification(&mut self) -> bool {
+        let ringing_panes: Vec<PaneId> = self
+            .tiled_panes
+            .get_panes()
+            .chain(self.floating_panes.get_panes())
+            .filter(|(_, pane)| pane.has_bell())
+            .map(|(pane_id, _)| *pane_id)
+            .collect();
+        let had_bell = !ringing_panes.is_empty();
+        for pane_id in ringing_panes {
+            if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
+                pane.consume_bell();
+            }
+        }
+        had_bell
+    }
     pub fn has_terminal_pid(&self, pid: u32) -> bool {
         self.tiled_panes.panes_contain(&PaneId::Terminal(pid))
             || self.floating_panes.panes_contain(&PaneId::Terminal(pid))
@@ -2444,6 +2559,22 @@ impl Tab {
                 .suppressed_panes
                 .values()
                 .any(|s_p| s_p.1.pid() == PaneId::Plugin(plugin_id))
+    }
+    pub fn set_pane_color(
+        &mut self,
+        pane_id: PaneId,
+        fg: Option<String>,
+        bg: Option<String>,
+    ) -> Result<()> {
+        let pane = self
+            .floating_panes
+            .get_mut(&pane_id)
+            .or_else(|| self.tiled_panes.get_pane_mut(pane_id))
+            .or_else(|| self.suppressed_panes.get_mut(&pane_id).map(|p| &mut p.1));
+        if let Some(pane) = pane {
+            pane.set_pane_default_colors(fg, bg);
+        }
+        Ok(())
     }
     pub fn has_pane_with_pid(&self, pid: &PaneId) -> bool {
         self.tiled_panes.panes_contain(pid)
@@ -3189,6 +3320,12 @@ impl Tab {
         self.senders
             .send_to_pty_writer(PtyWriteInstruction::ApplyCachedResizes)
             .with_context(|| format!("failed to update plugins with mode info"))?;
+        LayoutApplier::offset_viewport(
+            self.viewport.clone(),
+            self.display_area.clone(),
+            &mut self.tiled_panes,
+            self.draw_pane_frames,
+        );
         Ok(())
     }
     pub fn resize(&mut self, client_id: ClientId, strategy: ResizeStrategy) -> Result<()> {
@@ -4612,6 +4749,32 @@ impl Tab {
             pane.clear_pane_frame_color_override(client_id);
         }
     }
+    pub fn set_plugin_regex_highlights_for_pane(
+        &mut self,
+        pane_id: PaneId,
+        plugin_id: u32,
+        highlights: Vec<RegexHighlight>,
+        style: &Style,
+    ) {
+        if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
+            pane.set_plugin_regex_highlights(plugin_id, highlights, style);
+        }
+    }
+
+    pub fn clear_all_plugin_highlights(&mut self, plugin_id: u32) {
+        for pane_id in self.get_all_pane_ids() {
+            if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
+                pane.clear_plugin_highlights(plugin_id);
+            }
+        }
+    }
+
+    pub fn clear_plugin_highlights_for_pane(&mut self, pane_id: PaneId, plugin_id: u32) {
+        if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
+            pane.clear_plugin_highlights(plugin_id);
+        }
+    }
+
     pub fn update_plugin_loading_stage(&mut self, pid: u32, loading_indication: LoadingIndication) {
         if let Some(plugin_pane) = self
             .tiled_panes
@@ -4694,6 +4857,43 @@ impl Tab {
         self.floating_panes.toggle_show_panes(false);
         self.tiled_panes.focus_all_panes();
         self.set_force_render();
+    }
+
+    pub fn show_floating_panes_atomic(&mut self, mut completion: Option<NotificationEnd>) {
+        if self.floating_panes.panes_are_visible() {
+            if let Some(c) = completion.as_mut() {
+                c.set_exit_status(2);
+            }
+        } else if self
+            .floating_panes
+            .last_selectable_floating_pane_id()
+            .is_none()
+        {
+            // No selectable floating panes exist — surface must not be shown
+            if let Some(c) = completion.as_mut() {
+                c.set_exit_status(1);
+            }
+        } else {
+            self.show_floating_panes();
+            if let Some(c) = completion.as_mut() {
+                c.set_exit_status(0);
+            }
+        }
+        drop(completion);
+    }
+
+    pub fn hide_floating_panes_atomic(&mut self, mut completion: Option<NotificationEnd>) {
+        if !self.floating_panes.panes_are_visible() {
+            if let Some(c) = completion.as_mut() {
+                c.set_exit_status(2);
+            }
+        } else {
+            self.hide_floating_panes();
+            if let Some(c) = completion.as_mut() {
+                c.set_exit_status(0);
+            }
+        }
+        drop(completion);
     }
 
     pub fn find_plugin(&self, run_plugin_or_alias: &RunPluginOrAlias) -> Option<PaneId> {
@@ -5499,6 +5699,10 @@ pub fn pane_info_for_pane(
         })
         .collect();
     pane_info.index_in_pane_group = index_in_pane_group;
+
+    let (default_fg, default_bg) = pane.get_pane_default_colors();
+    pane_info.default_fg = default_fg;
+    pane_info.default_bg = default_bg;
 
     match pane_id {
         PaneId::Terminal(terminal_id) => {

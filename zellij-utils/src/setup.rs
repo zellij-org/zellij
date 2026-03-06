@@ -867,55 +867,55 @@ mod setup_test {
     }
     #[test]
     fn cli_config_dir_overrides_defaults() {
+        let config_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("src")
+            .join("test-fixtures")
+            .join("config-dirs")
+            .join("layout-upside-down");
         let cli_args = CliArgs {
-            config_dir: Some(PathBuf::from(format!(
-                "{}/src/test-fixtures/config-dirs/layout-upside-down",
-                env!("CARGO_MANIFEST_DIR")
-            ))),
+            config_dir: Some(config_dir.clone()),
             ..Default::default()
         };
         let (_, layout_info, _, _, _) = Setup::from_cli_args(&cli_args).unwrap();
         let Some(LayoutInfo::File(layout_path, _)) = layout_info else {
             panic!("layout info has unexpected format");
         };
-        assert_eq!(
-            layout_path,
-            format!(
-                "{}/src/test-fixtures/config-dirs/layout-upside-down/layouts/upside-down.kdl",
-                env!("CARGO_MANIFEST_DIR")
-            )
-        );
+        let expected = config_dir
+            .join("layouts")
+            .join("upside-down.kdl")
+            .canonicalize()
+            .unwrap();
+        assert_eq!(layout_path, expected.display().to_string());
     }
     #[test]
     fn cli_config_dir_finds_custom_default() {
+        let config_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("src")
+            .join("test-fixtures")
+            .join("config-dirs")
+            .join("custom-default-layout");
         let cli_args = CliArgs {
-            config_dir: Some(PathBuf::from(format!(
-                "{}/src/test-fixtures/config-dirs/custom-default-layout",
-                env!("CARGO_MANIFEST_DIR")
-            ))),
+            config_dir: Some(config_dir.clone()),
             ..Default::default()
         };
         let (_, layout_info, _, _, _) = Setup::from_cli_args(&cli_args).unwrap();
         let Some(LayoutInfo::File(layout_path, _)) = layout_info else {
             panic!("layout info has unexpected format");
         };
-        assert_eq!(
-            layout_path,
-            format!(
-                "{}/src/test-fixtures/config-dirs/custom-default-layout/layouts/default.kdl",
-                env!("CARGO_MANIFEST_DIR")
-            )
-        );
+        let expected = config_dir
+            .join("layouts")
+            .join("default.kdl")
+            .canonicalize()
+            .unwrap();
+        assert_eq!(layout_path, expected.display().to_string());
     }
 
     #[test]
     fn cli_with_relative_layout_and_extension() {
         // NOTE: We assume to be in `zellij-utils` root directory. If this doesn't hold, path
         // resolution cannot work (as it actually reads path to ensure they exist).
-        assert_eq!(
-            std::env::current_dir().unwrap(),
-            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        );
+        let cwd = std::env::current_dir().unwrap();
+        assert_eq!(cwd, PathBuf::from(env!("CARGO_MANIFEST_DIR")));
 
         let cli_args = CliArgs {
             layout: Some(PathBuf::from("assets/layouts/compact.kdl")),
@@ -925,23 +925,16 @@ mod setup_test {
         let Some(LayoutInfo::File(layout_path, _)) = layout_info else {
             panic!("layout info has unexpected format: {:?}", &layout_info);
         };
-        assert_eq!(
-            layout_path,
-            format!(
-                "{}/assets/layouts/compact.kdl",
-                std::env::current_dir().unwrap().display()
-            ),
-        );
+        let expected = cwd.join("assets/layouts/compact.kdl");
+        assert_eq!(layout_path, expected.display().to_string());
     }
 
     #[test]
     fn cli_with_relative_layout_and_separator() {
         // NOTE: We assume to be in `zellij-utils` root directory. If this doesn't hold, path
         // resolution cannot work (as it actually reads path to ensure they exist).
-        assert_eq!(
-            std::env::current_dir().unwrap(),
-            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        );
+        let cwd = std::env::current_dir().unwrap();
+        assert_eq!(cwd, PathBuf::from(env!("CARGO_MANIFEST_DIR")));
 
         let cli_args = CliArgs {
             layout: Some(PathBuf::from("assets/layouts/compact")),
@@ -951,12 +944,7 @@ mod setup_test {
         let Some(LayoutInfo::File(layout_path, _)) = layout_info else {
             panic!("layout info has unexpected format");
         };
-        assert_eq!(
-            layout_path,
-            format!(
-                "{}/assets/layouts/compact",
-                std::env::current_dir().unwrap().display()
-            ),
-        );
+        let expected = cwd.join("assets/layouts/compact");
+        assert_eq!(layout_path, expected.display().to_string());
     }
 }

@@ -118,6 +118,7 @@ pub enum PtyInstruction {
     FillPluginCwd(
         Option<bool>,   // should float
         bool,           // should be opened in place
+        bool,           // close_replaced_pane
         Option<String>, // pane title
         RunPluginOrAlias,
         usize,          // tab index
@@ -487,6 +488,10 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                 completion_tx,
             ) => {
                 let err_context = || "failed to open new tab";
+                log::info!(
+                    "PtyInstruction::NewTab: spawning terminals for tab {}",
+                    tab_index
+                );
 
                 let floating_panes_layout = if floating_panes_layout.is_empty() {
                     layout.new_tab().1
@@ -814,6 +819,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
             PtyInstruction::FillPluginCwd(
                 should_float,
                 should_be_open_in_place,
+                close_replaced_pane,
                 pane_title,
                 run,
                 tab_index,
@@ -829,6 +835,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                 pty.fill_plugin_cwd(
                     should_float,
                     should_be_open_in_place,
+                    close_replaced_pane,
                     pane_title,
                     run,
                     tab_index,
@@ -945,47 +952,51 @@ impl Pty {
         }
     }
     fn fill_cwd(&self, terminal_action: &mut TerminalAction, client_id: ClientId) {
-        if let TerminalAction::RunCommand(run_command) = terminal_action {
-            if run_command.cwd.is_none() {
-                run_command.cwd = self
-                    .active_panes
-                    .get(&client_id)
-                    .and_then(|pane| match pane {
-                        PaneId::Plugin(plugin_id) => self.plugin_cwds.get(plugin_id).cloned(),
-                        PaneId::Terminal(id) => {
-                            // Try to get CWD from OS, fall back to cached value
-                            self.id_to_child_pid
-                                .get(id)
-                                .and_then(|&pid| {
-                                    self.bus
-                                        .os_input
-                                        .as_ref()
-                                        .and_then(|input| input.get_cwd(pid))
-                                })
-                                .or_else(|| self.terminal_cwds.get(id).cloned())
-                        },
-                    })
-            };
+        let cwd = match terminal_action {
+            TerminalAction::RunCommand(run_command) => &mut run_command.cwd,
+            TerminalAction::OpenFile(payload) => &mut payload.cwd,
         };
-    }
-    fn fill_cwd_from_pane_id(&self, terminal_action: &mut TerminalAction, pane_id: &PaneId) {
-        if let TerminalAction::RunCommand(run_command) = terminal_action {
-            if run_command.cwd.is_none() {
-                run_command.cwd = match pane_id {
-                    PaneId::Terminal(terminal_pane_id) => {
+        if cwd.is_none() {
+            *cwd = self
+                .active_panes
+                .get(&client_id)
+                .and_then(|pane| match pane {
+                    PaneId::Plugin(plugin_id) => self.plugin_cwds.get(plugin_id).cloned(),
+                    PaneId::Terminal(id) => {
                         // Try to get CWD from OS, fall back to cached value
                         self.id_to_child_pid
-                            .get(terminal_pane_id)
+                            .get(id)
                             .and_then(|&pid| {
                                 self.bus
                                     .os_input
                                     .as_ref()
                                     .and_then(|input| input.get_cwd(pid))
                             })
-                            .or_else(|| self.terminal_cwds.get(terminal_pane_id).cloned())
+                            .or_else(|| self.terminal_cwds.get(id).cloned())
                     },
-                    PaneId::Plugin(plugin_id) => self.plugin_cwds.get(plugin_id).cloned(),
-                };
+                })
+        };
+    }
+    fn fill_cwd_from_pane_id(&self, terminal_action: &mut TerminalAction, pane_id: &PaneId) {
+        let cwd = match terminal_action {
+            TerminalAction::RunCommand(run_command) => &mut run_command.cwd,
+            TerminalAction::OpenFile(payload) => &mut payload.cwd,
+        };
+        if cwd.is_none() {
+            *cwd = match pane_id {
+                PaneId::Terminal(terminal_pane_id) => {
+                    // Try to get CWD from OS, fall back to cached value
+                    self.id_to_child_pid
+                        .get(terminal_pane_id)
+                        .and_then(|&pid| {
+                            self.bus
+                                .os_input
+                                .as_ref()
+                                .and_then(|input| input.get_cwd(pid))
+                        })
+                        .or_else(|| self.terminal_cwds.get(terminal_pane_id).cloned())
+                },
+                PaneId::Plugin(plugin_id) => self.plugin_cwds.get(plugin_id).cloned(),
             };
         };
     }
@@ -1272,6 +1283,11 @@ impl Pty {
                 (completion_tx, None)
             };
 
+        log::info!(
+            "spawn_terminals_for_layout: {} tiled + {} floating panes created, sending ApplyLayout",
+            new_tab_pane_ids.len(),
+            new_tab_floating_pane_ids.len()
+        );
         self.bus
             .senders
             .send_to_screen(ScreenInstruction::ApplyLayout(
@@ -1927,6 +1943,7 @@ impl Pty {
         &self,
         should_float: Option<bool>,
         should_open_in_place: bool, // should be opened in place
+        close_replaced_pane: bool,  // close_replaced_pane
         pane_title: Option<String>, // pane title
         mut run: RunPluginOrAlias,
         tab_index: usize,                   // tab index
@@ -1975,6 +1992,7 @@ impl Pty {
         self.bus.senders.send_to_plugin(PluginInstruction::Load(
             should_float,
             should_open_in_place,
+            close_replaced_pane,
             pane_title,
             run,
             Some(tab_index),
@@ -2221,9 +2239,21 @@ fn send_command_not_found_to_screen(
     Ok(())
 }
 
+#[cfg(not(windows))]
 pub fn get_default_shell() -> PathBuf {
     PathBuf::from(std::env::var("SHELL").unwrap_or_else(|_| {
         log::warn!("Cannot read SHELL env, falling back to use /bin/sh");
         "/bin/sh".to_string()
+    }))
+}
+
+#[cfg(windows)]
+pub fn get_default_shell() -> PathBuf {
+    if let Ok(shell) = std::env::var("SHELL") {
+        return PathBuf::from(shell);
+    }
+    PathBuf::from(std::env::var("COMSPEC").unwrap_or_else(|_| {
+        log::warn!("Cannot read SHELL or COMSPEC env, falling back to use cmd.exe");
+        "cmd.exe".to_string()
     }))
 }

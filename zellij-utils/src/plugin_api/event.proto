@@ -64,6 +64,7 @@ enum EventType {
     CwdChanged = 39;
     AvailableLayoutInfo = 40;
     PluginConfigurationChanged = 41;
+    HighlightClicked = 42;
 }
 
 message EventNameList {
@@ -107,6 +108,7 @@ message Event {
     CwdChangedPayload cwd_changed_payload = 33;
     AvailableLayoutInfoPayload available_layout_info_payload = 34;
     PluginConfigurationChangedPayload plugin_configuration_changed_payload = 35;
+    HighlightClickedPayload highlight_clicked_payload = 36;
   }
 }
 
@@ -406,6 +408,8 @@ message PaneInfo {
     optional string plugin_url = 21;
     bool is_selectable = 22;
     repeated IndexInPaneGroup index_in_pane_group = 23;
+    optional string default_fg = 24;
+    optional string default_bg = 25;
 }
 
 message IndexInPaneGroup {
@@ -431,6 +435,8 @@ message TabInfo {
     uint32 selectable_tiled_panes_count = 15;
     uint32 selectable_floating_panes_count = 16;
     uint32 tab_id = 17;
+    bool has_bell_notification = 18;
+    bool is_flashing_bell = 19;
 }
 
 message ModeUpdatePayload {
@@ -510,5 +516,12 @@ message ActionCompletePayload {
 
 message PluginConfigurationChangedPayload {
   repeated ContextItem configuration = 1;
+}
+
+message HighlightClickedPayload {
+  PaneId pane_id = 1;
+  string pattern = 2;
+  string matched_string = 3;
+  repeated ContextItem context = 4;
 }
 

@@ -21,8 +21,8 @@ fn main() {
 
     {
         let config = Config::try_from(&opts).ok();
-        if let Some(Command::Sessions(Sessions::Action(cli_action))) = opts.command {
-            commands::send_action_to_session(cli_action, opts.session, config);
+        if let Some(Command::Action(cli_action)) = opts.command {
+            commands::send_action_to_session(*cli_action, opts.session, config);
             std::process::exit(0);
         }
         if let Some(Command::Sessions(Sessions::Run {
@@ -31,6 +31,7 @@ fn main() {
             cwd,
             floating,
             in_place,
+            close_replaced_pane,
             name,
             close_on_exit,
             start_suspended,
@@ -69,6 +70,7 @@ fn main() {
                 cwd,
                 floating,
                 in_place,
+                close_replaced_pane,
                 name,
                 close_on_exit,
                 start_suspended,
@@ -92,6 +94,7 @@ fn main() {
             url,
             floating,
             in_place,
+            close_replaced_pane,
             configuration,
             skip_plugin_cache,
             x,
@@ -113,6 +116,7 @@ fn main() {
                 cwd,
                 floating,
                 in_place,
+                close_replaced_pane,
                 name: None,
                 close_on_exit: false,
                 start_suspended: false,
@@ -138,6 +142,7 @@ fn main() {
             line_number,
             floating,
             in_place,
+            close_replaced_pane,
             cwd,
             x,
             y,
@@ -161,6 +166,7 @@ fn main() {
                 line_number,
                 floating,
                 in_place,
+                close_replaced_pane,
                 cwd,
                 x,
                 y,
@@ -201,33 +207,6 @@ fn main() {
                 plugin_configuration,
 
                 force_launch_plugin: false,
-                skip_plugin_cache: false,
-                floating_plugin: None,
-                in_place_plugin: None,
-                plugin_cwd: None,
-                plugin_title: None,
-            };
-            commands::send_action_to_session(command_cli_action, opts.session, config);
-            std::process::exit(0);
-        }
-        if let Some(Command::Sessions(Sessions::Sequence { payload, blocking })) = opts.command {
-            let args = if blocking {
-                let mut args: std::collections::BTreeMap<String, String> =
-                    std::collections::BTreeMap::new();
-                args.insert("blocking".to_string(), "true".to_string());
-                Some(zellij_utils::input::layout::PluginUserConfiguration::new(
-                    args,
-                ))
-            } else {
-                None
-            };
-            let command_cli_action = CliAction::Pipe {
-                name: None,
-                payload,
-                args,
-                plugin: Some("zellij:sequence".to_string()),
-                plugin_configuration: None,
-                force_launch_plugin: true,
                 skip_plugin_cache: false,
                 floating_plugin: None,
                 in_place_plugin: None,
@@ -308,6 +287,7 @@ fn main() {
                 web_opts.port,
                 web_opts.cert.clone(),
                 web_opts.key.clone(),
+                web_opts.server_startup_timeout,
             );
         } else if web_opts.stop {
             match commands::stop_web_server() {

@@ -16,7 +16,7 @@ Some(
                 ),
             ),
             cwd: Some(
-                "/tmp",
+                "/foo/bar",
             ),
         },
         1,

@@ -173,6 +173,7 @@ impl PaneGroups {
             let _ = self.senders.send_to_pty(PtyInstruction::FillPluginCwd(
                 should_float,
                 should_be_opened_in_place,
+                false, // close_replaced_pane
                 pane_title,
                 run_plugin,
                 tab_index,

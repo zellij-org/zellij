@@ -16,6 +16,7 @@ pub use super::generated_api::api::{
         FloatingPaneLayout as ProtobufFloatingPaneLayout,
         FloatingPlacement as ProtobufFloatingPlacement,
         GoToTabNamePayload,
+        HideFloatingPanesPayload,
         IdAndName,
         InPlaceConfig as ProtobufInPlaceConfig,
         KeyModifier as ProtobufKeyModifier,
@@ -56,12 +57,14 @@ pub use super::generated_api::api::{
         ScrollAtPayload,
         SearchDirection as ProtobufSearchDirection,
         SearchOption as ProtobufSearchOption,
+        ShowFloatingPanesPayload,
         SplitDirection as ProtobufSplitDirection,
         SplitSize as ProtobufSplitSize,
         StackedPlacement as ProtobufStackedPlacement,
         SwapFloatingLayout as ProtobufSwapFloatingLayout,
         SwapTiledLayout as ProtobufSwapTiledLayout,
         SwitchToModePayload,
+        TabIdAndName,
         TabLayoutInfo as ProtobufTabLayoutInfo,
         TiledPaneLayout as ProtobufTiledPaneLayout,
         TiledPlacement as ProtobufTiledPlacement,
@@ -323,6 +326,7 @@ impl TryFrom<ProtobufAction> for Action {
                         direction,
                         floating: should_float,
                         in_place: should_be_in_place,
+                        close_replaced_pane: false,
                         start_suppressed: false,
                         coordinates: None,
                         near_current_pane,
@@ -394,6 +398,24 @@ impl TryFrom<ProtobufAction> for Action {
                     Some(_) => Err("ToggleFloatingPanes should not have a payload"),
                     None => Ok(Action::ToggleFloatingPanes),
                 }
+            },
+            Some(ProtobufActionName::ShowFloatingPanes) => match protobuf_action.optional_payload {
+                Some(OptionalPayload::ShowFloatingPanesPayload(payload)) => {
+                    Ok(Action::ShowFloatingPanes {
+                        tab_id: payload.tab_id.map(|id| id as usize),
+                    })
+                },
+                None => Ok(Action::ShowFloatingPanes { tab_id: None }),
+                _ => Err("Wrong payload for ShowFloatingPanes"),
+            },
+            Some(ProtobufActionName::HideFloatingPanes) => match protobuf_action.optional_payload {
+                Some(OptionalPayload::HideFloatingPanesPayload(payload)) => {
+                    Ok(Action::HideFloatingPanes {
+                        tab_id: payload.tab_id.map(|id| id as usize),
+                    })
+                },
+                None => Ok(Action::HideFloatingPanes { tab_id: None }),
+                _ => Err("Wrong payload for HideFloatingPanes"),
             },
             Some(ProtobufActionName::CloseFocus) => match protobuf_action.optional_payload {
                 Some(_) => Err("CloseFocus should not have a payload"),
@@ -615,6 +637,7 @@ impl TryFrom<ProtobufAction> for Action {
                             should_float,
                             move_to_focused_tab,
                             should_open_in_place,
+                            close_replaced_pane: false,
                             skip_cache: skip_plugin_cache,
                         })
                     },
@@ -643,6 +666,7 @@ impl TryFrom<ProtobufAction> for Action {
                         plugin: run_plugin_or_alias,
                         should_float,
                         should_open_in_place,
+                        close_replaced_pane: false,
                         skip_cache: skip_plugin_cache,
                         cwd: None,
                     })
@@ -971,7 +995,7 @@ impl TryFrom<ProtobufAction> for Action {
                     let near_current_pane = payload.near_current_pane;
                     let pane_id_to_replace =
                         payload.pane_id_to_replace.and_then(|p| p.try_into().ok());
-                    let close_replace_pane = payload.close_replace_pane;
+                    let close_replaced_pane = payload.close_replace_pane;
                     if let Some(command) = payload.command {
                         let pane_name = command.pane_name.clone();
                         let run_command_action: RunCommandAction = command.try_into()?;
@@ -980,7 +1004,7 @@ impl TryFrom<ProtobufAction> for Action {
                             pane_name,
                             near_current_pane,
                             pane_id_to_replace,
-                            close_replace_pane,
+                            close_replaced_pane,
                         })
                     } else {
                         Ok(Action::NewInPlacePane {
@@ -988,7 +1012,7 @@ impl TryFrom<ProtobufAction> for Action {
                             pane_name: payload.pane_name,
                             near_current_pane,
                             pane_id_to_replace,
-                            close_replace_pane,
+                            close_replaced_pane,
                         })
                     }
                 },
@@ -1220,6 +1244,7 @@ impl TryFrom<Action> for ProtobufAction {
                 direction,
                 floating: should_float,
                 in_place: _should_be_in_place,
+                close_replaced_pane: _close_replaced_pane,
                 start_suppressed: _start_suppressed,
                 coordinates: _floating_pane_coordinates,
                 near_current_pane,
@@ -1301,6 +1326,22 @@ impl TryFrom<Action> for ProtobufAction {
             Action::ToggleFloatingPanes => Ok(ProtobufAction {
                 name: ProtobufActionName::ToggleFloatingPanes as i32,
                 optional_payload: None,
+            }),
+            Action::ShowFloatingPanes { tab_id } => Ok(ProtobufAction {
+                name: ProtobufActionName::ShowFloatingPanes as i32,
+                optional_payload: Some(OptionalPayload::ShowFloatingPanesPayload(
+                    ShowFloatingPanesPayload {
+                        tab_id: tab_id.map(|id| id as u32),
+                    },
+                )),
+            }),
+            Action::HideFloatingPanes { tab_id } => Ok(ProtobufAction {
+                name: ProtobufActionName::HideFloatingPanes as i32,
+                optional_payload: Some(OptionalPayload::HideFloatingPanesPayload(
+                    HideFloatingPanesPayload {
+                        tab_id: tab_id.map(|id| id as u32),
+                    },
+                )),
             }),
             Action::CloseFocus => Ok(ProtobufAction {
                 name: ProtobufActionName::CloseFocus as i32,
@@ -1457,6 +1498,7 @@ impl TryFrom<Action> for ProtobufAction {
                 should_float,
                 move_to_focused_tab,
                 should_open_in_place,
+                close_replaced_pane: _close_replaced_pane,
                 skip_cache: skip_plugin_cache,
             } => {
                 let configuration = run_plugin_or_alias.get_configuration().unwrap_or_default();
@@ -1478,6 +1520,7 @@ impl TryFrom<Action> for ProtobufAction {
                 plugin: run_plugin_or_alias,
                 should_float,
                 should_open_in_place,
+                close_replaced_pane: _close_replaced_pane,
                 skip_cache: skip_plugin_cache,
                 cwd: _cwd,
             } => {
@@ -1745,7 +1788,7 @@ impl TryFrom<Action> for ProtobufAction {
                 pane_name,
                 near_current_pane,
                 pane_id_to_replace,
-                close_replace_pane,
+                close_replaced_pane,
             } => {
                 let command = run_command_action.and_then(|r| {
                     let mut protobuf_run_command_action: ProtobufRunCommandAction =
@@ -1763,7 +1806,7 @@ impl TryFrom<Action> for ProtobufAction {
                             pane_name: None, // pane_name is already embedded in command
                             near_current_pane,
                             pane_id_to_replace,
-                            close_replace_pane,
+                            close_replace_pane: close_replaced_pane,
                         },
                     )),
                 })
@@ -1774,6 +1817,7 @@ impl TryFrom<Action> for ProtobufAction {
                 plugin: _,
                 pane_name: _,
                 skip_cache: _,
+                close_replaced_pane: _,
             }
             | Action::Deny
             | Action::Copy
@@ -1792,7 +1836,8 @@ impl TryFrom<Action> for ProtobufAction {
             | Action::SwitchSession { .. }
             | Action::SaveSession
             | Action::ListTabs { .. }
-            | Action::CurrentTabInfo { .. } => Err("Unsupported action"),
+            | Action::CurrentTabInfo { .. }
+            | Action::SetPaneColor { .. } => Err("Unsupported action"),
         }
     }
 }
@@ -2872,6 +2917,8 @@ impl TryFrom<ProtobufTiledPaneLayout> for TiledPaneLayout {
             run_instructions_to_ignore,
             hide_floating_panes: protobuf.hide_floating_panes,
             pane_initial_contents: protobuf.pane_initial_contents,
+            default_fg: None,
+            default_bg: None,
         })
     }
 }
@@ -2928,6 +2975,8 @@ impl TryFrom<ProtobufFloatingPaneLayout> for FloatingPaneLayout {
             pane_initial_contents: protobuf.pane_initial_contents,
             logical_position: protobuf.logical_position.map(|p| p as usize),
             borderless: protobuf.borderless,
+            default_fg: None,
+            default_bg: None,
         })
     }
 }

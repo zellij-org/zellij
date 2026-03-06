@@ -119,7 +119,7 @@ pub struct RgbColor {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Action {
-    #[prost(oneof="action::ActionType", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105")]
+    #[prost(oneof="action::ActionType", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108")]
     pub action_type: ::core::option::Option<action::ActionType>,
 }
 /// Nested message and enum types in `Action`.
@@ -337,6 +337,12 @@ pub mod action {
         ListTabs(super::ListTabsAction),
         #[prost(message, tag="105")]
         CurrentTabInfo(super::CurrentTabInfoAction),
+        #[prost(message, tag="106")]
+        ShowFloatingPanes(super::ShowFloatingPanesAction),
+        #[prost(message, tag="107")]
+        HideFloatingPanes(super::HideFloatingPanesAction),
+        #[prost(message, tag="108")]
+        SetPaneColor(super::SetPaneColorAction),
     }
 }
 // Action message definitions (all 92 variants)
@@ -429,6 +435,18 @@ pub struct TogglePaneEmbedOrFloatingAction {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ToggleFloatingPanesAction {
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ShowFloatingPanesAction {
+    #[prost(uint32, optional, tag="1")]
+    pub tab_id: ::core::option::Option<u32>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct HideFloatingPanesAction {
+    #[prost(uint32, optional, tag="1")]
+    pub tab_id: ::core::option::Option<u32>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -708,6 +726,8 @@ pub struct EditFileAction {
     pub coordinates: ::core::option::Option<FloatingPaneCoordinates>,
     #[prost(bool, tag="7")]
     pub near_current_pane: bool,
+    #[prost(bool, tag="8")]
+    pub close_replaced_pane: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -747,7 +767,7 @@ pub struct NewInPlacePaneAction {
     #[prost(message, optional, tag="4")]
     pub pane_id_to_replace: ::core::option::Option<PaneId>,
     #[prost(bool, tag="5")]
-    pub close_replace_pane: bool,
+    pub close_replaced_pane: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -848,6 +868,8 @@ pub struct LaunchOrFocusPluginAction {
     pub should_open_in_place: bool,
     #[prost(bool, tag="5")]
     pub skip_cache: bool,
+    #[prost(bool, tag="6")]
+    pub close_replaced_pane: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -862,6 +884,8 @@ pub struct LaunchPluginAction {
     pub skip_cache: bool,
     #[prost(string, optional, tag="5")]
     pub cwd: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(bool, tag="6")]
+    pub close_replaced_pane: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -928,6 +952,8 @@ pub struct NewInPlacePluginPaneAction {
     pub pane_name: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(bool, tag="3")]
     pub skip_cache: bool,
+    #[prost(bool, tag="4")]
+    pub close_replaced_pane: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1100,6 +1126,16 @@ pub struct SetPaneBorderlessAction {
     pub pane_id: ::core::option::Option<PaneId>,
     #[prost(bool, tag="2")]
     pub borderless: bool,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SetPaneColorAction {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+    #[prost(string, optional, tag="2")]
+    pub fg: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag="3")]
+    pub bg: ::core::option::Option<::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1385,9 +1421,13 @@ pub struct TiledPaneLayout {
     pub is_expanded_in_stack: bool,
     #[prost(bool, tag="12")]
     pub hide_floating_panes: bool,
-    /// NOTE: run_instructions_to_ignore is not represented here because it's a field used only inside the server itself and not part of the server/client contract
     #[prost(string, optional, tag="13")]
     pub pane_initial_contents: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag="14")]
+    pub default_fg: ::core::option::Option<::prost::alloc::string::String>,
+    /// NOTE: run_instructions_to_ignore is not represented here because it's a field used only inside the server itself and not part of the server/client contract
+    #[prost(string, optional, tag="15")]
+    pub default_bg: ::core::option::Option<::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1416,6 +1456,10 @@ pub struct FloatingPaneLayout {
     pub logical_position: ::core::option::Option<u32>,
     #[prost(bool, optional, tag="12")]
     pub borderless: ::core::option::Option<bool>,
+    #[prost(string, optional, tag="13")]
+    pub default_fg: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag="14")]
+    pub default_bg: ::core::option::Option<::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1775,6 +1819,8 @@ pub struct Options {
     pub mouse_hover_effects: ::core::option::Option<bool>,
     #[prost(uint64, optional, tag="42")]
     pub client_async_worker_tasks: ::core::option::Option<u64>,
+    #[prost(bool, optional, tag="43")]
+    pub visual_bell: ::core::option::Option<bool>,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
@@ -2536,122 +2582,6 @@ impl WebSharing {
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct ServerToClientMsg {
-    #[prost(oneof="server_to_client_msg::Message", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13")]
-    pub message: ::core::option::Option<server_to_client_msg::Message>,
-}
-/// Nested message and enum types in `ServerToClientMsg`.
-pub mod server_to_client_msg {
-    #[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Oneof)]
-    pub enum Message {
-        #[prost(message, tag="1")]
-        Render(super::RenderMsg),
-        #[prost(message, tag="2")]
-        UnblockInputThread(super::UnblockInputThreadMsg),
-        #[prost(message, tag="3")]
-        Exit(super::ExitMsg),
-        #[prost(message, tag="4")]
-        Connected(super::ConnectedMsg),
-        #[prost(message, tag="5")]
-        Log(super::LogMsg),
-        #[prost(message, tag="6")]
-        LogError(super::LogErrorMsg),
-        #[prost(message, tag="7")]
-        SwitchSession(super::SwitchSessionMsg),
-        #[prost(message, tag="8")]
-        UnblockCliPipeInput(super::UnblockCliPipeInputMsg),
-        #[prost(message, tag="9")]
-        CliPipeOutput(super::CliPipeOutputMsg),
-        #[prost(message, tag="10")]
-        QueryTerminalSize(super::QueryTerminalSizeMsg),
-        #[prost(message, tag="11")]
-        StartWebServer(super::StartWebServerMsg),
-        #[prost(message, tag="12")]
-        RenamedSession(super::RenamedSessionMsg),
-        #[prost(message, tag="13")]
-        ConfigFileUpdated(super::ConfigFileUpdatedMsg),
-    }
-}
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct RenderMsg {
-    #[prost(string, tag="1")]
-    pub content: ::prost::alloc::string::String,
-}
-/// Empty message
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct UnblockInputThreadMsg {
-}
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct ExitMsg {
-    #[prost(enumeration="ExitReason", tag="1")]
-    pub exit_reason: i32,
-    #[prost(string, optional, tag="2")]
-    pub payload: ::core::option::Option<::prost::alloc::string::String>,
-}
-/// Empty message
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct ConnectedMsg {
-}
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct LogMsg {
-    #[prost(string, repeated, tag="1")]
-    pub lines: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
-}
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct LogErrorMsg {
-    #[prost(string, repeated, tag="1")]
-    pub lines: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
-}
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct SwitchSessionMsg {
-    #[prost(message, optional, tag="1")]
-    pub connect_to_session: ::core::option::Option<ConnectToSession>,
-}
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct UnblockCliPipeInputMsg {
-    #[prost(string, tag="1")]
-    pub pipe_name: ::prost::alloc::string::String,
-}
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct CliPipeOutputMsg {
-    #[prost(string, tag="1")]
-    pub pipe_name: ::prost::alloc::string::String,
-    #[prost(string, tag="2")]
-    pub output: ::prost::alloc::string::String,
-}
-/// Empty message
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct QueryTerminalSizeMsg {
-}
-/// Empty message
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct StartWebServerMsg {
-}
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct RenamedSessionMsg {
-    #[prost(string, tag="1")]
-    pub name: ::prost::alloc::string::String,
-}
-/// Empty message
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct ConfigFileUpdatedMsg {
-}
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ClientToServerMsg {
     #[prost(oneof="client_to_server_msg::Message", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16")]
     pub message: ::core::option::Option<client_to_server_msg::Message>,
@@ -2807,4 +2737,120 @@ pub struct WebServerStartedMsg {
 pub struct FailedToStartWebServerMsg {
     #[prost(string, tag="1")]
     pub error: ::prost::alloc::string::String,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ServerToClientMsg {
+    #[prost(oneof="server_to_client_msg::Message", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13")]
+    pub message: ::core::option::Option<server_to_client_msg::Message>,
+}
+/// Nested message and enum types in `ServerToClientMsg`.
+pub mod server_to_client_msg {
+    #[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Message {
+        #[prost(message, tag="1")]
+        Render(super::RenderMsg),
+        #[prost(message, tag="2")]
+        UnblockInputThread(super::UnblockInputThreadMsg),
+        #[prost(message, tag="3")]
+        Exit(super::ExitMsg),
+        #[prost(message, tag="4")]
+        Connected(super::ConnectedMsg),
+        #[prost(message, tag="5")]
+        Log(super::LogMsg),
+        #[prost(message, tag="6")]
+        LogError(super::LogErrorMsg),
+        #[prost(message, tag="7")]
+        SwitchSession(super::SwitchSessionMsg),
+        #[prost(message, tag="8")]
+        UnblockCliPipeInput(super::UnblockCliPipeInputMsg),
+        #[prost(message, tag="9")]
+        CliPipeOutput(super::CliPipeOutputMsg),
+        #[prost(message, tag="10")]
+        QueryTerminalSize(super::QueryTerminalSizeMsg),
+        #[prost(message, tag="11")]
+        StartWebServer(super::StartWebServerMsg),
+        #[prost(message, tag="12")]
+        RenamedSession(super::RenamedSessionMsg),
+        #[prost(message, tag="13")]
+        ConfigFileUpdated(super::ConfigFileUpdatedMsg),
+    }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RenderMsg {
+    #[prost(string, tag="1")]
+    pub content: ::prost::alloc::string::String,
+}
+/// Empty message
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct UnblockInputThreadMsg {
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ExitMsg {
+    #[prost(enumeration="ExitReason", tag="1")]
+    pub exit_reason: i32,
+    #[prost(string, optional, tag="2")]
+    pub payload: ::core::option::Option<::prost::alloc::string::String>,
+}
+/// Empty message
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ConnectedMsg {
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct LogMsg {
+    #[prost(string, repeated, tag="1")]
+    pub lines: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct LogErrorMsg {
+    #[prost(string, repeated, tag="1")]
+    pub lines: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SwitchSessionMsg {
+    #[prost(message, optional, tag="1")]
+    pub connect_to_session: ::core::option::Option<ConnectToSession>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct UnblockCliPipeInputMsg {
+    #[prost(string, tag="1")]
+    pub pipe_name: ::prost::alloc::string::String,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CliPipeOutputMsg {
+    #[prost(string, tag="1")]
+    pub pipe_name: ::prost::alloc::string::String,
+    #[prost(string, tag="2")]
+    pub output: ::prost::alloc::string::String,
+}
+/// Empty message
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct QueryTerminalSizeMsg {
+}
+/// Empty message
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct StartWebServerMsg {
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RenamedSessionMsg {
+    #[prost(string, tag="1")]
+    pub name: ::prost::alloc::string::String,
+}
+/// Empty message
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ConfigFileUpdatedMsg {
 }

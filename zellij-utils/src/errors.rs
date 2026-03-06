@@ -327,6 +327,7 @@ pub enum ScreenContext {
     SearchToggleWrap,
     AddRedPaneFrameColorOverride,
     ClearPaneFrameColorOverride,
+    SetTabBellFlash,
     PreviousSwapLayout,
     NextSwapLayout,
     OverrideLayout,
@@ -371,6 +372,7 @@ pub enum ScreenContext {
     ResizePaneWithId,
     EditScrollbackForPaneWithId,
     WriteToPaneId,
+    SetPaneColor,
     WriteKeyToPaneId,
     CopyTextToClipboard,
     MovePaneWithPaneId,
@@ -411,6 +413,8 @@ pub enum ScreenContext {
     SetFollowedClient,
     WatcherTerminalResize,
     ClearMouseHelpText,
+    SetPluginRegexHighlights,
+    ClearPluginHighlights,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.
@@ -493,6 +497,7 @@ pub enum PluginContext {
     UpdateSessionSaveTime,
     GetLastSessionSaveTime,
     DetectPluginConfigChanges,
+    HighlightClicked,
 }
 
 /// Stack call representations corresponding to the different types of [`ClientInstruction`]s.
@@ -581,6 +586,10 @@ pub enum BackgroundJobContext {
     HighlightPanesWithMessage,
     QueryZellijWebServerStatus,
     ClearHelpText,
+    FlashPaneBell,
+    StopFlashPaneBell,
+    FlashTabBell,
+    StopFlashTabBell,
     Exit,
 }
 

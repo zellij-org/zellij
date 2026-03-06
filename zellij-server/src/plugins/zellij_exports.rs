@@ -6,7 +6,6 @@ use crate::plugins::wasm_bridge::handle_plugin_crash;
 use crate::pty::{ClientTabIndexOrPaneId, PtyInstruction};
 use crate::route::{route_action, wait_for_action_completion, NotificationEnd};
 use crate::ServerInstruction;
-use interprocess::local_socket::{prelude::*, GenericFilePath, Stream as LocalSocketStream};
 use log::warn;
 use serde::Serialize;
 use std::{
@@ -20,6 +19,7 @@ use std::{
 };
 use tokio::sync::oneshot;
 use wasmi::{Caller, Linker};
+use zellij_utils::consts::ipc_connect;
 use zellij_utils::data::{
     BreakPanesToNewTabResponse, BreakPanesToTabWithIdResponse, BreakPanesToTabWithIndexResponse,
     CommandType, ConnectToSession, DeleteLayoutResponse, EditLayoutResponse, Event,
@@ -37,7 +37,7 @@ use zellij_utils::data::{
     OpenTerminalInPlaceOfPluginResponse, OpenTerminalInPlaceResponse,
     OpenTerminalNearPluginResponse, OpenTerminalPaneInPlaceOfPaneIdResponse, OpenTerminalResponse,
     OriginatingPlugin, PaneScrollbackResponse, PermissionStatus, PermissionType, PluginPermission,
-    RenameLayoutResponse, SaveLayoutResponse, TabMetadata,
+    RegexHighlight, RenameLayoutResponse, SaveLayoutResponse, TabMetadata,
 };
 use zellij_utils::home::default_layout_dir;
 use zellij_utils::input::permission::PermissionCache;
@@ -73,16 +73,17 @@ use zellij_utils::{
             ProtobufLayoutParsingError, ProtobufPaneScrollbackResponse, ProtobufSyntaxError,
         },
         plugin_command::{
-            dump_layout_response, dump_session_layout_response, parse_layout_response,
-            save_session_response, ProtobufBreakPanesToNewTabResponse,
-            ProtobufBreakPanesToTabWithIdResponse, ProtobufBreakPanesToTabWithIndexResponse,
-            ProtobufDeleteLayoutResponse, ProtobufDumpLayoutResponse,
-            ProtobufDumpSessionLayoutResponse, ProtobufEditLayoutResponse,
-            ProtobufFocusOrCreateTabResponse, ProtobufGenerateRandomNameResponse,
-            ProtobufGetFocusedPaneInfoResponse, ProtobufGetLayoutDirResponse,
-            ProtobufGetPaneCwdResponse, ProtobufGetPaneInfoResponse, ProtobufGetPanePidResponse,
-            ProtobufGetPaneRunningCommandResponse, ProtobufGetSessionEnvironmentVariablesResponse,
-            ProtobufGetTabInfoResponse, ProtobufNewTabResponse, ProtobufNewTabsResponse,
+            dump_layout_response, dump_session_layout_response, hide_floating_panes_response,
+            parse_layout_response, save_session_response, show_floating_panes_response,
+            ProtobufBreakPanesToNewTabResponse, ProtobufBreakPanesToTabWithIdResponse,
+            ProtobufBreakPanesToTabWithIndexResponse, ProtobufDeleteLayoutResponse,
+            ProtobufDumpLayoutResponse, ProtobufDumpSessionLayoutResponse,
+            ProtobufEditLayoutResponse, ProtobufFocusOrCreateTabResponse,
+            ProtobufGenerateRandomNameResponse, ProtobufGetFocusedPaneInfoResponse,
+            ProtobufGetLayoutDirResponse, ProtobufGetPaneCwdResponse, ProtobufGetPaneInfoResponse,
+            ProtobufGetPanePidResponse, ProtobufGetPaneRunningCommandResponse,
+            ProtobufGetSessionEnvironmentVariablesResponse, ProtobufGetTabInfoResponse,
+            ProtobufHideFloatingPanesResponse, ProtobufNewTabResponse, ProtobufNewTabsResponse,
             ProtobufOpenCommandPaneBackgroundResponse,
             ProtobufOpenCommandPaneFloatingNearPluginResponse,
             ProtobufOpenCommandPaneFloatingResponse,
@@ -99,6 +100,7 @@ use zellij_utils::{
             ProtobufOpenTerminalPaneInPlaceOfPaneIdResponse, ProtobufOpenTerminalResponse,
             ProtobufParseLayoutResponse, ProtobufPluginCommand, ProtobufRenameLayoutResponse,
             ProtobufSaveLayoutResponse, ProtobufSaveSessionResponse,
+            ProtobufShowFloatingPanesResponse,
         },
         plugin_ids::{ProtobufPluginIds, ProtobufZellijVersion},
     },
@@ -594,6 +596,9 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::SetPaneBorderless(pane_id, borderless) => {
                         set_pane_borderless(env, pane_id.into(), borderless)
                     },
+                    PluginCommand::SetPaneColor(pane_id, fg, bg) => {
+                        set_pane_color(env, pane_id.into(), fg, bg)
+                    },
                     PluginCommand::OpenFileNearPlugin(file_to_open, context) => {
                         open_file_near_plugin(env, file_to_open, context)
                     },
@@ -732,6 +737,14 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                         close_replaced_pane,
                         context,
                     ),
+                    PluginCommand::ShowFloatingPanes { tab_id } => show_floating_panes(env, tab_id),
+                    PluginCommand::HideFloatingPanes { tab_id } => hide_floating_panes(env, tab_id),
+                    PluginCommand::SetPaneRegexHighlights(pane_id, highlights) => {
+                        set_pane_regex_highlights(env, pane_id, highlights)
+                    },
+                    PluginCommand::ClearPaneHighlights(pane_id) => {
+                        clear_pane_highlights(env, pane_id)
+                    },
                 },
                 (PermissionStatus::Denied, permission) => {
                     log::error!(
@@ -1097,6 +1110,16 @@ fn open_editor_pane_in_new_tab(
     context: BTreeMap<String, String>,
 ) {
     let _ = context; // context is not currently used for editor panes in new tab
+    let path = translate_plugin_path(env, file_to_open.path);
+    let cwd = file_to_open
+        .cwd
+        .map(|cwd| translate_plugin_path(env, cwd))
+        .or_else(|| Some(env.plugin_cwd.clone()));
+    let file_to_open = FileToOpen {
+        path,
+        cwd,
+        ..file_to_open
+    };
     let initial_panes = Some(vec![CommandOrPlugin::File(file_to_open)]);
     let action = Action::NewTab {
         tiled_layout: None,
@@ -1304,6 +1327,7 @@ fn open_file(env: &PluginEnv, file_to_open: FileToOpen, context: BTreeMap<String
         direction: None,
         floating,
         in_place,
+        close_replaced_pane: false,
         start_suppressed,
         coordinates: None,
         near_current_pane: false,
@@ -1405,6 +1429,7 @@ fn open_file_floating(
         direction: None,
         floating,
         in_place,
+        close_replaced_pane: false,
         start_suppressed,
         coordinates: floating_pane_coordinates,
         near_current_pane: false,
@@ -1444,6 +1469,7 @@ fn open_file_in_place(
         direction: None,
         floating,
         in_place,
+        close_replaced_pane: false,
         start_suppressed,
         coordinates: None,
         near_current_pane: false,
@@ -1756,7 +1782,7 @@ fn open_terminal_in_place(env: &PluginEnv, cwd: PathBuf) {
         pane_name: None,
         near_current_pane: false,
         pane_id_to_replace: None,
-        close_replace_pane: false,
+        close_replaced_pane: false,
     };
     let result = apply_action!(action, error_msg, env);
 
@@ -2257,7 +2283,7 @@ fn open_command_pane_in_place(
         pane_name: name,
         near_current_pane: false,
         pane_id_to_replace: None,
-        close_replace_pane: false,
+        close_replaced_pane: false,
     };
     let result = apply_action!(action, error_msg, env);
 
@@ -2672,7 +2698,7 @@ fn apply_layout(env: &PluginEnv, layout: Layout) {
 }
 
 fn new_tab(env: &PluginEnv, name: Option<String>, cwd: Option<String>) {
-    let cwd = cwd.map(|c| PathBuf::from(c));
+    let cwd = cwd.map(|c| translate_plugin_path(env, PathBuf::from(c)));
     let action = Action::NewTab {
         tiled_layout: None,
         floating_layouts: vec![],
@@ -2786,7 +2812,9 @@ fn switch_session(
     } else {
         let client_id = env.client_id;
         let tab_position = tab_position.map(|p| p + 1); // ¯\_()_/¯
-        let cwd = cwd.or_else(|| Some(env.plugin_cwd.clone()));
+        let cwd = cwd
+            .map(|c| translate_plugin_path(env, c))
+            .or_else(|| Some(env.plugin_cwd.clone()));
         let connect_to_session = ConnectToSession {
             name: session_name,
             tab_position,
@@ -3165,21 +3193,26 @@ fn disconnect_other_clients(env: &PluginEnv) {
 fn kill_sessions(session_names: Vec<String>) {
     for session_name in session_names {
         let path = &*ZELLIJ_SOCK_DIR.join(&session_name);
-        let fs_name = match path.to_fs_name::<GenericFilePath>() {
-            Ok(name) => name,
-            Err(e) => {
-                log::error!(
-                    "Failed to convert path for session {}: {:?}",
-                    session_name,
-                    e
-                );
-                continue;
-            },
-        };
-        match LocalSocketStream::connect(fs_name) {
+        match ipc_connect(path) {
             Ok(stream) => {
-                let _ = IpcSenderWithContext::<ClientToServerMsg>::new(stream)
-                    .send_client_msg(ClientToServerMsg::KillSession);
+                #[cfg(windows)]
+                {
+                    use zellij_utils::consts::ipc_connect_reply;
+                    use zellij_utils::ipc::{IpcReceiverWithContext, ServerToClientMsg};
+                    let reply = ipc_connect_reply(path);
+                    let _ = IpcSenderWithContext::<ClientToServerMsg>::new(stream)
+                        .send_client_msg(ClientToServerMsg::KillSession);
+                    if let Ok(reply_stream) = reply {
+                        let mut receiver: IpcReceiverWithContext<ServerToClientMsg> =
+                            IpcReceiverWithContext::new(reply_stream);
+                        let _ = receiver.recv_server_msg();
+                    }
+                }
+                #[cfg(not(windows))]
+                {
+                    let _ = IpcSenderWithContext::<ClientToServerMsg>::new(stream)
+                        .send_client_msg(ClientToServerMsg::KillSession);
+                }
             },
             Err(e) => {
                 log::error!("Failed to kill session {}: {:?}", session_name, e);
@@ -3296,6 +3329,97 @@ fn save_session(env: &PluginEnv) {
     };
 
     let _ = wasi_write_object(env, &response.encode_to_vec());
+}
+
+fn show_floating_panes(env: &PluginEnv, tab_id: Option<usize>) {
+    use show_floating_panes_response::Result as ShowResult;
+    let (completion_tx, completion_rx) = oneshot::channel();
+    let send_result = env
+        .senders
+        .send_to_screen(ScreenInstruction::ShowFloatingPanes {
+            client_id: env.client_id,
+            tab_id,
+            completion: Some(NotificationEnd::new(completion_tx)),
+        });
+    let response = if let Err(e) = send_result {
+        ProtobufShowFloatingPanesResponse {
+            result: Some(ShowResult::Error(format!("{}", e))),
+        }
+    } else {
+        let result = wait_for_action_completion(completion_rx, "show_floating_panes", false);
+        match result.exit_status {
+            Some(0) => ProtobufShowFloatingPanesResponse {
+                result: Some(ShowResult::Success(true)),
+            },
+            Some(2) => ProtobufShowFloatingPanesResponse {
+                result: Some(ShowResult::Success(false)),
+            },
+            _ => ProtobufShowFloatingPanesResponse {
+                result: Some(ShowResult::Error("Tab not found".to_string())),
+            },
+        }
+    };
+    let _ = wasi_write_object(env, &response.encode_to_vec());
+}
+
+fn hide_floating_panes(env: &PluginEnv, tab_id: Option<usize>) {
+    use hide_floating_panes_response::Result as HideResult;
+    let (completion_tx, completion_rx) = oneshot::channel();
+    let send_result = env
+        .senders
+        .send_to_screen(ScreenInstruction::HideFloatingPanes {
+            client_id: env.client_id,
+            tab_id,
+            completion: Some(NotificationEnd::new(completion_tx)),
+        });
+    let response = if let Err(e) = send_result {
+        ProtobufHideFloatingPanesResponse {
+            result: Some(HideResult::Error(format!("{}", e))),
+        }
+    } else {
+        let result = wait_for_action_completion(completion_rx, "hide_floating_panes", false);
+        match result.exit_status {
+            Some(0) => ProtobufHideFloatingPanesResponse {
+                result: Some(HideResult::Success(true)),
+            },
+            Some(2) => ProtobufHideFloatingPanesResponse {
+                result: Some(HideResult::Success(false)),
+            },
+            _ => ProtobufHideFloatingPanesResponse {
+                result: Some(HideResult::Error("Tab not found".to_string())),
+            },
+        }
+    };
+    let _ = wasi_write_object(env, &response.encode_to_vec());
+}
+
+fn set_pane_regex_highlights(
+    env: &PluginEnv,
+    pane_id: zellij_utils::data::PaneId,
+    highlights: Vec<RegexHighlight>,
+) {
+    let err_context = || "failed to set pane regex highlights".to_string();
+    let pane_id: PaneId = pane_id.into();
+    env.senders
+        .send_to_screen(ScreenInstruction::SetPluginRegexHighlights {
+            pane_id,
+            plugin_id: env.plugin_id,
+            highlights,
+        })
+        .with_context(err_context)
+        .non_fatal();
+}
+
+fn clear_pane_highlights(env: &PluginEnv, pane_id: zellij_utils::data::PaneId) {
+    let err_context = || "failed to clear pane highlights".to_string();
+    let pane_id: PaneId = pane_id.into();
+    env.senders
+        .send_to_screen(ScreenInstruction::ClearPluginHighlights {
+            pane_id,
+            plugin_id: env.plugin_id,
+        })
+        .with_context(err_context)
+        .non_fatal();
 }
 
 fn current_session_last_saved_time(env: &PluginEnv) {
@@ -3514,6 +3638,12 @@ fn set_pane_borderless(env: &PluginEnv, pane_id: PaneId, borderless: bool) {
         .send_to_screen(ScreenInstruction::SetPaneBorderless(
             pane_id, borderless, None,
         ));
+}
+
+fn set_pane_color(env: &PluginEnv, pane_id: PaneId, fg: Option<String>, bg: Option<String>) {
+    let _ = env
+        .senders
+        .send_to_screen(ScreenInstruction::SetPaneColor(pane_id, fg, bg, None));
 }
 
 fn scan_host_folder(env: &PluginEnv, folder_to_scan: PathBuf) {
@@ -4132,6 +4262,7 @@ fn try_edit_layout(
         direction: None,
         floating: false,
         in_place: true,
+        close_replaced_pane: false,
         start_suppressed: false,
         coordinates: None,
         near_current_pane: true,
@@ -4464,6 +4595,7 @@ fn load_new_plugin(
                 let _ = env.senders.send_to_plugin(PluginInstruction::Load(
                     should_float,
                     should_be_open_in_place,
+                    false, // close_replaced_pane
                     pane_title,
                     run_plugin_or_alias,
                     tab_index,
@@ -4973,6 +5105,7 @@ fn check_command_permission(
         | PluginCommand::ChangeFloatingPanesCoordinates(..)
         | PluginCommand::TogglePaneBorderless(..)
         | PluginCommand::SetPaneBorderless(..)
+        | PluginCommand::SetPaneColor(..)
         | PluginCommand::GroupAndUngroupPanes(..)
         | PluginCommand::HighlightAndUnhighlightPanes(..)
         | PluginCommand::CloseMultiplePanes(..)
@@ -4986,7 +5119,11 @@ fn check_command_permission(
         | PluginCommand::SaveLayout { .. }
         | PluginCommand::DeleteLayout { .. }
         | PluginCommand::RenameLayout { .. }
-        | PluginCommand::EditLayout { .. } => PermissionType::ChangeApplicationState,
+        | PluginCommand::EditLayout { .. }
+        | PluginCommand::ShowFloatingPanes { .. }
+        | PluginCommand::HideFloatingPanes { .. }
+        | PluginCommand::SetPaneRegexHighlights(..)
+        | PluginCommand::ClearPaneHighlights(..) => PermissionType::ChangeApplicationState,
         PluginCommand::UnblockCliPipeInput(..)
         | PluginCommand::BlockCliPipeInput(..)
         | PluginCommand::CliPipeOutput(..) => PermissionType::ReadCliPipes,

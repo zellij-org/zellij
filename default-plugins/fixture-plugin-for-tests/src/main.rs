@@ -76,6 +76,7 @@ impl ZellijPlugin for State {
             EventType::FileSystemDelete,
             EventType::BeforeClose,
             EventType::PluginConfigurationChanged,
+            EventType::HighlightClicked,
         ]);
         watch_filesystem();
     }
@@ -343,7 +344,7 @@ impl ZellijPlugin for State {
                     switch_session_with_layout(
                         Some("my_other_new_session_with_cwd"),
                         LayoutInfo::BuiltIn("compact".to_owned()),
-                        Some(std::path::PathBuf::from("/tmp")),
+                        Some(std::path::PathBuf::from("/foo/bar")),
                     );
                 },
                 BareKey::Char('0') if key.has_only_modifiers(&[KeyModifier::Ctrl]) => {
@@ -589,6 +590,23 @@ impl ZellijPlugin for State {
                 BareKey::Char('f') if key.has_only_modifiers(&[KeyModifier::Super]) => {
                     // Test send_sigkill_to_pane_id
                     send_sigkill_to_pane_id(PaneId::Terminal(1));
+                },
+                BareKey::Char('g') if key.has_only_modifiers(&[KeyModifier::Super]) => {
+                    // Test set_pane_regex_highlights
+                    let highlights = vec![RegexHighlight {
+                        pattern: "test_pattern".to_string(),
+                        style: HighlightStyle::Emphasis0,
+                        context: BTreeMap::new(),
+                        on_hover: false,
+                        bold: false,
+                        italic: true,
+                        underline: true,
+                    }];
+                    set_pane_regex_highlights(PaneId::Terminal(1), highlights);
+                },
+                BareKey::Char('h') if key.has_only_modifiers(&[KeyModifier::Super]) => {
+                    // Test clear_pane_highlights
+                    clear_pane_highlights(PaneId::Terminal(1));
                 },
                 BareKey::Char('a')
                     if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Shift]) =>

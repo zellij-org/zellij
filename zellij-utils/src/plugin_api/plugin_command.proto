@@ -196,6 +196,11 @@ enum CommandName {
   OpenCommandPaneInPlaceOfPaneId = 201;
   OpenTerminalPaneInPlaceOfPaneId = 202;
   OpenEditPaneInPlaceOfPaneId = 203;
+  HideFloatingPanes = 204;
+  ShowFloatingPanes = 205;
+  SetPaneColor = 206;
+  SetPaneRegexHighlights = 207;
+  ClearPaneHighlights = 208;
 }
 
 message PluginCommand {
@@ -341,6 +346,11 @@ message PluginCommand {
     OpenCommandPaneInPlaceOfPaneIdPayload open_command_pane_in_place_of_pane_id_payload = 152;
     OpenTerminalPaneInPlaceOfPaneIdPayload open_terminal_pane_in_place_of_pane_id_payload = 153;
     OpenEditPaneInPlaceOfPaneIdPayload open_edit_pane_in_place_of_pane_id_payload = 154;
+    HideFloatingPanesPayload hide_floating_panes_payload = 155;
+    ShowFloatingPanesPayload show_floating_panes_payload = 156;
+    SetPaneColorPayload set_pane_color_payload = 157;
+    SetPaneRegexHighlightsPayload set_pane_regex_highlights_payload = 158;
+    ClearPaneHighlightsPayload clear_pane_highlights_payload = 159;
   }
 }
 
@@ -1185,4 +1195,81 @@ message OpenTerminalPaneInPlaceOfPaneIdResponse {
 
 message OpenEditPaneInPlaceOfPaneIdResponse {
   optional PaneId pane_id = 1;
+}
+
+message HideFloatingPanesPayload {
+  optional uint32 tab_id = 1;
+}
+
+message ShowFloatingPanesPayload {
+  optional uint32 tab_id = 1;
+}
+
+message ShowFloatingPanesResponse {
+  oneof result {
+    bool success = 1;
+    string error = 2;
+  }
+}
+
+message HideFloatingPanesResponse {
+  oneof result {
+    bool success = 1;
+    string error = 2;
+  }
+}
+
+message SetPaneColorPayload {
+  PaneId pane_id = 1;
+  optional string fg = 2;
+  optional string bg = 3;
+}
+
+message HighlightStyle {
+  oneof style {
+    bool emphasis_0 = 1;
+    bool emphasis_1 = 2;
+    bool emphasis_2 = 3;
+    bool emphasis_3 = 4;
+    CustomRgbHighlight custom_rgb = 5;
+    CustomIndexHighlight custom_index = 6;
+    bool background_emphasis_0 = 7;
+    bool background_emphasis_1 = 8;
+    bool background_emphasis_2 = 9;
+    bool background_emphasis_3 = 10;
+    bool none = 11;
+  }
+}
+
+message CustomRgbHighlight {
+  optional uint32 fg_r = 1;
+  optional uint32 fg_g = 2;
+  optional uint32 fg_b = 3;
+  optional uint32 bg_r = 4;
+  optional uint32 bg_g = 5;
+  optional uint32 bg_b = 6;
+}
+
+message CustomIndexHighlight {
+  optional uint32 fg = 1;
+  optional uint32 bg = 2;
+}
+
+message RegexHighlight {
+  string pattern = 1;
+  HighlightStyle style = 2;
+  repeated ContextItem context = 3;
+  bool on_hover = 4;
+  bool bold = 5;
+  bool italic = 6;
+  bool underline = 7;
+}
+
+message SetPaneRegexHighlightsPayload {
+  PaneId pane_id = 1;
+  repeated RegexHighlight highlights = 2;
+}
+
+message ClearPaneHighlightsPayload {
+  PaneId pane_id = 1;
 }

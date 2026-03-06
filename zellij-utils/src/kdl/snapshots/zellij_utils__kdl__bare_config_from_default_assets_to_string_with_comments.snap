@@ -129,12 +129,6 @@ keybinds clear-defaults=true {
             }
             SwitchToMode "normal"
         }
-        bind "q" {
-            LaunchPlugin "zellij:sequence" {
-                floating true
-            }
-            SwitchToMode "normal"
-        }
         bind "s" {
             LaunchOrFocusPlugin "zellij:share" {
                 floating true
@@ -271,7 +265,6 @@ plugins {
         cwd "/"
     }
     plugin-manager location="zellij:plugin-manager"
-    sequence location="zellij:sequence"
     session-manager location="zellij:session-manager"
     status-bar location="zellij:status-bar"
     strider location="zellij:strider"
@@ -285,6 +278,7 @@ plugins {
 // eg. "file:/path/to/my-plugin.wasm"
 // eg. "https://example.com/my-plugin.wasm"
 load_plugins {
+    zellij:link
 }
 web_client {
     font "monospace"
@@ -542,6 +536,10 @@ web_client {
 // Whether to enable mouse hover visual effects (frame highlight and help text)
 // default is true
 // mouse_hover_effects false
+ 
+// Whether to show visual bell indicators (pane/tab frame flash and [!] suffix)
+// default is true
+// visual_bell true
  
 // The ip address the web server should listen on when it starts
 // Default: "127.0.0.1"

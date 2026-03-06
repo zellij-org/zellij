@@ -22,7 +22,7 @@ use zellij_utils::pane_size::Offset;
 use zellij_utils::{
     data::{
         BareKey, InputMode, KeyWithModifier, Palette, PaletteColor, PaneId as ZellijUtilsPaneId,
-        Style, Styling,
+        RegexHighlight, Style, Styling,
     },
     errors::prelude::*,
     input::layout::Run,
@@ -148,6 +148,7 @@ pub struct TerminalPane {
     banner: Option<String>, // a banner to be rendered inside this TerminalPane, used for panes
     // held on startup and can possibly be used to display some errors
     pane_frame_color_override: Option<(PaletteColor, Option<String>)>,
+    has_bell_notification: bool,
     invoked_with: Option<Run>,
     #[allow(dead_code)]
     arrow_fonts: bool,
@@ -316,6 +317,13 @@ impl Pane for TerminalPane {
     fn set_selectable(&mut self, selectable: bool) {
         self.selectable = selectable;
     }
+    fn set_pane_default_colors(&mut self, fg: Option<String>, bg: Option<String>) {
+        self.grid.set_pane_default_colors(fg, bg);
+        self.set_should_render(true);
+    }
+    fn get_pane_default_colors(&self) -> (Option<String>, Option<String>) {
+        self.grid.get_pane_default_color_strings()
+    }
     fn render(
         &mut self,
         _client_id: Option<ClientId>,
@@ -347,13 +355,7 @@ impl Pane for TerminalPane {
     ) -> Result<Option<(Vec<CharacterChunk>, Option<String>)>> {
         let err_context = || format!("failed to render frame for client {client_id}");
         // TODO: remove the cursor stuff from here
-        let pane_title = if let Some(text_color_override) = self
-            .pane_frame_color_override
-            .as_ref()
-            .and_then(|(_color, text)| text.as_ref())
-        {
-            text_color_override.into()
-        } else if self.pane_name.is_empty()
+        let normal_title = if self.pane_name.is_empty()
             && input_mode == InputMode::RenamePane
             && frame_params.is_main_client
         {
@@ -390,6 +392,17 @@ impl Pane for TerminalPane {
                 .unwrap_or_else(|| self.pane_title.clone())
         } else {
             self.pane_name.clone()
+        };
+        let pane_title = if let Some(text_color_override) = self
+            .pane_frame_color_override
+            .as_ref()
+            .and_then(|(_color, text)| text.as_ref())
+        {
+            text_color_override.into()
+        } else if self.has_bell_notification {
+            format!("{} [!]", normal_title)
+        } else {
+            normal_title
         };
 
         let frame_geom = self.current_geom();
@@ -772,6 +785,18 @@ impl Pane for TerminalPane {
         }
         self.set_should_render(true);
     }
+    fn has_bell(&self) -> bool {
+        self.grid.ring_bell
+    }
+    fn consume_bell(&mut self) {
+        self.grid.ring_bell = false;
+    }
+    fn set_bell_notification(&mut self, val: bool) {
+        self.has_bell_notification = val;
+    }
+    fn get_bell_notification(&self) -> bool {
+        self.has_bell_notification
+    }
     fn add_red_pane_frame_color_override(&mut self, error_text: Option<String>) {
         self.pane_frame_color_override = Some((self.style.colors.exit_code_error.base, error_text));
     }
@@ -781,7 +806,7 @@ impl Pane for TerminalPane {
         _client_id: Option<ClientId>,
     ) {
         // TODO: if we have a client_id, we should only highlight the frame for this client
-        self.pane_frame_color_override = Some((self.style.colors.frame_highlight.base, text));
+        self.pane_frame_color_override = Some((self.style.colors.frame_highlight.emphasis_0, text));
     }
     fn clear_pane_frame_color_override(&mut self, _client_id: Option<ClientId>) {
         // TODO: if we have a client_id, we should only clear the highlight for this client
@@ -933,6 +958,38 @@ impl Pane for TerminalPane {
             }
         }
     }
+    fn set_plugin_regex_highlights(
+        &mut self,
+        plugin_id: u32,
+        highlights: Vec<RegexHighlight>,
+        style: &Style,
+    ) {
+        self.grid
+            .set_plugin_regex_highlights(plugin_id, highlights, style);
+        self.set_should_render(true);
+    }
+    fn clear_plugin_highlights(&mut self, plugin_id: u32) {
+        self.grid.clear_plugin_highlights(plugin_id);
+        self.set_should_render(true);
+    }
+    fn set_hover_position(&mut self, position: Option<Position>) {
+        self.grid.set_hover_position(position);
+        self.set_should_render(true);
+    }
+    fn plugin_highlight_at(
+        &self,
+        position: &Position,
+    ) -> Option<(
+        u32,
+        String,
+        String,
+        std::collections::BTreeMap<String, String>,
+    )> {
+        self.grid.plugin_highlight_at(position)
+    }
+    fn terminal_emulator_wants_mouse(&self) -> bool {
+        self.grid.mouse_tracking != crate::panes::grid::MouseTracking::Off
+    }
 }
 
 impl TerminalPane {
@@ -999,6 +1056,7 @@ impl TerminalPane {
             is_held: None,
             banner: None,
             pane_frame_color_override: None,
+            has_bell_notification: false,
             invoked_with,
             arrow_fonts,
             notification_end,

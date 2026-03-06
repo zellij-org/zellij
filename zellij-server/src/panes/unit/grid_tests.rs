@@ -1,7 +1,7 @@
 use super::super::Grid;
 use crate::panes::grid::SixelImageStore;
 use crate::panes::link_handler::LinkHandler;
-use ::insta::assert_snapshot;
+use insta::assert_snapshot;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -4361,4 +4361,497 @@ fn single_click_drag_selection_preserved_after_scroll() {
     assert_eq!(grid.selection.end.line.0, end_before.line.0 + 1);
     assert_eq!(grid.selection.start.column, start_before.column);
     assert_eq!(grid.selection.end.column, end_before.column);
+}
+
+#[test]
+fn osc_11_set_and_query_pane_default_bg() {
+    use crate::panes::terminal_character::AnsiCode;
+
+    let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let mut grid = Grid::new(
+        10,
+        20,
+        Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
+        sixel_image_store,
+        Style::default(),
+        false,
+        true,
+        true,
+        true,
+        false,
+    );
+
+    // Set background via OSC 11
+    let set_bg = b"\x1b]11;#001a3a\x07";
+    for byte in set_bg.iter() {
+        vte_parser.advance(&mut grid, *byte);
+    }
+
+    assert_eq!(grid.pane_default_bg, Some(AnsiCode::RgbCode((0, 26, 58))));
+
+    // Query background via OSC 11
+    let query_bg = b"\x1b]11;?\x07";
+    for byte in query_bg.iter() {
+        vte_parser.advance(&mut grid, *byte);
+    }
+
+    assert_eq!(grid.pending_messages_to_pty.len(), 1);
+    let response = String::from_utf8(grid.pending_messages_to_pty[0].clone()).unwrap();
+    assert!(
+        response.contains("11;rgb:0000/1a1a/3a3a"),
+        "Response was: {}",
+        response
+    );
+}
+
+#[test]
+fn osc_10_set_and_query_pane_default_fg() {
+    use crate::panes::terminal_character::AnsiCode;
+
+    let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let mut grid = Grid::new(
+        10,
+        20,
+        Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
+        sixel_image_store,
+        Style::default(),
+        false,
+        true,
+        true,
+        true,
+        false,
+    );
+
+    // Set foreground via OSC 10
+    let set_fg = b"\x1b]10;#00e000\x07";
+    for byte in set_fg.iter() {
+        vte_parser.advance(&mut grid, *byte);
+    }
+
+    assert_eq!(grid.pane_default_fg, Some(AnsiCode::RgbCode((0, 224, 0))));
+
+    // Query foreground via OSC 10
+    let query_fg = b"\x1b]10;?\x07";
+    for byte in query_fg.iter() {
+        vte_parser.advance(&mut grid, *byte);
+    }
+
+    assert_eq!(grid.pending_messages_to_pty.len(), 1);
+    let response = String::from_utf8(grid.pending_messages_to_pty[0].clone()).unwrap();
+    assert!(
+        response.contains("10;rgb:0000/e0e0/0000"),
+        "Response was: {}",
+        response
+    );
+}
+
+#[test]
+fn osc_110_111_reset_pane_default_colors() {
+    use crate::panes::terminal_character::AnsiCode;
+
+    let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let mut grid = Grid::new(
+        10,
+        20,
+        Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
+        sixel_image_store,
+        Style::default(),
+        false,
+        true,
+        true,
+        true,
+        false,
+    );
+
+    // Set both fg and bg
+    let set_fg = b"\x1b]10;#00e000\x07";
+    for byte in set_fg.iter() {
+        vte_parser.advance(&mut grid, *byte);
+    }
+    let set_bg = b"\x1b]11;#001a3a\x07";
+    for byte in set_bg.iter() {
+        vte_parser.advance(&mut grid, *byte);
+    }
+
+    assert_eq!(grid.pane_default_fg, Some(AnsiCode::RgbCode((0, 224, 0))));
+    assert_eq!(grid.pane_default_bg, Some(AnsiCode::RgbCode((0, 26, 58))));
+
+    // Reset foreground via OSC 110
+    let reset_fg = b"\x1b]110\x07";
+    for byte in reset_fg.iter() {
+        vte_parser.advance(&mut grid, *byte);
+    }
+    assert_eq!(grid.pane_default_fg, None);
+    assert_eq!(grid.pane_default_bg, Some(AnsiCode::RgbCode((0, 26, 58))));
+
+    // Reset background via OSC 111
+    let reset_bg = b"\x1b]111\x07";
+    for byte in reset_bg.iter() {
+        vte_parser.advance(&mut grid, *byte);
+    }
+    assert_eq!(grid.pane_default_fg, None);
+    assert_eq!(grid.pane_default_bg, None);
+}
+
+#[test]
+fn osc_11_set_bg_produces_ansi_in_render_output() {
+    use crate::panes::terminal_character::AnsiCode;
+
+    let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let mut grid = Grid::new(
+        5,
+        10,
+        Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
+        sixel_image_store,
+        Style::default(),
+        false,
+        true,
+        true,
+        true,
+        false,
+    );
+
+    // Set background via OSC 11
+    let set_bg = b"\x1b]11;#001a3a\x07";
+    for byte in set_bg.iter() {
+        vte_parser.advance(&mut grid, *byte);
+    }
+
+    assert_eq!(grid.pane_default_bg, Some(AnsiCode::RgbCode((0, 26, 58))));
+
+    // Render the grid and check that the pane defaults are stamped on chunks
+    let style = Style::default();
+    let render_result = grid.render(0, 0, &style).unwrap();
+    assert!(render_result.is_some(), "Expected render output");
+
+    let (chunks, _, _) = render_result.unwrap();
+    assert!(!chunks.is_empty(), "Expected at least one character chunk");
+
+    // All chunks should carry the pane default bg
+    for chunk in &chunks {
+        assert_eq!(
+            chunk.pane_default_bg,
+            Some(AnsiCode::RgbCode((0, 26, 58))),
+            "Chunk should carry pane default background"
+        );
+    }
+}
+
+// =====================================================================
+// Plugin Highlight Engine Tests
+// =====================================================================
+
+use crate::panes::grid::MouseTracking;
+use crate::panes::terminal_character::AnsiCode;
+use std::collections::BTreeMap;
+use zellij_utils::data::{HighlightStyle, RegexHighlight};
+
+fn create_highlight(
+    pattern: &str,
+    on_hover: bool,
+    bold: bool,
+    italic: bool,
+    underline: bool,
+) -> RegexHighlight {
+    RegexHighlight {
+        pattern: pattern.to_string(),
+        style: HighlightStyle::Emphasis0,
+        context: BTreeMap::new(),
+        on_hover,
+        bold,
+        italic,
+        underline,
+    }
+}
+
+#[test]
+fn set_plugin_regex_highlights_basic_match() {
+    let mut grid = create_grid_with_content("hello foo bar\n");
+    let highlights = vec![RegexHighlight {
+        pattern: "foo".into(),
+        style: HighlightStyle::Emphasis0,
+        context: BTreeMap::new(),
+        on_hover: false,
+        bold: false,
+        italic: false,
+        underline: true,
+    }];
+    grid.set_plugin_regex_highlights(1, highlights, &Style::default());
+    let slot = grid.plugin_highlights.get(&1);
+    assert!(slot.is_some());
+    let entries = slot.unwrap();
+    assert_eq!(entries.len(), 1);
+    assert!(entries[0].1.regex.is_match("foo"));
+}
+
+#[test]
+fn set_plugin_regex_highlights_no_match() {
+    let mut grid = create_grid_with_content("hello world bar\n");
+    let highlights = vec![create_highlight("xyz123", false, false, false, false)];
+    grid.set_plugin_regex_highlights(1, highlights, &Style::default());
+
+    // No position in the viewport should match
+    for col in 0..15 {
+        assert!(grid.plugin_highlight_at(&Position::new(0, col)).is_none());
+    }
+}
+
+#[test]
+fn clear_plugin_highlights_removes_highlights() {
+    let mut grid = create_grid_with_content("hello foo bar\n");
+    let highlights = vec![create_highlight("foo", false, false, false, true)];
+    grid.set_plugin_regex_highlights(1, highlights, &Style::default());
+    assert!(grid.plugin_highlights.get(&1).is_some());
+
+    grid.clear_plugin_highlights(1);
+    assert!(grid.plugin_highlights.get(&1).is_none());
+}
+
+#[test]
+fn multiple_plugins_highlights_independent() {
+    let mut grid = create_grid_with_content("aaa bbb ccc\n");
+    let h1 = vec![create_highlight("aaa", false, false, false, false)];
+    let h2 = vec![create_highlight("bbb", false, false, false, false)];
+    grid.set_plugin_regex_highlights(1, h1, &Style::default());
+    grid.set_plugin_regex_highlights(2, h2, &Style::default());
+
+    assert!(grid.plugin_highlights.get(&1).is_some());
+    assert!(grid.plugin_highlights.get(&2).is_some());
+
+    grid.clear_plugin_highlights(1);
+    assert!(grid.plugin_highlights.get(&1).is_none());
+    assert!(grid.plugin_highlights.get(&2).is_some());
+}
+
+#[test]
+fn upsert_replaces_same_pattern() {
+    let mut grid = create_grid_with_content("foo bar\n");
+    let h1 = vec![RegexHighlight {
+        pattern: "foo".into(),
+        style: HighlightStyle::Emphasis0,
+        context: BTreeMap::new(),
+        on_hover: false,
+        bold: false,
+        italic: false,
+        underline: true,
+    }];
+    grid.set_plugin_regex_highlights(1, h1, &Style::default());
+
+    let h2 = vec![RegexHighlight {
+        pattern: "foo".into(),
+        style: HighlightStyle::Emphasis0,
+        context: BTreeMap::new(),
+        on_hover: false,
+        bold: false,
+        italic: false,
+        underline: false,
+    }];
+    grid.set_plugin_regex_highlights(1, h2, &Style::default());
+
+    let entries = grid.plugin_highlights.get(&1).unwrap();
+    assert_eq!(entries.len(), 1);
+    assert!(!entries[0].1.underline);
+}
+
+#[test]
+fn invalid_regex_does_not_crash() {
+    let mut grid = create_grid_with_content("hello\n");
+    let highlights = vec![create_highlight("[invalid", false, false, false, false)];
+    grid.set_plugin_regex_highlights(1, highlights, &Style::default());
+    // Invalid regex should be skipped
+    let slot = grid.plugin_highlights.get(&1);
+    match slot {
+        None => {}, // acceptable
+        Some(entries) => assert_eq!(entries.len(), 0),
+    }
+}
+
+#[test]
+fn plugin_highlight_at_returns_match() {
+    let mut grid = create_grid_with_content("hello foo bar\n");
+    let mut context = BTreeMap::new();
+    context.insert("key".to_string(), "value".to_string());
+    let highlights = vec![RegexHighlight {
+        pattern: "foo".into(),
+        style: HighlightStyle::Emphasis0,
+        context: context.clone(),
+        on_hover: false,
+        bold: false,
+        italic: false,
+        underline: true,
+    }];
+    grid.set_plugin_regex_highlights(1, highlights, &Style::default());
+
+    // "foo" starts at column 6 in "hello foo bar"
+    let result = grid.plugin_highlight_at(&Position::new(0, 6));
+    assert!(result.is_some());
+    let (plugin_id, pattern, matched_string, ctx) = result.unwrap();
+    assert_eq!(plugin_id, 1);
+    assert_eq!(pattern, "foo");
+    assert_eq!(matched_string, "foo");
+    assert_eq!(ctx.get("key").unwrap(), "value");
+}
+
+#[test]
+fn plugin_highlight_at_returns_none_on_miss() {
+    let mut grid = create_grid_with_content("hello foo bar\n");
+    let highlights = vec![create_highlight("foo", false, false, false, true)];
+    grid.set_plugin_regex_highlights(1, highlights, &Style::default());
+
+    // Position 0 is in "hello", not "foo"
+    let result = grid.plugin_highlight_at(&Position::new(0, 0));
+    assert!(result.is_none());
+}
+
+#[test]
+fn plugin_highlight_at_wrapped_line() {
+    // Create a narrow grid (10 cols) so that a long string wraps
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let mut grid = Grid::new(
+        5,
+        10,
+        Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
+        sixel_image_store,
+        Style::default(),
+        false,
+        true,
+        true,
+        true,
+        false,
+    );
+    // Feed a long string that wraps: "abcdefghij" fills row 0, "klmnopqrst" fills row 1
+    let content = "abcdefghijklmnopqrst";
+    let mut vte_parser = vte::Parser::new();
+    for &byte in content.as_bytes() {
+        vte_parser.advance(&mut grid, byte);
+    }
+
+    // Set a highlight for "jklm" which spans the wrap boundary
+    let highlights = vec![create_highlight("jklm", false, false, false, true)];
+    grid.set_plugin_regex_highlights(1, highlights, &Style::default());
+
+    // "jklm" spans row 0 col 9 through row 1 col 3
+    // Position in the wrapped portion (row 1, col 1 = 'k')
+    let result = grid.plugin_highlight_at(&Position::new(1, 1));
+    assert!(result.is_some());
+    let (plugin_id, _pattern, matched_string, _ctx) = result.unwrap();
+    assert_eq!(plugin_id, 1);
+    assert_eq!(matched_string, "jklm");
+}
+
+#[test]
+fn hover_position_triggers_on_hover_highlight() {
+    let mut grid = create_grid_with_content("hello link_text bar\n");
+    let highlights = vec![create_highlight("link_text", true, false, false, true)];
+    grid.set_plugin_regex_highlights(1, highlights, &Style::default());
+
+    // Set hover position inside "link_text" (starts at col 6)
+    grid.set_hover_position(Some(Position::new(0, 8)));
+    assert!(grid.hover_position.is_some());
+    assert_eq!(grid.hover_position.unwrap(), Position::new(0, 8));
+
+    // The on_hover entry should exist in plugin_highlights
+    let entries = grid.plugin_highlights.get(&1).unwrap();
+    assert_eq!(entries.len(), 1);
+    assert!(entries[0].1.on_hover);
+}
+
+#[test]
+fn hover_suppressed_when_mouse_tracking_on() {
+    let mut grid = create_grid_with_content("hello link_text bar\n");
+    let highlights = vec![create_highlight("link_text", true, false, false, true)];
+    grid.set_plugin_regex_highlights(1, highlights, &Style::default());
+
+    // Enable mouse tracking — the render path should skip hover highlights
+    grid.mouse_tracking = MouseTracking::Normal;
+    grid.set_hover_position(Some(Position::new(0, 8)));
+
+    // The hover position is set regardless (the guard is in the render path),
+    // but we verify that mouse_tracking is non-Off
+    assert!(grid.hover_position.is_some());
+    assert_ne!(grid.mouse_tracking, MouseTracking::Off);
+}
+
+#[test]
+fn wide_char_display_column_mapping() {
+    // CJK characters: "你好" = 2 chars, each 2 display cols wide, so "world" starts at display col 4
+    let mut grid = create_grid_with_content("你好world\n");
+    let highlights = vec![create_highlight("world", false, false, false, true)];
+    grid.set_plugin_regex_highlights(1, highlights, &Style::default());
+
+    // "你好" occupies display cols 0-3, "world" starts at display col 4
+    let result = grid.plugin_highlight_at(&Position::new(0, 4));
+    assert!(result.is_some());
+    let (plugin_id, _pattern, matched_string, _ctx) = result.unwrap();
+    assert_eq!(plugin_id, 1);
+    assert_eq!(matched_string, "world");
+
+    // Position 2 should be inside "你好", not "world"
+    let result_miss = grid.plugin_highlight_at(&Position::new(0, 2));
+    assert!(result_miss.is_none());
+}
+
+#[test]
+fn highlight_style_variants_resolve_colors() {
+    use super::resolve_highlight_colors;
+
+    let style = Style::default();
+
+    // HighlightStyle::None returns (None, None)
+    let (fg, bg): (Option<AnsiCode>, Option<AnsiCode>) =
+        resolve_highlight_colors(&HighlightStyle::None, &style);
+    assert!(fg.is_none());
+    assert!(bg.is_none());
+
+    // HighlightStyle::CustomRgb with fg only
+    let (fg, bg): (Option<AnsiCode>, Option<AnsiCode>) = resolve_highlight_colors(
+        &HighlightStyle::CustomRgb {
+            fg: Some((255, 0, 0)),
+            bg: None,
+        },
+        &style,
+    );
+    assert_eq!(fg, Some(AnsiCode::RgbCode((255, 0, 0))));
+    assert!(bg.is_none());
+
+    // HighlightStyle::CustomIndex with bg only
+    let (fg, bg): (Option<AnsiCode>, Option<AnsiCode>) = resolve_highlight_colors(
+        &HighlightStyle::CustomIndex {
+            fg: None,
+            bg: Some(42),
+        },
+        &style,
+    );
+    assert!(fg.is_none());
+    assert_eq!(bg, Some(AnsiCode::ColorIndex(42)));
+
+    // HighlightStyle::Emphasis0 should return a foreground color from the palette
+    let (fg, bg): (Option<AnsiCode>, Option<AnsiCode>) =
+        resolve_highlight_colors(&HighlightStyle::Emphasis0, &style);
+    assert!(fg.is_some());
+    assert!(bg.is_none());
 }

@@ -53,6 +53,18 @@ use zellij_utils::{
     pane_size::Size,
 };
 
+/// On Windows, colons in URL strings (e.g. `zellij:tab-bar`, `file:///...`)
+/// are illegal in path components. Replace them with underscores.
+#[cfg(windows)]
+fn make_plugin_url_path_safe(url: String) -> String {
+    url.replace(':', "_")
+}
+
+#[cfg(not(windows))]
+fn make_plugin_url_path_safe(url: String) -> String {
+    url
+}
+
 #[derive(Debug, Clone)]
 pub enum EventOrPipeMessage {
     Event(Event),
@@ -115,10 +127,14 @@ impl LoadingContext {
         size: Size,
     ) -> Self {
         let plugin_own_data_dir = ZELLIJ_SESSION_CACHE_DIR
-            .join(Url::from(&plugin_config.location).to_string())
+            .join(make_plugin_url_path_safe(
+                Url::from(&plugin_config.location).to_string(),
+            ))
             .join(format!("{}-{}", plugin_id, client_id));
         let plugin_own_cache_dir = ZELLIJ_CACHE_DIR
-            .join(Url::from(&plugin_config.location).to_string())
+            .join(make_plugin_url_path_safe(
+                Url::from(&plugin_config.location).to_string(),
+            ))
             .join(format!("plugin_cache"));
         let default_mode = wasm_bridge
             .base_modes
@@ -498,6 +514,10 @@ impl WasmBridge {
                     .senders
                     .send_to_screen(ScreenInstruction::ClearKeyPressesIntercepts(client_id));
             }
+            // Clear any regex highlights this plugin registered across all panes
+            let _ = self
+                .senders
+                .send_to_screen(ScreenInstruction::ClearAllPluginHighlights(plugin_id));
 
             // Send worker exit messages
             for (_worker_name, worker_sender) in workers {
@@ -1774,6 +1794,7 @@ impl WasmBridge {
                             drop(self.senders.send_to_screen(ScreenInstruction::AddPlugin(
                                 Some(should_float),
                                 should_be_open_in_place,
+                                false, // close_replaced_pane
                                 run_plugin_or_alias,
                                 pane_title,
                                 None,
@@ -1993,6 +2014,7 @@ fn check_event_permission(
         | Event::CwdChanged(..)
         | Event::AvailableLayoutInfo(..)
         | Event::PluginConfigurationChanged(..)
+        | Event::HighlightClicked { .. }
         | Event::InputReceived => PermissionType::ReadApplicationState,
         Event::WebServerStatus(..) => PermissionType::StartWebServer,
         Event::PaneRenderReport(..) => PermissionType::ReadPaneContents,

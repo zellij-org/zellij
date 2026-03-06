@@ -88,6 +88,8 @@ Each node has following fields:
 * __plugin: /path/to/plugin.wasm__ - optional path to a compiled Zellij plugin.
   If indicated loads a plugin into the created space. For more information see
   PLUGINS section.
+* __default_fg: \<color\>__ - set the default foreground color for a pane (e.g. `"#00e000"`).
+* __default_bg: \<color\>__ - set the default background color for a pane (e.g. `"#001a3a"`).
 
 KEYBINDINGS
 ===========
@@ -176,6 +178,7 @@ ACTIONS
   on the current tab and normal mode.
 * __UndoRenameTab__ - undoes the changed tab name and reverts to the previous name.
 * __UndoRenamePane__ - undoes the changed pane name and reverts to the previous name.
+* __SetPaneColor__ - sets the default foreground and/or background color of a pane.
 
 
 KEYS

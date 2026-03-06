@@ -794,6 +794,8 @@ pub struct FloatingPaneLayout {
     pub already_running: bool,
     pub pane_initial_contents: Option<String>,
     pub logical_position: Option<usize>,
+    pub default_fg: Option<String>,
+    pub default_bg: Option<String>,
 }
 
 impl FloatingPaneLayout {
@@ -811,6 +813,8 @@ impl FloatingPaneLayout {
             already_running: false,
             pane_initial_contents: None,
             logical_position: None,
+            default_fg: None,
+            default_bg: None,
         }
     }
     pub fn add_cwd_to_layout(&mut self, cwd: &PathBuf) {
@@ -855,6 +859,8 @@ pub struct TiledPaneLayout {
     pub run_instructions_to_ignore: Vec<Option<Run>>,
     pub hide_floating_panes: bool, // only relevant if this is the base layout
     pub pane_initial_contents: Option<String>,
+    pub default_fg: Option<String>,
+    pub default_bg: Option<String>,
 }
 
 impl TiledPaneLayout {

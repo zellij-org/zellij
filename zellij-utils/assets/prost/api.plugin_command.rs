@@ -3,7 +3,7 @@
 pub struct PluginCommand {
     #[prost(enumeration="CommandName", tag="1")]
     pub name: i32,
-    #[prost(oneof="plugin_command::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154")]
+    #[prost(oneof="plugin_command::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159")]
     pub payload: ::core::option::Option<plugin_command::Payload>,
 }
 /// Nested message and enum types in `PluginCommand`.
@@ -291,6 +291,16 @@ pub mod plugin_command {
         OpenTerminalPaneInPlaceOfPaneIdPayload(super::OpenTerminalPaneInPlaceOfPaneIdPayload),
         #[prost(message, tag="154")]
         OpenEditPaneInPlaceOfPaneIdPayload(super::OpenEditPaneInPlaceOfPaneIdPayload),
+        #[prost(message, tag="155")]
+        HideFloatingPanesPayload(super::HideFloatingPanesPayload),
+        #[prost(message, tag="156")]
+        ShowFloatingPanesPayload(super::ShowFloatingPanesPayload),
+        #[prost(message, tag="157")]
+        SetPaneColorPayload(super::SetPaneColorPayload),
+        #[prost(message, tag="158")]
+        SetPaneRegexHighlightsPayload(super::SetPaneRegexHighlightsPayload),
+        #[prost(message, tag="159")]
+        ClearPaneHighlightsPayload(super::ClearPaneHighlightsPayload),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -1718,6 +1728,153 @@ pub struct OpenEditPaneInPlaceOfPaneIdResponse {
     #[prost(message, optional, tag="1")]
     pub pane_id: ::core::option::Option<PaneId>,
 }
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct HideFloatingPanesPayload {
+    #[prost(uint32, optional, tag="1")]
+    pub tab_id: ::core::option::Option<u32>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ShowFloatingPanesPayload {
+    #[prost(uint32, optional, tag="1")]
+    pub tab_id: ::core::option::Option<u32>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ShowFloatingPanesResponse {
+    #[prost(oneof="show_floating_panes_response::Result", tags="1, 2")]
+    pub result: ::core::option::Option<show_floating_panes_response::Result>,
+}
+/// Nested message and enum types in `ShowFloatingPanesResponse`.
+pub mod show_floating_panes_response {
+    #[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Result {
+        #[prost(bool, tag="1")]
+        Success(bool),
+        #[prost(string, tag="2")]
+        Error(::prost::alloc::string::String),
+    }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct HideFloatingPanesResponse {
+    #[prost(oneof="hide_floating_panes_response::Result", tags="1, 2")]
+    pub result: ::core::option::Option<hide_floating_panes_response::Result>,
+}
+/// Nested message and enum types in `HideFloatingPanesResponse`.
+pub mod hide_floating_panes_response {
+    #[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Result {
+        #[prost(bool, tag="1")]
+        Success(bool),
+        #[prost(string, tag="2")]
+        Error(::prost::alloc::string::String),
+    }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SetPaneColorPayload {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+    #[prost(string, optional, tag="2")]
+    pub fg: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag="3")]
+    pub bg: ::core::option::Option<::prost::alloc::string::String>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct HighlightStyle {
+    #[prost(oneof="highlight_style::Style", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11")]
+    pub style: ::core::option::Option<highlight_style::Style>,
+}
+/// Nested message and enum types in `HighlightStyle`.
+pub mod highlight_style {
+    #[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Style {
+        #[prost(bool, tag="1")]
+        Emphasis0(bool),
+        #[prost(bool, tag="2")]
+        Emphasis1(bool),
+        #[prost(bool, tag="3")]
+        Emphasis2(bool),
+        #[prost(bool, tag="4")]
+        Emphasis3(bool),
+        #[prost(message, tag="5")]
+        CustomRgb(super::CustomRgbHighlight),
+        #[prost(message, tag="6")]
+        CustomIndex(super::CustomIndexHighlight),
+        #[prost(bool, tag="7")]
+        BackgroundEmphasis0(bool),
+        #[prost(bool, tag="8")]
+        BackgroundEmphasis1(bool),
+        #[prost(bool, tag="9")]
+        BackgroundEmphasis2(bool),
+        #[prost(bool, tag="10")]
+        BackgroundEmphasis3(bool),
+        #[prost(bool, tag="11")]
+        None(bool),
+    }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CustomRgbHighlight {
+    #[prost(uint32, optional, tag="1")]
+    pub fg_r: ::core::option::Option<u32>,
+    #[prost(uint32, optional, tag="2")]
+    pub fg_g: ::core::option::Option<u32>,
+    #[prost(uint32, optional, tag="3")]
+    pub fg_b: ::core::option::Option<u32>,
+    #[prost(uint32, optional, tag="4")]
+    pub bg_r: ::core::option::Option<u32>,
+    #[prost(uint32, optional, tag="5")]
+    pub bg_g: ::core::option::Option<u32>,
+    #[prost(uint32, optional, tag="6")]
+    pub bg_b: ::core::option::Option<u32>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CustomIndexHighlight {
+    #[prost(uint32, optional, tag="1")]
+    pub fg: ::core::option::Option<u32>,
+    #[prost(uint32, optional, tag="2")]
+    pub bg: ::core::option::Option<u32>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RegexHighlight {
+    #[prost(string, tag="1")]
+    pub pattern: ::prost::alloc::string::String,
+    #[prost(message, optional, tag="2")]
+    pub style: ::core::option::Option<HighlightStyle>,
+    #[prost(message, repeated, tag="3")]
+    pub context: ::prost::alloc::vec::Vec<ContextItem>,
+    #[prost(bool, tag="4")]
+    pub on_hover: bool,
+    #[prost(bool, tag="5")]
+    pub bold: bool,
+    #[prost(bool, tag="6")]
+    pub italic: bool,
+    #[prost(bool, tag="7")]
+    pub underline: bool,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SetPaneRegexHighlightsPayload {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+    #[prost(message, repeated, tag="2")]
+    pub highlights: ::prost::alloc::vec::Vec<RegexHighlight>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ClearPaneHighlightsPayload {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
 pub enum CommandName {
@@ -1904,6 +2061,11 @@ pub enum CommandName {
     OpenCommandPaneInPlaceOfPaneId = 201,
     OpenTerminalPaneInPlaceOfPaneId = 202,
     OpenEditPaneInPlaceOfPaneId = 203,
+    HideFloatingPanes = 204,
+    ShowFloatingPanes = 205,
+    SetPaneColor = 206,
+    SetPaneRegexHighlights = 207,
+    ClearPaneHighlights = 208,
 }
 impl CommandName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -2095,6 +2257,11 @@ impl CommandName {
             CommandName::OpenCommandPaneInPlaceOfPaneId => "OpenCommandPaneInPlaceOfPaneId",
             CommandName::OpenTerminalPaneInPlaceOfPaneId => "OpenTerminalPaneInPlaceOfPaneId",
             CommandName::OpenEditPaneInPlaceOfPaneId => "OpenEditPaneInPlaceOfPaneId",
+            CommandName::HideFloatingPanes => "HideFloatingPanes",
+            CommandName::ShowFloatingPanes => "ShowFloatingPanes",
+            CommandName::SetPaneColor => "SetPaneColor",
+            CommandName::SetPaneRegexHighlights => "SetPaneRegexHighlights",
+            CommandName::ClearPaneHighlights => "ClearPaneHighlights",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -2283,6 +2450,11 @@ impl CommandName {
             "OpenCommandPaneInPlaceOfPaneId" => Some(Self::OpenCommandPaneInPlaceOfPaneId),
             "OpenTerminalPaneInPlaceOfPaneId" => Some(Self::OpenTerminalPaneInPlaceOfPaneId),
             "OpenEditPaneInPlaceOfPaneId" => Some(Self::OpenEditPaneInPlaceOfPaneId),
+            "HideFloatingPanes" => Some(Self::HideFloatingPanes),
+            "ShowFloatingPanes" => Some(Self::ShowFloatingPanes),
+            "SetPaneColor" => Some(Self::SetPaneColor),
+            "SetPaneRegexHighlights" => Some(Self::SetPaneRegexHighlights),
+            "ClearPaneHighlights" => Some(Self::ClearPaneHighlights),
             _ => None,
         }
     }

@@ -100,6 +100,14 @@ impl ServerOsApi for FakeInputOutput {
     ) -> Result<IpcReceiverWithContext<ClientToServerMsg>> {
         unimplemented!()
     }
+    fn new_client_with_reply(
+        &mut self,
+        _client_id: ClientId,
+        _stream: LocalSocketStream,
+        _reply_stream: LocalSocketStream,
+    ) -> Result<IpcReceiverWithContext<ClientToServerMsg>> {
+        unimplemented!()
+    }
     fn remove_client(&mut self, _client_id: ClientId) -> Result<()> {
         unimplemented!()
     }
@@ -12326,4 +12334,596 @@ fn test_ctrl_scroll_down_decreases_pinned_floating_pane_size_when_floating_panes
     eprintln!("{}", snapshot_before);
     eprintln!("{}", snapshot_after);
     assert_snapshot!(format!("{}", snapshot_after));
+}
+
+#[test]
+fn in_place_pane_with_close_replaced_pane_false_restores_original() {
+    // When an in-place pane is closed and close_replaced_pane=false (the default),
+    // the pane that was replaced is restored to its original position.
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let mut output = Output::default();
+
+    // Create a second tiled pane so closing the in-place pane doesn't leave an empty tab
+    tab.new_pane(
+        PaneId::Terminal(2),
+        None,
+        None,
+        false,
+        false,
+        NewPanePlacement::Tiled {
+            direction: None,
+            borderless: None,
+        },
+        Some(client_id),
+        None,
+    )
+    .unwrap();
+
+    // Write distinguishing content to each pane
+    tab.handle_pty_bytes(1, Vec::from("\n\n\nI am pane one".as_bytes()))
+        .unwrap();
+    tab.handle_pty_bytes(2, Vec::from("\n\n\nI am pane two".as_bytes()))
+        .unwrap();
+
+    // Open pane 3 in-place of pane 2 without closing the replaced pane (suppress it)
+    tab.new_in_place_pane(
+        PaneId::Terminal(3),
+        None,
+        None,
+        Some(PaneId::Terminal(2)),
+        false, // close_replaced_pane
+        Some(client_id),
+        None,
+        None,
+    )
+    .unwrap();
+    tab.handle_pty_bytes(3, Vec::from("\n\n\nI am the in-place pane".as_bytes()))
+        .unwrap();
+
+    // Close the in-place pane — pane 2 should be restored
+    tab.close_pane(PaneId::Terminal(3), false, None);
+
+    tab.render(&mut output, None).unwrap();
+    let snapshot = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    // Snapshot shows both pane 1 and the restored pane 2
+    assert_snapshot!(snapshot);
+}
+
+#[test]
+fn in_place_pane_with_close_replaced_pane_true_closes_original() {
+    // When an in-place pane is closed and close_replaced_pane=true,
+    // the replaced pane is permanently destroyed rather than restored.
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let mut output = Output::default();
+
+    // Create a second tiled pane
+    tab.new_pane(
+        PaneId::Terminal(2),
+        None,
+        None,
+        false,
+        false,
+        NewPanePlacement::Tiled {
+            direction: None,
+            borderless: None,
+        },
+        Some(client_id),
+        None,
+    )
+    .unwrap();
+
+    tab.handle_pty_bytes(1, Vec::from("\n\n\nI am pane one".as_bytes()))
+        .unwrap();
+    tab.handle_pty_bytes(2, Vec::from("\n\n\nI am pane two".as_bytes()))
+        .unwrap();
+
+    // Open pane 3 in-place of pane 2, closing the replaced pane permanently
+    tab.new_in_place_pane(
+        PaneId::Terminal(3),
+        None,
+        None,
+        Some(PaneId::Terminal(2)),
+        true, // close_replaced_pane
+        Some(client_id),
+        None,
+        None,
+    )
+    .unwrap();
+    tab.handle_pty_bytes(3, Vec::from("\n\n\nI am the in-place pane".as_bytes()))
+        .unwrap();
+
+    // Close the in-place pane — pane 2 should NOT be restored (it was closed)
+    tab.close_pane(PaneId::Terminal(3), false, None);
+
+    tab.render(&mut output, None).unwrap();
+    let snapshot = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    // Snapshot shows only pane 1 (pane 2 was permanently closed, not restored)
+    assert_snapshot!(snapshot);
+}
+
+// =====================================================================
+// Plugin Highlight Mouse Integration Tests
+// =====================================================================
+
+use zellij_utils::data::{HighlightStyle, RegexHighlight};
+
+fn create_new_tab_with_plugin_receiver(
+    size: Size,
+    default_mode: ModeInfo,
+) -> (Tab, Receiver<(PluginInstruction, ErrorContext)>) {
+    set_session_name("test".into());
+    let index = 0;
+    let position = 0;
+    let name = String::new();
+    let os_api = Box::new(FakeInputOutput::default());
+    let mut senders = ThreadSenders::default().silently_fail_on_send();
+    let (mock_plugin_sender, mock_plugin_receiver): ChannelWithContext<PluginInstruction> =
+        channels::unbounded();
+    senders.replace_to_plugin(SenderWithContext::new(mock_plugin_sender));
+    let max_panes = None;
+    let mode_info = default_mode;
+    let style = Style::default();
+    let draw_pane_frames = true;
+    let auto_layout = true;
+    let client_id = 1;
+    let session_is_mirrored = true;
+    let mut connected_clients = HashMap::new();
+    connected_clients.insert(client_id, false);
+    let connected_clients = Rc::new(RefCell::new(connected_clients));
+    let character_cell_info = Rc::new(RefCell::new(None));
+    let stacked_resize = Rc::new(RefCell::new(true));
+    let terminal_emulator_colors = Rc::new(RefCell::new(Palette::default()));
+    let copy_options = CopyOptions::default();
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let current_group = Rc::new(RefCell::new(PaneGroups::new(ThreadSenders::default())));
+    let currently_marking_pane_group = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
+    let arrow_fonts = true;
+    let styled_underlines = true;
+    let osc8_hyperlinks = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
+    let advanced_mouse_actions = true;
+    let web_sharing = WebSharing::Off;
+    let web_server_ip = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
+    let web_server_port = 8080;
+    let mut tab = Tab::new(
+        index,
+        position,
+        name,
+        size,
+        character_cell_info,
+        stacked_resize,
+        sixel_image_store,
+        os_api,
+        senders,
+        max_panes,
+        style,
+        mode_info,
+        draw_pane_frames,
+        auto_layout,
+        connected_clients,
+        session_is_mirrored,
+        Some(client_id),
+        copy_options,
+        terminal_emulator_colors,
+        terminal_emulator_color_codes,
+        (vec![], vec![]),
+        PathBuf::from("my_default_shell"),
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        osc8_hyperlinks,
+        explicitly_disable_kitty_keyboard_protocol,
+        None,
+        false,
+        web_sharing,
+        current_group,
+        currently_marking_pane_group,
+        advanced_mouse_actions,
+        true, // mouse_hover_effects
+        web_server_ip,
+        web_server_port,
+    );
+    tab.apply_layout(
+        TiledPaneLayout::default(),
+        vec![],
+        vec![(1, None)],
+        vec![],
+        HashMap::new(),
+        client_id,
+        None,
+    )
+    .unwrap();
+    (tab, mock_plugin_receiver)
+}
+
+#[test]
+fn click_on_plugin_highlight_sends_highlight_clicked() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let (mut tab, mock_plugin_receiver) =
+        create_new_tab_with_plugin_receiver(size, ModeInfo::default());
+
+    // Feed PTY bytes to pane 1
+    tab.handle_pty_bytes(1, Vec::from("click here foo bar".as_bytes()))
+        .unwrap();
+
+    // Set plugin highlight on pane 1 for pattern "foo"
+    let highlights = vec![RegexHighlight {
+        pattern: "foo".into(),
+        style: HighlightStyle::Emphasis0,
+        context: BTreeMap::new(),
+        on_hover: false,
+        bold: false,
+        italic: false,
+        underline: true,
+    }];
+    tab.set_plugin_regex_highlights_for_pane(
+        PaneId::Terminal(1),
+        42,
+        highlights,
+        &Style::default(),
+    );
+
+    // Left-click at position where "foo" appears
+    // With draw_pane_frames=true, content starts at row 1, col 1
+    // "click here foo bar" -> "foo" starts at offset 11, so col = 1 + 11 = 12
+    let click_position = Position::new(1, 12);
+    let effect = tab
+        .handle_mouse_event(&MouseEvent::new_left_press_event(click_position), client_id)
+        .unwrap();
+
+    assert!(effect.state_changed);
+
+    // Check that HighlightClicked was sent to the plugin channel
+    let mut found_highlight_clicked = false;
+    while let Ok((instruction, _ctx)) = mock_plugin_receiver.try_recv() {
+        if let PluginInstruction::HighlightClicked {
+            plugin_id,
+            pane_id,
+            pattern,
+            matched_string,
+            ..
+        } = instruction
+        {
+            assert_eq!(plugin_id, 42);
+            assert_eq!(pane_id, PaneId::Terminal(1));
+            assert_eq!(pattern, "foo");
+            assert_eq!(matched_string, "foo");
+            found_highlight_clicked = true;
+            break;
+        }
+    }
+    assert!(
+        found_highlight_clicked,
+        "Expected HighlightClicked instruction to be sent"
+    );
+}
+
+#[test]
+fn click_outside_highlight_starts_normal_selection() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let (mut tab, mock_plugin_receiver) =
+        create_new_tab_with_plugin_receiver(size, ModeInfo::default());
+
+    tab.handle_pty_bytes(1, Vec::from("click here foo bar".as_bytes()))
+        .unwrap();
+
+    let highlights = vec![RegexHighlight {
+        pattern: "foo".into(),
+        style: HighlightStyle::Emphasis0,
+        context: BTreeMap::new(),
+        on_hover: false,
+        bold: false,
+        italic: false,
+        underline: true,
+    }];
+    tab.set_plugin_regex_highlights_for_pane(
+        PaneId::Terminal(1),
+        42,
+        highlights,
+        &Style::default(),
+    );
+
+    // Click on "click" (col 1), not on "foo"
+    let click_position = Position::new(1, 1);
+    let _effect = tab
+        .handle_mouse_event(&MouseEvent::new_left_press_event(click_position), client_id)
+        .unwrap();
+
+    // No HighlightClicked should be sent
+    let mut found_highlight_clicked = false;
+    while let Ok((instruction, _ctx)) = mock_plugin_receiver.try_recv() {
+        if matches!(instruction, PluginInstruction::HighlightClicked { .. }) {
+            found_highlight_clicked = true;
+        }
+    }
+    assert!(
+        !found_highlight_clicked,
+        "HighlightClicked should NOT be sent for miss"
+    );
+
+    // Selection should have started
+    assert!(tab.selecting_with_mouse_in_pane.is_some());
+}
+
+#[test]
+fn hover_over_highlight_shows_styling() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let mut output = Output::default();
+
+    tab.handle_pty_bytes(1, Vec::from("hello link_text bar".as_bytes()))
+        .unwrap();
+
+    let highlights = vec![RegexHighlight {
+        pattern: "link_text".into(),
+        style: HighlightStyle::None,
+        context: BTreeMap::new(),
+        on_hover: true,
+        bold: false,
+        italic: true,
+        underline: true,
+    }];
+    tab.set_plugin_regex_highlights_for_pane(PaneId::Terminal(1), 1, highlights, &Style::default());
+
+    // Hover over the match (link_text starts at offset 6, with frame offset col = 7)
+    let hover_position = Position::new(1, 9);
+    let _effect = tab
+        .handle_mouse_event(
+            &MouseEvent::new_buttonless_motion(hover_position),
+            client_id,
+        )
+        .unwrap();
+
+    tab.render(&mut output, None).unwrap();
+    let snapshot_with_hover = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!(snapshot_with_hover);
+
+    // Move hover away from the match
+    let mut output2 = Output::default();
+    let far_position = Position::new(1, 1);
+    let _effect2 = tab
+        .handle_mouse_event(&MouseEvent::new_buttonless_motion(far_position), client_id)
+        .unwrap();
+
+    tab.render(&mut output2, None).unwrap();
+    let snapshot_without_hover = take_snapshot(
+        output2.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!(snapshot_without_hover);
+}
+
+#[test]
+fn hover_on_unfocused_pane_no_highlight() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let new_pane_id = PaneId::Terminal(2);
+    let mut output = Output::default();
+
+    // Create a vertical split
+    tab.vertical_split(new_pane_id, None, client_id, None, None)
+        .unwrap();
+
+    tab.handle_pty_bytes(1, Vec::from("link_text".as_bytes()))
+        .unwrap();
+    tab.handle_pty_bytes(2, Vec::from("right pane".as_bytes()))
+        .unwrap();
+
+    // Active pane is pane 2 (right)
+    assert_eq!(tab.get_active_pane_id(client_id), Some(PaneId::Terminal(2)));
+
+    // Set on_hover highlight on pane 1 (left, unfocused)
+    let highlights = vec![RegexHighlight {
+        pattern: "link_text".into(),
+        style: HighlightStyle::None,
+        context: BTreeMap::new(),
+        on_hover: true,
+        bold: false,
+        italic: true,
+        underline: true,
+    }];
+    tab.set_plugin_regex_highlights_for_pane(PaneId::Terminal(1), 1, highlights, &Style::default());
+
+    // Hover over left pane (unfocused)
+    let hover_position = Position::new(1, 5);
+    let _effect = tab
+        .handle_mouse_event(
+            &MouseEvent::new_buttonless_motion(hover_position),
+            client_id,
+        )
+        .unwrap();
+
+    tab.render(&mut output, None).unwrap();
+    let snapshot = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    // Hover highlight should NOT be visible on the unfocused pane
+    assert_snapshot!(snapshot);
+}
+
+#[test]
+fn highlight_click_in_mouse_mode_pane_suppressed() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let (mut tab, mock_plugin_receiver) =
+        create_new_tab_with_plugin_receiver(size, ModeInfo::default());
+
+    // Feed PTY bytes that enable mouse tracking (SGR mode + any-event tracking)
+    tab.handle_pty_bytes(1, Vec::from("\x1b[?1006h\x1b[?1003h".as_bytes()))
+        .unwrap();
+    // Then feed text with matchable content
+    tab.handle_pty_bytes(1, Vec::from("foo bar baz".as_bytes()))
+        .unwrap();
+
+    // Set plugin highlight
+    let highlights = vec![RegexHighlight {
+        pattern: "foo".into(),
+        style: HighlightStyle::Emphasis0,
+        context: BTreeMap::new(),
+        on_hover: false,
+        bold: false,
+        italic: false,
+        underline: true,
+    }];
+    tab.set_plugin_regex_highlights_for_pane(
+        PaneId::Terminal(1),
+        42,
+        highlights,
+        &Style::default(),
+    );
+
+    // Left-click on the highlight position
+    // With mouse tracking, the click goes through SendToTerminal, not StartSelection
+    let click_position = Position::new(1, 1);
+    let _effect = tab
+        .handle_mouse_event(&MouseEvent::new_left_press_event(click_position), client_id)
+        .unwrap();
+
+    // No HighlightClicked should be sent (the click is forwarded to the terminal)
+    let mut found_highlight_clicked = false;
+    while let Ok((instruction, _ctx)) = mock_plugin_receiver.try_recv() {
+        if matches!(instruction, PluginInstruction::HighlightClicked { .. }) {
+            found_highlight_clicked = true;
+        }
+    }
+    assert!(
+        !found_highlight_clicked,
+        "HighlightClicked should NOT be sent when terminal has mouse tracking"
+    );
+}
+
+#[test]
+fn set_and_clear_highlights_across_tiled_and_floating() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let pane2 = PaneId::Terminal(2);
+    let pane3 = PaneId::Terminal(3);
+
+    // Create a second tiled pane
+    tab.vertical_split(pane2, None, client_id, None, None)
+        .unwrap();
+
+    // Create a floating pane
+    tab.toggle_floating_panes(Some(client_id), None, None)
+        .unwrap();
+    tab.new_pane(
+        pane3,
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::default(),
+        Some(client_id),
+        None,
+    )
+    .unwrap();
+
+    // Feed content to all panes
+    tab.handle_pty_bytes(1, Vec::from("aaa bbb".as_bytes()))
+        .unwrap();
+    tab.handle_pty_bytes(2, Vec::from("aaa bbb".as_bytes()))
+        .unwrap();
+    tab.handle_pty_bytes(3, Vec::from("aaa bbb".as_bytes()))
+        .unwrap();
+
+    // Set highlights from plugin 1 (pattern "aaa") on all panes
+    let h1 = vec![RegexHighlight {
+        pattern: "aaa".into(),
+        style: HighlightStyle::Emphasis0,
+        context: BTreeMap::new(),
+        on_hover: false,
+        bold: false,
+        italic: false,
+        underline: true,
+    }];
+    tab.set_plugin_regex_highlights_for_pane(PaneId::Terminal(1), 1, h1.clone(), &Style::default());
+    tab.set_plugin_regex_highlights_for_pane(pane2, 1, h1.clone(), &Style::default());
+    tab.set_plugin_regex_highlights_for_pane(pane3, 1, h1.clone(), &Style::default());
+
+    // Set highlights from plugin 2 (pattern "bbb") on all panes
+    let h2 = vec![RegexHighlight {
+        pattern: "bbb".into(),
+        style: HighlightStyle::Emphasis1,
+        context: BTreeMap::new(),
+        on_hover: false,
+        bold: false,
+        italic: false,
+        underline: false,
+    }];
+    tab.set_plugin_regex_highlights_for_pane(PaneId::Terminal(1), 2, h2.clone(), &Style::default());
+    tab.set_plugin_regex_highlights_for_pane(pane2, 2, h2.clone(), &Style::default());
+    tab.set_plugin_regex_highlights_for_pane(pane3, 2, h2.clone(), &Style::default());
+
+    // Clear plugin 1 highlights across all panes
+    tab.clear_all_plugin_highlights(1);
+
+    // Verify plugin 2 highlights remain — we can use the tab render to snapshot,
+    // or directly check that plugin 2 pattern still matches on pane 1
+    // Since clear_all_plugin_highlights iterates all panes, we test via
+    // the set_plugin_regex_highlights_for_pane / clear flow:
+    // Plugin 2 "bbb" highlights should still be active.
+    let mut output = Output::default();
+    tab.render(&mut output, None).unwrap();
+    let snapshot = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!(snapshot);
 }

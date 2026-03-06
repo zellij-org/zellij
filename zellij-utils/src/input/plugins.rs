@@ -67,8 +67,8 @@ impl PluginConfig {
                     || tag == "about"
                     || tag == "share"
                     || tag == "multiple-select"
-                    || tag == "sequence"
                     || tag == "layout-manager"
+                    || tag == "link"
                 {
                     Some(PluginConfig {
                         path: PathBuf::from(&tag),

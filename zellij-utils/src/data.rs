@@ -1013,6 +1013,12 @@ pub enum Event {
     CwdChanged(PaneId, PathBuf, Vec<ClientId>), // pane_id, cwd, focused_client_ids
     AvailableLayoutInfo(Vec<LayoutInfo>, Vec<LayoutWithError>),
     PluginConfigurationChanged(BTreeMap<String, String>),
+    HighlightClicked {
+        pane_id: PaneId,
+        pattern: String,
+        matched_string: String,
+        context: BTreeMap<String, String>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, EnumDiscriminants, Display, Serialize, Deserialize)]
@@ -1195,6 +1201,41 @@ impl Default for PaletteColor {
     fn default() -> PaletteColor {
         PaletteColor::EightBit(0)
     }
+}
+
+/// Style for a plugin-supplied regex highlight.
+/// Theme-based variants reference `style.colors.text_unselected.*`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum HighlightStyle {
+    None,      // no color override — use with bold/italic/underline for style-only highlights
+    Emphasis0, // fg = emphasis_0, no bg override
+    Emphasis1, // fg = emphasis_1, no bg override
+    Emphasis2, // fg = emphasis_2, no bg override
+    Emphasis3, // fg = emphasis_3, no bg override
+    BackgroundEmphasis0, // bg = emphasis_0, fg = background
+    BackgroundEmphasis1, // bg = emphasis_1, fg = background
+    BackgroundEmphasis2, // bg = emphasis_2, fg = background
+    BackgroundEmphasis3, // bg = emphasis_3, fg = background
+    CustomRgb {
+        fg: Option<(u8, u8, u8)>,
+        bg: Option<(u8, u8, u8)>,
+    },
+    CustomIndex {
+        fg: Option<u8>,
+        bg: Option<u8>,
+    },
+}
+
+/// One pattern + style pair sent by a plugin.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RegexHighlight {
+    pub pattern: String, // key for upsert; also the regex source
+    pub style: HighlightStyle,
+    pub context: BTreeMap<String, String>, // arbitrary data echoed back verbatim on click
+    pub on_hover: bool, // if true, only rendered when the cursor overlaps this match
+    pub bold: bool,
+    pub italic: bool,
+    pub underline: bool,
 }
 
 // these are used for the web client
@@ -2192,6 +2233,10 @@ pub struct TabInfo {
     pub selectable_floating_panes_count: usize,
     /// The stable identifier for this tab
     pub tab_id: usize,
+    /// Whether this tab has an active (persistent) bell notification
+    pub has_bell_notification: bool,
+    /// Whether this tab is currently flashing its bell (transient 400ms state)
+    pub is_flashing_bell: bool,
 }
 
 /// The `PaneManifest` contains a dictionary of panes, indexed by the tab position (0 indexed).
@@ -2260,6 +2305,10 @@ pub struct PaneInfo {
     /// Grouped panes (usually through an explicit user action) that are staged for a bulk action
     /// the index is kept track of in order to preserve the pane group order
     pub index_in_pane_group: BTreeMap<ClientId, usize>,
+    /// The default foreground color of this pane, if set (e.g. "#00e000")
+    pub default_fg: Option<String>,
+    /// The default background color of this pane, if set (e.g. "#001a3a")
+    pub default_bg: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
@@ -3461,6 +3510,15 @@ pub enum PluginCommand {
     OpenCommandPaneInPlaceOfPaneId(PaneId, CommandToRun, bool, Context), // bool = close_replaced_pane
     OpenTerminalPaneInPlaceOfPaneId(PaneId, FileToOpen, bool),
     OpenEditPaneInPlaceOfPaneId(PaneId, FileToOpen, bool, Context),
+    HideFloatingPanes {
+        tab_id: Option<usize>,
+    },
+    ShowFloatingPanes {
+        tab_id: Option<usize>,
+    },
+    SetPaneColor(PaneId, Option<String>, Option<String>), // (pane_id, fg, bg)
+    SetPaneRegexHighlights(PaneId, Vec<RegexHighlight>),
+    ClearPaneHighlights(PaneId),
 }
 
 // Response type for plugin API methods that open a pane in a new tab

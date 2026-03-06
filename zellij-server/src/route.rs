@@ -277,6 +277,16 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
         },
+        Action::SetPaneColor { pane_id, fg, bg } => {
+            senders
+                .send_to_screen(ScreenInstruction::SetPaneColor(
+                    pane_id.into(),
+                    fg,
+                    bg,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
         Action::SwitchToMode { input_mode } => {
             let attrs = &client_attributes;
             senders
@@ -633,6 +643,7 @@ pub(crate) fn route_action(
             direction: split_direction,
             floating: should_float,
             in_place: should_open_in_place,
+            close_replaced_pane,
             start_suppressed,
             coordinates: floating_pane_coordinates,
             near_current_pane,
@@ -644,14 +655,14 @@ pub(crate) fn route_action(
                     Some(pane_id) if near_current_pane => PtyInstruction::SpawnInPlaceTerminal(
                         Some(open_file),
                         Some(title),
-                        false,
+                        close_replaced_pane,
                         ClientTabIndexOrPaneId::PaneId(pane_id),
                         Some(NotificationEnd::new(completion_tx)),
                     ),
                     _ => PtyInstruction::SpawnInPlaceTerminal(
                         Some(open_file),
                         Some(title),
-                        false,
+                        close_replaced_pane,
                         ClientTabIndexOrPaneId::ClientId(client_id),
                         Some(NotificationEnd::new(completion_tx)),
                     ),
@@ -740,7 +751,7 @@ pub(crate) fn route_action(
             pane_name: name,
             near_current_pane,
             pane_id_to_replace,
-            close_replace_pane,
+            close_replaced_pane,
         } => {
             let run_cmd = run_command
                 .map(|cmd| TerminalAction::RunCommand(cmd.into()))
@@ -755,7 +766,7 @@ pub(crate) fn route_action(
                         .send_to_pty(PtyInstruction::SpawnInPlaceTerminal(
                             run_cmd,
                             name,
-                            close_replace_pane,
+                            close_replaced_pane,
                             ClientTabIndexOrPaneId::PaneId(pane_id),
                             Some(NotificationEnd::new(completion_tx)),
                         ))
@@ -766,7 +777,7 @@ pub(crate) fn route_action(
                         .send_to_pty(PtyInstruction::SpawnInPlaceTerminal(
                             run_cmd,
                             name,
-                            close_replace_pane,
+                            close_replaced_pane,
                             ClientTabIndexOrPaneId::ClientId(client_id),
                             Some(NotificationEnd::new(completion_tx)),
                         ))
@@ -1284,6 +1295,7 @@ pub(crate) fn route_action(
             plugin: run_plugin,
             pane_name: name,
             skip_cache,
+            close_replaced_pane,
         } => {
             if let Some(pane_id) = pane_id {
                 senders
@@ -1292,6 +1304,7 @@ pub(crate) fn route_action(
                         name,
                         pane_id,
                         skip_cache,
+                        close_replaced_pane,
                         client_id,
                         Some(NotificationEnd::new(completion_tx)),
                     ))
@@ -1314,6 +1327,7 @@ pub(crate) fn route_action(
             should_float,
             move_to_focused_tab,
             should_open_in_place,
+            close_replaced_pane,
             skip_cache,
         } => {
             senders
@@ -1322,6 +1336,7 @@ pub(crate) fn route_action(
                     should_float,
                     move_to_focused_tab,
                     should_open_in_place,
+                    close_replaced_pane,
                     pane_id,
                     skip_cache,
                     client_id,
@@ -1333,6 +1348,7 @@ pub(crate) fn route_action(
             plugin: run_plugin,
             should_float,
             should_open_in_place,
+            close_replaced_pane,
             skip_cache,
             cwd,
         } => {
@@ -1341,6 +1357,7 @@ pub(crate) fn route_action(
                     run_plugin,
                     should_float,
                     should_open_in_place,
+                    close_replaced_pane,
                     pane_id,
                     skip_cache,
                     cwd,
@@ -1742,6 +1759,24 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
         },
+        Action::ShowFloatingPanes { tab_id } => {
+            senders
+                .send_to_screen(ScreenInstruction::ShowFloatingPanes {
+                    client_id,
+                    tab_id,
+                    completion: Some(NotificationEnd::new(completion_tx)),
+                })
+                .with_context(err_context)?;
+        },
+        Action::HideFloatingPanes { tab_id } => {
+            senders
+                .send_to_screen(ScreenInstruction::HideFloatingPanes {
+                    client_id,
+                    tab_id,
+                    completion: Some(NotificationEnd::new(completion_tx)),
+                })
+                .with_context(err_context)?;
+        },
     }
     let result = wait_for_action_completion(completion_rx, &action_name, wait_forever);
     if let Some(exit_status) = result.exit_status {
@@ -2073,23 +2108,26 @@ pub(crate) fn route_thread_main(
                                     .to_anyhow()
                                     .with_context(err_context)?
                                     .set_client_size(client_id, new_size);
-                                session_state
+                                // min_client_terminal_size() skips clients whose
+                                // entry is still None — i.e. new_client() was
+                                // called but set_client_data() hasn't been yet.
+                                // set_client_size() above is a no-op in that
+                                // case (it doesn't upgrade None to Some). This
+                                // can happen if a resize arrives before the
+                                // initial connection setup completes; the server
+                                // will query the terminal size once it does.
+                                if let Some(min_size) = session_state
                                     .read()
                                     .to_anyhow()
-                                    .and_then(|state| {
-                                        state.min_client_terminal_size().ok_or(anyhow!(
-                                            "failed to determine minimal client terminal size"
+                                    .with_context(err_context)?
+                                    .min_client_terminal_size()
+                                {
+                                    let _ = senders.as_ref().map(|s| {
+                                        s.send_to_screen(ScreenInstruction::TerminalResize(
+                                            min_size,
                                         ))
-                                    })
-                                    .and_then(|min_size| {
-                                        let _ = senders.as_ref().map(|s| {
-                                            s.send_to_screen(ScreenInstruction::TerminalResize(
-                                                min_size,
-                                            ))
-                                        });
-                                        Ok(())
-                                    })
-                                    .with_context(err_context)?;
+                                    });
+                                }
                             }
                         },
                         ClientToServerMsg::TerminalPixelDimensions { pixel_dimensions } => {
