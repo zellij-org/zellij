@@ -71,6 +71,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat: allow changing pane foreground/background color through the cli/plugin-api (https://github.com/zellij-org/zellij/pull/4737)
 * build: fix redundant proto codegen, plugin batch building and testing, and profile mismatch between build and run (https://github.com/zellij-org/zellij/pull/4799, https://github.com/zellij-org/zellij/pull/4801)
 * feat: click to open file-paths in viewport, allow plugins to highlight viewport text (https://github.com/zellij-org/zellij/pull/4802 and https://github.com/zellij-org/zellij/pull/4809)
+* fix: better handle STDIN segmentation with latency (eg. over SSH) (https://github.com/zellij-org/zellij/pull/4623)
 
 
 ## [0.43.1] - 2025-08-08
