@@ -469,8 +469,12 @@ pub enum Sessions {
     #[clap(visible_alias = "p")]
     Plugin {
         /// Plugin URL, can either start with http(s), file: or zellij:
-        #[clap(last(true), required(true))]
-        url: String,
+        #[clap(last(true), required_unless_present("list"))]
+        url: Option<String>,
+
+        /// List all built-in plugins
+        #[clap(long, conflicts_with("url"))]
+        list: bool,
 
         /// Plugin configuration
         #[clap(short, long, value_parser)]
