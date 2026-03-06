@@ -92,6 +92,7 @@ fn main() {
         }
         if let Some(Command::Sessions(Sessions::Plugin {
             url,
+            list,
             floating,
             in_place,
             close_replaced_pane,
@@ -105,6 +106,11 @@ fn main() {
             borderless,
         })) = opts.command
         {
+            if list {
+                commands::list_builtin_plugins();
+                std::process::exit(0);
+            }
+            let url = url.expect("clap enforces url is present when --list is not given");
             let cwd = None;
             let stacked = false;
             let blocking = false;
