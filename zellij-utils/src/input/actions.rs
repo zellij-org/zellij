@@ -174,9 +174,9 @@ pub enum Action {
     MovePaneBackwards,
     /// Clear all buffers of a current screen
     ClearScreen,
-    /// Dumps the screen to a file
+    /// Dumps the screen to a file or STDOUT
     DumpScreen {
-        file_path: String,
+        file_path: Option<String>,
         include_scrollback: bool,
         pane_id: Option<PaneId>,
     },
@@ -714,7 +714,7 @@ impl Action {
                     match parsed_pane_id {
                         Ok(parsed_pane_id) => {
                             Ok(vec![Action::DumpScreen {
-                                file_path: path.as_os_str().to_string_lossy().into(),
+                                file_path: path.map(|p| p.as_os_str().to_string_lossy().into()),
                                 include_scrollback: full,
                                 pane_id: Some(parsed_pane_id),
                             }])
@@ -728,7 +728,7 @@ impl Action {
                     }
                 },
                 None => Ok(vec![Action::DumpScreen {
-                    file_path: path.as_os_str().to_string_lossy().into(),
+                    file_path: path.map(|p| p.as_os_str().to_string_lossy().into()),
                     include_scrollback: full,
                     pane_id: None,
                 }]),

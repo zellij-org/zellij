@@ -4096,6 +4096,20 @@ impl Tab {
         }
         Ok(())
     }
+    pub fn get_dump_active_terminal_screen(&mut self, client_id: ClientId, full: bool) -> String {
+        if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
+            active_pane.dump_screen(full, Some(client_id))
+        } else {
+            String::new()
+        }
+    }
+    pub fn get_dump_terminal_screen(&mut self, pane_id: PaneId, full: bool) -> Option<String> {
+        if let Some(pane) = self.get_pane_with_id(pane_id) {
+            Some(pane.dump_screen(full, None))
+        } else {
+            None
+        }
+    }
     pub fn edit_scrollback(
         &mut self,
         client_id: ClientId,

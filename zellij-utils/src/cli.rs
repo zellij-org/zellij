@@ -738,9 +738,11 @@ pub enum CliAction {
     MovePaneBackwards,
     /// Clear all buffers for a focused pane
     Clear,
-    /// Dumps the viewport and optionally scrollback of a pane to STDOUT
+    /// Dumps the viewport and optionally scrollback of a pane to a file or STDOUT
     DumpScreen {
-        path: PathBuf,
+        /// File path to dump the pane content to. If omitted, prints to STDOUT.
+        #[clap(long, value_parser)]
+        path: Option<PathBuf>,
 
         /// Dump the pane with full scrollback
         #[clap(short, long, value_parser, default_value("false"), takes_value(false))]

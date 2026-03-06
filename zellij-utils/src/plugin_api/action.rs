@@ -211,7 +211,11 @@ impl TryFrom<ProtobufAction> for Action {
             },
             Some(ProtobufActionName::DumpScreen) => match protobuf_action.optional_payload {
                 Some(OptionalPayload::DumpScreenPayload(payload)) => {
-                    let file_path = payload.file_path;
+                    let file_path = if payload.dump_to_stdout {
+                        None
+                    } else {
+                        Some(payload.file_path)
+                    };
                     let include_scrollback = payload.include_scrollback;
                     let pane_id = payload.pane_id.and_then(|p| p.try_into().ok());
                     Ok(Action::DumpScreen {
@@ -1149,14 +1153,20 @@ impl TryFrom<Action> for ProtobufAction {
                 file_path,
                 include_scrollback,
                 pane_id,
-            } => Ok(ProtobufAction {
-                name: ProtobufActionName::DumpScreen as i32,
-                optional_payload: Some(OptionalPayload::DumpScreenPayload(DumpScreenPayload {
-                    file_path,
-                    include_scrollback,
-                    pane_id: pane_id.and_then(|p| p.try_into().ok()),
-                })),
-            }),
+            } => {
+                let dump_to_stdout = file_path.is_none();
+                Ok(ProtobufAction {
+                    name: ProtobufActionName::DumpScreen as i32,
+                    optional_payload: Some(OptionalPayload::DumpScreenPayload(
+                        DumpScreenPayload {
+                            file_path: file_path.unwrap_or_default(),
+                            include_scrollback,
+                            pane_id: pane_id.and_then(|p| p.try_into().ok()),
+                            dump_to_stdout,
+                        },
+                    )),
+                })
+            },
             Action::EditScrollback => Ok(ProtobufAction {
                 name: ProtobufActionName::EditScrollback as i32,
                 optional_payload: None,

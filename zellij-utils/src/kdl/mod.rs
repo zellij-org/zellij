@@ -541,7 +541,7 @@ impl Action {
             },
             "MovePaneBackwards" => Ok(Action::MovePaneBackwards),
             "DumpScreen" => Ok(Action::DumpScreen {
-                file_path: string,
+                file_path: Some(string),
                 include_scrollback: false,
                 pane_id: None,
             }),
@@ -693,7 +693,7 @@ impl Action {
             },
             Action::MovePaneBackwards => Some(KdlNode::new("MovePaneBackwards")),
             Action::DumpScreen {
-                file_path: file,
+                file_path: Some(file),
                 include_scrollback: _,
                 pane_id: _,
             } => {
@@ -701,6 +701,9 @@ impl Action {
                 node.push(file.clone());
                 Some(node)
             },
+            Action::DumpScreen {
+                file_path: None, ..
+            } => None,
             Action::DumpLayout => Some(KdlNode::new("DumpLayout")),
             Action::EditScrollback => Some(KdlNode::new("EditScrollback")),
             Action::EditScrollbackRaw => Some(KdlNode::new("EditScrollbackRaw")),

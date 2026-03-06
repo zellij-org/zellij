@@ -2435,7 +2435,7 @@ pub fn send_cli_dump_screen_action() {
         server_receiver
     );
     let cli_action = CliAction::DumpScreen {
-        path: PathBuf::from("/tmp/foo"),
+        path: Some(PathBuf::from("/tmp/foo")),
         full: true,
         pane_id: None,
     };
