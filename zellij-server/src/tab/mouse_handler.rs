@@ -643,7 +643,29 @@ impl MouseHandler {
         }
 
         match action {
-            MouseAction::GroupToggle(pane_id) => Ok(MouseEffect::group_toggle(pane_id)),
+            MouseAction::GroupToggle(pane_id) => {
+                // Check if Alt+Click lands on a plugin highlight
+                if let Some(pane) = tab.get_pane_with_id_mut(pane_id) {
+                    let relative_position = pane.relative_position(&event.position);
+                    if let Some((hit_plugin_id, pattern, matched_string, context)) =
+                        pane.plugin_highlight_at(&relative_position)
+                    {
+                        let _ = tab
+                            .senders
+                            .send_to_plugin(PluginInstruction::HighlightClicked {
+                                plugin_id: hit_plugin_id,
+                                client_id,
+                                pane_id,
+                                pattern,
+                                matched_string,
+                                context,
+                            });
+                        return Ok(MouseEffect::state_changed());
+                    }
+                }
+                // No highlight hit — fall through to pane grouping
+                Ok(MouseEffect::group_toggle(pane_id))
+            },
             MouseAction::GroupAdd(pane_id) => Ok(MouseEffect::group_add(pane_id)),
             MouseAction::Ungroup => Ok(MouseEffect::ungroup()),
             MouseAction::StartResize {
@@ -683,23 +705,6 @@ impl MouseHandler {
                     .get_pane_with_id_mut(pane_id)
                     .ok_or_else(|| anyhow!("Failed to find pane {pane_id:?}"))?;
                 let relative_position = pane.relative_position(&position);
-
-                // Check if click lands on a plugin highlight
-                if let Some((hit_plugin_id, pattern, matched_string, context)) =
-                    pane.plugin_highlight_at(&relative_position)
-                {
-                    let _ = tab
-                        .senders
-                        .send_to_plugin(PluginInstruction::HighlightClicked {
-                            plugin_id: hit_plugin_id,
-                            client_id,
-                            pane_id,
-                            pattern,
-                            matched_string,
-                            context,
-                        });
-                    return Ok(MouseEffect::state_changed());
-                }
 
                 let mut leave_clipboard_message = false;
                 pane.start_selection(&relative_position, client_id);

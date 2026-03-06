@@ -1263,6 +1263,7 @@ message RegexHighlight {
   bool bold = 5;
   bool italic = 6;
   bool underline = 7;
+  optional string tooltip_text = 8;
 }
 
 message SetPaneRegexHighlightsPayload {

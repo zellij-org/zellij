@@ -4581,6 +4581,7 @@ fn create_highlight(
         bold,
         italic,
         underline,
+        tooltip_text: None,
     }
 }
 
@@ -4595,6 +4596,7 @@ fn set_plugin_regex_highlights_basic_match() {
         bold: false,
         italic: false,
         underline: true,
+        tooltip_text: None,
     }];
     grid.set_plugin_regex_highlights(1, highlights, &Style::default());
     let slot = grid.plugin_highlights.get(&1);
@@ -4654,6 +4656,7 @@ fn upsert_replaces_same_pattern() {
         bold: false,
         italic: false,
         underline: true,
+        tooltip_text: None,
     }];
     grid.set_plugin_regex_highlights(1, h1, &Style::default());
 
@@ -4665,6 +4668,7 @@ fn upsert_replaces_same_pattern() {
         bold: false,
         italic: false,
         underline: false,
+        tooltip_text: None,
     }];
     grid.set_plugin_regex_highlights(1, h2, &Style::default());
 
@@ -4699,6 +4703,7 @@ fn plugin_highlight_at_returns_match() {
         bold: false,
         italic: false,
         underline: true,
+        tooltip_text: None,
     }];
     grid.set_plugin_regex_highlights(1, highlights, &Style::default());
 

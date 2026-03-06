@@ -12581,6 +12581,7 @@ fn click_on_plugin_highlight_sends_highlight_clicked() {
         bold: false,
         italic: false,
         underline: true,
+        tooltip_text: None,
     }];
     tab.set_plugin_regex_highlights_for_pane(
         PaneId::Terminal(1),
@@ -12589,13 +12590,13 @@ fn click_on_plugin_highlight_sends_highlight_clicked() {
         &Style::default(),
     );
 
-    // Left-click at position where "foo" appears
+    // Alt+Click at position where "foo" appears
     // With draw_pane_frames=true, content starts at row 1, col 1
     // "click here foo bar" -> "foo" starts at offset 11, so col = 1 + 11 = 12
     let click_position = Position::new(1, 12);
-    let effect = tab
-        .handle_mouse_event(&MouseEvent::new_left_press_event(click_position), client_id)
-        .unwrap();
+    let mut alt_click = MouseEvent::new_left_press_event(click_position);
+    alt_click.alt = true;
+    let effect = tab.handle_mouse_event(&alt_click, client_id).unwrap();
 
     assert!(effect.state_changed);
 
@@ -12645,6 +12646,7 @@ fn click_outside_highlight_starts_normal_selection() {
         bold: false,
         italic: false,
         underline: true,
+        tooltip_text: None,
     }];
     tab.set_plugin_regex_highlights_for_pane(
         PaneId::Terminal(1),
@@ -12696,6 +12698,7 @@ fn hover_over_highlight_shows_styling() {
         bold: false,
         italic: true,
         underline: true,
+        tooltip_text: None,
     }];
     tab.set_plugin_regex_highlights_for_pane(PaneId::Terminal(1), 1, highlights, &Style::default());
 
@@ -12766,6 +12769,7 @@ fn hover_on_unfocused_pane_no_highlight() {
         bold: false,
         italic: true,
         underline: true,
+        tooltip_text: None,
     }];
     tab.set_plugin_regex_highlights_for_pane(PaneId::Terminal(1), 1, highlights, &Style::default());
 
@@ -12815,6 +12819,7 @@ fn highlight_click_in_mouse_mode_pane_suppressed() {
         bold: false,
         italic: false,
         underline: true,
+        tooltip_text: None,
     }];
     tab.set_plugin_regex_highlights_for_pane(
         PaneId::Terminal(1),
@@ -12890,6 +12895,7 @@ fn set_and_clear_highlights_across_tiled_and_floating() {
         bold: false,
         italic: false,
         underline: true,
+        tooltip_text: None,
     }];
     tab.set_plugin_regex_highlights_for_pane(PaneId::Terminal(1), 1, h1.clone(), &Style::default());
     tab.set_plugin_regex_highlights_for_pane(pane2, 1, h1.clone(), &Style::default());
@@ -12904,6 +12910,7 @@ fn set_and_clear_highlights_across_tiled_and_floating() {
         bold: false,
         italic: false,
         underline: false,
+        tooltip_text: None,
     }];
     tab.set_plugin_regex_highlights_for_pane(PaneId::Terminal(1), 2, h2.clone(), &Style::default());
     tab.set_plugin_regex_highlights_for_pane(pane2, 2, h2.clone(), &Style::default());
@@ -12926,4 +12933,168 @@ fn set_and_clear_highlights_across_tiled_and_floating() {
         Palette::default(),
     );
     assert_snapshot!(snapshot);
+}
+
+#[test]
+fn plain_click_on_highlight_does_not_send_highlight_clicked() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let (mut tab, mock_plugin_receiver) =
+        create_new_tab_with_plugin_receiver(size, ModeInfo::default());
+
+    tab.handle_pty_bytes(1, Vec::from("click here foo bar".as_bytes()))
+        .unwrap();
+
+    let highlights = vec![RegexHighlight {
+        pattern: "foo".into(),
+        style: HighlightStyle::Emphasis0,
+        context: BTreeMap::new(),
+        on_hover: false,
+        bold: false,
+        italic: false,
+        underline: true,
+        tooltip_text: None,
+    }];
+    tab.set_plugin_regex_highlights_for_pane(
+        PaneId::Terminal(1),
+        42,
+        highlights,
+        &Style::default(),
+    );
+
+    // Plain left-click on "foo" — should start selection, NOT send HighlightClicked
+    let click_position = Position::new(1, 12);
+    let _effect = tab
+        .handle_mouse_event(&MouseEvent::new_left_press_event(click_position), client_id)
+        .unwrap();
+
+    let mut found_highlight_clicked = false;
+    while let Ok((instruction, _ctx)) = mock_plugin_receiver.try_recv() {
+        if matches!(instruction, PluginInstruction::HighlightClicked { .. }) {
+            found_highlight_clicked = true;
+        }
+    }
+    assert!(
+        !found_highlight_clicked,
+        "Plain click should NOT send HighlightClicked after Alt+Click change"
+    );
+
+    // Selection should have started instead
+    assert!(tab.selecting_with_mouse_in_pane.is_some());
+}
+
+#[test]
+fn alt_click_outside_highlight_falls_through_to_group_toggle() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let (mut tab, mock_plugin_receiver) =
+        create_new_tab_with_plugin_receiver(size, ModeInfo::default());
+
+    tab.handle_pty_bytes(1, Vec::from("click here foo bar".as_bytes()))
+        .unwrap();
+
+    let highlights = vec![RegexHighlight {
+        pattern: "foo".into(),
+        style: HighlightStyle::Emphasis0,
+        context: BTreeMap::new(),
+        on_hover: false,
+        bold: false,
+        italic: false,
+        underline: true,
+        tooltip_text: None,
+    }];
+    tab.set_plugin_regex_highlights_for_pane(
+        PaneId::Terminal(1),
+        42,
+        highlights,
+        &Style::default(),
+    );
+
+    // Alt+Click on "click" (col 1), not on "foo" — should fall through to group toggle
+    let click_position = Position::new(1, 1);
+    let mut alt_click = MouseEvent::new_left_press_event(click_position);
+    alt_click.alt = true;
+    let effect = tab.handle_mouse_event(&alt_click, client_id).unwrap();
+
+    // No HighlightClicked should be sent
+    let mut found_highlight_clicked = false;
+    while let Ok((instruction, _ctx)) = mock_plugin_receiver.try_recv() {
+        if matches!(instruction, PluginInstruction::HighlightClicked { .. }) {
+            found_highlight_clicked = true;
+        }
+    }
+    assert!(
+        !found_highlight_clicked,
+        "Alt+Click outside highlight should NOT send HighlightClicked"
+    );
+
+    // Group toggle effect should have been produced
+    assert_eq!(effect.group_toggle, Some(PaneId::Terminal(1)));
+}
+
+#[test]
+fn hover_over_highlight_with_tooltip_caches_tooltip() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let mut output = Output::default();
+
+    tab.handle_pty_bytes(1, Vec::from("hello link_text bar".as_bytes()))
+        .unwrap();
+
+    let highlights = vec![RegexHighlight {
+        pattern: "link_text".into(),
+        style: HighlightStyle::None,
+        context: BTreeMap::new(),
+        on_hover: true,
+        bold: false,
+        italic: true,
+        underline: true,
+        tooltip_text: Some("Open".to_string()),
+    }];
+    tab.set_plugin_regex_highlights_for_pane(PaneId::Terminal(1), 1, highlights, &Style::default());
+
+    // Hover over the match (link_text starts at offset 6, with frame offset col = 7)
+    let hover_position = Position::new(1, 9);
+    let _effect = tab
+        .handle_mouse_event(
+            &MouseEvent::new_buttonless_motion(hover_position),
+            client_id,
+        )
+        .unwrap();
+
+    tab.render(&mut output, None).unwrap();
+    let snapshot_with_tooltip = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    // The bottom frame row should contain the tooltip text
+    assert_snapshot!(snapshot_with_tooltip);
+
+    // Move hover away — tooltip should disappear
+    let mut output2 = Output::default();
+    let far_position = Position::new(1, 1);
+    let _effect2 = tab
+        .handle_mouse_event(&MouseEvent::new_buttonless_motion(far_position), client_id)
+        .unwrap();
+
+    tab.render(&mut output2, None).unwrap();
+    let snapshot_without_tooltip = take_snapshot(
+        output2.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!(snapshot_without_tooltip);
 }

@@ -227,6 +227,7 @@ impl<'a> PaneContentsAndUi<'a> {
         let pane_focused_for_differet_client = !other_focused_clients.is_empty();
 
         let frame_color = self.frame_color(client_id, client_mode, session_is_mirrored);
+        let highlight_tooltip = self.pane.cached_hover_tooltip();
         let focused_client = if pane_focused_for_client_id {
             Some(client_id)
         } else if pane_focused_for_differet_client {
@@ -252,6 +253,7 @@ impl<'a> PaneContentsAndUi<'a> {
                     .contains(&client_id),
                 pane_is_selectable,
                 show_help_text: self.show_help_text,
+                highlight_tooltip: highlight_tooltip.clone(),
             }
         } else {
             FrameParams {
@@ -271,6 +273,7 @@ impl<'a> PaneContentsAndUi<'a> {
                     .contains(&client_id),
                 pane_is_selectable,
                 show_help_text: self.show_help_text,
+                highlight_tooltip,
             }
         };
 

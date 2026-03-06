@@ -976,6 +976,9 @@ impl Pane for TerminalPane {
         self.grid.set_hover_position(position);
         self.set_should_render(true);
     }
+    fn cached_hover_tooltip(&self) -> Option<String> {
+        self.grid.cached_hover_tooltip.clone()
+    }
     fn plugin_highlight_at(
         &self,
         position: &Position,
