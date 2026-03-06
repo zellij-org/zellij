@@ -65,6 +65,9 @@ async fn handle_ws_control(socket: WebSocket, state: AppState) {
             WebClientToWebServerControlMessagePayload::TerminalResize(size) => {
                 ClientToServerMsg::TerminalResize { new_size: size }
             },
+            WebClientToWebServerControlMessagePayload::TerminalPixelDimensions(
+                pixel_dimensions,
+            ) => ClientToServerMsg::TerminalPixelDimensions { pixel_dimensions },
         };
 
         let _ = client_connection.send_to_server(client_msg);
