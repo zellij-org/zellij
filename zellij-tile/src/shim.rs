@@ -2760,6 +2760,11 @@ pub fn hide_floating_panes(tab_id: Option<usize>) -> Result<bool, String> {
 /// render time. The plugin never handles coordinates, so there is no race
 /// condition between content changes and highlight application.
 ///
+/// When `on_hover` is `true` and `tooltip_text` is `Some(...)`, the tooltip
+/// text is displayed at the bottom of the pane frame (formatted as
+/// `" Alt <Click> - {tooltip_text} "`) whenever the mouse cursor hovers over
+/// the highlighted region.
+///
 /// Requires `ChangeApplicationState` permission.
 pub fn set_pane_regex_highlights(pane_id: PaneId, highlights: Vec<RegexHighlight>) {
     let plugin_command = PluginCommand::SetPaneRegexHighlights(pane_id, highlights);

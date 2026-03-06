@@ -66,6 +66,7 @@ pub struct FrameParams {
     pub mouse_is_hovering_over_pane: bool,
     pub pane_is_selectable: bool,
     pub show_help_text: bool,
+    pub highlight_tooltip: Option<String>,
 }
 
 #[derive(Default, PartialEq)]
@@ -90,6 +91,7 @@ pub struct PaneFrame {
     mouse_is_hovering_over_pane: bool,
     is_selectable: bool,
     show_help_text: bool,
+    highlight_tooltip: Option<String>,
 }
 
 impl PaneFrame {
@@ -120,6 +122,7 @@ impl PaneFrame {
             mouse_is_hovering_over_pane: frame_params.mouse_is_hovering_over_pane,
             is_selectable: frame_params.pane_is_selectable,
             show_help_text: frame_params.show_help_text,
+            highlight_tooltip: frame_params.highlight_tooltip,
         }
     }
     pub fn is_pinned(mut self, is_pinned: bool) -> Self {
@@ -708,6 +711,36 @@ impl PaneFrame {
             .or_else(|| Some(self.title_line_without_middle()))
             .with_context(|| format!("failed to render title '{}'", self.title))
     }
+    fn render_highlight_tooltip_undertitle(&self) -> Result<Vec<TerminalCharacter>> {
+        let max_undertitle_length = self.geom.cols.saturating_sub(2);
+
+        let mut left_boundary =
+            foreground_color(self.get_corner(boundary_type::BOTTOM_LEFT), self.color);
+        let mut right_boundary =
+            foreground_color(self.get_corner(boundary_type::BOTTOM_RIGHT), self.color);
+
+        let tooltip_text = self.highlight_tooltip.as_deref().unwrap_or("");
+        let text = format!(" Alt <Click> - {} ", tooltip_text);
+        let text_len = text.chars().count();
+        if text_len > max_undertitle_length {
+            return Ok(self.empty_undertitle(max_undertitle_length));
+        }
+
+        let mut text_characters = foreground_color(&text, self.color);
+
+        let padding_len = max_undertitle_length.saturating_sub(text_len);
+        let mut padding = String::new();
+        for _ in 0..padding_len {
+            padding.push_str(boundary_type::HORIZONTAL);
+        }
+
+        let mut ret = vec![];
+        ret.append(&mut left_boundary);
+        ret.append(&mut text_characters);
+        ret.append(&mut foreground_color(&padding, self.color));
+        ret.append(&mut right_boundary);
+        Ok(ret)
+    }
     fn render_help_text_undertitle(&self) -> Result<Vec<TerminalCharacter>> {
         let max_undertitle_length = self.geom.cols.saturating_sub(2);
 
@@ -932,7 +965,16 @@ impl PaneFrame {
                     character_chunks.push(CharacterChunk::new(title, x, y));
                 } else if row == self.geom.rows - 1 {
                     // bottom row
-                    if self.show_help_text && self.is_main_client {
+                    if self.highlight_tooltip.is_some() && self.is_main_client {
+                        let x = self.geom.x;
+                        let y = self.geom.y + row;
+                        character_chunks.push(CharacterChunk::new(
+                            self.render_highlight_tooltip_undertitle()
+                                .with_context(err_context)?,
+                            x,
+                            y,
+                        ));
+                    } else if self.show_help_text && self.is_main_client {
                         let x = self.geom.x;
                         let y = self.geom.y + row;
                         character_chunks.push(CharacterChunk::new(

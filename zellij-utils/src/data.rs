@@ -1236,6 +1236,7 @@ pub struct RegexHighlight {
     pub bold: bool,
     pub italic: bool,
     pub underline: bool,
+    pub tooltip_text: Option<String>, // shown at bottom of pane frame when hovering over match
 }
 
 // these are used for the web client

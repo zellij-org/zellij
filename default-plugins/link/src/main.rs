@@ -180,6 +180,7 @@ impl State {
             bold: false,
             italic: true,
             underline: true,
+            tooltip_text: Some("Open".to_string()),
         });
 
         // Directory-entry patterns for the pane's current CWD
@@ -194,6 +195,7 @@ impl State {
                     bold: false,
                     italic: true,
                     underline: true,
+                    tooltip_text: Some("Open".to_string()),
                 });
             }
         }
