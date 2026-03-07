@@ -406,6 +406,7 @@ impl SessionMetaData {
                         .unwrap_or(true),
                     mouse_hover_effects: new_config.options.mouse_hover_effects.unwrap_or(true),
                     visual_bell: new_config.options.visual_bell.unwrap_or(true),
+                    tab_cycle_wrap: new_config.options.tab_cycle_wrap.unwrap_or(true),
                 })
                 .unwrap();
             self.senders
