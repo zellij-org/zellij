@@ -442,6 +442,63 @@ pub(crate) fn send_action_to_session(
         },
     };
 }
+pub(crate) fn subscribe_to_session(
+    subscribe_cli: zellij_utils::cli::SubscribeCli,
+    requested_session_name: Option<String>,
+    _config: Option<Config>,
+) {
+    let session_name = match get_active_session() {
+        ActiveSession::None => {
+            eprintln!("There is no active session!");
+            std::process::exit(1);
+        },
+        ActiveSession::One(session_name) => {
+            if let Some(ref requested) = requested_session_name {
+                if *requested != session_name {
+                    eprintln!(
+                        "Session '{}' not found. The following sessions are active:",
+                        requested
+                    );
+                    eprintln!("{}", session_name);
+                    std::process::exit(1);
+                }
+            }
+            session_name
+        },
+        ActiveSession::Many => {
+            let existing_sessions: Vec<String> = get_sessions()
+                .unwrap_or_default()
+                .iter()
+                .map(|s| s.0.clone())
+                .collect();
+            if let Some(session_name) = requested_session_name {
+                if existing_sessions.contains(&session_name) {
+                    session_name
+                } else {
+                    eprintln!(
+                        "Session '{}' not found. The following sessions are active:",
+                        session_name
+                    );
+                    list_sessions(false, false, true);
+                    std::process::exit(1);
+                }
+            } else if let Ok(session_name) = envs::get_session_name() {
+                session_name
+            } else {
+                eprintln!("Please specify the session name to subscribe to. The following sessions are active:");
+                list_sessions(false, false, true);
+                std::process::exit(1);
+            }
+        },
+    };
+    let os_input = get_os_input(zellij_client::os_input_output::get_cli_client_os_input);
+    zellij_client::cli_client::start_subscribe_client(
+        Box::new(os_input),
+        &session_name,
+        subscribe_cli,
+    );
+}
+
 pub(crate) fn convert_old_config_file(old_config_file: PathBuf) {
     match File::open(&old_config_file) {
         Ok(mut handle) => {

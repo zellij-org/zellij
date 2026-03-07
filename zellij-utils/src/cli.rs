@@ -4,7 +4,7 @@ use crate::{
     consts::{ZELLIJ_CONFIG_DIR_ENV, ZELLIJ_CONFIG_FILE_ENV},
     input::{layout::PluginUserConfiguration, options::Options},
 };
-use clap::{Args, Parser, Subcommand};
+use clap::{ArgEnum, Args, Parser, Subcommand};
 use serde::{Deserialize, Serialize};
 use std::net::IpAddr;
 use std::path::PathBuf;
@@ -119,6 +119,43 @@ pub enum Command {
     /// Explore existing zellij sessions
     #[clap(flatten)]
     Sessions(Sessions),
+
+    /// Subscribe to pane render updates
+    Subscribe(SubscribeCli),
+}
+
+#[derive(Debug, Parser, Clone, Serialize, Deserialize)]
+pub struct SubscribeCli {
+    /// Pane ID(s) to subscribe to (e.g. terminal_1, plugin_2, or bare number like 1)
+    #[clap(
+        short,
+        long,
+        required = true,
+        multiple_values = true,
+        multiple_occurrences = true
+    )]
+    pub pane_id: Vec<String>,
+
+    /// Include scrollback lines in initial delivery.
+    /// Bare --scrollback = all scrollback, --scrollback N = last N lines.
+    #[clap(
+        short,
+        long,
+        min_values = 0,
+        max_values = 1,
+        default_missing_value = "0"
+    )]
+    pub scrollback: Option<usize>,
+
+    /// Output format
+    #[clap(short, long, default_value = "raw", arg_enum)]
+    pub format: SubscribeFormat,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ArgEnum)]
+pub enum SubscribeFormat {
+    Raw,
+    Json,
 }
 
 #[derive(Debug, Clone, Args, Serialize, Deserialize)]

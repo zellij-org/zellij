@@ -1046,7 +1046,7 @@ impl TiledPanes {
                     output.add_pane_contents(
                         &connected_clients,
                         pane.pid(),
-                        pane.pane_contents(None, false),
+                        pane.pane_contents(None, false, None),
                     );
                 },
                 PaneId::Plugin(_) => {
@@ -1054,7 +1054,7 @@ impl TiledPanes {
                         output.add_pane_contents(
                             &[*client_id],
                             pane.pid(),
-                            pane.pane_contents(Some(*client_id), false),
+                            pane.pane_contents(Some(*client_id), false, None),
                         );
                     }
                 },

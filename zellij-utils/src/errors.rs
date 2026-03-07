@@ -415,6 +415,8 @@ pub enum ScreenContext {
     ClearMouseHelpText,
     SetPluginRegexHighlights,
     ClearPluginHighlights,
+    SubscribeToPaneRenders,
+    NotifyPaneClosedToSubscribers,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.

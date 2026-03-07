@@ -184,6 +184,9 @@ impl From<ServerToClientMsg> for ClientInstruction {
             ServerToClientMsg::StartWebServer => ClientInstruction::StartWebServer,
             ServerToClientMsg::RenamedSession { name } => ClientInstruction::RenamedSession(name),
             ServerToClientMsg::ConfigFileUpdated => ClientInstruction::ConfigFileUpdated,
+            // Subscribe-only messages — not handled by regular interactive clients
+            ServerToClientMsg::PaneRenderUpdate { .. } => ClientInstruction::UnblockInputThread,
+            ServerToClientMsg::SubscribedPaneClosed { .. } => ClientInstruction::UnblockInputThread,
         }
     }
 }
