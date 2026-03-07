@@ -2289,6 +2289,21 @@ pub(crate) fn route_thread_main(
                             let _ =
                                 to_server.send(ServerInstruction::FailedToStartWebServer(error));
                         },
+                        ClientToServerMsg::SubscribeToPaneRenders {
+                            ref pane_ids,
+                            ref scrollback,
+                        } => {
+                            send_to_screen_or_retry_queue!(
+                                senders,
+                                ScreenInstruction::SubscribeToPaneRenders {
+                                    client_id,
+                                    pane_ids: pane_ids.clone(),
+                                    scrollback: *scrollback,
+                                },
+                                instruction,
+                                retry_queue
+                            );
+                        },
                     }
                     Ok(should_break)
                 };

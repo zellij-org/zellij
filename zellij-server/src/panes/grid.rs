@@ -533,6 +533,7 @@ pub struct Grid {
     pub plugin_highlights: HashMap<u32, Vec<(String, CompiledHighlight)>>,
     // key: plugin_id (u32), inner vec: (pattern, compiled) pairs
     pub hover_position: Option<Position>, // pane-relative cursor cell; None when outside pane
+    pub cached_hover_tooltip: Option<String>,
 }
 
 impl Grid {
@@ -569,6 +570,7 @@ pub struct CompiledHighlight {
     pub bold: bool,
     pub italic: bool,
     pub underline: bool,
+    pub tooltip_text: Option<String>,
 }
 
 impl CompiledHighlight {
@@ -813,6 +815,7 @@ impl Grid {
             pane_default_bg: None,
             plugin_highlights: HashMap::new(),
             hover_position: None,
+            cached_hover_tooltip: None,
         }
     }
     pub fn render_full_viewport(&mut self) {
@@ -2095,6 +2098,7 @@ impl Grid {
                         bold: h.bold,
                         italic: h.italic,
                         underline: h.underline,
+                        tooltip_text: h.tooltip_text.clone(),
                     };
                 } else {
                     slot.push((
@@ -2108,6 +2112,7 @@ impl Grid {
                             bold: h.bold,
                             italic: h.italic,
                             underline: h.underline,
+                            tooltip_text: h.tooltip_text,
                         },
                     ));
                 }
@@ -2120,12 +2125,14 @@ impl Grid {
             }
         }
         self.output_buffer.update_all_lines();
+        self.recompute_hover_tooltip();
     }
 
     /// Called by the server-side handler for ClearPaneHighlights.
     pub fn clear_plugin_highlights(&mut self, plugin_id: u32) {
         if self.plugin_highlights.remove(&plugin_id).is_some() {
             self.output_buffer.update_all_lines();
+            self.recompute_hover_tooltip();
         }
     }
 
@@ -2180,6 +2187,7 @@ impl Grid {
         }
 
         self.hover_position = new_pos;
+        self.recompute_hover_tooltip();
     }
 
     /// Mark all physical rows belonging to the logical line group that contains
@@ -2190,6 +2198,49 @@ impl Grid {
         {
             for r in canonical..canonical + group_len {
                 self.output_buffer.update_line(r);
+            }
+        }
+    }
+
+    /// Recompute the cached hover tooltip from the current hover position and
+    /// plugin highlights.  Called whenever the hover position, highlight set, or
+    /// highlight clearing changes.
+    fn recompute_hover_tooltip(&mut self) {
+        self.cached_hover_tooltip = None;
+        let hover_pos = match self.hover_position {
+            Some(p) => p,
+            None => return,
+        };
+        if self.mouse_tracking != MouseTracking::Off {
+            return;
+        }
+        if self.plugin_highlights.is_empty() {
+            return;
+        }
+        let hover_row = hover_pos.line.0 as usize;
+        let hover_col = hover_pos.column.0 as usize;
+        let (_canonical, _group_len, logical_text, boundaries) =
+            match collect_and_build_logical_line(&self.viewport, hover_row) {
+                Some(v) => v,
+                None => return,
+            };
+        for (_plugin_id, pattern_map) in &self.plugin_highlights {
+            for (_pattern, compiled) in pattern_map {
+                if !compiled.on_hover || compiled.tooltip_text.is_none() {
+                    continue;
+                }
+                for mat in compiled.regex.find_iter(&logical_text) {
+                    if let Some((_sel, start_row, start_col, end_row, end_col)) =
+                        match_to_selection(&mat, &boundaries, &self.viewport)
+                    {
+                        if position_in_span(
+                            hover_row, hover_col, start_row, start_col, end_row, end_col,
+                        ) {
+                            self.cached_hover_tooltip = compiled.tooltip_text.clone();
+                            return;
+                        }
+                    }
+                }
             }
         }
     }
@@ -2974,7 +3025,11 @@ impl Grid {
     pub fn has_selection(&self) -> bool {
         !self.selection.is_empty()
     }
-    pub fn pane_contents(&self, get_full_scrollback: bool) -> PaneContents {
+    pub fn pane_contents(
+        &self,
+        get_full_scrollback: bool,
+        max_scrollback_lines: Option<usize>,
+    ) -> PaneContents {
         let mut viewport: Vec<String> = Vec::with_capacity(self.viewport.len());
         for row in &self.viewport {
             let s: String = (&row.columns).into_iter().map(|x| x.character).collect();
@@ -2985,6 +3040,13 @@ impl Grid {
             for row in &self.lines_above {
                 let s: String = (&row.columns).into_iter().map(|x| x.character).collect();
                 lines_above_viewport.push(s);
+            }
+            // Truncate to last N lines if max specified (Some(0) means "all" — no truncation)
+            if let Some(max) = max_scrollback_lines {
+                if max > 0 && lines_above_viewport.len() > max {
+                    let start = lines_above_viewport.len() - max;
+                    lines_above_viewport = lines_above_viewport.split_off(start);
+                }
             }
             let mut lines_below_viewport: Vec<String> = Vec::with_capacity(self.lines_below.len());
             for row in &self.lines_below {

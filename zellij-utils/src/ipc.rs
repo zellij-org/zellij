@@ -1,6 +1,6 @@
 //! IPC stuff for starting to split things into a client and server model.
 use crate::{
-    data::{ClientId, ConnectToSession, KeyWithModifier, Style},
+    data::{ClientId, ConnectToSession, KeyWithModifier, PaneId, Style},
     errors::{prelude::*, ErrorContext},
     input::{actions::Action, cli_assets::CliAssets},
     pane_size::{Size, SizeInPixels},
@@ -148,6 +148,10 @@ pub enum ClientToServerMsg {
     FailedToStartWebServer {
         error: String,
     },
+    SubscribeToPaneRenders {
+        pane_ids: Vec<PaneId>,
+        scrollback: Option<usize>,
+    },
 }
 
 // Types of messages sent from the server to the client
@@ -183,6 +187,15 @@ pub enum ServerToClientMsg {
         name: String,
     },
     ConfigFileUpdated,
+    PaneRenderUpdate {
+        pane_id: PaneId,
+        viewport: Vec<String>,
+        scrollback: Option<Vec<String>>,
+        is_initial: bool,
+    },
+    SubscribedPaneClosed {
+        pane_id: PaneId,
+    },
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]

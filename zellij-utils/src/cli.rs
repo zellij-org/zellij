@@ -4,7 +4,7 @@ use crate::{
     consts::{ZELLIJ_CONFIG_DIR_ENV, ZELLIJ_CONFIG_FILE_ENV},
     input::{layout::PluginUserConfiguration, options::Options},
 };
-use clap::{Args, Parser, Subcommand};
+use clap::{ArgEnum, Args, Parser, Subcommand};
 use serde::{Deserialize, Serialize};
 use std::net::IpAddr;
 use std::path::PathBuf;
@@ -119,6 +119,46 @@ pub enum Command {
     /// Explore existing zellij sessions
     #[clap(flatten)]
     Sessions(Sessions),
+
+    /// Subscribe to pane render updates (viewport and scrollback)
+    #[clap(override_usage(
+        "zellij [--session <OTHER SESSION NAME>] subscribe [OPTIONS] --pane-id..."
+    ))]
+    Subscribe(SubscribeCli),
+}
+
+#[derive(Debug, Parser, Clone, Serialize, Deserialize)]
+pub struct SubscribeCli {
+    /// Pane ID(s) to subscribe to (e.g. terminal_1, plugin_2, or bare number like 1)
+    #[clap(
+        short,
+        long,
+        required = true,
+        multiple_values = true,
+        multiple_occurrences = true
+    )]
+    pub pane_id: Vec<String>,
+
+    /// Include scrollback lines in initial delivery.
+    /// Bare --scrollback = all scrollback, --scrollback N = last N lines.
+    #[clap(
+        short,
+        long,
+        min_values = 0,
+        max_values = 1,
+        default_missing_value = "0"
+    )]
+    pub scrollback: Option<usize>,
+
+    /// Output format
+    #[clap(short, long, default_value = "raw", arg_enum)]
+    pub format: SubscribeFormat,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ArgEnum)]
+pub enum SubscribeFormat {
+    Raw,
+    Json,
 }
 
 #[derive(Debug, Clone, Args, Serialize, Deserialize)]
@@ -1372,4 +1412,77 @@ tail -f /tmp/my-live-logfile | zellij action pipe --name logs --plugin https://e
         #[clap(long, value_parser, conflicts_with_all(&["fg", "bg"]))]
         reset: bool,
     },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::Parser;
+
+    fn parse_subscribe(args: &[&str]) -> SubscribeCli {
+        let mut full_args = vec!["zellij"];
+        full_args.extend_from_slice(args);
+        let cli = CliArgs::try_parse_from(full_args).unwrap();
+        match cli.command {
+            Some(Command::Subscribe(s)) => s,
+            other => panic!("Expected Subscribe, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn subscribe_scrollback_bare_flag() {
+        let s = parse_subscribe(&["subscribe", "--pane-id", "terminal_1", "--scrollback"]);
+        assert_eq!(s.scrollback, Some(0));
+    }
+
+    #[test]
+    fn subscribe_scrollback_with_value() {
+        let s = parse_subscribe(&[
+            "subscribe",
+            "--pane-id",
+            "terminal_1",
+            "--scrollback",
+            "100",
+        ]);
+        assert_eq!(s.scrollback, Some(100));
+    }
+
+    #[test]
+    fn subscribe_scrollback_absent() {
+        let s = parse_subscribe(&["subscribe", "--pane-id", "terminal_1"]);
+        assert_eq!(s.scrollback, None);
+    }
+
+    #[test]
+    fn subscribe_format_json() {
+        let s = parse_subscribe(&["subscribe", "--pane-id", "terminal_1", "--format", "json"]);
+        assert!(matches!(s.format, SubscribeFormat::Json));
+    }
+
+    #[test]
+    fn subscribe_format_default_raw() {
+        let s = parse_subscribe(&["subscribe", "--pane-id", "terminal_1"]);
+        assert!(matches!(s.format, SubscribeFormat::Raw));
+    }
+
+    #[test]
+    fn subscribe_multiple_pane_ids() {
+        let s = parse_subscribe(&[
+            "subscribe",
+            "--pane-id",
+            "terminal_1",
+            "--pane-id",
+            "plugin_2",
+        ]);
+        assert_eq!(
+            s.pane_id,
+            vec!["terminal_1".to_string(), "plugin_2".to_string()]
+        );
+    }
+
+    #[test]
+    fn subscribe_requires_pane_id() {
+        let result = CliArgs::try_parse_from(["zellij", "subscribe"]);
+        assert!(result.is_err());
+    }
 }

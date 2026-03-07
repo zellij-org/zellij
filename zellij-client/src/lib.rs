@@ -128,7 +128,6 @@ use crate::{
     command_is_executing::CommandIsExecuting, input_handler::input_loop,
     os_input_output::ClientOsApi, stdin_handler::stdin_loop,
 };
-use termwiz::input::InputEvent;
 use zellij_utils::cli::CliArgs;
 use zellij_utils::{
     channels::{self, ChannelWithContext, RecvTimeoutError, SenderWithContext},
@@ -139,6 +138,7 @@ use zellij_utils::{
     input::{cli_assets::CliAssets, config::Config, options::Options},
     ipc::{ClientToServerMsg, ExitReason, ServerToClientMsg},
     pane_size::Size,
+    vendored::termwiz::input::InputEvent,
 };
 
 /// Instructions related to the client-side application
@@ -184,6 +184,9 @@ impl From<ServerToClientMsg> for ClientInstruction {
             ServerToClientMsg::StartWebServer => ClientInstruction::StartWebServer,
             ServerToClientMsg::RenamedSession { name } => ClientInstruction::RenamedSession(name),
             ServerToClientMsg::ConfigFileUpdated => ClientInstruction::ConfigFileUpdated,
+            // Subscribe-only messages — not handled by regular interactive clients
+            ServerToClientMsg::PaneRenderUpdate { .. } => ClientInstruction::UnblockInputThread,
+            ServerToClientMsg::SubscribedPaneClosed { .. } => ClientInstruction::UnblockInputThread,
         }
     }
 }

@@ -2583,7 +2583,7 @@ impl WebSharing {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ClientToServerMsg {
-    #[prost(oneof="client_to_server_msg::Message", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16")]
+    #[prost(oneof="client_to_server_msg::Message", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17")]
     pub message: ::core::option::Option<client_to_server_msg::Message>,
 }
 /// Nested message and enum types in `ClientToServerMsg`.
@@ -2623,6 +2623,8 @@ pub mod client_to_server_msg {
         FailedToStartWebServer(super::FailedToStartWebServerMsg),
         #[prost(message, tag="16")]
         AttachWatcherClient(super::AttachWatcherClientMsg),
+        #[prost(message, tag="17")]
+        SubscribeToPaneRenders(super::SubscribeToPaneRendersMsg),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -2740,8 +2742,16 @@ pub struct FailedToStartWebServerMsg {
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SubscribeToPaneRendersMsg {
+    #[prost(message, repeated, tag="1")]
+    pub pane_ids: ::prost::alloc::vec::Vec<PaneId>,
+    #[prost(uint32, optional, tag="2")]
+    pub scrollback: ::core::option::Option<u32>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ServerToClientMsg {
-    #[prost(oneof="server_to_client_msg::Message", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13")]
+    #[prost(oneof="server_to_client_msg::Message", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15")]
     pub message: ::core::option::Option<server_to_client_msg::Message>,
 }
 /// Nested message and enum types in `ServerToClientMsg`.
@@ -2775,6 +2785,10 @@ pub mod server_to_client_msg {
         RenamedSession(super::RenamedSessionMsg),
         #[prost(message, tag="13")]
         ConfigFileUpdated(super::ConfigFileUpdatedMsg),
+        #[prost(message, tag="14")]
+        PaneRenderUpdate(super::PaneRenderUpdateMsg),
+        #[prost(message, tag="15")]
+        SubscribedPaneClosed(super::SubscribedPaneClosedMsg),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -2853,4 +2867,24 @@ pub struct RenamedSessionMsg {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ConfigFileUpdatedMsg {
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PaneRenderUpdateMsg {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+    #[prost(string, repeated, tag="2")]
+    pub viewport: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(string, repeated, tag="3")]
+    pub scrollback: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(bool, tag="4")]
+    pub has_scrollback: bool,
+    #[prost(bool, tag="5")]
+    pub is_initial: bool,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SubscribedPaneClosedMsg {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
 }

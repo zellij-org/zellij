@@ -601,6 +601,7 @@ impl ZellijPlugin for State {
                         bold: false,
                         italic: true,
                         underline: true,
+                        tooltip_text: None,
                     }];
                     set_pane_regex_highlights(PaneId::Terminal(1), highlights);
                 },

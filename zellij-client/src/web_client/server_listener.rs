@@ -225,6 +225,9 @@ pub fn zellij_server_listener(
                                     }
                                 }
                             },
+                            // Subscribe-only messages — not relevant for web clients
+                            Some(ServerToClientMsg::PaneRenderUpdate { .. }) => {},
+                            Some(ServerToClientMsg::SubscribedPaneClosed { .. }) => {},
                             None => {
                                 if unknown_message_count >= 1000 {
                                     log::error!("Error: Received more than 1000 consecutive unknown server messages, disconnecting.");

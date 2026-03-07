@@ -22,8 +22,8 @@ use strum_macros::{Display, EnumDiscriminants, EnumIter, EnumString};
 use unicode_width::UnicodeWidthChar;
 
 #[cfg(not(target_family = "wasm"))]
-use termwiz::{
-    escape::csi::KittyKeyboardFlags,
+use crate::vendored::termwiz::{
+    input::KittyKeyboardFlags,
     input::{KeyCode, KeyCodeEncodeModes, KeyboardEncoding, Modifiers},
 };
 
@@ -1236,6 +1236,7 @@ pub struct RegexHighlight {
     pub bold: bool,
     pub italic: bool,
     pub underline: bool,
+    pub tooltip_text: Option<String>, // shown at bottom of pane frame when hovering over match
 }
 
 // these are used for the web client

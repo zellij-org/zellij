@@ -943,8 +943,10 @@ impl Pane for TerminalPane {
         &self,
         _client_id: Option<ClientId>,
         get_full_scrollback: bool,
+        max_scrollback_lines: Option<usize>,
     ) -> PaneContents {
-        self.grid.pane_contents(get_full_scrollback)
+        self.grid
+            .pane_contents(get_full_scrollback, max_scrollback_lines)
     }
     fn update_exit_status(&mut self, exit_status: i32) {
         if let Some(notification_end) = self.notification_end.as_mut() {
@@ -975,6 +977,9 @@ impl Pane for TerminalPane {
     fn set_hover_position(&mut self, position: Option<Position>) {
         self.grid.set_hover_position(position);
         self.set_should_render(true);
+    }
+    fn cached_hover_tooltip(&self) -> Option<String> {
+        self.grid.cached_hover_tooltip.clone()
     }
     fn plugin_highlight_at(
         &self,

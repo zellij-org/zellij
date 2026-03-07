@@ -42,9 +42,9 @@ use log::{debug, warn};
 use zellij_utils::data::{
     CommandOrPlugin, Direction, FloatingPaneCoordinates, GetFocusedPaneInfoResponse,
     KeyWithModifier, LayoutInfo, LayoutWithError, ListPanesResponse, ListTabsResponse,
-    NewPanePlacement, PaneContents, PaneInfo, PaneListEntry, PaneManifest, PaneScrollbackResponse,
-    PluginPermission, RegexHighlight, Resize, ResizeStrategy, SessionInfo, Styling, TabInfo,
-    WebSharing,
+    NewPanePlacement, PaneContents, PaneInfo, PaneListEntry, PaneManifest, PaneRenderReport,
+    PaneScrollbackResponse, PluginPermission, RegexHighlight, Resize, ResizeStrategy, SessionInfo,
+    Styling, TabInfo, WebSharing,
 };
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
@@ -52,6 +52,7 @@ use zellij_utils::input::config::Config;
 use zellij_utils::input::keybinds::Keybinds;
 use zellij_utils::input::mouse::MouseEvent;
 use zellij_utils::input::options::Clipboard;
+use zellij_utils::ipc::{ExitReason, ServerToClientMsg};
 use zellij_utils::pane_size::{PaneGeom, Size, SizeInPixels};
 use zellij_utils::shared::clean_string_from_control_and_linebreak;
 use zellij_utils::{
@@ -88,7 +89,7 @@ use zellij_utils::{
     data::{Event, InputMode, ModeInfo, Palette, PaletteColor, PluginCapabilities, Style},
     errors::{ContextType, ScreenContext},
     input::get_mode_info,
-    ipc::{ClientAttributes, PixelDimensions, ServerToClientMsg},
+    ipc::{ClientAttributes, PixelDimensions},
 };
 
 /// Get the active tab and call a closure on it
@@ -681,6 +682,14 @@ pub enum ScreenInstruction {
         plugin_id: u32,
     },
     ClearAllPluginHighlights(u32), // plugin_id — clears across all panes
+    SubscribeToPaneRenders {
+        client_id: ClientId,
+        pane_ids: Vec<zellij_utils::data::PaneId>,
+        scrollback: Option<usize>,
+    },
+    NotifyPaneClosedToSubscribers {
+        pane_id: zellij_utils::data::PaneId,
+    },
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -949,6 +958,12 @@ impl From<&ScreenInstruction> for ScreenContext {
             },
             ScreenInstruction::ClearPluginHighlights { .. } => ScreenContext::ClearPluginHighlights,
             ScreenInstruction::ClearAllPluginHighlights(..) => ScreenContext::ClearPluginHighlights,
+            ScreenInstruction::SubscribeToPaneRenders { .. } => {
+                ScreenContext::SubscribeToPaneRenders
+            },
+            ScreenInstruction::NotifyPaneClosedToSubscribers { .. } => {
+                ScreenContext::NotifyPaneClosedToSubscribers
+            },
         }
     }
 }
@@ -1070,6 +1085,11 @@ impl WatcherState {
     }
 }
 
+struct PaneRenderSubscription {
+    pane_ids: HashSet<zellij_utils::data::PaneId>,
+    previous_viewports: HashMap<zellij_utils::data::PaneId, Vec<String>>,
+}
+
 /// A [`Screen`] holds multiple [`Tab`]s, each one holding multiple [`panes`](crate::client::panes).
 /// It only directly controls which tab is active, delegating the rest to the individual `Tab`.
 pub(crate) struct Screen {
@@ -1134,6 +1154,7 @@ pub(crate) struct Screen {
     followed_client_id: Option<ClientId>,
     cached_layouts: Vec<LayoutInfo>,
     cached_layout_errors: Vec<LayoutWithError>,
+    pane_render_subscribers: HashMap<ClientId, PaneRenderSubscription>,
 }
 
 impl Screen {
@@ -1228,6 +1249,7 @@ impl Screen {
             followed_client_id: None,
             cached_layouts: vec![],
             cached_layout_errors: vec![],
+            pane_render_subscribers: HashMap::new(),
         }
     }
 
@@ -1609,6 +1631,11 @@ impl Screen {
                 .collect(),
         ));
 
+        // Notify pane render subscribers of each closed pane
+        for p_id in &pane_ids {
+            self.notify_pane_closed_to_subscribers((*p_id).into());
+        }
+
         // below we don't check the result of sending the CloseTab instruction to the pty thread
         // because this might be happening when the app is closing, at which point the pty thread
         // has already closed and this would result in an error
@@ -1784,6 +1811,12 @@ impl Screen {
             }
 
             let pane_render_report = output.drain_pane_render_report();
+
+            // Subscriber delivery — gated behind is_empty() for zero overhead
+            if !self.pane_render_subscribers.is_empty() {
+                self.deliver_to_pane_subscribers_from_report(&pane_render_report);
+            }
+
             let _ = self
                 .bus
                 .senders
@@ -1859,6 +1892,11 @@ impl Screen {
         } else {
             // No regular clients, output is not dirty
             non_watcher_output_was_dirty = false;
+
+            // No regular clients but subscribers exist — query panes directly
+            if !self.pane_render_subscribers.is_empty() {
+                self.deliver_to_pane_subscribers_directly();
+            }
         }
 
         // === PHASE 2: Render for watchers ===
@@ -2375,6 +2413,7 @@ impl Screen {
             self.tab_history.remove(&client_id);
         }
         self.connected_clients.borrow_mut().remove(&client_id);
+        self.pane_render_subscribers.remove(&client_id);
         self.log_and_report_session_state()
             .with_context(err_context)
     }
@@ -4231,6 +4270,206 @@ impl Screen {
             }
         }
     }
+    fn subscribe_to_pane_renders(
+        &mut self,
+        subscriber_client_id: ClientId,
+        pane_ids: Vec<zellij_utils::data::PaneId>,
+        scrollback: Option<usize>,
+    ) {
+        let mut previous_viewports = HashMap::new();
+        let mut valid_pane_ids = HashSet::new();
+
+        // Get a regular client ID for plugin pane content queries
+        let regular_client_id = self
+            .connected_clients
+            .borrow()
+            .keys()
+            .find(|id| !self.watcher_clients.contains_key(id))
+            .copied();
+
+        for pane_id in &pane_ids {
+            let server_pane_id: PaneId = (*pane_id).into();
+            let mut found = false;
+
+            for tab in self.tabs.values() {
+                if let Some(pane) = tab.get_pane_with_id(server_pane_id) {
+                    let get_full_scrollback = scrollback.is_some();
+                    let max_lines = scrollback.and_then(|n| if n == 0 { None } else { Some(n) });
+
+                    // For plugin panes, use a regular client_id; for terminal panes, None is fine
+                    let query_client_id = match server_pane_id {
+                        PaneId::Plugin(_) => regular_client_id,
+                        PaneId::Terminal(_) => None,
+                    };
+                    let contents =
+                        pane.pane_contents(query_client_id, get_full_scrollback, max_lines);
+
+                    if let Some(os_input) = &self.bus.os_input {
+                        let scrollback_data = if scrollback.is_some() {
+                            Some(contents.lines_above_viewport.clone())
+                        } else {
+                            None
+                        };
+                        let _ = os_input.send_to_client(
+                            subscriber_client_id,
+                            ServerToClientMsg::PaneRenderUpdate {
+                                pane_id: *pane_id,
+                                viewport: contents.viewport.clone(),
+                                scrollback: scrollback_data,
+                                is_initial: true,
+                            },
+                        );
+                    }
+
+                    previous_viewports.insert(*pane_id, contents.viewport);
+                    valid_pane_ids.insert(*pane_id);
+                    found = true;
+                    break;
+                }
+            }
+
+            if !found {
+                if let Some(os_input) = &self.bus.os_input {
+                    let _ = os_input.send_to_client(
+                        subscriber_client_id,
+                        ServerToClientMsg::LogError {
+                            lines: vec![format!("Pane {} not found", pane_id)],
+                        },
+                    );
+                }
+            }
+        }
+
+        if !valid_pane_ids.is_empty() {
+            self.pane_render_subscribers.insert(
+                subscriber_client_id,
+                PaneRenderSubscription {
+                    pane_ids: valid_pane_ids,
+                    previous_viewports,
+                },
+            );
+        }
+    }
+    fn deliver_to_pane_subscribers_from_report(&mut self, report: &PaneRenderReport) {
+        let Some(pane_map) = report.all_pane_contents.values().next() else {
+            return;
+        };
+        self.deliver_subscriber_updates_from_map(pane_map);
+    }
+    fn deliver_to_pane_subscribers_directly(&mut self) {
+        // Collect unique pane IDs across all subscribers
+        let all_subscribed_ids: HashSet<zellij_utils::data::PaneId> = self
+            .pane_render_subscribers
+            .values()
+            .flat_map(|sub| sub.pane_ids.iter().copied())
+            .collect();
+
+        // Query pane contents directly from tabs
+        let mut pane_map: HashMap<zellij_utils::data::PaneId, PaneContents> = HashMap::new();
+        for pane_id in &all_subscribed_ids {
+            let server_pane_id: PaneId = (*pane_id).into();
+            for tab in self.tabs.values() {
+                if let Some(pane) = tab.get_pane_with_id(server_pane_id) {
+                    pane_map.insert(*pane_id, pane.pane_contents(None, false, None));
+                    break;
+                }
+            }
+        }
+
+        self.deliver_subscriber_updates_from_map(&pane_map);
+    }
+    fn deliver_subscriber_updates_from_map(
+        &mut self,
+        pane_map: &HashMap<zellij_utils::data::PaneId, PaneContents>,
+    ) {
+        // Collect updates to send, avoiding borrow conflicts
+        let mut updates_to_send: Vec<(ClientId, ServerToClientMsg)> = Vec::new();
+        let mut dead_subscribers: Vec<ClientId> = Vec::new();
+
+        for (subscriber_id, subscription) in &self.pane_render_subscribers {
+            for pane_id in &subscription.pane_ids {
+                if let Some(contents) = pane_map.get(pane_id) {
+                    let changed = subscription
+                        .previous_viewports
+                        .get(pane_id)
+                        .map(|prev| prev != &contents.viewport)
+                        .unwrap_or(true);
+
+                    if changed {
+                        updates_to_send.push((
+                            *subscriber_id,
+                            ServerToClientMsg::PaneRenderUpdate {
+                                pane_id: *pane_id,
+                                viewport: contents.viewport.clone(),
+                                scrollback: None,
+                                is_initial: false,
+                            },
+                        ));
+                    }
+                }
+            }
+        }
+
+        // Send updates and track dead subscribers
+        for (subscriber_id, msg) in &updates_to_send {
+            if let Some(os_input) = &self.bus.os_input {
+                if os_input
+                    .send_to_client(*subscriber_id, msg.clone())
+                    .is_err()
+                {
+                    dead_subscribers.push(*subscriber_id);
+                }
+            }
+        }
+
+        // Update previous viewports for successful sends
+        for (subscriber_id, msg) in updates_to_send {
+            if dead_subscribers.contains(&subscriber_id) {
+                continue;
+            }
+            if let ServerToClientMsg::PaneRenderUpdate {
+                pane_id, viewport, ..
+            } = msg
+            {
+                if let Some(subscription) = self.pane_render_subscribers.get_mut(&subscriber_id) {
+                    subscription.previous_viewports.insert(pane_id, viewport);
+                }
+            }
+        }
+
+        for id in dead_subscribers {
+            self.pane_render_subscribers.remove(&id);
+        }
+    }
+    fn notify_pane_closed_to_subscribers(&mut self, pane_id: zellij_utils::data::PaneId) {
+        let mut dead_subscribers = Vec::new();
+
+        for (subscriber_id, subscription) in &mut self.pane_render_subscribers {
+            if subscription.pane_ids.remove(&pane_id) {
+                if let Some(os_input) = &self.bus.os_input {
+                    let _ = os_input.send_to_client(
+                        *subscriber_id,
+                        ServerToClientMsg::SubscribedPaneClosed { pane_id },
+                    );
+                }
+                if subscription.pane_ids.is_empty() {
+                    if let Some(os_input) = &self.bus.os_input {
+                        let _ = os_input.send_to_client(
+                            *subscriber_id,
+                            ServerToClientMsg::Exit {
+                                exit_reason: ExitReason::Normal,
+                            },
+                        );
+                    }
+                    dead_subscribers.push(*subscriber_id);
+                }
+            }
+        }
+
+        for id in dead_subscribers {
+            self.pane_render_subscribers.remove(&id);
+        }
+    }
 }
 
 #[cfg(not(test))]
@@ -5042,7 +5281,7 @@ pub(crate) fn screen_thread_main(
                 for tab in screen.get_tabs_mut().values() {
                     if let Some(pane) = tab.get_pane_with_id(pane_id) {
                         pane_contents =
-                            Some(pane.pane_contents(Some(client_id), get_full_scrollback));
+                            Some(pane.pane_contents(Some(client_id), get_full_scrollback, None));
                         break;
                     }
                 }
@@ -7694,6 +7933,16 @@ pub(crate) fn screen_thread_main(
                     tab.clear_all_plugin_highlights(plugin_id);
                 }
                 screen.render(None)?;
+            },
+            ScreenInstruction::SubscribeToPaneRenders {
+                client_id,
+                pane_ids,
+                scrollback,
+            } => {
+                screen.subscribe_to_pane_renders(client_id, pane_ids, scrollback);
+            },
+            ScreenInstruction::NotifyPaneClosedToSubscribers { pane_id } => {
+                screen.notify_pane_closed_to_subscribers(pane_id);
             },
         }
     }

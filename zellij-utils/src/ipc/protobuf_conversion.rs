@@ -6,13 +6,14 @@ use crate::{
         ConnStatusMsg, ConnectedMsg, DetachSessionMsg, ExitMsg, ExitReason as ProtoExitReason,
         FailedToStartWebServerMsg, FirstClientConnectedMsg, ForegroundColorMsg,
         InputMode as ProtoInputMode, KeyMsg, KillSessionMsg, LayoutMetadata as ProtoLayoutMetadata,
-        LogErrorMsg, LogMsg, PaneMetadata as ProtoPaneMetadata, QueryTerminalSizeMsg,
-        RenamedSessionMsg, RenderMsg, ServerToClientMsg as ProtoServerToClientMsg,
-        StartWebServerMsg, SwitchSessionMsg, TabMetadata as ProtoTabMetadata,
+        LogErrorMsg, LogMsg, PaneMetadata as ProtoPaneMetadata, PaneRenderUpdateMsg,
+        QueryTerminalSizeMsg, RenamedSessionMsg, RenderMsg,
+        ServerToClientMsg as ProtoServerToClientMsg, StartWebServerMsg, SubscribeToPaneRendersMsg,
+        SubscribedPaneClosedMsg, SwitchSessionMsg, TabMetadata as ProtoTabMetadata,
         TerminalPixelDimensionsMsg, TerminalResizeMsg, UnblockCliPipeInputMsg,
         UnblockInputThreadMsg, WebServerStartedMsg,
     },
-    data::InputMode,
+    data::{InputMode, PaneId},
     errors::prelude::*,
     ipc::{
         ClientToServerMsg, ColorRegister, ExitReason, PaneReference, PixelDimensions,
@@ -114,6 +115,13 @@ impl From<ClientToServerMsg> for ProtoClientToServerMsg {
                     error,
                 })
             },
+            ClientToServerMsg::SubscribeToPaneRenders {
+                pane_ids,
+                scrollback,
+            } => client_to_server_msg::Message::SubscribeToPaneRenders(SubscribeToPaneRendersMsg {
+                pane_ids: pane_ids.into_iter().map(|id| id.into()).collect(),
+                scrollback: scrollback.map(|s| s as u32),
+            }),
         };
 
         ProtoClientToServerMsg {
@@ -228,6 +236,14 @@ impl TryFrom<ProtoClientToServerMsg> for ClientToServerMsg {
                     error: failed.error,
                 })
             },
+            Some(client_to_server_msg::Message::SubscribeToPaneRenders(msg)) => {
+                let pane_ids: Result<Vec<PaneId>> =
+                    msg.pane_ids.into_iter().map(|p| p.try_into()).collect();
+                Ok(ClientToServerMsg::SubscribeToPaneRenders {
+                    pane_ids: pane_ids?,
+                    scrollback: msg.scrollback.map(|s| s as usize),
+                })
+            },
             None => Err(anyhow!("Empty ClientToServerMsg message")),
         }
     }
@@ -289,6 +305,23 @@ impl From<ServerToClientMsg> for ProtoServerToClientMsg {
             },
             ServerToClientMsg::ConfigFileUpdated => {
                 server_to_client_msg::Message::ConfigFileUpdated(ConfigFileUpdatedMsg {})
+            },
+            ServerToClientMsg::PaneRenderUpdate {
+                pane_id,
+                viewport,
+                scrollback,
+                is_initial,
+            } => server_to_client_msg::Message::PaneRenderUpdate(PaneRenderUpdateMsg {
+                pane_id: Some(pane_id.into()),
+                viewport,
+                scrollback: scrollback.clone().unwrap_or_default(),
+                has_scrollback: scrollback.is_some(),
+                is_initial,
+            }),
+            ServerToClientMsg::SubscribedPaneClosed { pane_id } => {
+                server_to_client_msg::Message::SubscribedPaneClosed(SubscribedPaneClosedMsg {
+                    pane_id: Some(pane_id.into()),
+                })
             },
         };
 
@@ -371,6 +404,30 @@ impl TryFrom<ProtoServerToClientMsg> for ServerToClientMsg {
             },
             Some(server_to_client_msg::Message::ConfigFileUpdated(_)) => {
                 Ok(ServerToClientMsg::ConfigFileUpdated)
+            },
+            Some(server_to_client_msg::Message::PaneRenderUpdate(msg)) => {
+                let pane_id: PaneId = msg
+                    .pane_id
+                    .ok_or_else(|| anyhow!("Missing pane_id"))?
+                    .try_into()?;
+                let scrollback = if msg.has_scrollback {
+                    Some(msg.scrollback)
+                } else {
+                    None
+                };
+                Ok(ServerToClientMsg::PaneRenderUpdate {
+                    pane_id,
+                    viewport: msg.viewport,
+                    scrollback,
+                    is_initial: msg.is_initial,
+                })
+            },
+            Some(server_to_client_msg::Message::SubscribedPaneClosed(msg)) => {
+                let pane_id: PaneId = msg
+                    .pane_id
+                    .ok_or_else(|| anyhow!("Missing pane_id"))?
+                    .try_into()?;
+                Ok(ServerToClientMsg::SubscribedPaneClosed { pane_id })
             },
             None => Err(anyhow!("Empty ServerToClientMsg message")),
         }

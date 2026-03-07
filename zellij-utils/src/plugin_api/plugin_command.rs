@@ -2515,6 +2515,7 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                                     bold: h.bold,
                                     italic: h.italic,
                                     underline: h.underline,
+                                    tooltip_text: h.tooltip_text,
                                 }
                             })
                             .collect();
@@ -4165,6 +4166,7 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                                         bold: h.bold,
                                         italic: h.italic,
                                         underline: h.underline,
+                                        tooltip_text: h.tooltip_text,
                                     }
                                 })
                                 .collect(),
