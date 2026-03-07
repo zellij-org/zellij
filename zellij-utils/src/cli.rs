@@ -1410,3 +1410,76 @@ tail -f /tmp/my-live-logfile | zellij action pipe --name logs --plugin https://e
         reset: bool,
     },
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::Parser;
+
+    fn parse_subscribe(args: &[&str]) -> SubscribeCli {
+        let mut full_args = vec!["zellij"];
+        full_args.extend_from_slice(args);
+        let cli = CliArgs::try_parse_from(full_args).unwrap();
+        match cli.command {
+            Some(Command::Subscribe(s)) => s,
+            other => panic!("Expected Subscribe, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn subscribe_scrollback_bare_flag() {
+        let s = parse_subscribe(&["subscribe", "--pane-id", "terminal_1", "--scrollback"]);
+        assert_eq!(s.scrollback, Some(0));
+    }
+
+    #[test]
+    fn subscribe_scrollback_with_value() {
+        let s = parse_subscribe(&[
+            "subscribe",
+            "--pane-id",
+            "terminal_1",
+            "--scrollback",
+            "100",
+        ]);
+        assert_eq!(s.scrollback, Some(100));
+    }
+
+    #[test]
+    fn subscribe_scrollback_absent() {
+        let s = parse_subscribe(&["subscribe", "--pane-id", "terminal_1"]);
+        assert_eq!(s.scrollback, None);
+    }
+
+    #[test]
+    fn subscribe_format_json() {
+        let s = parse_subscribe(&["subscribe", "--pane-id", "terminal_1", "--format", "json"]);
+        assert!(matches!(s.format, SubscribeFormat::Json));
+    }
+
+    #[test]
+    fn subscribe_format_default_raw() {
+        let s = parse_subscribe(&["subscribe", "--pane-id", "terminal_1"]);
+        assert!(matches!(s.format, SubscribeFormat::Raw));
+    }
+
+    #[test]
+    fn subscribe_multiple_pane_ids() {
+        let s = parse_subscribe(&[
+            "subscribe",
+            "--pane-id",
+            "terminal_1",
+            "--pane-id",
+            "plugin_2",
+        ]);
+        assert_eq!(
+            s.pane_id,
+            vec!["terminal_1".to_string(), "plugin_2".to_string()]
+        );
+    }
+
+    #[test]
+    fn subscribe_requires_pane_id() {
+        let result = CliArgs::try_parse_from(["zellij", "subscribe"]);
+        assert!(result.is_err());
+    }
+}
