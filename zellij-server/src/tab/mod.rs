@@ -28,7 +28,7 @@ use zellij_utils::shared::clean_string_from_control_and_linebreak;
 use crate::background_jobs::BackgroundJob;
 use crate::pane_groups::PaneGroups;
 use crate::pty_writer::PtyWriteInstruction;
-use crate::screen::CopyOptions;
+use crate::screen::{CopyOptions, ScreenInstruction};
 use crate::ui::{loading_indication::LoadingIndication, pane_boundaries_frame::FrameParams};
 use layout_applier::LayoutApplier;
 use swap_layouts::SwapLayouts;
@@ -604,6 +604,7 @@ pub trait Pane {
         &self,
         client_id: Option<ClientId>,
         _get_full_scrollback: bool,
+        _max_scrollback_lines: Option<usize>,
     ) -> PaneContents;
     fn update_exit_status(&mut self, _exit_status: i32) {}
     fn set_plugin_regex_highlights(
@@ -2249,6 +2250,11 @@ impl Tab {
                 None,
                 Event::PaneClosed(pane_id.into()),
             )]));
+            let _ = self
+                .senders
+                .send_to_screen(ScreenInstruction::NotifyPaneClosedToSubscribers {
+                    pane_id: pane_id.into(),
+                });
             drop(replaced_pane);
         }
     }
@@ -3817,6 +3823,11 @@ impl Tab {
             None,
             Event::PaneClosed(id.into()),
         )]));
+        let _ = self
+            .senders
+            .send_to_screen(ScreenInstruction::NotifyPaneClosedToSubscribers {
+                pane_id: id.into(),
+            });
     }
     pub fn extract_pane(
         &mut self,

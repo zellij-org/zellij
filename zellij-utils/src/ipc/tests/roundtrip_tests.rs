@@ -3040,6 +3040,18 @@ fn test_client_messages() {
     test_client_roundtrip!(ClientToServerMsg::FailedToStartWebServer {
         error: "Port already in use".to_string(),
     });
+    test_client_roundtrip!(ClientToServerMsg::SubscribeToPaneRenders {
+        pane_ids: vec![PaneId::Terminal(1), PaneId::Plugin(2)],
+        scrollback: Some(100),
+    });
+    test_client_roundtrip!(ClientToServerMsg::SubscribeToPaneRenders {
+        pane_ids: vec![PaneId::Terminal(0)],
+        scrollback: None,
+    });
+    test_client_roundtrip!(ClientToServerMsg::SubscribeToPaneRenders {
+        pane_ids: vec![PaneId::Terminal(1)],
+        scrollback: Some(0),
+    });
 }
 
 fn test_server_messages() {
@@ -3150,6 +3162,30 @@ fn test_server_messages() {
             )),
             cwd: Some(PathBuf::from("/path/to/cwd")),
         }
+    });
+    test_server_roundtrip!(ServerToClientMsg::PaneRenderUpdate {
+        pane_id: PaneId::Terminal(1),
+        viewport: vec!["hello".to_string(), "world".to_string()],
+        scrollback: Some(vec!["line1".to_string()]),
+        is_initial: true,
+    });
+    test_server_roundtrip!(ServerToClientMsg::PaneRenderUpdate {
+        pane_id: PaneId::Plugin(2),
+        viewport: vec!["viewport line".to_string()],
+        scrollback: None,
+        is_initial: false,
+    });
+    test_server_roundtrip!(ServerToClientMsg::PaneRenderUpdate {
+        pane_id: PaneId::Terminal(0),
+        viewport: vec![],
+        scrollback: Some(vec![]),
+        is_initial: true,
+    });
+    test_server_roundtrip!(ServerToClientMsg::SubscribedPaneClosed {
+        pane_id: PaneId::Terminal(1),
+    });
+    test_server_roundtrip!(ServerToClientMsg::SubscribedPaneClosed {
+        pane_id: PaneId::Plugin(3),
     });
 }
 

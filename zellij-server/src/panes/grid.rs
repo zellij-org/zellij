@@ -3025,7 +3025,11 @@ impl Grid {
     pub fn has_selection(&self) -> bool {
         !self.selection.is_empty()
     }
-    pub fn pane_contents(&self, get_full_scrollback: bool) -> PaneContents {
+    pub fn pane_contents(
+        &self,
+        get_full_scrollback: bool,
+        max_scrollback_lines: Option<usize>,
+    ) -> PaneContents {
         let mut viewport: Vec<String> = Vec::with_capacity(self.viewport.len());
         for row in &self.viewport {
             let s: String = (&row.columns).into_iter().map(|x| x.character).collect();
@@ -3036,6 +3040,13 @@ impl Grid {
             for row in &self.lines_above {
                 let s: String = (&row.columns).into_iter().map(|x| x.character).collect();
                 lines_above_viewport.push(s);
+            }
+            // Truncate to last N lines if max specified (Some(0) means "all" — no truncation)
+            if let Some(max) = max_scrollback_lines {
+                if max > 0 && lines_above_viewport.len() > max {
+                    let start = lines_above_viewport.len() - max;
+                    lines_above_viewport = lines_above_viewport.split_off(start);
+                }
             }
             let mut lines_below_viewport: Vec<String> = Vec::with_capacity(self.lines_below.len());
             for row in &self.lines_below {

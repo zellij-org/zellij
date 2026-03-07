@@ -4860,3 +4860,91 @@ fn highlight_style_variants_resolve_colors() {
     assert!(fg.is_some());
     assert!(bg.is_none());
 }
+
+fn create_grid_with_scrollback() -> Grid {
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let mut grid = Grid::new(
+        5,
+        40,
+        Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
+        sixel_image_store,
+        Style::default(),
+        false,
+        true,
+        true,
+        true,
+        false,
+    );
+    let mut parser = vte::Parser::new();
+    for i in 0..25 {
+        let line = format!("scrollback line {}\r\n", i);
+        for byte in line.as_bytes() {
+            parser.advance(&mut grid, *byte);
+        }
+    }
+    grid
+}
+
+#[test]
+fn pane_contents_scrollback_no_truncation_when_max_none() {
+    let grid = create_grid_with_scrollback();
+    let result = grid.pane_contents(true, None);
+    assert_eq!(
+        result.lines_above_viewport.len(),
+        21,
+        "All scrollback lines should be returned when max is None"
+    );
+}
+
+#[test]
+fn pane_contents_scrollback_no_truncation_when_max_zero() {
+    let grid = create_grid_with_scrollback();
+    let result = grid.pane_contents(true, Some(0));
+    assert_eq!(
+        result.lines_above_viewport.len(),
+        21,
+        "Some(0) is sentinel for all scrollback — no truncation"
+    );
+}
+
+#[test]
+fn pane_contents_scrollback_truncates_to_last_n() {
+    let grid = create_grid_with_scrollback();
+    let result = grid.pane_contents(true, Some(5));
+    assert_eq!(result.lines_above_viewport.len(), 5);
+    let full = grid.pane_contents(true, None);
+    let expected: Vec<String> = full
+        .lines_above_viewport
+        .iter()
+        .rev()
+        .take(5)
+        .rev()
+        .cloned()
+        .collect();
+    assert_eq!(result.lines_above_viewport, expected);
+}
+
+#[test]
+fn pane_contents_scrollback_no_truncation_when_n_exceeds_total() {
+    let grid = create_grid_with_scrollback();
+    let result = grid.pane_contents(true, Some(100));
+    assert_eq!(
+        result.lines_above_viewport.len(),
+        21,
+        "No truncation when N exceeds total scrollback lines"
+    );
+}
+
+#[test]
+fn pane_contents_no_scrollback_when_flag_false() {
+    let grid = create_grid_with_scrollback();
+    let result = grid.pane_contents(false, Some(5));
+    assert!(
+        result.lines_above_viewport.is_empty(),
+        "get_full_scrollback=false should never collect scrollback"
+    );
+}

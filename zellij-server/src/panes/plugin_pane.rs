@@ -885,10 +885,11 @@ impl Pane for PluginPane {
         &self,
         client_id: Option<ClientId>,
         get_full_scrollback: bool,
+        max_scrollback_lines: Option<usize>,
     ) -> PaneContents {
         client_id
             .and_then(|c| self.grids.get(&c))
-            .map(|g| g.pane_contents(get_full_scrollback))
+            .map(|g| g.pane_contents(get_full_scrollback, max_scrollback_lines))
             .unwrap_or_else(Default::default)
     }
 }

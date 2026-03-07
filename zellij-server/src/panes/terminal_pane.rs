@@ -943,8 +943,10 @@ impl Pane for TerminalPane {
         &self,
         _client_id: Option<ClientId>,
         get_full_scrollback: bool,
+        max_scrollback_lines: Option<usize>,
     ) -> PaneContents {
-        self.grid.pane_contents(get_full_scrollback)
+        self.grid
+            .pane_contents(get_full_scrollback, max_scrollback_lines)
     }
     fn update_exit_status(&mut self, exit_status: i32) {
         if let Some(notification_end) = self.notification_end.as_mut() {

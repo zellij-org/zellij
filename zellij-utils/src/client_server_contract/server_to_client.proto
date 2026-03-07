@@ -18,6 +18,8 @@ message ServerToClientMsg {
     StartWebServerMsg start_web_server = 11;
     RenamedSessionMsg renamed_session = 12;
     ConfigFileUpdatedMsg config_file_updated = 13;
+    PaneRenderUpdateMsg pane_render_update = 14;
+    SubscribedPaneClosedMsg subscribed_pane_closed = 15;
   }
 }
 
@@ -73,4 +75,16 @@ message RenamedSessionMsg {
 
 message ConfigFileUpdatedMsg {
   // Empty message
+}
+
+message PaneRenderUpdateMsg {
+  PaneId pane_id = 1;
+  repeated string viewport = 2;
+  repeated string scrollback = 3;
+  bool has_scrollback = 4;
+  bool is_initial = 5;
+}
+
+message SubscribedPaneClosedMsg {
+  PaneId pane_id = 1;
 }
