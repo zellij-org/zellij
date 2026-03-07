@@ -3882,6 +3882,33 @@ fn enter_search_floating_pane() {
 }
 
 #[test]
+fn search_with_wide_characters() {
+    let size = Size { cols: 40, rows: 5 };
+    let client_id = 1;
+    let mode_info = ModeInfo {
+        mode: InputMode::Search,
+        ..Default::default()
+    };
+    let mut tab = create_new_tab(size, mode_info);
+    let mut output = Output::default();
+
+    tab.handle_pty_bytes(1, "hello🌍🔥world".as_bytes().to_vec())
+        .unwrap();
+
+    // Non-ASCII wide character bytes should be accepted as search input
+    tab.update_search_term("🔥".as_bytes().to_vec(), client_id)
+        .unwrap();
+    tab.render(&mut output, None).unwrap();
+    let snapshot = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!("search_tab_highlight_wide_chars", snapshot);
+}
+
+#[test]
 fn pane_in_sgr_button_event_tracking_mouse_mode() {
     let size = Size {
         cols: 121,

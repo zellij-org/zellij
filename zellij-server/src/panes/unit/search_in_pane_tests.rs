@@ -424,3 +424,39 @@ pub fn searching_whole_word_case_insensitive() {
         format!("{:?}", terminal_pane.grid)
     );
 }
+
+#[test]
+pub fn searching_wide_chars() {
+    let mut terminal_pane = create_pane();
+    terminal_pane.handle_pty_bytes("hello🌍🔥world".as_bytes().to_vec());
+    terminal_pane.grid.change_size(5, 40);
+    terminal_pane.update_search_term("🌍🔥");
+    assert_snapshot!(format!("{:?}", terminal_pane.grid));
+}
+
+#[test]
+pub fn searching_wide_chars_mixed_with_ascii() {
+    let mut terminal_pane = create_pane();
+    terminal_pane.handle_pty_bytes("abc🎉def🎉ghi".as_bytes().to_vec());
+    terminal_pane.grid.change_size(5, 40);
+    terminal_pane.update_search_term("🎉");
+    assert_snapshot!(format!("{:?}", terminal_pane.grid));
+}
+
+#[test]
+pub fn searching_wide_chars_multiple_occurrences() {
+    let mut terminal_pane = create_pane();
+    terminal_pane.handle_pty_bytes("🔥🔥🔥".as_bytes().to_vec());
+    terminal_pane.grid.change_size(5, 20);
+    terminal_pane.update_search_term("🔥");
+    assert_snapshot!(format!("{:?}", terminal_pane.grid));
+}
+
+#[test]
+pub fn searching_wide_chars_multi_char_needle() {
+    let mut terminal_pane = create_pane();
+    terminal_pane.handle_pty_bytes("ab🌍🔥🎉🚀cd".as_bytes().to_vec());
+    terminal_pane.grid.change_size(5, 40);
+    terminal_pane.update_search_term("🔥🎉");
+    assert_snapshot!(format!("{:?}", terminal_pane.grid));
+}
