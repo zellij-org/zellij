@@ -120,7 +120,8 @@ pub enum Command {
     #[clap(flatten)]
     Sessions(Sessions),
 
-    /// Subscribe to pane render updates
+    /// Subscribe to pane render updates (viewport and scrollback)
+    #[clap(override_usage("zellij [--session <OTHER SESSION NAME>] subscribe [OPTIONS] --pane-id..."))]
     Subscribe(SubscribeCli),
 }
 
