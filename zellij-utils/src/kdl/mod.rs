@@ -2783,6 +2783,8 @@ impl Options {
             };
         let visual_bell =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "visual_bell").map(|(v, _)| v);
+        let tab_cycle_wrap =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "tab_cycle_wrap").map(|(v, _)| v);
 
         Ok(Options {
             simplified_ui,
@@ -2828,6 +2830,7 @@ impl Options {
             enforce_https_for_localhost,
             post_command_discovery_hook,
             client_async_worker_tasks,
+            tab_cycle_wrap,
         })
     }
     pub fn from_string(stringified_keybindings: &String) -> Result<Self, ConfigError> {
@@ -4091,6 +4094,34 @@ impl Options {
             None
         }
     }
+    fn tab_cycle_wrap_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!(
+            "{}\n{}\n{}\n{}",
+            " ",
+            "// Whether to wrap around when switching to the next/previous tab",
+            "// Default: true",
+            "// ",
+        );
+
+        let create_node = |node_value: bool| -> KdlNode {
+            let mut node = KdlNode::new("tab_cycle_wrap");
+            node.push(KdlValue::Bool(node_value));
+            node
+        };
+        if let Some(tab_cycle_wrap) = self.tab_cycle_wrap {
+            let mut node = create_node(tab_cycle_wrap);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(true);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
     pub fn to_kdl(&self, add_comments: bool) -> Vec<KdlNode> {
         let mut nodes = vec![];
         if let Some(simplified_ui_node) = self.simplified_ui_to_kdl(add_comments) {
@@ -4230,6 +4261,9 @@ impl Options {
         if let Some(client_async_worker_tasks) = self.client_async_worker_tasks_to_kdl(add_comments)
         {
             nodes.push(client_async_worker_tasks);
+        }
+        if let Some(tab_cycle_wrap) = self.tab_cycle_wrap_to_kdl(add_comments) {
+            nodes.push(tab_cycle_wrap);
         }
         nodes
     }

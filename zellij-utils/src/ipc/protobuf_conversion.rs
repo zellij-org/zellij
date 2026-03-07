@@ -616,6 +616,7 @@ impl From<crate::input::options::Options>
             post_command_discovery_hook: options.post_command_discovery_hook,
             client_async_worker_tasks: options.client_async_worker_tasks.map(|v| v as u64),
             visual_bell: options.visual_bell,
+            tab_cycle_wrap: options.tab_cycle_wrap,
         }
     }
 }
@@ -709,6 +710,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
             post_command_discovery_hook: options.post_command_discovery_hook,
             client_async_worker_tasks: options.client_async_worker_tasks.map(|v| v as usize),
             visual_bell: options.visual_bell,
+            tab_cycle_wrap: options.tab_cycle_wrap,
         })
     }
 }

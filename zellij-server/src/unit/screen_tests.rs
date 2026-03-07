@@ -292,6 +292,7 @@ fn create_new_screen(
     let web_server_ip = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
     let web_server_port = 8080;
     let visual_bell = true;
+    let tab_cycle_wrap = true;
     let screen = Screen::new(
         bus,
         &client_attributes,
@@ -320,6 +321,7 @@ fn create_new_screen(
         advanced_mouse_actions,
         mouse_hover_effects,
         visual_bell,
+        tab_cycle_wrap,
         web_server_ip,
         web_server_port,
     );

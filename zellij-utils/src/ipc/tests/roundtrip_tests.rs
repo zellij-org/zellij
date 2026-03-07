@@ -474,6 +474,7 @@ fn test_client_messages() {
                 client_async_worker_tasks: Some(16),
                 mouse_hover_effects: Some(false),
                 visual_bell: Some(true),
+                tab_cycle_wrap: Some(false),
             }),
             layout: None,
             terminal_window_size: Size { rows: 80, cols: 42 },

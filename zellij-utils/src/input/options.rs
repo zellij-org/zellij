@@ -256,6 +256,12 @@ pub struct Options {
     /// NOTE: This only applies to web clients at the moment.
     #[clap(long)]
     pub client_async_worker_tasks: Option<usize>,
+
+    /// Whether to wrap around when switching to the next/previous tab
+    /// Default: true
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub tab_cycle_wrap: Option<bool>,
 }
 
 #[derive(ArgEnum, Deserialize, Serialize, Debug, Clone, Copy, PartialEq)]
@@ -358,6 +364,7 @@ impl Options {
         let client_async_worker_tasks = other
             .client_async_worker_tasks
             .or(self.client_async_worker_tasks);
+        let tab_cycle_wrap = other.tab_cycle_wrap.or(self.tab_cycle_wrap);
 
         Options {
             simplified_ui,
@@ -403,6 +410,7 @@ impl Options {
             enforce_https_for_localhost,
             post_command_discovery_hook,
             client_async_worker_tasks,
+            tab_cycle_wrap,
         }
     }
 
@@ -485,6 +493,7 @@ impl Options {
         let client_async_worker_tasks = other
             .client_async_worker_tasks
             .or(self.client_async_worker_tasks);
+        let tab_cycle_wrap = other.tab_cycle_wrap.or(self.tab_cycle_wrap);
 
         Options {
             simplified_ui,
@@ -530,6 +539,7 @@ impl Options {
             enforce_https_for_localhost,
             post_command_discovery_hook,
             client_async_worker_tasks,
+            tab_cycle_wrap,
         }
     }
 
