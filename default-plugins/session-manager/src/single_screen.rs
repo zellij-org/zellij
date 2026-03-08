@@ -74,6 +74,13 @@ impl SingleScreenState {
         active_sessions: &[SessionUiInfo],
         resurrectable_sessions: &[(String, Duration)],
     ) {
+        // Preserve the currently selected session name so we can restore
+        // the selection after rebuilding results
+        let previously_selected_name = self
+            .selected_index
+            .and_then(|i| self.unified_results.get(i))
+            .map(|r| r.session_name().to_owned());
+
         self.selected_index = None;
 
         if self.search_term.is_empty() {
@@ -139,6 +146,14 @@ impl SingleScreenState {
                 score_b.cmp(&score_a)
             });
             self.unified_results = results;
+        }
+
+        // Restore selection if the previously selected session still exists
+        if let Some(prev_name) = previously_selected_name {
+            self.selected_index = self
+                .unified_results
+                .iter()
+                .position(|r| r.session_name() == prev_name);
         }
     }
 
