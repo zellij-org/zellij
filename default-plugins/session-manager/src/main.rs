@@ -69,10 +69,10 @@ impl ZellijPlugin for State {
         }
         self.new_session_info.is_welcome_screen = self.is_welcome_screen;
         self.is_single_screen = true;
-//         self.is_single_screen = configuration
-//             .get("single_screen")
-//             .map(|v| v == "true")
-//             .unwrap_or(false);
+        //         self.is_single_screen = configuration
+        //             .get("single_screen")
+        //             .map(|v| v == "true")
+        //             .unwrap_or(false);
         if self.is_single_screen {
             self.active_screen = ActiveScreen::SingleScreen;
         }
@@ -218,20 +218,33 @@ impl ZellijPlugin for State {
                         } else if self.show_kill_all_sessions_warning {
                             self.render_kill_all_sessions_warning(height, width, x, y);
                         } else {
+                            // Use max_table_rows as fixed content height so the
+                            // prompt position stays stable regardless of result count
+                            let max_table_rows = height.saturating_sub(5);
+                            let content_height = 2 + max_table_rows; // prompt + header + max data rows
+                                                                     // Available space above help lines (2 help rows at bottom)
+                            let available = height.saturating_sub(3);
+                            let y_offset = y + available.saturating_sub(content_height) / 2;
+
+                            // Horizontal centering: cap content block and center
+                            // within the full pane width
+                            let content_width = std::cmp::min(width, 90);
+                            let x_centered = x + (width.saturating_sub(content_width)) / 2;
+
                             render_single_screen_prompt(
                                 &self.single_screen_state.search_term,
                                 self.colors,
-                                x,
-                                y,
+                                x_centered,
+                                y_offset,
                             );
                             render_unified_results(
                                 &self.single_screen_state.unified_results,
                                 self.single_screen_state.selected_index,
-                                height.saturating_sub(5),
-                                width.saturating_sub(7),
+                                max_table_rows,
+                                content_width,
                                 self.colors,
-                                x,
-                                y + 3,
+                                x_centered,
+                                y_offset + 2,
                             );
                         }
                     },
@@ -328,14 +341,20 @@ impl ZellijPlugin for State {
             || self.active_screen == ActiveScreen::SingleScreen)
             && !self.is_welcome_screen
         {
+            let help_x = if self.active_screen == ActiveScreen::SingleScreen {
+                let content_width = std::cmp::min(width, 90);
+                x + (width.saturating_sub(content_width)) / 2
+            } else {
+                x
+            };
             let help_offset = render_controls_line(
                 self.active_screen,
                 width,
                 self.colors,
-                x,
+                help_x,
                 rows.saturating_sub(1),
             );
-            let adjusted_x = x + help_offset;
+            let adjusted_x = help_x + help_offset;
             let adjusted_width = width.saturating_sub(help_offset);
             render_unsaved_changes_line(
                 adjusted_width,

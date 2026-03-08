@@ -542,8 +542,8 @@ pub fn render_single_screen_prompt(search_term: &str, colors: Colors, x: usize, 
     let search_term_display = colors.bold(&format!("{}_", search_term));
     println!(
         "\u{1b}[{};{}H\u{1b}[0m{} {}\n",
-        y + 1,
-        x,
+        y + 2,
+        x + 1,
         prompt,
         search_term_display
     );
@@ -554,95 +554,100 @@ pub fn render_unified_results(
     selected_index: Option<usize>,
     max_rows: usize,
     _max_cols: usize,
-    colors: Colors,
+    _colors: Colors,
     x: usize,
     y: usize,
 ) {
-    if results.is_empty() {
+    // Filter out the current session
+    let filtered: Vec<(usize, &UnifiedSearchResult)> = results
+        .iter()
+        .enumerate()
+        .filter(|(_, r)| match r {
+            UnifiedSearchResult::ActiveSession {
+                is_current_session, ..
+            } => !is_current_session,
+            _ => true,
+        })
+        .collect();
+
+    if filtered.is_empty() {
         return;
     }
 
-    // Calculate viewport range
-    let total = results.len();
-    let (start, end) = if max_rows >= total {
+    // Map the selected_index from original results to filtered position
+    let filtered_selected =
+        selected_index.and_then(|sel| filtered.iter().position(|(orig_i, _)| *orig_i == sel));
+
+    // Calculate viewport range over the filtered list
+    let total = filtered.len();
+    // Reserve 1 row for the empty header
+    let data_rows = max_rows.saturating_sub(1);
+    let (start, end) = if data_rows >= total {
         (0, total)
     } else {
-        let anchor = selected_index.unwrap_or(0);
-        let half = max_rows / 2;
+        let anchor = filtered_selected.unwrap_or(0);
+        let half = data_rows / 2;
         let mut s = anchor.saturating_sub(half);
-        let mut e = s + max_rows;
+        let mut e = s + data_rows;
         if e > total {
             e = total;
-            s = total.saturating_sub(max_rows);
+            s = total.saturating_sub(data_rows);
         }
         (s, e)
     };
 
-    for (display_i, result_i) in (start..end).enumerate() {
-        if let Some(result) = results.get(result_i) {
-            let is_selected = selected_index == Some(result_i);
-            let mut line = LineToRender::new(colors);
+    let mut table = Table::new();
 
-            match result {
+    // Empty header row with 1-space padding per cell
+    table = table.add_styled_row(vec![Text::new(" "), Text::new(" "), Text::new(" ")]);
+
+    for filtered_i in start..end {
+        if let Some((_, result)) = filtered.get(filtered_i) {
+            let is_selected = filtered_selected == Some(filtered_i);
+
+            let (name_cell, details_cell, tag_cell) = match result {
                 UnifiedSearchResult::ActiveSession {
                     indices,
                     session_name,
                     connected_users,
                     tab_count,
                     pane_count,
-                    is_current_session,
                     ..
                 } => {
+                    let mut name_text = Text::new(session_name.clone()).color_range(1, ..);
+                    if !indices.is_empty() {
+                        name_text = name_text.color_indices(3, indices.clone());
+                    }
+
                     let tab_count_str = format!("{}", tab_count);
                     let pane_count_str = format!("{}", pane_count);
                     let connected_str = format!("{}", connected_users);
 
-                    let bullet = " > ";
-                    let name_styled = if !indices.is_empty() {
-                        // Apply fuzzy match highlighting character by character
-                        let mut styled = String::new();
-                        for (ci, ch) in session_name.chars().enumerate() {
-                            if indices.contains(&ci) {
-                                styled.push_str(&format!(
-                                    "{}",
-                                    SpanStyle::ForegroundBold(
-                                        colors.palette.text_unselected.emphasis_3
-                                    )
-                                    .style_string(&ch.to_string())
-                                ));
-                            } else {
-                                styled.push_str(
-                                    &SpanStyle::ForegroundBold(
-                                        colors.palette.text_unselected.emphasis_0,
-                                    )
-                                    .style_string(&ch.to_string()),
-                                );
-                            }
-                        }
-                        styled
+                    let client_word = if *connected_users == 1 {
+                        "client"
                     } else {
-                        SpanStyle::ForegroundBold(colors.palette.text_unselected.emphasis_0)
-                            .style_string(session_name)
+                        "clients"
                     };
-
-                    let info = format!(
-                        " ({} tabs, {} panes) [{}]",
-                        colors.tab_count(&tab_count_str),
-                        colors.pane_count(&pane_count_str),
-                        colors.connected_users(&connected_str),
+                    let details = format!(
+                        "{} tabs, {} panes, {} {}",
+                        tab_count_str, pane_count_str, connected_str, client_word
                     );
-                    let current_marker = if *is_current_session {
-                        colors.current_session_marker(" <CURRENT SESSION>")
-                    } else {
-                        String::new()
-                    };
-                    let tag = colors.tab_count(" [active]");
 
-                    line.append(bullet);
-                    line.append(&name_styled);
-                    line.append(&info);
-                    line.append(&current_marker);
-                    line.append(&tag);
+                    let tab_count_start = 0;
+                    let tab_count_end = tab_count_str.len();
+                    let pane_count_offset = tab_count_str.len() + " tabs, ".len();
+                    let pane_count_end = pane_count_offset + pane_count_str.len();
+                    let connected_offset = pane_count_end + " panes, ".len();
+                    let connected_end = connected_offset + connected_str.len();
+
+                    let details_text = Text::new(details)
+                        .color_range(1, tab_count_start..tab_count_end)
+                        .color_range(2, pane_count_offset..pane_count_end)
+                        .color_range(2, connected_offset..connected_end);
+
+                    let tag_text = Text::new("[ATTACH]").color_range(3, ..);
+
+                    (name_text, details_text, tag_text)
                 },
                 UnifiedSearchResult::ResurrectableSession {
                     indices,
@@ -665,50 +670,37 @@ pub fn render_unified_results(
                         formatted_duration.push_str("<1m");
                     }
 
-                    let bullet = " > ";
-                    let name_styled = if !indices.is_empty() {
-                        let mut styled = String::new();
-                        for (ci, ch) in session_name.chars().enumerate() {
-                            if indices.contains(&ci) {
-                                styled.push_str(&format!(
-                                    "{}",
-                                    SpanStyle::ForegroundBold(
-                                        colors.palette.text_unselected.emphasis_3
-                                    )
-                                    .style_string(&ch.to_string())
-                                ));
-                            } else {
-                                styled.push_str(
-                                    &SpanStyle::ForegroundBold(
-                                        colors.palette.text_unselected.emphasis_0,
-                                    )
-                                    .style_string(&ch.to_string()),
-                                );
-                            }
-                        }
-                        styled
-                    } else {
-                        SpanStyle::ForegroundBold(colors.palette.text_unselected.emphasis_0)
-                            .style_string(session_name)
-                    };
+                    let mut name_text = Text::new(session_name.clone()).color_range(1, ..);
+                    if !indices.is_empty() {
+                        name_text = name_text.color_indices(3, indices.clone());
+                    }
 
-                    let ctime_display = format!(" (Created {} ago)", formatted_duration);
-                    let tag = colors.pane_count(" [resurrect]");
+                    let details_str = format!("Created {} ago", formatted_duration);
+                    let created_len = "Created ".len();
+                    let duration_end = created_len + formatted_duration.len();
+                    // Only color the duration part, not "Created" or "ago"
+                    let details_text =
+                        Text::new(details_str).color_range(2, created_len..duration_end);
 
-                    line.append(bullet);
-                    line.append(&name_styled);
-                    line.append(&ctime_display);
-                    line.append(&tag);
+                    let tag_text = Text::new("[RESURRECT]").color_range(3, ..);
+
+                    (name_text, details_text, tag_text)
                 },
-            }
+            };
 
             if is_selected {
-                line.make_selected_as_search(true);
+                table = table.add_styled_row(vec![
+                    name_cell.selected(),
+                    details_cell.selected(),
+                    tag_cell.selected(),
+                ]);
+            } else {
+                table = table.add_styled_row(vec![name_cell, details_cell, tag_cell]);
             }
-
-            print!("\u{1b}[{};{}H{}", y + display_i + 1, x, line.render());
         }
     }
+
+    print_table_with_coordinates(table, x, y, None, Some(max_rows));
 }
 
 pub fn render_screen_toggle(

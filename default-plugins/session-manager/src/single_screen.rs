@@ -142,18 +142,49 @@ impl SingleScreenState {
         }
     }
 
+    fn is_current_session(&self, index: usize) -> bool {
+        matches!(
+            self.unified_results.get(index),
+            Some(UnifiedSearchResult::ActiveSession {
+                is_current_session: true,
+                ..
+            })
+        )
+    }
+
+    fn next_selectable_down(&self, from: usize) -> Option<usize> {
+        let len = self.unified_results.len();
+        for offset in 1..=len {
+            let candidate = (from + offset) % len;
+            if !self.is_current_session(candidate) {
+                return Some(candidate);
+            }
+        }
+        None
+    }
+
+    fn next_selectable_up(&self, from: usize) -> Option<usize> {
+        let len = self.unified_results.len();
+        for offset in 1..=len {
+            let candidate = (from + len - offset) % len;
+            if !self.is_current_session(candidate) {
+                return Some(candidate);
+            }
+        }
+        None
+    }
+
     pub fn move_selection_down(&mut self) {
         if self.unified_results.is_empty() {
             return;
         }
         match self.selected_index {
-            None => self.selected_index = Some(0),
+            None => {
+                self.selected_index =
+                    self.next_selectable_down(self.unified_results.len().saturating_sub(1));
+            },
             Some(i) => {
-                if i + 1 < self.unified_results.len() {
-                    self.selected_index = Some(i + 1);
-                } else {
-                    self.selected_index = Some(0);
-                }
+                self.selected_index = self.next_selectable_down(i);
             },
         }
     }
@@ -163,9 +194,12 @@ impl SingleScreenState {
             return;
         }
         match self.selected_index {
-            None => self.selected_index = Some(self.unified_results.len().saturating_sub(1)),
-            Some(0) => self.selected_index = Some(self.unified_results.len().saturating_sub(1)),
-            Some(i) => self.selected_index = Some(i - 1),
+            None => {
+                self.selected_index = self.next_selectable_up(0);
+            },
+            Some(i) => {
+                self.selected_index = self.next_selectable_up(i);
+            },
         }
     }
 
@@ -174,8 +208,17 @@ impl SingleScreenState {
         active_sessions: &[SessionUiInfo],
         resurrectable_sessions: &[(String, Duration)],
     ) {
-        if let Some(first_result) = self.unified_results.first() {
-            let name = first_result.session_name().to_owned();
+        let first_non_current = self.unified_results.iter().find(|r| {
+            !matches!(
+                r,
+                UnifiedSearchResult::ActiveSession {
+                    is_current_session: true,
+                    ..
+                }
+            )
+        });
+        if let Some(result) = first_non_current {
+            let name = result.session_name().to_owned();
             self.search_term = name;
             self.update_search_term(active_sessions, resurrectable_sessions);
         }
