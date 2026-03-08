@@ -792,19 +792,20 @@ impl From<crate::input::actions::Action>
             NewPaneAction, NewStackedPaneAction, NewTabAction, NewTiledPaneAction,
             NewTiledPluginPaneAction, NextSwapLayoutAction, NoOpAction, OverrideLayoutAction,
             PageScrollDownAction, PageScrollUpAction, PaneIdWithPlugin, PaneNameInputAction,
-            PreviousSwapLayoutAction, QueryTabNamesAction, QuitAction, RenamePluginPaneAction,
-            RenameSessionAction, RenameTabAction, RenameTabByIdAction, RenameTerminalPaneAction,
-            ResizeAction, RunAction, SaveSessionAction, ScrollDownAction, ScrollDownAtAction,
-            ScrollToBottomAction, ScrollToTopAction, ScrollUpAction, ScrollUpAtAction,
-            SearchAction, SearchInputAction, SearchToggleOptionAction, SetPaneBorderlessAction,
-            SetPaneColorAction, ShowFloatingPanesAction, SkipConfirmAction, StackPanesAction,
-            StartOrReloadPluginAction, SwitchFocusAction, SwitchModeForAllClientsAction,
-            SwitchSessionAction, SwitchToModeAction, TabNameInputAction, ToggleActiveSyncTabAction,
-            ToggleFloatingPanesAction, ToggleFocusFullscreenAction, ToggleGroupMarkingAction,
-            ToggleMouseModeAction, TogglePaneBorderlessAction, TogglePaneEmbedOrFloatingAction,
-            TogglePaneFramesAction, TogglePaneInGroupAction, TogglePanePinnedAction,
-            ToggleTabAction, UndoRenamePaneAction, UndoRenameTabAction, WriteAction,
-            WriteCharsAction, WriteCharsToPaneIdAction, WriteToPaneIdAction,
+            PasteAction, PreviousSwapLayoutAction, QueryTabNamesAction, QuitAction,
+            RenamePluginPaneAction, RenameSessionAction, RenameTabAction, RenameTabByIdAction,
+            RenameTerminalPaneAction, ResizeAction, RunAction, SaveSessionAction, ScrollDownAction,
+            ScrollDownAtAction, ScrollToBottomAction, ScrollToTopAction, ScrollUpAction,
+            ScrollUpAtAction, SearchAction, SearchInputAction, SearchToggleOptionAction,
+            SetPaneBorderlessAction, SetPaneColorAction, ShowFloatingPanesAction,
+            SkipConfirmAction, StackPanesAction, StartOrReloadPluginAction, SwitchFocusAction,
+            SwitchModeForAllClientsAction, SwitchSessionAction, SwitchToModeAction,
+            TabNameInputAction, ToggleActiveSyncTabAction, ToggleFloatingPanesAction,
+            ToggleFocusFullscreenAction, ToggleGroupMarkingAction, ToggleMouseModeAction,
+            TogglePaneBorderlessAction, TogglePaneEmbedOrFloatingAction, TogglePaneFramesAction,
+            TogglePaneInGroupAction, TogglePanePinnedAction, ToggleTabAction, UndoRenamePaneAction,
+            UndoRenameTabAction, WriteAction, WriteCharsAction, WriteCharsToPaneIdAction,
+            WriteToPaneIdAction,
         };
         use std::collections::HashMap;
 
@@ -832,6 +833,12 @@ impl From<crate::input::actions::Action>
                 ActionType::WriteCharsToPaneId(WriteCharsToPaneIdAction {
                     pane_id: Some(pane_id.into()),
                     chars,
+                })
+            },
+            crate::input::actions::Action::Paste { chars, pane_id } => {
+                ActionType::Paste(PasteAction {
+                    chars,
+                    pane_id: pane_id.map(|p| p.into()),
                 })
             },
             crate::input::actions::Action::SwitchToMode { input_mode } => {
@@ -1513,6 +1520,10 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                         .try_into()?,
                 })
             },
+            ActionType::Paste(paste_action) => Ok(crate::input::actions::Action::Paste {
+                chars: paste_action.chars,
+                pane_id: paste_action.pane_id.map(|p| p.try_into()).transpose()?,
+            }),
             ActionType::SwitchToMode(switch_mode_action) => {
                 Ok(crate::input::actions::Action::SwitchToMode {
                     input_mode: proto_i32_to_input_mode(switch_mode_action.input_mode)?,
