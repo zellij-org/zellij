@@ -277,6 +277,20 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
         },
+        Action::Paste { chars, pane_id } => {
+            senders
+                .send_to_screen(ScreenInstruction::ClearScroll(client_id))
+                .with_context(err_context)?;
+            let bytes = chars.into_bytes();
+            senders
+                .send_to_screen(ScreenInstruction::Paste(
+                    bytes,
+                    pane_id.map(|p| p.into()),
+                    client_id,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
         Action::SetPaneColor { pane_id, fg, bg } => {
             senders
                 .send_to_screen(ScreenInstruction::SetPaneColor(
