@@ -142,7 +142,7 @@ impl NewSessionInfo {
     }
     pub fn layout_list(&self, max_rows: usize) -> Vec<(LayoutInfo, bool)> {
         // bool - is_selected
-        let range_to_render = self.range_to_render(
+        let rtr = range_to_render(
             max_rows,
             self.layout_count(),
             Some(self.layout_list.selected_layout_index),
@@ -152,8 +152,8 @@ impl NewSessionInfo {
             .iter()
             .enumerate()
             .map(|(i, l)| (l.clone(), i == self.layout_list.selected_layout_index))
-            .take(range_to_render.1)
-            .skip(range_to_render.0)
+            .take(rtr.1)
+            .skip(rtr.0)
             .collect()
     }
     pub fn layouts_to_render(&self, max_rows: usize) -> Vec<(LayoutInfo, Vec<usize>, bool)> {
@@ -180,7 +180,7 @@ impl NewSessionInfo {
     }
     pub fn layout_search_results(&self, max_rows: usize) -> Vec<(LayoutSearchResult, bool)> {
         // bool - is_selected
-        let range_to_render = self.range_to_render(
+        let rtr = range_to_render(
             max_rows,
             self.layout_list.layout_search_results.len(),
             Some(self.layout_list.selected_layout_index),
@@ -190,29 +190,9 @@ impl NewSessionInfo {
             .iter()
             .enumerate()
             .map(|(i, l)| (l.clone(), i == self.layout_list.selected_layout_index))
-            .take(range_to_render.1)
-            .skip(range_to_render.0)
+            .take(rtr.1)
+            .skip(rtr.0)
             .collect()
-    }
-    // TODO: merge with similar function in resurrectable_sessions
-    fn range_to_render(
-        &self,
-        table_rows: usize,
-        results_len: usize,
-        selected_index: Option<usize>,
-    ) -> (usize, usize) {
-        if table_rows <= results_len {
-            let row_count_to_render = table_rows.saturating_sub(1); // 1 for the title
-            let first_row_index_to_render = selected_index
-                .unwrap_or(0)
-                .saturating_sub(row_count_to_render / 2);
-            let last_row_index_to_render = first_row_index_to_render + row_count_to_render;
-            (first_row_index_to_render, last_row_index_to_render)
-        } else {
-            let first_row_index_to_render = 0;
-            let last_row_index_to_render = results_len;
-            (first_row_index_to_render, last_row_index_to_render)
-        }
     }
     pub fn is_searching(&self) -> bool {
         !self.layout_list.layout_search_term.is_empty()
@@ -224,27 +204,7 @@ impl NewSessionInfo {
         self.layout_list.selected_layout_info()
     }
     fn update_layout_search_term(&mut self) {
-        if self.layout_list.layout_search_term.is_empty() {
-            self.layout_list.clear_selection();
-            self.layout_list.layout_search_results = vec![];
-        } else {
-            let mut matches = vec![];
-            let matcher = SkimMatcherV2::default().use_cache(true);
-            for layout_info in &self.layout_list.layout_list {
-                if let Some((score, indices)) =
-                    matcher.fuzzy_indices(&layout_info.name(), &self.layout_list.layout_search_term)
-                {
-                    matches.push(LayoutSearchResult {
-                        layout_info: layout_info.clone(),
-                        score,
-                        indices,
-                    });
-                }
-            }
-            matches.sort_by(|a, b| b.score.cmp(&a.score));
-            self.layout_list.layout_search_results = matches;
-            self.layout_list.clear_selection();
-        }
+        self.layout_list.update_search_term();
     }
     fn move_selection_up(&mut self) {
         self.layout_list.move_selection_up();
@@ -252,14 +212,17 @@ impl NewSessionInfo {
     fn move_selection_down(&mut self) {
         self.layout_list.move_selection_down();
     }
+    pub fn get_layout_list_clone(&self) -> LayoutList {
+        self.layout_list.clone()
+    }
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct LayoutList {
-    layout_list: Vec<LayoutInfo>,
-    layout_search_results: Vec<LayoutSearchResult>,
-    selected_layout_index: usize,
-    layout_search_term: String,
+    pub layout_list: Vec<LayoutInfo>,
+    pub layout_search_results: Vec<LayoutSearchResult>,
+    pub selected_layout_index: usize,
+    pub layout_search_term: String,
 }
 
 impl LayoutList {
@@ -283,14 +246,14 @@ impl LayoutList {
     pub fn clear_selection(&mut self) {
         self.selected_layout_index = 0;
     }
-    fn max_index(&self) -> usize {
+    pub fn max_index(&self) -> usize {
         if self.layout_search_term.is_empty() {
             self.layout_list.len().saturating_sub(1)
         } else {
             self.layout_search_results.len().saturating_sub(1)
         }
     }
-    fn move_selection_up(&mut self) {
+    pub fn move_selection_up(&mut self) {
         let max_index = self.max_index();
         if self.selected_layout_index > 0 {
             self.selected_layout_index -= 1;
@@ -298,13 +261,99 @@ impl LayoutList {
             self.selected_layout_index = max_index;
         }
     }
-    fn move_selection_down(&mut self) {
+    pub fn move_selection_down(&mut self) {
         let max_index = self.max_index();
         if self.selected_layout_index < max_index {
             self.selected_layout_index += 1;
         } else {
             self.selected_layout_index = 0;
         }
+    }
+    pub fn update_search_term(&mut self) {
+        if self.layout_search_term.is_empty() {
+            self.clear_selection();
+            self.layout_search_results = vec![];
+        } else {
+            let mut matches = vec![];
+            let matcher = SkimMatcherV2::default().use_cache(true);
+            for layout_info in &self.layout_list {
+                if let Some((score, indices)) =
+                    matcher.fuzzy_indices(&layout_info.name(), &self.layout_search_term)
+                {
+                    matches.push(LayoutSearchResult {
+                        layout_info: layout_info.clone(),
+                        score,
+                        indices,
+                    });
+                }
+            }
+            matches.sort_by(|a, b| b.score.cmp(&a.score));
+            self.layout_search_results = matches;
+            self.clear_selection();
+        }
+    }
+    pub fn layouts_to_render(&self, max_rows: usize) -> Vec<(LayoutInfo, Vec<usize>, bool)> {
+        if !self.layout_search_term.is_empty() {
+            self.layout_search_results_to_render(max_rows)
+        } else {
+            self.layout_list_to_render(max_rows)
+        }
+    }
+    fn layout_list_to_render(&self, max_rows: usize) -> Vec<(LayoutInfo, Vec<usize>, bool)> {
+        let range_to_render = range_to_render(
+            max_rows,
+            self.layout_list.len(),
+            Some(self.selected_layout_index),
+        );
+        self.layout_list
+            .iter()
+            .enumerate()
+            .map(|(i, l)| (l.clone(), vec![], i == self.selected_layout_index))
+            .take(range_to_render.1)
+            .skip(range_to_render.0)
+            .collect()
+    }
+    fn layout_search_results_to_render(
+        &self,
+        max_rows: usize,
+    ) -> Vec<(LayoutInfo, Vec<usize>, bool)> {
+        let range_to_render = range_to_render(
+            max_rows,
+            self.layout_search_results.len(),
+            Some(self.selected_layout_index),
+        );
+        self.layout_search_results
+            .iter()
+            .enumerate()
+            .map(|(i, l)| {
+                (
+                    l.layout_info.clone(),
+                    l.indices.clone(),
+                    i == self.selected_layout_index,
+                )
+            })
+            .take(range_to_render.1)
+            .skip(range_to_render.0)
+            .collect()
+    }
+}
+
+pub fn range_to_render(
+    table_rows: usize,
+    results_len: usize,
+    selected_index: Option<usize>,
+) -> (usize, usize) {
+    if table_rows <= results_len {
+        let row_count_to_render = table_rows.saturating_sub(1); // 1 for the title
+        let first_row_index_to_render = selected_index
+            .unwrap_or(0)
+            .saturating_sub(row_count_to_render / 2);
+        let last_row_index_to_render = first_row_index_to_render + row_count_to_render;
+        (first_row_index_to_render, last_row_index_to_render)
+    } else {
+        let first_row_index_to_render = 0;
+        let last_row_index_to_render = results_len;
+        (first_row_index_to_render, last_row_index_to_render)
     }
 }
 

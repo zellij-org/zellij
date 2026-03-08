@@ -5,6 +5,7 @@ use unicode_width::UnicodeWidthChar;
 use unicode_width::UnicodeWidthStr;
 use zellij_tile::prelude::*;
 
+use crate::single_screen::UnifiedSearchResult;
 use crate::ui::{PaneUiInfo, SessionUiInfo, TabUiInfo};
 use crate::{ActiveScreen, NewSessionInfo};
 
@@ -536,6 +537,180 @@ pub fn render_prompt(search_term: &str, colors: Colors, x: usize, y: usize) {
     );
 }
 
+pub fn render_single_screen_prompt(search_term: &str, colors: Colors, x: usize, y: usize) {
+    let prompt = colors.session_name_prompt("Session:");
+    let search_term_display = colors.bold(&format!("{}_", search_term));
+    println!(
+        "\u{1b}[{};{}H\u{1b}[0m{} {}\n",
+        y + 1,
+        x,
+        prompt,
+        search_term_display
+    );
+}
+
+pub fn render_unified_results(
+    results: &[UnifiedSearchResult],
+    selected_index: Option<usize>,
+    max_rows: usize,
+    _max_cols: usize,
+    colors: Colors,
+    x: usize,
+    y: usize,
+) {
+    if results.is_empty() {
+        return;
+    }
+
+    // Calculate viewport range
+    let total = results.len();
+    let (start, end) = if max_rows >= total {
+        (0, total)
+    } else {
+        let anchor = selected_index.unwrap_or(0);
+        let half = max_rows / 2;
+        let mut s = anchor.saturating_sub(half);
+        let mut e = s + max_rows;
+        if e > total {
+            e = total;
+            s = total.saturating_sub(max_rows);
+        }
+        (s, e)
+    };
+
+    for (display_i, result_i) in (start..end).enumerate() {
+        if let Some(result) = results.get(result_i) {
+            let is_selected = selected_index == Some(result_i);
+            let mut line = LineToRender::new(colors);
+
+            match result {
+                UnifiedSearchResult::ActiveSession {
+                    indices,
+                    session_name,
+                    connected_users,
+                    tab_count,
+                    pane_count,
+                    is_current_session,
+                    ..
+                } => {
+                    let tab_count_str = format!("{}", tab_count);
+                    let pane_count_str = format!("{}", pane_count);
+                    let connected_str = format!("{}", connected_users);
+
+                    let bullet = " > ";
+                    let name_styled = if !indices.is_empty() {
+                        // Apply fuzzy match highlighting character by character
+                        let mut styled = String::new();
+                        for (ci, ch) in session_name.chars().enumerate() {
+                            if indices.contains(&ci) {
+                                styled.push_str(&format!(
+                                    "{}",
+                                    SpanStyle::ForegroundBold(
+                                        colors.palette.text_unselected.emphasis_3
+                                    )
+                                    .style_string(&ch.to_string())
+                                ));
+                            } else {
+                                styled.push_str(
+                                    &SpanStyle::ForegroundBold(
+                                        colors.palette.text_unselected.emphasis_0,
+                                    )
+                                    .style_string(&ch.to_string()),
+                                );
+                            }
+                        }
+                        styled
+                    } else {
+                        SpanStyle::ForegroundBold(colors.palette.text_unselected.emphasis_0)
+                            .style_string(session_name)
+                    };
+
+                    let info = format!(
+                        " ({} tabs, {} panes) [{}]",
+                        colors.tab_count(&tab_count_str),
+                        colors.pane_count(&pane_count_str),
+                        colors.connected_users(&connected_str),
+                    );
+                    let current_marker = if *is_current_session {
+                        colors.current_session_marker(" <CURRENT SESSION>")
+                    } else {
+                        String::new()
+                    };
+                    let tag = colors.tab_count(" [active]");
+
+                    line.append(bullet);
+                    line.append(&name_styled);
+                    line.append(&info);
+                    line.append(&current_marker);
+                    line.append(&tag);
+                },
+                UnifiedSearchResult::ResurrectableSession {
+                    indices,
+                    session_name,
+                    ctime,
+                    ..
+                } => {
+                    let duration = humantime::format_duration(*ctime).to_string();
+                    let duration_parts = duration.split_whitespace();
+                    let mut formatted_duration = String::new();
+                    for part in duration_parts {
+                        if !part.ends_with('s') {
+                            if !formatted_duration.is_empty() {
+                                formatted_duration.push(' ');
+                            }
+                            formatted_duration.push_str(part);
+                        }
+                    }
+                    if formatted_duration.is_empty() {
+                        formatted_duration.push_str("<1m");
+                    }
+
+                    let bullet = " > ";
+                    let name_styled = if !indices.is_empty() {
+                        let mut styled = String::new();
+                        for (ci, ch) in session_name.chars().enumerate() {
+                            if indices.contains(&ci) {
+                                styled.push_str(&format!(
+                                    "{}",
+                                    SpanStyle::ForegroundBold(
+                                        colors.palette.text_unselected.emphasis_3
+                                    )
+                                    .style_string(&ch.to_string())
+                                ));
+                            } else {
+                                styled.push_str(
+                                    &SpanStyle::ForegroundBold(
+                                        colors.palette.text_unselected.emphasis_0,
+                                    )
+                                    .style_string(&ch.to_string()),
+                                );
+                            }
+                        }
+                        styled
+                    } else {
+                        SpanStyle::ForegroundBold(colors.palette.text_unselected.emphasis_0)
+                            .style_string(session_name)
+                    };
+
+                    let ctime_display = format!(" (Created {} ago)", formatted_duration);
+                    let tag = colors.pane_count(" [resurrect]");
+
+                    line.append(bullet);
+                    line.append(&name_styled);
+                    line.append(&ctime_display);
+                    line.append(&tag);
+                },
+            }
+
+            if is_selected {
+                line.make_selected_as_search(true);
+            }
+
+            print!("\u{1b}[{};{}H{}", y + display_i + 1, x, line.render());
+        }
+    }
+}
+
 pub fn render_screen_toggle(
     active_screen: ActiveScreen,
     x: usize,
@@ -568,6 +743,10 @@ pub fn render_screen_toggle(
         },
         ActiveScreen::ResurrectSession => {
             exited_sessions_text = exited_sessions_text.selected();
+        },
+        ActiveScreen::SingleScreen => {
+            // SingleScreen does not use the tab toggle; this arm exists for exhaustiveness
+            return;
         },
     }
     let bg_color = match background {
@@ -983,6 +1162,28 @@ pub fn render_controls_line(
                 true
             } else if max_cols >= 28 {
                 print!("\u{1b}[m\u{1b}[{y};{x}H{arrows}/{enter}/{del}/{del_all}");
+                false
+            } else {
+                false
+            }
+        },
+        ActiveScreen::SingleScreen => {
+            let tab = colors.shortcuts("<TAB>");
+            let tab_text = colors.bold("Complete");
+            let rename = colors.shortcuts("<Ctrl r>");
+            let rename_text = colors.bold("Rename");
+            let kill = colors.shortcuts("<Del>");
+            let kill_text = colors.bold("Kill/Delete");
+            let save = colors.shortcuts("<Ctrl a>");
+            let save_text = colors.bold("Save");
+
+            if max_cols > 90 {
+                print!(
+                    "\u{1b}[m\u{1b}[{y};{x}HHelp: {tab} - {tab_text}, {rename} - {rename_text}, {kill} - {kill_text}, {save} - {save_text}"
+                );
+                true
+            } else if max_cols >= 28 {
+                print!("\u{1b}[m\u{1b}[{y};{x}H{tab}/{rename}/{kill}/{save}");
                 false
             } else {
                 false
