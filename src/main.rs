@@ -304,8 +304,14 @@ fn main() {
                 },
             }
         } else if web_opts.status {
-            let config_options = commands::get_config_options_from_cli_args(&opts)
+            let mut config_options = commands::get_config_options_from_cli_args(&opts)
                 .expect("Can't find config options");
+            if let Some(ip) = web_opts.ip {
+                config_options.web_server_ip = Some(ip);
+            }
+            if let Some(port) = web_opts.port {
+                config_options.web_server_port = Some(port);
+            }
             let web_server_base_url = web_server_base_url_from_config(config_options);
             match commands::web_server_status(&web_server_base_url, web_opts.timeout) {
                 Ok(version) => {
