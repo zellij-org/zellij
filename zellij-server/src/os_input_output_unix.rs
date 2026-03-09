@@ -358,16 +358,33 @@ impl UnixPtyBackend {
     pub fn write_to_tty_stdin(&self, terminal_id: u32, buf: &[u8]) -> Result<usize> {
         let err_context = || format!("failed to write to stdin of TTY ID {}", terminal_id);
 
-        match self
+        let fd = match self
             .terminal_id_to_raw_fd
             .lock()
             .to_anyhow()
             .with_context(err_context)?
             .get(&terminal_id)
         {
-            Some(Some(fd)) => unistd::write(*fd, buf).with_context(err_context),
-            _ => Err(anyhow!("could not find raw file descriptor")).with_context(err_context),
+            Some(Some(fd)) => *fd,
+            _ => return Err(anyhow!("could not find raw file descriptor")).with_context(err_context),
+        };
+
+        // Loop until all bytes are written. A single write() can return short
+        // on macOS where the PTY buffer is only 4-16 KiB, which would silently
+        // truncate large pastes.
+        let mut written = 0;
+        while written < buf.len() {
+            match unistd::write(fd, &buf[written..]) {
+                Ok(n) => written += n,
+                Err(nix::errno::Errno::EINTR) => continue,
+                Err(nix::errno::Errno::EAGAIN) => {
+                    std::thread::sleep(std::time::Duration::from_millis(1));
+                    continue;
+                },
+                Err(e) => return Err(e).with_context(err_context),
+            }
         }
+        Ok(written)
     }
 
     pub fn tcdrain(&self, terminal_id: u32) -> Result<()> {
@@ -424,5 +441,93 @@ impl UnixPtyBackend {
             .last()
             .map(|l| l + 1)
             .or(Some(0))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use nix::fcntl::{fcntl, FcntlArg, OFlag};
+    use nix::sys::termios;
+    use std::io::Read;
+    use std::time::Duration;
+
+    /// Verify that `write_to_tty_stdin` writes ALL bytes even when the
+    /// underlying fd returns short writes (EAGAIN / partial).
+    ///
+    /// The test sets the PTY master to O_NONBLOCK so that write() returns
+    /// immediately with however many bytes fit in the kernel buffer (~4-16
+    /// KiB on macOS). A reader thread starts after a short delay, draining
+    /// the slave side. Without the write-retry loop, only the first
+    /// buffer-full would be reported as written and the rest would be lost.
+    #[test]
+    fn write_to_tty_stdin_delivers_all_bytes() {
+        let pty = openpty(None, &None).expect("openpty failed");
+
+        // Raw mode on slave — prevent line discipline from transforming bytes
+        let mut attrs = termios::tcgetattr(pty.slave).expect("tcgetattr failed");
+        termios::cfmakeraw(&mut attrs);
+        termios::tcsetattr(pty.slave, termios::SetArg::TCSANOW, &attrs)
+            .expect("tcsetattr failed");
+
+        // Set master to O_NONBLOCK so write() returns short / EAGAIN
+        // instead of blocking, which is how the bug manifests in practice
+        let flags = fcntl(pty.master, FcntlArg::F_GETFL).expect("F_GETFL");
+        let mut oflags = OFlag::from_bits_truncate(flags);
+        oflags.insert(OFlag::O_NONBLOCK);
+        fcntl(pty.master, FcntlArg::F_SETFL(oflags)).expect("F_SETFL");
+
+        let terminal_id = 99;
+        let backend = UnixPtyBackend {
+            orig_termios: Arc::new(Mutex::new(None)),
+            terminal_id_to_raw_fd: Arc::new(Mutex::new(BTreeMap::from([(
+                terminal_id,
+                Some(pty.master),
+            )]))),
+        };
+
+        // 128 KiB — well above the kernel PTY buffer
+        let size = 128 * 1024;
+        let data: Vec<u8> = (0..size).map(|i| (i % 256) as u8).collect();
+        let expected = data.clone();
+
+        // Start reader AFTER a delay — forces the write side to hit EAGAIN
+        // when the kernel buffer fills before the reader starts draining.
+        let slave_fd = pty.slave;
+        let reader = std::thread::spawn(move || {
+            // Delay so the writer fills the PTY buffer and hits EAGAIN
+            std::thread::sleep(Duration::from_millis(50));
+            let mut slave = unsafe { File::from_raw_fd(slave_fd) };
+            let mut received = Vec::with_capacity(size);
+            let mut buf = [0u8; 8192];
+            while received.len() < size {
+                match slave.read(&mut buf) {
+                    Ok(0) => break,
+                    Ok(n) => received.extend_from_slice(&buf[..n]),
+                    Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
+                    Err(e) => panic!("slave read error: {e}"),
+                }
+            }
+            received
+        });
+
+        let written = backend
+            .write_to_tty_stdin(terminal_id, &data)
+            .expect("write_to_tty_stdin failed");
+        assert_eq!(written, size, "write_to_tty_stdin should report all bytes written");
+
+        // Close master so reader gets EOF
+        unsafe { libc::close(pty.master) };
+        backend.terminal_id_to_raw_fd.lock().unwrap().remove(&terminal_id);
+
+        let received = reader.join().expect("reader thread panicked");
+        assert_eq!(
+            received.len(),
+            expected.len(),
+            "byte count mismatch: got {} expected {}",
+            received.len(),
+            expected.len()
+        );
+        assert!(received == expected, "content mismatch");
     }
 }
