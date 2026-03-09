@@ -1,5 +1,6 @@
 pub mod components;
 pub mod welcome_screen;
+use std::time::Duration;
 use zellij_tile::prelude::*;
 
 use crate::session_list::{SelectedIndex, SessionList};
@@ -227,6 +228,7 @@ pub struct SessionUiInfo {
     pub tabs: Vec<TabUiInfo>,
     pub connected_users: usize,
     pub is_current_session: bool,
+    pub creation_time: Duration,
 }
 
 impl SessionUiInfo {
@@ -240,6 +242,7 @@ impl SessionUiInfo {
                 .collect(),
             connected_users: session_info.connected_clients,
             is_current_session: session_info.is_current_session,
+            creation_time: session_info.creation_time,
         }
     }
     pub fn line_count(&self, selected_index: &SelectedIndex) -> usize {

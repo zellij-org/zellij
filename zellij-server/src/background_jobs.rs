@@ -699,7 +699,7 @@ pub fn write_session_state_to_disk(
 }
 
 fn read_other_live_session_states(current_session_name: &str) -> BTreeMap<String, SessionInfo> {
-    let mut other_session_names = vec![];
+    let mut other_session_names: Vec<(String, Duration)> = vec![];
     let mut session_infos_on_machine = BTreeMap::new();
     // we do this so that the session infos will be actual and we're
     // reasonably sure their session is running
@@ -708,19 +708,26 @@ fn read_other_live_session_states(current_session_name: &str) -> BTreeMap<String
             if let Ok(file) = file {
                 if let Ok(file_name) = file.file_name().into_string() {
                     if is_ipc_socket(&file.file_type().unwrap()) {
-                        other_session_names.push(file_name);
+                        let creation_time = std::fs::metadata(&file.path())
+                            .ok()
+                            .and_then(|f| f.created().ok().or_else(|| f.modified().ok()))
+                            .and_then(|d| d.elapsed().ok())
+                            .map(|d| Duration::from_secs(d.as_secs()))
+                            .unwrap_or_default();
+                        other_session_names.push((file_name, creation_time));
                     }
                 }
             }
         });
     }
 
-    for session_name in other_session_names {
+    for (session_name, creation_time) in other_session_names {
         let session_cache_file_name = session_info_cache_file_name(&session_name);
         if let Ok(raw_session_info) = fs::read_to_string(&session_cache_file_name) {
-            if let Ok(session_info) =
+            if let Ok(mut session_info) =
                 SessionInfo::from_string(&raw_session_info, &current_session_name)
             {
+                session_info.creation_time = creation_time;
                 session_infos_on_machine.insert(session_name, session_info);
             }
         }

@@ -1760,6 +1760,7 @@ pub struct SessionInfo {
     pub web_client_count: usize,
     pub tab_history: BTreeMap<ClientId, Vec<usize>>,
     pub pane_history: BTreeMap<ClientId, Vec<PaneId>>,
+    pub creation_time: Duration,
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize, Serialize)]

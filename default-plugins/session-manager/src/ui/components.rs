@@ -685,6 +685,102 @@ pub fn render_unified_results(
         }
     }
 
+    // Compute hidden-above and hidden-below counts from the filtered list
+    let above_active = filtered[..start]
+        .iter()
+        .filter(|(_, r)| matches!(r, UnifiedSearchResult::ActiveSession { .. }))
+        .count();
+    let above_resurrectable = filtered[..start]
+        .iter()
+        .filter(|(_, r)| matches!(r, UnifiedSearchResult::ResurrectableSession { .. }))
+        .count();
+    let below_active = filtered[end..]
+        .iter()
+        .filter(|(_, r)| matches!(r, UnifiedSearchResult::ActiveSession { .. }))
+        .count();
+    let below_resurrectable = filtered[end..]
+        .iter()
+        .filter(|(_, r)| matches!(r, UnifiedSearchResult::ResurrectableSession { .. }))
+        .count();
+
+    let has_hidden_above = above_active > 0 || above_resurrectable > 0;
+    let has_hidden_below = below_active > 0 || below_resurrectable > 0;
+    let has_hidden = has_hidden_above || has_hidden_below;
+
+    // 4th column content strings
+    let tab_header_full = "<TAB> Complete";
+    let tab_header_short = "<TAB>";
+
+    let above_summary_full = if has_hidden_above {
+        format!(
+            "[+{} Active] [+{} Exited]",
+            above_active, above_resurrectable
+        )
+    } else {
+        String::new()
+    };
+    let above_summary_short = if has_hidden_above {
+        format!("[+{}] [+{}]", above_active, above_resurrectable)
+    } else {
+        String::new()
+    };
+    let below_summary_full = if has_hidden_below {
+        format!(
+            "[+{} Active] [+{} Exited]",
+            below_active, below_resurrectable
+        )
+    } else {
+        String::new()
+    };
+    let below_summary_short = if has_hidden_below {
+        format!("[+{}] [+{}]", below_active, below_resurrectable)
+    } else {
+        String::new()
+    };
+
+    // Compute max 4th column width across all possible content
+    let max_summary_full_width = std::cmp::max(
+        if has_hidden_above {
+            above_summary_full.width()
+        } else {
+            0
+        },
+        if has_hidden_below {
+            below_summary_full.width()
+        } else {
+            0
+        },
+    );
+    let max_summary_short_width = std::cmp::max(
+        if has_hidden_above {
+            above_summary_short.width()
+        } else {
+            0
+        },
+        if has_hidden_below {
+            below_summary_short.width()
+        } else {
+            0
+        },
+    );
+
+    let full_fourth_col_width = std::cmp::max(
+        tab_header_full.width(),
+        if has_hidden {
+            max_summary_full_width
+        } else {
+            1
+        },
+    );
+    let short_fourth_col_width = std::cmp::max(
+        tab_header_short.width(),
+        if has_hidden {
+            max_summary_short_width
+        } else {
+            1
+        },
+    );
+
     // Pass 2: Compute reduction level based on column widths
     let full_name_width = visible_rows
         .iter()
@@ -727,45 +823,62 @@ pub fn render_unified_results(
         .max()
         .unwrap_or(0);
 
-    // +3 because the server-side table renderer accounts for max_column_width + 1
+    // +4 because the server-side table renderer accounts for max_column_width + 1
     // per column (one trailing space each, even for the last column) when checking
-    // width constraints
-    let full_total = full_name_width + full_details_width + full_tag_width + 3;
+    // width constraints — now 4 columns
+    let full_total =
+        full_name_width + full_details_width + full_tag_width + full_fourth_col_width + 4;
 
-    let (abbreviate_details, abbreviate_tags, name_max_width) = if full_total <= max_cols {
+    // Compute abbreviated details width (used in multiple reduction tiers)
+    let abbr_details_width = visible_rows
+        .iter()
+        .map(|r| match &r.kind {
+            VisibleRowKind::Active {
+                tab_count,
+                pane_count,
+                connected_users,
+            } => format!("{}t, {}p, {}c", tab_count, pane_count, connected_users).width(),
+            VisibleRowKind::Resurrectable { formatted_duration } => {
+                format!("{} ago", formatted_duration).width()
+            },
+        })
+        .max()
+        .unwrap_or(0);
+
+    let (abbreviate_details, abbreviate_tags, abbreviate_fourth_col, name_max_width) = if full_total
+        <= max_cols
+    {
         // Everything fits at full size
-        (false, false, None)
+        (false, false, false, None)
     } else {
         // Reduction 1: abbreviate details
-        let abbr_details_width = visible_rows
-            .iter()
-            .map(|r| match &r.kind {
-                VisibleRowKind::Active {
-                    tab_count,
-                    pane_count,
-                    connected_users,
-                } => format!("{}t, {}p, {}c", tab_count, pane_count, connected_users).width(),
-                VisibleRowKind::Resurrectable { formatted_duration } => {
-                    format!("{} ago", formatted_duration).width()
-                },
-            })
-            .max()
-            .unwrap_or(0);
-
-        let total_after_details = full_name_width + abbr_details_width + full_tag_width + 3;
+        let total_after_details =
+            full_name_width + abbr_details_width + full_tag_width + full_fourth_col_width + 4;
         if total_after_details <= max_cols {
-            (true, false, None)
+            (true, false, false, None)
         } else {
             // Reduction 2: abbreviate tags
             let abbr_tag_width = 3; // "[A]" or "[R]"
-            let total_after_tags = full_name_width + abbr_details_width + abbr_tag_width + 3;
+            let total_after_tags =
+                full_name_width + abbr_details_width + abbr_tag_width + full_fourth_col_width + 4;
             if total_after_tags <= max_cols {
-                (true, true, None)
+                (true, true, false, None)
             } else {
-                // Reduction 3: truncate session names
-                let available_for_name =
-                    max_cols.saturating_sub(abbr_details_width + abbr_tag_width + 3);
-                (true, true, Some(available_for_name))
+                // Reduction 3: abbreviate 4th column
+                let total_after_fourth = full_name_width
+                    + abbr_details_width
+                    + abbr_tag_width
+                    + short_fourth_col_width
+                    + 4;
+                if total_after_fourth <= max_cols {
+                    (true, true, true, None)
+                } else {
+                    // Reduction 4: truncate session names
+                    let available_for_name = max_cols.saturating_sub(
+                        abbr_details_width + abbr_tag_width + short_fourth_col_width + 4,
+                    );
+                    (true, true, true, Some(available_for_name))
+                }
             }
         }
     };
@@ -773,10 +886,16 @@ pub fn render_unified_results(
     // Build table cells using reduction level
     let mut table = Table::new();
 
-    // Empty header row with 1-space padding per cell
-    table = table.add_styled_row(vec![Text::new(" "), Text::new(" "), Text::new(" ")]);
+    // Empty header row
+    table = table.add_styled_row(vec![
+        Text::new(" "),
+        Text::new(" "),
+        Text::new(" "),
+        Text::new(" "),
+    ]);
 
-    for row in &visible_rows {
+    let visible_count = visible_rows.len();
+    for (row_index, row) in visible_rows.iter().enumerate() {
         // Name cell
         let display_name = match name_max_width {
             Some(max_w) => truncate_to_width(row.session_name, max_w),
@@ -876,14 +995,42 @@ pub fn render_unified_results(
             },
         };
 
+        // 4th column: above-summary on first row, below-summary on last row,
+        // TAB hint on first row only when no selection and nothing hidden above, empty otherwise
+        let fourth_cell = if row_index == 0 && has_hidden_above {
+            let summary_text = if abbreviate_fourth_col {
+                &above_summary_short
+            } else {
+                &above_summary_full
+            };
+            Text::new(summary_text).color_range(2, ..)
+        } else if row_index == 0 && selected_index.is_none() {
+            let tab_hint_text = if abbreviate_fourth_col {
+                tab_header_short
+            } else {
+                tab_header_full
+            };
+            Text::new(tab_hint_text).color_range(3, ..)
+        } else if row_index == visible_count - 1 && has_hidden_below {
+            let summary_text = if abbreviate_fourth_col {
+                &below_summary_short
+            } else {
+                &below_summary_full
+            };
+            Text::new(summary_text).color_range(2, ..)
+        } else {
+            Text::new(" ")
+        };
+
         if row.is_selected {
             table = table.add_styled_row(vec![
                 name_cell.selected(),
                 details_cell.selected(),
                 tag_cell.selected(),
+                fourth_cell,
             ]);
         } else {
-            table = table.add_styled_row(vec![name_cell, details_cell, tag_cell]);
+            table = table.add_styled_row(vec![name_cell, details_cell, tag_cell, fourth_cell]);
         }
     }
 
@@ -1347,22 +1494,31 @@ pub fn render_controls_line(
             }
         },
         ActiveScreen::SingleScreen => {
-            let tab = colors.shortcuts("<TAB>");
-            let tab_text = colors.bold("Complete");
             let rename = colors.shortcuts("<Ctrl r>");
             let rename_text = colors.bold("Rename");
+            let disconnect = colors.shortcuts("<Ctrl x>");
+            let disconnect_full_text = colors.bold("Disconnect others");
+            let disconnect_short_text = colors.bold("Disconnect");
             let kill = colors.shortcuts("<Del>");
             let kill_text = colors.bold("Kill/Delete");
             let save = colors.shortcuts("<Ctrl a>");
             let save_text = colors.bold("Save");
 
-            if max_cols > 90 {
+            // Full: "Help: <Ctrl r> - Rename, <Ctrl x> - Disconnect others, <Del> - Kill/Delete, <Ctrl a> - Save" = 91 chars
+            if max_cols > 91 {
                 print!(
-                    "\u{1b}[m\u{1b}[{y};{x}HHelp: {tab} - {tab_text}, {rename} - {rename_text}, {kill} - {kill_text}, {save} - {save_text}"
+                    "\u{1b}[m\u{1b}[{y};{x}HHelp: {rename} - {rename_text}, {disconnect} - {disconnect_full_text}, {kill} - {kill_text}, {save} - {save_text}"
                 );
                 true
-            } else if max_cols >= 28 {
-                print!("\u{1b}[m\u{1b}[{y};{x}H{tab}/{rename}/{kill}/{save}");
+            // Medium: "Help: <Ctrl r> - Rename, <Ctrl x> - Disconnect, <Del> - Kill/Delete, <Ctrl a> - Save" = 84 chars
+            } else if max_cols > 84 {
+                print!(
+                    "\u{1b}[m\u{1b}[{y};{x}HHelp: {rename} - {rename_text}, {disconnect} - {disconnect_short_text}, {kill} - {kill_text}, {save} - {save_text}"
+                );
+                true
+            // Compact: "<Ctrl r>/<Ctrl x>/<Del>/<Ctrl a>" = 31 chars
+            } else if max_cols >= 31 {
+                print!("\u{1b}[m\u{1b}[{y};{x}H{rename}/{disconnect}/{kill}/{save}");
                 false
             } else {
                 false

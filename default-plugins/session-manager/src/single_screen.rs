@@ -28,6 +28,7 @@ pub enum UnifiedSearchResult {
         tab_count: usize,
         pane_count: usize,
         is_current_session: bool,
+        creation_time: Duration,
     },
     ResurrectableSession {
         score: i64,
@@ -94,6 +95,7 @@ impl SingleScreenState {
                     tab_count: session.tabs.len(),
                     pane_count: session.tabs.iter().fold(0, |acc, t| acc + t.panes.len()),
                     is_current_session: session.is_current_session,
+                    creation_time: session.creation_time,
                 });
             }
             for (name, ctime) in resurrectable_sessions {
@@ -105,6 +107,30 @@ impl SingleScreenState {
                 });
             }
             self.unified_results = results;
+            self.unified_results.sort_by(|a, b| match (a, b) {
+                (
+                    UnifiedSearchResult::ActiveSession {
+                        creation_time: ct_a,
+                        ..
+                    },
+                    UnifiedSearchResult::ActiveSession {
+                        creation_time: ct_b,
+                        ..
+                    },
+                ) => ct_a.cmp(ct_b),
+                (
+                    UnifiedSearchResult::ResurrectableSession { ctime: ct_a, .. },
+                    UnifiedSearchResult::ResurrectableSession { ctime: ct_b, .. },
+                ) => ct_a.cmp(ct_b),
+                (
+                    UnifiedSearchResult::ActiveSession { .. },
+                    UnifiedSearchResult::ResurrectableSession { .. },
+                ) => std::cmp::Ordering::Less,
+                (
+                    UnifiedSearchResult::ResurrectableSession { .. },
+                    UnifiedSearchResult::ActiveSession { .. },
+                ) => std::cmp::Ordering::Greater,
+            });
         } else {
             let matcher = SkimMatcherV2::default().use_cache(true);
             let mut results = Vec::new();
@@ -121,6 +147,7 @@ impl SingleScreenState {
                         tab_count: session.tabs.len(),
                         pane_count: session.tabs.iter().fold(0, |acc, t| acc + t.panes.len()),
                         is_current_session: session.is_current_session,
+                        creation_time: session.creation_time,
                     });
                 }
             }
@@ -143,7 +170,34 @@ impl SingleScreenState {
                     UnifiedSearchResult::ActiveSession { score, .. } => *score,
                     UnifiedSearchResult::ResurrectableSession { score, .. } => *score,
                 };
-                score_b.cmp(&score_a)
+                let score_cmp = score_b.cmp(&score_a);
+                if score_cmp != std::cmp::Ordering::Equal {
+                    return score_cmp;
+                }
+                match (a, b) {
+                    (
+                        UnifiedSearchResult::ActiveSession {
+                            creation_time: ct_a,
+                            ..
+                        },
+                        UnifiedSearchResult::ActiveSession {
+                            creation_time: ct_b,
+                            ..
+                        },
+                    ) => ct_a.cmp(ct_b),
+                    (
+                        UnifiedSearchResult::ResurrectableSession { ctime: ct_a, .. },
+                        UnifiedSearchResult::ResurrectableSession { ctime: ct_b, .. },
+                    ) => ct_a.cmp(ct_b),
+                    (
+                        UnifiedSearchResult::ActiveSession { .. },
+                        UnifiedSearchResult::ResurrectableSession { .. },
+                    ) => std::cmp::Ordering::Less,
+                    (
+                        UnifiedSearchResult::ResurrectableSession { .. },
+                        UnifiedSearchResult::ActiveSession { .. },
+                    ) => std::cmp::Ordering::Greater,
+                }
             });
             self.unified_results = results;
         }

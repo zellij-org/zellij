@@ -29,6 +29,7 @@ use kdl::{KdlDocument, KdlEntry, KdlNode, KdlValue};
 
 use std::path::PathBuf;
 use std::str::FromStr;
+use std::time::Duration;
 
 use crate::input::actions::{Action, SearchDirection, SearchOption};
 use crate::input::command::RunCommandAction;
@@ -5476,6 +5477,12 @@ impl SessionInfo {
                 }
             }
         }
+        let creation_time = kdl_document
+            .get("creation_time")
+            .and_then(|n| n.entries().iter().next())
+            .and_then(|e| e.value().as_i64())
+            .map(|c| Duration::from_secs(c as u64))
+            .unwrap_or_default();
         Ok(SessionInfo {
             name,
             tabs,
@@ -5488,6 +5495,7 @@ impl SessionInfo {
             plugins: Default::default(), // we do not serialize plugin information
             tab_history,
             pane_history,
+            creation_time,
         })
     }
     pub fn to_string(&self) -> String {
@@ -5590,6 +5598,11 @@ impl SessionInfo {
         kdl_document.nodes_mut().push(available_layouts);
         kdl_document.nodes_mut().push(tab_history);
         kdl_document.nodes_mut().push(pane_history);
+
+        let mut creation_time_node = KdlNode::new("creation_time");
+        creation_time_node.push(self.creation_time.as_secs() as i64);
+        kdl_document.nodes_mut().push(creation_time_node);
+
         kdl_document.fmt();
         kdl_document.to_string()
     }
@@ -6169,6 +6182,7 @@ fn serialize_and_deserialize_session_info_with_data() {
         web_clients_allowed: true,
         tab_history: Default::default(),
         pane_history: Default::default(),
+        creation_time: Duration::from_secs(300),
     };
     let serialized = session_info.to_string();
     let deserealized = SessionInfo::from_string(&serialized, "not this session").unwrap();

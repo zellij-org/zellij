@@ -807,7 +807,10 @@ impl State {
                 should_render = true;
             },
             BareKey::Esc if key.has_no_modifiers() => {
-                if !self.is_welcome_screen {
+                if self.single_screen_state.selected_index.is_some() {
+                    self.single_screen_state.selected_index = None;
+                    should_render = true;
+                } else if !self.is_welcome_screen {
                     hide_self();
                 }
             },
