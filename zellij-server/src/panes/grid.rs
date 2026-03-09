@@ -105,6 +105,7 @@ pub(crate) fn namespace_notification_id(metadata: &str, pane_id: u32) -> String 
     }
 }
 
+use compact_str::CompactString;
 use unicode_segmentation::GraphemeCursor;
 use vte::{Params, Perform};
 use zellij_utils::{consts::VERSION, shared::version_number};
@@ -567,7 +568,8 @@ fn position_in_span(
 #[derive(Default)]
 struct PendingGrapheme {
     /// Accumulated EGC text placed in the cell so far.
-    text: String,
+    /// CompactString stores ≤24 bytes inline (no heap), covering all single chars and most emoji.
+    text: CompactString,
     /// Column of the cell being accumulated into (logical x, as passed to add_character).
     x: usize,
     /// Row of the cell being accumulated into.
@@ -1862,12 +1864,21 @@ impl Grid {
         // selectors that extend a preceding base character are preserved rather than dropped.
         if let Some(state) = &self.egc_state {
             if state.end_x == self.cursor.x && state.y == self.cursor.y {
-                let mut test = state.text.clone();
-                let boundary_offset = test.len();
-                test.push(new_char);
-                let mut gc = GraphemeCursor::new(boundary_offset, test.len(), true);
-                // Treat any error as a boundary (safe fallback: start new cell).
-                let is_boundary = gc.is_boundary(&test, 0).unwrap_or(true);
+                // Fast path: ASCII characters are always grapheme boundaries.
+                // All non-boundary codepoints (combining marks, ZWJ, variation
+                // selectors, regional indicators, emoji modifiers) are > U+007F,
+                // so we can skip the GraphemeCursor allocation entirely.
+                let is_boundary = if new_char.is_ascii() {
+                    true
+                } else {
+                    let mut test = String::with_capacity(state.text.len() + 4);
+                    test.push_str(&state.text);
+                    let boundary_offset = test.len();
+                    test.push(new_char);
+                    let mut gc = GraphemeCursor::new(boundary_offset, test.len(), true);
+                    // Treat any error as a boundary (safe fallback: start new cell).
+                    gc.is_boundary(&test, 0).unwrap_or(true)
+                };
                 if !is_boundary {
                     // new_char is part of the same EGC as the previous cell.
                     let cell_x = state.x;
@@ -1930,10 +1941,10 @@ impl Grid {
         let placed_x = self.cursor.x;
         let placed_y = self.cursor.y;
         // Capture the full grapheme text before terminal_character is moved.
-        // egc_state.text must reflect the complete EGC (not just the first scalar)
-        // so that boundary checks against subsequent codepoints use correct prior
-        // context — particularly RI parity for flag sequences repeated via CSI b.
-        let egc_text = terminal_character.grapheme().to_string();
+        // egc_state.text must reflect the complete EGC so that boundary checks
+        // against subsequent codepoints use correct prior context — particularly
+        // RI parity for flag sequences repeated via CSI b.
+        let egc_text = CompactString::from(terminal_character.grapheme());
         self.add_character_at_cursor_position(terminal_character, false);
         self.move_cursor_forward_until_edge(character_width);
         self.egc_state = Some(PendingGrapheme {
