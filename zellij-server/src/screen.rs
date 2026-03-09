@@ -301,11 +301,12 @@ pub enum ScreenInstruction {
     Exit,
     ClearScreen(ClientId, Option<NotificationEnd>),
     DumpScreen(
-        String,
+        Option<String>,
         ClientId,
         bool,
         Option<PaneId>,
         Option<NotificationEnd>,
+        Option<ClientId>, // cli_client_id - used to send output to the CLI client's STDOUT
     ),
     DumpLayout(Option<PathBuf>, ClientId, Option<NotificationEnd>), // PathBuf is the default configured
     // shell
@@ -5129,32 +5130,79 @@ pub(crate) fn screen_thread_main(
                 client_id,
                 full,
                 pane_id,
-                _completion_tx, // the action ends here, dropping this will release anything
-                                // waiting for it
+                completion_tx,
+                cli_client_id,
             ) => {
-                match pane_id {
-                    Some(pane_id) => {
-                        for tab in screen.get_tabs_mut().values_mut() {
-                            if tab.has_pane_with_pid(&pane_id) {
-                                tab.dump_terminal_screen(Some(file.clone()), pane_id, full)?;
-                                break;
-                            }
+                match file {
+                    Some(file_path) => {
+                        // Write dump to file (existing behavior)
+                        match pane_id {
+                            Some(pane_id) => {
+                                for tab in screen.get_tabs_mut().values_mut() {
+                                    if tab.has_pane_with_pid(&pane_id) {
+                                        tab.dump_terminal_screen(
+                                            Some(file_path.clone()),
+                                            pane_id,
+                                            full,
+                                        )?;
+                                        break;
+                                    }
+                                }
+                            },
+                            None => {
+                                active_tab_and_connected_client_id!(
+                                    screen,
+                                    client_id,
+                                    |tab: &mut Tab, client_id: ClientId| tab.dump_active_terminal_screen(
+                                        Some(file_path.to_string()),
+                                        client_id,
+                                        full
+                                    ),
+                                    ?
+                                );
+                            },
                         }
+                        screen.render(None)?;
+                        drop(completion_tx);
                     },
                     None => {
-                        active_tab_and_connected_client_id!(
-                            screen,
-                            client_id,
-                            |tab: &mut Tab, client_id: ClientId| tab.dump_active_terminal_screen(
-                                Some(file.to_string()),
-                                client_id,
-                                full
-                            ),
-                            ?
-                        );
+                        // Dump to STDOUT via Log
+                        let dump = match pane_id {
+                            Some(pane_id) => {
+                                let mut result = String::new();
+                                for tab in screen.get_tabs_mut().values_mut() {
+                                    if tab.has_pane_with_pid(&pane_id) {
+                                        if let Some(dump) =
+                                            tab.get_dump_terminal_screen(pane_id, full)
+                                        {
+                                            result = dump;
+                                        }
+                                        break;
+                                    }
+                                }
+                                result
+                            },
+                            None => {
+                                let mut result = String::new();
+                                active_tab_and_connected_client_id!(
+                                    screen,
+                                    client_id,
+                                    |tab: &mut Tab, client_id: ClientId| {
+                                        result = tab.get_dump_active_terminal_screen(client_id, full);
+                                        Ok::<(), anyhow::Error>(())
+                                    },
+                                    ?
+                                );
+                                result
+                            },
+                        };
+                        screen.bus.senders.send_to_server(ServerInstruction::Log(
+                            vec![dump],
+                            cli_client_id.unwrap_or(client_id),
+                            completion_tx,
+                        ))?;
                     },
                 }
-                screen.render(None)?;
             },
             ScreenInstruction::DumpLayout(default_shell, client_id, completion_tx) => {
                 let err_context = || format!("Failed to dump layout");

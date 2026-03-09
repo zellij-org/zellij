@@ -435,6 +435,7 @@ pub(crate) fn route_action(
                     include_scrollback,
                     pane_id.map(|p| p.into()),
                     Some(NotificationEnd::new(completion_tx)),
+                    cli_client_id,
                 ))
                 .with_context(err_context)?;
         },

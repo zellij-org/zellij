@@ -873,7 +873,7 @@ fn test_client_messages() {
     });
     test_client_roundtrip!(ClientToServerMsg::Action {
         action: Action::DumpScreen {
-            file_path: "/path/to/file".to_owned(),
+            file_path: Some("/path/to/file".to_owned()),
             include_scrollback: false,
             pane_id: None,
         },
@@ -883,7 +883,7 @@ fn test_client_messages() {
     });
     test_client_roundtrip!(ClientToServerMsg::Action {
         action: Action::DumpScreen {
-            file_path: "/path/to/file".to_owned(),
+            file_path: Some("/path/to/file".to_owned()),
             include_scrollback: true,
             pane_id: None,
         },
@@ -893,9 +893,19 @@ fn test_client_messages() {
     });
     test_client_roundtrip!(ClientToServerMsg::Action {
         action: Action::DumpScreen {
-            file_path: "/path/to/file".to_owned(),
+            file_path: Some("/path/to/file".to_owned()),
             include_scrollback: true,
             pane_id: Some(PaneId::Terminal(5)),
+        },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::DumpScreen {
+            file_path: None,
+            include_scrollback: false,
+            pane_id: None,
         },
         terminal_id: Some(1),
         client_id: Some(100),
