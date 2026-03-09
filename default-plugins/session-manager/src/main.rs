@@ -48,7 +48,7 @@ struct State {
     active_screen: ActiveScreen,
     colors: Colors,
     is_welcome_screen: bool,
-    is_single_screen: bool,
+    is_multi_screen: bool,
     single_screen_state: SingleScreenState,
     show_kill_all_sessions_warning: bool,
     request_ids: Vec<String>,
@@ -68,12 +68,11 @@ impl ZellijPlugin for State {
             self.active_screen = ActiveScreen::NewSession;
         }
         self.new_session_info.is_welcome_screen = self.is_welcome_screen;
-        self.is_single_screen = true;
-        //         self.is_single_screen = configuration
-        //             .get("single_screen")
-        //             .map(|v| v == "true")
-        //             .unwrap_or(false);
-        if self.is_single_screen {
+        self.is_multi_screen = configuration
+            .get("multi_screen")
+            .map(|v| v == "true")
+            .unwrap_or(false);
+        if !self.is_multi_screen {
             self.active_screen = ActiveScreen::SingleScreen;
         }
         self.single_screen_state.is_welcome_screen = self.is_welcome_screen;
@@ -97,7 +96,7 @@ impl ZellijPlugin for State {
                         Some(request_id_position) => {
                             self.request_ids.remove(request_id_position);
                             let new_session_folder = std::path::PathBuf::from(payload);
-                            if self.is_single_screen {
+                            if !self.is_multi_screen {
                                 self.single_screen_state.new_session_folder =
                                     Some(new_session_folder.clone());
                             }
@@ -144,7 +143,7 @@ impl ZellijPlugin for State {
                 self.resurrectable_sessions
                     .update(resurrectable_session_list);
                 self.update_session_infos(session_infos);
-                if self.is_single_screen {
+                if !self.is_multi_screen {
                     self.single_screen_state.update_search_term(
                         &self.sessions.session_ui_infos,
                         &self.resurrectable_sessions.all_resurrectable_sessions,
@@ -231,8 +230,31 @@ impl ZellijPlugin for State {
                             let content_width = std::cmp::min(width, 90);
                             let x_centered = x + (width.saturating_sub(content_width)) / 2;
 
+                            let enter_action = if !self.single_screen_state.search_term.is_empty() {
+                                if let Some(result) = self.single_screen_state.get_selected_result()
+                                {
+                                    match result {
+                                        UnifiedSearchResult::ActiveSession { .. } => Some("Attach"),
+                                        UnifiedSearchResult::ResurrectableSession { .. } => {
+                                            Some("Resurrect")
+                                        },
+                                    }
+                                } else {
+                                    let typed = &self.single_screen_state.search_term;
+                                    if self.sessions.has_session(typed) {
+                                        Some("Attach")
+                                    } else if self.resurrectable_sessions.has_session(typed) {
+                                        Some("Resurrect")
+                                    } else {
+                                        Some("Create new")
+                                    }
+                                }
+                            } else {
+                                None
+                            };
                             render_single_screen_prompt(
                                 &self.single_screen_state.search_term,
+                                enter_action,
                                 self.colors,
                                 x_centered,
                                 y_offset,

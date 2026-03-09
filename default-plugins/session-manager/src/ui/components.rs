@@ -552,15 +552,29 @@ pub fn render_prompt(search_term: &str, colors: Colors, x: usize, y: usize) {
     );
 }
 
-pub fn render_single_screen_prompt(search_term: &str, colors: Colors, x: usize, y: usize) {
+pub fn render_single_screen_prompt(
+    search_term: &str,
+    enter_action: Option<&str>,
+    colors: Colors,
+    x: usize,
+    y: usize,
+) {
     let prompt = colors.session_name_prompt("Session:");
     let search_term_display = colors.bold(&format!("{}_", search_term));
+    let enter_hint = match enter_action {
+        Some(action) => {
+            let enter_key = colors.shortcuts("<ENTER>");
+            format!(" {} - {}", enter_key, action)
+        },
+        None => String::new(),
+    };
     println!(
-        "\u{1b}[{};{}H\u{1b}[0m{} {}\n",
+        "\u{1b}[m\u{1b}[{};{}H\u{1b}[0m{} {}{}\n",
         y + 2,
         x + 1,
         prompt,
-        search_term_display
+        search_term_display,
+        enter_hint,
     );
 }
 
