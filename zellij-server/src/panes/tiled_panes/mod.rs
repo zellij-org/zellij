@@ -991,6 +991,7 @@ impl TiledPanes {
             pane.render_full_viewport();
         }
         self.reset_boundaries();
+        self.window_title = None;
     }
     pub fn has_active_panes(&self) -> bool {
         !self.active_panes.is_empty()
