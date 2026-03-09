@@ -296,7 +296,7 @@ impl TabUiInfo {
             .map(|p| {
                 p.iter()
                     .filter_map(|pane_info| {
-                        if pane_info.is_selectable {
+                        if pane_info.is_selectable && !pane_info.is_suppressed {
                             Some(PaneUiInfo {
                                 name: pane_info.title.clone(),
                                 exit_code: pane_info.exit_status.clone(),
