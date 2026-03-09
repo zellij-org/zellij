@@ -966,9 +966,9 @@ pub fn render_unified_results(
                 };
 
                 let tag_cell = if abbreviate_tags {
-                    Text::new("[A]").color_range(3, ..)
+                    Text::new("[A]").color_range(0, ..)
                 } else {
-                    Text::new("[ATTACH]").color_range(3, ..)
+                    Text::new("[ATTACH]").color_range(0, ..)
                 };
 
                 (details_cell, tag_cell)
@@ -986,9 +986,9 @@ pub fn render_unified_results(
                 };
 
                 let tag_cell = if abbreviate_tags {
-                    Text::new("[R]").color_range(3, ..)
+                    Text::new("[R]").color_range(0, ..)
                 } else {
-                    Text::new("[RESURRECT]").color_range(3, ..)
+                    Text::new("[RESURRECT]").color_range(0, ..)
                 };
 
                 (details_cell, tag_cell)
@@ -998,26 +998,30 @@ pub fn render_unified_results(
         // 4th column: above-summary on first row, below-summary on last row,
         // TAB hint on first row only when no selection and nothing hidden above, empty otherwise
         let fourth_cell = if row_index == 0 && has_hidden_above {
-            let summary_text = if abbreviate_fourth_col {
-                &above_summary_short
+            let (summary_text, active_count, resurrectable_count) = if abbreviate_fourth_col {
+                (&above_summary_short, above_active, above_resurrectable)
             } else {
-                &above_summary_full
+                (&above_summary_full, above_active, above_resurrectable)
             };
-            Text::new(summary_text).color_range(2, ..)
+            Text::new(summary_text)
+                .color_substring(2, &format!("+{}", active_count))
+                .color_substring(2, &format!("+{}", resurrectable_count))
         } else if row_index == 0 && selected_index.is_none() {
             let tab_hint_text = if abbreviate_fourth_col {
                 tab_header_short
             } else {
                 tab_header_full
             };
-            Text::new(tab_hint_text).color_range(3, ..)
+            Text::new(tab_hint_text).color_substring(3, "<TAB>")
         } else if row_index == visible_count - 1 && has_hidden_below {
-            let summary_text = if abbreviate_fourth_col {
-                &below_summary_short
+            let (summary_text, active_count, resurrectable_count) = if abbreviate_fourth_col {
+                (&below_summary_short, below_active, below_resurrectable)
             } else {
-                &below_summary_full
+                (&below_summary_full, below_active, below_resurrectable)
             };
-            Text::new(summary_text).color_range(2, ..)
+            Text::new(summary_text)
+                .color_substring(2, &format!("+{}", active_count))
+                .color_substring(2, &format!("+{}", resurrectable_count))
         } else {
             Text::new(" ")
         };
@@ -1501,24 +1505,22 @@ pub fn render_controls_line(
             let disconnect_short_text = colors.bold("Disconnect");
             let kill = colors.shortcuts("<Del>");
             let kill_text = colors.bold("Kill/Delete");
-            let save = colors.shortcuts("<Ctrl a>");
-            let save_text = colors.bold("Save");
 
-            // Full: "Help: <Ctrl r> - Rename, <Ctrl x> - Disconnect others, <Del> - Kill/Delete, <Ctrl a> - Save" = 91 chars
-            if max_cols > 91 {
+            // Full: "Help: <Ctrl r> - Rename, <Ctrl x> - Disconnect others, <Del> - Kill/Delete" = 76 chars
+            if max_cols > 76 {
                 print!(
-                    "\u{1b}[m\u{1b}[{y};{x}HHelp: {rename} - {rename_text}, {disconnect} - {disconnect_full_text}, {kill} - {kill_text}, {save} - {save_text}"
+                    "\u{1b}[m\u{1b}[{y};{x}HHelp: {rename} - {rename_text}, {disconnect} - {disconnect_full_text}, {kill} - {kill_text}"
                 );
                 true
-            // Medium: "Help: <Ctrl r> - Rename, <Ctrl x> - Disconnect, <Del> - Kill/Delete, <Ctrl a> - Save" = 84 chars
-            } else if max_cols > 84 {
+            // Medium: "Help: <Ctrl r> - Rename, <Ctrl x> - Disconnect, <Del> - Kill/Delete" = 69 chars
+            } else if max_cols > 69 {
                 print!(
-                    "\u{1b}[m\u{1b}[{y};{x}HHelp: {rename} - {rename_text}, {disconnect} - {disconnect_short_text}, {kill} - {kill_text}, {save} - {save_text}"
+                    "\u{1b}[m\u{1b}[{y};{x}HHelp: {rename} - {rename_text}, {disconnect} - {disconnect_short_text}, {kill} - {kill_text}"
                 );
                 true
-            // Compact: "<Ctrl r>/<Ctrl x>/<Del>/<Ctrl a>" = 31 chars
-            } else if max_cols >= 31 {
-                print!("\u{1b}[m\u{1b}[{y};{x}H{rename}/{disconnect}/{kill}/{save}");
+            // Compact: "<Ctrl r>/<Ctrl x>/<Del>" = 23 chars
+            } else if max_cols >= 23 {
+                print!("\u{1b}[m\u{1b}[{y};{x}H{rename}/{disconnect}/{kill}");
                 false
             } else {
                 false
