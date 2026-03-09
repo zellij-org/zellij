@@ -211,6 +211,21 @@ impl Default for SpanStyle {
     }
 }
 
+fn truncate_to_width(text: &str, max_width: usize) -> String {
+    use unicode_width::UnicodeWidthChar;
+    let mut result = String::new();
+    let mut current_width = 0;
+    for ch in text.chars() {
+        let ch_width = ch.width().unwrap_or(0);
+        if current_width + ch_width > max_width {
+            break;
+        }
+        result.push(ch);
+        current_width += ch_width;
+    }
+    result
+}
+
 #[derive(Debug, Default)]
 pub struct TruncatableUiSpan {
     text: String,
@@ -553,7 +568,7 @@ pub fn render_unified_results(
     results: &[UnifiedSearchResult],
     selected_index: Option<usize>,
     max_rows: usize,
-    _max_cols: usize,
+    max_cols: usize,
     _colors: Colors,
     x: usize,
     y: usize,
@@ -596,16 +611,30 @@ pub fn render_unified_results(
         (s, e)
     };
 
-    let mut table = Table::new();
+    // Pass 1: Collect raw data for visible rows
+    struct VisibleRowData<'a> {
+        session_name: &'a str,
+        indices: &'a [usize],
+        is_selected: bool,
+        kind: VisibleRowKind,
+    }
 
-    // Empty header row with 1-space padding per cell
-    table = table.add_styled_row(vec![Text::new(" "), Text::new(" "), Text::new(" ")]);
+    enum VisibleRowKind {
+        Active {
+            tab_count: usize,
+            pane_count: usize,
+            connected_users: usize,
+        },
+        Resurrectable {
+            formatted_duration: String,
+        },
+    }
 
+    let mut visible_rows: Vec<VisibleRowData> = Vec::new();
     for filtered_i in start..end {
         if let Some((_, result)) = filtered.get(filtered_i) {
             let is_selected = filtered_selected == Some(filtered_i);
-
-            let (name_cell, details_cell, tag_cell) = match result {
+            match result {
                 UnifiedSearchResult::ActiveSession {
                     indices,
                     session_name,
@@ -614,40 +643,16 @@ pub fn render_unified_results(
                     pane_count,
                     ..
                 } => {
-                    let mut name_text = Text::new(session_name.clone()).color_range(1, ..);
-                    if !indices.is_empty() {
-                        name_text = name_text.color_indices(3, indices.clone());
-                    }
-
-                    let tab_count_str = format!("{}", tab_count);
-                    let pane_count_str = format!("{}", pane_count);
-                    let connected_str = format!("{}", connected_users);
-
-                    let client_word = if *connected_users == 1 {
-                        "client"
-                    } else {
-                        "clients"
-                    };
-                    let details = format!(
-                        "{} tabs, {} panes, {} {}",
-                        tab_count_str, pane_count_str, connected_str, client_word
-                    );
-
-                    let tab_count_start = 0;
-                    let tab_count_end = tab_count_str.len();
-                    let pane_count_offset = tab_count_str.len() + " tabs, ".len();
-                    let pane_count_end = pane_count_offset + pane_count_str.len();
-                    let connected_offset = pane_count_end + " panes, ".len();
-                    let connected_end = connected_offset + connected_str.len();
-
-                    let details_text = Text::new(details)
-                        .color_range(1, tab_count_start..tab_count_end)
-                        .color_range(2, pane_count_offset..pane_count_end)
-                        .color_range(2, connected_offset..connected_end);
-
-                    let tag_text = Text::new("[ATTACH]").color_range(3, ..);
-
-                    (name_text, details_text, tag_text)
+                    visible_rows.push(VisibleRowData {
+                        session_name,
+                        indices,
+                        is_selected,
+                        kind: VisibleRowKind::Active {
+                            tab_count: *tab_count,
+                            pane_count: *pane_count,
+                            connected_users: *connected_users,
+                        },
+                    });
                 },
                 UnifiedSearchResult::ResurrectableSession {
                     indices,
@@ -669,38 +674,220 @@ pub fn render_unified_results(
                     if formatted_duration.is_empty() {
                         formatted_duration.push_str("<1m");
                     }
-
-                    let mut name_text = Text::new(session_name.clone()).color_range(1, ..);
-                    if !indices.is_empty() {
-                        name_text = name_text.color_indices(3, indices.clone());
-                    }
-
-                    let details_str = format!("Created {} ago", formatted_duration);
-                    let created_len = "Created ".len();
-                    let duration_end = created_len + formatted_duration.len();
-                    // Only color the duration part, not "Created" or "ago"
-                    let details_text =
-                        Text::new(details_str).color_range(2, created_len..duration_end);
-
-                    let tag_text = Text::new("[RESURRECT]").color_range(3, ..);
-
-                    (name_text, details_text, tag_text)
+                    visible_rows.push(VisibleRowData {
+                        session_name,
+                        indices,
+                        is_selected,
+                        kind: VisibleRowKind::Resurrectable { formatted_duration },
+                    });
                 },
-            };
-
-            if is_selected {
-                table = table.add_styled_row(vec![
-                    name_cell.selected(),
-                    details_cell.selected(),
-                    tag_cell.selected(),
-                ]);
-            } else {
-                table = table.add_styled_row(vec![name_cell, details_cell, tag_cell]);
             }
         }
     }
 
-    print_table_with_coordinates(table, x, y, None, Some(max_rows));
+    // Pass 2: Compute reduction level based on column widths
+    let full_name_width = visible_rows
+        .iter()
+        .map(|r| r.session_name.width())
+        .max()
+        .unwrap_or(0);
+
+    let full_details_width = visible_rows
+        .iter()
+        .map(|r| match &r.kind {
+            VisibleRowKind::Active {
+                tab_count,
+                pane_count,
+                connected_users,
+            } => {
+                let client_word = if *connected_users == 1 {
+                    "client"
+                } else {
+                    "clients"
+                };
+                format!(
+                    "{} tabs, {} panes, {} {}",
+                    tab_count, pane_count, connected_users, client_word
+                )
+                .width()
+            },
+            VisibleRowKind::Resurrectable { formatted_duration } => {
+                format!("Created {} ago", formatted_duration).width()
+            },
+        })
+        .max()
+        .unwrap_or(0);
+
+    let full_tag_width = visible_rows
+        .iter()
+        .map(|r| match &r.kind {
+            VisibleRowKind::Active { .. } => "[ATTACH]".width(),
+            VisibleRowKind::Resurrectable { .. } => "[RESURRECT]".width(),
+        })
+        .max()
+        .unwrap_or(0);
+
+    // +3 because the server-side table renderer accounts for max_column_width + 1
+    // per column (one trailing space each, even for the last column) when checking
+    // width constraints
+    let full_total = full_name_width + full_details_width + full_tag_width + 3;
+
+    let (abbreviate_details, abbreviate_tags, name_max_width) = if full_total <= max_cols {
+        // Everything fits at full size
+        (false, false, None)
+    } else {
+        // Reduction 1: abbreviate details
+        let abbr_details_width = visible_rows
+            .iter()
+            .map(|r| match &r.kind {
+                VisibleRowKind::Active {
+                    tab_count,
+                    pane_count,
+                    connected_users,
+                } => format!("{}t, {}p, {}c", tab_count, pane_count, connected_users).width(),
+                VisibleRowKind::Resurrectable { formatted_duration } => {
+                    format!("{} ago", formatted_duration).width()
+                },
+            })
+            .max()
+            .unwrap_or(0);
+
+        let total_after_details = full_name_width + abbr_details_width + full_tag_width + 3;
+        if total_after_details <= max_cols {
+            (true, false, None)
+        } else {
+            // Reduction 2: abbreviate tags
+            let abbr_tag_width = 3; // "[A]" or "[R]"
+            let total_after_tags = full_name_width + abbr_details_width + abbr_tag_width + 3;
+            if total_after_tags <= max_cols {
+                (true, true, None)
+            } else {
+                // Reduction 3: truncate session names
+                let available_for_name =
+                    max_cols.saturating_sub(abbr_details_width + abbr_tag_width + 3);
+                (true, true, Some(available_for_name))
+            }
+        }
+    };
+
+    // Build table cells using reduction level
+    let mut table = Table::new();
+
+    // Empty header row with 1-space padding per cell
+    table = table.add_styled_row(vec![Text::new(" "), Text::new(" "), Text::new(" ")]);
+
+    for row in &visible_rows {
+        // Name cell
+        let display_name = match name_max_width {
+            Some(max_w) => truncate_to_width(row.session_name, max_w),
+            None => row.session_name.to_string(),
+        };
+
+        let display_indices: Vec<usize> = row
+            .indices
+            .iter()
+            .filter(|&&i| i < display_name.chars().count())
+            .cloned()
+            .collect();
+
+        let mut name_cell = Text::new(display_name).color_range(1, ..);
+        if !display_indices.is_empty() {
+            name_cell = name_cell.color_indices(3, display_indices);
+        }
+
+        // Details cell and tag cell
+        let (details_cell, tag_cell) = match &row.kind {
+            VisibleRowKind::Active {
+                tab_count,
+                pane_count,
+                connected_users,
+            } => {
+                let details_cell = if abbreviate_details {
+                    let tab_str = format!("{}", tab_count);
+                    let pane_str = format!("{}", pane_count);
+                    let conn_str = format!("{}", connected_users);
+                    let details = format!("{}t, {}p, {}c", tab_str, pane_str, conn_str);
+
+                    let tab_end = tab_str.len();
+                    let pane_offset = tab_str.len() + "t, ".len();
+                    let pane_end = pane_offset + pane_str.len();
+                    let conn_offset = pane_end + "p, ".len();
+                    let conn_end = conn_offset + conn_str.len();
+
+                    Text::new(details)
+                        .color_range(1, 0..tab_end)
+                        .color_range(2, pane_offset..pane_end)
+                        .color_range(2, conn_offset..conn_end)
+                } else {
+                    let tab_count_str = format!("{}", tab_count);
+                    let pane_count_str = format!("{}", pane_count);
+                    let connected_str = format!("{}", connected_users);
+
+                    let client_word = if *connected_users == 1 {
+                        "client"
+                    } else {
+                        "clients"
+                    };
+                    let details = format!(
+                        "{} tabs, {} panes, {} {}",
+                        tab_count_str, pane_count_str, connected_str, client_word
+                    );
+
+                    let tab_count_start = 0;
+                    let tab_count_end = tab_count_str.len();
+                    let pane_count_offset = tab_count_str.len() + " tabs, ".len();
+                    let pane_count_end = pane_count_offset + pane_count_str.len();
+                    let connected_offset = pane_count_end + " panes, ".len();
+                    let connected_end = connected_offset + connected_str.len();
+
+                    Text::new(details)
+                        .color_range(1, tab_count_start..tab_count_end)
+                        .color_range(2, pane_count_offset..pane_count_end)
+                        .color_range(2, connected_offset..connected_end)
+                };
+
+                let tag_cell = if abbreviate_tags {
+                    Text::new("[A]").color_range(3, ..)
+                } else {
+                    Text::new("[ATTACH]").color_range(3, ..)
+                };
+
+                (details_cell, tag_cell)
+            },
+            VisibleRowKind::Resurrectable { formatted_duration } => {
+                let details_cell = if abbreviate_details {
+                    let details_str = format!("{} ago", formatted_duration);
+                    let duration_end = formatted_duration.len();
+                    Text::new(details_str).color_range(2, 0..duration_end)
+                } else {
+                    let details_str = format!("Created {} ago", formatted_duration);
+                    let created_len = "Created ".len();
+                    let duration_end = created_len + formatted_duration.len();
+                    Text::new(details_str).color_range(2, created_len..duration_end)
+                };
+
+                let tag_cell = if abbreviate_tags {
+                    Text::new("[R]").color_range(3, ..)
+                } else {
+                    Text::new("[RESURRECT]").color_range(3, ..)
+                };
+
+                (details_cell, tag_cell)
+            },
+        };
+
+        if row.is_selected {
+            table = table.add_styled_row(vec![
+                name_cell.selected(),
+                details_cell.selected(),
+                tag_cell.selected(),
+            ]);
+        } else {
+            table = table.add_styled_row(vec![name_cell, details_cell, tag_cell]);
+        }
+    }
+
+    print_table_with_coordinates(table, x, y, Some(max_cols), Some(max_rows));
 }
 
 pub fn render_screen_toggle(
