@@ -64,19 +64,7 @@ windows-sys = { workspace = true, features = [
     "Win32_Foundation",
     "Win32_System_Threading",
 ] }
-winapi = { version = "0.3.9", features = [
-    "winbase",
-    "winerror",
-    "winnls",
-    "winuser",
-    "consoleapi",
-    "handleapi",
-    "fileapi",
-    "synchapi",
-    "memoryapi",
-    "winnt",
-    "impl-default",
-] }
+winapi = { version = "0.3.9", default-features = false }
 
 [dev-dependencies]
 insta = { version = "1.6.0", features = ["backtrace"] }
