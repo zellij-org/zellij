@@ -602,6 +602,7 @@ pub enum ScreenInstruction {
     ResizePaneWithId(ResizeStrategy, PaneId),
     EditScrollbackForPaneWithId(PaneId, Option<NotificationEnd>),
     WriteToPaneId(Vec<u8>, PaneId, Option<NotificationEnd>),
+    Paste(Vec<u8>, Option<PaneId>, ClientId, Option<NotificationEnd>),
     SetPaneColor(
         PaneId,
         Option<String>,
@@ -891,6 +892,7 @@ impl From<&ScreenInstruction> for ScreenContext {
                 ScreenContext::EditScrollbackForPaneWithId
             },
             ScreenInstruction::WriteToPaneId(..) => ScreenContext::WriteToPaneId,
+            ScreenInstruction::Paste(..) => ScreenContext::Paste,
             ScreenInstruction::SetPaneColor(..) => ScreenContext::SetPaneColor,
             ScreenInstruction::WriteKeyToPaneId(..) => ScreenContext::WriteKeyToPaneId,
             ScreenInstruction::CopyTextToClipboard(..) => ScreenContext::CopyTextToClipboard,
@@ -7412,6 +7414,31 @@ pub(crate) fn screen_thread_main(
                             .non_fatal();
                         break;
                     }
+                }
+                screen.render(None)?;
+            },
+            ScreenInstruction::Paste(bytes, pane_id, client_id, _completion) => {
+                match pane_id {
+                    Some(pane_id) => {
+                        let all_tabs = screen.get_tabs_mut();
+                        for tab in all_tabs.values_mut() {
+                            if tab.has_pane_with_pid(&pane_id) {
+                                tab.paste_to_pane_id(bytes, pane_id, _completion)
+                                    .non_fatal();
+                                break;
+                            }
+                        }
+                    },
+                    None => {
+                        active_tab_and_connected_client_id!(
+                            screen,
+                            client_id,
+                            |tab: &mut Tab, _client_id: ClientId| {
+                                tab.paste_to_active_terminal(bytes, client_id, _completion)
+                                    .non_fatal();
+                            }
+                        );
+                    },
                 }
                 screen.render(None)?;
             },

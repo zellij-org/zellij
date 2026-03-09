@@ -244,6 +244,7 @@ message Action {
     ShowFloatingPanesAction show_floating_panes = 106;
     HideFloatingPanesAction hide_floating_panes = 107;
     SetPaneColorAction set_pane_color = 108;
+    PasteAction paste = 109;
   }
 }
 
@@ -355,6 +356,11 @@ message WriteToPaneIdAction {
 message WriteCharsToPaneIdAction {
   PaneId pane_id = 1;
   string chars = 2;
+}
+
+message PasteAction {
+  string chars = 1;
+  optional PaneId pane_id = 2;
 }
 
 message SwitchToModeAction {

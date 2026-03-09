@@ -74,6 +74,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: better handle STDIN segmentation with latency (eg. over SSH) (https://github.com/zellij-org/zellij/pull/4623)
 * feat: `zellij subscribe` -> allow to subscribe to pane viewport/scrollback updates from the cli (https://github.com/zellij-org/zellij/pull/4814)
 * feat: new `session-manager` UI (https://github.com/zellij-org/zellij/pull/4821)
+* feat: `zellij action paste` for pasting large buffers into panes from the command line (https://github.com/zellij-org/zellij/pull/4817)
 
 
 ## [0.43.1] - 2025-08-08
