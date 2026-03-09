@@ -222,7 +222,7 @@ pub struct WebCli {
     #[clap(
         long,
         value_parser,
-        conflicts_with_all(&["stop", "status", "create-token", "revoke-token", "revoke-all-tokens"]),
+        conflicts_with_all(&["stop", "create-token", "revoke-token", "revoke-all-tokens"]),
         display_order = 13
     )]
     pub ip: Option<IpAddr>,
@@ -230,7 +230,7 @@ pub struct WebCli {
     #[clap(
         long,
         value_parser,
-        conflicts_with_all(&["stop", "status", "create-token", "revoke-token", "revoke-all-tokens"]),
+        conflicts_with_all(&["stop", "create-token", "revoke-token", "revoke-all-tokens"]),
         display_order = 14
     )]
     pub port: Option<u16>,
