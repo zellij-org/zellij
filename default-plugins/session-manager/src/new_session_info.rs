@@ -363,3 +363,131 @@ pub struct LayoutSearchResult {
     pub score: i64,
     pub indices: Vec<usize>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_layout(name: &str) -> LayoutInfo {
+        LayoutInfo::BuiltIn(name.to_string())
+    }
+
+    fn make_layout_list(names: &[&str]) -> LayoutList {
+        let mut ll = LayoutList::default();
+        ll.layout_list = names.iter().map(|n| make_layout(n)).collect();
+        ll
+    }
+
+    // ---------------------------------------------------------------
+    // Section 6: Layout List Navigation
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn test_6_1_layout_navigation_wraps_down() {
+        let mut ll = make_layout_list(&["a", "b", "c"]);
+        ll.selected_layout_index = 2;
+        ll.move_selection_down();
+        assert_eq!(ll.selected_layout_index, 0);
+    }
+
+    #[test]
+    fn test_6_2_layout_navigation_wraps_up() {
+        let mut ll = make_layout_list(&["a", "b", "c"]);
+        ll.selected_layout_index = 0;
+        ll.move_selection_up();
+        assert_eq!(ll.selected_layout_index, 2);
+    }
+
+    #[test]
+    fn test_6_3_layout_search_filters_results() {
+        let mut ll = make_layout_list(&["default", "compact", "development"]);
+        ll.layout_search_term = "dev".to_string();
+        ll.update_search_term();
+        // "development" should match
+        let matched_names: Vec<&str> = ll
+            .layout_search_results
+            .iter()
+            .map(|r| r.layout_info.name())
+            .collect();
+        assert!(matched_names.contains(&"development"));
+        // "default" and "compact" should not match "dev" well enough
+        // (though "default" starts with "de" so it might fuzzy-match — check)
+        // The key assertion is that "development" is present and is the best match.
+        // With SkimMatcherV2, "default" may also match "dev" (d, e from "default").
+        // So we just verify "development" is the top result.
+        assert_eq!(
+            ll.layout_search_results[0].layout_info.name(),
+            "development"
+        );
+    }
+
+    #[test]
+    fn test_6_4_selected_layout_info_returns_correct_layout() {
+        let ll = make_layout_list(&["a", "b", "c"]);
+        // selected_layout_index defaults to 0, set to 1
+        let mut ll = ll;
+        ll.selected_layout_index = 1;
+        let info = ll.selected_layout_info();
+        assert!(info.is_some());
+        assert_eq!(info.unwrap().name(), "b");
+    }
+
+    #[test]
+    fn test_6_5_layout_viewport_windowing() {
+        let mut ll = make_layout_list(&[
+            "layout-0", "layout-1", "layout-2", "layout-3", "layout-4", "layout-5", "layout-6",
+            "layout-7", "layout-8", "layout-9",
+        ]);
+        ll.selected_layout_index = 5;
+        let rendered = ll.layouts_to_render(5);
+        // Should return at most 5-1=4 entries (range_to_render subtracts 1 for title)
+        assert!(rendered.len() <= 5);
+        // The selected layout should be within the visible window
+        let selected_visible = rendered.iter().any(|(_, _, is_selected)| *is_selected);
+        assert!(selected_visible);
+    }
+
+    // ---------------------------------------------------------------
+    // Section 7: Viewport Scrolling (range_to_render tests)
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn test_7_1_all_results_fit_in_viewport() {
+        // When table_rows > results_len, all results are shown
+        let (start, end) = range_to_render(10, 5, None);
+        assert_eq!(start, 0);
+        assert_eq!(end, 5);
+    }
+
+    #[test]
+    fn test_7_2_viewport_scrolls_to_keep_selection_centered() {
+        // table_rows=6, results_len=20, selected=10
+        // row_count_to_render = 6-1 = 5, half = 2
+        // first = 10-2 = 8, last = 8+5 = 13
+        let (start, end) = range_to_render(6, 20, Some(10));
+        assert_eq!(start, 8);
+        assert_eq!(end, 13);
+    }
+
+    #[test]
+    fn test_7_3_viewport_clamps_at_bottom() {
+        // table_rows=6, results_len=20, selected=19
+        // row_count_to_render = 5, half = 2
+        // first = 19-2 = 17, last = 17+5 = 22 > 20
+        // Note: range_to_render does NOT clamp — it returns (17, 22)
+        // The actual clamping happens in the caller via .take().skip()
+        let (start, end) = range_to_render(6, 20, Some(19));
+        assert_eq!(start, 17);
+        assert_eq!(end, 22);
+    }
+
+    #[test]
+    fn test_7_4_viewport_clamps_at_top() {
+        // table_rows=6, results_len=20, selected=0
+        // row_count_to_render = 5, half = 2
+        // first = 0.saturating_sub(2) = 0, last = 0+5 = 5
+        let (start, end) = range_to_render(6, 20, Some(0));
+        assert_eq!(start, 0);
+        assert_eq!(end, 5);
+    }
+}

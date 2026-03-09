@@ -837,12 +837,6 @@ pub fn render_unified_results(
         .max()
         .unwrap_or(0);
 
-    // +4 because the server-side table renderer accounts for max_column_width + 1
-    // per column (one trailing space each, even for the last column) when checking
-    // width constraints — now 4 columns
-    let full_total =
-        full_name_width + full_details_width + full_tag_width + full_fourth_col_width + 4;
-
     // Compute abbreviated details width (used in multiple reduction tiers)
     let abbr_details_width = visible_rows
         .iter()
@@ -859,43 +853,16 @@ pub fn render_unified_results(
         .max()
         .unwrap_or(0);
 
-    let (abbreviate_details, abbreviate_tags, abbreviate_fourth_col, name_max_width) = if full_total
-        <= max_cols
-    {
-        // Everything fits at full size
-        (false, false, false, None)
-    } else {
-        // Reduction 1: abbreviate details
-        let total_after_details =
-            full_name_width + abbr_details_width + full_tag_width + full_fourth_col_width + 4;
-        if total_after_details <= max_cols {
-            (true, false, false, None)
-        } else {
-            // Reduction 2: abbreviate tags
-            let abbr_tag_width = 3; // "[A]" or "[R]"
-            let total_after_tags =
-                full_name_width + abbr_details_width + abbr_tag_width + full_fourth_col_width + 4;
-            if total_after_tags <= max_cols {
-                (true, true, false, None)
-            } else {
-                // Reduction 3: abbreviate 4th column
-                let total_after_fourth = full_name_width
-                    + abbr_details_width
-                    + abbr_tag_width
-                    + short_fourth_col_width
-                    + 4;
-                if total_after_fourth <= max_cols {
-                    (true, true, true, None)
-                } else {
-                    // Reduction 4: truncate session names
-                    let available_for_name = max_cols.saturating_sub(
-                        abbr_details_width + abbr_tag_width + short_fourth_col_width + 4,
-                    );
-                    (true, true, true, Some(available_for_name))
-                }
-            }
-        }
-    };
+    let (abbreviate_details, abbreviate_tags, abbreviate_fourth_col, name_max_width) =
+        compute_reduction_tier(
+            full_name_width,
+            full_details_width,
+            full_tag_width,
+            full_fourth_col_width,
+            abbr_details_width,
+            short_fourth_col_width,
+            max_cols,
+        );
 
     // Build table cells using reduction level
     let mut table = Table::new();
@@ -1700,6 +1667,62 @@ impl Colors {
     }
 }
 
+/// Computes the width reduction tier for the unified results table.
+///
+/// Returns `(abbreviate_details, abbreviate_tags, abbreviate_fourth_col, name_max_width)`.
+/// - Tier 0: everything fits at full size
+/// - Tier 1: abbreviate details only
+/// - Tier 2: abbreviate details + tags
+/// - Tier 3: abbreviate details + tags + 4th column
+/// - Tier 4: abbreviate all + truncate session names
+pub fn compute_reduction_tier(
+    full_name_width: usize,
+    full_details_width: usize,
+    full_tag_width: usize,
+    full_fourth_col_width: usize,
+    abbr_details_width: usize,
+    short_fourth_col_width: usize,
+    max_cols: usize,
+) -> (bool, bool, bool, Option<usize>) {
+    let full_total =
+        full_name_width + full_details_width + full_tag_width + full_fourth_col_width + 4;
+    if full_total <= max_cols {
+        // Everything fits at full size
+        (false, false, false, None)
+    } else {
+        // Reduction 1: abbreviate details
+        let total_after_details =
+            full_name_width + abbr_details_width + full_tag_width + full_fourth_col_width + 4;
+        if total_after_details <= max_cols {
+            (true, false, false, None)
+        } else {
+            // Reduction 2: abbreviate tags
+            let abbr_tag_width = 3; // "[A]" or "[R]"
+            let total_after_tags =
+                full_name_width + abbr_details_width + abbr_tag_width + full_fourth_col_width + 4;
+            if total_after_tags <= max_cols {
+                (true, true, false, None)
+            } else {
+                // Reduction 3: abbreviate 4th column
+                let total_after_fourth = full_name_width
+                    + abbr_details_width
+                    + abbr_tag_width
+                    + short_fourth_col_width
+                    + 4;
+                if total_after_fourth <= max_cols {
+                    (true, true, true, None)
+                } else {
+                    // Reduction 4: truncate session names
+                    let available_for_name = max_cols.saturating_sub(
+                        abbr_details_width + abbr_tag_width + short_fourth_col_width + 4,
+                    );
+                    (true, true, true, Some(available_for_name))
+                }
+            }
+        }
+    }
+}
+
 fn truncate_path(path: PathBuf, mut char_count_to_remove: usize) -> String {
     let mut truncated = String::new();
     let component_count = path.iter().count();
@@ -1720,4 +1743,78 @@ fn truncate_path(path: PathBuf, mut char_count_to_remove: usize) -> String {
         }
     }
     truncated
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ---------------------------------------------------------------
+    // Section 8: Width Responsiveness (compute_reduction_tier)
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn test_8_1_tier_0_full_width_everything_fits() {
+        // full_total = 20 + 30 + 11 + 15 + 4 = 80, max_cols = 120
+        let (abbr_details, abbr_tags, abbr_fourth, name_max) =
+            compute_reduction_tier(20, 30, 11, 15, 10, 5, 120);
+        assert_eq!(
+            (abbr_details, abbr_tags, abbr_fourth, name_max),
+            (false, false, false, None)
+        );
+    }
+
+    #[test]
+    fn test_8_2_tier_1_abbreviate_details_only() {
+        // full_total = 20 + 30 + 11 + 15 + 4 = 80
+        // after abbr details: 20 + 10 + 11 + 15 + 4 = 60
+        // max_cols = 70: full doesn't fit (80 > 70), but abbr details fits (60 <= 70)
+        let (abbr_details, abbr_tags, abbr_fourth, name_max) =
+            compute_reduction_tier(20, 30, 11, 15, 10, 5, 70);
+        assert_eq!(
+            (abbr_details, abbr_tags, abbr_fourth, name_max),
+            (true, false, false, None)
+        );
+    }
+
+    #[test]
+    fn test_8_3_tier_2_abbreviate_details_and_tags() {
+        // full_total = 20 + 30 + 11 + 15 + 4 = 80
+        // after abbr details: 20 + 10 + 11 + 15 + 4 = 60
+        // after abbr tags: 20 + 10 + 3 + 15 + 4 = 52
+        // max_cols = 55: abbr details doesn't fit (60 > 55), abbr tags fits (52 <= 55)
+        let (abbr_details, abbr_tags, abbr_fourth, name_max) =
+            compute_reduction_tier(20, 30, 11, 15, 10, 5, 55);
+        assert_eq!(
+            (abbr_details, abbr_tags, abbr_fourth, name_max),
+            (true, true, false, None)
+        );
+    }
+
+    #[test]
+    fn test_8_4_tier_3_abbreviate_details_tags_and_fourth_col() {
+        // full_total = 20 + 30 + 11 + 15 + 4 = 80
+        // after abbr details: 20 + 10 + 11 + 15 + 4 = 60
+        // after abbr tags: 20 + 10 + 3 + 15 + 4 = 52
+        // after abbr fourth: 20 + 10 + 3 + 5 + 4 = 42
+        // max_cols = 45: abbr tags doesn't fit (52 > 45), abbr fourth fits (42 <= 45)
+        let (abbr_details, abbr_tags, abbr_fourth, name_max) =
+            compute_reduction_tier(20, 30, 11, 15, 10, 5, 45);
+        assert_eq!(
+            (abbr_details, abbr_tags, abbr_fourth, name_max),
+            (true, true, true, None)
+        );
+    }
+
+    #[test]
+    fn test_8_5_tier_4_truncate_session_names() {
+        // full_total = 20 + 30 + 11 + 15 + 4 = 80
+        // after abbr fourth: 20 + 10 + 3 + 5 + 4 = 42
+        // max_cols = 30: doesn't fit at tier 3 (42 > 30)
+        // available_for_name = 30 - (10 + 3 + 5 + 4) = 8
+        let (abbr_details, abbr_tags, abbr_fourth, name_max) =
+            compute_reduction_tier(20, 30, 11, 15, 10, 5, 30);
+        assert_eq!((abbr_details, abbr_tags, abbr_fourth), (true, true, true));
+        assert_eq!(name_max, Some(8)); // 30 - (10 + 3 + 5 + 4) = 8
+    }
 }
