@@ -738,13 +738,17 @@ pub enum CliAction {
     MovePaneBackwards,
     /// Clear all buffers for a focused pane
     Clear,
-    /// Dump the focused pane to a file
+    /// Dumps the viewport and optionally scrollback of a pane to STDOUT
     DumpScreen {
         path: PathBuf,
 
         /// Dump the pane with full scrollback
         #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
         full: bool,
+
+        /// The pane_id of the pane, eg. terminal_1, plugin_2 or 3 (equivalent to terminal_3). If not specified, dumps the focused pane.
+        #[clap(short, long, value_parser)]
+        pane_id: Option<String>,
     },
     /// Dump current layout to stdout
     DumpLayout,
