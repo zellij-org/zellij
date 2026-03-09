@@ -118,9 +118,12 @@ impl ZellijPlugin for State {
         let mut should_render = false;
         match event {
             Event::Timer(_) => {
-                self.current_session_last_saved_time = current_session_last_saved_time();
+                let new_saved_time = current_session_last_saved_time();
+                if new_saved_time != self.current_session_last_saved_time {
+                    self.current_session_last_saved_time = new_saved_time;
+                    should_render = true;
+                }
                 set_timeout(1.0);
-                should_render = true;
             },
             Event::ModeUpdate(mode_info) => {
                 self.colors = Colors::new(mode_info.style.colors);
@@ -260,7 +263,7 @@ impl ZellijPlugin for State {
                                 y_offset,
                             );
                             render_unified_results(
-                                &self.single_screen_state.unified_results,
+                                &self.single_screen_state.render_cache,
                                 self.single_screen_state.selected_index,
                                 max_table_rows,
                                 content_width,

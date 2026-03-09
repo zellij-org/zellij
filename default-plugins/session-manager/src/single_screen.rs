@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use crate::new_session_info::LayoutList;
+use crate::ui::components::UnifiedResultsRenderCache;
 use crate::ui::SessionUiInfo;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -90,6 +91,8 @@ pub struct SingleScreenState {
     pub layout_list: LayoutList,
     pub new_session_folder: Option<PathBuf>,
     pub is_welcome_screen: bool,
+    pub render_cache: UnifiedResultsRenderCache,
+    fuzzy_matcher: Option<SkimMatcherV2>,
 }
 
 impl std::fmt::Debug for SingleScreenState {
@@ -118,11 +121,8 @@ impl SingleScreenState {
             self.unified_results
                 .sort_by(|a, b| a.cmp_by_type_then_recency(b));
         } else {
-            self.unified_results = Self::collect_fuzzy_matched_sessions(
-                &self.search_term,
-                active_sessions,
-                resurrectable_sessions,
-            );
+            self.unified_results =
+                self.collect_fuzzy_matched_sessions(active_sessions, resurrectable_sessions);
             self.unified_results.sort_by(|a, b| {
                 let score_cmp = b.score().cmp(&a.score());
                 if score_cmp != std::cmp::Ordering::Equal {
@@ -132,6 +132,7 @@ impl SingleScreenState {
             });
         }
 
+        self.render_cache.rebuild(&self.unified_results);
         self.restore_selection(previously_selected_name);
     }
 
@@ -170,20 +171,23 @@ impl SingleScreenState {
     }
 
     fn collect_fuzzy_matched_sessions(
-        search_term: &str,
+        &mut self,
         active_sessions: &[SessionUiInfo],
         resurrectable_sessions: &[(String, Duration)],
     ) -> Vec<UnifiedSearchResult> {
-        let matcher = SkimMatcherV2::default().use_cache(true);
+        let matcher = self
+            .fuzzy_matcher
+            .get_or_insert_with(|| SkimMatcherV2::default().use_cache(true));
         let mut results = Vec::new();
 
         for session in active_sessions {
-            if let Some((score, indices)) = matcher.fuzzy_indices(&session.name, search_term) {
+            if let Some((score, indices)) = matcher.fuzzy_indices(&session.name, &self.search_term)
+            {
                 results.push(Self::active_session_to_result(session, score, indices));
             }
         }
         for (name, ctime) in resurrectable_sessions {
-            if let Some((score, indices)) = matcher.fuzzy_indices(name, search_term) {
+            if let Some((score, indices)) = matcher.fuzzy_indices(name, &self.search_term) {
                 results.push(UnifiedSearchResult::ResurrectableSession {
                     score,
                     indices,

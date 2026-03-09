@@ -9,6 +9,237 @@ use crate::single_screen::UnifiedSearchResult;
 use crate::ui::{PaneUiInfo, SessionUiInfo, TabUiInfo};
 use crate::{ActiveScreen, NewSessionInfo};
 
+// ---------------------------------------------------------------
+// Render cache for unified results
+// ---------------------------------------------------------------
+
+/// Pre-computed data for a single visible row, independent of selection state.
+#[derive(Clone)]
+pub struct CachedRowData {
+    pub session_name: String,
+    pub indices: Vec<usize>,
+    pub original_index: usize,
+    pub kind: CachedRowKind,
+    // Pre-formatted strings (computed once, reused across renders)
+    pub full_details: String,
+    pub abbr_details: String,
+    pub full_tag: &'static str,
+    pub abbr_tag: &'static str,
+    // Pre-computed widths
+    pub name_width: usize,
+    pub full_details_width: usize,
+    pub abbr_details_width: usize,
+    pub full_tag_width: usize,
+    // Color range data for details cell
+    pub details_color_ranges: DetailsColorRanges,
+    pub abbr_details_color_ranges: DetailsColorRanges,
+}
+
+#[derive(Clone)]
+pub enum CachedRowKind {
+    Active,
+    Resurrectable,
+}
+
+/// Byte-offset ranges for coloring details cells.
+#[derive(Clone, Default)]
+pub struct DetailsColorRanges {
+    pub ranges: Vec<(usize, std::ops::Range<usize>)>, // (color_index, range)
+}
+
+/// Cached intermediate representation of the unified results table.
+///
+/// Stored on `SingleScreenState` and rebuilt only when `unified_results`
+/// changes (via `update_search_term` / `SessionUpdate`). Selection changes
+/// and timer re-renders reuse the cached data.
+#[derive(Default)]
+pub struct UnifiedResultsRenderCache {
+    /// Filtered rows (current session excluded), with pre-formatted strings.
+    pub rows: Vec<CachedRowData>,
+    /// Max column widths across all cached rows.
+    pub full_name_width: usize,
+    pub full_details_width: usize,
+    pub abbr_details_width: usize,
+    pub full_tag_width: usize,
+}
+
+impl UnifiedResultsRenderCache {
+    /// Rebuild the cache from the current `unified_results`.
+    pub fn rebuild(&mut self, results: &[UnifiedSearchResult]) {
+        self.rows.clear();
+        self.full_name_width = 0;
+        self.full_details_width = 0;
+        self.abbr_details_width = 0;
+        self.full_tag_width = 0;
+
+        for (orig_i, result) in results.iter().enumerate() {
+            let is_current = matches!(
+                result,
+                UnifiedSearchResult::ActiveSession {
+                    is_current_session: true,
+                    ..
+                }
+            );
+            if is_current {
+                continue;
+            }
+
+            let row = match result {
+                UnifiedSearchResult::ActiveSession {
+                    indices,
+                    session_name,
+                    connected_users,
+                    tab_count,
+                    pane_count,
+                    ..
+                } => {
+                    let client_word = if *connected_users == 1 {
+                        "client"
+                    } else {
+                        "clients"
+                    };
+
+                    let tab_str = format!("{}", tab_count);
+                    let pane_str = format!("{}", pane_count);
+                    let conn_str = format!("{}", connected_users);
+
+                    // Full details
+                    let full_details = format!(
+                        "{} tabs, {} panes, {} {}",
+                        tab_str, pane_str, conn_str, client_word
+                    );
+                    let full_details_ranges = {
+                        let tab_end = tab_str.len();
+                        let pane_offset = tab_str.len() + " tabs, ".len();
+                        let pane_end = pane_offset + pane_str.len();
+                        let conn_offset = pane_end + " panes, ".len();
+                        let conn_end = conn_offset + conn_str.len();
+                        DetailsColorRanges {
+                            ranges: vec![
+                                (1, 0..tab_end),
+                                (2, pane_offset..pane_end),
+                                (2, conn_offset..conn_end),
+                            ],
+                        }
+                    };
+
+                    // Abbreviated details
+                    let abbr_details = format!("{}t, {}p, {}c", tab_str, pane_str, conn_str);
+                    let abbr_details_ranges = {
+                        let tab_end = tab_str.len();
+                        let pane_offset = tab_str.len() + "t, ".len();
+                        let pane_end = pane_offset + pane_str.len();
+                        let conn_offset = pane_end + "p, ".len();
+                        let conn_end = conn_offset + conn_str.len();
+                        DetailsColorRanges {
+                            ranges: vec![
+                                (1, 0..tab_end),
+                                (2, pane_offset..pane_end),
+                                (2, conn_offset..conn_end),
+                            ],
+                        }
+                    };
+
+                    let name_width = session_name.width();
+                    let full_details_width = full_details.width();
+                    let abbr_details_width = abbr_details.width();
+
+                    CachedRowData {
+                        session_name: session_name.clone(),
+                        indices: indices.clone(),
+                        original_index: orig_i,
+                        kind: CachedRowKind::Active,
+                        full_details,
+                        abbr_details,
+                        full_tag: "[ATTACH]",
+                        abbr_tag: "[A]",
+                        name_width,
+                        full_details_width,
+                        abbr_details_width,
+                        full_tag_width: "[ATTACH]".len(),
+                        details_color_ranges: full_details_ranges,
+                        abbr_details_color_ranges: abbr_details_ranges,
+                    }
+                },
+                UnifiedSearchResult::ResurrectableSession {
+                    indices,
+                    session_name,
+                    ctime,
+                    ..
+                } => {
+                    let duration = humantime::format_duration(*ctime).to_string();
+                    let mut formatted_duration = String::new();
+                    for part in duration.split_whitespace() {
+                        if !part.ends_with('s') {
+                            if !formatted_duration.is_empty() {
+                                formatted_duration.push(' ');
+                            }
+                            formatted_duration.push_str(part);
+                        }
+                    }
+                    if formatted_duration.is_empty() {
+                        formatted_duration.push_str("<1m");
+                    }
+
+                    let full_details = format!("Created {} ago", formatted_duration);
+                    let full_details_ranges = {
+                        let created_len = "Created ".len();
+                        let duration_end = created_len + formatted_duration.len();
+                        DetailsColorRanges {
+                            ranges: vec![(2, created_len..duration_end)],
+                        }
+                    };
+
+                    let abbr_details = format!("{} ago", formatted_duration);
+                    let abbr_details_ranges = {
+                        let duration_end = formatted_duration.len();
+                        DetailsColorRanges {
+                            ranges: vec![(2, 0..duration_end)],
+                        }
+                    };
+
+                    let name_width = session_name.width();
+                    let full_details_width = full_details.width();
+                    let abbr_details_width = abbr_details.width();
+
+                    CachedRowData {
+                        session_name: session_name.clone(),
+                        indices: indices.clone(),
+                        original_index: orig_i,
+                        kind: CachedRowKind::Resurrectable,
+                        full_details,
+                        abbr_details,
+                        full_tag: "[RESURRECT]",
+                        abbr_tag: "[R]",
+                        name_width,
+                        full_details_width,
+                        abbr_details_width,
+                        full_tag_width: "[RESURRECT]".len(),
+                        details_color_ranges: full_details_ranges,
+                        abbr_details_color_ranges: abbr_details_ranges,
+                    }
+                },
+            };
+
+            // Update max widths
+            if row.name_width > self.full_name_width {
+                self.full_name_width = row.name_width;
+            }
+            if row.full_details_width > self.full_details_width {
+                self.full_details_width = row.full_details_width;
+            }
+            if row.abbr_details_width > self.abbr_details_width {
+                self.abbr_details_width = row.abbr_details_width;
+            }
+            if row.full_tag_width > self.full_tag_width {
+                self.full_tag_width = row.full_tag_width;
+            }
+
+            self.rows.push(row);
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct ListItem {
     pub name: String,
@@ -579,7 +810,7 @@ pub fn render_single_screen_prompt(
 }
 
 pub fn render_unified_results(
-    results: &[UnifiedSearchResult],
+    cache: &UnifiedResultsRenderCache,
     selected_index: Option<usize>,
     max_rows: usize,
     max_cols: usize,
@@ -587,30 +818,17 @@ pub fn render_unified_results(
     x: usize,
     y: usize,
 ) {
-    // Filter out the current session
-    let filtered: Vec<(usize, &UnifiedSearchResult)> = results
-        .iter()
-        .enumerate()
-        .filter(|(_, r)| match r {
-            UnifiedSearchResult::ActiveSession {
-                is_current_session, ..
-            } => !is_current_session,
-            _ => true,
-        })
-        .collect();
-
-    if filtered.is_empty() {
+    if cache.rows.is_empty() {
         return;
     }
 
-    // Map the selected_index from original results to filtered position
+    // Map selected_index (from original results) to filtered/cached position
     let filtered_selected =
-        selected_index.and_then(|sel| filtered.iter().position(|(orig_i, _)| *orig_i == sel));
+        selected_index.and_then(|sel| cache.rows.iter().position(|r| r.original_index == sel));
 
-    // Calculate viewport range over the filtered list
-    let total = filtered.len();
-    // Reserve 1 row for the empty header
-    let data_rows = max_rows.saturating_sub(1);
+    // Calculate viewport range over the cached (already filtered) list
+    let total = cache.rows.len();
+    let data_rows = max_rows.saturating_sub(1); // 1 for the empty header
     let (start, end) = if data_rows >= total {
         (0, total)
     } else {
@@ -625,97 +843,9 @@ pub fn render_unified_results(
         (s, e)
     };
 
-    // Pass 1: Collect raw data for visible rows
-    struct VisibleRowData<'a> {
-        session_name: &'a str,
-        indices: &'a [usize],
-        is_selected: bool,
-        kind: VisibleRowKind,
-    }
-
-    enum VisibleRowKind {
-        Active {
-            tab_count: usize,
-            pane_count: usize,
-            connected_users: usize,
-        },
-        Resurrectable {
-            formatted_duration: String,
-        },
-    }
-
-    let mut visible_rows: Vec<VisibleRowData> = Vec::new();
-    for filtered_i in start..end {
-        if let Some((_, result)) = filtered.get(filtered_i) {
-            let is_selected = filtered_selected == Some(filtered_i);
-            match result {
-                UnifiedSearchResult::ActiveSession {
-                    indices,
-                    session_name,
-                    connected_users,
-                    tab_count,
-                    pane_count,
-                    ..
-                } => {
-                    visible_rows.push(VisibleRowData {
-                        session_name,
-                        indices,
-                        is_selected,
-                        kind: VisibleRowKind::Active {
-                            tab_count: *tab_count,
-                            pane_count: *pane_count,
-                            connected_users: *connected_users,
-                        },
-                    });
-                },
-                UnifiedSearchResult::ResurrectableSession {
-                    indices,
-                    session_name,
-                    ctime,
-                    ..
-                } => {
-                    let duration = humantime::format_duration(*ctime).to_string();
-                    let duration_parts = duration.split_whitespace();
-                    let mut formatted_duration = String::new();
-                    for part in duration_parts {
-                        if !part.ends_with('s') {
-                            if !formatted_duration.is_empty() {
-                                formatted_duration.push(' ');
-                            }
-                            formatted_duration.push_str(part);
-                        }
-                    }
-                    if formatted_duration.is_empty() {
-                        formatted_duration.push_str("<1m");
-                    }
-                    visible_rows.push(VisibleRowData {
-                        session_name,
-                        indices,
-                        is_selected,
-                        kind: VisibleRowKind::Resurrectable { formatted_duration },
-                    });
-                },
-            }
-        }
-    }
-
-    // Compute hidden-above and hidden-below counts from the filtered list
-    let above_active = filtered[..start]
-        .iter()
-        .filter(|(_, r)| matches!(r, UnifiedSearchResult::ActiveSession { .. }))
-        .count();
-    let above_resurrectable = filtered[..start]
-        .iter()
-        .filter(|(_, r)| matches!(r, UnifiedSearchResult::ResurrectableSession { .. }))
-        .count();
-    let below_active = filtered[end..]
-        .iter()
-        .filter(|(_, r)| matches!(r, UnifiedSearchResult::ActiveSession { .. }))
-        .count();
-    let below_resurrectable = filtered[end..]
-        .iter()
-        .filter(|(_, r)| matches!(r, UnifiedSearchResult::ResurrectableSession { .. }))
-        .count();
+    // Hidden-item counts (single pass over two slices)
+    let (above_active, above_resurrectable) = count_by_kind(&cache.rows[..start]);
+    let (below_active, below_resurrectable) = count_by_kind(&cache.rows[end..]);
 
     let has_hidden_above = above_active > 0 || above_resurrectable > 0;
     let has_hidden_below = below_active > 0 || below_resurrectable > 0;
@@ -752,7 +882,6 @@ pub fn render_unified_results(
         String::new()
     };
 
-    // Compute max 4th column width across all possible content
     let max_summary_full_width = std::cmp::max(
         if has_hidden_above {
             above_summary_full.width()
@@ -795,76 +924,19 @@ pub fn render_unified_results(
         },
     );
 
-    // Pass 2: Compute reduction level based on column widths
-    let full_name_width = visible_rows
-        .iter()
-        .map(|r| r.session_name.width())
-        .max()
-        .unwrap_or(0);
-
-    let full_details_width = visible_rows
-        .iter()
-        .map(|r| match &r.kind {
-            VisibleRowKind::Active {
-                tab_count,
-                pane_count,
-                connected_users,
-            } => {
-                let client_word = if *connected_users == 1 {
-                    "client"
-                } else {
-                    "clients"
-                };
-                format!(
-                    "{} tabs, {} panes, {} {}",
-                    tab_count, pane_count, connected_users, client_word
-                )
-                .width()
-            },
-            VisibleRowKind::Resurrectable { formatted_duration } => {
-                format!("Created {} ago", formatted_duration).width()
-            },
-        })
-        .max()
-        .unwrap_or(0);
-
-    let full_tag_width = visible_rows
-        .iter()
-        .map(|r| match &r.kind {
-            VisibleRowKind::Active { .. } => "[ATTACH]".width(),
-            VisibleRowKind::Resurrectable { .. } => "[RESURRECT]".width(),
-        })
-        .max()
-        .unwrap_or(0);
-
-    // Compute abbreviated details width (used in multiple reduction tiers)
-    let abbr_details_width = visible_rows
-        .iter()
-        .map(|r| match &r.kind {
-            VisibleRowKind::Active {
-                tab_count,
-                pane_count,
-                connected_users,
-            } => format!("{}t, {}p, {}c", tab_count, pane_count, connected_users).width(),
-            VisibleRowKind::Resurrectable { formatted_duration } => {
-                format!("{} ago", formatted_duration).width()
-            },
-        })
-        .max()
-        .unwrap_or(0);
-
+    // Use pre-computed widths from cache — no format!() allocations needed
     let (abbreviate_details, abbreviate_tags, abbreviate_fourth_col, name_max_width) =
         compute_reduction_tier(
-            full_name_width,
-            full_details_width,
-            full_tag_width,
+            cache.full_name_width,
+            cache.full_details_width,
+            cache.full_tag_width,
             full_fourth_col_width,
-            abbr_details_width,
+            cache.abbr_details_width,
             short_fourth_col_width,
             max_cols,
         );
 
-    // Build table cells using reduction level
+    // Build table from cached data
     let mut table = Table::new();
 
     // Empty header row
@@ -875,12 +947,14 @@ pub fn render_unified_results(
         Text::new(" "),
     ]);
 
-    let visible_count = visible_rows.len();
-    for (row_index, row) in visible_rows.iter().enumerate() {
-        // Name cell
+    let visible_count = end - start;
+    for (row_index, row) in cache.rows[start..end].iter().enumerate() {
+        let is_selected = filtered_selected == Some(start + row_index);
+
+        // Name cell — use cached string, only truncate if needed
         let display_name = match name_max_width {
-            Some(max_w) => truncate_to_width(row.session_name, max_w),
-            None => row.session_name.to_string(),
+            Some(max_w) => truncate_to_width(&row.session_name, max_w),
+            None => row.session_name.clone(),
         };
 
         let display_indices: Vec<usize> = row
@@ -895,89 +969,30 @@ pub fn render_unified_results(
             name_cell = name_cell.color_indices(3, display_indices);
         }
 
-        // Details cell and tag cell
-        let (details_cell, tag_cell) = match &row.kind {
-            VisibleRowKind::Active {
-                tab_count,
-                pane_count,
-                connected_users,
-            } => {
-                let details_cell = if abbreviate_details {
-                    let tab_str = format!("{}", tab_count);
-                    let pane_str = format!("{}", pane_count);
-                    let conn_str = format!("{}", connected_users);
-                    let details = format!("{}t, {}p, {}c", tab_str, pane_str, conn_str);
-
-                    let tab_end = tab_str.len();
-                    let pane_offset = tab_str.len() + "t, ".len();
-                    let pane_end = pane_offset + pane_str.len();
-                    let conn_offset = pane_end + "p, ".len();
-                    let conn_end = conn_offset + conn_str.len();
-
-                    Text::new(details)
-                        .color_range(1, 0..tab_end)
-                        .color_range(2, pane_offset..pane_end)
-                        .color_range(2, conn_offset..conn_end)
-                } else {
-                    let tab_count_str = format!("{}", tab_count);
-                    let pane_count_str = format!("{}", pane_count);
-                    let connected_str = format!("{}", connected_users);
-
-                    let client_word = if *connected_users == 1 {
-                        "client"
-                    } else {
-                        "clients"
-                    };
-                    let details = format!(
-                        "{} tabs, {} panes, {} {}",
-                        tab_count_str, pane_count_str, connected_str, client_word
-                    );
-
-                    let tab_count_start = 0;
-                    let tab_count_end = tab_count_str.len();
-                    let pane_count_offset = tab_count_str.len() + " tabs, ".len();
-                    let pane_count_end = pane_count_offset + pane_count_str.len();
-                    let connected_offset = pane_count_end + " panes, ".len();
-                    let connected_end = connected_offset + connected_str.len();
-
-                    Text::new(details)
-                        .color_range(1, tab_count_start..tab_count_end)
-                        .color_range(2, pane_count_offset..pane_count_end)
-                        .color_range(2, connected_offset..connected_end)
-                };
-
-                let tag_cell = if abbreviate_tags {
-                    Text::new("[A]").color_range(0, ..)
-                } else {
-                    Text::new("[ATTACH]").color_range(0, ..)
-                };
-
-                (details_cell, tag_cell)
-            },
-            VisibleRowKind::Resurrectable { formatted_duration } => {
-                let details_cell = if abbreviate_details {
-                    let details_str = format!("{} ago", formatted_duration);
-                    let duration_end = formatted_duration.len();
-                    Text::new(details_str).color_range(2, 0..duration_end)
-                } else {
-                    let details_str = format!("Created {} ago", formatted_duration);
-                    let created_len = "Created ".len();
-                    let duration_end = created_len + formatted_duration.len();
-                    Text::new(details_str).color_range(2, created_len..duration_end)
-                };
-
-                let tag_cell = if abbreviate_tags {
-                    Text::new("[R]").color_range(0, ..)
-                } else {
-                    Text::new("[RESURRECT]").color_range(0, ..)
-                };
-
-                (details_cell, tag_cell)
-            },
+        // Details and tag cells — use cached pre-formatted strings
+        let color_ranges = if abbreviate_details {
+            &row.abbr_details_color_ranges
+        } else {
+            &row.details_color_ranges
         };
+        let details_text = if abbreviate_details {
+            &row.abbr_details
+        } else {
+            &row.full_details
+        };
+        let mut details_cell = Text::new(details_text);
+        for (color_idx, range) in &color_ranges.ranges {
+            details_cell = details_cell.color_range(*color_idx, range.clone());
+        }
 
-        // 4th column: above-summary on first row, below-summary on last row,
-        // TAB hint on first row only when no selection and nothing hidden above, empty otherwise
+        let tag_text = if abbreviate_tags {
+            row.abbr_tag
+        } else {
+            row.full_tag
+        };
+        let tag_cell = Text::new(tag_text).color_range(0, ..);
+
+        // 4th column
         let fourth_cell = if row_index == 0 && has_hidden_above {
             let (summary_text, active_count, resurrectable_count) = if abbreviate_fourth_col {
                 (&above_summary_short, above_active, above_resurrectable)
@@ -1007,7 +1022,7 @@ pub fn render_unified_results(
             Text::new(" ")
         };
 
-        if row.is_selected {
+        if is_selected {
             table = table.add_styled_row(vec![
                 name_cell.selected(),
                 details_cell.selected(),
@@ -1020,6 +1035,18 @@ pub fn render_unified_results(
     }
 
     print_table_with_coordinates(table, x, y, Some(max_cols), Some(max_rows));
+}
+
+fn count_by_kind(rows: &[CachedRowData]) -> (usize, usize) {
+    let mut active = 0;
+    let mut resurrectable = 0;
+    for row in rows {
+        match row.kind {
+            CachedRowKind::Active => active += 1,
+            CachedRowKind::Resurrectable => resurrectable += 1,
+        }
+    }
+    (active, resurrectable)
 }
 
 pub fn render_screen_toggle(
