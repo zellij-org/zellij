@@ -2,8 +2,9 @@ use crate::keyboard_parser::KittyKeyboardParser;
 use crate::os_input_output::ClientOsApi;
 use crate::stdin_ansi_parser::StdinAnsiParser;
 use crate::InputInstruction;
-use std::sync::{mpsc, Arc, Mutex};
-use std::time::Duration;
+use std::sync::{Arc, Mutex};
+use tokio::time::{Duration, Instant};
+use tokio_util::sync::CancellationToken;
 use zellij_utils::{
     channels::SenderWithContext,
     vendored::termwiz::input::{InputEvent, InputParser},
@@ -13,13 +14,11 @@ fn send_done_parsing_after_query_timeout(
     send_input_instructions: SenderWithContext<InputInstruction>,
     query_duration: u64,
 ) {
-    std::thread::spawn({
-        move || {
-            std::thread::sleep(Duration::from_millis(query_duration));
-            send_input_instructions
-                .send(InputInstruction::DoneParsing)
-                .unwrap();
-        }
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(query_duration)).await;
+        send_input_instructions
+            .send(InputInstruction::DoneParsing)
+            .unwrap();
     });
 }
 
@@ -75,8 +74,9 @@ fn enable_vt_input() -> bool {
     }
 }
 
-pub(crate) fn stdin_loop(
-    mut os_input: Box<dyn ClientOsApi>,
+pub(crate) async fn stdin_loop(
+    token: CancellationToken,
+    os_input: Box<dyn ClientOsApi>,
     send_input_instructions: SenderWithContext<InputInstruction>,
     stdin_ansi_parser: Arc<Mutex<StdinAnsiParser>>,
     explicitly_disable_kitty_keyboard_protocol: bool,
@@ -162,36 +162,28 @@ pub(crate) fn stdin_loop(
     let mut input_parser = InputParser::new();
     let mut current_buffer = vec![];
     let mut ansi_stdin_events = vec![];
-    let (stdin_tx, stdin_rx) = mpsc::sync_channel(32);
-    let _stdin_pump = std::thread::Builder::new()
-        .name("stdin_pump".to_string())
-        .spawn({
-            move || loop {
-                match os_input.read_from_stdin() {
-                    Ok(buf) => {
-                        if stdin_tx.send(Ok(buf)).is_err() {
-                            break; // receiver dropped
-                        }
-                    },
-                    Err(e) => {
-                        let _ = stdin_tx.send(Err(e));
-                        break;
-                    },
-                }
-            }
-        });
+    let mut async_stdin = os_input.get_async_stdin_reader();
     let mut needs_finalization = false;
+    let finalization_timeout = tokio::time::sleep(Duration::ZERO);
+    tokio::pin!(finalization_timeout);
     loop {
-        match if needs_finalization {
-            stdin_rx.recv_timeout(Duration::from_millis(50))
-        } else {
-            stdin_rx
-                .recv()
-                .map_err(|_| mpsc::RecvTimeoutError::Disconnected)
-        } {
-            Ok(result) => {
+        tokio::select! {
+            _ = token.cancelled() => {
+                log::debug!("STDIN loop cancelled");
+                if needs_finalization {
+                    finalize_events(
+                        &mut input_parser,
+                        &mut current_buffer,
+                        send_input_instructions.clone(),
+                    );
+                }
+                let _ = send_input_instructions.send(InputInstruction::Exit);
+                break;
+            }
+
+            result = async_stdin.read() => {
                 match result {
-                    Ok(buf) => {
+                    Ok(buf) if !buf.is_empty() => {
                         {
                             // here we check if we need to parse specialized ANSI instructions sent over STDIN
                             // this happens either on startup (see above) or on SIGWINCH
@@ -259,31 +251,38 @@ pub(crate) fn stdin_loop(
                         }
 
                         needs_finalization = true;
+                        finalization_timeout
+                            .as_mut()
+                            .reset(Instant::now() + Duration::from_millis(50));
                     },
-                    Err(e) => {
-                        if e == "Session ended" {
-                            log::debug!("Switched sessions, signing this thread off...");
-                        } else {
-                            log::error!("Failed to read from STDIN: {}", e);
+                    Ok(_) => {
+                        log::debug!("EOF on STDIN");
+                        if needs_finalization {
+                            finalize_events(
+                                &mut input_parser,
+                                &mut current_buffer,
+                                send_input_instructions.clone(),
+                            );
                         }
                         let _ = send_input_instructions.send(InputInstruction::Exit);
                         break;
                     },
+                    Err(e) => {
+                        log::error!("Failed to read from STDIN: {}", e);
+                        let _ = send_input_instructions.send(InputInstruction::Exit);
+                        break;
+                    },
                 }
-            },
-            Err(mpsc::RecvTimeoutError::Timeout) => {
+            }
+
+            _ = &mut finalization_timeout, if needs_finalization => {
                 finalize_events(
                     &mut input_parser,
                     &mut current_buffer,
                     send_input_instructions.clone(),
                 );
                 needs_finalization = false;
-            },
-            Err(mpsc::RecvTimeoutError::Disconnected) => {
-                log::debug!("STDIN pump disconnected");
-                let _ = send_input_instructions.send(InputInstruction::Exit);
-                break;
-            },
+            }
         }
     }
 }
