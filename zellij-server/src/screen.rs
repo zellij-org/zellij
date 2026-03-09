@@ -2647,6 +2647,15 @@ impl Screen {
             }
         }
         let available_layouts = self.cached_layouts.clone();
+        let creation_time = {
+            let sock_path = ZELLIJ_SOCK_DIR.join(&self.session_name);
+            std::fs::metadata(&sock_path)
+                .ok()
+                .and_then(|f| f.created().ok().or_else(|| f.modified().ok()))
+                .and_then(|d| d.elapsed().ok())
+                .map(|d| Duration::from_secs(d.as_secs()))
+                .unwrap_or_default()
+        };
         let session_info = SessionInfo {
             name: self.session_name.clone(),
             tabs: tab_infos,
@@ -2668,6 +2677,7 @@ impl Screen {
                 .iter()
                 .map(|(k, v)| (*k, v.iter().map(|v| (*v).into()).collect()))
                 .collect(),
+            creation_time,
         };
         self.bus
             .senders
@@ -7204,6 +7214,15 @@ pub(crate) fn screen_thread_main(
                 #[cfg(test)]
                 let available_layouts = vec![];
 
+                let creation_time = {
+                    let sock_path = ZELLIJ_SOCK_DIR.join(&screen.session_name);
+                    std::fs::metadata(&sock_path)
+                        .ok()
+                        .and_then(|f| f.created().ok().or_else(|| f.modified().ok()))
+                        .and_then(|d| d.elapsed().ok())
+                        .map(|d| Duration::from_secs(d.as_secs()))
+                        .unwrap_or_default()
+                };
                 let session_info = SessionInfo {
                     name: screen.session_name.clone(),
                     tabs: tab_infos,
@@ -7225,6 +7244,7 @@ pub(crate) fn screen_thread_main(
                         .iter()
                         .map(|(k, v)| (*k, v.iter().map(|v| (*v).into()).collect()))
                         .collect(),
+                    creation_time,
                 };
 
                 let session_layout_metadata = if screen.session_serialization {

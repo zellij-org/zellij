@@ -1080,6 +1080,7 @@ impl TryFrom<SessionInfo> for ProtobufSessionManifest {
                 .into_iter()
                 .map(|p| ProtobufClientPaneHistory::from(p))
                 .collect(),
+            creation_time: session_info.creation_time.as_secs(),
         })
     }
 }
@@ -1190,6 +1191,7 @@ impl TryFrom<ProtobufSessionManifest> for SessionInfo {
             web_client_count: protobuf_session_manifest.web_client_count as usize,
             tab_history,
             pane_history,
+            creation_time: Duration::from_secs(protobuf_session_manifest.creation_time),
         })
     }
 }
@@ -2631,6 +2633,7 @@ fn serialize_session_update_event_with_non_default_values() {
         web_client_count: 1,
         tab_history,
         pane_history: Default::default(),
+        creation_time: Duration::from_secs(100),
     };
     let session_info_2 = SessionInfo {
         name: "session 2".to_owned(),
@@ -2664,6 +2667,7 @@ fn serialize_session_update_event_with_non_default_values() {
         web_client_count: 0,
         tab_history: Default::default(),
         pane_history: Default::default(),
+        creation_time: Duration::from_secs(200),
     };
     let session_infos = vec![session_info_1, session_info_2];
     let resurrectable_sessions = vec![];
