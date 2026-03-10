@@ -20,11 +20,8 @@
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>Zellij Web Client</title>
     </head>
-    <body>
+    <body data-authenticated="IS_AUTHENTICATED">
         <div id="terminal" tabindex="0"></div>
-        <script>
-            window.is_authenticated = IS_AUTHENTICATED;
-        </script>
         <script src="assets/modals.js"></script>
         <!-- Module files - order matters -->
         <script type="module" src="assets/utils.js"></script>

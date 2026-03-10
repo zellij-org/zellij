@@ -15,7 +15,7 @@ pub fn create_http_client(
 
     if insecure {
         eprintln!("WARNING: TLS certificate validation is disabled. This connection is NOT secure.");
-        builder = builder.ssl_options(isahc::config::SslOption::DANGER_ACCEPT_INVALID_CERTS);
+        builder = builder.ssl_options(isahc::config::SslOption::DANGER_ACCEPT_INVALID_CERTS | isahc::config::SslOption::DANGER_ACCEPT_INVALID_HOSTS);
     } else if let Some(ca_path) = ca_cert {
         builder = builder.ssl_ca_certificate(isahc::config::CaCertificate::file(ca_path));
     }

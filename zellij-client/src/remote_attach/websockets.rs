@@ -93,6 +93,7 @@ pub async fn establish_websocket_connections(
     let connector = if insecure {
         let tls_connector = native_tls::TlsConnector::builder()
             .danger_accept_invalid_certs(true)
+            .danger_accept_invalid_hostnames(true)
             .build()?;
         Some(Connector::NativeTls(tls_connector))
     } else if let Some(ca_path) = ca_cert {

@@ -166,10 +166,6 @@ pub fn create_token(name: Option<String>, read_only: bool) -> Result<(String, St
 }
 
 pub fn create_session_token(auth_token: &str, remember_me: bool) -> Result<String> {
-    log::info!(
-        "[auth] create_session_token called, remember_me={}",
-        remember_me
-    );
     let conn = open_db()?;
 
     cleanup_expired_sessions()?;
@@ -182,10 +178,7 @@ pub fn create_session_token(auth_token: &str, remember_me: bool) -> Result<Strin
         |row| row.get(0),
     )?;
 
-    log::info!("[auth] auth token lookup count={}", count);
-
     if count == 0 {
-        log::warn!("[auth] auth token not found in DB");
         return Err(TokenError::InvalidToken);
     }
 
@@ -211,19 +204,10 @@ pub fn create_session_token(auth_token: &str, remember_me: bool) -> Result<Strin
         format!("datetime({}, 'unixepoch')", now + short_duration)
     };
 
-    log::info!("[auth] inserting session token, expires_at={}", expires_at);
-
-    let insert_result = conn.execute(
+    conn.execute(
         &format!("INSERT INTO session_tokens (session_token_hash, auth_token_hash, remember_me, expires_at) VALUES (?1, ?2, ?3, {})", expires_at),
         [&session_token_hash, &auth_token_hash, &(remember_me as i64).to_string()],
-    );
-
-    match &insert_result {
-        Ok(rows) => log::info!("[auth] session token inserted successfully, rows={}", rows),
-        Err(e) => log::error!("[auth] session token insert FAILED: {}", e),
-    }
-
-    insert_result?;
+    )?;
 
     Ok(session_token)
 }
@@ -238,48 +222,6 @@ pub fn validate_session_token(session_token: &str) -> Result<bool> {
         [&session_token_hash],
         |row| row.get(0),
     )?;
-
-    log::info!(
-        "[auth] validate_session_token: hash={}, count={}",
-        &session_token_hash[..8],
-        count
-    );
-
-    if count == 0 {
-        // Debug: check if the token exists at all (maybe expired?)
-        let total: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM session_tokens WHERE session_token_hash = ?1",
-                [&session_token_hash],
-                |row| row.get(0),
-            )
-            .unwrap_or(0);
-        if total > 0 {
-            let expires: String = conn
-                .query_row(
-                    "SELECT expires_at FROM session_tokens WHERE session_token_hash = ?1",
-                    [&session_token_hash],
-                    |row| row.get(0),
-                )
-                .unwrap_or_else(|_| "unknown".to_string());
-            let now: String = conn
-                .query_row("SELECT datetime('now')", [], |row| row.get(0))
-                .unwrap_or_else(|_| "unknown".to_string());
-            log::warn!(
-                "[auth] session token exists but expired or invalid: expires_at={}, now={}",
-                expires,
-                now
-            );
-        } else {
-            let total_sessions: i64 = conn
-                .query_row("SELECT COUNT(*) FROM session_tokens", [], |row| row.get(0))
-                .unwrap_or(0);
-            log::warn!(
-                "[auth] session token not found in DB at all. Total session_tokens rows={}",
-                total_sessions
-            );
-        }
-    }
 
     Ok(count > 0)
 }
@@ -308,20 +250,10 @@ pub fn is_session_token_read_only(session_token: &str) -> Result<bool> {
 pub fn cleanup_expired_sessions() -> Result<usize> {
     let conn = open_db()?;
 
-    let total_before: i64 = conn
-        .query_row("SELECT COUNT(*) FROM session_tokens", [], |row| row.get(0))
-        .unwrap_or(0);
-
     let rows_affected = conn.execute(
         "DELETE FROM session_tokens WHERE expires_at <= datetime('now')",
         [],
     )?;
-
-    log::info!(
-        "[auth] cleanup_expired_sessions: deleted {} of {} total session tokens",
-        rows_affected,
-        total_before
-    );
 
     Ok(rows_affected)
 }
