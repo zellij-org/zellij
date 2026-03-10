@@ -372,12 +372,26 @@ impl UnixPtyBackend {
         // Loop until all bytes are written. A single write() can return short
         // on macOS where the PTY buffer is only 4-16 KiB, which would silently
         // truncate large pastes.
+        const MAX_RETRIES: usize = 50;
         let mut written = 0;
+        let mut retries = 0;
         while written < buf.len() {
             match unistd::write(fd, &buf[written..]) {
-                Ok(n) => written += n,
+                Ok(n) => {
+                    written += n;
+                    retries = 0; // reset on progress
+                },
                 Err(nix::errno::Errno::EINTR) => continue,
                 Err(nix::errno::Errno::EAGAIN) => {
+                    retries += 1;
+                    if retries >= MAX_RETRIES {
+                        log::error!(
+                            "Failed to write to pty: gave up after {} retries \
+                             ({}/{} bytes written for TTY {})",
+                            MAX_RETRIES, written, buf.len(), terminal_id
+                        );
+                        break;
+                    }
                     std::thread::sleep(std::time::Duration::from_millis(1));
                     continue;
                 },
