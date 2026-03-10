@@ -304,6 +304,7 @@ impl LayoutListScreen {
                 self.apply_only_to_active_tab,
                 Default::default(),
             );
+            close_self();
         }
     }
 
@@ -364,10 +365,16 @@ impl LayoutListScreen {
     }
 
     fn open_selected_layout(&self, display_layouts: &[DisplayLayout]) {
-        if let Some(DisplayLayout::Valid(chosen_layout)) =
-            display_layouts.get(self.selected_layout_index)
-        {
-            new_tabs_with_layout_info(chosen_layout);
+        let selected = display_layouts.get(self.selected_layout_index);
+        if let Some(DisplayLayout::Valid(chosen_layout)) = selected {
+            let tab_ids = new_tabs_with_layout_info(chosen_layout);
+            if self.should_default_to_current_tab(display_layouts) {
+                if let Some(&tab_id) = tab_ids.first() {
+                    let layout_name = selected.unwrap().name();
+                    rename_tab_with_id(tab_id as u64, layout_name);
+                }
+            }
+            close_self();
         }
     }
 
