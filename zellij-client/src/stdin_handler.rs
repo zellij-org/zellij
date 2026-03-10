@@ -9,6 +9,23 @@ use zellij_utils::{
     vendored::termwiz::input::{InputEvent, InputParser},
 };
 
+#[cfg(windows)]
+use std::sync::OnceLock;
+#[cfg(windows)]
+use windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE;
+#[cfg(windows)]
+use windows_sys::Win32::System::Console::{
+    GetConsoleMode, GetStdHandle, SetConsoleMode, ENABLE_EXTENDED_FLAGS, ENABLE_MOUSE_INPUT,
+    ENABLE_VIRTUAL_TERMINAL_INPUT, ENABLE_WINDOW_INPUT, STD_INPUT_HANDLE,
+};
+
+/// Saved console input mode from before `enable_vt_input()` modified it.
+/// Used by `restore_vt_input()` to put the console back the way the shell
+/// left it, clearing flags like ENABLE_MOUSE_INPUT that crossterm's
+/// disable_raw_mode() does not touch.
+#[cfg(windows)]
+static ORIGINAL_CONSOLE_MODE: OnceLock<u32> = OnceLock::new();
+
 fn send_done_parsing_after_query_timeout(
     send_input_instructions: SenderWithContext<InputInstruction>,
     query_duration: u64,
@@ -33,11 +50,6 @@ fn send_done_parsing_after_query_timeout(
 /// events at the console level, breaking application mouse support.
 #[cfg(windows)]
 fn enable_vt_input() -> bool {
-    use windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE;
-    use windows_sys::Win32::System::Console::{
-        GetConsoleMode, GetStdHandle, SetConsoleMode, ENABLE_EXTENDED_FLAGS, ENABLE_MOUSE_INPUT,
-        ENABLE_VIRTUAL_TERMINAL_INPUT, ENABLE_WINDOW_INPUT, STD_INPUT_HANDLE,
-    };
     unsafe {
         let handle = GetStdHandle(STD_INPUT_HANDLE);
         if handle == 0 || handle == INVALID_HANDLE_VALUE {
@@ -47,6 +59,8 @@ fn enable_vt_input() -> bool {
         if GetConsoleMode(handle, &mut mode) == 0 {
             return false;
         }
+        // Save the original mode so we can restore it on exit.
+        let _ = ORIGINAL_CONSOLE_MODE.set(mode);
         // Explicitly set the mode we need rather than read-modify-write.
         // This eliminates the race with crossterm's EnableMouseCapture which
         // also calls GetConsoleMode/SetConsoleMode concurrently.
@@ -72,6 +86,25 @@ fn enable_vt_input() -> bool {
             return false;
         }
         true
+    }
+}
+
+/// Restore the console input mode that was saved by `enable_vt_input()`.
+///
+/// `crossterm::terminal::disable_raw_mode()` only adds back LINE_INPUT,
+/// ECHO_INPUT and PROCESSED_INPUT — it never clears ENABLE_MOUSE_INPUT or
+/// ENABLE_VIRTUAL_TERMINAL_INPUT.  If those flags are left set after Zellij
+/// exits, ConPTY continues to deliver mouse events as VT escape sequences
+/// into the shell's stdin, causing visible garbage like `[555;99;32M`.
+#[cfg(windows)]
+pub(crate) fn restore_vt_input() {
+    if let Some(&original_mode) = ORIGINAL_CONSOLE_MODE.get() {
+        unsafe {
+            let handle = GetStdHandle(STD_INPUT_HANDLE);
+            if handle != 0 && handle != INVALID_HANDLE_VALUE {
+                SetConsoleMode(handle, original_mode);
+            }
+        }
     }
 }
 

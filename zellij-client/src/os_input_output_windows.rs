@@ -220,6 +220,16 @@ pub(crate) fn enable_mouse_support(stdout: &mut dyn Write) -> Result<()> {
     Ok(())
 }
 
+/// Restore the console input mode to its pre-Zellij state.
+///
+/// On the VT path, `enable_vt_input()` sets ENABLE_MOUSE_INPUT and
+/// ENABLE_VIRTUAL_TERMINAL_INPUT on the console handle, but crossterm's
+/// `disable_raw_mode()` never clears them.  This function restores the
+/// original console mode saved before those flags were set.
+pub(crate) fn restore_console_mode() {
+    super::stdin_handler::restore_vt_input();
+}
+
 /// Disable mouse support on Windows.
 ///
 /// See `enable_mouse_support()` for rationale on VT vs Console API paths.
