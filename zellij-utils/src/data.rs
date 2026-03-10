@@ -1203,6 +1203,23 @@ impl Default for PaletteColor {
     }
 }
 
+/// Priority layer for plugin-supplied regex highlights.
+/// Higher-priority layers take visual precedence over lower ones
+/// when highlights overlap.  Built-in highlights (mouse selection,
+/// search results) always take precedence over all plugin layers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum HighlightLayer {
+    Hint,           // lowest: pure pattern matching (paths, URLs, IPs)
+    Tool,           // middle: backed by runtime domain knowledge (git, docker, k8s)
+    ActionFeedback, // highest: result of an explicit user action (search, bookmarks)
+}
+
+impl Default for HighlightLayer {
+    fn default() -> Self {
+        HighlightLayer::Hint
+    }
+}
+
 /// Style for a plugin-supplied regex highlight.
 /// Theme-based variants reference `style.colors.text_unselected.*`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1231,6 +1248,7 @@ pub enum HighlightStyle {
 pub struct RegexHighlight {
     pub pattern: String, // key for upsert; also the regex source
     pub style: HighlightStyle,
+    pub layer: HighlightLayer,
     pub context: BTreeMap<String, String>, // arbitrary data echoed back verbatim on click
     pub on_hover: bool, // if true, only rendered when the cursor overlaps this match
     pub bold: bool,

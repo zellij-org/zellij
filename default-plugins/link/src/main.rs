@@ -175,6 +175,7 @@ impl State {
         highlights.push(RegexHighlight {
             pattern: FILE_PATH_REGEX.to_owned(),
             style: HighlightStyle::None,
+            layer: HighlightLayer::Hint,
             context: context.clone(),
             on_hover: true,
             bold: false,
@@ -190,6 +191,7 @@ impl State {
                 highlights.push(RegexHighlight {
                     pattern,
                     style: HighlightStyle::None,
+                    layer: HighlightLayer::Hint,
                     context: context.clone(),
                     on_hover: true,
                     bold: false,

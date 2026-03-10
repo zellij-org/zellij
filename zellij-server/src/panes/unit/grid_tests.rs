@@ -4564,7 +4564,7 @@ fn osc_11_set_bg_produces_ansi_in_render_output() {
 use crate::panes::grid::MouseTracking;
 use crate::panes::terminal_character::AnsiCode;
 use std::collections::BTreeMap;
-use zellij_utils::data::{HighlightStyle, RegexHighlight};
+use zellij_utils::data::{HighlightLayer, HighlightStyle, RegexHighlight};
 
 fn create_highlight(
     pattern: &str,
@@ -4572,10 +4572,12 @@ fn create_highlight(
     bold: bool,
     italic: bool,
     underline: bool,
+    layer: HighlightLayer,
 ) -> RegexHighlight {
     RegexHighlight {
         pattern: pattern.to_string(),
         style: HighlightStyle::Emphasis0,
+        layer,
         context: BTreeMap::new(),
         on_hover,
         bold,
@@ -4591,6 +4593,7 @@ fn set_plugin_regex_highlights_basic_match() {
     let highlights = vec![RegexHighlight {
         pattern: "foo".into(),
         style: HighlightStyle::Emphasis0,
+        layer: HighlightLayer::Hint,
         context: BTreeMap::new(),
         on_hover: false,
         bold: false,
@@ -4609,7 +4612,14 @@ fn set_plugin_regex_highlights_basic_match() {
 #[test]
 fn set_plugin_regex_highlights_no_match() {
     let mut grid = create_grid_with_content("hello world bar\n");
-    let highlights = vec![create_highlight("xyz123", false, false, false, false)];
+    let highlights = vec![create_highlight(
+        "xyz123",
+        false,
+        false,
+        false,
+        false,
+        HighlightLayer::Hint,
+    )];
     grid.set_plugin_regex_highlights(1, highlights, &Style::default());
 
     // No position in the viewport should match
@@ -4621,7 +4631,14 @@ fn set_plugin_regex_highlights_no_match() {
 #[test]
 fn clear_plugin_highlights_removes_highlights() {
     let mut grid = create_grid_with_content("hello foo bar\n");
-    let highlights = vec![create_highlight("foo", false, false, false, true)];
+    let highlights = vec![create_highlight(
+        "foo",
+        false,
+        false,
+        false,
+        true,
+        HighlightLayer::Hint,
+    )];
     grid.set_plugin_regex_highlights(1, highlights, &Style::default());
     assert!(grid.plugin_highlights.get(&1).is_some());
 
@@ -4632,8 +4649,22 @@ fn clear_plugin_highlights_removes_highlights() {
 #[test]
 fn multiple_plugins_highlights_independent() {
     let mut grid = create_grid_with_content("aaa bbb ccc\n");
-    let h1 = vec![create_highlight("aaa", false, false, false, false)];
-    let h2 = vec![create_highlight("bbb", false, false, false, false)];
+    let h1 = vec![create_highlight(
+        "aaa",
+        false,
+        false,
+        false,
+        false,
+        HighlightLayer::Hint,
+    )];
+    let h2 = vec![create_highlight(
+        "bbb",
+        false,
+        false,
+        false,
+        false,
+        HighlightLayer::Hint,
+    )];
     grid.set_plugin_regex_highlights(1, h1, &Style::default());
     grid.set_plugin_regex_highlights(2, h2, &Style::default());
 
@@ -4651,6 +4682,7 @@ fn upsert_replaces_same_pattern() {
     let h1 = vec![RegexHighlight {
         pattern: "foo".into(),
         style: HighlightStyle::Emphasis0,
+        layer: HighlightLayer::Hint,
         context: BTreeMap::new(),
         on_hover: false,
         bold: false,
@@ -4663,6 +4695,7 @@ fn upsert_replaces_same_pattern() {
     let h2 = vec![RegexHighlight {
         pattern: "foo".into(),
         style: HighlightStyle::Emphasis0,
+        layer: HighlightLayer::Hint,
         context: BTreeMap::new(),
         on_hover: false,
         bold: false,
@@ -4680,7 +4713,14 @@ fn upsert_replaces_same_pattern() {
 #[test]
 fn invalid_regex_does_not_crash() {
     let mut grid = create_grid_with_content("hello\n");
-    let highlights = vec![create_highlight("[invalid", false, false, false, false)];
+    let highlights = vec![create_highlight(
+        "[invalid",
+        false,
+        false,
+        false,
+        false,
+        HighlightLayer::Hint,
+    )];
     grid.set_plugin_regex_highlights(1, highlights, &Style::default());
     // Invalid regex should be skipped
     let slot = grid.plugin_highlights.get(&1);
@@ -4698,6 +4738,7 @@ fn plugin_highlight_at_returns_match() {
     let highlights = vec![RegexHighlight {
         pattern: "foo".into(),
         style: HighlightStyle::Emphasis0,
+        layer: HighlightLayer::Hint,
         context: context.clone(),
         on_hover: false,
         bold: false,
@@ -4720,7 +4761,14 @@ fn plugin_highlight_at_returns_match() {
 #[test]
 fn plugin_highlight_at_returns_none_on_miss() {
     let mut grid = create_grid_with_content("hello foo bar\n");
-    let highlights = vec![create_highlight("foo", false, false, false, true)];
+    let highlights = vec![create_highlight(
+        "foo",
+        false,
+        false,
+        false,
+        true,
+        HighlightLayer::Hint,
+    )];
     grid.set_plugin_regex_highlights(1, highlights, &Style::default());
 
     // Position 0 is in "hello", not "foo"
@@ -4756,7 +4804,14 @@ fn plugin_highlight_at_wrapped_line() {
     }
 
     // Set a highlight for "jklm" which spans the wrap boundary
-    let highlights = vec![create_highlight("jklm", false, false, false, true)];
+    let highlights = vec![create_highlight(
+        "jklm",
+        false,
+        false,
+        false,
+        true,
+        HighlightLayer::Hint,
+    )];
     grid.set_plugin_regex_highlights(1, highlights, &Style::default());
 
     // "jklm" spans row 0 col 9 through row 1 col 3
@@ -4771,7 +4826,14 @@ fn plugin_highlight_at_wrapped_line() {
 #[test]
 fn hover_position_triggers_on_hover_highlight() {
     let mut grid = create_grid_with_content("hello link_text bar\n");
-    let highlights = vec![create_highlight("link_text", true, false, false, true)];
+    let highlights = vec![create_highlight(
+        "link_text",
+        true,
+        false,
+        false,
+        true,
+        HighlightLayer::Hint,
+    )];
     grid.set_plugin_regex_highlights(1, highlights, &Style::default());
 
     // Set hover position inside "link_text" (starts at col 6)
@@ -4788,7 +4850,14 @@ fn hover_position_triggers_on_hover_highlight() {
 #[test]
 fn hover_suppressed_when_mouse_tracking_on() {
     let mut grid = create_grid_with_content("hello link_text bar\n");
-    let highlights = vec![create_highlight("link_text", true, false, false, true)];
+    let highlights = vec![create_highlight(
+        "link_text",
+        true,
+        false,
+        false,
+        true,
+        HighlightLayer::Hint,
+    )];
     grid.set_plugin_regex_highlights(1, highlights, &Style::default());
 
     // Enable mouse tracking — the render path should skip hover highlights
@@ -4805,7 +4874,14 @@ fn hover_suppressed_when_mouse_tracking_on() {
 fn wide_char_display_column_mapping() {
     // CJK characters: "你好" = 2 chars, each 2 display cols wide, so "world" starts at display col 4
     let mut grid = create_grid_with_content("你好world\n");
-    let highlights = vec![create_highlight("world", false, false, false, true)];
+    let highlights = vec![create_highlight(
+        "world",
+        false,
+        false,
+        false,
+        true,
+        HighlightLayer::Hint,
+    )];
     grid.set_plugin_regex_highlights(1, highlights, &Style::default());
 
     // "你好" occupies display cols 0-3, "world" starts at display col 4
@@ -4947,4 +5023,223 @@ fn pane_contents_no_scrollback_when_flag_false() {
         result.lines_above_viewport.is_empty(),
         "get_full_scrollback=false should never collect scrollback"
     );
+}
+
+// =====================================================================
+// Highlight Layer Priority Tests
+// =====================================================================
+
+#[test]
+fn higher_layer_wins_plugin_highlight_at() {
+    let mut grid = create_grid_with_content("hello foo bar\n");
+    let h1 = vec![RegexHighlight {
+        pattern: "foo".into(),
+        style: HighlightStyle::Emphasis0,
+        layer: HighlightLayer::Hint,
+        context: BTreeMap::new(),
+        on_hover: false,
+        bold: false,
+        italic: false,
+        underline: false,
+        tooltip_text: None,
+    }];
+    let h2 = vec![RegexHighlight {
+        pattern: "foo".into(),
+        style: HighlightStyle::Emphasis1,
+        layer: HighlightLayer::Tool,
+        context: BTreeMap::new(),
+        on_hover: false,
+        bold: false,
+        italic: false,
+        underline: false,
+        tooltip_text: None,
+    }];
+    grid.set_plugin_regex_highlights(1, h1, &Style::default());
+    grid.set_plugin_regex_highlights(2, h2, &Style::default());
+
+    // "foo" starts at column 6
+    let result = grid.plugin_highlight_at(&Position::new(0, 6));
+    assert!(result.is_some());
+    let (plugin_id, _, _, _) = result.unwrap();
+    assert_eq!(plugin_id, 2, "Tool layer plugin should win over Hint layer");
+}
+
+#[test]
+fn same_layer_both_returned_deterministically() {
+    let mut grid = create_grid_with_content("hello foo bar\n");
+    let h1 = vec![RegexHighlight {
+        pattern: "foo".into(),
+        style: HighlightStyle::Emphasis0,
+        layer: HighlightLayer::Hint,
+        context: BTreeMap::new(),
+        on_hover: false,
+        bold: false,
+        italic: false,
+        underline: false,
+        tooltip_text: None,
+    }];
+    let h2 = vec![RegexHighlight {
+        pattern: "foo".into(),
+        style: HighlightStyle::Emphasis1,
+        layer: HighlightLayer::Hint,
+        context: BTreeMap::new(),
+        on_hover: false,
+        bold: false,
+        italic: false,
+        underline: false,
+        tooltip_text: None,
+    }];
+    grid.set_plugin_regex_highlights(1, h1, &Style::default());
+    grid.set_plugin_regex_highlights(2, h2, &Style::default());
+
+    let result = grid.plugin_highlight_at(&Position::new(0, 6));
+    assert!(
+        result.is_some(),
+        "Same-layer conflicts should not cause errors"
+    );
+}
+
+#[test]
+fn lower_layer_wins_when_higher_layer_absent() {
+    let mut grid = create_grid_with_content("foo bar\n");
+    let h1 = vec![RegexHighlight {
+        pattern: "foo".into(),
+        style: HighlightStyle::Emphasis0,
+        layer: HighlightLayer::Hint,
+        context: BTreeMap::new(),
+        on_hover: false,
+        bold: false,
+        italic: false,
+        underline: false,
+        tooltip_text: None,
+    }];
+    let h2 = vec![RegexHighlight {
+        pattern: "bar".into(),
+        style: HighlightStyle::Emphasis1,
+        layer: HighlightLayer::ActionFeedback,
+        context: BTreeMap::new(),
+        on_hover: false,
+        bold: false,
+        italic: false,
+        underline: false,
+        tooltip_text: None,
+    }];
+    grid.set_plugin_regex_highlights(1, h1, &Style::default());
+    grid.set_plugin_regex_highlights(2, h2, &Style::default());
+
+    // "foo" at col 0 — only Hint layer matches here
+    let result_foo = grid.plugin_highlight_at(&Position::new(0, 0));
+    assert!(result_foo.is_some());
+    assert_eq!(result_foo.unwrap().0, 1);
+
+    // "bar" at col 4 — only ActionFeedback layer matches here
+    let result_bar = grid.plugin_highlight_at(&Position::new(0, 4));
+    assert!(result_bar.is_some());
+    assert_eq!(result_bar.unwrap().0, 2);
+}
+
+#[test]
+fn tooltip_from_higher_layer_wins() {
+    let mut grid = create_grid_with_content("hello foo bar\n");
+    let h1 = vec![RegexHighlight {
+        pattern: "foo".into(),
+        style: HighlightStyle::Emphasis0,
+        layer: HighlightLayer::Hint,
+        context: BTreeMap::new(),
+        on_hover: true,
+        bold: false,
+        italic: false,
+        underline: false,
+        tooltip_text: Some("hint tooltip".to_string()),
+    }];
+    let h2 = vec![RegexHighlight {
+        pattern: "foo".into(),
+        style: HighlightStyle::Emphasis1,
+        layer: HighlightLayer::Tool,
+        context: BTreeMap::new(),
+        on_hover: true,
+        bold: false,
+        italic: false,
+        underline: false,
+        tooltip_text: Some("tool tooltip".to_string()),
+    }];
+    grid.set_plugin_regex_highlights(1, h1, &Style::default());
+    grid.set_plugin_regex_highlights(2, h2, &Style::default());
+
+    // Set hover position inside "foo" (starts at col 6)
+    grid.set_hover_position(Some(Position::new(0, 6)));
+    assert_eq!(
+        grid.cached_hover_tooltip,
+        Some("tool tooltip".to_string()),
+        "Tool layer tooltip should win over Hint layer tooltip"
+    );
+}
+
+#[test]
+fn tooltip_from_lower_layer_when_higher_has_none() {
+    let mut grid = create_grid_with_content("hello foo bar\n");
+    let h1 = vec![RegexHighlight {
+        pattern: "foo".into(),
+        style: HighlightStyle::Emphasis0,
+        layer: HighlightLayer::Hint,
+        context: BTreeMap::new(),
+        on_hover: true,
+        bold: false,
+        italic: false,
+        underline: false,
+        tooltip_text: Some("hint tooltip".to_string()),
+    }];
+    let h2 = vec![RegexHighlight {
+        pattern: "foo".into(),
+        style: HighlightStyle::Emphasis1,
+        layer: HighlightLayer::Tool,
+        context: BTreeMap::new(),
+        on_hover: true,
+        bold: false,
+        italic: false,
+        underline: false,
+        tooltip_text: None,
+    }];
+    grid.set_plugin_regex_highlights(1, h1, &Style::default());
+    grid.set_plugin_regex_highlights(2, h2, &Style::default());
+
+    grid.set_hover_position(Some(Position::new(0, 6)));
+    assert_eq!(
+        grid.cached_hover_tooltip,
+        Some("hint tooltip".to_string()),
+        "When higher layer has no tooltip, lower layer tooltip should be used"
+    );
+}
+
+#[test]
+fn layer_field_stored_in_compiled_highlight() {
+    let mut grid = create_grid_with_content("foo bar\n");
+    let highlights = vec![RegexHighlight {
+        pattern: "foo".into(),
+        style: HighlightStyle::Emphasis0,
+        layer: HighlightLayer::ActionFeedback,
+        context: BTreeMap::new(),
+        on_hover: false,
+        bold: false,
+        italic: false,
+        underline: false,
+        tooltip_text: None,
+    }];
+    grid.set_plugin_regex_highlights(1, highlights, &Style::default());
+    assert_eq!(
+        grid.plugin_highlights.get(&1).unwrap()[0].1.layer,
+        HighlightLayer::ActionFeedback,
+        "Layer field should be propagated through compilation"
+    );
+}
+
+#[test]
+fn default_layer_is_hint() {
+    assert_eq!(HighlightLayer::default(), HighlightLayer::Hint);
+}
+
+#[test]
+fn layer_ordering() {
+    assert!(HighlightLayer::Hint < HighlightLayer::Tool);
+    assert!(HighlightLayer::Tool < HighlightLayer::ActionFeedback);
 }

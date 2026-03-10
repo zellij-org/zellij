@@ -12465,7 +12465,7 @@ fn in_place_pane_with_close_replaced_pane_true_closes_original() {
 // Plugin Highlight Mouse Integration Tests
 // =====================================================================
 
-use zellij_utils::data::{HighlightStyle, RegexHighlight};
+use zellij_utils::data::{HighlightLayer, HighlightStyle, RegexHighlight};
 
 fn create_new_tab_with_plugin_receiver(
     size: Size,
@@ -12576,6 +12576,7 @@ fn click_on_plugin_highlight_sends_highlight_clicked() {
     let highlights = vec![RegexHighlight {
         pattern: "foo".into(),
         style: HighlightStyle::Emphasis0,
+        layer: HighlightLayer::Hint,
         context: BTreeMap::new(),
         on_hover: false,
         bold: false,
@@ -12641,6 +12642,7 @@ fn click_outside_highlight_starts_normal_selection() {
     let highlights = vec![RegexHighlight {
         pattern: "foo".into(),
         style: HighlightStyle::Emphasis0,
+        layer: HighlightLayer::Hint,
         context: BTreeMap::new(),
         on_hover: false,
         bold: false,
@@ -12693,6 +12695,7 @@ fn hover_over_highlight_shows_styling() {
     let highlights = vec![RegexHighlight {
         pattern: "link_text".into(),
         style: HighlightStyle::None,
+        layer: HighlightLayer::Hint,
         context: BTreeMap::new(),
         on_hover: true,
         bold: false,
@@ -12764,6 +12767,7 @@ fn hover_on_unfocused_pane_no_highlight() {
     let highlights = vec![RegexHighlight {
         pattern: "link_text".into(),
         style: HighlightStyle::None,
+        layer: HighlightLayer::Hint,
         context: BTreeMap::new(),
         on_hover: true,
         bold: false,
@@ -12814,6 +12818,7 @@ fn highlight_click_in_mouse_mode_pane_suppressed() {
     let highlights = vec![RegexHighlight {
         pattern: "foo".into(),
         style: HighlightStyle::Emphasis0,
+        layer: HighlightLayer::Hint,
         context: BTreeMap::new(),
         on_hover: false,
         bold: false,
@@ -12890,6 +12895,7 @@ fn set_and_clear_highlights_across_tiled_and_floating() {
     let h1 = vec![RegexHighlight {
         pattern: "aaa".into(),
         style: HighlightStyle::Emphasis0,
+        layer: HighlightLayer::Hint,
         context: BTreeMap::new(),
         on_hover: false,
         bold: false,
@@ -12905,6 +12911,7 @@ fn set_and_clear_highlights_across_tiled_and_floating() {
     let h2 = vec![RegexHighlight {
         pattern: "bbb".into(),
         style: HighlightStyle::Emphasis1,
+        layer: HighlightLayer::Hint,
         context: BTreeMap::new(),
         on_hover: false,
         bold: false,
@@ -12951,6 +12958,7 @@ fn plain_click_on_highlight_does_not_send_highlight_clicked() {
     let highlights = vec![RegexHighlight {
         pattern: "foo".into(),
         style: HighlightStyle::Emphasis0,
+        layer: HighlightLayer::Hint,
         context: BTreeMap::new(),
         on_hover: false,
         bold: false,
@@ -13002,6 +13010,7 @@ fn alt_click_outside_highlight_falls_through_to_group_toggle() {
     let highlights = vec![RegexHighlight {
         pattern: "foo".into(),
         style: HighlightStyle::Emphasis0,
+        layer: HighlightLayer::Hint,
         context: BTreeMap::new(),
         on_hover: false,
         bold: false,
@@ -13054,6 +13063,7 @@ fn hover_over_highlight_with_tooltip_caches_tooltip() {
     let highlights = vec![RegexHighlight {
         pattern: "link_text".into(),
         style: HighlightStyle::None,
+        layer: HighlightLayer::Hint,
         context: BTreeMap::new(),
         on_hover: true,
         bold: false,
@@ -13097,4 +13107,292 @@ fn hover_over_highlight_with_tooltip_caches_tooltip() {
         Palette::default(),
     );
     assert_snapshot!(snapshot_without_tooltip);
+}
+
+// =====================================================================
+// Highlight Layer Priority Integration Tests
+// =====================================================================
+
+#[test]
+fn higher_layer_highlight_style_wins_in_rendered_output() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let mut output = Output::default();
+
+    tab.handle_pty_bytes(1, Vec::from("overlap_text here\n".as_bytes()))
+        .unwrap();
+
+    // Plugin 1 (id: 10): Hint layer, underline only
+    let h1 = vec![RegexHighlight {
+        pattern: "overlap_text".into(),
+        style: HighlightStyle::Emphasis0,
+        layer: HighlightLayer::Hint,
+        context: BTreeMap::new(),
+        on_hover: false,
+        bold: false,
+        italic: false,
+        underline: true,
+        tooltip_text: None,
+    }];
+    // Plugin 2 (id: 20): Tool layer, bold only
+    let h2 = vec![RegexHighlight {
+        pattern: "overlap_text".into(),
+        style: HighlightStyle::Emphasis1,
+        layer: HighlightLayer::Tool,
+        context: BTreeMap::new(),
+        on_hover: false,
+        bold: true,
+        italic: false,
+        underline: false,
+        tooltip_text: None,
+    }];
+    tab.set_plugin_regex_highlights_for_pane(PaneId::Terminal(1), 10, h1, &Style::default());
+    tab.set_plugin_regex_highlights_for_pane(PaneId::Terminal(1), 20, h2, &Style::default());
+
+    tab.render(&mut output, None).unwrap();
+    let raw_output = output.serialize().unwrap();
+    let raw_str = raw_output.get(&client_id).unwrap();
+
+    // The renderer emits a series of individual SGR codes before the
+    // highlighted text.  Extract the full escape prefix preceding
+    // "overlap_text" and verify that bold (\x1b[1m) is present and
+    // underline (\x1b[4m) is absent.
+    let idx = raw_str
+        .find("overlap_text")
+        .expect("overlap_text should appear in raw output");
+    let preceding = &raw_str[..idx];
+    // Walk backwards to find the reset (\x1b[m) that starts this cell's styling
+    let reset_pos = preceding
+        .rfind("\x1b[m")
+        .expect("should find a reset before overlap_text");
+    let sgr_block = &raw_str[reset_pos..idx];
+
+    assert!(
+        sgr_block.contains("\x1b[1m"),
+        "Tool layer bold styling (\\x1b[1m) should be present before overlap_text, got: {:?}",
+        sgr_block
+    );
+    assert!(
+        !sgr_block.contains("\x1b[4m"),
+        "Hint layer underline styling (\\x1b[4m) should NOT be present before overlap_text, got: {:?}",
+        sgr_block
+    );
+}
+
+#[test]
+fn click_dispatches_to_higher_layer_plugin() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let (mut tab, mock_plugin_receiver) =
+        create_new_tab_with_plugin_receiver(size, ModeInfo::default());
+
+    tab.handle_pty_bytes(1, Vec::from("click here shared_text bar\n".as_bytes()))
+        .unwrap();
+
+    // Plugin 1 (id: 10): Hint layer
+    let h1 = vec![RegexHighlight {
+        pattern: "shared_text".into(),
+        style: HighlightStyle::Emphasis0,
+        layer: HighlightLayer::Hint,
+        context: BTreeMap::new(),
+        on_hover: false,
+        bold: false,
+        italic: false,
+        underline: true,
+        tooltip_text: None,
+    }];
+    // Plugin 2 (id: 20): Tool layer
+    let h2 = vec![RegexHighlight {
+        pattern: "shared_text".into(),
+        style: HighlightStyle::Emphasis1,
+        layer: HighlightLayer::Tool,
+        context: BTreeMap::new(),
+        on_hover: false,
+        bold: false,
+        italic: false,
+        underline: true,
+        tooltip_text: None,
+    }];
+    tab.set_plugin_regex_highlights_for_pane(PaneId::Terminal(1), 10, h1, &Style::default());
+    tab.set_plugin_regex_highlights_for_pane(PaneId::Terminal(1), 20, h2, &Style::default());
+
+    // Alt+Click on "shared_text" (starts at offset 11, frame adds +1 => col 12)
+    let click_position = Position::new(1, 12);
+    let mut alt_click = MouseEvent::new_left_press_event(click_position);
+    alt_click.alt = true;
+    let _effect = tab.handle_mouse_event(&alt_click, client_id).unwrap();
+
+    // Drain the plugin receiver and find the HighlightClicked instruction
+    let mut found_plugin_id = None;
+    while let Ok((instruction, _ctx)) = mock_plugin_receiver.try_recv() {
+        if let PluginInstruction::HighlightClicked { plugin_id, .. } = instruction {
+            found_plugin_id = Some(plugin_id);
+        }
+    }
+    assert_eq!(
+        found_plugin_id,
+        Some(20),
+        "HighlightClicked should be dispatched to the Tool layer plugin (id: 20)"
+    );
+}
+
+#[test]
+fn hover_tooltip_shows_higher_layer_tooltip() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let mut output = Output::default();
+
+    tab.handle_pty_bytes(1, Vec::from("hover here tooltipped bar\n".as_bytes()))
+        .unwrap();
+
+    // Plugin 1 (id: 10): Hint layer with tooltip
+    let h1 = vec![RegexHighlight {
+        pattern: "tooltipped".into(),
+        style: HighlightStyle::None,
+        layer: HighlightLayer::Hint,
+        context: BTreeMap::new(),
+        on_hover: true,
+        bold: false,
+        italic: true,
+        underline: true,
+        tooltip_text: Some("Hint Tooltip".to_string()),
+    }];
+    // Plugin 2 (id: 20): Tool layer with tooltip
+    let h2 = vec![RegexHighlight {
+        pattern: "tooltipped".into(),
+        style: HighlightStyle::None,
+        layer: HighlightLayer::Tool,
+        context: BTreeMap::new(),
+        on_hover: true,
+        bold: false,
+        italic: true,
+        underline: true,
+        tooltip_text: Some("Tool Tooltip".to_string()),
+    }];
+    tab.set_plugin_regex_highlights_for_pane(PaneId::Terminal(1), 10, h1, &Style::default());
+    tab.set_plugin_regex_highlights_for_pane(PaneId::Terminal(1), 20, h2, &Style::default());
+
+    // Hover over "tooltipped" (starts at offset 11, frame adds +1 => col 12)
+    let hover_position = Position::new(1, 12);
+    let _effect = tab
+        .handle_mouse_event(
+            &MouseEvent::new_buttonless_motion(hover_position),
+            client_id,
+        )
+        .unwrap();
+
+    tab.render(&mut output, None).unwrap();
+    let snapshot = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    // The bottom frame row should contain "Tool Tooltip" from the Tool layer
+    assert_snapshot!(snapshot);
+}
+
+#[test]
+fn non_overlapping_highlights_from_different_layers_coexist() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let mut output = Output::default();
+
+    tab.handle_pty_bytes(1, Vec::from("aaa bbb ccc\n".as_bytes()))
+        .unwrap();
+
+    // Plugin 1 (id: 10): Hint layer, underline on "aaa"
+    let h1 = vec![RegexHighlight {
+        pattern: "aaa".into(),
+        style: HighlightStyle::None,
+        layer: HighlightLayer::Hint,
+        context: BTreeMap::new(),
+        on_hover: false,
+        bold: false,
+        italic: false,
+        underline: true,
+        tooltip_text: None,
+    }];
+    // Plugin 2 (id: 20): Tool layer, bold on "bbb"
+    let h2 = vec![RegexHighlight {
+        pattern: "bbb".into(),
+        style: HighlightStyle::None,
+        layer: HighlightLayer::Tool,
+        context: BTreeMap::new(),
+        on_hover: false,
+        bold: true,
+        italic: false,
+        underline: false,
+        tooltip_text: None,
+    }];
+    // Plugin 3 (id: 30): ActionFeedback layer, italic on "ccc"
+    let h3 = vec![RegexHighlight {
+        pattern: "ccc".into(),
+        style: HighlightStyle::None,
+        layer: HighlightLayer::ActionFeedback,
+        context: BTreeMap::new(),
+        on_hover: false,
+        bold: false,
+        italic: true,
+        underline: false,
+        tooltip_text: None,
+    }];
+    tab.set_plugin_regex_highlights_for_pane(PaneId::Terminal(1), 10, h1, &Style::default());
+    tab.set_plugin_regex_highlights_for_pane(PaneId::Terminal(1), 20, h2, &Style::default());
+    tab.set_plugin_regex_highlights_for_pane(PaneId::Terminal(1), 30, h3, &Style::default());
+
+    tab.render(&mut output, None).unwrap();
+    let raw_output = output.serialize().unwrap();
+    let raw_str = raw_output.get(&client_id).unwrap();
+
+    // The renderer emits individual SGR codes in sequence before each
+    // highlighted word.  Extract the escape prefix block before each word
+    // and verify the expected attribute is present.
+
+    // Helper: extract the SGR block between the last \x1b[m reset and the text
+    let sgr_before = |text: &str| -> String {
+        let idx = raw_str
+            .find(text)
+            .unwrap_or_else(|| panic!("{} not found in raw output", text));
+        let preceding = &raw_str[..idx];
+        let reset_pos = preceding
+            .rfind("\x1b[m")
+            .unwrap_or_else(|| panic!("no reset before {}", text));
+        raw_str[reset_pos..idx].to_string()
+    };
+
+    let aaa_sgr = sgr_before("aaa");
+    let bbb_sgr = sgr_before("bbb");
+    let ccc_sgr = sgr_before("ccc");
+
+    assert!(
+        aaa_sgr.contains("\x1b[4m"),
+        "Hint layer underline (\\x1b[4m) should be applied to 'aaa', got: {:?}",
+        aaa_sgr
+    );
+    assert!(
+        bbb_sgr.contains("\x1b[1m"),
+        "Tool layer bold (\\x1b[1m) should be applied to 'bbb', got: {:?}",
+        bbb_sgr
+    );
+    assert!(
+        ccc_sgr.contains("\x1b[3m"),
+        "ActionFeedback layer italic (\\x1b[3m) should be applied to 'ccc', got: {:?}",
+        ccc_sgr
+    );
 }

@@ -1862,6 +1862,8 @@ pub struct RegexHighlight {
     pub underline: bool,
     #[prost(string, optional, tag="8")]
     pub tooltip_text: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(enumeration="HighlightLayer", tag="9")]
+    pub layer: i32,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -2541,6 +2543,35 @@ impl FixedOrPercent {
         match value {
             "Fixed" => Some(Self::Fixed),
             "Percent" => Some(Self::Percent),
+            _ => None,
+        }
+    }
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum HighlightLayer {
+    Hint = 0,
+    Tool = 1,
+    ActionFeedback = 2,
+}
+impl HighlightLayer {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            HighlightLayer::Hint => "Hint",
+            HighlightLayer::Tool => "Tool",
+            HighlightLayer::ActionFeedback => "ActionFeedback",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "Hint" => Some(Self::Hint),
+            "Tool" => Some(Self::Tool),
+            "ActionFeedback" => Some(Self::ActionFeedback),
             _ => None,
         }
     }
