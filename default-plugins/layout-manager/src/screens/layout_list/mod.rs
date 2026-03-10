@@ -27,7 +27,7 @@ impl Default for LayoutListScreen {
             retain_plugin_panes: false,
             apply_only_to_active_tab: false,
             show_more_override_options: false,
-            search_state: SearchState::new(),
+            search_state: SearchState::new_in_search_mode(),
             last_rows: 0,
             last_cols: 0,
         }
@@ -42,7 +42,7 @@ impl LayoutListScreen {
             retain_plugin_panes: false,
             apply_only_to_active_tab: false,
             show_more_override_options: false,
-            search_state: SearchState::new(),
+            search_state: SearchState::new_in_search_mode(),
             last_rows: 0,
             last_cols: 0,
         }
@@ -101,7 +101,7 @@ impl LayoutListScreen {
                     self.open_selected_layout(display_layouts);
                     KeyResponse::none()
                 },
-                BareKey::Tab if key.has_no_modifiers() => {
+                BareKey::Char('o') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                     self.apply_selected_layout(display_layouts);
                     KeyResponse::none()
                 },
@@ -125,8 +125,8 @@ impl LayoutListScreen {
                     KeyResponse::render()
                 },
                 BareKey::Esc if key.has_no_modifiers() => {
-                    self.clear_filter();
-                    KeyResponse::render()
+                    close_self();
+                    KeyResponse::none()
                 },
                 _ => KeyResponse::none(),
             }
@@ -138,27 +138,50 @@ impl LayoutListScreen {
         key: KeyWithModifier,
         display_layouts: &[DisplayLayout],
     ) -> KeyResponse {
-        // Special handling for Enter and Esc
+        // Search-first mode: Enter opens, Ctrl+O applies, Tab autocompletes,
+        // arrows navigate, Esc exits to management mode
         match key.bare_key {
             BareKey::Esc if key.has_no_modifiers() => {
-                self.clear_filter();
+                // Clear text first; only exit to management mode if already empty
+                if self.search_state.get_filter_input().is_empty() {
+                    self.clear_filter();
+                } else {
+                    self.search_state.get_filter_input_mut().clear();
+                    self.update_filter(display_layouts);
+                }
                 return KeyResponse::render();
             },
             BareKey::Enter if key.has_no_modifiers() => {
-                if self.search_state.get_filter_input().is_empty()
-                    || self.search_state.get_search_results().is_empty()
-                {
-                    self.clear_filter();
-                } else {
-                    self.search_state.stop_typing();
-                    show_cursor(None);
+                // Open the currently selected layout as new tab(s)
+                self.open_selected_layout(display_layouts);
+                return KeyResponse::none();
+            },
+            BareKey::Char('o') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
+                // Apply/override the currently selected layout to the session
+                self.apply_selected_layout(display_layouts);
+                return KeyResponse::none();
+            },
+            BareKey::Tab if key.has_no_modifiers() => {
+                // Complete: fill input with selected match name
+                if self.search_state.fill_input_with_selected_match() {
+                    self.update_filter(display_layouts);
                 }
+                return KeyResponse::render();
+            },
+            BareKey::Up if key.has_no_modifiers() => {
+                // Navigate filtered results while typing
+                self.navigate_up(display_layouts);
+                return KeyResponse::render();
+            },
+            BareKey::Down if key.has_no_modifiers() => {
+                // Navigate filtered results while typing
+                self.navigate_down(display_layouts);
                 return KeyResponse::render();
             },
             _ => {},
         }
 
-        // Pass all keys to TextInput
+        // Pass remaining keys to TextInput
         let action = self.search_state.get_filter_input_mut().handle_key(key);
 
         match action {
@@ -167,8 +190,13 @@ impl LayoutListScreen {
                 KeyResponse::render()
             },
             InputAction::Cancel => {
-                // Ctrl-C or Esc - clear filter
-                self.clear_filter();
+                // Ctrl-C - clear text first; only exit to management mode if already empty
+                if self.search_state.get_filter_input().is_empty() {
+                    self.clear_filter();
+                } else {
+                    self.search_state.get_filter_input_mut().clear();
+                    self.update_filter(display_layouts);
+                }
                 KeyResponse::render()
             },
             InputAction::Submit => {
@@ -392,6 +420,13 @@ impl LayoutListScreen {
         let (base_x, base_y) =
             self.calculate_base_coordinates(rows, cols, total_width, total_height);
 
+        // In search mode, shift everything down by 1 row
+        let base_y = if self.search_state.is_typing() || self.search_state.is_active() {
+            base_y + 1
+        } else {
+            base_y
+        };
+
         let layouts_to_render = self.effective_layouts(display_layouts);
         let (content_height, controls_y) = self.calculate_layout(rows, &display_layouts);
 
@@ -468,13 +503,17 @@ impl LayoutListScreen {
         let rows_in_table = display_layouts.len() + 1; // 1 for the title row
         let controls_height = self.get_controls_height();
         let filter_row_height = if self.is_searching() { 1 } else { 0 };
+        let search_mode_offset = if self.is_searching() { 1 } else { 0 };
         let padding = 1;
         let mut content_height = std::cmp::max(rows_in_table, 5);
-        if content_height + controls_height + padding + filter_row_height >= rows {
+        if content_height + controls_height + padding + filter_row_height + search_mode_offset
+            >= rows
+        {
             content_height = rows
                 .saturating_sub(controls_height)
                 .saturating_sub(padding)
                 .saturating_sub(filter_row_height)
+                .saturating_sub(search_mode_offset)
         }
         let controls_y = content_height + padding + filter_row_height;
 
@@ -527,10 +566,12 @@ impl LayoutListScreen {
         display_layouts: &[DisplayLayout],
     ) -> (usize, usize) {
         let filter_row_height = if self.is_searching() { 1 } else { 0 };
+        let search_mode_offset = if self.is_searching() { 1 } else { 0 };
         let (content_height, _) = self.calculate_layout(rows, display_layouts);
         let padding = 1;
         let controls_height = self.get_controls_height();
-        let total_height = filter_row_height + content_height + padding + controls_height;
+        let total_height =
+            filter_row_height + search_mode_offset + content_height + padding + controls_height;
 
         let controls = Controls::new(
             self.retain_terminal_panes,
@@ -618,6 +659,13 @@ impl LayoutListScreen {
             total_width,
             total_height,
         );
+
+        // In search mode, cursor must account for the extra row offset
+        let base_y = if self.search_state.is_typing() || self.search_state.is_active() {
+            base_y + 1
+        } else {
+            base_y
+        };
 
         self.search_state
             .update_filter(display_layouts, base_x, base_y);
