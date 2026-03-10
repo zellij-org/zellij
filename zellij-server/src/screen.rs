@@ -300,7 +300,14 @@ pub enum ScreenInstruction {
     MovePaneLeft(ClientId, Option<NotificationEnd>),
     Exit,
     ClearScreen(ClientId, Option<NotificationEnd>),
-    DumpScreen(String, ClientId, bool, Option<NotificationEnd>),
+    DumpScreen(
+        Option<String>,
+        ClientId,
+        bool,
+        Option<PaneId>,
+        Option<NotificationEnd>,
+        Option<ClientId>, // cli_client_id - used to send output to the CLI client's STDOUT
+    ),
     DumpLayout(Option<PathBuf>, ClientId, Option<NotificationEnd>), // PathBuf is the default configured
     // shell
     SaveSession(ClientId, Option<NotificationEnd>),
@@ -602,6 +609,7 @@ pub enum ScreenInstruction {
     ResizePaneWithId(ResizeStrategy, PaneId),
     EditScrollbackForPaneWithId(PaneId, Option<NotificationEnd>),
     WriteToPaneId(Vec<u8>, PaneId, Option<NotificationEnd>),
+    Paste(Vec<u8>, Option<PaneId>, ClientId, Option<NotificationEnd>),
     SetPaneColor(
         PaneId,
         Option<String>,
@@ -891,6 +899,7 @@ impl From<&ScreenInstruction> for ScreenContext {
                 ScreenContext::EditScrollbackForPaneWithId
             },
             ScreenInstruction::WriteToPaneId(..) => ScreenContext::WriteToPaneId,
+            ScreenInstruction::Paste(..) => ScreenContext::Paste,
             ScreenInstruction::SetPaneColor(..) => ScreenContext::SetPaneColor,
             ScreenInstruction::WriteKeyToPaneId(..) => ScreenContext::WriteKeyToPaneId,
             ScreenInstruction::CopyTextToClipboard(..) => ScreenContext::CopyTextToClipboard,
@@ -2645,6 +2654,15 @@ impl Screen {
             }
         }
         let available_layouts = self.cached_layouts.clone();
+        let creation_time = {
+            let sock_path = ZELLIJ_SOCK_DIR.join(&self.session_name);
+            std::fs::metadata(&sock_path)
+                .ok()
+                .and_then(|f| f.created().ok().or_else(|| f.modified().ok()))
+                .and_then(|d| d.elapsed().ok())
+                .map(|d| Duration::from_secs(d.as_secs()))
+                .unwrap_or_default()
+        };
         let session_info = SessionInfo {
             name: self.session_name.clone(),
             tabs: tab_infos,
@@ -2666,6 +2684,7 @@ impl Screen {
                 .iter()
                 .map(|(k, v)| (*k, v.iter().map(|v| (*v).into()).collect()))
                 .collect(),
+            creation_time,
         };
         self.bus
             .senders
@@ -5110,20 +5129,80 @@ pub(crate) fn screen_thread_main(
                 file,
                 client_id,
                 full,
-                _completion_tx, // the action ends here, dropping this will release anything
-                                // waiting for it
+                pane_id,
+                completion_tx,
+                cli_client_id,
             ) => {
-                active_tab_and_connected_client_id!(
-                    screen,
-                    client_id,
-                    |tab: &mut Tab, client_id: ClientId| tab.dump_active_terminal_screen(
-                        Some(file.to_string()),
-                        client_id,
-                        full
-                    ),
-                    ?
-                );
-                screen.render(None)?;
+                match file {
+                    Some(file_path) => {
+                        // Write dump to file (existing behavior)
+                        match pane_id {
+                            Some(pane_id) => {
+                                for tab in screen.get_tabs_mut().values_mut() {
+                                    if tab.has_pane_with_pid(&pane_id) {
+                                        tab.dump_terminal_screen(
+                                            Some(file_path.clone()),
+                                            pane_id,
+                                            full,
+                                        )?;
+                                        break;
+                                    }
+                                }
+                            },
+                            None => {
+                                active_tab_and_connected_client_id!(
+                                    screen,
+                                    client_id,
+                                    |tab: &mut Tab, client_id: ClientId| tab.dump_active_terminal_screen(
+                                        Some(file_path.to_string()),
+                                        client_id,
+                                        full
+                                    ),
+                                    ?
+                                );
+                            },
+                        }
+                        screen.render(None)?;
+                        drop(completion_tx);
+                    },
+                    None => {
+                        // Dump to STDOUT via Log
+                        let dump = match pane_id {
+                            Some(pane_id) => {
+                                let mut result = String::new();
+                                for tab in screen.get_tabs_mut().values_mut() {
+                                    if tab.has_pane_with_pid(&pane_id) {
+                                        if let Some(dump) =
+                                            tab.get_dump_terminal_screen(pane_id, full)
+                                        {
+                                            result = dump;
+                                        }
+                                        break;
+                                    }
+                                }
+                                result
+                            },
+                            None => {
+                                let mut result = String::new();
+                                active_tab_and_connected_client_id!(
+                                    screen,
+                                    client_id,
+                                    |tab: &mut Tab, client_id: ClientId| {
+                                        result = tab.get_dump_active_terminal_screen(client_id, full);
+                                        Ok::<(), anyhow::Error>(())
+                                    },
+                                    ?
+                                );
+                                result
+                            },
+                        };
+                        screen.bus.senders.send_to_server(ServerInstruction::Log(
+                            vec![dump],
+                            cli_client_id.unwrap_or(client_id),
+                            completion_tx,
+                        ))?;
+                    },
+                }
             },
             ScreenInstruction::DumpLayout(default_shell, client_id, completion_tx) => {
                 let err_context = || format!("Failed to dump layout");
@@ -7202,6 +7281,15 @@ pub(crate) fn screen_thread_main(
                 #[cfg(test)]
                 let available_layouts = vec![];
 
+                let creation_time = {
+                    let sock_path = ZELLIJ_SOCK_DIR.join(&screen.session_name);
+                    std::fs::metadata(&sock_path)
+                        .ok()
+                        .and_then(|f| f.created().ok().or_else(|| f.modified().ok()))
+                        .and_then(|d| d.elapsed().ok())
+                        .map(|d| Duration::from_secs(d.as_secs()))
+                        .unwrap_or_default()
+                };
                 let session_info = SessionInfo {
                     name: screen.session_name.clone(),
                     tabs: tab_infos,
@@ -7223,6 +7311,7 @@ pub(crate) fn screen_thread_main(
                         .iter()
                         .map(|(k, v)| (*k, v.iter().map(|v| (*v).into()).collect()))
                         .collect(),
+                    creation_time,
                 };
 
                 let session_layout_metadata = if screen.session_serialization {
@@ -7392,6 +7481,31 @@ pub(crate) fn screen_thread_main(
                             .non_fatal();
                         break;
                     }
+                }
+                screen.render(None)?;
+            },
+            ScreenInstruction::Paste(bytes, pane_id, client_id, _completion) => {
+                match pane_id {
+                    Some(pane_id) => {
+                        let all_tabs = screen.get_tabs_mut();
+                        for tab in all_tabs.values_mut() {
+                            if tab.has_pane_with_pid(&pane_id) {
+                                tab.paste_to_pane_id(bytes, pane_id, _completion)
+                                    .non_fatal();
+                                break;
+                            }
+                        }
+                    },
+                    None => {
+                        active_tab_and_connected_client_id!(
+                            screen,
+                            client_id,
+                            |tab: &mut Tab, _client_id: ClientId| {
+                                tab.paste_to_active_terminal(bytes, client_id, _completion)
+                                    .non_fatal();
+                            }
+                        );
+                    },
                 }
                 screen.render(None)?;
             },

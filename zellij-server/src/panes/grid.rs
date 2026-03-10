@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::rc::Rc;
 use unicode_width::UnicodeWidthChar;
-use zellij_utils::data::{HighlightStyle, RegexHighlight, Style};
+use zellij_utils::data::{HighlightLayer, HighlightStyle, RegexHighlight, Style};
 use zellij_utils::errors::prelude::*;
 
 use std::{
@@ -571,6 +571,7 @@ pub struct CompiledHighlight {
     pub italic: bool,
     pub underline: bool,
     pub tooltip_text: Option<String>,
+    pub layer: HighlightLayer,
 }
 
 impl CompiledHighlight {
@@ -1421,6 +1422,7 @@ impl Grid {
                         bold: false,
                         italic: false,
                         underline: false,
+                        layer: HighlightLayer::ActionFeedback,
                     },
                     content_x,
                     content_y,
@@ -1456,6 +1458,7 @@ impl Grid {
                                 bold: false,
                                 italic: false,
                                 underline: false,
+                                layer: HighlightLayer::ActionFeedback,
                             },
                             content_x,
                             content_y,
@@ -2099,6 +2102,7 @@ impl Grid {
                         italic: h.italic,
                         underline: h.underline,
                         tooltip_text: h.tooltip_text.clone(),
+                        layer: h.layer,
                     };
                 } else {
                     slot.push((
@@ -2113,6 +2117,7 @@ impl Grid {
                             italic: h.italic,
                             underline: h.underline,
                             tooltip_text: h.tooltip_text,
+                            layer: h.layer,
                         },
                     ));
                 }
@@ -2149,6 +2154,13 @@ impl Grid {
         let (_canonical, _group_len, logical_text, boundaries) =
             collect_and_build_logical_line(&self.viewport, click_row)?;
 
+        let mut best: Option<(
+            HighlightLayer,
+            u32,
+            String,
+            String,
+            BTreeMap<String, String>,
+        )> = None;
         for (plugin_id, pattern_map) in &self.plugin_highlights {
             for (pattern, compiled) in pattern_map {
                 for mat in compiled.regex.find_iter(&logical_text) {
@@ -2158,18 +2170,25 @@ impl Grid {
                         if position_in_span(
                             click_row, click_col, start_row, start_col, end_row, end_col,
                         ) {
-                            return Some((
-                                *plugin_id,
-                                pattern.clone(),
-                                mat.as_str().to_string(),
-                                compiled.context.clone(),
-                            ));
+                            let dominated = match &best {
+                                Some((best_layer, ..)) => compiled.layer > *best_layer,
+                                None => true,
+                            };
+                            if dominated {
+                                best = Some((
+                                    compiled.layer,
+                                    *plugin_id,
+                                    pattern.clone(),
+                                    mat.as_str().to_string(),
+                                    compiled.context.clone(),
+                                ));
+                            }
                         }
                     }
                 }
             }
         }
-        None
+        best.map(|(_layer, plugin_id, pattern, matched, ctx)| (plugin_id, pattern, matched, ctx))
     }
 
     pub fn set_hover_position(&mut self, new_pos: Option<Position>) {
@@ -2224,6 +2243,8 @@ impl Grid {
                 Some(v) => v,
                 None => return,
             };
+        let mut best_layer: Option<HighlightLayer> = None;
+        let mut best_tooltip: Option<String> = None;
         for (_plugin_id, pattern_map) in &self.plugin_highlights {
             for (_pattern, compiled) in pattern_map {
                 if !compiled.on_hover || compiled.tooltip_text.is_none() {
@@ -2236,13 +2257,20 @@ impl Grid {
                         if position_in_span(
                             hover_row, hover_col, start_row, start_col, end_row, end_col,
                         ) {
-                            self.cached_hover_tooltip = compiled.tooltip_text.clone();
-                            return;
+                            let dominated = match best_layer {
+                                Some(bl) => compiled.layer > bl,
+                                None => true,
+                            };
+                            if dominated {
+                                best_layer = Some(compiled.layer);
+                                best_tooltip = compiled.tooltip_text.clone();
+                            }
                         }
                     }
                 }
             }
         }
+        self.cached_hover_tooltip = best_tooltip;
     }
 
     /// Pre-compute plugin highlight selections across all logical line groups in
@@ -2293,6 +2321,7 @@ impl Grid {
                                                 bold: compiled.bold,
                                                 italic: compiled.italic,
                                                 underline: compiled.underline,
+                                                layer: compiled.layer,
                                             });
                                             break; // only one match per pattern per hover
                                         }
@@ -2322,6 +2351,7 @@ impl Grid {
                                 bold: compiled.bold,
                                 italic: compiled.italic,
                                 underline: compiled.underline,
+                                layer: compiled.layer,
                             });
                         }
                     }
@@ -2330,6 +2360,13 @@ impl Grid {
 
             ridx += group_len; // advance past this logical line group
         }
+        // Sort by layer priority (highest first) and within the same layer,
+        // hover highlights before non-hover (hover entries were pushed first,
+        // so a stable sort preserves their relative order).
+        selections.sort_by(|a, b| {
+            use std::cmp::Reverse;
+            Reverse(a.layer).cmp(&Reverse(b.layer))
+        });
         selections
     }
 

@@ -102,3 +102,5 @@ tab_history {
 }
 pane_history {
 }
+creation_time 300
+

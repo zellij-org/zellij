@@ -16,7 +16,7 @@ use std::{
     collections::{HashMap, HashSet},
     str,
 };
-use zellij_utils::data::{PaneContents, PaneRenderReport};
+use zellij_utils::data::{HighlightLayer, PaneContents, PaneRenderReport};
 use zellij_utils::errors::prelude::*;
 use zellij_utils::pane_size::SizeInPixels;
 use zellij_utils::pane_size::{PaneGeom, Size};
@@ -49,6 +49,7 @@ pub struct HighlightSelection {
     pub bold: bool,
     pub italic: bool,
     pub underline: bool,
+    pub layer: HighlightLayer,
 }
 
 fn adjust_styles_for_possible_selection(

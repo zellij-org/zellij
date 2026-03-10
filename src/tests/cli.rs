@@ -1,3 +1,5 @@
+use std::net::{IpAddr, Ipv4Addr};
+
 use clap::Parser;
 use zellij_utils::cli::{CliArgs, Command};
 
@@ -66,4 +68,55 @@ fn web_cli_status_with_start_fails() {
 fn web_cli_status_with_stop_fails() {
     let args = CliArgs::try_parse_from(["zellij", "web", "--status", "--stop"]);
     assert!(args.is_err());
+}
+
+#[test]
+fn web_cli_status_with_ip_works() {
+    let args = CliArgs::try_parse_from(["zellij", "web", "--status", "--ip", "127.0.0.1"]);
+    assert!(args.is_ok());
+    if let Ok(CliArgs {
+        command: Some(Command::Web(web)),
+        ..
+    }) = args
+    {
+        assert!(web.status);
+        assert_eq!(web.ip, Some(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1))));
+    } else {
+        panic!("Expected Web command");
+    }
+}
+
+#[test]
+fn web_cli_status_with_port_works() {
+    let args = CliArgs::try_parse_from(["zellij", "web", "--status", "--port", "9000"]);
+    assert!(args.is_ok());
+    if let Ok(CliArgs {
+        command: Some(Command::Web(web)),
+        ..
+    }) = args
+    {
+        assert!(web.status);
+        assert_eq!(web.port, Some(9000));
+    } else {
+        panic!("Expected Web command");
+    }
+}
+
+#[test]
+fn web_cli_status_with_ip_and_port_works() {
+    let args = CliArgs::try_parse_from([
+        "zellij", "web", "--status", "--ip", "0.0.0.0", "--port", "9000",
+    ]);
+    assert!(args.is_ok());
+    if let Ok(CliArgs {
+        command: Some(Command::Web(web)),
+        ..
+    }) = args
+    {
+        assert!(web.status);
+        assert_eq!(web.ip, Some(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0))));
+        assert_eq!(web.port, Some(9000));
+    } else {
+        panic!("Expected Web command");
+    }
 }

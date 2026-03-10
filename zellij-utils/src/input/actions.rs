@@ -137,6 +137,11 @@ pub enum Action {
         chars: String,
         pane_id: PaneId,
     },
+    /// Paste text using bracketed paste mode, optionally to a specific pane.
+    Paste {
+        chars: String,
+        pane_id: Option<PaneId>,
+    },
     /// Switch to the specified input mode.
     SwitchToMode {
         input_mode: InputMode,
@@ -169,10 +174,11 @@ pub enum Action {
     MovePaneBackwards,
     /// Clear all buffers of a current screen
     ClearScreen,
-    /// Dumps the screen to a file
+    /// Dumps the screen to a file or STDOUT
     DumpScreen {
-        file_path: String,
+        file_path: Option<String>,
         include_scrollback: bool,
+        pane_id: Option<PaneId>,
     },
     /// Dumps
     DumpLayout,
@@ -614,6 +620,29 @@ impl Action {
                 },
                 None => Ok(vec![Action::WriteChars { chars }]),
             },
+            CliAction::Paste { chars, pane_id } => match pane_id {
+                Some(pane_id_str) => {
+                    let parsed_pane_id = PaneId::from_str(&pane_id_str);
+                    match parsed_pane_id {
+                        Ok(parsed_pane_id) => {
+                            Ok(vec![Action::Paste {
+                                chars,
+                                pane_id: Some(parsed_pane_id),
+                            }])
+                        },
+                        Err(_e) => {
+                            Err(format!(
+                                "Malformed pane id: {}, expecting either a bare integer (eg. 1), a terminal pane id (eg. terminal_1) or a plugin pane id (eg. plugin_1)",
+                                pane_id_str
+                            ))
+                        }
+                    }
+                },
+                None => Ok(vec![Action::Paste {
+                    chars,
+                    pane_id: None,
+                }]),
+            },
             CliAction::SendKeys { keys, pane_id } => {
                 let mut actions = Vec::new();
 
@@ -675,10 +704,35 @@ impl Action {
             CliAction::MovePaneBackwards => Ok(vec![Action::MovePaneBackwards]),
             CliAction::MoveTab { direction } => Ok(vec![Action::MoveTab { direction }]),
             CliAction::Clear => Ok(vec![Action::ClearScreen]),
-            CliAction::DumpScreen { path, full } => Ok(vec![Action::DumpScreen {
-                file_path: path.as_os_str().to_string_lossy().into(),
-                include_scrollback: full,
-            }]),
+            CliAction::DumpScreen {
+                path,
+                full,
+                pane_id,
+            } => match pane_id {
+                Some(pane_id_str) => {
+                    let parsed_pane_id = PaneId::from_str(&pane_id_str);
+                    match parsed_pane_id {
+                        Ok(parsed_pane_id) => {
+                            Ok(vec![Action::DumpScreen {
+                                file_path: path.map(|p| p.as_os_str().to_string_lossy().into()),
+                                include_scrollback: full,
+                                pane_id: Some(parsed_pane_id),
+                            }])
+                        },
+                        Err(_e) => {
+                            Err(format!(
+                                "Malformed pane id: {}, expecting either a bare integer (eg. 1), a terminal pane id (eg. terminal_1) or a plugin pane id (eg. plugin_1)",
+                                pane_id_str
+                            ))
+                        }
+                    }
+                },
+                None => Ok(vec![Action::DumpScreen {
+                    file_path: path.map(|p| p.as_os_str().to_string_lossy().into()),
+                    include_scrollback: full,
+                    pane_id: None,
+                }]),
+            },
             CliAction::DumpLayout => Ok(vec![Action::DumpLayout]),
             CliAction::SaveSession => Ok(vec![Action::SaveSession]),
             CliAction::EditScrollback => Ok(vec![Action::EditScrollback]),

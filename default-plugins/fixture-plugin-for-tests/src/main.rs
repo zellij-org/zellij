@@ -596,6 +596,7 @@ impl ZellijPlugin for State {
                     let highlights = vec![RegexHighlight {
                         pattern: "test_pattern".to_string(),
                         style: HighlightStyle::Emphasis0,
+                        layer: HighlightLayer::Hint,
                         context: BTreeMap::new(),
                         on_hover: false,
                         bold: false,

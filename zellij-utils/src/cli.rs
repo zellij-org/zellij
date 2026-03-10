@@ -222,7 +222,7 @@ pub struct WebCli {
     #[clap(
         long,
         value_parser,
-        conflicts_with_all(&["stop", "status", "create-token", "revoke-token", "revoke-all-tokens"]),
+        conflicts_with_all(&["stop", "create-token", "revoke-token", "revoke-all-tokens"]),
         display_order = 13
     )]
     pub ip: Option<IpAddr>,
@@ -230,7 +230,7 @@ pub struct WebCli {
     #[clap(
         long,
         value_parser,
-        conflicts_with_all(&["stop", "status", "create-token", "revoke-token", "revoke-all-tokens"]),
+        conflicts_with_all(&["stop", "create-token", "revoke-token", "revoke-all-tokens"]),
         display_order = 14
     )]
     pub port: Option<u16>,
@@ -694,6 +694,13 @@ pub enum CliAction {
         #[clap(short, long, value_parser)]
         pane_id: Option<String>,
     },
+    /// Paste text to the terminal (using bracketed paste mode).
+    Paste {
+        chars: String,
+        /// The pane_id of the pane, eg. terminal_1, plugin_2 or 3 (equivalent to terminal_3)
+        #[clap(short, long, value_parser)]
+        pane_id: Option<String>,
+    },
     /// Send one or more keys to the terminal (e.g., "Ctrl a", "F1", "Alt Shift b")
     SendKeys {
         /// Keys to send as space-separated strings
@@ -731,13 +738,19 @@ pub enum CliAction {
     MovePaneBackwards,
     /// Clear all buffers for a focused pane
     Clear,
-    /// Dump the focused pane to a file
+    /// Dumps the viewport and optionally scrollback of a pane to a file or STDOUT
     DumpScreen {
-        path: PathBuf,
+        /// File path to dump the pane content to. If omitted, prints to STDOUT.
+        #[clap(long, value_parser)]
+        path: Option<PathBuf>,
 
         /// Dump the pane with full scrollback
         #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
         full: bool,
+
+        /// The pane_id of the pane, eg. terminal_1, plugin_2 or 3 (equivalent to terminal_3). If not specified, dumps the focused pane.
+        #[clap(short, long, value_parser)]
+        pane_id: Option<String>,
     },
     /// Dump current layout to stdout
     DumpLayout,

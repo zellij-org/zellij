@@ -1255,6 +1255,12 @@ message CustomIndexHighlight {
   optional uint32 bg = 2;
 }
 
+enum HighlightLayer {
+  Hint = 0;
+  Tool = 1;
+  ActionFeedback = 2;
+}
+
 message RegexHighlight {
   string pattern = 1;
   HighlightStyle style = 2;
@@ -1264,6 +1270,7 @@ message RegexHighlight {
   bool italic = 6;
   bool underline = 7;
   optional string tooltip_text = 8;
+  HighlightLayer layer = 9;
 }
 
 message SetPaneRegexHighlightsPayload {

@@ -51,11 +51,11 @@ pub use super::generated_api::api::{
         GetTabInfoPayload, GetTabInfoResponse as ProtobufGetTabInfoResponse, GoToTabWithIdPayload,
         GroupAndUngroupPanesPayload, HideFloatingPanesPayload as ProtobufHideFloatingPanesPayload,
         HideFloatingPanesResponse as ProtobufHideFloatingPanesResponse, HidePaneWithIdPayload,
-        HighlightAndUnhighlightPanesPayload, HighlightStyle as ProtobufHighlightStyle,
-        HttpVerb as ProtobufHttpVerb, IdAndNewName, KeyToRebind, KeyToUnbind, KillSessionsPayload,
-        ListTokensResponse, LoadNewPluginPayload, MessageToPluginPayload,
-        MovePaneWithPaneIdInDirectionPayload, MovePaneWithPaneIdPayload, MovePayload,
-        NewPluginArgs as ProtobufNewPluginArgs, NewTabPayload,
+        HighlightAndUnhighlightPanesPayload, HighlightLayer as ProtobufHighlightLayer,
+        HighlightStyle as ProtobufHighlightStyle, HttpVerb as ProtobufHttpVerb, IdAndNewName,
+        KeyToRebind, KeyToUnbind, KillSessionsPayload, ListTokensResponse, LoadNewPluginPayload,
+        MessageToPluginPayload, MovePaneWithPaneIdInDirectionPayload, MovePaneWithPaneIdPayload,
+        MovePayload, NewPluginArgs as ProtobufNewPluginArgs, NewTabPayload,
         NewTabResponse as ProtobufNewTabResponse, NewTabsResponse as ProtobufNewTabsResponse,
         NewTabsWithLayoutInfoPayload,
         OpenCommandPaneBackgroundResponse as ProtobufOpenCommandPaneBackgroundResponse,
@@ -122,9 +122,9 @@ pub use super::generated_api::api::{
 use crate::data::{
     ConnectToSession, DeleteLayoutResponse, EditLayoutResponse, FloatingPaneCoordinates,
     GetFocusedPaneInfoResponse, GetPaneCwdResponse, GetPanePidResponse,
-    GetPaneRunningCommandResponse, HighlightStyle, HttpVerb, InputMode, KeyWithModifier,
-    MessageToPlugin, NewPluginArgs, PaneId, PermissionType, PluginCommand, RegexHighlight,
-    RenameLayoutResponse, SaveLayoutResponse,
+    GetPaneRunningCommandResponse, HighlightLayer, HighlightStyle, HttpVerb, InputMode,
+    KeyWithModifier, MessageToPlugin, NewPluginArgs, PaneId, PermissionType, PluginCommand,
+    RegexHighlight, RenameLayoutResponse, SaveLayoutResponse,
 };
 use crate::input::actions::Action;
 use crate::input::layout::PercentOrFixed;
@@ -2510,6 +2510,15 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                                 RegexHighlight {
                                     pattern: h.pattern,
                                     style,
+                                    layer: match h.layer {
+                                        x if x == ProtobufHighlightLayer::Tool as i32 => {
+                                            HighlightLayer::Tool
+                                        },
+                                        x if x == ProtobufHighlightLayer::ActionFeedback as i32 => {
+                                            HighlightLayer::ActionFeedback
+                                        },
+                                        _ => HighlightLayer::Hint, // 0 or unknown => Hint
+                                    },
                                     context,
                                     on_hover: h.on_hover,
                                     bold: h.bold,
@@ -4167,6 +4176,17 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                                         italic: h.italic,
                                         underline: h.underline,
                                         tooltip_text: h.tooltip_text,
+                                        layer: match h.layer {
+                                            HighlightLayer::Hint => {
+                                                ProtobufHighlightLayer::Hint as i32
+                                            },
+                                            HighlightLayer::Tool => {
+                                                ProtobufHighlightLayer::Tool as i32
+                                            },
+                                            HighlightLayer::ActionFeedback => {
+                                                ProtobufHighlightLayer::ActionFeedback as i32
+                                            },
+                                        },
                                     }
                                 })
                                 .collect(),

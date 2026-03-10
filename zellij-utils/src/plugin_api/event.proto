@@ -308,6 +308,7 @@ message SessionManifest {
   uint32 web_client_count = 9;
   repeated ClientTabHistory tab_history = 10;
   repeated ClientPaneHistory pane_history = 11;
+  uint64 creation_time = 12;
 }
 
 message ClientTabHistory {

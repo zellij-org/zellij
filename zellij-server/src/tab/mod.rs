@@ -2803,6 +2803,35 @@ impl Tab {
         Ok(())
     }
 
+    pub fn paste_to_pane_id(
+        &mut self,
+        bytes: Vec<u8>,
+        pane_id: PaneId,
+        completion: Option<NotificationEnd>,
+    ) -> Result<()> {
+        let bracketed_paste_begin = vec![27, 91, 50, 48, 48, 126];
+        let bracketed_paste_end = vec![27, 91, 50, 48, 49, 126];
+
+        self.write_to_pane_id(&None, bracketed_paste_begin, false, pane_id, None, None)?;
+        self.write_to_pane_id(&None, bytes, false, pane_id, None, None)?;
+        self.write_to_pane_id(&None, bracketed_paste_end, false, pane_id, None, completion)?;
+        Ok(())
+    }
+
+    pub fn paste_to_active_terminal(
+        &mut self,
+        bytes: Vec<u8>,
+        client_id: ClientId,
+        completion: Option<NotificationEnd>,
+    ) -> Result<()> {
+        let err_context = || format!("failed to paste to active terminal for client {client_id}");
+        let active_pane_id = self
+            .get_active_pane_id(client_id)
+            .ok_or_else(|| anyhow!("no active pane for client {client_id}"))
+            .with_context(err_context)?;
+        self.paste_to_pane_id(bytes, active_pane_id, completion)
+    }
+
     pub fn write_to_pane_id(
         &mut self,
         key_with_modifier: &Option<KeyWithModifier>,
@@ -4073,6 +4102,20 @@ impl Tab {
             self.os_api.write_to_file(dump, file).non_fatal()
         }
         Ok(())
+    }
+    pub fn get_dump_active_terminal_screen(&mut self, client_id: ClientId, full: bool) -> String {
+        if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
+            active_pane.dump_screen(full, Some(client_id))
+        } else {
+            String::new()
+        }
+    }
+    pub fn get_dump_terminal_screen(&mut self, pane_id: PaneId, full: bool) -> Option<String> {
+        if let Some(pane) = self.get_pane_with_id(pane_id) {
+            Some(pane.dump_screen(full, None))
+        } else {
+            None
+        }
     }
     pub fn edit_scrollback(
         &mut self,

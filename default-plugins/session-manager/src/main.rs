@@ -1,16 +1,19 @@
 mod new_session_info;
 mod resurrectable_sessions;
 mod session_list;
+mod single_screen;
 mod ui;
 use std::collections::BTreeMap;
 use uuid::Uuid;
 use zellij_tile::prelude::*;
 
 use new_session_info::NewSessionInfo;
+use single_screen::{SingleScreenMode, SingleScreenState, UnifiedSearchResult};
 use ui::{
     components::{
         render_controls_line, render_error, render_new_session_block, render_prompt,
-        render_renaming_session_screen, render_screen_toggle, render_unsaved_changes_line, Colors,
+        render_renaming_session_screen, render_screen_toggle, render_single_screen_prompt,
+        render_unified_results, render_unsaved_changes_line, Colors,
     },
     welcome_screen::{render_banner, render_welcome_boundaries},
     SessionUiInfo,
@@ -24,6 +27,7 @@ enum ActiveScreen {
     NewSession,
     AttachToSession,
     ResurrectSession,
+    SingleScreen,
 }
 
 impl Default for ActiveScreen {
@@ -44,6 +48,8 @@ struct State {
     active_screen: ActiveScreen,
     colors: Colors,
     is_welcome_screen: bool,
+    is_multi_screen: bool,
+    single_screen_state: SingleScreenState,
     show_kill_all_sessions_warning: bool,
     request_ids: Vec<String>,
     is_web_client: bool,
@@ -62,6 +68,14 @@ impl ZellijPlugin for State {
             self.active_screen = ActiveScreen::NewSession;
         }
         self.new_session_info.is_welcome_screen = self.is_welcome_screen;
+        self.is_multi_screen = configuration
+            .get("multi_screen")
+            .map(|v| v == "true")
+            .unwrap_or(false);
+        if !self.is_multi_screen {
+            self.active_screen = ActiveScreen::SingleScreen;
+        }
+        self.single_screen_state.is_welcome_screen = self.is_welcome_screen;
         if !self.is_welcome_screen {
             set_timeout(0.1); // for the current_session_last_saved_time polling
         }
@@ -82,6 +96,10 @@ impl ZellijPlugin for State {
                         Some(request_id_position) => {
                             self.request_ids.remove(request_id_position);
                             let new_session_folder = std::path::PathBuf::from(payload);
+                            if !self.is_multi_screen {
+                                self.single_screen_state.new_session_folder =
+                                    Some(new_session_folder.clone());
+                            }
                             self.new_session_info.new_session_folder = Some(new_session_folder);
                         },
                         None => {
@@ -100,9 +118,12 @@ impl ZellijPlugin for State {
         let mut should_render = false;
         match event {
             Event::Timer(_) => {
-                self.current_session_last_saved_time = current_session_last_saved_time();
+                let new_saved_time = current_session_last_saved_time();
+                if new_saved_time != self.current_session_last_saved_time {
+                    self.current_session_last_saved_time = new_saved_time;
+                    should_render = true;
+                }
                 set_timeout(1.0);
-                should_render = true;
             },
             Event::ModeUpdate(mode_info) => {
                 self.colors = Colors::new(mode_info.style.colors);
@@ -125,6 +146,14 @@ impl ZellijPlugin for State {
                 self.resurrectable_sessions
                     .update(resurrectable_session_list);
                 self.update_session_infos(session_infos);
+                if !self.is_multi_screen {
+                    self.single_screen_state.update_search_term(
+                        &self.sessions.session_ui_infos,
+                        &self.resurrectable_sessions.all_resurrectable_sessions,
+                    );
+                    self.single_screen_state.layout_list =
+                        self.new_session_info.get_layout_list_clone();
+                }
                 should_render = true;
             },
             _ => (),
@@ -140,13 +169,16 @@ impl ZellijPlugin for State {
         if self.is_welcome_screen {
             render_banner(x, 0, rows.saturating_sub(height), width);
         }
-        render_screen_toggle(
-            self.active_screen,
-            x,
-            y,
-            width.saturating_sub(2),
-            &background,
-        );
+
+        if self.active_screen != ActiveScreen::SingleScreen {
+            render_screen_toggle(
+                self.active_screen,
+                x,
+                y,
+                width.saturating_sub(2),
+                &background,
+            );
+        }
 
         match self.active_screen {
             ActiveScreen::NewSession => {
@@ -180,19 +212,174 @@ impl ZellijPlugin for State {
             ActiveScreen::ResurrectSession => {
                 self.resurrectable_sessions.render(height, width, x, y);
             },
+            ActiveScreen::SingleScreen => {
+                match self.single_screen_state.mode {
+                    SingleScreenMode::SearchAndSelect => {
+                        if let Some(new_session_name) = self.renaming_session_name.as_ref() {
+                            render_renaming_session_screen(new_session_name, height, width, x, y);
+                        } else if self.show_kill_all_sessions_warning {
+                            self.render_kill_all_sessions_warning(height, width, x, y);
+                        } else {
+                            // Use max_table_rows as fixed content height so the
+                            // prompt position stays stable regardless of result count
+                            let max_table_rows = height.saturating_sub(5);
+                            let content_height = 2 + max_table_rows; // prompt + header + max data rows
+                                                                     // Available space above help lines (2 help rows at bottom)
+                            let available = height.saturating_sub(3);
+                            let y_offset = y + available.saturating_sub(content_height) / 2;
+
+                            // Horizontal centering: cap content block and center
+                            // within the full pane width
+                            let content_width = std::cmp::min(width, 90);
+                            let x_centered = x + (width.saturating_sub(content_width)) / 2;
+
+                            let enter_action = if !self.single_screen_state.search_term.is_empty() {
+                                if let Some(result) = self.single_screen_state.get_selected_result()
+                                {
+                                    match result {
+                                        UnifiedSearchResult::ActiveSession { .. } => Some("Attach"),
+                                        UnifiedSearchResult::ResurrectableSession { .. } => {
+                                            Some("Resurrect")
+                                        },
+                                    }
+                                } else {
+                                    let typed = &self.single_screen_state.search_term;
+                                    if self.sessions.has_session(typed) {
+                                        Some("Attach")
+                                    } else if self.resurrectable_sessions.has_session(typed) {
+                                        Some("Resurrect")
+                                    } else {
+                                        Some("Create new")
+                                    }
+                                }
+                            } else {
+                                None
+                            };
+                            render_single_screen_prompt(
+                                &self.single_screen_state.search_term,
+                                enter_action,
+                                self.colors,
+                                x_centered,
+                                y_offset,
+                            );
+                            render_unified_results(
+                                &self.single_screen_state.render_cache,
+                                self.single_screen_state.selected_index,
+                                max_table_rows,
+                                content_width,
+                                self.colors,
+                                x_centered,
+                                y_offset + 2,
+                            );
+                        }
+                    },
+                    SingleScreenMode::SelectingLayout => {
+                        let new_session_name = if self.single_screen_state.search_term.is_empty() {
+                            "<RANDOM>"
+                        } else {
+                            &self.single_screen_state.search_term
+                        };
+                        let esc = self.colors.shortcuts("<ESC>");
+                        println!(
+                            "\u{1b}[m\u{1b}[{};{}H{}: {} ({} to go back)",
+                            y + 1,
+                            x + 1,
+                            self.colors.session_name_prompt("New session name"),
+                            self.colors.session_and_folder_entry(new_session_name),
+                            esc,
+                        );
+
+                        // Render layout selection
+                        let layout_search_term =
+                            &self.single_screen_state.layout_list.layout_search_term;
+                        let search_term_len = layout_search_term.len();
+                        let layout_indication_line = if width > 73 + search_term_len {
+                            Text::new(format!(
+                                "New session layout: {}_ (Search and select from list, <ENTER> when done)",
+                                layout_search_term
+                            ))
+                            .color_range(2, ..20 + search_term_len)
+                            .color_range(3, 20..20 + search_term_len)
+                            .color_range(3, 52 + search_term_len..59 + search_term_len)
+                        } else {
+                            Text::new(format!(
+                                "New session layout: {}_ <ENTER>",
+                                layout_search_term
+                            ))
+                            .color_range(2, ..20 + search_term_len)
+                            .color_range(3, 20..20 + search_term_len)
+                            .color_range(3, 22 + search_term_len..)
+                        };
+                        print_text_with_coordinates(layout_indication_line, x, y + 2, None, None);
+                        println!();
+
+                        let max_layout_rows = height.saturating_sub(8);
+                        let mut table = Table::new();
+                        for (i, (layout_info, indices, is_selected)) in self
+                            .single_screen_state
+                            .layout_list
+                            .layouts_to_render(max_layout_rows)
+                            .into_iter()
+                            .enumerate()
+                        {
+                            let layout_name = layout_info.name();
+                            let layout_name_len = layout_name.len();
+                            let is_builtin = layout_info.is_builtin();
+                            if i > max_layout_rows.saturating_sub(1) {
+                                break;
+                            }
+                            let mut layout_cell = if is_builtin {
+                                Text::new(format!("{} (built-in)", layout_name))
+                                    .color_range(1, 0..layout_name_len)
+                                    .color_range(0, layout_name_len + 1..)
+                                    .color_indices(3, indices)
+                            } else {
+                                Text::new(format!("{}", layout_name))
+                                    .color_range(1, ..)
+                                    .color_indices(3, indices)
+                            };
+                            if is_selected {
+                                layout_cell = layout_cell.selected();
+                            }
+                            let arrow_cell = if is_selected {
+                                Text::new(format!("<↓↑>")).selected().color_range(3, ..)
+                            } else {
+                                Text::new(format!("    ")).color_range(3, ..)
+                            };
+                            table = table.add_styled_row(vec![arrow_cell, layout_cell]);
+                        }
+                        print_table_with_coordinates(table, x, y + 4, None, None);
+
+                        // Render folder prompt
+                        self.render_single_screen_folder_prompt(
+                            x,
+                            (y + height).saturating_sub(3),
+                            width,
+                        );
+                    },
+                }
+            },
         }
         if let Some(error) = self.error.as_ref() {
             render_error(&error, height, width, x, y);
-        } else if self.active_screen == ActiveScreen::AttachToSession && !self.is_welcome_screen {
+        } else if (self.active_screen == ActiveScreen::AttachToSession
+            || self.active_screen == ActiveScreen::SingleScreen)
+            && !self.is_welcome_screen
+        {
+            let help_x = if self.active_screen == ActiveScreen::SingleScreen {
+                let content_width = std::cmp::min(width, 90);
+                x + (width.saturating_sub(content_width)) / 2
+            } else {
+                x
+            };
             let help_offset = render_controls_line(
                 self.active_screen,
                 width,
                 self.colors,
-                x,
+                help_x,
                 rows.saturating_sub(1),
             );
-            // Adjust position and width based on whether controls line shows "Help: "
-            let adjusted_x = x + help_offset;
+            let adjusted_x = help_x + help_offset;
             let adjusted_width = width.saturating_sub(help_offset);
             render_unsaved_changes_line(
                 adjusted_width,
@@ -223,6 +410,7 @@ impl State {
             ActiveScreen::NewSession => self.handle_new_session_key(key),
             ActiveScreen::AttachToSession => self.handle_attach_to_session(key),
             ActiveScreen::ResurrectSession => self.handle_resurrect_session_key(key),
+            ActiveScreen::SingleScreen => self.handle_single_screen_key(key),
         }
     }
     fn handle_new_session_key(&mut self, key: KeyWithModifier) -> bool {
@@ -489,6 +677,238 @@ impl State {
         }
         should_render
     }
+    fn handle_single_screen_key(&mut self, key: KeyWithModifier) -> bool {
+        match self.single_screen_state.mode {
+            SingleScreenMode::SearchAndSelect => self.handle_single_screen_search_key(key),
+            SingleScreenMode::SelectingLayout => self.handle_single_screen_layout_key(key),
+        }
+    }
+    fn handle_single_screen_search_key(&mut self, key: KeyWithModifier) -> bool {
+        let mut should_render = false;
+
+        // Handle kill-all warning overlay first
+        if self.show_kill_all_sessions_warning {
+            match key.bare_key {
+                BareKey::Char('y') if key.has_no_modifiers() => {
+                    let all_other_sessions = self.sessions.all_other_sessions();
+                    kill_sessions(&all_other_sessions);
+                    self.show_kill_all_sessions_warning = false;
+                    should_render = true;
+                },
+                BareKey::Char('n') | BareKey::Esc if key.has_no_modifiers() => {
+                    self.show_kill_all_sessions_warning = false;
+                    should_render = true;
+                },
+                BareKey::Char('c') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
+                    self.show_kill_all_sessions_warning = false;
+                    should_render = true;
+                },
+                _ => {},
+            }
+            return should_render;
+        }
+
+        // Handle rename overlay
+        if self.renaming_session_name.is_some() {
+            match key.bare_key {
+                BareKey::Enter if key.has_no_modifiers() => {
+                    self.handle_selection();
+                    should_render = true;
+                },
+                BareKey::Char(c) if key.has_no_modifiers() => {
+                    if c == '\n' {
+                        self.handle_selection();
+                    } else if let Some(name) = self.renaming_session_name.as_mut() {
+                        name.push(c);
+                    }
+                    should_render = true;
+                },
+                BareKey::Backspace if key.has_no_modifiers() => {
+                    if let Some(name) = self.renaming_session_name.as_mut() {
+                        if name.is_empty() {
+                            self.renaming_session_name = None;
+                        } else {
+                            name.pop();
+                        }
+                    }
+                    should_render = true;
+                },
+                BareKey::Esc if key.has_no_modifiers() => {
+                    self.renaming_session_name = None;
+                    should_render = true;
+                },
+                _ => {},
+            }
+            return should_render;
+        }
+
+        match key.bare_key {
+            BareKey::Char(character) if key.has_no_modifiers() => {
+                if character == '\n' {
+                    self.handle_selection();
+                } else {
+                    self.single_screen_state.search_term.push(character);
+                    self.single_screen_state.update_search_term(
+                        &self.sessions.session_ui_infos,
+                        &self.resurrectable_sessions.all_resurrectable_sessions,
+                    );
+                }
+                should_render = true;
+            },
+            BareKey::Backspace if key.has_no_modifiers() => {
+                self.single_screen_state.search_term.pop();
+                self.single_screen_state.update_search_term(
+                    &self.sessions.session_ui_infos,
+                    &self.resurrectable_sessions.all_resurrectable_sessions,
+                );
+                should_render = true;
+            },
+            BareKey::Enter if key.has_no_modifiers() => {
+                self.handle_selection();
+                should_render = true;
+            },
+            BareKey::Down if key.has_no_modifiers() => {
+                self.single_screen_state.move_selection_down();
+                should_render = true;
+            },
+            BareKey::Up if key.has_no_modifiers() => {
+                self.single_screen_state.move_selection_up();
+                should_render = true;
+            },
+            BareKey::Tab if key.has_no_modifiers() => {
+                self.single_screen_state.tab_complete(
+                    &self.sessions.session_ui_infos,
+                    &self.resurrectable_sessions.all_resurrectable_sessions,
+                );
+                should_render = true;
+            },
+            BareKey::Char('r') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
+                self.renaming_session_name = Some(String::new());
+                should_render = true;
+            },
+            BareKey::Delete if key.has_no_modifiers() => {
+                if let Some(result) = self.single_screen_state.get_selected_result() {
+                    match result {
+                        UnifiedSearchResult::ActiveSession { session_name, .. } => {
+                            kill_sessions(&[session_name.clone()]);
+                        },
+                        UnifiedSearchResult::ResurrectableSession { session_name, .. } => {
+                            delete_dead_session(session_name);
+                        },
+                    }
+                    self.single_screen_state.selected_index = None;
+                }
+                should_render = true;
+            },
+            BareKey::Char('d') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
+                let all_other_sessions = self.sessions.all_other_sessions();
+                if all_other_sessions.is_empty() {
+                    self.show_error("No other sessions to kill. Quit to kill the current one.");
+                } else {
+                    self.show_kill_all_sessions_warning = true;
+                }
+                should_render = true;
+            },
+            BareKey::Char('x') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
+                disconnect_other_clients();
+            },
+            BareKey::Char('a') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
+                if !self.is_welcome_screen {
+                    if let Err(e) = save_session() {
+                        self.show_error(&format!("Couldn't save session: {}", e));
+                    }
+                }
+            },
+            BareKey::Char('c') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
+                if !self.single_screen_state.search_term.is_empty() {
+                    self.single_screen_state.search_term.clear();
+                    self.single_screen_state.update_search_term(
+                        &self.sessions.session_ui_infos,
+                        &self.resurrectable_sessions.all_resurrectable_sessions,
+                    );
+                } else if !self.is_welcome_screen {
+                    hide_self();
+                }
+                should_render = true;
+            },
+            BareKey::Esc if key.has_no_modifiers() => {
+                if self.single_screen_state.selected_index.is_some() {
+                    self.single_screen_state.selected_index = None;
+                    should_render = true;
+                } else if !self.is_welcome_screen {
+                    hide_self();
+                }
+            },
+            _ => {},
+        }
+        should_render
+    }
+    fn handle_single_screen_layout_key(&mut self, key: KeyWithModifier) -> bool {
+        let mut should_render = false;
+        match key.bare_key {
+            BareKey::Down if key.has_no_modifiers() => {
+                self.single_screen_state.layout_list.move_selection_down();
+                should_render = true;
+            },
+            BareKey::Up if key.has_no_modifiers() => {
+                self.single_screen_state.layout_list.move_selection_up();
+                should_render = true;
+            },
+            BareKey::Enter if key.has_no_modifiers() => {
+                self.handle_selection();
+                should_render = true;
+            },
+            BareKey::Char(character) if key.has_no_modifiers() => {
+                if character == '\n' {
+                    self.handle_selection();
+                } else {
+                    self.single_screen_state
+                        .layout_list
+                        .layout_search_term
+                        .push(character);
+                    self.single_screen_state.layout_list.update_search_term();
+                }
+                should_render = true;
+            },
+            BareKey::Backspace if key.has_no_modifiers() => {
+                self.single_screen_state
+                    .layout_list
+                    .layout_search_term
+                    .pop();
+                self.single_screen_state.layout_list.update_search_term();
+                should_render = true;
+            },
+            BareKey::Char('f') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
+                let request_id = Uuid::new_v4();
+                let mut config = BTreeMap::new();
+                let mut args = BTreeMap::new();
+                self.request_ids.push(request_id.to_string());
+                config.insert("request_id".to_owned(), request_id.to_string());
+                args.insert("request_id".to_owned(), request_id.to_string());
+                pipe_message_to_plugin(
+                    MessageToPlugin::new("filepicker")
+                        .with_plugin_url("filepicker")
+                        .with_plugin_config(config)
+                        .new_plugin_instance_should_have_pane_title(
+                            "Select folder for the new session...",
+                        )
+                        .new_plugin_instance_should_be_focused()
+                        .with_args(args),
+                );
+                should_render = true;
+            },
+            BareKey::Char('c') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
+                self.single_screen_state.new_session_folder = None;
+                should_render = true;
+            },
+            BareKey::Esc if key.has_no_modifiers() => {
+                self.single_screen_state.transition_to_search();
+                should_render = true;
+            },
+            _ => {},
+        }
+        should_render
+    }
     fn handle_selection(&mut self) {
         match self.active_screen {
             ActiveScreen::NewSession => {
@@ -588,6 +1008,137 @@ impl State {
                     }
                 }
             },
+            ActiveScreen::SingleScreen => {
+                // Handle rename
+                if let Some(renaming_session_name) = &self.renaming_session_name.take() {
+                    if renaming_session_name.is_empty() {
+                        self.show_error("New name must not be empty.");
+                        return;
+                    } else if self.session_name.as_ref() == Some(renaming_session_name) {
+                        return;
+                    } else if self.sessions.has_session(&renaming_session_name) {
+                        self.show_error("A session by this name already exists.");
+                        return;
+                    } else if self
+                        .resurrectable_sessions
+                        .has_session(&renaming_session_name)
+                    {
+                        self.show_error("A resurrectable session by this name already exists.");
+                        return;
+                    } else {
+                        if renaming_session_name.contains('/') {
+                            self.show_error("Session names cannot contain '/'");
+                            return;
+                        }
+                        self.update_current_session_name_in_ui(&renaming_session_name);
+                        rename_session(&renaming_session_name);
+                        return;
+                    }
+                }
+
+                match self.single_screen_state.mode {
+                    SingleScreenMode::SearchAndSelect => {
+                        if let Some(result) = self.single_screen_state.get_selected_result() {
+                            // User navigated to a specific result
+                            let session_name = result.session_name().to_owned();
+                            match result {
+                                UnifiedSearchResult::ActiveSession {
+                                    is_current_session, ..
+                                } => {
+                                    if *is_current_session {
+                                        self.show_error("Already attached...");
+                                    } else {
+                                        switch_session_with_focus(&session_name, None, None);
+                                    }
+                                },
+                                UnifiedSearchResult::ResurrectableSession { .. } => {
+                                    switch_session(Some(&session_name));
+                                },
+                            }
+                            self.single_screen_state.search_term.clear();
+                            self.single_screen_state.selected_index = None;
+                            if self.is_welcome_screen {
+                                quit_zellij();
+                            } else {
+                                hide_self();
+                            }
+                        } else {
+                            // No navigation - use typed name
+                            let typed_name = self.single_screen_state.search_term.clone();
+
+                            // Validate name
+                            if typed_name.len() >= 108 {
+                                self.show_error("Session name must be shorter than 108 bytes");
+                                return;
+                            }
+                            if typed_name.contains('/') {
+                                self.show_error("Session name cannot contain '/'");
+                                return;
+                            }
+                            if self.sessions.has_forbidden_session(&typed_name) {
+                                self.show_error(
+                                    "This session exists and web clients cannot attach to it.",
+                                );
+                                return;
+                            }
+
+                            // Check exact match against active sessions
+                            if self.sessions.has_session(&typed_name) {
+                                if self.session_name.as_deref() == Some(&typed_name) {
+                                    self.show_error("Already attached...");
+                                } else {
+                                    switch_session_with_focus(&typed_name, None, None);
+                                    if self.is_welcome_screen {
+                                        quit_zellij();
+                                    } else {
+                                        hide_self();
+                                    }
+                                }
+                                return;
+                            }
+                            // Check exact match against resurrectable sessions
+                            if self.resurrectable_sessions.has_session(&typed_name) {
+                                switch_session(Some(&typed_name));
+                                if self.is_welcome_screen {
+                                    quit_zellij();
+                                } else {
+                                    hide_self();
+                                }
+                                return;
+                            }
+                            // No match - transition to layout selection
+                            self.single_screen_state.transition_to_layout_selection();
+                        }
+                    },
+                    SingleScreenMode::SelectingLayout => {
+                        let new_session_name = if self.single_screen_state.search_term.is_empty() {
+                            None
+                        } else {
+                            Some(self.single_screen_state.search_term.as_str())
+                        };
+                        let layout = self.single_screen_state.layout_list.selected_layout_info();
+                        let cwd = self.single_screen_state.new_session_folder.clone();
+
+                        if new_session_name != self.session_name.as_ref().map(|s| s.as_str()) {
+                            match layout {
+                                Some(layout_info) => {
+                                    switch_session_with_layout(new_session_name, layout_info, cwd);
+                                },
+                                None => {
+                                    switch_session(new_session_name);
+                                },
+                            }
+                        }
+                        self.single_screen_state.search_term.clear();
+                        self.single_screen_state.transition_to_search();
+                        if self.is_welcome_screen {
+                            quit_zellij();
+                        } else {
+                            hide_self();
+                        }
+                    },
+                }
+            },
         }
     }
     fn toggle_active_screen(&mut self) {
@@ -595,6 +1146,7 @@ impl State {
             ActiveScreen::NewSession => ActiveScreen::AttachToSession,
             ActiveScreen::AttachToSession => ActiveScreen::ResurrectSession,
             ActiveScreen::ResurrectSession => ActiveScreen::NewSession,
+            ActiveScreen::SingleScreen => ActiveScreen::SingleScreen, // no-op
         };
     }
     fn show_error(&mut self, error_text: &str) {
@@ -667,6 +1219,50 @@ impl State {
         };
         let height = rows.saturating_sub(y);
         (x, y, width, height)
+    }
+    fn render_single_screen_folder_prompt(&self, x: usize, y: usize, max_cols: usize) {
+        match self.single_screen_state.new_session_folder.as_ref() {
+            Some(new_session_folder) => {
+                let folder_prompt = "New session folder:";
+                let new_session_folder_str = new_session_folder.display().to_string();
+                let change_folder_shortcut = self.colors.shortcuts("<Ctrl f>");
+                let reset_folder_shortcut = self.colors.shortcuts("<Ctrl c>");
+                if max_cols >= folder_prompt.len() + new_session_folder_str.len() + 30 {
+                    print!(
+                        "\u{1b}[m\u{1b}[{};{}H{} {} ({} to change, {} to reset)",
+                        y + 1,
+                        x + 1,
+                        self.colors.session_name_prompt(folder_prompt),
+                        self.colors
+                            .session_and_folder_entry(&new_session_folder_str),
+                        change_folder_shortcut,
+                        reset_folder_shortcut,
+                    );
+                } else {
+                    print!(
+                        "\u{1b}[m\u{1b}[{};{}H{} {} ({}/{})",
+                        y + 1,
+                        x + 1,
+                        self.colors.session_name_prompt("Folder:"),
+                        self.colors
+                            .session_and_folder_entry(&new_session_folder_str),
+                        change_folder_shortcut,
+                        reset_folder_shortcut,
+                    );
+                }
+            },
+            None => {
+                let folder_prompt = "New session folder:";
+                let change_folder_shortcut = self.colors.shortcuts("<Ctrl f>");
+                print!(
+                    "\u{1b}[m\u{1b}[{};{}H{} ({} to set)",
+                    y + 1,
+                    x + 1,
+                    self.colors.session_name_prompt(folder_prompt),
+                    change_folder_shortcut,
+                );
+            },
+        }
     }
     fn render_kill_all_sessions_warning(&self, rows: usize, columns: usize, x: usize, y: usize) {
         if rows == 0 || columns == 0 {

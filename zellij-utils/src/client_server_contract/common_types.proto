@@ -244,6 +244,7 @@ message Action {
     ShowFloatingPanesAction show_floating_panes = 106;
     HideFloatingPanesAction hide_floating_panes = 107;
     SetPaneColorAction set_pane_color = 108;
+    PasteAction paste = 109;
   }
 }
 
@@ -357,6 +358,11 @@ message WriteCharsToPaneIdAction {
   string chars = 2;
 }
 
+message PasteAction {
+  string chars = 1;
+  optional PaneId pane_id = 2;
+}
+
 message SwitchToModeAction {
   InputMode input_mode = 1;
 }
@@ -385,6 +391,8 @@ message MovePaneAction {
 message DumpScreenAction {
   string file_path = 1;
   bool include_scrollback = 2;
+  optional PaneId pane_id = 3;
+  bool dump_to_stdout = 4;
 }
 
 message ScrollUpAtAction {
