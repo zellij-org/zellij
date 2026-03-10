@@ -86,6 +86,7 @@ impl ZellijPlugin for State {
             EventType::RunCommandResult,
             EventType::Timer,
         ]);
+        rename_plugin_pane(get_plugin_ids().plugin_id, "Session Manager");
     }
 
     fn pipe(&mut self, pipe_message: PipeMessage) -> bool {
