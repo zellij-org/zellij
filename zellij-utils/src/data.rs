@@ -351,9 +351,10 @@ impl BareKey {
             Ok("57424") => Some(BareKey::End),
             Ok("57425") => Some(BareKey::Insert),
             Ok("57426") => Some(BareKey::Delete),
-            Ok(num) => u8::from_str_radix(num, 10)
+            Ok(num) => u32::from_str_radix(num, 10)
                 .ok()
-                .map(|n| BareKey::Char((n as char).to_ascii_lowercase())),
+                .and_then(char::from_u32)
+                .map(BareKey::Char),
             _ => None,
         }
     }
@@ -3604,3 +3605,25 @@ pub type OpenCommandPaneInPlaceOfPaneIdResponse = Option<PaneId>;
 pub type OpenTerminalPaneInPlaceOfPaneIdResponse = Option<PaneId>;
 pub type OpenEditPaneInPlaceOfPaneIdResponse = Option<PaneId>;
 pub type OpenPluginPaneFloatingResponse = Option<PaneId>;
+
+#[test]
+pub fn can_parse_unicode_bare_keys() {
+    let key = "1087"; // п
+    assert_eq!(
+        BareKey::from_bytes_with_u(&key.as_bytes()),
+        Some(BareKey::Char('п')),
+        "Can parse a bare 'п' keypress"
+    );
+    let key = "1255"; // ӧ
+    assert_eq!(
+        BareKey::from_bytes_with_u(&key.as_bytes()),
+        Some(BareKey::Char('ӧ')),
+        "Can parse a bare 'ӧ' keypress"
+    );
+    let key = "1098"; // ъ
+    assert_eq!(
+        BareKey::from_bytes_with_u(&key.as_bytes()),
+        Some(BareKey::Char('ъ')),
+        "Can parse a bare 'ъ' keypress"
+    );
+}
