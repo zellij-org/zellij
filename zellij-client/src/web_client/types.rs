@@ -85,6 +85,7 @@ impl SessionManager for RealSessionManager {
 pub struct ConnectionTable {
     pub client_id_to_channels: HashMap<String, ClientChannels>,
     pub client_read_only_status: HashMap<String, bool>,
+    pub client_session_token_hash: HashMap<String, String>,
 }
 
 #[derive(Debug, Clone)]

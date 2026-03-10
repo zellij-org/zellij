@@ -411,19 +411,36 @@ function showErrorModal(title, description) {
     const modal = document.createElement('div');
     modal.className = 'security-modal error';
     
-    modal.innerHTML = `
-      <div class="security-modal-content">
-        <h3>${title}</h3>
-        <div class="error-description">${description}</div>
-        <div class="button-row">
-          <button id="dismiss" class="dismiss-btn">Acknowledge</button>
-        </div>
-        <div class="status-bar"></div>
-      </div>
-    `;
+    const content = document.createElement('div');
+    content.className = 'security-modal-content';
+
+    const h3 = document.createElement('h3');
+    h3.textContent = title;
+    content.appendChild(h3);
+
+    const desc = document.createElement('div');
+    desc.className = 'error-description';
+    desc.textContent = description;
+    content.appendChild(desc);
+
+    const buttonRow = document.createElement('div');
+    buttonRow.className = 'button-row';
+
+    const dismissBtn = document.createElement('button');
+    dismissBtn.id = 'dismiss';
+    dismissBtn.className = 'dismiss-btn';
+    dismissBtn.textContent = 'Acknowledge';
+    buttonRow.appendChild(dismissBtn);
+    content.appendChild(buttonRow);
+
+    const statusBar = document.createElement('div');
+    statusBar.className = 'status-bar';
+    content.appendChild(statusBar);
+
+    modal.appendChild(content);
     
     document.body.appendChild(modal);
-    modal.querySelector('#dismiss').focus();
+    dismissBtn.focus();
     
     const handleKeydown = (e) => {
       if (e.key === 'Enter' || e.key === 'Escape') {
@@ -440,7 +457,7 @@ function showErrorModal(title, description) {
       resolve();
     };
     
-    modal.querySelector('#dismiss').onclick = cleanup;
+    dismissBtn.onclick = cleanup;
     
     modal.onclick = (e) => {
       if (e.target === modal) {
@@ -459,25 +476,65 @@ function showReconnectionModal(attemptNumber, delaySeconds) {
     modal.style.background = 'rgba(28, 28, 28, 0.85)'; // More transparent to show terminal
     
     const isFirstAttempt = attemptNumber === 1;
-    const title = isFirstAttempt ? 'Connection Lost' : 'Reconnection Failed';
-    const message = isFirstAttempt 
-      ? `Reconnecting in <span id="countdown">${delaySeconds}</span> second${delaySeconds > 1 ? 's' : ''}...`
-      : `Retrying in <span id="countdown">${delaySeconds}</span> second${delaySeconds > 1 ? 's' : ''}... (Attempt ${attemptNumber})`;
-    
-    modal.innerHTML = `
-      <div class="security-modal-content">
-        <h3 id="modal-title">${title}</h3>
-        <div class="error-description" id="modal-message">${message}</div>
-        <div class="button-row" id="button-row">
-          <button id="cancel" class="cancel-btn">Cancel</button>
-          <button id="reconnect" class="submit-btn">Reconnect Now</button>
-        </div>
-        <div class="status-bar"></div>
-      </div>
-    `;
+    const titleText = isFirstAttempt ? 'Connection Lost' : 'Reconnection Failed';
+
+    const contentDiv = document.createElement('div');
+    contentDiv.className = 'security-modal-content';
+
+    const titleEl = document.createElement('h3');
+    titleEl.id = 'modal-title';
+    titleEl.textContent = titleText;
+    contentDiv.appendChild(titleEl);
+
+    const messageEl = document.createElement('div');
+    messageEl.className = 'error-description';
+    messageEl.id = 'modal-message';
+
+    if (isFirstAttempt) {
+        messageEl.appendChild(document.createTextNode('Reconnecting in '));
+        const countdown = document.createElement('span');
+        countdown.id = 'countdown';
+        countdown.textContent = delaySeconds;
+        messageEl.appendChild(countdown);
+        messageEl.appendChild(document.createTextNode(delaySeconds > 1 ? ' seconds...' : ' second...'));
+    } else {
+        messageEl.appendChild(document.createTextNode('Retrying in '));
+        const countdown = document.createElement('span');
+        countdown.id = 'countdown';
+        countdown.textContent = delaySeconds;
+        messageEl.appendChild(countdown);
+        messageEl.appendChild(document.createTextNode(
+            (delaySeconds > 1 ? ' seconds' : ' second') + '... (Attempt ' + attemptNumber + ')'
+        ));
+    }
+    contentDiv.appendChild(messageEl);
+
+    const buttonRowEl = document.createElement('div');
+    buttonRowEl.className = 'button-row';
+    buttonRowEl.id = 'button-row';
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.id = 'cancel';
+    cancelBtn.className = 'cancel-btn';
+    cancelBtn.textContent = 'Cancel';
+    buttonRowEl.appendChild(cancelBtn);
+
+    const reconnectBtn = document.createElement('button');
+    reconnectBtn.id = 'reconnect';
+    reconnectBtn.className = 'submit-btn';
+    reconnectBtn.textContent = 'Reconnect Now';
+    buttonRowEl.appendChild(reconnectBtn);
+
+    contentDiv.appendChild(buttonRowEl);
+
+    const statusBarEl = document.createElement('div');
+    statusBarEl.className = 'status-bar';
+    contentDiv.appendChild(statusBarEl);
+
+    modal.appendChild(contentDiv);
     
     document.body.appendChild(modal);
-    modal.querySelector('#reconnect').focus();
+    reconnectBtn.focus();
     
     let countdownInterval;
     let remainingSeconds = delaySeconds;
@@ -503,7 +560,7 @@ function showReconnectionModal(attemptNumber, delaySeconds) {
       }
       
       const messageElement = modal.querySelector('#modal-message');
-      messageElement.innerHTML = 'Connecting...';
+      messageElement.textContent = 'Connecting...';
     };
     
     countdownInterval = setInterval(updateCountdown, 1000);

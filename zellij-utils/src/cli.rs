@@ -330,6 +330,14 @@ pub enum Sessions {
         /// Delete saved session before connecting
         #[clap(long, value_parser)]
         forget: bool,
+
+        /// Path to a custom CA certificate (PEM format) for verifying the remote server
+        #[clap(long, value_name = "FILE", value_parser)]
+        ca_cert: Option<PathBuf>,
+
+        /// Skip TLS certificate validation (DANGEROUS — development only)
+        #[clap(long, value_parser)]
+        insecure: bool,
     },
 
     /// Watch a session (read-only)

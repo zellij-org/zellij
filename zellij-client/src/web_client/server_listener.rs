@@ -59,6 +59,11 @@ pub fn zellij_server_listener(
                             return;
                         };
                         let mut sock_dir = zellij_utils::consts::ZELLIJ_SOCK_DIR.clone();
+                        if let Err(e) = zellij_utils::sessions::validate_session_name(&session_name) {
+                            log::error!("Invalid session name: {}", e);
+                            client_connection_bus.close_connection();
+                            return;
+                        }
                         sock_dir.push(session_name.clone());
                         sock_dir.to_str().unwrap().to_owned()
                     };
