@@ -2133,17 +2133,26 @@ mod web_client_tests {
         .expect("Request failed");
 
         assert_eq!(
-            response.headers().get("X-Content-Type-Options").map(|v| v.to_str().unwrap()),
+            response
+                .headers()
+                .get("X-Content-Type-Options")
+                .map(|v| v.to_str().unwrap()),
             Some("nosniff"),
             "X-Content-Type-Options header should be 'nosniff'"
         );
         assert_eq!(
-            response.headers().get("X-Frame-Options").map(|v| v.to_str().unwrap()),
+            response
+                .headers()
+                .get("X-Frame-Options")
+                .map(|v| v.to_str().unwrap()),
             Some("DENY"),
             "X-Frame-Options header should be 'DENY'"
         );
         assert_eq!(
-            response.headers().get("Referrer-Policy").map(|v| v.to_str().unwrap()),
+            response
+                .headers()
+                .get("Referrer-Policy")
+                .map(|v| v.to_str().unwrap()),
             Some("strict-origin-when-cross-origin"),
             "Referrer-Policy header should be 'strict-origin-when-cross-origin'"
         );
@@ -2151,14 +2160,22 @@ mod web_client_tests {
             response.headers().get("Content-Security-Policy").is_some(),
             "Content-Security-Policy header should be present"
         );
-        let csp = response.headers().get("Content-Security-Policy").unwrap().to_str().unwrap();
+        let csp = response
+            .headers()
+            .get("Content-Security-Policy")
+            .unwrap()
+            .to_str()
+            .unwrap();
         assert!(
             csp.contains("default-src 'self'"),
             "CSP should contain default-src 'self'"
         );
         // HSTS should NOT be present when is_https is false
         assert!(
-            response.headers().get("Strict-Transport-Security").is_none(),
+            response
+                .headers()
+                .get("Strict-Transport-Security")
+                .is_none(),
             "Strict-Transport-Security should NOT be present when is_https is false"
         );
 
@@ -2228,12 +2245,18 @@ mod web_client_tests {
         .unwrap();
 
         assert_eq!(
-            response.headers().get("X-Content-Type-Options").map(|v| v.to_str().unwrap()),
+            response
+                .headers()
+                .get("X-Content-Type-Options")
+                .map(|v| v.to_str().unwrap()),
             Some("nosniff"),
             "X-Content-Type-Options header should be present on authenticated routes"
         );
         assert_eq!(
-            response.headers().get("X-Frame-Options").map(|v| v.to_str().unwrap()),
+            response
+                .headers()
+                .get("X-Frame-Options")
+                .map(|v| v.to_str().unwrap()),
             Some("DENY"),
             "X-Frame-Options header should be present on authenticated routes"
         );
@@ -2337,7 +2360,10 @@ mod web_client_tests {
                 // but let's check if it closes after
                 let second_result = timeout(Duration::from_secs(2), control_stream.next()).await;
                 assert!(
-                    matches!(second_result, Ok(Some(Ok(Message::Close(_)))) | Ok(Some(Err(_))) | Ok(None) | Err(_)),
+                    matches!(
+                        second_result,
+                        Ok(Some(Ok(Message::Close(_)))) | Ok(Some(Err(_))) | Ok(None) | Err(_)
+                    ),
                     "WebSocket should have been closed after sending foreign web_client_id"
                 );
             },
@@ -2350,7 +2376,9 @@ mod web_client_tests {
             let messages = mock_api.get_sent_messages();
             for msg in &messages {
                 if matches!(msg, ClientToServerMsg::TerminalResize { .. }) {
-                    panic!("TerminalResize should NOT have been forwarded for a foreign web_client_id");
+                    panic!(
+                        "TerminalResize should NOT have been forwarded for a foreign web_client_id"
+                    );
                 }
             }
         }

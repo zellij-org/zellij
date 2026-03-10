@@ -2,7 +2,9 @@ use super::config::{WS_CONTROL_ENDPOINT, WS_TERMINAL_ENDPOINT};
 use super::http_client::HttpClientWithCookies;
 use std::path::Path;
 use tokio::net::TcpStream;
-use tokio_tungstenite::{connect_async_tls_with_config, Connector, MaybeTlsStream, WebSocketStream};
+use tokio_tungstenite::{
+    connect_async_tls_with_config, Connector, MaybeTlsStream, WebSocketStream,
+};
 
 pub struct WebSocketConnections {
     pub terminal_ws: WebSocketStream<MaybeTlsStream<TcpStream>>,
@@ -108,8 +110,10 @@ pub async fn establish_websocket_connections(
     };
 
     // Connect to both WebSockets concurrently
-    let (terminal_ws, _) = connect_async_tls_with_config(terminal_request, None, false, connector.clone()).await?;
-    let (control_ws, _) = connect_async_tls_with_config(control_request, None, false, connector).await?;
+    let (terminal_ws, _) =
+        connect_async_tls_with_config(terminal_request, None, false, connector.clone()).await?;
+    let (control_ws, _) =
+        connect_async_tls_with_config(control_request, None, false, connector).await?;
 
     Ok(WebSocketConnections {
         terminal_ws,

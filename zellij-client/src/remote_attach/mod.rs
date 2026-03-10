@@ -67,7 +67,14 @@ pub fn attach_to_remote_session(
     }
 
     // Normal auth flow with retry logic
-    authenticate_with_retry(runtime, remote_session_url, token, remember, ca_cert, insecure)
+    authenticate_with_retry(
+        runtime,
+        remote_session_url,
+        token,
+        remember,
+        ca_cert,
+        insecure,
+    )
 }
 
 /// Try to connect using a saved session token
@@ -83,7 +90,13 @@ fn try_to_connect_with_saved_session_token(
         // we have a saved session token, let's try to authenticate with it
         let ca_cert_owned = ca_cert.map(|p| p.to_path_buf());
         match runtime.block_on(async move {
-            remote_attach_with_session_token(remote_session_url, &saved_session_token, ca_cert_owned.as_deref(), insecure).await
+            remote_attach_with_session_token(
+                remote_session_url,
+                &saved_session_token,
+                ca_cert_owned.as_deref(),
+                insecure,
+            )
+            .await
         }) {
             Ok(connections) => {
                 return Ok(Some(connections));
@@ -127,9 +140,16 @@ fn authenticate_with_retry(
         };
 
         let ca_cert_owned = ca_cert.map(|p| p.to_path_buf());
-        match runtime
-            .block_on(async move { remote_attach(remote_session_url, &auth_token, remember, ca_cert_owned.as_deref(), insecure).await })
-        {
+        match runtime.block_on(async move {
+            remote_attach(
+                remote_session_url,
+                &auth_token,
+                remember,
+                ca_cert_owned.as_deref(),
+                insecure,
+            )
+            .await
+        }) {
             Ok((connections, session_token_opt)) => {
                 // Save session token if we got one
                 if let Some(session_token) = session_token_opt {

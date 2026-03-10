@@ -42,7 +42,11 @@ pub async fn ws_handler_terminal(
     })
 }
 
-async fn handle_ws_control(socket: WebSocket, state: AppState, session_token_hash: SessionTokenHash) {
+async fn handle_ws_control(
+    socket: WebSocket,
+    state: AppState,
+    session_token_hash: SessionTokenHash,
+) {
     let payload = SetConfigPayload::from(&*state.config.lock().unwrap());
     let set_config_msg = WebServerToWebClientControlMessage::SetConfig(payload);
 

@@ -14,8 +14,13 @@ pub fn create_http_client(
         .timeout(connection_timeout());
 
     if insecure {
-        eprintln!("WARNING: TLS certificate validation is disabled. This connection is NOT secure.");
-        builder = builder.ssl_options(isahc::config::SslOption::DANGER_ACCEPT_INVALID_CERTS | isahc::config::SslOption::DANGER_ACCEPT_INVALID_HOSTS);
+        eprintln!(
+            "WARNING: TLS certificate validation is disabled. This connection is NOT secure."
+        );
+        builder = builder.ssl_options(
+            isahc::config::SslOption::DANGER_ACCEPT_INVALID_CERTS
+                | isahc::config::SslOption::DANGER_ACCEPT_INVALID_HOSTS,
+        );
     } else if let Some(ca_path) = ca_cert {
         builder = builder.ssl_ca_certificate(isahc::config::CaCertificate::file(ca_path));
     }
@@ -29,10 +34,7 @@ pub struct HttpClientWithCookies {
 }
 
 impl HttpClientWithCookies {
-    pub fn new(
-        ca_cert: Option<&Path>,
-        insecure: bool,
-    ) -> Result<Self, isahc::Error> {
+    pub fn new(ca_cert: Option<&Path>, insecure: bool) -> Result<Self, isahc::Error> {
         Ok(Self {
             client: create_http_client(ca_cert, insecure)?,
             cookies: Arc::new(Mutex::new(HashMap::new())),
