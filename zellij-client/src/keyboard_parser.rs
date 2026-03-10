@@ -436,6 +436,24 @@ pub fn can_parse_bare_keys() {
         Some(KeyWithModifier::new(BareKey::F(4))),
         "Can parse a bare 'F4 (alternate)' keypress"
     );
+    let key = "\u{1b}[1087u";
+    assert_eq!(
+        parse_for_test(key.as_bytes()),
+        Some(KeyWithModifier::new(BareKey::Char('п'))),
+        "Can parse a bare 'п' keypress"
+    );
+    let key = "\u{1b}[1255u";
+    assert_eq!(
+        parse_for_test(key.as_bytes()),
+        Some(KeyWithModifier::new(BareKey::Char('ӧ'))),
+        "Can parse a bare 'ӧ' keypress"
+    );
+    let key = "\u{1b}[1098u";
+    assert_eq!(
+        parse_for_test(key.as_bytes()),
+        Some(KeyWithModifier::new(BareKey::Char('ъ'))),
+        "Can parse a bare 'ъ' keypress"
+    );
 }
 
 #[test]
@@ -675,6 +693,24 @@ pub fn can_parse_keys_with_shift_modifier() {
         parse_for_test(key.as_bytes()),
         Some(KeyWithModifier::new(BareKey::F(4)).with_shift_modifier()),
         "Can parse a bare 'F4 (alternate)' keypress with shift"
+    );
+    let key = "\u{1b}[1087;2u";
+    assert_eq!(
+        parse_for_test(key.as_bytes()),
+        Some(KeyWithModifier::new(BareKey::Char('п')).with_shift_modifier()),
+        "Can parse a bare 'п' keypress with shift"
+    );
+    let key = "\u{1b}[1255;2u";
+    assert_eq!(
+        parse_for_test(key.as_bytes()),
+        Some(KeyWithModifier::new(BareKey::Char('ӧ')).with_shift_modifier()),
+        "Can parse a bare 'ӧ' keypress with shift"
+    );
+    let key = "\u{1b}[1098;2u";
+    assert_eq!(
+        parse_for_test(key.as_bytes()),
+        Some(KeyWithModifier::new(BareKey::Char('ъ')).with_shift_modifier()),
+        "Can parse a bare 'ъ' keypress with shift"
     );
 }
 
@@ -916,6 +952,24 @@ pub fn can_parse_keys_with_alt_modifier() {
         Some(KeyWithModifier::new(BareKey::F(4)).with_alt_modifier()),
         "Can parse a bare 'F4 (alternate)' keypress with alt"
     );
+    let key = "\u{1b}[1087;3u";
+    assert_eq!(
+        parse_for_test(key.as_bytes()),
+        Some(KeyWithModifier::new(BareKey::Char('п')).with_alt_modifier()),
+        "Can parse a bare 'п' keypress with alt"
+    );
+    let key = "\u{1b}[1255;3u";
+    assert_eq!(
+        parse_for_test(key.as_bytes()),
+        Some(KeyWithModifier::new(BareKey::Char('ӧ')).with_alt_modifier()),
+        "Can parse a bare 'ӧ' keypress with alt"
+    );
+    let key = "\u{1b}[1098;3u";
+    assert_eq!(
+        parse_for_test(key.as_bytes()),
+        Some(KeyWithModifier::new(BareKey::Char('ъ')).with_alt_modifier()),
+        "Can parse a bare 'ъ' keypress with alt"
+    );
 }
 
 #[test]
@@ -1156,6 +1210,24 @@ pub fn can_parse_keys_with_ctrl_modifier() {
         Some(KeyWithModifier::new(BareKey::F(4)).with_ctrl_modifier()),
         "Can parse a bare 'F4 (ctrlernate)' keypress with ctrl"
     );
+    let key = "\u{1b}[1087;5u";
+    assert_eq!(
+        parse_for_test(key.as_bytes()),
+        Some(KeyWithModifier::new(BareKey::Char('п')).with_ctrl_modifier()),
+        "Can parse a bare 'п' keypress with ctrl"
+    );
+    let key = "\u{1b}[1255;5u";
+    assert_eq!(
+        parse_for_test(key.as_bytes()),
+        Some(KeyWithModifier::new(BareKey::Char('ӧ')).with_ctrl_modifier()),
+        "Can parse a bare 'ӧ' keypress with ctrl"
+    );
+    let key = "\u{1b}[1098;5u";
+    assert_eq!(
+        parse_for_test(key.as_bytes()),
+        Some(KeyWithModifier::new(BareKey::Char('ъ')).with_ctrl_modifier()),
+        "Can parse a bare 'ъ' keypress with ctrl"
+    );
 }
 
 #[test]
@@ -1395,6 +1467,24 @@ pub fn can_parse_keys_with_super_modifier() {
         parse_for_test(key.as_bytes()),
         Some(KeyWithModifier::new(BareKey::F(4)).with_super_modifier()),
         "Can parse a bare 'F4 (alternate)' keypress with super"
+    );
+    let key = "\u{1b}[1087;9u";
+    assert_eq!(
+        parse_for_test(key.as_bytes()),
+        Some(KeyWithModifier::new(BareKey::Char('п')).with_super_modifier()),
+        "Can parse a bare 'п' keypress with super"
+    );
+    let key = "\u{1b}[1255;9u";
+    assert_eq!(
+        parse_for_test(key.as_bytes()),
+        Some(KeyWithModifier::new(BareKey::Char('ӧ')).with_super_modifier()),
+        "Can parse a bare 'ӧ' keypress with super"
+    );
+    let key = "\u{1b}[1098;9u";
+    assert_eq!(
+        parse_for_test(key.as_bytes()),
+        Some(KeyWithModifier::new(BareKey::Char('ъ')).with_super_modifier()),
+        "Can parse a bare 'ъ' keypress with super"
     );
 }
 
@@ -1869,6 +1959,42 @@ pub fn can_parse_keys_with_multiple_modifiers() {
                 .with_shift_modifier()
         ),
         "Can parse a bare 'F4 (superernate)' keypress with all modifiers"
+    );
+    let key = "\u{1b}[1087;16u";
+    assert_eq!(
+        parse_for_test(key.as_bytes()),
+        Some(
+            KeyWithModifier::new(BareKey::Char('п'))
+                .with_super_modifier()
+                .with_ctrl_modifier()
+                .with_alt_modifier()
+                .with_shift_modifier()
+        ),
+        "Can parse a bare 'п' keypress with all modifiers"
+    );
+    let key = "\u{1b}[1255;16u";
+    assert_eq!(
+        parse_for_test(key.as_bytes()),
+        Some(
+            KeyWithModifier::new(BareKey::Char('ӧ'))
+                .with_super_modifier()
+                .with_ctrl_modifier()
+                .with_alt_modifier()
+                .with_shift_modifier()
+        ),
+        "Can parse a bare 'ӧ' keypress with all modifiers"
+    );
+    let key = "\u{1b}[1098;16u";
+    assert_eq!(
+        parse_for_test(key.as_bytes()),
+        Some(
+            KeyWithModifier::new(BareKey::Char('ъ'))
+                .with_super_modifier()
+                .with_ctrl_modifier()
+                .with_alt_modifier()
+                .with_shift_modifier()
+        ),
+        "Can parse a bare 'ъ' keypress with all modifiers"
     );
 }
 
