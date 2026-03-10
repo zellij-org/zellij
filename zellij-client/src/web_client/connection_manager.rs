@@ -12,10 +12,21 @@ impl ConnectionTable {
         client_id: String,
         client_os_api: Box<dyn ClientOsApi>,
         is_read_only: bool,
+        session_token_hash: String,
     ) {
         self.client_id_to_channels
             .insert(client_id.clone(), ClientChannels::new(client_os_api));
-        self.client_read_only_status.insert(client_id, is_read_only);
+        self.client_read_only_status
+            .insert(client_id.clone(), is_read_only);
+        self.client_session_token_hash
+            .insert(client_id, session_token_hash);
+    }
+
+    pub fn verify_client_ownership(&self, client_id: &str, session_token_hash: &str) -> bool {
+        self.client_session_token_hash
+            .get(client_id)
+            .map(|hash| hash == session_token_hash)
+            .unwrap_or(false)
     }
 
     pub fn is_client_read_only(&self, client_id: &str) -> bool {
@@ -76,6 +87,7 @@ impl ConnectionTable {
             client_channels.cleanup();
         }
         self.client_read_only_status.remove(client_id);
+        self.client_session_token_hash.remove(client_id);
     }
 
     pub fn get_should_not_reconnect_flag(&self, client_id: &str) -> Option<Arc<AtomicBool>> {

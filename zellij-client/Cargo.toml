@@ -40,6 +40,7 @@ tokio = { workspace = true }
 tokio-util = { workspace = true }
 isahc = { workspace = true }
 tokio-tungstenite = { version = "0.20", features = ["native-tls"] } #TODO: see about this native-tls...
+native-tls = "0.2"
 futures-util = "0.3"
 urlencoding = "2.1"
 

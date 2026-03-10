@@ -2,14 +2,25 @@ use super::config::connection_timeout;
 use isahc::prelude::*;
 use isahc::{config::RedirectPolicy, AsyncBody, HttpClient, Request, Response};
 use std::collections::HashMap;
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-pub fn create_http_client() -> Result<HttpClient, isahc::Error> {
-    HttpClient::builder()
+pub fn create_http_client(
+    ca_cert: Option<&Path>,
+    insecure: bool,
+) -> Result<HttpClient, isahc::Error> {
+    let mut builder = HttpClient::builder()
         .redirect_policy(RedirectPolicy::Follow)
-        .ssl_options(isahc::config::SslOption::DANGER_ACCEPT_INVALID_CERTS)
-        .timeout(connection_timeout())
-        .build()
+        .timeout(connection_timeout());
+
+    if insecure {
+        eprintln!("WARNING: TLS certificate validation is disabled. This connection is NOT secure.");
+        builder = builder.ssl_options(isahc::config::SslOption::DANGER_ACCEPT_INVALID_CERTS);
+    } else if let Some(ca_path) = ca_cert {
+        builder = builder.ssl_ca_certificate(isahc::config::CaCertificate::file(ca_path));
+    }
+
+    builder.build()
 }
 
 pub struct HttpClientWithCookies {
@@ -18,9 +29,12 @@ pub struct HttpClientWithCookies {
 }
 
 impl HttpClientWithCookies {
-    pub fn new() -> Result<Self, isahc::Error> {
+    pub fn new(
+        ca_cert: Option<&Path>,
+        insecure: bool,
+    ) -> Result<Self, isahc::Error> {
         Ok(Self {
-            client: create_http_client()?,
+            client: create_http_client(ca_cert, insecure)?,
             cookies: Arc::new(Mutex::new(HashMap::new())),
         })
     }

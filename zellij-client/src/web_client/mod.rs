@@ -1,6 +1,6 @@
 pub mod control_message;
 
-mod authentication;
+pub(crate) mod authentication;
 mod connection_manager;
 mod http_handlers;
 mod ipc_listener;
@@ -228,6 +228,7 @@ pub async fn serve_web_client(
         }
     });
 
+    let is_https = state.is_https;
     let app = Router::new()
         .route("/ws/control", any(ws_handler_control))
         .route("/ws/terminal", any(ws_handler_terminal))
@@ -239,7 +240,27 @@ pub async fn serve_web_client(
         .route("/assets/{*path}", get(get_static_asset))
         .route("/command/login", post(login_handler))
         .route("/info/version", get(version_handler))
-        .with_state(state);
+        .with_state(state)
+        .layer(axum::middleware::from_fn(move |request, next: axum::middleware::Next| {
+            async move {
+                let mut response = next.run(request).await;
+                let headers = response.headers_mut();
+                headers.insert("X-Content-Type-Options", "nosniff".parse().unwrap());
+                headers.insert("X-Frame-Options", "DENY".parse().unwrap());
+                headers.insert("Referrer-Policy", "strict-origin-when-cross-origin".parse().unwrap());
+                headers.insert(
+                    "Content-Security-Policy",
+                    "default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' ws: wss:; img-src 'self' data:".parse().unwrap(),
+                );
+                if is_https {
+                    headers.insert(
+                        "Strict-Transport-Security",
+                        "max-age=31536000; includeSubDomains".parse().unwrap(),
+                    );
+                }
+                response
+            }
+        }));
 
     match rustls_config {
         Some(rustls_config) => {

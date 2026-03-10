@@ -60,20 +60,37 @@ impl From<std::io::Error> for TokenError {
 type Result<T> = std::result::Result<T, TokenError>;
 
 fn get_db_path() -> Result<PathBuf> {
-    if cfg!(debug_assertions) {
-        // tests db
-        let data_dir = ZELLIJ_PROJ_DIR.data_dir();
-        std::fs::create_dir_all(&data_dir)?;
-        Ok(data_dir.join("tokens_for_dev.db"))
+    let data_dir = ZELLIJ_PROJ_DIR.data_dir();
+    std::fs::create_dir_all(&data_dir)?;
+
+    let db_path = if cfg!(debug_assertions) {
+        data_dir.join("tokens_for_dev.db")
     } else {
-        // prod db
-        let data_dir = ZELLIJ_PROJ_DIR.data_dir();
-        std::fs::create_dir_all(data_dir)?;
-        Ok(data_dir.join("tokens.db"))
+        data_dir.join("tokens.db")
+    };
+
+    Ok(db_path)
+}
+
+fn open_db() -> Result<Connection> {
+    let db_path = get_db_path()?;
+    let conn = Connection::open(&db_path)?;
+    init_db(&conn)?;
+
+    // Set restrictive permissions on the database file
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let perms = std::fs::Permissions::from_mode(0o600);
+        let _ = std::fs::set_permissions(&db_path, perms);
     }
+
+    Ok(conn)
 }
 
 fn init_db(conn: &Connection) -> Result<()> {
+    conn.execute_batch("PRAGMA foreign_keys = ON")?;
+
     conn.execute(
         "CREATE TABLE IF NOT EXISTS tokens (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -98,25 +115,31 @@ fn init_db(conn: &Connection) -> Result<()> {
     )?;
 
     // Migration: Add read_only column if it doesn't exist
-    conn.execute(
+    match conn.execute(
         "ALTER TABLE tokens ADD COLUMN read_only BOOLEAN NOT NULL DEFAULT 0",
         [],
-    )
-    .ok();
+    ) {
+        Ok(_) => {},
+        Err(e) => {
+            let err_msg = e.to_string();
+            // "duplicate column name" is the expected error when the column already exists
+            if !err_msg.contains("duplicate column name") {
+                return Err(TokenError::Database(e));
+            }
+        },
+    }
 
     Ok(())
 }
 
-fn hash_token(token: &str) -> String {
+pub fn hash_token(token: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(token.as_bytes());
     format!("{:x}", hasher.finalize())
 }
 
 pub fn create_token(name: Option<String>, read_only: bool) -> Result<(String, String)> {
-    let db_path = get_db_path()?;
-    let conn = Connection::open(db_path)?;
-    init_db(&conn)?;
+    let conn = open_db()?;
 
     let token = Uuid::new_v4().to_string();
     let token_hash = hash_token(&token);
@@ -143,9 +166,11 @@ pub fn create_token(name: Option<String>, read_only: bool) -> Result<(String, St
 }
 
 pub fn create_session_token(auth_token: &str, remember_me: bool) -> Result<String> {
-    let db_path = get_db_path()?;
-    let conn = Connection::open(db_path)?;
-    init_db(&conn)?;
+    log::info!(
+        "[auth] create_session_token called, remember_me={}",
+        remember_me
+    );
+    let conn = open_db()?;
 
     cleanup_expired_sessions()?;
 
@@ -157,7 +182,10 @@ pub fn create_session_token(auth_token: &str, remember_me: bool) -> Result<Strin
         |row| row.get(0),
     )?;
 
+    log::info!("[auth] auth token lookup count={}", count);
+
     if count == 0 {
+        log::warn!("[auth] auth token not found in DB");
         return Err(TokenError::InvalidToken);
     }
 
@@ -183,18 +211,25 @@ pub fn create_session_token(auth_token: &str, remember_me: bool) -> Result<Strin
         format!("datetime({}, 'unixepoch')", now + short_duration)
     };
 
-    conn.execute(
+    log::info!("[auth] inserting session token, expires_at={}", expires_at);
+
+    let insert_result = conn.execute(
         &format!("INSERT INTO session_tokens (session_token_hash, auth_token_hash, remember_me, expires_at) VALUES (?1, ?2, ?3, {})", expires_at),
         [&session_token_hash, &auth_token_hash, &(remember_me as i64).to_string()],
-    )?;
+    );
+
+    match &insert_result {
+        Ok(rows) => log::info!("[auth] session token inserted successfully, rows={}", rows),
+        Err(e) => log::error!("[auth] session token insert FAILED: {}", e),
+    }
+
+    insert_result?;
 
     Ok(session_token)
 }
 
 pub fn validate_session_token(session_token: &str) -> Result<bool> {
-    let db_path = get_db_path()?;
-    let conn = Connection::open(db_path)?;
-    init_db(&conn)?;
+    let conn = open_db()?;
 
     let session_token_hash = hash_token(session_token);
 
@@ -204,13 +239,53 @@ pub fn validate_session_token(session_token: &str) -> Result<bool> {
         |row| row.get(0),
     )?;
 
+    log::info!(
+        "[auth] validate_session_token: hash={}, count={}",
+        &session_token_hash[..8],
+        count
+    );
+
+    if count == 0 {
+        // Debug: check if the token exists at all (maybe expired?)
+        let total: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM session_tokens WHERE session_token_hash = ?1",
+                [&session_token_hash],
+                |row| row.get(0),
+            )
+            .unwrap_or(0);
+        if total > 0 {
+            let expires: String = conn
+                .query_row(
+                    "SELECT expires_at FROM session_tokens WHERE session_token_hash = ?1",
+                    [&session_token_hash],
+                    |row| row.get(0),
+                )
+                .unwrap_or_else(|_| "unknown".to_string());
+            let now: String = conn
+                .query_row("SELECT datetime('now')", [], |row| row.get(0))
+                .unwrap_or_else(|_| "unknown".to_string());
+            log::warn!(
+                "[auth] session token exists but expired or invalid: expires_at={}, now={}",
+                expires,
+                now
+            );
+        } else {
+            let total_sessions: i64 = conn
+                .query_row("SELECT COUNT(*) FROM session_tokens", [], |row| row.get(0))
+                .unwrap_or(0);
+            log::warn!(
+                "[auth] session token not found in DB at all. Total session_tokens rows={}",
+                total_sessions
+            );
+        }
+    }
+
     Ok(count > 0)
 }
 
 pub fn is_session_token_read_only(session_token: &str) -> Result<bool> {
-    let db_path = get_db_path()?;
-    let conn = Connection::open(db_path)?;
-    init_db(&conn)?;
+    let conn = open_db()?;
 
     let session_token_hash = hash_token(session_token);
 
@@ -231,22 +306,28 @@ pub fn is_session_token_read_only(session_token: &str) -> Result<bool> {
 }
 
 pub fn cleanup_expired_sessions() -> Result<usize> {
-    let db_path = get_db_path()?;
-    let conn = Connection::open(db_path)?;
-    init_db(&conn)?;
+    let conn = open_db()?;
+
+    let total_before: i64 = conn
+        .query_row("SELECT COUNT(*) FROM session_tokens", [], |row| row.get(0))
+        .unwrap_or(0);
 
     let rows_affected = conn.execute(
         "DELETE FROM session_tokens WHERE expires_at <= datetime('now')",
         [],
     )?;
 
+    log::info!(
+        "[auth] cleanup_expired_sessions: deleted {} of {} total session tokens",
+        rows_affected,
+        total_before
+    );
+
     Ok(rows_affected)
 }
 
 pub fn revoke_session_token(session_token: &str) -> Result<bool> {
-    let db_path = get_db_path()?;
-    let conn = Connection::open(db_path)?;
-    init_db(&conn)?;
+    let conn = open_db()?;
 
     let session_token_hash = hash_token(session_token);
     let rows_affected = conn.execute(
@@ -258,9 +339,7 @@ pub fn revoke_session_token(session_token: &str) -> Result<bool> {
 }
 
 pub fn revoke_sessions_for_auth_token(auth_token: &str) -> Result<usize> {
-    let db_path = get_db_path()?;
-    let conn = Connection::open(db_path)?;
-    init_db(&conn)?;
+    let conn = open_db()?;
 
     let auth_token_hash = hash_token(auth_token);
     let rows_affected = conn.execute(
@@ -272,11 +351,11 @@ pub fn revoke_sessions_for_auth_token(auth_token: &str) -> Result<usize> {
 }
 
 pub fn revoke_token(name: &str) -> Result<bool> {
-    let db_path = get_db_path()?;
-    let conn = Connection::open(db_path)?;
-    init_db(&conn)?;
+    let mut conn = open_db()?;
 
-    let token_hash = match conn.query_row(
+    let tx = conn.transaction().map_err(TokenError::Database)?;
+
+    let token_hash = match tx.query_row(
         "SELECT token_hash FROM tokens WHERE name = ?1",
         [&name],
         |row| row.get::<_, String>(0),
@@ -287,30 +366,29 @@ pub fn revoke_token(name: &str) -> Result<bool> {
     };
 
     if let Some(token_hash) = token_hash {
-        conn.execute(
+        tx.execute(
             "DELETE FROM session_tokens WHERE auth_token_hash = ?1",
             [&token_hash],
         )?;
     }
 
-    let rows_affected = conn.execute("DELETE FROM tokens WHERE name = ?1", [&name])?;
+    let rows_affected = tx.execute("DELETE FROM tokens WHERE name = ?1", [&name])?;
+    tx.commit().map_err(TokenError::Database)?;
     Ok(rows_affected > 0)
 }
 
 pub fn revoke_all_tokens() -> Result<usize> {
-    let db_path = get_db_path()?;
-    let conn = Connection::open(db_path)?;
-    init_db(&conn)?;
+    let mut conn = open_db()?;
 
-    conn.execute("DELETE FROM session_tokens", [])?;
-    let rows_affected = conn.execute("DELETE FROM tokens", [])?;
+    let tx = conn.transaction().map_err(TokenError::Database)?;
+    tx.execute("DELETE FROM session_tokens", [])?;
+    let rows_affected = tx.execute("DELETE FROM tokens", [])?;
+    tx.commit().map_err(TokenError::Database)?;
     Ok(rows_affected)
 }
 
 pub fn rename_token(old_name: &str, new_name: &str) -> Result<()> {
-    let db_path = get_db_path()?;
-    let conn = Connection::open(db_path)?;
-    init_db(&conn)?;
+    let conn = open_db()?;
 
     let count: i64 = conn.query_row(
         "SELECT COUNT(*) FROM tokens WHERE name = ?1",
@@ -337,9 +415,7 @@ pub fn rename_token(old_name: &str, new_name: &str) -> Result<()> {
 }
 
 pub fn list_tokens() -> Result<Vec<TokenInfo>> {
-    let db_path = get_db_path()?;
-    let conn = Connection::open(db_path)?;
-    init_db(&conn)?;
+    let conn = open_db()?;
 
     let mut stmt =
         conn.prepare("SELECT name, created_at, read_only FROM tokens ORDER BY created_at")?;
@@ -367,9 +443,7 @@ pub fn delete_db() -> Result<()> {
 }
 
 pub fn validate_token(token: &str) -> Result<bool> {
-    let db_path = get_db_path()?;
-    let conn = Connection::open(db_path)?;
-    init_db(&conn)?;
+    let conn = open_db()?;
 
     let token_hash = hash_token(token);
 

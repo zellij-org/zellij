@@ -4813,6 +4813,7 @@ dependencies = [
  "isahc",
  "lazy_static",
  "log",
+ "native-tls",
  "nix",
  "notify",
  "num_cpus",
