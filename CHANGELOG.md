@@ -78,6 +78,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat: allow dumping viewport of specific pane to STDOUT or to a file (https://github.com/zellij-org/zellij/pull/4598 and https://github.com/zellij-org/zellij/pull/4823)
 * fix: allow specifying --ip and --port with `zellij web --status` rather than relying on those in the config (https://github.com/zellij-org/zellij/pull/4825)
 * fix: make sure clients are focused when atomically showing floating panes (https://github.com/zellij-org/zellij/pull/4834)
+* feat: allow configuring focus_follows_mouse and mouse_click_through (https://github.com/zellij-org/zellij/pull/4836)
 
 
 ## [0.43.1] - 2025-08-08
