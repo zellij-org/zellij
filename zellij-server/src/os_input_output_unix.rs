@@ -365,7 +365,14 @@ impl UnixPtyBackend {
             .with_context(err_context)?
             .get(&terminal_id)
         {
-            Some(Some(fd)) => unistd::write(*fd, buf).with_context(err_context),
+            Some(Some(fd)) => match unistd::write(*fd, buf) {
+                Ok(bytes_written) => Ok(bytes_written),
+                Err(nix::errno::Errno::EAGAIN) => {
+                    Err::<usize, _>(io::Error::from(io::ErrorKind::WouldBlock))
+                        .with_context(err_context)
+                },
+                Err(e) => Err::<usize, _>(e).with_context(err_context),
+            },
             _ => Err(anyhow!("could not find raw file descriptor")).with_context(err_context),
         }
     }
