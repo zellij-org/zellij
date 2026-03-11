@@ -4929,7 +4929,7 @@ impl Tab {
                     if let Some(c) = completion.as_mut() {
                         c.set_exit_status(1);
                     }
-                }
+                },
             }
         }
         drop(completion);
