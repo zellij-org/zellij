@@ -1,4 +1,5 @@
 use crate::os_input_output::SignalEvent;
+use crate::stdin_handler_windows::restore_vt_input;
 
 use anyhow::{Context, Result};
 use async_trait::async_trait;
@@ -227,7 +228,7 @@ pub(crate) fn enable_mouse_support(stdout: &mut dyn Write) -> Result<()> {
 /// `disable_raw_mode()` never clears them.  This function restores the
 /// original console mode saved before those flags were set.
 pub(crate) fn restore_console_mode() {
-    super::stdin_handler::restore_vt_input();
+    restore_vt_input();
 }
 
 /// Disable mouse support on Windows.
