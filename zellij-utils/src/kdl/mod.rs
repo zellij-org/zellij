@@ -2792,6 +2792,9 @@ impl Options {
         let focus_follows_mouse =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "focus_follows_mouse")
                 .map(|(v, _)| v);
+        let mouse_click_through =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "mouse_click_through")
+                .map(|(v, _)| v);
 
         Ok(Options {
             simplified_ui,
@@ -2831,6 +2834,7 @@ impl Options {
             mouse_hover_effects,
             visual_bell,
             focus_follows_mouse,
+            mouse_click_through,
             web_server_ip,
             web_server_port,
             web_server_cert,
@@ -4014,6 +4018,33 @@ impl Options {
             None
         }
     }
+    fn mouse_click_through_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!(
+            "{}\n{}\n{}",
+            " ",
+            "// Whether clicking a pane to focus it also sends the click into the pane",
+            "// default is false",
+        );
+
+        let create_node = |node_value: bool| -> KdlNode {
+            let mut node = KdlNode::new("mouse_click_through");
+            node.push(KdlValue::Bool(node_value));
+            node
+        };
+        if let Some(mouse_click_through) = self.mouse_click_through {
+            let mut node = create_node(mouse_click_through);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(false);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
     fn web_server_ip_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
         let comment_text = format!(
             "{}\n{}\n{}\n{}",
@@ -4253,6 +4284,9 @@ impl Options {
         }
         if let Some(focus_follows_mouse) = self.focus_follows_mouse_to_kdl(add_comments) {
             nodes.push(focus_follows_mouse);
+        }
+        if let Some(mouse_click_through) = self.mouse_click_through_to_kdl(add_comments) {
+            nodes.push(mouse_click_through);
         }
         if let Some(web_server_ip) = self.web_server_ip_to_kdl(add_comments) {
             nodes.push(web_server_ip);

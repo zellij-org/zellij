@@ -209,6 +209,7 @@ pub(crate) struct Tab {
     advanced_mouse_actions: bool,
     mouse_hover_effects: bool,
     focus_follows_mouse: bool,
+    mouse_click_through: bool,
     currently_marking_pane_group: Rc<RefCell<HashMap<ClientId, bool>>>,
     connected_clients_in_app: Rc<RefCell<HashMap<ClientId, bool>>>, // bool -> is_web_client
     // the below are the configured values - the ones that will be set if and when the web server
@@ -700,6 +701,7 @@ impl Tab {
         advanced_mouse_actions: bool,
         mouse_hover_effects: bool,
         focus_follows_mouse: bool,
+        mouse_click_through: bool,
         web_server_ip: IpAddr,
         web_server_port: u16,
     ) -> Self {
@@ -808,6 +810,7 @@ impl Tab {
             advanced_mouse_actions,
             mouse_hover_effects,
             focus_follows_mouse,
+            mouse_click_through,
             connected_clients_in_app,
             web_server_ip,
             web_server_port,
@@ -5440,6 +5443,9 @@ impl Tab {
     }
     pub fn update_focus_follows_mouse(&mut self, focus_follows_mouse: bool) {
         self.focus_follows_mouse = focus_follows_mouse;
+    }
+    pub fn update_mouse_click_through(&mut self, mouse_click_through: bool) {
+        self.mouse_click_through = mouse_click_through;
     }
     pub fn clear_mouse_hover_state(&mut self) {
         self.mouse_hover_pane_id.clear();

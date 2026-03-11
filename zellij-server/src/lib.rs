@@ -410,6 +410,10 @@ impl SessionMetaData {
                         .options
                         .focus_follows_mouse
                         .unwrap_or(false),
+                    mouse_click_through: new_config
+                        .options
+                        .mouse_click_through
+                        .unwrap_or(false),
                 })
                 .unwrap();
             self.senders

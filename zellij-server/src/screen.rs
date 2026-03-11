@@ -605,6 +605,7 @@ pub enum ScreenInstruction {
         mouse_hover_effects: bool,
         visual_bell: bool,
         focus_follows_mouse: bool,
+        mouse_click_through: bool,
     },
     RerunCommandPane(u32, Option<NotificationEnd>), // u32 - terminal pane id
     ResizePaneWithId(ResizeStrategy, PaneId),
@@ -1155,6 +1156,7 @@ pub(crate) struct Screen {
     mouse_hover_effects: bool,
     visual_bell: bool,
     focus_follows_mouse: bool,
+    mouse_click_through: bool,
     currently_marking_pane_group: Rc<RefCell<HashMap<ClientId, bool>>>,
     // the below are the configured values - the ones that will be set if and when the web server
     // is brought online
@@ -1199,6 +1201,7 @@ impl Screen {
         mouse_hover_effects: bool,
         visual_bell: bool,
         focus_follows_mouse: bool,
+        mouse_click_through: bool,
         web_server_ip: IpAddr,
         web_server_port: u16,
     ) -> Self {
@@ -1255,6 +1258,7 @@ impl Screen {
             mouse_hover_effects,
             visual_bell,
             focus_follows_mouse,
+            mouse_click_through,
             web_server_ip,
             web_server_port,
             render_blocker: RenderBlocker::new(100),
@@ -2223,6 +2227,7 @@ impl Screen {
             self.advanced_mouse_actions,
             self.mouse_hover_effects,
             self.focus_follows_mouse,
+            self.mouse_click_through,
             self.web_server_ip,
             self.web_server_port,
         );
@@ -3675,6 +3680,7 @@ impl Screen {
         mouse_hover_effects: bool,
         visual_bell: bool,
         focus_follows_mouse: bool,
+        mouse_click_through: bool,
         client_id: ClientId,
     ) -> Result<()> {
         let should_support_arrow_fonts = !simplified_ui;
@@ -3693,6 +3699,7 @@ impl Screen {
         self.mouse_hover_effects = mouse_hover_effects;
         self.visual_bell = visual_bell;
         self.focus_follows_mouse = focus_follows_mouse;
+        self.mouse_click_through = mouse_click_through;
         self.default_mode_info
             .update_arrow_fonts(should_support_arrow_fonts);
         self.default_mode_info
@@ -3715,6 +3722,7 @@ impl Screen {
             tab.update_advanced_mouse_actions(advanced_mouse_actions);
             tab.update_mouse_hover_effects(mouse_hover_effects);
             tab.update_focus_follows_mouse(focus_follows_mouse);
+            tab.update_mouse_click_through(mouse_click_through);
         }
 
         // Clear hover state when disabled
@@ -4618,6 +4626,7 @@ pub(crate) fn screen_thread_main(
     let mouse_hover_effects = config_options.mouse_hover_effects.unwrap_or(true);
     let visual_bell = config_options.visual_bell.unwrap_or(true);
     let focus_follows_mouse = config_options.focus_follows_mouse.unwrap_or(false);
+    let mouse_click_through = config_options.mouse_click_through.unwrap_or(false);
 
     let thread_senders = bus.senders.clone();
     let mut screen = Screen::new(
@@ -4658,6 +4667,7 @@ pub(crate) fn screen_thread_main(
         mouse_hover_effects,
         visual_bell,
         focus_follows_mouse,
+        mouse_click_through,
         web_server_ip,
         web_server_port,
     );
@@ -7443,6 +7453,7 @@ pub(crate) fn screen_thread_main(
                 mouse_hover_effects,
                 visual_bell,
                 focus_follows_mouse,
+                mouse_click_through,
             } => {
                 screen
                     .reconfigure(
@@ -7464,6 +7475,7 @@ pub(crate) fn screen_thread_main(
                         mouse_hover_effects,
                         visual_bell,
                         focus_follows_mouse,
+                        mouse_click_through,
                         client_id,
                     )
                     .non_fatal();
