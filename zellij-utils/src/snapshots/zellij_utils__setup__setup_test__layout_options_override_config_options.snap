@@ -1,5 +1,6 @@
 ---
 source: zellij-utils/src/setup.rs
+assertion_line: 776
 expression: "format!(\"{:#?}\", options)"
 ---
 Options {
@@ -48,4 +49,5 @@ Options {
     enforce_https_for_localhost: None,
     post_command_discovery_hook: None,
     client_async_worker_tasks: None,
+    tab_cycle_wrap: None,
 }

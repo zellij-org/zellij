@@ -604,6 +604,7 @@ pub enum ScreenInstruction {
         advanced_mouse_actions: bool,
         mouse_hover_effects: bool,
         visual_bell: bool,
+        tab_cycle_wrap: bool,
     },
     RerunCommandPane(u32, Option<NotificationEnd>), // u32 - terminal pane id
     ResizePaneWithId(ResizeStrategy, PaneId),
@@ -1153,6 +1154,7 @@ pub(crate) struct Screen {
     advanced_mouse_actions: bool,
     mouse_hover_effects: bool,
     visual_bell: bool,
+    tab_cycle_wrap: bool,
     currently_marking_pane_group: Rc<RefCell<HashMap<ClientId, bool>>>,
     // the below are the configured values - the ones that will be set if and when the web server
     // is brought online
@@ -1196,6 +1198,7 @@ impl Screen {
         advanced_mouse_actions: bool,
         mouse_hover_effects: bool,
         visual_bell: bool,
+        tab_cycle_wrap: bool,
         web_server_ip: IpAddr,
         web_server_port: u16,
     ) -> Self {
@@ -1251,6 +1254,7 @@ impl Screen {
             advanced_mouse_actions,
             mouse_hover_effects,
             visual_bell,
+            tab_cycle_wrap,
             web_server_ip,
             web_server_port,
             render_blocker: RenderBlocker::new(100),
@@ -1558,7 +1562,11 @@ impl Screen {
             match self.get_active_tab(client_id) {
                 Ok(active_tab) => {
                     let active_tab_pos = active_tab.position;
-                    let new_tab_pos = (active_tab_pos + 1) % self.tabs.len();
+                    let new_tab_pos = if self.tab_cycle_wrap {
+                        (active_tab_pos + 1) % self.tabs.len()
+                    } else {
+                        (active_tab_pos + 1).min(self.tabs.len() - 1)
+                    };
                     return self.switch_active_tab(
                         new_tab_pos,
                         should_change_pane_focus,
@@ -1592,7 +1600,11 @@ impl Screen {
                 Ok(active_tab) => {
                     let active_tab_pos = active_tab.position;
                     let new_tab_pos = if active_tab_pos == 0 {
-                        self.tabs.len() - 1
+                        if self.tab_cycle_wrap {
+                            self.tabs.len() - 1
+                        } else {
+                            0
+                        }
                     } else {
                         active_tab_pos - 1
                     };
@@ -3669,11 +3681,13 @@ impl Screen {
         advanced_mouse_actions: bool,
         mouse_hover_effects: bool,
         visual_bell: bool,
+        tab_cycle_wrap: bool,
         client_id: ClientId,
     ) -> Result<()> {
         let should_support_arrow_fonts = !simplified_ui;
 
         // global configuration
+        self.tab_cycle_wrap = tab_cycle_wrap;
         self.default_mode_info.update_theme(theme);
         self.default_mode_info
             .update_rounded_corners(rounded_corners);
@@ -4609,6 +4623,7 @@ pub(crate) fn screen_thread_main(
     let advanced_mouse_actions = config_options.advanced_mouse_actions.unwrap_or(true);
     let mouse_hover_effects = config_options.mouse_hover_effects.unwrap_or(true);
     let visual_bell = config_options.visual_bell.unwrap_or(true);
+    let tab_cycle_wrap = config_options.tab_cycle_wrap.unwrap_or(true);
 
     let thread_senders = bus.senders.clone();
     let mut screen = Screen::new(
@@ -4648,6 +4663,7 @@ pub(crate) fn screen_thread_main(
         advanced_mouse_actions,
         mouse_hover_effects,
         visual_bell,
+        tab_cycle_wrap,
         web_server_ip,
         web_server_port,
     );
@@ -7432,6 +7448,7 @@ pub(crate) fn screen_thread_main(
                 advanced_mouse_actions,
                 mouse_hover_effects,
                 visual_bell,
+                tab_cycle_wrap,
             } => {
                 screen
                     .reconfigure(
@@ -7452,6 +7469,7 @@ pub(crate) fn screen_thread_main(
                         advanced_mouse_actions,
                         mouse_hover_effects,
                         visual_bell,
+                        tab_cycle_wrap,
                         client_id,
                     )
                     .non_fatal();

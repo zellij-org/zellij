@@ -1,5 +1,6 @@
 ---
 source: zellij-utils/src/kdl/mod.rs
+assertion_line: 7090
 expression: fake_config_stringified
 ---
 keybinds clear-defaults=true {
@@ -564,3 +565,9 @@ web_client {
 // typically work best. Set to 0 to use the number of (physical) CPU cores.
 // Note: This only applies to web clients at the moment.
 // client_async_worker_tasks 4
+ 
+// Whether to wrap around when switching to the next/previous tab
+// Default: true
+// 
+// tab_cycle_wrap true
+

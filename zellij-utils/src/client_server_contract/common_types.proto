@@ -1118,6 +1118,7 @@ message Options {
   optional bool mouse_hover_effects = 41;
   optional uint64 client_async_worker_tasks = 42;
   optional bool visual_bell = 43;
+  optional bool tab_cycle_wrap = 44;
 }
 
 enum OnForceClose {
