@@ -1,7 +1,12 @@
 use std::net::{IpAddr, Ipv4Addr};
 
-use clap::Parser;
+use clap::{CommandFactory, Parser};
 use zellij_utils::cli::{CliArgs, Command};
+
+#[test]
+fn verify_cli() {
+    CliArgs::command().debug_assert();
+}
 
 #[test]
 fn web_cli_status_alone_works() {
