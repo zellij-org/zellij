@@ -1835,6 +1835,10 @@ pub struct Options {
     pub client_async_worker_tasks: ::core::option::Option<u64>,
     #[prost(bool, optional, tag="43")]
     pub visual_bell: ::core::option::Option<bool>,
+    #[prost(bool, optional, tag="44")]
+    pub focus_follows_mouse: ::core::option::Option<bool>,
+    #[prost(bool, optional, tag="45")]
+    pub mouse_click_through: ::core::option::Option<bool>,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]

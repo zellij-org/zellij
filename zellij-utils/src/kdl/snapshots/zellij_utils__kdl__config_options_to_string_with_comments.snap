@@ -260,6 +260,14 @@ web_sharing "disabled"
 // default is true
 // visual_bell true
  
+// Whether to focus panes on mouse hover
+// default is false
+// focus_follows_mouse false
+ 
+// Whether clicking a pane to focus it also sends the click into the pane
+// default is false
+// mouse_click_through false
+ 
 // The ip address the web server should listen on when it starts
 // Default: "127.0.0.1"
 // (Requires restart)

@@ -237,6 +237,18 @@ pub struct Options {
     #[serde(default)]
     pub visual_bell: Option<bool>,
 
+    /// Whether to focus panes on mouse hover (true or false)
+    /// default is false
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub focus_follows_mouse: Option<bool>,
+
+    /// Whether clicking a pane to focus it also sends the click into the pane (true or false)
+    /// default is false
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub mouse_click_through: Option<bool>,
+
     // these are intentionally excluded from the CLI options as they must be specified in the
     // configuration file
     pub web_server_ip: Option<IpAddr>,
@@ -343,6 +355,8 @@ impl Options {
         let advanced_mouse_actions = other.advanced_mouse_actions.or(self.advanced_mouse_actions);
         let mouse_hover_effects = other.mouse_hover_effects.or(self.mouse_hover_effects);
         let visual_bell = other.visual_bell.or(self.visual_bell);
+        let focus_follows_mouse = other.focus_follows_mouse.or(self.focus_follows_mouse);
+        let mouse_click_through = other.mouse_click_through.or(self.mouse_click_through);
         let web_server_ip = other.web_server_ip.or(self.web_server_ip);
         let web_server_port = other.web_server_port.or(self.web_server_port);
         let web_server_cert = other
@@ -396,6 +410,8 @@ impl Options {
             advanced_mouse_actions,
             mouse_hover_effects,
             visual_bell,
+            focus_follows_mouse,
+            mouse_click_through,
             web_server_ip,
             web_server_port,
             web_server_cert,
@@ -470,6 +486,8 @@ impl Options {
         let advanced_mouse_actions = other.advanced_mouse_actions.or(self.advanced_mouse_actions);
         let mouse_hover_effects = other.mouse_hover_effects.or(self.mouse_hover_effects);
         let visual_bell = other.visual_bell.or(self.visual_bell);
+        let focus_follows_mouse = merge_bool(other.focus_follows_mouse, self.focus_follows_mouse);
+        let mouse_click_through = merge_bool(other.mouse_click_through, self.mouse_click_through);
         let web_server_ip = other.web_server_ip.or(self.web_server_ip);
         let web_server_port = other.web_server_port.or(self.web_server_port);
         let web_server_cert = other
@@ -523,6 +541,8 @@ impl Options {
             advanced_mouse_actions,
             mouse_hover_effects,
             visual_bell,
+            focus_follows_mouse,
+            mouse_click_through,
             web_server_ip,
             web_server_port,
             web_server_cert,

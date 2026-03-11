@@ -1118,6 +1118,8 @@ message Options {
   optional bool mouse_hover_effects = 41;
   optional uint64 client_async_worker_tasks = 42;
   optional bool visual_bell = 43;
+  optional bool focus_follows_mouse = 44;
+  optional bool mouse_click_through = 45;
 }
 
 enum OnForceClose {
