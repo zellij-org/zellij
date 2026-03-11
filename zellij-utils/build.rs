@@ -6,10 +6,16 @@ fn main() {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap_or_default());
     let repo_root = manifest_dir.join("..");
 
-    println!(
-        "cargo:rerun-if-changed={}",
-        repo_root.join(".git/HEAD").display()
-    );
+    let git_head = repo_root.join(".git/HEAD");
+    println!("cargo:rerun-if-changed={}", git_head.display());
+    if let Ok(head_contents) = std::fs::read_to_string(&git_head) {
+        if let Some(ref_path) = head_contents.strip_prefix("ref: ") {
+            println!(
+                "cargo:rerun-if-changed={}",
+                repo_root.join(".git").join(ref_path.trim()).display()
+            );
+        }
+    }
     println!("cargo:rerun-if-env-changed=ZELLIJ_VERSION");
 
     let version = env::var("ZELLIJ_VERSION")
