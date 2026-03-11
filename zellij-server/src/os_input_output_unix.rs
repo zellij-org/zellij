@@ -278,42 +278,20 @@ pub(crate) struct UnixPtyBackend {
     terminal_id_to_raw_fd: Arc<Mutex<BTreeMap<u32, Option<RawFd>>>>,
 }
 
-/// Default poll timeout for `write_all_to_fd` (5 seconds).
-const WRITE_POLL_TIMEOUT_MS: i32 = 5_000;
-
-/// Write all of `buf` to a raw fd, handling short writes, EINTR, and EAGAIN.
+/// Try to write as many bytes from `buf` as possible to `fd` without blocking.
 ///
-/// On EAGAIN, uses `poll(POLLOUT)` to wait for writability instead of busy-spinning.
-/// If the fd stays unwritable for `poll_timeout_ms` consecutive milliseconds, returns
-/// an error rather than silently truncating.
-fn write_all_to_fd(fd: RawFd, buf: &[u8]) -> Result<usize> {
-    write_all_to_fd_with_timeout(fd, buf, WRITE_POLL_TIMEOUT_MS)
-}
-
-fn write_all_to_fd_with_timeout(fd: RawFd, buf: &[u8], poll_timeout_ms: i32) -> Result<usize> {
-    use nix::poll::{poll, PollFd, PollFlags};
-
+/// Loops on successful short writes and EINTR to drain as much as the kernel
+/// will accept. On EAGAIN (fd buffer full), stops and returns how many bytes
+/// were written so far (which may be 0). The caller is expected to re-queue
+/// any unwritten remainder.
+fn try_write_to_fd(fd: RawFd, buf: &[u8]) -> Result<usize> {
     let mut written = 0;
     while written < buf.len() {
         match unistd::write(fd, &buf[written..]) {
+            Ok(0) => break, // fd returned 0 on non-empty buf; treat like EAGAIN
             Ok(n) => written += n,
             Err(nix::errno::Errno::EINTR) => continue,
-            Err(nix::errno::Errno::EAGAIN) => {
-                let mut pfd = [PollFd::new(fd, PollFlags::POLLOUT)];
-                match poll(&mut pfd, poll_timeout_ms) {
-                    Ok(0) => {
-                        // Timeout — fd never became writable
-                        anyhow::bail!(
-                            "timed out waiting for pty to become writable \
-                             ({}/{} bytes written)",
-                            written, buf.len()
-                        );
-                    },
-                    Ok(_) => continue, // fd is writable, retry write
-                    Err(nix::errno::Errno::EINTR) => continue,
-                    Err(e) => return Err(e.into()),
-                }
-            },
+            Err(nix::errno::Errno::EAGAIN) => break,
             Err(e) => return Err(e.into()),
         }
     }
@@ -411,7 +389,7 @@ impl UnixPtyBackend {
             _ => return Err(anyhow!("could not find raw file descriptor")).with_context(err_context),
         };
 
-        write_all_to_fd(fd, buf).with_context(err_context)
+        try_write_to_fd(fd, buf).with_context(err_context)
     }
 
     pub fn tcdrain(&self, terminal_id: u32) -> Result<()> {
@@ -478,89 +456,51 @@ mod tests {
     use nix::sys::termios;
     use std::io::Read;
 
-    /// Verify that `write_to_tty_stdin` writes ALL bytes even when the
-    /// underlying fd returns short writes (EAGAIN / partial).
+    /// Verify that `try_write_to_fd` writes as many bytes as the kernel will
+    /// accept in one pass and returns a partial count (not an error) when the
+    /// PTY buffer fills up.
     ///
-    /// The test sets the PTY master to O_NONBLOCK so that write() returns
-    /// immediately with however many bytes fit in the kernel buffer (~4-16
-    /// KiB on macOS). A reader thread starts after a short delay, draining
-    /// the slave side. Without the write-retry loop, only the first
-    /// buffer-full would be reported as written and the rest would be lost.
+    /// A concurrent reader drains the slave side so some bytes are accepted.
+    /// The key assertion: the function returns Ok(n) where n <= buf.len(),
+    /// and the caller (PtyWriter) is responsible for re-queuing the rest.
     #[test]
-    fn write_to_tty_stdin_delivers_all_bytes() {
+    fn try_write_to_fd_returns_partial_on_full_buffer() {
         let pty = openpty(None, &None).expect("openpty failed");
 
-        // Raw mode on slave — prevent line discipline from transforming bytes
         let mut attrs = termios::tcgetattr(pty.slave).expect("tcgetattr failed");
         termios::cfmakeraw(&mut attrs);
         termios::tcsetattr(pty.slave, termios::SetArg::TCSANOW, &attrs)
             .expect("tcsetattr failed");
 
-        // Set master to O_NONBLOCK so write() returns short / EAGAIN
-        // instead of blocking, which is how the bug manifests in practice
+        // O_NONBLOCK so write() returns EAGAIN instead of blocking
         let flags = fcntl(pty.master, FcntlArg::F_GETFL).expect("F_GETFL");
         let mut oflags = OFlag::from_bits_truncate(flags);
         oflags.insert(OFlag::O_NONBLOCK);
         fcntl(pty.master, FcntlArg::F_SETFL(oflags)).expect("F_SETFL");
 
-        let terminal_id = 99;
-        let backend = UnixPtyBackend {
-            orig_termios: Arc::new(Mutex::new(None)),
-            terminal_id_to_raw_fd: Arc::new(Mutex::new(BTreeMap::from([(
-                terminal_id,
-                Some(pty.master),
-            )]))),
-        };
-
-        // 128 KiB — well above the kernel PTY buffer
+        // 128 KiB — well above the kernel PTY buffer (~4-16 KiB)
         let size = 128 * 1024;
         let data: Vec<u8> = (0..size).map(|i| (i % 256) as u8).collect();
-        let expected = data.clone();
 
-        // Reader drains the slave side concurrently. The writer still exercises
-        // short writes because 128 KiB >> kernel PTY buffer (4-16 KiB on macOS).
-        let slave_fd = pty.slave;
-        let reader = std::thread::spawn(move || {
-            let mut slave = unsafe { File::from_raw_fd(slave_fd) };
-            let mut received = Vec::with_capacity(size);
-            let mut buf = [0u8; 8192];
-            while received.len() < size {
-                match slave.read(&mut buf) {
-                    Ok(0) => break,
-                    Ok(n) => received.extend_from_slice(&buf[..n]),
-                    Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
-                    Err(e) => panic!("slave read error: {e}"),
-                }
-            }
-            received
-        });
+        // No reader — buffer will fill and try_write_to_fd should return partial
+        let written = super::try_write_to_fd(pty.master, &data)
+            .expect("try_write_to_fd should not error on EAGAIN");
 
-        let written = backend
-            .write_to_tty_stdin(terminal_id, &data)
-            .expect("write_to_tty_stdin failed");
-        assert_eq!(written, size, "write_to_tty_stdin should report all bytes written");
-
-        // Close master AFTER reader has drained all bytes — closing early can
-        // race with kernel buffer flush on macOS, causing the slave to see EOF
-        // before all data is delivered.
-        let received = reader.join().expect("reader thread panicked");
-        unsafe { libc::close(pty.master) };
-        backend.terminal_id_to_raw_fd.lock().unwrap().remove(&terminal_id);
-        assert_eq!(
-            received.len(),
-            expected.len(),
-            "byte count mismatch: got {} expected {}",
-            received.len(),
-            expected.len()
+        assert!(
+            written > 0 && written < size,
+            "expected partial write, got {written}/{size}",
         );
-        assert!(received == expected, "content mismatch");
+
+        unsafe {
+            libc::close(pty.master);
+            libc::close(pty.slave);
+        }
     }
 
-    /// Verify that `write_all_to_fd` returns an error (not a silent partial
-    /// write) when the PTY stays full and poll times out. Uses a short timeout
-    /// to keep the test fast.
+    /// Verify that `try_write_to_fd` returns Ok(0) — not an error — when the
+    /// fd is completely full and cannot accept any bytes at all.
     #[test]
-    fn write_all_to_fd_errors_on_stuck_pty() {
+    fn try_write_to_fd_returns_zero_on_stuck_pty() {
         let pty = openpty(None, &None).expect("openpty failed");
 
         let mut attrs = termios::tcgetattr(pty.slave).expect("tcgetattr failed");
@@ -568,32 +508,21 @@ mod tests {
         termios::tcsetattr(pty.slave, termios::SetArg::TCSANOW, &attrs)
             .expect("tcsetattr failed");
 
-        // O_NONBLOCK so writes return EAGAIN instead of blocking
         let flags = fcntl(pty.master, FcntlArg::F_GETFL).expect("F_GETFL");
         let mut oflags = OFlag::from_bits_truncate(flags);
         oflags.insert(OFlag::O_NONBLOCK);
         fcntl(pty.master, FcntlArg::F_SETFL(oflags)).expect("F_SETFL");
 
-        // 1 MiB — far more than the kernel PTY buffer (~4-16 KiB).
-        // No reader on the slave side, so the buffer fills and stays full.
-        let size = 1024 * 1024;
-        let data: Vec<u8> = vec![0x42; size];
+        // Fill the buffer completely
+        let fill = vec![0x42u8; 1024 * 1024];
+        let _ = super::try_write_to_fd(pty.master, &fill);
 
-        // Use a 100ms timeout so the test finishes quickly
-        let result = super::write_all_to_fd_with_timeout(pty.master, &data, 100);
+        // Now the buffer is full — next write should return Ok(0)
+        let written = super::try_write_to_fd(pty.master, &[0x01, 0x02, 0x03])
+            .expect("try_write_to_fd should not error on EAGAIN");
 
-        assert!(
-            result.is_err(),
-            "expected error on stuck PTY, got Ok({})",
-            result.unwrap()
-        );
-        let err_msg = format!("{}", result.unwrap_err());
-        assert!(
-            err_msg.contains("timed out"),
-            "expected timeout error, got: {err_msg}"
-        );
+        assert_eq!(written, 0, "expected zero bytes written on full buffer");
 
-        // Clean up fds
         unsafe {
             libc::close(pty.master);
             libc::close(pty.slave);

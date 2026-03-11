@@ -2885,6 +2885,7 @@ impl Tab {
                                 adjusted_input,
                                 active_terminal_id,
                                 completion_tx,
+                                0,
                             ))
                             .with_context(err_context)?;
                     },
@@ -2983,6 +2984,7 @@ impl Tab {
                         raw_input_bytes,
                         active_terminal_id,
                         None,
+                        0,
                     ))
                     .with_context(err_context)?;
                 should_update_ui = true;

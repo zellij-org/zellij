@@ -9,6 +9,7 @@ expression: "format!(\"{:#?}\", received_write_instructions)"
         ],
         0,
         None,
+        0,
     ),
     Write(
         [
@@ -16,5 +17,6 @@ expression: "format!(\"{:#?}\", received_write_instructions)"
         ],
         0,
         None,
+        0,
     ),
 ]
