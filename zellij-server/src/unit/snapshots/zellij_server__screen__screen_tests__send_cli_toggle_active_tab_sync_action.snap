@@ -2,4 +2,4 @@
 source: zellij-server/src/./unit/screen_tests.rs
 expression: "format!(\"{:?}\", received_write_instructions)"
 ---
-[Write([102, 111, 111], 0, None, 0), Write([102, 111, 111], 1, None, 0)]
+[Write([102, 111, 111], 0, None), Write([102, 111, 111], 1, None)]

@@ -1921,7 +1921,7 @@ fn init_session(
                 Some(&to_pty),
                 Some(&to_plugin),
                 Some(&to_server),
-                Some(&to_pty_writer),
+                None,
                 Some(&to_background_jobs),
                 Some(os_input.clone()),
             );
