@@ -98,10 +98,6 @@ impl ClientOsApi for TestClientOsApi {
 
     fn update_session_name(&mut self, _new_session_name: String) {}
 
-    fn read_from_stdin(&mut self) -> Result<Vec<u8>, &'static str> {
-        Ok(Vec::new())
-    }
-
     fn box_clone(&self) -> Box<dyn ClientOsApi> {
         Box::new(self.clone())
     }
