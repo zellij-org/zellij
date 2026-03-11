@@ -4914,19 +4914,22 @@ impl Tab {
             if let Some(c) = completion.as_mut() {
                 c.set_exit_status(2);
             }
-        } else if self
-            .floating_panes
-            .last_selectable_floating_pane_id()
-            .is_none()
-        {
-            // No selectable floating panes exist — surface must not be shown
-            if let Some(c) = completion.as_mut() {
-                c.set_exit_status(1);
-            }
         } else {
-            self.show_floating_panes();
-            if let Some(c) = completion.as_mut() {
-                c.set_exit_status(0);
+            match self.floating_panes.last_selectable_floating_pane_id() {
+                Some(last_selectable_floating_pane_id) => {
+                    self.show_floating_panes();
+                    self.floating_panes
+                        .focus_pane_for_all_clients(last_selectable_floating_pane_id);
+                    if let Some(c) = completion.as_mut() {
+                        c.set_exit_status(0);
+                    }
+                },
+                None => {
+                    // No selectable floating panes exist — surface must not be shown
+                    if let Some(c) = completion.as_mut() {
+                        c.set_exit_status(1);
+                    }
+                }
             }
         }
         drop(completion);
