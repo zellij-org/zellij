@@ -322,6 +322,7 @@ fn create_new_screen(
         advanced_mouse_actions,
         mouse_hover_effects,
         visual_bell,
+        false, // focus_follows_mouse
         web_server_ip,
         web_server_port,
     );
@@ -5200,6 +5201,7 @@ fn create_new_screen_with_message_capture(
         true,
         true,
         visual_bell,
+        false, // focus_follows_mouse
         web_server_ip,
         web_server_port,
     );

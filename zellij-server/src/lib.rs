@@ -406,6 +406,10 @@ impl SessionMetaData {
                         .unwrap_or(true),
                     mouse_hover_effects: new_config.options.mouse_hover_effects.unwrap_or(true),
                     visual_bell: new_config.options.visual_bell.unwrap_or(true),
+                    focus_follows_mouse: new_config
+                        .options
+                        .focus_follows_mouse
+                        .unwrap_or(false),
                 })
                 .unwrap();
             self.senders
