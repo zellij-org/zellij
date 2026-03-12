@@ -4,26 +4,93 @@ on:
     tags:
       - 'v*.*.*'
   workflow_dispatch:
+    inputs:
+      tag_name:
+        description: "Existing tag to publish (example: v1.2.3)"
+        required: true
+        type: string
+      draft:
+        description: Create as draft release
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
 
 jobs:
-  create-release:
+  resolve-release-context:
     runs-on: ubuntu-latest
     outputs:
-      upload_url: ${{ steps.create_release.outputs.upload_url }}
+      release_tag: ${{ steps.resolve.outputs.release_tag }}
+      release_name: ${{ steps.resolve.outputs.release_name }}
+      draft: ${{ steps.resolve.outputs.draft }}
+      default_branch: ${{ steps.resolve.outputs.default_branch }}
+    steps:
+      - name: Resolve release metadata
+        id: resolve
+        run: |
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            release_tag="${{ inputs.tag_name }}"
+            draft="${{ inputs.draft }}"
+          else
+            release_tag="${GITHUB_REF#refs/tags/}"
+            draft="false"
+          fi
+
+          release_tag="${release_tag#refs/tags/}"
+          if ! git check-ref-format --allow-onelevel "refs/tags/${release_tag}"; then
+            echo "Invalid tag name: ${release_tag}"
+            exit 1
+          fi
+
+          default_branch="${{ vars.RELEASE_DEFAULT_BRANCH }}"
+          if [ -z "${default_branch}" ]; then
+            default_branch="${{ github.event.repository.default_branch }}"
+          fi
+
+          echo "release_tag=${release_tag}" >> "$GITHUB_OUTPUT"
+          echo "release_name=Release ${release_tag}" >> "$GITHUB_OUTPUT"
+          echo "draft=${draft}" >> "$GITHUB_OUTPUT"
+          echo "default_branch=${default_branch}" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout repository with tags
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Ensure release tag exists
+        run: git rev-parse --verify "refs/tags/${{ steps.resolve.outputs.release_tag }}^{commit}"
+
+      - name: Ensure release tag commit is on default branch
+        run: |
+          git fetch --force --tags origin
+          git fetch --force origin "${{ steps.resolve.outputs.default_branch }}:refs/remotes/origin/${{ steps.resolve.outputs.default_branch }}"
+          tag_commit="$(git rev-parse "refs/tags/${{ steps.resolve.outputs.release_tag }}^{commit}")"
+          if ! git merge-base --is-ancestor "${tag_commit}" "origin/${{ steps.resolve.outputs.default_branch }}"; then
+            echo "Tag ${{ steps.resolve.outputs.release_tag }} is not on default branch ${{ steps.resolve.outputs.default_branch }}"
+            exit 1
+          fi
+
+  create-release:
+    needs: resolve-release-context
+    runs-on: ubuntu-latest
     steps:
       - name: create_release
         id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event_name == 'workflow_dispatch' && '' || github.ref }}
-          release_name: Release ${{ github.event_name == 'workflow_dispatch' && 'main' || github.ref }}
-          draft: ${{ github.event_name == 'workflow_dispatch' }}
+          tag_name: ${{ needs.resolve-release-context.outputs.release_tag }}
+          name: ${{ needs.resolve-release-context.outputs.release_name }}
+          draft: ${{ needs.resolve-release-context.outputs.draft == 'true' }}
           prerelease: false
+          generate_release_notes: true
 
   build-release-normal:
-    needs: create-release
+    needs:
+      - create-release
+      - resolve-release-context
     name: build-release-normal
     runs-on: ${{ matrix.os }}
     env:
@@ -53,25 +120,6 @@ jobs:
             os: windows-latest
             target: x86_64-pc-windows-msvc
     steps:
-      - name: Set release tag (Unix)
-        if: runner.os != 'Windows'
-        run: |
-          if [ "$GITHUB_EVENT_NAME" == 'workflow_dispatch' ]; then
-            echo "RELEASE_TAG=main" >> "$GITHUB_ENV"
-          else
-            echo "RELEASE_TAG=${GITHUB_REF#refs/tags/}"  >> "$GITHUB_ENV"
-          fi
-
-      - name: Set release tag (Windows)
-        if: runner.os == 'Windows'
-        run: |
-          if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch') {
-            echo "RELEASE_TAG=main" >> $env:GITHUB_ENV
-          } else {
-            $tag = $env:GITHUB_REF -replace '^refs/tags/', ''
-            echo "RELEASE_TAG=$tag" >> $env:GITHUB_ENV
-          }
-
       - name: Checkout repository
         uses: actions/checkout@v3
 
@@ -142,28 +190,19 @@ jobs:
           "$hash  target/release/zellij.exe" | Out-File -Encoding ascii $checksum_name
           echo "checksum_name=$checksum_name" >> $env:GITHUB_OUTPUT
 
-      - name: Upload release archive
-        uses: actions/upload-release-asset@v1.0.2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
         with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: ${{ steps.make-artifact-unix.outputs.asset_name || steps.make-artifact-windows.outputs.asset_name }}
-          asset_name: ${{ runner.os == 'Windows' && format('zellij-{0}.zip', matrix.target) || format('zellij-{0}.tar.gz', matrix.target) }}
-          asset_content_type: application/octet-stream
-
-      - name: Upload checksum
-        uses: actions/upload-release-asset@v1.0.2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: ${{ steps.make-checksum-unix.outputs.checksum_name || steps.make-checksum-windows.outputs.checksum_name }}
-          asset_name: zellij-${{matrix.target}}.sha256sum
-          asset_content_type: text/plain
+          tag_name: ${{ needs.resolve-release-context.outputs.release_tag }}
+          files: |
+            ${{ steps.make-artifact-unix.outputs.asset_name || steps.make-artifact-windows.outputs.asset_name }}
+            ${{ steps.make-checksum-unix.outputs.checksum_name || steps.make-checksum-windows.outputs.checksum_name }}
+          overwrite_files: true
 
   build-release-noweb:
-    needs: create-release
+    needs:
+      - create-release
+      - resolve-release-context
     name: build-release-noweb
     runs-on: ${{ matrix.os }}
     env:
@@ -193,25 +232,6 @@ jobs:
             os: windows-latest
             target: x86_64-pc-windows-msvc
     steps:
-      - name: Set release tag (Unix)
-        if: runner.os != 'Windows'
-        run: |
-          if [ "$GITHUB_EVENT_NAME" == 'workflow_dispatch' ]; then
-            echo "RELEASE_TAG=main" >> "$GITHUB_ENV"
-          else
-            echo "RELEASE_TAG=${GITHUB_REF#refs/tags/}"  >> "$GITHUB_ENV"
-          fi
-
-      - name: Set release tag (Windows)
-        if: runner.os == 'Windows'
-        run: |
-          if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch') {
-            echo "RELEASE_TAG=main" >> $env:GITHUB_ENV
-          } else {
-            $tag = $env:GITHUB_REF -replace '^refs/tags/', ''
-            echo "RELEASE_TAG=$tag" >> $env:GITHUB_ENV
-          }
-
       - name: Checkout repository
         uses: actions/checkout@v3
 
@@ -282,22 +302,11 @@ jobs:
           "$hash  target/release/zellij.exe" | Out-File -Encoding ascii $checksum_name
           echo "checksum_name=$checksum_name" >> $env:GITHUB_OUTPUT
 
-      - name: Upload release archive
-        uses: actions/upload-release-asset@v1.0.2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
         with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: ${{ steps.make-artifact-unix.outputs.asset_name || steps.make-artifact-windows.outputs.asset_name }}
-          asset_name: ${{ runner.os == 'Windows' && format('zellij-no-web-{0}.zip', matrix.target) || format('zellij-no-web-{0}.tar.gz', matrix.target) }}
-          asset_content_type: application/octet-stream
-
-      - name: Upload checksum
-        uses: actions/upload-release-asset@v1.0.2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: ${{ steps.make-checksum-unix.outputs.checksum_name || steps.make-checksum-windows.outputs.checksum_name }}
-          asset_name: zellij-no-web-${{matrix.target}}.sha256sum
-          asset_content_type: text/plain
+          tag_name: ${{ needs.resolve-release-context.outputs.release_tag }}
+          files: |
+            ${{ steps.make-artifact-unix.outputs.asset_name || steps.make-artifact-windows.outputs.asset_name }}
+            ${{ steps.make-checksum-unix.outputs.checksum_name || steps.make-checksum-windows.outputs.checksum_name }}
+          overwrite_files: true
