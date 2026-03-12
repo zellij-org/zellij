@@ -77,6 +77,8 @@ pub mod key {
         Pause = 29,
         Menu = 30,
         Enter = 31,
+        ScrollUp = 32,
+        ScrollDown = 33,
     }
     impl NamedKey {
         /// String value of the enum field names used in the ProtoBuf definition.
@@ -117,6 +119,8 @@ pub mod key {
                 NamedKey::Pause => "Pause",
                 NamedKey::Menu => "Menu",
                 NamedKey::Enter => "Enter",
+                NamedKey::ScrollUp => "ScrollUp",
+                NamedKey::ScrollDown => "ScrollDown",
             }
         }
         /// Creates an enum from field names used in the ProtoBuf definition.
@@ -154,6 +158,8 @@ pub mod key {
                 "Pause" => Some(Self::Pause),
                 "Menu" => Some(Self::Menu),
                 "Enter" => Some(Self::Enter),
+                "ScrollUp" => Some(Self::ScrollUp),
+                "ScrollDown" => Some(Self::ScrollDown),
                 _ => None,
             }
         }

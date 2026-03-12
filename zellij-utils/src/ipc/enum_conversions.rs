@@ -44,7 +44,8 @@ impl From<BareKey> for ProtoBareKey {
             BareKey::PrintScreen => ProtoBareKey::PrintScreen,
             BareKey::Pause => ProtoBareKey::Pause,
             BareKey::Menu => ProtoBareKey::Menu,
-            BareKey::ScrollUp | BareKey::ScrollDown => ProtoBareKey::Unspecified,
+            BareKey::ScrollUp => ProtoBareKey::ScrollUp,
+            BareKey::ScrollDown => ProtoBareKey::ScrollDown,
         }
     }
 }
@@ -87,6 +88,8 @@ impl TryFrom<ProtoBareKey> for BareKey {
             ProtoBareKey::PrintScreen => Ok(BareKey::PrintScreen),
             ProtoBareKey::Pause => Ok(BareKey::Pause),
             ProtoBareKey::Menu => Ok(BareKey::Menu),
+            ProtoBareKey::ScrollUp => Ok(BareKey::ScrollUp),
+            ProtoBareKey::ScrollDown => Ok(BareKey::ScrollDown),
             ProtoBareKey::Unspecified => Err(anyhow!("Unspecified bare key")),
         }
     }

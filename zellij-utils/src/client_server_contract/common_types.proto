@@ -67,6 +67,8 @@ enum BareKey {
   BARE_KEY_PRINT_SCREEN = 31;
   BARE_KEY_PAUSE = 32;
   BARE_KEY_MENU = 33;
+  BARE_KEY_SCROLL_UP = 34;
+  BARE_KEY_SCROLL_DOWN = 35;
 }
 
 message CharKey {
