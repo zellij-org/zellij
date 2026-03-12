@@ -105,7 +105,6 @@ pub(crate) fn namespace_notification_id(metadata: &str, pane_id: u32) -> String 
     }
 }
 
-use compact_str::CompactString;
 use unicode_segmentation::GraphemeCursor;
 use vte::{Params, Perform};
 use zellij_utils::{consts::VERSION, shared::version_number};
@@ -568,8 +567,7 @@ fn position_in_span(
 #[derive(Default)]
 struct PendingGrapheme {
     /// Accumulated EGC text placed in the cell so far.
-    /// CompactString stores ≤24 bytes inline (no heap), covering all single chars and most emoji.
-    text: CompactString,
+    text: String,
     /// Column of the cell being accumulated into (logical x, as passed to add_character).
     x: usize,
     /// Row of the cell being accumulated into.
@@ -1944,7 +1942,7 @@ impl Grid {
         // egc_state.text must reflect the complete EGC so that boundary checks
         // against subsequent codepoints use correct prior context — particularly
         // RI parity for flag sequences repeated via CSI b.
-        let egc_text = CompactString::from(terminal_character.grapheme());
+        let egc_text = String::from(terminal_character.grapheme());
         self.add_character_at_cursor_position(terminal_character, false);
         self.move_cursor_forward_until_edge(character_width);
         self.egc_state = Some(PendingGrapheme {
