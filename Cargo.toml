@@ -1,5 +1,6 @@
 [package]
 name = "zellij"
+build = "src/build.rs"
 authors = ["Aram Drevekenin <aram@poor.dev>"]
 description = "A terminal workspace with batteries included"
 homepage = "https://zellij.dev"
