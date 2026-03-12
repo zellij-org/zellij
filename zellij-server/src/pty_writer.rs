@@ -32,7 +32,10 @@ impl From<&PtyWriteInstruction> for PtyWriteContext {
     }
 }
 
-/// Maximum pending bytes per terminal before dropping the buffer (10 MB).
+/// Maximum pending bytes per terminal before dropping the buffer.
+///
+/// Exposed (but not `pub`) so tests in this module can reference it.
+#[allow(dead_code)]
 const MAX_PENDING_BYTES: usize = 10 * 1024 * 1024;
 
 /// When pending writes exist, poll for new instructions with this timeout
@@ -173,3 +176,7 @@ pub(crate) fn pty_writer_main(bus: Bus<PtyWriteInstruction>) -> Result<()> {
         pending.retain(|_, q| !q.is_empty());
     }
 }
+
+#[cfg(test)]
+#[path = "./unit/pty_writer_tests.rs"]
+mod pty_writer_tests;
