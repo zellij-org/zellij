@@ -489,7 +489,10 @@ mod tests {
                 Err(e) => panic!("unexpected error filling buffer: {e}"),
             }
         }
-        assert!(total_filled > 0, "should have written some bytes to fill buffer");
+        assert!(
+            total_filled > 0,
+            "should have written some bytes to fill buffer"
+        );
 
         // Read a small amount from the slave to free partial space
         let mut drain = vec![0u8; 512];
