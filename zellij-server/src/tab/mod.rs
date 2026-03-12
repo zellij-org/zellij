@@ -2297,7 +2297,14 @@ impl Tab {
         completion_tx: Option<NotificationEnd>,
         borderless: Option<bool>,
     ) -> Result<()> {
-        self.horizontal_split_with_size(pid, initial_pane_title, client_id, completion_tx, borderless, None)
+        self.horizontal_split_with_size(
+            pid,
+            initial_pane_title,
+            client_id,
+            completion_tx,
+            borderless,
+            None,
+        )
     }
     pub fn horizontal_split_with_size(
         &mut self,
@@ -2344,8 +2351,12 @@ impl Tab {
                 if let Some(borderless) = borderless {
                     new_terminal.set_borderless(borderless);
                 }
-                self.tiled_panes
-                    .split_pane_horizontally(pid, Box::new(new_terminal), client_id, size);
+                self.tiled_panes.split_pane_horizontally(
+                    pid,
+                    Box::new(new_terminal),
+                    client_id,
+                    size,
+                );
                 self.set_should_clear_display_before_rendering();
                 self.tiled_panes.focus_pane(pid, client_id);
                 self.swap_layouts.set_is_tiled_damaged();
@@ -2375,7 +2386,14 @@ impl Tab {
         completion_tx: Option<NotificationEnd>,
         borderless: Option<bool>,
     ) -> Result<()> {
-        self.vertical_split_with_size(pid, initial_pane_title, client_id, completion_tx, borderless, None)
+        self.vertical_split_with_size(
+            pid,
+            initial_pane_title,
+            client_id,
+            completion_tx,
+            borderless,
+            None,
+        )
     }
     pub fn vertical_split_with_size(
         &mut self,
@@ -2422,8 +2440,12 @@ impl Tab {
                 if let Some(borderless) = borderless {
                     new_terminal.set_borderless(borderless);
                 }
-                self.tiled_panes
-                    .split_pane_vertically(pid, Box::new(new_terminal), client_id, size);
+                self.tiled_panes.split_pane_vertically(
+                    pid,
+                    Box::new(new_terminal),
+                    client_id,
+                    size,
+                );
                 self.set_should_clear_display_before_rendering();
                 self.tiled_panes.focus_pane(pid, client_id);
                 self.swap_layouts.set_is_tiled_damaged();

@@ -2500,7 +2500,7 @@ mod tests {
         assert_eq!(first.y, 10);
         assert_eq!(second.x, 5);
         assert_eq!(second.y, 11); // first.y + 1
-        // Cols should be preserved
+                                  // Cols should be preserved
         assert_eq!(first.cols.as_percent().unwrap(), 60.0);
         assert_eq!(second.cols.as_percent().unwrap(), 60.0);
         // Rows: 80% * 60% = 48% for existing, 80% * 40% = 32% for new
