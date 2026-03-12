@@ -49,9 +49,8 @@ impl TryFrom<BareKey> for ProtobufMainKey {
             BareKey::PrintScreen => Ok(ProtobufMainKey::Key(ProtobufNamedKey::PrintScreen as i32)),
             BareKey::Pause => Ok(ProtobufMainKey::Key(ProtobufNamedKey::Pause as i32)),
             BareKey::Menu => Ok(ProtobufMainKey::Key(ProtobufNamedKey::Menu as i32)),
-            // ScrollUp/ScrollDown are virtual keys for mouse scroll bindings;
-            // they don't have protobuf representations as they are handled client-side
-            BareKey::ScrollUp | BareKey::ScrollDown => Err("ScrollUp/ScrollDown not supported in protobuf"),
+            BareKey::ScrollUp => Ok(ProtobufMainKey::Key(ProtobufNamedKey::ScrollUp as i32)),
+            BareKey::ScrollDown => Ok(ProtobufMainKey::Key(ProtobufNamedKey::ScrollDown as i32)),
         }
     }
 }
@@ -181,5 +180,7 @@ fn named_key_to_bare_key(named_key: ProtobufNamedKey) -> BareKey {
         ProtobufNamedKey::Menu => BareKey::Menu,
         ProtobufNamedKey::NumLock => BareKey::NumLock,
         ProtobufNamedKey::Enter => BareKey::Enter,
+        ProtobufNamedKey::ScrollUp => BareKey::ScrollUp,
+        ProtobufNamedKey::ScrollDown => BareKey::ScrollDown,
     }
 }
