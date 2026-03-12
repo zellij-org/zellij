@@ -77,8 +77,10 @@ pub(crate) fn pty_writer_main(bus: Bus<PtyWriteInstruction>) -> Result<()> {
             match event {
                 PtyWriteInstruction::Write(bytes, terminal_id, completion) => {
                     let queue = pending.entry(terminal_id).or_default();
-                    let queued: usize =
-                        queue.iter().map(|w| w.bytes.len() - w.offset).sum();
+                    let queued: usize = queue
+                        .iter()
+                        .map(|w| w.bytes.len().saturating_sub(w.offset))
+                        .sum();
                     if queued + bytes.len() > MAX_PENDING_BYTES {
                         log::error!(
                             "dropping write buffer for terminal {} \
@@ -146,7 +148,7 @@ pub(crate) fn pty_writer_main(bus: Bus<PtyWriteInstruction>) -> Result<()> {
             };
 
             while let Some(front) = queue.front_mut() {
-                let remaining = &front.bytes[front.offset..];
+                let remaining = front.bytes.get(front.offset..).unwrap_or_default();
                 if remaining.is_empty() {
                     queue.pop_front();
                     continue;
@@ -154,7 +156,7 @@ pub(crate) fn pty_writer_main(bus: Bus<PtyWriteInstruction>) -> Result<()> {
                 match os_input.write_to_tty_stdin(tid, remaining) {
                     Ok(0) => break, // EAGAIN — move to next terminal
                     Ok(n) => {
-                        front.offset += n;
+                        front.offset = front.offset.saturating_add(n);
                         if front.offset >= front.bytes.len() {
                             queue.pop_front();
                         }
