@@ -44,6 +44,7 @@ impl From<BareKey> for ProtoBareKey {
             BareKey::PrintScreen => ProtoBareKey::PrintScreen,
             BareKey::Pause => ProtoBareKey::Pause,
             BareKey::Menu => ProtoBareKey::Menu,
+            BareKey::ScrollUp | BareKey::ScrollDown => ProtoBareKey::Unspecified,
         }
     }
 }
