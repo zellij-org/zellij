@@ -38,8 +38,9 @@ use prost::Message;
 
 use crate::panes::PaneId;
 use crate::{
-    background_jobs::BackgroundJob, screen::ScreenInstruction, thread_bus::ThreadSenders,
-    ui::loading_indication::LoadingIndication, ClientId, ServerInstruction,
+    background_jobs::BackgroundJob, route::NotificationEnd, screen::ScreenInstruction,
+    thread_bus::ThreadSenders, ui::loading_indication::LoadingIndication, ClientId,
+    ServerInstruction,
 };
 use zellij_utils::{
     data::{Event, EventType, PluginCapabilities},
@@ -1118,6 +1119,7 @@ impl WasmBridge {
         &mut self,
         messages: Vec<(Option<PluginId>, Option<ClientId>, PipeMessage)>,
         shutdown_sender: Sender<()>,
+        mut notification_end: Option<NotificationEnd>,
     ) -> Result<()> {
         let plugins_to_update: Vec<(
             PluginId,
@@ -1159,6 +1161,7 @@ impl WasmBridge {
                         let plugin_id = *plugin_id;
                         let client_id = *client_id;
                         let _s = shutdown_sender.clone();
+                        let notification_end = notification_end.take();
                         move |senders,
                               _plugin_map,
                               _connected_clients,
@@ -1184,7 +1187,7 @@ impl WasmBridge {
                                 Err(e) => {
                                     log::error!("{:?}", e);
 
-                                    // https://stackoverflow.com/questions/66450942/in-rust-is-there-a-way-to-make-literal-newlines-in-r-using-windows-c
+                                    // https://stackoverflow.com/questions/66450942/in-rust-is-there-a-way-to-make-literal-newlines-in-rust-using-windows
                                     let stringified_error =
                                         format!("{:?}", e).replace("\n", "\n\r");
 
@@ -1195,6 +1198,7 @@ impl WasmBridge {
                                     );
                                 },
                             }
+                            drop(notification_end);
                         }
                     });
                 }
