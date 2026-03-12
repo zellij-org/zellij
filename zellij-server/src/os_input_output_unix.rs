@@ -386,7 +386,9 @@ impl UnixPtyBackend {
             .get(&terminal_id)
         {
             Some(Some(fd)) => *fd,
-            _ => return Err(anyhow!("could not find raw file descriptor")).with_context(err_context),
+            _ => {
+                return Err(anyhow!("could not find raw file descriptor")).with_context(err_context)
+            },
         };
 
         try_write_to_fd(fd, buf).with_context(err_context)
@@ -469,8 +471,7 @@ mod tests {
 
         let mut attrs = termios::tcgetattr(pty.slave).expect("tcgetattr failed");
         termios::cfmakeraw(&mut attrs);
-        termios::tcsetattr(pty.slave, termios::SetArg::TCSANOW, &attrs)
-            .expect("tcsetattr failed");
+        termios::tcsetattr(pty.slave, termios::SetArg::TCSANOW, &attrs).expect("tcsetattr failed");
 
         // O_NONBLOCK so write() returns EAGAIN instead of blocking
         let flags = fcntl(pty.master, FcntlArg::F_GETFL).expect("F_GETFL");
@@ -505,8 +506,7 @@ mod tests {
 
         let mut attrs = termios::tcgetattr(pty.slave).expect("tcgetattr failed");
         termios::cfmakeraw(&mut attrs);
-        termios::tcsetattr(pty.slave, termios::SetArg::TCSANOW, &attrs)
-            .expect("tcsetattr failed");
+        termios::tcsetattr(pty.slave, termios::SetArg::TCSANOW, &attrs).expect("tcsetattr failed");
 
         let flags = fcntl(pty.master, FcntlArg::F_GETFL).expect("F_GETFL");
         let mut oflags = OFlag::from_bits_truncate(flags);
