@@ -81,6 +81,7 @@ jobs:
         id: create_release
         uses: softprops/action-gh-release@v2
         with:
+          token: ${{ secrets.RELEASE_TOKEN != '' && secrets.RELEASE_TOKEN || github.token }}
           tag_name: ${{ needs.resolve-release-context.outputs.release_tag }}
           name: ${{ needs.resolve-release-context.outputs.release_name }}
           draft: ${{ needs.resolve-release-context.outputs.draft == 'true' }}
@@ -193,6 +194,7 @@ jobs:
       - name: Upload release assets
         uses: softprops/action-gh-release@v2
         with:
+          token: ${{ secrets.RELEASE_TOKEN != '' && secrets.RELEASE_TOKEN || github.token }}
           tag_name: ${{ needs.resolve-release-context.outputs.release_tag }}
           files: |
             ${{ steps.make-artifact-unix.outputs.asset_name || steps.make-artifact-windows.outputs.asset_name }}
@@ -305,6 +307,7 @@ jobs:
       - name: Upload release assets
         uses: softprops/action-gh-release@v2
         with:
+          token: ${{ secrets.RELEASE_TOKEN != '' && secrets.RELEASE_TOKEN || github.token }}
           tag_name: ${{ needs.resolve-release-context.outputs.release_tag }}
           files: |
             ${{ steps.make-artifact-unix.outputs.asset_name || steps.make-artifact-windows.outputs.asset_name }}
