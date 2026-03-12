@@ -479,11 +479,30 @@ mod tests {
         oflags.insert(OFlag::O_NONBLOCK);
         fcntl(pty.master, FcntlArg::F_SETFL(oflags)).expect("F_SETFL");
 
-        // 128 KiB — well above the kernel PTY buffer (~4-16 KiB)
+        // Fill most of the buffer, leaving some space
+        let chunk = vec![0x42u8; 1024];
+        let mut total_filled = 0;
+        loop {
+            match super::try_write_to_fd(pty.master, &chunk) {
+                Ok(0) => break,
+                Ok(n) => total_filled += n,
+                Err(e) => panic!("unexpected error filling buffer: {e}"),
+            }
+        }
+        assert!(total_filled > 0, "should have written some bytes to fill buffer");
+
+        // Read a small amount from the slave to free partial space
+        let mut drain = vec![0u8; 512];
+        let slave_file = unsafe { std::fs::File::from_raw_fd(pty.slave) };
+        let mut slave_reader = std::io::BufReader::new(&slave_file);
+        let drained = slave_reader.read(&mut drain).expect("slave read failed");
+        assert!(drained > 0, "should have drained some bytes");
+        // Prevent File from closing the slave fd — we close it manually below
+        std::mem::forget(slave_file);
+
+        // Now write more than the freed space — should get a partial write
         let size = 128 * 1024;
         let data: Vec<u8> = (0..size).map(|i| (i % 256) as u8).collect();
-
-        // No reader — buffer will fill and try_write_to_fd should return partial
         let written = super::try_write_to_fd(pty.master, &data)
             .expect("try_write_to_fd should not error on EAGAIN");
 
@@ -513,9 +532,15 @@ mod tests {
         oflags.insert(OFlag::O_NONBLOCK);
         fcntl(pty.master, FcntlArg::F_SETFL(oflags)).expect("F_SETFL");
 
-        // Fill the buffer completely
-        let fill = vec![0x42u8; 1024 * 1024];
-        let _ = super::try_write_to_fd(pty.master, &fill);
+        // Fill the buffer completely — keep writing until we get Ok(0)
+        let fill = vec![0x42u8; 1024];
+        loop {
+            match super::try_write_to_fd(pty.master, &fill) {
+                Ok(0) => break,
+                Ok(_) => continue,
+                Err(e) => panic!("unexpected error filling buffer: {e}"),
+            }
+        }
 
         // Now the buffer is full — next write should return Ok(0)
         let written = super::try_write_to_fd(pty.master, &[0x01, 0x02, 0x03])
