@@ -6676,3 +6676,69 @@ fn mixed_scripts_with_combining_marks() {
     assert_eq!(row.columns[2].width(), 2);
     assert_eq!(grid.cursor.x, 4);
 }
+
+#[test]
+fn dch_wide_char_with_trailing_chars_shifts_correctly() {
+    // DCH(1) on a 2-wide emoji: delete the emoji, trailing chars keep their
+    // display column positions, empty columns are filled with spaces.
+    // Row: [🎉(w=2)][a][b][c] → after DCH(1) at col 0: [ ][a][b][c][ ]
+    let mut grid = create_grid_with_content("");
+    feed_bytes(&mut grid, "\u{1F389}abc".as_bytes()); // 🎉 (w=2) + "abc"
+    assert_eq!(grid.cursor.x, 5, "cursor after 🎉abc");
+
+    // Move cursor back to col 0 (start of emoji)
+    feed_bytes(&mut grid, b"\x1b[1;1H");
+    assert_eq!(grid.cursor.x, 0);
+
+    // DCH(1): delete the emoji
+    feed_bytes(&mut grid, b"\x1b[P");
+
+    let row = &grid.viewport[0];
+    // Space fills the gap left by the wide char's excess column at cursor.x
+    assert_eq!(
+        row.columns[0].grapheme(),
+        " ",
+        "col 0 should be space (gap from wide char)"
+    );
+    assert_eq!(row.columns[1].grapheme(), "a", "a should be at col 1");
+    assert_eq!(row.columns[2].grapheme(), "b", "b should be at col 2");
+    assert_eq!(row.columns[3].grapheme(), "c", "c should be at col 3");
+    assert_eq!(
+        row.columns[4].grapheme(),
+        " ",
+        "col 4 should be empty (right margin fill)"
+    );
+}
+
+#[test]
+fn dch_on_second_half_of_wide_char() {
+    // Ghostty DCH V-5: cursor on the second half of a wide character.
+    // The wide char should be erased (both halves become spaces), then DCH
+    // deletes at cursor position normally.
+    // Row: [A][橋(w=2)][1][2][3] → display cols 0,1-2,3,4,5
+    // Cursor at col 2 (second half of 橋), DCH(1):
+    // → erase 橋 → [A][ ][ ][1][2][3]
+    // → delete at col 2 → [A][ ][1][2][3][ ]
+    let mut grid = create_grid_with_content("");
+    feed_bytes(&mut grid, "A橋123".as_bytes());
+    assert_eq!(grid.cursor.x, 6, "cursor after A橋123");
+
+    // Move cursor to col 3 (1-based) = col 2 (0-based), second half of 橋
+    feed_bytes(&mut grid, b"\x1b[1;3H");
+    assert_eq!(grid.cursor.x, 2);
+
+    // DCH(1)
+    feed_bytes(&mut grid, b"\x1b[P");
+
+    let row = &grid.viewport[0];
+    assert_eq!(row.columns[0].grapheme(), "A", "col 0 should be A");
+    assert_eq!(
+        row.columns[1].grapheme(),
+        " ",
+        "col 1 should be space (erased left half of 橋)"
+    );
+    assert_eq!(row.columns[2].grapheme(), "1", "col 2: 1 shifted left");
+    assert_eq!(row.columns[3].grapheme(), "2", "col 3: 2 shifted left");
+    assert_eq!(row.columns[4].grapheme(), "3", "col 4: 3 shifted left");
+    assert_eq!(row.columns[5].grapheme(), " ", "col 5: right margin fill");
+}
