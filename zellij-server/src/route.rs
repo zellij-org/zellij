@@ -1872,11 +1872,7 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
         },
-        Action::ResizeByPaneId {
-            pane_id,
-            resize,
-            direction,
-        } => {
+        Action::ResizeByPaneId { pane_id, resize, direction } => {
             let resize_strategy = ResizeStrategy::new(resize, direction);
             senders
                 .send_to_screen(ScreenInstruction::ResizeWithPaneId(
