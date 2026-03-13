@@ -1065,8 +1065,33 @@ impl TryFrom<Action> for ProtobufAction {
             | Action::Paste { .. }
             | Action::GoToTabById { .. }
             | Action::CloseTabById { .. }
-            | Action::RenameTabById { .. } => {
-                Err("WriteToPaneId, WriteCharsToPaneId, Paste, GoToTabById, CloseTabById, and RenameTabById are CLI-only actions, not available in keybindings")
+            | Action::RenameTabById { .. }
+            | Action::ScrollUpByPaneId { .. }
+            | Action::ScrollDownByPaneId { .. }
+            | Action::ScrollToTopByPaneId { .. }
+            | Action::ScrollToBottomByPaneId { .. }
+            | Action::PageScrollUpByPaneId { .. }
+            | Action::PageScrollDownByPaneId { .. }
+            | Action::HalfPageScrollUpByPaneId { .. }
+            | Action::HalfPageScrollDownByPaneId { .. }
+            | Action::ResizeByPaneId { .. }
+            | Action::MovePaneByPaneId { .. }
+            | Action::MovePaneBackwardsByPaneId { .. }
+            | Action::ClearScreenByPaneId { .. }
+            | Action::EditScrollbackByPaneId { .. }
+            | Action::ToggleFocusFullscreenByPaneId { .. }
+            | Action::TogglePaneEmbedOrFloatingByPaneId { .. }
+            | Action::CloseFocusByPaneId { .. }
+            | Action::RenamePaneByPaneId { .. }
+            | Action::UndoRenamePaneByPaneId { .. }
+            | Action::TogglePanePinnedByPaneId { .. }
+            | Action::UndoRenameTabByTabId { .. }
+            | Action::ToggleActiveSyncTabByTabId { .. }
+            | Action::ToggleFloatingPanesByTabId { .. }
+            | Action::PreviousSwapLayoutByTabId { .. }
+            | Action::NextSwapLayoutByTabId { .. }
+            | Action::MoveTabByTabId { .. } => {
+                Err("These are CLI-only actions, not available in keybindings")
             },
             Action::SwitchToMode { input_mode } => {
                 let input_mode: ProtobufInputMode = input_mode.try_into()?;
@@ -1157,14 +1182,12 @@ impl TryFrom<Action> for ProtobufAction {
                 let dump_to_stdout = file_path.is_none();
                 Ok(ProtobufAction {
                     name: ProtobufActionName::DumpScreen as i32,
-                    optional_payload: Some(OptionalPayload::DumpScreenPayload(
-                        DumpScreenPayload {
-                            file_path: file_path.unwrap_or_default(),
-                            include_scrollback,
-                            pane_id: pane_id.and_then(|p| p.try_into().ok()),
-                            dump_to_stdout,
-                        },
-                    )),
+                    optional_payload: Some(OptionalPayload::DumpScreenPayload(DumpScreenPayload {
+                        file_path: file_path.unwrap_or_default(),
+                        include_scrollback,
+                        pane_id: pane_id.and_then(|p| p.try_into().ok()),
+                        dump_to_stdout,
+                    })),
                 })
             },
             Action::EditScrollback => Ok(ProtobufAction {

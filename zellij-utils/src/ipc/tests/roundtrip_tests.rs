@@ -3076,6 +3076,230 @@ fn test_client_messages() {
         pane_ids: vec![PaneId::Terminal(1)],
         scrollback: Some(0),
     });
+    // Pane-targeting roundtrips
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::ScrollUpByPaneId {
+            pane_id: PaneId::Terminal(1),
+        },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::ScrollUpByPaneId {
+            pane_id: PaneId::Plugin(5),
+        },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::ScrollDownByPaneId {
+            pane_id: PaneId::Terminal(2),
+        },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::ScrollToTopByPaneId {
+            pane_id: PaneId::Terminal(1),
+        },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::ScrollToBottomByPaneId {
+            pane_id: PaneId::Terminal(1),
+        },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::PageScrollUpByPaneId {
+            pane_id: PaneId::Terminal(1),
+        },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::PageScrollDownByPaneId {
+            pane_id: PaneId::Terminal(1),
+        },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::HalfPageScrollUpByPaneId {
+            pane_id: PaneId::Terminal(1),
+        },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::HalfPageScrollDownByPaneId {
+            pane_id: PaneId::Terminal(1),
+        },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::ResizeByPaneId {
+            pane_id: PaneId::Terminal(1),
+            resize: Resize::Increase,
+            direction: Some(Direction::Left),
+        },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::ResizeByPaneId {
+            pane_id: PaneId::Terminal(1),
+            resize: Resize::Decrease,
+            direction: None,
+        },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::MovePaneByPaneId {
+            pane_id: PaneId::Terminal(3),
+            direction: Some(Direction::Up),
+        },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::MovePaneByPaneId {
+            pane_id: PaneId::Terminal(3),
+            direction: None,
+        },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::MovePaneBackwardsByPaneId {
+            pane_id: PaneId::Terminal(1),
+        },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::ClearScreenByPaneId {
+            pane_id: PaneId::Terminal(1),
+        },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::EditScrollbackByPaneId {
+            pane_id: PaneId::Terminal(1),
+        },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::ToggleFocusFullscreenByPaneId {
+            pane_id: PaneId::Terminal(1),
+        },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::TogglePaneEmbedOrFloatingByPaneId {
+            pane_id: PaneId::Terminal(1),
+        },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::CloseFocusByPaneId {
+            pane_id: PaneId::Terminal(1),
+        },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::RenamePaneByPaneId {
+            pane_id: PaneId::Terminal(1),
+            name: "test-name".as_bytes().to_vec(),
+        },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::UndoRenamePaneByPaneId {
+            pane_id: PaneId::Terminal(1),
+        },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::TogglePanePinnedByPaneId {
+            pane_id: PaneId::Terminal(1),
+        },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    // Tab-targeting roundtrips
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::UndoRenameTabByTabId { id: 5 },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::ToggleActiveSyncTabByTabId { id: 2 },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::ToggleFloatingPanesByTabId { id: 0 },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::PreviousSwapLayoutByTabId { id: 1 },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::NextSwapLayoutByTabId { id: 3 },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::MoveTabByTabId {
+            id: 1,
+            direction: Direction::Left,
+        },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
 }
 
 fn test_server_messages() {

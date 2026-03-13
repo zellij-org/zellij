@@ -15340,3 +15340,250 @@ pub fn clearing_last_pane_bell_clears_tab_bell() {
         "tab_has_pending_bell should be false after last pane bell cleared"
     );
 }
+
+// Category 5: pane-id-based operations
+
+#[test]
+pub fn scroll_up_by_pane_id() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let pane_id = PaneId::Terminal(1);
+    assert!(tab.has_pane_with_pid(&pane_id));
+    tab.scroll_up_by_pane_id(pane_id);
+}
+
+#[test]
+pub fn scroll_down_by_pane_id() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let pane_id = PaneId::Terminal(1);
+    assert!(tab.has_pane_with_pid(&pane_id));
+    tab.scroll_down_by_pane_id(pane_id);
+}
+
+#[test]
+pub fn scroll_to_top_by_pane_id() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let pane_id = PaneId::Terminal(1);
+    assert!(tab.has_pane_with_pid(&pane_id));
+    tab.scroll_to_top_by_pane_id(pane_id);
+}
+
+#[test]
+pub fn scroll_to_bottom_by_pane_id() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let pane_id = PaneId::Terminal(1);
+    assert!(tab.has_pane_with_pid(&pane_id));
+    tab.scroll_to_bottom_by_pane_id(pane_id);
+}
+
+#[test]
+pub fn page_scroll_up_by_pane_id() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let pane_id = PaneId::Terminal(1);
+    assert!(tab.has_pane_with_pid(&pane_id));
+    tab.page_scroll_up_by_pane_id(pane_id);
+}
+
+#[test]
+pub fn page_scroll_down_by_pane_id() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let pane_id = PaneId::Terminal(1);
+    assert!(tab.has_pane_with_pid(&pane_id));
+    tab.page_scroll_down_by_pane_id(pane_id);
+}
+
+#[test]
+pub fn half_page_scroll_up_by_pane_id() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let pane_id = PaneId::Terminal(1);
+    assert!(tab.has_pane_with_pid(&pane_id));
+    tab.half_page_scroll_up_by_pane_id(pane_id);
+}
+
+#[test]
+pub fn half_page_scroll_down_by_pane_id() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let pane_id = PaneId::Terminal(1);
+    assert!(tab.has_pane_with_pid(&pane_id));
+    tab.half_page_scroll_down_by_pane_id(pane_id);
+}
+
+#[test]
+pub fn rename_pane_by_pane_id() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let pane_id = PaneId::Terminal(1);
+    assert!(tab.has_pane_with_pid(&pane_id));
+    tab.rename_pane_by_pane_id(pane_id, "new-name".as_bytes().to_vec());
+}
+
+#[test]
+pub fn undo_rename_pane_by_pane_id() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let pane_id = PaneId::Terminal(1);
+    assert!(tab.has_pane_with_pid(&pane_id));
+    tab.rename_pane_by_pane_id(pane_id, "new-name".as_bytes().to_vec());
+    tab.undo_rename_pane_by_pane_id(pane_id);
+}
+
+#[test]
+pub fn close_pane_by_pane_id() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
+    let new_pane_id = PaneId::Terminal(2);
+    tab.horizontal_split(new_pane_id, None, 1, None, None)
+        .unwrap();
+    assert_eq!(tab.tiled_panes.panes.len(), 2);
+    tab.close_pane_by_pane_id(new_pane_id, None).unwrap();
+    assert_eq!(tab.tiled_panes.panes.len(), 1);
+    assert!(!tab.has_pane_with_pid(&new_pane_id));
+}
+
+#[test]
+pub fn resize_by_pane_id() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let new_pane_id = PaneId::Terminal(2);
+    tab.horizontal_split(new_pane_id, None, 1, None, None)
+        .unwrap();
+    assert_eq!(tab.tiled_panes.panes.len(), 2);
+    tab.resize_by_pane_id(
+        new_pane_id,
+        ResizeStrategy::new(Resize::Increase, Some(Direction::Down)),
+    );
+}
+
+#[test]
+pub fn toggle_fullscreen_by_pane_id() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let new_pane_id = PaneId::Terminal(2);
+    tab.horizontal_split(new_pane_id, None, 1, None, None)
+        .unwrap();
+    assert_eq!(tab.tiled_panes.panes.len(), 2);
+    tab.toggle_fullscreen_by_pane_id(new_pane_id);
+}
+
+#[test]
+pub fn move_pane_by_pane_id_down() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let new_pane_id = PaneId::Terminal(2);
+    tab.horizontal_split(new_pane_id, None, 1, None, None)
+        .unwrap();
+    assert_eq!(tab.tiled_panes.panes.len(), 2);
+    tab.move_pane_by_pane_id(new_pane_id, Some(Direction::Down));
+}
+
+#[test]
+pub fn move_pane_backwards_by_pane_id() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let new_pane_id = PaneId::Terminal(2);
+    tab.horizontal_split(new_pane_id, None, 1, None, None)
+        .unwrap();
+    assert_eq!(tab.tiled_panes.panes.len(), 2);
+    tab.move_pane_backwards_by_pane_id(new_pane_id);
+}
+
+#[test]
+pub fn clear_screen_by_pane_id() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let pane_id = PaneId::Terminal(1);
+    assert!(tab.has_pane_with_pid(&pane_id));
+    tab.clear_screen_by_pane_id(pane_id);
+}
+
+#[test]
+pub fn toggle_pane_embed_or_floating_by_pane_id() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let pane_id = PaneId::Terminal(1);
+    assert!(tab.has_pane_with_pid(&pane_id));
+    let _ = tab.toggle_pane_embed_or_floating_for_pane_id(pane_id, None);
+}
+
+#[test]
+pub fn toggle_pane_pinned_by_pane_id() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let pane_id = PaneId::Terminal(1);
+    assert!(tab.has_pane_with_pid(&pane_id));
+    tab.toggle_pane_pinned_by_pane_id(pane_id);
+}
+
+#[test]
+pub fn scroll_up_nonexistent_pane_id_does_not_panic() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let pane_id = PaneId::Terminal(999);
+    assert!(!tab.has_pane_with_pid(&pane_id));
+    tab.scroll_up_by_pane_id(pane_id);
+}

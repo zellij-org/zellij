@@ -119,7 +119,7 @@ pub struct RgbColor {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Action {
-    #[prost(oneof="action::ActionType", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109")]
+    #[prost(oneof="action::ActionType", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134")]
     pub action_type: ::core::option::Option<action::ActionType>,
 }
 /// Nested message and enum types in `Action`.
@@ -345,6 +345,58 @@ pub mod action {
         SetPaneColor(super::SetPaneColorAction),
         #[prost(message, tag="109")]
         Paste(super::PasteAction),
+        /// Pane-targeting
+        #[prost(message, tag="110")]
+        ScrollUpByPaneId(super::ScrollUpByPaneIdAction),
+        #[prost(message, tag="111")]
+        ScrollDownByPaneId(super::ScrollDownByPaneIdAction),
+        #[prost(message, tag="112")]
+        ScrollToTopByPaneId(super::ScrollToTopByPaneIdAction),
+        #[prost(message, tag="113")]
+        ScrollToBottomByPaneId(super::ScrollToBottomByPaneIdAction),
+        #[prost(message, tag="114")]
+        PageScrollUpByPaneId(super::PageScrollUpByPaneIdAction),
+        #[prost(message, tag="115")]
+        PageScrollDownByPaneId(super::PageScrollDownByPaneIdAction),
+        #[prost(message, tag="116")]
+        HalfPageScrollUpByPaneId(super::HalfPageScrollUpByPaneIdAction),
+        #[prost(message, tag="117")]
+        HalfPageScrollDownByPaneId(super::HalfPageScrollDownByPaneIdAction),
+        #[prost(message, tag="118")]
+        ResizeByPaneId(super::ResizeByPaneIdAction),
+        #[prost(message, tag="119")]
+        MovePaneByPaneId(super::MovePaneByPaneIdAction),
+        #[prost(message, tag="120")]
+        MovePaneBackwardsByPaneId(super::MovePaneBackwardsByPaneIdAction),
+        #[prost(message, tag="121")]
+        ClearScreenByPaneId(super::ClearScreenByPaneIdAction),
+        #[prost(message, tag="122")]
+        EditScrollbackByPaneId(super::EditScrollbackByPaneIdAction),
+        #[prost(message, tag="123")]
+        ToggleFullscreenByPaneId(super::ToggleFullscreenByPaneIdAction),
+        #[prost(message, tag="124")]
+        TogglePaneEmbedOrFloatingByPaneId(super::TogglePaneEmbedOrFloatingByPaneIdAction),
+        #[prost(message, tag="125")]
+        CloseFocusByPaneId(super::CloseFocusByPaneIdAction),
+        #[prost(message, tag="126")]
+        RenamePaneByPaneId(super::RenamePaneByPaneIdAction),
+        #[prost(message, tag="127")]
+        UndoRenamePaneByPaneId(super::UndoRenamePaneByPaneIdAction),
+        #[prost(message, tag="128")]
+        TogglePanePinnedByPaneId(super::TogglePanePinnedByPaneIdAction),
+        /// Tab-targeting
+        #[prost(message, tag="129")]
+        UndoRenameTabByTabId(super::UndoRenameTabByTabIdAction),
+        #[prost(message, tag="130")]
+        ToggleActiveSyncTabByTabId(super::ToggleActiveSyncTabByTabIdAction),
+        #[prost(message, tag="131")]
+        ToggleFloatingPanesByTabId(super::ToggleFloatingPanesByTabIdAction),
+        #[prost(message, tag="132")]
+        PreviousSwapLayoutByTabId(super::PreviousSwapLayoutByTabIdAction),
+        #[prost(message, tag="133")]
+        NextSwapLayoutByTabId(super::NextSwapLayoutByTabIdAction),
+        #[prost(message, tag="134")]
+        MoveTabByTabId(super::MoveTabByTabIdAction),
     }
 }
 // Action message definitions (all 92 variants)
@@ -1839,6 +1891,166 @@ pub struct Options {
     pub focus_follows_mouse: ::core::option::Option<bool>,
     #[prost(bool, optional, tag="45")]
     pub mouse_click_through: ::core::option::Option<bool>,
+}
+/// Pane-targeting action messages
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ScrollUpByPaneIdAction {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ScrollDownByPaneIdAction {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ScrollToTopByPaneIdAction {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ScrollToBottomByPaneIdAction {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PageScrollUpByPaneIdAction {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PageScrollDownByPaneIdAction {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct HalfPageScrollUpByPaneIdAction {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct HalfPageScrollDownByPaneIdAction {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ResizeByPaneIdAction {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+    #[prost(message, optional, tag="2")]
+    pub resize_action: ::core::option::Option<ResizeAction>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MovePaneByPaneIdAction {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+    #[prost(enumeration="Direction", optional, tag="2")]
+    pub direction: ::core::option::Option<i32>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MovePaneBackwardsByPaneIdAction {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ClearScreenByPaneIdAction {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EditScrollbackByPaneIdAction {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ToggleFullscreenByPaneIdAction {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct TogglePaneEmbedOrFloatingByPaneIdAction {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CloseFocusByPaneIdAction {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RenamePaneByPaneIdAction {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+    #[prost(bytes="vec", tag="2")]
+    pub name: ::prost::alloc::vec::Vec<u8>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct UndoRenamePaneByPaneIdAction {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct TogglePanePinnedByPaneIdAction {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+/// Tab-targeting action messages
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct UndoRenameTabByTabIdAction {
+    #[prost(uint64, tag="1")]
+    pub id: u64,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ToggleActiveSyncTabByTabIdAction {
+    #[prost(uint64, tag="1")]
+    pub id: u64,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ToggleFloatingPanesByTabIdAction {
+    #[prost(uint64, tag="1")]
+    pub id: u64,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PreviousSwapLayoutByTabIdAction {
+    #[prost(uint64, tag="1")]
+    pub id: u64,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct NextSwapLayoutByTabIdAction {
+    #[prost(uint64, tag="1")]
+    pub id: u64,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MoveTabByTabIdAction {
+    #[prost(uint64, tag="1")]
+    pub id: u64,
+    #[prost(enumeration="Direction", tag="2")]
+    pub direction: i32,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]

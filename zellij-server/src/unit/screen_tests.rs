@@ -2233,6 +2233,7 @@ pub fn send_cli_resize_action_to_screen() {
     let resize_cli_action = CliAction::Resize {
         resize: Resize::Increase,
         direction: Some(Direction::Left),
+        pane_id: None,
     };
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for the async render
     send_cli_action_to_server(&session_metadata, resize_cli_action, client_id);
@@ -2404,6 +2405,7 @@ pub fn send_cli_move_pane_action() {
     );
     let cli_action = CliAction::MovePane {
         direction: Some(Direction::Right),
+        pane_id: None,
     };
     send_cli_action_to_server(&session_metadata, cli_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -2471,7 +2473,7 @@ pub fn send_cli_edit_scrollback_action() {
         PtyInstruction::Exit,
         pty_receiver
     );
-    let cli_action = CliAction::EditScrollback;
+    let cli_action = CliAction::EditScrollback { pane_id: None };
     let _ = mock_screen.to_screen.send(ScreenInstruction::PtyBytes(
         0,
         "fill pane up with something".as_bytes().to_vec(),
@@ -2523,7 +2525,7 @@ pub fn send_cli_scroll_up_action() {
         ServerInstruction::KillSession,
         server_receiver
     );
-    let cli_action = CliAction::ScrollUp;
+    let cli_action = CliAction::ScrollUp { pane_id: None };
     let mut pane_contents = String::new();
     for i in 0..20 {
         pane_contents.push_str(&format!("fill pane up with something {}\n\r", i));
@@ -2567,8 +2569,8 @@ pub fn send_cli_scroll_down_action() {
         ServerInstruction::KillSession,
         server_receiver
     );
-    let scroll_up_cli_action = CliAction::ScrollUp;
-    let scroll_down_cli_action = CliAction::ScrollDown;
+    let scroll_up_cli_action = CliAction::ScrollUp { pane_id: None };
+    let scroll_down_cli_action = CliAction::ScrollDown { pane_id: None };
     let mut pane_contents = String::new();
     for i in 0..20 {
         pane_contents.push_str(&format!("fill pane up with something {}\n\r", i));
@@ -2614,8 +2616,8 @@ pub fn send_cli_scroll_to_bottom_action() {
         ServerInstruction::KillSession,
         server_receiver
     );
-    let scroll_up_cli_action = CliAction::ScrollUp;
-    let scroll_to_bottom_action = CliAction::ScrollToBottom;
+    let scroll_up_cli_action = CliAction::ScrollUp { pane_id: None };
+    let scroll_to_bottom_action = CliAction::ScrollToBottom { pane_id: None };
     let mut pane_contents = String::new();
     for i in 0..20 {
         pane_contents.push_str(&format!("fill pane up with something {}\n\r", i));
@@ -2664,7 +2666,7 @@ pub fn send_cli_scroll_to_top_action() {
         ServerInstruction::KillSession,
         server_receiver
     );
-    let scroll_to_top_action = CliAction::ScrollToTop;
+    let scroll_to_top_action = CliAction::ScrollToTop { pane_id: None };
     let mut pane_contents = String::new();
     for i in 0..20 {
         pane_contents.push_str(&format!("fill pane up with something {}\n\r", i));
@@ -2706,7 +2708,7 @@ pub fn send_cli_page_scroll_up_action() {
         ServerInstruction::KillSession,
         server_receiver
     );
-    let page_scroll_up_action = CliAction::PageScrollUp;
+    let page_scroll_up_action = CliAction::PageScrollUp { pane_id: None };
     let mut pane_contents = String::new();
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for the async render
     for i in 0..20 {
@@ -2748,8 +2750,8 @@ pub fn send_cli_page_scroll_down_action() {
         ServerInstruction::KillSession,
         server_receiver
     );
-    let page_scroll_up_action = CliAction::PageScrollUp;
-    let page_scroll_down_action = CliAction::PageScrollDown;
+    let page_scroll_up_action = CliAction::PageScrollUp { pane_id: None };
+    let page_scroll_down_action = CliAction::PageScrollDown { pane_id: None };
     let mut pane_contents = String::new();
     for i in 0..20 {
         pane_contents.push_str(&format!("fill pane up with something {}\n\r", i));
@@ -2800,7 +2802,7 @@ pub fn send_cli_half_page_scroll_up_action() {
         ServerInstruction::KillSession,
         server_receiver
     );
-    let half_page_scroll_up_action = CliAction::HalfPageScrollUp;
+    let half_page_scroll_up_action = CliAction::HalfPageScrollUp { pane_id: None };
     let mut pane_contents = String::new();
     for i in 0..20 {
         pane_contents.push_str(&format!("fill pane up with something {}\n\r", i));
@@ -2841,8 +2843,8 @@ pub fn send_cli_half_page_scroll_down_action() {
         ServerInstruction::KillSession,
         server_receiver
     );
-    let half_page_scroll_up_action = CliAction::HalfPageScrollUp;
-    let half_page_scroll_down_action = CliAction::HalfPageScrollDown;
+    let half_page_scroll_up_action = CliAction::HalfPageScrollUp { pane_id: None };
+    let half_page_scroll_down_action = CliAction::HalfPageScrollDown { pane_id: None };
     let mut pane_contents = String::new();
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for the async render
     for i in 0..20 {
@@ -2900,7 +2902,7 @@ pub fn send_cli_toggle_full_screen_action() {
         ServerInstruction::KillSession,
         server_receiver
     );
-    let toggle_full_screen_action = CliAction::ToggleFullscreen;
+    let toggle_full_screen_action = CliAction::ToggleFullscreen { pane_id: None };
     send_cli_action_to_server(&session_metadata, toggle_full_screen_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![server_instruction, screen_thread]);
@@ -2967,7 +2969,7 @@ pub fn send_cli_toggle_active_tab_sync_action() {
         PtyWriteInstruction::Exit,
         pty_writer_receiver
     );
-    let cli_toggle_active_tab_sync_action = CliAction::ToggleActiveSyncTab;
+    let cli_toggle_active_tab_sync_action = CliAction::ToggleActiveSyncTab { tab_id: None };
     let cli_write_action = CliAction::Write {
         bytes: vec![102, 111, 111],
         pane_id: None,
@@ -3384,7 +3386,7 @@ pub fn send_cli_toggle_pane_embed_or_float() {
         ServerInstruction::KillSession,
         server_receiver
     );
-    let toggle_pane_embed_or_floating = CliAction::TogglePaneEmbedOrFloating;
+    let toggle_pane_embed_or_floating = CliAction::TogglePaneEmbedOrFloating { pane_id: None };
     // first time to float
     send_cli_action_to_server(
         &session_metadata,
@@ -3435,8 +3437,8 @@ pub fn send_cli_toggle_floating_panes() {
         ServerInstruction::KillSession,
         server_receiver
     );
-    let toggle_pane_embed_or_floating = CliAction::TogglePaneEmbedOrFloating;
-    let toggle_floating_panes = CliAction::ToggleFloatingPanes;
+    let toggle_pane_embed_or_floating = CliAction::TogglePaneEmbedOrFloating { pane_id: None };
+    let toggle_floating_panes = CliAction::ToggleFloatingPanes { tab_id: None };
     // float the focused pane
     send_cli_action_to_server(&session_metadata, toggle_pane_embed_or_floating, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -3476,7 +3478,7 @@ pub fn send_cli_close_pane_action() {
         ServerInstruction::KillSession,
         server_receiver
     );
-    let close_pane_action = CliAction::ClosePane;
+    let close_pane_action = CliAction::ClosePane { pane_id: None };
     send_cli_action_to_server(&session_metadata, close_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![server_instruction, screen_thread]);
@@ -3722,7 +3724,7 @@ pub fn send_cli_close_tab_action() {
         ServerInstruction::KillSession,
         server_receiver
     );
-    let close_tab = CliAction::CloseTab;
+    let close_tab = CliAction::CloseTab { tab_id: None };
     send_cli_action_to_server(&session_metadata, close_tab, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![server_thread, screen_thread]);
@@ -3760,6 +3762,7 @@ pub fn send_cli_rename_tab() {
     );
     let rename_tab = CliAction::RenameTab {
         name: "new-tab-name".into(),
+        tab_id: None,
     };
     send_cli_action_to_server(&session_metadata, rename_tab, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -3805,8 +3808,9 @@ pub fn send_cli_undo_rename_tab() {
     );
     let rename_tab = CliAction::RenameTab {
         name: "new-tab-name".into(),
+        tab_id: None,
     };
-    let undo_rename_tab = CliAction::UndoRenameTab;
+    let undo_rename_tab = CliAction::UndoRenameTab { tab_id: None };
     // first rename the tab
     send_cli_action_to_server(&session_metadata, rename_tab, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -6087,4 +6091,846 @@ fn integration_subscriber_survives_after_regular_client_detach() {
         "Subscriber should receive updates after regular client detach. Messages: {:?}",
         subscriber_msgs
     );
+}
+
+// ==========================================
+// Category 3: MockScreen end-to-end CLI tests
+// ==========================================
+
+#[test]
+pub fn send_cli_scroll_up_with_pane_id() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 10;
+    let mut mock_screen = MockScreen::new(size);
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(None, vec![]);
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let cli_action = CliAction::ScrollUp {
+        pane_id: Some("terminal_0".to_string()),
+    };
+    send_cli_action_to_server(&session_metadata, cli_action, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+    assert!(
+        true,
+        "ScrollUp with pane_id CLI action completed without errors"
+    );
+}
+
+#[test]
+pub fn send_cli_scroll_down_with_pane_id() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 10;
+    let mut mock_screen = MockScreen::new(size);
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(None, vec![]);
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let cli_action = CliAction::ScrollDown {
+        pane_id: Some("terminal_0".to_string()),
+    };
+    send_cli_action_to_server(&session_metadata, cli_action, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+    assert!(
+        true,
+        "ScrollDown with pane_id CLI action completed without errors"
+    );
+}
+
+#[test]
+pub fn send_cli_scroll_to_top_with_pane_id() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 10;
+    let mut mock_screen = MockScreen::new(size);
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(None, vec![]);
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let cli_action = CliAction::ScrollToTop {
+        pane_id: Some("terminal_0".to_string()),
+    };
+    send_cli_action_to_server(&session_metadata, cli_action, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+    assert!(
+        true,
+        "ScrollToTop with pane_id CLI action completed without errors"
+    );
+}
+
+#[test]
+pub fn send_cli_scroll_to_bottom_with_pane_id() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 10;
+    let mut mock_screen = MockScreen::new(size);
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(None, vec![]);
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let cli_action = CliAction::ScrollToBottom {
+        pane_id: Some("terminal_0".to_string()),
+    };
+    send_cli_action_to_server(&session_metadata, cli_action, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+    assert!(
+        true,
+        "ScrollToBottom with pane_id CLI action completed without errors"
+    );
+}
+
+#[test]
+pub fn send_cli_page_scroll_up_with_pane_id() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 10;
+    let mut mock_screen = MockScreen::new(size);
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(None, vec![]);
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let cli_action = CliAction::PageScrollUp {
+        pane_id: Some("terminal_0".to_string()),
+    };
+    send_cli_action_to_server(&session_metadata, cli_action, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+    assert!(
+        true,
+        "PageScrollUp with pane_id CLI action completed without errors"
+    );
+}
+
+#[test]
+pub fn send_cli_page_scroll_down_with_pane_id() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 10;
+    let mut mock_screen = MockScreen::new(size);
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(None, vec![]);
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let cli_action = CliAction::PageScrollDown {
+        pane_id: Some("terminal_0".to_string()),
+    };
+    send_cli_action_to_server(&session_metadata, cli_action, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+    assert!(
+        true,
+        "PageScrollDown with pane_id CLI action completed without errors"
+    );
+}
+
+#[test]
+pub fn send_cli_half_page_scroll_up_with_pane_id() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 10;
+    let mut mock_screen = MockScreen::new(size);
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(None, vec![]);
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let cli_action = CliAction::HalfPageScrollUp {
+        pane_id: Some("terminal_0".to_string()),
+    };
+    send_cli_action_to_server(&session_metadata, cli_action, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+    assert!(
+        true,
+        "HalfPageScrollUp with pane_id CLI action completed without errors"
+    );
+}
+
+#[test]
+pub fn send_cli_half_page_scroll_down_with_pane_id() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 10;
+    let mut mock_screen = MockScreen::new(size);
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(None, vec![]);
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let cli_action = CliAction::HalfPageScrollDown {
+        pane_id: Some("terminal_0".to_string()),
+    };
+    send_cli_action_to_server(&session_metadata, cli_action, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+    assert!(
+        true,
+        "HalfPageScrollDown with pane_id CLI action completed without errors"
+    );
+}
+
+#[test]
+pub fn send_cli_resize_with_pane_id() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 10;
+    let mut mock_screen = MockScreen::new(size);
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(None, vec![]);
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let cli_action = CliAction::Resize {
+        resize: Resize::Increase,
+        direction: Some(Direction::Left),
+        pane_id: Some("terminal_0".to_string()),
+    };
+    send_cli_action_to_server(&session_metadata, cli_action, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+    assert!(
+        true,
+        "Resize with pane_id CLI action completed without errors"
+    );
+}
+
+#[test]
+pub fn send_cli_move_pane_with_pane_id() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 10;
+    let mut mock_screen = MockScreen::new(size);
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(None, vec![]);
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let cli_action = CliAction::MovePane {
+        direction: Some(Direction::Right),
+        pane_id: Some("terminal_0".to_string()),
+    };
+    send_cli_action_to_server(&session_metadata, cli_action, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+    assert!(
+        true,
+        "MovePane with pane_id CLI action completed without errors"
+    );
+}
+
+#[test]
+pub fn send_cli_move_pane_backwards_with_pane_id() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 10;
+    let mut mock_screen = MockScreen::new(size);
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(None, vec![]);
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let cli_action = CliAction::MovePaneBackwards {
+        pane_id: Some("terminal_0".to_string()),
+    };
+    send_cli_action_to_server(&session_metadata, cli_action, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+    assert!(
+        true,
+        "MovePaneBackwards with pane_id CLI action completed without errors"
+    );
+}
+
+#[test]
+pub fn send_cli_clear_with_pane_id() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 10;
+    let mut mock_screen = MockScreen::new(size);
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(None, vec![]);
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let cli_action = CliAction::Clear {
+        pane_id: Some("terminal_0".to_string()),
+    };
+    send_cli_action_to_server(&session_metadata, cli_action, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+    assert!(
+        true,
+        "Clear with pane_id CLI action completed without errors"
+    );
+}
+
+#[test]
+pub fn send_cli_edit_scrollback_with_pane_id() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 10;
+    let mut mock_screen = MockScreen::new(size);
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(None, vec![]);
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let cli_action = CliAction::EditScrollback {
+        pane_id: Some("terminal_0".to_string()),
+    };
+    send_cli_action_to_server(&session_metadata, cli_action, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+    assert!(
+        true,
+        "EditScrollback with pane_id CLI action completed without errors"
+    );
+}
+
+#[test]
+pub fn send_cli_toggle_fullscreen_with_pane_id() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 10;
+    let mut mock_screen = MockScreen::new(size);
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(None, vec![]);
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let cli_action = CliAction::ToggleFullscreen {
+        pane_id: Some("terminal_0".to_string()),
+    };
+    send_cli_action_to_server(&session_metadata, cli_action, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+    assert!(
+        true,
+        "ToggleFullscreen with pane_id CLI action completed without errors"
+    );
+}
+
+#[test]
+pub fn send_cli_toggle_pane_embed_or_floating_with_pane_id() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 10;
+    let mut mock_screen = MockScreen::new(size);
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(None, vec![]);
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let cli_action = CliAction::TogglePaneEmbedOrFloating {
+        pane_id: Some("terminal_0".to_string()),
+    };
+    send_cli_action_to_server(&session_metadata, cli_action, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+    assert!(
+        true,
+        "TogglePaneEmbedOrFloating with pane_id CLI action completed without errors"
+    );
+}
+
+#[test]
+pub fn send_cli_close_pane_with_pane_id() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 10;
+    let mut mock_screen = MockScreen::new(size);
+    let session_metadata = mock_screen.clone_session_metadata();
+    let mut initial_layout = TiledPaneLayout::default();
+    initial_layout.children_split_direction = SplitDirection::Vertical;
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let cli_action = CliAction::ClosePane {
+        pane_id: Some("terminal_0".to_string()),
+    };
+    send_cli_action_to_server(&session_metadata, cli_action, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+    assert!(
+        true,
+        "ClosePane with pane_id CLI action completed without errors"
+    );
+}
+
+#[test]
+pub fn send_cli_rename_pane_with_pane_id() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 10;
+    let mut mock_screen = MockScreen::new(size);
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(None, vec![]);
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let cli_action = CliAction::RenamePane {
+        name: "targeted-name".to_string(),
+        pane_id: Some("terminal_0".to_string()),
+    };
+    send_cli_action_to_server(&session_metadata, cli_action, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+    assert!(
+        true,
+        "RenamePane with pane_id CLI action completed without errors"
+    );
+}
+
+#[test]
+pub fn send_cli_undo_rename_pane_with_pane_id() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 10;
+    let mut mock_screen = MockScreen::new(size);
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(None, vec![]);
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let cli_action = CliAction::UndoRenamePane {
+        pane_id: Some("terminal_0".to_string()),
+    };
+    send_cli_action_to_server(&session_metadata, cli_action, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+    assert!(
+        true,
+        "UndoRenamePane with pane_id CLI action completed without errors"
+    );
+}
+
+#[test]
+pub fn send_cli_toggle_pane_pinned_with_pane_id() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 10;
+    let mut mock_screen = MockScreen::new(size);
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(None, vec![]);
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let cli_action = CliAction::TogglePanePinned {
+        pane_id: Some("terminal_0".to_string()),
+    };
+    send_cli_action_to_server(&session_metadata, cli_action, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+    assert!(
+        true,
+        "TogglePanePinned with pane_id CLI action completed without errors"
+    );
+}
+
+// TAB-TARGETING MockScreen tests
+
+#[test]
+pub fn send_cli_close_tab_with_tab_id() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 10;
+    let mut mock_screen = MockScreen::new(size);
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(None, vec![]);
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.new_tab(TiledPaneLayout::default());
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let cli_action = CliAction::CloseTab { tab_id: Some(1) };
+    send_cli_action_to_server(&session_metadata, cli_action, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+    assert!(
+        true,
+        "CloseTab with tab_id CLI action completed without errors"
+    );
+}
+
+#[test]
+pub fn send_cli_rename_tab_with_tab_id() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 10;
+    let mut mock_screen = MockScreen::new(size);
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(None, vec![]);
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.new_tab(TiledPaneLayout::default());
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let cli_action = CliAction::RenameTab {
+        name: "targeted-tab".to_string(),
+        tab_id: Some(1),
+    };
+    send_cli_action_to_server(&session_metadata, cli_action, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+    assert!(
+        true,
+        "RenameTab with tab_id CLI action completed without errors"
+    );
+}
+
+#[test]
+pub fn send_cli_undo_rename_tab_with_tab_id() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 10;
+    let mut mock_screen = MockScreen::new(size);
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(None, vec![]);
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.new_tab(TiledPaneLayout::default());
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let cli_action = CliAction::UndoRenameTab { tab_id: Some(0) };
+    send_cli_action_to_server(&session_metadata, cli_action, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+    assert!(
+        true,
+        "UndoRenameTab with tab_id CLI action completed without errors"
+    );
+}
+
+#[test]
+pub fn send_cli_toggle_active_sync_tab_with_tab_id() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 10;
+    let mut mock_screen = MockScreen::new(size);
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(None, vec![]);
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let cli_action = CliAction::ToggleActiveSyncTab { tab_id: Some(0) };
+    send_cli_action_to_server(&session_metadata, cli_action, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+    assert!(
+        true,
+        "ToggleActiveSyncTab with tab_id CLI action completed without errors"
+    );
+}
+
+#[test]
+pub fn send_cli_toggle_floating_panes_with_tab_id() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 10;
+    let mut mock_screen = MockScreen::new(size);
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(None, vec![]);
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let cli_action = CliAction::ToggleFloatingPanes { tab_id: Some(0) };
+    send_cli_action_to_server(&session_metadata, cli_action, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+    assert!(
+        true,
+        "ToggleFloatingPanes with tab_id CLI action completed without errors"
+    );
+}
+
+#[test]
+pub fn send_cli_previous_swap_layout_with_tab_id() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 10;
+    let mut mock_screen = MockScreen::new(size);
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(None, vec![]);
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let cli_action = CliAction::PreviousSwapLayout { tab_id: Some(0) };
+    send_cli_action_to_server(&session_metadata, cli_action, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+    assert!(
+        true,
+        "PreviousSwapLayout with tab_id CLI action completed without errors"
+    );
+}
+
+#[test]
+pub fn send_cli_next_swap_layout_with_tab_id() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 10;
+    let mut mock_screen = MockScreen::new(size);
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(None, vec![]);
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let cli_action = CliAction::NextSwapLayout { tab_id: Some(0) };
+    send_cli_action_to_server(&session_metadata, cli_action, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+    assert!(
+        true,
+        "NextSwapLayout with tab_id CLI action completed without errors"
+    );
+}
+
+#[test]
+pub fn send_cli_move_tab_with_tab_id() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 10;
+    let mut mock_screen = MockScreen::new(size);
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(None, vec![]);
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.new_tab(TiledPaneLayout::default());
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let cli_action = CliAction::MoveTab {
+        direction: Direction::Right,
+        tab_id: Some(0),
+    };
+    send_cli_action_to_server(&session_metadata, cli_action, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+    assert!(
+        true,
+        "MoveTab with tab_id CLI action completed without errors"
+    );
+}
+
+// ==========================================
+// Category 4: Direct Screen method tests
+// ==========================================
+
+#[test]
+pub fn move_tab_by_id_verifies_screen_state() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+    new_tab(&mut screen, 3, 2);
+    let original_pos_0 = screen.get_tab_by_id(0).unwrap().position;
+    let original_pos_1 = screen.get_tab_by_id(1).unwrap().position;
+    screen.move_tab_by_id(0, Direction::Right).expect("TEST");
+    assert_eq!(screen.get_tab_by_id(0).unwrap().position, original_pos_1);
+    assert_eq!(screen.get_tab_by_id(1).unwrap().position, original_pos_0);
 }

@@ -700,6 +700,33 @@ pub enum ScreenInstruction {
     NotifyPaneClosedToSubscribers {
         pane_id: zellij_utils::data::PaneId,
     },
+    // Pane-targeting CLI variants
+    ScrollUpWithPaneId(PaneId, Option<NotificationEnd>),
+    ScrollDownWithPaneId(PaneId, Option<NotificationEnd>),
+    ScrollToTopWithPaneId(PaneId, Option<NotificationEnd>),
+    ScrollToBottomWithPaneId(PaneId, Option<NotificationEnd>),
+    PageScrollUpWithPaneId(PaneId, Option<NotificationEnd>),
+    PageScrollDownWithPaneId(PaneId, Option<NotificationEnd>),
+    HalfPageScrollUpWithPaneId(PaneId, Option<NotificationEnd>),
+    HalfPageScrollDownWithPaneId(PaneId, Option<NotificationEnd>),
+    ResizeWithPaneId(PaneId, ResizeStrategy, Option<NotificationEnd>),
+    MovePaneWithPaneIdCli(PaneId, Option<Direction>, Option<NotificationEnd>),
+    MovePaneBackwardsWithPaneId(PaneId, Option<NotificationEnd>),
+    ClearScreenWithPaneId(PaneId, Option<NotificationEnd>),
+    EditScrollbackWithPaneId(PaneId, Option<NotificationEnd>),
+    ToggleFullscreenWithPaneId(PaneId, Option<NotificationEnd>),
+    TogglePaneEmbedOrFloatingWithPaneId(PaneId, Option<NotificationEnd>),
+    CloseFocusWithPaneId(PaneId, Option<NotificationEnd>),
+    RenamePaneWithPaneId(PaneId, Vec<u8>, Option<NotificationEnd>),
+    UndoRenamePaneWithPaneId(PaneId, Option<NotificationEnd>),
+    TogglePanePinnedWithPaneId(PaneId, Option<NotificationEnd>),
+    // Tab-targeting CLI variants
+    UndoRenameTabWithTabId(usize, Option<NotificationEnd>),
+    ToggleActiveSyncTabWithTabId(usize, Option<NotificationEnd>),
+    ToggleFloatingPanesWithTabId(usize, Option<TerminalAction>, Option<NotificationEnd>),
+    PreviousSwapLayoutWithTabId(usize, Option<NotificationEnd>),
+    NextSwapLayoutWithTabId(usize, Option<NotificationEnd>),
+    MoveTabWithTabId(usize, Direction, Option<NotificationEnd>),
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -975,6 +1002,61 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::NotifyPaneClosedToSubscribers { .. } => {
                 ScreenContext::NotifyPaneClosedToSubscribers
             },
+            // Pane-targeting CLI variants
+            ScreenInstruction::ScrollUpWithPaneId(..) => ScreenContext::ScrollUpWithPaneId,
+            ScreenInstruction::ScrollDownWithPaneId(..) => ScreenContext::ScrollDownWithPaneId,
+            ScreenInstruction::ScrollToTopWithPaneId(..) => ScreenContext::ScrollToTopWithPaneId,
+            ScreenInstruction::ScrollToBottomWithPaneId(..) => {
+                ScreenContext::ScrollToBottomWithPaneId
+            },
+            ScreenInstruction::PageScrollUpWithPaneId(..) => ScreenContext::PageScrollUpWithPaneId,
+            ScreenInstruction::PageScrollDownWithPaneId(..) => {
+                ScreenContext::PageScrollDownWithPaneId
+            },
+            ScreenInstruction::HalfPageScrollUpWithPaneId(..) => {
+                ScreenContext::HalfPageScrollUpWithPaneId
+            },
+            ScreenInstruction::HalfPageScrollDownWithPaneId(..) => {
+                ScreenContext::HalfPageScrollDownWithPaneId
+            },
+            ScreenInstruction::ResizeWithPaneId(..) => ScreenContext::ResizeWithPaneId,
+            ScreenInstruction::MovePaneWithPaneIdCli(..) => ScreenContext::MovePaneWithPaneIdCli,
+            ScreenInstruction::MovePaneBackwardsWithPaneId(..) => {
+                ScreenContext::MovePaneBackwardsWithPaneId
+            },
+            ScreenInstruction::ClearScreenWithPaneId(..) => ScreenContext::ClearScreenWithPaneId,
+            ScreenInstruction::EditScrollbackWithPaneId(..) => {
+                ScreenContext::EditScrollbackWithPaneId
+            },
+            ScreenInstruction::ToggleFullscreenWithPaneId(..) => {
+                ScreenContext::ToggleFullscreenWithPaneId
+            },
+            ScreenInstruction::TogglePaneEmbedOrFloatingWithPaneId(..) => {
+                ScreenContext::TogglePaneEmbedOrFloatingWithPaneId
+            },
+            ScreenInstruction::CloseFocusWithPaneId(..) => ScreenContext::CloseFocusWithPaneId,
+            ScreenInstruction::RenamePaneWithPaneId(..) => ScreenContext::RenamePaneWithPaneId,
+            ScreenInstruction::UndoRenamePaneWithPaneId(..) => {
+                ScreenContext::UndoRenamePaneWithPaneId
+            },
+            ScreenInstruction::TogglePanePinnedWithPaneId(..) => {
+                ScreenContext::TogglePanePinnedWithPaneId
+            },
+            // Tab-targeting CLI variants
+            ScreenInstruction::UndoRenameTabWithTabId(..) => ScreenContext::UndoRenameTabWithTabId,
+            ScreenInstruction::ToggleActiveSyncTabWithTabId(..) => {
+                ScreenContext::ToggleActiveSyncTabWithTabId
+            },
+            ScreenInstruction::ToggleFloatingPanesWithTabId(..) => {
+                ScreenContext::ToggleFloatingPanesWithTabId
+            },
+            ScreenInstruction::PreviousSwapLayoutWithTabId(..) => {
+                ScreenContext::PreviousSwapLayoutWithTabId
+            },
+            ScreenInstruction::NextSwapLayoutWithTabId(..) => {
+                ScreenContext::NextSwapLayoutWithTabId
+            },
+            ScreenInstruction::MoveTabWithTabId(..) => ScreenContext::MoveTabWithTabId,
         }
     }
 }
@@ -2133,6 +2215,7 @@ impl Screen {
                 let mut completion = completion;
                 if let Some(c) = completion.as_mut() {
                     c.set_exit_status(1);
+                    c.set_error_message("Tab not found".to_string());
                 }
                 drop(completion);
             },
@@ -2156,6 +2239,7 @@ impl Screen {
                 let mut completion = completion;
                 if let Some(c) = completion.as_mut() {
                     c.set_exit_status(1);
+                    c.set_error_message("Tab not found".to_string());
                 }
                 drop(completion);
             },
@@ -2941,6 +3025,31 @@ impl Screen {
                     .context("failed to move tab to the right")?;
             },
             Err(err) => Err::<(), _>(err).with_context(err_context).non_fatal(),
+        }
+        Ok(())
+    }
+
+    pub fn move_tab_by_id(&mut self, tab_id: usize, direction: Direction) -> Result<()> {
+        if self.tabs.len() < 2 {
+            return Ok(());
+        }
+        if let Some(tab) = self.tabs.get(&tab_id) {
+            let tab_pos = tab.position;
+            let swap_pos = match direction {
+                Direction::Left => {
+                    if tab_pos == 0 {
+                        self.tabs.len() - 1
+                    } else {
+                        tab_pos - 1
+                    }
+                },
+                Direction::Right => (tab_pos + 1) % self.tabs.len(),
+                _ => return Ok(()),
+            };
+            self.switch_tabs(tab_pos, swap_pos);
+            self.log_and_report_session_state()?;
+        } else {
+            log::error!("Tab with id {} not found", tab_id);
         }
         Ok(())
     }
@@ -5019,116 +5128,148 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
             },
-            ScreenInstruction::FocusNextPane(
-                client_id,
-                _completion_tx, // the action ends here, dropping this will release anything
-                                // waiting for it
-            ) => {
-                active_tab_and_connected_client_id!(
-                    screen,
-                    client_id,
-                    |tab: &mut Tab, client_id: ClientId| tab.focus_next_pane(client_id)
-                );
-                screen.render(None)?;
+            ScreenInstruction::FocusNextPane(client_id, mut _completion_tx) => {
+                if screen.get_first_client_id().is_none() {
+                    log::error!("No connected clients to change focus for");
+                    if let Some(ref mut c) = _completion_tx {
+                        c.set_exit_status(1);
+                        c.set_error_message("No connected clients to change focus for".to_string());
+                    }
+                } else {
+                    active_tab_and_connected_client_id!(
+                        screen,
+                        client_id,
+                        |tab: &mut Tab, client_id: ClientId| tab.focus_next_pane(client_id)
+                    );
+                    screen.render(None)?;
+                }
             },
-            ScreenInstruction::FocusPreviousPane(
-                client_id,
-                _completion_tx, // the action ends here, dropping this will release anything
-                                // waiting for it
-            ) => {
-                active_tab_and_connected_client_id!(
-                    screen,
-                    client_id,
-                    |tab: &mut Tab, client_id: ClientId| tab.focus_previous_pane(client_id)
-                );
-                screen.render(None)?;
-                screen.log_and_report_session_state()?;
+            ScreenInstruction::FocusPreviousPane(client_id, mut _completion_tx) => {
+                if screen.get_first_client_id().is_none() {
+                    log::error!("No connected clients to change focus for");
+                    if let Some(ref mut c) = _completion_tx {
+                        c.set_exit_status(1);
+                        c.set_error_message("No connected clients to change focus for".to_string());
+                    }
+                } else {
+                    active_tab_and_connected_client_id!(
+                        screen,
+                        client_id,
+                        |tab: &mut Tab, client_id: ClientId| tab.focus_previous_pane(client_id)
+                    );
+                    screen.render(None)?;
+                    screen.log_and_report_session_state()?;
+                }
             },
-            ScreenInstruction::MoveFocusLeft(
-                client_id,
-                _completion_tx, // the action ends here, dropping this will release anything
-                                // waiting for it
-            ) => {
-                active_tab_and_connected_client_id!(
-                    screen,
-                    client_id,
-                    |tab: &mut Tab, client_id: ClientId| tab.move_focus_left(client_id),
-                    ?
-                );
-                screen.clear_bell_for_focused_pane(client_id);
-                screen.add_active_pane_to_group_if_marking(&client_id);
-                screen.render(None)?;
-                screen.log_and_report_session_state()?;
+            ScreenInstruction::MoveFocusLeft(client_id, mut _completion_tx) => {
+                if screen.get_first_client_id().is_none() {
+                    log::error!("No connected clients to move focus for");
+                    if let Some(ref mut c) = _completion_tx {
+                        c.set_exit_status(1);
+                        c.set_error_message("No connected clients to move focus for".to_string());
+                    }
+                } else {
+                    active_tab_and_connected_client_id!(
+                        screen,
+                        client_id,
+                        |tab: &mut Tab, client_id: ClientId| tab.move_focus_left(client_id),
+                        ?
+                    );
+                    screen.clear_bell_for_focused_pane(client_id);
+                    screen.add_active_pane_to_group_if_marking(&client_id);
+                    screen.render(None)?;
+                    screen.log_and_report_session_state()?;
+                }
             },
-            ScreenInstruction::MoveFocusLeftOrPreviousTab(
-                client_id,
-                _completion_tx, // the action ends here, dropping this will release anything
-                                // waiting for it
-            ) => {
-                screen.move_focus_left_or_previous_tab(client_id)?;
-                screen.clear_bell_for_focused_pane(client_id);
-                screen.add_active_pane_to_group_if_marking(&client_id);
-                screen.render(None)?;
-                screen.log_and_report_session_state()?;
+            ScreenInstruction::MoveFocusLeftOrPreviousTab(client_id, mut _completion_tx) => {
+                if screen.get_first_client_id().is_none() {
+                    log::error!("No connected clients to move focus for");
+                    if let Some(ref mut c) = _completion_tx {
+                        c.set_exit_status(1);
+                        c.set_error_message("No connected clients to move focus for".to_string());
+                    }
+                } else {
+                    screen.move_focus_left_or_previous_tab(client_id)?;
+                    screen.clear_bell_for_focused_pane(client_id);
+                    screen.add_active_pane_to_group_if_marking(&client_id);
+                    screen.render(None)?;
+                    screen.log_and_report_session_state()?;
+                }
             },
-            ScreenInstruction::MoveFocusDown(
-                client_id,
-                _completion_tx, // the action ends here, dropping this will release anything
-                                // waiting for it
-            ) => {
-                active_tab_and_connected_client_id!(
-                    screen,
-                    client_id,
-                    |tab: &mut Tab, client_id: ClientId| tab.move_focus_down(client_id),
-                    ?
-                );
-                screen.clear_bell_for_focused_pane(client_id);
-                screen.add_active_pane_to_group_if_marking(&client_id);
-                screen.render(None)?;
-                screen.log_and_report_session_state()?;
+            ScreenInstruction::MoveFocusDown(client_id, mut _completion_tx) => {
+                if screen.get_first_client_id().is_none() {
+                    log::error!("No connected clients to move focus for");
+                    if let Some(ref mut c) = _completion_tx {
+                        c.set_exit_status(1);
+                        c.set_error_message("No connected clients to move focus for".to_string());
+                    }
+                } else {
+                    active_tab_and_connected_client_id!(
+                        screen,
+                        client_id,
+                        |tab: &mut Tab, client_id: ClientId| tab.move_focus_down(client_id),
+                        ?
+                    );
+                    screen.clear_bell_for_focused_pane(client_id);
+                    screen.add_active_pane_to_group_if_marking(&client_id);
+                    screen.render(None)?;
+                    screen.log_and_report_session_state()?;
+                }
             },
-            ScreenInstruction::MoveFocusRight(
-                client_id,
-                _completion_tx, // the action ends here, dropping this will release anything
-                                // waiting for it
-            ) => {
-                active_tab_and_connected_client_id!(
-                    screen,
-                    client_id,
-                    |tab: &mut Tab, client_id: ClientId| tab.move_focus_right(client_id),
-                    ?
-                );
-                screen.clear_bell_for_focused_pane(client_id);
-                screen.add_active_pane_to_group_if_marking(&client_id);
-                screen.render(None)?;
-                screen.log_and_report_session_state()?;
+            ScreenInstruction::MoveFocusRight(client_id, mut _completion_tx) => {
+                if screen.get_first_client_id().is_none() {
+                    log::error!("No connected clients to move focus for");
+                    if let Some(ref mut c) = _completion_tx {
+                        c.set_exit_status(1);
+                        c.set_error_message("No connected clients to move focus for".to_string());
+                    }
+                } else {
+                    active_tab_and_connected_client_id!(
+                        screen,
+                        client_id,
+                        |tab: &mut Tab, client_id: ClientId| tab.move_focus_right(client_id),
+                        ?
+                    );
+                    screen.clear_bell_for_focused_pane(client_id);
+                    screen.add_active_pane_to_group_if_marking(&client_id);
+                    screen.render(None)?;
+                    screen.log_and_report_session_state()?;
+                }
             },
-            ScreenInstruction::MoveFocusRightOrNextTab(
-                client_id,
-                _completion_tx, // the action ends here, dropping this will release anything
-                                // waiting for it
-            ) => {
-                screen.move_focus_right_or_next_tab(client_id)?;
-                screen.clear_bell_for_focused_pane(client_id);
-                screen.add_active_pane_to_group_if_marking(&client_id);
-                screen.render(None)?;
-                screen.log_and_report_session_state()?;
+            ScreenInstruction::MoveFocusRightOrNextTab(client_id, mut _completion_tx) => {
+                if screen.get_first_client_id().is_none() {
+                    log::error!("No connected clients to move focus for");
+                    if let Some(ref mut c) = _completion_tx {
+                        c.set_exit_status(1);
+                        c.set_error_message("No connected clients to move focus for".to_string());
+                    }
+                } else {
+                    screen.move_focus_right_or_next_tab(client_id)?;
+                    screen.clear_bell_for_focused_pane(client_id);
+                    screen.add_active_pane_to_group_if_marking(&client_id);
+                    screen.render(None)?;
+                    screen.log_and_report_session_state()?;
+                }
             },
-            ScreenInstruction::MoveFocusUp(
-                client_id,
-                _completion_tx, // the action ends here, dropping this will release anything
-                                // waiting for it
-            ) => {
-                active_tab_and_connected_client_id!(
-                    screen,
-                    client_id,
-                    |tab: &mut Tab, client_id: ClientId| tab.move_focus_up(client_id),
-                    ?
-                );
-                screen.clear_bell_for_focused_pane(client_id);
-                screen.add_active_pane_to_group_if_marking(&client_id);
-                screen.render(None)?;
-                screen.log_and_report_session_state()?;
+            ScreenInstruction::MoveFocusUp(client_id, mut _completion_tx) => {
+                if screen.get_first_client_id().is_none() {
+                    log::error!("No connected clients to move focus for");
+                    if let Some(ref mut c) = _completion_tx {
+                        c.set_exit_status(1);
+                        c.set_error_message("No connected clients to move focus for".to_string());
+                    }
+                } else {
+                    active_tab_and_connected_client_id!(
+                        screen,
+                        client_id,
+                        |tab: &mut Tab, client_id: ClientId| tab.move_focus_up(client_id),
+                        ?
+                    );
+                    screen.clear_bell_for_focused_pane(client_id);
+                    screen.add_active_pane_to_group_if_marking(&client_id);
+                    screen.render(None)?;
+                    screen.log_and_report_session_state()?;
+                }
             },
             ScreenInstruction::ClearScreen(
                 client_id,
@@ -8081,6 +8222,457 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::NotifyPaneClosedToSubscribers { pane_id } => {
                 screen.notify_pane_closed_to_subscribers(pane_id);
+            },
+            // Pane-targeting CLI handlers
+            ScreenInstruction::ScrollUpWithPaneId(pane_id, mut _completion_tx) => {
+                let all_tabs = screen.get_tabs_mut();
+                let mut found = false;
+                for tab in all_tabs.values_mut() {
+                    if tab.has_pane_with_pid(&pane_id) {
+                        tab.scroll_up_by_pane_id(pane_id);
+                        found = true;
+                        break;
+                    }
+                }
+                if !found {
+                    log::error!("Pane with id {:?} not found", pane_id);
+                    if let Some(ref mut c) = _completion_tx {
+                        c.set_exit_status(1);
+                        c.set_error_message(format!("Pane with id {:?} not found", pane_id));
+                    }
+                }
+                screen.render(None)?;
+            },
+            ScreenInstruction::ScrollDownWithPaneId(pane_id, mut _completion_tx) => {
+                let all_tabs = screen.get_tabs_mut();
+                let mut found = false;
+                for tab in all_tabs.values_mut() {
+                    if tab.has_pane_with_pid(&pane_id) {
+                        tab.scroll_down_by_pane_id(pane_id).non_fatal();
+                        found = true;
+                        break;
+                    }
+                }
+                if !found {
+                    log::error!("Pane with id {:?} not found", pane_id);
+                    if let Some(ref mut c) = _completion_tx {
+                        c.set_exit_status(1);
+                        c.set_error_message(format!("Pane with id {:?} not found", pane_id));
+                    }
+                }
+                screen.render(None)?;
+            },
+            ScreenInstruction::ScrollToTopWithPaneId(pane_id, mut _completion_tx) => {
+                let all_tabs = screen.get_tabs_mut();
+                let mut found = false;
+                for tab in all_tabs.values_mut() {
+                    if tab.has_pane_with_pid(&pane_id) {
+                        tab.scroll_to_top_by_pane_id(pane_id).non_fatal();
+                        found = true;
+                        break;
+                    }
+                }
+                if !found {
+                    log::error!("Pane with id {:?} not found", pane_id);
+                    if let Some(ref mut c) = _completion_tx {
+                        c.set_exit_status(1);
+                        c.set_error_message(format!("Pane with id {:?} not found", pane_id));
+                    }
+                }
+                screen.render(None)?;
+            },
+            ScreenInstruction::ScrollToBottomWithPaneId(pane_id, mut _completion_tx) => {
+                let all_tabs = screen.get_tabs_mut();
+                let mut found = false;
+                for tab in all_tabs.values_mut() {
+                    if tab.has_pane_with_pid(&pane_id) {
+                        tab.scroll_to_bottom_by_pane_id(pane_id).non_fatal();
+                        found = true;
+                        break;
+                    }
+                }
+                if !found {
+                    log::error!("Pane with id {:?} not found", pane_id);
+                    if let Some(ref mut c) = _completion_tx {
+                        c.set_exit_status(1);
+                        c.set_error_message(format!("Pane with id {:?} not found", pane_id));
+                    }
+                }
+                screen.render(None)?;
+            },
+            ScreenInstruction::PageScrollUpWithPaneId(pane_id, mut _completion_tx) => {
+                let all_tabs = screen.get_tabs_mut();
+                let mut found = false;
+                for tab in all_tabs.values_mut() {
+                    if tab.has_pane_with_pid(&pane_id) {
+                        tab.page_scroll_up_by_pane_id(pane_id);
+                        found = true;
+                        break;
+                    }
+                }
+                if !found {
+                    log::error!("Pane with id {:?} not found", pane_id);
+                    if let Some(ref mut c) = _completion_tx {
+                        c.set_exit_status(1);
+                        c.set_error_message(format!("Pane with id {:?} not found", pane_id));
+                    }
+                }
+                screen.render(None)?;
+            },
+            ScreenInstruction::PageScrollDownWithPaneId(pane_id, mut _completion_tx) => {
+                let all_tabs = screen.get_tabs_mut();
+                let mut found = false;
+                for tab in all_tabs.values_mut() {
+                    if tab.has_pane_with_pid(&pane_id) {
+                        tab.page_scroll_down_by_pane_id(pane_id).non_fatal();
+                        found = true;
+                        break;
+                    }
+                }
+                if !found {
+                    log::error!("Pane with id {:?} not found", pane_id);
+                    if let Some(ref mut c) = _completion_tx {
+                        c.set_exit_status(1);
+                        c.set_error_message(format!("Pane with id {:?} not found", pane_id));
+                    }
+                }
+                screen.render(None)?;
+            },
+            ScreenInstruction::HalfPageScrollUpWithPaneId(pane_id, mut _completion_tx) => {
+                let all_tabs = screen.get_tabs_mut();
+                let mut found = false;
+                for tab in all_tabs.values_mut() {
+                    if tab.has_pane_with_pid(&pane_id) {
+                        tab.half_page_scroll_up_by_pane_id(pane_id);
+                        found = true;
+                        break;
+                    }
+                }
+                if !found {
+                    log::error!("Pane with id {:?} not found", pane_id);
+                    if let Some(ref mut c) = _completion_tx {
+                        c.set_exit_status(1);
+                        c.set_error_message(format!("Pane with id {:?} not found", pane_id));
+                    }
+                }
+                screen.render(None)?;
+            },
+            ScreenInstruction::HalfPageScrollDownWithPaneId(pane_id, mut _completion_tx) => {
+                let all_tabs = screen.get_tabs_mut();
+                let mut found = false;
+                for tab in all_tabs.values_mut() {
+                    if tab.has_pane_with_pid(&pane_id) {
+                        tab.half_page_scroll_down_by_pane_id(pane_id).non_fatal();
+                        found = true;
+                        break;
+                    }
+                }
+                if !found {
+                    log::error!("Pane with id {:?} not found", pane_id);
+                    if let Some(ref mut c) = _completion_tx {
+                        c.set_exit_status(1);
+                        c.set_error_message(format!("Pane with id {:?} not found", pane_id));
+                    }
+                }
+                screen.render(None)?;
+            },
+            ScreenInstruction::ResizeWithPaneId(pane_id, strategy, mut _completion_tx) => {
+                let all_tabs = screen.get_tabs_mut();
+                let mut found = false;
+                for tab in all_tabs.values_mut() {
+                    if tab.has_pane_with_pid(&pane_id) {
+                        tab.resize_by_pane_id(pane_id, strategy);
+                        found = true;
+                        break;
+                    }
+                }
+                if !found {
+                    log::error!("Pane with id {:?} not found", pane_id);
+                    if let Some(ref mut c) = _completion_tx {
+                        c.set_exit_status(1);
+                        c.set_error_message(format!("Pane with id {:?} not found", pane_id));
+                    }
+                }
+                screen.render(None)?;
+                screen.log_and_report_session_state()?;
+            },
+            ScreenInstruction::MovePaneWithPaneIdCli(pane_id, direction, mut _completion_tx) => {
+                let all_tabs = screen.get_tabs_mut();
+                let mut found = false;
+                for tab in all_tabs.values_mut() {
+                    if tab.has_pane_with_pid(&pane_id) {
+                        tab.move_pane_by_pane_id(pane_id, direction);
+                        found = true;
+                        break;
+                    }
+                }
+                if !found {
+                    log::error!("Pane with id {:?} not found", pane_id);
+                    if let Some(ref mut c) = _completion_tx {
+                        c.set_exit_status(1);
+                        c.set_error_message(format!("Pane with id {:?} not found", pane_id));
+                    }
+                }
+                screen.render(None)?;
+                screen.log_and_report_session_state()?;
+            },
+            ScreenInstruction::MovePaneBackwardsWithPaneId(pane_id, mut _completion_tx) => {
+                let all_tabs = screen.get_tabs_mut();
+                let mut found = false;
+                for tab in all_tabs.values_mut() {
+                    if tab.has_pane_with_pid(&pane_id) {
+                        tab.move_pane_backwards_by_pane_id(pane_id);
+                        found = true;
+                        break;
+                    }
+                }
+                if !found {
+                    log::error!("Pane with id {:?} not found", pane_id);
+                    if let Some(ref mut c) = _completion_tx {
+                        c.set_exit_status(1);
+                        c.set_error_message(format!("Pane with id {:?} not found", pane_id));
+                    }
+                }
+                screen.render(None)?;
+                screen.log_and_report_session_state()?;
+            },
+            ScreenInstruction::ClearScreenWithPaneId(pane_id, mut _completion_tx) => {
+                let all_tabs = screen.get_tabs_mut();
+                let mut found = false;
+                for tab in all_tabs.values_mut() {
+                    if tab.has_pane_with_pid(&pane_id) {
+                        tab.clear_screen_by_pane_id(pane_id).non_fatal();
+                        found = true;
+                        break;
+                    }
+                }
+                if !found {
+                    log::error!("Pane with id {:?} not found", pane_id);
+                    if let Some(ref mut c) = _completion_tx {
+                        c.set_exit_status(1);
+                        c.set_error_message(format!("Pane with id {:?} not found", pane_id));
+                    }
+                }
+                screen.render(None)?;
+            },
+            ScreenInstruction::EditScrollbackWithPaneId(pane_id, completion_tx) => {
+                let all_tabs = screen.get_tabs_mut();
+                let mut found = false;
+                for tab in all_tabs.values_mut() {
+                    if tab.has_pane_with_pid(&pane_id) {
+                        tab.edit_scrollback_for_pane_with_id(pane_id, completion_tx)
+                            .non_fatal();
+                        found = true;
+                        break;
+                    }
+                }
+                if !found {
+                    log::error!("Pane with id {:?} not found", pane_id);
+                }
+                screen.render(None)?;
+            },
+            ScreenInstruction::ToggleFullscreenWithPaneId(pane_id, mut _completion_tx) => {
+                let all_tabs = screen.get_tabs_mut();
+                let mut found = false;
+                for tab in all_tabs.values_mut() {
+                    if tab.has_pane_with_pid(&pane_id) {
+                        tab.toggle_fullscreen_by_pane_id(pane_id);
+                        found = true;
+                        break;
+                    }
+                }
+                if !found {
+                    log::error!("Pane with id {:?} not found", pane_id);
+                    if let Some(ref mut c) = _completion_tx {
+                        c.set_exit_status(1);
+                        c.set_error_message(format!("Pane with id {:?} not found", pane_id));
+                    }
+                }
+                screen.render(None)?;
+                screen.log_and_report_session_state()?;
+            },
+            ScreenInstruction::TogglePaneEmbedOrFloatingWithPaneId(pane_id, mut _completion_tx) => {
+                let all_tabs = screen.get_tabs_mut();
+                let mut found = false;
+                for tab in all_tabs.values_mut() {
+                    if tab.has_pane_with_pid(&pane_id) {
+                        tab.toggle_pane_embed_or_floating_for_pane_id(pane_id, None)
+                            .non_fatal();
+                        found = true;
+                        break;
+                    }
+                }
+                if !found {
+                    log::error!("Pane with id {:?} not found", pane_id);
+                    if let Some(ref mut c) = _completion_tx {
+                        c.set_exit_status(1);
+                        c.set_error_message(format!("Pane with id {:?} not found", pane_id));
+                    }
+                }
+                screen.log_and_report_session_state()?;
+                screen.render(None)?;
+            },
+            ScreenInstruction::CloseFocusWithPaneId(pane_id, completion_tx) => {
+                let all_tabs = screen.get_tabs_mut();
+                let mut found = false;
+                for tab in all_tabs.values_mut() {
+                    if tab.has_pane_with_pid(&pane_id) {
+                        tab.close_pane_by_pane_id(pane_id, completion_tx)
+                            .non_fatal();
+                        found = true;
+                        break;
+                    }
+                }
+                if !found {
+                    log::error!("Pane with id {:?} not found", pane_id);
+                }
+                screen.render(None)?;
+                screen.log_and_report_session_state()?;
+            },
+            ScreenInstruction::RenamePaneWithPaneId(pane_id, name, mut _completion_tx) => {
+                let all_tabs = screen.get_tabs_mut();
+                let mut found = false;
+                for tab in all_tabs.values_mut() {
+                    if tab.has_pane_with_pid(&pane_id) {
+                        tab.rename_pane_by_pane_id(pane_id, name).non_fatal();
+                        found = true;
+                        break;
+                    }
+                }
+                if !found {
+                    log::error!("Pane with id {:?} not found", pane_id);
+                    if let Some(ref mut c) = _completion_tx {
+                        c.set_exit_status(1);
+                        c.set_error_message(format!("Pane with id {:?} not found", pane_id));
+                    }
+                }
+                screen.render(None)?;
+                screen.log_and_report_session_state()?;
+            },
+            ScreenInstruction::UndoRenamePaneWithPaneId(pane_id, mut _completion_tx) => {
+                let all_tabs = screen.get_tabs_mut();
+                let mut found = false;
+                for tab in all_tabs.values_mut() {
+                    if tab.has_pane_with_pid(&pane_id) {
+                        tab.undo_rename_pane_by_pane_id(pane_id);
+                        found = true;
+                        break;
+                    }
+                }
+                if !found {
+                    log::error!("Pane with id {:?} not found", pane_id);
+                    if let Some(ref mut c) = _completion_tx {
+                        c.set_exit_status(1);
+                        c.set_error_message(format!("Pane with id {:?} not found", pane_id));
+                    }
+                }
+                screen.render(None)?;
+            },
+            ScreenInstruction::TogglePanePinnedWithPaneId(pane_id, mut _completion_tx) => {
+                let all_tabs = screen.get_tabs_mut();
+                let mut found = false;
+                for tab in all_tabs.values_mut() {
+                    if tab.has_pane_with_pid(&pane_id) {
+                        tab.toggle_pane_pinned_by_pane_id(pane_id);
+                        found = true;
+                        break;
+                    }
+                }
+                if !found {
+                    log::error!("Pane with id {:?} not found", pane_id);
+                    if let Some(ref mut c) = _completion_tx {
+                        c.set_exit_status(1);
+                        c.set_error_message(format!("Pane with id {:?} not found", pane_id));
+                    }
+                }
+            },
+            // Tab-targeting CLI handlers
+            ScreenInstruction::UndoRenameTabWithTabId(tab_id, mut _completion_tx) => {
+                if let Some(tab) = screen.tabs.get_mut(&tab_id) {
+                    if tab.name != tab.prev_name {
+                        tab.name = tab.prev_name.clone();
+                        screen.log_and_report_session_state()?;
+                    }
+                } else {
+                    log::error!("Tab with id {} not found", tab_id);
+                    if let Some(ref mut c) = _completion_tx {
+                        c.set_exit_status(1);
+                        c.set_error_message(format!("Tab with id {} not found", tab_id));
+                    }
+                }
+                screen.render(None)?;
+            },
+            ScreenInstruction::ToggleActiveSyncTabWithTabId(tab_id, mut _completion_tx) => {
+                if let Some(tab) = screen.tabs.get_mut(&tab_id) {
+                    tab.toggle_sync_panes_is_active();
+                } else {
+                    log::error!("Tab with id {} not found", tab_id);
+                    if let Some(ref mut c) = _completion_tx {
+                        c.set_exit_status(1);
+                        c.set_error_message(format!("Tab with id {} not found", tab_id));
+                    }
+                }
+                screen.log_and_report_session_state()?;
+                screen.render(None)?;
+            },
+            ScreenInstruction::ToggleFloatingPanesWithTabId(
+                tab_id,
+                default_shell,
+                mut completion_tx,
+            ) => {
+                if let Some(tab) = screen.tabs.get_mut(&tab_id) {
+                    // Pass None as client_id so that if a new floating pane must be spawned,
+                    // it targets this tab (via TabIndex) rather than the focused tab of some client.
+                    tab.toggle_floating_panes(None, default_shell, completion_tx)
+                        .non_fatal();
+                } else {
+                    log::error!("Tab with id {} not found", tab_id);
+                    if let Some(ref mut c) = completion_tx {
+                        c.set_exit_status(1);
+                        c.set_error_message(format!("Tab with id {} not found", tab_id));
+                    }
+                    drop(completion_tx);
+                }
+                screen.log_and_report_session_state()?;
+                screen.render(None)?;
+            },
+            ScreenInstruction::PreviousSwapLayoutWithTabId(tab_id, mut _completion_tx) => {
+                if let Some(tab) = screen.tabs.get_mut(&tab_id) {
+                    tab.previous_swap_layout().non_fatal();
+                } else {
+                    log::error!("Tab with id {} not found", tab_id);
+                    if let Some(ref mut c) = _completion_tx {
+                        c.set_exit_status(1);
+                        c.set_error_message(format!("Tab with id {} not found", tab_id));
+                    }
+                }
+                screen.render(None)?;
+                screen.log_and_report_session_state()?;
+            },
+            ScreenInstruction::NextSwapLayoutWithTabId(tab_id, mut _completion_tx) => {
+                if let Some(tab) = screen.tabs.get_mut(&tab_id) {
+                    tab.next_swap_layout().non_fatal();
+                } else {
+                    log::error!("Tab with id {} not found", tab_id);
+                    if let Some(ref mut c) = _completion_tx {
+                        c.set_exit_status(1);
+                        c.set_error_message(format!("Tab with id {} not found", tab_id));
+                    }
+                }
+                screen.render(None)?;
+                screen.log_and_report_session_state()?;
+            },
+            ScreenInstruction::MoveTabWithTabId(tab_id, direction, _completion_tx) => {
+                if pending_tab_ids.is_empty() {
+                    screen.move_tab_by_id(tab_id, direction)?;
+                    screen.render(None)?;
+                } else {
+                    pending_events_waiting_for_tab.push(ScreenInstruction::MoveTabWithTabId(
+                        tab_id,
+                        direction,
+                        _completion_tx,
+                    ));
+                }
             },
         }
     }
