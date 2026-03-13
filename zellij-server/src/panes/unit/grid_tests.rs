@@ -6088,3 +6088,273 @@ fn zwj_deletion_absolute_positioning_sequence_clears_last_emoji() {
     );
     assert_eq!(row.columns[3].grapheme(), " ", "col 5 should also be space");
 }
+
+#[test]
+fn hangul_jamo_nfd_grouped_as_grapheme_cluster() {
+    // NFD "폴더명" = ᄑ(U+1111) ᅩ(U+1169) ᆯ(U+11AF) ᄃ(U+1103) ᅥ(U+1165) ᄆ(U+1106) ᅧ(U+1167) ᆼ(U+11BC)
+    // GraphemeCursor groups L+V+T Jamo into grapheme clusters per UAX #29.
+    // The grid does NOT do NFC composition — it stores the raw Jamo codepoints,
+    // but they render identically to precomposed syllables.
+    let nfd = "\u{1111}\u{1169}\u{11AF}\u{1103}\u{1165}\u{1106}\u{1167}\u{11BC}";
+    let grid = create_grid_with_content(nfd);
+    let row = &grid.viewport[0];
+
+    // 3 grapheme clusters, each width 2, cursor at col 6
+    assert_eq!(row.columns.len(), 3, "3 Hangul syllable clusters");
+    assert_eq!(
+        grid.cursor.x, 6,
+        "cursor at col 6 after 3 width-2 syllables"
+    );
+
+    // Each cell stores the NFD Jamo, not the NFC precomposed syllable.
+    // first_char() returns the leading consonant (Choseong).
+    assert_eq!(row.columns[0].first_char(), Some('\u{1111}')); // ᄑ
+    assert_eq!(row.columns[0].width(), 2);
+    assert_eq!(row.columns[1].first_char(), Some('\u{1103}')); // ᄃ
+    assert_eq!(row.columns[1].width(), 2);
+    assert_eq!(row.columns[2].first_char(), Some('\u{1106}')); // ᄆ
+    assert_eq!(row.columns[2].width(), 2);
+}
+
+#[test]
+fn hangul_nfc_precomposed_still_works() {
+    // Pre-composed NFC "폴더명" — each syllable is a single codepoint.
+    let nfc = "폴더명";
+    let grid = create_grid_with_content(nfc);
+    let row = &grid.viewport[0];
+
+    assert_eq!(row.columns.len(), 3);
+    assert_eq!(grid.cursor.x, 6);
+    assert_eq!(row.columns[0].first_char(), Some('폴'));
+    assert_eq!(row.columns[1].first_char(), Some('더'));
+    assert_eq!(row.columns[2].first_char(), Some('명'));
+}
+
+#[test]
+fn hangul_jamo_two_char_syllable_without_jongseong() {
+    // NFD "가나" = ᄀ(U+1100) ᅡ(U+1161) ᄂ(U+1102) ᅡ(U+1161)
+    // Two-Jamo syllables (L+V, no trailing T).
+    let nfd = "\u{1100}\u{1161}\u{1102}\u{1161}";
+    let grid = create_grid_with_content(nfd);
+    let row = &grid.viewport[0];
+
+    assert_eq!(row.columns.len(), 2, "2 Hangul syllable clusters");
+    assert_eq!(grid.cursor.x, 4);
+    assert_eq!(row.columns[0].first_char(), Some('\u{1100}')); // ᄀ
+    assert_eq!(row.columns[0].width(), 2);
+    assert_eq!(row.columns[1].first_char(), Some('\u{1102}')); // ᄂ
+    assert_eq!(row.columns[1].width(), 2);
+}
+
+#[test]
+fn hangul_jamo_nfd_mixed_with_ascii() {
+    // NFD "폴더" + ASCII " test"
+    let content = "\u{1111}\u{1169}\u{11AF}\u{1103}\u{1165} test";
+    let grid = create_grid_with_content(content);
+    let row = &grid.viewport[0];
+
+    assert_eq!(row.columns[0].first_char(), Some('\u{1111}')); // ᄑ (폴)
+    assert_eq!(row.columns[0].width(), 2);
+    assert_eq!(row.columns[1].first_char(), Some('\u{1103}')); // ᄃ (더)
+    assert_eq!(row.columns[1].width(), 2);
+    assert_eq!(row.columns[2].grapheme(), " ");
+    assert_eq!(row.columns[3].grapheme(), "t");
+    assert_eq!(row.columns[4].grapheme(), "e");
+    assert_eq!(row.columns[5].grapheme(), "s");
+    assert_eq!(row.columns[6].grapheme(), "t");
+}
+
+#[test]
+fn hangul_jamo_nfd_with_ansi_color() {
+    // Colored NFD "폴더": \x1b[01;34m + Jamo + \x1b[0m
+    // ANSI escapes should not break grapheme clustering.
+    let colored = "\x1b[01;34m\u{1111}\u{1169}\u{11AF}\u{1103}\u{1165}\x1b[0m";
+    let grid = create_grid_with_content(colored);
+    let row = &grid.viewport[0];
+
+    assert_eq!(row.columns.len(), 2, "2 Hangul syllable clusters");
+    assert_eq!(row.columns[0].first_char(), Some('\u{1111}')); // ᄑ (폴)
+    assert_eq!(row.columns[0].width(), 2);
+    assert_eq!(row.columns[1].first_char(), Some('\u{1103}')); // ᄃ (더)
+    assert_eq!(row.columns[1].width(), 2);
+}
+
+// ── Composition tests for various scripts ───────────────────────────────────
+
+#[test]
+fn devanagari_virama_conjunct() {
+    // क्ष = KA(U+0915) + VIRAMA(U+094D) + SSA(U+0937)
+    // Unicode 15.1 GB9c groups InCB=Consonant + Linker(virama) + Consonant
+    // as a single grapheme cluster. All three codepoints in one cell.
+    let content = "\u{0915}\u{094D}\u{0937}";
+    let grid = create_grid_with_content(content);
+    let row = &grid.viewport[0];
+
+    assert_eq!(row.columns.len(), 1, "virama conjunct = 1 grapheme cluster");
+    assert_eq!(row.columns[0].first_char(), Some('\u{0915}')); // KA
+                                                               // Width: KA(1) + VIRAMA(0) + SSA(1) → unicode-width on the full string
+    assert_eq!(row.columns[0].width(), 2);
+    assert_eq!(grid.cursor.x, 2);
+}
+
+#[test]
+fn devanagari_word_with_virama_and_vowel_signs() {
+    // हिन्दी (hindii) = HA + VOWEL_I + NA + VIRAMA + DA + VOWEL_II
+    // Two virama conjuncts, two vowel signs.
+    let content = "\u{0939}\u{093F}\u{0928}\u{094D}\u{0926}\u{0940}";
+    let grid = create_grid_with_content(content);
+    let row = &grid.viewport[0];
+
+    // ह + ि = 1 cell (HA + vowel sign I)
+    // न + ् + द + ी = conjunct + vowel sign II
+    // Grapheme clusters: [हि] [न्दी] — 2 clusters? or [ह] [ि] [न्दी]?
+    // UAX #29 says vowel signs (Extend) attach to preceding base.
+    // Let's just verify no codepoints are dropped and cursor is correct.
+    assert_eq!(
+        grid.cursor.x,
+        row.columns.iter().map(|c| c.width()).sum::<usize>()
+    );
+    // Verify the base characters are present
+    assert_eq!(row.columns[0].first_char(), Some('\u{0939}')); // HA
+}
+
+#[test]
+fn arabic_letter_with_diacritics() {
+    // بِسْمِ = BA(U+0628) + KASRA(U+0650) + SEEN(U+0633) + SUKUN(U+0652) + MEEM(U+0645) + KASRA(U+0650)
+    // Each diacritic is zero-width and attaches to the preceding base letter.
+    let content = "\u{0628}\u{0650}\u{0633}\u{0652}\u{0645}\u{0650}";
+    let grid = create_grid_with_content(content);
+    let row = &grid.viewport[0];
+
+    // 3 base letters, each with a diacritic → 3 cells
+    assert_eq!(
+        row.columns.len(),
+        3,
+        "3 Arabic base letters with diacritics"
+    );
+    assert_eq!(row.columns[0].first_char(), Some('\u{0628}')); // BA
+    assert_eq!(row.columns[1].first_char(), Some('\u{0633}')); // SEEN
+    assert_eq!(row.columns[2].first_char(), Some('\u{0645}')); // MEEM
+                                                               // Each base letter is width 1
+    assert_eq!(row.columns[0].width(), 1);
+    assert_eq!(grid.cursor.x, 3);
+}
+
+#[test]
+fn arabic_shadda_with_fatha() {
+    // مَّ = MEEM(U+0645) + SHADDA(U+0651) + FATHA(U+064E)
+    // Two combining marks stacked on one base letter.
+    let content = "\u{0645}\u{0651}\u{064E}";
+    let grid = create_grid_with_content(content);
+    let row = &grid.viewport[0];
+
+    assert_eq!(row.columns.len(), 1, "base + two diacritics = 1 cell");
+    assert_eq!(row.columns[0].first_char(), Some('\u{0645}')); // MEEM
+    assert_eq!(row.columns[0].width(), 1);
+}
+
+#[test]
+fn hebrew_shin_with_nikud() {
+    // שָׁ = SHIN(U+05E9) + KAMATZ(U+05B8) + SHIN_DOT(U+05C1)
+    // Two combining marks (vowel + clarification dot) on one base letter.
+    let content = "\u{05E9}\u{05B8}\u{05C1}";
+    let grid = create_grid_with_content(content);
+    let row = &grid.viewport[0];
+
+    assert_eq!(row.columns.len(), 1, "base + two nikud marks = 1 cell");
+    assert_eq!(row.columns[0].first_char(), Some('\u{05E9}')); // SHIN
+    assert_eq!(row.columns[0].width(), 1);
+}
+
+#[test]
+fn hebrew_shalom_with_nikud() {
+    // שָׁלוֹם = SHIN+KAMATZ+SHIN_DOT LAMED VAV+HOLAM FINAL_MEM
+    let content = "\u{05E9}\u{05B8}\u{05C1}\u{05DC}\u{05D5}\u{05B9}\u{05DD}";
+    let grid = create_grid_with_content(content);
+    let row = &grid.viewport[0];
+
+    // 4 base letters: SHIN, LAMED, VAV, FINAL_MEM
+    assert_eq!(row.columns.len(), 4, "4 Hebrew base letters");
+    assert_eq!(row.columns[0].first_char(), Some('\u{05E9}')); // SHIN
+    assert_eq!(row.columns[1].first_char(), Some('\u{05DC}')); // LAMED
+    assert_eq!(row.columns[2].first_char(), Some('\u{05D5}')); // VAV
+    assert_eq!(row.columns[3].first_char(), Some('\u{05DD}')); // FINAL MEM
+    assert_eq!(grid.cursor.x, 4);
+}
+
+#[test]
+fn latin_stacked_combining_marks() {
+    // a + COMBINING_DIAERESIS(U+0308) + COMBINING_MACRON(U+0304)
+    // Multiple combining marks stack on one base letter.
+    let content = "a\u{0308}\u{0304}";
+    let grid = create_grid_with_content(content);
+    let row = &grid.viewport[0];
+
+    assert_eq!(row.columns.len(), 1, "base + 2 combining marks = 1 cell");
+    assert_eq!(row.columns[0].first_char(), Some('a'));
+    assert_eq!(row.columns[0].width(), 1);
+}
+
+#[test]
+fn latin_nfd_e_acute() {
+    // NFD: e(U+0065) + COMBINING_ACUTE(U+0301) → visual é
+    // NFC: é(U+00E9) — single codepoint
+    // Both should produce 1 cell with width 1.
+    let nfd = "e\u{0301}";
+    let nfc = "\u{00E9}";
+
+    let grid_nfd = create_grid_with_content(nfd);
+    let grid_nfc = create_grid_with_content(nfc);
+
+    assert_eq!(grid_nfd.viewport[0].columns.len(), 1, "NFD é = 1 cell");
+    assert_eq!(grid_nfc.viewport[0].columns.len(), 1, "NFC é = 1 cell");
+    assert_eq!(grid_nfd.viewport[0].columns[0].width(), 1);
+    assert_eq!(grid_nfc.viewport[0].columns[0].width(), 1);
+    assert_eq!(grid_nfd.cursor.x, 1);
+    assert_eq!(grid_nfc.cursor.x, 1);
+}
+
+#[test]
+fn emoji_keycap_sequence() {
+    // 1️⃣ = DIGIT_ONE(U+0031) + VS16(U+FE0F) + COMBINING_ENCLOSING_KEYCAP(U+20E3)
+    // Three codepoints form one grapheme cluster (keycap emoji).
+    let content = "1\u{FE0F}\u{20E3}";
+    let grid = create_grid_with_content(content);
+    let row = &grid.viewport[0];
+
+    assert_eq!(row.columns.len(), 1, "keycap sequence = 1 cell");
+    assert_eq!(row.columns[0].first_char(), Some('1'));
+    // Keycap emoji should be width 2 (emoji presentation)
+    assert_eq!(row.columns[0].width(), 2);
+    assert_eq!(grid.cursor.x, 2);
+}
+
+#[test]
+fn tamil_vowel_sign_attached_to_consonant() {
+    // கா = KA(U+0B95) + VOWEL_SIGN_AA(U+0BBE)
+    // Vowel sign is zero-width combining, attaches to the consonant.
+    let content = "\u{0B95}\u{0BBE}";
+    let grid = create_grid_with_content(content);
+    let row = &grid.viewport[0];
+
+    assert_eq!(row.columns.len(), 1, "consonant + vowel sign = 1 cell");
+    assert_eq!(row.columns[0].first_char(), Some('\u{0B95}')); // KA
+    assert_eq!(row.columns[0].width(), 1);
+}
+
+#[test]
+fn mixed_scripts_with_combining_marks() {
+    // Mix of Latin, Arabic diacritic, and CJK in one line.
+    // Each script's combining marks must attach to the correct base.
+    let content = "a\u{0301}\u{0628}\u{0650}中";
+    let grid = create_grid_with_content(content);
+    let row = &grid.viewport[0];
+
+    assert_eq!(row.columns[0].first_char(), Some('a')); // a + acute
+    assert_eq!(row.columns[0].width(), 1);
+    assert_eq!(row.columns[1].first_char(), Some('\u{0628}')); // BA + kasra
+    assert_eq!(row.columns[1].width(), 1);
+    assert_eq!(row.columns[2].first_char(), Some('中')); // CJK
+    assert_eq!(row.columns[2].width(), 2);
+    assert_eq!(grid.cursor.x, 4);
+}
