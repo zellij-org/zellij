@@ -418,6 +418,33 @@ pub enum ScreenContext {
     ClearPluginHighlights,
     SubscribeToPaneRenders,
     NotifyPaneClosedToSubscribers,
+    // Pane-targeting CLI variants
+    ScrollUpWithPaneId,
+    ScrollDownWithPaneId,
+    ScrollToTopWithPaneId,
+    ScrollToBottomWithPaneId,
+    PageScrollUpWithPaneId,
+    PageScrollDownWithPaneId,
+    HalfPageScrollUpWithPaneId,
+    HalfPageScrollDownWithPaneId,
+    ResizeWithPaneId,
+    MovePaneWithPaneIdCli,
+    MovePaneBackwardsWithPaneId,
+    ClearScreenWithPaneId,
+    EditScrollbackWithPaneId,
+    ToggleFullscreenWithPaneId,
+    TogglePaneEmbedOrFloatingWithPaneId,
+    CloseFocusWithPaneId,
+    RenamePaneWithPaneId,
+    UndoRenamePaneWithPaneId,
+    TogglePanePinnedWithPaneId,
+    // Tab-targeting CLI variants
+    UndoRenameTabWithTabId,
+    ToggleActiveSyncTabWithTabId,
+    ToggleFloatingPanesWithTabId,
+    PreviousSwapLayoutWithTabId,
+    NextSwapLayoutWithTabId,
+    MoveTabWithTabId,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.
