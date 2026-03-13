@@ -141,7 +141,7 @@ fn fn_index_to_main_key(index: u8) -> Result<ProtobufMainKey, &'static str> {
 }
 
 fn char_index_to_char(char_index: i32) -> char {
-    char_index as u8 as char
+    char::from_u32(char_index as u32).unwrap()
 }
 
 fn named_key_to_bare_key(named_key: ProtobufNamedKey) -> BareKey {
