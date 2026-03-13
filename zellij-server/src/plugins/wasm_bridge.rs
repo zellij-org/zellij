@@ -506,6 +506,16 @@ impl WasmBridge {
             plugin_map.remove_plugins(pid).into_iter().collect()
         };
 
+        // Check if any removed plugin was subscribed to ANSI pane render
+        let was_subscribed_to_ansi = plugins_to_cleanup.iter().any(
+            |((_, _), (_, subscriptions, _))| {
+                subscriptions
+                    .lock()
+                    .unwrap()
+                    .contains(&EventType::PaneRenderReportWithAnsi)
+            },
+        );
+
         // Schedule cleanup on each plugin's pinned thread
         for ((plugin_id, client_id), (running_plugin, subscriptions, workers)) in plugins_to_cleanup
         {
@@ -589,6 +599,11 @@ impl WasmBridge {
         let _ = self
             .senders
             .send_to_background_jobs(BackgroundJob::ReportPluginList(plugin_list));
+
+        // If any unloaded plugin was subscribed to ANSI pane content, re-check remaining plugins
+        if was_subscribed_to_ansi {
+            self.notify_screen_of_ansi_subscription_change();
+        }
 
         Ok(())
     }
@@ -1277,46 +1292,39 @@ impl WasmBridge {
 
     fn get_changed_panes_per_client(
         &self,
-        new_report: &PaneRenderReport,
+        new_contents: &HashMap<ClientId, HashMap<zellij_utils::data::PaneId, PaneContents>>,
+        previous_contents: Option<&HashMap<ClientId, HashMap<zellij_utils::data::PaneId, PaneContents>>>,
     ) -> HashMap<ClientId, HashMap<zellij_utils::data::PaneId, PaneContents>> {
-        let mut result: HashMap<ClientId, HashMap<zellij_utils::data::PaneId, PaneContents>> =
-            HashMap::new();
+        let mut result: HashMap<ClientId, HashMap<zellij_utils::data::PaneId, PaneContents>> = HashMap::new();
 
         // First report - return everything grouped by client
-        let Some(prev_report) = &self.previous_pane_render_report else {
-            for (client_id, panes) in &new_report.all_pane_contents {
+        let Some(prev_contents) = previous_contents else {
+            for (client_id, panes) in new_contents {
                 result.insert(*client_id, panes.clone());
             }
             return result;
         };
 
         // Compare each client's panes
-        for (client_id, new_panes) in &new_report.all_pane_contents {
-            let mut client_panes: HashMap<zellij_utils::data::PaneId, PaneContents> =
-                HashMap::new();
-
-            for (pane_id, new_contents) in new_panes {
-                let has_changed = prev_report
-                    .all_pane_contents
+        for (client_id, new_panes) in new_contents {
+            let mut client_panes: HashMap<zellij_utils::data::PaneId, PaneContents> = HashMap::new();
+            for (pane_id, new_pane_contents) in new_panes {
+                let has_changed = prev_contents
                     .get(client_id)
                     .and_then(|prev_panes| prev_panes.get(pane_id))
-                    .map(|prev_contents| {
-                        // Check if viewport or selected_text changed
-                        prev_contents.viewport != new_contents.viewport
-                            || prev_contents.selected_text != new_contents.selected_text
+                    .map(|prev_pane_contents| {
+                        prev_pane_contents.viewport != new_pane_contents.viewport
+                            || prev_pane_contents.selected_text != new_pane_contents.selected_text
                     })
-                    .unwrap_or(true); // New pane - treat as changed
-
+                    .unwrap_or(true);
                 if has_changed {
-                    client_panes.insert(*pane_id, new_contents.clone());
+                    client_panes.insert(*pane_id, new_pane_contents.clone());
                 }
             }
-
             if !client_panes.is_empty() {
                 result.insert(*client_id, client_panes);
             }
         }
-
         result
     }
 
@@ -1325,13 +1333,47 @@ impl WasmBridge {
         pane_render_report: PaneRenderReport,
         shutdown_sender: Sender<()>,
     ) -> Result<()> {
-        let changed_panes_per_client = self.get_changed_panes_per_client(&pane_render_report);
+        // Plain content (existing behavior)
+        let changed_panes_per_client = self.get_changed_panes_per_client(
+            &pane_render_report.all_pane_contents,
+            self.previous_pane_render_report.as_ref().map(|r| &r.all_pane_contents),
+        );
         for (client_id, client_panes) in changed_panes_per_client {
             let updates = vec![(None, Some(client_id), Event::PaneRenderReport(client_panes))];
             self.update_plugins(updates, shutdown_sender.clone())?;
         }
+
+        // ANSI content (new behavior)
+        if !pane_render_report.all_pane_contents_with_ansi.is_empty() {
+            let changed_ansi_panes_per_client = self.get_changed_panes_per_client(
+                &pane_render_report.all_pane_contents_with_ansi,
+                self.previous_pane_render_report.as_ref().map(|r| &r.all_pane_contents_with_ansi),
+            );
+            for (client_id, client_panes) in changed_ansi_panes_per_client {
+                let updates = vec![(None, Some(client_id), Event::PaneRenderReportWithAnsi(client_panes))];
+                self.update_plugins(updates, shutdown_sender.clone())?;
+            }
+        }
+
         self.previous_pane_render_report = Some(pane_render_report);
         Ok(())
+    }
+
+    pub fn notify_screen_of_ansi_subscription_change(&self) {
+        let any_plugin_needs_ansi = {
+            let mut plugin_map = self.plugin_map.lock().unwrap();
+            plugin_map
+                .running_plugins_and_subscriptions()
+                .iter()
+                .any(|(_, _, _, subs)| {
+                    subs.lock()
+                        .unwrap()
+                        .contains(&EventType::PaneRenderReportWithAnsi)
+                })
+        };
+        let _ = self.senders.send_to_screen(
+            ScreenInstruction::PluginSubscribedToAnsiPaneContents(any_plugin_needs_ansi),
+        );
     }
 
     pub fn cleanup(&mut self) {
@@ -2021,7 +2063,8 @@ fn check_event_permission(
         | Event::HighlightClicked { .. }
         | Event::InputReceived => PermissionType::ReadApplicationState,
         Event::WebServerStatus(..) => PermissionType::StartWebServer,
-        Event::PaneRenderReport(..) => PermissionType::ReadPaneContents,
+        Event::PaneRenderReport(..)
+        | Event::PaneRenderReportWithAnsi(..) => PermissionType::ReadPaneContents,
         Event::UserAction(..) => PermissionType::InterceptInput,
         _ => return (PermissionStatus::Granted, None),
     };

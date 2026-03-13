@@ -701,6 +701,7 @@ pub enum ScreenInstruction {
     NotifyPaneClosedToSubscribers {
         pane_id: zellij_utils::data::PaneId,
     },
+    PluginSubscribedToAnsiPaneContents(bool), // true = at least one plugin needs ANSI content
     // Pane-targeting CLI variants
     ScrollUpWithPaneId(PaneId, Option<NotificationEnd>),
     ScrollDownWithPaneId(PaneId, Option<NotificationEnd>),
@@ -1002,6 +1003,9 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::NotifyPaneClosedToSubscribers { .. } => {
                 ScreenContext::NotifyPaneClosedToSubscribers
             },
+            ScreenInstruction::PluginSubscribedToAnsiPaneContents(..) => {
+                ScreenContext::PluginSubscribedToAnsiPaneContents
+            },
             // Pane-targeting CLI variants
             ScreenInstruction::ScrollUpWithPaneId(..) => ScreenContext::ScrollUpWithPaneId,
             ScreenInstruction::ScrollDownWithPaneId(..) => ScreenContext::ScrollDownWithPaneId,
@@ -1251,6 +1255,7 @@ pub(crate) struct Screen {
     cached_layouts: Vec<LayoutInfo>,
     cached_layout_errors: Vec<LayoutWithError>,
     pane_render_subscribers: HashMap<ClientId, PaneRenderSubscription>,
+    plugins_need_ansi_pane_contents: bool,
 }
 
 impl Screen {
@@ -1350,6 +1355,7 @@ impl Screen {
             cached_layouts: vec![],
             cached_layout_errors: vec![],
             pane_render_subscribers: HashMap::new(),
+            plugins_need_ansi_pane_contents: false,
         }
     }
 
@@ -1902,7 +1908,8 @@ impl Screen {
             );
 
             let has_ansi_subscribers = self.pane_render_subscribers.values().any(|s| s.ansi);
-            output.collect_ansi_pane_contents = has_ansi_subscribers;
+            output.collect_ansi_pane_contents =
+                has_ansi_subscribers || self.plugins_need_ansi_pane_contents;
 
             for (tab_index, tab) in &mut self.tabs {
                 if tab.has_selectable_tiled_panes() {
@@ -8294,6 +8301,9 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::NotifyPaneClosedToSubscribers { pane_id } => {
                 screen.notify_pane_closed_to_subscribers(pane_id);
+            },
+            ScreenInstruction::PluginSubscribedToAnsiPaneContents(has_subscribers) => {
+                screen.plugins_need_ansi_pane_contents = has_subscribers;
             },
             // Pane-targeting CLI handlers
             ScreenInstruction::ScrollUpWithPaneId(pane_id, mut _completion_tx) => {

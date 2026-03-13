@@ -817,6 +817,15 @@ fn unsubscribe(env: &PluginEnv, event_list: HashSet<EventType>) -> Result<()> {
         .lock()
         .to_anyhow()?
         .retain(|k| !event_list.contains(k));
+    if event_list.contains(&EventType::PaneRenderReportWithAnsi) {
+        let _ = env.senders.send_to_plugin(
+            PluginInstruction::PluginSubscribedToEvents(
+                env.plugin_id,
+                env.client_id,
+                HashSet::new(), // empty set signals a recheck, not a new subscription
+            ),
+        );
+    }
     Ok(())
 }
 

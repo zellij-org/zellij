@@ -409,6 +409,14 @@ impl TryFrom<ProtobufEvent> for Event {
                 },
                 _ => Err("Malformed payload for the PaneRenderReport Event"),
             },
+            Some(ProtobufEventType::PaneRenderReportWithAnsi) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::PaneRenderReportWithAnsiPayload(protobuf_payload)) => {
+                    Ok(Event::PaneRenderReportWithAnsi(
+                        protobuf_payload.try_into()?,
+                    ))
+                },
+                _ => Err("Malformed payload for the PaneRenderReportWithAnsi Event"),
+            },
             Some(ProtobufEventType::UserAction) => match protobuf_event.payload {
                 Some(ProtobufEventPayload::UserActionPayload(protobuf_payload)) => {
                     let action: Action = protobuf_payload
@@ -917,6 +925,12 @@ impl TryFrom<Event> for ProtobufEvent {
             Event::PaneRenderReport(pane_contents_map) => Ok(ProtobufEvent {
                 name: ProtobufEventType::PaneRenderReport as i32,
                 payload: Some(event::Payload::PaneRenderReportPayload(
+                    pane_contents_map.try_into()?,
+                )),
+            }),
+            Event::PaneRenderReportWithAnsi(pane_contents_map) => Ok(ProtobufEvent {
+                name: ProtobufEventType::PaneRenderReportWithAnsi as i32,
+                payload: Some(event::Payload::PaneRenderReportWithAnsiPayload(
                     pane_contents_map.try_into()?,
                 )),
             }),
@@ -1937,6 +1951,7 @@ impl TryFrom<ProtobufEventType> for EventType {
             ProtobufEventType::FailedToStartWebServer => EventType::FailedToStartWebServer,
             ProtobufEventType::InterceptedKeyPress => EventType::InterceptedKeyPress,
             ProtobufEventType::PaneRenderReport => EventType::PaneRenderReport,
+            ProtobufEventType::PaneRenderReportWithAnsi => EventType::PaneRenderReportWithAnsi,
             ProtobufEventType::UserAction => EventType::UserAction,
             ProtobufEventType::ActionComplete => EventType::ActionComplete,
             ProtobufEventType::CwdChanged => EventType::CwdChanged,
@@ -1987,6 +2002,7 @@ impl TryFrom<EventType> for ProtobufEventType {
             EventType::FailedToStartWebServer => ProtobufEventType::FailedToStartWebServer,
             EventType::InterceptedKeyPress => ProtobufEventType::InterceptedKeyPress,
             EventType::PaneRenderReport => ProtobufEventType::PaneRenderReport,
+            EventType::PaneRenderReportWithAnsi => ProtobufEventType::PaneRenderReportWithAnsi,
             EventType::UserAction => ProtobufEventType::UserAction,
             EventType::ActionComplete => ProtobufEventType::ActionComplete,
             EventType::CwdChanged => ProtobufEventType::CwdChanged,
@@ -2912,4 +2928,51 @@ impl TryFrom<SelectedText> for ProtobufSelectedText {
             end: Some(selected_text.end.try_into()?),
         })
     }
+}
+
+#[test]
+fn serialize_pane_render_report_with_ansi_event() {
+    use prost::Message;
+    let pane_render_report_with_ansi_event = Event::PaneRenderReportWithAnsi(Default::default());
+    let protobuf_event: ProtobufEvent = pane_render_report_with_ansi_event
+        .clone()
+        .try_into()
+        .unwrap();
+    let serialized_protobuf_event = protobuf_event.encode_to_vec();
+    let deserialized_protobuf_event: ProtobufEvent =
+        Message::decode(serialized_protobuf_event.as_slice()).unwrap();
+    let deserialized_event: Event = deserialized_protobuf_event.try_into().unwrap();
+    assert_eq!(
+        pane_render_report_with_ansi_event, deserialized_event,
+        "Event properly serialized/deserialized without change"
+    );
+}
+
+#[test]
+fn serialize_pane_render_report_with_ansi_event_with_data() {
+    use prost::Message;
+    use std::collections::HashMap;
+    let mut pane_contents_map = HashMap::new();
+    pane_contents_map.insert(
+        PaneId::Terminal(1),
+        PaneContents {
+            viewport: vec![
+                "\x1b[31mred text\x1b[0m".to_owned(),
+                "\x1b[1mbold text\x1b[0m".to_owned(),
+            ],
+            selected_text: None,
+            lines_above_viewport: vec![],
+            lines_below_viewport: vec![],
+        },
+    );
+    let event = Event::PaneRenderReportWithAnsi(pane_contents_map);
+    let protobuf_event: ProtobufEvent = event.clone().try_into().unwrap();
+    let serialized_protobuf_event = protobuf_event.encode_to_vec();
+    let deserialized_protobuf_event: ProtobufEvent =
+        Message::decode(serialized_protobuf_event.as_slice()).unwrap();
+    let deserialized_event: Event = deserialized_protobuf_event.try_into().unwrap();
+    assert_eq!(
+        event, deserialized_event,
+        "PaneRenderReportWithAnsi event with ANSI data properly serialized/deserialized"
+    );
 }
