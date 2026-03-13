@@ -1,0 +1,121 @@
+// Translated from https://github.com/savq/melange-nvim
+themes {
+    melange {
+        text_unselected {
+            base 236 225 215        // fg
+            background 41 37 34     // bg
+            emphasis_0 236 225 215  // fg
+            emphasis_1 193 167 142  // com
+            emphasis_2 134 116 98   // ui
+            emphasis_3 134 116 98   // ui
+        }
+        text_selected {
+            base 236 225 215        // fg
+            background 64 58 54     // sel
+            emphasis_0 255 255 255  // white
+            emphasis_1 137 179 182  // cyan bright
+            emphasis_2 163 169 206  // blue bright
+            emphasis_3 207 155 194  // magenta bright
+        }
+        ribbon_selected {
+            base 41 37 34           // bg
+            background 137 179 182  // cyan bright
+            emphasis_0 41 37 34     // bg
+            emphasis_1 52 48 44     // float
+            emphasis_2 64 58 54     // sel
+            emphasis_3 134 116 98   // ui
+        }
+        ribbon_unselected {
+            base 193 167 142        // com
+            background 52 48 44     // float
+            emphasis_0 236 225 215  // fg
+            emphasis_1 193 167 142  // com
+            emphasis_2 134 116 98   // ui
+            emphasis_3 64 58 54     // sel
+        }
+        table_title {
+            base 236 225 215        // fg
+            background 41 37 34     // bg
+            emphasis_0 137 179 182  // cyan bright
+            emphasis_1 163 169 206  // blue bright
+            emphasis_2 133 182 149  // green bright
+            emphasis_3 235 192 109  // yellow bright
+        }
+        table_cell_selected {
+            base 236 225 215        // fg
+            background 64 58 54     // sel
+            emphasis_0 137 179 182  // cyan bright
+            emphasis_1 163 169 206  // blue bright
+            emphasis_2 133 182 149  // green bright
+            emphasis_3 235 192 109  // yellow bright
+        }
+        table_cell_unselected {
+            base 193 167 142        // com
+            background 41 37 34     // bg
+            emphasis_0 134 116 98   // ui
+            emphasis_1 64 58 54     // sel
+            emphasis_2 52 48 44     // float
+            emphasis_3 41 37 34     // bg
+        }
+        list_selected {
+            base 236 225 215        // fg
+            background 64 58 54     // sel
+            emphasis_0 137 179 182  // cyan bright
+            emphasis_1 163 169 206  // blue bright
+            emphasis_2 207 155 194  // magenta bright
+            emphasis_3 212 119 102  // red bright
+        }
+        list_unselected {
+            base 193 167 142        // com
+            background 41 37 34     // bg
+            emphasis_0 236 225 215  // fg
+            emphasis_1 193 167 142  // com
+            emphasis_2 134 116 98   // ui
+            emphasis_3 64 58 54     // sel
+        }
+        frame_selected {
+            base 137 179 182        // cyan bright
+            background 64 58 54     // sel
+            emphasis_0 163 169 206  // blue bright
+            emphasis_1 133 182 149  // green bright
+            emphasis_2 235 192 109  // yellow bright
+            emphasis_3 228 155 93   // yellow medium
+        }
+        frame_highlight {
+            base 235 192 109        // yellow bright
+            background 64 58 54     // sel
+            emphasis_0 228 155 93   // yellow medium
+            emphasis_1 212 119 102  // red bright
+            emphasis_2 207 155 194  // magenta bright
+            emphasis_3 189 129 131  // red medium
+        }
+        exit_code_success {
+            base 133 182 149        // green bright
+            background 41 37 34     // bg
+            emphasis_0 120 153 122  // green medium
+            emphasis_1 133 182 149  // green bright
+            emphasis_2 137 179 182  // cyan bright
+            emphasis_3 123 150 149  // cyan medium
+        }
+        exit_code_error {
+            base 212 119 102        // red bright
+            background 41 37 34     // bg
+            emphasis_0 125 42 47    // red dark
+            emphasis_1 212 119 102  // red bright
+            emphasis_2 189 129 131  // red medium
+            emphasis_3 228 155 93   // yellow medium
+        }
+        multiplayer_user_colors {
+            user_0 137 179 182      // cyan bright
+            user_1 133 182 149      // green bright
+            user_2 163 169 206      // blue bright
+            user_3 207 155 194      // magenta bright
+            user_4 235 192 109      // yellow bright
+            user_5 228 155 93       // yellow medium
+            user_6 212 119 102      // red bright
+            user_7 123 150 149      // cyan medium
+            user_8 189 129 131      // red medium
+            user_9 127 178 178      // blue medium
+        }
+    }
+}
