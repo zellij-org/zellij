@@ -922,7 +922,8 @@ impl Cursor {
 pub struct TerminalCharacter {
     // Stores the full Extended Grapheme Cluster (EGC) text for this cell.
     // ColdString is 8 bytes (usize), align=1, keeping the struct at 24 bytes.
-    // Inline capacity ≤7 bytes covers all real-world grapheme clusters.
+    // Inline capacity ≤7 bytes covers all single-scalar characters (the common case);
+    // multi-codepoint EGCs (ZWJ emoji, flag pairs, skin tones) heap-allocate via push_scalar.
     // Width is computed via UnicodeWidthStr on the full grapheme string.
     grapheme: ColdString,
     pub styles: RcCharacterStyles,
