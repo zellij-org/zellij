@@ -329,8 +329,7 @@ pub enum ScreenInstruction {
         tab_id: usize,
         response_channel: crossbeam::channel::Sender<Option<TabInfo>>,
     },
-    EditScrollback(ClientId, Option<NotificationEnd>),
-    EditScrollbackRaw(ClientId, Option<NotificationEnd>),
+    EditScrollback(ClientId, bool, Option<NotificationEnd>),
     GetPaneScrollback {
         pane_id: PaneId,
         client_id: ClientId,
@@ -714,7 +713,7 @@ pub enum ScreenInstruction {
     MovePaneWithPaneIdCli(PaneId, Option<Direction>, Option<NotificationEnd>),
     MovePaneBackwardsWithPaneId(PaneId, Option<NotificationEnd>),
     ClearScreenWithPaneId(PaneId, Option<NotificationEnd>),
-    EditScrollbackWithPaneId(PaneId, Option<NotificationEnd>),
+    EditScrollbackWithPaneId(PaneId, bool, Option<NotificationEnd>),
     ToggleFullscreenWithPaneId(PaneId, Option<NotificationEnd>),
     TogglePaneEmbedOrFloatingWithPaneId(PaneId, Option<NotificationEnd>),
     CloseFocusWithPaneId(PaneId, Option<NotificationEnd>),
@@ -799,7 +798,6 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::GetPaneInfo { .. } => ScreenContext::GetPaneInfo,
             ScreenInstruction::GetTabInfo { .. } => ScreenContext::GetTabInfo,
             ScreenInstruction::EditScrollback(..) => ScreenContext::EditScrollback,
-            ScreenInstruction::EditScrollbackRaw(..) => ScreenContext::EditScrollback, // fallback
             ScreenInstruction::GetPaneScrollback { .. } => ScreenContext::GetPaneScrollback,
             ScreenInstruction::ScrollUp(..) => ScreenContext::ScrollUp,
             ScreenInstruction::ScrollDown(..) => ScreenContext::ScrollDown,
@@ -5534,21 +5532,17 @@ pub(crate) fn screen_thread_main(
                     .with_context(err_context)
                     .non_fatal();
             },
-            ScreenInstruction::EditScrollback(client_id, completion_tx) => {
+            ScreenInstruction::EditScrollback(client_id, ansi, completion_tx) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
-                    |tab: &mut Tab, client_id: ClientId| tab.edit_scrollback(client_id, completion_tx),
-                    ?
-                );
-                screen.render(None)?;
-                screen.log_and_report_session_state()?;
-            },
-            ScreenInstruction::EditScrollbackRaw(client_id, completion_tx) => {
-                active_tab_and_connected_client_id!(
-                    screen,
-                    client_id,
-                    |tab: &mut Tab, client_id: ClientId| tab.edit_scrollback_raw(client_id, completion_tx),
+                    |tab: &mut Tab, client_id: ClientId| {
+                        if ansi {
+                            tab.edit_scrollback_raw(client_id, completion_tx)
+                        } else {
+                            tab.edit_scrollback(client_id, completion_tx)
+                        }
+                    },
                     ?
                 );
                 screen.render(None)?;
@@ -8498,13 +8492,18 @@ pub(crate) fn screen_thread_main(
                 }
                 screen.render(None)?;
             },
-            ScreenInstruction::EditScrollbackWithPaneId(pane_id, completion_tx) => {
+            ScreenInstruction::EditScrollbackWithPaneId(pane_id, ansi, completion_tx) => {
                 let all_tabs = screen.get_tabs_mut();
                 let mut found = false;
                 for tab in all_tabs.values_mut() {
                     if tab.has_pane_with_pid(&pane_id) {
-                        tab.edit_scrollback_for_pane_with_id(pane_id, completion_tx)
-                            .non_fatal();
+                        if ansi {
+                            tab.edit_scrollback_raw_for_pane_with_id(pane_id, completion_tx)
+                                .non_fatal();
+                        } else {
+                            tab.edit_scrollback_for_pane_with_id(pane_id, completion_tx)
+                                .non_fatal();
+                        }
                         found = true;
                         break;
                     }

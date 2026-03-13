@@ -4228,6 +4228,34 @@ impl Tab {
             Ok(())
         }
     }
+    pub fn edit_scrollback_raw_for_pane_with_id(
+        &mut self,
+        pane_id: PaneId,
+        completion_tx: Option<NotificationEnd>,
+    ) -> Result<()> {
+        if let PaneId::Terminal(_terminal_pane_id) = pane_id {
+            let mut file = temp_dir();
+            file.push(format!("{}.dump", Uuid::new_v4()));
+            self.dump_with_ansi_terminal_screen(
+                Some(String::from(file.to_string_lossy())),
+                pane_id,
+                true,
+            )
+            .non_fatal();
+            let line_number = self
+                .get_pane_with_id(pane_id)
+                .and_then(|a_t| a_t.get_line_number());
+            self.senders.send_to_pty(PtyInstruction::OpenInPlaceEditor(
+                file,
+                line_number,
+                ClientTabIndexOrPaneId::PaneId(pane_id),
+                completion_tx,
+            ))
+        } else {
+            log::error!("Editing plugin pane scrollback is currently unsupported.");
+            Ok(())
+        }
+    }
     pub fn scroll_active_terminal_up(&mut self, client_id: ClientId) {
         if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
             active_pane.scroll_up(1, client_id);

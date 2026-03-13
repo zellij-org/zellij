@@ -476,18 +476,20 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
         },
-        Action::EditScrollback => {
+        Action::EditScrollback { ansi } => {
             senders
                 .send_to_screen(ScreenInstruction::EditScrollback(
                     client_id,
+                    ansi,
                     Some(NotificationEnd::new(completion_tx)),
                 ))
                 .with_context(err_context)?;
         },
         Action::EditScrollbackRaw => {
             senders
-                .send_to_screen(ScreenInstruction::EditScrollbackRaw(
+                .send_to_screen(ScreenInstruction::EditScrollback(
                     client_id,
+                    true,
                     Some(NotificationEnd::new(completion_tx)),
                 ))
                 .with_context(err_context)?;
@@ -1913,10 +1915,11 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
         },
-        Action::EditScrollbackByPaneId { pane_id } => {
+        Action::EditScrollbackByPaneId { pane_id, ansi } => {
             senders
                 .send_to_screen(ScreenInstruction::EditScrollbackWithPaneId(
                     pane_id.into(),
+                    ansi,
                     Some(NotificationEnd::new(completion_tx)),
                 ))
                 .with_context(err_context)?;

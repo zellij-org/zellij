@@ -2882,7 +2882,7 @@ fn delete_all_dead_sessions() -> Result<()> {
 }
 
 fn edit_scrollback(env: &PluginEnv) {
-    let action = Action::EditScrollback;
+    let action = Action::EditScrollback { ansi: false };
     let error_msg = || format!("Failed to edit scrollback");
     apply_action!(action, error_msg, env);
 }

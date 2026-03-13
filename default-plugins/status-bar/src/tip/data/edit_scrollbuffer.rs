@@ -75,7 +75,7 @@ fn add_keybinds<'a>(help: &'a ModeInfo) -> Vec<ANSIString<'a>> {
     let edit_buffer = action_key(
         &help.get_keybinds_for_mode(InputMode::Scroll),
         &[
-            Action::EditScrollback,
+            Action::EditScrollback { ansi: false },
             Action::SwitchToMode {
                 input_mode: InputMode::Normal,
             },

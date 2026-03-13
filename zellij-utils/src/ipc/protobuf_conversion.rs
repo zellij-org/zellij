@@ -1017,11 +1017,11 @@ impl From<crate::input::actions::Action>
             crate::input::actions::Action::DumpLayout => {
                 ActionType::DumpLayout(DumpLayoutAction {})
             },
-            crate::input::actions::Action::EditScrollback => {
-                ActionType::EditScrollback(EditScrollbackAction {})
+            crate::input::actions::Action::EditScrollback { ansi } => {
+                ActionType::EditScrollback(EditScrollbackAction { ansi })
             },
             crate::input::actions::Action::EditScrollbackRaw => {
-                ActionType::EditScrollback(EditScrollbackAction {}) // fallback to default edit scrollback
+                ActionType::EditScrollback(EditScrollbackAction { ansi: true })
             },
             crate::input::actions::Action::ScrollUp => ActionType::ScrollUp(ScrollUpAction {}),
             crate::input::actions::Action::ScrollUpAt { position } => {
@@ -1650,9 +1650,10 @@ impl From<crate::input::actions::Action>
                     pane_id: Some(pane_id.into()),
                 })
             },
-            crate::input::actions::Action::EditScrollbackByPaneId { pane_id } => {
+            crate::input::actions::Action::EditScrollbackByPaneId { pane_id, ansi } => {
                 ActionType::EditScrollbackByPaneId(EditScrollbackByPaneIdAction {
                     pane_id: Some(pane_id.into()),
+                    ansi,
                 })
             },
             crate::input::actions::Action::ToggleFocusFullscreenByPaneId { pane_id } => {
@@ -1829,7 +1830,11 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
             },
             ActionType::DumpLayout(_) => Ok(crate::input::actions::Action::DumpLayout),
             ActionType::SaveSession(_) => Ok(crate::input::actions::Action::SaveSession),
-            ActionType::EditScrollback(_) => Ok(crate::input::actions::Action::EditScrollback),
+            ActionType::EditScrollback(edit_scrollback_action) => {
+                Ok(crate::input::actions::Action::EditScrollback {
+                    ansi: edit_scrollback_action.ansi,
+                })
+            },
             ActionType::ScrollUp(_) => Ok(crate::input::actions::Action::ScrollUp),
             ActionType::ScrollUpAt(scroll_action) => {
                 Ok(crate::input::actions::Action::ScrollUpAt {
@@ -2534,6 +2539,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                         .pane_id
                         .ok_or_else(|| anyhow!("EditScrollbackByPaneId missing pane_id"))?
                         .try_into()?,
+                    ansi: a.ansi,
                 })
             },
             ActionType::ToggleFullscreenByPaneId(a) => Ok(

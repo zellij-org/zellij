@@ -185,7 +185,9 @@ pub enum Action {
     DumpLayout,
     /// Save the current session state to disk
     SaveSession,
-    EditScrollback,
+    EditScrollback {
+        ansi: bool,
+    },
     EditScrollbackRaw,
     /// Scroll up in focus pane.
     ScrollUp,
@@ -581,6 +583,7 @@ pub enum Action {
     },
     EditScrollbackByPaneId {
         pane_id: PaneId,
+        ansi: bool,
     },
     ToggleFocusFullscreenByPaneId {
         pane_id: PaneId,
@@ -869,15 +872,15 @@ impl Action {
             },
             CliAction::DumpLayout => Ok(vec![Action::DumpLayout]),
             CliAction::SaveSession => Ok(vec![Action::SaveSession]),
-            CliAction::EditScrollback { pane_id } => match pane_id {
+            CliAction::EditScrollback { pane_id, ansi } => match pane_id {
                 Some(pane_id_str) => {
                     let pane_id = PaneId::from_str(&pane_id_str)
                         .map_err(|_| format!(
                             "Malformed pane id: {pane_id_str}, expecting either a bare integer (eg. 1), a terminal pane id (eg. terminal_1) or a plugin pane id (eg. plugin_1)"
                         ))?;
-                    Ok(vec![Action::EditScrollbackByPaneId { pane_id }])
+                    Ok(vec![Action::EditScrollbackByPaneId { pane_id, ansi }])
                 },
-                None => Ok(vec![Action::EditScrollback]),
+                None => Ok(vec![Action::EditScrollback { ansi }]),
             },
             CliAction::ScrollUp { pane_id } => match pane_id {
                 Some(pane_id_str) => {
@@ -2525,14 +2528,16 @@ mod tests {
     fn test_edit_scrollback_with_pane_id() {
         let cli_action = CliAction::EditScrollback {
             pane_id: Some("terminal_15".to_string()),
+            ansi: false,
         };
         let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
         assert!(result.is_ok());
         let actions = result.unwrap();
         assert_eq!(actions.len(), 1);
         match &actions[0] {
-            Action::EditScrollbackByPaneId { pane_id } => {
+            Action::EditScrollbackByPaneId { pane_id, ansi } => {
                 assert!(matches!(pane_id, PaneId::Terminal(15)));
+                assert!(!ansi);
             },
             _ => panic!("Expected EditScrollbackByPaneId action"),
         }
@@ -2540,12 +2545,15 @@ mod tests {
 
     #[test]
     fn test_edit_scrollback_without_pane_id() {
-        let cli_action = CliAction::EditScrollback { pane_id: None };
+        let cli_action = CliAction::EditScrollback {
+            pane_id: None,
+            ansi: false,
+        };
         let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
         assert!(result.is_ok());
         let actions = result.unwrap();
         assert_eq!(actions.len(), 1);
-        assert!(matches!(actions[0], Action::EditScrollback));
+        assert!(matches!(actions[0], Action::EditScrollback { ansi: false }));
     }
 
     // 14. ToggleFullscreen

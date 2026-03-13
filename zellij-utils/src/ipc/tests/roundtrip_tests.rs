@@ -924,7 +924,7 @@ fn test_client_messages() {
         is_cli_client: true,
     });
     test_client_roundtrip!(ClientToServerMsg::Action {
-        action: Action::EditScrollback,
+        action: Action::EditScrollback { ansi: false },
         terminal_id: Some(1),
         client_id: Some(100),
         is_cli_client: true,
@@ -3210,6 +3210,7 @@ fn test_client_messages() {
     test_client_roundtrip!(ClientToServerMsg::Action {
         action: Action::EditScrollbackByPaneId {
             pane_id: PaneId::Terminal(1),
+            ansi: false,
         },
         terminal_id: Some(1),
         client_id: Some(100),

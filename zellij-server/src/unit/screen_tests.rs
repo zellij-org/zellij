@@ -2474,7 +2474,10 @@ pub fn send_cli_edit_scrollback_action() {
         PtyInstruction::Exit,
         pty_receiver
     );
-    let cli_action = CliAction::EditScrollback { pane_id: None };
+    let cli_action = CliAction::EditScrollback {
+        pane_id: None,
+        ansi: false,
+    };
     let _ = mock_screen.to_screen.send(ScreenInstruction::PtyBytes(
         0,
         "fill pane up with something".as_bytes().to_vec(),
@@ -6481,6 +6484,7 @@ pub fn send_cli_edit_scrollback_with_pane_id() {
     std::thread::sleep(std::time::Duration::from_millis(100));
     let cli_action = CliAction::EditScrollback {
         pane_id: Some("terminal_0".to_string()),
+        ansi: false,
     };
     send_cli_action_to_server(&session_metadata, cli_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));

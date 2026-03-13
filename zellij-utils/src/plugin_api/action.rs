@@ -229,7 +229,7 @@ impl TryFrom<ProtobufAction> for Action {
             },
             Some(ProtobufActionName::EditScrollback) => match protobuf_action.optional_payload {
                 Some(_) => Err("EditScrollback should not have a payload"),
-                None => Ok(Action::EditScrollback),
+                None => Ok(Action::EditScrollback { ansi: false }),
             },
             Some(ProtobufActionName::ScrollUp) => match protobuf_action.optional_payload {
                 Some(_) => Err("ScrollUp should not have a payload"),
@@ -1193,7 +1193,7 @@ impl TryFrom<Action> for ProtobufAction {
                     })),
                 })
             },
-            Action::EditScrollback => Ok(ProtobufAction {
+            Action::EditScrollback { .. } => Ok(ProtobufAction {
                 name: ProtobufActionName::EditScrollback as i32,
                 optional_payload: None,
             }),

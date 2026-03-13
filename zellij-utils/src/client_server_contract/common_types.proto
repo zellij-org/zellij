@@ -286,7 +286,9 @@ message MovePaneBackwardsAction {}
 message ClearScreenAction {}
 message DumpLayoutAction {}
 message SaveSessionAction {}
-message EditScrollbackAction {}
+message EditScrollbackAction {
+  bool ansi = 1;
+}
 message ScrollUpAction {}
 message ScrollDownAction {}
 message ScrollToBottomAction {}
@@ -1188,7 +1190,10 @@ message ResizeByPaneIdAction { PaneId pane_id = 1; ResizeAction resize_action = 
 message MovePaneByPaneIdAction { PaneId pane_id = 1; optional Direction direction = 2; }
 message MovePaneBackwardsByPaneIdAction { PaneId pane_id = 1; }
 message ClearScreenByPaneIdAction { PaneId pane_id = 1; }
-message EditScrollbackByPaneIdAction { PaneId pane_id = 1; }
+message EditScrollbackByPaneIdAction {
+  PaneId pane_id = 1;
+  bool ansi = 2;
+}
 message ToggleFullscreenByPaneIdAction { PaneId pane_id = 1; }
 message TogglePaneEmbedOrFloatingByPaneIdAction { PaneId pane_id = 1; }
 message CloseFocusByPaneIdAction { PaneId pane_id = 1; }

@@ -787,6 +787,10 @@ pub enum CliAction {
         /// Target a specific pane by ID (eg. terminal_1, plugin_2, or 3)
         #[clap(short, long, value_parser)]
         pane_id: Option<String>,
+
+        /// Preserve ANSI styling in the scrollback dump
+        #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
+        ansi: bool,
     },
     /// Scroll up in the focused pane
     ScrollUp {
