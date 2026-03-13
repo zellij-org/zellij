@@ -2166,6 +2166,13 @@ impl Grid {
                 current_row.columns.append(&mut columns_padding);
             }
             for _ in 0..count {
+                // If cursor is on the second half of a wide char, erase the wide
+                // char first (both halves become spaces), then delete normally.
+                let (_, pos_in_char) =
+                    current_row.absolute_character_index_and_position_in_char(self.cursor.x);
+                if pos_in_char > 0 {
+                    current_row.replace_character_at(empty_character.clone(), self.cursor.x);
+                }
                 let deleted_character = current_row.delete_and_return_character(self.cursor.x);
                 let excess_width = deleted_character
                     .map(|terminal_character| terminal_character.width())
