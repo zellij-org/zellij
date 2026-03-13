@@ -507,14 +507,15 @@ impl WasmBridge {
         };
 
         // Check if any removed plugin was subscribed to ANSI pane render
-        let was_subscribed_to_ansi = plugins_to_cleanup.iter().any(
-            |((_, _), (_, subscriptions, _))| {
-                subscriptions
-                    .lock()
-                    .unwrap()
-                    .contains(&EventType::PaneRenderReportWithAnsi)
-            },
-        );
+        let was_subscribed_to_ansi =
+            plugins_to_cleanup
+                .iter()
+                .any(|((_, _), (_, subscriptions, _))| {
+                    subscriptions
+                        .lock()
+                        .unwrap()
+                        .contains(&EventType::PaneRenderReportWithAnsi)
+                });
 
         // Schedule cleanup on each plugin's pinned thread
         for ((plugin_id, client_id), (running_plugin, subscriptions, workers)) in plugins_to_cleanup
@@ -1293,9 +1294,12 @@ impl WasmBridge {
     fn get_changed_panes_per_client(
         &self,
         new_contents: &HashMap<ClientId, HashMap<zellij_utils::data::PaneId, PaneContents>>,
-        previous_contents: Option<&HashMap<ClientId, HashMap<zellij_utils::data::PaneId, PaneContents>>>,
+        previous_contents: Option<
+            &HashMap<ClientId, HashMap<zellij_utils::data::PaneId, PaneContents>>,
+        >,
     ) -> HashMap<ClientId, HashMap<zellij_utils::data::PaneId, PaneContents>> {
-        let mut result: HashMap<ClientId, HashMap<zellij_utils::data::PaneId, PaneContents>> = HashMap::new();
+        let mut result: HashMap<ClientId, HashMap<zellij_utils::data::PaneId, PaneContents>> =
+            HashMap::new();
 
         // First report - return everything grouped by client
         let Some(prev_contents) = previous_contents else {
@@ -1307,7 +1311,8 @@ impl WasmBridge {
 
         // Compare each client's panes
         for (client_id, new_panes) in new_contents {
-            let mut client_panes: HashMap<zellij_utils::data::PaneId, PaneContents> = HashMap::new();
+            let mut client_panes: HashMap<zellij_utils::data::PaneId, PaneContents> =
+                HashMap::new();
             for (pane_id, new_pane_contents) in new_panes {
                 let has_changed = prev_contents
                     .get(client_id)
@@ -1336,7 +1341,9 @@ impl WasmBridge {
         // Plain content (existing behavior)
         let changed_panes_per_client = self.get_changed_panes_per_client(
             &pane_render_report.all_pane_contents,
-            self.previous_pane_render_report.as_ref().map(|r| &r.all_pane_contents),
+            self.previous_pane_render_report
+                .as_ref()
+                .map(|r| &r.all_pane_contents),
         );
         for (client_id, client_panes) in changed_panes_per_client {
             let updates = vec![(None, Some(client_id), Event::PaneRenderReport(client_panes))];
@@ -1347,10 +1354,16 @@ impl WasmBridge {
         if !pane_render_report.all_pane_contents_with_ansi.is_empty() {
             let changed_ansi_panes_per_client = self.get_changed_panes_per_client(
                 &pane_render_report.all_pane_contents_with_ansi,
-                self.previous_pane_render_report.as_ref().map(|r| &r.all_pane_contents_with_ansi),
+                self.previous_pane_render_report
+                    .as_ref()
+                    .map(|r| &r.all_pane_contents_with_ansi),
             );
             for (client_id, client_panes) in changed_ansi_panes_per_client {
-                let updates = vec![(None, Some(client_id), Event::PaneRenderReportWithAnsi(client_panes))];
+                let updates = vec![(
+                    None,
+                    Some(client_id),
+                    Event::PaneRenderReportWithAnsi(client_panes),
+                )];
                 self.update_plugins(updates, shutdown_sender.clone())?;
             }
         }
@@ -1371,9 +1384,11 @@ impl WasmBridge {
                         .contains(&EventType::PaneRenderReportWithAnsi)
                 })
         };
-        let _ = self.senders.send_to_screen(
-            ScreenInstruction::PluginSubscribedToAnsiPaneContents(any_plugin_needs_ansi),
-        );
+        let _ = self
+            .senders
+            .send_to_screen(ScreenInstruction::PluginSubscribedToAnsiPaneContents(
+                any_plugin_needs_ansi,
+            ));
     }
 
     pub fn cleanup(&mut self) {
@@ -2063,8 +2078,9 @@ fn check_event_permission(
         | Event::HighlightClicked { .. }
         | Event::InputReceived => PermissionType::ReadApplicationState,
         Event::WebServerStatus(..) => PermissionType::StartWebServer,
-        Event::PaneRenderReport(..)
-        | Event::PaneRenderReportWithAnsi(..) => PermissionType::ReadPaneContents,
+        Event::PaneRenderReport(..) | Event::PaneRenderReportWithAnsi(..) => {
+            PermissionType::ReadPaneContents
+        },
         Event::UserAction(..) => PermissionType::InterceptInput,
         _ => return (PermissionStatus::Granted, None),
     };
