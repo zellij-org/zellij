@@ -6731,6 +6731,7 @@ pub(crate) fn screen_thread_main(
                 if should_be_tiled {
                     new_pane_placement = NewPanePlacement::Tiled {
                         direction: None,
+                        split_size: None,
                         borderless: None,
                     };
                 }
