@@ -1415,6 +1415,7 @@ impl Grid {
         self.search_viewport();
         // If we have thrown out the active element, set it to None
         self.search_results.unset_active_selection_if_nonexistent();
+        self.egc_state = None;
         self.output_buffer.update_all_lines();
     }
     pub fn as_character_lines(&self) -> Vec<Vec<TerminalCharacter>> {
@@ -1686,6 +1687,7 @@ impl Grid {
                     .insert(scroll_region_top, Row::from_columns(columns).canonical());
             }
         }
+        self.egc_state = None;
         self.output_buffer.update_all_lines(); // TODO: only update scroll region lines
     }
     pub fn rotate_scroll_region_down(&mut self, count: usize) {
@@ -1707,6 +1709,7 @@ impl Grid {
             self.viewport
                 .insert(scroll_region_bottom, Row::from_columns(columns).canonical());
         }
+        self.egc_state = None;
         self.output_buffer.update_all_lines(); // TODO: only update scroll region lines
     }
     pub fn fill_viewport(&mut self, character: TerminalCharacter) {
@@ -1942,15 +1945,26 @@ impl Grid {
         // egc_state.text must reflect the complete EGC so that boundary checks
         // against subsequent codepoints use correct prior context — particularly
         // RI parity for flag sequences repeated via CSI b.
-        let egc_text = String::from(terminal_character.grapheme());
+        // Reuse the existing String buffer when possible to avoid per-character
+        // heap allocation on the hot path.
+        match &mut self.egc_state {
+            Some(state) => {
+                state.text.clear();
+                state.text.push_str(terminal_character.grapheme());
+            },
+            None => {
+                self.egc_state = Some(PendingGrapheme {
+                    text: String::from(terminal_character.grapheme()),
+                    ..Default::default()
+                });
+            },
+        }
         self.add_character_at_cursor_position(terminal_character, false);
         self.move_cursor_forward_until_edge(character_width);
-        self.egc_state = Some(PendingGrapheme {
-            text: egc_text,
-            x: placed_x,
-            y: placed_y,
-            end_x: self.cursor.x,
-        });
+        let state = self.egc_state.as_mut().unwrap();
+        state.x = placed_x;
+        state.y = placed_y;
+        state.end_x = self.cursor.x;
     }
     pub fn get_character_under_cursor(&self) -> Option<TerminalCharacter> {
         let absolute_x_in_line = self.get_absolute_character_index(self.cursor.x, self.cursor.y)?;
@@ -2328,6 +2342,7 @@ impl Grid {
         self.cursor_is_hidden = false;
         self.supports_kitty_keyboard_protocol = false;
         self.grapheme_cluster_mode = false;
+        self.egc_state = None;
         self.set_scroll_region_to_viewport_size();
         self.pane_default_fg = None;
         self.pane_default_bg = None;
