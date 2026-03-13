@@ -2983,6 +2983,8 @@ pub struct SubscribeToPaneRendersMsg {
     pub pane_ids: ::prost::alloc::vec::Vec<PaneId>,
     #[prost(uint32, optional, tag="2")]
     pub scrollback: ::core::option::Option<u32>,
+    #[prost(bool, tag="3")]
+    pub ansi: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

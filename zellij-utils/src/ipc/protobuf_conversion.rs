@@ -118,9 +118,11 @@ impl From<ClientToServerMsg> for ProtoClientToServerMsg {
             ClientToServerMsg::SubscribeToPaneRenders {
                 pane_ids,
                 scrollback,
+                ansi,
             } => client_to_server_msg::Message::SubscribeToPaneRenders(SubscribeToPaneRendersMsg {
                 pane_ids: pane_ids.into_iter().map(|id| id.into()).collect(),
                 scrollback: scrollback.map(|s| s as u32),
+                ansi,
             }),
         };
 
@@ -242,6 +244,7 @@ impl TryFrom<ProtoClientToServerMsg> for ClientToServerMsg {
                 Ok(ClientToServerMsg::SubscribeToPaneRenders {
                     pane_ids: pane_ids?,
                     scrollback: msg.scrollback.map(|s| s as usize),
+                    ansi: msg.ansi,
                 })
             },
             None => Err(anyhow!("Empty ClientToServerMsg message")),

@@ -153,6 +153,10 @@ pub struct SubscribeCli {
     /// Output format
     #[clap(short, long, default_value = "raw", arg_enum)]
     pub format: SubscribeFormat,
+
+    /// Preserve ANSI styling in the output
+    #[clap(long, value_parser, default_value("false"), takes_value(false))]
+    pub ansi: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ArgEnum)]

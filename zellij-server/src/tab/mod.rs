@@ -608,6 +608,14 @@ pub trait Pane {
         _get_full_scrollback: bool,
         _max_scrollback_lines: Option<usize>,
     ) -> PaneContents;
+    fn pane_contents_with_ansi(
+        &self,
+        _client_id: Option<ClientId>,
+        _get_full_scrollback: bool,
+        _max_scrollback_lines: Option<usize>,
+    ) -> PaneContents {
+        Default::default()
+    }
     fn update_exit_status(&mut self, _exit_status: i32) {}
     fn set_plugin_regex_highlights(
         &mut self,

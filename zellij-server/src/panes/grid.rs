@@ -3101,6 +3101,72 @@ impl Grid {
             PaneContents::new(viewport, self.selection.start, self.selection.end)
         }
     }
+    pub fn pane_contents_with_ansi(
+        &self,
+        get_full_scrollback: bool,
+        max_scrollback_lines: Option<usize>,
+    ) -> PaneContents {
+        use std::fmt::Write;
+
+        let extract_row_with_ansi = |row: &Row| -> String {
+            let mut buf = String::new();
+            let mut last_styles: Option<RcCharacterStyles> = None;
+
+            let last_non_space = row
+                .columns
+                .iter()
+                .rposition(|tc| {
+                    let space = tc.character == ' ';
+                    let styled = !matches!(tc.styles.background, Some(AnsiCode::Reset) | None);
+                    !space || styled
+                })
+                .map(|i| i + 1)
+                .unwrap_or(0);
+
+            for tc in row.columns.iter().take(last_non_space) {
+                if last_styles.as_ref() != Some(&tc.styles) {
+                    write!(buf, "{}", tc.styles).unwrap();
+                    last_styles = Some(tc.styles.clone());
+                }
+                buf.push(tc.character);
+            }
+            if last_styles.is_some() {
+                buf.push_str("\u{1b}[m");
+            }
+            buf
+        };
+
+        let mut viewport: Vec<String> = Vec::with_capacity(self.viewport.len());
+        for row in &self.viewport {
+            viewport.push(extract_row_with_ansi(row));
+        }
+
+        if get_full_scrollback {
+            let mut lines_above_viewport: Vec<String> = Vec::with_capacity(self.lines_above.len());
+            for row in &self.lines_above {
+                lines_above_viewport.push(extract_row_with_ansi(row));
+            }
+            if let Some(max) = max_scrollback_lines {
+                if max > 0 && lines_above_viewport.len() > max {
+                    let start = lines_above_viewport.len() - max;
+                    lines_above_viewport = lines_above_viewport.split_off(start);
+                }
+            }
+            let mut lines_below_viewport: Vec<String> = Vec::with_capacity(self.lines_below.len());
+            for row in &self.lines_below {
+                lines_below_viewport.push(extract_row_with_ansi(row));
+            }
+            PaneContents::new_with_scrollback(
+                viewport,
+                self.selection.start,
+                self.selection.end,
+                lines_above_viewport,
+                lines_below_viewport,
+            )
+        } else {
+            PaneContents::new(viewport, self.selection.start, self.selection.end)
+        }
+    }
 }
 
 impl Perform for Grid {

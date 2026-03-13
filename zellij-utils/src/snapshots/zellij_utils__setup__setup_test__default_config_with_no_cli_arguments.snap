@@ -2211,7 +2211,9 @@ Config {
                 ),
                 key_modifiers: {},
             }: [
-                EditScrollback,
+                EditScrollback {
+                    ansi: false,
+                },
                 SwitchToMode {
                     input_mode: Normal,
                 },

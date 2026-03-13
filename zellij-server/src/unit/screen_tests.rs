@@ -5224,7 +5224,12 @@ fn subscriber_receives_initial_delivery() {
     let (mut screen, messages) = create_new_screen_with_message_capture(size);
     new_tab(&mut screen, 1, 0);
 
-    screen.subscribe_to_pane_renders(100, vec![zellij_utils::data::PaneId::Terminal(1)], None);
+    screen.subscribe_to_pane_renders(
+        100,
+        vec![zellij_utils::data::PaneId::Terminal(1)],
+        None,
+        false,
+    );
 
     let msgs = messages.lock().unwrap();
     let client_msgs = msgs.get(&100).unwrap();
@@ -5248,7 +5253,12 @@ fn subscriber_receives_initial_with_scrollback() {
     let (mut screen, messages) = create_new_screen_with_message_capture(size);
     new_tab(&mut screen, 1, 0);
 
-    screen.subscribe_to_pane_renders(100, vec![zellij_utils::data::PaneId::Terminal(1)], Some(0));
+    screen.subscribe_to_pane_renders(
+        100,
+        vec![zellij_utils::data::PaneId::Terminal(1)],
+        Some(0),
+        false,
+    );
 
     let msgs = messages.lock().unwrap();
     let client_msgs = msgs.get(&100).unwrap();
@@ -5272,7 +5282,12 @@ fn subscriber_no_update_on_unchanged_viewport() {
     let (mut screen, messages) = create_new_screen_with_message_capture(size);
     new_tab(&mut screen, 1, 0);
 
-    screen.subscribe_to_pane_renders(100, vec![zellij_utils::data::PaneId::Terminal(1)], None);
+    screen.subscribe_to_pane_renders(
+        100,
+        vec![zellij_utils::data::PaneId::Terminal(1)],
+        None,
+        false,
+    );
 
     let initial_viewport = {
         let msgs = messages.lock().unwrap();
@@ -5291,7 +5306,7 @@ fn subscriber_no_update_on_unchanged_viewport() {
             ..Default::default()
         },
     );
-    screen.deliver_subscriber_updates_from_map(&pane_map);
+    screen.deliver_subscriber_updates_from_map(&pane_map, None);
 
     let msgs = messages.lock().unwrap();
     let client_msgs = msgs.get(&100).unwrap();
@@ -5304,7 +5319,12 @@ fn subscriber_receives_update_on_changed_viewport() {
     let (mut screen, messages) = create_new_screen_with_message_capture(size);
     new_tab(&mut screen, 1, 0);
 
-    screen.subscribe_to_pane_renders(100, vec![zellij_utils::data::PaneId::Terminal(1)], None);
+    screen.subscribe_to_pane_renders(
+        100,
+        vec![zellij_utils::data::PaneId::Terminal(1)],
+        None,
+        false,
+    );
 
     let mut pane_map = HashMap::new();
     pane_map.insert(
@@ -5314,7 +5334,7 @@ fn subscriber_receives_update_on_changed_viewport() {
             ..Default::default()
         },
     );
-    screen.deliver_subscriber_updates_from_map(&pane_map);
+    screen.deliver_subscriber_updates_from_map(&pane_map, None);
 
     let msgs = messages.lock().unwrap();
     let client_msgs = msgs.get(&100).unwrap();
@@ -5340,7 +5360,12 @@ fn subscriber_error_for_nonexistent_pane() {
     let (mut screen, messages) = create_new_screen_with_message_capture(size);
     new_tab(&mut screen, 1, 0);
 
-    screen.subscribe_to_pane_renders(100, vec![zellij_utils::data::PaneId::Terminal(999)], None);
+    screen.subscribe_to_pane_renders(
+        100,
+        vec![zellij_utils::data::PaneId::Terminal(999)],
+        None,
+        false,
+    );
 
     let msgs = messages.lock().unwrap();
     let client_msgs = msgs.get(&100).unwrap();
@@ -5376,6 +5401,7 @@ fn subscriber_state_registered_for_multiple_panes() {
             zellij_utils::data::PaneId::Terminal(2),
         ],
         None,
+        false,
     );
 
     let sub = screen.pane_render_subscribers.get(&100).unwrap();
@@ -5394,8 +5420,18 @@ fn multiple_subscribers_receive_updates() {
     let (mut screen, messages) = create_new_screen_with_message_capture(size);
     new_tab(&mut screen, 1, 0);
 
-    screen.subscribe_to_pane_renders(100, vec![zellij_utils::data::PaneId::Terminal(1)], None);
-    screen.subscribe_to_pane_renders(101, vec![zellij_utils::data::PaneId::Terminal(1)], None);
+    screen.subscribe_to_pane_renders(
+        100,
+        vec![zellij_utils::data::PaneId::Terminal(1)],
+        None,
+        false,
+    );
+    screen.subscribe_to_pane_renders(
+        101,
+        vec![zellij_utils::data::PaneId::Terminal(1)],
+        None,
+        false,
+    );
 
     let mut pane_map = HashMap::new();
     pane_map.insert(
@@ -5405,7 +5441,7 @@ fn multiple_subscribers_receive_updates() {
             ..Default::default()
         },
     );
-    screen.deliver_subscriber_updates_from_map(&pane_map);
+    screen.deliver_subscriber_updates_from_map(&pane_map, None);
 
     let msgs = messages.lock().unwrap();
     let client_100_msgs = msgs.get(&100).unwrap();
@@ -5420,7 +5456,12 @@ fn subscriber_removed_on_remove_client() {
     let (mut screen, _messages) = create_new_screen_with_message_capture(size);
     new_tab(&mut screen, 1, 0);
 
-    screen.subscribe_to_pane_renders(100, vec![zellij_utils::data::PaneId::Terminal(1)], None);
+    screen.subscribe_to_pane_renders(
+        100,
+        vec![zellij_utils::data::PaneId::Terminal(1)],
+        None,
+        false,
+    );
     assert!(screen.pane_render_subscribers.contains_key(&100));
 
     let _ = screen.remove_client(100);
@@ -5433,7 +5474,12 @@ fn subscriber_removed_when_all_panes_closed() {
     let (mut screen, messages) = create_new_screen_with_message_capture(size);
     new_tab(&mut screen, 1, 0);
 
-    screen.subscribe_to_pane_renders(100, vec![zellij_utils::data::PaneId::Terminal(1)], None);
+    screen.subscribe_to_pane_renders(
+        100,
+        vec![zellij_utils::data::PaneId::Terminal(1)],
+        None,
+        false,
+    );
 
     screen.notify_pane_closed_to_subscribers(zellij_utils::data::PaneId::Terminal(1));
 
@@ -5474,6 +5520,7 @@ fn subscriber_partial_close() {
             zellij_utils::data::PaneId::Terminal(2),
         ],
         None,
+        false,
     );
 
     screen.notify_pane_closed_to_subscribers(zellij_utils::data::PaneId::Terminal(1));
@@ -5522,6 +5569,7 @@ fn subscriber_full_close_sequence() {
             zellij_utils::data::PaneId::Terminal(2),
         ],
         None,
+        false,
     );
 
     screen.notify_pane_closed_to_subscribers(zellij_utils::data::PaneId::Terminal(1));
@@ -5555,7 +5603,12 @@ fn delivery_path_a_and_b_produce_same_content() {
     let (mut screen, messages) = create_new_screen_with_message_capture(size);
     new_tab(&mut screen, 1, 0);
 
-    screen.subscribe_to_pane_renders(100, vec![zellij_utils::data::PaneId::Terminal(1)], None);
+    screen.subscribe_to_pane_renders(
+        100,
+        vec![zellij_utils::data::PaneId::Terminal(1)],
+        None,
+        false,
+    );
 
     messages.lock().unwrap().get_mut(&100).unwrap().clear();
 
@@ -5585,7 +5638,10 @@ fn delivery_path_a_and_b_produce_same_content() {
     pane_map.insert(zellij_utils::data::PaneId::Terminal(1), contents.clone());
     let mut all_pane_contents = HashMap::new();
     all_pane_contents.insert(1 as ClientId, pane_map);
-    let report = PaneRenderReport { all_pane_contents };
+    let report = PaneRenderReport {
+        all_pane_contents,
+        all_pane_contents_with_ansi: HashMap::new(),
+    };
     screen.deliver_to_pane_subscribers_from_report(&report);
 
     let viewport_a = {
@@ -5632,7 +5688,12 @@ fn close_tab_notifies_subscribers() {
     new_tab(&mut screen, 1, 0);
     new_tab(&mut screen, 2, 1);
 
-    screen.subscribe_to_pane_renders(100, vec![zellij_utils::data::PaneId::Terminal(1)], None);
+    screen.subscribe_to_pane_renders(
+        100,
+        vec![zellij_utils::data::PaneId::Terminal(1)],
+        None,
+        false,
+    );
 
     messages.lock().unwrap().get_mut(&100).unwrap().clear();
 
@@ -5692,6 +5753,7 @@ fn close_pane_notifies_subscribers_via_instruction() {
                 zellij_utils::data::PaneId::Terminal(1),
             ],
             scrollback: None,
+            ansi: false,
         });
     std::thread::sleep(std::time::Duration::from_millis(100));
 
@@ -5746,6 +5808,7 @@ fn integration_pty_bytes_delivered_to_subscriber() {
             client_id: 100,
             pane_ids: vec![zellij_utils::data::PaneId::Terminal(0)],
             scrollback: None,
+            ansi: false,
         });
     std::thread::sleep(std::time::Duration::from_millis(100));
 
@@ -5820,6 +5883,7 @@ fn integration_pty_bytes_not_delivered_when_viewport_unchanged() {
             client_id: 100,
             pane_ids: vec![zellij_utils::data::PaneId::Terminal(0)],
             scrollback: None,
+            ansi: false,
         });
     std::thread::sleep(std::time::Duration::from_millis(100));
 
@@ -5885,6 +5949,7 @@ fn integration_scrollback_from_pre_subscription_pty_bytes() {
             client_id: 100,
             pane_ids: vec![zellij_utils::data::PaneId::Terminal(0)],
             scrollback: Some(0),
+            ansi: false,
         });
     std::thread::sleep(std::time::Duration::from_millis(100));
 
@@ -6001,6 +6066,7 @@ fn integration_no_scrollback_when_not_requested() {
             client_id: 100,
             pane_ids: vec![zellij_utils::data::PaneId::Terminal(0)],
             scrollback: None,
+            ansi: false,
         });
     std::thread::sleep(std::time::Duration::from_millis(100));
 
@@ -6061,6 +6127,7 @@ fn integration_subscriber_survives_after_regular_client_detach() {
             client_id: 100,
             pane_ids: vec![zellij_utils::data::PaneId::Terminal(0)],
             scrollback: None,
+            ansi: false,
         });
     std::thread::sleep(std::time::Duration::from_millis(100));
 

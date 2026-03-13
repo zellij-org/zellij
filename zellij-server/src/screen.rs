@@ -696,6 +696,7 @@ pub enum ScreenInstruction {
         client_id: ClientId,
         pane_ids: Vec<zellij_utils::data::PaneId>,
         scrollback: Option<usize>,
+        ansi: bool,
     },
     NotifyPaneClosedToSubscribers {
         pane_id: zellij_utils::data::PaneId,
@@ -1180,6 +1181,7 @@ impl WatcherState {
 struct PaneRenderSubscription {
     pane_ids: HashSet<zellij_utils::data::PaneId>,
     previous_viewports: HashMap<zellij_utils::data::PaneId, Vec<String>>,
+    ansi: bool,
 }
 
 /// A [`Screen`] holds multiple [`Tab`]s, each one holding multiple [`panes`](crate::client::panes).
@@ -1898,6 +1900,9 @@ impl Screen {
                 self.styled_underlines,
                 self.osc8_hyperlinks,
             );
+
+            let has_ansi_subscribers = self.pane_render_subscribers.values().any(|s| s.ansi);
+            output.collect_ansi_pane_contents = has_ansi_subscribers;
 
             for (tab_index, tab) in &mut self.tabs {
                 if tab.has_selectable_tiled_panes() {
@@ -4418,6 +4423,7 @@ impl Screen {
         subscriber_client_id: ClientId,
         pane_ids: Vec<zellij_utils::data::PaneId>,
         scrollback: Option<usize>,
+        ansi: bool,
     ) {
         let mut previous_viewports = HashMap::new();
         let mut valid_pane_ids = HashSet::new();
@@ -4444,8 +4450,15 @@ impl Screen {
                         PaneId::Plugin(_) => regular_client_id,
                         PaneId::Terminal(_) => None,
                     };
-                    let contents =
-                        pane.pane_contents(query_client_id, get_full_scrollback, max_lines);
+                    let contents = if ansi {
+                        pane.pane_contents_with_ansi(
+                            query_client_id,
+                            get_full_scrollback,
+                            max_lines,
+                        )
+                    } else {
+                        pane.pane_contents(query_client_id, get_full_scrollback, max_lines)
+                    };
 
                     if let Some(os_input) = &self.bus.os_input {
                         let scrollback_data = if scrollback.is_some() {
@@ -4489,6 +4502,7 @@ impl Screen {
                 PaneRenderSubscription {
                     pane_ids: valid_pane_ids,
                     previous_viewports,
+                    ansi,
                 },
             );
         }
@@ -4497,7 +4511,8 @@ impl Screen {
         let Some(pane_map) = report.all_pane_contents.values().next() else {
             return;
         };
-        self.deliver_subscriber_updates_from_map(pane_map);
+        let ansi_pane_map = report.all_pane_contents_with_ansi.values().next();
+        self.deliver_subscriber_updates_from_map(pane_map, ansi_pane_map);
     }
     fn deliver_to_pane_subscribers_directly(&mut self) {
         // Collect unique pane IDs across all subscribers
@@ -4507,31 +4522,50 @@ impl Screen {
             .flat_map(|sub| sub.pane_ids.iter().copied())
             .collect();
 
+        let has_ansi_subscribers = self.pane_render_subscribers.values().any(|s| s.ansi);
+
         // Query pane contents directly from tabs
         let mut pane_map: HashMap<zellij_utils::data::PaneId, PaneContents> = HashMap::new();
+        let mut ansi_pane_map: HashMap<zellij_utils::data::PaneId, PaneContents> = HashMap::new();
         for pane_id in &all_subscribed_ids {
             let server_pane_id: PaneId = (*pane_id).into();
             for tab in self.tabs.values() {
                 if let Some(pane) = tab.get_pane_with_id(server_pane_id) {
                     pane_map.insert(*pane_id, pane.pane_contents(None, false, None));
+                    if has_ansi_subscribers {
+                        ansi_pane_map
+                            .insert(*pane_id, pane.pane_contents_with_ansi(None, false, None));
+                    }
                     break;
                 }
             }
         }
 
-        self.deliver_subscriber_updates_from_map(&pane_map);
+        let ansi_map_ref = if has_ansi_subscribers {
+            Some(&ansi_pane_map)
+        } else {
+            None
+        };
+        self.deliver_subscriber_updates_from_map(&pane_map, ansi_map_ref);
     }
     fn deliver_subscriber_updates_from_map(
         &mut self,
         pane_map: &HashMap<zellij_utils::data::PaneId, PaneContents>,
+        ansi_pane_map: Option<&HashMap<zellij_utils::data::PaneId, PaneContents>>,
     ) {
         // Collect updates to send, avoiding borrow conflicts
         let mut updates_to_send: Vec<(ClientId, ServerToClientMsg)> = Vec::new();
         let mut dead_subscribers: Vec<ClientId> = Vec::new();
 
         for (subscriber_id, subscription) in &self.pane_render_subscribers {
+            let effective_map = if subscription.ansi {
+                ansi_pane_map.unwrap_or(pane_map)
+            } else {
+                pane_map
+            };
+
             for pane_id in &subscription.pane_ids {
-                if let Some(contents) = pane_map.get(pane_id) {
+                if let Some(contents) = effective_map.get(pane_id) {
                     let changed = subscription
                         .previous_viewports
                         .get(pane_id)
@@ -8254,8 +8288,9 @@ pub(crate) fn screen_thread_main(
                 client_id,
                 pane_ids,
                 scrollback,
+                ansi,
             } => {
-                screen.subscribe_to_pane_renders(client_id, pane_ids, scrollback);
+                screen.subscribe_to_pane_renders(client_id, pane_ids, scrollback, ansi);
             },
             ScreenInstruction::NotifyPaneClosedToSubscribers { pane_id } => {
                 screen.notify_pane_closed_to_subscribers(pane_id);

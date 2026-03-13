@@ -3071,14 +3071,17 @@ fn test_client_messages() {
     test_client_roundtrip!(ClientToServerMsg::SubscribeToPaneRenders {
         pane_ids: vec![PaneId::Terminal(1), PaneId::Plugin(2)],
         scrollback: Some(100),
+        ansi: false,
     });
     test_client_roundtrip!(ClientToServerMsg::SubscribeToPaneRenders {
         pane_ids: vec![PaneId::Terminal(0)],
         scrollback: None,
+        ansi: false,
     });
     test_client_roundtrip!(ClientToServerMsg::SubscribeToPaneRenders {
         pane_ids: vec![PaneId::Terminal(1)],
         scrollback: Some(0),
+        ansi: true,
     });
     // Pane-targeting roundtrips
     test_client_roundtrip!(ClientToServerMsg::Action {

@@ -2550,6 +2550,7 @@ pub(crate) fn route_thread_main(
                         ClientToServerMsg::SubscribeToPaneRenders {
                             ref pane_ids,
                             ref scrollback,
+                            ansi,
                         } => {
                             send_to_screen_or_retry_queue!(
                                 senders,
@@ -2557,6 +2558,7 @@ pub(crate) fn route_thread_main(
                                     client_id,
                                     pane_ids: pane_ids.clone(),
                                     scrollback: *scrollback,
+                                    ansi,
                                 },
                                 instruction,
                                 retry_queue
