@@ -73,6 +73,8 @@ impl ZellijPlugin for State {
                 BareKey::Esc if key.has_no_modifiers() => {
                     if self.is_searching {
                         self.clear_search_term();
+                    } else if self.handling_filepick_request_from.is_some() {
+                        close_self();
                     } else {
                         self.file_list_view.clear_selected();
                     }
