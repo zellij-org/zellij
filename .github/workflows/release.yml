@@ -162,6 +162,37 @@ jobs:
           asset_name: zellij-${{matrix.target}}.sha256sum
           asset_content_type: text/plain
 
+      # ===== Windows MSI installer =====
+      - name: Install WiX v6
+        if: runner.os == 'Windows'
+        run: dotnet tool install --global wix
+
+      - name: Add WiX UI extension
+        if: runner.os == 'Windows'
+        run: wix extension add WixToolset.UI.wixext/6.0.2
+
+      - name: Build MSI installer
+        if: runner.os == 'Windows'
+        run: |
+          $version = (Select-String -Path Cargo.toml -Pattern '^version\s*=\s*"(.+)"' | Select-Object -First 1).Matches.Groups[1].Value
+          New-Item -ItemType Directory -Force -Path target\wix
+          wix build wix\main.wxs wix\Zellij.wxl `
+            -d Version=$version `
+            -arch x64 `
+            -ext WixToolset.UI.wixext `
+            -o target\wix\zellij-x86_64-pc-windows-msvc.msi
+
+      - name: Upload MSI installer
+        if: runner.os == 'Windows'
+        uses: actions/upload-release-asset@v1.0.2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: target\wix\zellij-x86_64-pc-windows-msvc.msi
+          asset_name: zellij-x86_64-pc-windows-msvc.msi
+          asset_content_type: application/octet-stream
+
   build-release-noweb:
     needs: create-release
     name: build-release-noweb

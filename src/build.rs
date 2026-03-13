@@ -6,4 +6,8 @@ fn main() {
     if cfg!(target_os = "windows") && std::env::var("PROFILE").unwrap_or_default() != "release" {
         println!("cargo:rustc-link-arg=/STACK:8388608");
     }
+
+    // Embed the application icon into the Windows executable.
+    #[cfg(target_os = "windows")]
+    embed_resource::compile("assets/zellij.rc", embed_resource::NONE);
 }
