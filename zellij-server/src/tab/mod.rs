@@ -4,9 +4,11 @@
 mod clipboard;
 mod copy_command;
 mod layout_applier;
+mod mouse_handler;
 mod swap_layouts;
 
 use copy_command::CopyCommand;
+pub use mouse_handler::{MouseEffect, MouseHandler, PaneEdge, PaneResizeState};
 use std::env::temp_dir;
 use std::net::IpAddr;
 use std::path::PathBuf;
@@ -14,11 +16,11 @@ use uuid::Uuid;
 use zellij_utils::data::PaneContents;
 use zellij_utils::data::{
     Direction, KeyWithModifier, NewPanePlacement, PaneInfo, PermissionStatus, PermissionType,
-    PluginPermission, ResizeStrategy, WebSharing,
+    PluginPermission, RegexHighlight, ResizeStrategy, Style, WebSharing,
 };
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
-use zellij_utils::input::mouse::{MouseEvent, MouseEventType};
+use zellij_utils::input::mouse::MouseEvent;
 use zellij_utils::position::Position;
 use zellij_utils::position::{Column, Line};
 use zellij_utils::shared::clean_string_from_control_and_linebreak;
@@ -26,7 +28,7 @@ use zellij_utils::shared::clean_string_from_control_and_linebreak;
 use crate::background_jobs::BackgroundJob;
 use crate::pane_groups::PaneGroups;
 use crate::pty_writer::PtyWriteInstruction;
-use crate::screen::CopyOptions;
+use crate::screen::{CopyOptions, ScreenInstruction};
 use crate::ui::{loading_indication::LoadingIndication, pane_boundaries_frame::FrameParams};
 use layout_applier::LayoutApplier;
 use swap_layouts::SwapLayouts;
@@ -53,9 +55,7 @@ use std::{
     str,
 };
 use zellij_utils::{
-    data::{
-        Event, FloatingPaneCoordinates, InputMode, ModeInfo, Palette, PaletteColor, Style, Styling,
-    },
+    data::{Event, FloatingPaneCoordinates, InputMode, ModeInfo, Palette, PaletteColor, Styling},
     input::{
         command::TerminalAction,
         layout::{
@@ -151,74 +151,8 @@ enum BufferedTabInstruction {
     HoldPane(PaneId, Option<i32>, bool, RunCommand), // Option<i32> is the exit status, bool is is_first_run
 }
 
-#[derive(Debug, Default, Copy, Clone)]
-pub struct MouseEffect {
-    pub state_changed: bool,
-    pub leave_clipboard_message: bool,
-    pub group_toggle: Option<PaneId>,
-    pub group_add: Option<PaneId>,
-    pub ungroup: bool,
-}
-
-impl MouseEffect {
-    pub fn state_changed() -> Self {
-        MouseEffect {
-            state_changed: true,
-            leave_clipboard_message: false,
-            group_toggle: None,
-            group_add: None,
-            ungroup: false,
-        }
-    }
-    pub fn leave_clipboard_message() -> Self {
-        MouseEffect {
-            state_changed: false,
-            leave_clipboard_message: true,
-            group_toggle: None,
-            group_add: None,
-            ungroup: false,
-        }
-    }
-    pub fn state_changed_and_leave_clipboard_message() -> Self {
-        MouseEffect {
-            state_changed: true,
-            leave_clipboard_message: true,
-            group_toggle: None,
-            group_add: None,
-            ungroup: false,
-        }
-    }
-    pub fn group_toggle(pane_id: PaneId) -> Self {
-        MouseEffect {
-            state_changed: true,
-            leave_clipboard_message: false,
-            group_toggle: Some(pane_id),
-            group_add: None,
-            ungroup: false,
-        }
-    }
-    pub fn group_add(pane_id: PaneId) -> Self {
-        MouseEffect {
-            state_changed: true,
-            leave_clipboard_message: false,
-            group_toggle: None,
-            group_add: Some(pane_id),
-            ungroup: false,
-        }
-    }
-    pub fn ungroup() -> Self {
-        MouseEffect {
-            state_changed: true,
-            leave_clipboard_message: false,
-            group_toggle: None,
-            group_add: None,
-            ungroup: true,
-        }
-    }
-}
-
 pub(crate) struct Tab {
-    pub index: usize,
+    pub id: usize,
     pub position: usize,
     pub name: String,
     pub prev_name: String,
@@ -242,6 +176,7 @@ pub(crate) struct Tab {
     auto_layout: bool,
     pending_vte_events: HashMap<u32, Vec<VteBytes>>,
     pub selecting_with_mouse_in_pane: Option<PaneId>, // this is only pub for the tests
+    pane_being_resized_with_mouse: Option<PaneResizeState>,
     link_handler: Rc<RefCell<LinkHandler>>,
     clipboard_provider: ClipboardProvider,
     // TODO: used only to focus the pane when the layout is loaded
@@ -268,14 +203,23 @@ pub(crate) struct Tab {
     web_clients_allowed: bool,
     web_sharing: WebSharing,
     mouse_hover_pane_id: HashMap<ClientId, PaneId>,
+    mouse_help_text_visible: HashMap<ClientId, bool>,
+    last_mouse_activity_time: HashMap<ClientId, Instant>,
     current_pane_group: Rc<RefCell<PaneGroups>>,
     advanced_mouse_actions: bool,
+    mouse_hover_effects: bool,
+    focus_follows_mouse: bool,
+    mouse_click_through: bool,
     currently_marking_pane_group: Rc<RefCell<HashMap<ClientId, bool>>>,
     connected_clients_in_app: Rc<RefCell<HashMap<ClientId, bool>>>, // bool -> is_web_client
     // the below are the configured values - the ones that will be set if and when the web server
     // is brought online
     web_server_ip: IpAddr,
     web_server_port: u16,
+    pub panes_with_pending_bell: HashSet<PaneId>,
+    pub tab_has_pending_bell: bool,
+    pub tab_bell_flash: bool, // currently in mid-notification-flash
+    pub tab_bell_ring: bool,  // need to send ANSI BEL to the controlling terminal
 }
 
 // FIXME: Use a struct that has a pane_type enum, to reduce all of the duplication
@@ -346,6 +290,9 @@ pub trait Pane {
     fn dump_screen(&self, _full: bool, _client_id: Option<ClientId>) -> String {
         "".to_owned()
     }
+    fn dump_screen_with_ansi(&self, _full: bool, _client_id: Option<ClientId>) -> String {
+        "".to_owned()
+    }
     fn scroll_up(&mut self, count: usize, client_id: ClientId);
     fn scroll_down(&mut self, count: usize, client_id: ClientId);
     fn clear_scroll(&mut self);
@@ -375,6 +322,10 @@ pub trait Pane {
     }
     fn get_selected_text(&self, _client_id: ClientId) -> Option<String> {
         None
+    }
+    fn set_pane_default_colors(&mut self, _fg: Option<String>, _bg: Option<String>) {}
+    fn get_pane_default_colors(&self) -> (Option<String>, Option<String>) {
+        (None, None)
     }
 
     fn right_boundary_x_coords(&self) -> usize {
@@ -486,6 +437,31 @@ pub trait Pane {
         }
         false
     }
+    fn get_edge_at_position(&self, position: &Position) -> Option<PaneEdge> {
+        if !self.contains(position) {
+            return None;
+        }
+
+        let pos_col = position.column();
+        let pos_line = position.line();
+        let pane_x = self.x();
+        let pane_y = self.y();
+        let pane_cols = self.cols();
+        let pane_rows = self.rows();
+
+        let mid_col = pane_x + pane_cols / 2;
+        let mid_line = pane_y + pane_rows / 2;
+
+        let is_left = pos_col < mid_col;
+        let is_top = (pos_line as usize) < mid_line;
+
+        return Some(match (is_top, is_left) {
+            (true, true) => PaneEdge::TopLeft,
+            (true, false) => PaneEdge::TopRight,
+            (false, true) => PaneEdge::BottomLeft,
+            (false, false) => PaneEdge::BottomRight,
+        });
+    }
     // TODO: get rid of this in favor of intercept_mouse_event_on_frame
     fn intercept_left_mouse_click(&mut self, _position: &Position, _client_id: ClientId) -> bool {
         let intercepted = false;
@@ -572,6 +548,14 @@ pub trait Pane {
     fn hold(&mut self, _exit_status: Option<i32>, _is_first_run: bool, _run_command: RunCommand) {
         // No-op by default, only terminal panes support holding
     }
+    fn has_bell(&self) -> bool {
+        false
+    }
+    fn consume_bell(&mut self) {}
+    fn set_bell_notification(&mut self, _val: bool) {}
+    fn get_bell_notification(&self) -> bool {
+        false
+    }
     fn add_red_pane_frame_color_override(&mut self, _error_text: Option<String>);
     fn add_highlight_pane_frame_color_override(
         &mut self,
@@ -622,8 +606,30 @@ pub trait Pane {
         &self,
         client_id: Option<ClientId>,
         _get_full_scrollback: bool,
+        _max_scrollback_lines: Option<usize>,
     ) -> PaneContents;
     fn update_exit_status(&mut self, _exit_status: i32) {}
+    fn set_plugin_regex_highlights(
+        &mut self,
+        _plugin_id: u32,
+        _highlights: Vec<RegexHighlight>,
+        _style: &Style,
+    ) {
+    }
+    fn clear_plugin_highlights(&mut self, _plugin_id: u32) {}
+    fn set_hover_position(&mut self, _position: Option<Position>) {}
+    fn cached_hover_tooltip(&self) -> Option<String> {
+        None
+    }
+    fn plugin_highlight_at(
+        &self,
+        _position: &Position,
+    ) -> Option<(u32, String, String, BTreeMap<String, String>)> {
+        None
+    }
+    fn terminal_emulator_wants_mouse(&self) -> bool {
+        false
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -660,7 +666,7 @@ impl Tab {
     // FIXME: Still too many arguments for clippy to be happy...
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        index: usize,
+        id: usize,
         position: usize,
         name: String,
         display_area: Size,
@@ -693,11 +699,14 @@ impl Tab {
         current_pane_group: Rc<RefCell<PaneGroups>>,
         currently_marking_pane_group: Rc<RefCell<HashMap<ClientId, bool>>>,
         advanced_mouse_actions: bool,
+        mouse_hover_effects: bool,
+        focus_follows_mouse: bool,
+        mouse_click_through: bool,
         web_server_ip: IpAddr,
         web_server_port: u16,
     ) -> Self {
         let name = if name.is_empty() {
-            format!("Tab #{}", index + 1)
+            format!("Tab #{}", id + 1)
         } else {
             name
         };
@@ -748,7 +757,7 @@ impl Tab {
         let swap_layouts = SwapLayouts::new(swap_layouts, display_area.clone());
 
         Tab {
-            index,
+            id,
             position,
             tiled_panes,
             floating_panes,
@@ -772,6 +781,7 @@ impl Tab {
             pending_vte_events: HashMap::new(),
             connected_clients,
             selecting_with_mouse_in_pane: None,
+            pane_being_resized_with_mouse: None,
             link_handler: Rc::new(RefCell::new(LinkHandler::new())),
             clipboard_provider,
             focus_pane_id: None,
@@ -793,12 +803,21 @@ impl Tab {
             web_clients_allowed,
             web_sharing,
             mouse_hover_pane_id: HashMap::new(),
+            mouse_help_text_visible: HashMap::new(),
+            last_mouse_activity_time: HashMap::new(),
             current_pane_group,
             currently_marking_pane_group,
             advanced_mouse_actions,
+            mouse_hover_effects,
+            focus_follows_mouse,
+            mouse_click_through,
             connected_clients_in_app,
             web_server_ip,
             web_server_port,
+            panes_with_pending_bell: HashSet::new(),
+            tab_has_pending_bell: false,
+            tab_bell_flash: false,
+            tab_bell_ring: false,
         }
     }
 
@@ -1223,6 +1242,8 @@ impl Tab {
             .get_mut(&client_id)
             .map(|c| c.change_to_default_mode()); // TODO: no races?
         self.connected_clients.borrow_mut().remove(&client_id);
+        self.mouse_help_text_visible.remove(&client_id);
+        self.last_mouse_activity_time.remove(&client_id);
         self.set_force_render();
     }
     pub fn drain_connected_clients(
@@ -1353,7 +1374,7 @@ impl Tab {
                     let name = None;
                     let client_id_or_tab_index = match client_id {
                         Some(client_id) => ClientTabIndexOrPaneId::ClientId(client_id),
-                        None => ClientTabIndexOrPaneId::TabIndex(self.index),
+                        None => ClientTabIndexOrPaneId::TabIndex(self.id),
                     };
                     let should_start_suppressed = false;
                     let instruction = PtyInstruction::SpawnTerminal(
@@ -2239,6 +2260,11 @@ impl Tab {
                 None,
                 Event::PaneClosed(pane_id.into()),
             )]));
+            let _ = self
+                .senders
+                .send_to_screen(ScreenInstruction::NotifyPaneClosedToSubscribers {
+                    pane_id: pane_id.into(),
+                });
             drop(replaced_pane);
         }
     }
@@ -2458,6 +2484,85 @@ impl Tab {
             None
         }
     }
+    pub fn check_and_handle_bell_notifications(
+        &mut self,
+        is_active_tab: bool,
+    ) -> (Vec<PaneId>, bool) {
+        let mut newly_notified_panes = vec![];
+        let mut tab_bell_newly_set = false;
+
+        let focused_pane_ids: HashSet<PaneId> = self
+            .connected_clients
+            .borrow()
+            .iter()
+            .filter_map(|c_id| self.get_active_pane_id(*c_id))
+            .collect();
+
+        // Collect ringing pane IDs first (immutable borrow)
+        let ringing_panes: Vec<PaneId> = self
+            .tiled_panes
+            .get_panes()
+            .chain(self.floating_panes.get_panes())
+            .filter(|(_, pane)| pane.has_bell())
+            .map(|(pane_id, _)| *pane_id)
+            .collect();
+
+        for pane_id in ringing_panes {
+            // Consume the bell from the pane
+            if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
+                pane.consume_bell();
+            }
+            let is_focused = focused_pane_ids.contains(&pane_id);
+            if !is_focused && !self.panes_with_pending_bell.contains(&pane_id) {
+                if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
+                    pane.set_bell_notification(true);
+                }
+                self.panes_with_pending_bell.insert(pane_id);
+                newly_notified_panes.push(pane_id);
+            }
+            if !self.tab_bell_ring {
+                self.tab_bell_ring = true;
+                tab_bell_newly_set = true;
+            }
+            if !is_active_tab {
+                self.tab_has_pending_bell = true;
+            }
+        }
+        (newly_notified_panes, tab_bell_newly_set)
+    }
+    pub fn clear_bell_notification_for_pane(&mut self, pane_id: PaneId) {
+        self.panes_with_pending_bell.remove(&pane_id);
+        if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
+            pane.set_bell_notification(false);
+            pane.clear_pane_frame_color_override(None);
+        }
+        self.tab_has_pending_bell = false;
+    }
+    pub fn clear_tab_bell_notification(&mut self) {
+        self.tab_has_pending_bell = false;
+    }
+    pub fn clear_tab_bell_ring(&mut self) {
+        self.tab_bell_ring = false;
+    }
+    /// Checks if any pane in the tab has a pending bell, consumes all such bells, and returns
+    /// whether any were found. Does not update notification state (used when visual_bell is
+    /// disabled but ANSI BEL forwarding is still desired).
+    pub fn check_and_consume_bells_without_visual_notification(&mut self) -> bool {
+        let ringing_panes: Vec<PaneId> = self
+            .tiled_panes
+            .get_panes()
+            .chain(self.floating_panes.get_panes())
+            .filter(|(_, pane)| pane.has_bell())
+            .map(|(pane_id, _)| *pane_id)
+            .collect();
+        let had_bell = !ringing_panes.is_empty();
+        for pane_id in ringing_panes {
+            if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
+                pane.consume_bell();
+            }
+        }
+        had_bell
+    }
     pub fn has_terminal_pid(&self, pid: u32) -> bool {
         self.tiled_panes.panes_contain(&PaneId::Terminal(pid))
             || self.floating_panes.panes_contain(&PaneId::Terminal(pid))
@@ -2475,6 +2580,22 @@ impl Tab {
                 .suppressed_panes
                 .values()
                 .any(|s_p| s_p.1.pid() == PaneId::Plugin(plugin_id))
+    }
+    pub fn set_pane_color(
+        &mut self,
+        pane_id: PaneId,
+        fg: Option<String>,
+        bg: Option<String>,
+    ) -> Result<()> {
+        let pane = self
+            .floating_panes
+            .get_mut(&pane_id)
+            .or_else(|| self.tiled_panes.get_pane_mut(pane_id))
+            .or_else(|| self.suppressed_panes.get_mut(&pane_id).map(|p| &mut p.1));
+        if let Some(pane) = pane {
+            pane.set_pane_default_colors(fg, bg);
+        }
+        Ok(())
     }
     pub fn has_pane_with_pid(&self, pid: &PaneId) -> bool {
         self.tiled_panes.panes_contain(pid)
@@ -2634,7 +2755,8 @@ impl Tab {
             )
         };
 
-        self.clear_search(client_id); // this is an inexpensive operation if empty, if we need more such cleanups we should consider moving this and the rest to some sort of cleanup method
+        self.clear_search(client_id);
+        self.mouse_help_text_visible.clear();
         let pane_id = if self.floating_panes.panes_are_visible() {
             self.floating_panes
                 .get_active_pane_id(client_id)
@@ -2693,6 +2815,35 @@ impl Tab {
         Ok(())
     }
 
+    pub fn paste_to_pane_id(
+        &mut self,
+        bytes: Vec<u8>,
+        pane_id: PaneId,
+        completion: Option<NotificationEnd>,
+    ) -> Result<()> {
+        let bracketed_paste_begin = vec![27, 91, 50, 48, 48, 126];
+        let bracketed_paste_end = vec![27, 91, 50, 48, 49, 126];
+
+        self.write_to_pane_id(&None, bracketed_paste_begin, false, pane_id, None, None)?;
+        self.write_to_pane_id(&None, bytes, false, pane_id, None, None)?;
+        self.write_to_pane_id(&None, bracketed_paste_end, false, pane_id, None, completion)?;
+        Ok(())
+    }
+
+    pub fn paste_to_active_terminal(
+        &mut self,
+        bytes: Vec<u8>,
+        client_id: ClientId,
+        completion: Option<NotificationEnd>,
+    ) -> Result<()> {
+        let err_context = || format!("failed to paste to active terminal for client {client_id}");
+        let active_pane_id = self
+            .get_active_pane_id(client_id)
+            .ok_or_else(|| anyhow!("no active pane for client {client_id}"))
+            .with_context(err_context)?;
+        self.paste_to_pane_id(bytes, active_pane_id, completion)
+    }
+
     pub fn write_to_pane_id(
         &mut self,
         key_with_modifier: &Option<KeyWithModifier>,
@@ -2739,6 +2890,7 @@ impl Tab {
                             .send_to_pty_writer(PtyWriteInstruction::Write(
                                 adjusted_input,
                                 active_terminal_id,
+                                completion_tx,
                             ))
                             .with_context(err_context)?;
                     },
@@ -2836,6 +2988,7 @@ impl Tab {
                     .send_to_pty_writer(PtyWriteInstruction::Write(
                         raw_input_bytes,
                         active_terminal_id,
+                        None,
                     ))
                     .with_context(err_context)?;
                 should_update_ui = true;
@@ -3016,6 +3169,7 @@ impl Tab {
                 &self.mouse_hover_pane_id,
                 current_pane_group.clone(),
                 client_id_override,
+                &self.mouse_help_text_visible,
             )
             .with_context(err_context)?;
         if (self.floating_panes.panes_are_visible() && self.floating_panes.has_active_panes())
@@ -3027,6 +3181,7 @@ impl Tab {
                     &self.mouse_hover_pane_id,
                     current_pane_group,
                     client_id_override,
+                    &self.mouse_help_text_visible,
                 )
                 .with_context(err_context)?;
         }
@@ -3186,7 +3341,7 @@ impl Tab {
         selectable_tiled_panes.count() > 0
     }
     pub fn resize_whole_tab(&mut self, new_screen_size: Size) -> Result<()> {
-        let err_context = || format!("failed to resize whole tab (index {})", self.index);
+        let err_context = || format!("failed to resize whole tab (id {})", self.id);
         self.floating_panes.resize(new_screen_size);
         // we need to do this explicitly because floating_panes.resize does not do this
         self.floating_panes
@@ -3208,6 +3363,12 @@ impl Tab {
         self.senders
             .send_to_pty_writer(PtyWriteInstruction::ApplyCachedResizes)
             .with_context(|| format!("failed to update plugins with mode info"))?;
+        LayoutApplier::offset_viewport(
+            self.viewport.clone(),
+            self.display_area.clone(),
+            &mut self.tiled_panes,
+            self.draw_pane_frames,
+        );
         Ok(())
     }
     pub fn resize(&mut self, client_id: ClientId, strategy: ResizeStrategy) -> Result<()> {
@@ -3569,6 +3730,44 @@ impl Tab {
             .copied()
             .collect()
     }
+    pub fn get_pane_info(&self, pane_id: PaneId) -> Option<PaneInfo> {
+        let current_pane_group: HashMap<ClientId, Vec<PaneId>> =
+            { self.current_pane_group.borrow().clone_inner() };
+
+        // Check tiled panes
+        if let Some(pane) = self.tiled_panes.get_pane(pane_id) {
+            let mut info = pane_info_for_pane(&pane_id, pane, &current_pane_group);
+            // Note: is_focused will be false since we don't have a specific client_id context
+            // Plugins calling this API would need to compare the pane_id with their own focused pane
+            info.is_focused = false;
+            info.is_fullscreen = self.tiled_panes.fullscreen_is_active();
+            info.is_floating = false;
+            info.is_suppressed = false;
+            return Some(info);
+        }
+
+        // Check floating panes
+        if let Some(pane) = self.floating_panes.get_pane(pane_id) {
+            let mut info = pane_info_for_pane(&pane_id, pane, &current_pane_group);
+            info.is_focused = false;
+            info.is_fullscreen = false;
+            info.is_floating = true;
+            info.is_suppressed = false;
+            return Some(info);
+        }
+
+        // Check suppressed panes
+        if let Some((_previous_id, pane)) = self.suppressed_panes.get(&pane_id) {
+            let mut info = pane_info_for_pane(&pane_id, pane, &current_pane_group);
+            info.is_focused = false;
+            info.is_fullscreen = false;
+            info.is_floating = false;
+            info.is_suppressed = true;
+            return Some(info);
+        }
+
+        None
+    }
     pub fn set_pane_selectable(&mut self, id: PaneId, selectable: bool) {
         if self.is_pending {
             self.pending_instructions
@@ -3599,9 +3798,7 @@ impl Tab {
         );
     }
     pub fn set_mouse_selection_support(&mut self, pane_id: PaneId, selection_support: bool) {
-        if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
-            pane.set_mouse_selection_support(selection_support);
-        }
+        MouseHandler::set_mouse_selection_support(self, pane_id, selection_support);
     }
     pub fn close_pane(
         &mut self,
@@ -3667,6 +3864,11 @@ impl Tab {
             None,
             Event::PaneClosed(id.into()),
         )]));
+        let _ = self
+            .senders
+            .send_to_screen(ScreenInstruction::NotifyPaneClosedToSubscribers {
+                pane_id: id.into(),
+            });
     }
     pub fn extract_pane(
         &mut self,
@@ -3877,6 +4079,23 @@ impl Tab {
         }
         Ok(())
     }
+    pub fn dump_with_ansi_active_terminal_screen(
+        &mut self,
+        file: Option<String>,
+        client_id: ClientId,
+        full: bool,
+    ) -> Result<()> {
+        let err_context =
+            || format!("failed to dump active terminal screen for client {client_id}");
+
+        if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
+            let dump = active_pane.dump_screen_with_ansi(full, Some(client_id));
+            self.os_api
+                .write_to_file(dump, file)
+                .with_context(err_context)?;
+        }
+        Ok(())
+    }
     pub fn dump_terminal_screen(
         &mut self,
         file: Option<String>,
@@ -3889,6 +4108,20 @@ impl Tab {
         }
         Ok(())
     }
+    pub fn get_dump_active_terminal_screen(&mut self, client_id: ClientId, full: bool) -> String {
+        if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
+            active_pane.dump_screen(full, Some(client_id))
+        } else {
+            String::new()
+        }
+    }
+    pub fn get_dump_terminal_screen(&mut self, pane_id: PaneId, full: bool) -> Option<String> {
+        if let Some(pane) = self.get_pane_with_id(pane_id) {
+            Some(pane.dump_screen(full, None))
+        } else {
+            None
+        }
+    }
     pub fn edit_scrollback(
         &mut self,
         client_id: ClientId,
@@ -3899,6 +4132,33 @@ impl Tab {
         let mut file = temp_dir();
         file.push(format!("{}.dump", Uuid::new_v4()));
         self.dump_active_terminal_screen(
+            Some(String::from(file.to_string_lossy())),
+            client_id,
+            true,
+        )
+        .with_context(err_context)?;
+        let line_number = self
+            .get_active_pane(client_id)
+            .and_then(|a_t| a_t.get_line_number());
+        self.senders
+            .send_to_pty(PtyInstruction::OpenInPlaceEditor(
+                file,
+                line_number,
+                ClientTabIndexOrPaneId::ClientId(client_id),
+                completion_tx,
+            ))
+            .with_context(err_context)
+    }
+    pub fn edit_scrollback_raw(
+        &mut self,
+        client_id: ClientId,
+        completion_tx: Option<NotificationEnd>,
+    ) -> Result<()> {
+        let err_context = || format!("failed to edit scrollback for client {client_id}");
+
+        let mut file = temp_dir();
+        file.push(format!("{}.dump", Uuid::new_v4()));
+        self.dump_with_ansi_active_terminal_screen(
             Some(String::from(file.to_string_lossy())),
             client_id,
             true,
@@ -4127,27 +4387,7 @@ impl Tab {
         lines: usize,
         client_id: ClientId,
     ) -> Result<MouseEffect> {
-        let err_context = || {
-            format!("failed to handle scrollwheel up at position {point:?} for client {client_id}")
-        };
-
-        if let Some(pane) = self.get_pane_at(point, false).with_context(err_context)? {
-            let relative_position = pane.relative_position(point);
-            if let Some(mouse_event) = pane.mouse_scroll_up(&relative_position) {
-                self.write_to_terminal_at(mouse_event.into_bytes(), point, client_id)
-                    .with_context(err_context)?;
-            } else if pane.is_alternate_mode_active() {
-                // faux scrolling, send UP n times
-                // do n separate writes to make sure the sequence gets adjusted for cursor keys mode
-                for _ in 0..lines {
-                    self.write_to_terminal_at("\u{1b}[A".as_bytes().to_owned(), point, client_id)
-                        .with_context(err_context)?;
-                }
-            } else {
-                pane.scroll_up(lines, client_id);
-            }
-        }
-        Ok(MouseEffect::default())
+        MouseHandler::handle_scrollwheel_up(self, point, lines, client_id)
     }
 
     pub fn handle_scrollwheel_down(
@@ -4156,35 +4396,7 @@ impl Tab {
         lines: usize,
         client_id: ClientId,
     ) -> Result<MouseEffect> {
-        let err_context = || {
-            format!(
-                "failed to handle scrollwheel down at position {point:?} for client {client_id}"
-            )
-        };
-
-        if let Some(pane) = self.get_pane_at(point, false).with_context(err_context)? {
-            let relative_position = pane.relative_position(point);
-            if let Some(mouse_event) = pane.mouse_scroll_down(&relative_position) {
-                self.write_to_terminal_at(mouse_event.into_bytes(), point, client_id)
-                    .with_context(err_context)?;
-            } else if pane.is_alternate_mode_active() {
-                // faux scrolling, send DOWN n times
-                // do n separate writes to make sure the sequence gets adjusted for cursor keys mode
-                for _ in 0..lines {
-                    self.write_to_terminal_at("\u{1b}[B".as_bytes().to_owned(), point, client_id)
-                        .with_context(err_context)?;
-                }
-            } else {
-                pane.scroll_down(lines, client_id);
-                if !pane.is_scrolled() {
-                    if let PaneId::Terminal(pid) = pane.pid() {
-                        self.process_pending_vte_events(pid)
-                            .with_context(err_context)?;
-                    }
-                }
-            }
-        }
-        Ok(MouseEffect::default())
+        MouseHandler::handle_scrollwheel_down(self, point, lines, client_id)
     }
 
     fn get_pane_at(
@@ -4291,567 +4503,14 @@ impl Tab {
         }
     }
 
-    // returns true if the mouse event caused some sort of tab/pane state change that needs to be
-    // reported to plugins
     pub fn handle_mouse_event(
         &mut self,
         event: &MouseEvent,
         client_id: ClientId,
     ) -> Result<MouseEffect> {
-        let err_context =
-            || format!("failed to handle mouse event {event:?} for client {client_id}");
-
-        let active_pane_id = self
-            .get_active_pane_id(client_id)
-            .ok_or(anyhow!("Failed to find pane at position"))?;
-
-        if event.left {
-            // left mouse click
-            let pane_id_at_position = self
-                .get_pane_at(&event.position, false)
-                .with_context(err_context)?
-                .ok_or_else(|| anyhow!("Failed to find pane at position"))?
-                .pid();
-            match event.event_type {
-                MouseEventType::Press if event.alt => {
-                    self.mouse_hover_pane_id.remove(&client_id);
-                    Ok(MouseEffect::group_toggle(pane_id_at_position))
-                },
-                MouseEventType::Motion if event.alt => {
-                    Ok(MouseEffect::group_add(pane_id_at_position))
-                },
-                MouseEventType::Press => {
-                    if pane_id_at_position == active_pane_id {
-                        self.handle_active_pane_left_mouse_press(event, client_id)
-                    } else {
-                        self.handle_inactive_pane_left_mouse_press(event, client_id)
-                    }
-                },
-                MouseEventType::Motion => self.handle_left_mouse_motion(event, client_id),
-                MouseEventType::Release => self.handle_left_mouse_release(event, client_id),
-            }
-        } else if event.wheel_up {
-            self.handle_scrollwheel_up(&event.position, 3, client_id)
-        } else if event.wheel_down {
-            self.handle_scrollwheel_down(&event.position, 3, client_id)
-        } else if event.right && event.alt {
-            self.mouse_hover_pane_id.remove(&client_id);
-            Ok(MouseEffect::ungroup())
-        } else if event.right {
-            self.handle_right_click(&event, client_id)
-        } else if event.middle {
-            self.handle_middle_click(&event, client_id)
-        } else {
-            self.handle_mouse_no_click(&event, client_id)
-        }
-    }
-    fn write_mouse_event_to_active_pane(
-        &mut self,
-        event: &MouseEvent,
-        client_id: ClientId,
-    ) -> Result<()> {
-        let err_context =
-            || format!("failed to handle mouse event {event:?} for client {client_id}");
-        let active_pane = self.get_active_pane_or_floating_pane_mut(client_id);
-        if let Some(active_pane) = active_pane {
-            let relative_position = active_pane.relative_position(&event.position);
-            let mut pass_event = *event;
-            pass_event.position = relative_position;
-            if let Some(mouse_event) = active_pane.mouse_event(&pass_event, client_id) {
-                if !active_pane.position_is_on_frame(&event.position) {
-                    self.write_to_active_terminal(
-                        &None,
-                        mouse_event.into_bytes(),
-                        false,
-                        client_id,
-                    )
-                    .with_context(err_context)?;
-                }
-            }
-        }
-        Ok(())
-    }
-    // returns true if the mouse event caused some sort of tab/pane state change that needs to be
-    // reported to plugins
-    fn handle_active_pane_left_mouse_press(
-        &mut self,
-        event: &MouseEvent,
-        client_id: ClientId,
-    ) -> Result<MouseEffect> {
-        let err_context =
-            || format!("failed to handle mouse event {event:?} for client {client_id}");
-        let floating_panes_are_visible = self.floating_panes.panes_are_visible();
-        let pane_at_position = self
-            .get_pane_at(&event.position, false)
-            .with_context(err_context)?
-            .ok_or_else(|| anyhow!("Failed to find pane at position"))?;
-        if pane_at_position.position_is_on_frame(&event.position) {
-            // intercept frame click eg. for toggling pinned
-            let intercepted = pane_at_position.intercept_mouse_event_on_frame(&event, client_id);
-            if intercepted {
-                self.set_force_render();
-                return Ok(MouseEffect::state_changed());
-            } else if floating_panes_are_visible {
-                // start moving if floating pane
-                let search_selectable = false;
-                if self
-                    .floating_panes
-                    .move_pane_with_mouse(event.position, search_selectable)
-                {
-                    self.swap_layouts.set_is_floating_damaged();
-                    self.set_force_render();
-                    return Ok(MouseEffect::state_changed());
-                }
-            }
-        } else {
-            let relative_position = pane_at_position.relative_position(&event.position);
-            if let Some(mouse_event) = pane_at_position.mouse_left_click(&relative_position, false)
-            {
-                // send click to terminal if needed (eg. the program inside
-                // requested mouse mode)
-                if !pane_at_position.position_is_on_frame(&event.position) {
-                    self.write_to_active_terminal(
-                        &None,
-                        mouse_event.into_bytes(),
-                        false,
-                        client_id,
-                    )
-                    .with_context(err_context)?;
-                }
-            } else {
-                // start selection for copy/paste
-                let mut leave_clipboard_message = false;
-                pane_at_position.start_selection(&relative_position, client_id);
-                if pane_at_position.get_selected_text(client_id).is_some() {
-                    leave_clipboard_message = true;
-                }
-                if pane_at_position.supports_mouse_selection() {
-                    self.selecting_with_mouse_in_pane = Some(pane_at_position.pid());
-                }
-                if leave_clipboard_message {
-                    return Ok(MouseEffect::leave_clipboard_message());
-                }
-            }
-        }
-        Ok(MouseEffect::default())
-    }
-    fn handle_inactive_pane_left_mouse_press(
-        &mut self,
-        event: &MouseEvent,
-        client_id: ClientId,
-    ) -> Result<MouseEffect> {
-        let err_context =
-            || format!("failed to handle mouse event {event:?} for client {client_id}");
-        if !self.floating_panes.panes_are_visible() {
-            if let Ok(Some(pane_id)) = self
-                .floating_panes
-                .get_pinned_pane_id_at(&event.position, true)
-            {
-                // here, the floating panes are not visible, but there is a pinned pane (always
-                // visible) that has been clicked on - so we make the entire surface visible and
-                // focus it
-                self.show_floating_panes();
-                self.floating_panes.focus_pane(pane_id, client_id);
-                return Ok(MouseEffect::state_changed());
-            } else if let Ok(Some(_pane_id)) = self
-                .floating_panes
-                .get_pinned_pane_id_at(&event.position, false)
-            {
-                // here, the floating panes are not visible, but there is a pinned pane (always
-                // visible) that has been clicked on - this pane however is not selectable
-                // (we know this because we passed "false" to get_pinned_pane_id_at)
-                // so we don't do anything
-                return Ok(MouseEffect::default());
-            }
-        }
-        let active_pane_id_before_click = self
-            .get_active_pane_id(client_id)
-            .ok_or_else(|| anyhow!("Failed to find pane at position"))?;
-        self.focus_pane_at(&event.position, client_id)
-            .with_context(err_context)?;
-
-        if let Some(pane_at_position) = self.unselectable_pane_at_position(&event.position) {
-            let relative_position = pane_at_position.relative_position(&event.position);
-            // we use start_selection here because it has a client_id,
-            // ideally we should add client_id to mouse_left_click and others, but this should be
-            // dealt with as part of the trait removal refactoring
-            pane_at_position.start_selection(&relative_position, client_id);
-        }
-
-        if self.floating_panes.panes_are_visible() {
-            let search_selectable = false;
-            // we do this because this might be the beginning of the user dragging a pane
-            // that was not focused
-            // TODO: rename move_pane_with_mouse to "start_moving_pane_with_mouse"?
-            let moved_pane_with_mouse = self
-                .floating_panes
-                .move_pane_with_mouse(event.position, search_selectable);
-            if moved_pane_with_mouse {
-                return Ok(MouseEffect::state_changed());
-            } else {
-                return Ok(MouseEffect::default());
-            }
-        }
-        let active_pane_id_after_click = self
-            .get_active_pane_id(client_id)
-            .ok_or_else(|| anyhow!("Failed to find pane at position"))?;
-        if active_pane_id_before_click != active_pane_id_after_click {
-            // focus changed, need to report it
-            Ok(MouseEffect::state_changed())
-        } else {
-            Ok(MouseEffect::default())
-        }
-    }
-    fn handle_left_mouse_motion(
-        &mut self,
-        event: &MouseEvent,
-        client_id: ClientId,
-    ) -> Result<MouseEffect> {
-        let err_context =
-            || format!("failed to handle mouse event {event:?} for client {client_id}");
-        let pane_is_being_moved_with_mouse = self.floating_panes.pane_is_being_moved_with_mouse();
-        let active_pane_id = self
-            .get_active_pane_id(client_id)
-            .ok_or_else(|| anyhow!("Failed to find pane at position"))?;
-        if pane_is_being_moved_with_mouse {
-            let search_selectable = false;
-            if self
-                .floating_panes
-                .move_pane_with_mouse(event.position, search_selectable)
-            {
-                self.swap_layouts.set_is_floating_damaged();
-                self.set_force_render();
-                return Ok(MouseEffect::state_changed());
-            }
-        } else if let Some(pane_id_with_selection) = self.selecting_with_mouse_in_pane {
-            if let Some(pane_with_selection) = self.get_pane_with_id_mut(pane_id_with_selection) {
-                let relative_position = pane_with_selection.relative_position(&event.position);
-                pane_with_selection.update_selection(&relative_position, client_id);
-            }
-        } else {
-            let pane_at_position = self
-                .get_pane_at(&event.position, false)
-                .with_context(err_context)?
-                .ok_or_else(|| anyhow!("Failed to find pane at position"))?;
-            if pane_at_position.pid() == active_pane_id {
-                self.write_mouse_event_to_active_pane(event, client_id)?;
-            }
-        }
-        Ok(MouseEffect::default())
-    }
-    fn handle_left_mouse_release(
-        &mut self,
-        event: &MouseEvent,
-        client_id: ClientId,
-    ) -> Result<MouseEffect> {
-        let err_context =
-            || format!("failed to handle mouse event {event:?} for client {client_id}");
-        let mut leave_clipboard_message = false;
-        let floating_panes_are_visible = self.floating_panes.panes_are_visible();
-        let copy_on_release = self.copy_on_select;
-
-        if let Some(pane_with_selection) = self
-            .selecting_with_mouse_in_pane
-            .and_then(|p_id| self.get_pane_with_id_mut(p_id))
-        {
-            let mut relative_position = pane_with_selection.relative_position(&event.position);
-
-            relative_position.change_column(
-                (relative_position.column())
-                    .max(0)
-                    .min(pane_with_selection.get_content_columns()),
-            );
-
-            relative_position.change_line(
-                (relative_position.line())
-                    .max(0)
-                    .min(pane_with_selection.get_content_rows() as isize),
-            );
-
-            if let Some(mouse_event) =
-                pane_with_selection.mouse_left_click_release(&relative_position)
-            {
-                self.write_to_active_terminal(&None, mouse_event.into_bytes(), false, client_id)
-                    .with_context(err_context)?;
-            } else {
-                let relative_position = pane_with_selection.relative_position(&event.position);
-                pane_with_selection.end_selection(&relative_position, client_id);
-                if pane_with_selection.supports_mouse_selection() {
-                    if copy_on_release {
-                        let selected_text = pane_with_selection.get_selected_text(client_id);
-
-                        if let Some(selected_text) = selected_text {
-                            leave_clipboard_message = true;
-                            self.write_selection_to_clipboard(&selected_text)
-                                .with_context(err_context)?;
-                        }
-                    }
-                }
-
-                self.selecting_with_mouse_in_pane = None;
-            }
-        } else if floating_panes_are_visible && self.floating_panes.pane_is_being_moved_with_mouse()
-        {
-            self.floating_panes
-                .stop_moving_pane_with_mouse(event.position);
-        } else {
-            let active_pane_id = self
-                .get_active_pane_id(client_id)
-                .ok_or(anyhow!("Failed to find pane at position"))?;
-            let pane_id_at_position = self
-                .get_pane_at(&event.position, false)
-                .with_context(err_context)?
-                .ok_or_else(|| anyhow!("Failed to find pane at position"))?
-                .pid();
-            if active_pane_id == pane_id_at_position {
-                self.write_mouse_event_to_active_pane(event, client_id)?;
-            }
-        }
-        if leave_clipboard_message {
-            Ok(MouseEffect::leave_clipboard_message())
-        } else {
-            Ok(MouseEffect::default())
-        }
+        MouseHandler::handle_mouse_event(self, event, client_id)
     }
 
-    pub fn handle_right_click(
-        &mut self,
-        event: &MouseEvent,
-        client_id: ClientId,
-    ) -> Result<MouseEffect> {
-        let err_context = || format!("failed to handle mouse right click for client {client_id}");
-
-        let absolute_position = event.position;
-        let active_pane_id = self
-            .get_active_pane_id(client_id)
-            .ok_or_else(|| anyhow!("Failed to find pane at position"))?;
-
-        if let Some(pane) = self
-            .get_pane_at(&absolute_position, false)
-            .with_context(err_context)?
-        {
-            if pane.pid() == active_pane_id {
-                let relative_position = pane.relative_position(&absolute_position);
-                let mut event_for_pane = event.clone();
-                event_for_pane.position = relative_position;
-                if let Some(mouse_event) = pane.mouse_event(&event_for_pane, client_id) {
-                    if !pane.position_is_on_frame(&absolute_position) {
-                        self.write_to_active_terminal(
-                            &None,
-                            mouse_event.into_bytes(),
-                            false,
-                            client_id,
-                        )
-                        .with_context(err_context)?;
-                    }
-                } else {
-                    pane.handle_right_click(&relative_position, client_id);
-                }
-            }
-        };
-        Ok(MouseEffect::default())
-    }
-
-    fn handle_middle_click(
-        &mut self,
-        event: &MouseEvent,
-        client_id: ClientId,
-    ) -> Result<MouseEffect> {
-        let err_context = || format!("failed to handle mouse middle click for client {client_id}");
-        let absolute_position = event.position;
-
-        let active_pane_id = self
-            .get_active_pane_id(client_id)
-            .ok_or_else(|| anyhow!("Failed to find pane at position"))?;
-
-        if let Some(pane) = self
-            .get_pane_at(&absolute_position, false)
-            .with_context(err_context)?
-        {
-            if pane.pid() == active_pane_id {
-                let relative_position = pane.relative_position(&absolute_position);
-                let mut event_for_pane = event.clone();
-                event_for_pane.position = relative_position;
-                if let Some(mouse_event) = pane.mouse_event(&event_for_pane, client_id) {
-                    if !pane.position_is_on_frame(&absolute_position) {
-                        self.write_to_active_terminal(
-                            &None,
-                            mouse_event.into_bytes(),
-                            false,
-                            client_id,
-                        )
-                        .with_context(err_context)?;
-                    }
-                }
-            }
-        };
-        Ok(MouseEffect::default())
-    }
-
-    fn handle_mouse_no_click(
-        &mut self,
-        event: &MouseEvent,
-        client_id: ClientId,
-    ) -> Result<MouseEffect> {
-        let err_context = || format!("failed to handle mouse no click for client {client_id}");
-        let absolute_position = event.position;
-
-        let active_pane_id = self
-            .get_active_pane_id(client_id)
-            .ok_or_else(|| anyhow!("Failed to find pane at position"))?;
-
-        if let Some(pane) = self
-            .get_pane_at(&absolute_position, false)
-            .with_context(err_context)?
-        {
-            if pane.pid() == active_pane_id {
-                let relative_position = pane.relative_position(&absolute_position);
-                let mut event_for_pane = event.clone();
-                event_for_pane.position = relative_position;
-                if let Some(mouse_event) = pane.mouse_event(&event_for_pane, client_id) {
-                    if !pane.position_is_on_frame(&absolute_position) {
-                        self.write_to_active_terminal(
-                            &None,
-                            mouse_event.into_bytes(),
-                            false,
-                            client_id,
-                        )
-                        .with_context(err_context)?;
-                    }
-                }
-                self.mouse_hover_pane_id.remove(&client_id);
-            } else {
-                let pane_id = pane.pid();
-                // if the pane is not selectable, we don't want to create a hover effect over it
-                // we do however want to remove the hover effect from other panes
-                let pane_is_selectable = pane.selectable();
-                if self.advanced_mouse_actions && pane_is_selectable {
-                    self.mouse_hover_pane_id.insert(client_id, pane_id);
-                } else if self.advanced_mouse_actions {
-                    self.mouse_hover_pane_id.remove(&client_id);
-                }
-            }
-        };
-        Ok(MouseEffect::leave_clipboard_message())
-    }
-
-    fn unselectable_pane_at_position(&mut self, point: &Position) -> Option<&mut Box<dyn Pane>> {
-        // the repetition in this function is to appease the borrow checker, I don't like it either
-        let floating_panes_are_visible = self.floating_panes.panes_are_visible();
-        if floating_panes_are_visible {
-            if let Ok(Some(clicked_pane_id)) = self.floating_panes.get_pane_id_at(point, true) {
-                if let Some(pane) = self.floating_panes.get_pane_mut(clicked_pane_id) {
-                    if !pane.selectable() {
-                        return Some(pane);
-                    }
-                }
-            } else if let Ok(Some(clicked_pane_id)) = self.get_pane_id_at(point, false) {
-                if let Some(pane) = self.tiled_panes.get_pane_mut(clicked_pane_id) {
-                    if !pane.selectable() {
-                        return Some(pane);
-                    }
-                }
-            }
-        } else if let Ok(Some(clicked_pane_id)) = self.get_pane_id_at(point, false) {
-            if let Some(pane) = self.tiled_panes.get_pane_mut(clicked_pane_id) {
-                if !pane.selectable() {
-                    return Some(pane);
-                }
-            }
-        }
-        None
-    }
-    fn focus_pane_at(&mut self, point: &Position, client_id: ClientId) -> Result<()> {
-        let err_context =
-            || format!("failed to focus pane at position {point:?} for client {client_id}");
-
-        if self.floating_panes.panes_are_visible() {
-            if let Some(clicked_pane) = self
-                .floating_panes
-                .get_pane_id_at(point, true)
-                .with_context(err_context)?
-            {
-                self.floating_panes.focus_pane(clicked_pane, client_id);
-                self.set_pane_active_at(clicked_pane);
-                return Ok(());
-            }
-        }
-        if let Some(clicked_pane) = self.get_pane_id_at(point, true).with_context(err_context)? {
-            self.tiled_panes.focus_pane(clicked_pane, client_id);
-            self.set_pane_active_at(clicked_pane);
-            if self.floating_panes.panes_are_visible() {
-                self.hide_floating_panes();
-                self.set_force_render();
-            }
-        }
-        Ok(())
-    }
-
-    #[cfg(test)]
-    pub fn handle_right_mouse_release(
-        &mut self,
-        position: &Position,
-        client_id: ClientId,
-    ) -> Result<()> {
-        let err_context = || {
-            format!("failed to handle right mouse release at position {position:?} for client {client_id}")
-        };
-
-        let active_pane = self.get_active_pane_or_floating_pane_mut(client_id);
-        if let Some(active_pane) = active_pane {
-            let mut relative_position = active_pane.relative_position(position);
-            relative_position.change_column(
-                (relative_position.column())
-                    .max(0)
-                    .min(active_pane.get_content_columns()),
-            );
-
-            relative_position.change_line(
-                (relative_position.line())
-                    .max(0)
-                    .min(active_pane.get_content_rows() as isize),
-            );
-
-            if let Some(mouse_event) = active_pane.mouse_right_click_release(&relative_position) {
-                self.write_to_active_terminal(&None, mouse_event.into_bytes(), false, client_id)
-                    .with_context(err_context)?;
-            }
-        }
-        Ok(())
-    }
-
-    #[cfg(test)]
-    fn handle_middle_mouse_release(
-        &mut self,
-        position: &Position,
-        client_id: ClientId,
-    ) -> Result<()> {
-        let err_context = || {
-            format!("failed to handle middle mouse release at position {position:?} for client {client_id}")
-        };
-
-        let active_pane = self.get_active_pane_or_floating_pane_mut(client_id);
-        if let Some(active_pane) = active_pane {
-            let mut relative_position = active_pane.relative_position(position);
-            relative_position.change_column(
-                (relative_position.column())
-                    .max(0)
-                    .min(active_pane.get_content_columns()),
-            );
-
-            relative_position.change_line(
-                (relative_position.line())
-                    .max(0)
-                    .min(active_pane.get_content_rows() as isize),
-            );
-
-            if let Some(mouse_event) = active_pane.mouse_middle_click_release(&relative_position) {
-                self.write_to_active_terminal(&None, mouse_event.into_bytes(), false, client_id)
-                    .with_context(err_context)?;
-            }
-        }
-        Ok(())
-    }
     pub fn copy_selection(&self, client_id: ClientId) -> Result<()> {
         let selected_text = self
             .get_active_pane(client_id)
@@ -4947,6 +4606,10 @@ impl Tab {
         Ok(())
     }
 
+    pub fn clear_mouse_help_text(&mut self, client_id: ClientId) {
+        self.mouse_help_text_visible.insert(client_id, false);
+    }
+
     pub fn update_active_pane_name(&mut self, buf: Vec<u8>, client_id: ClientId) -> Result<()> {
         let err_context =
             || format!("failed to update name of active pane to '{buf:?}' for client {client_id}");
@@ -5017,8 +4680,8 @@ impl Tab {
         let viewport = self.viewport.borrow();
         Ok(line >= viewport.y
             && column >= viewport.x
-            && line <= viewport.y + viewport.rows
-            && column <= viewport.x + viewport.cols)
+            && line < viewport.y + viewport.rows
+            && column < viewport.x + viewport.cols)
     }
 
     pub fn set_pane_frames(&mut self, should_set_pane_frames: bool) {
@@ -5148,6 +4811,32 @@ impl Tab {
             pane.clear_pane_frame_color_override(client_id);
         }
     }
+    pub fn set_plugin_regex_highlights_for_pane(
+        &mut self,
+        pane_id: PaneId,
+        plugin_id: u32,
+        highlights: Vec<RegexHighlight>,
+        style: &Style,
+    ) {
+        if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
+            pane.set_plugin_regex_highlights(plugin_id, highlights, style);
+        }
+    }
+
+    pub fn clear_all_plugin_highlights(&mut self, plugin_id: u32) {
+        for pane_id in self.get_all_pane_ids() {
+            if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
+                pane.clear_plugin_highlights(plugin_id);
+            }
+        }
+    }
+
+    pub fn clear_plugin_highlights_for_pane(&mut self, pane_id: PaneId, plugin_id: u32) {
+        if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
+            pane.clear_plugin_highlights(plugin_id);
+        }
+    }
+
     pub fn update_plugin_loading_stage(&mut self, pid: u32, loading_indication: LoadingIndication) {
         if let Some(plugin_pane) = self
             .tiled_panes
@@ -5230,6 +4919,46 @@ impl Tab {
         self.floating_panes.toggle_show_panes(false);
         self.tiled_panes.focus_all_panes();
         self.set_force_render();
+    }
+
+    pub fn show_floating_panes_atomic(&mut self, mut completion: Option<NotificationEnd>) {
+        if self.floating_panes.panes_are_visible() {
+            if let Some(c) = completion.as_mut() {
+                c.set_exit_status(2);
+            }
+        } else {
+            match self.floating_panes.last_selectable_floating_pane_id() {
+                Some(last_selectable_floating_pane_id) => {
+                    self.show_floating_panes();
+                    self.floating_panes
+                        .focus_pane_for_all_clients(last_selectable_floating_pane_id);
+                    if let Some(c) = completion.as_mut() {
+                        c.set_exit_status(0);
+                    }
+                },
+                None => {
+                    // No selectable floating panes exist — surface must not be shown
+                    if let Some(c) = completion.as_mut() {
+                        c.set_exit_status(1);
+                    }
+                },
+            }
+        }
+        drop(completion);
+    }
+
+    pub fn hide_floating_panes_atomic(&mut self, mut completion: Option<NotificationEnd>) {
+        if !self.floating_panes.panes_are_visible() {
+            if let Some(c) = completion.as_mut() {
+                c.set_exit_status(2);
+            }
+        } else {
+            self.hide_floating_panes();
+            if let Some(c) = completion.as_mut() {
+                c.set_exit_status(0);
+            }
+        }
+        drop(completion);
     }
 
     pub fn find_plugin(&self, run_plugin_or_alias: &RunPluginOrAlias) -> Option<PaneId> {
@@ -5715,6 +5444,19 @@ impl Tab {
     pub fn update_advanced_mouse_actions(&mut self, advanced_mouse_actions: bool) {
         self.advanced_mouse_actions = advanced_mouse_actions;
     }
+    pub fn update_mouse_hover_effects(&mut self, mouse_hover_effects: bool) {
+        self.mouse_hover_effects = mouse_hover_effects;
+    }
+    pub fn update_focus_follows_mouse(&mut self, focus_follows_mouse: bool) {
+        self.focus_follows_mouse = focus_follows_mouse;
+    }
+    pub fn update_mouse_click_through(&mut self, mouse_click_through: bool) {
+        self.mouse_click_through = mouse_click_through;
+    }
+    pub fn clear_mouse_hover_state(&mut self) {
+        self.mouse_hover_pane_id.clear();
+        self.mouse_help_text_visible.clear();
+    }
     pub fn update_web_sharing(&mut self, web_sharing: WebSharing) {
         let old_value = self.web_sharing;
         self.web_sharing = web_sharing;
@@ -5914,6 +5656,10 @@ impl Tab {
     pub fn get_client_input_mode(&self, client_id: ClientId) -> Option<InputMode> {
         self.mode_info.borrow().get(&client_id).map(|m| m.mode)
     }
+    #[allow(unused)] // this is used for tests
+    pub fn query_mouse_hover_pane_id(&self) -> HashMap<ClientId, PaneId> {
+        self.mouse_hover_pane_id.clone()
+    }
     fn new_scrollback_editor_pane(&self, pid: u32) -> TerminalPane {
         let next_terminal_position = self.get_next_terminal_position();
         let mut new_pane = TerminalPane::new(
@@ -5990,6 +5736,10 @@ pub fn pane_info_for_pane(
         })
         .collect();
     pane_info.index_in_pane_group = index_in_pane_group;
+
+    let (default_fg, default_bg) = pane.get_pane_default_colors();
+    pane_info.default_fg = default_fg;
+    pane_info.default_bg = default_bg;
 
     match pane_id {
         PaneId::Terminal(terminal_id) => {

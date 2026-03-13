@@ -28,7 +28,6 @@ use zellij_utils::input::layout::TabLayoutInfo;
 pub use wasm_bridge::PluginRenderAsset;
 use wasm_bridge::WasmBridge;
 
-use async_std::{channel, future::timeout, task};
 use zellij_utils::{
     data::{
         ClientInfo, CommandOrPlugin, Event, EventType, FloatingPaneCoordinates, InputMode,
@@ -61,6 +60,7 @@ pub enum PluginInstruction {
     Load(
         Option<bool>,   // should float
         bool,           // should be opened in place
+        bool,           // close_replaced_pane
         Option<String>, // pane title
         RunPluginOrAlias,
         Option<usize>,  // tab index
@@ -94,7 +94,7 @@ pub enum PluginInstruction {
         Option<TerminalAction>,
         Option<TiledPaneLayout>,
         Vec<FloatingPaneLayout>,
-        usize,                        // tab_index
+        usize,                        // tab_id
         Option<Vec<CommandOrPlugin>>, // initial_panes
         bool,                         // block_on_first_terminal
         bool,                         // should change focus to new tab
@@ -173,6 +173,7 @@ pub enum PluginInstruction {
         skip_cache: bool,
         cli_client_id: ClientId,
         plugin_and_client_id: Option<(u32, ClientId)>,
+        notification_end: Option<NotificationEnd>,
     },
     CachePluginEvents {
         plugin_id: PluginId,
@@ -207,6 +208,19 @@ pub enum PluginInstruction {
     },
     LayoutListUpdate(Vec<LayoutInfo>, Vec<LayoutWithError>),
     RequestStateUpdateForPlugin(PluginId),
+    UpdateSessionSaveTime(u64), // u64 = milliseconds since UNIX epoch
+    GetLastSessionSaveTime {
+        response_channel: crossbeam::channel::Sender<Option<u64>>,
+    },
+    DetectPluginConfigChanges(PluginAliases),
+    HighlightClicked {
+        plugin_id: u32,
+        client_id: ClientId,
+        pane_id: PaneId,
+        pattern: String,
+        matched_string: String,
+        context: BTreeMap<String, String>,
+    },
     Exit,
 }
 
@@ -263,6 +277,14 @@ impl From<&PluginInstruction> for PluginContext {
             PluginInstruction::RequestStateUpdateForPlugin(..) => {
                 PluginContext::RequestStateUpdateForPlugin
             },
+            PluginInstruction::UpdateSessionSaveTime(..) => PluginContext::UpdateSessionSaveTime,
+            PluginInstruction::GetLastSessionSaveTime { .. } => {
+                PluginContext::GetLastSessionSaveTime
+            },
+            PluginInstruction::DetectPluginConfigChanges(..) => {
+                PluginContext::DetectPluginConfigChanges
+            },
+            PluginInstruction::HighlightClicked { .. } => PluginContext::HighlightClicked,
         }
     }
 }
@@ -277,6 +299,7 @@ pub(crate) fn plugin_thread_main(
     available_layout_errors: Vec<LayoutWithError>,
     path_to_default_shell: PathBuf,
     zellij_cwd: PathBuf,
+    session_env_vars: std::collections::BTreeMap<String, String>,
     capabilities: PluginCapabilities,
     client_attributes: ClientAttributes,
     default_shell: Option<TerminalAction>,
@@ -297,7 +320,7 @@ pub(crate) fn plugin_thread_main(
 
     // use this channel to ensure that tasks spawned from this thread terminate before exiting
     // https://tokio.rs/tokio/topics/shutdown#waiting-for-things-to-finish-shutting-down
-    let (shutdown_send, shutdown_receive) = channel::bounded::<()>(1);
+    let (shutdown_send, mut shutdown_receive) = tokio::sync::mpsc::channel::<()>(1);
 
     let mut wasm_bridge = WasmBridge::new(
         bus.senders.clone(),
@@ -305,6 +328,7 @@ pub(crate) fn plugin_thread_main(
         plugin_dir,
         path_to_default_shell,
         zellij_cwd.clone(),
+        session_env_vars,
         capabilities,
         client_attributes,
         default_shell,
@@ -333,6 +357,7 @@ pub(crate) fn plugin_thread_main(
             PluginInstruction::Load(
                 should_float,
                 should_be_open_in_place,
+                close_replaced_pane,
                 pane_title,
                 mut run_plugin_or_alias,
                 tab_index,
@@ -368,6 +393,7 @@ pub(crate) fn plugin_thread_main(
                         drop(bus.senders.send_to_screen(ScreenInstruction::AddPlugin(
                             should_float,
                             should_be_open_in_place,
+                            close_replaced_pane,
                             run_plugin_or_alias,
                             pane_title,
                             tab_index,
@@ -447,6 +473,7 @@ pub(crate) fn plugin_thread_main(
                                                 ScreenInstruction::AddPlugin(
                                                     should_float,
                                                     should_be_open_in_place,
+                                                    false, // close_replaced_pane
                                                     run_plugin_or_alias,
                                                     pane_title,
                                                     Some(tab_index),
@@ -494,7 +521,7 @@ pub(crate) fn plugin_thread_main(
                 terminal_action,
                 mut tab_layout,
                 mut floating_panes_layout,
-                tab_index,
+                tab_id,
                 initial_panes,
                 block_on_first_terminal,
                 should_change_focus_to_new_tab,
@@ -572,7 +599,7 @@ pub(crate) fn plugin_thread_main(
                         let skip_cache = false;
                         match wasm_bridge.load_plugin(
                             &run_plugin,
-                            Some(tab_index),
+                            Some(tab_id),
                             size,
                             cwd,
                             skip_cache,
@@ -595,7 +622,7 @@ pub(crate) fn plugin_thread_main(
                     terminal_action,
                     tab_layout,
                     floating_panes_layout,
-                    tab_index,
+                    tab_id,
                     plugin_ids,
                     initial_panes,
                     block_on_first_terminal,
@@ -946,7 +973,7 @@ pub(crate) fn plugin_thread_main(
                         );
                     },
                 }
-                wasm_bridge.pipe_messages(pipe_messages, shutdown_send.clone())?;
+                wasm_bridge.pipe_messages(pipe_messages, shutdown_send.clone(), None)?;
             },
             PluginInstruction::KeybindPipe {
                 name,
@@ -961,6 +988,7 @@ pub(crate) fn plugin_thread_main(
                 skip_cache,
                 cli_client_id,
                 plugin_and_client_id,
+                notification_end,
             } => {
                 let should_float = floating.unwrap_or(true);
                 let mut pipe_messages = vec![];
@@ -1010,7 +1038,11 @@ pub(crate) fn plugin_thread_main(
                         },
                     }
                 }
-                wasm_bridge.pipe_messages(pipe_messages, shutdown_send.clone())?;
+                wasm_bridge.pipe_messages(
+                    pipe_messages,
+                    shutdown_send.clone(),
+                    notification_end,
+                )?;
             },
             PluginInstruction::CachePluginEvents { plugin_id } => {
                 wasm_bridge.cache_plugin_events(plugin_id);
@@ -1104,7 +1136,7 @@ pub(crate) fn plugin_thread_main(
                         );
                     },
                 }
-                wasm_bridge.pipe_messages(pipe_messages, shutdown_send.clone())?;
+                wasm_bridge.pipe_messages(pipe_messages, shutdown_send.clone(), None)?;
             },
             PluginInstruction::UnblockCliPipes(pipes_to_unblock) => {
                 let pipes_to_unblock = wasm_bridge.update_cli_pipe_state(pipes_to_unblock);
@@ -1203,6 +1235,35 @@ pub(crate) fn plugin_thread_main(
             PluginInstruction::RequestStateUpdateForPlugin(plugin_id) => {
                 wasm_bridge.state_update_for_plugin(plugin_id);
             },
+            PluginInstruction::UpdateSessionSaveTime(timestamp_millis) => {
+                // Store timestamp in WasmBridge (as Unix epoch for internal use)
+                *wasm_bridge.last_session_save_time.lock().unwrap() = Some(timestamp_millis);
+            },
+            PluginInstruction::GetLastSessionSaveTime { response_channel } => {
+                let timestamp = *wasm_bridge.last_session_save_time.lock().unwrap();
+                let _ = response_channel.send(timestamp);
+            },
+            PluginInstruction::DetectPluginConfigChanges(new_plugins) => {
+                wasm_bridge
+                    .detect_and_notify_plugin_config_changes(&new_plugins, shutdown_send.clone())?;
+            },
+            PluginInstruction::HighlightClicked {
+                plugin_id,
+                client_id,
+                pane_id,
+                pattern,
+                matched_string,
+                context,
+            } => {
+                let event = Event::HighlightClicked {
+                    pane_id: pane_id.into(),
+                    pattern,
+                    matched_string,
+                    context,
+                };
+                let updates = vec![(Some(plugin_id), Some(client_id), event)];
+                wasm_bridge.update_plugins(updates, shutdown_send.clone())?;
+            },
             PluginInstruction::Exit => {
                 break;
             },
@@ -1214,8 +1275,9 @@ pub(crate) fn plugin_thread_main(
     // once all senders are dropped or the timeout is reached, recv will return an error, that we ignore
 
     drop(shutdown_send);
-    task::block_on(async {
-        let result = timeout(EXIT_TIMEOUT, shutdown_receive.recv()).await;
+    let runtime = crate::global_async_runtime::get_tokio_runtime();
+    runtime.block_on(async {
+        let result = tokio::time::timeout(EXIT_TIMEOUT, shutdown_receive.recv()).await;
         if let Err(err) = result {
             log::error!("timeout waiting for plugin tasks to finish: {}", err);
         }
@@ -1375,6 +1437,7 @@ fn load_background_plugin(
             drop(bus.senders.send_to_screen(ScreenInstruction::AddPlugin(
                 should_float,
                 should_be_open_in_place,
+                false, // close_replaced_pane
                 run_plugin_or_alias,
                 pane_title,
                 None,

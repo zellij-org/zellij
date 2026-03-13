@@ -22,6 +22,7 @@ Some(
                 exit_status: None,
                 unblock_condition: None,
                 affected_pane_id: None,
+                affected_tab_id: None,
             },
         ),
     ),

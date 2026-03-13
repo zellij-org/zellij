@@ -5,7 +5,6 @@ use std::{fs::File, io::prelude::*, path::PathBuf, process, time::Duration};
 #[cfg(feature = "web_server_capability")]
 use isahc::{config::RedirectPolicy, prelude::*, HttpClient, Request};
 
-use nix;
 use zellij_client::{
     old_config_converter::{
         config_yaml_to_config_kdl, convert_old_yaml_files, layout_yaml_to_layout_kdl,
@@ -147,7 +146,7 @@ pub(crate) fn delete_session(target_session: &Option<String>, force: bool) {
 }
 
 fn get_os_input<OsInputOutput>(
-    fn_get_os_input: fn() -> Result<OsInputOutput, nix::Error>,
+    fn_get_os_input: fn() -> Result<OsInputOutput, std::io::Error>,
 ) -> OsInputOutput {
     match fn_get_os_input() {
         Ok(os_input) => os_input,
@@ -173,6 +172,7 @@ pub(crate) fn start_web_server(
     port: Option<u16>,
     cert: Option<PathBuf>,
     key: Option<PathBuf>,
+    startup_timeout: Option<u64>,
 ) {
     // TODO: move this outside of this function
     let (config, _layout, config_options, _config_without_layout, _config_options_without_layout) =
@@ -197,6 +197,7 @@ pub(crate) fn start_web_server(
         port,
         cert,
         key,
+        startup_timeout,
     );
 }
 
@@ -208,6 +209,7 @@ pub(crate) fn start_web_server(
     _port: Option<u16>,
     _cert: Option<PathBuf>,
     _key: Option<PathBuf>,
+    _startup_timeout: Option<u64>,
 ) {
     log::error!(
         "This version of Zellij was compiled without web server support, cannot run web server!"
@@ -245,7 +247,7 @@ pub(crate) fn create_auth_token(name: Option<String>, read_only: bool) -> Result
     create_token(name, read_only)
         .map(|(token, token_name)| {
             let access_type = if read_only { " (read-only)" } else { "" };
-            format!("{}: {}{}", token, token_name, access_type)
+            format!("{}: {}{}", token_name, token, access_type)
         })
         .map_err(|e| e.to_string())
 }
@@ -323,10 +325,18 @@ pub(crate) fn list_auth_tokens() -> Result<Vec<String>, String> {
     std::process::exit(2);
 }
 
+/// Default timeout for web server status check (in seconds)
+pub const DEFAULT_WEB_SERVER_STATUS_TIMEOUT_SECS: u64 = 30;
+
 #[cfg(feature = "web_server_capability")]
-pub(crate) fn web_server_status(web_server_base_url: &str) -> Result<String, String> {
+pub(crate) fn web_server_status(
+    web_server_base_url: &str,
+    timeout_secs: Option<u64>,
+) -> Result<String, String> {
+    let timeout =
+        Duration::from_secs(timeout_secs.unwrap_or(DEFAULT_WEB_SERVER_STATUS_TIMEOUT_SECS));
     let http_client = HttpClient::builder()
-        // TODO: timeout?
+        .timeout(timeout)
         .redirect_policy(RedirectPolicy::Follow)
         .build()
         .map_err(|e| e.to_string())?;
@@ -346,7 +356,10 @@ pub(crate) fn web_server_status(web_server_base_url: &str) -> Result<String, Str
 }
 
 #[cfg(not(feature = "web_server_capability"))]
-pub(crate) fn web_server_status(_web_server_base_url: &str) -> Result<String, String> {
+pub(crate) fn web_server_status(
+    _web_server_base_url: &str,
+    _timeout_secs: Option<u64>,
+) -> Result<String, String> {
     log::error!(
         "This version of Zellij was compiled without web server support, cannot get web server status!"
     );
@@ -429,6 +442,63 @@ pub(crate) fn send_action_to_session(
         },
     };
 }
+pub(crate) fn subscribe_to_session(
+    subscribe_cli: zellij_utils::cli::SubscribeCli,
+    requested_session_name: Option<String>,
+    _config: Option<Config>,
+) {
+    let session_name = match get_active_session() {
+        ActiveSession::None => {
+            eprintln!("There is no active session!");
+            std::process::exit(1);
+        },
+        ActiveSession::One(session_name) => {
+            if let Some(ref requested) = requested_session_name {
+                if *requested != session_name {
+                    eprintln!(
+                        "Session '{}' not found. The following sessions are active:",
+                        requested
+                    );
+                    eprintln!("{}", session_name);
+                    std::process::exit(1);
+                }
+            }
+            session_name
+        },
+        ActiveSession::Many => {
+            let existing_sessions: Vec<String> = get_sessions()
+                .unwrap_or_default()
+                .iter()
+                .map(|s| s.0.clone())
+                .collect();
+            if let Some(session_name) = requested_session_name {
+                if existing_sessions.contains(&session_name) {
+                    session_name
+                } else {
+                    eprintln!(
+                        "Session '{}' not found. The following sessions are active:",
+                        session_name
+                    );
+                    list_sessions(false, false, true);
+                    std::process::exit(1);
+                }
+            } else if let Ok(session_name) = envs::get_session_name() {
+                session_name
+            } else {
+                eprintln!("Please specify the session name to subscribe to. The following sessions are active:");
+                list_sessions(false, false, true);
+                std::process::exit(1);
+            }
+        },
+    };
+    let os_input = get_os_input(zellij_client::os_input_output::get_cli_client_os_input);
+    zellij_client::cli_client::start_subscribe_client(
+        Box::new(os_input),
+        &session_name,
+        subscribe_cli,
+    );
+}
+
 pub(crate) fn convert_old_config_file(old_config_file: PathBuf) {
     match File::open(&old_config_file) {
         Ok(mut handle) => {
@@ -646,6 +716,8 @@ pub(crate) fn start_client(opts: CliArgs) {
                     token: None,
                     remember: false,
                     forget: false,
+                    ca_cert: None,
+                    insecure: false,
                 }));
             } else {
                 opts.command = None;
@@ -678,6 +750,8 @@ pub(crate) fn start_client(opts: CliArgs) {
             token,
             remember,
             forget,
+            ca_cert,
+            insecure,
         })) = opts.command.clone()
         {
             if let Some(remote_session_url) = session_name.as_ref().and_then(|s| {
@@ -698,15 +772,15 @@ pub(crate) fn start_client(opts: CliArgs) {
                 }
 
                 #[cfg(feature = "web_server_capability")]
-                use zellij_client::start_remote_client;
-
-                #[cfg(feature = "web_server_capability")]
-                if let Err(e) = start_remote_client(
+                if let Err(e) = zellij_client::start_remote_client(
                     Box::new(os_input.clone()),
                     remote_session_url,
                     token,
                     remember,
                     forget,
+                    ca_cert,
+                    insecure,
+                    config_options.client_async_worker_tasks,
                 ) {
                     eprintln!("{}", e);
                     std::process::exit(2);

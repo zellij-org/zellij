@@ -252,6 +252,22 @@ web_sharing "disabled"
 // default is true
 // advanced_mouse_actions false
  
+// Whether to enable mouse hover visual effects (frame highlight and help text)
+// default is true
+// mouse_hover_effects false
+ 
+// Whether to show visual bell indicators (pane/tab frame flash and [!] suffix)
+// default is true
+// visual_bell true
+ 
+// Whether to focus panes on mouse hover
+// default is false
+// focus_follows_mouse false
+ 
+// Whether clicking a pane to focus it also sends the click into the pane
+// default is false
+// mouse_click_through false
+ 
 // The ip address the web server should listen on when it starts
 // Default: "127.0.0.1"
 // (Requires restart)
@@ -268,3 +284,10 @@ web_sharing "disabled"
 // can be useful for removing wrappers around commands
 // Note: be sure to escape backslashes and similar characters properly
 // post_command_discovery_hook "echo $RESURRECT_COMMAND | sed <your_regex_here>"
+
+// Number of async worker tasks to spawn per active client.
+//
+// Allocating few tasks may result in resource contention and lags. Small values (around 4) should
+// typically work best. Set to 0 to use the number of (physical) CPU cores.
+// Note: This only applies to web clients at the moment.
+// client_async_worker_tasks 4

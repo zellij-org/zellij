@@ -1,0 +1,37 @@
+---
+source: zellij-server/src/./unit/screen_tests.rs
+expression: "format!(\"{:#?}\", spawn_in_place_instruction)"
+---
+Some(
+    SpawnInPlaceTerminal(
+        Some(
+            RunCommand(
+                RunCommand {
+                    command: "bash",
+                    args: [],
+                    cwd: Some(
+                        ".",
+                    ),
+                    hold_on_close: true,
+                    hold_on_start: false,
+                    originating_plugin: None,
+                    use_terminal_title: false,
+                },
+            ),
+        ),
+        None,
+        true,
+        ClientId(
+            10,
+        ),
+        Some(
+            NotificationEnd {
+                channel: None,
+                exit_status: None,
+                unblock_condition: None,
+                affected_pane_id: None,
+                affected_tab_id: None,
+            },
+        ),
+    ),
+)

@@ -124,12 +124,17 @@ Config {
         show_startup_tips: None,
         show_release_notes: None,
         advanced_mouse_actions: None,
+        mouse_hover_effects: None,
+        visual_bell: None,
+        focus_follows_mouse: None,
+        mouse_click_through: None,
         web_server_ip: None,
         web_server_port: None,
         web_server_cert: None,
         web_server_key: None,
         enforce_https_for_localhost: None,
         post_command_discovery_hook: None,
+        client_async_worker_tasks: None,
     },
     themes: {},
     plugins: PluginAliases {
@@ -189,18 +194,6 @@ Config {
                 location: Zellij(
                     PluginTag(
                         "plugin-manager",
-                    ),
-                ),
-                configuration: PluginUserConfiguration(
-                    {},
-                ),
-                initial_cwd: None,
-            },
-            "sequence": RunPlugin {
-                _allow_exec_host_cmd: false,
-                location: Zellij(
-                    PluginTag(
-                        "sequence",
                     ),
                 ),
                 configuration: PluginUserConfiguration(
@@ -279,7 +272,22 @@ Config {
         },
     },
     env: {},
-    background_plugins: {},
+    background_plugins: {
+        RunPlugin(
+            RunPlugin {
+                _allow_exec_host_cmd: false,
+                location: Zellij(
+                    PluginTag(
+                        "link",
+                    ),
+                ),
+                configuration: PluginUserConfiguration(
+                    {},
+                ),
+                initial_cwd: None,
+            },
+        ),
+    },
     web_client: WebClientConfig {
         font: "monospace",
         theme: None,

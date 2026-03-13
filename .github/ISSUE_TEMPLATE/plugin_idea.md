@@ -2,7 +2,7 @@
 name: "💡 Plugin idea"
 about: I would love if the community could bring a feature to life
 title: ''
-labels: plugin-community-idea
+labels: ["Plugin Idea"]
 assignees: ''
 
 ---

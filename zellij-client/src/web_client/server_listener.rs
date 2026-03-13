@@ -47,6 +47,7 @@ pub fn zellij_server_listener(
                 let mut attachment_complete_tx = attachment_complete_tx;
                 'reconnect_loop: loop {
                     let reconnect_info = reconnect_to_session.take();
+                    let initial_layout = reconnect_info.as_ref().and_then(|r| r.layout.clone());
                     let path = {
                         let Some(session_name) = reconnect_info
                             .as_ref()
@@ -58,13 +59,18 @@ pub fn zellij_server_listener(
                             return;
                         };
                         let mut sock_dir = zellij_utils::consts::ZELLIJ_SOCK_DIR.clone();
+                        if let Err(e) = zellij_utils::sessions::validate_session_name(&session_name) {
+                            log::error!("Invalid session name: {}", e);
+                            client_connection_bus.close_connection();
+                            return;
+                        }
                         sock_dir.push(session_name.clone());
                         sock_dir.to_str().unwrap().to_owned()
                     };
 
                     reload_config_from_disk(&mut config, &mut config_options, &config_file_path);
 
-                    let full_screen_ws = os_input.get_terminal_size_using_fd(0);
+                    let full_screen_ws = os_input.get_terminal_size();
                     let mut sent_init_messages = false;
 
                     let palette = config
@@ -102,7 +108,7 @@ pub fn zellij_server_listener(
                     }
 
                     let should_create_new_session = !session_exists;
-                    let first_message = create_first_message(is_read_only, config_file_path.clone(), client_attributes.clone(), config_options.clone(), should_create_new_session, &session_name);
+                    let first_message = create_first_message(is_read_only, config_file_path.clone(), client_attributes.clone(), config_options.clone(), should_create_new_session, &session_name, initial_layout);
                     let zellij_ipc_pipe = create_ipc_pipe(&session_name);
 
                     session_manager.spawn_session_if_needed(
@@ -224,6 +230,9 @@ pub fn zellij_server_listener(
                                     }
                                 }
                             },
+                            // Subscribe-only messages — not relevant for web clients
+                            Some(ServerToClientMsg::PaneRenderUpdate { .. }) => {},
+                            Some(ServerToClientMsg::SubscribedPaneClosed { .. }) => {},
                             None => {
                                 if unknown_message_count >= 1000 {
                                     log::error!("Error: Received more than 1000 consecutive unknown server messages, disconnecting.");
@@ -244,6 +253,10 @@ pub fn zellij_server_listener(
 
 fn handle_exit_reason(client_connection_bus: &mut ClientConnectionBus, exit_reason: ExitReason) {
     match exit_reason {
+        ExitReason::KickedByHost => {
+            client_connection_bus.close_connection_kicked();
+            return;
+        },
         ExitReason::WebClientsForbidden => {
             client_connection_bus.send_stdout(format!(
                 "\u{1b}[2J\n Web Clients are not allowed to attach to this session."

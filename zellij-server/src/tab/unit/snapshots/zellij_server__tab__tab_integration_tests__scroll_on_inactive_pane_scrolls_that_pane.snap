@@ -1,0 +1,24 @@
+---
+source: zellij-server/src/tab/./unit/tab_integration_tests.rs
+expression: "format!(\"{}\", snapshot_after)"
+---
+00 (C): ┌ Pane #1 ─────────────────────────────────── SCROLL:  3/33 ┐
+01 (C): │Left Line 30                                               │                                                            
+02 (C): │Left Line 31                                               │                                                            
+03 (C): │Left Line 32                                               │                                                            
+04 (C): │Left Line 33                                               │                                                            
+05 (C): │Left Line 34                                               │                                                            
+06 (C): │Left Line 35                                               │                                                            
+07 (C): │Left Line 36                                               │                                                            
+08 (C): │Left Line 37                                               │                                                            
+09 (C): │Left Line 38                                               │                                                            
+10 (C): │Left Line 39                                               │                                                            
+11 (C): │Left Line 40                                               │                                                            
+12 (C): │Left Line 41                                               │                                                            
+13 (C): │Left Line 42                                               │                                                            
+14 (C): │Left Line 43                                               │                                                            
+15 (C): │Left Line 44                                               │                                                            
+16 (C): │Left Line 45                                               │                                                            
+17 (C): │Left Line 46                                               │                                                            
+18 (C): │Left Line 47                                               │                                                            
+19 (C): └───────────────────────────────────────────────────────────┘

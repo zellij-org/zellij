@@ -119,7 +119,7 @@ pub struct RgbColor {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Action {
-    #[prost(oneof="action::ActionType", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 95, 96, 90, 91, 92, 93, 94")]
+    #[prost(oneof="action::ActionType", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109")]
     pub action_type: ::core::option::Option<action::ActionType>,
 }
 /// Nested message and enum types in `Action`.
@@ -305,10 +305,6 @@ pub mod action {
         StackPanes(super::StackPanesAction),
         #[prost(message, tag="89")]
         ChangeFloatingPaneCoordinates(super::ChangeFloatingPaneCoordinatesAction),
-        #[prost(message, tag="95")]
-        TogglePaneBorderless(super::TogglePaneBorderlessAction),
-        #[prost(message, tag="96")]
-        SetPaneBorderless(super::SetPaneBorderlessAction),
         #[prost(message, tag="90")]
         TogglePaneInGroup(super::TogglePaneInGroupAction),
         #[prost(message, tag="91")]
@@ -319,6 +315,36 @@ pub mod action {
         NewBlockingPane(super::NewBlockingPaneAction),
         #[prost(message, tag="94")]
         OverrideLayout(super::OverrideLayoutAction),
+        #[prost(message, tag="95")]
+        TogglePaneBorderless(super::TogglePaneBorderlessAction),
+        #[prost(message, tag="96")]
+        SetPaneBorderless(super::SetPaneBorderlessAction),
+        #[prost(message, tag="97")]
+        SaveSession(super::SaveSessionAction),
+        #[prost(message, tag="98")]
+        ListPanes(super::ListPanesAction),
+        #[prost(message, tag="99")]
+        WriteCharsToPaneId(super::WriteCharsToPaneIdAction),
+        #[prost(message, tag="100")]
+        WriteToPaneId(super::WriteToPaneIdAction),
+        #[prost(message, tag="101")]
+        GoToTabById(super::GoToTabByIdAction),
+        #[prost(message, tag="102")]
+        CloseTabById(super::CloseTabByIdAction),
+        #[prost(message, tag="103")]
+        RenameTabById(super::RenameTabByIdAction),
+        #[prost(message, tag="104")]
+        ListTabs(super::ListTabsAction),
+        #[prost(message, tag="105")]
+        CurrentTabInfo(super::CurrentTabInfoAction),
+        #[prost(message, tag="106")]
+        ShowFloatingPanes(super::ShowFloatingPanesAction),
+        #[prost(message, tag="107")]
+        HideFloatingPanes(super::HideFloatingPanesAction),
+        #[prost(message, tag="108")]
+        SetPaneColor(super::SetPaneColorAction),
+        #[prost(message, tag="109")]
+        Paste(super::PasteAction),
     }
 }
 // Action message definitions (all 92 variants)
@@ -351,6 +377,10 @@ pub struct ClearScreenAction {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct DumpLayoutAction {
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SaveSessionAction {
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -407,6 +437,18 @@ pub struct TogglePaneEmbedOrFloatingAction {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ToggleFloatingPanesAction {
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ShowFloatingPanesAction {
+    #[prost(uint32, optional, tag="1")]
+    pub tab_id: ::core::option::Option<u32>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct HideFloatingPanesAction {
+    #[prost(uint32, optional, tag="1")]
+    pub tab_id: ::core::option::Option<u32>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -518,6 +560,44 @@ pub struct ListClientsAction {
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ListPanesAction {
+    #[prost(bool, tag="1")]
+    pub show_tab: bool,
+    #[prost(bool, tag="2")]
+    pub show_command: bool,
+    #[prost(bool, tag="3")]
+    pub show_state: bool,
+    #[prost(bool, tag="4")]
+    pub show_geometry: bool,
+    #[prost(bool, tag="5")]
+    pub show_all: bool,
+    #[prost(bool, tag="6")]
+    pub output_json: bool,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ListTabsAction {
+    #[prost(bool, tag="1")]
+    pub show_state: bool,
+    #[prost(bool, tag="2")]
+    pub show_dimensions: bool,
+    #[prost(bool, tag="3")]
+    pub show_panes: bool,
+    #[prost(bool, tag="4")]
+    pub show_layout: bool,
+    #[prost(bool, tag="5")]
+    pub show_all: bool,
+    #[prost(bool, tag="6")]
+    pub output_json: bool,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CurrentTabInfoAction {
+    #[prost(bool, tag="1")]
+    pub output_json: bool,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct TogglePanePinnedAction {
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -544,6 +624,30 @@ pub struct WriteAction {
 pub struct WriteCharsAction {
     #[prost(string, tag="1")]
     pub chars: ::prost::alloc::string::String,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct WriteToPaneIdAction {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+    #[prost(uint32, repeated, tag="2")]
+    pub bytes: ::prost::alloc::vec::Vec<u32>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct WriteCharsToPaneIdAction {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+    #[prost(string, tag="2")]
+    pub chars: ::prost::alloc::string::String,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PasteAction {
+    #[prost(string, tag="1")]
+    pub chars: ::prost::alloc::string::String,
+    #[prost(message, optional, tag="2")]
+    pub pane_id: ::core::option::Option<PaneId>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -590,6 +694,10 @@ pub struct DumpScreenAction {
     pub file_path: ::prost::alloc::string::String,
     #[prost(bool, tag="2")]
     pub include_scrollback: bool,
+    #[prost(message, optional, tag="3")]
+    pub pane_id: ::core::option::Option<PaneId>,
+    #[prost(bool, tag="4")]
+    pub dump_to_stdout: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -632,6 +740,8 @@ pub struct EditFileAction {
     pub coordinates: ::core::option::Option<FloatingPaneCoordinates>,
     #[prost(bool, tag="7")]
     pub near_current_pane: bool,
+    #[prost(bool, tag="8")]
+    pub close_replaced_pane: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -673,7 +783,7 @@ pub struct NewInPlacePaneAction {
     #[prost(message, optional, tag="4")]
     pub pane_id_to_replace: ::core::option::Option<PaneId>,
     #[prost(bool, tag="5")]
-    pub close_replace_pane: bool,
+    pub close_replaced_pane: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -774,6 +884,8 @@ pub struct LaunchOrFocusPluginAction {
     pub should_open_in_place: bool,
     #[prost(bool, tag="5")]
     pub skip_cache: bool,
+    #[prost(bool, tag="6")]
+    pub close_replaced_pane: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -788,6 +900,8 @@ pub struct LaunchPluginAction {
     pub skip_cache: bool,
     #[prost(string, optional, tag="5")]
     pub cwd: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(bool, tag="6")]
+    pub close_replaced_pane: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -854,6 +968,8 @@ pub struct NewInPlacePluginPaneAction {
     pub pane_name: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(bool, tag="3")]
     pub skip_cache: bool,
+    #[prost(bool, tag="4")]
+    pub close_replaced_pane: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -916,6 +1032,26 @@ pub struct RenameTabAction {
     pub tab_index: u32,
     #[prost(uint32, repeated, tag="2")]
     pub name: ::prost::alloc::vec::Vec<u32>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GoToTabByIdAction {
+    #[prost(uint64, tag="1")]
+    pub id: u64,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CloseTabByIdAction {
+    #[prost(uint64, tag="1")]
+    pub id: u64,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RenameTabByIdAction {
+    #[prost(uint64, tag="1")]
+    pub id: u64,
+    #[prost(string, tag="2")]
+    pub name: ::prost::alloc::string::String,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1006,6 +1142,16 @@ pub struct SetPaneBorderlessAction {
     pub pane_id: ::core::option::Option<PaneId>,
     #[prost(bool, tag="2")]
     pub borderless: bool,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SetPaneColorAction {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+    #[prost(string, optional, tag="2")]
+    pub fg: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag="3")]
+    pub bg: ::core::option::Option<::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1293,9 +1439,13 @@ pub struct TiledPaneLayout {
     pub is_expanded_in_stack: bool,
     #[prost(bool, tag="12")]
     pub hide_floating_panes: bool,
-    /// NOTE: run_instructions_to_ignore is not represented here because it's a field used only inside the server itself and not part of the server/client contract
     #[prost(string, optional, tag="13")]
     pub pane_initial_contents: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag="14")]
+    pub default_fg: ::core::option::Option<::prost::alloc::string::String>,
+    /// NOTE: run_instructions_to_ignore is not represented here because it's a field used only inside the server itself and not part of the server/client contract
+    #[prost(string, optional, tag="15")]
+    pub default_bg: ::core::option::Option<::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1324,6 +1474,10 @@ pub struct FloatingPaneLayout {
     pub logical_position: ::core::option::Option<u32>,
     #[prost(bool, optional, tag="12")]
     pub borderless: ::core::option::Option<bool>,
+    #[prost(string, optional, tag="13")]
+    pub default_fg: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag="14")]
+    pub default_bg: ::core::option::Option<::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1400,8 +1554,18 @@ pub struct PluginAlias {
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CommandOrPluginFile {
+    #[prost(string, tag="1")]
+    pub path: ::prost::alloc::string::String,
+    #[prost(int32, optional, tag="2")]
+    pub line_number: ::core::option::Option<i32>,
+    #[prost(string, optional, tag="3")]
+    pub cwd: ::core::option::Option<::prost::alloc::string::String>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct CommandOrPlugin {
-    #[prost(oneof="command_or_plugin::CommandOrPluginType", tags="1, 2")]
+    #[prost(oneof="command_or_plugin::CommandOrPluginType", tags="1, 2, 3")]
     pub command_or_plugin_type: ::core::option::Option<command_or_plugin::CommandOrPluginType>,
 }
 /// Nested message and enum types in `CommandOrPlugin`.
@@ -1413,6 +1577,8 @@ pub mod command_or_plugin {
         Command(super::RunCommandAction),
         #[prost(message, tag="2")]
         Plugin(super::RunPluginOrAlias),
+        #[prost(message, tag="3")]
+        File(super::CommandOrPluginFile),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -1667,6 +1833,16 @@ pub struct Options {
     pub post_command_discovery_hook: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(bool, optional, tag="40")]
     pub osc8_hyperlinks: ::core::option::Option<bool>,
+    #[prost(bool, optional, tag="41")]
+    pub mouse_hover_effects: ::core::option::Option<bool>,
+    #[prost(uint64, optional, tag="42")]
+    pub client_async_worker_tasks: ::core::option::Option<u64>,
+    #[prost(bool, optional, tag="43")]
+    pub visual_bell: ::core::option::Option<bool>,
+    #[prost(bool, optional, tag="44")]
+    pub focus_follows_mouse: ::core::option::Option<bool>,
+    #[prost(bool, optional, tag="45")]
+    pub mouse_click_through: ::core::option::Option<bool>,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
@@ -2070,6 +2246,7 @@ pub enum ExitReason {
     WebClientsForbidden = 6,
     Error = 7,
     CustomExitStatus = 8,
+    KickedByHost = 9,
 }
 impl ExitReason {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -2087,6 +2264,7 @@ impl ExitReason {
             ExitReason::WebClientsForbidden => "EXIT_REASON_WEB_CLIENTS_FORBIDDEN",
             ExitReason::Error => "EXIT_REASON_ERROR",
             ExitReason::CustomExitStatus => "EXIT_REASON_CUSTOM_EXIT_STATUS",
+            ExitReason::KickedByHost => "EXIT_REASON_KICKED_BY_HOST",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -2101,6 +2279,7 @@ impl ExitReason {
             "EXIT_REASON_WEB_CLIENTS_FORBIDDEN" => Some(Self::WebClientsForbidden),
             "EXIT_REASON_ERROR" => Some(Self::Error),
             "EXIT_REASON_CUSTOM_EXIT_STATUS" => Some(Self::CustomExitStatus),
+            "EXIT_REASON_KICKED_BY_HOST" => Some(Self::KickedByHost),
             _ => None,
         }
     }
@@ -2426,7 +2605,7 @@ impl WebSharing {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ClientToServerMsg {
-    #[prost(oneof="client_to_server_msg::Message", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16")]
+    #[prost(oneof="client_to_server_msg::Message", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17")]
     pub message: ::core::option::Option<client_to_server_msg::Message>,
 }
 /// Nested message and enum types in `ClientToServerMsg`.
@@ -2466,6 +2645,8 @@ pub mod client_to_server_msg {
         FailedToStartWebServer(super::FailedToStartWebServerMsg),
         #[prost(message, tag="16")]
         AttachWatcherClient(super::AttachWatcherClientMsg),
+        #[prost(message, tag="17")]
+        SubscribeToPaneRenders(super::SubscribeToPaneRendersMsg),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -2583,8 +2764,16 @@ pub struct FailedToStartWebServerMsg {
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SubscribeToPaneRendersMsg {
+    #[prost(message, repeated, tag="1")]
+    pub pane_ids: ::prost::alloc::vec::Vec<PaneId>,
+    #[prost(uint32, optional, tag="2")]
+    pub scrollback: ::core::option::Option<u32>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ServerToClientMsg {
-    #[prost(oneof="server_to_client_msg::Message", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13")]
+    #[prost(oneof="server_to_client_msg::Message", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15")]
     pub message: ::core::option::Option<server_to_client_msg::Message>,
 }
 /// Nested message and enum types in `ServerToClientMsg`.
@@ -2618,6 +2807,10 @@ pub mod server_to_client_msg {
         RenamedSession(super::RenamedSessionMsg),
         #[prost(message, tag="13")]
         ConfigFileUpdated(super::ConfigFileUpdatedMsg),
+        #[prost(message, tag="14")]
+        PaneRenderUpdate(super::PaneRenderUpdateMsg),
+        #[prost(message, tag="15")]
+        SubscribedPaneClosed(super::SubscribedPaneClosedMsg),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -2696,4 +2889,24 @@ pub struct RenamedSessionMsg {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ConfigFileUpdatedMsg {
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PaneRenderUpdateMsg {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+    #[prost(string, repeated, tag="2")]
+    pub viewport: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(string, repeated, tag="3")]
+    pub scrollback: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(bool, tag="4")]
+    pub has_scrollback: bool,
+    #[prost(bool, tag="5")]
+    pub is_initial: bool,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SubscribedPaneClosedMsg {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
 }

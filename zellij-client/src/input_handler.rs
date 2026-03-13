@@ -3,7 +3,6 @@ use crate::{
     os_input_output::ClientOsApi, stdin_ansi_parser::AnsiStdinInstruction, ClientId,
     ClientInstruction, CommandIsExecuting, InputInstruction,
 };
-use termwiz::input::{InputEvent, Modifiers, MouseButtons, MouseEvent as TermwizMouseEvent};
 use zellij_utils::{
     channels::{Receiver, SenderWithContext, OPENCALLS},
     data::{InputMode, KeyWithModifier},
@@ -17,6 +16,9 @@ use zellij_utils::{
     },
     ipc::{ClientToServerMsg, ExitReason},
     position::Position,
+    vendored::termwiz::input::{
+        InputEvent, Modifiers, MouseButtons, MouseEvent as TermwizMouseEvent,
+    },
 };
 
 /// Handles the dispatching of [`Action`]s according to the current
@@ -229,10 +231,13 @@ impl InputHandler {
                     }
                 },
                 Ok((
-                    InputInstruction::KeyWithModifierEvent(key_with_modifier, raw_bytes),
+                    InputInstruction::KeyWithModifierEvent(key_with_modifier, raw_bytes, is_kitty),
                     _error_context,
                 )) => {
-                    self.handle_key(&key_with_modifier, raw_bytes, true);
+                    self.handle_key(&key_with_modifier, raw_bytes, is_kitty);
+                },
+                Ok((InputInstruction::MouseEvent(mouse_event), _error_context)) => {
+                    self.handle_mouse_event(&mouse_event);
                 },
                 Ok((
                     InputInstruction::AnsiStdinInstructions(ansi_stdin_instructions),

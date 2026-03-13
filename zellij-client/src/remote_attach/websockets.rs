@@ -1,7 +1,10 @@
 use super::config::{WS_CONTROL_ENDPOINT, WS_TERMINAL_ENDPOINT};
 use super::http_client::HttpClientWithCookies;
+use std::path::Path;
 use tokio::net::TcpStream;
-use tokio_tungstenite::{connect_async, MaybeTlsStream, WebSocketStream};
+use tokio_tungstenite::{
+    connect_async_tls_with_config, Connector, MaybeTlsStream, WebSocketStream,
+};
 
 pub struct WebSocketConnections {
     pub terminal_ws: WebSocketStream<MaybeTlsStream<TcpStream>>,
@@ -22,6 +25,8 @@ pub async fn establish_websocket_connections(
     http_client: &HttpClientWithCookies,
     server_base_url: &str,
     session_name: &str,
+    ca_cert: Option<&Path>,
+    insecure: bool,
 ) -> Result<WebSocketConnections, Box<dyn std::error::Error>> {
     let ws_protocol = if server_base_url.starts_with("https") {
         "wss"
@@ -86,10 +91,29 @@ pub async fn establish_websocket_connections(
     let terminal_request = terminal_request.body(())?;
     let control_request = control_request.body(())?;
 
+    // Build TLS connector based on ca_cert/insecure settings
+    let connector = if insecure {
+        let tls_connector = native_tls::TlsConnector::builder()
+            .danger_accept_invalid_certs(true)
+            .danger_accept_invalid_hostnames(true)
+            .build()?;
+        Some(Connector::NativeTls(tls_connector))
+    } else if let Some(ca_path) = ca_cert {
+        let ca_pem = std::fs::read(ca_path)?;
+        let ca_cert = native_tls::Certificate::from_pem(&ca_pem)?;
+        let tls_connector = native_tls::TlsConnector::builder()
+            .add_root_certificate(ca_cert)
+            .build()?;
+        Some(Connector::NativeTls(tls_connector))
+    } else {
+        None
+    };
+
     // Connect to both WebSockets concurrently
-    // tokio-tungstenite handles TLS automatically for wss:// URLs
-    let (terminal_ws, _) = connect_async(terminal_request).await?;
-    let (control_ws, _) = connect_async(control_request).await?;
+    let (terminal_ws, _) =
+        connect_async_tls_with_config(terminal_request, None, false, connector.clone()).await?;
+    let (control_ws, _) =
+        connect_async_tls_with_config(control_request, None, false, connector).await?;
 
     Ok(WebSocketConnections {
         terminal_ws,

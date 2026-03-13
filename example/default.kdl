@@ -242,7 +242,6 @@ plugins {
     configuration location="zellij:configuration"
     plugin-manager location="zellij:plugin-manager"
     about location="zellij:about"
-    sequence location="zellij:sequence"
 }
 
 // Plugins to load in the background when a new session starts
@@ -513,6 +512,11 @@ load_plugins {
 // Default: true
 //
 // advanced_mouse_actions false
+
+// Whether to enable mouse hover visual effects (frame highlight and help text)
+// Default: true
+//
+// mouse_hover_effects false
 
 // A command to run (will be wrapped with sh -c and provided the RESURRECT_COMMAND env variable)
 // after Zellij attempts to discover a command inside a pane when resurrecting sessions, the STDOUT

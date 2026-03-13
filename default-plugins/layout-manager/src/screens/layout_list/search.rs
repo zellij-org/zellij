@@ -34,8 +34,22 @@ impl Default for SearchState {
 }
 
 impl SearchState {
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new_in_search_mode() -> Self {
+        Self {
+            typing_filter: true,
+            ..Self::default()
+        }
+    }
+
+    pub fn fill_input_with_selected_match(&mut self) -> bool {
+        if let Some(result) = self.search_results.get(self.selected_search_index) {
+            let name = result.layout.name();
+            if self.filter_input.get_text() != name {
+                self.filter_input.set_text(name);
+                return true;
+            }
+        }
+        false
     }
 
     pub fn is_active(&self) -> bool {
@@ -48,10 +62,6 @@ impl SearchState {
 
     pub fn start_typing(&mut self) {
         self.typing_filter = true;
-    }
-
-    pub fn stop_typing(&mut self) {
-        self.typing_filter = false;
     }
 
     pub fn get_filter_input(&self) -> &TextInput {
@@ -80,7 +90,7 @@ impl SearchState {
         base_x: usize,
         base_y: usize,
     ) {
-        let filter_prompt = "Filter:";
+        let filter_prompt = "Layout:";
         let filter_text = self.filter_input.get_text();
 
         // Clear results if filter is empty
@@ -155,15 +165,15 @@ impl SearchState {
         let filter_text_str = self.filter_input.get_text();
         let filter_text = if self.typing_filter {
             let mut filter_line =
-                Text::new(format!("Filter: {}", filter_text_str)).color_substring(2, "Filter:");
+                Text::new(format!("Layout: {}", filter_text_str)).color_substring(2, "Layout:");
             if !filter_text_str.is_empty() {
                 filter_line = filter_line.color_last_substring(3, filter_text_str)
             }
             filter_line
         } else {
-            Text::new(format!("Filter: {} (<Esc> - clear)", filter_text_str))
+            Text::new(format!("Layout: {} (<Esc> - clear)", filter_text_str))
                 .color_substring(3, "<Esc>")
-                .color_substring(2, "Filter:")
+                .color_substring(2, "Layout:")
         };
         print_text_with_coordinates(filter_text, base_x, base_y, None, None);
     }

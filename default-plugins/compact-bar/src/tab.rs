@@ -42,7 +42,13 @@ pub fn render_tab(
     } else {
         palette.ribbon_unselected.background
     };
-    let foreground_color = if tab.active {
+    let foreground_color = if tab.is_flashing_bell {
+        if tab.active {
+            palette.ribbon_selected.emphasis_3
+        } else {
+            palette.ribbon_unselected.emphasis_3
+        }
+    } else if tab.active {
         palette.ribbon_selected.base
     } else {
         palette.ribbon_unselected.base
@@ -101,6 +107,9 @@ pub fn tab_style(
         tabname.push_str(" (FULLSCREEN)");
     } else if tab.is_sync_panes_active {
         tabname.push_str(" (SYNC)");
+    }
+    if tab.has_bell_notification || tab.is_flashing_bell {
+        tabname.push_str(" [!]");
     }
     // we only color alternate tabs differently if we can't use the arrow fonts to separate them
     if !capabilities.arrow_fonts {

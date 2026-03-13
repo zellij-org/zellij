@@ -96,7 +96,7 @@ export async function getClientId(token, rememberMe, hasAuthenticationCookie) {
 export async function initAuthentication() {
     let token = null;
     let remember = null;
-    let hasAuthenticationCookie = window.is_authenticated;
+    let hasAuthenticationCookie = document.body.dataset.authenticated === "true";
 
     if (!hasAuthenticationCookie) {
         const tokenResult = await waitForSecurityToken();
