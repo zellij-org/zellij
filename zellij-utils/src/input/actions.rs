@@ -3007,4 +3007,84 @@ mod tests {
             _ => panic!("Expected MoveTab action"),
         }
     }
+
+    // 28. ANSI flag tests
+
+    #[test]
+    fn test_edit_scrollback_with_ansi_flag() {
+        let cli_action = CliAction::EditScrollback {
+            pane_id: None,
+            ansi: true,
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        assert!(matches!(actions[0], Action::EditScrollback { ansi: true }));
+    }
+
+    #[test]
+    fn test_edit_scrollback_with_pane_id_and_ansi() {
+        let cli_action = CliAction::EditScrollback {
+            pane_id: Some("terminal_15".to_string()),
+            ansi: true,
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::EditScrollbackByPaneId { pane_id, ansi } => {
+                assert_eq!(*pane_id, PaneId::Terminal(15));
+                assert!(*ansi);
+            },
+            _ => panic!("Expected EditScrollbackByPaneId action"),
+        }
+    }
+
+    #[test]
+    fn test_dump_screen_with_ansi_flag() {
+        let cli_action = CliAction::DumpScreen {
+            path: Some(PathBuf::from("/tmp/test")),
+            full: true,
+            pane_id: None,
+            ansi: true,
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::DumpScreen {
+                ansi,
+                include_scrollback,
+                ..
+            } => {
+                assert!(*ansi);
+                assert!(*include_scrollback);
+            },
+            _ => panic!("Expected DumpScreen action"),
+        }
+    }
+
+    #[test]
+    fn test_dump_screen_with_pane_id_and_ansi() {
+        let cli_action = CliAction::DumpScreen {
+            path: None,
+            full: false,
+            pane_id: Some("terminal_5".to_string()),
+            ansi: true,
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::DumpScreen { pane_id, ansi, .. } => {
+                assert_eq!(*pane_id, Some(PaneId::Terminal(5)));
+                assert!(*ansi);
+            },
+            _ => panic!("Expected DumpScreen action"),
+        }
+    }
 }

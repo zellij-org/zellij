@@ -3219,6 +3219,33 @@ fn test_client_messages() {
         client_id: Some(100),
         is_cli_client: true,
     });
+    // ANSI flag roundtrip tests
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::DumpScreen {
+            file_path: Some("/path".to_owned()),
+            include_scrollback: true,
+            pane_id: None,
+            ansi: true,
+        },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::EditScrollback { ansi: true },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::EditScrollbackByPaneId {
+            pane_id: PaneId::Terminal(1),
+            ansi: true,
+        },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
     test_client_roundtrip!(ClientToServerMsg::Action {
         action: Action::ToggleFocusFullscreenByPaneId {
             pane_id: PaneId::Terminal(1),
