@@ -222,6 +222,7 @@ impl TryFrom<ProtobufAction> for Action {
                         file_path,
                         include_scrollback,
                         pane_id,
+                        ansi: payload.ansi,
                     })
                 },
                 _ => Err("Wrong payload for Action::DumpScreen"),
@@ -1178,6 +1179,7 @@ impl TryFrom<Action> for ProtobufAction {
                 file_path,
                 include_scrollback,
                 pane_id,
+                ansi,
             } => {
                 let dump_to_stdout = file_path.is_none();
                 Ok(ProtobufAction {
@@ -1187,6 +1189,7 @@ impl TryFrom<Action> for ProtobufAction {
                         include_scrollback,
                         pane_id: pane_id.and_then(|p| p.try_into().ok()),
                         dump_to_stdout,
+                        ansi,
                     })),
                 })
             },

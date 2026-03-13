@@ -179,6 +179,7 @@ pub enum Action {
         file_path: Option<String>,
         include_scrollback: bool,
         pane_id: Option<PaneId>,
+        ansi: bool,
     },
     /// Dumps
     DumpLayout,
@@ -838,6 +839,7 @@ impl Action {
                 path,
                 full,
                 pane_id,
+                ansi,
             } => match pane_id {
                 Some(pane_id_str) => {
                     let parsed_pane_id = PaneId::from_str(&pane_id_str);
@@ -847,6 +849,7 @@ impl Action {
                                 file_path: path.map(|p| p.as_os_str().to_string_lossy().into()),
                                 include_scrollback: full,
                                 pane_id: Some(parsed_pane_id),
+                                ansi,
                             }])
                         },
                         Err(_e) => {
@@ -861,6 +864,7 @@ impl Action {
                     file_path: path.map(|p| p.as_os_str().to_string_lossy().into()),
                     include_scrollback: full,
                     pane_id: None,
+                    ansi,
                 }]),
             },
             CliAction::DumpLayout => Ok(vec![Action::DumpLayout]),

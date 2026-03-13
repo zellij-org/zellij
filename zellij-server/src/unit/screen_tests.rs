@@ -2442,6 +2442,7 @@ pub fn send_cli_dump_screen_action() {
         path: Some(PathBuf::from("/tmp/foo")),
         full: true,
         pane_id: None,
+        ansi: false,
     };
     let _ = mock_screen.to_screen.send(ScreenInstruction::PtyBytes(
         0,

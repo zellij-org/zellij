@@ -1003,6 +1003,7 @@ impl From<crate::input::actions::Action>
                 file_path,
                 include_scrollback,
                 pane_id,
+                ansi,
             } => {
                 let dump_to_stdout = file_path.is_none();
                 ActionType::DumpScreen(DumpScreenAction {
@@ -1010,6 +1011,7 @@ impl From<crate::input::actions::Action>
                     include_scrollback,
                     pane_id: pane_id.map(|p| p.into()),
                     dump_to_stdout,
+                    ansi,
                 })
             },
             crate::input::actions::Action::DumpLayout => {
@@ -1822,6 +1824,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                     file_path,
                     include_scrollback: dump_screen_action.include_scrollback,
                     pane_id: dump_screen_action.pane_id.and_then(|p| p.try_into().ok()),
+                    ansi: dump_screen_action.ansi,
                 })
             },
             ActionType::DumpLayout(_) => Ok(crate::input::actions::Action::DumpLayout),

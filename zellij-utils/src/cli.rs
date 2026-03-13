@@ -773,6 +773,10 @@ pub enum CliAction {
         /// The pane_id of the pane, eg. terminal_1, plugin_2 or 3 (equivalent to terminal_3). If not specified, dumps the focused pane.
         #[clap(short, long, value_parser)]
         pane_id: Option<String>,
+
+        /// Preserve ANSI styling in the dump output
+        #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
+        ansi: bool,
     },
     /// Dump current layout to stdout
     DumpLayout,

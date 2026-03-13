@@ -4102,6 +4102,18 @@ impl Tab {
         }
         Ok(())
     }
+    pub fn dump_with_ansi_terminal_screen(
+        &mut self,
+        file: Option<String>,
+        pane_id: PaneId,
+        full: bool,
+    ) -> Result<()> {
+        if let Some(pane) = self.get_pane_with_id(pane_id) {
+            let dump = pane.dump_screen_with_ansi(full, None);
+            self.os_api.write_to_file(dump, file).non_fatal()
+        }
+        Ok(())
+    }
     pub fn get_dump_active_terminal_screen(&mut self, client_id: ClientId, full: bool) -> String {
         if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
             active_pane.dump_screen(full, Some(client_id))
@@ -4109,9 +4121,31 @@ impl Tab {
             String::new()
         }
     }
+    pub fn get_dump_with_ansi_active_terminal_screen(
+        &mut self,
+        client_id: ClientId,
+        full: bool,
+    ) -> String {
+        if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
+            active_pane.dump_screen_with_ansi(full, Some(client_id))
+        } else {
+            String::new()
+        }
+    }
     pub fn get_dump_terminal_screen(&mut self, pane_id: PaneId, full: bool) -> Option<String> {
         if let Some(pane) = self.get_pane_with_id(pane_id) {
             Some(pane.dump_screen(full, None))
+        } else {
+            None
+        }
+    }
+    pub fn get_dump_with_ansi_terminal_screen(
+        &mut self,
+        pane_id: PaneId,
+        full: bool,
+    ) -> Option<String> {
+        if let Some(pane) = self.get_pane_with_id(pane_id) {
+            Some(pane.dump_screen_with_ansi(full, None))
         } else {
             None
         }

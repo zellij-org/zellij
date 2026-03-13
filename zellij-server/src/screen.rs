@@ -307,6 +307,7 @@ pub enum ScreenInstruction {
         Option<PaneId>,
         Option<NotificationEnd>,
         Option<ClientId>, // cli_client_id - used to send output to the CLI client's STDOUT
+        bool,             // ansi - preserve ANSI styling in the dump output
     ),
     DumpLayout(Option<PathBuf>, ClientId, Option<NotificationEnd>), // PathBuf is the default configured
     // shell
@@ -5293,6 +5294,7 @@ pub(crate) fn screen_thread_main(
                 pane_id,
                 completion_tx,
                 cli_client_id,
+                ansi,
             ) => {
                 match file {
                     Some(file_path) => {
@@ -5301,26 +5303,47 @@ pub(crate) fn screen_thread_main(
                             Some(pane_id) => {
                                 for tab in screen.get_tabs_mut().values_mut() {
                                     if tab.has_pane_with_pid(&pane_id) {
-                                        tab.dump_terminal_screen(
-                                            Some(file_path.clone()),
-                                            pane_id,
-                                            full,
-                                        )?;
+                                        if ansi {
+                                            tab.dump_with_ansi_terminal_screen(
+                                                Some(file_path.clone()),
+                                                pane_id,
+                                                full,
+                                            )?;
+                                        } else {
+                                            tab.dump_terminal_screen(
+                                                Some(file_path.clone()),
+                                                pane_id,
+                                                full,
+                                            )?;
+                                        }
                                         break;
                                     }
                                 }
                             },
                             None => {
-                                active_tab_and_connected_client_id!(
-                                    screen,
-                                    client_id,
-                                    |tab: &mut Tab, client_id: ClientId| tab.dump_active_terminal_screen(
-                                        Some(file_path.to_string()),
+                                if ansi {
+                                    active_tab_and_connected_client_id!(
+                                        screen,
                                         client_id,
-                                        full
-                                    ),
-                                    ?
-                                );
+                                        |tab: &mut Tab, client_id: ClientId| tab.dump_with_ansi_active_terminal_screen(
+                                            Some(file_path.to_string()),
+                                            client_id,
+                                            full
+                                        ),
+                                        ?
+                                    );
+                                } else {
+                                    active_tab_and_connected_client_id!(
+                                        screen,
+                                        client_id,
+                                        |tab: &mut Tab, client_id: ClientId| tab.dump_active_terminal_screen(
+                                            Some(file_path.to_string()),
+                                            client_id,
+                                            full
+                                        ),
+                                        ?
+                                    );
+                                }
                             },
                         }
                         screen.render(None)?;
@@ -5333,10 +5356,18 @@ pub(crate) fn screen_thread_main(
                                 let mut result = String::new();
                                 for tab in screen.get_tabs_mut().values_mut() {
                                     if tab.has_pane_with_pid(&pane_id) {
-                                        if let Some(dump) =
-                                            tab.get_dump_terminal_screen(pane_id, full)
-                                        {
-                                            result = dump;
+                                        if ansi {
+                                            if let Some(dump) = tab
+                                                .get_dump_with_ansi_terminal_screen(pane_id, full)
+                                            {
+                                                result = dump;
+                                            }
+                                        } else {
+                                            if let Some(dump) =
+                                                tab.get_dump_terminal_screen(pane_id, full)
+                                            {
+                                                result = dump;
+                                            }
                                         }
                                         break;
                                     }
@@ -5345,15 +5376,27 @@ pub(crate) fn screen_thread_main(
                             },
                             None => {
                                 let mut result = String::new();
-                                active_tab_and_connected_client_id!(
-                                    screen,
-                                    client_id,
-                                    |tab: &mut Tab, client_id: ClientId| {
-                                        result = tab.get_dump_active_terminal_screen(client_id, full);
-                                        Ok::<(), anyhow::Error>(())
-                                    },
-                                    ?
-                                );
+                                if ansi {
+                                    active_tab_and_connected_client_id!(
+                                        screen,
+                                        client_id,
+                                        |tab: &mut Tab, client_id: ClientId| {
+                                            result = tab.get_dump_with_ansi_active_terminal_screen(client_id, full);
+                                            Ok::<(), anyhow::Error>(())
+                                        },
+                                        ?
+                                    );
+                                } else {
+                                    active_tab_and_connected_client_id!(
+                                        screen,
+                                        client_id,
+                                        |tab: &mut Tab, client_id: ClientId| {
+                                            result = tab.get_dump_active_terminal_screen(client_id, full);
+                                            Ok::<(), anyhow::Error>(())
+                                        },
+                                        ?
+                                    );
+                                }
                                 result
                             },
                         };

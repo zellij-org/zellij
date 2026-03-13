@@ -439,6 +439,7 @@ pub(crate) fn route_action(
             file_path,
             include_scrollback,
             pane_id,
+            ansi,
         } => {
             senders
                 .send_to_screen(ScreenInstruction::DumpScreen(
@@ -448,6 +449,7 @@ pub(crate) fn route_action(
                     pane_id.map(|p| p.into()),
                     Some(NotificationEnd::new(completion_tx)),
                     cli_client_id,
+                    ansi,
                 ))
                 .with_context(err_context)?;
         },
