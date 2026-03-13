@@ -1132,6 +1132,7 @@ pub fn start_client(
         Some("alacritty") => Some(SyncOutput::DCS),
         _ => None,
     };
+    let mut host_grapheme_cluster_mode = false;
 
     loop {
         let (client_instruction, mut err_ctx) = receive_client_instructions
@@ -1199,6 +1200,7 @@ pub fn start_client(
                         .write_all(b"\x1b[?2027h")
                         .expect("cannot write to stdout");
                     stdout.flush().expect("could not flush");
+                    host_grapheme_cluster_mode = true;
                 }
             },
             ClientInstruction::QueryTerminalSize => {
@@ -1279,11 +1281,18 @@ pub fn start_client(
         os_input.unset_raw_mode().unwrap();
         os_input.restore_console_mode();
         let mut stdout = os_input.get_stdout_writer();
+        if host_grapheme_cluster_mode {
+            stdout.write_all(b"\x1b[?2027l").unwrap();
+            stdout.flush().unwrap();
+        }
         stdout.write_all(goodbye_message.as_bytes()).unwrap();
         stdout.flush().unwrap();
     } else {
-        let clear_screen = "\u{1b}[2J";
         let mut stdout = os_input.get_stdout_writer();
+        if host_grapheme_cluster_mode {
+            let _ = stdout.write(b"\x1b[?2027l").unwrap();
+        }
+        let clear_screen = "\u{1b}[2J";
         stdout.write_all(clear_screen.as_bytes()).unwrap();
         stdout.flush().unwrap();
     }
