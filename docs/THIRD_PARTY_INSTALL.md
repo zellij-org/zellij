@@ -2,7 +2,7 @@
 
 * [Packages](#packages)
     * [Arch Linux](#arch-linux)
-    * [MacOS](#macos)
+    * [macOS](#macos)
     * [Fedora Linux](#fedora-linux)
     * [Void Linux](#void-linux)
 
@@ -33,8 +33,8 @@ sudo dnf copr enable varlad/zellij
 sudo dnf install zellij
 ```
 
-### MacOS
-You can install `zellij` with [Homebrew on MacOS](https://formulae.brew.sh/formula/zellij):
+### macOS
+You can install `zellij` with [Homebrew on macOS](https://formulae.brew.sh/formula/zellij):
 
 ```
 brew install zellij
