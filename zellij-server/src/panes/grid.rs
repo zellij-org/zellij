@@ -534,6 +534,15 @@ pub struct Grid {
     // key: plugin_id (u32), inner vec: (pattern, compiled) pairs
     pub hover_position: Option<Position>, // pane-relative cursor cell; None when outside pane
     pub cached_hover_tooltip: Option<String>,
+    /// APCs for the frame currently being assembled (may be incomplete)
+    kitty_apc_building: Vec<Vec<u8>>,
+    /// Running byte total of kitty_apc_building to avoid O(n) sum per push
+    kitty_apc_building_size: usize,
+    /// Last fully complete frame (terminated with m=0), ready to emit
+    kitty_apc_ready: Option<Vec<Vec<u8>>>,
+    /// True when kitty_apc_ready needs to be (re-)emitted
+    kitty_apc_dirty: bool,
+    combining_chars: HashMap<(usize, usize), Vec<char>>, // (viewport_row, col) -> combining marks
 }
 
 impl Grid {
@@ -817,10 +826,68 @@ impl Grid {
             plugin_highlights: HashMap::new(),
             hover_position: None,
             cached_hover_tooltip: None,
+            kitty_apc_building: Vec::new(),
+            kitty_apc_building_size: 0,
+            kitty_apc_ready: None,
+            kitty_apc_dirty: false,
+            combining_chars: HashMap::new(),
+        }
+    }
+    pub fn push_kitty_apc(&mut self, data: Vec<u8>) {
+        // Parse comma-separated key=value params before the ';' payload separator.
+        // Starts after the leading 'G' byte (data[0]).
+        let params_end = data.iter().position(|&b| b == b';').unwrap_or(data.len());
+        let params_str = &data[1..params_end]; // skip leading 'G'
+
+        let mut is_transmit = false;
+        let mut has_m = false;
+        let mut m_is_zero = false;
+        for param in params_str.split(|&b| b == b',') {
+            match param {
+                b"a=T" | b"a=t" => is_transmit = true,
+                b"m=0" => {
+                    has_m = true;
+                    m_is_zero = true;
+                },
+                p if p.starts_with(b"m=") => has_m = true,
+                _ => {},
+            }
+        }
+
+        if is_transmit {
+            self.kitty_apc_building.clear();
+            self.kitty_apc_building_size = 0;
+        }
+
+        let is_final = m_is_zero || !has_m;
+
+        // Cap in-progress frame at 64 MB to prevent unbounded memory growth
+        if self.kitty_apc_building_size + data.len() > 64 * 1024 * 1024 {
+            self.kitty_apc_building.clear();
+            self.kitty_apc_building_size = 0;
+            return;
+        }
+
+        self.kitty_apc_building_size += data.len();
+        self.kitty_apc_building.push(data);
+
+        if is_final {
+            // Frame complete -> promote to ready; recycle old ready's allocation for next frame
+            let complete_frame = std::mem::take(&mut self.kitty_apc_building);
+            self.kitty_apc_building_size = 0;
+            if let Some(mut old) = self.kitty_apc_ready.take() {
+                old.clear();
+                self.kitty_apc_building = old;
+            }
+            self.kitty_apc_ready = Some(complete_frame);
+            self.kitty_apc_dirty = true;
         }
     }
     pub fn render_full_viewport(&mut self) {
         self.output_buffer.update_all_lines();
+        if self.kitty_apc_ready.is_some() {
+            self.kitty_apc_dirty = true;
+        }
     }
     pub fn update_line_for_rendering(&mut self, line_index: usize) {
         self.output_buffer.update_line(line_index);
@@ -1330,13 +1397,26 @@ impl Grid {
         x_offset: usize,
         y_offset: usize,
     ) -> (Vec<CharacterChunk>, Vec<SixelImageChunk>) {
-        let changed_character_chunks = self.output_buffer.changed_chunks_in_viewport(
+        let mut changed_character_chunks = self.output_buffer.changed_chunks_in_viewport(
             self.viewport.make_contiguous(),
             self.width,
             self.height,
             x_offset,
             y_offset,
         );
+        // Attach combining characters to their respective chunks.
+        // Use direct HashMap::get per cell (O(1) each) rather than iterating
+        // the full map per chunk, which is O(map_size × chunks) for dense data.
+        if !self.combining_chars.is_empty() {
+            for chunk in &mut changed_character_chunks {
+                let viewport_row = chunk.y.saturating_sub(y_offset);
+                for col in 0..chunk.terminal_characters.len() {
+                    if let Some(combiners) = self.combining_chars.get(&(viewport_row, col)) {
+                        chunk.combining_chars.insert(col, combiners.clone());
+                    }
+                }
+            }
+        }
         let changed_rects = self
             .output_buffer
             .changed_rects_in_viewport(self.viewport.len());
@@ -1476,11 +1556,32 @@ impl Grid {
                 }
             }
         }
-        return Ok(Some((
-            character_chunks,
-            Some(raw_vte_output),
-            sixel_image_chunks,
-        )));
+        // Emit Kitty graphics frame only when dirty (new frame or full re-render like tab switch)
+        if self.kitty_apc_dirty {
+            if let Some(frame) = self.kitty_apc_ready.as_ref() {
+                let total_len: usize = frame.iter().map(|d| d.len() + 4).sum();
+                raw_vte_output.reserve(total_len);
+                for apc_data in frame {
+                    raw_vte_output.push_str("\x1b_");
+                    if let Ok(s) = std::str::from_utf8(apc_data) {
+                        raw_vte_output.push_str(s);
+                    } else {
+                        for &b in apc_data {
+                            raw_vte_output.push(b as char);
+                        }
+                    }
+                    raw_vte_output.push_str("\x1b\\");
+                }
+            }
+            self.kitty_apc_dirty = false;
+        }
+
+        let raw_vte = if raw_vte_output.is_empty() {
+            None
+        } else {
+            Some(raw_vte_output)
+        };
+        return Ok(Some((character_chunks, raw_vte, sixel_image_chunks)));
     }
     pub fn cursor_coordinates(&self) -> Option<(usize, usize)> {
         if self.cursor_is_hidden || self.cursor.x >= self.width || self.cursor.y >= self.height {
@@ -1597,6 +1698,24 @@ impl Grid {
         }
         self.output_buffer.update_all_lines();
     }
+    /// Shift combining_chars keys up by 1 within [region_top, region_bottom],
+    /// discarding row region_top (scrolled out).
+    fn scroll_combining_chars(&mut self, region_top: usize, region_bottom: usize) {
+        if self.combining_chars.is_empty() {
+            return;
+        }
+        let old = std::mem::take(&mut self.combining_chars);
+        self.combining_chars = old
+            .into_iter()
+            .filter_map(|((row, col), val)| {
+                if row >= region_top && row <= region_bottom {
+                    (row > region_top).then(|| ((row - 1, col), val))
+                } else {
+                    Some(((row, col), val))
+                }
+            })
+            .collect();
+    }
     pub fn add_canonical_line(&mut self) {
         let (scroll_region_top, scroll_region_bottom) = self.scroll_region;
         self.hyperlink_tracker.update(
@@ -1626,6 +1745,7 @@ impl Grid {
 
                 self.viewport.push_back(Row::new().canonical());
                 self.selection.move_up(1);
+                self.scroll_combining_chars(0, scroll_region_bottom);
             } else {
                 if scroll_region_top < self.viewport.len() {
                     self.viewport.remove(scroll_region_top);
@@ -1636,6 +1756,7 @@ impl Grid {
                 } else {
                     self.viewport.push_back(Row::new().canonical());
                 }
+                self.scroll_combining_chars(scroll_region_top, scroll_region_bottom);
             }
             self.output_buffer.update_all_lines(); // TODO: only update scroll region lines
             return;
@@ -1717,12 +1838,21 @@ impl Grid {
     }
     pub fn add_character(&mut self, terminal_character: TerminalCharacter) {
         let character_width = terminal_character.width();
-        // Drop zero-width Unicode/UTF-8 codepoints, like for example Variation Selectors.
-        // This breaks unicode grapheme segmentation, and is the reason why some characters
-        // aren't displayed correctly. Refer to this issue for more information:
-        //     https://github.com/zellij-org/zellij/issues/1538
         if character_width == 0 {
+            // Combining character: attach to the preceding cell
+            if self.cursor.x > 0 {
+                let row = self.cursor.y;
+                let col = self.cursor.x - 1;
+                self.combining_chars
+                    .entry((row, col))
+                    .or_default()
+                    .push(terminal_character.character);
+                self.output_buffer.update_line(row);
+            }
             return;
+        }
+        if !self.combining_chars.is_empty() {
+            self.combining_chars.remove(&(self.cursor.y, self.cursor.x));
         }
         if self.cursor.x + character_width > self.width {
             if self.disable_linewrap {
@@ -1766,6 +1896,9 @@ impl Grid {
             for row in self.viewport.iter_mut().skip(self.cursor.y + 1) {
                 row.replace_columns(replace_with_columns.clone());
             }
+            self.combining_chars.retain(|&(row, col), _| {
+                row < self.cursor.y || (row == self.cursor.y && col < self.cursor.x)
+            });
             self.output_buffer.update_all_lines(); // TODO: only update the changed lines
         }
     }
@@ -1776,12 +1909,17 @@ impl Grid {
             for row in self.viewport.iter_mut().take(self.cursor.y) {
                 row.replace_columns(replace_with_columns.clone());
             }
+            self.combining_chars.retain(|&(row, col), _| {
+                row > self.cursor.y || (row == self.cursor.y && col >= self.cursor.x)
+            });
             self.output_buffer.update_all_lines(); // TODO: only update the changed lines
         }
     }
     pub fn clear_cursor_line(&mut self) {
         if let Some(viewport_line) = self.viewport.get_mut(self.cursor.y) {
             viewport_line.truncate(0);
+            let cursor_y = self.cursor.y;
+            self.combining_chars.retain(|&(row, _), _| row != cursor_y);
             self.output_buffer.update_line(self.cursor.y);
         }
     }
@@ -1791,6 +1929,7 @@ impl Grid {
         for row in &mut self.viewport {
             row.replace_columns(replace_with_columns.clone());
         }
+        self.combining_chars.clear();
         self.output_buffer.update_all_lines();
     }
     fn line_wrap(&mut self) {
@@ -1805,6 +1944,7 @@ impl Grid {
             let wrapped_row = Row::new();
             self.viewport.push_back(wrapped_row);
             self.selection.move_up(1);
+            self.scroll_combining_chars(0, self.height.saturating_sub(1));
             self.output_buffer.update_all_lines();
         } else {
             self.cursor.y += 1;
@@ -1954,6 +2094,7 @@ impl Grid {
                     self.viewport
                         .push_back(Row::from_columns(columns).canonical());
                 }
+                self.scroll_combining_chars(current_line_index, scroll_region_bottom);
             }
             self.output_buffer.update_all_lines(); // TODO: move accurately
         }
@@ -1977,6 +2118,7 @@ impl Grid {
                 let columns = VecDeque::from(vec![pad_character.clone(); self.width]);
                 self.viewport
                     .insert(current_line_index, Row::from_columns(columns).canonical());
+                self.scroll_combining_chars(current_line_index, scroll_region_bottom);
             }
             self.output_buffer.update_all_lines(); // TODO: move accurately
         }
@@ -2067,6 +2209,14 @@ impl Grid {
         if let Some(images_to_reap) = self.sixel_grid.clear() {
             self.sixel_grid.reap_images(images_to_reap);
         }
+        self.reset_kitty_state();
+    }
+    fn reset_kitty_state(&mut self) {
+        self.kitty_apc_building.clear();
+        self.kitty_apc_building_size = 0;
+        self.kitty_apc_ready = None;
+        self.kitty_apc_dirty = false;
+        self.combining_chars.clear();
     }
     fn set_preceding_character(&mut self, terminal_character: TerminalCharacter) {
         self.preceding_char = Some(terminal_character);
@@ -3520,6 +3670,7 @@ impl Perform for Grid {
                                 );
                             }
                             self.alternate_screen_state = None;
+                            self.reset_kitty_state();
                             self.clear_viewport_before_rendering = true;
                             self.force_change_size(self.height, self.width); // the alternative_viewport might have been of a different size...
                             self.mark_for_rerender();
@@ -3628,6 +3779,7 @@ impl Perform for Grid {
                                 alternate_sixelgrid,
                                 current_supports_kitty_keyboard_protocol,
                             ));
+                            self.combining_chars.clear();
                             self.clear_viewport_before_rendering = true;
                             self.scrollback_buffer_lines =
                                 self.recalculate_scrollback_buffer_count();

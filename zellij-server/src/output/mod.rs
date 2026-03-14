@@ -161,7 +161,7 @@ fn serialize_chunks_with_newlines(
         let mut character_styles = DEFAULT_STYLES.enable_styled_underlines(styled_underlines);
         vte_output.push_str("\n\r");
         let mut chunk_width = character_chunk.x;
-        for t_character in character_chunk.terminal_characters.iter() {
+        for (col_idx, t_character) in character_chunk.terminal_characters.iter().enumerate() {
             // Stop rendering if the next character would exceed max_size.cols
             if let Some(size) = max_size {
                 if chunk_width + t_character.width() > size.cols {
@@ -190,6 +190,11 @@ fn serialize_chunks_with_newlines(
             .with_context(err_context)?;
             chunk_width += t_character.width();
             vte_output.push(t_character.character);
+            if let Some(combiners) = character_chunk.combining_chars.get(&col_idx) {
+                for &c in combiners {
+                    vte_output.push(c);
+                }
+            }
         }
     }
     Ok(vte_output)
@@ -226,7 +231,7 @@ fn serialize_chunks(
         vte_goto_instruction(character_chunk.x, character_chunk.y, &mut vte_output)
             .with_context(err_context)?;
         let mut chunk_width = character_chunk.x;
-        for t_character in character_chunk.terminal_characters.iter() {
+        for (col_idx, t_character) in character_chunk.terminal_characters.iter().enumerate() {
             // Stop rendering if the next character would exceed max_size.cols
             if let Some(size) = max_size {
                 if chunk_width + t_character.width() > size.cols {
@@ -255,6 +260,11 @@ fn serialize_chunks(
             .with_context(err_context)?;
             chunk_width += t_character.width();
             vte_output.push(t_character.character);
+            if let Some(combiners) = character_chunk.combining_chars.get(&col_idx) {
+                for &c in combiners {
+                    vte_output.push(c);
+                }
+            }
         }
     }
     if let Some(sixel_image_store) = sixel_image_store {
@@ -1007,6 +1017,8 @@ pub struct CharacterChunk {
     pub pane_default_fg: Option<AnsiCode>,
     pub pane_default_bg: Option<AnsiCode>,
     selection_and_colors: Vec<HighlightSelection>,
+    /// Combining characters (diacritics etc.) keyed by column offset within this chunk
+    pub combining_chars: HashMap<usize, Vec<char>>,
 }
 
 #[derive(Debug, Clone, Copy, Default)]

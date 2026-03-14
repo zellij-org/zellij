@@ -36,6 +36,139 @@ use crate::ui::pane_boundaries_frame::{FrameParams, PaneFrame};
 
 pub const SELECTION_SCROLL_INTERVAL_MS: u64 = 10;
 
+/// Pre-parser that intercepts Kitty graphics APC sequences (`\x1b_G...\x1b\\`)
+/// before they reach the vte parser (which silently discards all APC content).
+///
+/// Returns zero-allocation (ApcAction, Option<ApcAction>) tuples instead of Vec.
+enum ApcScanState {
+    Normal,
+    SeenEsc,
+    SeenEscUnderscore,
+    InKittyApc(Vec<u8>),
+    InKittyApcSeenEsc(Vec<u8>),
+    InOtherApc,
+    InOtherApcSeenEsc,
+}
+
+enum ApcAction {
+    Feed(u8),
+    KittyApcComplete(Vec<u8>),
+    Buffering,
+}
+
+struct KittyApcScanner {
+    state: ApcScanState,
+}
+
+impl KittyApcScanner {
+    fn new() -> Self {
+        Self {
+            state: ApcScanState::Normal,
+        }
+    }
+
+    #[inline]
+    fn is_normal(&self) -> bool {
+        matches!(self.state, ApcScanState::Normal)
+    }
+
+    #[inline]
+    fn extend_apc_buffer(&mut self, bytes: &[u8]) {
+        match self.state {
+            ApcScanState::InKittyApc(ref mut buf) => buf.extend_from_slice(bytes),
+            _ => debug_assert!(false, "extend_apc_buffer called outside InKittyApc state"),
+        }
+    }
+
+    #[inline]
+    fn is_in_kitty_apc(&self) -> bool {
+        matches!(self.state, ApcScanState::InKittyApc(_))
+    }
+
+    #[inline]
+    fn advance(&mut self, byte: u8) -> (ApcAction, Option<ApcAction>) {
+        // Handle buffer-carrying states without moving the Vec out of the enum
+        match &mut self.state {
+            ApcScanState::InKittyApc(buf) => {
+                if byte == 0x1b {
+                    // Need to transition to InKittyApcSeenEsc - must move buf
+                    let buf = std::mem::take(buf);
+                    self.state = ApcScanState::InKittyApcSeenEsc(buf);
+                } else {
+                    buf.push(byte);
+                }
+                return (ApcAction::Buffering, None);
+            },
+            ApcScanState::InKittyApcSeenEsc(buf) => {
+                if byte == b'\\' {
+                    let buf = std::mem::take(buf);
+                    self.state = ApcScanState::Normal;
+                    return (ApcAction::KittyApcComplete(buf), None);
+                } else {
+                    buf.push(0x1b);
+                    buf.push(byte);
+                    let buf = std::mem::take(buf);
+                    self.state = ApcScanState::InKittyApc(buf);
+                    return (ApcAction::Buffering, None);
+                }
+            },
+            _ => {},
+        }
+        // Non-buffer states: cheap enum transitions
+        let state = std::mem::replace(&mut self.state, ApcScanState::Normal);
+        match state {
+            ApcScanState::Normal => {
+                if byte == 0x1b {
+                    self.state = ApcScanState::SeenEsc;
+                    (ApcAction::Buffering, None)
+                } else {
+                    (ApcAction::Feed(byte), None)
+                }
+            },
+            ApcScanState::SeenEsc => {
+                if byte == b'_' {
+                    self.state = ApcScanState::SeenEscUnderscore;
+                    (ApcAction::Buffering, None)
+                } else {
+                    (ApcAction::Feed(0x1b), Some(ApcAction::Feed(byte)))
+                }
+            },
+            ApcScanState::SeenEscUnderscore => {
+                if byte == b'G' {
+                    let mut buf = Vec::with_capacity(4096);
+                    buf.push(b'G');
+                    self.state = ApcScanState::InKittyApc(buf);
+                    (ApcAction::Buffering, None)
+                } else if byte == 0x1b {
+                    self.state = ApcScanState::SeenEsc;
+                    (ApcAction::Buffering, None)
+                } else {
+                    self.state = ApcScanState::InOtherApc;
+                    (ApcAction::Buffering, None)
+                }
+            },
+            ApcScanState::InOtherApc => {
+                if byte == 0x1b {
+                    self.state = ApcScanState::InOtherApcSeenEsc;
+                } else {
+                    self.state = ApcScanState::InOtherApc;
+                }
+                (ApcAction::Buffering, None)
+            },
+            ApcScanState::InOtherApcSeenEsc => {
+                if byte != b'\\' {
+                    self.state = ApcScanState::InOtherApc;
+                }
+                (ApcAction::Buffering, None)
+            },
+            // Already handled above via &mut match
+            ApcScanState::InKittyApc(_) | ApcScanState::InKittyApcSeenEsc(_) => {
+                unreachable!()
+            },
+        }
+    }
+}
+
 // Some keys in different formats but are used in the code
 const LEFT_ARROW: &[u8] = &[27, 91, 68];
 const RIGHT_ARROW: &[u8] = &[27, 91, 67];
@@ -153,6 +286,7 @@ pub struct TerminalPane {
     #[allow(dead_code)]
     arrow_fonts: bool,
     notification_end: Option<NotificationEnd>,
+    apc_scanner: KittyApcScanner,
 }
 
 impl Pane for TerminalPane {
@@ -203,8 +337,39 @@ impl Pane for TerminalPane {
     }
     fn handle_pty_bytes(&mut self, bytes: VteBytes) {
         self.set_should_render(true);
-        for &byte in &bytes {
-            self.vte_parser.advance(&mut self.grid, byte);
+        let mut i = 0;
+        while i < bytes.len() {
+            // Fast path: feed non-ESC bytes directly to vte, skipping the APC scanner
+            if self.apc_scanner.is_normal() {
+                let start = i;
+                while i < bytes.len() && bytes[i] != 0x1b {
+                    i += 1;
+                }
+                for j in start..i {
+                    self.vte_parser.advance(&mut self.grid, bytes[j]);
+                }
+                if i >= bytes.len() {
+                    break;
+                }
+            }
+            // Fast path: when inside a Kitty APC, batch all non-ESC bytes into the buffer
+            if self.apc_scanner.is_in_kitty_apc() {
+                let start = i;
+                while i < bytes.len() && bytes[i] != 0x1b {
+                    i += 1;
+                }
+                self.apc_scanner.extend_apc_buffer(&bytes[start..i]);
+                if i >= bytes.len() {
+                    break;
+                }
+            }
+            // Slow path: process ESC and state transitions byte-by-byte
+            let (action, extra) = self.apc_scanner.advance(bytes[i]);
+            self.dispatch_apc_action(action);
+            if let Some(action) = extra {
+                self.dispatch_apc_action(action);
+            }
+            i += 1;
         }
     }
     fn cursor_coordinates(&self, _client_id: Option<ClientId>) -> Option<(usize, usize)> {
@@ -1065,6 +1230,15 @@ impl TerminalPane {
             invoked_with,
             arrow_fonts,
             notification_end,
+            apc_scanner: KittyApcScanner::new(),
+        }
+    }
+    #[inline]
+    fn dispatch_apc_action(&mut self, action: ApcAction) {
+        match action {
+            ApcAction::Feed(b) => self.vte_parser.advance(&mut self.grid, b),
+            ApcAction::KittyApcComplete(data) => self.grid.push_kitty_apc(data),
+            ApcAction::Buffering => {},
         }
     }
     pub fn get_x(&self) -> usize {
