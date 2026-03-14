@@ -4757,6 +4757,8 @@ impl BareKey {
             BareKey::PrintScreen => format!("printscreen"),
             BareKey::Pause => format!("pause"),
             BareKey::Menu => format!("menu"),
+            BareKey::ScrollUp => format!("ScrollUp"),
+            BareKey::ScrollDown => format!("ScrollDown"),
         }
     }
 }

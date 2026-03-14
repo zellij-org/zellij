@@ -207,6 +207,8 @@ pub enum BareKey {
     PrintScreen,
     Pause,
     Menu,
+    ScrollUp,
+    ScrollDown,
 }
 
 impl fmt::Display for BareKey {
@@ -235,6 +237,8 @@ impl fmt::Display for BareKey {
             BareKey::PrintScreen => write!(f, "PRINTSCREEN"),
             BareKey::Pause => write!(f, "PAUSE"),
             BareKey::Menu => write!(f, "MENU"),
+            BareKey::ScrollUp => write!(f, "SCROLLUP"),
+            BareKey::ScrollDown => write!(f, "SCROLLDOWN"),
         }
     }
 }
@@ -275,6 +279,8 @@ impl FromStr for BareKey {
             "printscreen" => Ok(BareKey::PrintScreen),
             "pause" => Ok(BareKey::Pause),
             "menu" => Ok(BareKey::Menu),
+            "scrollup" => Ok(BareKey::ScrollUp),
+            "scrolldown" => Ok(BareKey::ScrollDown),
             "space" => Ok(BareKey::Char(' ')),
             _ => {
                 if key_str.chars().count() == 1 {
@@ -573,6 +579,10 @@ impl KeyWithModifier {
             BareKey::PrintScreen => KeyCode::PrintScreen,
             BareKey::Pause => KeyCode::Pause,
             BareKey::Menu => KeyCode::Menu,
+            // ScrollUp/ScrollDown are virtual keys for mouse scroll bindings;
+            // they have no termwiz KeyCode equivalent, so we map to a no-op char
+            BareKey::ScrollUp => KeyCode::Char('\0'),
+            BareKey::ScrollDown => KeyCode::Char('\0'),
         }
     }
     #[cfg(not(target_family = "wasm"))]

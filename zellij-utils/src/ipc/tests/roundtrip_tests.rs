@@ -3059,6 +3059,71 @@ fn test_client_messages() {
         raw_bytes: "raw_bytes".as_bytes().to_vec(),
         is_kitty_keyboard_protocol: false,
     });
+    test_client_roundtrip!(ClientToServerMsg::Key {
+        key: KeyWithModifier {
+            bare_key: BareKey::ScrollUp,
+            key_modifiers: BTreeSet::new(),
+        },
+        raw_bytes: "raw_bytes".as_bytes().to_vec(),
+        is_kitty_keyboard_protocol: false,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Key {
+        key: KeyWithModifier {
+            bare_key: BareKey::ScrollDown,
+            key_modifiers: BTreeSet::new(),
+        },
+        raw_bytes: "raw_bytes".as_bytes().to_vec(),
+        is_kitty_keyboard_protocol: false,
+    });
+    // ScrollUp/ScrollDown with modifiers (used for modifier+scroll keybindings)
+    test_client_roundtrip!(ClientToServerMsg::Key {
+        key: KeyWithModifier {
+            bare_key: BareKey::ScrollUp,
+            key_modifiers: {
+                let mut m = BTreeSet::new();
+                m.insert(KeyModifier::Ctrl);
+                m
+            },
+        },
+        raw_bytes: vec![],
+        is_kitty_keyboard_protocol: false,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Key {
+        key: KeyWithModifier {
+            bare_key: BareKey::ScrollDown,
+            key_modifiers: {
+                let mut m = BTreeSet::new();
+                m.insert(KeyModifier::Ctrl);
+                m
+            },
+        },
+        raw_bytes: vec![],
+        is_kitty_keyboard_protocol: false,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Key {
+        key: KeyWithModifier {
+            bare_key: BareKey::ScrollUp,
+            key_modifiers: {
+                let mut m = BTreeSet::new();
+                m.insert(KeyModifier::Alt);
+                m
+            },
+        },
+        raw_bytes: vec![],
+        is_kitty_keyboard_protocol: false,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Key {
+        key: KeyWithModifier {
+            bare_key: BareKey::ScrollDown,
+            key_modifiers: {
+                let mut m = BTreeSet::new();
+                m.insert(KeyModifier::Alt);
+                m
+            },
+        },
+        raw_bytes: vec![],
+        is_kitty_keyboard_protocol: false,
+    });
     test_client_roundtrip!(ClientToServerMsg::ClientExited);
     test_client_roundtrip!(ClientToServerMsg::KillSession);
     test_client_roundtrip!(ClientToServerMsg::ConnStatus);
