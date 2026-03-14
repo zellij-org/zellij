@@ -74,7 +74,10 @@ impl SessionManager for RealSessionManager {
         first_message: ClientToServerMsg,
     ) {
         if !session_exists {
-            spawn_new_session(session_name, os_input.clone(), zellij_ipc_pipe);
+            if let Err(e) = spawn_new_session(session_name, os_input.clone(), zellij_ipc_pipe) {
+                log::error!("Failed to spawn new session '{}': {}", session_name, e);
+                return;
+            }
         }
         os_input.connect_to_server(&zellij_ipc_pipe);
         os_input.send_to_server(first_message);
@@ -137,6 +140,7 @@ pub struct ClientConnectionBus {
     pub stdout_channel_tx: Option<UnboundedSender<String>>,
     pub control_channel_tx: Option<UnboundedSender<Message>>,
     pub web_client_id: String,
+    pending_control_messages: Vec<Message>,
 }
 
 impl ClientConnectionBus {
@@ -155,6 +159,7 @@ impl ClientConnectionBus {
             stdout_channel_tx,
             control_channel_tx,
             web_client_id,
+            pending_control_messages: Vec::new(),
         }
     }
 }

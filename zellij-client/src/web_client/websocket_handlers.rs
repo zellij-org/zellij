@@ -18,6 +18,7 @@ use axum::{
 };
 use futures::StreamExt;
 use std::sync::{atomic::AtomicBool, Arc};
+use std::time::{Duration, Instant};
 use tokio_util::sync::CancellationToken;
 use zellij_utils::{input::mouse::MouseEvent, ipc::ClientToServerMsg};
 
@@ -80,6 +81,10 @@ async fn handle_ws_control(
     };
 
     let mut set_client_control_channel = false;
+    // Throttle resize events to avoid overwhelming the server, matching the
+    // native client's SIGWINCH_CB_THROTTLE_DURATION of 50ms.
+    const RESIZE_THROTTLE_DURATION: Duration = Duration::from_millis(50);
+    let mut last_resize_at: Option<Instant> = None;
 
     while let Some(Ok(msg)) = control_socket_rx.next().await {
         match msg {
@@ -113,6 +118,19 @@ async fn handle_ws_control(
                                     &deserialized_msg.web_client_id,
                                     control_channel_tx.clone(),
                                 );
+                        }
+                        // Throttle resize messages to prevent flooding the
+                        // server during rapid browser window resizing.
+                        if matches!(
+                            deserialized_msg.payload,
+                            WebClientToWebServerControlMessagePayload::TerminalResize(_)
+                        ) {
+                            if let Some(last) = last_resize_at {
+                                if last.elapsed() < RESIZE_THROTTLE_DURATION {
+                                    continue;
+                                }
+                            }
+                            last_resize_at = Some(Instant::now());
                         }
                         send_message_to_server(deserialized_msg);
                     },

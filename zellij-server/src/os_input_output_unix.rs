@@ -366,7 +366,13 @@ impl UnixPtyBackend {
                     set_terminal_size_using_fd(*fd, cols, rows, width_in_pixels, height_in_pixels);
                 }
             },
-            _ => {
+            Some(None) => {
+                log::debug!(
+                    "Ignoring resize for terminal {} — PTY not yet spawned",
+                    terminal_id
+                );
+            },
+            None => {
                 Err::<(), _>(anyhow!("failed to find terminal fd for id {terminal_id}"))
                     .with_context(err_context)
                     .non_fatal();
