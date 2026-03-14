@@ -5,6 +5,10 @@ pub mod data;
 pub mod envs;
 pub mod errors;
 pub mod home;
+#[cfg(not(windows))]
+mod home_unix;
+#[cfg(windows)]
+mod home_windows;
 pub mod input;
 pub mod kdl;
 pub mod pane_size;
