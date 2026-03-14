@@ -1,4 +1,5 @@
 use crate::file_list_view::{FileListView, FsEntry};
+use crate::platform::Platform;
 use crate::search_view::SearchView;
 use crate::shared::calculate_list_bounds;
 use std::{
@@ -18,6 +19,7 @@ pub struct State {
     pub is_searching: bool,
     pub search_term: String,
     pub close_on_selection: bool,
+    pub platform: Platform,
 }
 
 impl State {
@@ -213,13 +215,14 @@ impl State {
     }
     pub fn send_filepick_response(&mut self) {
         let selected_path = &self.file_list_view.path;
+        let host_path = Platform::to_host_display(selected_path, self.platform);
         match &self.handling_filepick_request_from {
             Some((PipeSource::Plugin(plugin_id), args)) => {
                 pipe_message_to_plugin(
                     MessageToPlugin::new("filepicker_result")
                         .with_destination_plugin_id(*plugin_id)
                         .with_args(args.clone())
-                        .with_payload(selected_path.display().to_string()),
+                        .with_payload(host_path),
                 );
                 #[cfg(target_family = "wasm")]
                 close_self();
@@ -228,7 +231,7 @@ impl State {
             // pipe_id is used inside #[cfg(target_family = "wasm")] blocks
             Some((PipeSource::Cli(pipe_id), _args)) => {
                 #[cfg(target_family = "wasm")]
-                cli_pipe_output(pipe_id, &selected_path.display().to_string());
+                cli_pipe_output(pipe_id, &host_path);
                 #[cfg(target_family = "wasm")]
                 unblock_cli_pipe_input(pipe_id);
                 #[cfg(target_family = "wasm")]

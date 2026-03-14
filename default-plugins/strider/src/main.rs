@@ -1,8 +1,10 @@
 mod file_list_view;
+mod platform;
 mod search_view;
 mod shared;
 mod state;
 
+use platform::Platform;
 use shared::{render_current_path, render_instruction_line, render_search_term};
 use state::{refresh_directory, State};
 use std::collections::BTreeMap;
@@ -14,7 +16,12 @@ register_plugin!(State);
 impl ZellijPlugin for State {
     fn load(&mut self, configuration: BTreeMap<String, String>) {
         let plugin_ids = get_plugin_ids();
-        self.initial_cwd = plugin_ids.initial_cwd;
+        let initial_cwd_str = plugin_ids.initial_cwd.to_string_lossy().to_string();
+        let platform = Platform::detect(&initial_cwd_str);
+        self.platform = platform;
+        self.initial_cwd = Platform::normalize(&plugin_ids.initial_cwd);
+        self.file_list_view.platform = platform;
+        self.search_view.platform = platform;
         let show_hidden_files = configuration
             .get("show_hidden_files")
             .map(|v| v == "true")
@@ -35,7 +42,7 @@ impl ZellijPlugin for State {
         ]);
         self.file_list_view.clear_selected();
 
-        match configuration.get("caller_cwd").map(|c| PathBuf::from(c)) {
+        match configuration.get("caller_cwd").map(|c| Platform::normalize(&PathBuf::from(c))) {
             Some(caller_cwd) => {
                 self.file_list_view.path = caller_cwd;
             },
@@ -173,6 +180,7 @@ impl ZellijPlugin for State {
             self.file_list_view.path_is_dir,
             self.handling_filepick_request_from.is_some(),
             cols,
+            self.platform,
         );
         if self.is_searching {
             self.search_view.render(rows_for_list, cols);

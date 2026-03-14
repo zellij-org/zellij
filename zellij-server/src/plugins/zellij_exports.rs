@@ -3725,7 +3725,10 @@ fn scan_host_folder(env: &PluginEnv, folder_to_scan: PathBuf) {
         );
         return;
     }
-    let plugin_host_folder = env.plugin_cwd.clone();
+    let plugin_host_folder = env
+        .plugin_cwd
+        .canonicalize()
+        .unwrap_or_else(|_| env.plugin_cwd.clone());
     let folder_to_scan = plugin_host_folder.join(folder_to_scan.strip_prefix("/host").unwrap());
     match folder_to_scan.canonicalize() {
         Ok(folder_to_scan) => {
