@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<WixLocalization xmlns="http://wixtoolset.org/schemas/v4/wxl" Culture="en-US">
+  <String Id="AdvancedWelcomeEulaDlgDescriptionPerMachine" Value="Click Install to install Zellij for all users. Click Advanced to choose install scope and directory." />
+  <String Id="AdvancedWelcomeEulaDlgDescriptionPerUser" Value="Click Install to install Zellij just for you. Click Advanced to choose install scope and directory." />
+</WixLocalization>
