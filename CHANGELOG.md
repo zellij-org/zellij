@@ -81,6 +81,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat: allow configuring focus_follows_mouse and mouse_click_through (https://github.com/zellij-org/zellij/pull/4836)
 * fix: handle very large writes to the pty (https://github.com/zellij-org/zellij/pull/4818)
 * feat: add --pane-id and --tab-id to all relevant CLI actions (https://github.com/zellij-org/zellij/pull/4846)
+* feat: add --ansi flag to all relevant CLI/plugin-api screendump commands (https://github.com/zellij-org/zellij/pull/4848)
 
 
 ## [0.43.1] - 2025-08-08
