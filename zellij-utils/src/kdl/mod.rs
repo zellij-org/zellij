@@ -49,8 +49,8 @@ macro_rules! parse_kdl_action_arguments {
                 "FocusNextPane" => Ok(Action::FocusNextPane),
                 "FocusPreviousPane" => Ok(Action::FocusPreviousPane),
                 "SwitchFocus" => Ok(Action::SwitchFocus),
-                "EditScrollback" => Ok(Action::EditScrollback),
-                "EditScrollbackRaw" => Ok(Action::EditScrollbackRaw),
+                "EditScrollback" => Ok(Action::EditScrollback { ansi: false }),
+                "EditScrollbackRaw" => Ok(Action::EditScrollback { ansi: true }),
                 "ScrollUp" => Ok(Action::ScrollUp),
                 "ScrollDown" => Ok(Action::ScrollDown),
                 "ScrollToBottom" => Ok(Action::ScrollToBottom),
@@ -544,6 +544,7 @@ impl Action {
                 file_path: Some(string),
                 include_scrollback: false,
                 pane_id: None,
+                ansi: false,
             }),
             "DumpLayout" => Ok(Action::DumpLayout),
             "NewPane" => {
@@ -696,6 +697,7 @@ impl Action {
                 file_path: Some(file),
                 include_scrollback: _,
                 pane_id: _,
+                ansi: _,
             } => {
                 let mut node = KdlNode::new("DumpScreen");
                 node.push(file.clone());
@@ -705,7 +707,8 @@ impl Action {
                 file_path: None, ..
             } => None,
             Action::DumpLayout => Some(KdlNode::new("DumpLayout")),
-            Action::EditScrollback => Some(KdlNode::new("EditScrollback")),
+            Action::EditScrollback { ansi: false } => Some(KdlNode::new("EditScrollback")),
+            Action::EditScrollback { ansi: true } => Some(KdlNode::new("EditScrollbackRaw")),
             Action::EditScrollbackRaw => Some(KdlNode::new("EditScrollbackRaw")),
             Action::ScrollUp => Some(KdlNode::new("ScrollUp")),
             Action::ScrollDown => Some(KdlNode::new("ScrollDown")),

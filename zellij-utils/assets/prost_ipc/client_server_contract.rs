@@ -437,6 +437,8 @@ pub struct SaveSessionAction {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct EditScrollbackAction {
+    #[prost(bool, tag="1")]
+    pub ansi: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -750,6 +752,8 @@ pub struct DumpScreenAction {
     pub pane_id: ::core::option::Option<PaneId>,
     #[prost(bool, tag="4")]
     pub dump_to_stdout: bool,
+    #[prost(bool, tag="5")]
+    pub ansi: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1974,6 +1978,8 @@ pub struct ClearScreenByPaneIdAction {
 pub struct EditScrollbackByPaneIdAction {
     #[prost(message, optional, tag="1")]
     pub pane_id: ::core::option::Option<PaneId>,
+    #[prost(bool, tag="2")]
+    pub ansi: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -2977,6 +2983,8 @@ pub struct SubscribeToPaneRendersMsg {
     pub pane_ids: ::prost::alloc::vec::Vec<PaneId>,
     #[prost(uint32, optional, tag="2")]
     pub scrollback: ::core::option::Option<u32>,
+    #[prost(bool, tag="3")]
+    pub ansi: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

@@ -5026,6 +5026,128 @@ fn pane_contents_no_scrollback_when_flag_false() {
 }
 
 // =====================================================================
+// pane_contents_with_ansi Tests
+// =====================================================================
+
+fn create_grid_with_colored_scrollback() -> Grid {
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let mut grid = Grid::new(
+        5,
+        40,
+        Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
+        sixel_image_store,
+        Style::default(),
+        false,
+        true,
+        true,
+        true,
+        false,
+    );
+    let mut parser = vte::Parser::new();
+    for i in 0..25 {
+        let line = format!("\x1b[31mred line {}\x1b[0m\r\n", i);
+        for byte in line.as_bytes() {
+            parser.advance(&mut grid, *byte);
+        }
+    }
+    grid
+}
+
+#[test]
+fn pane_contents_with_ansi_preserves_escape_codes() {
+    let grid = create_grid_with_colored_scrollback();
+    let result = grid.pane_contents_with_ansi(false, None);
+    let has_ansi = result.viewport.iter().any(|line| line.contains("\x1b["));
+    assert!(
+        has_ansi,
+        "pane_contents_with_ansi should preserve ANSI escape codes in viewport. Lines: {:?}",
+        result.viewport
+    );
+}
+
+#[test]
+fn pane_contents_strips_escape_codes() {
+    let grid = create_grid_with_colored_scrollback();
+    let result = grid.pane_contents(false, None);
+    let has_ansi = result.viewport.iter().any(|line| line.contains("\x1b["));
+    assert!(
+        !has_ansi,
+        "pane_contents should strip ANSI escape codes from viewport. Lines: {:?}",
+        result.viewport
+    );
+}
+
+#[test]
+fn pane_contents_with_ansi_scrollback_preserves_escape_codes() {
+    let grid = create_grid_with_colored_scrollback();
+    let result = grid.pane_contents_with_ansi(true, None);
+    let has_ansi = result
+        .lines_above_viewport
+        .iter()
+        .any(|line| line.contains("\x1b["));
+    assert!(
+        has_ansi,
+        "pane_contents_with_ansi should preserve ANSI escape codes in scrollback. Lines: {:?}",
+        result.lines_above_viewport
+    );
+}
+
+#[test]
+fn pane_contents_with_ansi_scrollback_truncation() {
+    let grid = create_grid_with_colored_scrollback();
+    let result = grid.pane_contents_with_ansi(true, Some(3));
+    assert_eq!(
+        result.lines_above_viewport.len(),
+        3,
+        "Should truncate to 3 scrollback lines"
+    );
+    let all_have_ansi = result
+        .lines_above_viewport
+        .iter()
+        .all(|line| line.contains("\x1b["));
+    assert!(
+        all_have_ansi,
+        "All truncated scrollback lines should contain ANSI codes. Lines: {:?}",
+        result.lines_above_viewport
+    );
+}
+
+#[test]
+fn pane_contents_with_ansi_no_scrollback_when_flag_false() {
+    let grid = create_grid_with_colored_scrollback();
+    let result = grid.pane_contents_with_ansi(false, Some(5));
+    assert!(
+        result.lines_above_viewport.is_empty(),
+        "get_full_scrollback=false should never collect scrollback even with ansi"
+    );
+}
+
+#[test]
+fn pane_contents_with_ansi_and_without_have_same_text() {
+    let grid = create_grid_with_colored_scrollback();
+    let plain = grid.pane_contents(false, None);
+    let ansi = grid.pane_contents_with_ansi(false, None);
+    assert_eq!(
+        plain.viewport.len(),
+        ansi.viewport.len(),
+        "Both should have the same number of viewport lines"
+    );
+    // Strip ANSI codes from the ansi version and compare plain text content
+    let ansi_escape = regex::Regex::new(r"\x1b\[[0-9;]*m").unwrap();
+    for (plain_line, ansi_line) in plain.viewport.iter().zip(ansi.viewport.iter()) {
+        let stripped = ansi_escape.replace_all(ansi_line, "").to_string();
+        assert_eq!(
+            *plain_line, stripped,
+            "After stripping ANSI codes, text content should match"
+        );
+    }
+}
+
+// =====================================================================
 // Highlight Layer Priority Tests
 // =====================================================================
 

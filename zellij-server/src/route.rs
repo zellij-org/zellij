@@ -439,6 +439,7 @@ pub(crate) fn route_action(
             file_path,
             include_scrollback,
             pane_id,
+            ansi,
         } => {
             senders
                 .send_to_screen(ScreenInstruction::DumpScreen(
@@ -448,6 +449,7 @@ pub(crate) fn route_action(
                     pane_id.map(|p| p.into()),
                     Some(NotificationEnd::new(completion_tx)),
                     cli_client_id,
+                    ansi,
                 ))
                 .with_context(err_context)?;
         },
@@ -474,18 +476,20 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
         },
-        Action::EditScrollback => {
+        Action::EditScrollback { ansi } => {
             senders
                 .send_to_screen(ScreenInstruction::EditScrollback(
                     client_id,
+                    ansi,
                     Some(NotificationEnd::new(completion_tx)),
                 ))
                 .with_context(err_context)?;
         },
         Action::EditScrollbackRaw => {
             senders
-                .send_to_screen(ScreenInstruction::EditScrollbackRaw(
+                .send_to_screen(ScreenInstruction::EditScrollback(
                     client_id,
+                    true,
                     Some(NotificationEnd::new(completion_tx)),
                 ))
                 .with_context(err_context)?;
@@ -1911,10 +1915,11 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
         },
-        Action::EditScrollbackByPaneId { pane_id } => {
+        Action::EditScrollbackByPaneId { pane_id, ansi } => {
             senders
                 .send_to_screen(ScreenInstruction::EditScrollbackWithPaneId(
                     pane_id.into(),
+                    ansi,
                     Some(NotificationEnd::new(completion_tx)),
                 ))
                 .with_context(err_context)?;
@@ -2545,6 +2550,7 @@ pub(crate) fn route_thread_main(
                         ClientToServerMsg::SubscribeToPaneRenders {
                             ref pane_ids,
                             ref scrollback,
+                            ansi,
                         } => {
                             send_to_screen_or_retry_queue!(
                                 senders,
@@ -2552,6 +2558,7 @@ pub(crate) fn route_thread_main(
                                     client_id,
                                     pane_ids: pane_ids.clone(),
                                     scrollback: *scrollback,
+                                    ansi,
                                 },
                                 instruction,
                                 retry_queue

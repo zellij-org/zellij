@@ -383,6 +383,7 @@ message DumpScreenPayload {
   bool include_scrollback = 2;
   optional PaneId pane_id = 3;
   bool dump_to_stdout = 4;
+  bool ansi = 5;
 }
 
 enum ActionName {

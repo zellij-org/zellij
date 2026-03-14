@@ -2442,6 +2442,7 @@ pub fn send_cli_dump_screen_action() {
         path: Some(PathBuf::from("/tmp/foo")),
         full: true,
         pane_id: None,
+        ansi: false,
     };
     let _ = mock_screen.to_screen.send(ScreenInstruction::PtyBytes(
         0,
@@ -2473,7 +2474,10 @@ pub fn send_cli_edit_scrollback_action() {
         PtyInstruction::Exit,
         pty_receiver
     );
-    let cli_action = CliAction::EditScrollback { pane_id: None };
+    let cli_action = CliAction::EditScrollback {
+        pane_id: None,
+        ansi: false,
+    };
     let _ = mock_screen.to_screen.send(ScreenInstruction::PtyBytes(
         0,
         "fill pane up with something".as_bytes().to_vec(),
@@ -5220,7 +5224,12 @@ fn subscriber_receives_initial_delivery() {
     let (mut screen, messages) = create_new_screen_with_message_capture(size);
     new_tab(&mut screen, 1, 0);
 
-    screen.subscribe_to_pane_renders(100, vec![zellij_utils::data::PaneId::Terminal(1)], None);
+    screen.subscribe_to_pane_renders(
+        100,
+        vec![zellij_utils::data::PaneId::Terminal(1)],
+        None,
+        false,
+    );
 
     let msgs = messages.lock().unwrap();
     let client_msgs = msgs.get(&100).unwrap();
@@ -5244,7 +5253,12 @@ fn subscriber_receives_initial_with_scrollback() {
     let (mut screen, messages) = create_new_screen_with_message_capture(size);
     new_tab(&mut screen, 1, 0);
 
-    screen.subscribe_to_pane_renders(100, vec![zellij_utils::data::PaneId::Terminal(1)], Some(0));
+    screen.subscribe_to_pane_renders(
+        100,
+        vec![zellij_utils::data::PaneId::Terminal(1)],
+        Some(0),
+        false,
+    );
 
     let msgs = messages.lock().unwrap();
     let client_msgs = msgs.get(&100).unwrap();
@@ -5268,7 +5282,12 @@ fn subscriber_no_update_on_unchanged_viewport() {
     let (mut screen, messages) = create_new_screen_with_message_capture(size);
     new_tab(&mut screen, 1, 0);
 
-    screen.subscribe_to_pane_renders(100, vec![zellij_utils::data::PaneId::Terminal(1)], None);
+    screen.subscribe_to_pane_renders(
+        100,
+        vec![zellij_utils::data::PaneId::Terminal(1)],
+        None,
+        false,
+    );
 
     let initial_viewport = {
         let msgs = messages.lock().unwrap();
@@ -5287,7 +5306,7 @@ fn subscriber_no_update_on_unchanged_viewport() {
             ..Default::default()
         },
     );
-    screen.deliver_subscriber_updates_from_map(&pane_map);
+    screen.deliver_subscriber_updates_from_map(&pane_map, None);
 
     let msgs = messages.lock().unwrap();
     let client_msgs = msgs.get(&100).unwrap();
@@ -5300,7 +5319,12 @@ fn subscriber_receives_update_on_changed_viewport() {
     let (mut screen, messages) = create_new_screen_with_message_capture(size);
     new_tab(&mut screen, 1, 0);
 
-    screen.subscribe_to_pane_renders(100, vec![zellij_utils::data::PaneId::Terminal(1)], None);
+    screen.subscribe_to_pane_renders(
+        100,
+        vec![zellij_utils::data::PaneId::Terminal(1)],
+        None,
+        false,
+    );
 
     let mut pane_map = HashMap::new();
     pane_map.insert(
@@ -5310,7 +5334,7 @@ fn subscriber_receives_update_on_changed_viewport() {
             ..Default::default()
         },
     );
-    screen.deliver_subscriber_updates_from_map(&pane_map);
+    screen.deliver_subscriber_updates_from_map(&pane_map, None);
 
     let msgs = messages.lock().unwrap();
     let client_msgs = msgs.get(&100).unwrap();
@@ -5336,7 +5360,12 @@ fn subscriber_error_for_nonexistent_pane() {
     let (mut screen, messages) = create_new_screen_with_message_capture(size);
     new_tab(&mut screen, 1, 0);
 
-    screen.subscribe_to_pane_renders(100, vec![zellij_utils::data::PaneId::Terminal(999)], None);
+    screen.subscribe_to_pane_renders(
+        100,
+        vec![zellij_utils::data::PaneId::Terminal(999)],
+        None,
+        false,
+    );
 
     let msgs = messages.lock().unwrap();
     let client_msgs = msgs.get(&100).unwrap();
@@ -5372,6 +5401,7 @@ fn subscriber_state_registered_for_multiple_panes() {
             zellij_utils::data::PaneId::Terminal(2),
         ],
         None,
+        false,
     );
 
     let sub = screen.pane_render_subscribers.get(&100).unwrap();
@@ -5390,8 +5420,18 @@ fn multiple_subscribers_receive_updates() {
     let (mut screen, messages) = create_new_screen_with_message_capture(size);
     new_tab(&mut screen, 1, 0);
 
-    screen.subscribe_to_pane_renders(100, vec![zellij_utils::data::PaneId::Terminal(1)], None);
-    screen.subscribe_to_pane_renders(101, vec![zellij_utils::data::PaneId::Terminal(1)], None);
+    screen.subscribe_to_pane_renders(
+        100,
+        vec![zellij_utils::data::PaneId::Terminal(1)],
+        None,
+        false,
+    );
+    screen.subscribe_to_pane_renders(
+        101,
+        vec![zellij_utils::data::PaneId::Terminal(1)],
+        None,
+        false,
+    );
 
     let mut pane_map = HashMap::new();
     pane_map.insert(
@@ -5401,7 +5441,7 @@ fn multiple_subscribers_receive_updates() {
             ..Default::default()
         },
     );
-    screen.deliver_subscriber_updates_from_map(&pane_map);
+    screen.deliver_subscriber_updates_from_map(&pane_map, None);
 
     let msgs = messages.lock().unwrap();
     let client_100_msgs = msgs.get(&100).unwrap();
@@ -5416,7 +5456,12 @@ fn subscriber_removed_on_remove_client() {
     let (mut screen, _messages) = create_new_screen_with_message_capture(size);
     new_tab(&mut screen, 1, 0);
 
-    screen.subscribe_to_pane_renders(100, vec![zellij_utils::data::PaneId::Terminal(1)], None);
+    screen.subscribe_to_pane_renders(
+        100,
+        vec![zellij_utils::data::PaneId::Terminal(1)],
+        None,
+        false,
+    );
     assert!(screen.pane_render_subscribers.contains_key(&100));
 
     let _ = screen.remove_client(100);
@@ -5429,7 +5474,12 @@ fn subscriber_removed_when_all_panes_closed() {
     let (mut screen, messages) = create_new_screen_with_message_capture(size);
     new_tab(&mut screen, 1, 0);
 
-    screen.subscribe_to_pane_renders(100, vec![zellij_utils::data::PaneId::Terminal(1)], None);
+    screen.subscribe_to_pane_renders(
+        100,
+        vec![zellij_utils::data::PaneId::Terminal(1)],
+        None,
+        false,
+    );
 
     screen.notify_pane_closed_to_subscribers(zellij_utils::data::PaneId::Terminal(1));
 
@@ -5470,6 +5520,7 @@ fn subscriber_partial_close() {
             zellij_utils::data::PaneId::Terminal(2),
         ],
         None,
+        false,
     );
 
     screen.notify_pane_closed_to_subscribers(zellij_utils::data::PaneId::Terminal(1));
@@ -5518,6 +5569,7 @@ fn subscriber_full_close_sequence() {
             zellij_utils::data::PaneId::Terminal(2),
         ],
         None,
+        false,
     );
 
     screen.notify_pane_closed_to_subscribers(zellij_utils::data::PaneId::Terminal(1));
@@ -5551,7 +5603,12 @@ fn delivery_path_a_and_b_produce_same_content() {
     let (mut screen, messages) = create_new_screen_with_message_capture(size);
     new_tab(&mut screen, 1, 0);
 
-    screen.subscribe_to_pane_renders(100, vec![zellij_utils::data::PaneId::Terminal(1)], None);
+    screen.subscribe_to_pane_renders(
+        100,
+        vec![zellij_utils::data::PaneId::Terminal(1)],
+        None,
+        false,
+    );
 
     messages.lock().unwrap().get_mut(&100).unwrap().clear();
 
@@ -5581,7 +5638,10 @@ fn delivery_path_a_and_b_produce_same_content() {
     pane_map.insert(zellij_utils::data::PaneId::Terminal(1), contents.clone());
     let mut all_pane_contents = HashMap::new();
     all_pane_contents.insert(1 as ClientId, pane_map);
-    let report = PaneRenderReport { all_pane_contents };
+    let report = PaneRenderReport {
+        all_pane_contents,
+        all_pane_contents_with_ansi: HashMap::new(),
+    };
     screen.deliver_to_pane_subscribers_from_report(&report);
 
     let viewport_a = {
@@ -5628,7 +5688,12 @@ fn close_tab_notifies_subscribers() {
     new_tab(&mut screen, 1, 0);
     new_tab(&mut screen, 2, 1);
 
-    screen.subscribe_to_pane_renders(100, vec![zellij_utils::data::PaneId::Terminal(1)], None);
+    screen.subscribe_to_pane_renders(
+        100,
+        vec![zellij_utils::data::PaneId::Terminal(1)],
+        None,
+        false,
+    );
 
     messages.lock().unwrap().get_mut(&100).unwrap().clear();
 
@@ -5688,6 +5753,7 @@ fn close_pane_notifies_subscribers_via_instruction() {
                 zellij_utils::data::PaneId::Terminal(1),
             ],
             scrollback: None,
+            ansi: false,
         });
     std::thread::sleep(std::time::Duration::from_millis(100));
 
@@ -5742,6 +5808,7 @@ fn integration_pty_bytes_delivered_to_subscriber() {
             client_id: 100,
             pane_ids: vec![zellij_utils::data::PaneId::Terminal(0)],
             scrollback: None,
+            ansi: false,
         });
     std::thread::sleep(std::time::Duration::from_millis(100));
 
@@ -5816,6 +5883,7 @@ fn integration_pty_bytes_not_delivered_when_viewport_unchanged() {
             client_id: 100,
             pane_ids: vec![zellij_utils::data::PaneId::Terminal(0)],
             scrollback: None,
+            ansi: false,
         });
     std::thread::sleep(std::time::Duration::from_millis(100));
 
@@ -5881,6 +5949,7 @@ fn integration_scrollback_from_pre_subscription_pty_bytes() {
             client_id: 100,
             pane_ids: vec![zellij_utils::data::PaneId::Terminal(0)],
             scrollback: Some(0),
+            ansi: false,
         });
     std::thread::sleep(std::time::Duration::from_millis(100));
 
@@ -5997,6 +6066,7 @@ fn integration_no_scrollback_when_not_requested() {
             client_id: 100,
             pane_ids: vec![zellij_utils::data::PaneId::Terminal(0)],
             scrollback: None,
+            ansi: false,
         });
     std::thread::sleep(std::time::Duration::from_millis(100));
 
@@ -6057,6 +6127,7 @@ fn integration_subscriber_survives_after_regular_client_detach() {
             client_id: 100,
             pane_ids: vec![zellij_utils::data::PaneId::Terminal(0)],
             scrollback: None,
+            ansi: false,
         });
     std::thread::sleep(std::time::Duration::from_millis(100));
 
@@ -6480,6 +6551,7 @@ pub fn send_cli_edit_scrollback_with_pane_id() {
     std::thread::sleep(std::time::Duration::from_millis(100));
     let cli_action = CliAction::EditScrollback {
         pane_id: Some("terminal_0".to_string()),
+        ansi: false,
     };
     send_cli_action_to_server(&session_metadata, cli_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -6933,4 +7005,353 @@ pub fn move_tab_by_id_verifies_screen_state() {
     screen.move_tab_by_id(0, Direction::Right).expect("TEST");
     assert_eq!(screen.get_tab_by_id(0).unwrap().position, original_pos_1);
     assert_eq!(screen.get_tab_by_id(1).unwrap().position, original_pos_0);
+}
+
+// ==========================================
+// Category 5: ANSI flag tests
+// ==========================================
+
+#[test]
+pub fn send_cli_dump_screen_action_with_ansi() {
+    let size = Size { cols: 80, rows: 20 };
+    let client_id = 10;
+    let mut initial_layout = TiledPaneLayout::default();
+    initial_layout.children_split_direction = SplitDirection::Vertical;
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
+    let mut mock_screen = MockScreen::new(size);
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+    let cli_action = CliAction::DumpScreen {
+        path: Some(PathBuf::from("/tmp/foo_ansi")),
+        full: true,
+        pane_id: None,
+        ansi: true,
+    };
+    let _ = mock_screen.to_screen.send(ScreenInstruction::PtyBytes(
+        0,
+        "\x1b[31mred text\x1b[0m".as_bytes().to_vec(),
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    send_cli_action_to_server(&session_metadata, cli_action, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+    let fs = mock_screen.os_input.fake_filesystem.lock().unwrap();
+    let dumped_content = fs.values().next().expect("Should have dumped a file");
+    assert!(
+        dumped_content.contains("\x1b["),
+        "Dumped file should contain ANSI escape codes when ansi flag is true. Content: {:?}",
+        dumped_content
+    );
+}
+
+#[test]
+pub fn send_cli_dump_screen_action_without_ansi_strips_codes() {
+    let size = Size { cols: 80, rows: 20 };
+    let client_id = 10;
+    let mut initial_layout = TiledPaneLayout::default();
+    initial_layout.children_split_direction = SplitDirection::Vertical;
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
+    let mut mock_screen = MockScreen::new(size);
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+    let cli_action = CliAction::DumpScreen {
+        path: Some(PathBuf::from("/tmp/foo_plain")),
+        full: true,
+        pane_id: None,
+        ansi: false,
+    };
+    let _ = mock_screen.to_screen.send(ScreenInstruction::PtyBytes(
+        0,
+        "\x1b[31mred text\x1b[0m".as_bytes().to_vec(),
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    send_cli_action_to_server(&session_metadata, cli_action, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+    let fs = mock_screen.os_input.fake_filesystem.lock().unwrap();
+    let dumped_content = fs.values().next().expect("Should have dumped a file");
+    assert!(
+        !dumped_content.contains("\x1b["),
+        "Dumped file should NOT contain ANSI escape codes when ansi flag is false. Content: {:?}",
+        dumped_content
+    );
+}
+
+#[test]
+pub fn send_cli_edit_scrollback_action_with_ansi() {
+    let size = Size { cols: 80, rows: 20 };
+    let client_id = 10;
+    let mut initial_layout = TiledPaneLayout::default();
+    initial_layout.children_split_direction = SplitDirection::Vertical;
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
+    let mut mock_screen = MockScreen::new(size);
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
+    let received_pty_instructions = Arc::new(Mutex::new(vec![]));
+    let pty_receiver = mock_screen.pty_receiver.take().unwrap();
+    let pty_thread = log_actions_in_thread!(
+        received_pty_instructions,
+        PtyInstruction::Exit,
+        pty_receiver
+    );
+    let cli_action = CliAction::EditScrollback {
+        pane_id: None,
+        ansi: true,
+    };
+    let _ = mock_screen.to_screen.send(ScreenInstruction::PtyBytes(
+        0,
+        "\x1b[31mred text\x1b[0m".as_bytes().to_vec(),
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    send_cli_action_to_server(&session_metadata, cli_action, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![pty_thread, screen_thread]);
+    let fs = mock_screen.os_input.fake_filesystem.lock().unwrap();
+    let dumped_content = fs.values().next().expect("Should have dumped a file");
+    assert!(
+        dumped_content.contains("\x1b["),
+        "Edit scrollback dump should contain ANSI escape codes when ansi flag is true. Content: {:?}",
+        dumped_content
+    );
+}
+
+#[test]
+pub fn send_cli_edit_scrollback_with_pane_id_and_ansi() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 10;
+    let mut mock_screen = MockScreen::new(size);
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(None, vec![]);
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let cli_action = CliAction::EditScrollback {
+        pane_id: Some("terminal_0".to_string()),
+        ansi: true,
+    };
+    send_cli_action_to_server(&session_metadata, cli_action, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+    assert!(
+        true,
+        "EditScrollback with pane_id and ansi CLI action completed without errors"
+    );
+}
+
+#[test]
+fn subscriber_ansi_flag_preserved_in_subscription() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, _messages) = create_new_screen_with_message_capture(size);
+    new_tab(&mut screen, 1, 0);
+
+    screen.subscribe_to_pane_renders(
+        100,
+        vec![zellij_utils::data::PaneId::Terminal(1)],
+        None,
+        false,
+    );
+    screen.subscribe_to_pane_renders(
+        101,
+        vec![zellij_utils::data::PaneId::Terminal(1)],
+        None,
+        true,
+    );
+
+    assert!(
+        !screen.pane_render_subscribers.get(&100).unwrap().ansi,
+        "Subscriber 100 should have ansi=false"
+    );
+    assert!(
+        screen.pane_render_subscribers.get(&101).unwrap().ansi,
+        "Subscriber 101 should have ansi=true"
+    );
+}
+
+#[test]
+fn subscriber_ansi_and_plain_receive_different_content() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, messages) = create_new_screen_with_message_capture(size);
+    new_tab(&mut screen, 1, 0);
+
+    // Subscribe plain and ansi subscribers
+    screen.subscribe_to_pane_renders(
+        100,
+        vec![zellij_utils::data::PaneId::Terminal(1)],
+        None,
+        false,
+    );
+    screen.subscribe_to_pane_renders(
+        101,
+        vec![zellij_utils::data::PaneId::Terminal(1)],
+        None,
+        true,
+    );
+
+    // Clear initial messages
+    messages.lock().unwrap().get_mut(&100).unwrap().clear();
+    messages.lock().unwrap().get_mut(&101).unwrap().clear();
+
+    // Reset previous viewports to force delivery
+    screen
+        .pane_render_subscribers
+        .get_mut(&100)
+        .unwrap()
+        .previous_viewports
+        .insert(
+            zellij_utils::data::PaneId::Terminal(1),
+            vec!["old".to_string()],
+        );
+    screen
+        .pane_render_subscribers
+        .get_mut(&101)
+        .unwrap()
+        .previous_viewports
+        .insert(
+            zellij_utils::data::PaneId::Terminal(1),
+            vec!["old".to_string()],
+        );
+
+    // Build plain and ansi maps with different content
+    let mut plain_map = HashMap::new();
+    plain_map.insert(
+        zellij_utils::data::PaneId::Terminal(1),
+        PaneContents {
+            viewport: vec!["plain text".to_string()],
+            ..Default::default()
+        },
+    );
+    let mut ansi_map = HashMap::new();
+    ansi_map.insert(
+        zellij_utils::data::PaneId::Terminal(1),
+        PaneContents {
+            viewport: vec!["\x1b[31mred text\x1b[0m".to_string()],
+            ..Default::default()
+        },
+    );
+    screen.deliver_subscriber_updates_from_map(&plain_map, Some(&ansi_map));
+
+    let msgs = messages.lock().unwrap();
+    let plain_msgs = msgs.get(&100).unwrap();
+    let ansi_msgs = msgs.get(&101).unwrap();
+
+    assert_eq!(
+        plain_msgs.len(),
+        1,
+        "Plain subscriber should receive one update"
+    );
+    assert_eq!(
+        ansi_msgs.len(),
+        1,
+        "Ansi subscriber should receive one update"
+    );
+
+    match &plain_msgs[0] {
+        ServerToClientMsg::PaneRenderUpdate { viewport, .. } => {
+            assert_eq!(viewport, &vec!["plain text".to_string()]);
+        },
+        other => panic!("Expected PaneRenderUpdate, got {:?}", other),
+    }
+    match &ansi_msgs[0] {
+        ServerToClientMsg::PaneRenderUpdate { viewport, .. } => {
+            assert_eq!(viewport, &vec!["\x1b[31mred text\x1b[0m".to_string()]);
+        },
+        other => panic!("Expected PaneRenderUpdate, got {:?}", other),
+    }
+}
+
+#[test]
+fn integration_subscribe_with_ansi_flag() {
+    let size = Size { cols: 80, rows: 20 };
+    let mut mock_screen = MockScreen::new(size);
+    mock_screen.drop_all_pty_messages();
+    let screen_thread = mock_screen.run(None, vec![]);
+
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+    let plugin_receiver = mock_screen.plugin_receiver.take().unwrap();
+    let received_plugin_instructions = Arc::new(Mutex::new(vec![]));
+    let plugin_thread = log_actions_in_thread!(
+        received_plugin_instructions,
+        PluginInstruction::Exit,
+        plugin_receiver
+    );
+
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::SubscribeToPaneRenders {
+            client_id: 100,
+            pane_ids: vec![zellij_utils::data::PaneId::Terminal(0)],
+            scrollback: None,
+            ansi: true,
+        });
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    let _ = mock_screen.to_screen.send(ScreenInstruction::PtyBytes(
+        0,
+        "\x1b[31mred text\x1b[0m\r\n".as_bytes().to_vec(),
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    mock_screen.teardown(vec![server_thread, plugin_thread, screen_thread]);
+
+    let msgs = mock_screen
+        .os_input
+        .server_to_client_messages
+        .lock()
+        .unwrap();
+    let subscriber_msgs = msgs.get(&100).unwrap_or(&vec![]).clone();
+
+    assert!(
+        subscriber_msgs.len() >= 2,
+        "Should have at least initial + update, got {}",
+        subscriber_msgs.len()
+    );
+
+    match &subscriber_msgs[0] {
+        ServerToClientMsg::PaneRenderUpdate { is_initial, .. } => {
+            assert!(*is_initial, "First message should be initial");
+        },
+        other => panic!("Expected PaneRenderUpdate, got {:?}", other),
+    }
+
+    let has_ansi_content = subscriber_msgs.iter().any(|m| match m {
+        ServerToClientMsg::PaneRenderUpdate {
+            is_initial: false,
+            viewport,
+            ..
+        } => viewport.iter().any(|line| line.contains("\x1b[")),
+        _ => false,
+    });
+    assert!(
+        has_ansi_content,
+        "ANSI subscriber should receive viewport lines with ANSI escape codes. Messages: {:?}",
+        subscriber_msgs
+    );
 }

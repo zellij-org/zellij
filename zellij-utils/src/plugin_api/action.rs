@@ -222,13 +222,14 @@ impl TryFrom<ProtobufAction> for Action {
                         file_path,
                         include_scrollback,
                         pane_id,
+                        ansi: payload.ansi,
                     })
                 },
                 _ => Err("Wrong payload for Action::DumpScreen"),
             },
             Some(ProtobufActionName::EditScrollback) => match protobuf_action.optional_payload {
                 Some(_) => Err("EditScrollback should not have a payload"),
-                None => Ok(Action::EditScrollback),
+                None => Ok(Action::EditScrollback { ansi: false }),
             },
             Some(ProtobufActionName::ScrollUp) => match protobuf_action.optional_payload {
                 Some(_) => Err("ScrollUp should not have a payload"),
@@ -1178,6 +1179,7 @@ impl TryFrom<Action> for ProtobufAction {
                 file_path,
                 include_scrollback,
                 pane_id,
+                ansi,
             } => {
                 let dump_to_stdout = file_path.is_none();
                 Ok(ProtobufAction {
@@ -1187,10 +1189,11 @@ impl TryFrom<Action> for ProtobufAction {
                         include_scrollback,
                         pane_id: pane_id.and_then(|p| p.try_into().ok()),
                         dump_to_stdout,
+                        ansi,
                     })),
                 })
             },
-            Action::EditScrollback => Ok(ProtobufAction {
+            Action::EditScrollback { .. } => Ok(ProtobufAction {
                 name: ProtobufActionName::EditScrollback as i32,
                 optional_payload: None,
             }),

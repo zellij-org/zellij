@@ -307,6 +307,7 @@ pub enum ScreenInstruction {
         Option<PaneId>,
         Option<NotificationEnd>,
         Option<ClientId>, // cli_client_id - used to send output to the CLI client's STDOUT
+        bool,             // ansi - preserve ANSI styling in the dump output
     ),
     DumpLayout(Option<PathBuf>, ClientId, Option<NotificationEnd>), // PathBuf is the default configured
     // shell
@@ -328,8 +329,7 @@ pub enum ScreenInstruction {
         tab_id: usize,
         response_channel: crossbeam::channel::Sender<Option<TabInfo>>,
     },
-    EditScrollback(ClientId, Option<NotificationEnd>),
-    EditScrollbackRaw(ClientId, Option<NotificationEnd>),
+    EditScrollback(ClientId, bool, Option<NotificationEnd>),
     GetPaneScrollback {
         pane_id: PaneId,
         client_id: ClientId,
@@ -696,10 +696,12 @@ pub enum ScreenInstruction {
         client_id: ClientId,
         pane_ids: Vec<zellij_utils::data::PaneId>,
         scrollback: Option<usize>,
+        ansi: bool,
     },
     NotifyPaneClosedToSubscribers {
         pane_id: zellij_utils::data::PaneId,
     },
+    PluginSubscribedToAnsiPaneContents(bool), // true = at least one plugin needs ANSI content
     // Pane-targeting CLI variants
     ScrollUpWithPaneId(PaneId, Option<NotificationEnd>),
     ScrollDownWithPaneId(PaneId, Option<NotificationEnd>),
@@ -713,7 +715,7 @@ pub enum ScreenInstruction {
     MovePaneWithPaneIdCli(PaneId, Option<Direction>, Option<NotificationEnd>),
     MovePaneBackwardsWithPaneId(PaneId, Option<NotificationEnd>),
     ClearScreenWithPaneId(PaneId, Option<NotificationEnd>),
-    EditScrollbackWithPaneId(PaneId, Option<NotificationEnd>),
+    EditScrollbackWithPaneId(PaneId, bool, Option<NotificationEnd>),
     ToggleFullscreenWithPaneId(PaneId, Option<NotificationEnd>),
     TogglePaneEmbedOrFloatingWithPaneId(PaneId, Option<NotificationEnd>),
     CloseFocusWithPaneId(PaneId, Option<NotificationEnd>),
@@ -798,7 +800,6 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::GetPaneInfo { .. } => ScreenContext::GetPaneInfo,
             ScreenInstruction::GetTabInfo { .. } => ScreenContext::GetTabInfo,
             ScreenInstruction::EditScrollback(..) => ScreenContext::EditScrollback,
-            ScreenInstruction::EditScrollbackRaw(..) => ScreenContext::EditScrollback, // fallback
             ScreenInstruction::GetPaneScrollback { .. } => ScreenContext::GetPaneScrollback,
             ScreenInstruction::ScrollUp(..) => ScreenContext::ScrollUp,
             ScreenInstruction::ScrollDown(..) => ScreenContext::ScrollDown,
@@ -1002,6 +1003,9 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::NotifyPaneClosedToSubscribers { .. } => {
                 ScreenContext::NotifyPaneClosedToSubscribers
             },
+            ScreenInstruction::PluginSubscribedToAnsiPaneContents(..) => {
+                ScreenContext::PluginSubscribedToAnsiPaneContents
+            },
             // Pane-targeting CLI variants
             ScreenInstruction::ScrollUpWithPaneId(..) => ScreenContext::ScrollUpWithPaneId,
             ScreenInstruction::ScrollDownWithPaneId(..) => ScreenContext::ScrollDownWithPaneId,
@@ -1181,6 +1185,7 @@ impl WatcherState {
 struct PaneRenderSubscription {
     pane_ids: HashSet<zellij_utils::data::PaneId>,
     previous_viewports: HashMap<zellij_utils::data::PaneId, Vec<String>>,
+    ansi: bool,
 }
 
 /// A [`Screen`] holds multiple [`Tab`]s, each one holding multiple [`panes`](crate::client::panes).
@@ -1250,6 +1255,7 @@ pub(crate) struct Screen {
     cached_layouts: Vec<LayoutInfo>,
     cached_layout_errors: Vec<LayoutWithError>,
     pane_render_subscribers: HashMap<ClientId, PaneRenderSubscription>,
+    plugins_need_ansi_pane_contents: bool,
 }
 
 impl Screen {
@@ -1349,6 +1355,7 @@ impl Screen {
             cached_layouts: vec![],
             cached_layout_errors: vec![],
             pane_render_subscribers: HashMap::new(),
+            plugins_need_ansi_pane_contents: false,
         }
     }
 
@@ -1899,6 +1906,10 @@ impl Screen {
                 self.styled_underlines,
                 self.osc8_hyperlinks,
             );
+
+            let has_ansi_subscribers = self.pane_render_subscribers.values().any(|s| s.ansi);
+            output.collect_ansi_pane_contents =
+                has_ansi_subscribers || self.plugins_need_ansi_pane_contents;
 
             for (tab_index, tab) in &mut self.tabs {
                 if tab.has_selectable_tiled_panes() {
@@ -4419,6 +4430,7 @@ impl Screen {
         subscriber_client_id: ClientId,
         pane_ids: Vec<zellij_utils::data::PaneId>,
         scrollback: Option<usize>,
+        ansi: bool,
     ) {
         let mut previous_viewports = HashMap::new();
         let mut valid_pane_ids = HashSet::new();
@@ -4445,8 +4457,15 @@ impl Screen {
                         PaneId::Plugin(_) => regular_client_id,
                         PaneId::Terminal(_) => None,
                     };
-                    let contents =
-                        pane.pane_contents(query_client_id, get_full_scrollback, max_lines);
+                    let contents = if ansi {
+                        pane.pane_contents_with_ansi(
+                            query_client_id,
+                            get_full_scrollback,
+                            max_lines,
+                        )
+                    } else {
+                        pane.pane_contents(query_client_id, get_full_scrollback, max_lines)
+                    };
 
                     if let Some(os_input) = &self.bus.os_input {
                         let scrollback_data = if scrollback.is_some() {
@@ -4490,6 +4509,7 @@ impl Screen {
                 PaneRenderSubscription {
                     pane_ids: valid_pane_ids,
                     previous_viewports,
+                    ansi,
                 },
             );
         }
@@ -4498,7 +4518,8 @@ impl Screen {
         let Some(pane_map) = report.all_pane_contents.values().next() else {
             return;
         };
-        self.deliver_subscriber_updates_from_map(pane_map);
+        let ansi_pane_map = report.all_pane_contents_with_ansi.values().next();
+        self.deliver_subscriber_updates_from_map(pane_map, ansi_pane_map);
     }
     fn deliver_to_pane_subscribers_directly(&mut self) {
         // Collect unique pane IDs across all subscribers
@@ -4508,31 +4529,50 @@ impl Screen {
             .flat_map(|sub| sub.pane_ids.iter().copied())
             .collect();
 
+        let has_ansi_subscribers = self.pane_render_subscribers.values().any(|s| s.ansi);
+
         // Query pane contents directly from tabs
         let mut pane_map: HashMap<zellij_utils::data::PaneId, PaneContents> = HashMap::new();
+        let mut ansi_pane_map: HashMap<zellij_utils::data::PaneId, PaneContents> = HashMap::new();
         for pane_id in &all_subscribed_ids {
             let server_pane_id: PaneId = (*pane_id).into();
             for tab in self.tabs.values() {
                 if let Some(pane) = tab.get_pane_with_id(server_pane_id) {
                     pane_map.insert(*pane_id, pane.pane_contents(None, false, None));
+                    if has_ansi_subscribers {
+                        ansi_pane_map
+                            .insert(*pane_id, pane.pane_contents_with_ansi(None, false, None));
+                    }
                     break;
                 }
             }
         }
 
-        self.deliver_subscriber_updates_from_map(&pane_map);
+        let ansi_map_ref = if has_ansi_subscribers {
+            Some(&ansi_pane_map)
+        } else {
+            None
+        };
+        self.deliver_subscriber_updates_from_map(&pane_map, ansi_map_ref);
     }
     fn deliver_subscriber_updates_from_map(
         &mut self,
         pane_map: &HashMap<zellij_utils::data::PaneId, PaneContents>,
+        ansi_pane_map: Option<&HashMap<zellij_utils::data::PaneId, PaneContents>>,
     ) {
         // Collect updates to send, avoiding borrow conflicts
         let mut updates_to_send: Vec<(ClientId, ServerToClientMsg)> = Vec::new();
         let mut dead_subscribers: Vec<ClientId> = Vec::new();
 
         for (subscriber_id, subscription) in &self.pane_render_subscribers {
+            let effective_map = if subscription.ansi {
+                ansi_pane_map.unwrap_or(pane_map)
+            } else {
+                pane_map
+            };
+
             for pane_id in &subscription.pane_ids {
-                if let Some(contents) = pane_map.get(pane_id) {
+                if let Some(contents) = effective_map.get(pane_id) {
                     let changed = subscription
                         .previous_viewports
                         .get(pane_id)
@@ -5293,6 +5333,7 @@ pub(crate) fn screen_thread_main(
                 pane_id,
                 completion_tx,
                 cli_client_id,
+                ansi,
             ) => {
                 match file {
                     Some(file_path) => {
@@ -5301,26 +5342,47 @@ pub(crate) fn screen_thread_main(
                             Some(pane_id) => {
                                 for tab in screen.get_tabs_mut().values_mut() {
                                     if tab.has_pane_with_pid(&pane_id) {
-                                        tab.dump_terminal_screen(
-                                            Some(file_path.clone()),
-                                            pane_id,
-                                            full,
-                                        )?;
+                                        if ansi {
+                                            tab.dump_with_ansi_terminal_screen(
+                                                Some(file_path.clone()),
+                                                pane_id,
+                                                full,
+                                            )?;
+                                        } else {
+                                            tab.dump_terminal_screen(
+                                                Some(file_path.clone()),
+                                                pane_id,
+                                                full,
+                                            )?;
+                                        }
                                         break;
                                     }
                                 }
                             },
                             None => {
-                                active_tab_and_connected_client_id!(
-                                    screen,
-                                    client_id,
-                                    |tab: &mut Tab, client_id: ClientId| tab.dump_active_terminal_screen(
-                                        Some(file_path.to_string()),
+                                if ansi {
+                                    active_tab_and_connected_client_id!(
+                                        screen,
                                         client_id,
-                                        full
-                                    ),
-                                    ?
-                                );
+                                        |tab: &mut Tab, client_id: ClientId| tab.dump_with_ansi_active_terminal_screen(
+                                            Some(file_path.to_string()),
+                                            client_id,
+                                            full
+                                        ),
+                                        ?
+                                    );
+                                } else {
+                                    active_tab_and_connected_client_id!(
+                                        screen,
+                                        client_id,
+                                        |tab: &mut Tab, client_id: ClientId| tab.dump_active_terminal_screen(
+                                            Some(file_path.to_string()),
+                                            client_id,
+                                            full
+                                        ),
+                                        ?
+                                    );
+                                }
                             },
                         }
                         screen.render(None)?;
@@ -5333,10 +5395,18 @@ pub(crate) fn screen_thread_main(
                                 let mut result = String::new();
                                 for tab in screen.get_tabs_mut().values_mut() {
                                     if tab.has_pane_with_pid(&pane_id) {
-                                        if let Some(dump) =
-                                            tab.get_dump_terminal_screen(pane_id, full)
-                                        {
-                                            result = dump;
+                                        if ansi {
+                                            if let Some(dump) = tab
+                                                .get_dump_with_ansi_terminal_screen(pane_id, full)
+                                            {
+                                                result = dump;
+                                            }
+                                        } else {
+                                            if let Some(dump) =
+                                                tab.get_dump_terminal_screen(pane_id, full)
+                                            {
+                                                result = dump;
+                                            }
                                         }
                                         break;
                                     }
@@ -5345,15 +5415,27 @@ pub(crate) fn screen_thread_main(
                             },
                             None => {
                                 let mut result = String::new();
-                                active_tab_and_connected_client_id!(
-                                    screen,
-                                    client_id,
-                                    |tab: &mut Tab, client_id: ClientId| {
-                                        result = tab.get_dump_active_terminal_screen(client_id, full);
-                                        Ok::<(), anyhow::Error>(())
-                                    },
-                                    ?
-                                );
+                                if ansi {
+                                    active_tab_and_connected_client_id!(
+                                        screen,
+                                        client_id,
+                                        |tab: &mut Tab, client_id: ClientId| {
+                                            result = tab.get_dump_with_ansi_active_terminal_screen(client_id, full);
+                                            Ok::<(), anyhow::Error>(())
+                                        },
+                                        ?
+                                    );
+                                } else {
+                                    active_tab_and_connected_client_id!(
+                                        screen,
+                                        client_id,
+                                        |tab: &mut Tab, client_id: ClientId| {
+                                            result = tab.get_dump_active_terminal_screen(client_id, full);
+                                            Ok::<(), anyhow::Error>(())
+                                        },
+                                        ?
+                                    );
+                                }
                                 result
                             },
                         };
@@ -5491,21 +5573,17 @@ pub(crate) fn screen_thread_main(
                     .with_context(err_context)
                     .non_fatal();
             },
-            ScreenInstruction::EditScrollback(client_id, completion_tx) => {
+            ScreenInstruction::EditScrollback(client_id, ansi, completion_tx) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
-                    |tab: &mut Tab, client_id: ClientId| tab.edit_scrollback(client_id, completion_tx),
-                    ?
-                );
-                screen.render(None)?;
-                screen.log_and_report_session_state()?;
-            },
-            ScreenInstruction::EditScrollbackRaw(client_id, completion_tx) => {
-                active_tab_and_connected_client_id!(
-                    screen,
-                    client_id,
-                    |tab: &mut Tab, client_id: ClientId| tab.edit_scrollback_raw(client_id, completion_tx),
+                    |tab: &mut Tab, client_id: ClientId| {
+                        if ansi {
+                            tab.edit_scrollback_raw(client_id, completion_tx)
+                        } else {
+                            tab.edit_scrollback(client_id, completion_tx)
+                        }
+                    },
                     ?
                 );
                 screen.render(None)?;
@@ -8217,11 +8295,15 @@ pub(crate) fn screen_thread_main(
                 client_id,
                 pane_ids,
                 scrollback,
+                ansi,
             } => {
-                screen.subscribe_to_pane_renders(client_id, pane_ids, scrollback);
+                screen.subscribe_to_pane_renders(client_id, pane_ids, scrollback, ansi);
             },
             ScreenInstruction::NotifyPaneClosedToSubscribers { pane_id } => {
                 screen.notify_pane_closed_to_subscribers(pane_id);
+            },
+            ScreenInstruction::PluginSubscribedToAnsiPaneContents(has_subscribers) => {
+                screen.plugins_need_ansi_pane_contents = has_subscribers;
             },
             // Pane-targeting CLI handlers
             ScreenInstruction::ScrollUpWithPaneId(pane_id, mut _completion_tx) => {
@@ -8455,13 +8537,18 @@ pub(crate) fn screen_thread_main(
                 }
                 screen.render(None)?;
             },
-            ScreenInstruction::EditScrollbackWithPaneId(pane_id, completion_tx) => {
+            ScreenInstruction::EditScrollbackWithPaneId(pane_id, ansi, completion_tx) => {
                 let all_tabs = screen.get_tabs_mut();
                 let mut found = false;
                 for tab in all_tabs.values_mut() {
                     if tab.has_pane_with_pid(&pane_id) {
-                        tab.edit_scrollback_for_pane_with_id(pane_id, completion_tx)
-                            .non_fatal();
+                        if ansi {
+                            tab.edit_scrollback_raw_for_pane_with_id(pane_id, completion_tx)
+                                .non_fatal();
+                        } else {
+                            tab.edit_scrollback_for_pane_with_id(pane_id, completion_tx)
+                                .non_fatal();
+                        }
                         found = true;
                         break;
                     }

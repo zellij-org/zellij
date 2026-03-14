@@ -878,6 +878,7 @@ fn test_client_messages() {
             file_path: Some("/path/to/file".to_owned()),
             include_scrollback: false,
             pane_id: None,
+            ansi: false,
         },
         terminal_id: Some(1),
         client_id: Some(100),
@@ -888,6 +889,7 @@ fn test_client_messages() {
             file_path: Some("/path/to/file".to_owned()),
             include_scrollback: true,
             pane_id: None,
+            ansi: false,
         },
         terminal_id: Some(1),
         client_id: Some(100),
@@ -898,6 +900,7 @@ fn test_client_messages() {
             file_path: Some("/path/to/file".to_owned()),
             include_scrollback: true,
             pane_id: Some(PaneId::Terminal(5)),
+            ansi: false,
         },
         terminal_id: Some(1),
         client_id: Some(100),
@@ -908,6 +911,7 @@ fn test_client_messages() {
             file_path: None,
             include_scrollback: false,
             pane_id: None,
+            ansi: false,
         },
         terminal_id: Some(1),
         client_id: Some(100),
@@ -920,7 +924,7 @@ fn test_client_messages() {
         is_cli_client: true,
     });
     test_client_roundtrip!(ClientToServerMsg::Action {
-        action: Action::EditScrollback,
+        action: Action::EditScrollback { ansi: false },
         terminal_id: Some(1),
         client_id: Some(100),
         is_cli_client: true,
@@ -3067,14 +3071,17 @@ fn test_client_messages() {
     test_client_roundtrip!(ClientToServerMsg::SubscribeToPaneRenders {
         pane_ids: vec![PaneId::Terminal(1), PaneId::Plugin(2)],
         scrollback: Some(100),
+        ansi: false,
     });
     test_client_roundtrip!(ClientToServerMsg::SubscribeToPaneRenders {
         pane_ids: vec![PaneId::Terminal(0)],
         scrollback: None,
+        ansi: false,
     });
     test_client_roundtrip!(ClientToServerMsg::SubscribeToPaneRenders {
         pane_ids: vec![PaneId::Terminal(1)],
         scrollback: Some(0),
+        ansi: true,
     });
     // Pane-targeting roundtrips
     test_client_roundtrip!(ClientToServerMsg::Action {
@@ -3206,6 +3213,34 @@ fn test_client_messages() {
     test_client_roundtrip!(ClientToServerMsg::Action {
         action: Action::EditScrollbackByPaneId {
             pane_id: PaneId::Terminal(1),
+            ansi: false,
+        },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    // ANSI flag roundtrip tests
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::DumpScreen {
+            file_path: Some("/path".to_owned()),
+            include_scrollback: true,
+            pane_id: None,
+            ansi: true,
+        },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::EditScrollback { ansi: true },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::EditScrollbackByPaneId {
+            pane_id: PaneId::Terminal(1),
+            ansi: true,
         },
         terminal_id: Some(1),
         client_id: Some(100),

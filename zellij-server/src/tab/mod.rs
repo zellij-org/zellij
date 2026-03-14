@@ -608,6 +608,14 @@ pub trait Pane {
         _get_full_scrollback: bool,
         _max_scrollback_lines: Option<usize>,
     ) -> PaneContents;
+    fn pane_contents_with_ansi(
+        &self,
+        _client_id: Option<ClientId>,
+        _get_full_scrollback: bool,
+        _max_scrollback_lines: Option<usize>,
+    ) -> PaneContents {
+        Default::default()
+    }
     fn update_exit_status(&mut self, _exit_status: i32) {}
     fn set_plugin_regex_highlights(
         &mut self,
@@ -4102,6 +4110,18 @@ impl Tab {
         }
         Ok(())
     }
+    pub fn dump_with_ansi_terminal_screen(
+        &mut self,
+        file: Option<String>,
+        pane_id: PaneId,
+        full: bool,
+    ) -> Result<()> {
+        if let Some(pane) = self.get_pane_with_id(pane_id) {
+            let dump = pane.dump_screen_with_ansi(full, None);
+            self.os_api.write_to_file(dump, file).non_fatal()
+        }
+        Ok(())
+    }
     pub fn get_dump_active_terminal_screen(&mut self, client_id: ClientId, full: bool) -> String {
         if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
             active_pane.dump_screen(full, Some(client_id))
@@ -4109,9 +4129,31 @@ impl Tab {
             String::new()
         }
     }
+    pub fn get_dump_with_ansi_active_terminal_screen(
+        &mut self,
+        client_id: ClientId,
+        full: bool,
+    ) -> String {
+        if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
+            active_pane.dump_screen_with_ansi(full, Some(client_id))
+        } else {
+            String::new()
+        }
+    }
     pub fn get_dump_terminal_screen(&mut self, pane_id: PaneId, full: bool) -> Option<String> {
         if let Some(pane) = self.get_pane_with_id(pane_id) {
             Some(pane.dump_screen(full, None))
+        } else {
+            None
+        }
+    }
+    pub fn get_dump_with_ansi_terminal_screen(
+        &mut self,
+        pane_id: PaneId,
+        full: bool,
+    ) -> Option<String> {
+        if let Some(pane) = self.get_pane_with_id(pane_id) {
+            Some(pane.dump_screen_with_ansi(full, None))
         } else {
             None
         }
@@ -4180,6 +4222,34 @@ impl Tab {
             file.push(format!("{}.dump", Uuid::new_v4()));
             self.dump_terminal_screen(Some(String::from(file.to_string_lossy())), pane_id, true)
                 .non_fatal();
+            let line_number = self
+                .get_pane_with_id(pane_id)
+                .and_then(|a_t| a_t.get_line_number());
+            self.senders.send_to_pty(PtyInstruction::OpenInPlaceEditor(
+                file,
+                line_number,
+                ClientTabIndexOrPaneId::PaneId(pane_id),
+                completion_tx,
+            ))
+        } else {
+            log::error!("Editing plugin pane scrollback is currently unsupported.");
+            Ok(())
+        }
+    }
+    pub fn edit_scrollback_raw_for_pane_with_id(
+        &mut self,
+        pane_id: PaneId,
+        completion_tx: Option<NotificationEnd>,
+    ) -> Result<()> {
+        if let PaneId::Terminal(_terminal_pane_id) = pane_id {
+            let mut file = temp_dir();
+            file.push(format!("{}.dump", Uuid::new_v4()));
+            self.dump_with_ansi_terminal_screen(
+                Some(String::from(file.to_string_lossy())),
+                pane_id,
+                true,
+            )
+            .non_fatal();
             let line_number = self
                 .get_pane_with_id(pane_id)
                 .and_then(|a_t| a_t.get_line_number());

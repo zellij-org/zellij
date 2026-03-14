@@ -229,7 +229,7 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<KeyWithModifier
         (s("Scroll half page"), s("Scroll"),
             action_key_group(&km, &[&[Action::HalfPageScrollDown], &[Action::HalfPageScrollUp]])),
         (s("Edit scrollback in default editor"), s("Edit"),
-            action_key(&km, &[Action::EditScrollback, TO_NORMAL])),
+            action_key(&km, &[Action::EditScrollback { ansi: false }, TO_NORMAL])),
         (s("Select pane"), s("Select"), to_normal_key),
     ]} else if mi.mode == IM::EnterSearch { vec![
         (s("When done"), s("Done"), action_key(&km, &[A::SwitchToMode{input_mode: IM::Search}])),

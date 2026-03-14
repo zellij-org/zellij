@@ -65,6 +65,7 @@ enum EventType {
     AvailableLayoutInfo = 40;
     PluginConfigurationChanged = 41;
     HighlightClicked = 42;
+    PaneRenderReportWithAnsi = 43;
 }
 
 message EventNameList {
@@ -109,6 +110,7 @@ message Event {
     AvailableLayoutInfoPayload available_layout_info_payload = 34;
     PluginConfigurationChangedPayload plugin_configuration_changed_payload = 35;
     HighlightClickedPayload highlight_clicked_payload = 36;
+    PaneRenderReportPayload pane_render_report_with_ansi_payload = 37;
   }
 }
 
