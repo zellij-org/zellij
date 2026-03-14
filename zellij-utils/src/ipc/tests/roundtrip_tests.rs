@@ -1328,6 +1328,7 @@ fn test_client_messages() {
         action: Action::NewTiledPane {
             command: None,
             direction: None,
+            split_size: None,
             pane_name: None,
             near_current_pane: false,
             borderless: None,
@@ -1353,6 +1354,7 @@ fn test_client_messages() {
                 use_terminal_title: false,
             }),
             direction: Some(Direction::Right),
+            split_size: Some(SplitSize::Percent(30)),
             pane_name: Some("my_pane_name".to_owned()),
             near_current_pane: false,
             borderless: Some(true),
