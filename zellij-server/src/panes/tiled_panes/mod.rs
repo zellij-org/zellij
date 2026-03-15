@@ -3,7 +3,7 @@ mod stacked_panes;
 mod tiled_pane_grid;
 
 use crate::resize_pty;
-use tiled_pane_grid::{split, TiledPaneGrid, RESIZE_PERCENT};
+use tiled_pane_grid::{split, split_with_size, TiledPaneGrid, RESIZE_PERCENT};
 
 use crate::{
     os_input_output::ServerOsApi,
@@ -22,7 +22,7 @@ use zellij_utils::{
     errors::prelude::*,
     input::{
         command::RunCommand,
-        layout::{Run, RunPluginOrAlias, SplitDirection},
+        layout::{PercentOrFixed, Run, RunPluginOrAlias, SplitDirection},
     },
     pane_size::{Offset, PaneGeom, Size, SizeInPixels, Viewport},
 };
@@ -659,6 +659,7 @@ impl TiledPanes {
         pid: PaneId,
         mut new_pane: Box<dyn Pane>,
         client_id: ClientId,
+        size: Option<PercentOrFixed>,
     ) {
         let active_pane_id = &self.active_panes.get(&client_id).unwrap();
         let mut full_pane_size = self
@@ -680,7 +681,7 @@ impl TiledPanes {
         }
         let active_pane = self.panes.get_mut(active_pane_id).unwrap();
         if let Some((top_winsize, bottom_winsize)) =
-            split(SplitDirection::Horizontal, &full_pane_size)
+            split_with_size(SplitDirection::Horizontal, &full_pane_size, size)
         {
             if active_pane.position_and_size().is_stacked() {
                 match StackedPanes::new_from_btreemap(&mut self.panes, &self.panes_to_hide)
@@ -704,6 +705,7 @@ impl TiledPanes {
         pid: PaneId,
         mut new_pane: Box<dyn Pane>,
         client_id: ClientId,
+        size: Option<PercentOrFixed>,
     ) {
         let active_pane_id = &self.active_panes.get(&client_id).unwrap();
         let mut full_pane_size = self
@@ -725,7 +727,7 @@ impl TiledPanes {
         }
         let active_pane = self.panes.get_mut(active_pane_id).unwrap();
         if let Some((left_winsize, right_winsize)) =
-            split(SplitDirection::Vertical, &full_pane_size)
+            split_with_size(SplitDirection::Vertical, &full_pane_size, size)
         {
             if active_pane.position_and_size().is_stacked() {
                 match StackedPanes::new_from_btreemap(&mut self.panes, &self.panes_to_hide)
