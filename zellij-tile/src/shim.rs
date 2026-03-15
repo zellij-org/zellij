@@ -1587,6 +1587,15 @@ where
     unsafe { host_run_plugin_command() };
 }
 
+/// List host entries (drives and WSL distributions on Windows, just `/` on Unix).
+/// Results are returned via the `FileSystemUpdate` event.
+pub fn list_host_entries() {
+    let plugin_command = PluginCommand::ListHostEntries;
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 /// Scan a specific folder in the host filesystem (this is a hack around some WASI runtime performance
 /// issues), will not follow symlinks
 pub fn scan_host_folder<S: AsRef<Path>>(folder_to_scan: &S) {

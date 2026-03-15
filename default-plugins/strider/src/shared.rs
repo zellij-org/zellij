@@ -79,6 +79,19 @@ pub fn render_search_term(search_term: &str) {
     println!("")
 }
 
+pub fn render_virtual_root_header(_cols: usize) {
+    let prompt = "PATH: ";
+    let title = "Computer";
+    let prompt_len = prompt.width();
+    let path_end = prompt_len + title.width();
+    let text = Text::new(format!("{}{}", prompt, title))
+        .color_range(2, 0..prompt_len)
+        .color_range(0, prompt_len..path_end);
+    print_text(text);
+    println!();
+    println!();
+}
+
 pub fn render_current_path(
     full_path: &PathBuf,
     path_is_dir: bool,

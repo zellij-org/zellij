@@ -67,14 +67,28 @@ impl Platform {
     pub fn ensure_drive_root(path: PathBuf, platform: Platform) -> PathBuf {
         if platform == Platform::Windows {
             let s = path.to_string_lossy();
-            if s.len() == 2
-                && s.as_bytes()[0].is_ascii_alphabetic()
-                && s.as_bytes()[1] == b':'
-            {
+            if s.len() == 2 && s.as_bytes()[0].is_ascii_alphabetic() && s.as_bytes()[1] == b':' {
                 return PathBuf::from(format!("{}/", s));
             }
         }
         path
+    }
+
+    /// Display name for a virtual root entry.
+    /// `C:/` → `C:\`, `//wsl.localhost/Ubuntu/` → `Ubuntu (WSL)`, `/` → `/`.
+    pub fn virtual_root_display_name(path: &Path, platform: Platform) -> String {
+        let s = path.to_string_lossy();
+        match platform {
+            Platform::Windows => {
+                if s.starts_with("//wsl.localhost/") {
+                    let rest = &s["//wsl.localhost/".len()..];
+                    let distro = rest.trim_end_matches('/');
+                    return format!("{} (WSL)", distro);
+                }
+                Platform::to_host_display(path, platform)
+            },
+            Platform::Unix => s.into_owned(),
+        }
     }
 
     /// Check if a path is a filesystem root.
@@ -93,17 +107,17 @@ impl Platform {
                 {
                     return true;
                 }
-                if s.len() == 2
-                    && s.as_bytes()[0].is_ascii_alphabetic()
-                    && s.as_bytes()[1] == b':'
+                if s.len() == 2 && s.as_bytes()[0].is_ascii_alphabetic() && s.as_bytes()[1] == b':'
                 {
                     return true;
                 }
                 // UNC root: //server/share (at most 4 path components)
                 if s.starts_with("//") {
                     let without_prefix = &s[2..];
-                    let parts: Vec<&str> =
-                        without_prefix.split('/').filter(|p| !p.is_empty()).collect();
+                    let parts: Vec<&str> = without_prefix
+                        .split('/')
+                        .filter(|p| !p.is_empty())
+                        .collect();
                     return parts.len() <= 2;
                 }
                 s.is_empty()
@@ -160,32 +174,20 @@ mod tests {
     #[test]
     fn to_host_display_unix() {
         let p = PathBuf::from("/home/user");
-        assert_eq!(
-            Platform::to_host_display(&p, Platform::Unix),
-            "/home/user"
-        );
+        assert_eq!(Platform::to_host_display(&p, Platform::Unix), "/home/user");
     }
 
     #[test]
     fn is_root_unix() {
         assert!(Platform::is_root(&PathBuf::from("/"), Platform::Unix));
         assert!(Platform::is_root(&PathBuf::from(""), Platform::Unix));
-        assert!(!Platform::is_root(
-            &PathBuf::from("/home"),
-            Platform::Unix
-        ));
+        assert!(!Platform::is_root(&PathBuf::from("/home"), Platform::Unix));
     }
 
     #[test]
     fn is_root_windows_drive() {
-        assert!(Platform::is_root(
-            &PathBuf::from("C:/"),
-            Platform::Windows
-        ));
-        assert!(Platform::is_root(
-            &PathBuf::from("C:"),
-            Platform::Windows
-        ));
+        assert!(Platform::is_root(&PathBuf::from("C:/"), Platform::Windows));
+        assert!(Platform::is_root(&PathBuf::from("C:"), Platform::Windows));
         assert!(!Platform::is_root(
             &PathBuf::from("C:/Users"),
             Platform::Windows
