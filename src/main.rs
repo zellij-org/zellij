@@ -137,6 +137,7 @@ fn main() {
                 height,
                 pinned,
                 stacked,
+                size: None,
                 blocking,
                 block_until_exit_success: false,
                 block_until_exit_failure: false,
