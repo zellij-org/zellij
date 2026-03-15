@@ -21,16 +21,43 @@ pub fn test(sh: &Shell, flags: flags::Test) -> anyhow::Result<()> {
     )
     .context(err_context)?;
 
-    for WorkspaceMember { crate_name, .. } in crate::workspace_members().iter() {
+    // Test all plugins in a single invocation so Cargo unifies features and compiles
+    // shared crates (e.g. zellij-utils) only once, mirroring how plugins are built.
+    {
+        let plugin_names: Vec<&str> = crate::workspace_members()
+            .iter()
+            .filter(|m| m.crate_name.contains("plugins"))
+            .map(|m| m.crate_name.rsplit_once('/').unwrap().1)
+            .collect();
+
+        if !plugin_names.is_empty() {
+            println!();
+            let msg = ">> Testing plugins";
+            crate::status(msg);
+            println!("{}", msg);
+
+            let mut cmd = cmd!(sh, "{cargo} test --target {host_triple}");
+            for name in &plugin_names {
+                cmd = cmd.args(["-p", name]);
+            }
+            cmd.arg("--")
+                .args(&flags.args)
+                .run()
+                .context("Failed to run plugin tests")?;
+        }
+    }
+
+    for WorkspaceMember { crate_name, .. } in crate::workspace_members()
+        .iter()
+        .filter(|m| !m.crate_name.contains("plugins"))
+    {
         let _pd = sh.push_dir(Path::new(crate_name));
         println!();
         let msg = format!(">> Testing '{}'", crate_name);
         crate::status(&msg);
         println!("{}", msg);
 
-        let cmd = if crate_name.contains("plugins") {
-            cmd!(sh, "{cargo} test --target {host_triple} --")
-        } else if flags.no_web {
+        let cmd = if flags.no_web {
             // Check if this crate has web features that need modification
             match metadata::get_no_web_features(sh, crate_name)
                 .context("Failed to check web features")?

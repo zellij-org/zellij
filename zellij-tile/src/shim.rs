@@ -8,9 +8,36 @@ use zellij_utils::data::*;
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::actions::Action;
 pub use zellij_utils::plugin_api;
+use zellij_utils::plugin_api::event::ProtobufPaneScrollbackResponse;
+use zellij_utils::plugin_api::generated_api::api::plugin_command::{
+    hide_floating_panes_response, save_session_response, show_floating_panes_response,
+};
 use zellij_utils::plugin_api::plugin_command::{
-    CreateTokenResponse, ListTokensResponse, ProtobufPluginCommand, RenameWebTokenResponse,
-    RevokeAllWebTokensResponse, RevokeTokenResponse,
+    dump_layout_response, dump_session_layout_response, get_focused_pane_info_response,
+    get_pane_cwd_response, get_pane_running_command_response, parse_layout_response,
+    CreateTokenResponse, ListTokensResponse, ProtobufBreakPanesToNewTabResponse,
+    ProtobufBreakPanesToTabWithIdResponse, ProtobufBreakPanesToTabWithIndexResponse,
+    ProtobufCurrentSessionLastSavedTimeResponse, ProtobufDeleteLayoutResponse,
+    ProtobufDumpLayoutResponse, ProtobufDumpSessionLayoutResponse, ProtobufEditLayoutResponse,
+    ProtobufFocusOrCreateTabResponse, ProtobufGenerateRandomNameResponse,
+    ProtobufGetFocusedPaneInfoResponse, ProtobufGetLayoutDirResponse, ProtobufGetPaneCwdResponse,
+    ProtobufGetPaneInfoResponse, ProtobufGetPanePidResponse, ProtobufGetPaneRunningCommandResponse,
+    ProtobufGetSessionEnvironmentVariablesResponse, ProtobufGetTabInfoResponse,
+    ProtobufHideFloatingPanesResponse, ProtobufNewTabResponse, ProtobufNewTabsResponse,
+    ProtobufOpenCommandPaneBackgroundResponse, ProtobufOpenCommandPaneFloatingNearPluginResponse,
+    ProtobufOpenCommandPaneFloatingResponse, ProtobufOpenCommandPaneInPlaceOfPaneIdResponse,
+    ProtobufOpenCommandPaneInPlaceOfPluginResponse, ProtobufOpenCommandPaneInPlaceResponse,
+    ProtobufOpenCommandPaneNearPluginResponse, ProtobufOpenCommandPaneResponse,
+    ProtobufOpenEditPaneInPlaceOfPaneIdResponse, ProtobufOpenFileFloatingNearPluginResponse,
+    ProtobufOpenFileFloatingResponse, ProtobufOpenFileInPlaceOfPluginResponse,
+    ProtobufOpenFileInPlaceResponse, ProtobufOpenFileNearPluginResponse, ProtobufOpenFileResponse,
+    ProtobufOpenPaneInNewTabResponse, ProtobufOpenTerminalFloatingNearPluginResponse,
+    ProtobufOpenTerminalFloatingResponse, ProtobufOpenTerminalInPlaceOfPluginResponse,
+    ProtobufOpenTerminalInPlaceResponse, ProtobufOpenTerminalNearPluginResponse,
+    ProtobufOpenTerminalPaneInPlaceOfPaneIdResponse, ProtobufOpenTerminalResponse,
+    ProtobufParseLayoutResponse, ProtobufPluginCommand, ProtobufRenameLayoutResponse,
+    ProtobufSaveLayoutResponse, ProtobufSaveSessionResponse, ProtobufShowFloatingPanesResponse,
+    RenameWebTokenResponse, RevokeAllWebTokensResponse, RevokeTokenResponse,
 };
 use zellij_utils::plugin_api::plugin_ids::{ProtobufPluginIds, ProtobufZellijVersion};
 
@@ -47,6 +74,17 @@ pub fn set_selectable(selectable: bool) {
     unsafe { host_run_plugin_command() };
 }
 
+/// Shows the cursor at specific coordinates or hides it
+///
+/// # Arguments
+/// * `cursor_position` - None to hide cursor, Some((x, y)) to show at coordinates
+pub fn show_cursor(cursor_position: Option<(usize, usize)>) {
+    let plugin_command = PluginCommand::ShowCursor(cursor_position);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 pub fn request_permission(permissions: &[PermissionType]) {
     let plugin_command = PluginCommand::RequestPluginPermissions(permissions.into());
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
@@ -77,14 +115,292 @@ pub fn get_zellij_version() -> String {
     protobuf_zellij_version.version
 }
 
+/// Generates a random human-readable name using Zellij's curated word lists.
+/// Returns a name in the format AdjectiveNoun (e.g., "BraveRustacean", "ZippyWeasel").
+///
+/// This uses the same word lists as session name generation, providing
+/// approximately 4,096 unique combinations.
+pub fn generate_random_name() -> String {
+    let plugin_command = PluginCommand::GenerateRandomName;
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+    let response =
+        ProtobufGenerateRandomNameResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
+    response.name
+}
+
+/// Dumps a layout by name and returns its KDL content as a String
+///
+/// Supports both built-in layouts (eg. "default", "compact", "welcome")
+/// and custom layouts from the plugin's layout directory.
+pub fn dump_layout(layout_name: &str) -> Result<String, String> {
+    // Create the plugin command with the layout name
+    let plugin_command = PluginCommand::DumpLayout(layout_name.to_string());
+
+    // Convert to protobuf and encode
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+
+    // Call the host function (blocks until response)
+    unsafe { host_run_plugin_command() };
+
+    // Read and decode the response
+    let response_bytes =
+        bytes_from_stdin().map_err(|e| format!("Failed to read response from stdin: {:?}", e))?;
+
+    let protobuf_response = ProtobufDumpLayoutResponse::decode(response_bytes.as_slice())
+        .map_err(|e| format!("Failed to decode protobuf response: {}", e))?;
+
+    // Extract result from the oneof field
+    match protobuf_response.result {
+        Some(dump_layout_response::Result::LayoutContent(content)) => Ok(content),
+        Some(dump_layout_response::Result::Error(error)) => Err(error),
+        None => Err("Server returned empty response".to_string()),
+    }
+}
+
+/// Returns the path to the layout directory.
+///
+/// This is the directory where Zellij looks for layout files. It can be:
+/// - The directory specified via CLI `--layout-dir` flag
+/// - The directory specified in the config file
+/// - The directory specified via ZELLIJ_LAYOUT_DIR env var
+/// - The default: `~/.config/zellij/layouts`
+///
+/// # Returns
+/// A String containing the absolute path to the layout directory.
+/// Returns an empty string if the layout directory cannot be determined (rare edge case).
+pub fn get_layout_dir() -> String {
+    let plugin_command = PluginCommand::GetLayoutDir;
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+    let response =
+        ProtobufGetLayoutDirResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
+    response.layout_dir
+}
+
+pub fn get_session_environment_variables() -> BTreeMap<String, String> {
+    let plugin_command = PluginCommand::GetSessionEnvironmentVariables;
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+
+    let response = ProtobufGetSessionEnvironmentVariablesResponse::decode(
+        bytes_from_stdin().unwrap().as_slice(),
+    )
+    .unwrap();
+
+    response
+        .env_vars
+        .into_iter()
+        .map(|env_var| (env_var.name, env_var.value))
+        .collect()
+}
+
+/// Returns the focused pane ID and tab index for the client associated with this plugin.
+pub fn get_focused_pane_info() -> Result<(usize, PaneId), String> {
+    let plugin_command = PluginCommand::GetFocusedPaneInfo;
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+
+    let protobuf_response =
+        ProtobufGetFocusedPaneInfoResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
+
+    match protobuf_response.result {
+        Some(get_focused_pane_info_response::Result::FocusedPaneInfo(info)) => {
+            let tab_index = info.focused_tab_index as usize;
+            match info.focused_pane_id {
+                Some(pb_pane_id) => match pb_pane_id.try_into() {
+                    Ok(pane_id) => Ok((tab_index, pane_id)),
+                    Err(_) => Err("Invalid pane_id in response".to_string()),
+                },
+                None => Err("Missing pane_id in response".to_string()),
+            }
+        },
+        Some(get_focused_pane_info_response::Result::Error(err)) => Err(err),
+        None => Err("Empty response from host".to_string()),
+    }
+}
+
+/// Query information about a specific pane by its PaneId.
+///
+/// This synchronously queries Zellij for detailed information about the pane with the given ID,
+/// including its position, size, state, and other metadata.
+///
+/// # Parameters
+///
+/// - `pane_id`: The ID of the pane to query
+///
+/// # Returns
+///
+/// - `Some(PaneInfo)` if the pane exists and information was successfully retrieved
+/// - `None` if the pane does not exist or could not be found
+///
+/// # Example
+///
+/// ```no_run
+/// use zellij_tile::prelude::*;
+///
+/// // Query info for a specific pane
+/// let pane_id = PaneId::Terminal(1);
+/// match get_pane_info(pane_id) {
+///     Some(info) => {
+///         println!("Pane title: {}", info.title);
+///         println!("Pane is focused: {}", info.is_focused);
+///         println!("Pane position: ({}, {})", info.pane_x, info.pane_y);
+///     },
+///     None => println!("Pane not found"),
+/// }
+/// ```
+pub fn get_pane_info(pane_id: PaneId) -> Option<PaneInfo> {
+    let plugin_command = PluginCommand::GetPaneInfo(pane_id);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+
+    let protobuf_response =
+        ProtobufGetPaneInfoResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
+
+    protobuf_response
+        .pane_info
+        .and_then(|pb_pane_info| pb_pane_info.try_into().ok())
+}
+
+/// Query information about a specific tab by its tab ID.
+///
+/// This synchronously queries Zellij for detailed information about the tab with the given ID,
+/// including its name, position, active state, pane counts, and other metadata.
+///
+/// # Parameters
+///
+/// - `tab_id`: The stable ID of the tab to query
+///
+/// # Returns
+///
+/// - `Some(TabInfo)` if the tab exists and information was successfully retrieved
+/// - `None` if the tab does not exist or could not be found
+///
+/// # Example
+///
+/// ```no_run
+/// use zellij_tile::prelude::*;
+///
+/// // Query info for a specific tab
+/// let tab_id = 3;
+/// match get_tab_info(tab_id) {
+///     Some(info) => {
+///         println!("Tab name: {}", info.name);
+///         println!("Tab position: {}", info.position);
+///         println!("Tab is active: {}", info.active);
+///         println!("Tiled panes: {}", info.selectable_tiled_panes_count);
+///     },
+///     None => println!("Tab not found"),
+/// }
+/// ```
+pub fn get_tab_info(tab_id: usize) -> Option<TabInfo> {
+    let plugin_command = PluginCommand::GetTabInfo(tab_id);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+
+    let protobuf_response =
+        ProtobufGetTabInfoResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
+
+    protobuf_response
+        .tab_info
+        .and_then(|pb_tab_info| pb_tab_info.try_into().ok())
+}
+
+/// Save the current session state to disk immediately.
+///
+/// This triggers an immediate write of the current session metadata and layout
+/// to the session cache directory (~/.cache/zellij/contract_version_1/session_info/<session_name>/).
+///
+/// # Returns
+///
+/// - `Ok(())` if the save request was successfully sent
+/// - `Err(String)` if there was an error sending the request
+///
+/// # Example
+///
+/// ```no_run
+/// use zellij_tile::prelude::*;
+///
+/// // Save the current session
+/// match save_session() {
+///     Ok(()) => println!("Session saved successfully"),
+///     Err(e) => eprintln!("Failed to save session: {}", e),
+/// }
+/// ```
+pub fn save_session() -> Result<(), String> {
+    let plugin_command = PluginCommand::SaveSession;
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+
+    unsafe { host_run_plugin_command() };
+
+    let response_bytes =
+        bytes_from_stdin().map_err(|e| format!("Failed to read response: {:?}", e))?;
+    let protobuf_response = ProtobufSaveSessionResponse::decode(response_bytes.as_slice())
+        .map_err(|e| format!("Failed to decode response: {}", e))?;
+
+    match protobuf_response.result {
+        Some(save_session_response::Result::Success(_)) => Ok(()),
+        Some(save_session_response::Result::Error(error)) => Err(error),
+        None => Err("Server returned empty response".to_string()),
+    }
+}
+
+/// Returns the elapsed time in milliseconds since the current session state was last saved to disk.
+///
+/// Returns `None` if the session has never been saved during this session.
+/// The returned value is the number of milliseconds elapsed since the last save, not a Unix epoch timestamp.
+///
+/// # Example
+///
+/// ```no_run
+/// use zellij_tile::prelude::*;
+///
+/// if let Some(elapsed_millis) = current_session_last_saved_time() {
+///     println!("Session was last saved {} ms ago", elapsed_millis);
+/// } else {
+///     println!("Session has not been saved yet");
+/// }
+/// ```
+pub fn current_session_last_saved_time() -> Option<u64> {
+    let plugin_command = PluginCommand::CurrentSessionLastSavedTime;
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+
+    let protobuf_response =
+        ProtobufCurrentSessionLastSavedTimeResponse::decode(bytes_from_stdin().unwrap().as_slice())
+            .unwrap();
+
+    protobuf_response.timestamp_millis
+}
+
 // Host Functions
 
 /// Open a file in the user's default `$EDITOR` in a new pane
-pub fn open_file(file_to_open: FileToOpen, context: BTreeMap<String, String>) {
+pub fn open_file(file_to_open: FileToOpen, context: BTreeMap<String, String>) -> Option<PaneId> {
     let plugin_command = PluginCommand::OpenFile(file_to_open, context);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
+
+    let response = match bytes_from_stdin() {
+        Ok(bytes_from_stdin) => ProtobufOpenFileResponse::decode(bytes_from_stdin.as_slice()).ok(),
+        Err(e) => {
+            eprintln!("{}", e);
+            None
+        },
+    };
+    response.and_then(|r| OpenFileResponse::try_from(r).ok().flatten())
 }
 
 /// Open a file in the user's default `$EDITOR` in a new floating pane
@@ -92,27 +408,45 @@ pub fn open_file_floating(
     file_to_open: FileToOpen,
     coordinates: Option<FloatingPaneCoordinates>,
     context: BTreeMap<String, String>,
-) {
+) -> Option<PaneId> {
     let plugin_command = PluginCommand::OpenFileFloating(file_to_open, coordinates, context);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
+
+    let response =
+        ProtobufOpenFileFloatingResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
+    OpenFileFloatingResponse::try_from(response).unwrap()
 }
 
 /// Open a file in the user's default `$EDITOR`, replacing the focused pane
-pub fn open_file_in_place(file_to_open: FileToOpen, context: BTreeMap<String, String>) {
+pub fn open_file_in_place(
+    file_to_open: FileToOpen,
+    context: BTreeMap<String, String>,
+) -> Option<PaneId> {
     let plugin_command = PluginCommand::OpenFileInPlace(file_to_open, context);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
+
+    let response =
+        ProtobufOpenFileInPlaceResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
+    OpenFileInPlaceResponse::try_from(response).unwrap()
 }
 
 /// Open a file in the user's default `$EDITOR` in a new pane near th eplugin
-pub fn open_file_near_plugin(file_to_open: FileToOpen, context: BTreeMap<String, String>) {
+pub fn open_file_near_plugin(
+    file_to_open: FileToOpen,
+    context: BTreeMap<String, String>,
+) -> Option<PaneId> {
     let plugin_command = PluginCommand::OpenFileNearPlugin(file_to_open, context);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
+
+    let response =
+        ProtobufOpenFileNearPluginResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
+    OpenFileNearPluginResponse::try_from(response).unwrap()
 }
 
 /// Open a file in the user's default `$EDITOR` in a new floating pane near the plugin
@@ -120,12 +454,17 @@ pub fn open_file_floating_near_plugin(
     file_to_open: FileToOpen,
     coordinates: Option<FloatingPaneCoordinates>,
     context: BTreeMap<String, String>,
-) {
+) -> Option<PaneId> {
     let plugin_command =
         PluginCommand::OpenFileFloatingNearPlugin(file_to_open, coordinates, context);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
+
+    let response =
+        ProtobufOpenFileFloatingNearPluginResponse::decode(bytes_from_stdin().unwrap().as_slice())
+            .unwrap();
+    OpenFileFloatingNearPluginResponse::try_from(response).unwrap()
 }
 
 /// Open a file in the user's default `$EDITOR`, replacing the plugin pane
@@ -133,43 +472,62 @@ pub fn open_file_in_place_of_plugin(
     file_to_open: FileToOpen,
     close_plugin_after_replace: bool,
     context: BTreeMap<String, String>,
-) {
+) -> Option<PaneId> {
     let plugin_command =
         PluginCommand::OpenFileInPlaceOfPlugin(file_to_open, close_plugin_after_replace, context);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
+
+    let response =
+        ProtobufOpenFileInPlaceOfPluginResponse::decode(bytes_from_stdin().unwrap().as_slice())
+            .unwrap();
+    OpenFileInPlaceOfPluginResponse::try_from(response).unwrap()
 }
 /// Open a new terminal pane to the specified location on the host filesystem
-pub fn open_terminal<P: AsRef<Path>>(path: P) {
+pub fn open_terminal<P: AsRef<Path>>(path: P) -> Option<PaneId> {
     let file_to_open = FileToOpen::new(path.as_ref().to_path_buf());
     let plugin_command = PluginCommand::OpenTerminal(file_to_open);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
+
+    let response =
+        ProtobufOpenTerminalResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
+    OpenTerminalResponse::try_from(response).unwrap()
 }
 
 /// Open a new terminal pane to the specified location on the host filesystem
 /// This variant is identical to open_terminal, excpet it opens it near the plugin regardless of
 /// whether the user was focused on it or not
-pub fn open_terminal_near_plugin<P: AsRef<Path>>(path: P) {
+pub fn open_terminal_near_plugin<P: AsRef<Path>>(path: P) -> Option<PaneId> {
     let file_to_open = FileToOpen::new(path.as_ref().to_path_buf());
     let plugin_command = PluginCommand::OpenTerminalNearPlugin(file_to_open);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
+
+    let response =
+        ProtobufOpenTerminalNearPluginResponse::decode(bytes_from_stdin().unwrap().as_slice())
+            .unwrap();
+    OpenTerminalNearPluginResponse::try_from(response).unwrap()
 }
 
 /// Open a new floating terminal pane to the specified location on the host filesystem
 pub fn open_terminal_floating<P: AsRef<Path>>(
     path: P,
     coordinates: Option<FloatingPaneCoordinates>,
-) {
+) -> Option<PaneId> {
     let file_to_open = FileToOpen::new(path.as_ref().to_path_buf());
     let plugin_command = PluginCommand::OpenTerminalFloating(file_to_open, coordinates);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
+
+    let response =
+        ProtobufOpenTerminalFloatingResponse::decode(bytes_from_stdin().unwrap().as_slice())
+            .unwrap();
+    OpenTerminalFloatingResponse::try_from(response).unwrap()
 }
 
 /// Open a new floating terminal pane to the specified location on the host filesystem
@@ -178,41 +536,67 @@ pub fn open_terminal_floating<P: AsRef<Path>>(
 pub fn open_terminal_floating_near_plugin<P: AsRef<Path>>(
     path: P,
     coordinates: Option<FloatingPaneCoordinates>,
-) {
+) -> Option<PaneId> {
     let file_to_open = FileToOpen::new(path.as_ref().to_path_buf());
     let plugin_command = PluginCommand::OpenTerminalFloatingNearPlugin(file_to_open, coordinates);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
+
+    let response = ProtobufOpenTerminalFloatingNearPluginResponse::decode(
+        bytes_from_stdin().unwrap().as_slice(),
+    )
+    .unwrap();
+    OpenTerminalFloatingNearPluginResponse::try_from(response).unwrap()
 }
 
 /// Open a new terminal pane to the specified location on the host filesystem, temporarily
 /// replacing the focused pane
-pub fn open_terminal_in_place<P: AsRef<Path>>(path: P) {
+pub fn open_terminal_in_place<P: AsRef<Path>>(path: P) -> Option<PaneId> {
     let file_to_open = FileToOpen::new(path.as_ref().to_path_buf());
     let plugin_command = PluginCommand::OpenTerminalInPlace(file_to_open);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
+
+    let response =
+        ProtobufOpenTerminalInPlaceResponse::decode(bytes_from_stdin().unwrap().as_slice())
+            .unwrap();
+    OpenTerminalInPlaceResponse::try_from(response).unwrap()
 }
 
 /// Open a new terminal pane to the specified location on the host filesystem, temporarily
 /// replacing the plugin pane
-pub fn open_terminal_in_place_of_plugin<P: AsRef<Path>>(path: P, close_plugin_after_replace: bool) {
+pub fn open_terminal_in_place_of_plugin<P: AsRef<Path>>(
+    path: P,
+    close_plugin_after_replace: bool,
+) -> Option<PaneId> {
     let file_to_open = FileToOpen::new(path.as_ref().to_path_buf());
     let plugin_command =
         PluginCommand::OpenTerminalInPlaceOfPlugin(file_to_open, close_plugin_after_replace);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
+
+    let response =
+        ProtobufOpenTerminalInPlaceOfPluginResponse::decode(bytes_from_stdin().unwrap().as_slice())
+            .unwrap();
+    OpenTerminalInPlaceOfPluginResponse::try_from(response).unwrap()
 }
 
 /// Open a new command pane with the specified command and args (this sort of pane allows the user to control the command, re-run it and see its exit status through the Zellij UI).
-pub fn open_command_pane(command_to_run: CommandToRun, context: BTreeMap<String, String>) {
+pub fn open_command_pane(
+    command_to_run: CommandToRun,
+    context: BTreeMap<String, String>,
+) -> Option<PaneId> {
     let plugin_command = PluginCommand::OpenCommandPane(command_to_run, context);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
+
+    let response =
+        ProtobufOpenCommandPaneResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
+    OpenCommandPaneResponse::try_from(response).unwrap()
 }
 
 /// Open a new command pane with the specified command and args (this sort of pane allows the user to control the command, re-run it and see its exit status through the Zellij UI).
@@ -221,11 +605,16 @@ pub fn open_command_pane(command_to_run: CommandToRun, context: BTreeMap<String,
 pub fn open_command_pane_near_plugin(
     command_to_run: CommandToRun,
     context: BTreeMap<String, String>,
-) {
+) -> Option<PaneId> {
     let plugin_command = PluginCommand::OpenCommandPaneNearPlugin(command_to_run, context);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
+
+    let response =
+        ProtobufOpenCommandPaneNearPluginResponse::decode(bytes_from_stdin().unwrap().as_slice())
+            .unwrap();
+    OpenCommandPaneNearPluginResponse::try_from(response).unwrap()
 }
 
 /// Open a new floating command pane with the specified command and args (this sort of pane allows the user to control the command, re-run it and see its exit status through the Zellij UI).
@@ -233,12 +622,17 @@ pub fn open_command_pane_floating(
     command_to_run: CommandToRun,
     coordinates: Option<FloatingPaneCoordinates>,
     context: BTreeMap<String, String>,
-) {
+) -> Option<PaneId> {
     let plugin_command =
         PluginCommand::OpenCommandPaneFloating(command_to_run, coordinates, context);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
+
+    let response =
+        ProtobufOpenCommandPaneFloatingResponse::decode(bytes_from_stdin().unwrap().as_slice())
+            .unwrap();
+    OpenCommandPaneFloatingResponse::try_from(response).unwrap()
 }
 
 /// Open a new floating command pane with the specified command and args (this sort of pane allows the user to control the command, re-run it and see its exit status through the Zellij UI).
@@ -248,20 +642,34 @@ pub fn open_command_pane_floating_near_plugin(
     command_to_run: CommandToRun,
     coordinates: Option<FloatingPaneCoordinates>,
     context: BTreeMap<String, String>,
-) {
+) -> Option<PaneId> {
     let plugin_command =
         PluginCommand::OpenCommandPaneFloatingNearPlugin(command_to_run, coordinates, context);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
+
+    let response = ProtobufOpenCommandPaneFloatingNearPluginResponse::decode(
+        bytes_from_stdin().unwrap().as_slice(),
+    )
+    .unwrap();
+    OpenCommandPaneFloatingNearPluginResponse::try_from(response).unwrap()
 }
 
 /// Open a new in place command pane with the specified command and args (this sort of pane allows the user to control the command, re-run it and see its exit status through the Zellij UI).
-pub fn open_command_pane_in_place(command_to_run: CommandToRun, context: BTreeMap<String, String>) {
+pub fn open_command_pane_in_place(
+    command_to_run: CommandToRun,
+    context: BTreeMap<String, String>,
+) -> Option<PaneId> {
     let plugin_command = PluginCommand::OpenCommandPaneInPlace(command_to_run, context);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
+
+    let response =
+        ProtobufOpenCommandPaneInPlaceResponse::decode(bytes_from_stdin().unwrap().as_slice())
+            .unwrap();
+    OpenCommandPaneInPlaceResponse::try_from(response).unwrap()
 }
 
 /// Open a new in place command pane with the specified command and args (this sort of pane allows the user to control the command, re-run it and see its exit status through the Zellij UI).
@@ -271,7 +679,7 @@ pub fn open_command_pane_in_place_of_plugin(
     command_to_run: CommandToRun,
     close_plugin_after_replace: bool,
     context: BTreeMap<String, String>,
-) {
+) -> Option<PaneId> {
     let plugin_command = PluginCommand::OpenCommandPaneInPlaceOfPlugin(
         command_to_run,
         close_plugin_after_replace,
@@ -280,17 +688,111 @@ pub fn open_command_pane_in_place_of_plugin(
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
+
+    let response = ProtobufOpenCommandPaneInPlaceOfPluginResponse::decode(
+        bytes_from_stdin().unwrap().as_slice(),
+    )
+    .unwrap();
+    OpenCommandPaneInPlaceOfPluginResponse::try_from(response).unwrap()
+}
+
+/// Opens a command pane in place of the pane identified by `pane_id`.
+/// Unlike `open_command_pane_in_place`, this targets an arbitrary pane by ID rather than the
+/// focused pane, and does not change focus. If `close_replaced_pane` is false, the replaced
+/// pane is suppressed and restored when the new pane closes; if true, it is permanently closed.
+/// Returns the `PaneId` of the newly opened pane, or `None` if the operation failed.
+pub fn open_command_pane_in_place_of_pane_id(
+    pane_id: PaneId,
+    command_to_run: CommandToRun,
+    close_replaced_pane: bool,
+    context: BTreeMap<String, String>,
+) -> Option<PaneId> {
+    let plugin_command = PluginCommand::OpenCommandPaneInPlaceOfPaneId(
+        pane_id,
+        command_to_run,
+        close_replaced_pane,
+        context,
+    );
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+
+    let response = ProtobufOpenCommandPaneInPlaceOfPaneIdResponse::decode(
+        bytes_from_stdin().unwrap().as_slice(),
+    )
+    .unwrap();
+    OpenCommandPaneInPlaceOfPaneIdResponse::try_from(response).unwrap()
+}
+
+/// Opens a terminal pane in place of the pane identified by `pane_id`.
+/// Unlike `open_terminal_in_place`, this targets an arbitrary pane by ID rather than the
+/// focused pane, and does not change focus. If `close_replaced_pane` is false, the replaced
+/// pane is suppressed and restored when the new pane closes; if true, it is permanently closed.
+/// `cwd` sets the working directory for the new terminal. Returns the `PaneId` of the newly
+/// opened pane, or `None` if the operation failed.
+pub fn open_terminal_pane_in_place_of_pane_id<P: AsRef<Path>>(
+    pane_id: PaneId,
+    cwd: P,
+    close_replaced_pane: bool,
+) -> Option<PaneId> {
+    let file_to_open = FileToOpen {
+        path: cwd.as_ref().to_path_buf(),
+        ..Default::default()
+    };
+    let plugin_command =
+        PluginCommand::OpenTerminalPaneInPlaceOfPaneId(pane_id, file_to_open, close_replaced_pane);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+
+    let response = ProtobufOpenTerminalPaneInPlaceOfPaneIdResponse::decode(
+        bytes_from_stdin().unwrap().as_slice(),
+    )
+    .unwrap();
+    OpenTerminalPaneInPlaceOfPaneIdResponse::try_from(response).unwrap()
+}
+
+/// Opens an editor pane in place of the pane identified by `pane_id`.
+/// Unlike `open_file_in_place`, this targets an arbitrary pane by ID rather than the
+/// focused pane, and does not change focus. If `close_replaced_pane` is false, the replaced
+/// pane is suppressed and restored when the new pane closes; if true, it is permanently closed.
+/// Returns the `PaneId` of the newly opened pane, or `None` if the operation failed.
+pub fn open_edit_pane_in_place_of_pane_id(
+    pane_id: PaneId,
+    file_to_open: FileToOpen,
+    close_replaced_pane: bool,
+    context: BTreeMap<String, String>,
+) -> Option<PaneId> {
+    let plugin_command = PluginCommand::OpenEditPaneInPlaceOfPaneId(
+        pane_id,
+        file_to_open,
+        close_replaced_pane,
+        context,
+    );
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+
+    let response =
+        ProtobufOpenEditPaneInPlaceOfPaneIdResponse::decode(bytes_from_stdin().unwrap().as_slice())
+            .unwrap();
+    OpenEditPaneInPlaceOfPaneIdResponse::try_from(response).unwrap()
 }
 
 /// Open a new hidden (background) command pane with the specified command and args (this sort of pane allows the user to control the command, re-run it and see its exit status through the Zellij UI).
 pub fn open_command_pane_background(
     command_to_run: CommandToRun,
     context: BTreeMap<String, String>,
-) {
+) -> Option<PaneId> {
     let plugin_command = PluginCommand::OpenCommandPaneBackground(command_to_run, context);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
+
+    let response =
+        ProtobufOpenCommandPaneBackgroundResponse::decode(bytes_from_stdin().unwrap().as_slice())
+            .unwrap();
+    OpenCommandPaneBackgroundResponse::try_from(response).unwrap()
 }
 
 /// Change the focused tab to the specified index (corresponding with the default tab names, to starting at `1`, `0` will be considered as `1`).
@@ -394,8 +896,9 @@ pub fn show_self(should_float_if_hidden: bool) {
 }
 
 /// Show the pane (unsuppress it if it is suppressed) with the specified [PaneId], focus it and switch to its tab
-pub fn show_pane_with_id(pane_id: PaneId, should_float_if_hidden: bool) {
-    let plugin_command = PluginCommand::ShowPaneWithId(pane_id, should_float_if_hidden);
+pub fn show_pane_with_id(pane_id: PaneId, should_float_if_hidden: bool, should_focus_pane: bool) {
+    let plugin_command =
+        PluginCommand::ShowPaneWithId(pane_id, should_float_if_hidden, should_focus_pane);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
@@ -418,23 +921,29 @@ pub fn switch_to_input_mode(mode: &InputMode) {
 }
 
 /// Provide a stringified [`layout`](https://zellij.dev/documentation/layouts.html) to be applied to the current session. If the layout has multiple tabs, they will all be opened.
-pub fn new_tabs_with_layout(layout: &str) {
+pub fn new_tabs_with_layout(layout: &str) -> Vec<usize> {
     let plugin_command = PluginCommand::NewTabsWithLayout(layout.to_owned());
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
+
+    let response = ProtobufNewTabsResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
+    NewTabsResponse::try_from(response).unwrap()
 }
 
 /// Provide a LayoutInfo to be applied to the current session in a new tab. If the layout has multiple tabs, they will all be opened.
-pub fn new_tabs_with_layout_info(layout_info: LayoutInfo) {
-    let plugin_command = PluginCommand::NewTabsWithLayoutInfo(layout_info);
+pub fn new_tabs_with_layout_info<L: AsRef<LayoutInfo>>(layout_info: L) -> Vec<usize> {
+    let plugin_command = PluginCommand::NewTabsWithLayoutInfo(layout_info.as_ref().clone());
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
+
+    let response = ProtobufNewTabsResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
+    NewTabsResponse::try_from(response).unwrap()
 }
 
 /// Open a new tab with the default layout
-pub fn new_tab<S: AsRef<str>>(name: Option<S>, cwd: Option<S>)
+pub fn new_tab<S: AsRef<str>>(name: Option<S>, cwd: Option<S>) -> Option<usize>
 where
     S: ToString,
 {
@@ -444,6 +953,66 @@ where
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
+
+    let response = ProtobufNewTabResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
+    NewTabResponse::try_from(response).unwrap()
+}
+
+/// Opens a new tab with a command pane running `command_to_run`.
+/// Returns `(tab_id, pane_id)` of the created tab and pane, or `None` if unavailable.
+pub fn open_command_pane_in_new_tab(
+    command_to_run: CommandToRun,
+    context: BTreeMap<String, String>,
+) -> (Option<usize>, Option<PaneId>) {
+    let plugin_command = PluginCommand::OpenCommandPaneInNewTab(command_to_run, context);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+
+    let response =
+        ProtobufOpenPaneInNewTabResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
+    let result = OpenPaneInNewTabResponse::try_from(response).unwrap();
+    (result.tab_id, result.pane_id)
+}
+
+/// Opens a new tab with a plugin pane loaded from `plugin_url`.
+/// `plugin_url` can be a path (`file:/path/to/plugin.wasm`) or a named alias.
+/// Returns `(tab_id, pane_id)` of the created tab and pane.
+pub fn open_plugin_pane_in_new_tab(
+    plugin_url: impl ToString,
+    configuration: BTreeMap<String, String>,
+    context: BTreeMap<String, String>,
+) -> (Option<usize>, Option<PaneId>) {
+    let plugin_command = PluginCommand::OpenPluginPaneInNewTab {
+        plugin_url: plugin_url.to_string(),
+        configuration,
+        context,
+    };
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+
+    let response =
+        ProtobufOpenPaneInNewTabResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
+    let result = OpenPaneInNewTabResponse::try_from(response).unwrap();
+    (result.tab_id, result.pane_id)
+}
+
+/// Opens a new tab with an editor pane for `file_to_open`.
+/// Returns `(tab_id, pane_id)` of the created tab and pane.
+pub fn open_editor_pane_in_new_tab(
+    file_to_open: FileToOpen,
+    context: BTreeMap<String, String>,
+) -> (Option<usize>, Option<PaneId>) {
+    let plugin_command = PluginCommand::OpenEditorPaneInNewTab(file_to_open, context);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+
+    let response =
+        ProtobufOpenPaneInNewTabResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
+    let result = OpenPaneInNewTabResponse::try_from(response).unwrap();
+    (result.tab_id, result.pane_id)
 }
 
 /// Change focus to the next tab or loop back to the first
@@ -555,6 +1124,17 @@ pub fn write(bytes: Vec<u8>) {
 /// Write characters to the `STDIN` of the focused pane
 pub fn write_chars(chars: &str) {
     let plugin_command = PluginCommand::WriteChars(chars.to_owned());
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+/// Copy arbitrary text to the user's clipboard
+///
+/// Respects the user's configured clipboard destination (system clipboard or primary selection).
+/// Requires the WriteToClipboard permission.
+pub fn copy_to_clipboard(text: impl Into<String>) {
+    let plugin_command = PluginCommand::CopyToClipboard(text.into());
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
@@ -735,11 +1315,15 @@ pub fn go_to_tab_name(tab_name: &str) {
 }
 
 /// Change focus to the tab with the specified name or create it if it does not exist
-pub fn focus_or_create_tab(tab_name: &str) {
+pub fn focus_or_create_tab(tab_name: &str) -> Option<usize> {
     let plugin_command = PluginCommand::FocusOrCreateTab(tab_name.to_owned());
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
+
+    let response =
+        ProtobufFocusOrCreateTabResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
+    FocusOrCreateTabResponse::try_from(response).unwrap()
 }
 
 pub fn go_to_tab(tab_index: u32) {
@@ -773,16 +1357,32 @@ pub fn close_plugin_pane(plugin_pane_id: u32) {
 }
 
 /// Changes the focus to the terminal pane with the specified id, unsuppressing it if it was suppressed and switching to its tab and layer (eg. floating/tiled).
-pub fn focus_terminal_pane(terminal_pane_id: u32, should_float_if_hidden: bool) {
-    let plugin_command = PluginCommand::FocusTerminalPane(terminal_pane_id, should_float_if_hidden);
+pub fn focus_terminal_pane(
+    terminal_pane_id: u32,
+    should_float_if_hidden: bool,
+    should_be_in_place_if_hidden: bool,
+) {
+    let plugin_command = PluginCommand::FocusTerminalPane(
+        terminal_pane_id,
+        should_float_if_hidden,
+        should_be_in_place_if_hidden,
+    );
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
 }
 
 /// Changes the focus to the plugin pane with the specified id, unsuppressing it if it was suppressed and switching to its tab and layer (eg. floating/tiled).
-pub fn focus_plugin_pane(plugin_pane_id: u32, should_float_if_hidden: bool) {
-    let plugin_command = PluginCommand::FocusPluginPane(plugin_pane_id, should_float_if_hidden);
+pub fn focus_plugin_pane(
+    plugin_pane_id: u32,
+    should_float_if_hidden: bool,
+    should_be_in_place_if_hidden: bool,
+) {
+    let plugin_command = PluginCommand::FocusPluginPane(
+        plugin_pane_id,
+        should_float_if_hidden,
+        should_be_in_place_if_hidden,
+    );
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
@@ -816,6 +1416,17 @@ where
     S: ToString,
 {
     let plugin_command = PluginCommand::RenameTab(tab_position, new_name.to_string());
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+/// Changes the name (the title that appears in the UI) of the tab with the specified id.
+pub fn rename_tab_with_id<S: AsRef<str>>(tab_id: u64, new_name: S)
+where
+    S: ToString,
+{
+    let plugin_command = PluginCommand::RenameTabWithId(tab_id, new_name.to_string());
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
@@ -969,12 +1580,70 @@ pub fn watch_filesystem() {
     unsafe { host_run_plugin_command() };
 }
 
-/// Get the serialized session layout in KDL format as a CustomMessage Event
-pub fn dump_session_layout() {
-    let plugin_command = PluginCommand::DumpSessionLayout;
+/// Get the serialized session layout in KDL format synchronously
+/// note: this removes the requesting plugin from the dumped layout
+pub fn dump_session_layout() -> Result<(String, Option<LayoutMetadata>), String> {
+    dump_session_layout_impl(None)
+}
+
+/// Get the serialized layout for a specific tab in KDL format synchronously
+/// note: this removes the requesting plugin from the dumped layout
+pub fn dump_session_layout_for_tab(
+    tab_index: usize,
+) -> Result<(String, Option<LayoutMetadata>), String> {
+    dump_session_layout_impl(Some(tab_index))
+}
+
+fn dump_session_layout_impl(
+    tab_index: Option<usize>,
+) -> Result<(String, Option<LayoutMetadata>), String> {
+    let plugin_command = PluginCommand::DumpSessionLayout { tab_index };
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+
     unsafe { host_run_plugin_command() };
+
+    let response_bytes =
+        bytes_from_stdin().map_err(|e| format!("Failed to read response from stdin: {:?}", e))?;
+    let protobuf_response = ProtobufDumpSessionLayoutResponse::decode(response_bytes.as_slice())
+        .map_err(|e| format!("Failed to decode protobuf response: {}", e))?;
+
+    // Extract metadata if present
+    let metadata = protobuf_response
+        .metadata
+        .and_then(|pb_metadata| pb_metadata.try_into().ok());
+
+    match protobuf_response.result {
+        Some(dump_session_layout_response::Result::LayoutContent(content)) => {
+            Ok((content, metadata))
+        },
+        Some(dump_session_layout_response::Result::Error(error)) => Err(error),
+        None => Err("Server returned empty response".to_string()),
+    }
+}
+
+/// Parses a KDL layout string and returns LayoutMetadata
+pub fn parse_layout(layout_string: &str) -> Result<LayoutMetadata, LayoutParsingError> {
+    let plugin_command = PluginCommand::ParseLayout(layout_string.to_string());
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+
+    unsafe { host_run_plugin_command() };
+
+    let response_bytes = bytes_from_stdin().map_err(|_| LayoutParsingError::SyntaxError)?;
+
+    let protobuf_response = ProtobufParseLayoutResponse::decode(response_bytes.as_slice())
+        .map_err(|_| LayoutParsingError::SyntaxError)?;
+
+    match protobuf_response.result {
+        Some(parse_layout_response::Result::Metadata(metadata)) => metadata
+            .try_into()
+            .map_err(|_| LayoutParsingError::SyntaxError),
+        Some(parse_layout_response::Result::Error(error)) => Err(error
+            .try_into()
+            .map_err(|_| LayoutParsingError::SyntaxError)?),
+        None => Err(LayoutParsingError::SyntaxError),
+    }
 }
 
 /// Get a list of clients, their focused pane and running command or focused plugin back as an
@@ -1022,14 +1691,22 @@ pub fn resize_pane_with_id(resize_strategy: ResizeStrategy, pane_id: PaneId) {
 }
 
 /// Changes the focus to the pane with the specified id, unsuppressing it if it was suppressed and switching to its tab and layer (eg. floating/tiled).
-pub fn focus_pane_with_id(pane_id: PaneId, should_float_if_hidden: bool) {
+pub fn focus_pane_with_id(
+    pane_id: PaneId,
+    should_float_if_hidden: bool,
+    should_be_in_place_if_hidden: bool,
+) {
     let plugin_command = match pane_id {
-        PaneId::Terminal(terminal_pane_id) => {
-            PluginCommand::FocusTerminalPane(terminal_pane_id, should_float_if_hidden)
-        },
-        PaneId::Plugin(plugin_pane_id) => {
-            PluginCommand::FocusPluginPane(plugin_pane_id, should_float_if_hidden)
-        },
+        PaneId::Terminal(terminal_pane_id) => PluginCommand::FocusTerminalPane(
+            terminal_pane_id,
+            should_float_if_hidden,
+            should_be_in_place_if_hidden,
+        ),
+        PaneId::Plugin(plugin_pane_id) => PluginCommand::FocusPluginPane(
+            plugin_pane_id,
+            should_float_if_hidden,
+            should_be_in_place_if_hidden,
+        ),
     };
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
@@ -1043,6 +1720,46 @@ pub fn edit_scrollback_for_pane_with_id(pane_id: PaneId) {
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
+}
+
+/// Retrieves the scrollback contents from the specified pane
+///
+/// # Arguments
+/// * `pane_id` - The ID of the pane to get scrollback from
+/// * `get_full_scrollback` - Whether to retrieve the full scrollback buffer (including lines above and below viewport)
+///
+/// # Returns
+/// * `Ok(PaneContents)` - The pane contents if successful
+/// * `Err(String)` - An error message if the pane was not found, timed out, or another error occurred
+pub fn get_pane_scrollback(
+    pane_id: PaneId,
+    get_full_scrollback: bool,
+) -> Result<PaneContents, String> {
+    let plugin_command = PluginCommand::GetPaneScrollback {
+        pane_id,
+        get_full_scrollback,
+    };
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+
+    // Read response from stdin
+    let response_bytes =
+        bytes_from_stdin().map_err(|e| format!("Failed to read response from stdin: {:?}", e))?;
+
+    // Decode protobuf response
+    let protobuf_response = ProtobufPaneScrollbackResponse::decode(response_bytes.as_slice())
+        .map_err(|e| format!("Failed to decode protobuf response: {}", e))?;
+
+    // Convert to Rust type
+    let response = PaneScrollbackResponse::try_from(protobuf_response)
+        .map_err(|e| format!("Failed to convert protobuf response: {}", e))?;
+
+    // Convert Result enum to actual Result type
+    match response {
+        PaneScrollbackResponse::Ok(contents) => Ok(contents),
+        PaneScrollbackResponse::Err(error_msg) => Err(error_msg),
+    }
 }
 
 /// Write bytes to the `STDIN` of the specified pane
@@ -1059,6 +1776,335 @@ pub fn write_chars_to_pane_id(chars: &str, pane_id: PaneId) {
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
+}
+
+/// Send SIGINT to the process running inside a terminal pane identified by this PaneId
+pub fn send_sigint_to_pane_id(pane_id: PaneId) {
+    let plugin_command = PluginCommand::SendSigintToPaneId(pane_id);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+/// Send SIGKILL to the process running inside a terminal pane identified by this PaneId
+pub fn send_sigkill_to_pane_id(pane_id: PaneId) {
+    let plugin_command = PluginCommand::SendSigkillToPaneId(pane_id);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+/// Get the PID of the process running inside a terminal pane
+pub fn get_pane_pid(pane_id: PaneId) -> Result<i32, String> {
+    let plugin_command = PluginCommand::GetPanePid { pane_id };
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+
+    // Read response from stdin
+    let response_bytes =
+        bytes_from_stdin().map_err(|e| format!("Failed to read response from stdin: {:?}", e))?;
+
+    // Decode protobuf response
+    let protobuf_response = ProtobufGetPanePidResponse::decode(response_bytes.as_slice())
+        .map_err(|e| format!("Failed to decode protobuf response: {}", e))?;
+
+    // Convert to Rust type
+    let response = GetPanePidResponse::try_from(protobuf_response)
+        .map_err(|e| format!("Failed to convert protobuf response: {}", e))?;
+
+    // Convert Result enum to actual Result type
+    match response {
+        GetPanePidResponse::Ok(pid) => Ok(pid),
+        GetPanePidResponse::Err(error_msg) => Err(error_msg),
+    }
+}
+
+/// Gets the current running command for a specific pane by its ID.
+///
+/// This queries the operating system for the **current** running command,
+/// not the initial command used to launch the pane. The command is returned
+/// as a vector of strings (argv-style), where the first element is the
+/// executable and subsequent elements are arguments.
+///
+/// # Arguments
+/// * `pane_id` - The ID of the pane to query
+///
+/// # Returns
+/// * `Ok(Vec<String>)` - The command and arguments as separate strings
+/// * `Err(String)` - Error message if:
+///   - Pane is a plugin (only terminal panes have commands)
+///   - Pane doesn't exist
+///   - OS query failed
+///
+/// # Permissions Required
+/// * `ReadApplicationState`
+///
+/// # Example
+/// ```no_run
+/// use zellij_tile::prelude::*;
+///
+/// let pane_id = PaneId::Terminal(1);
+/// match get_pane_running_command(pane_id) {
+///     Ok(cmd) => eprintln!("Running: {} {}", cmd[0], cmd[1..].join(" ")),
+///     Err(e) => eprintln!("Error: {}", e),
+/// }
+/// ```
+pub fn get_pane_running_command(pane_id: PaneId) -> Result<Vec<String>, String> {
+    let plugin_command = PluginCommand::GetPaneRunningCommand { pane_id };
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+
+    let protobuf_response =
+        ProtobufGetPaneRunningCommandResponse::decode(bytes_from_stdin().unwrap().as_slice())
+            .unwrap();
+
+    match protobuf_response.result {
+        Some(get_pane_running_command_response::Result::Command(cmd)) => Ok(cmd.args),
+        Some(get_pane_running_command_response::Result::Error(err)) => Err(err),
+        None => Err("Empty response from server".to_string()),
+    }
+}
+
+/// Gets the current working directory for a specific pane by its ID.
+///
+/// This queries the operating system for the **current** working directory
+/// of the process running in the pane. The CWD may change as the user
+/// navigates directories within the terminal.
+///
+/// # Arguments
+/// * `pane_id` - The ID of the pane to query
+///
+/// # Returns
+/// * `Ok(PathBuf)` - The current working directory
+/// * `Err(String)` - Error message if:
+///   - Pane is a plugin (only terminal panes have CWDs)
+///   - Pane doesn't exist
+///   - OS query failed (process may have exited)
+///   - CWD is inaccessible (permissions, deleted directory)
+///
+/// # Permissions Required
+/// * `ReadApplicationState`
+///
+/// # Example
+/// ```no_run
+/// use zellij_tile::prelude::*;
+///
+/// let pane_id = PaneId::Terminal(1);
+/// match get_pane_cwd(pane_id) {
+///     Ok(cwd) => eprintln!("CWD: {}", cwd.display()),
+///     Err(e) => eprintln!("Error: {}", e),
+/// }
+/// ```
+pub fn get_pane_cwd(pane_id: PaneId) -> Result<PathBuf, String> {
+    let plugin_command = PluginCommand::GetPaneCwd { pane_id };
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+
+    let protobuf_response =
+        ProtobufGetPaneCwdResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
+
+    match protobuf_response.result {
+        Some(get_pane_cwd_response::Result::Cwd(cwd_str)) => Ok(PathBuf::from(cwd_str)),
+        Some(get_pane_cwd_response::Result::Error(err)) => Err(err),
+        None => Err("Empty response from server".to_string()),
+    }
+}
+
+/// Save a layout to the user's layout directory
+///
+/// # Arguments
+/// * `layout_name` - Name of the layout file (without .kdl extension)
+/// * `layout_kdl` - KDL string representing the layout
+/// * `overwrite` - Whether to overwrite if the file already exists
+///
+/// # Returns
+/// * `Ok(())` - Layout was successfully validated and saved
+/// * `Err(String)` - Error message (parse error, I/O error, file exists, etc.)
+pub fn save_layout<S: AsRef<str>>(
+    layout_name: S,
+    layout_kdl: S,
+    overwrite: bool,
+) -> Result<(), String> {
+    let plugin_command = PluginCommand::SaveLayout {
+        layout_name: layout_name.as_ref().to_owned(),
+        layout_kdl: layout_kdl.as_ref().to_owned(),
+        overwrite,
+    };
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+
+    // Read response from stdin
+    let response_bytes =
+        bytes_from_stdin().map_err(|e| format!("Failed to read response from stdin: {:?}", e))?;
+
+    // Decode protobuf response
+    let protobuf_response = ProtobufSaveLayoutResponse::decode(response_bytes.as_slice())
+        .map_err(|e| format!("Failed to decode protobuf response: {}", e))?;
+
+    // Convert to Rust type
+    let response = SaveLayoutResponse::try_from(protobuf_response)
+        .map_err(|e| format!("Failed to convert protobuf response: {}", e))?;
+
+    // Convert Result enum to actual Result type
+    match response {
+        SaveLayoutResponse::Ok(_) => Ok(()),
+        SaveLayoutResponse::Err(error_msg) => Err(error_msg),
+    }
+}
+
+/// Delete a layout from the user's layout directory.
+///
+/// # Arguments
+///
+/// * `layout_name` - The name of the layout file to delete (without the `.kdl` extension).
+///                   Layout names are sanitized server-side to prevent directory traversal.
+///
+/// # Returns
+///
+/// * `Ok(())` - The layout was successfully deleted
+/// * `Err(String)` - An error occurred with a descriptive message (e.g., file not found, permission denied)
+///
+/// # Permissions
+///
+/// Requires the `ChangeApplicationState` permission.
+///
+/// # Examples
+///
+/// ```no_run
+/// use zellij_tile::prelude::*;
+///
+/// // Delete a layout named "my-layout"
+/// match delete_layout("my-layout") {
+///     Ok(_) => eprintln!("Layout deleted successfully"),
+///     Err(e) => eprintln!("Failed to delete layout: {}", e),
+/// }
+/// ```
+pub fn delete_layout<S: AsRef<str>>(layout_name: S) -> Result<(), String> {
+    let plugin_command = PluginCommand::DeleteLayout {
+        layout_name: layout_name.as_ref().to_owned(),
+    };
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+
+    // Read response from stdin
+    let response_bytes =
+        bytes_from_stdin().map_err(|e| format!("Failed to read response from stdin: {:?}", e))?;
+
+    // Decode protobuf response
+    let protobuf_response = ProtobufDeleteLayoutResponse::decode(response_bytes.as_slice())
+        .map_err(|e| format!("Failed to decode protobuf response: {}", e))?;
+
+    // Convert to Rust type
+    let response = DeleteLayoutResponse::try_from(protobuf_response)
+        .map_err(|e| format!("Failed to convert protobuf response: {}", e))?;
+
+    // Convert Result enum to actual Result type
+    match response {
+        DeleteLayoutResponse::Ok(_) => Ok(()),
+        DeleteLayoutResponse::Err(error_msg) => Err(error_msg),
+    }
+}
+
+/// Rename a layout file in the user's layout directory
+///
+/// # Arguments
+/// * `old_layout_name` - Current name of the layout (without .kdl extension)
+/// * `new_layout_name` - New name for the layout (without .kdl extension)
+///
+/// # Returns
+/// * `Ok(())` - Layout was successfully renamed
+/// * `Err(String)` - Error message describing what went wrong
+///
+/// # Error Cases
+/// * Old layout name is invalid (empty, contains path separators, etc.)
+/// * New layout name is invalid
+/// * Source layout file doesn't exist
+/// * Target layout file already exists (no overwrite)
+/// * Layout directory not found
+/// * File system error during rename operation
+///
+/// # Permissions
+///
+/// Requires the `ChangeApplicationState` permission.
+///
+/// # Examples
+///
+/// ```no_run
+/// use zellij_tile::prelude::*;
+///
+/// // Rename a layout from "old-name" to "new-name"
+/// match rename_layout("old-name", "new-name") {
+///     Ok(_) => eprintln!("Layout renamed successfully"),
+///     Err(e) => eprintln!("Failed to rename layout: {}", e),
+/// }
+/// ```
+pub fn rename_layout(
+    old_layout_name: impl Into<String>,
+    new_layout_name: impl Into<String>,
+) -> Result<(), String> {
+    let plugin_command = PluginCommand::RenameLayout {
+        old_layout_name: old_layout_name.into(),
+        new_layout_name: new_layout_name.into(),
+    };
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+
+    // Read response from stdin
+    let response_bytes =
+        bytes_from_stdin().map_err(|e| format!("Failed to read response from stdin: {:?}", e))?;
+
+    // Decode protobuf response
+    let protobuf_response = ProtobufRenameLayoutResponse::decode(response_bytes.as_slice())
+        .map_err(|e| format!("Failed to decode protobuf response: {}", e))?;
+
+    // Convert to native response type
+    let response: RenameLayoutResponse = protobuf_response
+        .try_into()
+        .map_err(|e| format!("Failed to convert protobuf response: {}", e))?;
+
+    match response {
+        RenameLayoutResponse::Ok(_) => Ok(()),
+        RenameLayoutResponse::Err(error_msg) => Err(error_msg),
+    }
+}
+
+/// Opens a layout file in the user's default `$EDITOR`
+pub fn edit_layout<S: AsRef<str>>(
+    layout_name: S,
+    context: BTreeMap<String, String>,
+) -> Result<(), String> {
+    let layout_name = layout_name.as_ref().to_owned();
+    let plugin_command = PluginCommand::EditLayout {
+        layout_name,
+        context,
+    };
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+
+    // Read response from stdin
+    let response_bytes =
+        bytes_from_stdin().map_err(|e| format!("Failed to read response from stdin: {:?}", e))?;
+
+    // Decode protobuf response
+    let protobuf_response = ProtobufEditLayoutResponse::decode(response_bytes.as_slice())
+        .map_err(|e| format!("Failed to decode protobuf response: {}", e))?;
+
+    // Convert to Rust type
+    let response = EditLayoutResponse::try_from(protobuf_response)
+        .map_err(|e| format!("Failed to convert protobuf response: {}", e))?;
+
+    // Convert Result enum to actual Result type
+    match response {
+        EditLayoutResponse::Ok(_) => Ok(()),
+        EditLayoutResponse::Err(error_msg) => Err(error_msg),
+    }
 }
 
 /// Switch the position of the pane with this id with a different pane
@@ -1157,6 +2203,18 @@ pub fn close_tab_with_index(tab_index: usize) {
     unsafe { host_run_plugin_command() };
 }
 
+/// Close the tab with the given stable ID.
+///
+/// Unlike `close_tab_with_index`, this function identifies the tab by its stable
+/// `tab_id` rather than its display position, which may change as tabs are moved
+/// or closed. The tab_id can be obtained from `TabInfo.tab_id`.
+pub fn close_tab_with_id(tab_id: u64) {
+    let plugin_command = PluginCommand::CloseTabWithId(tab_id);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 /// Rename the specified pane
 pub fn rename_pane_with_id<S: AsRef<str>>(pane_id: PaneId, new_name: S)
 where
@@ -1180,7 +2238,7 @@ pub fn break_panes_to_new_tab(
     pane_ids: &[PaneId],
     new_tab_name: Option<String>,
     should_change_focus_to_new_tab: bool,
-) {
+) -> Option<usize> {
     let plugin_command = PluginCommand::BreakPanesToNewTab(
         pane_ids.to_vec(),
         new_tab_name,
@@ -1189,6 +2247,10 @@ pub fn break_panes_to_new_tab(
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
+
+    let response =
+        ProtobufBreakPanesToNewTabResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
+    BreakPanesToNewTabResponse::try_from(response).unwrap()
 }
 
 /// Move the pane ids to the tab with the specified index
@@ -1196,7 +2258,7 @@ pub fn break_panes_to_tab_with_index(
     pane_ids: &[PaneId],
     tab_index: usize,
     should_change_focus_to_new_tab: bool,
-) {
+) -> Option<usize> {
     let plugin_command = PluginCommand::BreakPanesToTabWithIndex(
         pane_ids.to_vec(),
         tab_index,
@@ -1205,6 +2267,32 @@ pub fn break_panes_to_tab_with_index(
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
+
+    let response =
+        ProtobufBreakPanesToTabWithIndexResponse::decode(bytes_from_stdin().unwrap().as_slice())
+            .unwrap();
+    BreakPanesToTabWithIndexResponse::try_from(response).unwrap()
+}
+
+/// Move the pane ids to the tab with the specified id
+pub fn break_panes_to_tab_with_id(
+    pane_ids: &[PaneId],
+    tab_id: usize,
+    should_change_focus_to_target_tab: bool,
+) -> Option<usize> {
+    let plugin_command = PluginCommand::BreakPanesToTabWithId(
+        pane_ids.to_vec(),
+        tab_id as u64,
+        should_change_focus_to_target_tab,
+    );
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+
+    let response =
+        ProtobufBreakPanesToTabWithIdResponse::decode(bytes_from_stdin().unwrap().as_slice())
+            .unwrap();
+    BreakPanesToTabWithIdResponse::try_from(response).unwrap()
 }
 
 /// Reload an already-running in this session, optionally skipping the cache
@@ -1276,6 +2364,42 @@ pub fn change_floating_panes_coordinates(
     pane_ids_and_coordinates: Vec<(PaneId, FloatingPaneCoordinates)>,
 ) {
     let plugin_command = PluginCommand::ChangeFloatingPanesCoordinates(pane_ids_and_coordinates);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+/// Toggle the borderless state of a pane identified by pane_id
+///
+/// # Arguments
+/// * `pane_id` - The ID of the pane to toggle (PaneId::Terminal or PaneId::Plugin)
+pub fn toggle_pane_borderless(pane_id: PaneId) {
+    let plugin_command = PluginCommand::TogglePaneBorderless(pane_id);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+/// Set the borderless state of a pane explicitly
+///
+/// # Arguments
+/// * `pane_id` - The ID of the pane (PaneId::Terminal or PaneId::Plugin)
+/// * `borderless` - true for borderless, false for bordered
+pub fn set_pane_borderless(pane_id: PaneId, borderless: bool) {
+    let plugin_command = PluginCommand::SetPaneBorderless(pane_id, borderless);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+/// Set the default foreground and/or background color of a pane
+///
+/// # Arguments
+/// * `pane_id` - The ID of the pane (PaneId::Terminal or PaneId::Plugin)
+/// * `fg` - Optional foreground color string (e.g. "#00e000"), None to leave unchanged
+/// * `bg` - Optional background color string (e.g. "#001a3a"), None to leave unchanged
+pub fn set_pane_color(pane_id: PaneId, fg: Option<String>, bg: Option<String>) {
+    let plugin_command = PluginCommand::SetPaneColor(pane_id, fg, bg);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
@@ -1370,8 +2494,11 @@ pub fn set_self_mouse_selection_support(selection_support: bool) {
     unsafe { host_run_plugin_command() };
 }
 
-pub fn generate_web_login_token(token_label: Option<String>) -> Result<String, String> {
-    let plugin_command = PluginCommand::GenerateWebLoginToken(token_label);
+pub fn generate_web_login_token(
+    token_label: Option<String>,
+    read_only: bool,
+) -> Result<String, String> {
+    let plugin_command = PluginCommand::GenerateWebLoginToken(token_label, read_only);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
@@ -1400,23 +2527,26 @@ pub fn revoke_web_login_token(token_label: &str) -> Result<(), String> {
     }
 }
 
-pub fn list_web_login_tokens() -> Result<Vec<(String, String)>, String> {
-    // (name, created_at)
+pub fn list_web_login_tokens() -> Result<Vec<(String, String, bool)>, String> {
+    // (name, created_at, read_only)
     let plugin_command = PluginCommand::ListWebLoginTokens;
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
     let list_tokens_response =
         ListTokensResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
+
     if let Some(error) = list_tokens_response.error {
         Err(error)
     } else {
-        let tokens_and_creation_times = std::iter::zip(
-            list_tokens_response.tokens,
-            list_tokens_response.creation_times,
-        )
-        .collect();
-        Ok(tokens_and_creation_times)
+        let tokens_with_info = list_tokens_response
+            .tokens
+            .iter()
+            .zip(list_tokens_response.creation_times.iter())
+            .zip(list_tokens_response.read_only_flags.iter())
+            .map(|((name, created_at), read_only)| (name.clone(), created_at.clone(), *read_only))
+            .collect();
+        Ok(tokens_with_info)
     }
 }
 
@@ -1463,9 +2593,16 @@ pub fn clear_key_presses_intercepts() {
     unsafe { host_run_plugin_command() };
 }
 
-pub fn replace_pane_with_existing_pane(pane_id_to_replace: PaneId, existing_pane_id: PaneId) {
-    let plugin_command =
-        PluginCommand::ReplacePaneWithExistingPane(pane_id_to_replace, existing_pane_id);
+pub fn replace_pane_with_existing_pane(
+    pane_id_to_replace: PaneId,
+    existing_pane_id: PaneId,
+    suppress_replaced_pane: bool,
+) {
+    let plugin_command = PluginCommand::ReplacePaneWithExistingPane(
+        pane_id_to_replace,
+        existing_pane_id,
+        suppress_replaced_pane,
+    );
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
@@ -1496,6 +2633,25 @@ pub fn get_focused_pane(tab_position: usize, pane_manifest: &PaneManifest) -> Op
         }
     }
     None
+}
+
+pub fn override_layout<L: AsRef<LayoutInfo>>(
+    layout_info: L,
+    retain_existing_terminal_panes: bool,
+    retain_existing_plugin_panes: bool,
+    apply_only_to_active_tab: bool,
+    context: BTreeMap<String, String>,
+) {
+    let plugin_command = PluginCommand::OverrideLayout(
+        layout_info.as_ref().clone(),
+        retain_existing_terminal_panes,
+        retain_existing_plugin_panes,
+        apply_only_to_active_tab,
+        context,
+    );
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
 }
 
 // Internal Functions
@@ -1534,6 +2690,96 @@ pub fn post_message_to(plugin_message: PluginMessage) {
 /// Post a message to this plugin, for more information please see [Plugin Workers](https://zellij.dev/documentation/plugin-api-workers.md)
 pub fn post_message_to_plugin(plugin_message: PluginMessage) {
     let plugin_command = PluginCommand::PostMessageToPlugin(plugin_message);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+pub fn run_action(action: Action, context: BTreeMap<String, String>) {
+    // TODO: also accept reference
+    let plugin_command = PluginCommand::RunAction(action, context);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+/// Show all floating panes in the specified tab, or the active tab if `tab_id` is `None`.
+///
+/// Blocks until the server-side action is complete.
+///
+/// Returns `Ok(true)` if the floating panes were made visible (state changed),
+/// `Ok(false)` if the floating panes were already visible (no change),
+/// or `Err(String)` if the specified tab was not found.
+pub fn show_floating_panes(tab_id: Option<usize>) -> Result<bool, String> {
+    let plugin_command = PluginCommand::ShowFloatingPanes { tab_id };
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+    let response_bytes =
+        bytes_from_stdin().map_err(|e| format!("Failed to read response: {:?}", e))?;
+    let response = ProtobufShowFloatingPanesResponse::decode(response_bytes.as_slice())
+        .map_err(|e| format!("Failed to decode response: {}", e))?;
+    match response.result {
+        Some(show_floating_panes_response::Result::Success(changed)) => Ok(changed),
+        Some(show_floating_panes_response::Result::Error(e)) => Err(e),
+        None => Err("Empty response".to_string()),
+    }
+}
+
+/// Hide all floating panes in the specified tab, or the active tab if `tab_id` is `None`.
+///
+/// Blocks until the server-side action is complete.
+///
+/// Returns `Ok(true)` if the floating panes were hidden (state changed),
+/// `Ok(false)` if the floating panes were already hidden (no change),
+/// or `Err(String)` if the specified tab was not found.
+pub fn hide_floating_panes(tab_id: Option<usize>) -> Result<bool, String> {
+    let plugin_command = PluginCommand::HideFloatingPanes { tab_id };
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+    let response_bytes =
+        bytes_from_stdin().map_err(|e| format!("Failed to read response: {:?}", e))?;
+    let response = ProtobufHideFloatingPanesResponse::decode(response_bytes.as_slice())
+        .map_err(|e| format!("Failed to decode response: {}", e))?;
+    match response.result {
+        Some(hide_floating_panes_response::Result::Success(changed)) => Ok(changed),
+        Some(hide_floating_panes_response::Result::Error(e)) => Err(e),
+        None => Err("Empty response".to_string()),
+    }
+}
+
+/// Set or update regex-based content highlights for a pane.
+///
+/// Each entry in `highlights` is keyed by its `pattern` string. Calling this
+/// function again with the same pattern updates its style; new patterns are
+/// added; patterns not present in this call are kept. To remove all highlights
+/// for this plugin on the pane, use `clear_pane_highlights`.
+///
+/// Pattern matching is performed by the server against the current viewport at
+/// render time. The plugin never handles coordinates, so there is no race
+/// condition between content changes and highlight application.
+///
+/// When `on_hover` is `true` and `tooltip_text` is `Some(...)`, the tooltip
+/// text is displayed at the bottom of the pane frame (formatted as
+/// `" Alt <Click> - {tooltip_text} "`) whenever the mouse cursor hovers over
+/// the highlighted region.
+///
+/// Requires `ChangeApplicationState` permission.
+pub fn set_pane_regex_highlights(pane_id: PaneId, highlights: Vec<RegexHighlight>) {
+    let plugin_command = PluginCommand::SetPaneRegexHighlights(pane_id, highlights);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+/// Remove all regex highlights this plugin has set on the given pane.
+///
+/// Other plugins' highlights on the same pane are not affected.
+///
+/// Requires `ChangeApplicationState` permission.
+pub fn clear_pane_highlights(pane_id: PaneId) {
+    let plugin_command = PluginCommand::ClearPaneHighlights(pane_id);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };

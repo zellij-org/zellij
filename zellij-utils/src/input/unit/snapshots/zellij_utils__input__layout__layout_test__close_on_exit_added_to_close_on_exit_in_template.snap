@@ -1,5 +1,6 @@
 ---
 source: zellij-utils/src/input/./unit/layout_test.rs
+assertion_line: 1427
 expression: "format!(\"{:#?}\", layout)"
 ---
 Layout {
@@ -29,7 +30,7 @@ Layout {
                                 },
                             ),
                         ),
-                        borderless: false,
+                        borderless: None,
                         focus: None,
                         external_children_index: None,
                         children_are_stacked: false,
@@ -38,6 +39,8 @@ Layout {
                         run_instructions_to_ignore: [],
                         hide_floating_panes: false,
                         pane_initial_contents: None,
+                        default_fg: None,
+                        default_bg: None,
                     },
                     TiledPaneLayout {
                         children_split_direction: Horizontal,
@@ -57,7 +60,7 @@ Layout {
                                 },
                             ),
                         ),
-                        borderless: false,
+                        borderless: None,
                         focus: None,
                         external_children_index: None,
                         children_are_stacked: false,
@@ -66,11 +69,13 @@ Layout {
                         run_instructions_to_ignore: [],
                         hide_floating_panes: false,
                         pane_initial_contents: None,
+                        default_fg: None,
+                        default_bg: None,
                     },
                 ],
                 split_size: None,
                 run: None,
-                borderless: false,
+                borderless: None,
                 focus: None,
                 external_children_index: None,
                 children_are_stacked: false,
@@ -79,6 +84,8 @@ Layout {
                 run_instructions_to_ignore: [],
                 hide_floating_panes: false,
                 pane_initial_contents: None,
+                default_fg: None,
+                default_bg: None,
             },
             [],
         ),

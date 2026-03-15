@@ -1,0 +1,28 @@
+---
+source: src/tests/e2e/cases.rs
+expression: main_client_snapshot
+---
+ Zellij (watcher_client_functionality)  Tab #1 
+┌ Pane #1 ─────────────────────────────────────────────────┐┌ Pane #2 ─────────────────────────────────────────────────┐
+│$ { for i in 1 2 3; do sleep 1; echo "WATCHER_OUTPUT_$i"; ││$ █                                                       │
+│done & } 2>/dev/null                                      ││                                                          │
+│$                                                         ││                                                          │
+│$ WATCHER_OUTPUT_1                                        ││                                                          │
+│WATCHER_OUTPUT_2                                          ││                                                          │
+│WATCHER_OUTPUT_3                                          ││                                                          │
+│$                                                         ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+└──────────────────────────────────────────────────────────┘└──────────────────────────────────────────────────────────┘
+ Ctrl + <g> LOCK  <p> PANE  <t> TAB  <n> RESIZE  <h> MOVE  <s> SEARCH  <o> SESSION  <q> QUIT        ...

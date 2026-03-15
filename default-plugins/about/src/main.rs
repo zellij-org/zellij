@@ -307,9 +307,11 @@ impl App {
                         Some(UI_COLUMNS.to_string()),
                         Some(UI_ROWS.to_string()),
                         None,
+                        Some(false),
                     )
                     .unwrap(),
                 )]);
+                let _ = show_floating_panes(None);
             }
         }
     }

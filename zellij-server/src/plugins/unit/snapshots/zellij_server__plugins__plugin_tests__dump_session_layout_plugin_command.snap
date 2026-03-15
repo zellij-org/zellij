@@ -1,0 +1,11 @@
+---
+source: zellij-server/src/plugins/./unit/plugin_tests.rs
+expression: "format!(\"{:#?}\", dump_layout_instruction)"
+---
+Some(
+    DumpLayoutToPlugin {
+        plugin_id: 0,
+        tab_index: None,
+        response_channel: Sender { .. },
+    },
+)

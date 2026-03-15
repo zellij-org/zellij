@@ -20,6 +20,7 @@ use std::rc::Rc;
 const ZELLIJ_EXECUTABLE_LOCATION: &str = "/usr/src/zellij/x86_64-unknown-linux-musl/release/zellij";
 const SET_ENV_VARIABLES: &str = "EDITOR=/usr/bin/vi";
 const ZELLIJ_CONFIG_PATH: &str = "/usr/src/zellij/fixtures/configs";
+const ZELLIJ_CONFIG_DIRS_PATH: &str = "/usr/src/zellij/fixtures/config-dirs";
 const ZELLIJ_DATA_DIR: &str = "/usr/src/zellij/e2e-data";
 const ZELLIJ_FIXTURE_PATH: &str = "/usr/src/zellij/fixtures";
 const CONNECTION_STRING: &str = "127.0.0.1:2222";
@@ -83,6 +84,21 @@ fn start_zellij(channel: &mut ssh2::Channel) {
             format!(
                 "{} {} --session {} --data-dir {} options --show-release-notes false --show-startup-tips false\n",
                 SET_ENV_VARIABLES, ZELLIJ_EXECUTABLE_LOCATION, SESSION_NAME, ZELLIJ_DATA_DIR
+            )
+            .as_bytes(),
+        )
+        .unwrap();
+    channel.flush().unwrap();
+    std::thread::sleep(std::time::Duration::from_secs(3)); // wait until Zellij stops parsing startup ANSI codes from the terminal STDIN
+}
+
+fn start_zellij_with_config_dir(channel: &mut ssh2::Channel, config_dir: &str) {
+    stop_zellij(channel);
+    channel
+        .write_all(
+            format!(
+                "{} {} --session {} --data-dir {} --config-dir {} options --show-release-notes false --show-startup-tips false\n",
+                SET_ENV_VARIABLES, ZELLIJ_EXECUTABLE_LOCATION, SESSION_NAME, ZELLIJ_DATA_DIR, format!("{}/{}", ZELLIJ_CONFIG_DIRS_PATH, config_dir)
             )
             .as_bytes(),
         )
@@ -180,12 +196,26 @@ fn attach_to_existing_session(channel: &mut ssh2::Channel, session_name: &str) {
     std::thread::sleep(std::time::Duration::from_secs(3)); // wait until Zellij stops parsing startup ANSI codes from the terminal STDIN
 }
 
+fn watch_existing_session(channel: &mut ssh2::Channel, session_name: &str) {
+    channel
+        .write_all(
+            format!(
+                "{} {} watch {}\n",
+                SET_ENV_VARIABLES, ZELLIJ_EXECUTABLE_LOCATION, session_name
+            )
+            .as_bytes(),
+        )
+        .unwrap();
+    channel.flush().unwrap();
+    std::thread::sleep(std::time::Duration::from_secs(3)); // wait until Zellij stops parsing startup ANSI codes from the terminal STDIN
+}
+
 fn start_zellij_without_frames(channel: &mut ssh2::Channel) {
     stop_zellij(channel);
     channel
         .write_all(
             format!(
-                "{} {} --session {} --data-dir {} options --show-release-notes false --show-startup-tips false --no-pane-frames\n",
+                "{} {} --session {} --data-dir {} options --show-release-notes false --show-startup-tips false --pane-frames false\n",
                 SET_ENV_VARIABLES, ZELLIJ_EXECUTABLE_LOCATION, SESSION_NAME, ZELLIJ_DATA_DIR
             )
             .as_bytes(),
@@ -258,7 +288,9 @@ fn read_from_channel(
                     debug,
                     arrow_fonts,
                     styled_underlines,
+                    true, // osc8_hyperlinks
                     explicitly_disable_kitty_keyboard_protocol,
+                    None,
                 ); // 0 is the pane index
                 loop {
                     if !should_keep_running.load(Ordering::SeqCst) {
@@ -368,6 +400,10 @@ impl RemoteTerminal {
     pub fn snapshot_contains(&self, text: &str) -> bool {
         self.last_snapshot.lock().unwrap().contains(text)
     }
+    pub fn lines(&self) -> Vec<String> {
+        let s = self.last_snapshot.lock().unwrap();
+        s.lines().map(|s| s.to_owned()).collect::<Vec<_>>()
+    }
     #[allow(unused)]
     pub fn current_snapshot(&self) -> String {
         // convenience method for writing tests,
@@ -404,12 +440,38 @@ impl RemoteTerminal {
         channel.flush().unwrap();
         std::thread::sleep(std::time::Duration::from_secs(1)); // wait until Zellij stops parsing startup ANSI codes from the terminal STDIN
     }
+    pub fn run_zellij_action(&mut self, action_and_arguments: &str) {
+        let mut channel = self.channel.lock().unwrap();
+        channel
+            .write_all(
+                format!(
+                    "{} action {}",
+                    ZELLIJ_EXECUTABLE_LOCATION, action_and_arguments
+                )
+                .as_bytes(),
+            )
+            .unwrap();
+        channel.flush().unwrap();
+    }
     pub fn send_command_through_the_cli(&mut self, command: &str) {
         let mut channel = self.channel.lock().unwrap();
         channel
             .write_all(
                 // note that this is run with the -s flag that suspends the command on startup
-                format!("{} run -s -- \"{}\"\n", ZELLIJ_EXECUTABLE_LOCATION, command).as_bytes(),
+                format!("{} run -s -- \"{}\"", ZELLIJ_EXECUTABLE_LOCATION, command).as_bytes(),
+            )
+            .unwrap();
+        channel.flush().unwrap();
+    }
+    pub fn send_blocking_command_through_the_cli(&mut self, command: &str) {
+        let mut channel = self.channel.lock().unwrap();
+        channel
+            .write_all(
+                format!(
+                    "{} run --blocking --floating --close-on-exit -- {}",
+                    ZELLIJ_EXECUTABLE_LOCATION, command
+                )
+                .as_bytes(),
             )
             .unwrap();
         channel.flush().unwrap();
@@ -465,6 +527,44 @@ impl RemoteRunner {
         };
         setup_remote_environment(&mut channel, win_size);
         start_zellij(&mut channel);
+        let channel = Arc::new(Mutex::new(channel));
+        let last_snapshot = Arc::new(Mutex::new(String::new()));
+        let cursor_coordinates = Arc::new(Mutex::new((0, 0)));
+        sess.set_blocking(false);
+        let reader_thread =
+            read_from_channel(&channel, &last_snapshot, &cursor_coordinates, &pane_geom);
+        RemoteRunner {
+            steps: vec![],
+            channel,
+            currently_running_step: None,
+            current_step_index: 0,
+            retries_left: RETRIES,
+            retry_pause_ms: 100,
+            test_timed_out: false,
+            panic_on_no_retries_left: true,
+            last_snapshot,
+            cursor_coordinates,
+            reader_thread,
+        }
+    }
+    pub fn new_with_config_dir(win_size: Size, config_dir_name: &str) -> Self {
+        let sess = ssh_connect();
+        let mut channel = sess.channel_session().unwrap();
+        let mut rows = Dimension::fixed(win_size.rows);
+        let mut cols = Dimension::fixed(win_size.cols);
+        rows.set_inner(win_size.rows);
+        cols.set_inner(win_size.cols);
+        let pane_geom = PaneGeom {
+            x: 0,
+            y: 0,
+            rows,
+            cols,
+            stacked: None,
+            is_pinned: false,
+            logical_position: None,
+        };
+        setup_remote_environment(&mut channel, win_size);
+        start_zellij_with_config_dir(&mut channel, config_dir_name);
         let channel = Arc::new(Mutex::new(channel));
         let last_snapshot = Arc::new(Mutex::new(String::new()));
         let cursor_coordinates = Arc::new(Mutex::new((0, 0)));
@@ -688,6 +788,44 @@ impl RemoteRunner {
             reader_thread,
         }
     }
+    pub fn new_watcher_session(win_size: Size, session_name: &str) -> Self {
+        let sess = ssh_connect_without_timeout();
+        let mut channel = sess.channel_session().unwrap();
+        let mut rows = Dimension::fixed(win_size.rows);
+        let mut cols = Dimension::fixed(win_size.cols);
+        rows.set_inner(win_size.rows);
+        cols.set_inner(win_size.cols);
+        let pane_geom = PaneGeom {
+            x: 0,
+            y: 0,
+            rows,
+            cols,
+            stacked: None,
+            is_pinned: false,
+            logical_position: None,
+        };
+        setup_remote_environment(&mut channel, win_size);
+        watch_existing_session(&mut channel, session_name);
+        let channel = Arc::new(Mutex::new(channel));
+        let last_snapshot = Arc::new(Mutex::new(String::new()));
+        let cursor_coordinates = Arc::new(Mutex::new((0, 0)));
+        sess.set_blocking(false);
+        let reader_thread =
+            read_from_channel(&channel, &last_snapshot, &cursor_coordinates, &pane_geom);
+        RemoteRunner {
+            steps: vec![],
+            channel,
+            currently_running_step: None,
+            current_step_index: 0,
+            retries_left: RETRIES,
+            retry_pause_ms: 100,
+            test_timed_out: false,
+            panic_on_no_retries_left: true,
+            last_snapshot,
+            cursor_coordinates,
+            reader_thread,
+        }
+    }
     pub fn new_without_frames(win_size: Size) -> Self {
         let sess = ssh_connect();
         let mut channel = sess.channel_session().unwrap();
@@ -797,7 +935,7 @@ impl RemoteRunner {
                 self.retries_left = RETRIES;
                 self.current_step_index += 1;
             } else {
-                self.retries_left -= 1;
+                self.retries_left = self.retries_left.saturating_sub(1);
                 std::thread::sleep(std::time::Duration::from_millis(self.retry_pause_ms as u64));
             }
         }

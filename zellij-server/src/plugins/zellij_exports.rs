@@ -1,12 +1,11 @@
 use super::PluginInstruction;
 use crate::background_jobs::BackgroundJob;
+use crate::global_async_runtime::get_tokio_runtime;
 use crate::plugins::plugin_map::PluginEnv;
 use crate::plugins::wasm_bridge::handle_plugin_crash;
-use crate::pty::{ClientTabIndexOrPaneId, NewPanePlacement, PtyInstruction};
-use crate::route::route_action;
+use crate::pty::{ClientTabIndexOrPaneId, PtyInstruction};
+use crate::route::{route_action, wait_for_action_completion, NotificationEnd};
 use crate::ServerInstruction;
-use async_std::task;
-use interprocess::local_socket::LocalSocketStream;
 use log::warn;
 use serde::Serialize;
 use std::{
@@ -18,13 +17,32 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
-use wasmtime::{Caller, Linker};
+use tokio::sync::oneshot;
+use wasmi::{Caller, Linker};
+use zellij_utils::consts::ipc_connect;
 use zellij_utils::data::{
-    CommandType, ConnectToSession, FloatingPaneCoordinates, HttpVerb, KeyWithModifier, LayoutInfo,
-    MessageToPlugin, OriginatingPlugin, PermissionStatus, PermissionType, PluginPermission,
+    BreakPanesToNewTabResponse, BreakPanesToTabWithIdResponse, BreakPanesToTabWithIndexResponse,
+    CommandType, ConnectToSession, DeleteLayoutResponse, EditLayoutResponse, Event,
+    FloatingPaneCoordinates, FocusOrCreateTabResponse, GetFocusedPaneInfoResponse,
+    GetPaneCwdResponse, GetPanePidResponse, GetPaneRunningCommandResponse, HttpVerb,
+    KeyWithModifier, LayoutInfo, LayoutMetadata, LayoutParsingError, MessageToPlugin,
+    NewPanePlacement, NewTabResponse, NewTabsResponse, OpenCommandPaneBackgroundResponse,
+    OpenCommandPaneFloatingNearPluginResponse, OpenCommandPaneFloatingResponse,
+    OpenCommandPaneInPlaceOfPaneIdResponse, OpenCommandPaneInPlaceOfPluginResponse,
+    OpenCommandPaneInPlaceResponse, OpenCommandPaneNearPluginResponse, OpenCommandPaneResponse,
+    OpenEditPaneInPlaceOfPaneIdResponse, OpenFileFloatingNearPluginResponse,
+    OpenFileFloatingResponse, OpenFileInPlaceOfPluginResponse, OpenFileInPlaceResponse,
+    OpenFileNearPluginResponse, OpenFileResponse, OpenPaneInNewTabResponse,
+    OpenTerminalFloatingNearPluginResponse, OpenTerminalFloatingResponse,
+    OpenTerminalInPlaceOfPluginResponse, OpenTerminalInPlaceResponse,
+    OpenTerminalNearPluginResponse, OpenTerminalPaneInPlaceOfPaneIdResponse, OpenTerminalResponse,
+    OriginatingPlugin, PaneScrollbackResponse, PermissionStatus, PermissionType, PluginPermission,
+    RegexHighlight, RenameLayoutResponse, SaveLayoutResponse, TabMetadata,
 };
+use zellij_utils::home::default_layout_dir;
 use zellij_utils::input::permission::PermissionCache;
 use zellij_utils::ipc::{ClientToServerMsg, IpcSenderWithContext};
+use zellij_utils::sessions::generate_random_name as generate_random_name_impl;
 #[cfg(feature = "web_server_capability")]
 use zellij_utils::web_authentication_tokens::{
     create_token, list_tokens, rename_token, revoke_all_tokens, revoke_token,
@@ -33,22 +51,57 @@ use zellij_utils::web_authentication_tokens::{
 use zellij_utils::web_server_commands::shutdown_all_webserver_instances;
 
 use crate::{panes::PaneId, screen::ScreenInstruction};
+use kdl::KdlDocument;
 
 use prost::Message;
 use zellij_utils::{
-    consts::{VERSION, ZELLIJ_SESSION_INFO_CACHE_DIR, ZELLIJ_SOCK_DIR},
+    consts::{VERSION, ZELLIJ_SESSION_INFO_CACHE_DIR, ZELLIJ_SOCK_DIR, ZELLIJ_TMP_DIR},
     data::{
-        CommandToRun, Direction, Event, EventType, FileToOpen, InputMode, PluginCommand, PluginIds,
-        PluginMessage, Resize, ResizeStrategy,
+        CommandOrPlugin, CommandToRun, Direction, EventType, FileToOpen, InputMode, PluginCommand,
+        PluginIds, PluginMessage, Resize, ResizeStrategy,
     },
     errors::prelude::*,
     input::{
         actions::Action,
         command::{OpenFilePayload, RunCommand, RunCommandAction, TerminalAction},
-        layout::{Layout, RunPluginOrAlias},
+        config::ConfigError,
+        layout::{Layout, RunPluginOrAlias, TabLayoutInfo},
     },
     plugin_api::{
-        plugin_command::ProtobufPluginCommand,
+        event::{
+            layout_parsing_error::ErrorType as ProtobufLayoutParsingErrorType,
+            ProtobufLayoutParsingError, ProtobufPaneScrollbackResponse, ProtobufSyntaxError,
+        },
+        plugin_command::{
+            dump_layout_response, dump_session_layout_response, hide_floating_panes_response,
+            parse_layout_response, save_session_response, show_floating_panes_response,
+            ProtobufBreakPanesToNewTabResponse, ProtobufBreakPanesToTabWithIdResponse,
+            ProtobufBreakPanesToTabWithIndexResponse, ProtobufDeleteLayoutResponse,
+            ProtobufDumpLayoutResponse, ProtobufDumpSessionLayoutResponse,
+            ProtobufEditLayoutResponse, ProtobufFocusOrCreateTabResponse,
+            ProtobufGenerateRandomNameResponse, ProtobufGetFocusedPaneInfoResponse,
+            ProtobufGetLayoutDirResponse, ProtobufGetPaneCwdResponse, ProtobufGetPaneInfoResponse,
+            ProtobufGetPanePidResponse, ProtobufGetPaneRunningCommandResponse,
+            ProtobufGetSessionEnvironmentVariablesResponse, ProtobufGetTabInfoResponse,
+            ProtobufHideFloatingPanesResponse, ProtobufNewTabResponse, ProtobufNewTabsResponse,
+            ProtobufOpenCommandPaneBackgroundResponse,
+            ProtobufOpenCommandPaneFloatingNearPluginResponse,
+            ProtobufOpenCommandPaneFloatingResponse,
+            ProtobufOpenCommandPaneInPlaceOfPaneIdResponse,
+            ProtobufOpenCommandPaneInPlaceOfPluginResponse, ProtobufOpenCommandPaneInPlaceResponse,
+            ProtobufOpenCommandPaneNearPluginResponse, ProtobufOpenCommandPaneResponse,
+            ProtobufOpenEditPaneInPlaceOfPaneIdResponse,
+            ProtobufOpenFileFloatingNearPluginResponse, ProtobufOpenFileFloatingResponse,
+            ProtobufOpenFileInPlaceOfPluginResponse, ProtobufOpenFileInPlaceResponse,
+            ProtobufOpenFileNearPluginResponse, ProtobufOpenFileResponse,
+            ProtobufOpenPaneInNewTabResponse, ProtobufOpenTerminalFloatingNearPluginResponse,
+            ProtobufOpenTerminalFloatingResponse, ProtobufOpenTerminalInPlaceOfPluginResponse,
+            ProtobufOpenTerminalInPlaceResponse, ProtobufOpenTerminalNearPluginResponse,
+            ProtobufOpenTerminalPaneInPlaceOfPaneIdResponse, ProtobufOpenTerminalResponse,
+            ProtobufParseLayoutResponse, ProtobufPluginCommand, ProtobufRenameLayoutResponse,
+            ProtobufSaveLayoutResponse, ProtobufSaveSessionResponse,
+            ProtobufShowFloatingPanesResponse,
+        },
         plugin_ids::{ProtobufPluginIds, ProtobufZellijVersion},
     },
 };
@@ -61,9 +114,10 @@ use zellij_utils::plugin_api::plugin_command::{
 
 macro_rules! apply_action {
     ($action:ident, $error_message:ident, $env: ident) => {
-        if let Err(e) = route_action(
+        match route_action(
             $action,
             $env.client_id,
+            None,
             Some(PaneId::Plugin($env.plugin_id)),
             $env.senders.clone(),
             $env.capabilities.clone(),
@@ -73,10 +127,32 @@ macro_rules! apply_action {
             None,
             $env.keybinds.clone(),
             $env.default_mode.clone(),
+            None,
         ) {
-            log::error!("{}: {:?}", $error_message(), e);
+            Ok((_, result)) => result,
+            Err(e) => {
+                log::error!("{}: {:?}", $error_message(), e);
+                None
+            },
         }
     };
+}
+
+fn translate_plugin_path(env: &PluginEnv, path: PathBuf) -> PathBuf {
+    if let Ok(stripped) = path.strip_prefix("/host") {
+        env.plugin_cwd.join(stripped)
+    } else if let Ok(stripped) = path.strip_prefix("/data") {
+        env.plugin_own_data_dir.join(stripped)
+    } else if let Ok(stripped) = path.strip_prefix("/cache") {
+        env.plugin_own_cache_dir.join(stripped)
+    } else if let Ok(stripped) = path.strip_prefix("/tmp") {
+        ZELLIJ_TMP_DIR.join(stripped)
+    } else if path.is_relative() {
+        env.plugin_cwd.join(path)
+    } else {
+        // Absolute path not in any plugin special folder — pass through
+        path
+    }
 }
 
 pub fn zellij_exports(linker: &mut Linker<PluginEnv>) {
@@ -100,8 +176,20 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::Subscribe(event_list) => subscribe(env, event_list)?,
                     PluginCommand::Unsubscribe(event_list) => unsubscribe(env, event_list)?,
                     PluginCommand::SetSelectable(selectable) => set_selectable(env, selectable),
+                    PluginCommand::ShowCursor(cursor_position) => show_cursor(env, cursor_position),
                     PluginCommand::GetPluginIds => get_plugin_ids(env),
                     PluginCommand::GetZellijVersion => get_zellij_version(env),
+                    PluginCommand::GenerateRandomName => generate_random_name(env),
+                    PluginCommand::DumpLayout(layout_name) => dump_layout(env, layout_name),
+                    PluginCommand::ParseLayout(layout_string) => parse_layout(env, layout_string),
+                    PluginCommand::GetLayoutDir => get_layout_dir(env),
+                    PluginCommand::GetFocusedPaneInfo => get_focused_pane_info(env),
+                    PluginCommand::SaveSession => save_session(env),
+                    PluginCommand::CurrentSessionLastSavedTime => {
+                        current_session_last_saved_time(env)
+                    },
+                    PluginCommand::GetPaneInfo(pane_id) => get_pane_info(env, pane_id),
+                    PluginCommand::GetTabInfo(tab_id) => get_tab_info(env, tab_id),
                     PluginCommand::OpenFile(file_to_open, context) => {
                         open_file(env, file_to_open, context)
                     },
@@ -179,6 +267,34 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::NewTabsWithLayoutInfo(layout_info) => {
                         new_tabs_with_layout_info(env, layout_info)?
                     },
+                    PluginCommand::OverrideLayout(
+                        layout_info,
+                        retain_existing_terminal_panes,
+                        retain_existing_plugin_panes,
+                        apply_only_to_active_tab,
+                        context,
+                    ) => override_layout(
+                        env,
+                        layout_info,
+                        retain_existing_terminal_panes,
+                        retain_existing_plugin_panes,
+                        apply_only_to_active_tab,
+                        context,
+                    )?,
+                    PluginCommand::SaveLayout {
+                        layout_name,
+                        layout_kdl,
+                        overwrite,
+                    } => save_layout(env, layout_name, layout_kdl, overwrite),
+                    PluginCommand::DeleteLayout { layout_name } => delete_layout(env, layout_name),
+                    PluginCommand::RenameLayout {
+                        old_layout_name,
+                        new_layout_name,
+                    } => rename_layout(env, old_layout_name, new_layout_name),
+                    PluginCommand::EditLayout {
+                        layout_name,
+                        context,
+                    } => edit_layout(env, layout_name, context),
                     PluginCommand::NewTab { name, cwd } => new_tab(env, name, cwd),
                     PluginCommand::GoToNextTab => go_to_next_tab(env),
                     PluginCommand::GoToPreviousTab => go_to_previous_tab(env),
@@ -194,6 +310,7 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::EditScrollback => edit_scrollback(env),
                     PluginCommand::Write(bytes) => write(env, bytes),
                     PluginCommand::WriteChars(chars) => write_chars(env, chars),
+                    PluginCommand::CopyToClipboard(text) => copy_to_clipboard(env, text)?,
                     PluginCommand::ToggleTab => toggle_tab(env),
                     PluginCommand::MovePane => move_pane(env),
                     PluginCommand::MovePaneWithDirection(direction) => {
@@ -229,12 +346,26 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::ClosePluginPane(plugin_pane_id) => {
                         close_plugin_pane(env, plugin_pane_id)
                     },
-                    PluginCommand::FocusTerminalPane(terminal_pane_id, should_float_if_hidden) => {
-                        focus_terminal_pane(env, terminal_pane_id, should_float_if_hidden)
-                    },
-                    PluginCommand::FocusPluginPane(plugin_pane_id, should_float_if_hidden) => {
-                        focus_plugin_pane(env, plugin_pane_id, should_float_if_hidden)
-                    },
+                    PluginCommand::FocusTerminalPane(
+                        terminal_pane_id,
+                        should_float_if_hidden,
+                        should_be_in_place_if_hidden,
+                    ) => focus_terminal_pane(
+                        env,
+                        terminal_pane_id,
+                        should_float_if_hidden,
+                        should_be_in_place_if_hidden,
+                    ),
+                    PluginCommand::FocusPluginPane(
+                        plugin_pane_id,
+                        should_float_if_hidden,
+                        should_be_in_place_if_hidden,
+                    ) => focus_plugin_pane(
+                        env,
+                        plugin_pane_id,
+                        should_float_if_hidden,
+                        should_be_in_place_if_hidden,
+                    ),
                     PluginCommand::RenameTerminalPane(terminal_pane_id, new_name) => {
                         rename_terminal_pane(env, terminal_pane_id, &new_name)
                     },
@@ -305,7 +436,9 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                         scan_host_folder(env, folder_to_scan)
                     },
                     PluginCommand::WatchFilesystem => watch_filesystem(env),
-                    PluginCommand::DumpSessionLayout => dump_session_layout(env),
+                    PluginCommand::DumpSessionLayout { tab_index } => {
+                        dump_session_layout(env, tab_index)
+                    },
                     PluginCommand::CloseSelf => close_self(env),
                     PluginCommand::Reconfigure(new_config, write_config_to_disk) => {
                         reconfigure(env, new_config, write_config_to_disk)?
@@ -313,9 +446,16 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::HidePaneWithId(pane_id) => {
                         hide_pane_with_id(env, pane_id.into())?
                     },
-                    PluginCommand::ShowPaneWithId(pane_id, should_float_if_hidden) => {
-                        show_pane_with_id(env, pane_id.into(), should_float_if_hidden)
-                    },
+                    PluginCommand::ShowPaneWithId(
+                        pane_id,
+                        should_float_if_hidden,
+                        should_focus_pane,
+                    ) => show_pane_with_id(
+                        env,
+                        pane_id.into(),
+                        should_float_if_hidden,
+                        should_focus_pane,
+                    ),
                     PluginCommand::OpenCommandPaneBackground(command_to_run, context) => {
                         open_command_pane_background(env, command_to_run, context)
                     },
@@ -328,12 +468,27 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::EditScrollbackForPaneWithId(pane_id) => {
                         edit_scrollback_for_pane_with_id(env, pane_id.into())
                     },
+                    PluginCommand::GetPaneScrollback {
+                        pane_id,
+                        get_full_scrollback,
+                    } => get_pane_scrollback(env, pane_id.into(), get_full_scrollback),
                     PluginCommand::WriteToPaneId(bytes, pane_id) => {
                         write_to_pane_id(env, bytes, pane_id.into())
                     },
                     PluginCommand::WriteCharsToPaneId(chars, pane_id) => {
                         write_chars_to_pane_id(env, chars, pane_id.into())
                     },
+                    PluginCommand::SendSigintToPaneId(pane_id) => {
+                        send_sigint_to_pane_id(env, pane_id.into())
+                    },
+                    PluginCommand::SendSigkillToPaneId(pane_id) => {
+                        send_sigkill_to_pane_id(env, pane_id.into())
+                    },
+                    PluginCommand::GetPanePid { pane_id } => get_pane_pid(env, pane_id.into()),
+                    PluginCommand::GetPaneRunningCommand { pane_id } => {
+                        get_pane_running_command(env, pane_id.into())
+                    },
+                    PluginCommand::GetPaneCwd { pane_id } => get_pane_cwd(env, pane_id.into()),
                     PluginCommand::MovePaneWithPaneId(pane_id) => {
                         move_pane_with_pane_id(env, pane_id.into())
                     },
@@ -390,6 +545,20 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                         tab_index,
                         should_change_focus_to_new_tab,
                     ),
+                    PluginCommand::SwitchTabToId(tab_id) => switch_tab_to_id(env, tab_id),
+                    PluginCommand::GoToTabWithId(tab_id) => go_to_tab_with_id(env, tab_id),
+                    PluginCommand::CloseTabWithId(tab_id) => close_tab_with_id(env, tab_id),
+                    PluginCommand::RenameTabWithId(tab_id, new_name) => {
+                        rename_tab_with_id(env, tab_id, &new_name)
+                    },
+                    PluginCommand::BreakPanesToTabWithId(pane_ids, tab_id, should_change_focus) => {
+                        break_panes_to_tab_with_id(
+                            env,
+                            pane_ids.into_iter().map(|p_id| p_id.into()).collect(),
+                            should_change_focus,
+                            tab_id,
+                        )
+                    },
                     PluginCommand::ReloadPlugin(plugin_id) => reload_plugin(env, plugin_id),
                     PluginCommand::LoadNewPlugin {
                         url,
@@ -420,6 +589,15 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                                 .map(|(p_id, coordinates)| (p_id.into(), coordinates))
                                 .collect(),
                         )
+                    },
+                    PluginCommand::TogglePaneBorderless(pane_id) => {
+                        toggle_pane_borderless(env, pane_id.into())
+                    },
+                    PluginCommand::SetPaneBorderless(pane_id, borderless) => {
+                        set_pane_borderless(env, pane_id.into(), borderless)
+                    },
+                    PluginCommand::SetPaneColor(pane_id, fg, bg) => {
+                        set_pane_color(env, pane_id.into(), fg, bg)
                     },
                     PluginCommand::OpenFileNearPlugin(file_to_open, context) => {
                         open_file_near_plugin(env, file_to_open, context)
@@ -479,8 +657,8 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::SetSelfMouseSelectionSupport(selection_support) => {
                         set_self_mouse_selection_support(env, selection_support);
                     },
-                    PluginCommand::GenerateWebLoginToken(token_label) => {
-                        generate_web_login_token(env, token_label);
+                    PluginCommand::GenerateWebLoginToken(token_label, read_only) => {
+                        generate_web_login_token(env, token_label, read_only);
                     },
                     PluginCommand::RevokeWebLoginToken(label) => {
                         revoke_web_login_token(env, label);
@@ -501,11 +679,72 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::ReplacePaneWithExistingPane(
                         pane_id_to_replace,
                         existing_pane_id,
+                        suppress_replaced_pane,
                     ) => replace_pane_with_existing_pane(
                         &mut env,
                         pane_id_to_replace.into(),
                         existing_pane_id.into(),
+                        suppress_replaced_pane,
                     ),
+                    PluginCommand::RunAction(action, context) => run_action(&env, action, context),
+                    PluginCommand::GetSessionEnvironmentVariables => {
+                        get_session_environment_variables(env);
+                    },
+                    PluginCommand::OpenCommandPaneInNewTab(command_to_run, context) => {
+                        open_command_pane_in_new_tab(env, command_to_run, context);
+                    },
+                    PluginCommand::OpenPluginPaneInNewTab {
+                        plugin_url,
+                        configuration,
+                        context,
+                    } => {
+                        open_plugin_pane_in_new_tab(env, plugin_url, configuration, context);
+                    },
+                    PluginCommand::OpenEditorPaneInNewTab(file_to_open, context) => {
+                        open_editor_pane_in_new_tab(env, file_to_open, context);
+                    },
+                    PluginCommand::OpenCommandPaneInPlaceOfPaneId(
+                        pane_id,
+                        command_to_run,
+                        close_replaced_pane,
+                        context,
+                    ) => open_command_pane_in_place_of_pane_id(
+                        env,
+                        pane_id,
+                        command_to_run,
+                        close_replaced_pane,
+                        context,
+                    ),
+                    PluginCommand::OpenTerminalPaneInPlaceOfPaneId(
+                        pane_id,
+                        cwd,
+                        close_replaced_pane,
+                    ) => open_terminal_pane_in_place_of_pane_id(
+                        env,
+                        pane_id,
+                        cwd,
+                        close_replaced_pane,
+                    ),
+                    PluginCommand::OpenEditPaneInPlaceOfPaneId(
+                        pane_id,
+                        file_to_open,
+                        close_replaced_pane,
+                        context,
+                    ) => open_edit_pane_in_place_of_pane_id(
+                        env,
+                        pane_id,
+                        file_to_open,
+                        close_replaced_pane,
+                        context,
+                    ),
+                    PluginCommand::ShowFloatingPanes { tab_id } => show_floating_panes(env, tab_id),
+                    PluginCommand::HideFloatingPanes { tab_id } => hide_floating_panes(env, tab_id),
+                    PluginCommand::SetPaneRegexHighlights(pane_id, highlights) => {
+                        set_pane_regex_highlights(env, pane_id, highlights)
+                    },
+                    PluginCommand::ClearPaneHighlights(pane_id) => {
+                        clear_pane_highlights(env, pane_id)
+                    },
                 },
                 (PermissionStatus::Denied, permission) => {
                     log::error!(
@@ -555,6 +794,16 @@ fn message_to_plugin(env: &PluginEnv, mut message_to_plugin: MessageToPlugin) ->
     if message_to_plugin.plugin_url.as_ref().map(|s| s.as_str()) == Some("zellij:OWN_URL") {
         message_to_plugin.plugin_url = Some(env.plugin.location.display());
     }
+    if !message_to_plugin.has_cwd() {
+        message_to_plugin =
+            message_to_plugin.new_plugin_instance_should_have_cwd(env.plugin_cwd.clone());
+    }
+    if !message_to_plugin.plugin_config.contains_key("caller_cwd") {
+        message_to_plugin.plugin_config.insert(
+            "caller_cwd".to_owned(),
+            env.plugin_cwd.display().to_string(),
+        );
+    }
     env.senders
         .send_to_plugin(PluginInstruction::MessageFromPlugin {
             source_plugin_id: env.plugin_id,
@@ -568,6 +817,15 @@ fn unsubscribe(env: &PluginEnv, event_list: HashSet<EventType>) -> Result<()> {
         .lock()
         .to_anyhow()?
         .retain(|k| !event_list.contains(k));
+    if event_list.contains(&EventType::PaneRenderReportWithAnsi) {
+        let _ = env
+            .senders
+            .send_to_plugin(PluginInstruction::PluginSubscribedToEvents(
+                env.plugin_id,
+                env.client_id,
+                HashSet::new(), // empty set signals a recheck, not a new subscription
+            ));
+    }
     Ok(())
 }
 
@@ -581,6 +839,27 @@ fn set_selectable(env: &PluginEnv, selectable: bool) {
             format!(
                 "failed to set plugin {} selectable from plugin {}",
                 selectable,
+                env.name()
+            )
+        })
+        .non_fatal();
+}
+
+fn show_cursor(env: &PluginEnv, cursor_position: Option<(usize, usize)>) {
+    env.senders
+        .send_to_screen(ScreenInstruction::ShowPluginCursor(
+            env.plugin_id,
+            env.client_id,
+            cursor_position,
+        ))
+        .with_context(|| {
+            format!(
+                "failed to {} plugin cursor from plugin {}",
+                if cursor_position.is_some() {
+                    "show"
+                } else {
+                    "hide"
+                },
                 env.name()
             )
         })
@@ -653,27 +932,488 @@ fn get_zellij_version(env: &PluginEnv) {
         .non_fatal();
 }
 
+fn generate_random_name(env: &PluginEnv) {
+    let name = generate_random_name_impl();
+    let response = ProtobufGenerateRandomNameResponse { name };
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| {
+            format!(
+                "failed to send generated random name to plugin {}",
+                env.name()
+            )
+        })
+        .non_fatal();
+}
+
+fn dump_layout(env: &PluginEnv, layout_name: String) {
+    let layout_path = PathBuf::from(&layout_name);
+
+    let layout_dir = env.layout_dir.clone().or_else(default_layout_dir);
+    let response = match Layout::stringified_from_dir(&layout_path, layout_dir.as_ref()) {
+        Ok((_, layout_content, _)) => ProtobufDumpLayoutResponse {
+            result: Some(dump_layout_response::Result::LayoutContent(layout_content)),
+        },
+        Err(e) => ProtobufDumpLayoutResponse {
+            result: Some(dump_layout_response::Result::Error(e.to_string())),
+        },
+    };
+
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to send layout dump to plugin {}", env.name()))
+        .non_fatal();
+}
+
+fn get_layout_dir(env: &PluginEnv) {
+    // Get layout dir from env or fall back to default
+    let layout_dir = env.layout_dir.clone().or_else(default_layout_dir);
+
+    // Convert PathBuf to String
+    let layout_dir_string = layout_dir
+        .and_then(|path| path.to_str().map(|s| s.to_string()))
+        .unwrap_or_else(|| String::from(""));
+
+    let response = ProtobufGetLayoutDirResponse {
+        layout_dir: layout_dir_string,
+    };
+
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to send layout dir to plugin {}", env.name()))
+        .non_fatal();
+}
+
+fn get_session_environment_variables(env: &PluginEnv) {
+    use zellij_utils::plugin_api::plugin_command::EnvVariable as ProtobufEnvVariable;
+
+    let env_vars: Vec<ProtobufEnvVariable> = env
+        .session_env_vars
+        .iter()
+        .map(|(name, value)| ProtobufEnvVariable {
+            name: name.clone(),
+            value: value.clone(),
+        })
+        .collect();
+
+    let response = ProtobufGetSessionEnvironmentVariablesResponse { env_vars };
+
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| {
+            format!(
+                "failed to send session environment variables to plugin {}",
+                env.name()
+            )
+        })
+        .non_fatal();
+}
+
+fn open_command_pane_in_new_tab(
+    env: &PluginEnv,
+    command_to_run: CommandToRun,
+    context: BTreeMap<String, String>,
+) {
+    let command = command_to_run.path;
+    let cwd = command_to_run
+        .cwd
+        .map(|cwd| translate_plugin_path(env, cwd))
+        .or_else(|| Some(env.plugin_cwd.clone()));
+    let args = command_to_run.args;
+    let hold_on_close = true;
+    let hold_on_start = false;
+    let run_command_action = RunCommandAction {
+        command,
+        args,
+        cwd,
+        direction: None,
+        hold_on_close,
+        hold_on_start,
+        originating_plugin: Some(OriginatingPlugin::new(
+            env.plugin_id,
+            env.client_id,
+            context,
+        )),
+        use_terminal_title: false,
+    };
+    let initial_panes = Some(vec![CommandOrPlugin::Command(run_command_action)]);
+    let action = Action::NewTab {
+        tiled_layout: None,
+        floating_layouts: vec![],
+        swap_tiled_layouts: None,
+        swap_floating_layouts: None,
+        tab_name: None,
+        should_change_focus_to_new_tab: true,
+        cwd: None,
+        initial_panes,
+        first_pane_unblock_condition: None,
+    };
+    let error_msg = || format!("Failed to open command pane in new tab");
+    let result = apply_action!(action, error_msg, env);
+
+    let tab_id = result.as_ref().and_then(|r| r.affected_tab_id);
+    let pane_id = result
+        .as_ref()
+        .and_then(|r| r.affected_pane_id)
+        .map(|p| p.into());
+    let response =
+        ProtobufOpenPaneInNewTabResponse::from(OpenPaneInNewTabResponse { tab_id, pane_id });
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to write open_command_pane_in_new_tab response"))
+        .non_fatal();
+}
+
+fn open_plugin_pane_in_new_tab(
+    env: &PluginEnv,
+    plugin_url: String,
+    configuration: BTreeMap<String, String>,
+    context: BTreeMap<String, String>,
+) {
+    let run_plugin_or_alias = RunPluginOrAlias::from_url(
+        &plugin_url,
+        &Some(configuration),
+        None,
+        Some(env.plugin_cwd.clone()),
+    );
+    let run_plugin_or_alias = match run_plugin_or_alias {
+        Ok(r) => r,
+        Err(e) => {
+            log::error!("Failed to parse plugin url '{}': {}", plugin_url, e);
+            let response =
+                ProtobufOpenPaneInNewTabResponse::from(OpenPaneInNewTabResponse::default());
+            wasi_write_object(env, &response.encode_to_vec())
+                .with_context(|| {
+                    format!("failed to write open_plugin_pane_in_new_tab error response")
+                })
+                .non_fatal();
+            return;
+        },
+    };
+    let _ = context; // context is not currently used for plugin panes
+    let initial_panes = Some(vec![CommandOrPlugin::Plugin(run_plugin_or_alias)]);
+    let action = Action::NewTab {
+        tiled_layout: None,
+        floating_layouts: vec![],
+        swap_tiled_layouts: None,
+        swap_floating_layouts: None,
+        tab_name: None,
+        should_change_focus_to_new_tab: true,
+        cwd: None,
+        initial_panes,
+        first_pane_unblock_condition: None,
+    };
+    let error_msg = || format!("Failed to open plugin pane in new tab");
+    let result = apply_action!(action, error_msg, env);
+
+    let tab_id = result.as_ref().and_then(|r| r.affected_tab_id);
+    let pane_id = result
+        .as_ref()
+        .and_then(|r| r.affected_pane_id)
+        .map(|p| p.into());
+    let response =
+        ProtobufOpenPaneInNewTabResponse::from(OpenPaneInNewTabResponse { tab_id, pane_id });
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to write open_plugin_pane_in_new_tab response"))
+        .non_fatal();
+}
+
+fn open_editor_pane_in_new_tab(
+    env: &PluginEnv,
+    file_to_open: FileToOpen,
+    context: BTreeMap<String, String>,
+) {
+    let _ = context; // context is not currently used for editor panes in new tab
+    let path = translate_plugin_path(env, file_to_open.path);
+    let cwd = file_to_open
+        .cwd
+        .map(|cwd| translate_plugin_path(env, cwd))
+        .or_else(|| Some(env.plugin_cwd.clone()));
+    let file_to_open = FileToOpen {
+        path,
+        cwd,
+        ..file_to_open
+    };
+    let initial_panes = Some(vec![CommandOrPlugin::File(file_to_open)]);
+    let action = Action::NewTab {
+        tiled_layout: None,
+        floating_layouts: vec![],
+        swap_tiled_layouts: None,
+        swap_floating_layouts: None,
+        tab_name: None,
+        should_change_focus_to_new_tab: true,
+        cwd: None,
+        initial_panes,
+        first_pane_unblock_condition: None,
+    };
+    let error_msg = || format!("Failed to open editor pane in new tab");
+    let result = apply_action!(action, error_msg, env);
+
+    let tab_id = result.as_ref().and_then(|r| r.affected_tab_id);
+    let pane_id = result
+        .as_ref()
+        .and_then(|r| r.affected_pane_id)
+        .map(|p| p.into());
+    let response =
+        ProtobufOpenPaneInNewTabResponse::from(OpenPaneInNewTabResponse { tab_id, pane_id });
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to write open_editor_pane_in_new_tab response"))
+        .non_fatal();
+}
+
+fn get_focused_pane_info(env: &PluginEnv) {
+    use crossbeam::channel::RecvTimeoutError;
+    use std::time::Duration;
+
+    let err_context = || {
+        format!(
+            "failed to get focused pane info for client {:?} from plugin {}",
+            env.client_id,
+            env.name()
+        )
+    };
+
+    // Create oneshot channel for response
+    let (response_sender, response_receiver) = crossbeam::channel::bounded(1);
+
+    // Send request to screen thread
+    env.senders
+        .send_to_screen(ScreenInstruction::GetFocusedPaneInfo {
+            client_id: env.client_id,
+            response_channel: response_sender,
+        })
+        .with_context(err_context)
+        .non_fatal();
+
+    // Block waiting for response with 100ms timeout
+    let response = match response_receiver.recv_timeout(Duration::from_millis(100)) {
+        Ok(response) => response,
+        Err(RecvTimeoutError::Timeout) => {
+            log::error!(
+                "GetFocusedPaneInfo timed out for plugin {} for client {:?}",
+                env.plugin_id,
+                env.client_id
+            );
+            GetFocusedPaneInfoResponse::Err("Timeout retrieving focused pane info".to_string())
+        },
+        Err(RecvTimeoutError::Disconnected) => {
+            log::error!(
+                "GetFocusedPaneInfo channel disconnected for plugin {}",
+                env.plugin_id
+            );
+            GetFocusedPaneInfoResponse::Err(
+                "Channel disconnected while retrieving focused pane info".to_string(),
+            )
+        },
+    };
+
+    // Convert to protobuf and write response back to plugin
+    let protobuf_response = ProtobufGetFocusedPaneInfoResponse::from(response);
+    wasi_write_object(env, &protobuf_response.encode_to_vec())
+        .with_context(err_context)
+        .non_fatal();
+}
+
+fn parse_layout(env: &PluginEnv, layout_string: String) {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    // Parse the KDL layout - same parameters as list_available_layouts in layout.rs:1260
+    let parse_result = Layout::from_kdl(
+        &layout_string,
+        Some("parse_layout_api".to_string()), // file_name for error reporting
+        None,                                 // no swap layouts
+        None,                                 // no cwd
+    );
+
+    let response = match parse_result {
+        Ok(layout) => {
+            // Extract tabs from layout
+            // This logic matches LayoutMetadata::from in data.rs:1762-1772
+            let layout_tabs = layout.tabs();
+            let tabs = if layout_tabs.is_empty() {
+                // Use default template if no explicit tabs defined
+                let (tiled_pane_layout, floating_pane_layout) = layout.new_tab();
+                vec![TabMetadata::from(&(
+                    None,
+                    tiled_pane_layout,
+                    floating_pane_layout,
+                ))]
+            } else {
+                layout
+                    .tabs()
+                    .into_iter()
+                    .map(|tab| TabMetadata::from(&tab))
+                    .collect()
+            };
+
+            // Get current time as Unix epoch timestamp
+            let current_time = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs()
+                .to_string();
+
+            let layout_metadata = LayoutMetadata {
+                tabs,
+                creation_time: current_time.clone(),
+                update_time: current_time,
+            };
+
+            // Convert LayoutMetadata to protobuf
+            match layout_metadata.try_into() {
+                Ok(protobuf_metadata) => ProtobufParseLayoutResponse {
+                    result: Some(parse_layout_response::Result::Metadata(protobuf_metadata)),
+                },
+                Err(e) => {
+                    log::error!("Failed to convert metadata to protobuf: {}", e);
+                    // Fallback to SyntaxError if conversion fails
+                    let error = LayoutParsingError::SyntaxError;
+                    let protobuf_error =
+                        error
+                            .try_into()
+                            .unwrap_or_else(|_| ProtobufLayoutParsingError {
+                                error_type: Some(ProtobufLayoutParsingErrorType::SyntaxError(
+                                    ProtobufSyntaxError {},
+                                )),
+                            });
+                    ProtobufParseLayoutResponse {
+                        result: Some(parse_layout_response::Result::Error(protobuf_error)),
+                    }
+                },
+            }
+        },
+        Err(config_error) => {
+            // Build LayoutParsingError following list_available_layouts pattern
+            // See zellij-utils/src/input/layout.rs:1238-1245
+            let file_name = "parse_layout_api".to_string();
+            let source_code = layout_string;
+
+            let error = match config_error {
+                ConfigError::KdlError(kdl_err) => LayoutParsingError::KdlError {
+                    kdl_error: kdl_err,
+                    file_name,
+                    source_code,
+                },
+                _ => LayoutParsingError::SyntaxError,
+            };
+
+            // Convert LayoutParsingError to protobuf
+            // TryFrom is implemented in zellij-utils/src/plugin_api/event.rs:1293-1314
+            let protobuf_error = error.try_into().unwrap_or_else(|e| {
+                log::error!("Failed to convert error to protobuf: {}", e);
+                ProtobufLayoutParsingError {
+                    error_type: Some(ProtobufLayoutParsingErrorType::SyntaxError(
+                        ProtobufSyntaxError {},
+                    )),
+                }
+            });
+
+            ProtobufParseLayoutResponse {
+                result: Some(parse_layout_response::Result::Error(protobuf_error)),
+            }
+        },
+    };
+
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| {
+            format!(
+                "failed to send parse layout response to plugin {}",
+                env.name()
+            )
+        })
+        .non_fatal();
+}
+
 fn open_file(env: &PluginEnv, file_to_open: FileToOpen, context: BTreeMap<String, String>) {
     let error_msg = || format!("failed to open file in plugin {}", env.name());
     let floating = false;
     let in_place = false;
     let start_suppressed = false;
-    let path = env.plugin_cwd.join(file_to_open.path);
+    let path = translate_plugin_path(env, file_to_open.path);
     let cwd = file_to_open
         .cwd
-        .map(|cwd| env.plugin_cwd.join(cwd))
+        .map(|cwd| translate_plugin_path(env, cwd))
         .or_else(|| Some(env.plugin_cwd.clone()));
-    let action = Action::EditFile(
-        OpenFilePayload::new(path, file_to_open.line_number, cwd).with_originating_plugin(
+    let action = Action::EditFile {
+        payload: OpenFilePayload::new(path, file_to_open.line_number, cwd).with_originating_plugin(
             OriginatingPlugin::new(env.plugin_id, env.client_id, context),
         ),
-        None,
+        direction: None,
         floating,
         in_place,
+        close_replaced_pane: false,
         start_suppressed,
-        None,
-    );
-    apply_action!(action, error_msg, env);
+        coordinates: None,
+        near_current_pane: false,
+    };
+    let result = apply_action!(action, error_msg, env);
+
+    // Extract pane_id from result and convert to zellij_utils PaneId
+    let pane_id: OpenFileResponse = result.and_then(|r| r.affected_pane_id).map(|p| p.into());
+
+    // Write response to plugin
+    let response = ProtobufOpenFileResponse::from(pane_id);
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to write open_file response"))
+        .non_fatal();
+}
+
+fn run_action(env: &PluginEnv, mut action: Action, context: BTreeMap<String, String>) {
+    // Clone the necessary data to move into the thread
+    action.populate_originating_plugin(OriginatingPlugin::new(
+        env.plugin_id,
+        env.client_id,
+        context.clone(),
+    ));
+    let action_clone = action.clone();
+    let client_id = env.client_id;
+    let plugin_id = env.plugin_id;
+    let senders = env.senders.clone();
+    let capabilities = env.capabilities.clone();
+    let client_attributes = env.client_attributes.clone();
+    let default_shell = env.default_shell.clone();
+    let default_layout = env.default_layout.clone();
+    let keybinds = env.keybinds.clone();
+    let default_mode = env.default_mode.clone();
+    let plugin_name = env.name().to_string();
+
+    // Spawn a new thread to execute the action
+    thread::spawn(move || {
+        // Execute the action and capture the result
+        let pane_id = match route_action(
+            action,
+            client_id,
+            None,
+            Some(PaneId::Plugin(plugin_id)),
+            senders.clone(),
+            capabilities,
+            client_attributes,
+            default_shell,
+            default_layout,
+            None,
+            keybinds,
+            default_mode,
+            None,
+        ) {
+            Ok((_should_break, result)) => {
+                // Extract pane_id from ActionCompletionResult
+                result.and_then(|r| r.affected_pane_id)
+            },
+            Err(e) => {
+                log::error!("failed to run action in plugin {}: {:?}", plugin_name, e);
+                None
+            },
+        };
+
+        // After action completes, send ActionComplete event with context
+        // Convert server PaneId to zellij_utils PaneId
+        let pane_id_for_event = pane_id.map(|p| p.into());
+        let updates = vec![(
+            Some(plugin_id),
+            Some(client_id),
+            Event::ActionComplete(action_clone, pane_id_for_event, context),
+        )];
+
+        // Send the ActionComplete event back to the plugin
+        if let Err(e) = senders.send_to_plugin(PluginInstruction::Update(updates)) {
+            log::error!("Failed to send ActionComplete event: {:?}", e);
+        }
+    });
 }
 
 fn open_file_floating(
@@ -686,22 +1426,34 @@ fn open_file_floating(
     let floating = true;
     let in_place = false;
     let start_suppressed = false;
-    let path = env.plugin_cwd.join(file_to_open.path);
+    let path = translate_plugin_path(env, file_to_open.path);
     let cwd = file_to_open
         .cwd
-        .map(|cwd| env.plugin_cwd.join(cwd))
+        .map(|cwd| translate_plugin_path(env, cwd))
         .or_else(|| Some(env.plugin_cwd.clone()));
-    let action = Action::EditFile(
-        OpenFilePayload::new(path, file_to_open.line_number, cwd).with_originating_plugin(
+    let action = Action::EditFile {
+        payload: OpenFilePayload::new(path, file_to_open.line_number, cwd).with_originating_plugin(
             OriginatingPlugin::new(env.plugin_id, env.client_id, context),
         ),
-        None,
+        direction: None,
         floating,
         in_place,
+        close_replaced_pane: false,
         start_suppressed,
-        floating_pane_coordinates,
-    );
-    apply_action!(action, error_msg, env);
+        coordinates: floating_pane_coordinates,
+        near_current_pane: false,
+    };
+    let result = apply_action!(action, error_msg, env);
+
+    // Extract pane_id from result and convert to zellij_utils PaneId
+    let pane_id: OpenFileFloatingResponse =
+        result.and_then(|r| r.affected_pane_id).map(|p| p.into());
+
+    // Write response to plugin
+    let response = ProtobufOpenFileFloatingResponse::from(pane_id);
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to write open_file_floating response"))
+        .non_fatal();
 }
 
 fn open_file_in_place(
@@ -713,23 +1465,35 @@ fn open_file_in_place(
     let floating = false;
     let in_place = true;
     let start_suppressed = false;
-    let path = env.plugin_cwd.join(file_to_open.path);
+    let path = translate_plugin_path(env, file_to_open.path);
     let cwd = file_to_open
         .cwd
-        .map(|cwd| env.plugin_cwd.join(cwd))
+        .map(|cwd| translate_plugin_path(env, cwd))
         .or_else(|| Some(env.plugin_cwd.clone()));
 
-    let action = Action::EditFile(
-        OpenFilePayload::new(path, file_to_open.line_number, cwd).with_originating_plugin(
+    let action = Action::EditFile {
+        payload: OpenFilePayload::new(path, file_to_open.line_number, cwd).with_originating_plugin(
             OriginatingPlugin::new(env.plugin_id, env.client_id, context),
         ),
-        None,
+        direction: None,
         floating,
         in_place,
+        close_replaced_pane: false,
         start_suppressed,
-        None,
-    );
-    apply_action!(action, error_msg, env);
+        coordinates: None,
+        near_current_pane: false,
+    };
+    let result = apply_action!(action, error_msg, env);
+
+    // Extract pane_id from result and convert to zellij_utils PaneId
+    let pane_id: OpenFileInPlaceResponse =
+        result.and_then(|r| r.affected_pane_id).map(|p| p.into());
+
+    // Write response to plugin
+    let response = ProtobufOpenFileInPlaceResponse::from(pane_id);
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to write open_file_in_place response"))
+        .non_fatal();
 }
 
 fn open_file_near_plugin(
@@ -739,9 +1503,9 @@ fn open_file_near_plugin(
 ) {
     let cwd = file_to_open
         .cwd
-        .map(|cwd| env.plugin_cwd.join(cwd))
+        .map(|cwd| translate_plugin_path(env, cwd))
         .or_else(|| Some(env.plugin_cwd.clone()));
-    let path = env.plugin_cwd.join(file_to_open.path);
+    let path = translate_plugin_path(env, file_to_open.path);
     let open_file_payload =
         OpenFilePayload::new(path, file_to_open.line_number, cwd).with_originating_plugin(
             OriginatingPlugin::new(env.plugin_id, env.client_id, context),
@@ -749,14 +1513,29 @@ fn open_file_near_plugin(
     let title = format!("Editing: {}", open_file_payload.path.display());
     let start_suppressed = false;
     let open_file = TerminalAction::OpenFile(open_file_payload);
+
+    // Create completion channel
+    let (completion_tx, completion_rx) = oneshot::channel();
     let pty_instr = PtyInstruction::SpawnTerminal(
         Some(open_file),
         Some(title),
         NewPanePlacement::default(),
         start_suppressed,
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
+        Some(NotificationEnd::new(completion_tx)),
+        false, // set_blocking
     );
     let _ = env.senders.send_to_pty(pty_instr);
+
+    // Wait for completion
+    let result = wait_for_action_completion(completion_rx, "open_file_near_plugin", false);
+    let pane_id: OpenFileNearPluginResponse = result.affected_pane_id.map(|p| p.into());
+
+    // Write response to plugin
+    let response = ProtobufOpenFileNearPluginResponse::from(pane_id);
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to write open_file_near_plugin response"))
+        .non_fatal();
 }
 
 fn open_file_floating_near_plugin(
@@ -767,9 +1546,9 @@ fn open_file_floating_near_plugin(
 ) {
     let cwd = file_to_open
         .cwd
-        .map(|cwd| env.plugin_cwd.join(cwd))
+        .map(|cwd| translate_plugin_path(env, cwd))
         .or_else(|| Some(env.plugin_cwd.clone()));
-    let path = env.plugin_cwd.join(file_to_open.path);
+    let path = translate_plugin_path(env, file_to_open.path);
     let open_file_payload =
         OpenFilePayload::new(path, file_to_open.line_number, cwd).with_originating_plugin(
             OriginatingPlugin::new(env.plugin_id, env.client_id, context),
@@ -777,14 +1556,29 @@ fn open_file_floating_near_plugin(
     let title = format!("Editing: {}", open_file_payload.path.display());
     let start_suppressed = false;
     let open_file = TerminalAction::OpenFile(open_file_payload);
+
+    // Create completion channel
+    let (completion_tx, completion_rx) = oneshot::channel();
     let pty_instr = PtyInstruction::SpawnTerminal(
         Some(open_file),
         Some(title),
         NewPanePlacement::Floating(floating_pane_coordinates),
         start_suppressed,
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
+        Some(NotificationEnd::new(completion_tx)),
+        false, // set_blocking
     );
     let _ = env.senders.send_to_pty(pty_instr);
+
+    // Wait for completion
+    let result = wait_for_action_completion(completion_rx, "open_file_floating_near_plugin", false);
+    let pane_id: OpenFileFloatingNearPluginResponse = result.affected_pane_id.map(|p| p.into());
+
+    // Write response to plugin
+    let response = ProtobufOpenFileFloatingNearPluginResponse::from(pane_id);
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to write open_file_floating_near_plugin response"))
+        .non_fatal();
 }
 
 fn open_file_in_place_of_plugin(
@@ -795,27 +1589,41 @@ fn open_file_in_place_of_plugin(
 ) {
     let cwd = file_to_open
         .cwd
-        .map(|cwd| env.plugin_cwd.join(cwd))
+        .map(|cwd| translate_plugin_path(env, cwd))
         .or_else(|| Some(env.plugin_cwd.clone()));
-    let path = env.plugin_cwd.join(file_to_open.path);
+    let path = translate_plugin_path(env, file_to_open.path);
     let open_file_payload =
         OpenFilePayload::new(path, file_to_open.line_number, cwd).with_originating_plugin(
             OriginatingPlugin::new(env.plugin_id, env.client_id, context),
         );
     let title = format!("Editing: {}", open_file_payload.path.display());
     let open_file = TerminalAction::OpenFile(open_file_payload);
+
+    // Create completion channel
+    let (completion_tx, completion_rx) = oneshot::channel();
     let pty_instr = PtyInstruction::SpawnInPlaceTerminal(
         Some(open_file),
         Some(title),
         close_plugin_after_replace,
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
+        Some(NotificationEnd::new(completion_tx)),
     );
     let _ = env.senders.send_to_pty(pty_instr);
+
+    // Wait for completion
+    let result = wait_for_action_completion(completion_rx, "open_file_in_place_of_plugin", false);
+    let pane_id: OpenFileInPlaceOfPluginResponse = result.affected_pane_id.map(|p| p.into());
+
+    // Write response to plugin
+    let response = ProtobufOpenFileInPlaceOfPluginResponse::from(pane_id);
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to write open_file_in_place_of_plugin response"))
+        .non_fatal();
 }
 
 fn open_terminal(env: &PluginEnv, cwd: PathBuf) {
     let error_msg = || format!("failed to open file in plugin {}", env.name());
-    let cwd = env.plugin_cwd.join(cwd);
+    let cwd = translate_plugin_path(env, cwd);
     let mut default_shell = env.default_shell.clone().unwrap_or_else(|| {
         TerminalAction::RunCommand(RunCommand {
             command: env.path_to_default_shell.clone(),
@@ -828,12 +1636,27 @@ fn open_terminal(env: &PluginEnv, cwd: PathBuf) {
         TerminalAction::RunCommand(run_command) => Some(run_command.into()),
         _ => None,
     };
-    let action = Action::NewTiledPane(None, run_command_action, None);
-    apply_action!(action, error_msg, env);
+    let action = Action::NewTiledPane {
+        direction: None,
+        command: run_command_action,
+        pane_name: None,
+        near_current_pane: false,
+        borderless: None,
+    };
+    let result = apply_action!(action, error_msg, env);
+
+    // Extract pane_id from result and convert to zellij_utils PaneId
+    let pane_id: OpenTerminalResponse = result.and_then(|r| r.affected_pane_id).map(|p| p.into());
+
+    // Write response to plugin
+    let response = ProtobufOpenTerminalResponse::from(pane_id);
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to write open_terminal response"))
+        .non_fatal();
 }
 
 fn open_terminal_near_plugin(env: &PluginEnv, cwd: PathBuf) {
-    let cwd = env.plugin_cwd.join(cwd);
+    let cwd = translate_plugin_path(env, cwd);
     let mut default_shell = env.default_shell.clone().unwrap_or_else(|| {
         TerminalAction::RunCommand(RunCommand {
             command: env.path_to_default_shell.clone(),
@@ -843,13 +1666,31 @@ fn open_terminal_near_plugin(env: &PluginEnv, cwd: PathBuf) {
     });
     let name = None;
     default_shell.change_cwd(cwd);
+
+    // Create completion channel
+    let (completion_tx, completion_rx) = oneshot::channel();
     let _ = env.senders.send_to_pty(PtyInstruction::SpawnTerminal(
         Some(default_shell),
         name,
-        NewPanePlacement::Tiled(None),
+        NewPanePlacement::Tiled {
+            direction: None,
+            borderless: None,
+        },
         false,
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
+        Some(NotificationEnd::new(completion_tx)),
+        false, // set_blocking
     ));
+
+    // Wait for completion
+    let result = wait_for_action_completion(completion_rx, "open_terminal_near_plugin", false);
+    let pane_id: OpenTerminalNearPluginResponse = result.affected_pane_id.map(|p| p.into());
+
+    // Write response to plugin
+    let response = ProtobufOpenTerminalNearPluginResponse::from(pane_id);
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to write open_terminal_near_plugin response"))
+        .non_fatal();
 }
 
 fn open_terminal_floating(
@@ -858,7 +1699,7 @@ fn open_terminal_floating(
     floating_pane_coordinates: Option<FloatingPaneCoordinates>,
 ) {
     let error_msg = || format!("failed to open file in plugin {}", env.name());
-    let cwd = env.plugin_cwd.join(cwd);
+    let cwd = translate_plugin_path(env, cwd);
     let mut default_shell = env.default_shell.clone().unwrap_or_else(|| {
         TerminalAction::RunCommand(RunCommand {
             command: env.path_to_default_shell.clone(),
@@ -871,8 +1712,23 @@ fn open_terminal_floating(
         TerminalAction::RunCommand(run_command) => Some(run_command.into()),
         _ => None,
     };
-    let action = Action::NewFloatingPane(run_command_action, None, floating_pane_coordinates);
-    apply_action!(action, error_msg, env);
+    let action = Action::NewFloatingPane {
+        command: run_command_action,
+        pane_name: None,
+        coordinates: floating_pane_coordinates,
+        near_current_pane: false,
+    };
+    let result = apply_action!(action, error_msg, env);
+
+    // Extract pane_id from result and convert to zellij_utils PaneId
+    let pane_id: OpenTerminalFloatingResponse =
+        result.and_then(|r| r.affected_pane_id).map(|p| p.into());
+
+    // Write response to plugin
+    let response = ProtobufOpenTerminalFloatingResponse::from(pane_id);
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to write open_terminal_floating response"))
+        .non_fatal();
 }
 
 fn open_terminal_floating_near_plugin(
@@ -880,7 +1736,7 @@ fn open_terminal_floating_near_plugin(
     cwd: PathBuf,
     floating_pane_coordinates: Option<FloatingPaneCoordinates>,
 ) {
-    let cwd = env.plugin_cwd.join(cwd);
+    let cwd = translate_plugin_path(env, cwd);
     let mut default_shell = env.default_shell.clone().unwrap_or_else(|| {
         TerminalAction::RunCommand(RunCommand {
             command: env.path_to_default_shell.clone(),
@@ -890,18 +1746,34 @@ fn open_terminal_floating_near_plugin(
     });
     default_shell.change_cwd(cwd);
     let name = None;
+
+    // Create completion channel
+    let (completion_tx, completion_rx) = oneshot::channel();
     let _ = env.senders.send_to_pty(PtyInstruction::SpawnTerminal(
         Some(default_shell),
         name,
         NewPanePlacement::Floating(floating_pane_coordinates),
         false,
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
+        Some(NotificationEnd::new(completion_tx)),
+        false, // set_blocking
     ));
+
+    // Wait for completion
+    let result =
+        wait_for_action_completion(completion_rx, "open_terminal_floating_near_plugin", false);
+    let pane_id: OpenTerminalFloatingNearPluginResponse = result.affected_pane_id.map(|p| p.into());
+
+    // Write response to plugin
+    let response = ProtobufOpenTerminalFloatingNearPluginResponse::from(pane_id);
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to write open_terminal_floating_near_plugin response"))
+        .non_fatal();
 }
 
 fn open_terminal_in_place(env: &PluginEnv, cwd: PathBuf) {
     let error_msg = || format!("failed to open file in plugin {}", env.name());
-    let cwd = env.plugin_cwd.join(cwd);
+    let cwd = translate_plugin_path(env, cwd);
     let mut default_shell = env.default_shell.clone().unwrap_or_else(|| {
         TerminalAction::RunCommand(RunCommand {
             command: env.path_to_default_shell.clone(),
@@ -914,8 +1786,24 @@ fn open_terminal_in_place(env: &PluginEnv, cwd: PathBuf) {
         TerminalAction::RunCommand(run_command) => Some(run_command.into()),
         _ => None,
     };
-    let action = Action::NewInPlacePane(run_command_action, None);
-    apply_action!(action, error_msg, env);
+    let action = Action::NewInPlacePane {
+        command: run_command_action,
+        pane_name: None,
+        near_current_pane: false,
+        pane_id_to_replace: None,
+        close_replaced_pane: false,
+    };
+    let result = apply_action!(action, error_msg, env);
+
+    // Extract pane_id from result and convert to zellij_utils PaneId
+    let pane_id: OpenTerminalInPlaceResponse =
+        result.and_then(|r| r.affected_pane_id).map(|p| p.into());
+
+    // Write response to plugin
+    let response = ProtobufOpenTerminalInPlaceResponse::from(pane_id);
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to write open_terminal_in_place response"))
+        .non_fatal();
 }
 
 fn open_terminal_in_place_of_plugin(
@@ -923,7 +1811,7 @@ fn open_terminal_in_place_of_plugin(
     cwd: PathBuf,
     close_plugin_after_replace: bool,
 ) {
-    let cwd = env.plugin_cwd.join(cwd);
+    let cwd = translate_plugin_path(env, cwd);
     let mut default_shell = env.default_shell.clone().unwrap_or_else(|| {
         TerminalAction::RunCommand(RunCommand {
             command: env.path_to_default_shell.clone(),
@@ -933,6 +1821,9 @@ fn open_terminal_in_place_of_plugin(
     });
     default_shell.change_cwd(cwd);
     let name = None;
+
+    // Create completion channel
+    let (completion_tx, completion_rx) = oneshot::channel();
     let _ = env
         .senders
         .send_to_pty(PtyInstruction::SpawnInPlaceTerminal(
@@ -940,7 +1831,19 @@ fn open_terminal_in_place_of_plugin(
             name,
             close_plugin_after_replace,
             ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
+            Some(NotificationEnd::new(completion_tx)),
         ));
+
+    // Wait for completion
+    let result =
+        wait_for_action_completion(completion_rx, "open_terminal_in_place_of_plugin", false);
+    let pane_id: OpenTerminalInPlaceOfPluginResponse = result.affected_pane_id.map(|p| p.into());
+
+    // Write response to plugin
+    let response = ProtobufOpenTerminalInPlaceOfPluginResponse::from(pane_id);
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to write open_terminal_in_place_of_plugin response"))
+        .non_fatal();
 }
 
 fn open_command_pane_in_place_of_plugin(
@@ -950,7 +1853,9 @@ fn open_command_pane_in_place_of_plugin(
     context: BTreeMap<String, String>,
 ) {
     let command = command_to_run.path;
-    let cwd = command_to_run.cwd.map(|cwd| env.plugin_cwd.join(cwd));
+    let cwd = command_to_run
+        .cwd
+        .map(|cwd| translate_plugin_path(env, cwd));
     let args = command_to_run.args;
     let direction = None;
     let hold_on_close = true;
@@ -972,6 +1877,9 @@ fn open_command_pane_in_place_of_plugin(
         use_terminal_title,
     };
     let run_cmd = TerminalAction::RunCommand(run_command_action.into());
+
+    // Create completion channel
+    let (completion_tx, completion_rx) = oneshot::channel();
     let _ = env
         .senders
         .send_to_pty(PtyInstruction::SpawnInPlaceTerminal(
@@ -979,7 +1887,157 @@ fn open_command_pane_in_place_of_plugin(
             name,
             close_plugin_after_replace,
             ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
+            Some(NotificationEnd::new(completion_tx)),
         ));
+
+    // Wait for completion
+    let result =
+        wait_for_action_completion(completion_rx, "open_command_pane_in_place_of_plugin", false);
+    let pane_id: OpenCommandPaneInPlaceOfPluginResponse = result.affected_pane_id.map(|p| p.into());
+
+    // Write response to plugin
+    let response = ProtobufOpenCommandPaneInPlaceOfPluginResponse::from(pane_id);
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to write open_command_pane_in_place_of_plugin response"))
+        .non_fatal();
+}
+
+fn open_terminal_pane_in_place_of_pane_id(
+    env: &PluginEnv,
+    pane_id_to_replace: zellij_utils::data::PaneId,
+    cwd: FileToOpen,
+    close_replaced_pane: bool,
+) {
+    let cwd_path = translate_plugin_path(env, cwd.path);
+    let mut default_shell = env.default_shell.clone().unwrap_or_else(|| {
+        TerminalAction::RunCommand(RunCommand {
+            command: env.path_to_default_shell.clone(),
+            use_terminal_title: true,
+            ..Default::default()
+        })
+    });
+    default_shell.change_cwd(cwd_path);
+    let name = None;
+
+    let (completion_tx, completion_rx) = oneshot::channel();
+    let _ = env
+        .senders
+        .send_to_pty(PtyInstruction::SpawnInPlaceTerminal(
+            Some(default_shell),
+            name,
+            close_replaced_pane,
+            ClientTabIndexOrPaneId::PaneId(pane_id_to_replace.into()),
+            Some(NotificationEnd::new(completion_tx)),
+        ));
+
+    let result = wait_for_action_completion(
+        completion_rx,
+        "open_terminal_pane_in_place_of_pane_id",
+        false,
+    );
+    let pane_id: OpenTerminalPaneInPlaceOfPaneIdResponse =
+        result.affected_pane_id.map(|p| p.into());
+
+    let response = ProtobufOpenTerminalPaneInPlaceOfPaneIdResponse::from(pane_id);
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to write open_terminal_pane_in_place_of_pane_id response"))
+        .non_fatal();
+}
+
+fn open_command_pane_in_place_of_pane_id(
+    env: &PluginEnv,
+    pane_id_to_replace: zellij_utils::data::PaneId,
+    command_to_run: CommandToRun,
+    close_replaced_pane: bool,
+    context: BTreeMap<String, String>,
+) {
+    let command = command_to_run.path;
+    let cwd = command_to_run
+        .cwd
+        .map(|cwd| translate_plugin_path(env, cwd));
+    let args = command_to_run.args;
+    let direction = None;
+    let hold_on_close = true;
+    let hold_on_start = false;
+    let name = None;
+    let use_terminal_title = false;
+    let run_command_action = RunCommandAction {
+        command,
+        args,
+        cwd,
+        direction,
+        hold_on_close,
+        hold_on_start,
+        originating_plugin: Some(OriginatingPlugin::new(
+            env.plugin_id,
+            env.client_id,
+            context,
+        )),
+        use_terminal_title,
+    };
+    let run_cmd = TerminalAction::RunCommand(run_command_action.into());
+
+    let (completion_tx, completion_rx) = oneshot::channel();
+    let _ = env
+        .senders
+        .send_to_pty(PtyInstruction::SpawnInPlaceTerminal(
+            Some(run_cmd),
+            name,
+            close_replaced_pane,
+            ClientTabIndexOrPaneId::PaneId(pane_id_to_replace.into()),
+            Some(NotificationEnd::new(completion_tx)),
+        ));
+
+    let result = wait_for_action_completion(
+        completion_rx,
+        "open_command_pane_in_place_of_pane_id",
+        false,
+    );
+    let pane_id: OpenCommandPaneInPlaceOfPaneIdResponse = result.affected_pane_id.map(|p| p.into());
+
+    let response = ProtobufOpenCommandPaneInPlaceOfPaneIdResponse::from(pane_id);
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to write open_command_pane_in_place_of_pane_id response"))
+        .non_fatal();
+}
+
+fn open_edit_pane_in_place_of_pane_id(
+    env: &PluginEnv,
+    pane_id_to_replace: zellij_utils::data::PaneId,
+    file_to_open: FileToOpen,
+    close_replaced_pane: bool,
+    context: BTreeMap<String, String>,
+) {
+    let cwd = file_to_open
+        .cwd
+        .map(|cwd| translate_plugin_path(env, cwd))
+        .or_else(|| Some(env.plugin_cwd.clone()));
+    let path = translate_plugin_path(env, file_to_open.path);
+    let open_file_payload =
+        OpenFilePayload::new(path, file_to_open.line_number, cwd).with_originating_plugin(
+            OriginatingPlugin::new(env.plugin_id, env.client_id, context),
+        );
+    let title = format!("Editing: {}", open_file_payload.path.display());
+    let open_file = TerminalAction::OpenFile(open_file_payload);
+
+    let (completion_tx, completion_rx) = oneshot::channel();
+    let pty_instr = PtyInstruction::SpawnInPlaceTerminal(
+        Some(open_file),
+        Some(title),
+        close_replaced_pane,
+        ClientTabIndexOrPaneId::PaneId(pane_id_to_replace.into()),
+        Some(NotificationEnd::new(completion_tx)),
+    );
+    let _ = env.senders.send_to_pty(pty_instr);
+
+    let result =
+        wait_for_action_completion(completion_rx, "open_edit_pane_in_place_of_pane_id", false);
+    let pane_id: OpenEditPaneInPlaceOfPaneIdResponse = result.affected_pane_id.map(|p| p.into());
+
+    let response = ProtobufOpenEditPaneInPlaceOfPaneIdResponse::from(pane_id);
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to write open_edit_pane_in_place_of_pane_id response"))
+        .non_fatal();
 }
 
 fn open_command_pane(
@@ -989,7 +2047,9 @@ fn open_command_pane(
 ) {
     let error_msg = || format!("failed to open command in plugin {}", env.name());
     let command = command_to_run.path;
-    let cwd = command_to_run.cwd.map(|cwd| env.plugin_cwd.join(cwd));
+    let cwd = command_to_run
+        .cwd
+        .map(|cwd| translate_plugin_path(env, cwd));
     let args = command_to_run.args;
     let direction = None;
     let hold_on_close = true;
@@ -1010,8 +2070,24 @@ fn open_command_pane(
         )),
         use_terminal_title,
     };
-    let action = Action::NewTiledPane(direction, Some(run_command_action), name);
-    apply_action!(action, error_msg, env);
+    let action = Action::NewTiledPane {
+        direction,
+        command: Some(run_command_action),
+        pane_name: name,
+        near_current_pane: false,
+        borderless: None,
+    };
+    let result = apply_action!(action, error_msg, env);
+
+    // Extract pane_id from result and convert to zellij_utils PaneId
+    let pane_id: OpenCommandPaneResponse =
+        result.and_then(|r| r.affected_pane_id).map(|p| p.into());
+
+    // Write response to plugin
+    let response = ProtobufOpenCommandPaneResponse::from(pane_id);
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to write open_command_pane response"))
+        .non_fatal();
 }
 
 fn open_command_pane_near_plugin(
@@ -1020,7 +2096,9 @@ fn open_command_pane_near_plugin(
     context: BTreeMap<String, String>,
 ) {
     let command = command_to_run.path;
-    let cwd = command_to_run.cwd.map(|cwd| env.plugin_cwd.join(cwd));
+    let cwd = command_to_run
+        .cwd
+        .map(|cwd| translate_plugin_path(env, cwd));
     let args = command_to_run.args;
     let direction = None;
     let hold_on_close = true;
@@ -1042,13 +2120,31 @@ fn open_command_pane_near_plugin(
         use_terminal_title,
     };
     let run_cmd = TerminalAction::RunCommand(run_command_action.into());
+
+    // Create completion channel
+    let (completion_tx, completion_rx) = oneshot::channel();
     let _ = env.senders.send_to_pty(PtyInstruction::SpawnTerminal(
         Some(run_cmd),
         name,
-        NewPanePlacement::Tiled(None),
+        NewPanePlacement::Tiled {
+            direction: None,
+            borderless: None,
+        },
         false,
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
+        Some(NotificationEnd::new(completion_tx)),
+        false, // set_blocking
     ));
+
+    // Wait for completion
+    let result = wait_for_action_completion(completion_rx, "open_command_pane_near_plugin", false);
+    let pane_id: OpenCommandPaneNearPluginResponse = result.affected_pane_id.map(|p| p.into());
+
+    // Write response to plugin
+    let response = ProtobufOpenCommandPaneNearPluginResponse::from(pane_id);
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to write open_command_pane_near_plugin response"))
+        .non_fatal();
 }
 
 fn open_command_pane_floating(
@@ -1059,7 +2155,9 @@ fn open_command_pane_floating(
 ) {
     let error_msg = || format!("failed to open command in plugin {}", env.name());
     let command = command_to_run.path;
-    let cwd = command_to_run.cwd.map(|cwd| env.plugin_cwd.join(cwd));
+    let cwd = command_to_run
+        .cwd
+        .map(|cwd| translate_plugin_path(env, cwd));
     let args = command_to_run.args;
     let direction = None;
     let hold_on_close = true;
@@ -1080,8 +2178,23 @@ fn open_command_pane_floating(
         )),
         use_terminal_title,
     };
-    let action = Action::NewFloatingPane(Some(run_command_action), name, floating_pane_coordinates);
-    apply_action!(action, error_msg, env);
+    let action = Action::NewFloatingPane {
+        command: Some(run_command_action),
+        pane_name: name,
+        coordinates: floating_pane_coordinates,
+        near_current_pane: false,
+    };
+    let result = apply_action!(action, error_msg, env);
+
+    // Extract pane_id from result and convert to zellij_utils PaneId
+    let pane_id: OpenCommandPaneFloatingResponse =
+        result.and_then(|r| r.affected_pane_id).map(|p| p.into());
+
+    // Write response to plugin
+    let response = ProtobufOpenCommandPaneFloatingResponse::from(pane_id);
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to write open_command_pane_floating response"))
+        .non_fatal();
 }
 
 fn open_command_pane_floating_near_plugin(
@@ -1091,7 +2204,9 @@ fn open_command_pane_floating_near_plugin(
     context: BTreeMap<String, String>,
 ) {
     let command = command_to_run.path;
-    let cwd = command_to_run.cwd.map(|cwd| env.plugin_cwd.join(cwd));
+    let cwd = command_to_run
+        .cwd
+        .map(|cwd| translate_plugin_path(env, cwd));
     let args = command_to_run.args;
     let direction = None;
     let hold_on_close = true;
@@ -1113,13 +2228,33 @@ fn open_command_pane_floating_near_plugin(
         use_terminal_title,
     };
     let run_cmd = TerminalAction::RunCommand(run_command_action.into());
+
+    // Create completion channel
+    let (completion_tx, completion_rx) = oneshot::channel();
     let _ = env.senders.send_to_pty(PtyInstruction::SpawnTerminal(
         Some(run_cmd),
         name,
         NewPanePlacement::Floating(floating_pane_coordinates),
         false,
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
+        Some(NotificationEnd::new(completion_tx)),
+        false, // set_blocking
     ));
+
+    // Wait for completion
+    let result = wait_for_action_completion(
+        completion_rx,
+        "open_command_pane_floating_near_plugin",
+        false,
+    );
+    let pane_id: OpenCommandPaneFloatingNearPluginResponse =
+        result.affected_pane_id.map(|p| p.into());
+
+    // Write response to plugin
+    let response = ProtobufOpenCommandPaneFloatingNearPluginResponse::from(pane_id);
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to write open_command_pane_floating_near_plugin response"))
+        .non_fatal();
 }
 
 fn open_command_pane_in_place(
@@ -1129,7 +2264,9 @@ fn open_command_pane_in_place(
 ) {
     let error_msg = || format!("failed to open command in plugin {}", env.name());
     let command = command_to_run.path;
-    let cwd = command_to_run.cwd.map(|cwd| env.plugin_cwd.join(cwd));
+    let cwd = command_to_run
+        .cwd
+        .map(|cwd| translate_plugin_path(env, cwd));
     let args = command_to_run.args;
     let direction = None;
     let hold_on_close = true;
@@ -1150,8 +2287,24 @@ fn open_command_pane_in_place(
         )),
         use_terminal_title,
     };
-    let action = Action::NewInPlacePane(Some(run_command_action), name);
-    apply_action!(action, error_msg, env);
+    let action = Action::NewInPlacePane {
+        command: Some(run_command_action),
+        pane_name: name,
+        near_current_pane: false,
+        pane_id_to_replace: None,
+        close_replaced_pane: false,
+    };
+    let result = apply_action!(action, error_msg, env);
+
+    // Extract pane_id from result and convert to zellij_utils PaneId
+    let pane_id: OpenCommandPaneInPlaceResponse =
+        result.and_then(|r| r.affected_pane_id).map(|p| p.into());
+
+    // Write response to plugin
+    let response = ProtobufOpenCommandPaneInPlaceResponse::from(pane_id);
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to write open_command_pane_in_place response"))
+        .non_fatal();
 }
 
 fn open_command_pane_background(
@@ -1162,7 +2315,7 @@ fn open_command_pane_background(
     let command = command_to_run.path;
     let cwd = command_to_run
         .cwd
-        .map(|cwd| env.plugin_cwd.join(cwd))
+        .map(|cwd| translate_plugin_path(env, cwd))
         .or_else(|| Some(env.plugin_cwd.clone()));
     let args = command_to_run.args;
     let direction = None;
@@ -1186,24 +2339,43 @@ fn open_command_pane_background(
         use_terminal_title,
     };
     let run_cmd = TerminalAction::RunCommand(run_command_action.into());
+
+    // Create completion channel
+    let (completion_tx, completion_rx) = oneshot::channel();
     let _ = env.senders.send_to_pty(PtyInstruction::SpawnTerminal(
         Some(run_cmd),
         name,
         NewPanePlacement::default(),
         start_suppressed,
         ClientTabIndexOrPaneId::ClientId(env.client_id),
+        Some(NotificationEnd::new(completion_tx)),
+        false, // set_blocking
     ));
+
+    // Wait for completion
+    let result = wait_for_action_completion(completion_rx, "open_command_pane_background", false);
+    let pane_id: OpenCommandPaneBackgroundResponse = result.affected_pane_id.map(|p| p.into());
+
+    // Write response to plugin
+    let response = ProtobufOpenCommandPaneBackgroundResponse::from(pane_id);
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to write open_command_pane_background response"))
+        .non_fatal();
 }
 
 fn rerun_command_pane(env: &PluginEnv, terminal_pane_id: u32) {
     let _ = env
         .senders
-        .send_to_screen(ScreenInstruction::RerunCommandPane(terminal_pane_id));
+        .send_to_screen(ScreenInstruction::RerunCommandPane(terminal_pane_id, None));
 }
 
 fn switch_tab_to(env: &PluginEnv, tab_idx: u32) {
     env.senders
-        .send_to_screen(ScreenInstruction::GoToTab(tab_idx, Some(env.client_id)))
+        .send_to_screen(ScreenInstruction::GoToTab(
+            tab_idx,
+            Some(env.client_id),
+            None,
+        ))
         .with_context(|| {
             format!(
                 "failed to switch to tab {tab_idx} from plugin {}",
@@ -1218,9 +2390,10 @@ fn set_timeout(env: &PluginEnv, secs: f64) {
     let update_target = Some(env.plugin_id);
     let client_id = env.client_id;
     let plugin_name = env.name();
-    task::spawn(async move {
+    // Use tokio runtime for async I/O (timer operation)
+    get_tokio_runtime().spawn(async move {
         let start_time = Instant::now();
-        task::sleep(Duration::from_secs_f64(secs)).await;
+        tokio::time::sleep(Duration::from_secs_f64(secs)).await;
         // FIXME: The way that elapsed time is being calculated here is not exact; it doesn't take into account the
         // time it takes an event to actually reach the plugin after it's sent to the `wasm` thread.
         let elapsed_time = Instant::now().duration_since(start_time).as_secs_f64();
@@ -1282,7 +2455,7 @@ fn run_command(
         log::error!("Command cannot be empty");
     } else {
         let command = command_line.remove(0);
-        let cwd = env.plugin_cwd.join(cwd);
+        let cwd = translate_plugin_path(env, cwd);
         let _ = env
             .senders
             .send_to_background_jobs(BackgroundJob::RunCommand(
@@ -1363,25 +2536,47 @@ fn hide_pane_with_id(env: &PluginEnv, pane_id: PaneId) -> Result<()> {
 }
 
 fn show_self(env: &PluginEnv, should_float_if_hidden: bool) {
-    let action = Action::FocusPluginPaneWithId(env.plugin_id, should_float_if_hidden);
+    let action = Action::FocusPluginPaneWithId {
+        pane_id: env.plugin_id,
+        should_float_if_hidden,
+        should_be_in_place_if_hidden: false,
+    };
     let error_msg = || format!("Failed to show self for plugin");
     apply_action!(action, error_msg, env);
 }
 
-fn show_pane_with_id(env: &PluginEnv, pane_id: PaneId, should_float_if_hidden: bool) {
-    let _ = env
-        .senders
-        .send_to_screen(ScreenInstruction::FocusPaneWithId(
-            pane_id,
-            should_float_if_hidden,
-            env.client_id,
-        ));
+fn show_pane_with_id(
+    env: &PluginEnv,
+    pane_id: PaneId,
+    should_float_if_hidden: bool,
+    should_focus_pane: bool,
+) {
+    if should_focus_pane {
+        let _ = env
+            .senders
+            .send_to_screen(ScreenInstruction::FocusPaneWithId(
+                pane_id,
+                should_float_if_hidden,
+                false,
+                env.client_id,
+                None,
+            ));
+    } else {
+        let _ = env
+            .senders
+            .send_to_screen(ScreenInstruction::UnsuppressOrExpandPane(
+                pane_id,
+                should_float_if_hidden,
+            ));
+    }
 }
 
 fn close_self(env: &PluginEnv) {
     env.senders
         .send_to_screen(ScreenInstruction::ClosePane(
             PaneId::Plugin(env.plugin_id),
+            None,
+            None,
             None,
         ))
         .with_context(|| format!("failed to close self"))
@@ -1425,7 +2620,7 @@ fn rebind_keys(
 }
 
 fn switch_to_mode(env: &PluginEnv, input_mode: InputMode) {
-    let action = Action::SwitchToMode(input_mode);
+    let action = Action::SwitchToMode { input_mode };
     let error_msg = || format!("failed to switch to mode in plugin {}", env.name());
     apply_action!(action, error_msg, env);
 }
@@ -1458,15 +2653,17 @@ fn apply_layout(env: &PluginEnv, layout: Layout) {
     if tabs.is_empty() {
         let swap_tiled_layouts = Some(layout.swap_tiled_layouts.clone());
         let swap_floating_layouts = Some(layout.swap_floating_layouts.clone());
-        let action = Action::NewTab(
-            layout.template.as_ref().map(|t| t.0.clone()),
-            layout.template.map(|t| t.1).unwrap_or_default(),
+        let action = Action::NewTab {
+            tiled_layout: layout.template.as_ref().map(|t| t.0.clone()),
+            floating_layouts: layout.template.map(|t| t.1).unwrap_or_default(),
             swap_tiled_layouts,
             swap_floating_layouts,
-            None,
-            true,
+            tab_name: None,
+            should_change_focus_to_new_tab: true,
             cwd,
-        );
+            initial_panes: None,
+            first_pane_unblock_condition: None,
+        };
         tabs_to_open.push(action);
     } else {
         let focused_tab_index = layout.focused_tab_index().unwrap_or(0);
@@ -1476,29 +2673,63 @@ fn apply_layout(env: &PluginEnv, layout: Layout) {
             let should_focus_tab = tab_index == focused_tab_index;
             let swap_tiled_layouts = Some(layout.swap_tiled_layouts.clone());
             let swap_floating_layouts = Some(layout.swap_floating_layouts.clone());
-            let action = Action::NewTab(
-                Some(tiled_pane_layout),
-                floating_pane_layout,
+            let action = Action::NewTab {
+                tiled_layout: Some(tiled_pane_layout),
+                floating_layouts: floating_pane_layout,
                 swap_tiled_layouts,
                 swap_floating_layouts,
                 tab_name,
-                should_focus_tab,
-                cwd.clone(),
-            );
+                should_change_focus_to_new_tab: should_focus_tab,
+                cwd: cwd.clone(),
+                initial_panes: None,
+                first_pane_unblock_condition: None,
+            };
             tabs_to_open.push(action);
         }
     }
+    let mut tab_ids = Vec::new();
+
     for action in tabs_to_open {
         let error_msg = || format!("Failed to create layout tab");
-        apply_action!(action, error_msg, env);
+        let result = apply_action!(action, error_msg, env);
+
+        // Collect tab ID from each action
+        if let Some(tab_id) = result.and_then(|r| r.affected_tab_id) {
+            tab_ids.push(tab_id);
+        }
     }
+
+    // Write response
+    let response = ProtobufNewTabsResponse::from(tab_ids);
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to write layout tabs response"))
+        .non_fatal();
 }
 
 fn new_tab(env: &PluginEnv, name: Option<String>, cwd: Option<String>) {
-    let cwd = cwd.map(|c| PathBuf::from(c));
-    let action = Action::NewTab(None, vec![], None, None, name, true, cwd);
+    let cwd = cwd.map(|c| translate_plugin_path(env, PathBuf::from(c)));
+    let action = Action::NewTab {
+        tiled_layout: None,
+        floating_layouts: vec![],
+        swap_tiled_layouts: None,
+        swap_floating_layouts: None,
+        tab_name: name,
+        should_change_focus_to_new_tab: true,
+        cwd,
+        initial_panes: None,
+        first_pane_unblock_condition: None,
+    };
     let error_msg = || format!("Failed to open new tab");
-    apply_action!(action, error_msg, env);
+    let result = apply_action!(action, error_msg, env);
+
+    // Extract tab_id from result - return None if not present
+    let tab_id: NewTabResponse = result.and_then(|r| r.affected_tab_id);
+
+    // Write response to plugin
+    let response = ProtobufNewTabResponse::from(tab_id);
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to write new_tab response"))
+        .non_fatal();
 }
 
 fn go_to_next_tab(env: &PluginEnv) {
@@ -1515,13 +2746,19 @@ fn go_to_previous_tab(env: &PluginEnv) {
 
 fn resize(env: &PluginEnv, resize: Resize) {
     let error_msg = || format!("failed to resize in plugin {}", env.name());
-    let action = Action::Resize(resize, None);
+    let action = Action::Resize {
+        resize,
+        direction: None,
+    };
     apply_action!(action, error_msg, env);
 }
 
 fn resize_with_direction(env: &PluginEnv, resize: ResizeStrategy) {
     let error_msg = || format!("failed to resize in plugin {}", env.name());
-    let action = Action::Resize(resize.resize, resize.direction);
+    let action = Action::Resize {
+        resize: resize.resize,
+        direction: resize.direction,
+    };
     apply_action!(action, error_msg, env);
 }
 
@@ -1539,13 +2776,13 @@ fn focus_previous_pane(env: &PluginEnv) {
 
 fn move_focus(env: &PluginEnv, direction: Direction) {
     let error_msg = || format!("failed to move focus in plugin {}", env.name());
-    let action = Action::MoveFocus(direction);
+    let action = Action::MoveFocus { direction };
     apply_action!(action, error_msg, env);
 }
 
 fn move_focus_or_tab(env: &PluginEnv, direction: Direction) {
     let error_msg = || format!("failed to move focus in plugin {}", env.name());
-    let action = Action::MoveFocusOrTab(direction);
+    let action = Action::MoveFocusOrTab { direction };
     apply_action!(action, error_msg, env);
 }
 
@@ -1572,6 +2809,9 @@ fn switch_session(
             return Err(anyhow!("Failed to deserialize layout: {}", e));
         }
     }
+
+    let (completion_tx, completion_rx) = oneshot::channel();
+
     if session_name
         .as_ref()
         .map(|s| s.contains('/'))
@@ -1581,6 +2821,9 @@ fn switch_session(
     } else {
         let client_id = env.client_id;
         let tab_position = tab_position.map(|p| p + 1); // ¯\_()_/¯
+        let cwd = cwd
+            .map(|c| translate_plugin_path(env, c))
+            .or_else(|| Some(env.plugin_cwd.clone()));
         let connect_to_session = ConnectToSession {
             name: session_name,
             tab_position,
@@ -1592,8 +2835,11 @@ fn switch_session(
             .send_to_server(ServerInstruction::SwitchSession(
                 connect_to_session,
                 client_id,
+                Some(NotificationEnd::new(completion_tx)),
             ))
             .with_context(err_context)?;
+        let wait_forever = false;
+        let _ = wait_for_action_completion(completion_rx, "switch_session", wait_forever);
     }
     Ok(())
 }
@@ -1604,13 +2850,13 @@ fn delete_dead_session(session_name: String) -> Result<()> {
 }
 
 fn delete_all_dead_sessions() -> Result<()> {
-    use std::os::unix::fs::FileTypeExt;
+    use zellij_utils::consts::is_ipc_socket;
     let mut live_sessions = vec![];
     if let Ok(files) = std::fs::read_dir(&*ZELLIJ_SOCK_DIR) {
         files.for_each(|file| {
             if let Ok(file) = file {
                 if let Ok(file_name) = file.file_name().into_string() {
-                    if file.file_type().unwrap().is_socket() {
+                    if is_ipc_socket(&file.file_type().unwrap()) {
                         live_sessions.push(file_name);
                     }
                 }
@@ -1645,21 +2891,33 @@ fn delete_all_dead_sessions() -> Result<()> {
 }
 
 fn edit_scrollback(env: &PluginEnv) {
-    let action = Action::EditScrollback;
+    let action = Action::EditScrollback { ansi: false };
     let error_msg = || format!("Failed to edit scrollback");
     apply_action!(action, error_msg, env);
 }
 
 fn write(env: &PluginEnv, bytes: Vec<u8>) {
     let error_msg = || format!("failed to write in plugin {}", env.name());
-    let action = Action::Write(None, bytes, false);
+    let action = Action::Write {
+        key_with_modifier: None,
+        bytes,
+        is_kitty_keyboard_protocol: false,
+    };
     apply_action!(action, error_msg, env);
 }
 
 fn write_chars(env: &PluginEnv, chars_to_write: String) {
     let error_msg = || format!("failed to write in plugin {}", env.name());
-    let action = Action::WriteChars(chars_to_write);
+    let action = Action::WriteChars {
+        chars: chars_to_write,
+    };
     apply_action!(action, error_msg, env);
+}
+
+fn copy_to_clipboard(env: &PluginEnv, text: String) -> Result<()> {
+    env.senders
+        .send_to_screen(ScreenInstruction::CopyTextToClipboard(text, env.plugin_id))
+        .with_context(|| format!("failed to copy to clipboard in plugin {}", env.name()))
 }
 
 fn toggle_tab(env: &PluginEnv) {
@@ -1670,13 +2928,15 @@ fn toggle_tab(env: &PluginEnv) {
 
 fn move_pane(env: &PluginEnv) {
     let error_msg = || format!("failed to move pane in plugin {}", env.name());
-    let action = Action::MovePane(None);
+    let action = Action::MovePane { direction: None };
     apply_action!(action, error_msg, env);
 }
 
 fn move_pane_with_direction(env: &PluginEnv, direction: Direction) {
     let error_msg = || format!("failed to move pane in plugin {}", env.name());
-    let action = Action::MovePane(Some(direction));
+    let action = Action::MovePane {
+        direction: Some(direction),
+    };
     apply_action!(action, error_msg, env);
 }
 
@@ -1795,20 +3055,34 @@ fn next_swap_layout(env: &PluginEnv) {
 fn go_to_tab_name(env: &PluginEnv, tab_name: String) {
     let error_msg = || format!("failed to change tab in plugin {}", env.name());
     let create = false;
-    let action = Action::GoToTabName(tab_name, create);
+    let action = Action::GoToTabName {
+        name: tab_name,
+        create,
+    };
     apply_action!(action, error_msg, env);
 }
 
 fn focus_or_create_tab(env: &PluginEnv, tab_name: String) {
     let error_msg = || format!("failed to change or create tab in plugin {}", env.name());
     let create = true;
-    let action = Action::GoToTabName(tab_name, create);
-    apply_action!(action, error_msg, env);
+    let action = Action::GoToTabName {
+        name: tab_name,
+        create,
+    };
+    let result = apply_action!(action, error_msg, env);
+
+    // Return Some(tab_id) if tab was created or focused, None on error
+    let tab_id: FocusOrCreateTabResponse = result.and_then(|r| r.affected_tab_id);
+
+    let response = ProtobufFocusOrCreateTabResponse::from(tab_id);
+    wasi_write_object(env, &response.encode_to_vec()).non_fatal();
 }
 
 fn go_to_tab(env: &PluginEnv, tab_index: u32) {
     let error_msg = || format!("failed to change tab focus in plugin {}", env.name());
-    let action = Action::GoToTab(tab_index + 1);
+    let action = Action::GoToTab {
+        index: tab_index + 1,
+    };
     apply_action!(action, error_msg, env);
 }
 
@@ -1817,59 +3091,92 @@ fn start_or_reload_plugin(env: &PluginEnv, url: &str) -> Result<()> {
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     let run_plugin_or_alias = RunPluginOrAlias::from_url(url, &None, None, Some(cwd))
         .map_err(|e| anyhow!("Failed to parse plugin location: {}", e))?;
-    let action = Action::StartOrReloadPlugin(run_plugin_or_alias);
+    let action = Action::StartOrReloadPlugin {
+        plugin: run_plugin_or_alias,
+    };
     apply_action!(action, error_msg, env);
     Ok(())
 }
 
 fn close_terminal_pane(env: &PluginEnv, terminal_pane_id: u32) {
     let error_msg = || format!("failed to change tab focus in plugin {}", env.name());
-    let action = Action::CloseTerminalPane(terminal_pane_id);
+    let action = Action::CloseTerminalPane {
+        pane_id: terminal_pane_id,
+    };
     apply_action!(action, error_msg, env);
     env.senders
-        .send_to_pty(PtyInstruction::ClosePane(PaneId::Terminal(
-            terminal_pane_id,
-        )))
+        .send_to_pty(PtyInstruction::ClosePane(
+            PaneId::Terminal(terminal_pane_id),
+            None,
+        ))
         .non_fatal();
 }
 
 fn close_plugin_pane(env: &PluginEnv, plugin_pane_id: u32) {
     let error_msg = || format!("failed to change tab focus in plugin {}", env.name());
-    let action = Action::ClosePluginPane(plugin_pane_id);
+    let action = Action::ClosePluginPane {
+        pane_id: plugin_pane_id,
+    };
     apply_action!(action, error_msg, env);
     env.senders
         .send_to_plugin(PluginInstruction::Unload(plugin_pane_id))
         .non_fatal();
 }
 
-fn focus_terminal_pane(env: &PluginEnv, terminal_pane_id: u32, should_float_if_hidden: bool) {
-    let action = Action::FocusTerminalPaneWithId(terminal_pane_id, should_float_if_hidden);
+fn focus_terminal_pane(
+    env: &PluginEnv,
+    terminal_pane_id: u32,
+    should_float_if_hidden: bool,
+    should_be_in_place_if_hidden: bool,
+) {
+    let action = Action::FocusTerminalPaneWithId {
+        pane_id: terminal_pane_id,
+        should_float_if_hidden,
+        should_be_in_place_if_hidden,
+    };
     let error_msg = || format!("Failed to focus terminal pane");
     apply_action!(action, error_msg, env);
 }
 
-fn focus_plugin_pane(env: &PluginEnv, plugin_pane_id: u32, should_float_if_hidden: bool) {
-    let action = Action::FocusPluginPaneWithId(plugin_pane_id, should_float_if_hidden);
+fn focus_plugin_pane(
+    env: &PluginEnv,
+    plugin_pane_id: u32,
+    should_float_if_hidden: bool,
+    should_be_in_place_if_hidden: bool,
+) {
+    let action = Action::FocusPluginPaneWithId {
+        pane_id: plugin_pane_id,
+        should_float_if_hidden,
+        should_be_in_place_if_hidden,
+    };
     let error_msg = || format!("Failed to focus plugin pane");
     apply_action!(action, error_msg, env);
 }
 
 fn rename_terminal_pane(env: &PluginEnv, terminal_pane_id: u32, new_name: &str) {
     let error_msg = || format!("Failed to rename terminal pane");
-    let rename_pane_action =
-        Action::RenameTerminalPane(terminal_pane_id, new_name.as_bytes().to_vec());
+    let rename_pane_action = Action::RenameTerminalPane {
+        pane_id: terminal_pane_id,
+        name: new_name.as_bytes().to_vec(),
+    };
     apply_action!(rename_pane_action, error_msg, env);
 }
 
 fn rename_plugin_pane(env: &PluginEnv, plugin_pane_id: u32, new_name: &str) {
     let error_msg = || format!("Failed to rename plugin pane");
-    let rename_pane_action = Action::RenamePluginPane(plugin_pane_id, new_name.as_bytes().to_vec());
+    let rename_pane_action = Action::RenamePluginPane {
+        pane_id: plugin_pane_id,
+        name: new_name.as_bytes().to_vec(),
+    };
     apply_action!(rename_pane_action, error_msg, env);
 }
 
 fn rename_tab(env: &PluginEnv, tab_index: u32, new_name: &str) {
     let error_msg = || format!("Failed to rename tab");
-    let rename_tab_action = Action::RenameTab(tab_index, new_name.as_bytes().to_vec());
+    let rename_tab_action = Action::RenameTab {
+        tab_index,
+        name: new_name.as_bytes().to_vec(),
+    };
     apply_action!(rename_tab_action, error_msg, env);
 }
 
@@ -1878,7 +3185,9 @@ fn rename_session(env: &PluginEnv, new_session_name: String) {
     if new_session_name.contains('/') {
         log::error!("Session names cannot contain \'/\'");
     } else {
-        let action = Action::RenameSession(new_session_name);
+        let action = Action::RenameSession {
+            name: new_session_name,
+        };
         apply_action!(action, error_msg, env);
     }
 }
@@ -1893,9 +3202,26 @@ fn disconnect_other_clients(env: &PluginEnv) {
 fn kill_sessions(session_names: Vec<String>) {
     for session_name in session_names {
         let path = &*ZELLIJ_SOCK_DIR.join(&session_name);
-        match LocalSocketStream::connect(path) {
+        match ipc_connect(path) {
             Ok(stream) => {
-                let _ = IpcSenderWithContext::new(stream).send(ClientToServerMsg::KillSession);
+                #[cfg(windows)]
+                {
+                    use zellij_utils::consts::ipc_connect_reply;
+                    use zellij_utils::ipc::{IpcReceiverWithContext, ServerToClientMsg};
+                    let reply = ipc_connect_reply(path);
+                    let _ = IpcSenderWithContext::<ClientToServerMsg>::new(stream)
+                        .send_client_msg(ClientToServerMsg::KillSession);
+                    if let Ok(reply_stream) = reply {
+                        let mut receiver: IpcReceiverWithContext<ServerToClientMsg> =
+                            IpcReceiverWithContext::new(reply_stream);
+                        let _ = receiver.recv_server_msg();
+                    }
+                }
+                #[cfg(not(windows))]
+                {
+                    let _ = IpcSenderWithContext::<ClientToServerMsg>::new(stream)
+                        .send_client_msg(ClientToServerMsg::KillSession);
+                }
             },
             Err(e) => {
                 log::error!("Failed to kill session {}: {:?}", session_name, e);
@@ -1912,12 +3238,355 @@ fn watch_filesystem(env: &PluginEnv) {
         .map(|sender| sender.send(PluginInstruction::WatchFilesystem));
 }
 
-fn dump_session_layout(env: &PluginEnv) {
-    let _ = env
+// note this removes the requesting plugin
+fn dump_session_layout(env: &PluginEnv, tab_index: Option<usize>) {
+    use crate::plugins::DumpSessionLayoutResponse;
+
+    // Create oneshot channel for response
+    let (response_sender, response_receiver) = crossbeam::channel::bounded(1);
+
+    // Send request to screen thread
+    let send_result = env
         .senders
-        .to_screen
-        .as_ref()
-        .map(|sender| sender.send(ScreenInstruction::DumpLayoutToPlugin(env.plugin_id)));
+        .send_to_screen(ScreenInstruction::DumpLayoutToPlugin {
+            plugin_id: env.plugin_id,
+            tab_index,
+            response_channel: response_sender,
+        });
+
+    if let Err(e) = send_result {
+        let error_response = ProtobufDumpSessionLayoutResponse {
+            result: Some(dump_session_layout_response::Result::Error(format!(
+                "Failed to send dump layout request: {}",
+                e
+            ))),
+            metadata: None,
+        };
+        let _ = wasi_write_object(env, &error_response.encode_to_vec());
+        return;
+    }
+
+    // Wait for response with 1 second timeout
+    let response: DumpSessionLayoutResponse =
+        match response_receiver.recv_timeout(Duration::from_secs(1)) {
+            Ok(resp) => resp,
+            Err(e) => {
+                let error_response = ProtobufDumpSessionLayoutResponse {
+                    result: Some(dump_session_layout_response::Result::Error(format!(
+                        "Timeout waiting for session layout: {}",
+                        e
+                    ))),
+                    metadata: None,
+                };
+                let _ = wasi_write_object(env, &error_response.encode_to_vec());
+                return;
+            },
+        };
+
+    // Convert LayoutMetadata to protobuf
+    let protobuf_metadata = response
+        .metadata
+        .and_then(|metadata| match metadata.try_into() {
+            Ok(pb) => Some(pb),
+            Err(e) => {
+                log::error!("Failed to convert LayoutMetadata to protobuf: {}", e);
+                None
+            },
+        });
+
+    // Build protobuf response
+    let protobuf_response = match response.layout_result {
+        Ok(layout_content) => ProtobufDumpSessionLayoutResponse {
+            result: Some(dump_session_layout_response::Result::LayoutContent(
+                layout_content,
+            )),
+            metadata: protobuf_metadata,
+        },
+        Err(error) => ProtobufDumpSessionLayoutResponse {
+            result: Some(dump_session_layout_response::Result::Error(error)),
+            metadata: None,
+        },
+    };
+
+    // Write response back to plugin via WASI pipe
+    let _ = wasi_write_object(env, &protobuf_response.encode_to_vec())
+        .with_context(|| format!("failed to send session layout to plugin {}", env.name()));
+}
+
+fn save_session(env: &PluginEnv) {
+    use save_session_response::Result as SaveSessionResult;
+    let (completion_tx, completion_rx) = oneshot::channel();
+
+    let send_result = env.senders.send_to_screen(ScreenInstruction::SaveSession(
+        env.client_id,
+        Some(NotificationEnd::new(completion_tx)),
+    ));
+
+    let response = if let Err(e) = send_result {
+        ProtobufSaveSessionResponse {
+            result: Some(SaveSessionResult::Error(format!(
+                "Failed to send save request: {}",
+                e
+            ))),
+        }
+    } else {
+        let wait_forever = false;
+        let _result = wait_for_action_completion(completion_rx, "save_session", wait_forever);
+        ProtobufSaveSessionResponse {
+            result: Some(SaveSessionResult::Success(true)),
+        }
+    };
+
+    let _ = wasi_write_object(env, &response.encode_to_vec());
+}
+
+fn show_floating_panes(env: &PluginEnv, tab_id: Option<usize>) {
+    use show_floating_panes_response::Result as ShowResult;
+    let (completion_tx, completion_rx) = oneshot::channel();
+    let send_result = env
+        .senders
+        .send_to_screen(ScreenInstruction::ShowFloatingPanes {
+            client_id: env.client_id,
+            tab_id,
+            completion: Some(NotificationEnd::new(completion_tx)),
+        });
+    let response = if let Err(e) = send_result {
+        ProtobufShowFloatingPanesResponse {
+            result: Some(ShowResult::Error(format!("{}", e))),
+        }
+    } else {
+        let result = wait_for_action_completion(completion_rx, "show_floating_panes", false);
+        match result.exit_status {
+            Some(0) => ProtobufShowFloatingPanesResponse {
+                result: Some(ShowResult::Success(true)),
+            },
+            Some(2) => ProtobufShowFloatingPanesResponse {
+                result: Some(ShowResult::Success(false)),
+            },
+            _ => ProtobufShowFloatingPanesResponse {
+                result: Some(ShowResult::Error("Tab not found".to_string())),
+            },
+        }
+    };
+    let _ = wasi_write_object(env, &response.encode_to_vec());
+}
+
+fn hide_floating_panes(env: &PluginEnv, tab_id: Option<usize>) {
+    use hide_floating_panes_response::Result as HideResult;
+    let (completion_tx, completion_rx) = oneshot::channel();
+    let send_result = env
+        .senders
+        .send_to_screen(ScreenInstruction::HideFloatingPanes {
+            client_id: env.client_id,
+            tab_id,
+            completion: Some(NotificationEnd::new(completion_tx)),
+        });
+    let response = if let Err(e) = send_result {
+        ProtobufHideFloatingPanesResponse {
+            result: Some(HideResult::Error(format!("{}", e))),
+        }
+    } else {
+        let result = wait_for_action_completion(completion_rx, "hide_floating_panes", false);
+        match result.exit_status {
+            Some(0) => ProtobufHideFloatingPanesResponse {
+                result: Some(HideResult::Success(true)),
+            },
+            Some(2) => ProtobufHideFloatingPanesResponse {
+                result: Some(HideResult::Success(false)),
+            },
+            _ => ProtobufHideFloatingPanesResponse {
+                result: Some(HideResult::Error("Tab not found".to_string())),
+            },
+        }
+    };
+    let _ = wasi_write_object(env, &response.encode_to_vec());
+}
+
+fn set_pane_regex_highlights(
+    env: &PluginEnv,
+    pane_id: zellij_utils::data::PaneId,
+    highlights: Vec<RegexHighlight>,
+) {
+    let err_context = || "failed to set pane regex highlights".to_string();
+    let pane_id: PaneId = pane_id.into();
+    env.senders
+        .send_to_screen(ScreenInstruction::SetPluginRegexHighlights {
+            pane_id,
+            plugin_id: env.plugin_id,
+            highlights,
+        })
+        .with_context(err_context)
+        .non_fatal();
+}
+
+fn clear_pane_highlights(env: &PluginEnv, pane_id: zellij_utils::data::PaneId) {
+    let err_context = || "failed to clear pane highlights".to_string();
+    let pane_id: PaneId = pane_id.into();
+    env.senders
+        .send_to_screen(ScreenInstruction::ClearPluginHighlights {
+            pane_id,
+            plugin_id: env.plugin_id,
+        })
+        .with_context(err_context)
+        .non_fatal();
+}
+
+fn current_session_last_saved_time(env: &PluginEnv) {
+    use zellij_utils::plugin_api::plugin_command::ProtobufCurrentSessionLastSavedTimeResponse;
+
+    let (response_tx, response_rx) = crossbeam::channel::bounded(1);
+    let send_result = env
+        .senders
+        .send_to_plugin(PluginInstruction::GetLastSessionSaveTime {
+            response_channel: response_tx,
+        });
+
+    let saved_timestamp_millis = if send_result.is_ok() {
+        response_rx
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .ok()
+            .flatten()
+    } else {
+        None
+    };
+
+    let timestamp_millis = saved_timestamp_millis.map(|saved_time| {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64;
+        now.saturating_sub(saved_time)
+    });
+
+    let response = ProtobufCurrentSessionLastSavedTimeResponse { timestamp_millis };
+    let _ = wasi_write_object(env, &response.encode_to_vec());
+}
+
+fn get_pane_info(env: &PluginEnv, pane_id: zellij_utils::data::PaneId) {
+    use crossbeam::channel::RecvTimeoutError;
+    use std::time::Duration;
+
+    let err_context = || {
+        format!(
+            "failed to get pane info for pane {:?} from plugin {}",
+            pane_id,
+            env.name()
+        )
+    };
+
+    // Create channel for response
+    let (response_sender, response_receiver) = crossbeam::channel::bounded(1);
+
+    // Convert from plugin PaneId to server PaneId
+    let server_pane_id: PaneId = pane_id.into();
+
+    // Send request to screen thread
+    env.senders
+        .send_to_screen(ScreenInstruction::GetPaneInfo {
+            pane_id: server_pane_id,
+            response_channel: response_sender,
+        })
+        .with_context(err_context)
+        .non_fatal();
+
+    // Block waiting for response with 100ms timeout
+    let pane_info = match response_receiver.recv_timeout(Duration::from_millis(100)) {
+        Ok(Some(pane_info)) => {
+            // Convert PaneInfo to ProtobufPaneInfo
+            match pane_info.try_into() {
+                Ok(protobuf_pane_info) => Some(protobuf_pane_info),
+                Err(e) => {
+                    log::error!(
+                        "Failed to convert PaneInfo to protobuf for pane {:?}: {}",
+                        pane_id,
+                        e
+                    );
+                    None
+                },
+            }
+        },
+        Ok(None) => None, // Pane not found
+        Err(RecvTimeoutError::Timeout) => {
+            log::error!(
+                "GetPaneInfo timed out for pane {:?} from plugin {}",
+                pane_id,
+                env.plugin_id
+            );
+            None
+        },
+        Err(RecvTimeoutError::Disconnected) => {
+            log::error!(
+                "GetPaneInfo channel disconnected for plugin {}",
+                env.plugin_id
+            );
+            None
+        },
+    };
+
+    let response = ProtobufGetPaneInfoResponse { pane_info };
+    let _ = wasi_write_object(env, &response.encode_to_vec());
+}
+
+fn get_tab_info(env: &PluginEnv, tab_id: usize) {
+    use crossbeam::channel::RecvTimeoutError;
+    use std::time::Duration;
+
+    let err_context = || {
+        format!(
+            "failed to get tab info for tab {} from plugin {}",
+            tab_id,
+            env.name()
+        )
+    };
+
+    // Create channel for response
+    let (response_sender, response_receiver) = crossbeam::channel::bounded(1);
+
+    // Send request to screen thread
+    env.senders
+        .send_to_screen(ScreenInstruction::GetTabInfo {
+            tab_id,
+            response_channel: response_sender,
+        })
+        .with_context(err_context)
+        .non_fatal();
+
+    // Block waiting for response with 100ms timeout
+    let tab_info = match response_receiver.recv_timeout(Duration::from_millis(100)) {
+        Ok(Some(tab_info)) => {
+            // Convert TabInfo to ProtobufTabInfo
+            match tab_info.try_into() {
+                Ok(protobuf_tab_info) => Some(protobuf_tab_info),
+                Err(e) => {
+                    log::error!(
+                        "Failed to convert TabInfo to protobuf for tab {}: {}",
+                        tab_id,
+                        e
+                    );
+                    None
+                },
+            }
+        },
+        Ok(None) => None, // Tab not found
+        Err(RecvTimeoutError::Timeout) => {
+            log::error!(
+                "GetTabInfo timed out for tab {} from plugin {}",
+                tab_id,
+                env.plugin_id
+            );
+            None
+        },
+        Err(RecvTimeoutError::Disconnected) => {
+            log::error!(
+                "GetTabInfo channel disconnected for plugin {}",
+                env.plugin_id
+            );
+            None
+        },
+    };
+
+    let response = ProtobufGetTabInfoResponse { tab_info };
+    let _ = wasi_write_object(env, &response.encode_to_vec());
 }
 
 fn list_clients(env: &PluginEnv) {
@@ -1949,9 +3618,9 @@ fn set_floating_pane_pinned(env: &PluginEnv, pane_id: PaneId, should_be_pinned: 
 }
 
 fn stack_panes(env: &PluginEnv, pane_ids: Vec<PaneId>) {
-    let _ = env
-        .senders
-        .send_to_screen(ScreenInstruction::StackPanes(pane_ids, env.client_id));
+    let _ =
+        env.senders
+            .send_to_screen(ScreenInstruction::StackPanes(pane_ids, env.client_id, None));
 }
 
 fn change_floating_panes_coordinates(
@@ -1962,7 +3631,28 @@ fn change_floating_panes_coordinates(
         .senders
         .send_to_screen(ScreenInstruction::ChangeFloatingPanesCoordinates(
             pane_ids_and_coordinates,
+            None,
         ));
+}
+
+fn toggle_pane_borderless(env: &PluginEnv, pane_id: PaneId) {
+    let _ = env
+        .senders
+        .send_to_screen(ScreenInstruction::TogglePaneBorderless(pane_id, None));
+}
+
+fn set_pane_borderless(env: &PluginEnv, pane_id: PaneId, borderless: bool) {
+    let _ = env
+        .senders
+        .send_to_screen(ScreenInstruction::SetPaneBorderless(
+            pane_id, borderless, None,
+        ));
+}
+
+fn set_pane_color(env: &PluginEnv, pane_id: PaneId, fg: Option<String>, bg: Option<String>) {
+    let _ = env
+        .senders
+        .send_to_screen(ScreenInstruction::SetPaneColor(pane_id, fg, bg, None));
 }
 
 fn scan_host_folder(env: &PluginEnv, folder_to_scan: PathBuf) {
@@ -2041,20 +3731,608 @@ fn resize_pane_with_id(env: &PluginEnv, resize: ResizeStrategy, pane_id: PaneId)
 fn edit_scrollback_for_pane_with_id(env: &PluginEnv, pane_id: PaneId) {
     let _ = env
         .senders
-        .send_to_screen(ScreenInstruction::EditScrollbackForPaneWithId(pane_id));
+        .send_to_screen(ScreenInstruction::EditScrollbackForPaneWithId(
+            pane_id, None,
+        ));
+}
+
+fn get_pane_scrollback(env: &PluginEnv, pane_id: PaneId, get_full_scrollback: bool) {
+    use crossbeam::channel::RecvTimeoutError;
+    use std::time::Duration;
+
+    let err_context = || {
+        format!(
+            "failed to get pane scrollback for pane {:?} from plugin {}",
+            pane_id,
+            env.name()
+        )
+    };
+
+    // Create oneshot channel for response
+    let (response_sender, response_receiver) = crossbeam::channel::bounded(1);
+
+    // Send request to screen thread
+    env.senders
+        .send_to_screen(ScreenInstruction::GetPaneScrollback {
+            pane_id,
+            client_id: env.client_id,
+            get_full_scrollback,
+            response_channel: response_sender,
+        })
+        .with_context(err_context)
+        .non_fatal();
+
+    // Block waiting for response with 5 second timeout
+    let response = match response_receiver.recv_timeout(Duration::from_secs(5)) {
+        Ok(response) => response,
+        Err(RecvTimeoutError::Timeout) => {
+            log::error!(
+                "GetPaneScrollback timed out after 5s for plugin {} requesting pane {:?}",
+                env.plugin_id,
+                pane_id
+            );
+            PaneScrollbackResponse::Err(format!(
+                "Timeout retrieving scrollback for pane {:?}",
+                pane_id
+            ))
+        },
+        Err(RecvTimeoutError::Disconnected) => {
+            log::error!(
+                "GetPaneScrollback channel disconnected for plugin {} requesting pane {:?}",
+                env.plugin_id,
+                pane_id
+            );
+            PaneScrollbackResponse::Err(format!(
+                "Channel disconnected while retrieving scrollback for pane {:?}",
+                pane_id
+            ))
+        },
+    };
+
+    // Convert to protobuf and write back to plugin
+    ProtobufPaneScrollbackResponse::try_from(response)
+        .map_err(|e| anyhow!("Failed to serialize pane scrollback response: {}", e))
+        .and_then(|serialized| {
+            wasi_write_object(env, &serialized.encode_to_vec())?;
+            Ok(())
+        })
+        .with_context(err_context)
+        .non_fatal();
 }
 
 fn write_to_pane_id(env: &PluginEnv, bytes: Vec<u8>, pane_id: PaneId) {
-    let _ = env
-        .senders
-        .send_to_screen(ScreenInstruction::WriteToPaneId(bytes, pane_id));
+    let (completion_tx, completion_rx) = oneshot::channel();
+    let send_result = env.senders.send_to_screen(ScreenInstruction::WriteToPaneId(
+        bytes,
+        pane_id,
+        Some(NotificationEnd::new(completion_tx)),
+    ));
+    if send_result.is_ok() {
+        let wait_forever = false;
+        let _ = wait_for_action_completion(completion_rx, "write_to_pane_id", wait_forever);
+    }
 }
 
 fn write_chars_to_pane_id(env: &PluginEnv, chars: String, pane_id: PaneId) {
     let bytes = chars.into_bytes();
-    let _ = env
-        .senders
-        .send_to_screen(ScreenInstruction::WriteToPaneId(bytes, pane_id));
+    let (completion_tx, completion_rx) = oneshot::channel();
+    let send_result = env.senders.send_to_screen(ScreenInstruction::WriteToPaneId(
+        bytes,
+        pane_id,
+        Some(NotificationEnd::new(completion_tx)),
+    ));
+    if send_result.is_ok() {
+        let wait_forever = false;
+        let _ = wait_for_action_completion(completion_rx, "write_chars_to_pane_id", wait_forever);
+    }
+}
+
+fn send_sigint_to_pane_id(env: &PluginEnv, pane_id: PaneId) {
+    let err_context = || {
+        format!(
+            "failed to send SIGINT to pane {:?} from plugin {}",
+            pane_id,
+            env.name()
+        )
+    };
+
+    env.senders
+        .send_to_pty(PtyInstruction::SendSigintToPaneId(pane_id))
+        .with_context(err_context)
+        .non_fatal();
+}
+
+fn send_sigkill_to_pane_id(env: &PluginEnv, pane_id: PaneId) {
+    let err_context = || {
+        format!(
+            "failed to send SIGKILL to pane {:?} from plugin {}",
+            pane_id,
+            env.name()
+        )
+    };
+
+    env.senders
+        .send_to_pty(PtyInstruction::SendSigkillToPaneId(pane_id))
+        .with_context(err_context)
+        .non_fatal();
+}
+
+fn get_pane_pid(env: &PluginEnv, pane_id: PaneId) {
+    use crossbeam::channel::RecvTimeoutError;
+    use std::time::Duration;
+
+    let err_context = || {
+        format!(
+            "failed to get PID for pane {:?} from plugin {}",
+            pane_id,
+            env.name()
+        )
+    };
+
+    // Create oneshot channel for response
+    let (response_sender, response_receiver) = crossbeam::channel::bounded(1);
+
+    // Send request directly to PTY thread
+    env.senders
+        .send_to_pty(PtyInstruction::GetPanePid {
+            pane_id,
+            response_channel: response_sender,
+        })
+        .with_context(err_context)
+        .non_fatal();
+
+    // Block waiting for response with 100ms timeout
+    let response = match response_receiver.recv_timeout(Duration::from_millis(100)) {
+        Ok(response) => response,
+        Err(RecvTimeoutError::Timeout) => {
+            log::error!(
+                "GetPanePid timed out after 5s for plugin {} requesting pane {:?}",
+                env.plugin_id,
+                pane_id
+            );
+            GetPanePidResponse::Err(format!("Timeout retrieving PID for pane {:?}", pane_id))
+        },
+        Err(RecvTimeoutError::Disconnected) => {
+            log::error!(
+                "GetPanePid channel disconnected for plugin {} requesting pane {:?}",
+                env.plugin_id,
+                pane_id
+            );
+            GetPanePidResponse::Err(format!(
+                "Channel disconnected while retrieving PID for pane {:?}",
+                pane_id
+            ))
+        },
+    };
+
+    // Encode response and write to plugin's stdin
+    let protobuf_response = ProtobufGetPanePidResponse::from(response);
+    let serialized = protobuf_response.encode_to_vec();
+    wasi_write_object(env, &serialized)
+        .with_context(err_context)
+        .non_fatal();
+}
+
+fn get_pane_running_command(env: &PluginEnv, pane_id: PaneId) {
+    let (sender, receiver) = crossbeam::channel::bounded(1);
+
+    send_get_pane_running_command_request(env, pane_id, sender);
+    let response = await_pane_running_command_response(env, pane_id, receiver);
+    write_pane_running_command_response(env, pane_id, response);
+}
+
+fn send_get_pane_running_command_request(
+    env: &PluginEnv,
+    pane_id: PaneId,
+    sender: crossbeam::channel::Sender<GetPaneRunningCommandResponse>,
+) {
+    env.senders
+        .send_to_pty(PtyInstruction::GetPaneRunningCommand {
+            pane_id,
+            response_channel: sender,
+        })
+        .with_context(|| format!("Failed to get running command for pane {:?}", pane_id))
+        .non_fatal();
+}
+
+fn await_pane_running_command_response(
+    env: &PluginEnv,
+    pane_id: PaneId,
+    receiver: crossbeam::channel::Receiver<GetPaneRunningCommandResponse>,
+) -> GetPaneRunningCommandResponse {
+    use crossbeam::channel::RecvTimeoutError;
+    use std::time::Duration;
+
+    match receiver.recv_timeout(Duration::from_millis(100)) {
+        Ok(response) => response,
+        Err(RecvTimeoutError::Timeout) => {
+            log::error!(
+                "GetPaneRunningCommand timed out for plugin {} requesting pane {:?}",
+                env.plugin_id,
+                pane_id
+            );
+            GetPaneRunningCommandResponse::Err(format!(
+                "Timeout retrieving running command for pane {:?}",
+                pane_id
+            ))
+        },
+        Err(RecvTimeoutError::Disconnected) => {
+            log::error!(
+                "GetPaneRunningCommand channel disconnected for plugin {} requesting pane {:?}",
+                env.plugin_id,
+                pane_id
+            );
+            GetPaneRunningCommandResponse::Err(format!(
+                "Channel disconnected while retrieving running command for pane {:?}",
+                pane_id
+            ))
+        },
+    }
+}
+
+fn write_pane_running_command_response(
+    env: &PluginEnv,
+    pane_id: PaneId,
+    response: GetPaneRunningCommandResponse,
+) {
+    let protobuf_response = ProtobufGetPaneRunningCommandResponse::from(response);
+    wasi_write_object(env, &protobuf_response.encode_to_vec())
+        .with_context(|| format!("Failed to get running command for pane {:?}", pane_id))
+        .non_fatal();
+}
+
+fn get_pane_cwd(env: &PluginEnv, pane_id: PaneId) {
+    let (sender, receiver) = crossbeam::channel::bounded(1);
+
+    send_get_pane_cwd_request(env, pane_id, sender);
+    let response = await_pane_cwd_response(env, pane_id, receiver);
+    write_pane_cwd_response(env, pane_id, response);
+}
+
+fn send_get_pane_cwd_request(
+    env: &PluginEnv,
+    pane_id: PaneId,
+    sender: crossbeam::channel::Sender<GetPaneCwdResponse>,
+) {
+    env.senders
+        .send_to_pty(PtyInstruction::GetPaneCwd {
+            pane_id,
+            response_channel: sender,
+        })
+        .with_context(|| format!("Failed to get CWD for pane {:?}", pane_id))
+        .non_fatal();
+}
+
+fn await_pane_cwd_response(
+    env: &PluginEnv,
+    pane_id: PaneId,
+    receiver: crossbeam::channel::Receiver<GetPaneCwdResponse>,
+) -> GetPaneCwdResponse {
+    use crossbeam::channel::RecvTimeoutError;
+    use std::time::Duration;
+
+    match receiver.recv_timeout(Duration::from_millis(100)) {
+        Ok(response) => response,
+        Err(RecvTimeoutError::Timeout) => {
+            log::error!(
+                "GetPaneCwd timed out for plugin {} requesting pane {:?}",
+                env.plugin_id,
+                pane_id
+            );
+            GetPaneCwdResponse::Err(format!("Timeout retrieving CWD for pane {:?}", pane_id))
+        },
+        Err(RecvTimeoutError::Disconnected) => {
+            log::error!(
+                "GetPaneCwd channel disconnected for plugin {} requesting pane {:?}",
+                env.plugin_id,
+                pane_id
+            );
+            GetPaneCwdResponse::Err(format!(
+                "Channel disconnected while retrieving CWD for pane {:?}",
+                pane_id
+            ))
+        },
+    }
+}
+
+fn write_pane_cwd_response(env: &PluginEnv, pane_id: PaneId, response: GetPaneCwdResponse) {
+    let protobuf_response = ProtobufGetPaneCwdResponse::from(response);
+    wasi_write_object(env, &protobuf_response.encode_to_vec())
+        .with_context(|| format!("Failed to get CWD for pane {:?}", pane_id))
+        .non_fatal();
+}
+
+fn save_layout(env: &PluginEnv, layout_name: String, layout_kdl: String, overwrite: bool) {
+    let err_context = || format!("Failed to save layout '{}'", layout_name);
+
+    let response = try_save_layout(env, &layout_name, &layout_kdl, overwrite)
+        .map(|_| SaveLayoutResponse::Ok(()))
+        .unwrap_or_else(SaveLayoutResponse::Err);
+
+    // Serialize and send response back to plugin
+    let protobuf_response = ProtobufSaveLayoutResponse::from(response);
+    let serialized = protobuf_response.encode_to_vec();
+    wasi_write_object(env, &serialized)
+        .with_context(err_context)
+        .non_fatal();
+}
+
+fn try_save_layout(
+    env: &PluginEnv,
+    layout_name: &str,
+    layout_kdl: &str,
+    overwrite: bool,
+) -> Result<(), String> {
+    // Step 1: Sanitize layout name for path traversal and invalid characters
+    let safe_name = sanitize_layout_name(layout_name)?;
+
+    // Step 2: Validate the layout by parsing it
+    Layout::from_kdl(
+        layout_kdl,
+        Some(format!("{}.kdl", safe_name)),
+        None, // No swap layouts
+        None, // No cwd override
+    )
+    .map_err(|config_error| format!("Invalid layout KDL: {:?}", config_error))?;
+
+    // Step 3: Get layout_dir from PluginEnv
+    let layout_dir = env
+        .layout_dir
+        .clone()
+        .or_else(default_layout_dir)
+        .ok_or_else(|| "Layout directory not found".to_string())?;
+
+    // Step 4: Create file path
+    let file_path = layout_dir.join(format!("{}.kdl", safe_name));
+
+    // Step 5: Check if file exists when overwrite=false
+    if file_path.exists() && !overwrite {
+        return Err(format!(
+            "Layout file '{}' already exists. Use overwrite flag to replace it.",
+            safe_name
+        ));
+    }
+
+    // Step 6: Ensure layout directory exists
+    std::fs::create_dir_all(layout_dir)
+        .map_err(|e| format!("Failed to create layout directory: {}", e))?;
+
+    // Step 7: Write to disk
+    let mut parsed_layout: KdlDocument = layout_kdl.parse().unwrap(); // unwrap
+                                                                      // should
+                                                                      // be
+                                                                      // safe,
+                                                                      // but
+                                                                      // let's
+                                                                      // do
+                                                                      // it
+                                                                      // nicer
+    parsed_layout.fmt();
+    std::fs::write(&file_path, &parsed_layout.to_string())
+        .map_err(|io_error| format!("Failed to write layout file: {}", io_error))?;
+
+    Ok(())
+}
+
+fn delete_layout(env: &PluginEnv, layout_name: String) {
+    let err_context = || format!("Failed to delete layout '{}'", layout_name);
+
+    let response = try_delete_layout(env, &layout_name)
+        .map(|_| DeleteLayoutResponse::Ok(()))
+        .unwrap_or_else(|e| DeleteLayoutResponse::Err(e));
+
+    let protobuf_response: ProtobufDeleteLayoutResponse = response.into();
+    let serialized = protobuf_response.encode_to_vec();
+    wasi_write_object(env, &serialized)
+        .with_context(err_context)
+        .non_fatal();
+}
+
+fn rename_layout(env: &PluginEnv, old_layout_name: String, new_layout_name: String) {
+    let err_context = || {
+        format!(
+            "Failed to rename layout '{}' to '{}'",
+            old_layout_name, new_layout_name
+        )
+    };
+
+    let response = try_rename_layout(env, &old_layout_name, &new_layout_name)
+        .map(|_| RenameLayoutResponse::Ok(()))
+        .unwrap_or_else(|e| RenameLayoutResponse::Err(e));
+
+    let protobuf_response: ProtobufRenameLayoutResponse = response.into();
+    let serialized = protobuf_response.encode_to_vec();
+    wasi_write_object(env, &serialized)
+        .with_context(err_context)
+        .non_fatal();
+}
+
+fn try_delete_layout(env: &PluginEnv, layout_name: &str) -> Result<(), String> {
+    // Sanitize the layout name to prevent directory traversal
+    let safe_name =
+        sanitize_layout_name(layout_name).map_err(|e| format!("Invalid layout name: {}", e))?;
+
+    // Get the layout directory from PluginEnv
+    let layout_dir = env
+        .layout_dir
+        .clone()
+        .or_else(default_layout_dir)
+        .ok_or_else(|| "Layout directory not found".to_string())?;
+
+    // Construct the full file path
+    let file_path = layout_dir.join(format!("{}.kdl", safe_name));
+
+    // Check if the file exists
+    if !file_path.exists() {
+        return Err(format!("Layout '{}' not found", safe_name));
+    }
+
+    // Delete the file
+    std::fs::remove_file(&file_path).map_err(|e| format!("Failed to delete layout file: {}", e))?;
+
+    Ok(())
+}
+
+fn try_rename_layout(
+    env: &PluginEnv,
+    old_layout_name: &str,
+    new_layout_name: &str,
+) -> Result<(), String> {
+    // Step 1: Sanitize both layout names
+    let safe_old_name = sanitize_layout_name(old_layout_name)
+        .map_err(|e| format!("Invalid old layout name: {}", e))?;
+
+    let safe_new_name = sanitize_layout_name(new_layout_name)
+        .map_err(|e| format!("Invalid new layout name: {}", e))?;
+
+    // Step 2: Get layout directory from PluginEnv
+    let layout_dir = env
+        .layout_dir
+        .clone()
+        .or_else(default_layout_dir)
+        .ok_or_else(|| "Layout directory not found".to_string())?;
+
+    // Step 3: Construct file paths
+    let old_file_path = layout_dir.join(format!("{}.kdl", safe_old_name));
+    let new_file_path = layout_dir.join(format!("{}.kdl", safe_new_name));
+
+    // Step 4: Check if source file exists
+    if !old_file_path.exists() {
+        return Err(format!("Layout '{}' not found", safe_old_name));
+    }
+
+    // Step 5: Check if target file already exists (fail if it does - no overwrite)
+    if new_file_path.exists() {
+        return Err(format!(
+            "Layout '{}' already exists. Cannot rename '{}' to existing layout name.",
+            safe_new_name, safe_old_name
+        ));
+    }
+
+    // Step 6: Rename the file
+    std::fs::rename(&old_file_path, &new_file_path)
+        .map_err(|e| format!("Failed to rename layout file: {}", e))?;
+
+    Ok(())
+}
+
+fn edit_layout(env: &PluginEnv, layout_name: String, context: BTreeMap<String, String>) {
+    let err_context = || format!("Failed to edit layout '{}'", layout_name);
+
+    let response = try_edit_layout(env, &layout_name, context)
+        .map(|_| EditLayoutResponse::Ok(()))
+        .unwrap_or_else(|e| EditLayoutResponse::Err(e));
+
+    let protobuf_response: ProtobufEditLayoutResponse = response.into();
+    let serialized = protobuf_response.encode_to_vec();
+    wasi_write_object(env, &serialized)
+        .with_context(err_context)
+        .non_fatal();
+}
+
+fn try_edit_layout(
+    env: &PluginEnv,
+    layout_name: &str,
+    context: BTreeMap<String, String>,
+) -> Result<(), String> {
+    // Sanitize the layout name to prevent directory traversal
+    let safe_name =
+        sanitize_layout_name(layout_name).map_err(|e| format!("Invalid layout name: {}", e))?;
+
+    // Get the layout directory from PluginEnv
+    let layout_dir = env
+        .layout_dir
+        .clone()
+        .or_else(default_layout_dir)
+        .ok_or_else(|| "Layout directory not found".to_string())?;
+
+    // Construct the full file path
+    let file_path = layout_dir.join(format!("{}.kdl", safe_name));
+
+    // Create FileToOpen for the layout file
+    let file_to_open = FileToOpen {
+        path: file_path,
+        line_number: None,
+        cwd: Some(layout_dir.clone()),
+    };
+
+    // Create an Action::EditFile
+    let action = Action::EditFile {
+        payload: OpenFilePayload::new(
+            file_to_open.path,
+            file_to_open.line_number,
+            file_to_open.cwd,
+        )
+        .with_originating_plugin(OriginatingPlugin::new(
+            env.plugin_id,
+            env.client_id,
+            context,
+        )),
+        direction: None,
+        floating: false,
+        in_place: true,
+        close_replaced_pane: false,
+        start_suppressed: false,
+        coordinates: None,
+        near_current_pane: true,
+    };
+
+    // Route the action - this is fallible
+    route_action(
+        action,
+        env.client_id,
+        None,
+        Some(PaneId::Plugin(env.plugin_id)),
+        env.senders.clone(),
+        env.capabilities.clone(),
+        env.client_attributes.clone(),
+        env.default_shell.clone(),
+        env.default_layout.clone(),
+        None,
+        env.keybinds.clone(),
+        env.default_mode.clone(),
+        None,
+    )
+    .map(|_| ())
+    .map_err(|e| format!("Failed to route edit action: {:?}", e))
+}
+
+/// Sanitize layout name to prevent path traversal and invalid filenames
+/// Returns the sanitized name or an error message
+fn sanitize_layout_name(name: &str) -> Result<String, String> {
+    // Check for empty name
+    if name.is_empty() {
+        return Err("Layout name cannot be empty".to_string());
+    }
+
+    // Check for path separators (prevent directory traversal)
+    if name.contains('/') || name.contains('\\') {
+        return Err("Layout name cannot contain path separators".to_string());
+    }
+
+    // Check for parent directory references
+    if name.contains("..") {
+        return Err("Layout name cannot contain '..'".to_string());
+    }
+
+    // Check length (most filesystems have 255 char limit, leave room for .kdl)
+    if name.len() > 250 {
+        return Err("Layout name too long (max 250 characters)".to_string());
+    }
+
+    // Only allow alphanumeric, hyphens, underscores, and spaces
+    let valid_chars = name
+        .chars()
+        .all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == ' ');
+
+    if !valid_chars {
+        return Err(
+            "Layout name can only contain letters, numbers, hyphens, underscores, and spaces"
+                .to_string(),
+        );
+    }
+
+    Ok(name.to_string())
 }
 
 fn move_pane_with_pane_id(env: &PluginEnv, pane_id: PaneId) {
@@ -2144,7 +4422,12 @@ fn break_panes_to_new_tab(
             ..Default::default()
         }))
     });
-    let _ = env
+
+    // Create completion channel to receive tab ID
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let completion_tx = Some(NotificationEnd::new(tx));
+
+    let result = env
         .senders
         .send_to_screen(ScreenInstruction::BreakPanesToNewTab {
             pane_ids,
@@ -2152,7 +4435,17 @@ fn break_panes_to_new_tab(
             new_tab_name,
             should_change_focus_to_new_tab,
             client_id: env.client_id,
+            completion_tx,
         });
+
+    let tab_id: BreakPanesToNewTabResponse = if result.is_ok() {
+        wait_for_action_completion(rx, "break_panes_to_new_tab", false).affected_tab_id
+    } else {
+        None
+    };
+
+    let response = ProtobufBreakPanesToNewTabResponse::from(tab_id);
+    wasi_write_object(env, &response.encode_to_vec()).non_fatal();
 }
 
 fn break_panes_to_tab_with_index(
@@ -2161,14 +4454,107 @@ fn break_panes_to_tab_with_index(
     should_change_focus_to_new_tab: bool,
     tab_index: usize,
 ) {
-    let _ = env
+    // Create completion channel to receive tab ID
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let completion_tx = Some(NotificationEnd::new(tx));
+
+    let result = env
         .senders
         .send_to_screen(ScreenInstruction::BreakPanesToTabWithIndex {
             pane_ids,
             tab_index,
             client_id: env.client_id,
             should_change_focus_to_new_tab,
+            completion_tx,
         });
+
+    let tab_id: BreakPanesToTabWithIndexResponse = if result.is_ok() {
+        wait_for_action_completion(rx, "break_panes_to_tab_with_index", false).affected_tab_id
+    } else {
+        None
+    };
+
+    let response = ProtobufBreakPanesToTabWithIndexResponse::from(tab_id);
+    wasi_write_object(env, &response.encode_to_vec()).non_fatal();
+}
+
+fn switch_tab_to_id(env: &PluginEnv, tab_id: u64) {
+    let tab_id = tab_id as usize;
+    env.senders
+        .send_to_screen(ScreenInstruction::GoToTabWithId(
+            tab_id,
+            Some(env.client_id),
+            None,
+        ))
+        .with_context(|| {
+            format!(
+                "failed to switch to tab {} from plugin {}",
+                tab_id,
+                env.name()
+            )
+        })
+        .non_fatal();
+}
+
+fn go_to_tab_with_id(env: &PluginEnv, tab_id: u64) {
+    let tab_id = tab_id as usize;
+    env.senders
+        .send_to_screen(ScreenInstruction::GoToTabWithId(
+            tab_id,
+            Some(env.client_id),
+            None,
+        ))
+        .with_context(|| format!("failed to go to tab {} from plugin {}", tab_id, env.name()))
+        .non_fatal();
+}
+
+fn close_tab_with_id(env: &PluginEnv, tab_id: u64) {
+    let tab_id = tab_id as usize;
+    let _ = env
+        .senders
+        .send_to_screen(ScreenInstruction::CloseTabWithId(tab_id, None));
+}
+
+fn rename_tab_with_id(env: &PluginEnv, tab_id: u64, new_name: &str) {
+    let tab_id = tab_id as usize;
+    let rename_tab_action =
+        ScreenInstruction::RenameTabWithId(tab_id, new_name.as_bytes().to_vec(), None);
+    env.senders
+        .send_to_screen(rename_tab_action)
+        .with_context(|| format!("Failed to rename tab {}", tab_id))
+        .non_fatal();
+}
+
+fn break_panes_to_tab_with_id(
+    env: &PluginEnv,
+    pane_ids: Vec<PaneId>,
+    should_change_focus_to_target_tab: bool,
+    tab_id: u64,
+) {
+    let tab_id = tab_id as usize;
+
+    // Create completion channel to receive tab ID
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let completion_tx = Some(NotificationEnd::new(tx));
+
+    let result = env
+        .senders
+        .send_to_screen(ScreenInstruction::BreakPanesToTabWithId {
+            pane_ids,
+            tab_id,
+            should_change_focus_to_target_tab,
+            client_id: env.client_id,
+            completion_tx,
+        });
+
+    let result_tab_id: BreakPanesToTabWithIdResponse = if result.is_ok() {
+        wait_for_action_completion(rx, "break_panes_to_tab_with_id", false).affected_tab_id
+    } else {
+        None
+    };
+
+    let response = ProtobufBreakPanesToTabWithIdResponse::from(result_tab_id);
+    wasi_write_object(env, &response.encode_to_vec()).non_fatal();
 }
 
 fn reload_plugin(env: &PluginEnv, plugin_id: u32) {
@@ -2218,6 +4604,7 @@ fn load_new_plugin(
                 let _ = env.senders.send_to_plugin(PluginInstruction::Load(
                     should_float,
                     should_be_open_in_place,
+                    false, // close_replaced_pane
                     pane_title,
                     run_plugin_or_alias,
                     tab_index,
@@ -2227,6 +4614,7 @@ fn load_new_plugin(
                     cwd,
                     None,
                     skip_cache,
+                    None,
                     None,
                     None,
                 ));
@@ -2331,8 +4719,8 @@ fn embed_multiple_panes(env: &PluginEnv, pane_ids: Vec<PaneId>) {
 }
 
 #[cfg(feature = "web_server_capability")]
-fn generate_web_login_token(env: &PluginEnv, token_label: Option<String>) {
-    let serialized = match create_token(token_label) {
+fn generate_web_login_token(env: &PluginEnv, token_label: Option<String>, read_only: bool) {
+    let serialized = match create_token(token_label, read_only) {
         Ok((token, token_label)) => CreateTokenResponse {
             token: Some(token),
             token_label: Some(token_label),
@@ -2348,7 +4736,7 @@ fn generate_web_login_token(env: &PluginEnv, token_label: Option<String>) {
 }
 
 #[cfg(not(feature = "web_server_capability"))]
-fn generate_web_login_token(env: &PluginEnv, _token_label: Option<String>) {
+fn generate_web_login_token(env: &PluginEnv, _token_label: Option<String>, _read_only: bool) {
     log::error!("This version of Zellij was compiled without the web server capabilities!");
     let empty_vec: Vec<&str> = vec![];
     let _ = wasi_write_object(env, &empty_vec);
@@ -2430,11 +4818,13 @@ fn list_web_login_tokens(env: &PluginEnv) {
         Ok(token_list) => ListTokensResponse {
             tokens: token_list.iter().map(|t| t.name.clone()).collect(),
             creation_times: token_list.iter().map(|t| t.created_at.clone()).collect(),
+            read_only_flags: token_list.iter().map(|t| t.read_only).collect(),
             error: None,
         },
         Err(e) => ListTokensResponse {
             tokens: vec![],
             creation_times: vec![],
+            read_only_flags: vec![],
             error: Some(e.to_string()),
         },
     };
@@ -2485,13 +4875,69 @@ fn replace_pane_with_existing_pane(
     env: &mut PluginEnv,
     pane_to_replace: PaneId,
     existing_pane: PaneId,
+    suppress_replaced_pane: bool,
 ) {
+    let (completion_tx, completion_rx) = oneshot::channel();
     let _ = env
         .senders
         .send_to_screen(ScreenInstruction::ReplacePaneWithExistingPane(
             pane_to_replace,
             existing_pane,
+            suppress_replaced_pane,
+            Some(NotificationEnd::new(completion_tx)),
         ));
+    let _ = wait_for_action_completion(completion_rx, "replace_pane_with_existing_pane", false);
+}
+
+fn override_layout(
+    env: &mut PluginEnv,
+    layout_info: LayoutInfo,
+    retain_existing_terminal_panes: bool,
+    retain_existing_plugin_panes: bool,
+    apply_only_to_active_tab: bool,
+    context: BTreeMap<String, String>,
+) -> Result<()> {
+    let layout = Layout::from_layout_info(&env.layout_dir, layout_info)
+        .map_err(|e| anyhow!("Failed to parse layout: {:?}", e))?;
+
+    // Convert all tabs to Vec<TabLayoutInfo>
+    let tabs: Vec<TabLayoutInfo> = layout
+        .tabs
+        .iter()
+        .enumerate()
+        .map(|(index, (tab_name, tiled, floating))| TabLayoutInfo {
+            tab_index: index,
+            tab_name: tab_name.clone(),
+            tiled_layout: tiled.clone(),
+            floating_layouts: floating.clone(),
+            swap_tiled_layouts: Some(layout.swap_tiled_layouts.clone()),
+            swap_floating_layouts: Some(layout.swap_floating_layouts.clone()),
+        })
+        .collect();
+
+    // If no tabs, create default tab
+    let tabs = if tabs.is_empty() {
+        let (tiled, floating) = layout.new_tab();
+        vec![TabLayoutInfo {
+            tab_index: 0,
+            tab_name: None,
+            tiled_layout: tiled,
+            floating_layouts: floating,
+            swap_tiled_layouts: Some(layout.swap_tiled_layouts),
+            swap_floating_layouts: Some(layout.swap_floating_layouts),
+        }]
+    } else {
+        tabs
+    };
+
+    let action = Action::OverrideLayout {
+        tabs,
+        retain_existing_terminal_panes,
+        retain_existing_plugin_panes,
+        apply_only_to_active_tab,
+    };
+    run_action(env, action, context);
+    Ok(())
 }
 
 // Custom panic handler for plugins.
@@ -2559,14 +5005,18 @@ fn check_command_permission(
         | PluginCommand::OpenFileNearPlugin(..)
         | PluginCommand::OpenFileFloatingNearPlugin(..)
         | PluginCommand::OpenFileInPlaceOfPlugin(..)
-        | PluginCommand::OpenFileInPlace(..) => PermissionType::OpenFiles,
+        | PluginCommand::OpenFileInPlace(..)
+        | PluginCommand::OpenEditPaneInPlaceOfPaneId(..) => PermissionType::OpenFiles,
         PluginCommand::OpenTerminal(..)
         | PluginCommand::OpenTerminalNearPlugin(..)
         | PluginCommand::StartOrReloadPlugin(..)
         | PluginCommand::OpenTerminalFloating(..)
         | PluginCommand::OpenTerminalFloatingNearPlugin(..)
         | PluginCommand::OpenTerminalInPlace(..)
-        | PluginCommand::OpenTerminalInPlaceOfPlugin(..) => PermissionType::OpenTerminalsOrPlugins,
+        | PluginCommand::OpenTerminalInPlaceOfPlugin(..)
+        | PluginCommand::OpenTerminalPaneInPlaceOfPaneId(..) => {
+            PermissionType::OpenTerminalsOrPlugins
+        },
         PluginCommand::OpenCommandPane(..)
         | PluginCommand::OpenCommandPaneNearPlugin(..)
         | PluginCommand::OpenCommandPaneFloating(..)
@@ -2574,6 +5024,7 @@ fn check_command_permission(
         | PluginCommand::OpenCommandPaneInPlace(..)
         | PluginCommand::OpenCommandPaneInPlaceOfPlugin(..)
         | PluginCommand::OpenCommandPaneBackground(..)
+        | PluginCommand::OpenCommandPaneInPlaceOfPaneId(..)
         | PluginCommand::RunCommand(..)
         | PluginCommand::ExecCmd(..) => PermissionType::RunCommands,
         PluginCommand::WebRequest(..) => PermissionType::WebAccess,
@@ -2581,6 +5032,7 @@ fn check_command_permission(
         | PluginCommand::WriteChars(..)
         | PluginCommand::WriteToPaneId(..)
         | PluginCommand::WriteCharsToPaneId(..) => PermissionType::WriteToStdin,
+        PluginCommand::CopyToClipboard(..) => PermissionType::WriteToClipboard,
         PluginCommand::SwitchTabTo(..)
         | PluginCommand::SwitchToMode(..)
         | PluginCommand::NewTabsWithLayout(..)
@@ -2650,25 +5102,55 @@ fn check_command_permission(
         | PluginCommand::CloseTabWithIndex(..)
         | PluginCommand::BreakPanesToNewTab(..)
         | PluginCommand::BreakPanesToTabWithIndex(..)
+        | PluginCommand::SwitchTabToId(..)
+        | PluginCommand::GoToTabWithId(..)
+        | PluginCommand::CloseTabWithId(..)
+        | PluginCommand::RenameTabWithId(..)
+        | PluginCommand::BreakPanesToTabWithId(..)
         | PluginCommand::ReloadPlugin(..)
         | PluginCommand::LoadNewPlugin { .. }
         | PluginCommand::SetFloatingPanePinned(..)
         | PluginCommand::StackPanes(..)
         | PluginCommand::ChangeFloatingPanesCoordinates(..)
+        | PluginCommand::TogglePaneBorderless(..)
+        | PluginCommand::SetPaneBorderless(..)
+        | PluginCommand::SetPaneColor(..)
         | PluginCommand::GroupAndUngroupPanes(..)
         | PluginCommand::HighlightAndUnhighlightPanes(..)
         | PluginCommand::CloseMultiplePanes(..)
         | PluginCommand::FloatMultiplePanes(..)
         | PluginCommand::EmbedMultiplePanes(..)
         | PluginCommand::ReplacePaneWithExistingPane(..)
-        | PluginCommand::KillSessions(..) => PermissionType::ChangeApplicationState,
+        | PluginCommand::KillSessions(..)
+        | PluginCommand::SendSigintToPaneId(..)
+        | PluginCommand::SendSigkillToPaneId(..)
+        | PluginCommand::OverrideLayout(..)
+        | PluginCommand::SaveLayout { .. }
+        | PluginCommand::DeleteLayout { .. }
+        | PluginCommand::RenameLayout { .. }
+        | PluginCommand::EditLayout { .. }
+        | PluginCommand::ShowFloatingPanes { .. }
+        | PluginCommand::HideFloatingPanes { .. }
+        | PluginCommand::SetPaneRegexHighlights(..)
+        | PluginCommand::ClearPaneHighlights(..) => PermissionType::ChangeApplicationState,
         PluginCommand::UnblockCliPipeInput(..)
         | PluginCommand::BlockCliPipeInput(..)
         | PluginCommand::CliPipeOutput(..) => PermissionType::ReadCliPipes,
         PluginCommand::MessageToPlugin(..) => PermissionType::MessageAndLaunchOtherPlugins,
-        PluginCommand::ListClients | PluginCommand::DumpSessionLayout => {
-            PermissionType::ReadApplicationState
-        },
+        PluginCommand::ListClients
+        | PluginCommand::DumpSessionLayout { .. }
+        | PluginCommand::GetPanePid { .. }
+        | PluginCommand::GetPaneRunningCommand { .. }
+        | PluginCommand::GetPaneCwd { .. }
+        | PluginCommand::GenerateRandomName
+        | PluginCommand::GetLayoutDir
+        | PluginCommand::GetFocusedPaneInfo
+        | PluginCommand::DumpLayout(..)
+        | PluginCommand::ParseLayout(..)
+        | PluginCommand::SaveSession
+        | PluginCommand::CurrentSessionLastSavedTime
+        | PluginCommand::GetPaneInfo(..)
+        | PluginCommand::GetTabInfo(..) => PermissionType::ReadApplicationState,
         PluginCommand::RebindKeys { .. } | PluginCommand::Reconfigure(..) => {
             PermissionType::Reconfigure
         },
@@ -2686,6 +5168,14 @@ fn check_command_permission(
         PluginCommand::InterceptKeyPresses | PluginCommand::ClearKeyPressesIntercepts => {
             PermissionType::InterceptInput
         },
+        PluginCommand::GetPaneScrollback { .. } => PermissionType::ReadPaneContents,
+        PluginCommand::RunAction(..) => PermissionType::RunActionsAsUser,
+        PluginCommand::GetSessionEnvironmentVariables => {
+            PermissionType::ReadSessionEnvironmentVariables
+        },
+        PluginCommand::OpenCommandPaneInNewTab(..)
+        | PluginCommand::OpenPluginPaneInNewTab { .. }
+        | PluginCommand::OpenEditorPaneInNewTab(..) => PermissionType::ChangeApplicationState,
         _ => return (PermissionStatus::Granted, None),
     };
 

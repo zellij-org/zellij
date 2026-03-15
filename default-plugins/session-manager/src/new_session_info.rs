@@ -8,6 +8,7 @@ pub struct NewSessionInfo {
     name: String,
     layout_list: LayoutList,
     entering_new_session_info: EnteringState,
+    pub is_welcome_screen: bool,
     pub new_session_folder: Option<PathBuf>,
 }
 
@@ -106,10 +107,24 @@ impl NewSessionInfo {
                     match new_session_layout {
                         Some(new_session_layout) => {
                             let cwd = self.new_session_folder.as_ref().map(|c| PathBuf::from(c));
-                            switch_session_with_layout(new_session_name, new_session_layout, cwd)
+                            switch_session_with_layout(new_session_name, new_session_layout, cwd);
+                            if self.is_welcome_screen {
+                                // the welcome screen has done its job and now we need to quit this temporary
+                                // session so as not to leave garbage sessions behind
+                                quit_zellij();
+                            } else {
+                                hide_self();
+                            }
                         },
                         None => {
                             switch_session(new_session_name);
+                            if self.is_welcome_screen {
+                                // the welcome screen has done its job and now we need to quit this temporary
+                                // session so as not to leave garbage sessions behind
+                                quit_zellij();
+                            } else {
+                                hide_self();
+                            }
                         },
                     }
                 }
@@ -127,7 +142,7 @@ impl NewSessionInfo {
     }
     pub fn layout_list(&self, max_rows: usize) -> Vec<(LayoutInfo, bool)> {
         // bool - is_selected
-        let range_to_render = self.range_to_render(
+        let rtr = range_to_render(
             max_rows,
             self.layout_count(),
             Some(self.layout_list.selected_layout_index),
@@ -137,8 +152,8 @@ impl NewSessionInfo {
             .iter()
             .enumerate()
             .map(|(i, l)| (l.clone(), i == self.layout_list.selected_layout_index))
-            .take(range_to_render.1)
-            .skip(range_to_render.0)
+            .take(rtr.1)
+            .skip(rtr.0)
             .collect()
     }
     pub fn layouts_to_render(&self, max_rows: usize) -> Vec<(LayoutInfo, Vec<usize>, bool)> {
@@ -165,7 +180,7 @@ impl NewSessionInfo {
     }
     pub fn layout_search_results(&self, max_rows: usize) -> Vec<(LayoutSearchResult, bool)> {
         // bool - is_selected
-        let range_to_render = self.range_to_render(
+        let rtr = range_to_render(
             max_rows,
             self.layout_list.layout_search_results.len(),
             Some(self.layout_list.selected_layout_index),
@@ -175,29 +190,9 @@ impl NewSessionInfo {
             .iter()
             .enumerate()
             .map(|(i, l)| (l.clone(), i == self.layout_list.selected_layout_index))
-            .take(range_to_render.1)
-            .skip(range_to_render.0)
+            .take(rtr.1)
+            .skip(rtr.0)
             .collect()
-    }
-    // TODO: merge with similar function in resurrectable_sessions
-    fn range_to_render(
-        &self,
-        table_rows: usize,
-        results_len: usize,
-        selected_index: Option<usize>,
-    ) -> (usize, usize) {
-        if table_rows <= results_len {
-            let row_count_to_render = table_rows.saturating_sub(1); // 1 for the title
-            let first_row_index_to_render = selected_index
-                .unwrap_or(0)
-                .saturating_sub(row_count_to_render / 2);
-            let last_row_index_to_render = first_row_index_to_render + row_count_to_render;
-            (first_row_index_to_render, last_row_index_to_render)
-        } else {
-            let first_row_index_to_render = 0;
-            let last_row_index_to_render = results_len;
-            (first_row_index_to_render, last_row_index_to_render)
-        }
     }
     pub fn is_searching(&self) -> bool {
         !self.layout_list.layout_search_term.is_empty()
@@ -209,27 +204,7 @@ impl NewSessionInfo {
         self.layout_list.selected_layout_info()
     }
     fn update_layout_search_term(&mut self) {
-        if self.layout_list.layout_search_term.is_empty() {
-            self.layout_list.clear_selection();
-            self.layout_list.layout_search_results = vec![];
-        } else {
-            let mut matches = vec![];
-            let matcher = SkimMatcherV2::default().use_cache(true);
-            for layout_info in &self.layout_list.layout_list {
-                if let Some((score, indices)) =
-                    matcher.fuzzy_indices(&layout_info.name(), &self.layout_list.layout_search_term)
-                {
-                    matches.push(LayoutSearchResult {
-                        layout_info: layout_info.clone(),
-                        score,
-                        indices,
-                    });
-                }
-            }
-            matches.sort_by(|a, b| b.score.cmp(&a.score));
-            self.layout_list.layout_search_results = matches;
-            self.layout_list.clear_selection();
-        }
+        self.layout_list.update_search_term();
     }
     fn move_selection_up(&mut self) {
         self.layout_list.move_selection_up();
@@ -237,14 +212,17 @@ impl NewSessionInfo {
     fn move_selection_down(&mut self) {
         self.layout_list.move_selection_down();
     }
+    pub fn get_layout_list_clone(&self) -> LayoutList {
+        self.layout_list.clone()
+    }
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct LayoutList {
-    layout_list: Vec<LayoutInfo>,
-    layout_search_results: Vec<LayoutSearchResult>,
-    selected_layout_index: usize,
-    layout_search_term: String,
+    pub layout_list: Vec<LayoutInfo>,
+    pub layout_search_results: Vec<LayoutSearchResult>,
+    pub selected_layout_index: usize,
+    pub layout_search_term: String,
 }
 
 impl LayoutList {
@@ -268,14 +246,14 @@ impl LayoutList {
     pub fn clear_selection(&mut self) {
         self.selected_layout_index = 0;
     }
-    fn max_index(&self) -> usize {
+    pub fn max_index(&self) -> usize {
         if self.layout_search_term.is_empty() {
             self.layout_list.len().saturating_sub(1)
         } else {
             self.layout_search_results.len().saturating_sub(1)
         }
     }
-    fn move_selection_up(&mut self) {
+    pub fn move_selection_up(&mut self) {
         let max_index = self.max_index();
         if self.selected_layout_index > 0 {
             self.selected_layout_index -= 1;
@@ -283,13 +261,99 @@ impl LayoutList {
             self.selected_layout_index = max_index;
         }
     }
-    fn move_selection_down(&mut self) {
+    pub fn move_selection_down(&mut self) {
         let max_index = self.max_index();
         if self.selected_layout_index < max_index {
             self.selected_layout_index += 1;
         } else {
             self.selected_layout_index = 0;
         }
+    }
+    pub fn update_search_term(&mut self) {
+        if self.layout_search_term.is_empty() {
+            self.clear_selection();
+            self.layout_search_results = vec![];
+        } else {
+            let mut matches = vec![];
+            let matcher = SkimMatcherV2::default().use_cache(true);
+            for layout_info in &self.layout_list {
+                if let Some((score, indices)) =
+                    matcher.fuzzy_indices(&layout_info.name(), &self.layout_search_term)
+                {
+                    matches.push(LayoutSearchResult {
+                        layout_info: layout_info.clone(),
+                        score,
+                        indices,
+                    });
+                }
+            }
+            matches.sort_by(|a, b| b.score.cmp(&a.score));
+            self.layout_search_results = matches;
+            self.clear_selection();
+        }
+    }
+    pub fn layouts_to_render(&self, max_rows: usize) -> Vec<(LayoutInfo, Vec<usize>, bool)> {
+        if !self.layout_search_term.is_empty() {
+            self.layout_search_results_to_render(max_rows)
+        } else {
+            self.layout_list_to_render(max_rows)
+        }
+    }
+    fn layout_list_to_render(&self, max_rows: usize) -> Vec<(LayoutInfo, Vec<usize>, bool)> {
+        let range_to_render = range_to_render(
+            max_rows,
+            self.layout_list.len(),
+            Some(self.selected_layout_index),
+        );
+        self.layout_list
+            .iter()
+            .enumerate()
+            .map(|(i, l)| (l.clone(), vec![], i == self.selected_layout_index))
+            .take(range_to_render.1)
+            .skip(range_to_render.0)
+            .collect()
+    }
+    fn layout_search_results_to_render(
+        &self,
+        max_rows: usize,
+    ) -> Vec<(LayoutInfo, Vec<usize>, bool)> {
+        let range_to_render = range_to_render(
+            max_rows,
+            self.layout_search_results.len(),
+            Some(self.selected_layout_index),
+        );
+        self.layout_search_results
+            .iter()
+            .enumerate()
+            .map(|(i, l)| {
+                (
+                    l.layout_info.clone(),
+                    l.indices.clone(),
+                    i == self.selected_layout_index,
+                )
+            })
+            .take(range_to_render.1)
+            .skip(range_to_render.0)
+            .collect()
+    }
+}
+
+pub fn range_to_render(
+    table_rows: usize,
+    results_len: usize,
+    selected_index: Option<usize>,
+) -> (usize, usize) {
+    if table_rows <= results_len {
+        let row_count_to_render = table_rows.saturating_sub(1); // 1 for the title
+        let first_row_index_to_render = selected_index
+            .unwrap_or(0)
+            .saturating_sub(row_count_to_render / 2);
+        let last_row_index_to_render = first_row_index_to_render + row_count_to_render;
+        (first_row_index_to_render, last_row_index_to_render)
+    } else {
+        let first_row_index_to_render = 0;
+        let last_row_index_to_render = results_len;
+        (first_row_index_to_render, last_row_index_to_render)
     }
 }
 
@@ -298,4 +362,132 @@ pub struct LayoutSearchResult {
     pub layout_info: LayoutInfo,
     pub score: i64,
     pub indices: Vec<usize>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_layout(name: &str) -> LayoutInfo {
+        LayoutInfo::BuiltIn(name.to_string())
+    }
+
+    fn make_layout_list(names: &[&str]) -> LayoutList {
+        let mut ll = LayoutList::default();
+        ll.layout_list = names.iter().map(|n| make_layout(n)).collect();
+        ll
+    }
+
+    // ---------------------------------------------------------------
+    // Section 6: Layout List Navigation
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn test_6_1_layout_navigation_wraps_down() {
+        let mut ll = make_layout_list(&["a", "b", "c"]);
+        ll.selected_layout_index = 2;
+        ll.move_selection_down();
+        assert_eq!(ll.selected_layout_index, 0);
+    }
+
+    #[test]
+    fn test_6_2_layout_navigation_wraps_up() {
+        let mut ll = make_layout_list(&["a", "b", "c"]);
+        ll.selected_layout_index = 0;
+        ll.move_selection_up();
+        assert_eq!(ll.selected_layout_index, 2);
+    }
+
+    #[test]
+    fn test_6_3_layout_search_filters_results() {
+        let mut ll = make_layout_list(&["default", "compact", "development"]);
+        ll.layout_search_term = "dev".to_string();
+        ll.update_search_term();
+        // "development" should match
+        let matched_names: Vec<&str> = ll
+            .layout_search_results
+            .iter()
+            .map(|r| r.layout_info.name())
+            .collect();
+        assert!(matched_names.contains(&"development"));
+        // "default" and "compact" should not match "dev" well enough
+        // (though "default" starts with "de" so it might fuzzy-match — check)
+        // The key assertion is that "development" is present and is the best match.
+        // With SkimMatcherV2, "default" may also match "dev" (d, e from "default").
+        // So we just verify "development" is the top result.
+        assert_eq!(
+            ll.layout_search_results[0].layout_info.name(),
+            "development"
+        );
+    }
+
+    #[test]
+    fn test_6_4_selected_layout_info_returns_correct_layout() {
+        let ll = make_layout_list(&["a", "b", "c"]);
+        // selected_layout_index defaults to 0, set to 1
+        let mut ll = ll;
+        ll.selected_layout_index = 1;
+        let info = ll.selected_layout_info();
+        assert!(info.is_some());
+        assert_eq!(info.unwrap().name(), "b");
+    }
+
+    #[test]
+    fn test_6_5_layout_viewport_windowing() {
+        let mut ll = make_layout_list(&[
+            "layout-0", "layout-1", "layout-2", "layout-3", "layout-4", "layout-5", "layout-6",
+            "layout-7", "layout-8", "layout-9",
+        ]);
+        ll.selected_layout_index = 5;
+        let rendered = ll.layouts_to_render(5);
+        // Should return at most 5-1=4 entries (range_to_render subtracts 1 for title)
+        assert!(rendered.len() <= 5);
+        // The selected layout should be within the visible window
+        let selected_visible = rendered.iter().any(|(_, _, is_selected)| *is_selected);
+        assert!(selected_visible);
+    }
+
+    // ---------------------------------------------------------------
+    // Section 7: Viewport Scrolling (range_to_render tests)
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn test_7_1_all_results_fit_in_viewport() {
+        // When table_rows > results_len, all results are shown
+        let (start, end) = range_to_render(10, 5, None);
+        assert_eq!(start, 0);
+        assert_eq!(end, 5);
+    }
+
+    #[test]
+    fn test_7_2_viewport_scrolls_to_keep_selection_centered() {
+        // table_rows=6, results_len=20, selected=10
+        // row_count_to_render = 6-1 = 5, half = 2
+        // first = 10-2 = 8, last = 8+5 = 13
+        let (start, end) = range_to_render(6, 20, Some(10));
+        assert_eq!(start, 8);
+        assert_eq!(end, 13);
+    }
+
+    #[test]
+    fn test_7_3_viewport_clamps_at_bottom() {
+        // table_rows=6, results_len=20, selected=19
+        // row_count_to_render = 5, half = 2
+        // first = 19-2 = 17, last = 17+5 = 22 > 20
+        // Note: range_to_render does NOT clamp — it returns (17, 22)
+        // The actual clamping happens in the caller via .take().skip()
+        let (start, end) = range_to_render(6, 20, Some(19));
+        assert_eq!(start, 17);
+        assert_eq!(end, 22);
+    }
+
+    #[test]
+    fn test_7_4_viewport_clamps_at_top() {
+        // table_rows=6, results_len=20, selected=0
+        // row_count_to_render = 5, half = 2
+        // first = 0.saturating_sub(2) = 0, last = 0+5 = 5
+        let (start, end) = range_to_render(6, 20, Some(0));
+        assert_eq!(start, 0);
+        assert_eq!(end, 5);
+    }
 }

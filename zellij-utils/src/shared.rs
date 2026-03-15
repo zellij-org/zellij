@@ -5,6 +5,7 @@ use std::{iter, str::from_utf8};
 
 use crate::data::{Palette, PaletteColor, PaletteSource, ThemeHue};
 use crate::envs::get_session_name;
+use crate::errors::prelude::*;
 use crate::input::options::Options;
 use colorsys::{Ansi256, Rgb};
 use strip_ansi_escapes::strip;
@@ -206,4 +207,20 @@ pub fn web_server_base_url_from_config(config_options: Options) -> String {
         has_certificate,
         enforce_https_for_localhost,
     )
+}
+
+pub struct ServerAddress {
+    pub ip: String,
+    pub port: u16,
+}
+
+pub fn parse_base_url(url: &str) -> Result<ServerAddress> {
+    let url = url::Url::parse(url)?;
+    let ip = url
+        .host_str()
+        .ok_or_else(|| anyhow!("No host in URL"))?
+        .to_string();
+    let port = url.port().ok_or_else(|| anyhow!("No port in URL"))?;
+
+    Ok(ServerAddress { ip, port })
 }

@@ -1,0 +1,10 @@
+---
+source: zellij-server/src/plugins/./unit/plugin_tests.rs
+expression: "format!(\"{:#?}\", focused_pane_info_query)"
+---
+Some(
+    GetFocusedPaneInfo {
+        client_id: 1,
+        response_channel: Sender { .. },
+    },
+)

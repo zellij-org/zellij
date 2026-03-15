@@ -108,6 +108,11 @@ pub struct Options {
     #[serde(default)]
     pub copy_on_select: Option<bool>,
 
+    /// Enable OSC8 hyperlink output (true or false)
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub osc8_hyperlinks: Option<bool>,
+
     /// Explicit full path to open the scrollback editor (default is $EDITOR or $VISUAL)
     #[clap(long, value_parser)]
     pub scrollback_editor: Option<PathBuf>,
@@ -220,6 +225,30 @@ pub struct Options {
     #[serde(default)]
     pub advanced_mouse_actions: Option<bool>,
 
+    /// Whether to enable mouse hover visual effects (frame highlight and help text)
+    /// default is true
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub mouse_hover_effects: Option<bool>,
+
+    /// Whether to show visual bell indicators (pane/tab frame flash and [!] suffix)
+    /// default is true
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub visual_bell: Option<bool>,
+
+    /// Whether to focus panes on mouse hover (true or false)
+    /// default is false
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub focus_follows_mouse: Option<bool>,
+
+    /// Whether clicking a pane to focus it also sends the click into the pane (true or false)
+    /// default is false
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub mouse_click_through: Option<bool>,
+
     // these are intentionally excluded from the CLI options as they must be specified in the
     // configuration file
     pub web_server_ip: Option<IpAddr>,
@@ -231,6 +260,14 @@ pub struct Options {
     /// of manipulating the command (eg. with a regex) before it gets serialized
     #[clap(long, value_parser)]
     pub post_command_discovery_hook: Option<String>,
+
+    /// Number of async worker tasks to spawn per active client.
+    ///
+    /// Allocating few tasks may result in resource contention and lags. Small values (around 4)
+    /// should typically work best. Set to 0 to use the number of (physical) CPU cores.
+    /// NOTE: This only applies to web clients at the moment.
+    #[clap(long)]
+    pub client_async_worker_tasks: Option<usize>,
 }
 
 #[derive(ArgEnum, Deserialize, Serialize, Debug, Clone, Copy, PartialEq)]
@@ -287,6 +324,7 @@ impl Options {
         let copy_command = other.copy_command.or_else(|| self.copy_command.clone());
         let copy_clipboard = other.copy_clipboard.or(self.copy_clipboard);
         let copy_on_select = other.copy_on_select.or(self.copy_on_select);
+        let osc8_hyperlinks = other.osc8_hyperlinks.or(self.osc8_hyperlinks);
         let scrollback_editor = other
             .scrollback_editor
             .or_else(|| self.scrollback_editor.clone());
@@ -315,6 +353,10 @@ impl Options {
         let show_startup_tips = other.show_startup_tips.or(self.show_startup_tips);
         let show_release_notes = other.show_release_notes.or(self.show_release_notes);
         let advanced_mouse_actions = other.advanced_mouse_actions.or(self.advanced_mouse_actions);
+        let mouse_hover_effects = other.mouse_hover_effects.or(self.mouse_hover_effects);
+        let visual_bell = other.visual_bell.or(self.visual_bell);
+        let focus_follows_mouse = other.focus_follows_mouse.or(self.focus_follows_mouse);
+        let mouse_click_through = other.mouse_click_through.or(self.mouse_click_through);
         let web_server_ip = other.web_server_ip.or(self.web_server_ip);
         let web_server_port = other.web_server_port.or(self.web_server_port);
         let web_server_cert = other
@@ -327,6 +369,9 @@ impl Options {
         let post_command_discovery_hook = other
             .post_command_discovery_hook
             .or(self.post_command_discovery_hook.clone());
+        let client_async_worker_tasks = other
+            .client_async_worker_tasks
+            .or(self.client_async_worker_tasks);
 
         Options {
             simplified_ui,
@@ -345,6 +390,7 @@ impl Options {
             copy_command,
             copy_clipboard,
             copy_on_select,
+            osc8_hyperlinks,
             scrollback_editor,
             session_name,
             attach_to_session,
@@ -362,12 +408,17 @@ impl Options {
             show_startup_tips,
             show_release_notes,
             advanced_mouse_actions,
+            mouse_hover_effects,
+            visual_bell,
+            focus_follows_mouse,
+            mouse_click_through,
             web_server_ip,
             web_server_port,
             web_server_cert,
             web_server_key,
             enforce_https_for_localhost,
             post_command_discovery_hook,
+            client_async_worker_tasks,
         }
     }
 
@@ -408,6 +459,7 @@ impl Options {
         let copy_command = other.copy_command.or_else(|| self.copy_command.clone());
         let copy_clipboard = other.copy_clipboard.or(self.copy_clipboard);
         let copy_on_select = other.copy_on_select.or(self.copy_on_select);
+        let osc8_hyperlinks = other.osc8_hyperlinks.or(self.osc8_hyperlinks);
         let scrollback_editor = other
             .scrollback_editor
             .or_else(|| self.scrollback_editor.clone());
@@ -432,6 +484,10 @@ impl Options {
         let show_startup_tips = other.show_startup_tips.or(self.show_startup_tips);
         let show_release_notes = other.show_release_notes.or(self.show_release_notes);
         let advanced_mouse_actions = other.advanced_mouse_actions.or(self.advanced_mouse_actions);
+        let mouse_hover_effects = other.mouse_hover_effects.or(self.mouse_hover_effects);
+        let visual_bell = other.visual_bell.or(self.visual_bell);
+        let focus_follows_mouse = merge_bool(other.focus_follows_mouse, self.focus_follows_mouse);
+        let mouse_click_through = merge_bool(other.mouse_click_through, self.mouse_click_through);
         let web_server_ip = other.web_server_ip.or(self.web_server_ip);
         let web_server_port = other.web_server_port.or(self.web_server_port);
         let web_server_cert = other
@@ -444,6 +500,9 @@ impl Options {
         let post_command_discovery_hook = other
             .post_command_discovery_hook
             .or_else(|| self.post_command_discovery_hook.clone());
+        let client_async_worker_tasks = other
+            .client_async_worker_tasks
+            .or(self.client_async_worker_tasks);
 
         Options {
             simplified_ui,
@@ -462,6 +521,7 @@ impl Options {
             copy_command,
             copy_clipboard,
             copy_on_select,
+            osc8_hyperlinks,
             scrollback_editor,
             session_name,
             attach_to_session,
@@ -479,12 +539,17 @@ impl Options {
             show_startup_tips,
             show_release_notes,
             advanced_mouse_actions,
+            mouse_hover_effects,
+            visual_bell,
+            focus_follows_mouse,
+            mouse_click_through,
             web_server_ip,
             web_server_port,
             web_server_cert,
             web_server_key,
             enforce_https_for_localhost,
             post_command_discovery_hook,
+            client_async_worker_tasks,
         }
     }
 
@@ -493,76 +558,6 @@ impl Options {
             Options::merge_from_cli(self, options.into())
         } else {
             self.to_owned()
-        }
-    }
-}
-
-#[derive(Clone, Default, Debug, PartialEq, Args, Serialize, Deserialize)]
-/// Options that can be set through cli flags
-/// boolean flags end up toggling boolean options in `Options`
-pub struct CliOptions {
-    /// Disable handling of mouse events
-    #[clap(long, conflicts_with("mouse-mode"), value_parser)]
-    pub disable_mouse_mode: bool,
-    /// Disable display of pane frames
-    #[clap(long, conflicts_with("pane-frames"), value_parser)]
-    pub no_pane_frames: bool,
-    #[clap(flatten)]
-    pub options: Options,
-}
-
-impl From<CliOptions> for Options {
-    fn from(cli_options: CliOptions) -> Self {
-        let mut opts = cli_options.options;
-
-        // TODO: what?
-        if cli_options.no_pane_frames {
-            opts.pane_frames = Some(false);
-        }
-        if cli_options.disable_mouse_mode {
-            opts.mouse_mode = Some(false);
-        }
-
-        Self {
-            simplified_ui: opts.simplified_ui,
-            theme: opts.theme,
-            default_mode: opts.default_mode,
-            default_shell: opts.default_shell,
-            default_cwd: opts.default_cwd,
-            default_layout: opts.default_layout,
-            layout_dir: opts.layout_dir,
-            theme_dir: opts.theme_dir,
-            mouse_mode: opts.mouse_mode,
-            pane_frames: opts.pane_frames,
-            mirror_session: opts.mirror_session,
-            on_force_close: opts.on_force_close,
-            scroll_buffer_size: opts.scroll_buffer_size,
-            copy_command: opts.copy_command,
-            copy_clipboard: opts.copy_clipboard,
-            copy_on_select: opts.copy_on_select,
-            scrollback_editor: opts.scrollback_editor,
-            session_name: opts.session_name,
-            attach_to_session: opts.attach_to_session,
-            auto_layout: opts.auto_layout,
-            session_serialization: opts.session_serialization,
-            serialize_pane_viewport: opts.serialize_pane_viewport,
-            scrollback_lines_to_serialize: opts.scrollback_lines_to_serialize,
-            styled_underlines: opts.styled_underlines,
-            serialization_interval: opts.serialization_interval,
-            support_kitty_keyboard_protocol: opts.support_kitty_keyboard_protocol,
-            web_server: opts.web_server,
-            web_sharing: opts.web_sharing,
-            stacked_resize: opts.stacked_resize,
-            show_startup_tips: opts.show_startup_tips,
-            show_release_notes: opts.show_release_notes,
-            advanced_mouse_actions: opts.advanced_mouse_actions,
-            web_server_ip: opts.web_server_ip,
-            web_server_port: opts.web_server_port,
-            web_server_cert: opts.web_server_cert,
-            web_server_key: opts.web_server_key,
-            enforce_https_for_localhost: opts.enforce_https_for_localhost,
-            post_command_discovery_hook: opts.post_command_discovery_hook,
-            ..Default::default()
         }
     }
 }

@@ -1,10 +1,10 @@
 [package]
 name = "zellij-client"
-version = "0.43.1"
+version.workspace = true
 authors = ["Kunal Mohan <kunalmohan99@gmail.com>"]
-edition = "2021"
+edition.workspace = true
 description = "The client-side library for Zellij"
-license = "MIT"
+license.workspace = true
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -20,34 +20,47 @@ time = { version = "0.3", optional = true }
 tower-http = { version = "0.6.4", features = ["cors"], optional = true }
 
 anyhow = { workspace = true }
-daemonize = { workspace = true }
+async-trait = { workspace = true }
+crossterm = { workspace = true, features = ["events", "bracketed-paste"] }
+dialoguer = { workspace = true }
 interprocess = { workspace = true }
 lazy_static = { workspace = true }
-libc = { workspace = true }
 log = { workspace = true }
-mio = { version = "0.7.11", default-features = false, features = ['os-ext'] }
-nix = { workspace = true }
 notify = { workspace = true }
-rmp-serde = { workspace = true }
+num_cpus = { workspace = true }
 regex = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_yaml = { version = "0.8", default-features = false }
-signal-hook = { workspace = true }
-termwiz = { workspace = true }
 url = { workspace = true }
 uuid = { workspace = true }
 include_dir = { workspace = true }
 zellij-utils = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }
+isahc = { workspace = true }
+tokio-tungstenite = { version = "0.20", features = ["native-tls"] } #TODO: see about this native-tls...
+native-tls = "0.2"
+futures-util = "0.3"
+urlencoding = "2.1"
+
+[target.'cfg(not(windows))'.dependencies]
+signal-hook = { workspace = true }
+
+[target.'cfg(unix)'.dependencies]
+daemonize = { workspace = true }
+nix = { workspace = true }
+
+[target.'cfg(windows)'.dependencies]
+crossterm = { workspace = true }
+tokio = { workspace = true }
+windows-sys = { workspace = true, features = [
+    "Win32_Foundation",
+    "Win32_System_Console",
+] }
 
 [dev-dependencies]
 insta = "1.6.0"
-isahc = { workspace = true }
-tokio-tungstenite = "0.20"
-futures-util = "0.3"
-urlencoding = "2.1"
 serde_json = "1.0"
 serial_test = "3.0"
 

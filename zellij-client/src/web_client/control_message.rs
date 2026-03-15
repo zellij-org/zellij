@@ -3,20 +3,20 @@ use zellij_utils::{input::config::Config, pane_size::Size};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 
-pub(super) struct WebClientToWebServerControlMessage {
+pub struct WebClientToWebServerControlMessage {
     pub web_client_id: String,
     pub payload: WebClientToWebServerControlMessagePayload,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "type")]
-pub(super) enum WebClientToWebServerControlMessagePayload {
+pub enum WebClientToWebServerControlMessagePayload {
     TerminalResize(Size),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "type")]
-pub(super) enum WebServerToWebClientControlMessage {
+pub enum WebServerToWebClientControlMessage {
     SetConfig(SetConfigPayload),
     QueryTerminalSize,
     Log { lines: Vec<String> },
@@ -25,7 +25,7 @@ pub(super) enum WebServerToWebClientControlMessage {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub(super) struct SetConfigPayload {
+pub struct SetConfigPayload {
     pub font: String,
     pub theme: SetConfigPayloadTheme,
     pub cursor_blink: bool,
@@ -38,7 +38,7 @@ pub(super) struct SetConfigPayload {
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 #[serde(rename_all = "camelCase")]
-pub(super) struct SetConfigPayloadTheme {
+pub struct SetConfigPayloadTheme {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub background: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

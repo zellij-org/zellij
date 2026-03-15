@@ -22,7 +22,8 @@ pub fn table(
         if is_too_high(row_index + 1, &coordinates) {
             break;
         }
-        for cell in row {
+        let cell_count = row.iter().len();
+        for (cell_index, cell) in row.into_iter().enumerate() {
             let declaration = if is_title_row {
                 style.colors.table_title
             } else {
@@ -38,16 +39,21 @@ pub fn table(
             } else {
                 CharacterStyles::from(declaration)
             };
+
+            // Default: bold
+            let text_style = text_style.bold(Some(AnsiCode::On));
+
             // here we intentionally don't pass our coordinates even if we have them, because
             // these cells have already been padded and truncated
-            let (text, _text_width) = stringify_text(
-                &cell,
-                None,
-                &None,
-                &declaration,
-                text_style.bold(Some(AnsiCode::On)),
-            );
-            stringified.push_str(&format!("{}{} {}", text_style, text, RESET_STYLES));
+            let (text, _text_width) =
+                stringify_text(&cell, None, &None, &declaration, &style.colors, text_style);
+            if cell_index == cell_count.saturating_sub(1) {
+                // do not add padding between columns for the last cell
+                stringified.push_str(&format!("{}{}{}", text_style, text, RESET_STYLES));
+            } else {
+                // add padding between columns
+                stringified.push_str(&format!("{}{} {}", text_style, text, RESET_STYLES));
+            }
         }
         let next_row_instruction = coordinates
             .as_ref()

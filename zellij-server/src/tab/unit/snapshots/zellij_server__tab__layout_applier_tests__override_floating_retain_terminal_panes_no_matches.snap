@@ -1,0 +1,53 @@
+---
+source: zellij-server/src/tab/./unit/layout_applier_tests.rs
+expression: "take_pane_state_snapshot(&tiled_panes, &floating_panes, &focus_pane_id,\n&viewport, &display_area,)"
+---
+VIEWPORT: x=0, y=0, cols=120, rows=40
+DISPLAY: cols=120, rows=40
+FOCUS: None
+
+TILED PANES (1)
+  Terminal(1):
+    geom: x=0, y=0, cols=120, rows=40
+    logical_position: 0
+    run: None
+    selectable: true
+    title: Pane #1
+    borderless: false
+
+FLOATING PANES (4)
+  Terminal(2):
+    geom: x=30, y=10, cols=60, rows=20
+    logical_position: 2
+    run: Command(htop)
+    pinned: false
+    selectable: true
+    title: htop
+    borderless: false
+
+  Terminal(3):
+    geom: x=32, y=12, cols=60, rows=20
+    logical_position: 2
+    run: Command(vim)
+    pinned: false
+    selectable: true
+    title: vim
+    borderless: false
+
+  Terminal(4):
+    geom: x=30, y=20, cols=40, rows=20
+    logical_position: 0
+    run: Command(top)
+    pinned: false
+    selectable: true
+    title: top
+    borderless: false
+
+  Terminal(5):
+    geom: x=40, y=15, cols=50, rows=25
+    logical_position: 1
+    run: Command(emacs)
+    pinned: false
+    selectable: true
+    title: emacs
+    borderless: false

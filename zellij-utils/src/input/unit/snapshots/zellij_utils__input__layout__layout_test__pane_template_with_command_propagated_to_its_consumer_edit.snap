@@ -1,10 +1,64 @@
 ---
 source: zellij-utils/src/input/./unit/layout_test.rs
-assertion_line: 1660
+assertion_line: 1718
 expression: "format!(\"{:#?}\", layout)"
 ---
 Layout {
-    tabs: [],
+    tabs: [
+        (
+            None,
+            TiledPaneLayout {
+                children_split_direction: Horizontal,
+                name: None,
+                children: [
+                    TiledPaneLayout {
+                        children_split_direction: Horizontal,
+                        name: None,
+                        children: [],
+                        split_size: None,
+                        run: Some(
+                            EditFile(
+                                "/tmp/foo/bar",
+                                None,
+                                Some(
+                                    "/tmp/foo/",
+                                ),
+                            ),
+                        ),
+                        borderless: None,
+                        focus: None,
+                        external_children_index: None,
+                        children_are_stacked: false,
+                        is_expanded_in_stack: false,
+                        exclude_from_sync: None,
+                        run_instructions_to_ignore: [],
+                        hide_floating_panes: false,
+                        pane_initial_contents: None,
+                        default_fg: None,
+                        default_bg: None,
+                    },
+                ],
+                split_size: None,
+                run: Some(
+                    Cwd(
+                        "/tmp",
+                    ),
+                ),
+                borderless: None,
+                focus: None,
+                external_children_index: None,
+                children_are_stacked: false,
+                is_expanded_in_stack: false,
+                exclude_from_sync: None,
+                run_instructions_to_ignore: [],
+                hide_floating_panes: false,
+                pane_initial_contents: None,
+                default_fg: None,
+                default_bg: None,
+            },
+            [],
+        ),
+    ],
     focused_tab_index: None,
     template: Some(
         (
@@ -26,7 +80,7 @@ Layout {
                                 ),
                             ),
                         ),
-                        borderless: false,
+                        borderless: None,
                         focus: None,
                         external_children_index: None,
                         children_are_stacked: false,
@@ -35,11 +89,17 @@ Layout {
                         run_instructions_to_ignore: [],
                         hide_floating_panes: false,
                         pane_initial_contents: None,
+                        default_fg: None,
+                        default_bg: None,
                     },
                 ],
                 split_size: None,
-                run: None,
-                borderless: false,
+                run: Some(
+                    Cwd(
+                        "/tmp",
+                    ),
+                ),
+                borderless: None,
                 focus: None,
                 external_children_index: None,
                 children_are_stacked: false,
@@ -48,6 +108,8 @@ Layout {
                 run_instructions_to_ignore: [],
                 hide_floating_panes: false,
                 pane_initial_contents: None,
+                default_fg: None,
+                default_bg: None,
             },
             [],
         ),

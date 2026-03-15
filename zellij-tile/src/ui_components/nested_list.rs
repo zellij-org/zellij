@@ -38,6 +38,58 @@ impl NestedListItem {
         self.content = self.content.color_range(index_level, indices);
         self
     }
+    pub fn error_color_indices(mut self, indices: Vec<usize>) -> Self {
+        self.content = self.content.error_color_indices(indices);
+        self
+    }
+    pub fn error_color_range<R: RangeBounds<usize>>(mut self, indices: R) -> Self {
+        self.content = self.content.error_color_range(indices);
+        self
+    }
+    pub fn error_color_substring<S: AsRef<str>>(mut self, substr: S) -> Self {
+        self.content = self.content.error_color_substring(substr);
+        self
+    }
+    pub fn error_color_nth_substring<S: AsRef<str>>(
+        mut self,
+        substr: S,
+        occurrence_index: usize,
+    ) -> Self {
+        self.content = self
+            .content
+            .error_color_nth_substring(substr, occurrence_index);
+        self
+    }
+    pub fn error_color_all(mut self) -> Self {
+        self.content = self.content.error_color_all();
+        self
+    }
+    pub fn success_color_indices(mut self, indices: Vec<usize>) -> Self {
+        self.content = self.content.success_color_indices(indices);
+        self
+    }
+    pub fn success_color_range<R: RangeBounds<usize>>(mut self, indices: R) -> Self {
+        self.content = self.content.success_color_range(indices);
+        self
+    }
+    pub fn success_color_substring<S: AsRef<str>>(mut self, substr: S) -> Self {
+        self.content = self.content.success_color_substring(substr);
+        self
+    }
+    pub fn success_color_nth_substring<S: AsRef<str>>(
+        mut self,
+        substr: S,
+        occurrence_index: usize,
+    ) -> Self {
+        self.content = self
+            .content
+            .success_color_nth_substring(substr, occurrence_index);
+        self
+    }
+    pub fn success_color_all(mut self) -> Self {
+        self.content = self.content.success_color_all();
+        self
+    }
     pub fn serialize(&self) -> String {
         let mut serialized = String::new();
         for _ in 0..self.indentation_level {

@@ -154,12 +154,14 @@ impl NamedColor {
 }
 
 // This enum carefully only has two variants so
-// enum niche optimisations can keep it to 8 bytes
+// enum niche optimisations can keep it at the same byte size as pointers
 #[derive(Clone, Debug, PartialEq)]
 pub enum RcCharacterStyles {
     Reset,
     Rc(Rc<CharacterStyles>),
 }
+
+#[cfg(target_arch = "x86_64")]
 const _: [(); 8] = [(); std::mem::size_of::<RcCharacterStyles>()];
 
 impl From<CharacterStyles> for RcCharacterStyles {
@@ -926,8 +928,10 @@ pub struct TerminalCharacter {
     pub styles: RcCharacterStyles,
     width: u8,
 }
+
 // This size has significant memory and CPU implications for long lines,
 // be careful about allowing it to grow
+#[cfg(target_arch = "x86_64")]
 const _: [(); 16] = [(); std::mem::size_of::<TerminalCharacter>()];
 
 impl TerminalCharacter {

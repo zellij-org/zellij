@@ -88,6 +88,8 @@ Each node has following fields:
 * __plugin: /path/to/plugin.wasm__ - optional path to a compiled Zellij plugin.
   If indicated loads a plugin into the created space. For more information see
   PLUGINS section.
+* __default_fg: \<color\>__ - set the default foreground color for a pane (e.g. `"#00e000"`).
+* __default_bg: \<color\>__ - set the default background color for a pane (e.g. `"#001a3a"`).
 
 KEYBINDINGS
 ===========
@@ -154,7 +156,11 @@ ACTIONS
 * __MoveFocus: <Direction\>__ -  moves focus in the specified direction (Left,
   Right, Up, Down).
 * __Clear__ - clears current screen.
-* __DumpScreen: <File\>__ - dumps the screen in the specified file.
+* __DumpScreen: [File\] [--pane-id <ID\>]__ - dumps the pane content to a file or STDOUT.
+  If a file path is provided, writes the content to that file. If omitted, prints the content to STDOUT.
+  If --pane-id is provided, dumps the specified pane; otherwise dumps the focused pane.
+  <ID\> can be a bare integer (eg. 1), a terminal pane id (eg. terminal_1) or a plugin pane id (eg. plugin_1).
+  A bare integer is equivalent to a terminal pane id with the same number.
 * __DumpLayout: <File\>__ - dumps the screen in the specified or default file.
 * __EditScrollback__ - replaces the current pane with the scrollback buffer.
 * __ScrollUp__ - scrolls up 1 line in the focused pane.
@@ -176,6 +182,7 @@ ACTIONS
   on the current tab and normal mode.
 * __UndoRenameTab__ - undoes the changed tab name and reverts to the previous name.
 * __UndoRenamePane__ - undoes the changed pane name and reverts to the previous name.
+* __SetPaneColor__ - sets the default foreground and/or background color of a pane.
 
 
 KEYS

@@ -19,6 +19,7 @@ pub use floating_panes::*;
 pub use grid::*;
 pub use link_handler::*;
 pub(crate) use plugin_pane::*;
+pub use selection::Selection;
 pub use sixel::*;
 pub(crate) use terminal_character::*;
 pub use terminal_pane::*;

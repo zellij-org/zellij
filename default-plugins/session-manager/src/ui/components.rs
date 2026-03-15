@@ -1,10 +1,244 @@
+use humantime::format_duration;
 use std::path::PathBuf;
+use std::time::Duration;
 use unicode_width::UnicodeWidthChar;
 use unicode_width::UnicodeWidthStr;
 use zellij_tile::prelude::*;
 
+use crate::single_screen::UnifiedSearchResult;
 use crate::ui::{PaneUiInfo, SessionUiInfo, TabUiInfo};
 use crate::{ActiveScreen, NewSessionInfo};
+
+// ---------------------------------------------------------------
+// Render cache for unified results
+// ---------------------------------------------------------------
+
+/// Pre-computed data for a single visible row, independent of selection state.
+#[derive(Clone)]
+pub struct CachedRowData {
+    pub session_name: String,
+    pub indices: Vec<usize>,
+    pub original_index: usize,
+    pub kind: CachedRowKind,
+    // Pre-formatted strings (computed once, reused across renders)
+    pub full_details: String,
+    pub abbr_details: String,
+    pub full_tag: &'static str,
+    pub abbr_tag: &'static str,
+    // Pre-computed widths
+    pub name_width: usize,
+    pub full_details_width: usize,
+    pub abbr_details_width: usize,
+    pub full_tag_width: usize,
+    // Color range data for details cell
+    pub details_color_ranges: DetailsColorRanges,
+    pub abbr_details_color_ranges: DetailsColorRanges,
+}
+
+#[derive(Clone)]
+pub enum CachedRowKind {
+    Active,
+    Resurrectable,
+}
+
+/// Byte-offset ranges for coloring details cells.
+#[derive(Clone, Default)]
+pub struct DetailsColorRanges {
+    pub ranges: Vec<(usize, std::ops::Range<usize>)>, // (color_index, range)
+}
+
+/// Cached intermediate representation of the unified results table.
+///
+/// Stored on `SingleScreenState` and rebuilt only when `unified_results`
+/// changes (via `update_search_term` / `SessionUpdate`). Selection changes
+/// and timer re-renders reuse the cached data.
+#[derive(Default)]
+pub struct UnifiedResultsRenderCache {
+    /// Filtered rows (current session excluded), with pre-formatted strings.
+    pub rows: Vec<CachedRowData>,
+    /// Max column widths across all cached rows.
+    pub full_name_width: usize,
+    pub full_details_width: usize,
+    pub abbr_details_width: usize,
+    pub full_tag_width: usize,
+}
+
+impl UnifiedResultsRenderCache {
+    /// Rebuild the cache from the current `unified_results`.
+    pub fn rebuild(&mut self, results: &[UnifiedSearchResult]) {
+        self.rows.clear();
+        self.full_name_width = 0;
+        self.full_details_width = 0;
+        self.abbr_details_width = 0;
+        self.full_tag_width = 0;
+
+        for (orig_i, result) in results.iter().enumerate() {
+            let is_current = matches!(
+                result,
+                UnifiedSearchResult::ActiveSession {
+                    is_current_session: true,
+                    ..
+                }
+            );
+            if is_current {
+                continue;
+            }
+
+            let row = match result {
+                UnifiedSearchResult::ActiveSession {
+                    indices,
+                    session_name,
+                    connected_users,
+                    tab_count,
+                    pane_count,
+                    ..
+                } => {
+                    let client_word = if *connected_users == 1 {
+                        "client"
+                    } else {
+                        "clients"
+                    };
+
+                    let tab_str = format!("{}", tab_count);
+                    let pane_str = format!("{}", pane_count);
+                    let conn_str = format!("{}", connected_users);
+
+                    // Full details
+                    let full_details = format!(
+                        "{} tabs, {} panes, {} {}",
+                        tab_str, pane_str, conn_str, client_word
+                    );
+                    let full_details_ranges = {
+                        let tab_end = tab_str.len();
+                        let pane_offset = tab_str.len() + " tabs, ".len();
+                        let pane_end = pane_offset + pane_str.len();
+                        let conn_offset = pane_end + " panes, ".len();
+                        let conn_end = conn_offset + conn_str.len();
+                        DetailsColorRanges {
+                            ranges: vec![
+                                (1, 0..tab_end),
+                                (2, pane_offset..pane_end),
+                                (2, conn_offset..conn_end),
+                            ],
+                        }
+                    };
+
+                    // Abbreviated details
+                    let abbr_details = format!("{}t, {}p, {}c", tab_str, pane_str, conn_str);
+                    let abbr_details_ranges = {
+                        let tab_end = tab_str.len();
+                        let pane_offset = tab_str.len() + "t, ".len();
+                        let pane_end = pane_offset + pane_str.len();
+                        let conn_offset = pane_end + "p, ".len();
+                        let conn_end = conn_offset + conn_str.len();
+                        DetailsColorRanges {
+                            ranges: vec![
+                                (1, 0..tab_end),
+                                (2, pane_offset..pane_end),
+                                (2, conn_offset..conn_end),
+                            ],
+                        }
+                    };
+
+                    let name_width = session_name.width();
+                    let full_details_width = full_details.width();
+                    let abbr_details_width = abbr_details.width();
+
+                    CachedRowData {
+                        session_name: session_name.clone(),
+                        indices: indices.clone(),
+                        original_index: orig_i,
+                        kind: CachedRowKind::Active,
+                        full_details,
+                        abbr_details,
+                        full_tag: "[ATTACH]",
+                        abbr_tag: "[A]",
+                        name_width,
+                        full_details_width,
+                        abbr_details_width,
+                        full_tag_width: "[ATTACH]".len(),
+                        details_color_ranges: full_details_ranges,
+                        abbr_details_color_ranges: abbr_details_ranges,
+                    }
+                },
+                UnifiedSearchResult::ResurrectableSession {
+                    indices,
+                    session_name,
+                    ctime,
+                    ..
+                } => {
+                    let duration = humantime::format_duration(*ctime).to_string();
+                    let mut formatted_duration = String::new();
+                    for part in duration.split_whitespace() {
+                        if !part.ends_with('s') {
+                            if !formatted_duration.is_empty() {
+                                formatted_duration.push(' ');
+                            }
+                            formatted_duration.push_str(part);
+                        }
+                    }
+                    if formatted_duration.is_empty() {
+                        formatted_duration.push_str("<1m");
+                    }
+
+                    let full_details = format!("Created {} ago", formatted_duration);
+                    let full_details_ranges = {
+                        let created_len = "Created ".len();
+                        let duration_end = created_len + formatted_duration.len();
+                        DetailsColorRanges {
+                            ranges: vec![(2, created_len..duration_end)],
+                        }
+                    };
+
+                    let abbr_details = format!("{} ago", formatted_duration);
+                    let abbr_details_ranges = {
+                        let duration_end = formatted_duration.len();
+                        DetailsColorRanges {
+                            ranges: vec![(2, 0..duration_end)],
+                        }
+                    };
+
+                    let name_width = session_name.width();
+                    let full_details_width = full_details.width();
+                    let abbr_details_width = abbr_details.width();
+
+                    CachedRowData {
+                        session_name: session_name.clone(),
+                        indices: indices.clone(),
+                        original_index: orig_i,
+                        kind: CachedRowKind::Resurrectable,
+                        full_details,
+                        abbr_details,
+                        full_tag: "[RESURRECT]",
+                        abbr_tag: "[R]",
+                        name_width,
+                        full_details_width,
+                        abbr_details_width,
+                        full_tag_width: "[RESURRECT]".len(),
+                        details_color_ranges: full_details_ranges,
+                        abbr_details_color_ranges: abbr_details_ranges,
+                    }
+                },
+            };
+
+            // Update max widths
+            if row.name_width > self.full_name_width {
+                self.full_name_width = row.name_width;
+            }
+            if row.full_details_width > self.full_details_width {
+                self.full_details_width = row.full_details_width;
+            }
+            if row.abbr_details_width > self.abbr_details_width {
+                self.abbr_details_width = row.abbr_details_width;
+            }
+            if row.full_tag_width > self.full_tag_width {
+                self.full_tag_width = row.full_tag_width;
+            }
+
+            self.rows.push(row);
+        }
+    }
+}
 
 #[derive(Debug)]
 pub struct ListItem {
@@ -206,6 +440,21 @@ impl Default for SpanStyle {
     fn default() -> Self {
         SpanStyle::None
     }
+}
+
+fn truncate_to_width(text: &str, max_width: usize) -> String {
+    use unicode_width::UnicodeWidthChar;
+    let mut result = String::new();
+    let mut current_width = 0;
+    for ch in text.chars() {
+        let ch_width = ch.width().unwrap_or(0);
+        if current_width + ch_width > max_width {
+            break;
+        }
+        result.push(ch);
+        current_width += ch_width;
+    }
+    result
 }
 
 #[derive(Debug, Default)]
@@ -534,6 +783,272 @@ pub fn render_prompt(search_term: &str, colors: Colors, x: usize, y: usize) {
     );
 }
 
+pub fn render_single_screen_prompt(
+    search_term: &str,
+    enter_action: Option<&str>,
+    colors: Colors,
+    x: usize,
+    y: usize,
+) {
+    let prompt = colors.session_name_prompt("Session:");
+    let search_term_display = colors.bold(&format!("{}_", search_term));
+    let enter_hint = match enter_action {
+        Some(action) => {
+            let enter_key = colors.shortcuts("<ENTER>");
+            format!(" {} - {}", enter_key, action)
+        },
+        None => String::new(),
+    };
+    println!(
+        "\u{1b}[m\u{1b}[{};{}H\u{1b}[0m{} {}{}\n",
+        y + 2,
+        x + 1,
+        prompt,
+        search_term_display,
+        enter_hint,
+    );
+}
+
+pub fn render_unified_results(
+    cache: &UnifiedResultsRenderCache,
+    selected_index: Option<usize>,
+    max_rows: usize,
+    max_cols: usize,
+    _colors: Colors,
+    x: usize,
+    y: usize,
+) {
+    if cache.rows.is_empty() {
+        return;
+    }
+
+    // Map selected_index (from original results) to filtered/cached position
+    let filtered_selected =
+        selected_index.and_then(|sel| cache.rows.iter().position(|r| r.original_index == sel));
+
+    // Calculate viewport range over the cached (already filtered) list
+    let total = cache.rows.len();
+    let data_rows = max_rows.saturating_sub(1); // 1 for the empty header
+    let (start, end) = if data_rows >= total {
+        (0, total)
+    } else {
+        let anchor = filtered_selected.unwrap_or(0);
+        let half = data_rows / 2;
+        let mut s = anchor.saturating_sub(half);
+        let mut e = s + data_rows;
+        if e > total {
+            e = total;
+            s = total.saturating_sub(data_rows);
+        }
+        (s, e)
+    };
+
+    // Hidden-item counts (single pass over two slices)
+    let (above_active, above_resurrectable) = count_by_kind(&cache.rows[..start]);
+    let (below_active, below_resurrectable) = count_by_kind(&cache.rows[end..]);
+
+    let has_hidden_above = above_active > 0 || above_resurrectable > 0;
+    let has_hidden_below = below_active > 0 || below_resurrectable > 0;
+    let has_hidden = has_hidden_above || has_hidden_below;
+
+    // 4th column content strings
+    let tab_header_full = "<TAB> Complete";
+    let tab_header_short = "<TAB>";
+
+    let above_summary_full = if has_hidden_above {
+        format!(
+            "[+{} Active] [+{} Exited]",
+            above_active, above_resurrectable
+        )
+    } else {
+        String::new()
+    };
+    let above_summary_short = if has_hidden_above {
+        format!("[+{}] [+{}]", above_active, above_resurrectable)
+    } else {
+        String::new()
+    };
+    let below_summary_full = if has_hidden_below {
+        format!(
+            "[+{} Active] [+{} Exited]",
+            below_active, below_resurrectable
+        )
+    } else {
+        String::new()
+    };
+    let below_summary_short = if has_hidden_below {
+        format!("[+{}] [+{}]", below_active, below_resurrectable)
+    } else {
+        String::new()
+    };
+
+    let max_summary_full_width = std::cmp::max(
+        if has_hidden_above {
+            above_summary_full.width()
+        } else {
+            0
+        },
+        if has_hidden_below {
+            below_summary_full.width()
+        } else {
+            0
+        },
+    );
+    let max_summary_short_width = std::cmp::max(
+        if has_hidden_above {
+            above_summary_short.width()
+        } else {
+            0
+        },
+        if has_hidden_below {
+            below_summary_short.width()
+        } else {
+            0
+        },
+    );
+
+    let full_fourth_col_width = std::cmp::max(
+        tab_header_full.width(),
+        if has_hidden {
+            max_summary_full_width
+        } else {
+            1
+        },
+    );
+    let short_fourth_col_width = std::cmp::max(
+        tab_header_short.width(),
+        if has_hidden {
+            max_summary_short_width
+        } else {
+            1
+        },
+    );
+
+    // Use pre-computed widths from cache — no format!() allocations needed
+    let (abbreviate_details, abbreviate_tags, abbreviate_fourth_col, name_max_width) =
+        compute_reduction_tier(
+            cache.full_name_width,
+            cache.full_details_width,
+            cache.full_tag_width,
+            full_fourth_col_width,
+            cache.abbr_details_width,
+            short_fourth_col_width,
+            max_cols,
+        );
+
+    // Build table from cached data
+    let mut table = Table::new();
+
+    // Empty header row
+    table = table.add_styled_row(vec![
+        Text::new(" "),
+        Text::new(" "),
+        Text::new(" "),
+        Text::new(" "),
+    ]);
+
+    let visible_count = end - start;
+    for (row_index, row) in cache.rows[start..end].iter().enumerate() {
+        let is_selected = filtered_selected == Some(start + row_index);
+
+        // Name cell — use cached string, only truncate if needed
+        let display_name = match name_max_width {
+            Some(max_w) => truncate_to_width(&row.session_name, max_w),
+            None => row.session_name.clone(),
+        };
+
+        let display_indices: Vec<usize> = row
+            .indices
+            .iter()
+            .filter(|&&i| i < display_name.chars().count())
+            .cloned()
+            .collect();
+
+        let mut name_cell = Text::new(display_name).color_range(1, ..);
+        if !display_indices.is_empty() {
+            name_cell = name_cell.color_indices(3, display_indices);
+        }
+
+        // Details and tag cells — use cached pre-formatted strings
+        let color_ranges = if abbreviate_details {
+            &row.abbr_details_color_ranges
+        } else {
+            &row.details_color_ranges
+        };
+        let details_text = if abbreviate_details {
+            &row.abbr_details
+        } else {
+            &row.full_details
+        };
+        let mut details_cell = Text::new(details_text);
+        for (color_idx, range) in &color_ranges.ranges {
+            details_cell = details_cell.color_range(*color_idx, range.clone());
+        }
+
+        let tag_text = if abbreviate_tags {
+            row.abbr_tag
+        } else {
+            row.full_tag
+        };
+        let tag_cell = Text::new(tag_text).color_range(0, ..);
+
+        // 4th column
+        let fourth_cell = if row_index == 0 && has_hidden_above {
+            let (summary_text, active_count, resurrectable_count) = if abbreviate_fourth_col {
+                (&above_summary_short, above_active, above_resurrectable)
+            } else {
+                (&above_summary_full, above_active, above_resurrectable)
+            };
+            Text::new(summary_text)
+                .color_substring(2, &format!("+{}", active_count))
+                .color_substring(2, &format!("+{}", resurrectable_count))
+        } else if row_index == 0 && selected_index.is_none() {
+            let tab_hint_text = if abbreviate_fourth_col {
+                tab_header_short
+            } else {
+                tab_header_full
+            };
+            Text::new(tab_hint_text).color_substring(3, "<TAB>")
+        } else if row_index == visible_count - 1 && has_hidden_below {
+            let (summary_text, active_count, resurrectable_count) = if abbreviate_fourth_col {
+                (&below_summary_short, below_active, below_resurrectable)
+            } else {
+                (&below_summary_full, below_active, below_resurrectable)
+            };
+            Text::new(summary_text)
+                .color_substring(2, &format!("+{}", active_count))
+                .color_substring(2, &format!("+{}", resurrectable_count))
+        } else {
+            Text::new(" ")
+        };
+
+        if is_selected {
+            table = table.add_styled_row(vec![
+                name_cell.selected(),
+                details_cell.selected(),
+                tag_cell.selected(),
+                fourth_cell,
+            ]);
+        } else {
+            table = table.add_styled_row(vec![name_cell, details_cell, tag_cell, fourth_cell]);
+        }
+    }
+
+    print_table_with_coordinates(table, x, y, Some(max_cols), Some(max_rows));
+}
+
+fn count_by_kind(rows: &[CachedRowData]) -> (usize, usize) {
+    let mut active = 0;
+    let mut resurrectable = 0;
+    for row in rows {
+        match row.kind {
+            CachedRowKind::Active => active += 1,
+            CachedRowKind::Resurrectable => resurrectable += 1,
+        }
+    }
+    (active, resurrectable)
+}
+
 pub fn render_screen_toggle(
     active_screen: ActiveScreen,
     x: usize,
@@ -566,6 +1081,10 @@ pub fn render_screen_toggle(
         },
         ActiveScreen::ResurrectSession => {
             exited_sessions_text = exited_sessions_text.selected();
+        },
+        ActiveScreen::SingleScreen => {
+            // SingleScreen does not use the tab toggle; this arm exists for exhaustiveness
+            return;
         },
     }
     let bg_color = match background {
@@ -927,13 +1446,19 @@ pub fn render_controls_line(
     colors: Colors,
     x: usize,
     y: usize,
-) {
-    match active_screen {
+) -> usize {
+    const HELP_PREFIX_LEN: usize = 6;
+    let x = x + 1;
+
+    let shows_help_prefix = match active_screen {
         ActiveScreen::NewSession => {
             if max_cols >= 50 {
                 print!(
                     "\u{1b}[m\u{1b}[{y};{x}H\u{1b}[1mHelp: Fill in the form to start a new session."
                 );
+                true
+            } else {
+                false
             }
         },
         ActiveScreen::AttachToSession => {
@@ -950,8 +1475,12 @@ pub fn render_controls_line(
                 print!(
                     "\u{1b}[m\u{1b}[{y};{x}HHelp: {rename} - {rename_text}, {disconnect} - {disconnect_text}, {kill} - {kill_text}, {kill_all} - {kill_all_text}"
                 );
+                true
             } else if max_cols >= 28 {
                 print!("\u{1b}[m\u{1b}[{y};{x}H{rename}/{disconnect}/{kill}/{kill_all}");
+                false
+            } else {
+                false
             }
         },
         ActiveScreen::ResurrectSession => {
@@ -968,11 +1497,139 @@ pub fn render_controls_line(
                 print!(
                     "\u{1b}[m\u{1b}[{y};{x}HHelp: {arrows} - {navigate}, {enter} - {select}, {del} - {del_text}, {del_all} - {del_all_text}"
                 );
+                true
             } else if max_cols >= 28 {
                 print!("\u{1b}[m\u{1b}[{y};{x}H{arrows}/{enter}/{del}/{del_all}");
+                false
+            } else {
+                false
             }
         },
+        ActiveScreen::SingleScreen => {
+            let rename = colors.shortcuts("<Ctrl r>");
+            let rename_text = colors.bold("Rename");
+            let disconnect = colors.shortcuts("<Ctrl x>");
+            let disconnect_full_text = colors.bold("Disconnect others");
+            let disconnect_short_text = colors.bold("Disconnect");
+            let kill = colors.shortcuts("<Del>");
+            let kill_text = colors.bold("Kill/Delete");
+
+            // Full: "Help: <Ctrl r> - Rename, <Ctrl x> - Disconnect others, <Del> - Kill/Delete" = 76 chars
+            if max_cols > 76 {
+                print!(
+                    "\u{1b}[m\u{1b}[{y};{x}HHelp: {rename} - {rename_text}, {disconnect} - {disconnect_full_text}, {kill} - {kill_text}"
+                );
+                true
+            // Medium: "Help: <Ctrl r> - Rename, <Ctrl x> - Disconnect, <Del> - Kill/Delete" = 69 chars
+            } else if max_cols > 69 {
+                print!(
+                    "\u{1b}[m\u{1b}[{y};{x}HHelp: {rename} - {rename_text}, {disconnect} - {disconnect_short_text}, {kill} - {kill_text}"
+                );
+                true
+            // Compact: "<Ctrl r>/<Ctrl x>/<Del>" = 23 chars
+            } else if max_cols >= 23 {
+                print!("\u{1b}[m\u{1b}[{y};{x}H{rename}/{disconnect}/{kill}");
+                false
+            } else {
+                false
+            }
+        },
+    };
+
+    if shows_help_prefix {
+        HELP_PREFIX_LEN
+    } else {
+        0
     }
+}
+
+fn format_elapsed_time(elapsed_millis: u64) -> String {
+    // Convert elapsed milliseconds to Duration
+    let elapsed_duration = Duration::from_millis(elapsed_millis);
+
+    // Use humantime to format the duration, same as in resurrectable_sessions.rs
+    let duration_str = format_duration(elapsed_duration).to_string();
+    let duration_parts = duration_str.split_whitespace();
+    let mut formatted_duration = String::new();
+    for part in duration_parts {
+        if !part.ends_with('s') {
+            if !formatted_duration.is_empty() {
+                formatted_duration.push(' ');
+            }
+            formatted_duration.push_str(part);
+        }
+    }
+    if formatted_duration.is_empty() {
+        format!("just now")
+    } else {
+        format!("{} ago", formatted_duration)
+    }
+}
+
+pub fn render_unsaved_changes_line(
+    max_cols: usize,
+    x: usize,
+    y: usize,
+    last_saved_timestamp: Option<u64>,
+) {
+    // Declare all text components
+    let shortcut_text = "<Ctrl a>";
+    let full_action_text = "Save current session for resurrection";
+    let medium_action_text = "Save session";
+    let short_action_text = "Save";
+    let separator = " - ";
+    let space = " ";
+
+    let time_text = match last_saved_timestamp {
+        Some(timestamp) => {
+            let elapsed = format_elapsed_time(timestamp);
+            format!("(saved {})", elapsed)
+        },
+        None => "(not saved)".to_string(),
+    };
+
+    // Calculate component widths
+    let shortcut_width = shortcut_text.width();
+    let separator_width = separator.width();
+    let space_width = space.width();
+    let time_width = time_text.width();
+
+    // Calculate total widths for each display mode
+    // Format: "{shortcut}{separator}{action}{space}{time}"
+    let full_width =
+        shortcut_width + separator_width + full_action_text.width() + space_width + time_width;
+    let medium_width =
+        shortcut_width + separator_width + medium_action_text.width() + space_width + time_width;
+    let short_width =
+        shortcut_width + separator_width + short_action_text.width() + space_width + time_width;
+    let minimal_width = shortcut_width + space_width + time_width;
+
+    // Select appropriate message based on available width
+    let msg = if max_cols >= full_width {
+        format!(
+            "{}{}{}{}{}",
+            shortcut_text, separator, full_action_text, space, time_text
+        )
+    } else if max_cols >= medium_width {
+        format!(
+            "{}{}{}{}{}",
+            shortcut_text, separator, medium_action_text, space, time_text
+        )
+    } else if max_cols >= short_width {
+        format!(
+            "{}{}{}{}{}",
+            shortcut_text, separator, short_action_text, space, time_text
+        )
+    } else if max_cols >= minimal_width {
+        format!("{}{}{}", shortcut_text, space, time_text)
+    } else {
+        return; // Not enough space to render
+    };
+
+    let text = Text::new(&msg)
+        .color_substring(3, shortcut_text)
+        .color_substring(2, &time_text);
+    print_text_with_coordinates(text, x, y, None, None);
 }
 
 // Maps the various prompts and UI elements to the colors to present them with
@@ -1037,6 +1694,62 @@ impl Colors {
     }
 }
 
+/// Computes the width reduction tier for the unified results table.
+///
+/// Returns `(abbreviate_details, abbreviate_tags, abbreviate_fourth_col, name_max_width)`.
+/// - Tier 0: everything fits at full size
+/// - Tier 1: abbreviate details only
+/// - Tier 2: abbreviate details + tags
+/// - Tier 3: abbreviate details + tags + 4th column
+/// - Tier 4: abbreviate all + truncate session names
+pub fn compute_reduction_tier(
+    full_name_width: usize,
+    full_details_width: usize,
+    full_tag_width: usize,
+    full_fourth_col_width: usize,
+    abbr_details_width: usize,
+    short_fourth_col_width: usize,
+    max_cols: usize,
+) -> (bool, bool, bool, Option<usize>) {
+    let full_total =
+        full_name_width + full_details_width + full_tag_width + full_fourth_col_width + 4;
+    if full_total <= max_cols {
+        // Everything fits at full size
+        (false, false, false, None)
+    } else {
+        // Reduction 1: abbreviate details
+        let total_after_details =
+            full_name_width + abbr_details_width + full_tag_width + full_fourth_col_width + 4;
+        if total_after_details <= max_cols {
+            (true, false, false, None)
+        } else {
+            // Reduction 2: abbreviate tags
+            let abbr_tag_width = 3; // "[A]" or "[R]"
+            let total_after_tags =
+                full_name_width + abbr_details_width + abbr_tag_width + full_fourth_col_width + 4;
+            if total_after_tags <= max_cols {
+                (true, true, false, None)
+            } else {
+                // Reduction 3: abbreviate 4th column
+                let total_after_fourth = full_name_width
+                    + abbr_details_width
+                    + abbr_tag_width
+                    + short_fourth_col_width
+                    + 4;
+                if total_after_fourth <= max_cols {
+                    (true, true, true, None)
+                } else {
+                    // Reduction 4: truncate session names
+                    let available_for_name = max_cols.saturating_sub(
+                        abbr_details_width + abbr_tag_width + short_fourth_col_width + 4,
+                    );
+                    (true, true, true, Some(available_for_name))
+                }
+            }
+        }
+    }
+}
+
 fn truncate_path(path: PathBuf, mut char_count_to_remove: usize) -> String {
     let mut truncated = String::new();
     let component_count = path.iter().count();
@@ -1057,4 +1770,78 @@ fn truncate_path(path: PathBuf, mut char_count_to_remove: usize) -> String {
         }
     }
     truncated
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ---------------------------------------------------------------
+    // Section 8: Width Responsiveness (compute_reduction_tier)
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn test_8_1_tier_0_full_width_everything_fits() {
+        // full_total = 20 + 30 + 11 + 15 + 4 = 80, max_cols = 120
+        let (abbr_details, abbr_tags, abbr_fourth, name_max) =
+            compute_reduction_tier(20, 30, 11, 15, 10, 5, 120);
+        assert_eq!(
+            (abbr_details, abbr_tags, abbr_fourth, name_max),
+            (false, false, false, None)
+        );
+    }
+
+    #[test]
+    fn test_8_2_tier_1_abbreviate_details_only() {
+        // full_total = 20 + 30 + 11 + 15 + 4 = 80
+        // after abbr details: 20 + 10 + 11 + 15 + 4 = 60
+        // max_cols = 70: full doesn't fit (80 > 70), but abbr details fits (60 <= 70)
+        let (abbr_details, abbr_tags, abbr_fourth, name_max) =
+            compute_reduction_tier(20, 30, 11, 15, 10, 5, 70);
+        assert_eq!(
+            (abbr_details, abbr_tags, abbr_fourth, name_max),
+            (true, false, false, None)
+        );
+    }
+
+    #[test]
+    fn test_8_3_tier_2_abbreviate_details_and_tags() {
+        // full_total = 20 + 30 + 11 + 15 + 4 = 80
+        // after abbr details: 20 + 10 + 11 + 15 + 4 = 60
+        // after abbr tags: 20 + 10 + 3 + 15 + 4 = 52
+        // max_cols = 55: abbr details doesn't fit (60 > 55), abbr tags fits (52 <= 55)
+        let (abbr_details, abbr_tags, abbr_fourth, name_max) =
+            compute_reduction_tier(20, 30, 11, 15, 10, 5, 55);
+        assert_eq!(
+            (abbr_details, abbr_tags, abbr_fourth, name_max),
+            (true, true, false, None)
+        );
+    }
+
+    #[test]
+    fn test_8_4_tier_3_abbreviate_details_tags_and_fourth_col() {
+        // full_total = 20 + 30 + 11 + 15 + 4 = 80
+        // after abbr details: 20 + 10 + 11 + 15 + 4 = 60
+        // after abbr tags: 20 + 10 + 3 + 15 + 4 = 52
+        // after abbr fourth: 20 + 10 + 3 + 5 + 4 = 42
+        // max_cols = 45: abbr tags doesn't fit (52 > 45), abbr fourth fits (42 <= 45)
+        let (abbr_details, abbr_tags, abbr_fourth, name_max) =
+            compute_reduction_tier(20, 30, 11, 15, 10, 5, 45);
+        assert_eq!(
+            (abbr_details, abbr_tags, abbr_fourth, name_max),
+            (true, true, true, None)
+        );
+    }
+
+    #[test]
+    fn test_8_5_tier_4_truncate_session_names() {
+        // full_total = 20 + 30 + 11 + 15 + 4 = 80
+        // after abbr fourth: 20 + 10 + 3 + 5 + 4 = 42
+        // max_cols = 30: doesn't fit at tier 3 (42 > 30)
+        // available_for_name = 30 - (10 + 3 + 5 + 4) = 8
+        let (abbr_details, abbr_tags, abbr_fourth, name_max) =
+            compute_reduction_tier(20, 30, 11, 15, 10, 5, 30);
+        assert_eq!((abbr_details, abbr_tags, abbr_fourth), (true, true, true));
+        assert_eq!(name_max, Some(8)); // 30 - (10 + 3 + 5 + 4) = 8
+    }
 }

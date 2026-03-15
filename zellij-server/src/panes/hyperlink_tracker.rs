@@ -47,7 +47,7 @@ impl HyperlinkTracker {
         &mut self,
         ch: char,
         cursor: &Cursor,
-        viewport: &mut Vec<Row>,
+        viewport: &mut VecDeque<Row>,
         lines_above: &mut VecDeque<Row>,
         link_handler: &mut LinkHandler,
     ) {
@@ -144,7 +144,7 @@ impl HyperlinkTracker {
 
     fn finalize_and_apply(
         &mut self,
-        viewport: &mut Vec<Row>,
+        viewport: &mut VecDeque<Row>,
         lines_above: &mut VecDeque<Row>,
         link_handler: &mut LinkHandler,
     ) {
@@ -183,7 +183,7 @@ impl HyperlinkTracker {
     fn apply_hyperlink_to_grid(
         &self,
         link: &DetectedLink,
-        viewport: &mut Vec<Row>,
+        viewport: &mut VecDeque<Row>,
         lines_above: &mut VecDeque<Row>,
         link_handler: &mut LinkHandler,
     ) {
@@ -319,7 +319,7 @@ mod tests {
         }
     }
 
-    fn create_test_viewport(rows: usize, cols: usize) -> Vec<Row> {
+    fn create_test_viewport(rows: usize, cols: usize) -> VecDeque<Row> {
         (0..rows).map(|_| create_test_row(cols)).collect()
     }
 

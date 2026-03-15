@@ -1,0 +1,47 @@
+---
+source: zellij-server/src/./unit/screen_tests.rs
+expression: "format!(\"{:#?}\", fill_plugin_cwd_instruction)"
+---
+Some(
+    FillPluginCwd(
+        Some(
+            false,
+        ),
+        true,
+        true,
+        None,
+        RunPlugin(
+            RunPlugin {
+                _allow_exec_host_cmd: false,
+                location: File(
+                    "/path/to/fake/plugin",
+                ),
+                configuration: PluginUserConfiguration(
+                    {},
+                ),
+                initial_cwd: None,
+            },
+        ),
+        0,
+        None,
+        1,
+        Size {
+            rows: 0,
+            cols: 0,
+        },
+        false,
+        None,
+        None,
+        None,
+        Some(
+            NotificationEnd {
+                channel: None,
+                exit_status: None,
+                unblock_condition: None,
+                affected_pane_id: None,
+                affected_tab_id: None,
+                error_message: None,
+            },
+        ),
+    ),
+)

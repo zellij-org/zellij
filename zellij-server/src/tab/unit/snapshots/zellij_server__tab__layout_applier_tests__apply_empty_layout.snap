@@ -1,0 +1,9 @@
+---
+source: zellij-server/src/tab/./unit/layout_applier_tests.rs
+expression: snapshot
+---
+VIEWPORT: x=0, y=0, cols=100, rows=50
+DISPLAY: cols=100, rows=50
+FOCUS: None
+
+TILED PANES (0)

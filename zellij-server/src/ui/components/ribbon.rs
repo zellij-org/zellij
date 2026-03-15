@@ -34,6 +34,7 @@ pub fn ribbon(
         padding,
         &component_coordinates,
         &declaration,
+        &colors,
         text_style,
     );
     let mut stringified = component_coordinates

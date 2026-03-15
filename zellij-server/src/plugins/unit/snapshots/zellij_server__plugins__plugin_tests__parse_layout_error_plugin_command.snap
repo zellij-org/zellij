@@ -1,0 +1,7 @@
+---
+source: zellij-server/src/plugins/./unit/plugin_tests.rs
+expression: "format!(\"{:#?}\", plugin_bytes_event)"
+---
+Some(
+    "Parse error: KdlError { kdl_error: KdlError { error_message: \"Failed to deserialize KDL node. \\nPossible reasons:\\n- Missing `;` after a node name, eg. { node; another_node; }\\n- Missing quotations (\\\") around an argument node eg. { first_node \\\"argument_node\\\"; }\\n- Missing an equal sign (=) between node arguments on a title line. eg. argument=\\\"value\\\"\\n- Found an extraneous equal sign (=) between node child arguments and their values. eg. { argument=\\\"value\\\" }\", src: None, offset: Some(9), len: Some(5), help_message: None }, file_name: \"parse_layout_api\", source_code: \"layout { this is not valid kdl }\" }\n\r",
+)

@@ -1,3 +1,4 @@
+use crate::web_client::authentication::{IsReadOnly, SessionTokenHash};
 use crate::web_client::types::{AppState, CreateClientIdResponse, LoginRequest, LoginResponse};
 use crate::web_client::utils::{get_mime_type, parse_cookies};
 use axum::{
@@ -11,6 +12,14 @@ use include_dir;
 use uuid::Uuid;
 use zellij_utils::{consts::VERSION, web_authentication_tokens::create_session_token};
 
+fn html_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#x27;")
+}
+
 const WEB_CLIENT_PAGE: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/",
@@ -19,11 +28,26 @@ const WEB_CLIENT_PAGE: &str = include_str!(concat!(
 
 const ASSETS_DIR: include_dir::Dir<'_> = include_dir::include_dir!("$CARGO_MANIFEST_DIR/assets");
 
-pub async fn serve_html(request: Request) -> Html<String> {
+pub async fn serve_html(State(state): State<AppState>, request: Request) -> Html<String> {
     let cookies = parse_cookies(&request);
     let is_authenticated = cookies.get("session_token").is_some();
     let auth_value = if is_authenticated { "true" } else { "false" };
-    let html = Html(WEB_CLIENT_PAGE.replace("IS_AUTHENTICATED", &format!("{}", auth_value)));
+    let base_url = html_escape(
+        &state
+            .config
+            .lock()
+            .unwrap()
+            .web_client
+            .base_url
+            .clone()
+            .unwrap_or("/".to_string()),
+    );
+
+    let html = Html(
+        WEB_CLIENT_PAGE
+            .replace("IS_AUTHENTICATED", &format!("{}", auth_value))
+            .replace("BASE_URL", &base_url),
+    );
     html
 }
 
@@ -81,20 +105,41 @@ pub async fn login_handler(
 
 pub async fn create_new_client(
     State(state): State<AppState>,
+    request: axum::extract::Request,
 ) -> Result<Json<CreateClientIdResponse>, (StatusCode, impl IntoResponse)> {
+    // Extract is_read_only from request extensions (set by auth middleware)
+    let is_read_only = request
+        .extensions()
+        .get::<IsReadOnly>()
+        .copied()
+        .unwrap_or(IsReadOnly(true))
+        .0;
+    let session_token_hash = request
+        .extensions()
+        .get::<SessionTokenHash>()
+        .cloned()
+        .ok_or((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json("Missing session info".to_string()),
+        ))?;
+
     let web_client_id = String::from(Uuid::new_v4());
     let os_input = state
         .client_os_api_factory
         .create_client_os_api()
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(e.to_string())))?;
 
-    state
-        .connection_table
-        .lock()
-        .unwrap()
-        .add_new_client(web_client_id.to_owned(), os_input);
+    state.connection_table.lock().unwrap().add_new_client(
+        web_client_id.to_owned(),
+        os_input,
+        is_read_only,
+        session_token_hash.0,
+    );
 
-    Ok(Json(CreateClientIdResponse { web_client_id }))
+    Ok(Json(CreateClientIdResponse {
+        web_client_id,
+        is_read_only,
+    }))
 }
 
 pub async fn get_static_asset(AxumPath(path): AxumPath<String>) -> impl IntoResponse {

@@ -443,6 +443,7 @@ impl State {
             Some(width.to_string()),
             Some(height.to_string()),
             Some(true),
+            Some(false),
         )
         .unwrap_or_default()
     }

@@ -6,6 +6,7 @@ use crate::panes::{
     terminal_character::{render_first_run_banner, TerminalCharacter, EMPTY_TERMINAL_CHARACTER},
 };
 use crate::pty::VteBytes;
+use crate::route::NotificationEnd;
 use crate::tab::{AdjustedInput, Pane};
 use crate::ClientId;
 use std::cell::RefCell;
@@ -14,13 +15,14 @@ use std::fmt::Debug;
 use std::rc::Rc;
 use std::time::{self, Instant};
 use vte;
+use zellij_utils::data::PaneContents;
 use zellij_utils::input::command::RunCommand;
 use zellij_utils::input::mouse::{MouseEvent, MouseEventType};
 use zellij_utils::pane_size::Offset;
 use zellij_utils::{
     data::{
         BareKey, InputMode, KeyWithModifier, Palette, PaletteColor, PaneId as ZellijUtilsPaneId,
-        Style, Styling,
+        RegexHighlight, Style, Styling,
     },
     errors::prelude::*,
     input::layout::Run,
@@ -108,6 +110,15 @@ impl Into<ZellijUtilsPaneId> for PaneId {
     }
 }
 
+impl std::fmt::Display for PaneId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PaneId::Terminal(id) => write!(f, "terminal_{}", id),
+            PaneId::Plugin(id) => write!(f, "plugin_{}", id),
+        }
+    }
+}
+
 type IsFirstRun = bool;
 
 // FIXME: This should hold an os_api handle so that terminal panes can set their own size via FD in
@@ -137,9 +148,11 @@ pub struct TerminalPane {
     banner: Option<String>, // a banner to be rendered inside this TerminalPane, used for panes
     // held on startup and can possibly be used to display some errors
     pane_frame_color_override: Option<(PaletteColor, Option<String>)>,
+    has_bell_notification: bool,
     invoked_with: Option<Run>,
     #[allow(dead_code)]
     arrow_fonts: bool,
+    notification_end: Option<NotificationEnd>,
 }
 
 impl Pane for TerminalPane {
@@ -194,7 +207,7 @@ impl Pane for TerminalPane {
             self.vte_parser.advance(&mut self.grid, byte);
         }
     }
-    fn cursor_coordinates(&self) -> Option<(usize, usize)> {
+    fn cursor_coordinates(&self, _client_id: Option<ClientId>) -> Option<(usize, usize)> {
         // (x, y)
         if self.get_content_rows() < 1 || self.get_content_columns() < 1 {
             // do not render cursor if there's no room for it
@@ -304,6 +317,13 @@ impl Pane for TerminalPane {
     fn set_selectable(&mut self, selectable: bool) {
         self.selectable = selectable;
     }
+    fn set_pane_default_colors(&mut self, fg: Option<String>, bg: Option<String>) {
+        self.grid.set_pane_default_colors(fg, bg);
+        self.set_should_render(true);
+    }
+    fn get_pane_default_colors(&self) -> (Option<String>, Option<String>) {
+        self.grid.get_pane_default_color_strings()
+    }
     fn render(
         &mut self,
         _client_id: Option<ClientId>,
@@ -335,13 +355,7 @@ impl Pane for TerminalPane {
     ) -> Result<Option<(Vec<CharacterChunk>, Option<String>)>> {
         let err_context = || format!("failed to render frame for client {client_id}");
         // TODO: remove the cursor stuff from here
-        let pane_title = if let Some(text_color_override) = self
-            .pane_frame_color_override
-            .as_ref()
-            .and_then(|(_color, text)| text.as_ref())
-        {
-            text_color_override.into()
-        } else if self.pane_name.is_empty()
+        let normal_title = if self.pane_name.is_empty()
             && input_mode == InputMode::RenamePane
             && frame_params.is_main_client
         {
@@ -378,6 +392,17 @@ impl Pane for TerminalPane {
                 .unwrap_or_else(|| self.pane_title.clone())
         } else {
             self.pane_name.clone()
+        };
+        let pane_title = if let Some(text_color_override) = self
+            .pane_frame_color_override
+            .as_ref()
+            .and_then(|(_color, text)| text.as_ref())
+        {
+            text_color_override.into()
+        } else if self.has_bell_notification {
+            format!("{} [!]", normal_title)
+        } else {
+            normal_title
         };
 
         let frame_geom = self.current_geom();
@@ -525,6 +550,9 @@ impl Pane for TerminalPane {
     fn dump_screen(&self, full: bool, _client_id: Option<ClientId>) -> String {
         self.grid.dump_screen(full)
     }
+    fn dump_screen_with_ansi(&self, full: bool, _client_id: Option<ClientId>) -> String {
+        self.grid.dump_screen_with_ansi(full)
+    }
     fn clear_screen(&mut self) {
         self.grid.clear_screen()
     }
@@ -627,11 +655,16 @@ impl Pane for TerminalPane {
         }
     }
 
-    fn set_borderless(&mut self, borderless: bool) {
-        self.borderless = borderless;
-    }
     fn borderless(&self) -> bool {
         self.borderless
+    }
+    fn set_borderless(&mut self, should_be_borderless: bool) {
+        self.borderless = should_be_borderless;
+        if should_be_borderless {
+            self.set_content_offset(Offset::default());
+        } else {
+            self.set_content_offset(Offset::frame(1));
+        }
     }
 
     fn set_exclude_from_sync(&mut self, exclude_from_sync: bool) {
@@ -734,10 +767,35 @@ impl Pane for TerminalPane {
     fn hold(&mut self, exit_status: Option<i32>, is_first_run: bool, run_command: RunCommand) {
         self.invoked_with = Some(Run::Command(run_command.clone()));
         self.is_held = Some((exit_status, is_first_run, run_command));
+        if let Some(notification_end) = self.notification_end.as_mut() {
+            if let Some(exit_status) = exit_status {
+                notification_end.set_exit_status(exit_status);
+
+                // Check if unblock condition is met
+                if let Some(condition) = notification_end.unblock_condition() {
+                    if condition.is_met(exit_status) {
+                        // Condition met - drop the NotificationEnd now to unblock
+                        drop(self.notification_end.take());
+                    }
+                }
+            }
+        }
         if is_first_run {
             self.render_first_run_banner();
         }
         self.set_should_render(true);
+    }
+    fn has_bell(&self) -> bool {
+        self.grid.ring_bell
+    }
+    fn consume_bell(&mut self) {
+        self.grid.ring_bell = false;
+    }
+    fn set_bell_notification(&mut self, val: bool) {
+        self.has_bell_notification = val;
+    }
+    fn get_bell_notification(&self) -> bool {
+        self.has_bell_notification
     }
     fn add_red_pane_frame_color_override(&mut self, error_text: Option<String>) {
         self.pane_frame_color_override = Some((self.style.colors.exit_code_error.base, error_text));
@@ -748,7 +806,7 @@ impl Pane for TerminalPane {
         _client_id: Option<ClientId>,
     ) {
         // TODO: if we have a client_id, we should only highlight the frame for this client
-        self.pane_frame_color_override = Some((self.style.colors.frame_highlight.base, text));
+        self.pane_frame_color_override = Some((self.style.colors.frame_highlight.emphasis_0, text));
     }
     fn clear_pane_frame_color_override(&mut self, _client_id: Option<ClientId>) {
         // TODO: if we have a client_id, we should only clear the highlight for this client
@@ -881,6 +939,71 @@ impl Pane for TerminalPane {
     fn reset_logical_position(&mut self) {
         self.geom.logical_position = None;
     }
+    fn pane_contents(
+        &self,
+        _client_id: Option<ClientId>,
+        get_full_scrollback: bool,
+        max_scrollback_lines: Option<usize>,
+    ) -> PaneContents {
+        self.grid
+            .pane_contents(get_full_scrollback, max_scrollback_lines)
+    }
+    fn pane_contents_with_ansi(
+        &self,
+        _client_id: Option<ClientId>,
+        get_full_scrollback: bool,
+        max_scrollback_lines: Option<usize>,
+    ) -> PaneContents {
+        self.grid
+            .pane_contents_with_ansi(get_full_scrollback, max_scrollback_lines)
+    }
+    fn update_exit_status(&mut self, exit_status: i32) {
+        if let Some(notification_end) = self.notification_end.as_mut() {
+            notification_end.set_exit_status(exit_status);
+            // Check if unblock condition is met
+            if let Some(condition) = notification_end.unblock_condition() {
+                if condition.is_met(exit_status) {
+                    // Condition met - drop the NotificationEnd now to unblock
+                    drop(self.notification_end.take());
+                }
+            }
+        }
+    }
+    fn set_plugin_regex_highlights(
+        &mut self,
+        plugin_id: u32,
+        highlights: Vec<RegexHighlight>,
+        style: &Style,
+    ) {
+        self.grid
+            .set_plugin_regex_highlights(plugin_id, highlights, style);
+        self.set_should_render(true);
+    }
+    fn clear_plugin_highlights(&mut self, plugin_id: u32) {
+        self.grid.clear_plugin_highlights(plugin_id);
+        self.set_should_render(true);
+    }
+    fn set_hover_position(&mut self, position: Option<Position>) {
+        self.grid.set_hover_position(position);
+        self.set_should_render(true);
+    }
+    fn cached_hover_tooltip(&self) -> Option<String> {
+        self.grid.cached_hover_tooltip.clone()
+    }
+    fn plugin_highlight_at(
+        &self,
+        position: &Position,
+    ) -> Option<(
+        u32,
+        String,
+        String,
+        std::collections::BTreeMap<String, String>,
+    )> {
+        self.grid.plugin_highlight_at(position)
+    }
+    fn terminal_emulator_wants_mouse(&self) -> bool {
+        self.grid.mouse_tracking != crate::panes::grid::MouseTracking::Off
+    }
 }
 
 impl TerminalPane {
@@ -901,7 +1024,9 @@ impl TerminalPane {
         debug: bool,
         arrow_fonts: bool,
         styled_underlines: bool,
+        osc8_hyperlinks: bool,
         explicitly_disable_keyboard_protocol: bool,
+        mut notification_end: Option<NotificationEnd>,
     ) -> TerminalPane {
         let initial_pane_title =
             initial_pane_title.unwrap_or_else(|| format!("Pane #{}", pane_index));
@@ -917,8 +1042,12 @@ impl TerminalPane {
             debug,
             arrow_fonts,
             styled_underlines,
+            osc8_hyperlinks,
             explicitly_disable_keyboard_protocol,
         );
+        if let Some(notification_end) = notification_end.as_mut() {
+            notification_end.set_affected_pane_id(PaneId::Terminal(pid));
+        }
         TerminalPane {
             frame: HashMap::new(),
             content_offset: Offset::default(),
@@ -941,8 +1070,10 @@ impl TerminalPane {
             is_held: None,
             banner: None,
             pane_frame_color_override: None,
+            has_bell_notification: false,
             invoked_with,
             arrow_fonts,
+            notification_end,
         }
     }
     pub fn get_x(&self) -> usize {
