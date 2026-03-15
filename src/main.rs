@@ -134,6 +134,7 @@ fn main() {
                 height,
                 pinned,
                 stacked,
+                size: None,
                 blocking,
                 unblock_condition,
                 near_current_pane: false,
