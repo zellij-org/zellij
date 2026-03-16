@@ -5809,49 +5809,39 @@ fn replace_with_empty_chars_steps_by_egc_width_in_2027_mode() {
 
 #[test]
 fn width_expanding_egc_does_not_overwrite_next_char() {
-    // '#' is width 1; '#' + U+FE0F (VS-16, emoji presentation) is width 2.
-    // When the variation selector extends the cell's width, the cursor must
-    // advance by the delta so the following 'x' lands at column 2, not column 1.
+    // VS16 does NOT widen cells in terminal contexts (matches ghostty/kitty/nvim).
+    // '#' + VS16 stays at width 1, so 'x' lands at col 1 (right after the keycap).
     let mut grid = create_grid_with_content("");
-    // Feed '#', then VS-16 (extends '#' to width-2 emoji), then 'x'
     feed_bytes(&mut grid, "#\u{FE0F}x".as_bytes());
     let row = &grid.viewport[0];
-    // Rendered graphemes: "#\u{FE0F}" (wide, 2 cols) then "x" at col 2.
-    // With the bug, 'x' overwrites col 1 and the row renders as "#x" (width 2).
     let rendered: String = row.columns.iter().map(|c| c.grapheme()).collect();
     assert_eq!(
         rendered, "#\u{FE0F}x",
-        "char after width-expanding EGC should land at col 2, not overwrite it; got {:?}",
+        "VS16 keycap (width 1) followed by x; got {:?}",
         rendered
     );
-    assert_eq!(grid.cursor.x, 3, "cursor should be at col 3 after '#FE0Fx'");
+    assert_eq!(grid.cursor.x, 2, "cursor at col 2 after width-1 keycap + x");
 }
 
 #[test]
 fn width_expanding_egc_row_cache_invalidated_on_extension() {
-    // Stale cache scenario: '#' placed (row cache = Some(1)), then U+FE0F
-    // extends it to width 2 (row cache must be invalidated). Without the
-    // invalidation, width_cached() still returns 1, so a subsequent char
-    // printed at col 1 (middle of the wide cell) is wrongly appended at the
-    // end instead of replacing in the middle.
+    // Row cache invalidation test using Regional Indicator flag pair (which DOES widen).
+    // First RI placed (width 1, row cache = Some(1)), then second RI extends it to
+    // width 2 (row cache must be invalidated).
     let mut grid = create_grid_with_content("");
-    // Place '#' + VS-16, cursor ends at x=2
-    feed_bytes(&mut grid, "#\u{FE0F}".as_bytes());
-    assert_eq!(grid.cursor.x, 2);
-    // Move cursor back into the middle of the wide cell (legacy CSI D: 1 column)
+    // Place flag pair 🇯🇵 = U+1F1EF + U+1F1F5
+    feed_bytes(&mut grid, "\u{1F1EF}\u{1F1F5}".as_bytes());
+    assert_eq!(grid.cursor.x, 2, "flag pair = width 2");
+    // Move cursor back into the middle of the wide cell
     feed_bytes(&mut grid, b"\x1b[D");
-    assert_eq!(
-        grid.cursor.x, 1,
-        "cursor should be at col 1 (middle of wide cell)"
-    );
-    // Print 'y' — should replace the wide cell (splits into EMPTY + 'y'),
-    // not append 'y' after it (which would happen with a stale cache).
+    assert_eq!(grid.cursor.x, 1);
+    // Print 'y' — should replace the wide cell (splits into EMPTY + 'y')
     feed_bytes(&mut grid, b"y");
     let row = &grid.viewport[0];
     let rendered: String = row.columns.iter().map(|c| c.grapheme()).collect();
     assert_eq!(
         rendered, " y",
-        "printing at col 1 should replace the wide cell, not append; got {:?}",
+        "printing at col 1 should replace the wide flag cell; got {:?}",
         rendered
     );
 }
@@ -6192,9 +6182,10 @@ fn devanagari_virama_conjunct() {
 
     assert_eq!(row.columns.len(), 1, "virama conjunct = 1 grapheme cluster");
     assert_eq!(row.columns[0].first_char(), Some('\u{0915}')); // KA
-                                                               // Width: KA(1) + VIRAMA(0) + SSA(1) → unicode-width on the full string
-    assert_eq!(row.columns[0].width(), 2);
-    assert_eq!(grid.cursor.x, 2);
+    // Conjunct ligature: terminals render as width 1 (single glyph).
+    // VIRAMA(0) doesn't change width; SSA(1) extends the cluster without adding columns.
+    assert_eq!(row.columns[0].width(), 1);
+    assert_eq!(grid.cursor.x, 1);
 }
 
 #[test]
@@ -6324,9 +6315,10 @@ fn emoji_keycap_sequence() {
 
     assert_eq!(row.columns.len(), 1, "keycap sequence = 1 cell");
     assert_eq!(row.columns[0].first_char(), Some('1'));
-    // Keycap emoji should be width 2 (emoji presentation)
-    assert_eq!(row.columns[0].width(), 2);
-    assert_eq!(grid.cursor.x, 2);
+    // Terminals keep keycap at base char width (1) — VS16 changes the glyph
+    // presentation but doesn't widen the cell. Matches ghostty/kitty/nvim.
+    assert_eq!(row.columns[0].width(), 1);
+    assert_eq!(grid.cursor.x, 1);
 }
 
 #[test]
@@ -6357,6 +6349,148 @@ fn mixed_scripts_with_combining_marks() {
     assert_eq!(row.columns[2].first_char(), Some('中')); // CJK
     assert_eq!(row.columns[2].width(), 2);
     assert_eq!(grid.cursor.x, 4);
+}
+
+// --- Spacing Combining Mark (Mc) width regression tests ---
+// unicode-width 0.2.x counts Mc chars as width 1, but terminals render them as
+// zero-width extensions of the base glyph. push_scalar() must NOT inflate the
+// cell width when appending Mc characters.
+
+#[test]
+fn devanagari_vowel_sign_width_one() {
+    // हि = HA(U+0939) + VOWEL_SIGN_I(U+093F, Mc)
+    // Mc char should not add display width — terminal renders as 1-wide glyph.
+    let content = "\u{0939}\u{093F}";
+    let grid = create_grid_with_content(content);
+    let row = &grid.viewport[0];
+
+    assert_eq!(row.columns.len(), 1, "HA + vowel sign I = 1 cell");
+    assert_eq!(row.columns[0].first_char(), Some('\u{0939}')); // HA
+    assert_eq!(row.columns[0].width(), 1, "Mc vowel sign must not inflate width");
+    assert_eq!(grid.cursor.x, 1);
+
+    // Multiple हि should each occupy 1 column
+    let mut grid2 = create_grid_with_content("");
+    for _ in 0..5 {
+        feed_bytes(&mut grid2, "\u{0939}\u{093F}".as_bytes());
+    }
+    assert_eq!(grid2.cursor.x, 5, "5x हि should advance cursor by 5");
+    let row2 = &grid2.viewport[0];
+    for i in 0..5 {
+        assert_eq!(row2.columns[i].width(), 1, "cell {} should be width 1", i);
+    }
+}
+
+#[test]
+fn tamil_vowel_sign_i_width_one() {
+    // கி = KA(U+0B95) + VOWEL_SIGN_I(U+0BBF, Mc)
+    let content = "\u{0B95}\u{0BBF}";
+    let grid = create_grid_with_content(content);
+    let row = &grid.viewport[0];
+
+    assert_eq!(row.columns.len(), 1, "Tamil KA + vowel sign I = 1 cell");
+    assert_eq!(row.columns[0].first_char(), Some('\u{0B95}'));
+    assert_eq!(row.columns[0].width(), 1, "Tamil Mc vowel sign must not inflate width");
+    assert_eq!(grid.cursor.x, 1);
+}
+
+#[test]
+fn bengali_vowel_sign_width_one() {
+    // কি = KA(U+0995) + VOWEL_SIGN_I(U+09BF, Mc)
+    let content = "\u{0995}\u{09BF}";
+    let grid = create_grid_with_content(content);
+    let row = &grid.viewport[0];
+
+    assert_eq!(row.columns.len(), 1, "Bengali KA + vowel sign I = 1 cell");
+    assert_eq!(row.columns[0].first_char(), Some('\u{0995}'));
+    assert_eq!(row.columns[0].width(), 1, "Bengali Mc vowel sign must not inflate width");
+    assert_eq!(grid.cursor.x, 1);
+}
+
+#[test]
+fn myanmar_vowel_sign_e_width_one() {
+    // မေ = MA(U+1019) + VOWEL_SIGN_E(U+1031, Mc)
+    let content = "\u{1019}\u{1031}";
+    let grid = create_grid_with_content(content);
+    let row = &grid.viewport[0];
+
+    assert_eq!(row.columns.len(), 1, "Myanmar MA + vowel sign E = 1 cell");
+    assert_eq!(row.columns[0].first_char(), Some('\u{1019}'));
+    assert_eq!(row.columns[0].width(), 1, "Myanmar Mc vowel sign must not inflate width");
+    assert_eq!(grid.cursor.x, 1);
+}
+
+#[test]
+fn vs16_does_not_widen_keycap_base() {
+    // VS16 changes glyph presentation but terminals don't widen cells for it.
+    // "a#\u{FE0F}\u{20E3}b" — keycap stays at width 1, all on one row.
+    let mut grid = create_grid_with_content("");
+    grid.change_size(5, 3);
+    feed_bytes(&mut grid, "a#\u{FE0F}\u{20E3}b".as_bytes());
+
+    let row = &grid.viewport[0];
+    assert_eq!(row.columns[0].grapheme(), "a");
+    assert!(row.columns[1].grapheme().contains('#'), "keycap at col 1");
+    assert_eq!(row.columns[1].width(), 1, "keycap stays width 1");
+    assert_eq!(row.columns[2].grapheme(), "b");
+    assert_eq!(grid.cursor.x, 3, "all 3 chars on one row");
+}
+
+#[test]
+fn combining_enclosing_keycap_on_non_keycap_base_preserves_base_width() {
+    // U+20E3 is only a keycap special-case on #, *, and 0-9. On other bases it is
+    // just a zero-width combining mark and must not shrink a wide base character.
+    let grid = create_grid_with_content("中\u{20E3}x");
+    let row = &grid.viewport[0];
+
+    assert_eq!(row.columns.len(), 2, "wide base + U+20E3 and x = 2 cells");
+    assert_eq!(row.columns[0].grapheme(), "中\u{20E3}");
+    assert_eq!(
+        row.columns[0].width(),
+        2,
+        "non-keycap base + U+20E3 must preserve the base width"
+    );
+    assert_eq!(row.columns[1].grapheme(), "x");
+    assert_eq!(grid.cursor.x, 3, "x should land after the width-2 grapheme");
+}
+
+#[test]
+fn vs16_widens_emoji_with_text_presentation() {
+    // 🏳 (U+1F3F3, White Flag) has East_Asian_Width=N so unicode-width gives it width 1.
+    // VS16 should widen it to 2 (emoji presentation). This is critical for the
+    // rainbow flag 🏳️‍🌈 = U+1F3F3 + VS16 + ZWJ + U+1F308.
+    let mut grid = create_grid_with_content("");
+    let rainbow_flag = "\u{1F3F3}\u{FE0F}\u{200D}\u{1F308}"; // 🏳️‍🌈
+    feed_bytes(&mut grid, format!("a{}b", rainbow_flag).as_bytes());
+    let row = &grid.viewport[0];
+    assert_eq!(row.columns[0].grapheme(), "a");
+    assert!(
+        row.columns[1].grapheme().contains('\u{1F3F3}'),
+        "rainbow flag at col 1"
+    );
+    assert_eq!(row.columns[1].width(), 2, "rainbow flag must be width 2");
+    // 'b' should be at col 3 (after width-2 emoji at 1-2)
+    assert_eq!(grid.cursor.x, 4, "cursor at col 4 after a + width-2 flag + b");
+}
+
+#[test]
+fn flag_pair_widens_at_last_column_wraps() {
+    // Regional Indicator pair DOES widen (1→2). On a 2-col grid, first RI (width 1)
+    // at col 1 gets widened to 2 by second RI — overflow should wrap.
+    let mut grid = create_grid_with_content("");
+    grid.change_size(5, 2);
+    // 'a' at col 0, then flag pair 🇯🇵 = U+1F1EF U+1F1F5
+    feed_bytes(&mut grid, "a\u{1F1EF}\u{1F1F5}b".as_bytes());
+
+    let row0 = &grid.viewport[0];
+    assert_eq!(row0.columns[0].grapheme(), "a");
+    // Flag should have wrapped to row 1
+    let row1 = &grid.viewport[1];
+    assert!(
+        row1.columns[0].grapheme().contains('\u{1F1EF}'),
+        "flag pair should wrap to row 1"
+    );
+    assert_eq!(row1.columns[0].width(), 2, "flag pair = width 2");
 }
 
 #[test]
