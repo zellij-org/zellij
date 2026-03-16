@@ -5924,6 +5924,16 @@ pub(crate) fn screen_thread_main(
                     },
                 }
 
+                // Clean up PTY-side resources (async reader task, child PID mapping,
+                // terminal_id_to_raw_fd entry). This is needed because the natural
+                // child exit path (quit_cb) only sends ScreenInstruction::ClosePane
+                // and never sends PtyInstruction::ClosePane. The handler in Pty is
+                // idempotent, so this is safe even if ClosePane was already sent.
+                let _ = screen
+                    .bus
+                    .senders
+                    .send_to_pty(PtyInstruction::ClosePane(id, None));
+
                 screen.log_and_report_session_state()?;
                 screen.retain_only_existing_panes_in_pane_groups();
             },
