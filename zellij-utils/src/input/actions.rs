@@ -188,7 +188,6 @@ pub enum Action {
     EditScrollback {
         ansi: bool,
     },
-    EditScrollbackRaw,
     /// Scroll up in focus pane.
     ScrollUp,
     /// Scroll up at point
