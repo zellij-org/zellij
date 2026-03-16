@@ -14,7 +14,7 @@ use crate::{
 };
 use std::sync::Arc;
 use std::{collections::HashMap, path::PathBuf};
-use tokio::task::{self, JoinHandle};
+use tokio::task::JoinHandle;
 use zellij_utils::{
     data::{
         CommandOrPlugin, Event, FloatingPaneCoordinates, GetPaneCwdResponse, GetPanePidResponse,

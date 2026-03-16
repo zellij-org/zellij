@@ -19,7 +19,7 @@ use std::rc::Rc;
 use zellij_utils::{
     data::{Palette, Style},
     input::layout::{FloatingPaneLayout, Run, RunPluginOrAlias, TiledPaneLayout},
-    pane_size::{Offset, PaneGeom, Size, SizeInPixels, Viewport},
+    pane_size::{PaneGeom, Size, SizeInPixels, Viewport},
 };
 
 pub struct LayoutApplier<'a> {

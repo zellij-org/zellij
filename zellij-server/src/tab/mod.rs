@@ -4463,40 +4463,6 @@ impl Tab {
         MouseHandler::handle_scrollwheel_down(self, point, lines, client_id)
     }
 
-    fn get_pane_at(
-        &mut self,
-        point: &Position,
-        search_selectable: bool,
-    ) -> Result<Option<&mut Box<dyn Pane>>> {
-        let err_context = || format!("failed to get pane at position {point:?}");
-
-        if self.floating_panes.panes_are_visible() {
-            if let Some(pane_id) = self
-                .floating_panes
-                .get_pane_id_at(point, search_selectable)
-                .with_context(err_context)?
-            {
-                return Ok(self.floating_panes.get_pane_mut(pane_id));
-            }
-        } else if self.floating_panes.has_pinned_panes() {
-            if let Some(pane_id) = self
-                .floating_panes
-                .get_pinned_pane_id_at(point, search_selectable)
-                .with_context(err_context)?
-            {
-                return Ok(self.floating_panes.get_pane_mut(pane_id));
-            }
-        }
-        if let Some(pane_id) = self
-            .get_pane_id_at(point, search_selectable)
-            .with_context(err_context)?
-        {
-            Ok(self.tiled_panes.get_pane_mut(pane_id))
-        } else {
-            Ok(None)
-        }
-    }
-
     fn get_pane_id_at(
         &mut self,
         point: &Position,

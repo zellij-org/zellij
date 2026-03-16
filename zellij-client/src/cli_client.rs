@@ -246,7 +246,7 @@ fn individual_messages_client(
 }
 
 pub fn start_subscribe_client(
-    mut os_input: Box<dyn ClientOsApi>,
+    os_input: Box<dyn ClientOsApi>,
     session_name: &str,
     subscribe_cli: SubscribeCli,
 ) {

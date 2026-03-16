@@ -591,8 +591,6 @@ impl PaneLayoutMetadata {
         }
     }
     fn to_pane_metadata(&self) -> PaneMetadata {
-        use zellij_utils::input::layout::RunPluginLocation;
-
         // Try to extract a meaningful name from the pane
         // Priority: explicit title > command name > file name > plugin location
         let name = self.title.clone().or_else(|| {
