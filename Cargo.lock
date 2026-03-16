@@ -3288,9 +3288,9 @@ checksum = "2e24979f63a11545f5f2c60141afe249d4f19f84581ea2138065e400941d83d3"
 
 [[package]]
 name = "sixel-image"
-version = "0.1.0"
+version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "84880b5da046b87741b9bad6ee916919d5548cca182f009b3a240e20a7f7c99f"
+checksum = "0351d4051c51d3d2900b26b61b87b0f142579c0d2c1bb09ec53d46b28370049f"
 dependencies = [
  "sixel-tokenizer",
 ]
