@@ -991,25 +991,40 @@ impl TerminalCharacter {
     }
 
     /// Replaces the grapheme cluster text, recomputing width from the full string.
+    ///
+    /// **Caveat:** Uses `UnicodeWidthStr::width()` which overcounts Spacing Combining Marks
+    /// (Mc, e.g. Indic vowel signs) as width 1. Only pass single-codepoint strings or strings
+    /// where the width is known to be correct. For extending an existing cell with combining
+    /// marks, use `push_scalar()` instead — it handles the Mc case correctly.
     #[inline]
     pub fn set_grapheme(&mut self, text: &str) {
         self.grapheme = ColdString::from(text);
         self.width = UnicodeWidthStr::width(text) as u8;
     }
 
-    /// Appends a codepoint to this cell's grapheme cluster and recomputes the display width.
-    /// Width may change: e.g. U+FE0F (VS16) widens a char to 2, U+FE0E (VS15) can narrow it.
+    /// Appends a codepoint to this cell's grapheme cluster and updates the display width.
     /// Used to attach combining marks, variation selectors, ZWJ sequences, etc. to a base character.
     /// This is a rare (non-ASCII combining-mark) path so the String allocation is acceptable.
     #[inline]
     pub fn push_scalar(&mut self, c: char) {
         let mut s = String::from(self.grapheme.as_str());
         s.push(c);
-        // Recompute width from the full grapheme string. unicode-width 0.2+ handles
-        // multi-codepoint sequences (emoji presentation, ZWJ, modifier sequences) as
-        // units, so UnicodeWidthStr on the assembled EGC is more accurate than fixing
-        // width at the base scalar.
-        self.width = UnicodeWidthStr::width(s.as_str()) as u8;
+        let is_keycap_base = matches!(self.first_char(), Some('#' | '*' | '0'..='9'));
+        if c == '\u{20E3}' && is_keycap_base {
+            // Combining Enclosing Keycap on a keycap base (#, *, 0-9) — always width 1.
+            // unicode-width incorrectly reports 2 for keycap sequences.
+            self.width = 1;
+        } else if c == '\u{FE0F}' && is_keycap_base {
+            // VS16 on keycap bases (#, *, 0-9): don't widen — terminal consensus.
+        } else if UnicodeWidthChar::width(c) != Some(1)
+            || ('\u{1F1E6}'..='\u{1F1FF}').contains(&c)
+        {
+            // Recompute width from the full grapheme string. Covers VS16 widening,
+            // ZWJ sequences, flag pairs, skin tones, etc.
+            // The guard above skips width-1 non-RI chars (= Mc spacing combining marks)
+            // because unicode-width counts them as width 1 but terminals render at 0.
+            self.width = UnicodeWidthStr::width(s.as_str()) as u8;
+        }
         self.grapheme = ColdString::from(s);
     }
 }
@@ -1151,3 +1166,4 @@ pub fn render_first_run_banner(
         },
     }
 }
+
