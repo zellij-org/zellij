@@ -15364,7 +15364,7 @@ pub fn scroll_down_by_pane_id() {
     let mut tab = create_new_tab(size, true);
     let pane_id = PaneId::Terminal(1);
     assert!(tab.has_pane_with_pid(&pane_id));
-    tab.scroll_down_by_pane_id(pane_id);
+    let _ = tab.scroll_down_by_pane_id(pane_id);
 }
 
 #[test]
@@ -15376,7 +15376,7 @@ pub fn scroll_to_top_by_pane_id() {
     let mut tab = create_new_tab(size, true);
     let pane_id = PaneId::Terminal(1);
     assert!(tab.has_pane_with_pid(&pane_id));
-    tab.scroll_to_top_by_pane_id(pane_id);
+    let _ = tab.scroll_to_top_by_pane_id(pane_id);
 }
 
 #[test]
@@ -15388,7 +15388,7 @@ pub fn scroll_to_bottom_by_pane_id() {
     let mut tab = create_new_tab(size, true);
     let pane_id = PaneId::Terminal(1);
     assert!(tab.has_pane_with_pid(&pane_id));
-    tab.scroll_to_bottom_by_pane_id(pane_id);
+    let _ = tab.scroll_to_bottom_by_pane_id(pane_id);
 }
 
 #[test]
@@ -15412,7 +15412,7 @@ pub fn page_scroll_down_by_pane_id() {
     let mut tab = create_new_tab(size, true);
     let pane_id = PaneId::Terminal(1);
     assert!(tab.has_pane_with_pid(&pane_id));
-    tab.page_scroll_down_by_pane_id(pane_id);
+    let _ = tab.page_scroll_down_by_pane_id(pane_id);
 }
 
 #[test]
@@ -15436,7 +15436,7 @@ pub fn half_page_scroll_down_by_pane_id() {
     let mut tab = create_new_tab(size, true);
     let pane_id = PaneId::Terminal(1);
     assert!(tab.has_pane_with_pid(&pane_id));
-    tab.half_page_scroll_down_by_pane_id(pane_id);
+    let _ = tab.half_page_scroll_down_by_pane_id(pane_id);
 }
 
 #[test]
@@ -15448,7 +15448,7 @@ pub fn rename_pane_by_pane_id() {
     let mut tab = create_new_tab(size, true);
     let pane_id = PaneId::Terminal(1);
     assert!(tab.has_pane_with_pid(&pane_id));
-    tab.rename_pane_by_pane_id(pane_id, "new-name".as_bytes().to_vec());
+    let _ = tab.rename_pane_by_pane_id(pane_id, "new-name".as_bytes().to_vec());
 }
 
 #[test]
@@ -15460,7 +15460,7 @@ pub fn undo_rename_pane_by_pane_id() {
     let mut tab = create_new_tab(size, true);
     let pane_id = PaneId::Terminal(1);
     assert!(tab.has_pane_with_pid(&pane_id));
-    tab.rename_pane_by_pane_id(pane_id, "new-name".as_bytes().to_vec());
+    let _ = tab.rename_pane_by_pane_id(pane_id, "new-name".as_bytes().to_vec());
     tab.undo_rename_pane_by_pane_id(pane_id);
 }
 
@@ -15549,7 +15549,7 @@ pub fn clear_screen_by_pane_id() {
     let mut tab = create_new_tab(size, true);
     let pane_id = PaneId::Terminal(1);
     assert!(tab.has_pane_with_pid(&pane_id));
-    tab.clear_screen_by_pane_id(pane_id);
+    let _ = tab.clear_screen_by_pane_id(pane_id);
 }
 
 #[test]

@@ -18,10 +18,7 @@ use std::{
     str::FromStr,
     sync::{Arc, Mutex},
 };
-use tokio::{
-    sync::mpsc::Sender,
-    task::{self, JoinHandle},
-};
+use tokio::sync::mpsc::Sender;
 use url::Url;
 use wasmi::{Engine, Module};
 use zellij_utils::consts::{ZELLIJ_CACHE_DIR, ZELLIJ_SESSION_CACHE_DIR, ZELLIJ_TMP_DIR};

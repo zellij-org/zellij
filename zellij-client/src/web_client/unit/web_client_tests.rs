@@ -8,7 +8,6 @@ use std::sync::{Arc, Mutex};
 use tokio::time::timeout;
 use tokio_tungstenite::tungstenite::http::Request;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
-use zellij_utils::input::cli_assets::CliAssets;
 use zellij_utils::input::layout::Layout;
 use zellij_utils::{consts::VERSION, input::config::Config, input::options::Options};
 
@@ -19,9 +18,9 @@ use crate::web_client::control_message::{
 };
 use crate::web_client::ClientOsApiFactory;
 use zellij_utils::{
-    data::{LayoutInfo, Palette},
+    data::Palette,
     errors::ErrorContext,
-    ipc::{ClientAttributes, ClientToServerMsg, ServerToClientMsg},
+    ipc::{ClientToServerMsg, ServerToClientMsg},
     pane_size::Size,
     web_authentication_tokens::{create_token, delete_db, revoke_token},
 };
@@ -2662,6 +2661,7 @@ impl MockSessionManager {
         }
     }
 
+    #[allow(dead_code)]
     pub fn get_first_message_for_session(&self, session_name: &str) -> Option<ClientToServerMsg> {
         self.first_messages_sent
             .lock()

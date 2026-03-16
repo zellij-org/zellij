@@ -337,7 +337,7 @@ fn edge_and_delta_to_strategies(
 pub struct MouseHandler;
 
 impl MouseHandler {
-    pub fn handle_mouse_event(
+    pub(crate) fn handle_mouse_event(
         tab: &mut Tab,
         event: &MouseEvent,
         client_id: ClientId,
@@ -1508,7 +1508,7 @@ impl MouseHandler {
         Ok(())
     }
 
-    pub fn handle_scrollwheel_up(
+    pub(crate) fn handle_scrollwheel_up(
         tab: &mut Tab,
         point: &Position,
         lines: usize,
@@ -1537,7 +1537,7 @@ impl MouseHandler {
         Ok(MouseEffect::default())
     }
 
-    pub fn handle_scrollwheel_down(
+    pub(crate) fn handle_scrollwheel_down(
         tab: &mut Tab,
         point: &Position,
         lines: usize,
@@ -1676,7 +1676,11 @@ impl MouseHandler {
         }
     }
 
-    pub fn set_mouse_selection_support(tab: &mut Tab, pane_id: PaneId, selection_support: bool) {
+    pub(crate) fn set_mouse_selection_support(
+        tab: &mut Tab,
+        pane_id: PaneId,
+        selection_support: bool,
+    ) {
         if let Some(pane) = tab.get_pane_with_id_mut(pane_id) {
             pane.set_mouse_selection_support(selection_support);
         }

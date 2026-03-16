@@ -54,6 +54,7 @@ use utils::should_use_https;
 use uuid::Uuid;
 use websocket_handlers::{ws_handler_control, ws_handler_terminal};
 
+#[allow(dead_code)] // used in #[cfg(not(unix))] code path
 const DEFAULT_SERVER_STARTUP_TIMEOUT_SECS: u64 = 10;
 
 pub fn start_web_client(

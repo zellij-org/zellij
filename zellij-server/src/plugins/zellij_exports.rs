@@ -26,7 +26,7 @@ use zellij_utils::data::{
     FloatingPaneCoordinates, FocusOrCreateTabResponse, GetFocusedPaneInfoResponse,
     GetPaneCwdResponse, GetPanePidResponse, GetPaneRunningCommandResponse, HttpVerb,
     KeyWithModifier, LayoutInfo, LayoutMetadata, LayoutParsingError, MessageToPlugin,
-    NewPanePlacement, NewTabResponse, NewTabsResponse, OpenCommandPaneBackgroundResponse,
+    NewPanePlacement, NewTabResponse, OpenCommandPaneBackgroundResponse,
     OpenCommandPaneFloatingNearPluginResponse, OpenCommandPaneFloatingResponse,
     OpenCommandPaneInPlaceOfPaneIdResponse, OpenCommandPaneInPlaceOfPluginResponse,
     OpenCommandPaneInPlaceResponse, OpenCommandPaneNearPluginResponse, OpenCommandPaneResponse,
