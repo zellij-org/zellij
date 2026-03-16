@@ -444,7 +444,10 @@ impl UnixPtyBackend {
     }
 
     pub fn next_terminal_id(&self) -> Option<u32> {
-        Some(self.next_terminal_id_counter.fetch_add(1, Ordering::Relaxed))
+        Some(
+            self.next_terminal_id_counter
+                .fetch_add(1, Ordering::Relaxed),
+        )
     }
 }
 
