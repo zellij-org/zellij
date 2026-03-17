@@ -123,7 +123,7 @@ impl From<std::io::Error> for RemoteClientError {
     }
 }
 
-use crate::stdin_ansi_parser::{AnsiStdinInstruction, StdinAnsiParser, SyncOutput};
+use crate::stdin_ansi_parser::{AnsiStdinInstruction, HostGraphemeSupport, StdinAnsiParser, SyncOutput};
 use crate::{
     command_is_executing::CommandIsExecuting, input_handler::input_loop,
     os_input_output::ClientOsApi, stdin_handler::stdin_loop,
@@ -155,7 +155,7 @@ pub(crate) enum ClientInstruction {
     LogError(Vec<String>),
     SwitchSession(ConnectToSession),
     SetSynchronizedOutput(Option<SyncOutput>),
-    SetGraphemeClusterMode(bool),
+    SetGraphemeClusterMode(HostGraphemeSupport),
     UnblockCliPipeInput(()), // String -> pipe name
     CliPipeOutput((), ()),   // String -> pipe name, String -> output
     QueryTerminalSize,
@@ -1209,9 +1209,10 @@ pub fn start_client(
             ClientInstruction::SetSynchronizedOutput(enabled) => {
                 synchronised_output = enabled;
             },
-            ClientInstruction::SetGraphemeClusterMode(supported) => {
-                if supported {
-                    // Host terminal supports 2027: enable it so both sides agree on EGC widths.
+            ClientInstruction::SetGraphemeClusterMode(support) => {
+                if support == HostGraphemeSupport::Supported {
+                    // Host supports 2027 but hasn't enabled it — enable it ourselves
+                    // and take responsibility for disabling on exit.
                     let mut stdout = os_input.get_stdout_writer();
                     stdout
                         .write_all(b"\x1b[?2027h")
@@ -1219,6 +1220,8 @@ pub fn start_client(
                     stdout.flush().expect("could not flush");
                     host_grapheme_cluster_mode = true;
                 }
+                // AlreadyEnabled: host had 2027 on before we started — don't toggle.
+                // Unsupported: nothing to do.
             },
             ClientInstruction::QueryTerminalSize => {
                 os_input.send_to_server(ClientToServerMsg::TerminalResize {
