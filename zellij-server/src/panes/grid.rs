@@ -1906,14 +1906,38 @@ impl Grid {
                     self.egc_state.as_mut().unwrap().text.push(new_char);
                     // Keep preceding_char in sync with the full EGC so CSI b REP
                     // repeats the complete cluster, not just the combining codepoint.
-                    if let Some(updated) = updated_cell {
-                        self.preceding_char = Some(updated);
+                    if let Some(ref updated) = updated_cell {
+                        self.preceding_char = Some(updated.clone());
                     }
                     // Adjust cursor and egc_state.end_x for any width change so the
                     // next character lands at the correct column.
                     if width_change > 0 {
-                        self.move_cursor_forward_until_edge(width_change as usize);
-                        self.egc_state.as_mut().unwrap().end_x = self.cursor.x;
+                        let new_width = (cell_x as isize + width_change + 1) as usize;
+                        if new_width > self.width && !self.disable_linewrap {
+                            // The widened cell no longer fits in this row (e.g. '#'
+                            // at the last column widened to 2 by VS16). Remove it
+                            // from the current row, wrap, and re-place it.
+                            if let Some(tc) = updated_cell {
+                                if let Some(row) = self.viewport.get_mut(cell_y) {
+                                    row.delete_and_return_character(cell_x);
+                                }
+                                self.cursor.x = cell_x;
+                                self.line_wrap();
+                                self.add_character_at_cursor_position(tc, false);
+                                let placed_x = self.cursor.x;
+                                let placed_y = self.cursor.y;
+                                self.move_cursor_forward_until_edge(
+                                    (width_change + 1) as usize,
+                                );
+                                let state = self.egc_state.as_mut().unwrap();
+                                state.x = placed_x;
+                                state.y = placed_y;
+                                state.end_x = self.cursor.x;
+                            }
+                        } else {
+                            self.move_cursor_forward_until_edge(width_change as usize);
+                            self.egc_state.as_mut().unwrap().end_x = self.cursor.x;
+                        }
                     } else if width_change < 0 {
                         self.move_cursor_back((-width_change) as usize);
                         self.egc_state.as_mut().unwrap().end_x = self.cursor.x;
