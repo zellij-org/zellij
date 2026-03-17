@@ -51,6 +51,20 @@ impl SyncOutput {
 /// a separate path: they ride `ParseOutput::completed_forward` through
 /// a dedicated input-instruction channel so they don't get co-mingled
 /// with semantically-typed state updates.
+
+/// Host terminal's support level for CSI ? 2027 (grapheme cluster mode).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum HostGraphemeSupport {
+    /// Host doesn't recognize 2027 mode (DECRPM state 0 or 4).
+    Unsupported,
+    /// Host supports 2027 but it's currently off (DECRPM state 2).
+    /// Zellij should enable it and disable on exit.
+    Supported,
+    /// Host already has 2027 enabled (DECRPM state 1 or 3).
+    /// Zellij should not toggle it.
+    AlreadyEnabled,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum HostReply {
     PixelDimensions(PixelDimensions),
@@ -61,9 +75,8 @@ pub enum HostReply {
     /// DSR 997 reply / unsolicited notification reporting the host
     /// terminal's color-palette theme mode (CSI 2031).
     HostTerminalThemeChanged(HostTerminalThemeMode),
-    /// Host terminal responded to `CSI ? 2027 $ p`. `true` means it supports grapheme
-    /// cluster mode; Zellij should enable it on the host with `CSI ? 2027 h`.
-    GraphemeClusterMode(bool),
+    /// Host terminal responded to `CSI ? 2027 $ p`.
+    GraphemeClusterMode(HostGraphemeSupport),
 }
 
 /// Retained alias for the pre-refactor type name used by other modules in
@@ -149,8 +162,12 @@ impl HostReply {
             };
         }
         if let Some(caps) = GRAPHEME_RE.captures(s) {
-            let supported = matches!(caps[1].parse::<usize>().ok()?, 1 | 2 | 3);
-            return Some(HostReply::GraphemeClusterMode(supported));
+            let support = match caps[1].parse::<usize>().ok()? {
+                1 | 3 => HostGraphemeSupport::AlreadyEnabled,
+                2 => HostGraphemeSupport::Supported,
+                _ => HostGraphemeSupport::Unsupported,
+            };
+            return Some(HostReply::GraphemeClusterMode(support));
         }
         if let Some(caps) = THEME_RE.captures(s) {
             let mode = match &caps[1] {
