@@ -595,6 +595,15 @@ impl Pane for PluginPane {
             )]))
             .unwrap();
     }
+    fn scroll_left(&mut self, count: usize, client_id: ClientId) {
+        self.send_plugin_instructions
+            .send(PluginInstruction::Update(vec![(
+                Some(self.pid),
+                Some(client_id),
+                Event::Mouse(Mouse::ScrollLeft(count)),
+            )]))
+            .unwrap()
+    }
     fn clear_screen(&mut self) {
         // do nothing
     }
@@ -858,7 +867,8 @@ impl Pane for PluginPane {
                     && !event.right
                     && !event.middle
                     && !event.wheel_up
-                    && !event.wheel_down =>
+                    && !event.wheel_down
+                    && !event.wheel_left =>
             {
                 let _ = self
                     .send_plugin_instructions

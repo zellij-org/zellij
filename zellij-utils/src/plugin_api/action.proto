@@ -577,6 +577,7 @@ message MouseEventPayload {
   bool ctrl = 9;
   int64 line = 10;
   int64 column = 11;
+  bool wheel_left = 12;
 }
 
 message RunCommandAction {

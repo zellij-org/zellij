@@ -1004,6 +1004,7 @@ pub enum MouseEventName {
     MouseHold = 4,
     MouseRelease = 5,
     MouseHover = 6,
+    MouseScrollLeft = 7,
 }
 impl MouseEventName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -1014,6 +1015,7 @@ impl MouseEventName {
         match self {
             MouseEventName::MouseScrollUp => "MouseScrollUp",
             MouseEventName::MouseScrollDown => "MouseScrollDown",
+            MouseEventName::MouseScrollLeft => "MouseScrollLeft",
             MouseEventName::MouseLeftClick => "MouseLeftClick",
             MouseEventName::MouseRightClick => "MouseRightClick",
             MouseEventName::MouseHold => "MouseHold",
@@ -1026,6 +1028,7 @@ impl MouseEventName {
         match value {
             "MouseScrollUp" => Some(Self::MouseScrollUp),
             "MouseScrollDown" => Some(Self::MouseScrollDown),
+            "MouseScrollLeft" => Some(Self::MouseScrollLeft),
             "MouseLeftClick" => Some(Self::MouseLeftClick),
             "MouseRightClick" => Some(Self::MouseRightClick),
             "MouseHold" => Some(Self::MouseHold),

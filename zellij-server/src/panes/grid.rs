@@ -2732,6 +2732,8 @@ impl Grid {
             value = 68;
         } else if event.wheel_down {
             value = 69;
+        } else if event.wheel_left {
+            value = 70;
         }
         if event.event_type == MouseEventType::Motion {
             value += 32;
@@ -2759,6 +2761,8 @@ impl Grid {
             value = 64;
         } else if event.wheel_down {
             value = 65;
+        } else if event.wheel_left {
+            value = 66;
         }
         if event.event_type == MouseEventType::Motion {
             value += 32;
@@ -2780,7 +2784,12 @@ impl Grid {
             (MouseTracking::AnyEventTracking, _) => true,
             (_, MouseEventType::Press | MouseEventType::Release) => true,
             (MouseTracking::ButtonEventTracking, MouseEventType::Motion) => {
-                event.left | event.right | event.middle | event.wheel_up | event.wheel_down
+                event.left
+                    | event.right
+                    | event.middle
+                    | event.wheel_up
+                    | event.wheel_down
+                    | event.wheel_left
             },
             (_, _) => false,
         };
@@ -3015,6 +3024,27 @@ impl Grid {
             (MouseMode::Sgr, _) => {
                 let mouse_event = format!(
                     "\u{1b}[<65;{:?};{:?}M",
+                    position.column.0 + 1,
+                    position.line.0 + 1
+                );
+                Some(mouse_event)
+            },
+        }
+    }
+    pub fn mouse_scroll_left_signal(&self, position: &Position) -> Option<String> {
+        match (&self.mouse_mode, &self.mouse_tracking) {
+            (_, MouseTracking::Off) => None,
+            (MouseMode::NoEncoding | MouseMode::Utf8, _) => {
+                let mut msg: Vec<u8> = vec![27, b'[', b'M', b'b'];
+                msg.append(&mut utf8_mouse_coordinates(
+                    position.column() + 1,
+                    position.line() + 1,
+                ));
+                Some(String::from_utf8_lossy(&msg).into())
+            },
+            (MouseMode::Sgr, _) => {
+                let mouse_event = format!(
+                    "\u{1b}[<66;{:?};{:?}M",
                     position.column.0 + 1,
                     position.line.0 + 1
                 );
