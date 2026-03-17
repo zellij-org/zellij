@@ -7224,6 +7224,47 @@ fn flag_pair_widens_at_last_column_wraps() {
 }
 
 #[test]
+fn vs16_widening_at_last_column_wraps() {
+    // 🏳 (U+1F3F3, White Flag) has text presentation by default (width 1).
+    // VS16 widens it to 2. If it's near the end of a row, the widened cell
+    // should wrap to the next line, not silently spill.
+
+    // 🏳️ at col 0 (width 1→2) fits exactly in a 2-col grid.
+    // 'b' should wrap to row 1.
+    let mut grid2 = create_grid_with_content("");
+    grid2.change_size(5, 2);
+    feed_bytes(&mut grid2, "\u{1F3F3}\u{FE0F}b".as_bytes());
+    assert_eq!(grid2.cursor.y, 1, "b should be on row 1");
+    assert!(grid2.viewport[0].columns[0].grapheme().contains('\u{1F3F3}'));
+    assert_eq!(grid2.viewport[1].columns[0].grapheme(), "b");
+
+    // Overflow case: 3-col grid, "ab🏳️c"
+    // 🏳 at col 2 (width 1), VS16 widens to 2 — needs cols 2..4 but grid is 3 wide.
+    let mut grid3 = create_grid_with_content("");
+    grid3.change_size(5, 3);
+    feed_bytes(&mut grid3, "ab\u{1F3F3}\u{FE0F}c".as_bytes());
+
+    // The widened 🏳️ at col 2 now needs 2 columns but only 1 remains.
+    // It should wrap to row 1.
+    let row0 = &grid3.viewport[0];
+    let row1 = &grid3.viewport[1];
+    assert_eq!(row0.columns[0].grapheme(), "a");
+    assert_eq!(row0.columns[1].grapheme(), "b");
+    assert!(
+        row1.columns[0].grapheme().contains('\u{1F3F3}'),
+        "widened flag should wrap to row 1, got row0={:?} row1={:?}",
+        row0.columns.iter().map(|c| c.grapheme().to_string()).collect::<Vec<_>>(),
+        row1.columns.iter().map(|c| c.grapheme().to_string()).collect::<Vec<_>>(),
+    );
+    // No phantom space: row 0 should have exactly 2 logical columns ("a", "b").
+    assert_eq!(
+        row0.columns.len(),
+        2,
+        "row 0 should have 2 columns (a, b), no phantom space from the deleted cell"
+    );
+}
+
+#[test]
 fn dch_wide_char_with_trailing_chars_shifts_correctly() {
     // DCH(1) on a 2-wide emoji: delete the emoji, trailing chars keep their
     // display column positions, empty columns are filled with spaces.
