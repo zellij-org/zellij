@@ -19,11 +19,10 @@ use zellij_utils::data::WebSharing;
 use zellij_utils::envs::set_session_name;
 use zellij_utils::errors::{prelude::*, ErrorContext};
 use zellij_utils::input::layout::{
-    FloatingPaneLayout, Layout, PercentOrFixed, PluginUserConfiguration, RunPluginLocation,
-    RunPluginOrAlias, SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
+    FloatingPaneLayout, Layout, PercentOrFixed, RunPluginOrAlias, SwapFloatingLayout,
+    SwapTiledLayout, TiledPaneLayout,
 };
 use zellij_utils::input::mouse::MouseEvent;
-use zellij_utils::input::plugins::PluginTag;
 use zellij_utils::ipc::IpcReceiverWithContext;
 use zellij_utils::pane_size::{Size, SizeInPixels};
 use zellij_utils::position::Position;
@@ -33,7 +32,7 @@ use zellij_utils::channels::{self, ChannelWithContext, SenderWithContext};
 
 use crate::os_input_output::AsyncReader;
 use std::cell::RefCell;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
 
 use interprocess::local_socket::Stream as LocalSocketStream;
@@ -1238,7 +1237,7 @@ fn render_stacks_without_pane_frames() {
         )
         .unwrap();
     }
-    tab.focus_pane_with_id(PaneId::Terminal(1), false, false, client_id);
+    let _ = tab.focus_pane_with_id(PaneId::Terminal(1), false, false, client_id);
     for i in 7..9 {
         let new_pane_id_1 = PaneId::Terminal(i);
         tab.new_pane(
@@ -2631,7 +2630,7 @@ fn drag_pane_with_mouse() {
     )
     .unwrap();
     tab.render(&mut output, None).unwrap();
-    let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
+    let (snapshot, _cursor_coordinates) = take_snapshot_and_cursor_position(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
         size.cols,
@@ -3362,7 +3361,7 @@ fn save_cursor_position_across_resizes() {
 
     // We check cursor and saved cursor are handled separately by:
     // 1. moving real cursor up two lines
-    tab.handle_pty_bytes(1, Vec::from("\u{1b}[2A".as_bytes()));
+    let _ = tab.handle_pty_bytes(1, Vec::from("\u{1b}[2A".as_bytes()));
     // 2. resizing so real cursor gets lost above the viewport, which resets it to row 0
     // The saved cursor ends up on row 1, allowing detection if it (incorrectly) gets reset too
     tab.resize_whole_tab(Size { cols: 35, rows: 4 }).unwrap();
@@ -5406,8 +5405,8 @@ fn move_focus_up_with_stacked_panes() {
         None,
     )
     .unwrap();
-    tab.move_focus_right(client_id);
-    tab.move_focus_up(client_id);
+    let _ = tab.move_focus_right(client_id);
+    let _ = tab.move_focus_up(client_id);
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -5487,9 +5486,9 @@ fn move_focus_down_with_stacked_panes() {
         None,
     )
     .unwrap();
-    tab.move_focus_right(client_id);
-    tab.move_focus_up(client_id);
-    tab.move_focus_down(client_id);
+    let _ = tab.move_focus_right(client_id);
+    let _ = tab.move_focus_up(client_id);
+    let _ = tab.move_focus_down(client_id);
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -5549,12 +5548,12 @@ fn move_focus_right_into_stacked_panes() {
         )
         .unwrap();
     }
-    tab.move_focus_left(client_id);
+    let _ = tab.move_focus_left(client_id);
     tab.horizontal_split(PaneId::Terminal(16), None, client_id, None, None, None)
         .unwrap();
 
-    tab.move_focus_up(client_id);
-    tab.move_focus_right(client_id);
+    let _ = tab.move_focus_up(client_id);
+    let _ = tab.move_focus_right(client_id);
     tab.render(&mut output, None).unwrap();
 
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
@@ -5621,12 +5620,12 @@ fn move_focus_left_into_stacked_panes() {
         )
         .unwrap();
     }
-    tab.move_focus_right(client_id);
+    let _ = tab.move_focus_right(client_id);
     tab.horizontal_split(PaneId::Terminal(1), None, client_id, None, None, None)
         .unwrap();
 
-    tab.move_focus_up(client_id);
-    tab.move_focus_left(client_id);
+    let _ = tab.move_focus_up(client_id);
+    let _ = tab.move_focus_left(client_id);
     tab.render(&mut output, None).unwrap();
 
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
@@ -5695,14 +5694,14 @@ fn move_focus_up_into_stacked_panes() {
         )
         .unwrap();
     }
-    tab.move_focus_right(client_id);
-    tab.move_focus_up(client_id);
-    tab.move_focus_left(client_id);
-    tab.move_focus_down(client_id);
+    let _ = tab.move_focus_right(client_id);
+    let _ = tab.move_focus_up(client_id);
+    let _ = tab.move_focus_left(client_id);
+    let _ = tab.move_focus_down(client_id);
     tab.vertical_split(PaneId::Terminal(7), None, client_id, None, None, None)
         .unwrap();
 
-    tab.move_focus_up(client_id);
+    let _ = tab.move_focus_up(client_id);
     tab.render(&mut output, None).unwrap();
 
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
@@ -5770,12 +5769,12 @@ fn move_focus_down_into_stacked_panes() {
         )
         .unwrap();
     }
-    tab.move_focus_left(client_id);
-    tab.move_focus_up(client_id);
+    let _ = tab.move_focus_left(client_id);
+    let _ = tab.move_focus_up(client_id);
     tab.vertical_split(PaneId::Terminal(7), None, client_id, None, None, None)
         .unwrap();
 
-    tab.move_focus_down(client_id);
+    let _ = tab.move_focus_down(client_id);
     tab.render(&mut output, None).unwrap();
 
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
@@ -5966,9 +5965,9 @@ fn close_main_stacked_pane_in_mid_stack() {
         None,
     )
     .unwrap();
-    tab.move_focus_right(client_id);
-    tab.move_focus_up(client_id);
-    tab.move_focus_up(client_id);
+    let _ = tab.move_focus_right(client_id);
+    let _ = tab.move_focus_up(client_id);
+    let _ = tab.move_focus_up(client_id);
     tab.close_pane(new_pane_id_3, false, None);
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
@@ -6073,10 +6072,10 @@ fn close_one_liner_stacked_pane_below_main_pane() {
         None,
     )
     .unwrap();
-    tab.move_focus_left(client_id);
-    tab.move_focus_right(client_id);
-    tab.move_focus_up(client_id);
-    tab.move_focus_up(client_id);
+    let _ = tab.move_focus_left(client_id);
+    let _ = tab.move_focus_right(client_id);
+    let _ = tab.move_focus_up(client_id);
+    let _ = tab.move_focus_up(client_id);
     tab.close_pane(new_pane_id_2, false, None);
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
@@ -6181,9 +6180,9 @@ fn close_one_liner_stacked_pane_above_main_pane() {
         None,
     )
     .unwrap();
-    tab.move_focus_right(client_id);
-    tab.move_focus_up(client_id);
-    tab.move_focus_up(client_id);
+    let _ = tab.move_focus_right(client_id);
+    let _ = tab.move_focus_up(client_id);
+    let _ = tab.move_focus_up(client_id);
     tab.close_pane(new_pane_id_2, false, None);
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
@@ -6288,7 +6287,7 @@ fn can_increase_size_of_main_pane_in_stack_horizontally() {
         None,
     )
     .unwrap();
-    tab.move_focus_right(client_id);
+    let _ = tab.move_focus_right(client_id);
     tab.resize(
         client_id,
         ResizeStrategy::new(Resize::Increase, Some(Direction::Left)),
@@ -6399,7 +6398,7 @@ fn can_increase_size_of_main_pane_in_stack_vertically() {
         None,
     )
     .unwrap();
-    tab.move_focus_right(client_id);
+    let _ = tab.move_focus_right(client_id);
     tab.resize(
         client_id,
         ResizeStrategy::new(Resize::Increase, Some(Direction::Down)),
@@ -6726,8 +6725,8 @@ fn can_increase_size_into_pane_stack_vertically() {
         None,
     )
     .unwrap();
-    tab.move_focus_right(client_id);
-    tab.move_focus_down(client_id);
+    let _ = tab.move_focus_right(client_id);
+    let _ = tab.move_focus_down(client_id);
     tab.resize(
         client_id,
         ResizeStrategy::new(Resize::Increase, Some(Direction::Up)),
@@ -6944,7 +6943,7 @@ fn decreasing_size_of_whole_tab_treats_stacked_panes_properly() {
         None,
     )
     .unwrap();
-    tab.resize_whole_tab(Size {
+    let _ = tab.resize_whole_tab(Size {
         cols: 100,
         rows: 10,
     });
@@ -7051,11 +7050,11 @@ fn increasing_size_of_whole_tab_treats_stacked_panes_properly() {
         None,
     )
     .unwrap();
-    tab.resize_whole_tab(Size {
+    let _ = tab.resize_whole_tab(Size {
         cols: 100,
         rows: 10,
     });
-    tab.resize_whole_tab(Size {
+    let _ = tab.resize_whole_tab(Size {
         cols: 121,
         rows: 20,
     });
@@ -7163,7 +7162,7 @@ fn cannot_decrease_stack_size_beyond_minimum_height() {
         None,
     )
     .unwrap();
-    tab.move_focus_down(client_id);
+    let _ = tab.move_focus_down(client_id);
     for _ in 0..6 {
         tab.resize(
             client_id,
@@ -7744,7 +7743,7 @@ fn focus_next_pane_expands_stacked_panes() {
         None,
     )
     .unwrap();
-    tab.move_focus_left(client_id);
+    let _ = tab.move_focus_left(client_id);
     tab.focus_next_pane(client_id);
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
@@ -7851,7 +7850,7 @@ fn stacked_panes_can_become_fullscreen() {
         None,
     )
     .unwrap();
-    tab.move_focus_up(client_id);
+    let _ = tab.move_focus_up(client_id);
     tab.toggle_active_pane_fullscreen(client_id);
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
@@ -8660,7 +8659,7 @@ fn when_swapping_tiled_layouts_in_a_damaged_state_layout_and_pane_focus_are_unch
         true,
         stacked_resize,
     );
-    tab.move_focus_down(client_id);
+    let _ = tab.move_focus_down(client_id);
     tab.resize(
         client_id,
         ResizeStrategy::new(Resize::Increase, Some(Direction::Down)),
@@ -8741,7 +8740,7 @@ fn when_swapping_tiled_layouts_in_an_undamaged_state_pane_focuses_on_focused_nod
         true,
         stacked_resize,
     );
-    tab.move_focus_down(client_id);
+    let _ = tab.move_focus_down(client_id);
     tab.next_swap_layout().unwrap();
     tab.render(&mut output, None).unwrap();
 
@@ -8818,8 +8817,8 @@ fn when_swapping_tiled_layouts_in_an_undamaged_state_with_no_focus_node_pane_foc
         true,
         stacked_resize,
     );
-    tab.move_focus_down(client_id);
-    tab.move_focus_down(client_id);
+    let _ = tab.move_focus_down(client_id);
+    let _ = tab.move_focus_down(client_id);
     tab.next_swap_layout().unwrap();
     tab.render(&mut output, None).unwrap();
 
@@ -9841,8 +9840,8 @@ fn when_closing_a_floating_pane_in_auto_layout_the_focus_goes_to_last_focused_pa
         true,
         stacked_resize,
     );
-    tab.move_focus_up(client_id);
-    tab.move_focus_up(client_id);
+    let _ = tab.move_focus_up(client_id);
+    let _ = tab.move_focus_up(client_id);
     tab.close_pane(PaneId::Terminal(1), false, None);
     tab.render(&mut output, None).unwrap();
 
@@ -9913,7 +9912,7 @@ fn when_resizing_whole_tab_with_auto_layout_and_floating_panes_the_layout_is_mai
         cols: 150,
         rows: 30,
     };
-    tab.resize_whole_tab(new_size);
+    let _ = tab.resize_whole_tab(new_size);
     tab.render(&mut output, None).unwrap();
 
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
@@ -10338,7 +10337,7 @@ fn test_left_release_after_selection_copies_to_clipboard() {
     };
     let client_id = 1;
     let mut tab = create_new_tab(size, ModeInfo::default());
-    let mut output = Output::default();
+    let _output = Output::default();
 
     // Fill the pane with some text content
     tab.handle_pty_bytes(1, Vec::from("Selectable text content here".as_bytes()))
@@ -10379,7 +10378,7 @@ fn test_ctrl_click_on_tiled_pane_edge_starts_resize() {
     let client_id = 1;
     let mut tab = create_new_tab(size, ModeInfo::default());
     let new_pane_id = PaneId::Terminal(2);
-    let mut output = Output::default();
+    let _output = Output::default();
 
     // Create a vertical split
     tab.vertical_split(new_pane_id, None, client_id, None, None)
@@ -10605,7 +10604,7 @@ fn test_ctrl_click_on_pane_body_does_nothing() {
     let client_id = 1;
     let mut tab = create_new_tab(size, ModeInfo::default());
     let new_pane_id = PaneId::Terminal(2);
-    let mut output = Output::default();
+    let _output = Output::default();
 
     // Create a vertical split
     tab.vertical_split(new_pane_id, None, client_id, None, None)
@@ -10942,7 +10941,7 @@ fn test_ctrl_click_on_floating_frame_not_on_pin_starts_resize() {
     let client_id = 1;
     let mut tab = create_new_tab(size, ModeInfo::default());
     let floating_pane_id = PaneId::Terminal(2);
-    let mut output = Output::default();
+    let _output = Output::default();
 
     // Toggle floating panes mode and create a floating pane
     tab.toggle_floating_panes(Some(client_id), None, None)
@@ -11222,7 +11221,7 @@ fn test_alt_left_click_toggles_pane_group() {
     let client_id = 1;
     let mut tab = create_new_tab(size, ModeInfo::default());
     let new_pane_id = PaneId::Terminal(2);
-    let mut output = Output::default();
+    let _output = Output::default();
 
     // Create a vertical split
     tab.vertical_split(new_pane_id, None, client_id, None, None)
@@ -11256,7 +11255,7 @@ fn test_alt_left_drag_adds_panes_to_group() {
     let mut tab = create_new_tab(size, ModeInfo::default());
     let new_pane_id_2 = PaneId::Terminal(2);
     let new_pane_id_3 = PaneId::Terminal(3);
-    let mut output = Output::default();
+    let _output = Output::default();
 
     // Create two vertical splits (3 panes)
     tab.vertical_split(new_pane_id_2, None, client_id, None, None)
@@ -11312,7 +11311,7 @@ fn test_right_alt_click_ungroups_panes() {
     let client_id = 1;
     let mut tab = create_new_tab(size, ModeInfo::default());
     let new_pane_id = PaneId::Terminal(2);
-    let mut output = Output::default();
+    let _output = Output::default();
 
     // Create a vertical split
     tab.vertical_split(new_pane_id, None, client_id, None, None)
@@ -11370,7 +11369,7 @@ fn test_scroll_wheel_up_scrolls_pane() {
     );
 
     // Scroll up
-    let effect = tab
+    let _effect = tab
         .handle_mouse_event(
             &MouseEvent::new_scroll_up_event(Position::new(10, 60)),
             client_id,
@@ -11400,7 +11399,7 @@ fn test_scroll_wheel_down_scrolls_pane() {
     };
     let client_id = 1;
     let mut tab = create_new_tab(size, ModeInfo::default());
-    let mut output = Output::default();
+    let _output = Output::default();
 
     // Fill the pane with many lines to enable scrolling
     let mut content = String::new();
@@ -11438,7 +11437,7 @@ fn test_scroll_wheel_down_scrolls_pane() {
     );
 
     // Scroll down
-    let effect = tab
+    let _effect = tab
         .handle_mouse_event(
             &MouseEvent::new_scroll_down_event(Position::new(10, 60)),
             client_id,
@@ -11503,7 +11502,7 @@ fn test_scroll_on_inactive_pane_scrolls_that_pane() {
     );
 
     // Scroll up on the left (inactive) pane
-    let effect = tab
+    let _effect = tab
         .handle_mouse_event(
             &MouseEvent::new_scroll_up_event(Position::new(10, 30)),
             client_id,
@@ -11533,7 +11532,7 @@ fn test_right_click_forwards_to_active_pane() {
     };
     let client_id = 1;
     let mut tab = create_new_tab(size, ModeInfo::default());
-    let mut output = Output::default();
+    let _output = Output::default();
 
     tab.handle_pty_bytes(1, Vec::from("Active pane".as_bytes()))
         .unwrap();
@@ -11559,7 +11558,7 @@ fn test_middle_click_forwards_to_active_pane() {
     };
     let client_id = 1;
     let mut tab = create_new_tab(size, ModeInfo::default());
-    let mut output = Output::default();
+    let _output = Output::default();
 
     tab.handle_pty_bytes(1, Vec::from("Active pane".as_bytes()))
         .unwrap();
@@ -11585,7 +11584,7 @@ fn test_hover_over_inactive_pane_sets_hover_state() {
     let client_id = 1;
     let mut tab = create_new_tab(size, ModeInfo::default());
     let new_pane_id = PaneId::Terminal(2);
-    let mut output = Output::default();
+    let _output = Output::default();
 
     // Create a vertical split
     tab.vertical_split(new_pane_id, None, client_id, None, None)
@@ -11621,7 +11620,7 @@ fn test_hover_over_active_pane_unsets_hover() {
     let client_id = 1;
     let mut tab = create_new_tab(size, ModeInfo::default());
     let new_pane_id = PaneId::Terminal(2);
-    let mut output = Output::default();
+    let _output = Output::default();
 
     // Create a vertical split
     tab.vertical_split(new_pane_id, None, client_id, None, None)
@@ -11665,7 +11664,7 @@ fn test_resize_tiled_then_move_floating_sequence() {
     let mut tab = create_new_tab(size, ModeInfo::default());
     let tiled_pane_id = PaneId::Terminal(2);
     let floating_pane_id = PaneId::Terminal(3);
-    let mut output = Output::default();
+    let _output = Output::default();
 
     // Create tiled split
     tab.vertical_split(tiled_pane_id, None, client_id, None, None)
@@ -11758,7 +11757,7 @@ fn test_alt_click_works_on_floating_panes() {
     let client_id = 1;
     let mut tab = create_new_tab(size, ModeInfo::default());
     let floating_pane_id = PaneId::Terminal(2);
-    let mut output = Output::default();
+    let _output = Output::default();
 
     // Toggle floating panes mode and create a floating pane
     tab.toggle_floating_panes(Some(client_id), None, None)
@@ -11800,7 +11799,7 @@ fn test_left_click_on_tiled_frame_edge_starts_resize() {
     let client_id = 1;
     let mut tab = create_new_tab(size, ModeInfo::default());
     let new_pane_id = PaneId::Terminal(2);
-    let mut output = Output::default();
+    let _output = Output::default();
 
     // Create a vertical split
     tab.vertical_split(new_pane_id, None, client_id, None, None)
@@ -13882,7 +13881,7 @@ fn focus_follows_mouse_skips_stacked_one_liner_pane() {
     .unwrap();
 
     // Focus the left (non-stacked) tiled pane
-    tab.move_focus_left(client_id);
+    let _ = tab.move_focus_left(client_id);
     assert_eq!(tab.get_active_pane_id(client_id), Some(PaneId::Terminal(1)));
 
     // Enable focus follows mouse
@@ -14085,7 +14084,7 @@ fn mouse_click_through_sends_click_to_newly_focused_floating_pane() {
     assert_eq!(tab.get_active_pane_id(client_id), Some(floating_pane_id_2));
 
     // Now click on floating pane 1's area
-    let effect = tab
+    let _effect = tab
         .handle_mouse_event(
             &MouseEvent::new_left_press_event(Position::new(5, 30)),
             client_id,

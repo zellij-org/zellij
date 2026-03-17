@@ -131,7 +131,7 @@ impl ActionType {
             Action::ToggleActiveSyncTab => ActionType::ToggleActiveSyncTab,
             Action::ToggleTab => ActionType::ToggleTab,
             Action::BreakPane => ActionType::BreakPane,
-            Action::EditScrollback => ActionType::EditScrollback,
+            Action::EditScrollback { .. } => ActionType::EditScrollback,
             Action::Detach => ActionType::Detach,
             Action::Quit => ActionType::Quit,
             action if action.launches_plugin("session-manager") => ActionType::SessionManager,

@@ -654,7 +654,7 @@ impl KeybindProcessor {
                             }
                         )
                     },
-                    |action: &Action| matches!(action, Action::EditScrollback),
+                    |action: &Action| matches!(action, Action::EditScrollback { .. }),
                 ];
                 Self::find_predetermined_actions(mode_info, mode, ordered_predicates)
             },

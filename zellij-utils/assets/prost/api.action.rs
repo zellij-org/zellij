@@ -625,6 +625,8 @@ pub struct DumpScreenPayload {
     pub pane_id: ::core::option::Option<PaneId>,
     #[prost(bool, tag="4")]
     pub dump_to_stdout: bool,
+    #[prost(bool, tag="5")]
+    pub ansi: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

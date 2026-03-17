@@ -80,7 +80,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: make sure clients are focused when atomically showing floating panes (https://github.com/zellij-org/zellij/pull/4834)
 * feat: allow configuring focus_follows_mouse and mouse_click_through (https://github.com/zellij-org/zellij/pull/4836)
 * fix: handle very large writes to the pty (https://github.com/zellij-org/zellij/pull/4818)
-
+* feat: add --pane-id and --tab-id to all relevant CLI actions (https://github.com/zellij-org/zellij/pull/4846)
+* feat: add --ansi flag to all relevant CLI/plugin-api screendump commands (https://github.com/zellij-org/zellij/pull/4848)
+* fix: sixel aspect-ratio and padding issues (https://github.com/zellij-org/zellij/pull/4858)
+* fix: don't recycle pane ids for terminals (https://github.com/zellij-org/zellij/pull/4859)
 
 ## [0.43.1] - 2025-08-08
 * fix: pane rename backspace regression (https://github.com/zellij-org/zellij/pull/4346)

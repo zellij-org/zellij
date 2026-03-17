@@ -1052,6 +1052,13 @@ impl TiledPanes {
                         pane.pid(),
                         pane.pane_contents(None, false, None),
                     );
+                    if output.collect_ansi_pane_contents {
+                        output.add_pane_contents_with_ansi(
+                            &connected_clients,
+                            pane.pid(),
+                            pane.pane_contents_with_ansi(None, false, None),
+                        );
+                    }
                 },
                 PaneId::Plugin(_) => {
                     for client_id in &connected_clients {
@@ -1060,6 +1067,13 @@ impl TiledPanes {
                             pane.pid(),
                             pane.pane_contents(Some(*client_id), false, None),
                         );
+                        if output.collect_ansi_pane_contents {
+                            output.add_pane_contents_with_ansi(
+                                &[*client_id],
+                                pane.pid(),
+                                pane.pane_contents_with_ansi(Some(*client_id), false, None),
+                            );
+                        }
                     }
                 },
             }

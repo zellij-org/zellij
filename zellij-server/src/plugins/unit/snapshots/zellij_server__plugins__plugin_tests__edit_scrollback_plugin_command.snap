@@ -5,6 +5,7 @@ expression: "format!(\"{:#?}\", new_tab_event)"
 Some(
     EditScrollback(
         1,
+        false,
         Some(
             NotificationEnd {
                 channel: None,
@@ -12,6 +13,7 @@ Some(
                 unblock_condition: None,
                 affected_pane_id: None,
                 affected_tab_id: None,
+                error_message: None,
             },
         ),
     ),

@@ -33,6 +33,9 @@ isahc = { workspace = true }
 [target.'cfg(unix)'.dependencies]
 nix = { workspace = true }
 
+[target.'cfg(windows)'.build-dependencies]
+embed-resource = "3"
+
 [dev-dependencies]
 insta = { version = "1.6.0", features = ["backtrace"] }
 ssh2 = "0.9.1"

@@ -246,7 +246,7 @@ fn individual_messages_client(
 }
 
 pub fn start_subscribe_client(
-    mut os_input: Box<dyn ClientOsApi>,
+    os_input: Box<dyn ClientOsApi>,
     session_name: &str,
     subscribe_cli: SubscribeCli,
 ) {
@@ -275,6 +275,7 @@ pub fn start_subscribe_client(
     os_input.send_to_server(ClientToServerMsg::SubscribeToPaneRenders {
         pane_ids: pane_ids.clone(),
         scrollback: subscribe_cli.scrollback,
+        ansi: subscribe_cli.ansi,
     });
 
     // Track remaining panes for exit-on-all-closed

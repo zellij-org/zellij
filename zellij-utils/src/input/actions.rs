@@ -179,13 +179,15 @@ pub enum Action {
         file_path: Option<String>,
         include_scrollback: bool,
         pane_id: Option<PaneId>,
+        ansi: bool,
     },
     /// Dumps
     DumpLayout,
     /// Save the current session state to disk
     SaveSession,
-    EditScrollback,
-    EditScrollbackRaw,
+    EditScrollback {
+        ansi: bool,
+    },
     /// Scroll up in focus pane.
     ScrollUp,
     /// Scroll up at point
@@ -539,6 +541,89 @@ pub enum Action {
     },
     TogglePaneInGroup,
     ToggleGroupMarking,
+    // Pane-targeting CLI-only variants
+    ScrollUpByPaneId {
+        pane_id: PaneId,
+    },
+    ScrollDownByPaneId {
+        pane_id: PaneId,
+    },
+    ScrollToTopByPaneId {
+        pane_id: PaneId,
+    },
+    ScrollToBottomByPaneId {
+        pane_id: PaneId,
+    },
+    PageScrollUpByPaneId {
+        pane_id: PaneId,
+    },
+    PageScrollDownByPaneId {
+        pane_id: PaneId,
+    },
+    HalfPageScrollUpByPaneId {
+        pane_id: PaneId,
+    },
+    HalfPageScrollDownByPaneId {
+        pane_id: PaneId,
+    },
+    ResizeByPaneId {
+        pane_id: PaneId,
+        resize: Resize,
+        direction: Option<Direction>,
+    },
+    MovePaneByPaneId {
+        pane_id: PaneId,
+        direction: Option<Direction>,
+    },
+    MovePaneBackwardsByPaneId {
+        pane_id: PaneId,
+    },
+    ClearScreenByPaneId {
+        pane_id: PaneId,
+    },
+    EditScrollbackByPaneId {
+        pane_id: PaneId,
+        ansi: bool,
+    },
+    ToggleFocusFullscreenByPaneId {
+        pane_id: PaneId,
+    },
+    TogglePaneEmbedOrFloatingByPaneId {
+        pane_id: PaneId,
+    },
+    CloseFocusByPaneId {
+        pane_id: PaneId,
+    },
+    RenamePaneByPaneId {
+        pane_id: PaneId,
+        name: Vec<u8>,
+    },
+    UndoRenamePaneByPaneId {
+        pane_id: PaneId,
+    },
+    TogglePanePinnedByPaneId {
+        pane_id: PaneId,
+    },
+    // Tab-targeting CLI-only variants
+    UndoRenameTabByTabId {
+        id: u64,
+    },
+    ToggleActiveSyncTabByTabId {
+        id: u64,
+    },
+    ToggleFloatingPanesByTabId {
+        id: u64,
+    },
+    PreviousSwapLayoutByTabId {
+        id: u64,
+    },
+    NextSwapLayoutByTabId {
+        id: u64,
+    },
+    MoveTabByTabId {
+        id: u64,
+        direction: Direction,
+    },
 }
 
 impl Default for Action {
@@ -692,8 +777,23 @@ impl Action {
 
                 Ok(actions)
             },
-            CliAction::Resize { resize, direction } => {
-                Ok(vec![Action::Resize { resize, direction }])
+            CliAction::Resize {
+                resize,
+                direction,
+                pane_id,
+            } => match pane_id {
+                Some(pane_id_str) => {
+                    let pane_id = PaneId::from_str(&pane_id_str)
+                        .map_err(|_| format!(
+                            "Malformed pane id: {pane_id_str}, expecting either a bare integer (eg. 1), a terminal pane id (eg. terminal_1) or a plugin pane id (eg. plugin_1)"
+                        ))?;
+                    Ok(vec![Action::ResizeByPaneId {
+                        pane_id,
+                        resize,
+                        direction,
+                    }])
+                },
+                None => Ok(vec![Action::Resize { resize, direction }]),
             },
             CliAction::FocusNextPane => Ok(vec![Action::FocusNextPane]),
             CliAction::FocusPreviousPane => Ok(vec![Action::FocusPreviousPane]),
@@ -701,14 +801,48 @@ impl Action {
             CliAction::MoveFocusOrTab { direction } => {
                 Ok(vec![Action::MoveFocusOrTab { direction }])
             },
-            CliAction::MovePane { direction } => Ok(vec![Action::MovePane { direction }]),
-            CliAction::MovePaneBackwards => Ok(vec![Action::MovePaneBackwards]),
-            CliAction::MoveTab { direction } => Ok(vec![Action::MoveTab { direction }]),
-            CliAction::Clear => Ok(vec![Action::ClearScreen]),
+            CliAction::MovePane { direction, pane_id } => match pane_id {
+                Some(pane_id_str) => {
+                    let pane_id = PaneId::from_str(&pane_id_str)
+                        .map_err(|_| format!(
+                            "Malformed pane id: {pane_id_str}, expecting either a bare integer (eg. 1), a terminal pane id (eg. terminal_1) or a plugin pane id (eg. plugin_1)"
+                        ))?;
+                    Ok(vec![Action::MovePaneByPaneId { pane_id, direction }])
+                },
+                None => Ok(vec![Action::MovePane { direction }]),
+            },
+            CliAction::MovePaneBackwards { pane_id } => match pane_id {
+                Some(pane_id_str) => {
+                    let pane_id = PaneId::from_str(&pane_id_str)
+                        .map_err(|_| format!(
+                            "Malformed pane id: {pane_id_str}, expecting either a bare integer (eg. 1), a terminal pane id (eg. terminal_1) or a plugin pane id (eg. plugin_1)"
+                        ))?;
+                    Ok(vec![Action::MovePaneBackwardsByPaneId { pane_id }])
+                },
+                None => Ok(vec![Action::MovePaneBackwards]),
+            },
+            CliAction::MoveTab { direction, tab_id } => match tab_id {
+                Some(id) => Ok(vec![Action::MoveTabByTabId {
+                    id: id as u64,
+                    direction,
+                }]),
+                None => Ok(vec![Action::MoveTab { direction }]),
+            },
+            CliAction::Clear { pane_id } => match pane_id {
+                Some(pane_id_str) => {
+                    let pane_id = PaneId::from_str(&pane_id_str)
+                        .map_err(|_| format!(
+                            "Malformed pane id: {pane_id_str}, expecting either a bare integer (eg. 1), a terminal pane id (eg. terminal_1) or a plugin pane id (eg. plugin_1)"
+                        ))?;
+                    Ok(vec![Action::ClearScreenByPaneId { pane_id }])
+                },
+                None => Ok(vec![Action::ClearScreen]),
+            },
             CliAction::DumpScreen {
                 path,
                 full,
                 pane_id,
+                ansi,
             } => match pane_id {
                 Some(pane_id_str) => {
                     let parsed_pane_id = PaneId::from_str(&pane_id_str);
@@ -718,6 +852,7 @@ impl Action {
                                 file_path: path.map(|p| p.as_os_str().to_string_lossy().into()),
                                 include_scrollback: full,
                                 pane_id: Some(parsed_pane_id),
+                                ansi,
                             }])
                         },
                         Err(_e) => {
@@ -732,22 +867,116 @@ impl Action {
                     file_path: path.map(|p| p.as_os_str().to_string_lossy().into()),
                     include_scrollback: full,
                     pane_id: None,
+                    ansi,
                 }]),
             },
             CliAction::DumpLayout => Ok(vec![Action::DumpLayout]),
             CliAction::SaveSession => Ok(vec![Action::SaveSession]),
-            CliAction::EditScrollback => Ok(vec![Action::EditScrollback]),
-            CliAction::ScrollUp => Ok(vec![Action::ScrollUp]),
-            CliAction::ScrollDown => Ok(vec![Action::ScrollDown]),
-            CliAction::ScrollToBottom => Ok(vec![Action::ScrollToBottom]),
-            CliAction::ScrollToTop => Ok(vec![Action::ScrollToTop]),
-            CliAction::PageScrollUp => Ok(vec![Action::PageScrollUp]),
-            CliAction::PageScrollDown => Ok(vec![Action::PageScrollDown]),
-            CliAction::HalfPageScrollUp => Ok(vec![Action::HalfPageScrollUp]),
-            CliAction::HalfPageScrollDown => Ok(vec![Action::HalfPageScrollDown]),
-            CliAction::ToggleFullscreen => Ok(vec![Action::ToggleFocusFullscreen]),
+            CliAction::EditScrollback { pane_id, ansi } => match pane_id {
+                Some(pane_id_str) => {
+                    let pane_id = PaneId::from_str(&pane_id_str)
+                        .map_err(|_| format!(
+                            "Malformed pane id: {pane_id_str}, expecting either a bare integer (eg. 1), a terminal pane id (eg. terminal_1) or a plugin pane id (eg. plugin_1)"
+                        ))?;
+                    Ok(vec![Action::EditScrollbackByPaneId { pane_id, ansi }])
+                },
+                None => Ok(vec![Action::EditScrollback { ansi }]),
+            },
+            CliAction::ScrollUp { pane_id } => match pane_id {
+                Some(pane_id_str) => {
+                    let pane_id = PaneId::from_str(&pane_id_str)
+                        .map_err(|_| format!(
+                            "Malformed pane id: {pane_id_str}, expecting either a bare integer (eg. 1), a terminal pane id (eg. terminal_1) or a plugin pane id (eg. plugin_1)"
+                        ))?;
+                    Ok(vec![Action::ScrollUpByPaneId { pane_id }])
+                },
+                None => Ok(vec![Action::ScrollUp]),
+            },
+            CliAction::ScrollDown { pane_id } => match pane_id {
+                Some(pane_id_str) => {
+                    let pane_id = PaneId::from_str(&pane_id_str)
+                        .map_err(|_| format!(
+                            "Malformed pane id: {pane_id_str}, expecting either a bare integer (eg. 1), a terminal pane id (eg. terminal_1) or a plugin pane id (eg. plugin_1)"
+                        ))?;
+                    Ok(vec![Action::ScrollDownByPaneId { pane_id }])
+                },
+                None => Ok(vec![Action::ScrollDown]),
+            },
+            CliAction::ScrollToBottom { pane_id } => match pane_id {
+                Some(pane_id_str) => {
+                    let pane_id = PaneId::from_str(&pane_id_str)
+                        .map_err(|_| format!(
+                            "Malformed pane id: {pane_id_str}, expecting either a bare integer (eg. 1), a terminal pane id (eg. terminal_1) or a plugin pane id (eg. plugin_1)"
+                        ))?;
+                    Ok(vec![Action::ScrollToBottomByPaneId { pane_id }])
+                },
+                None => Ok(vec![Action::ScrollToBottom]),
+            },
+            CliAction::ScrollToTop { pane_id } => match pane_id {
+                Some(pane_id_str) => {
+                    let pane_id = PaneId::from_str(&pane_id_str)
+                        .map_err(|_| format!(
+                            "Malformed pane id: {pane_id_str}, expecting either a bare integer (eg. 1), a terminal pane id (eg. terminal_1) or a plugin pane id (eg. plugin_1)"
+                        ))?;
+                    Ok(vec![Action::ScrollToTopByPaneId { pane_id }])
+                },
+                None => Ok(vec![Action::ScrollToTop]),
+            },
+            CliAction::PageScrollUp { pane_id } => match pane_id {
+                Some(pane_id_str) => {
+                    let pane_id = PaneId::from_str(&pane_id_str)
+                        .map_err(|_| format!(
+                            "Malformed pane id: {pane_id_str}, expecting either a bare integer (eg. 1), a terminal pane id (eg. terminal_1) or a plugin pane id (eg. plugin_1)"
+                        ))?;
+                    Ok(vec![Action::PageScrollUpByPaneId { pane_id }])
+                },
+                None => Ok(vec![Action::PageScrollUp]),
+            },
+            CliAction::PageScrollDown { pane_id } => match pane_id {
+                Some(pane_id_str) => {
+                    let pane_id = PaneId::from_str(&pane_id_str)
+                        .map_err(|_| format!(
+                            "Malformed pane id: {pane_id_str}, expecting either a bare integer (eg. 1), a terminal pane id (eg. terminal_1) or a plugin pane id (eg. plugin_1)"
+                        ))?;
+                    Ok(vec![Action::PageScrollDownByPaneId { pane_id }])
+                },
+                None => Ok(vec![Action::PageScrollDown]),
+            },
+            CliAction::HalfPageScrollUp { pane_id } => match pane_id {
+                Some(pane_id_str) => {
+                    let pane_id = PaneId::from_str(&pane_id_str)
+                        .map_err(|_| format!(
+                            "Malformed pane id: {pane_id_str}, expecting either a bare integer (eg. 1), a terminal pane id (eg. terminal_1) or a plugin pane id (eg. plugin_1)"
+                        ))?;
+                    Ok(vec![Action::HalfPageScrollUpByPaneId { pane_id }])
+                },
+                None => Ok(vec![Action::HalfPageScrollUp]),
+            },
+            CliAction::HalfPageScrollDown { pane_id } => match pane_id {
+                Some(pane_id_str) => {
+                    let pane_id = PaneId::from_str(&pane_id_str)
+                        .map_err(|_| format!(
+                            "Malformed pane id: {pane_id_str}, expecting either a bare integer (eg. 1), a terminal pane id (eg. terminal_1) or a plugin pane id (eg. plugin_1)"
+                        ))?;
+                    Ok(vec![Action::HalfPageScrollDownByPaneId { pane_id }])
+                },
+                None => Ok(vec![Action::HalfPageScrollDown]),
+            },
+            CliAction::ToggleFullscreen { pane_id } => match pane_id {
+                Some(pane_id_str) => {
+                    let pane_id = PaneId::from_str(&pane_id_str)
+                        .map_err(|_| format!(
+                            "Malformed pane id: {pane_id_str}, expecting either a bare integer (eg. 1), a terminal pane id (eg. terminal_1) or a plugin pane id (eg. plugin_1)"
+                        ))?;
+                    Ok(vec![Action::ToggleFocusFullscreenByPaneId { pane_id }])
+                },
+                None => Ok(vec![Action::ToggleFocusFullscreen]),
+            },
             CliAction::TogglePaneFrames => Ok(vec![Action::TogglePaneFrames]),
-            CliAction::ToggleActiveSyncTab => Ok(vec![Action::ToggleActiveSyncTab]),
+            CliAction::ToggleActiveSyncTab { tab_id } => match tab_id {
+                Some(id) => Ok(vec![Action::ToggleActiveSyncTabByTabId { id: id as u64 }]),
+                None => Ok(vec![Action::ToggleActiveSyncTab]),
+            },
             CliAction::NewPane {
                 direction,
                 size,
@@ -769,6 +998,9 @@ impl Action {
                 pinned,
                 stacked,
                 blocking,
+                block_until_exit_success,
+                block_until_exit_failure,
+                block_until_exit,
                 unblock_condition,
                 near_current_pane,
                 borderless,
@@ -801,6 +1033,17 @@ impl Action {
                 let cwd = cwd
                     .map(|cwd| current_dir.join(cwd))
                     .or_else(|| Some(current_dir.clone()));
+                let unblock_condition = unblock_condition.or_else(|| {
+                    if block_until_exit_success {
+                        Some(UnblockCondition::OnExitSuccess)
+                    } else if block_until_exit_failure {
+                        Some(UnblockCondition::OnExitFailure)
+                    } else if block_until_exit {
+                        Some(UnblockCondition::OnAnyExit)
+                    } else {
+                        None
+                    }
+                });
                 if blocking || unblock_condition.is_some() {
                     // For blocking panes, we don't support plugins
                     if plugin.is_some() {
@@ -1033,36 +1276,90 @@ impl Action {
                 }])
             },
             CliAction::SwitchMode { input_mode } => Ok(vec![Action::SwitchToMode { input_mode }]),
-            CliAction::TogglePaneEmbedOrFloating => Ok(vec![Action::TogglePaneEmbedOrFloating]),
-            CliAction::ToggleFloatingPanes => Ok(vec![Action::ToggleFloatingPanes]),
+            CliAction::TogglePaneEmbedOrFloating { pane_id } => match pane_id {
+                Some(pane_id_str) => {
+                    let pane_id = PaneId::from_str(&pane_id_str)
+                        .map_err(|_| format!(
+                            "Malformed pane id: {pane_id_str}, expecting either a bare integer (eg. 1), a terminal pane id (eg. terminal_1) or a plugin pane id (eg. plugin_1)"
+                        ))?;
+                    Ok(vec![Action::TogglePaneEmbedOrFloatingByPaneId { pane_id }])
+                },
+                None => Ok(vec![Action::TogglePaneEmbedOrFloating]),
+            },
+            CliAction::ToggleFloatingPanes { tab_id } => match tab_id {
+                Some(id) => Ok(vec![Action::ToggleFloatingPanesByTabId { id: id as u64 }]),
+                None => Ok(vec![Action::ToggleFloatingPanes]),
+            },
             CliAction::ShowFloatingPanes { tab_id } => {
                 Ok(vec![Action::ShowFloatingPanes { tab_id }])
             },
             CliAction::HideFloatingPanes { tab_id } => {
                 Ok(vec![Action::HideFloatingPanes { tab_id }])
             },
-            CliAction::ClosePane => Ok(vec![Action::CloseFocus]),
-            CliAction::RenamePane { name } => Ok(vec![
-                Action::UndoRenamePane,
-                Action::PaneNameInput {
-                    input: name.as_bytes().to_vec(),
+            CliAction::ClosePane { pane_id } => match pane_id {
+                Some(pane_id_str) => {
+                    let pane_id = PaneId::from_str(&pane_id_str)
+                        .map_err(|_| format!(
+                            "Malformed pane id: {pane_id_str}, expecting either a bare integer (eg. 1), a terminal pane id (eg. terminal_1) or a plugin pane id (eg. plugin_1)"
+                        ))?;
+                    Ok(vec![Action::CloseFocusByPaneId { pane_id }])
                 },
-            ]),
-            CliAction::UndoRenamePane => Ok(vec![Action::UndoRenamePane]),
+                None => Ok(vec![Action::CloseFocus]),
+            },
+            CliAction::RenamePane { name, pane_id } => match pane_id {
+                Some(pane_id_str) => {
+                    let pane_id = PaneId::from_str(&pane_id_str)
+                        .map_err(|_| format!(
+                            "Malformed pane id: {pane_id_str}, expecting either a bare integer (eg. 1), a terminal pane id (eg. terminal_1) or a plugin pane id (eg. plugin_1)"
+                        ))?;
+                    Ok(vec![Action::RenamePaneByPaneId {
+                        pane_id,
+                        name: name.as_bytes().to_vec(),
+                    }])
+                },
+                None => Ok(vec![
+                    Action::UndoRenamePane,
+                    Action::PaneNameInput {
+                        input: name.as_bytes().to_vec(),
+                    },
+                ]),
+            },
+            CliAction::UndoRenamePane { pane_id } => match pane_id {
+                Some(pane_id_str) => {
+                    let pane_id = PaneId::from_str(&pane_id_str)
+                        .map_err(|_| format!(
+                            "Malformed pane id: {pane_id_str}, expecting either a bare integer (eg. 1), a terminal pane id (eg. terminal_1) or a plugin pane id (eg. plugin_1)"
+                        ))?;
+                    Ok(vec![Action::UndoRenamePaneByPaneId { pane_id }])
+                },
+                None => Ok(vec![Action::UndoRenamePane]),
+            },
             CliAction::GoToNextTab => Ok(vec![Action::GoToNextTab]),
             CliAction::GoToPreviousTab => Ok(vec![Action::GoToPreviousTab]),
-            CliAction::CloseTab => Ok(vec![Action::CloseTab]),
+            CliAction::CloseTab { tab_id } => match tab_id {
+                Some(id) => Ok(vec![Action::CloseTabById { id: id as u64 }]),
+                None => Ok(vec![Action::CloseTab]),
+            },
             CliAction::GoToTab { index } => Ok(vec![Action::GoToTab { index }]),
             CliAction::GoToTabName { name, create } => {
                 Ok(vec![Action::GoToTabName { name, create }])
             },
-            CliAction::RenameTab { name } => Ok(vec![
-                Action::TabNameInput { input: vec![0] },
-                Action::TabNameInput {
-                    input: name.as_bytes().to_vec(),
-                },
-            ]),
-            CliAction::UndoRenameTab => Ok(vec![Action::UndoRenameTab]),
+            CliAction::RenameTab { name, tab_id } => match tab_id {
+                Some(id) => Ok(vec![Action::RenameTabById {
+                    id: id as u64,
+                    name,
+                }]),
+                None => Ok(vec![
+                    Action::TabNameInput { input: vec![0] },
+                    Action::TabNameInput {
+                        input: name.as_bytes().to_vec(),
+                    },
+                ]),
+            },
+            CliAction::UndoRenameTab { tab_id } => match tab_id {
+                Some(id) => Ok(vec![Action::UndoRenameTabByTabId { id: id as u64 }]),
+                None => Ok(vec![Action::UndoRenameTab]),
+            },
             CliAction::GoToTabById { id } => Ok(vec![Action::GoToTabById { id }]),
             CliAction::CloseTabById { id } => Ok(vec![Action::CloseTabById { id }]),
             CliAction::RenameTabById { id, name } => Ok(vec![Action::RenameTabById { id, name }]),
@@ -1257,8 +1554,14 @@ impl Action {
                     }])
                 }
             },
-            CliAction::PreviousSwapLayout => Ok(vec![Action::PreviousSwapLayout]),
-            CliAction::NextSwapLayout => Ok(vec![Action::NextSwapLayout]),
+            CliAction::PreviousSwapLayout { tab_id } => match tab_id {
+                Some(id) => Ok(vec![Action::PreviousSwapLayoutByTabId { id: id as u64 }]),
+                None => Ok(vec![Action::PreviousSwapLayout]),
+            },
+            CliAction::NextSwapLayout { tab_id } => match tab_id {
+                Some(id) => Ok(vec![Action::NextSwapLayoutByTabId { id: id as u64 }]),
+                None => Ok(vec![Action::NextSwapLayout]),
+            },
             CliAction::OverrideLayout {
                 layout,
                 layout_dir,
@@ -1486,7 +1789,16 @@ impl Action {
             CliAction::CurrentTabInfo { json } => {
                 Ok(vec![Action::CurrentTabInfo { output_json: json }])
             },
-            CliAction::TogglePanePinned => Ok(vec![Action::TogglePanePinned]),
+            CliAction::TogglePanePinned { pane_id } => match pane_id {
+                Some(pane_id_str) => {
+                    let pane_id = PaneId::from_str(&pane_id_str)
+                        .map_err(|_| format!(
+                            "Malformed pane id: {pane_id_str}, expecting either a bare integer (eg. 1), a terminal pane id (eg. terminal_1) or a plugin pane id (eg. plugin_1)"
+                        ))?;
+                    Ok(vec![Action::TogglePanePinnedByPaneId { pane_id }])
+                },
+                None => Ok(vec![Action::TogglePanePinned]),
+            },
             CliAction::StackPanes { pane_ids } => {
                 let mut malformed_ids = vec![];
                 let pane_ids = pane_ids
@@ -1880,5 +2192,938 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.contains("Malformed pane id"));
+    }
+
+    // =============================================
+    // Category 1: Pane-targeting tests
+    // =============================================
+
+    // 1. ScrollUp
+    #[test]
+    fn test_scroll_up_with_pane_id() {
+        let cli_action = CliAction::ScrollUp {
+            pane_id: Some("terminal_5".to_string()),
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::ScrollUpByPaneId { pane_id } => {
+                assert!(matches!(pane_id, PaneId::Terminal(5)));
+            },
+            _ => panic!("Expected ScrollUpByPaneId action"),
+        }
+    }
+
+    #[test]
+    fn test_scroll_up_without_pane_id() {
+        let cli_action = CliAction::ScrollUp { pane_id: None };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        assert!(matches!(actions[0], Action::ScrollUp));
+    }
+
+    // 2. ScrollDown
+    #[test]
+    fn test_scroll_down_with_pane_id() {
+        let cli_action = CliAction::ScrollDown {
+            pane_id: Some("terminal_2".to_string()),
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::ScrollDownByPaneId { pane_id } => {
+                assert!(matches!(pane_id, PaneId::Terminal(2)));
+            },
+            _ => panic!("Expected ScrollDownByPaneId action"),
+        }
+    }
+
+    #[test]
+    fn test_scroll_down_without_pane_id() {
+        let cli_action = CliAction::ScrollDown { pane_id: None };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        assert!(matches!(actions[0], Action::ScrollDown));
+    }
+
+    // 3. ScrollToTop
+    #[test]
+    fn test_scroll_to_top_with_pane_id() {
+        let cli_action = CliAction::ScrollToTop {
+            pane_id: Some("terminal_1".to_string()),
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::ScrollToTopByPaneId { pane_id } => {
+                assert!(matches!(pane_id, PaneId::Terminal(1)));
+            },
+            _ => panic!("Expected ScrollToTopByPaneId action"),
+        }
+    }
+
+    #[test]
+    fn test_scroll_to_top_without_pane_id() {
+        let cli_action = CliAction::ScrollToTop { pane_id: None };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        assert!(matches!(actions[0], Action::ScrollToTop));
+    }
+
+    // 4. ScrollToBottom
+    #[test]
+    fn test_scroll_to_bottom_with_pane_id() {
+        let cli_action = CliAction::ScrollToBottom {
+            pane_id: Some("terminal_4".to_string()),
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::ScrollToBottomByPaneId { pane_id } => {
+                assert!(matches!(pane_id, PaneId::Terminal(4)));
+            },
+            _ => panic!("Expected ScrollToBottomByPaneId action"),
+        }
+    }
+
+    #[test]
+    fn test_scroll_to_bottom_without_pane_id() {
+        let cli_action = CliAction::ScrollToBottom { pane_id: None };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        assert!(matches!(actions[0], Action::ScrollToBottom));
+    }
+
+    // 5. PageScrollUp
+    #[test]
+    fn test_page_scroll_up_with_pane_id() {
+        let cli_action = CliAction::PageScrollUp {
+            pane_id: Some("terminal_6".to_string()),
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::PageScrollUpByPaneId { pane_id } => {
+                assert!(matches!(pane_id, PaneId::Terminal(6)));
+            },
+            _ => panic!("Expected PageScrollUpByPaneId action"),
+        }
+    }
+
+    #[test]
+    fn test_page_scroll_up_without_pane_id() {
+        let cli_action = CliAction::PageScrollUp { pane_id: None };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        assert!(matches!(actions[0], Action::PageScrollUp));
+    }
+
+    // 6. PageScrollDown
+    #[test]
+    fn test_page_scroll_down_with_pane_id() {
+        let cli_action = CliAction::PageScrollDown {
+            pane_id: Some("terminal_8".to_string()),
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::PageScrollDownByPaneId { pane_id } => {
+                assert!(matches!(pane_id, PaneId::Terminal(8)));
+            },
+            _ => panic!("Expected PageScrollDownByPaneId action"),
+        }
+    }
+
+    #[test]
+    fn test_page_scroll_down_without_pane_id() {
+        let cli_action = CliAction::PageScrollDown { pane_id: None };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        assert!(matches!(actions[0], Action::PageScrollDown));
+    }
+
+    // 7. HalfPageScrollUp
+    #[test]
+    fn test_half_page_scroll_up_with_pane_id() {
+        let cli_action = CliAction::HalfPageScrollUp {
+            pane_id: Some("terminal_10".to_string()),
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::HalfPageScrollUpByPaneId { pane_id } => {
+                assert!(matches!(pane_id, PaneId::Terminal(10)));
+            },
+            _ => panic!("Expected HalfPageScrollUpByPaneId action"),
+        }
+    }
+
+    #[test]
+    fn test_half_page_scroll_up_without_pane_id() {
+        let cli_action = CliAction::HalfPageScrollUp { pane_id: None };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        assert!(matches!(actions[0], Action::HalfPageScrollUp));
+    }
+
+    // 8. HalfPageScrollDown
+    #[test]
+    fn test_half_page_scroll_down_with_pane_id() {
+        let cli_action = CliAction::HalfPageScrollDown {
+            pane_id: Some("terminal_12".to_string()),
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::HalfPageScrollDownByPaneId { pane_id } => {
+                assert!(matches!(pane_id, PaneId::Terminal(12)));
+            },
+            _ => panic!("Expected HalfPageScrollDownByPaneId action"),
+        }
+    }
+
+    #[test]
+    fn test_half_page_scroll_down_without_pane_id() {
+        let cli_action = CliAction::HalfPageScrollDown { pane_id: None };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        assert!(matches!(actions[0], Action::HalfPageScrollDown));
+    }
+
+    // 9. Resize
+    #[test]
+    fn test_resize_with_pane_id() {
+        let cli_action = CliAction::Resize {
+            resize: Resize::Increase,
+            direction: Some(Direction::Left),
+            pane_id: Some("terminal_3".to_string()),
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::ResizeByPaneId {
+                pane_id,
+                resize,
+                direction,
+            } => {
+                assert!(matches!(pane_id, PaneId::Terminal(3)));
+                assert!(matches!(resize, Resize::Increase));
+                assert!(matches!(direction, Some(Direction::Left)));
+            },
+            _ => panic!("Expected ResizeByPaneId action"),
+        }
+    }
+
+    #[test]
+    fn test_resize_without_pane_id() {
+        let cli_action = CliAction::Resize {
+            resize: Resize::Increase,
+            direction: Some(Direction::Left),
+            pane_id: None,
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::Resize { resize, direction } => {
+                assert!(matches!(resize, Resize::Increase));
+                assert!(matches!(direction, Some(Direction::Left)));
+            },
+            _ => panic!("Expected Resize action"),
+        }
+    }
+
+    // 10. MovePane
+    #[test]
+    fn test_move_pane_with_pane_id() {
+        let cli_action = CliAction::MovePane {
+            direction: Some(Direction::Right),
+            pane_id: Some("terminal_9".to_string()),
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::MovePaneByPaneId { pane_id, direction } => {
+                assert!(matches!(pane_id, PaneId::Terminal(9)));
+                assert!(matches!(direction, Some(Direction::Right)));
+            },
+            _ => panic!("Expected MovePaneByPaneId action"),
+        }
+    }
+
+    #[test]
+    fn test_move_pane_without_pane_id() {
+        let cli_action = CliAction::MovePane {
+            direction: Some(Direction::Right),
+            pane_id: None,
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::MovePane { direction } => {
+                assert!(matches!(direction, Some(Direction::Right)));
+            },
+            _ => panic!("Expected MovePane action"),
+        }
+    }
+
+    // 11. MovePaneBackwards
+    #[test]
+    fn test_move_pane_backwards_with_pane_id() {
+        let cli_action = CliAction::MovePaneBackwards {
+            pane_id: Some("terminal_11".to_string()),
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::MovePaneBackwardsByPaneId { pane_id } => {
+                assert!(matches!(pane_id, PaneId::Terminal(11)));
+            },
+            _ => panic!("Expected MovePaneBackwardsByPaneId action"),
+        }
+    }
+
+    #[test]
+    fn test_move_pane_backwards_without_pane_id() {
+        let cli_action = CliAction::MovePaneBackwards { pane_id: None };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        assert!(matches!(actions[0], Action::MovePaneBackwards));
+    }
+
+    // 12. Clear
+    #[test]
+    fn test_clear_with_pane_id() {
+        let cli_action = CliAction::Clear {
+            pane_id: Some("terminal_14".to_string()),
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::ClearScreenByPaneId { pane_id } => {
+                assert!(matches!(pane_id, PaneId::Terminal(14)));
+            },
+            _ => panic!("Expected ClearScreenByPaneId action"),
+        }
+    }
+
+    #[test]
+    fn test_clear_without_pane_id() {
+        let cli_action = CliAction::Clear { pane_id: None };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        assert!(matches!(actions[0], Action::ClearScreen));
+    }
+
+    // 13. EditScrollback
+    #[test]
+    fn test_edit_scrollback_with_pane_id() {
+        let cli_action = CliAction::EditScrollback {
+            pane_id: Some("terminal_15".to_string()),
+            ansi: false,
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::EditScrollbackByPaneId { pane_id, ansi } => {
+                assert!(matches!(pane_id, PaneId::Terminal(15)));
+                assert!(!ansi);
+            },
+            _ => panic!("Expected EditScrollbackByPaneId action"),
+        }
+    }
+
+    #[test]
+    fn test_edit_scrollback_without_pane_id() {
+        let cli_action = CliAction::EditScrollback {
+            pane_id: None,
+            ansi: false,
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        assert!(matches!(actions[0], Action::EditScrollback { ansi: false }));
+    }
+
+    // 14. ToggleFullscreen
+    #[test]
+    fn test_toggle_fullscreen_with_pane_id() {
+        let cli_action = CliAction::ToggleFullscreen {
+            pane_id: Some("terminal_16".to_string()),
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::ToggleFocusFullscreenByPaneId { pane_id } => {
+                assert!(matches!(pane_id, PaneId::Terminal(16)));
+            },
+            _ => panic!("Expected ToggleFocusFullscreenByPaneId action"),
+        }
+    }
+
+    #[test]
+    fn test_toggle_fullscreen_without_pane_id() {
+        let cli_action = CliAction::ToggleFullscreen { pane_id: None };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        assert!(matches!(actions[0], Action::ToggleFocusFullscreen));
+    }
+
+    // 15. TogglePaneEmbedOrFloating
+    #[test]
+    fn test_toggle_pane_embed_or_floating_with_pane_id() {
+        let cli_action = CliAction::TogglePaneEmbedOrFloating {
+            pane_id: Some("terminal_17".to_string()),
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::TogglePaneEmbedOrFloatingByPaneId { pane_id } => {
+                assert!(matches!(pane_id, PaneId::Terminal(17)));
+            },
+            _ => panic!("Expected TogglePaneEmbedOrFloatingByPaneId action"),
+        }
+    }
+
+    #[test]
+    fn test_toggle_pane_embed_or_floating_without_pane_id() {
+        let cli_action = CliAction::TogglePaneEmbedOrFloating { pane_id: None };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        assert!(matches!(actions[0], Action::TogglePaneEmbedOrFloating));
+    }
+
+    // 16. ClosePane
+    #[test]
+    fn test_close_pane_with_pane_id() {
+        let cli_action = CliAction::ClosePane {
+            pane_id: Some("terminal_18".to_string()),
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::CloseFocusByPaneId { pane_id } => {
+                assert!(matches!(pane_id, PaneId::Terminal(18)));
+            },
+            _ => panic!("Expected CloseFocusByPaneId action"),
+        }
+    }
+
+    #[test]
+    fn test_close_pane_without_pane_id() {
+        let cli_action = CliAction::ClosePane { pane_id: None };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        assert!(matches!(actions[0], Action::CloseFocus));
+    }
+
+    // 17. RenamePane
+    #[test]
+    fn test_rename_pane_with_pane_id() {
+        let cli_action = CliAction::RenamePane {
+            name: "my-pane".to_string(),
+            pane_id: Some("terminal_19".to_string()),
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::RenamePaneByPaneId { pane_id, name } => {
+                assert!(matches!(pane_id, PaneId::Terminal(19)));
+                assert_eq!(name, &"my-pane".as_bytes().to_vec());
+            },
+            _ => panic!("Expected RenamePaneByPaneId action"),
+        }
+    }
+
+    #[test]
+    fn test_rename_pane_without_pane_id() {
+        let cli_action = CliAction::RenamePane {
+            name: "my-pane".to_string(),
+            pane_id: None,
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 2);
+        assert!(matches!(actions[0], Action::UndoRenamePane));
+        assert!(matches!(actions[1], Action::PaneNameInput { .. }));
+    }
+
+    // 18. UndoRenamePane
+    #[test]
+    fn test_undo_rename_pane_with_pane_id() {
+        let cli_action = CliAction::UndoRenamePane {
+            pane_id: Some("terminal_20".to_string()),
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::UndoRenamePaneByPaneId { pane_id } => {
+                assert!(matches!(pane_id, PaneId::Terminal(20)));
+            },
+            _ => panic!("Expected UndoRenamePaneByPaneId action"),
+        }
+    }
+
+    #[test]
+    fn test_undo_rename_pane_without_pane_id() {
+        let cli_action = CliAction::UndoRenamePane { pane_id: None };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        assert!(matches!(actions[0], Action::UndoRenamePane));
+    }
+
+    // 19. TogglePanePinned
+    #[test]
+    fn test_toggle_pane_pinned_with_pane_id() {
+        let cli_action = CliAction::TogglePanePinned {
+            pane_id: Some("terminal_21".to_string()),
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::TogglePanePinnedByPaneId { pane_id } => {
+                assert!(matches!(pane_id, PaneId::Terminal(21)));
+            },
+            _ => panic!("Expected TogglePanePinnedByPaneId action"),
+        }
+    }
+
+    #[test]
+    fn test_toggle_pane_pinned_without_pane_id() {
+        let cli_action = CliAction::TogglePanePinned { pane_id: None };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        assert!(matches!(actions[0], Action::TogglePanePinned));
+    }
+
+    // Extra pane tests
+    #[test]
+    fn test_scroll_up_with_plugin_pane_id() {
+        let cli_action = CliAction::ScrollUp {
+            pane_id: Some("plugin_3".to_string()),
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::ScrollUpByPaneId { pane_id } => {
+                assert!(matches!(pane_id, PaneId::Plugin(3)));
+            },
+            _ => panic!("Expected ScrollUpByPaneId action with plugin pane id"),
+        }
+    }
+
+    #[test]
+    fn test_scroll_up_with_bare_integer_pane_id() {
+        let cli_action = CliAction::ScrollUp {
+            pane_id: Some("7".to_string()),
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::ScrollUpByPaneId { pane_id } => {
+                assert!(matches!(pane_id, PaneId::Terminal(7)));
+            },
+            _ => panic!("Expected ScrollUpByPaneId action with bare integer pane id"),
+        }
+    }
+
+    #[test]
+    fn test_scroll_up_with_invalid_pane_id() {
+        let cli_action = CliAction::ScrollUp {
+            pane_id: Some("invalid_id".to_string()),
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("Malformed pane id"));
+    }
+
+    // =============================================
+    // Category 1: Tab-targeting tests
+    // =============================================
+
+    // 20. CloseTab
+    #[test]
+    fn test_close_tab_with_tab_id() {
+        let cli_action = CliAction::CloseTab { tab_id: Some(5) };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::CloseTabById { id } => {
+                assert_eq!(*id, 5u64);
+            },
+            _ => panic!("Expected CloseTabById action"),
+        }
+    }
+
+    #[test]
+    fn test_close_tab_without_tab_id() {
+        let cli_action = CliAction::CloseTab { tab_id: None };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        assert!(matches!(actions[0], Action::CloseTab));
+    }
+
+    // 21. RenameTab
+    #[test]
+    fn test_rename_tab_with_tab_id() {
+        let cli_action = CliAction::RenameTab {
+            name: "my-tab".to_string(),
+            tab_id: Some(3),
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::RenameTabById { id, name } => {
+                assert_eq!(*id, 3u64);
+                assert_eq!(name, "my-tab");
+            },
+            _ => panic!("Expected RenameTabById action"),
+        }
+    }
+
+    #[test]
+    fn test_rename_tab_without_tab_id() {
+        let cli_action = CliAction::RenameTab {
+            name: "my-tab".to_string(),
+            tab_id: None,
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 2);
+        assert!(matches!(actions[0], Action::TabNameInput { .. }));
+        assert!(matches!(actions[1], Action::TabNameInput { .. }));
+    }
+
+    // 22. UndoRenameTab
+    #[test]
+    fn test_undo_rename_tab_with_tab_id() {
+        let cli_action = CliAction::UndoRenameTab { tab_id: Some(7) };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::UndoRenameTabByTabId { id } => {
+                assert_eq!(*id, 7u64);
+            },
+            _ => panic!("Expected UndoRenameTabByTabId action"),
+        }
+    }
+
+    #[test]
+    fn test_undo_rename_tab_without_tab_id() {
+        let cli_action = CliAction::UndoRenameTab { tab_id: None };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        assert!(matches!(actions[0], Action::UndoRenameTab));
+    }
+
+    // 23. ToggleActiveSyncTab
+    #[test]
+    fn test_toggle_active_sync_tab_with_tab_id() {
+        let cli_action = CliAction::ToggleActiveSyncTab { tab_id: Some(2) };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::ToggleActiveSyncTabByTabId { id } => {
+                assert_eq!(*id, 2u64);
+            },
+            _ => panic!("Expected ToggleActiveSyncTabByTabId action"),
+        }
+    }
+
+    #[test]
+    fn test_toggle_active_sync_tab_without_tab_id() {
+        let cli_action = CliAction::ToggleActiveSyncTab { tab_id: None };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        assert!(matches!(actions[0], Action::ToggleActiveSyncTab));
+    }
+
+    // 24. ToggleFloatingPanes
+    #[test]
+    fn test_toggle_floating_panes_with_tab_id() {
+        let cli_action = CliAction::ToggleFloatingPanes { tab_id: Some(4) };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::ToggleFloatingPanesByTabId { id } => {
+                assert_eq!(*id, 4u64);
+            },
+            _ => panic!("Expected ToggleFloatingPanesByTabId action"),
+        }
+    }
+
+    #[test]
+    fn test_toggle_floating_panes_without_tab_id() {
+        let cli_action = CliAction::ToggleFloatingPanes { tab_id: None };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        assert!(matches!(actions[0], Action::ToggleFloatingPanes));
+    }
+
+    // 25. PreviousSwapLayout
+    #[test]
+    fn test_previous_swap_layout_with_tab_id() {
+        let cli_action = CliAction::PreviousSwapLayout { tab_id: Some(6) };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::PreviousSwapLayoutByTabId { id } => {
+                assert_eq!(*id, 6u64);
+            },
+            _ => panic!("Expected PreviousSwapLayoutByTabId action"),
+        }
+    }
+
+    #[test]
+    fn test_previous_swap_layout_without_tab_id() {
+        let cli_action = CliAction::PreviousSwapLayout { tab_id: None };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        assert!(matches!(actions[0], Action::PreviousSwapLayout));
+    }
+
+    // 26. NextSwapLayout
+    #[test]
+    fn test_next_swap_layout_with_tab_id() {
+        let cli_action = CliAction::NextSwapLayout { tab_id: Some(8) };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::NextSwapLayoutByTabId { id } => {
+                assert_eq!(*id, 8u64);
+            },
+            _ => panic!("Expected NextSwapLayoutByTabId action"),
+        }
+    }
+
+    #[test]
+    fn test_next_swap_layout_without_tab_id() {
+        let cli_action = CliAction::NextSwapLayout { tab_id: None };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        assert!(matches!(actions[0], Action::NextSwapLayout));
+    }
+
+    // 27. MoveTab
+    #[test]
+    fn test_move_tab_with_tab_id() {
+        let cli_action = CliAction::MoveTab {
+            direction: Direction::Right,
+            tab_id: Some(10),
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::MoveTabByTabId { id, direction } => {
+                assert_eq!(*id, 10u64);
+                assert!(matches!(direction, Direction::Right));
+            },
+            _ => panic!("Expected MoveTabByTabId action"),
+        }
+    }
+
+    #[test]
+    fn test_move_tab_without_tab_id() {
+        let cli_action = CliAction::MoveTab {
+            direction: Direction::Right,
+            tab_id: None,
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::MoveTab { direction } => {
+                assert!(matches!(direction, Direction::Right));
+            },
+            _ => panic!("Expected MoveTab action"),
+        }
+    }
+
+    // 28. ANSI flag tests
+
+    #[test]
+    fn test_edit_scrollback_with_ansi_flag() {
+        let cli_action = CliAction::EditScrollback {
+            pane_id: None,
+            ansi: true,
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        assert!(matches!(actions[0], Action::EditScrollback { ansi: true }));
+    }
+
+    #[test]
+    fn test_edit_scrollback_with_pane_id_and_ansi() {
+        let cli_action = CliAction::EditScrollback {
+            pane_id: Some("terminal_15".to_string()),
+            ansi: true,
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::EditScrollbackByPaneId { pane_id, ansi } => {
+                assert_eq!(*pane_id, PaneId::Terminal(15));
+                assert!(*ansi);
+            },
+            _ => panic!("Expected EditScrollbackByPaneId action"),
+        }
+    }
+
+    #[test]
+    fn test_dump_screen_with_ansi_flag() {
+        let cli_action = CliAction::DumpScreen {
+            path: Some(PathBuf::from("/tmp/test")),
+            full: true,
+            pane_id: None,
+            ansi: true,
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::DumpScreen {
+                ansi,
+                include_scrollback,
+                ..
+            } => {
+                assert!(*ansi);
+                assert!(*include_scrollback);
+            },
+            _ => panic!("Expected DumpScreen action"),
+        }
+    }
+
+    #[test]
+    fn test_dump_screen_with_pane_id_and_ansi() {
+        let cli_action = CliAction::DumpScreen {
+            path: None,
+            full: false,
+            pane_id: Some("terminal_5".to_string()),
+            ansi: true,
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::DumpScreen { pane_id, ansi, .. } => {
+                assert_eq!(*pane_id, Some(PaneId::Terminal(5)));
+                assert!(*ansi);
+            },
+            _ => panic!("Expected DumpScreen action"),
+        }
     }
 }

@@ -245,6 +245,33 @@ message Action {
     HideFloatingPanesAction hide_floating_panes = 107;
     SetPaneColorAction set_pane_color = 108;
     PasteAction paste = 109;
+    // Pane-targeting
+    ScrollUpByPaneIdAction scroll_up_by_pane_id = 110;
+    ScrollDownByPaneIdAction scroll_down_by_pane_id = 111;
+    ScrollToTopByPaneIdAction scroll_to_top_by_pane_id = 112;
+    ScrollToBottomByPaneIdAction scroll_to_bottom_by_pane_id = 113;
+    PageScrollUpByPaneIdAction page_scroll_up_by_pane_id = 114;
+    PageScrollDownByPaneIdAction page_scroll_down_by_pane_id = 115;
+    HalfPageScrollUpByPaneIdAction half_page_scroll_up_by_pane_id = 116;
+    HalfPageScrollDownByPaneIdAction half_page_scroll_down_by_pane_id = 117;
+    ResizeByPaneIdAction resize_by_pane_id = 118;
+    MovePaneByPaneIdAction move_pane_by_pane_id = 119;
+    MovePaneBackwardsByPaneIdAction move_pane_backwards_by_pane_id = 120;
+    ClearScreenByPaneIdAction clear_screen_by_pane_id = 121;
+    EditScrollbackByPaneIdAction edit_scrollback_by_pane_id = 122;
+    ToggleFullscreenByPaneIdAction toggle_fullscreen_by_pane_id = 123;
+    TogglePaneEmbedOrFloatingByPaneIdAction toggle_pane_embed_or_floating_by_pane_id = 124;
+    CloseFocusByPaneIdAction close_focus_by_pane_id = 125;
+    RenamePaneByPaneIdAction rename_pane_by_pane_id = 126;
+    UndoRenamePaneByPaneIdAction undo_rename_pane_by_pane_id = 127;
+    TogglePanePinnedByPaneIdAction toggle_pane_pinned_by_pane_id = 128;
+    // Tab-targeting
+    UndoRenameTabByTabIdAction undo_rename_tab_by_tab_id = 129;
+    ToggleActiveSyncTabByTabIdAction toggle_active_sync_tab_by_tab_id = 130;
+    ToggleFloatingPanesByTabIdAction toggle_floating_panes_by_tab_id = 131;
+    PreviousSwapLayoutByTabIdAction previous_swap_layout_by_tab_id = 132;
+    NextSwapLayoutByTabIdAction next_swap_layout_by_tab_id = 133;
+    MoveTabByTabIdAction move_tab_by_tab_id = 134;
   }
 }
 
@@ -259,7 +286,9 @@ message MovePaneBackwardsAction {}
 message ClearScreenAction {}
 message DumpLayoutAction {}
 message SaveSessionAction {}
-message EditScrollbackAction {}
+message EditScrollbackAction {
+  bool ansi = 1;
+}
 message ScrollUpAction {}
 message ScrollDownAction {}
 message ScrollToBottomAction {}
@@ -393,6 +422,7 @@ message DumpScreenAction {
   bool include_scrollback = 2;
   optional PaneId pane_id = 3;
   bool dump_to_stdout = 4;
+  bool ansi = 5;
 }
 
 message ScrollUpAtAction {
@@ -1148,3 +1178,35 @@ enum WebSharing {
   WEB_SHARING_OFF = 2;
   WEB_SHARING_DISABLED = 3;
 }
+
+// Pane-targeting action messages
+message ScrollUpByPaneIdAction { PaneId pane_id = 1; }
+message ScrollDownByPaneIdAction { PaneId pane_id = 1; }
+message ScrollToTopByPaneIdAction { PaneId pane_id = 1; }
+message ScrollToBottomByPaneIdAction { PaneId pane_id = 1; }
+message PageScrollUpByPaneIdAction { PaneId pane_id = 1; }
+message PageScrollDownByPaneIdAction { PaneId pane_id = 1; }
+message HalfPageScrollUpByPaneIdAction { PaneId pane_id = 1; }
+message HalfPageScrollDownByPaneIdAction { PaneId pane_id = 1; }
+message ResizeByPaneIdAction { PaneId pane_id = 1; ResizeAction resize_action = 2; }
+message MovePaneByPaneIdAction { PaneId pane_id = 1; optional Direction direction = 2; }
+message MovePaneBackwardsByPaneIdAction { PaneId pane_id = 1; }
+message ClearScreenByPaneIdAction { PaneId pane_id = 1; }
+message EditScrollbackByPaneIdAction {
+  PaneId pane_id = 1;
+  bool ansi = 2;
+}
+message ToggleFullscreenByPaneIdAction { PaneId pane_id = 1; }
+message TogglePaneEmbedOrFloatingByPaneIdAction { PaneId pane_id = 1; }
+message CloseFocusByPaneIdAction { PaneId pane_id = 1; }
+message RenamePaneByPaneIdAction { PaneId pane_id = 1; bytes name = 2; }
+message UndoRenamePaneByPaneIdAction { PaneId pane_id = 1; }
+message TogglePanePinnedByPaneIdAction { PaneId pane_id = 1; }
+
+// Tab-targeting action messages
+message UndoRenameTabByTabIdAction { uint64 id = 1; }
+message ToggleActiveSyncTabByTabIdAction { uint64 id = 1; }
+message ToggleFloatingPanesByTabIdAction { uint64 id = 1; }
+message PreviousSwapLayoutByTabIdAction { uint64 id = 1; }
+message NextSwapLayoutByTabIdAction { uint64 id = 1; }
+message MoveTabByTabIdAction { uint64 id = 1; Direction direction = 2; }

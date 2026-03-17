@@ -363,6 +363,7 @@ pub struct Output {
     styled_underlines: bool,
     osc8_hyperlinks: bool,
     pane_render_report: PaneRenderReport,
+    pub collect_ansi_pane_contents: bool,
     cursor_coordinates: Option<(usize, usize)>,
 }
 
@@ -670,6 +671,18 @@ impl Output {
     ) {
         self.pane_render_report
             .add_pane_contents(client_ids, pane_id.into(), pane_contents);
+    }
+    pub fn add_pane_contents_with_ansi(
+        &mut self,
+        client_ids: &[ClientId],
+        pane_id: PaneId,
+        pane_contents: PaneContents,
+    ) {
+        self.pane_render_report.add_pane_contents_with_ansi(
+            client_ids,
+            pane_id.into(),
+            pane_contents,
+        );
     }
     pub fn drain_pane_render_report(&mut self) -> PaneRenderReport {
         let empty_pane_render_report = PaneRenderReport::default();

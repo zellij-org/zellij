@@ -760,8 +760,7 @@ pub(crate) fn plugin_thread_main(
                 wasm_bridge.update_plugins(updates, shutdown_send.clone())?;
             },
             PluginInstruction::PluginSubscribedToEvents(_plugin_id, _client_id, _events) => {
-                // no-op, there used to be stuff we did here - now there isn't, but we might want
-                // to add stuff here in the future
+                wasm_bridge.notify_screen_of_ansi_subscription_change();
             },
             PluginInstruction::PermissionRequestResult(
                 plugin_id,

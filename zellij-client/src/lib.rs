@@ -342,6 +342,7 @@ impl ClientInfo {
 pub(crate) enum InputInstruction {
     KeyEvent(InputEvent, Vec<u8>),
     KeyWithModifierEvent(KeyWithModifier, Vec<u8>, bool), // bool = is_kitty_keyboard_protocol
+    #[allow(dead_code)] // constructed in stdin_handler_windows.rs (Windows-only)
     MouseEvent(zellij_utils::input::mouse::MouseEvent),
     AnsiStdinInstructions(Vec<AnsiStdinInstruction>),
     StartedParsing,
