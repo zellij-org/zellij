@@ -557,34 +557,6 @@ impl SessionState {
     pub fn set_client_data(&mut self, client_id: ClientId, size: Size, is_web_client: bool) {
         self.clients.insert(client_id, Some((size, is_web_client)));
     }
-    pub fn min_client_terminal_size(&self) -> Option<Size> {
-        // None if there are no client sizes
-        let mut rows: Vec<usize> = self
-            .clients
-            .values()
-            .filter_map(|size_and_is_web_client| {
-                size_and_is_web_client.map(|(size, _is_web_client)| size.rows)
-            })
-            .collect();
-        rows.sort_unstable();
-        let mut cols: Vec<usize> = self
-            .clients
-            .values()
-            .filter_map(|size_and_is_web_client| {
-                size_and_is_web_client.map(|(size, _is_web_client)| size.cols)
-            })
-            .collect();
-        cols.sort_unstable();
-        let min_rows = rows.first();
-        let min_cols = cols.first();
-        match (min_rows, min_cols) {
-            (Some(min_rows), Some(min_cols)) => Some(Size {
-                rows: *min_rows,
-                cols: *min_cols,
-            }),
-            _ => None,
-        }
-    }
     pub fn client_ids(&self) -> Vec<ClientId> {
         self.clients.keys().copied().collect()
     }
@@ -980,20 +952,12 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     client_attributes.size,
                     is_web_client,
                 );
-                let min_size = session_state
-                    .read()
-                    .unwrap()
-                    .min_client_terminal_size()
-                    .unwrap();
-                session_data
-                    .senders
-                    .send_to_screen(ScreenInstruction::TerminalResize(min_size))
-                    .unwrap();
                 session_data
                     .senders
                     .send_to_screen(ScreenInstruction::AddClient(
                         client_id,
                         is_web_client,
+                        client_attributes.size,
                         tab_position_to_focus,
                         pane_id_to_focus,
                     ))
@@ -1149,17 +1113,6 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     // Handle regular client removal
                     remove_client!(client_id, os_input, session_state);
                     drop(completion_tx); // prevent deadlock with route thread
-                    if let Some(min_size) = session_state.read().unwrap().min_client_terminal_size()
-                    {
-                        session_data
-                            .write()
-                            .unwrap()
-                            .as_ref()
-                            .unwrap()
-                            .senders
-                            .send_to_screen(ScreenInstruction::TerminalResize(min_size))
-                            .unwrap();
-                    }
                     session_data
                         .write()
                         .unwrap()
@@ -1223,17 +1176,6 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 } else {
                     // Handle regular client removal
                     remove_client!(client_id, os_input, session_state);
-                    if let Some(min_size) = session_state.read().unwrap().min_client_terminal_size()
-                    {
-                        session_data
-                            .write()
-                            .unwrap()
-                            .as_ref()
-                            .unwrap()
-                            .senders
-                            .send_to_screen(ScreenInstruction::TerminalResize(min_size))
-                            .unwrap();
-                    }
                     session_data
                         .write()
                         .unwrap()
@@ -1260,16 +1202,6 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     },
                 );
                 remove_client!(client_id, os_input, session_state);
-                if let Some(min_size) = session_state.read().unwrap().min_client_terminal_size() {
-                    session_data
-                        .write()
-                        .unwrap()
-                        .as_ref()
-                        .unwrap()
-                        .senders
-                        .send_to_screen(ScreenInstruction::TerminalResize(min_size))
-                        .unwrap();
-                }
             },
             ServerInstruction::KillSession => {
                 let client_ids = session_state.read().unwrap().client_ids();
@@ -1318,17 +1250,6 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                                      // by us having to wait for session_data to send cleanup
                                      // signals to the various threads
                 for client_id in client_ids {
-                    if let Some(min_size) = session_state.read().unwrap().min_client_terminal_size()
-                    {
-                        session_data
-                            .write()
-                            .unwrap()
-                            .as_ref()
-                            .unwrap()
-                            .senders
-                            .send_to_screen(ScreenInstruction::TerminalResize(min_size))
-                            .unwrap();
-                    }
                     session_data
                         .write()
                         .unwrap()
@@ -1468,18 +1389,6 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     );
                     remove_client!(client_id, os_input, session_state);
                     drop(completion_tx); // do not deadlock with route thread
-
-                    if let Some(min_size) = session_state.read().unwrap().min_client_terminal_size()
-                    {
-                        session_data
-                            .write()
-                            .unwrap()
-                            .as_ref()
-                            .unwrap()
-                            .senders
-                            .send_to_screen(ScreenInstruction::TerminalResize(min_size))
-                            .unwrap();
-                    }
                     session_data
                         .write()
                         .unwrap()
