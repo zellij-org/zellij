@@ -503,7 +503,7 @@ pub(crate) fn route_action(
             let new_pane_placement = match direction {
                 Some(direction) => NewPanePlacement::Tiled {
                     direction: Some(direction),
-                    split_size: None,
+                    size: None,
                     borderless: None,
                 },
                 None => NewPanePlacement::NoPreference { borderless: None },
@@ -612,7 +612,7 @@ pub(crate) fn route_action(
                     } else {
                         NewPanePlacement::Tiled {
                             direction: split_direction,
-                            split_size: None,
+                            size: None,
                             borderless: None,
                         }
                     },
@@ -768,7 +768,7 @@ pub(crate) fn route_action(
         },
         Action::NewTiledPane {
             direction,
-            split_size,
+            size,
             command: run_command,
             pane_name: name,
             near_current_pane,
@@ -788,7 +788,7 @@ pub(crate) fn route_action(
                     name,
                     NewPanePlacement::Tiled {
                         direction,
-                        split_size,
+                        size,
                         borderless,
                     },
                     false,
@@ -848,7 +848,7 @@ pub(crate) fn route_action(
                     None,
                     NewPanePlacement::Tiled {
                         direction: command.direction,
-                        split_size: None,
+                        size: None,
                         borderless: None,
                     },
                     false,

@@ -18,7 +18,7 @@ use zellij_utils::input::command::{RunCommand, TerminalAction};
 use zellij_utils::input::config::Config;
 use zellij_utils::input::layout::{
     FloatingPaneLayout, Layout, PercentOrFixed, PluginAlias, PluginUserConfiguration, Run,
-    RunPlugin, RunPluginLocation, RunPluginOrAlias, SplitDirection, SplitSize, TiledPaneLayout,
+    RunPlugin, RunPluginLocation, RunPluginOrAlias, SplitDirection, TiledPaneLayout,
 };
 use zellij_utils::input::mouse::MouseEvent;
 use zellij_utils::input::options::Options;
@@ -1907,7 +1907,7 @@ fn group_panes_following_focus() {
                     true,
                     NewPanePlacement::Tiled {
                         direction: None,
-                        split_size: None,
+                        size: None,
                         borderless: None,
                     },
                     Some(client_id),
@@ -1969,7 +1969,7 @@ fn break_group_with_mouse() {
                     true,
                     NewPanePlacement::Tiled {
                         direction: None,
-                        split_size: None,
+                        size: None,
                         borderless: None,
                     },
                     Some(client_id),

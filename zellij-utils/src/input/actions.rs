@@ -2,8 +2,8 @@
 
 pub use super::command::{OpenFilePayload, RunCommandAction};
 use super::layout::{
-    FloatingPaneLayout, Layout, PluginAlias, RunPlugin, RunPluginLocation, RunPluginOrAlias,
-    SplitSize, SwapFloatingLayout, SwapTiledLayout, TabLayoutInfo, TiledPaneLayout,
+    FloatingPaneLayout, Layout, PercentOrFixed, PluginAlias, RunPlugin, RunPluginLocation,
+    RunPluginOrAlias, SwapFloatingLayout, SwapTiledLayout, TabLayoutInfo, TiledPaneLayout,
 };
 use crate::cli::CliAction;
 use crate::data::{
@@ -231,7 +231,7 @@ pub enum Action {
     /// Open a new tiled (embedded, non-floating) pane
     NewTiledPane {
         direction: Option<Direction>,
-        split_size: Option<SplitSize>,
+        size: Option<PercentOrFixed>,
         command: Option<RunCommandAction>,
         pane_name: Option<String>,
         near_current_pane: bool,
@@ -561,18 +561,17 @@ impl Action {
                 borderless,
             } => {
                 let current_dir = get_current_dir();
-                // Same convention as layout/floating: bare number = fixed (rows/cols), "40%" = percent
-                let split_size = match size.as_deref() {
+                let size = match size.as_deref() {
                     None => None,
                     Some(s) => {
-                        let parsed = SplitSize::from_str(s.trim()).map_err(|e| {
+                        let parsed = PercentOrFixed::from_str(s.trim()).map_err(|e| {
                             format!(
                                 "Invalid --size: {}. Use a number for fixed size (e.g. 40) or a \
                                  percentage (e.g. 40%)",
                                 e
                             )
                         })?;
-                        if let SplitSize::Percent(p) = parsed {
+                        if let PercentOrFixed::Percent(p) = parsed {
                             if !(1..=99).contains(&p) {
                                 return Err(
                                     "Invalid --size, percentage must be between 1 and 99 (e.g. 40%)"
@@ -631,7 +630,7 @@ impl Action {
                     } else {
                         NewPanePlacement::Tiled {
                             direction,
-                            split_size: None,
+                            size: None,
                             borderless,
                         }
                     };
@@ -736,7 +735,7 @@ impl Action {
                     } else {
                         Ok(vec![Action::NewTiledPane {
                             direction,
-                            split_size,
+                            size,
                             command: Some(run_command_action),
                             pane_name: name,
                             near_current_pane,
@@ -770,7 +769,7 @@ impl Action {
                     } else {
                         Ok(vec![Action::NewTiledPane {
                             direction,
-                            split_size,
+                            size,
                             command: None,
                             pane_name: name,
                             near_current_pane,

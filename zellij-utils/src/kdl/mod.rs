@@ -802,7 +802,7 @@ impl Action {
             },
             Action::NewTiledPane {
                 direction,
-                split_size: _,
+                size: _,
                 command: run_command_action,
                 pane_name: name,
                 near_current_pane: false,
@@ -1942,7 +1942,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 } else {
                     Ok(Action::NewTiledPane {
                         direction,
-                        split_size: None,
+                        size: None,
                         command: Some(run_command_action),
                         pane_name: name,
                         near_current_pane: false,
