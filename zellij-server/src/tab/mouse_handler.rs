@@ -113,6 +113,11 @@ enum MouseAction {
         pane_id: PaneId,
         position: Position,
     },
+    FocusPaneAndClickThrough {
+        pane_id: PaneId,
+        position: Position,
+        event: MouseEvent,
+    },
     ShowFloatingPanesAndFocus {
         pane_id: PaneId,
     },
@@ -152,6 +157,10 @@ enum MouseAction {
     UpdateHover {
         pane_id: Option<PaneId>,
         position: Option<Position>,
+    },
+    FocusOnHover {
+        pane_id: PaneId,
+        position: Position,
     },
     SendToTerminal {
         pane_id: PaneId,
@@ -205,6 +214,8 @@ struct MouseEventContext {
     clicked_pane: Option<ClickedPaneDetails>,
     pinned_selectable: Option<PaneId>,
     pinned_unselectable: Option<PaneId>,
+    focus_follows_mouse: bool,
+    mouse_click_through: bool,
 }
 
 fn edge_and_delta_to_strategies(
@@ -326,7 +337,7 @@ fn edge_and_delta_to_strategies(
 pub struct MouseHandler;
 
 impl MouseHandler {
-    pub fn handle_mouse_event(
+    pub(crate) fn handle_mouse_event(
         tab: &mut Tab,
         event: &MouseEvent,
         client_id: ClientId,
@@ -386,6 +397,8 @@ impl MouseHandler {
             clicked_pane,
             pinned_selectable,
             pinned_unselectable,
+            focus_follows_mouse: tab.focus_follows_mouse,
+            mouse_click_through: tab.mouse_click_through,
         })
     }
 
@@ -695,6 +708,11 @@ impl MouseHandler {
                 pane_id: _,
                 position,
             } => Self::execute_focus_pane(tab, position, client_id),
+            MouseAction::FocusPaneAndClickThrough {
+                pane_id: _,
+                position,
+                event: click_event,
+            } => Self::execute_focus_pane_and_click_through(tab, position, click_event, client_id),
             MouseAction::ShowFloatingPanesAndFocus { pane_id } => {
                 tab.show_floating_panes();
                 tab.floating_panes.focus_pane(pane_id, client_id);
@@ -759,6 +777,9 @@ impl MouseHandler {
             },
             MouseAction::UpdateHover { pane_id, position } => {
                 Self::execute_update_hover(tab, pane_id, position, client_id)
+            },
+            MouseAction::FocusOnHover { pane_id, position } => {
+                Self::execute_focus_on_hover(tab, pane_id, position, client_id)
             },
             MouseAction::SendToTerminal { pane_id, event } => {
                 Self::execute_send_to_terminal(tab, pane_id, event, client_id)
@@ -836,6 +857,66 @@ impl MouseHandler {
         } else {
             Ok(MouseEffect::default())
         }
+    }
+
+    fn execute_focus_pane_and_click_through(
+        tab: &mut Tab,
+        position: Position,
+        click_event: MouseEvent,
+        client_id: ClientId,
+    ) -> Result<MouseEffect> {
+        let err_context = || "failed to focus pane and click through";
+
+        // Step 1: Focus the pane (same as execute_focus_pane, but without the
+        // floating-pane move-on-click behavior — we want to send the click into
+        // the pane, not start moving it)
+        clear_hover_for_client(tab, client_id);
+        Self::focus_pane_at(tab, &position, client_id).with_context(err_context)?;
+
+        // Handle unselectable panes the same way execute_focus_pane does
+        if let Some(pane_at_position) = Self::unselectable_pane_at_position(tab, &position) {
+            let relative_position = pane_at_position.relative_position(&position);
+            pane_at_position.start_selection(&relative_position, client_id);
+            return Ok(MouseEffect::state_changed());
+        }
+
+        // Step 2: Now that the pane is focused, dispatch the click as if the
+        // user clicked on the (now-active) pane.
+        let active_pane_id = tab
+            .get_active_pane_id(client_id)
+            .ok_or_else(|| anyhow!("Failed to find active pane"))
+            .with_context(err_context)?;
+
+        let pane = tab
+            .get_pane_with_id(active_pane_id)
+            .ok_or_else(|| anyhow!("Failed to find pane {active_pane_id:?}"))
+            .with_context(err_context)?;
+
+        let terminal_wants_mouse = pane.terminal_emulator_wants_mouse();
+
+        if terminal_wants_mouse {
+            // Terminal wants mouse events — send the click to it
+            let relative_position = pane.relative_position(&click_event.position);
+            let mut event_for_pane = click_event;
+            event_for_pane.position = relative_position;
+            if let Some(mouse_event) = pane.mouse_event(&event_for_pane, client_id) {
+                if !pane.position_is_on_frame(&click_event.position) {
+                    tab.write_to_active_terminal(&None, mouse_event.into_bytes(), false, client_id)
+                        .with_context(err_context)?;
+                }
+            }
+        } else {
+            // Terminal does not want mouse — start text selection
+            if let Some(pane) = tab.get_pane_with_id_mut(active_pane_id) {
+                let relative_position = pane.relative_position(&position);
+                pane.start_selection(&relative_position, client_id);
+                if pane.supports_mouse_selection() {
+                    tab.selecting_with_mouse_in_pane = Some(active_pane_id);
+                }
+            }
+        }
+
+        Ok(MouseEffect::state_changed())
     }
 
     fn execute_end_selection(
@@ -928,6 +1009,60 @@ impl MouseHandler {
             }
         }
         Ok(MouseEffect::default())
+    }
+
+    fn execute_focus_on_hover(
+        tab: &mut Tab,
+        pane_id: PaneId,
+        position: Position,
+        client_id: ClientId,
+    ) -> Result<MouseEffect> {
+        let err_context = || format!("failed to focus pane on hover for client {client_id}");
+
+        // Only focus selectable panes
+        let is_selectable = tab
+            .get_pane_with_id(pane_id)
+            .map(|p| p.selectable())
+            .unwrap_or(false);
+        if !is_selectable {
+            // Fall back to normal hover behavior for unselectable panes
+            return Self::execute_update_hover(tab, Some(pane_id), Some(position), client_id);
+        }
+
+        // When floating panes are visible, only focus floating panes — tiled panes
+        // require an explicit click
+        let floating_visible = tab.floating_panes.panes_are_visible();
+        let is_floating = tab.floating_panes.get_pane(pane_id).is_some();
+        if floating_visible && !is_floating {
+            return Self::execute_update_hover(tab, Some(pane_id), Some(position), client_id);
+        }
+
+        // Skip stacked one-liner panes (collapsed panes in a stack) — only the
+        // expanded main pane in a stack should be focusable via hover
+        let is_stacked_one_liner = tab
+            .get_pane_with_id(pane_id)
+            .map(|p| {
+                let geom = p.current_geom();
+                geom.is_stacked() && geom.rows.is_fixed()
+            })
+            .unwrap_or(false);
+        if is_stacked_one_liner {
+            return Self::execute_update_hover(tab, Some(pane_id), Some(position), client_id);
+        }
+
+        // Skip if already focused
+        let active_pane_id = tab.get_active_pane_id(client_id);
+        if active_pane_id == Some(pane_id) {
+            return Self::execute_update_hover(tab, Some(pane_id), Some(position), client_id);
+        }
+
+        // Focus the pane
+        Self::focus_pane_at(tab, &position, client_id).with_context(err_context)?;
+
+        // Clear hover state since the pane is now focused
+        clear_hover_for_client(tab, client_id);
+
+        Ok(MouseEffect::state_changed())
     }
 
     fn execute_update_hover(
@@ -1212,10 +1347,18 @@ impl MouseHandler {
                 }
             }
 
-            return Ok(MouseAction::FocusPane {
-                pane_id: details.pane_id,
-                position: event.position,
-            });
+            if ctx.mouse_click_through && !ctx.focus_follows_mouse {
+                return Ok(MouseAction::FocusPaneAndClickThrough {
+                    pane_id: details.pane_id,
+                    position: event.position,
+                    event: *event,
+                });
+            } else {
+                return Ok(MouseAction::FocusPane {
+                    pane_id: details.pane_id,
+                    position: event.position,
+                });
+            }
         }
 
         if event.right {
@@ -1279,6 +1422,12 @@ impl MouseHandler {
                 return Ok(MouseAction::SendToTerminal {
                     pane_id,
                     event: *event,
+                });
+            }
+            if ctx.focus_follows_mouse {
+                return Ok(MouseAction::FocusOnHover {
+                    pane_id,
+                    position: event.position,
                 });
             }
             return Ok(MouseAction::UpdateHover {
@@ -1359,7 +1508,7 @@ impl MouseHandler {
         Ok(())
     }
 
-    pub fn handle_scrollwheel_up(
+    pub(crate) fn handle_scrollwheel_up(
         tab: &mut Tab,
         point: &Position,
         lines: usize,
@@ -1388,7 +1537,7 @@ impl MouseHandler {
         Ok(MouseEffect::default())
     }
 
-    pub fn handle_scrollwheel_down(
+    pub(crate) fn handle_scrollwheel_down(
         tab: &mut Tab,
         point: &Position,
         lines: usize,
@@ -1527,7 +1676,11 @@ impl MouseHandler {
         }
     }
 
-    pub fn set_mouse_selection_support(tab: &mut Tab, pane_id: PaneId, selection_support: bool) {
+    pub(crate) fn set_mouse_selection_support(
+        tab: &mut Tab,
+        pane_id: PaneId,
+        selection_support: bool,
+    ) {
         if let Some(pane) = tab.get_pane_with_id_mut(pane_id) {
             pane.set_mouse_selection_support(selection_support);
         }

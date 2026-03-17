@@ -102,4 +102,5 @@ message FailedToStartWebServerMsg {
 message SubscribeToPaneRendersMsg {
   repeated PaneId pane_ids = 1;
   optional uint32 scrollback = 2;
+  bool ansi = 3;
 }

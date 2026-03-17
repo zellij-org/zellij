@@ -342,6 +342,7 @@ impl ClientInfo {
 pub(crate) enum InputInstruction {
     KeyEvent(InputEvent, Vec<u8>),
     KeyWithModifierEvent(KeyWithModifier, Vec<u8>, bool), // bool = is_kitty_keyboard_protocol
+    #[allow(dead_code)] // constructed in stdin_handler_windows.rs (Windows-only)
     MouseEvent(zellij_utils::input::mouse::MouseEvent),
     AnsiStdinInstructions(Vec<AnsiStdinInstruction>),
     StartedParsing,
@@ -535,6 +536,8 @@ pub fn start_remote_client(
     token: Option<String>,
     remember: bool,
     forget: bool,
+    ca_cert: Option<std::path::PathBuf>,
+    insecure: bool,
     async_worker_tasks: Option<usize>,
 ) -> Result<Option<ConnectToSession>, RemoteClientError> {
     info!("Starting Zellij client!");
@@ -548,6 +551,8 @@ pub fn start_remote_client(
         token,
         remember,
         forget,
+        ca_cert.as_deref(),
+        insecure,
     )?;
 
     let reconnect_to_session = None;
@@ -584,6 +589,8 @@ pub fn start_remote_client(
         use zellij_utils::errors::handle_panic;
         let os_input = os_input.clone();
         Box::new(move |info| {
+            os_input.disable_mouse().non_fatal();
+            os_input.restore_console_mode();
             if let Ok(()) = os_input.unset_raw_mode() {
                 handle_panic::<ClientInstruction>(info, None);
             }
@@ -591,13 +598,14 @@ pub fn start_remote_client(
     });
 
     let reset_controlling_terminal_state = |e: String, exit_status: i32| {
+        os_input.disable_mouse().non_fatal();
         os_input.unset_raw_mode().unwrap();
+        os_input.restore_console_mode();
         let goto_start_of_last_line = format!("\u{1b}[{};{}H", full_screen_ws.rows, 1);
         let restore_alternate_screen = "\u{1b}[?1049l";
         let exit_kitty_keyboard_mode = "\u{1b}[<1u";
         let reset_style = "\u{1b}[m";
         let show_cursor = "\u{1b}[?25h";
-        os_input.disable_mouse().non_fatal();
         let error = format!(
             "{}{}{}{}\n{}{}\n",
             reset_style,
@@ -892,6 +900,8 @@ pub fn start_client(
         let send_client_instructions = send_client_instructions.clone();
         let os_input = os_input.clone();
         Box::new(move |info| {
+            os_input.disable_mouse().non_fatal();
+            os_input.restore_console_mode();
             if let Ok(()) = os_input.unset_raw_mode() {
                 handle_panic(info, Some(&send_client_instructions));
             }
@@ -1011,10 +1021,11 @@ pub fn start_client(
         .unwrap();
 
     let handle_error = |backtrace: String| {
+        os_input.disable_mouse().non_fatal();
         os_input.unset_raw_mode().unwrap();
+        os_input.restore_console_mode();
         let goto_start_of_last_line = format!("\u{1b}[{};{}H", full_screen_ws.rows, 1);
         let restore_snapshot = "\u{1b}[?1049l";
-        os_input.disable_mouse().non_fatal();
         let error = format!(
             "{}\n{}{}\n",
             restore_snapshot, goto_start_of_last_line, backtrace
@@ -1197,6 +1208,7 @@ pub fn start_client(
         os_input.disable_mouse().non_fatal();
         info!("{}", exit_msg);
         os_input.unset_raw_mode().unwrap();
+        os_input.restore_console_mode();
         let mut stdout = os_input.get_stdout_writer();
         let exit_kitty_keyboard_mode = "\u{1b}[<1u";
         if !explicitly_disable_kitty_keyboard_protocol {

@@ -311,6 +311,7 @@ impl App {
                     )
                     .unwrap(),
                 )]);
+                let _ = show_floating_panes(None);
             }
         }
     }

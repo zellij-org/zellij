@@ -151,6 +151,7 @@ pub enum ClientToServerMsg {
     SubscribeToPaneRenders {
         pane_ids: Vec<PaneId>,
         scrollback: Option<usize>,
+        ansi: bool,
     },
 }
 

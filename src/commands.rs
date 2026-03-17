@@ -247,7 +247,7 @@ pub(crate) fn create_auth_token(name: Option<String>, read_only: bool) -> Result
     create_token(name, read_only)
         .map(|(token, token_name)| {
             let access_type = if read_only { " (read-only)" } else { "" };
-            format!("{}: {}{}", token, token_name, access_type)
+            format!("{}: {}{}", token_name, token, access_type)
         })
         .map_err(|e| e.to_string())
 }
@@ -716,6 +716,8 @@ pub(crate) fn start_client(opts: CliArgs) {
                     token: None,
                     remember: false,
                     forget: false,
+                    ca_cert: None,
+                    insecure: false,
                 }));
             } else {
                 opts.command = None;
@@ -748,6 +750,8 @@ pub(crate) fn start_client(opts: CliArgs) {
             token,
             remember,
             forget,
+            ca_cert,
+            insecure,
         })) = opts.command.clone()
         {
             if let Some(remote_session_url) = session_name.as_ref().and_then(|s| {
@@ -774,6 +778,8 @@ pub(crate) fn start_client(opts: CliArgs) {
                     token,
                     remember,
                     forget,
+                    ca_cert,
+                    insecure,
                     config_options.client_async_worker_tasks,
                 ) {
                     eprintln!("{}", e);

@@ -118,9 +118,11 @@ impl From<ClientToServerMsg> for ProtoClientToServerMsg {
             ClientToServerMsg::SubscribeToPaneRenders {
                 pane_ids,
                 scrollback,
+                ansi,
             } => client_to_server_msg::Message::SubscribeToPaneRenders(SubscribeToPaneRendersMsg {
                 pane_ids: pane_ids.into_iter().map(|id| id.into()).collect(),
                 scrollback: scrollback.map(|s| s as u32),
+                ansi,
             }),
         };
 
@@ -242,6 +244,7 @@ impl TryFrom<ProtoClientToServerMsg> for ClientToServerMsg {
                 Ok(ClientToServerMsg::SubscribeToPaneRenders {
                     pane_ids: pane_ids?,
                     scrollback: msg.scrollback.map(|s| s as usize),
+                    ansi: msg.ansi,
                 })
             },
             None => Err(anyhow!("Empty ClientToServerMsg message")),
@@ -673,6 +676,8 @@ impl From<crate::input::options::Options>
             post_command_discovery_hook: options.post_command_discovery_hook,
             client_async_worker_tasks: options.client_async_worker_tasks.map(|v| v as u64),
             visual_bell: options.visual_bell,
+            focus_follows_mouse: options.focus_follows_mouse,
+            mouse_click_through: options.mouse_click_through,
         }
     }
 }
@@ -766,6 +771,8 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
             post_command_discovery_hook: options.post_command_discovery_hook,
             client_async_worker_tasks: options.client_async_worker_tasks.map(|v| v as usize),
             visual_bell: options.visual_bell,
+            focus_follows_mouse: options.focus_follows_mouse,
+            mouse_click_through: options.mouse_click_through,
         })
     }
 }
@@ -776,35 +783,143 @@ impl From<crate::input::actions::Action>
 {
     fn from(action: crate::input::actions::Action) -> Self {
         use crate::client_server_contract::client_server_contract::{
-            action::ActionType, BreakPaneAction, BreakPaneLeftAction, BreakPaneRightAction,
-            ChangeFloatingPaneCoordinatesAction, ClearScreenAction, CliPipeAction,
-            CloseFocusAction, ClosePluginPaneAction, CloseTabAction, CloseTabByIdAction,
-            CloseTerminalPaneAction, ConfirmAction, CopyAction, CurrentTabInfoAction, DenyAction,
-            DetachAction, DumpLayoutAction, DumpScreenAction, EditFileAction, EditScrollbackAction,
-            FocusNextPaneAction, FocusPluginPaneWithIdAction, FocusPreviousPaneAction,
-            FocusTerminalPaneWithIdAction, GoToNextTabAction, GoToPreviousTabAction, GoToTabAction,
-            GoToTabByIdAction, GoToTabNameAction, HalfPageScrollDownAction, HalfPageScrollUpAction,
-            HideFloatingPanesAction, KeybindPipeAction, LaunchOrFocusPluginAction,
-            LaunchPluginAction, ListClientsAction, ListPanesAction, ListTabsAction,
-            MouseEventAction, MoveFocusAction, MoveFocusOrTabAction, MovePaneAction,
-            MovePaneBackwardsAction, MoveTabAction, NewBlockingPaneAction, NewFloatingPaneAction,
-            NewFloatingPluginPaneAction, NewInPlacePaneAction, NewInPlacePluginPaneAction,
-            NewPaneAction, NewStackedPaneAction, NewTabAction, NewTiledPaneAction,
-            NewTiledPluginPaneAction, NextSwapLayoutAction, NoOpAction, OverrideLayoutAction,
-            PageScrollDownAction, PageScrollUpAction, PaneIdWithPlugin, PaneNameInputAction,
-            PasteAction, PreviousSwapLayoutAction, QueryTabNamesAction, QuitAction,
-            RenamePluginPaneAction, RenameSessionAction, RenameTabAction, RenameTabByIdAction,
-            RenameTerminalPaneAction, ResizeAction, RunAction, SaveSessionAction, ScrollDownAction,
-            ScrollDownAtAction, ScrollToBottomAction, ScrollToTopAction, ScrollUpAction,
-            ScrollUpAtAction, SearchAction, SearchInputAction, SearchToggleOptionAction,
-            SetPaneBorderlessAction, SetPaneColorAction, ShowFloatingPanesAction,
-            SkipConfirmAction, StackPanesAction, StartOrReloadPluginAction, SwitchFocusAction,
-            SwitchModeForAllClientsAction, SwitchSessionAction, SwitchToModeAction,
-            TabNameInputAction, ToggleActiveSyncTabAction, ToggleFloatingPanesAction,
-            ToggleFocusFullscreenAction, ToggleGroupMarkingAction, ToggleMouseModeAction,
-            TogglePaneBorderlessAction, TogglePaneEmbedOrFloatingAction, TogglePaneFramesAction,
-            TogglePaneInGroupAction, TogglePanePinnedAction, ToggleTabAction, UndoRenamePaneAction,
-            UndoRenameTabAction, WriteAction, WriteCharsAction, WriteCharsToPaneIdAction,
+            action::ActionType,
+            BreakPaneAction,
+            BreakPaneLeftAction,
+            BreakPaneRightAction,
+            ChangeFloatingPaneCoordinatesAction,
+            ClearScreenAction,
+            ClearScreenByPaneIdAction,
+            CliPipeAction,
+            CloseFocusAction,
+            CloseFocusByPaneIdAction,
+            ClosePluginPaneAction,
+            CloseTabAction,
+            CloseTabByIdAction,
+            CloseTerminalPaneAction,
+            ConfirmAction,
+            CopyAction,
+            CurrentTabInfoAction,
+            DenyAction,
+            DetachAction,
+            DumpLayoutAction,
+            DumpScreenAction,
+            EditFileAction,
+            EditScrollbackAction,
+            EditScrollbackByPaneIdAction,
+            FocusNextPaneAction,
+            FocusPluginPaneWithIdAction,
+            FocusPreviousPaneAction,
+            FocusTerminalPaneWithIdAction,
+            GoToNextTabAction,
+            GoToPreviousTabAction,
+            GoToTabAction,
+            GoToTabByIdAction,
+            GoToTabNameAction,
+            HalfPageScrollDownAction,
+            HalfPageScrollDownByPaneIdAction,
+            HalfPageScrollUpAction,
+            HalfPageScrollUpByPaneIdAction,
+            HideFloatingPanesAction,
+            KeybindPipeAction,
+            LaunchOrFocusPluginAction,
+            LaunchPluginAction,
+            ListClientsAction,
+            ListPanesAction,
+            ListTabsAction,
+            MouseEventAction,
+            MoveFocusAction,
+            MoveFocusOrTabAction,
+            MovePaneAction,
+            MovePaneBackwardsAction,
+            MovePaneBackwardsByPaneIdAction,
+            MovePaneByPaneIdAction,
+            MoveTabAction,
+            MoveTabByTabIdAction,
+            NewBlockingPaneAction,
+            NewFloatingPaneAction,
+            NewFloatingPluginPaneAction,
+            NewInPlacePaneAction,
+            NewInPlacePluginPaneAction,
+            NewPaneAction,
+            NewStackedPaneAction,
+            NewTabAction,
+            NewTiledPaneAction,
+            NewTiledPluginPaneAction,
+            NextSwapLayoutAction,
+            NextSwapLayoutByTabIdAction,
+            NoOpAction,
+            OverrideLayoutAction,
+            PageScrollDownAction,
+            PageScrollDownByPaneIdAction,
+            PageScrollUpAction,
+            PageScrollUpByPaneIdAction,
+            PaneIdWithPlugin,
+            PaneNameInputAction,
+            PasteAction,
+            PreviousSwapLayoutAction,
+            PreviousSwapLayoutByTabIdAction,
+            QueryTabNamesAction,
+            QuitAction,
+            RenamePaneByPaneIdAction,
+            RenamePluginPaneAction,
+            RenameSessionAction,
+            RenameTabAction,
+            RenameTabByIdAction,
+            RenameTerminalPaneAction,
+            ResizeAction,
+            ResizeByPaneIdAction,
+            RunAction,
+            SaveSessionAction,
+            ScrollDownAction,
+            ScrollDownAtAction,
+            ScrollDownByPaneIdAction,
+            ScrollToBottomAction,
+            ScrollToBottomByPaneIdAction,
+            ScrollToTopAction,
+            ScrollToTopByPaneIdAction,
+            ScrollUpAction,
+            ScrollUpAtAction,
+            // Pane-targeting
+            ScrollUpByPaneIdAction,
+            SearchAction,
+            SearchInputAction,
+            SearchToggleOptionAction,
+            SetPaneBorderlessAction,
+            SetPaneColorAction,
+            ShowFloatingPanesAction,
+            SkipConfirmAction,
+            StackPanesAction,
+            StartOrReloadPluginAction,
+            SwitchFocusAction,
+            SwitchModeForAllClientsAction,
+            SwitchSessionAction,
+            SwitchToModeAction,
+            TabNameInputAction,
+            ToggleActiveSyncTabAction,
+            ToggleActiveSyncTabByTabIdAction,
+            ToggleFloatingPanesAction,
+            ToggleFloatingPanesByTabIdAction,
+            ToggleFocusFullscreenAction,
+            ToggleFullscreenByPaneIdAction,
+            ToggleGroupMarkingAction,
+            ToggleMouseModeAction,
+            TogglePaneBorderlessAction,
+            TogglePaneEmbedOrFloatingAction,
+            TogglePaneEmbedOrFloatingByPaneIdAction,
+            TogglePaneFramesAction,
+            TogglePaneInGroupAction,
+            TogglePanePinnedAction,
+            TogglePanePinnedByPaneIdAction,
+            ToggleTabAction,
+            UndoRenamePaneAction,
+            UndoRenamePaneByPaneIdAction,
+            UndoRenameTabAction,
+            // Tab-targeting
+            UndoRenameTabByTabIdAction,
+            WriteAction,
+            WriteCharsAction,
+            WriteCharsToPaneIdAction,
             WriteToPaneIdAction,
         };
         use std::collections::HashMap;
@@ -891,6 +1006,7 @@ impl From<crate::input::actions::Action>
                 file_path,
                 include_scrollback,
                 pane_id,
+                ansi,
             } => {
                 let dump_to_stdout = file_path.is_none();
                 ActionType::DumpScreen(DumpScreenAction {
@@ -898,16 +1014,14 @@ impl From<crate::input::actions::Action>
                     include_scrollback,
                     pane_id: pane_id.map(|p| p.into()),
                     dump_to_stdout,
+                    ansi,
                 })
             },
             crate::input::actions::Action::DumpLayout => {
                 ActionType::DumpLayout(DumpLayoutAction {})
             },
-            crate::input::actions::Action::EditScrollback => {
-                ActionType::EditScrollback(EditScrollbackAction {})
-            },
-            crate::input::actions::Action::EditScrollbackRaw => {
-                ActionType::EditScrollback(EditScrollbackAction {}) // fallback to default edit scrollback
+            crate::input::actions::Action::EditScrollback { ansi } => {
+                ActionType::EditScrollback(EditScrollbackAction { ansi })
             },
             crate::input::actions::Action::ScrollUp => ActionType::ScrollUp(ScrollUpAction {}),
             crate::input::actions::Action::ScrollUpAt { position } => {
@@ -1468,6 +1582,135 @@ impl From<crate::input::actions::Action>
                     bg,
                 })
             },
+            // Pane-targeting CLI-only variants
+            crate::input::actions::Action::ScrollUpByPaneId { pane_id } => {
+                ActionType::ScrollUpByPaneId(ScrollUpByPaneIdAction {
+                    pane_id: Some(pane_id.into()),
+                })
+            },
+            crate::input::actions::Action::ScrollDownByPaneId { pane_id } => {
+                ActionType::ScrollDownByPaneId(ScrollDownByPaneIdAction {
+                    pane_id: Some(pane_id.into()),
+                })
+            },
+            crate::input::actions::Action::ScrollToTopByPaneId { pane_id } => {
+                ActionType::ScrollToTopByPaneId(ScrollToTopByPaneIdAction {
+                    pane_id: Some(pane_id.into()),
+                })
+            },
+            crate::input::actions::Action::ScrollToBottomByPaneId { pane_id } => {
+                ActionType::ScrollToBottomByPaneId(ScrollToBottomByPaneIdAction {
+                    pane_id: Some(pane_id.into()),
+                })
+            },
+            crate::input::actions::Action::PageScrollUpByPaneId { pane_id } => {
+                ActionType::PageScrollUpByPaneId(PageScrollUpByPaneIdAction {
+                    pane_id: Some(pane_id.into()),
+                })
+            },
+            crate::input::actions::Action::PageScrollDownByPaneId { pane_id } => {
+                ActionType::PageScrollDownByPaneId(PageScrollDownByPaneIdAction {
+                    pane_id: Some(pane_id.into()),
+                })
+            },
+            crate::input::actions::Action::HalfPageScrollUpByPaneId { pane_id } => {
+                ActionType::HalfPageScrollUpByPaneId(HalfPageScrollUpByPaneIdAction {
+                    pane_id: Some(pane_id.into()),
+                })
+            },
+            crate::input::actions::Action::HalfPageScrollDownByPaneId { pane_id } => {
+                ActionType::HalfPageScrollDownByPaneId(HalfPageScrollDownByPaneIdAction {
+                    pane_id: Some(pane_id.into()),
+                })
+            },
+            crate::input::actions::Action::ResizeByPaneId {
+                pane_id,
+                resize,
+                direction,
+            } => ActionType::ResizeByPaneId(ResizeByPaneIdAction {
+                pane_id: Some(pane_id.into()),
+                resize_action: Some(ResizeAction {
+                    resize: resize_to_proto_i32(resize),
+                    direction: direction.map(|d| direction_to_proto_i32(d)),
+                }),
+            }),
+            crate::input::actions::Action::MovePaneByPaneId { pane_id, direction } => {
+                ActionType::MovePaneByPaneId(MovePaneByPaneIdAction {
+                    pane_id: Some(pane_id.into()),
+                    direction: direction.map(|d| direction_to_proto_i32(d)),
+                })
+            },
+            crate::input::actions::Action::MovePaneBackwardsByPaneId { pane_id } => {
+                ActionType::MovePaneBackwardsByPaneId(MovePaneBackwardsByPaneIdAction {
+                    pane_id: Some(pane_id.into()),
+                })
+            },
+            crate::input::actions::Action::ClearScreenByPaneId { pane_id } => {
+                ActionType::ClearScreenByPaneId(ClearScreenByPaneIdAction {
+                    pane_id: Some(pane_id.into()),
+                })
+            },
+            crate::input::actions::Action::EditScrollbackByPaneId { pane_id, ansi } => {
+                ActionType::EditScrollbackByPaneId(EditScrollbackByPaneIdAction {
+                    pane_id: Some(pane_id.into()),
+                    ansi,
+                })
+            },
+            crate::input::actions::Action::ToggleFocusFullscreenByPaneId { pane_id } => {
+                ActionType::ToggleFullscreenByPaneId(ToggleFullscreenByPaneIdAction {
+                    pane_id: Some(pane_id.into()),
+                })
+            },
+            crate::input::actions::Action::TogglePaneEmbedOrFloatingByPaneId { pane_id } => {
+                ActionType::TogglePaneEmbedOrFloatingByPaneId(
+                    TogglePaneEmbedOrFloatingByPaneIdAction {
+                        pane_id: Some(pane_id.into()),
+                    },
+                )
+            },
+            crate::input::actions::Action::CloseFocusByPaneId { pane_id } => {
+                ActionType::CloseFocusByPaneId(CloseFocusByPaneIdAction {
+                    pane_id: Some(pane_id.into()),
+                })
+            },
+            crate::input::actions::Action::RenamePaneByPaneId { pane_id, name } => {
+                ActionType::RenamePaneByPaneId(RenamePaneByPaneIdAction {
+                    pane_id: Some(pane_id.into()),
+                    name,
+                })
+            },
+            crate::input::actions::Action::UndoRenamePaneByPaneId { pane_id } => {
+                ActionType::UndoRenamePaneByPaneId(UndoRenamePaneByPaneIdAction {
+                    pane_id: Some(pane_id.into()),
+                })
+            },
+            crate::input::actions::Action::TogglePanePinnedByPaneId { pane_id } => {
+                ActionType::TogglePanePinnedByPaneId(TogglePanePinnedByPaneIdAction {
+                    pane_id: Some(pane_id.into()),
+                })
+            },
+            // Tab-targeting CLI-only variants
+            crate::input::actions::Action::UndoRenameTabByTabId { id } => {
+                ActionType::UndoRenameTabByTabId(UndoRenameTabByTabIdAction { id })
+            },
+            crate::input::actions::Action::ToggleActiveSyncTabByTabId { id } => {
+                ActionType::ToggleActiveSyncTabByTabId(ToggleActiveSyncTabByTabIdAction { id })
+            },
+            crate::input::actions::Action::ToggleFloatingPanesByTabId { id } => {
+                ActionType::ToggleFloatingPanesByTabId(ToggleFloatingPanesByTabIdAction { id })
+            },
+            crate::input::actions::Action::PreviousSwapLayoutByTabId { id } => {
+                ActionType::PreviousSwapLayoutByTabId(PreviousSwapLayoutByTabIdAction { id })
+            },
+            crate::input::actions::Action::NextSwapLayoutByTabId { id } => {
+                ActionType::NextSwapLayoutByTabId(NextSwapLayoutByTabIdAction { id })
+            },
+            crate::input::actions::Action::MoveTabByTabId { id, direction } => {
+                ActionType::MoveTabByTabId(MoveTabByTabIdAction {
+                    id,
+                    direction: direction_to_proto_i32(direction),
+                })
+            },
         };
 
         Self {
@@ -1582,11 +1825,16 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                     file_path,
                     include_scrollback: dump_screen_action.include_scrollback,
                     pane_id: dump_screen_action.pane_id.and_then(|p| p.try_into().ok()),
+                    ansi: dump_screen_action.ansi,
                 })
             },
             ActionType::DumpLayout(_) => Ok(crate::input::actions::Action::DumpLayout),
             ActionType::SaveSession(_) => Ok(crate::input::actions::Action::SaveSession),
-            ActionType::EditScrollback(_) => Ok(crate::input::actions::Action::EditScrollback),
+            ActionType::EditScrollback(edit_scrollback_action) => {
+                Ok(crate::input::actions::Action::EditScrollback {
+                    ansi: edit_scrollback_action.ansi,
+                })
+            },
             ActionType::ScrollUp(_) => Ok(crate::input::actions::Action::ScrollUp),
             ActionType::ScrollUpAt(scroll_action) => {
                 Ok(crate::input::actions::Action::ScrollUpAt {
@@ -2174,6 +2422,198 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                         .try_into()?,
                     fg: set_pane_color_action.fg,
                     bg: set_pane_color_action.bg,
+                })
+            },
+            // Pane-targeting CLI-only variants
+            ActionType::ScrollUpByPaneId(a) => {
+                Ok(crate::input::actions::Action::ScrollUpByPaneId {
+                    pane_id: a
+                        .pane_id
+                        .ok_or_else(|| anyhow!("ScrollUpByPaneId missing pane_id"))?
+                        .try_into()?,
+                })
+            },
+            ActionType::ScrollDownByPaneId(a) => {
+                Ok(crate::input::actions::Action::ScrollDownByPaneId {
+                    pane_id: a
+                        .pane_id
+                        .ok_or_else(|| anyhow!("ScrollDownByPaneId missing pane_id"))?
+                        .try_into()?,
+                })
+            },
+            ActionType::ScrollToTopByPaneId(a) => {
+                Ok(crate::input::actions::Action::ScrollToTopByPaneId {
+                    pane_id: a
+                        .pane_id
+                        .ok_or_else(|| anyhow!("ScrollToTopByPaneId missing pane_id"))?
+                        .try_into()?,
+                })
+            },
+            ActionType::ScrollToBottomByPaneId(a) => {
+                Ok(crate::input::actions::Action::ScrollToBottomByPaneId {
+                    pane_id: a
+                        .pane_id
+                        .ok_or_else(|| anyhow!("ScrollToBottomByPaneId missing pane_id"))?
+                        .try_into()?,
+                })
+            },
+            ActionType::PageScrollUpByPaneId(a) => {
+                Ok(crate::input::actions::Action::PageScrollUpByPaneId {
+                    pane_id: a
+                        .pane_id
+                        .ok_or_else(|| anyhow!("PageScrollUpByPaneId missing pane_id"))?
+                        .try_into()?,
+                })
+            },
+            ActionType::PageScrollDownByPaneId(a) => {
+                Ok(crate::input::actions::Action::PageScrollDownByPaneId {
+                    pane_id: a
+                        .pane_id
+                        .ok_or_else(|| anyhow!("PageScrollDownByPaneId missing pane_id"))?
+                        .try_into()?,
+                })
+            },
+            ActionType::HalfPageScrollUpByPaneId(a) => {
+                Ok(crate::input::actions::Action::HalfPageScrollUpByPaneId {
+                    pane_id: a
+                        .pane_id
+                        .ok_or_else(|| anyhow!("HalfPageScrollUpByPaneId missing pane_id"))?
+                        .try_into()?,
+                })
+            },
+            ActionType::HalfPageScrollDownByPaneId(a) => {
+                Ok(crate::input::actions::Action::HalfPageScrollDownByPaneId {
+                    pane_id: a
+                        .pane_id
+                        .ok_or_else(|| anyhow!("HalfPageScrollDownByPaneId missing pane_id"))?
+                        .try_into()?,
+                })
+            },
+            ActionType::ResizeByPaneId(a) => {
+                let resize_action = a
+                    .resize_action
+                    .ok_or_else(|| anyhow!("ResizeByPaneId missing resize_action"))?;
+                let resize = proto_i32_to_resize(resize_action.resize)?;
+                let direction = resize_action
+                    .direction
+                    .map(|d| proto_i32_to_direction(d))
+                    .transpose()?;
+                Ok(crate::input::actions::Action::ResizeByPaneId {
+                    pane_id: a
+                        .pane_id
+                        .ok_or_else(|| anyhow!("ResizeByPaneId missing pane_id"))?
+                        .try_into()?,
+                    resize,
+                    direction,
+                })
+            },
+            ActionType::MovePaneByPaneId(a) => {
+                let direction = a.direction.map(|d| proto_i32_to_direction(d)).transpose()?;
+                Ok(crate::input::actions::Action::MovePaneByPaneId {
+                    pane_id: a
+                        .pane_id
+                        .ok_or_else(|| anyhow!("MovePaneByPaneId missing pane_id"))?
+                        .try_into()?,
+                    direction,
+                })
+            },
+            ActionType::MovePaneBackwardsByPaneId(a) => {
+                Ok(crate::input::actions::Action::MovePaneBackwardsByPaneId {
+                    pane_id: a
+                        .pane_id
+                        .ok_or_else(|| anyhow!("MovePaneBackwardsByPaneId missing pane_id"))?
+                        .try_into()?,
+                })
+            },
+            ActionType::ClearScreenByPaneId(a) => {
+                Ok(crate::input::actions::Action::ClearScreenByPaneId {
+                    pane_id: a
+                        .pane_id
+                        .ok_or_else(|| anyhow!("ClearScreenByPaneId missing pane_id"))?
+                        .try_into()?,
+                })
+            },
+            ActionType::EditScrollbackByPaneId(a) => {
+                Ok(crate::input::actions::Action::EditScrollbackByPaneId {
+                    pane_id: a
+                        .pane_id
+                        .ok_or_else(|| anyhow!("EditScrollbackByPaneId missing pane_id"))?
+                        .try_into()?,
+                    ansi: a.ansi,
+                })
+            },
+            ActionType::ToggleFullscreenByPaneId(a) => Ok(
+                crate::input::actions::Action::ToggleFocusFullscreenByPaneId {
+                    pane_id: a
+                        .pane_id
+                        .ok_or_else(|| anyhow!("ToggleFullscreenByPaneId missing pane_id"))?
+                        .try_into()?,
+                },
+            ),
+            ActionType::TogglePaneEmbedOrFloatingByPaneId(a) => Ok(
+                crate::input::actions::Action::TogglePaneEmbedOrFloatingByPaneId {
+                    pane_id: a
+                        .pane_id
+                        .ok_or_else(|| {
+                            anyhow!("TogglePaneEmbedOrFloatingByPaneId missing pane_id")
+                        })?
+                        .try_into()?,
+                },
+            ),
+            ActionType::CloseFocusByPaneId(a) => {
+                Ok(crate::input::actions::Action::CloseFocusByPaneId {
+                    pane_id: a
+                        .pane_id
+                        .ok_or_else(|| anyhow!("CloseFocusByPaneId missing pane_id"))?
+                        .try_into()?,
+                })
+            },
+            ActionType::RenamePaneByPaneId(a) => {
+                Ok(crate::input::actions::Action::RenamePaneByPaneId {
+                    pane_id: a
+                        .pane_id
+                        .ok_or_else(|| anyhow!("RenamePaneByPaneId missing pane_id"))?
+                        .try_into()?,
+                    name: a.name,
+                })
+            },
+            ActionType::UndoRenamePaneByPaneId(a) => {
+                Ok(crate::input::actions::Action::UndoRenamePaneByPaneId {
+                    pane_id: a
+                        .pane_id
+                        .ok_or_else(|| anyhow!("UndoRenamePaneByPaneId missing pane_id"))?
+                        .try_into()?,
+                })
+            },
+            ActionType::TogglePanePinnedByPaneId(a) => {
+                Ok(crate::input::actions::Action::TogglePanePinnedByPaneId {
+                    pane_id: a
+                        .pane_id
+                        .ok_or_else(|| anyhow!("TogglePanePinnedByPaneId missing pane_id"))?
+                        .try_into()?,
+                })
+            },
+            // Tab-targeting CLI-only variants
+            ActionType::UndoRenameTabByTabId(a) => {
+                Ok(crate::input::actions::Action::UndoRenameTabByTabId { id: a.id })
+            },
+            ActionType::ToggleActiveSyncTabByTabId(a) => {
+                Ok(crate::input::actions::Action::ToggleActiveSyncTabByTabId { id: a.id })
+            },
+            ActionType::ToggleFloatingPanesByTabId(a) => {
+                Ok(crate::input::actions::Action::ToggleFloatingPanesByTabId { id: a.id })
+            },
+            ActionType::PreviousSwapLayoutByTabId(a) => {
+                Ok(crate::input::actions::Action::PreviousSwapLayoutByTabId { id: a.id })
+            },
+            ActionType::NextSwapLayoutByTabId(a) => {
+                Ok(crate::input::actions::Action::NextSwapLayoutByTabId { id: a.id })
+            },
+            ActionType::MoveTabByTabId(a) => {
+                let direction = proto_i32_to_direction(a.direction)?;
+                Ok(crate::input::actions::Action::MoveTabByTabId {
+                    id: a.id,
+                    direction,
                 })
             },
         }

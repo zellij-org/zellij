@@ -1,5 +1,6 @@
 [package]
 name = "zellij"
+build = "src/build.rs"
 authors = ["Aram Drevekenin <aram@poor.dev>"]
 description = "A terminal workspace with batteries included"
 homepage = "https://zellij.dev"
@@ -31,6 +32,9 @@ isahc = { workspace = true }
 
 [target.'cfg(unix)'.dependencies]
 nix = { workspace = true }
+
+[target.'cfg(windows)'.build-dependencies]
+embed-resource = "3"
 
 [dev-dependencies]
 insta = { version = "1.6.0", features = ["backtrace"] }

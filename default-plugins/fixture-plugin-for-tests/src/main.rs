@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 #[allow(unused_imports)]
 use std::io::prelude::*;
+#[allow(unused_imports)] // Action is used in non-test code paths (run_action call)
 use zellij_tile::prelude::actions::Action;
 use zellij_tile::prelude::*;
 
@@ -19,6 +20,7 @@ struct State {
     explicit_string_to_render: Option<String>,
 }
 
+#[allow(dead_code)] // used when compiled as wasm plugin, not in native test target
 #[derive(Default, Serialize, Deserialize)]
 struct TestWorker {
     number_of_messages_received: usize,

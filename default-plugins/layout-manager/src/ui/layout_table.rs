@@ -184,9 +184,10 @@ impl Controls {
     }
 
     fn get_typing_filter_controls(&self, max_cols: usize) -> (&str, &[&str]) {
-        let long_text = "- <Enter> - accept filter";
-        let short_text = "<Enter> - accept filter";
-        let minimum_text = "<Enter> ...";
+        let long_text =
+            "- <↑↓> Navigate, <Tab> Complete, <Enter> Open, <Ctrl+o> Apply, <Esc> Manage & New";
+        let short_text = "<↑↓>/<Tab>/<Enter>/<Ctrl+o>/<Esc> Nav/Complete/Open/Apply/Manage";
+        let minimum_text = "<↑↓>/<Tab>/<Enter>/<Ctrl+o> ...";
         let text = if max_cols >= long_text.chars().count() {
             long_text
         } else if max_cols >= short_text.chars().count() {
@@ -194,13 +195,14 @@ impl Controls {
         } else {
             minimum_text
         };
-        (text, &["<Enter>"])
+        (text, &["<↑↓>", "<Tab>", "<Enter>", "<Ctrl+o>", "<Esc>"])
     }
 
     fn get_filter_active_controls(&self, max_cols: usize) -> (&str, &[&str]) {
-        let long_text = "- <Enter> Open, <↓↑> Nav, <e> Edit, <r> Rename, <Del> - Delete";
-        let short_text = "<Enter>/<↓↑>/<e>/<r>/<Del> Open/Nav/Edit/Rename/Del";
-        let minimum_text = "<Enter>/<↓↑>/<e>/<r>/<Del> ...";
+        let long_text =
+            "- <Enter> Open, <↓↑> Nav, <Ctrl+o> Apply, <e> Edit, <r> Rename, <Del> Delete";
+        let short_text = "<Enter>/<↓↑>/<Ctrl+o>/<e>/<r>/<Del> Open/Nav/Apply/Edit/Rename/Del";
+        let minimum_text = "<Enter>/<↓↑>/<Ctrl+o>/<e>/<r>/<Del> ...";
         let text = if max_cols >= long_text.chars().count() {
             long_text
         } else if max_cols >= short_text.chars().count() {
@@ -208,13 +210,18 @@ impl Controls {
         } else {
             minimum_text
         };
-        (text, &["<Enter>", "<↓↑>", "<e>", "<r>", "<Del>"])
+        (
+            text,
+            &["<Enter>", "<↓↑>", "<Ctrl+o>", "<e>", "<r>", "<Del>"],
+        )
     }
 
     fn get_default_controls(&self, max_cols: usize) -> (&str, &[&str]) {
-        let long_text = "- <Enter> Open, <↓↑> Nav, </> Filter, <e> Edit, <r> Rename, <Del> - Del";
-        let short_text = "<Enter>/<↓↑>/</>/<e>/<r>/<Del> Open/Nav/Filter/Edit/Rename/Del";
-        let minimum_text = "<Enter>/<↓↑>/</>/<e>/<r>/<Del> ...";
+        let long_text =
+            "- <Enter> Open, <↓↑> Nav, </> Search, <Ctrl+o> Apply, <e> Edit, <r> Rename, <Del> Del";
+        let short_text =
+            "<Enter>/<↓↑>/</>/<Ctrl+o>/<e>/<r>/<Del> Open/Nav/Search/Apply/Edit/Rename/Del";
+        let minimum_text = "<Enter>/<↓↑>/</>/<Ctrl+o>/<e>/<r>/<Del> ...";
         let text = if max_cols >= long_text.chars().count() {
             long_text
         } else if max_cols >= short_text.chars().count() {
@@ -222,7 +229,10 @@ impl Controls {
         } else {
             minimum_text
         };
-        (text, &["<Enter>", "<↓↑>", "</>", "<e>", "<r>", "<Del>"])
+        (
+            text,
+            &["<Enter>", "<↓↑>", "</>", "<Ctrl+o>", "<e>", "<r>", "<Del>"],
+        )
     }
 
     fn get_basic_controls_text_and_keys(&self, max_cols: usize) -> (&str, &[&str]) {
@@ -240,11 +250,11 @@ impl Controls {
             "more"
         };
         let long_text = format!(
-            "- <Tab> Override Session Layout, <?> {} options",
+            "- <Ctrl+o> Override Session Layout, <?> {} options",
             toggle_word
         );
-        let short_text = format!("<Tab> Override, <?> {} options", toggle_word);
-        let minimum_text = format!("<Tab>/<?> ...");
+        let short_text = format!("<Ctrl+o> Override, <?> {} options", toggle_word);
+        let minimum_text = format!("<Ctrl+o>/<?> ...");
         let text = if max_cols >= long_text.chars().count() {
             long_text
         } else if max_cols >= short_text.chars().count() {
@@ -252,7 +262,7 @@ impl Controls {
         } else {
             minimum_text
         };
-        (text, &["<Tab>", "<?>"])
+        (text, &["<Ctrl+o>", "<?>"])
     }
 
     fn get_new_layout_text_and_keys(&self, max_cols: usize) -> (&str, &[&str]) {

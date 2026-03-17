@@ -314,6 +314,8 @@ mod tests {
                 token,
                 remember,
                 forget,
+                None,
+                true, // insecure for tests
             )
         })
         .await

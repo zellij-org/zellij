@@ -26,7 +26,7 @@ use zellij_utils::data::{
     FloatingPaneCoordinates, FocusOrCreateTabResponse, GetFocusedPaneInfoResponse,
     GetPaneCwdResponse, GetPanePidResponse, GetPaneRunningCommandResponse, HttpVerb,
     KeyWithModifier, LayoutInfo, LayoutMetadata, LayoutParsingError, MessageToPlugin,
-    NewPanePlacement, NewTabResponse, NewTabsResponse, OpenCommandPaneBackgroundResponse,
+    NewPanePlacement, NewTabResponse, OpenCommandPaneBackgroundResponse,
     OpenCommandPaneFloatingNearPluginResponse, OpenCommandPaneFloatingResponse,
     OpenCommandPaneInPlaceOfPaneIdResponse, OpenCommandPaneInPlaceOfPluginResponse,
     OpenCommandPaneInPlaceResponse, OpenCommandPaneNearPluginResponse, OpenCommandPaneResponse,
@@ -817,6 +817,15 @@ fn unsubscribe(env: &PluginEnv, event_list: HashSet<EventType>) -> Result<()> {
         .lock()
         .to_anyhow()?
         .retain(|k| !event_list.contains(k));
+    if event_list.contains(&EventType::PaneRenderReportWithAnsi) {
+        let _ = env
+            .senders
+            .send_to_plugin(PluginInstruction::PluginSubscribedToEvents(
+                env.plugin_id,
+                env.client_id,
+                HashSet::new(), // empty set signals a recheck, not a new subscription
+            ));
+    }
     Ok(())
 }
 
@@ -2882,7 +2891,7 @@ fn delete_all_dead_sessions() -> Result<()> {
 }
 
 fn edit_scrollback(env: &PluginEnv) {
-    let action = Action::EditScrollback;
+    let action = Action::EditScrollback { ansi: false };
     let error_msg = || format!("Failed to edit scrollback");
     apply_action!(action, error_msg, env);
 }
