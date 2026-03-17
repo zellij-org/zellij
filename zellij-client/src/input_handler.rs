@@ -317,9 +317,9 @@ impl InputHandler {
                     .send(ClientInstruction::SetSynchronizedOutput(enabled))
                     .unwrap();
             },
-            AnsiStdinInstruction::GraphemeClusterMode(supported) => {
+            AnsiStdinInstruction::GraphemeClusterMode(support) => {
                 self.send_client_instructions
-                    .send(ClientInstruction::SetGraphemeClusterMode(supported))
+                    .send(ClientInstruction::SetGraphemeClusterMode(support))
                     .unwrap();
             },
         }
