@@ -138,7 +138,7 @@ mod tests {
 
     #[test]
     fn detect_windows_drive() {
-        assert_eq!(Platform::detect("C:\\Users\\dylan"), Platform::Windows);
+        assert_eq!(Platform::detect("C:\\Users\\user"), Platform::Windows);
         assert_eq!(Platform::detect("D:/Projects"), Platform::Windows);
     }
 
@@ -152,8 +152,8 @@ mod tests {
 
     #[test]
     fn normalize_backslashes() {
-        let p = PathBuf::from("C:\\Users\\dylan");
-        assert_eq!(Platform::normalize(&p), PathBuf::from("C:/Users/dylan"));
+        let p = PathBuf::from("C:\\Users\\user");
+        assert_eq!(Platform::normalize(&p), PathBuf::from("C:/Users/user"));
     }
 
     #[test]
@@ -164,10 +164,10 @@ mod tests {
 
     #[test]
     fn to_host_display_windows() {
-        let p = PathBuf::from("C:/Users/dylan");
+        let p = PathBuf::from("C:/Users/user");
         assert_eq!(
             Platform::to_host_display(&p, Platform::Windows),
-            "C:\\Users\\dylan"
+            "C:\\Users\\user"
         );
     }
 

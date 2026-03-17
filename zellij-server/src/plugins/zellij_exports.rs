@@ -437,7 +437,7 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                         scan_host_folder(env, folder_to_scan)
                     },
                     PluginCommand::WatchFilesystem => watch_filesystem(env),
-                    PluginCommand::ListHostEntries => list_host_entries(env),
+                    PluginCommand::ListWindowsVolumes => list_windows_volumes(env),
                     PluginCommand::DumpSessionLayout { tab_index } => {
                         dump_session_layout(env, tab_index)
                     },
@@ -3789,29 +3789,12 @@ fn scan_host_folder(env: &PluginEnv, folder_to_scan: PathBuf) {
 }
 
 #[cfg(not(windows))]
-fn list_host_entries(env: &PluginEnv) {
-    let send_plugin_instructions = env.senders.to_plugin.clone();
-    let update_target = Some(env.plugin_id);
-    let client_id = env.client_id;
-    thread::spawn(move || {
-        let root = PathBuf::from("/");
-        let metadata = root.metadata().ok().map(|m| m.into());
-        let entries = vec![(root, metadata)];
-        let _ = send_plugin_instructions
-            .ok_or(anyhow!("found no sender to send plugin instruction to"))
-            .map(|sender| {
-                let _ = sender.send(PluginInstruction::Update(vec![(
-                    update_target,
-                    Some(client_id),
-                    Event::FileSystemUpdate(entries),
-                )]));
-            })
-            .non_fatal();
-    });
+fn list_windows_volumes(_env: &PluginEnv) {
+    log::error!("ListWindowsVolumes is only supported on Windows");
 }
 
 #[cfg(windows)]
-fn list_host_entries(env: &PluginEnv) {
+fn list_windows_volumes(env: &PluginEnv) {
     let send_plugin_instructions = env.senders.to_plugin.clone();
     let update_target = Some(env.plugin_id);
     let client_id = env.client_id;
@@ -5321,7 +5304,9 @@ fn check_command_permission(
         PluginCommand::RebindKeys { .. } | PluginCommand::Reconfigure(..) => {
             PermissionType::Reconfigure
         },
-        PluginCommand::ChangeHostFolder(..) => PermissionType::FullHdAccess,
+        PluginCommand::ChangeHostFolder(..) | PluginCommand::ListWindowsVolumes => {
+            PermissionType::FullHdAccess
+        },
         PluginCommand::ShareCurrentSession
         | PluginCommand::StopSharingCurrentSession
         | PluginCommand::StopWebServer

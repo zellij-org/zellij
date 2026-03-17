@@ -2091,7 +2091,7 @@ pub enum CommandName {
     SetPaneRegexHighlights = 207,
     ClearPaneHighlights = 208,
     OpenPluginPaneFloating = 209,
-    ListHostEntries = 210,
+    ListWindowsVolumes = 210,
 }
 impl CommandName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -2289,7 +2289,7 @@ impl CommandName {
             CommandName::SetPaneRegexHighlights => "SetPaneRegexHighlights",
             CommandName::ClearPaneHighlights => "ClearPaneHighlights",
             CommandName::OpenPluginPaneFloating => "OpenPluginPaneFloating",
-            CommandName::ListHostEntries => "ListHostEntries",
+            CommandName::ListWindowsVolumes => "ListWindowsVolumes",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -2484,7 +2484,7 @@ impl CommandName {
             "SetPaneRegexHighlights" => Some(Self::SetPaneRegexHighlights),
             "ClearPaneHighlights" => Some(Self::ClearPaneHighlights),
             "OpenPluginPaneFloating" => Some(Self::OpenPluginPaneFloating),
-            "ListHostEntries" => Some(Self::ListHostEntries),
+            "ListWindowsVolumes" => Some(Self::ListWindowsVolumes),
             _ => None,
         }
     }

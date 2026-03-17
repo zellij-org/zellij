@@ -288,7 +288,7 @@ impl State {
         self.virtual_root_selected = 0;
         self.search_term.clear();
         self.is_searching = false;
-        list_host_entries();
+        list_windows_volumes();
     }
     pub fn exit_virtual_root(&mut self) {
         self.is_in_virtual_root = false;

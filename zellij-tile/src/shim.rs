@@ -1587,10 +1587,11 @@ where
     unsafe { host_run_plugin_command() };
 }
 
-/// List host entries (drives and WSL distributions on Windows, just `/` on Unix).
+/// List Windows volumes (drives and WSL distributions).
 /// Results are returned via the `FileSystemUpdate` event.
-pub fn list_host_entries() {
-    let plugin_command = PluginCommand::ListHostEntries;
+/// This command is only supported on Windows and requires FullHdAccess permission.
+pub fn list_windows_volumes() {
+    let plugin_command = PluginCommand::ListWindowsVolumes;
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
