@@ -36,6 +36,22 @@ use zellij_utils::{
     pane_size::Size,
 };
 
+/// Open a directory as a `File` handle for WASI pre-opening.
+/// On Windows, `FILE_FLAG_BACKUP_SEMANTICS` is required to open directories.
+#[cfg(not(windows))]
+fn open_dir(path: &std::path::Path) -> std::io::Result<std::fs::File> {
+    std::fs::File::open(path)
+}
+
+#[cfg(windows)]
+fn open_dir(path: &std::path::Path) -> std::io::Result<std::fs::File> {
+    use std::os::windows::fs::OpenOptionsExt;
+    std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(0x02000000) // FILE_FLAG_BACKUP_SEMANTICS
+        .open(path)
+}
+
 fn create_plugin_fs_entries(plugin_own_data_dir: &PathBuf, plugin_own_cache_dir: &PathBuf) {
     // Create filesystem entries mounted into WASM.
     // We create them here to get expressive error messages in case they fail.
@@ -60,6 +76,7 @@ pub struct PluginLoader<'a> {
     plugin_config: PluginConfig,
     tab_index: Option<usize>,
     path_to_default_shell: PathBuf,
+    session_env_vars: std::collections::BTreeMap<String, String>,
     capabilities: PluginCapabilities,
     client_attributes: ClientAttributes,
     default_shell: Option<TerminalAction>,
@@ -104,6 +121,7 @@ impl<'a> PluginLoader<'a> {
             plugin_config: loading_context.plugin_config,
             tab_index: loading_context.tab_index,
             path_to_default_shell: loading_context.path_to_default_shell,
+            session_env_vars: loading_context.session_env_vars,
             capabilities: loading_context.capabilities,
             client_attributes: loading_context.client_attributes,
             default_shell: loading_context.default_shell,
@@ -216,7 +234,7 @@ impl<'a> PluginLoader<'a> {
 
         let protobuf_plugin_configuration: ProtobufPluginConfiguration = self
             .plugin_config
-            .userspace_configuration
+            .initial_userspace_configuration
             .clone()
             .try_into()
             .map_err(|e| anyhow!("Failed to serialize user configuration: {:?}", e))?;
@@ -269,6 +287,7 @@ impl<'a> PluginLoader<'a> {
             default_shell: self.default_shell.clone(),
             default_layout: self.default_layout.clone(),
             plugin_cwd: self.plugin_cwd.clone(),
+            session_env_vars: self.session_env_vars.clone(),
             input_pipes_to_unblock: Arc::new(Mutex::new(HashSet::new())),
             input_pipes_to_block: Arc::new(Mutex::new(HashSet::new())),
             layout_dir: self.layout_dir.clone(),
@@ -383,6 +402,7 @@ impl<'a> PluginLoader<'a> {
             default_shell: self.default_shell.clone(),
             default_layout: self.default_layout.clone(),
             plugin_cwd: self.plugin_cwd.clone(),
+            session_env_vars: self.session_env_vars.clone(),
             input_pipes_to_unblock: Arc::new(Mutex::new(HashSet::new())),
             input_pipes_to_block: Arc::new(Mutex::new(HashSet::new())),
             layout_dir: self.layout_dir.clone(),
@@ -448,7 +468,7 @@ impl<'a> PluginLoader<'a> {
 
         // Mount directories using the builder
         for (guest_path, host_path) in dirs {
-            match std::fs::File::open(&host_path) {
+            match open_dir(&host_path) {
                 Ok(dir_file) => {
                     let dir = Dir::from_std_file(dir_file);
                     builder.preopened_dir(dir, guest_path)?;

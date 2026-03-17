@@ -9,7 +9,6 @@ use crate::plugins::plugin_map::{AtomicEvent, PluginEnv, PluginMap, RunningPlugi
 use crate::plugins::plugin_worker::MessageToWorker;
 use crate::plugins::watch_filesystem::watch_filesystem;
 use crate::plugins::zellij_exports::{wasi_read_string, wasi_write_object};
-use async_channel::Sender;
 use highway::{HighwayHash, PortableHash};
 use log::info;
 use notify_debouncer_full::{notify::RecommendedWatcher, Debouncer, FileIdMap};
@@ -18,6 +17,10 @@ use std::{
     path::PathBuf,
     str::FromStr,
     sync::{Arc, Mutex},
+};
+use tokio::{
+    sync::mpsc::Sender,
+    task::{self, JoinHandle},
 };
 use url::Url;
 use wasmi::{Engine, Module};
@@ -35,8 +38,9 @@ use prost::Message;
 
 use crate::panes::PaneId;
 use crate::{
-    background_jobs::BackgroundJob, screen::ScreenInstruction, thread_bus::ThreadSenders,
-    ui::loading_indication::LoadingIndication, ClientId, ServerInstruction,
+    background_jobs::BackgroundJob, route::NotificationEnd, screen::ScreenInstruction,
+    thread_bus::ThreadSenders, ui::loading_indication::LoadingIndication, ClientId,
+    ServerInstruction,
 };
 use zellij_utils::{
     data::{Event, EventType, PluginCapabilities},
@@ -44,11 +48,23 @@ use zellij_utils::{
     input::{
         command::TerminalAction,
         layout::{Layout, PluginUserConfiguration, RunPlugin, RunPluginLocation, RunPluginOrAlias},
-        plugins::PluginConfig,
+        plugins::{PluginAliases, PluginConfig},
     },
     ipc::ClientAttributes,
     pane_size::Size,
 };
+
+/// On Windows, colons in URL strings (e.g. `zellij:tab-bar`, `file:///...`)
+/// are illegal in path components. Replace them with underscores.
+#[cfg(windows)]
+fn make_plugin_url_path_safe(url: String) -> String {
+    url.replace(':', "_")
+}
+
+#[cfg(not(windows))]
+fn make_plugin_url_path_safe(url: String) -> String {
+    url
+}
 
 #[derive(Debug, Clone)]
 pub enum EventOrPipeMessage {
@@ -90,6 +106,7 @@ pub struct LoadingContext {
     pub plugin_config: PluginConfig,
     pub tab_index: Option<usize>,
     pub path_to_default_shell: PathBuf,
+    pub session_env_vars: std::collections::BTreeMap<String, String>,
     pub capabilities: PluginCapabilities,
     pub client_attributes: ClientAttributes,
     pub default_shell: Option<TerminalAction>,
@@ -111,10 +128,14 @@ impl LoadingContext {
         size: Size,
     ) -> Self {
         let plugin_own_data_dir = ZELLIJ_SESSION_CACHE_DIR
-            .join(Url::from(&plugin_config.location).to_string())
+            .join(make_plugin_url_path_safe(
+                Url::from(&plugin_config.location).to_string(),
+            ))
             .join(format!("{}-{}", plugin_id, client_id));
         let plugin_own_cache_dir = ZELLIJ_CACHE_DIR
-            .join(Url::from(&plugin_config.location).to_string())
+            .join(make_plugin_url_path_safe(
+                Url::from(&plugin_config.location).to_string(),
+            ))
             .join(format!("plugin_cache"));
         let default_mode = wasm_bridge
             .base_modes
@@ -131,6 +152,7 @@ impl LoadingContext {
             client_id,
             plugin_id,
             path_to_default_shell: wasm_bridge.path_to_default_shell.clone(),
+            session_env_vars: wasm_bridge.session_env_vars.clone(),
             plugin_cwd: cwd.unwrap_or_else(|| wasm_bridge.zellij_cwd.clone()),
             capabilities: wasm_bridge.capabilities.clone(),
             client_attributes: wasm_bridge.client_attributes.clone(),
@@ -172,6 +194,7 @@ pub struct WasmBridge {
     path_to_default_shell: PathBuf,
     watcher: Option<Debouncer<RecommendedWatcher, FileIdMap>>,
     zellij_cwd: PathBuf,
+    session_env_vars: std::collections::BTreeMap<String, String>,
     capabilities: PluginCapabilities,
     client_attributes: ClientAttributes,
     default_shell: Option<TerminalAction>,
@@ -187,6 +210,7 @@ pub struct WasmBridge {
     base_modes: HashMap<ClientId, InputMode>,
     downloader: Downloader,
     previous_pane_render_report: Option<PaneRenderReport>,
+    pub last_session_save_time: Arc<Mutex<Option<u64>>>, // milliseconds since UNIX epoch
 }
 
 impl WasmBridge {
@@ -196,6 +220,7 @@ impl WasmBridge {
         plugin_dir: PathBuf,
         path_to_default_shell: PathBuf,
         zellij_cwd: PathBuf,
+        session_env_vars: std::collections::BTreeMap<String, String>,
         capabilities: PluginCapabilities,
         client_attributes: ClientAttributes,
         default_shell: Option<TerminalAction>,
@@ -238,6 +263,7 @@ impl WasmBridge {
             loading_plugins: HashSet::new(),
             pending_plugin_reloads: HashSet::new(),
             zellij_cwd,
+            session_env_vars,
             capabilities,
             client_attributes,
             default_shell,
@@ -252,6 +278,7 @@ impl WasmBridge {
             base_modes: HashMap::new(),
             downloader,
             previous_pane_render_report: None,
+            last_session_save_time: Arc::new(Mutex::new(None)),
         }
     }
     pub fn load_plugin(
@@ -488,6 +515,10 @@ impl WasmBridge {
                     .senders
                     .send_to_screen(ScreenInstruction::ClearKeyPressesIntercepts(client_id));
             }
+            // Clear any regex highlights this plugin registered across all panes
+            let _ = self
+                .senders
+                .send_to_screen(ScreenInstruction::ClearAllPluginHighlights(plugin_id));
 
             // Send worker exit messages
             for (_worker_name, worker_sender) in workers {
@@ -1088,6 +1119,7 @@ impl WasmBridge {
         &mut self,
         messages: Vec<(Option<PluginId>, Option<ClientId>, PipeMessage)>,
         shutdown_sender: Sender<()>,
+        mut notification_end: Option<NotificationEnd>,
     ) -> Result<()> {
         let plugins_to_update: Vec<(
             PluginId,
@@ -1129,6 +1161,7 @@ impl WasmBridge {
                         let plugin_id = *plugin_id;
                         let client_id = *client_id;
                         let _s = shutdown_sender.clone();
+                        let notification_end = notification_end.take();
                         move |senders,
                               _plugin_map,
                               _connected_clients,
@@ -1154,7 +1187,7 @@ impl WasmBridge {
                                 Err(e) => {
                                     log::error!("{:?}", e);
 
-                                    // https://stackoverflow.com/questions/66450942/in-rust-is-there-a-way-to-make-literal-newlines-in-r-using-windows-c
+                                    // https://stackoverflow.com/questions/66450942/in-rust-is-there-a-way-to-make-literal-newlines-in-rust-using-windows
                                     let stringified_error =
                                         format!("{:?}", e).replace("\n", "\n\r");
 
@@ -1165,6 +1198,7 @@ impl WasmBridge {
                                     );
                                 },
                             }
+                            drop(notification_end);
                         }
                     });
                 }
@@ -1647,7 +1681,7 @@ impl WasmBridge {
         match worker {
             Some(worker) => {
                 for (message, payload) in messages.drain(..) {
-                    if let Err(e) = worker.try_send(MessageToWorker::Message(message, payload)) {
+                    if let Err(e) = worker.send(MessageToWorker::Message(message, payload)) {
                         log::error!("Failed to send message to worker: {:?}", e);
                     }
                 }
@@ -1764,6 +1798,7 @@ impl WasmBridge {
                             drop(self.senders.send_to_screen(ScreenInstruction::AddPlugin(
                                 Some(should_float),
                                 should_be_open_in_place,
+                                false, // close_replaced_pane
                                 run_plugin_or_alias,
                                 pane_title,
                                 None,
@@ -1881,6 +1916,45 @@ impl WasmBridge {
             ),
         )]));
     }
+    pub fn detect_and_notify_plugin_config_changes(
+        &mut self,
+        new_plugins: &PluginAliases,
+        shutdown_send: Sender<()>,
+    ) -> Result<()> {
+        let err_context = || "failed to detect plugin config changes";
+
+        // Get all running plugins
+        let running_plugins = self.plugin_map.lock().unwrap().running_plugins();
+
+        for (plugin_id, client_id, running_plugin) in running_plugins {
+            let running_plugin = running_plugin.lock().unwrap();
+            let plugin_env = &running_plugin.store.data();
+            let current_config = &plugin_env.plugin.initial_userspace_configuration;
+            let plugin_location = &plugin_env.plugin.location;
+
+            // Look up this plugin in the new config by location
+            // Note: PluginAliases is HashMap<String, RunPlugin>, so we need to iterate
+            let new_config_for_location = new_plugins
+                .aliases
+                .values()
+                .find(|run_plugin| &run_plugin.location == plugin_location)
+                .map(|run_plugin| &run_plugin.configuration);
+
+            if let Some(new_config) = new_config_for_location {
+                // Compare configurations - only fire event if changed
+                if current_config != new_config {
+                    drop(running_plugin); // Release lock before sending
+
+                    let event = Event::PluginConfigurationChanged(new_config.inner().clone());
+                    let updates = vec![(Some(plugin_id), Some(client_id), event)];
+                    self.update_plugins(updates, shutdown_send.clone())
+                        .with_context(err_context)?;
+                }
+            }
+        }
+
+        Ok(())
+    }
 }
 
 fn handle_plugin_successful_loading(
@@ -1943,6 +2017,8 @@ fn check_event_permission(
         | Event::CommandPaneReRun(..)
         | Event::CwdChanged(..)
         | Event::AvailableLayoutInfo(..)
+        | Event::PluginConfigurationChanged(..)
+        | Event::HighlightClicked { .. }
         | Event::InputReceived => PermissionType::ReadApplicationState,
         Event::WebServerStatus(..) => PermissionType::StartWebServer,
         Event::PaneRenderReport(..) => PermissionType::ReadPaneContents,

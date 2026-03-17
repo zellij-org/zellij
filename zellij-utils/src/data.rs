@@ -22,8 +22,8 @@ use strum_macros::{Display, EnumDiscriminants, EnumIter, EnumString};
 use unicode_width::UnicodeWidthChar;
 
 #[cfg(not(target_family = "wasm"))]
-use termwiz::{
-    escape::csi::KittyKeyboardFlags,
+use crate::vendored::termwiz::{
+    input::KittyKeyboardFlags,
     input::{KeyCode, KeyCodeEncodeModes, KeyboardEncoding, Modifiers},
 };
 
@@ -54,6 +54,7 @@ impl UnblockCondition {
 pub enum CommandOrPlugin {
     Command(RunCommandAction),
     Plugin(RunPluginOrAlias),
+    File(FileToOpen), // open file in configured editor
 }
 
 impl CommandOrPlugin {
@@ -1011,6 +1012,13 @@ pub enum Event {
     ActionComplete(Action, Option<PaneId>, BTreeMap<String, String>), // Action, pane_id, context
     CwdChanged(PaneId, PathBuf, Vec<ClientId>), // pane_id, cwd, focused_client_ids
     AvailableLayoutInfo(Vec<LayoutInfo>, Vec<LayoutWithError>),
+    PluginConfigurationChanged(BTreeMap<String, String>),
+    HighlightClicked {
+        pane_id: PaneId,
+        pattern: String,
+        matched_string: String,
+        context: BTreeMap<String, String>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, EnumDiscriminants, Display, Serialize, Deserialize)]
@@ -1054,6 +1062,7 @@ pub enum Permission {
     ReadPaneContents,
     RunActionsAsUser,
     WriteToClipboard,
+    ReadSessionEnvironmentVariables,
 }
 
 impl PermissionType {
@@ -1085,6 +1094,9 @@ impl PermissionType {
             },
             PermissionType::RunActionsAsUser => "Execute actions as the user".to_owned(),
             PermissionType::WriteToClipboard => "Write to clipboard".to_owned(),
+            PermissionType::ReadSessionEnvironmentVariables => {
+                "Read environment variables present upon session creation".to_owned()
+            },
         }
     }
 }
@@ -1189,6 +1201,60 @@ impl Default for PaletteColor {
     fn default() -> PaletteColor {
         PaletteColor::EightBit(0)
     }
+}
+
+/// Priority layer for plugin-supplied regex highlights.
+/// Higher-priority layers take visual precedence over lower ones
+/// when highlights overlap.  Built-in highlights (mouse selection,
+/// search results) always take precedence over all plugin layers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum HighlightLayer {
+    Hint,           // lowest: pure pattern matching (paths, URLs, IPs)
+    Tool,           // middle: backed by runtime domain knowledge (git, docker, k8s)
+    ActionFeedback, // highest: result of an explicit user action (search, bookmarks)
+}
+
+impl Default for HighlightLayer {
+    fn default() -> Self {
+        HighlightLayer::Hint
+    }
+}
+
+/// Style for a plugin-supplied regex highlight.
+/// Theme-based variants reference `style.colors.text_unselected.*`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum HighlightStyle {
+    None,      // no color override — use with bold/italic/underline for style-only highlights
+    Emphasis0, // fg = emphasis_0, no bg override
+    Emphasis1, // fg = emphasis_1, no bg override
+    Emphasis2, // fg = emphasis_2, no bg override
+    Emphasis3, // fg = emphasis_3, no bg override
+    BackgroundEmphasis0, // bg = emphasis_0, fg = background
+    BackgroundEmphasis1, // bg = emphasis_1, fg = background
+    BackgroundEmphasis2, // bg = emphasis_2, fg = background
+    BackgroundEmphasis3, // bg = emphasis_3, fg = background
+    CustomRgb {
+        fg: Option<(u8, u8, u8)>,
+        bg: Option<(u8, u8, u8)>,
+    },
+    CustomIndex {
+        fg: Option<u8>,
+        bg: Option<u8>,
+    },
+}
+
+/// One pattern + style pair sent by a plugin.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RegexHighlight {
+    pub pattern: String, // key for upsert; also the regex source
+    pub style: HighlightStyle,
+    pub layer: HighlightLayer,
+    pub context: BTreeMap<String, String>, // arbitrary data echoed back verbatim on click
+    pub on_hover: bool, // if true, only rendered when the cursor overlaps this match
+    pub bold: bool,
+    pub italic: bool,
+    pub underline: bool,
+    pub tooltip_text: Option<String>, // shown at bottom of pane frame when hovering over match
 }
 
 // these are used for the web client
@@ -1712,6 +1778,7 @@ pub struct SessionInfo {
     pub web_client_count: usize,
     pub tab_history: BTreeMap<ClientId, Vec<usize>>,
     pub pane_history: BTreeMap<ClientId, Vec<PaneId>>,
+    pub creation_time: Duration,
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -2004,6 +2071,59 @@ impl LayoutInfo {
             LayoutInfo::Stringified(_stringified) => false,
         }
     }
+    pub fn from_cli(
+        layout_dir: &Option<PathBuf>,
+        maybe_layout_path: &Option<PathBuf>,
+        cwd: PathBuf,
+    ) -> Option<Self> {
+        // If we're not given a layout path, fall back to "default". Since we cannot tell ahead of
+        // time whether the user has a layout named "default.kdl" in their layout directory, we
+        // cannot blindly assume that this is indeed the builtin default layout. The layout
+        // resolution below will correctly handle this.
+        // The docs promise this behavior, so we have to abide:
+        // <https://zellij.dev/documentation/layouts.html#layout-default-directory>
+        let layout_path = maybe_layout_path
+            .clone()
+            .unwrap_or(PathBuf::from("default"));
+
+        if layout_path.starts_with("http://") || layout_path.starts_with("https://") {
+            Some(LayoutInfo::Url(layout_path.display().to_string()))
+        } else if layout_path.extension().is_some() || layout_path.components().count() > 1 {
+            let layout_dir = cwd;
+            let file_path = layout_dir.join(layout_path);
+            Some(LayoutInfo::File(
+                // layout_dir.join(layout_path).display().to_string(),
+                file_path.display().to_string(),
+                LayoutMetadata::from(&file_path),
+            ))
+        } else {
+            // Attempt to interpret the layout as bare layout name from the layout application
+            // directory. This is described in the docs:
+            // <https://zellij.dev/documentation/layouts.html#layout-default-directory>
+            if let Some(layout_dir) = layout_dir
+                .as_ref()
+                .map(|l| l.clone())
+                .or_else(default_layout_dir)
+            {
+                let file_path = layout_dir.join(&layout_path);
+                if file_path.exists() {
+                    return Some(LayoutInfo::File(
+                        file_path.display().to_string(),
+                        LayoutMetadata::from(&file_path),
+                    ));
+                }
+                let file_path_with_ext = file_path.with_extension("kdl");
+                if file_path_with_ext.exists() {
+                    return Some(LayoutInfo::File(
+                        file_path_with_ext.display().to_string(),
+                        LayoutMetadata::from(&file_path_with_ext),
+                    ));
+                }
+            }
+            // Assume a builtin layout by default
+            Some(LayoutInfo::BuiltIn(layout_path.display().to_string()))
+        }
+    }
     pub fn from_config(
         layout_dir: &Option<PathBuf>,
         maybe_layout_path: &Option<PathBuf>,
@@ -2131,6 +2251,12 @@ pub struct TabInfo {
     pub selectable_tiled_panes_count: usize,
     /// The number of selectable (eg. not the UI bars) floating panes currently in this tab
     pub selectable_floating_panes_count: usize,
+    /// The stable identifier for this tab
+    pub tab_id: usize,
+    /// Whether this tab has an active (persistent) bell notification
+    pub has_bell_notification: bool,
+    /// Whether this tab is currently flashing its bell (transient 400ms state)
+    pub is_flashing_bell: bool,
 }
 
 /// The `PaneManifest` contains a dictionary of panes, indexed by the tab position (0 indexed).
@@ -2199,7 +2325,28 @@ pub struct PaneInfo {
     /// Grouped panes (usually through an explicit user action) that are staged for a bulk action
     /// the index is kept track of in order to preserve the pane group order
     pub index_in_pane_group: BTreeMap<ClientId, usize>,
+    /// The default foreground color of this pane, if set (e.g. "#00e000")
+    pub default_fg: Option<String>,
+    /// The default background color of this pane, if set (e.g. "#001a3a")
+    pub default_bg: Option<String>,
 }
+
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+pub struct PaneListEntry {
+    #[serde(flatten)]
+    pub pane_info: PaneInfo,
+    pub tab_id: usize,
+    pub tab_position: usize,
+    pub tab_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pane_command: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pane_cwd: Option<String>,
+}
+
+pub type ListPanesResponse = Vec<PaneListEntry>;
+pub type ListTabsResponse = Vec<TabInfo>;
+
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct ClientInfo {
     pub client_id: ClientId,
@@ -2407,6 +2554,18 @@ pub enum GetPanePidResponse {
     Err(String),
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum GetPaneRunningCommandResponse {
+    Ok(Vec<String>),
+    Err(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum GetPaneCwdResponse {
+    Ok(PathBuf),
+    Err(String),
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum GetFocusedPaneInfoResponse {
     Ok { tab_index: usize, pane_id: PaneId },
@@ -2533,7 +2692,7 @@ pub enum PermissionStatus {
     Denied,
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FileToOpen {
     pub path: PathBuf,
     pub line_number: Option<usize>,
@@ -2631,6 +2790,15 @@ impl FromStr for PaneId {
             u32::from_str_radix(&stringified_pane_id, 10)
                 .map(|id| PaneId::Terminal(id))
                 .map_err(|e| e.into())
+        }
+    }
+}
+
+impl std::fmt::Display for PaneId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PaneId::Terminal(id) => write!(f, "terminal_{}", id),
+            PaneId::Plugin(id) => write!(f, "plugin_{}", id),
         }
     }
 }
@@ -3237,6 +3405,12 @@ pub enum PluginCommand {
     GetPanePid {
         pane_id: PaneId,
     },
+    GetPaneRunningCommand {
+        pane_id: PaneId,
+    },
+    GetPaneCwd {
+        pane_id: PaneId,
+    },
     MovePaneWithPaneId(PaneId),
     MovePaneWithPaneIdInDirection(PaneId, Direction),
     ClearScreenForPaneId(PaneId),
@@ -3255,6 +3429,12 @@ pub enum PluginCommand {
     // the new tab
     BreakPanesToTabWithIndex(Vec<PaneId>, usize, bool), // usize - tab_index, bool -
     // should_change_focus_to_new_tab
+    SwitchTabToId(u64),                            // u64 - tab_id
+    GoToTabWithId(u64),                            // u64 - tab_id
+    CloseTabWithId(u64),                           // u64 - tab_id
+    RenameTabWithId(u64, String),                  // u64 - tab_id, String - new name
+    BreakPanesToTabWithId(Vec<PaneId>, u64, bool), // u64 - tab_id, bool -
+    // should_change_focus_to_target_tab
     ReloadPlugin(u32), // u32 - plugin pane id
     LoadNewPlugin {
         url: String,
@@ -3336,4 +3516,69 @@ pub enum PluginCommand {
     ParseLayout(String), // String contains raw KDL layout
     GetLayoutDir,
     GetFocusedPaneInfo,
+    SaveSession,
+    CurrentSessionLastSavedTime,
+    GetPaneInfo(PaneId),
+    GetTabInfo(usize), // tab_id
+    GetSessionEnvironmentVariables,
+    OpenCommandPaneInNewTab(CommandToRun, Context),
+    OpenPluginPaneInNewTab {
+        plugin_url: String,
+        configuration: BTreeMap<String, String>,
+        context: Context,
+    },
+    OpenEditorPaneInNewTab(FileToOpen, Context),
+    OpenCommandPaneInPlaceOfPaneId(PaneId, CommandToRun, bool, Context), // bool = close_replaced_pane
+    OpenTerminalPaneInPlaceOfPaneId(PaneId, FileToOpen, bool),
+    OpenEditPaneInPlaceOfPaneId(PaneId, FileToOpen, bool, Context),
+    HideFloatingPanes {
+        tab_id: Option<usize>,
+    },
+    ShowFloatingPanes {
+        tab_id: Option<usize>,
+    },
+    SetPaneColor(PaneId, Option<String>, Option<String>), // (pane_id, fg, bg)
+    SetPaneRegexHighlights(PaneId, Vec<RegexHighlight>),
+    ClearPaneHighlights(PaneId),
 }
+
+// Response type for plugin API methods that open a pane in a new tab
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct OpenPaneInNewTabResponse {
+    pub tab_id: Option<usize>,
+    pub pane_id: Option<PaneId>,
+}
+
+// Response types for plugin API methods that create tabs
+pub type NewTabResponse = Option<usize>;
+pub type NewTabsResponse = Vec<usize>;
+pub type FocusOrCreateTabResponse = Option<usize>;
+pub type BreakPanesToNewTabResponse = Option<usize>;
+pub type BreakPanesToTabWithIndexResponse = Option<usize>;
+pub type BreakPanesToTabWithIdResponse = Option<usize>;
+
+// Response types for plugin API methods that create panes
+pub type OpenFileResponse = Option<PaneId>;
+pub type OpenFileFloatingResponse = Option<PaneId>;
+pub type OpenFileInPlaceResponse = Option<PaneId>;
+pub type OpenFileNearPluginResponse = Option<PaneId>;
+pub type OpenFileFloatingNearPluginResponse = Option<PaneId>;
+pub type OpenFileInPlaceOfPluginResponse = Option<PaneId>;
+
+pub type OpenTerminalResponse = Option<PaneId>;
+pub type OpenTerminalFloatingResponse = Option<PaneId>;
+pub type OpenTerminalInPlaceResponse = Option<PaneId>;
+pub type OpenTerminalNearPluginResponse = Option<PaneId>;
+pub type OpenTerminalFloatingNearPluginResponse = Option<PaneId>;
+pub type OpenTerminalInPlaceOfPluginResponse = Option<PaneId>;
+
+pub type OpenCommandPaneResponse = Option<PaneId>;
+pub type OpenCommandPaneFloatingResponse = Option<PaneId>;
+pub type OpenCommandPaneInPlaceResponse = Option<PaneId>;
+pub type OpenCommandPaneNearPluginResponse = Option<PaneId>;
+pub type OpenCommandPaneFloatingNearPluginResponse = Option<PaneId>;
+pub type OpenCommandPaneInPlaceOfPluginResponse = Option<PaneId>;
+pub type OpenCommandPaneBackgroundResponse = Option<PaneId>;
+pub type OpenCommandPaneInPlaceOfPaneIdResponse = Option<PaneId>;
+pub type OpenTerminalPaneInPlaceOfPaneIdResponse = Option<PaneId>;
+pub type OpenEditPaneInPlaceOfPaneIdResponse = Option<PaneId>;

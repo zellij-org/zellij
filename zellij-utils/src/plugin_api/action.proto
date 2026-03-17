@@ -144,10 +144,17 @@ message LayoutConstraintFloatingPair {
   repeated FloatingPaneLayout layouts = 2;
 }
 
+message CommandOrPluginFile {
+  string path = 1;
+  optional int32 line_number = 2;
+  optional string cwd = 3;
+}
+
 message CommandOrPlugin {
   oneof command_or_plugin_type {
     RunCommandAction command = 1;
     RunPluginOrAlias plugin = 2;
+    CommandOrPluginFile file = 3;
   }
 }
 
@@ -232,6 +239,11 @@ message Action {
     NewInPlacePanePayload new_in_place_pane_payload = 52;
     OverrideLayoutPayload override_layout_payload = 53;
     SetPaneBorderlessPayload set_pane_borderless_payload = 54;
+    uint64 go_to_tab_by_id_payload = 55;
+    uint64 close_tab_by_id_payload = 56;
+    TabIdAndName rename_tab_by_id_payload = 57;
+    ShowFloatingPanesPayload show_floating_panes_payload = 58;
+    HideFloatingPanesPayload hide_floating_panes_payload = 59;
   }
 }
 
@@ -245,6 +257,19 @@ message CliPipePayload {
 message IdAndName {
   bytes name = 1;
   uint32 id = 2;
+}
+
+message TabIdAndName {
+  uint64 tab_id = 1;
+  string name = 2;
+}
+
+message ShowFloatingPanesPayload {
+  optional uint32 tab_id = 1;
+}
+
+message HideFloatingPanesPayload {
+  optional uint32 tab_id = 1;
 }
 
 message PaneIdAndShouldFloat {
@@ -357,6 +382,8 @@ message WriteCharsPayload {
 message DumpScreenPayload {
   string file_path = 1;
   bool include_scrollback = 2;
+  optional PaneId pane_id = 3;
+  bool dump_to_stdout = 4;
 }
 
 enum ActionName {
@@ -452,6 +479,11 @@ enum ActionName {
     NewInPlacePane = 92;
     OverrideLayout = 93;
     SetPaneBorderless = 94;
+    GoToTabById = 95;
+    CloseTabById = 96;
+    RenameTabById = 97;
+    ShowFloatingPanes = 98;
+    HideFloatingPanes = 99;
 }
 
 message Position {

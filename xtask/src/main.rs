@@ -79,11 +79,11 @@ fn workspace_members() -> &'static Vec<WorkspaceMember> {
                 build: true,
             },
             WorkspaceMember {
-                crate_name: "default-plugins/sequence",
+                crate_name: "default-plugins/layout-manager",
                 build: true,
             },
             WorkspaceMember {
-                crate_name: "default-plugins/layout-manager",
+                crate_name: "default-plugins/link",
                 build: true,
             },
             WorkspaceMember {

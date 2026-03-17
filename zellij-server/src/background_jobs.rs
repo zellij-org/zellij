@@ -1,4 +1,3 @@
-use async_std::task;
 use zellij_utils::consts::{
     session_info_cache_file_name, session_info_folder_for_session, session_layout_cache_file_name,
     VERSION, ZELLIJ_SESSION_INFO_CACHE_DIR, ZELLIJ_SOCK_DIR,
@@ -21,20 +20,20 @@ use isahc::{config::RedirectPolicy, HttpClient, Request};
 use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::io::Write;
-use std::os::unix::fs::FileTypeExt;
 use std::path::PathBuf;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc, Mutex,
 };
 use std::time::{Duration, Instant};
+use zellij_utils::consts::is_ipc_socket;
 
 use crate::panes::PaneId;
 use crate::plugins::{PluginId, PluginInstruction};
 use crate::pty::PtyInstruction;
 use crate::screen::ScreenInstruction;
 use crate::thread_bus::Bus;
-use crate::ClientId;
+use crate::{ClientId, ServerInstruction};
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum BackgroundJob {
@@ -66,6 +65,13 @@ pub enum BackgroundJob {
     HighlightPanesWithMessage(Vec<PaneId>, String),
     RenderToClients,
     QueryZellijWebServerStatus,
+    ClearHelpText {
+        client_id: ClientId,
+    },
+    FlashPaneBell(Vec<PaneId>),
+    StopFlashPaneBell(Vec<PaneId>),
+    FlashTabBell(usize),     // usize = tab_id
+    StopFlashTabBell(usize), // usize = tab_id
     Exit,
 }
 
@@ -92,6 +98,11 @@ impl From<&BackgroundJob> for BackgroundJobContext {
             BackgroundJob::QueryZellijWebServerStatus => {
                 BackgroundJobContext::QueryZellijWebServerStatus
             },
+            BackgroundJob::ClearHelpText { .. } => BackgroundJobContext::ClearHelpText,
+            BackgroundJob::FlashPaneBell(..) => BackgroundJobContext::FlashPaneBell,
+            BackgroundJob::StopFlashPaneBell(..) => BackgroundJobContext::StopFlashPaneBell,
+            BackgroundJob::FlashTabBell(..) => BackgroundJobContext::FlashTabBell,
+            BackgroundJob::StopFlashTabBell(..) => BackgroundJobContext::StopFlashTabBell,
             BackgroundJob::Exit => BackgroundJobContext::Exit,
         }
     }
@@ -103,6 +114,7 @@ static PLUGIN_ANIMATION_OFFSET_DURATION_MD: u64 = 500;
 static SESSION_READ_DURATION: u64 = 1000;
 static DEFAULT_SERIALIZATION_INTERVAL: u64 = 60000;
 static REPAINT_DELAY_MS: u64 = 10;
+static HELP_TEXT_DEBOUNCE_DURATION: u64 = 5000;
 
 pub(crate) fn background_jobs_main(
     bus: Bus<BackgroundJob>,
@@ -122,12 +134,18 @@ pub(crate) fn background_jobs_main(
     let serialization_interval = serialization_interval.map(|s| s * 1000); // convert to
                                                                            // milliseconds
     let last_render_request: Arc<Mutex<Option<Instant>>> = Arc::new(Mutex::new(None));
+    let pending_help_text_clear: Arc<Mutex<HashMap<ClientId, Instant>>> =
+        Arc::new(Mutex::new(HashMap::new()));
+    let mut flashing_pane_bells: HashMap<PaneId, Arc<AtomicBool>> = HashMap::new();
+    let mut flashing_tab_bells: HashMap<usize, Arc<AtomicBool>> = HashMap::new();
 
     let http_client = HttpClient::builder()
         // TODO: timeout?
         .redirect_policy(RedirectPolicy::Follow)
         .build()
         .ok();
+    // We needn't do anything with the runtime, but it should exist at this point.
+    let runtime = crate::global_async_runtime::get_tokio_runtime();
 
     loop {
         let (event, mut err_ctx) = bus.recv().with_context(err_context)?;
@@ -138,7 +156,7 @@ pub(crate) fn background_jobs_main(
                 if job_already_running(job, &mut running_jobs) {
                     continue;
                 }
-                task::spawn({
+                runtime.spawn({
                     let senders = bus.senders.clone();
                     async move {
                         let _ = senders.send_to_screen(
@@ -147,7 +165,10 @@ pub(crate) fn background_jobs_main(
                                 Some(text),
                             ),
                         );
-                        task::sleep(std::time::Duration::from_millis(LONG_FLASH_DURATION_MS)).await;
+                        tokio::time::sleep(std::time::Duration::from_millis(
+                            LONG_FLASH_DURATION_MS,
+                        ))
+                        .await;
                         let _ = senders.send_to_screen(
                             ScreenInstruction::ClearPaneFrameColorOverride(pane_ids),
                         );
@@ -159,7 +180,7 @@ pub(crate) fn background_jobs_main(
                 if job_already_running(job, &mut running_jobs) {
                     continue;
                 }
-                task::spawn({
+                runtime.spawn({
                     let senders = bus.senders.clone();
                     let loading_plugin = loading_plugin.clone();
                     async move {
@@ -167,7 +188,7 @@ pub(crate) fn background_jobs_main(
                             let _ = senders.send_to_screen(
                                 ScreenInstruction::ProgressPluginLoadingOffset(pid),
                             );
-                            task::sleep(std::time::Duration::from_millis(
+                            tokio::time::sleep(std::time::Duration::from_millis(
                                 PLUGIN_ANIMATION_OFFSET_DURATION_MD,
                             ))
                             .await;
@@ -190,6 +211,15 @@ pub(crate) fn background_jobs_main(
             },
             BackgroundJob::ReportLayoutInfo(session_layout) => {
                 *current_session_layout.lock().unwrap() = session_layout;
+
+                // Update session save time for plugin query
+                let timestamp_millis = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis() as u64;
+                let _ = bus
+                    .senders
+                    .send_to_plugin(PluginInstruction::UpdateSessionSaveTime(timestamp_millis));
             },
             BackgroundJob::ReadAllSessionInfosOnMachine => {
                 // this job should only be run once and it keeps track of other sessions (as well
@@ -199,7 +229,7 @@ pub(crate) fn background_jobs_main(
                     continue;
                 }
                 running_jobs.insert(job, Instant::now());
-                task::spawn({
+                runtime.spawn({
                     let senders = bus.senders.clone();
                     let current_session_info = current_session_info.clone();
                     let current_session_name = current_session_name.clone();
@@ -220,6 +250,13 @@ pub(crate) fn background_jobs_main(
                                     current_session_info,
                                     current_session_layout,
                                 );
+
+                                // Send SavedCurrentSession instruction to plugin thread
+                                let timestamp_millis = std::time::SystemTime::now()
+                                    .duration_since(std::time::UNIX_EPOCH)
+                                    .unwrap_or_default()
+                                    .as_millis()
+                                    as u64;
                             }
                             let mut session_infos_on_machine =
                                 read_other_live_session_states(&current_session_name);
@@ -254,8 +291,10 @@ pub(crate) fn background_jobs_main(
                                 );
                                 *last_serialization_time.lock().unwrap() = Instant::now();
                             }
-                            task::sleep(std::time::Duration::from_millis(SESSION_READ_DURATION))
-                                .await;
+                            tokio::time::sleep(std::time::Duration::from_millis(
+                                SESSION_READ_DURATION,
+                            ))
+                            .await;
                         }
                     }
                 });
@@ -269,17 +308,18 @@ pub(crate) fn background_jobs_main(
                 cwd,
                 context,
             ) => {
-                // when async_std::process stabilizes, we should change this to be async
-                std::thread::spawn({
+                runtime.spawn({
                     let senders = bus.senders.clone();
-                    move || {
-                        let output = std::process::Command::new(&command)
+                    async move {
+                        let output = tokio::process::Command::new(&command)
                             .args(&args)
                             .envs(env_variables)
                             .current_dir(cwd)
+                            .stdin(std::process::Stdio::null())
                             .stdout(std::process::Stdio::piped())
                             .stderr(std::process::Stdio::piped())
-                            .output();
+                            .output()
+                            .await;
                         match output {
                             Ok(output) => {
                                 let stdout = output.stdout.to_vec();
@@ -307,7 +347,7 @@ pub(crate) fn background_jobs_main(
                 });
             },
             BackgroundJob::WebRequest(plugin_id, client_id, url, verb, headers, body, context) => {
-                task::spawn({
+                runtime.spawn({
                     let senders = bus.senders.clone();
                     let http_client = http_client.clone();
                     async move {
@@ -390,23 +430,21 @@ pub(crate) fn background_jobs_main(
             },
             BackgroundJob::QueryZellijWebServerStatus => {
                 #[cfg(feature = "web_server_capability")]
-                task::spawn({
-                    let senders = bus.senders.clone();
-                    let web_server_base_url = web_server_base_url.clone();
-                    async move {
-                        let status = task::spawn_blocking(move || {
-                            query_webserver_via_ipc(&web_server_base_url)
-                        })
-                        .await
+                {
+                    let status = query_webserver_via_ipc(&web_server_base_url)
                         .unwrap_or(WebServerStatus::Offline);
-
-                        let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
-                            None,
-                            None,
-                            Event::WebServerStatus(status),
-                        )]));
-                    }
-                });
+                    runtime.spawn({
+                        let senders = bus.senders.clone();
+                        let web_server_base_url = web_server_base_url.clone();
+                        async move {
+                            let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
+                                None,
+                                None,
+                                Event::WebServerStatus(status),
+                            )]));
+                        }
+                    });
+                }
             },
             BackgroundJob::RenderToClients => {
                 // last_render_request being Some() represents a render request that is pending
@@ -428,12 +466,13 @@ pub(crate) fn background_jobs_main(
                     (should_run_task, current_time)
                 };
                 if should_run_task {
-                    task::spawn({
+                    runtime.spawn({
                         let senders = bus.senders.clone();
                         let last_render_request = last_render_request.clone();
                         let task_start_time = current_time;
                         async move {
-                            task::sleep(std::time::Duration::from_millis(REPAINT_DELAY_MS)).await;
+                            tokio::time::sleep(std::time::Duration::from_millis(REPAINT_DELAY_MS))
+                                .await;
                             let _ = senders.send_to_screen(ScreenInstruction::RenderToClients);
                             {
                                 let mut last_render_request = last_render_request.lock().unwrap();
@@ -459,7 +498,7 @@ pub(crate) fn background_jobs_main(
                 if job_already_running(job, &mut running_jobs) {
                     continue;
                 }
-                task::spawn({
+                runtime.spawn({
                     let senders = bus.senders.clone();
                     async move {
                         let _ = senders.send_to_screen(
@@ -468,12 +507,127 @@ pub(crate) fn background_jobs_main(
                                 Some(text),
                             ),
                         );
-                        task::sleep(std::time::Duration::from_millis(FLASH_DURATION_MS)).await;
+                        tokio::time::sleep(std::time::Duration::from_millis(FLASH_DURATION_MS))
+                            .await;
                         let _ = senders.send_to_screen(
                             ScreenInstruction::ClearPaneFrameColorOverride(pane_ids),
                         );
                     }
                 });
+            },
+            BackgroundJob::ClearHelpText { client_id } => {
+                let should_spawn = {
+                    let mut pending = pending_help_text_clear.lock().unwrap();
+                    let current_time = Instant::now();
+                    let should_spawn = !pending.contains_key(&client_id);
+                    pending.insert(client_id, current_time);
+                    should_spawn
+                };
+
+                if should_spawn {
+                    runtime.spawn({
+                        let senders = bus.senders.clone();
+                        let pending = pending_help_text_clear.clone();
+                        let debounce_duration = Duration::from_millis(HELP_TEXT_DEBOUNCE_DURATION);
+                        async move {
+                            tokio::time::sleep(debounce_duration).await;
+                            loop {
+                                let next_sleep_duration = {
+                                    let mut pending = pending.lock().unwrap();
+                                    match pending.get(&client_id) {
+                                        Some(&last_motion_time) => {
+                                            let time_since_motion =
+                                                Instant::now().duration_since(last_motion_time);
+                                            if time_since_motion >= debounce_duration {
+                                                pending.remove(&client_id);
+                                                None
+                                            } else {
+                                                let remaining = debounce_duration
+                                                    .saturating_sub(time_since_motion);
+                                                Some(remaining)
+                                            }
+                                        },
+                                        None => break,
+                                    }
+                                };
+
+                                match next_sleep_duration {
+                                    Some(duration) => {
+                                        tokio::time::sleep(duration).await;
+                                    },
+                                    None => {
+                                        let _ = senders.send_to_server(
+                                            ServerInstruction::ClearMouseHelpText(client_id),
+                                        );
+                                        break;
+                                    },
+                                }
+                            }
+                        }
+                    });
+                }
+            },
+            BackgroundJob::FlashPaneBell(pane_ids) => {
+                let is_flashing = Arc::new(AtomicBool::new(true));
+                for &pane_id in &pane_ids {
+                    flashing_pane_bells.insert(pane_id, is_flashing.clone());
+                }
+                runtime.spawn({
+                    let senders = bus.senders.clone();
+                    let pane_ids_clone = pane_ids.clone();
+                    let flag = is_flashing.clone();
+                    async move {
+                        let _ = senders.send_to_screen(
+                            ScreenInstruction::AddHighlightPaneFrameColorOverride(
+                                pane_ids_clone.clone(),
+                                None,
+                            ),
+                        );
+                        tokio::time::sleep(std::time::Duration::from_millis(FLASH_DURATION_MS))
+                            .await;
+                        if flag.load(Ordering::SeqCst) {
+                            let _ = senders.send_to_screen(
+                                ScreenInstruction::ClearPaneFrameColorOverride(pane_ids_clone),
+                            );
+                        }
+                    }
+                });
+            },
+            BackgroundJob::StopFlashPaneBell(pane_ids) => {
+                for &pane_id in &pane_ids {
+                    if let Some(flag) = flashing_pane_bells.remove(&pane_id) {
+                        flag.store(false, Ordering::SeqCst);
+                    }
+                }
+                let _ = bus
+                    .senders
+                    .send_to_screen(ScreenInstruction::ClearPaneFrameColorOverride(pane_ids));
+            },
+            BackgroundJob::FlashTabBell(tab_id) => {
+                let is_flashing = Arc::new(AtomicBool::new(true));
+                flashing_tab_bells.insert(tab_id, is_flashing.clone());
+                runtime.spawn({
+                    let senders = bus.senders.clone();
+                    let flag = is_flashing.clone();
+                    async move {
+                        let _ = senders
+                            .send_to_screen(ScreenInstruction::SetTabBellFlash(tab_id, true));
+                        tokio::time::sleep(std::time::Duration::from_millis(FLASH_DURATION_MS))
+                            .await;
+                        if flag.load(Ordering::SeqCst) {
+                            let _ = senders
+                                .send_to_screen(ScreenInstruction::SetTabBellFlash(tab_id, false));
+                        }
+                    }
+                });
+            },
+            BackgroundJob::StopFlashTabBell(tab_id) => {
+                if let Some(flag) = flashing_tab_bells.remove(&tab_id) {
+                    flag.store(false, Ordering::SeqCst);
+                }
+                let _ = bus
+                    .senders
+                    .send_to_screen(ScreenInstruction::SetTabBellFlash(tab_id, false));
             },
             BackgroundJob::Exit => {
                 for loading_plugin in loading_plugins.values() {
@@ -511,7 +665,7 @@ fn job_already_running(
     }
 }
 
-fn write_session_state_to_disk(
+pub fn write_session_state_to_disk(
     current_session_name: String,
     current_session_info: SessionInfo,
     current_session_layout: (String, BTreeMap<String, String>),
@@ -545,7 +699,7 @@ fn write_session_state_to_disk(
 }
 
 fn read_other_live_session_states(current_session_name: &str) -> BTreeMap<String, SessionInfo> {
-    let mut other_session_names = vec![];
+    let mut other_session_names: Vec<(String, Duration)> = vec![];
     let mut session_infos_on_machine = BTreeMap::new();
     // we do this so that the session infos will be actual and we're
     // reasonably sure their session is running
@@ -553,20 +707,27 @@ fn read_other_live_session_states(current_session_name: &str) -> BTreeMap<String
         files.for_each(|file| {
             if let Ok(file) = file {
                 if let Ok(file_name) = file.file_name().into_string() {
-                    if file.file_type().unwrap().is_socket() {
-                        other_session_names.push(file_name);
+                    if is_ipc_socket(&file.file_type().unwrap()) {
+                        let creation_time = std::fs::metadata(&file.path())
+                            .ok()
+                            .and_then(|f| f.created().ok().or_else(|| f.modified().ok()))
+                            .and_then(|d| d.elapsed().ok())
+                            .map(|d| Duration::from_secs(d.as_secs()))
+                            .unwrap_or_default();
+                        other_session_names.push((file_name, creation_time));
                     }
                 }
             }
         });
     }
 
-    for session_name in other_session_names {
+    for (session_name, creation_time) in other_session_names {
         let session_cache_file_name = session_info_cache_file_name(&session_name);
         if let Ok(raw_session_info) = fs::read_to_string(&session_cache_file_name) {
-            if let Ok(session_info) =
+            if let Ok(mut session_info) =
                 SessionInfo::from_string(&raw_session_info, &current_session_name)
             {
+                session_info.creation_time = creation_time;
                 session_infos_on_machine.insert(session_name, session_info);
             }
         }

@@ -1,7 +1,10 @@
 use axum::extract::ws::Message;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc, Mutex,
+};
 use tokio::sync::mpsc::UnboundedSender;
 use tokio_util::sync::CancellationToken;
 
@@ -82,6 +85,7 @@ impl SessionManager for RealSessionManager {
 pub struct ConnectionTable {
     pub client_id_to_channels: HashMap<String, ClientChannels>,
     pub client_read_only_status: HashMap<String, bool>,
+    pub client_session_token_hash: HashMap<String, String>,
 }
 
 #[derive(Debug, Clone)]
@@ -90,6 +94,7 @@ pub struct ClientChannels {
     pub control_channel_tx: Option<UnboundedSender<Message>>,
     pub terminal_channel_tx: Option<UnboundedSender<String>>,
     terminal_channel_cancellation_token: Option<CancellationToken>,
+    pub should_not_reconnect: Arc<AtomicBool>,
 }
 
 impl ClientChannels {
@@ -99,6 +104,7 @@ impl ClientChannels {
             control_channel_tx: None,
             terminal_channel_tx: None,
             terminal_channel_cancellation_token: None,
+            should_not_reconnect: Arc::new(AtomicBool::new(false)),
         }
     }
 

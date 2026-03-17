@@ -4186,6 +4186,7 @@ Config {
                     should_float: true,
                     move_to_focused_tab: true,
                     should_open_in_place: false,
+                    close_replaced_pane: false,
                     skip_cache: false,
                 },
                 SwitchToMode {
@@ -4226,6 +4227,7 @@ Config {
                     should_float: true,
                     move_to_focused_tab: true,
                     should_open_in_place: false,
+                    close_replaced_pane: false,
                     skip_cache: false,
                 },
                 SwitchToMode {
@@ -4346,6 +4348,7 @@ Config {
                     should_float: true,
                     move_to_focused_tab: true,
                     should_open_in_place: false,
+                    close_replaced_pane: false,
                     skip_cache: false,
                 },
                 SwitchToMode {
@@ -4436,6 +4439,7 @@ Config {
                     should_float: true,
                     move_to_focused_tab: true,
                     should_open_in_place: false,
+                    close_replaced_pane: false,
                     skip_cache: false,
                 },
                 SwitchToMode {
@@ -4479,36 +4483,6 @@ Config {
                 bare_key: Char(
                     'q',
                 ),
-                key_modifiers: {},
-            }: [
-                LaunchPlugin {
-                    plugin: RunPlugin(
-                        RunPlugin {
-                            _allow_exec_host_cmd: false,
-                            location: Zellij(
-                                PluginTag(
-                                    "sequence",
-                                ),
-                            ),
-                            configuration: PluginUserConfiguration(
-                                {},
-                            ),
-                            initial_cwd: None,
-                        },
-                    ),
-                    should_float: true,
-                    should_open_in_place: false,
-                    skip_cache: false,
-                    cwd: None,
-                },
-                SwitchToMode {
-                    input_mode: Normal,
-                },
-            ],
-            KeyWithModifier {
-                bare_key: Char(
-                    'q',
-                ),
                 key_modifiers: {
                     Ctrl,
                 },
@@ -4539,6 +4513,7 @@ Config {
                     should_float: true,
                     move_to_focused_tab: true,
                     should_open_in_place: false,
+                    close_replaced_pane: false,
                     skip_cache: false,
                 },
                 SwitchToMode {
@@ -4591,6 +4566,7 @@ Config {
                     should_float: true,
                     move_to_focused_tab: true,
                     should_open_in_place: false,
+                    close_replaced_pane: false,
                     skip_cache: false,
                 },
                 SwitchToMode {
@@ -6030,12 +6006,17 @@ Config {
         show_startup_tips: None,
         show_release_notes: None,
         advanced_mouse_actions: None,
+        mouse_hover_effects: None,
+        visual_bell: None,
+        focus_follows_mouse: None,
+        mouse_click_through: None,
         web_server_ip: None,
         web_server_port: None,
         web_server_cert: None,
         web_server_key: None,
         enforce_https_for_localhost: None,
         post_command_discovery_hook: None,
+        client_async_worker_tasks: None,
     },
     themes: {
         "other-theme-from-config": Theme {
@@ -7873,18 +7854,6 @@ Config {
                 ),
                 initial_cwd: None,
             },
-            "sequence": RunPlugin {
-                _allow_exec_host_cmd: false,
-                location: Zellij(
-                    PluginTag(
-                        "sequence",
-                    ),
-                ),
-                configuration: PluginUserConfiguration(
-                    {},
-                ),
-                initial_cwd: None,
-            },
             "session-manager": RunPlugin {
                 _allow_exec_host_cmd: false,
                 location: Zellij(
@@ -7956,7 +7925,22 @@ Config {
         },
     },
     env: {},
-    background_plugins: {},
+    background_plugins: {
+        RunPlugin(
+            RunPlugin {
+                _allow_exec_host_cmd: false,
+                location: Zellij(
+                    PluginTag(
+                        "link",
+                    ),
+                ),
+                configuration: PluginUserConfiguration(
+                    {},
+                ),
+                initial_cwd: None,
+            },
+        ),
+    },
     web_client: WebClientConfig {
         font: "monospace",
         theme: None,

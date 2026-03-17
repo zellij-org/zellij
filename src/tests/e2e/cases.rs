@@ -1,6 +1,6 @@
 #![allow(unused)]
 
-use ::insta::assert_snapshot;
+use insta::assert_snapshot;
 use zellij_utils::{
     pane_size::Size,
     position::{Column, Line, Position},

@@ -1,3 +1,4 @@
+use crate::web_client::authentication::SessionTokenHash;
 use crate::web_client::control_message::{
     SetConfigPayload, WebClientToWebServerControlMessage,
     WebClientToWebServerControlMessagePayload, WebServerToWebClientControlMessage,
@@ -16,6 +17,7 @@ use axum::{
     response::IntoResponse,
 };
 use futures::StreamExt;
+use std::sync::{atomic::AtomicBool, Arc};
 use tokio_util::sync::CancellationToken;
 use zellij_utils::{input::mouse::MouseEvent, ipc::ClientToServerMsg};
 
@@ -23,8 +25,9 @@ pub async fn ws_handler_control(
     ws: WebSocketUpgrade,
     _path: Option<AxumPath<String>>,
     State(state): State<AppState>,
+    axum::Extension(session_token_hash): axum::Extension<SessionTokenHash>,
 ) -> impl IntoResponse {
-    ws.on_upgrade(move |socket| handle_ws_control(socket, state))
+    ws.on_upgrade(move |socket| handle_ws_control(socket, state, session_token_hash))
 }
 
 pub async fn ws_handler_terminal(
@@ -32,11 +35,18 @@ pub async fn ws_handler_terminal(
     session_name: Option<AxumPath<String>>,
     Query(params): Query<TerminalParams>,
     State(state): State<AppState>,
+    axum::Extension(session_token_hash): axum::Extension<SessionTokenHash>,
 ) -> impl IntoResponse {
-    ws.on_upgrade(move |socket| handle_ws_terminal(socket, session_name, params, state))
+    ws.on_upgrade(move |socket| {
+        handle_ws_terminal(socket, session_name, params, state, session_token_hash)
+    })
 }
 
-async fn handle_ws_control(socket: WebSocket, state: AppState) {
+async fn handle_ws_control(
+    socket: WebSocket,
+    state: AppState,
+    session_token_hash: SessionTokenHash,
+) {
     let payload = SetConfigPayload::from(&*state.config.lock().unwrap());
     let set_config_msg = WebServerToWebClientControlMessage::SetConfig(payload);
 
@@ -78,6 +88,21 @@ async fn handle_ws_control(socket: WebSocket, state: AppState) {
                     serde_json::from_str(&msg);
                 match deserialized_msg {
                     Ok(deserialized_msg) => {
+                        if !state
+                            .connection_table
+                            .lock()
+                            .unwrap()
+                            .verify_client_ownership(
+                                &deserialized_msg.web_client_id,
+                                &session_token_hash.0,
+                            )
+                        {
+                            log::error!(
+                                "Client attempted to use web_client_id {} that does not belong to their session",
+                                deserialized_msg.web_client_id
+                            );
+                            return;
+                        }
                         if !set_client_control_channel {
                             set_client_control_channel = true;
                             state
@@ -111,8 +136,24 @@ async fn handle_ws_terminal(
     session_name: Option<AxumPath<String>>,
     params: TerminalParams,
     state: AppState,
+    session_token_hash: SessionTokenHash,
 ) {
     let web_client_id = params.web_client_id;
+
+    // Verify the session token owns this web_client_id
+    if !state
+        .connection_table
+        .lock()
+        .unwrap()
+        .verify_client_ownership(&web_client_id, &session_token_hash.0)
+    {
+        log::error!(
+            "Terminal WebSocket: client does not own web_client_id {}",
+            web_client_id
+        );
+        return;
+    }
+
     let Some(os_input) = state
         .connection_table
         .lock()
@@ -147,10 +188,17 @@ async fn handle_ws_terminal(
     );
 
     let terminal_channel_cancellation_token = CancellationToken::new();
+    let should_not_reconnect = state
+        .connection_table
+        .lock()
+        .unwrap()
+        .get_should_not_reconnect_flag(&web_client_id)
+        .unwrap_or_else(|| Arc::new(AtomicBool::new(false)));
     render_to_client(
         stdout_channel_rx,
         client_terminal_channel_tx,
         terminal_channel_cancellation_token.clone(),
+        should_not_reconnect,
     );
     state
         .connection_table

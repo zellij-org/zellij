@@ -2,7 +2,7 @@ use super::super::TerminalPane;
 use crate::panes::sixel::SixelImageStore;
 use crate::panes::LinkHandler;
 use crate::tab::Pane;
-use ::insta::assert_snapshot;
+use insta::assert_snapshot;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -702,6 +702,79 @@ pub fn pane_with_bottom_and_right_borders_position_is_on_frame() {
     assert!(!terminal_pane.position_is_on_frame(&Position::new(30, 70)));
     assert!(!terminal_pane.position_is_on_frame(&Position::new(30, 130)));
     assert!(!terminal_pane.position_is_on_frame(&Position::new(30, 131)));
+}
+
+fn make_terminal_pane_for_bell() -> TerminalPane {
+    let mut fake_win_size = PaneGeom::default();
+    fake_win_size.cols.set_inner(121);
+    fake_win_size.rows.set_inner(20);
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_colors = Rc::new(RefCell::new(Palette::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    TerminalPane::new(
+        1,
+        fake_win_size,
+        Style::default(),
+        0,
+        String::new(),
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
+        sixel_image_store,
+        terminal_emulator_colors,
+        terminal_emulator_color_codes,
+        None,
+        None,
+        false,
+        true,
+        true,
+        true,
+        false,
+        None,
+    )
+}
+
+#[test]
+pub fn bell_notification_state_set_and_cleared() {
+    let mut terminal_pane = make_terminal_pane_for_bell();
+
+    assert!(
+        !terminal_pane.get_bell_notification(),
+        "Initially no bell notification"
+    );
+
+    terminal_pane.set_bell_notification(true);
+    assert!(
+        terminal_pane.get_bell_notification(),
+        "Bell notification should be set"
+    );
+
+    terminal_pane.set_bell_notification(false);
+    assert!(
+        !terminal_pane.get_bell_notification(),
+        "Bell notification should be cleared"
+    );
+}
+
+#[test]
+pub fn has_bell_reflects_grid_ring_bell() {
+    let mut terminal_pane = make_terminal_pane_for_bell();
+
+    assert!(
+        !terminal_pane.has_bell(),
+        "Initially has_bell should be false"
+    );
+
+    terminal_pane.handle_pty_bytes(vec![7u8]);
+    assert!(
+        terminal_pane.has_bell(),
+        "has_bell should be true after pty bell byte"
+    );
+
+    terminal_pane.consume_bell();
+    assert!(
+        !terminal_pane.has_bell(),
+        "has_bell should be false after consume_bell"
+    );
 }
 
 #[test]

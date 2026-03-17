@@ -1240,6 +1240,7 @@ impl Pane for MockPane {
         &self,
         _client_id: Option<ClientId>,
         _get_full_scrollback: bool,
+        _max_scrollback_lines: Option<usize>,
     ) -> PaneContents {
         unimplemented!()
     }

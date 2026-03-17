@@ -6,9 +6,9 @@ expression: last_snapshot
 ┌ Pane #1 ────────────────────────────────────────────────────────────────┐┌ /usr/src/zellij/fixtures/append-echo-script.sh ─────────────────────────┐
 │$ /usr/src/zellij/x86_64-unknown-linux-musl/release/zellij run -s -- "/us││foo                                                                      │
 │r/src/zellij/fixtures/append-echo-script.sh"                             ││foo                                                                      │
-│$                                                                        ││█                                                                        │
+│terminal_1                                                               ││█                                                                        │
 │$                                                                        ││                                                                         │
-│                                                                         ││                                                                         │
+│$                                                                        ││                                                                         │
 │                                                                         ││                                                                         │
 │                                                                         ││                                                                         │
 │                                                                         ││                                                                         │

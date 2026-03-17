@@ -2,6 +2,7 @@ use super::Selection;
 use crate::panes::terminal_character::TerminalCharacter;
 use crate::panes::{Grid, Row};
 use std::borrow::Cow;
+use std::collections::VecDeque;
 use std::fmt::Debug;
 use zellij_utils::input::actions::SearchDirection;
 use zellij_utils::position::Position;
@@ -317,7 +318,7 @@ impl SearchResult {
     pub(crate) fn move_down(
         &mut self,
         amount: usize,
-        viewport: &[Row],
+        viewport: &VecDeque<Row>,
         grid_height: usize,
     ) -> bool {
         let mut found_something = false;
@@ -331,7 +332,7 @@ impl SearchResult {
 
         // Search the new line for our needle
         if !self.needle.is_empty() {
-            if let Some(row) = viewport.first() {
+            if let Some(row) = viewport.front() {
                 let mut tail = Vec::new();
                 loop {
                     let tail_idx = 1 + tail.len();
@@ -354,8 +355,8 @@ impl SearchResult {
     pub(crate) fn move_up(
         &mut self,
         amount: usize,
-        viewport: &[Row],
-        lines_below: &[Row],
+        viewport: &VecDeque<Row>,
+        lines_below: &VecDeque<Row>,
         grid_height: usize,
     ) -> bool {
         let mut found_something = false;
@@ -368,7 +369,7 @@ impl SearchResult {
 
         // Search the new line for our needle
         if !self.needle.is_empty() {
-            if let Some(row) = viewport.last() {
+            if let Some(row) = viewport.back() {
                 let tail: Vec<&Row> = lines_below.iter().take_while(|r| !r.is_canonical).collect();
                 let selections = self.search_row(viewport.len() - 1, row, &tail);
                 for selection in selections {

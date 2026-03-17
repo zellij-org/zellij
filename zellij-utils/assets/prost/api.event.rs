@@ -9,7 +9,7 @@ pub struct EventNameList {
 pub struct Event {
     #[prost(enumeration="EventType", tag="1")]
     pub name: i32,
-    #[prost(oneof="event::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34")]
+    #[prost(oneof="event::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36")]
     pub payload: ::core::option::Option<event::Payload>,
 }
 /// Nested message and enum types in `Event`.
@@ -83,6 +83,10 @@ pub mod event {
         CwdChangedPayload(super::CwdChangedPayload),
         #[prost(message, tag="34")]
         AvailableLayoutInfoPayload(super::AvailableLayoutInfoPayload),
+        #[prost(message, tag="35")]
+        PluginConfigurationChangedPayload(super::PluginConfigurationChangedPayload),
+        #[prost(message, tag="36")]
+        HighlightClickedPayload(super::HighlightClickedPayload),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -367,6 +371,8 @@ pub struct SessionManifest {
     pub tab_history: ::prost::alloc::vec::Vec<ClientTabHistory>,
     #[prost(message, repeated, tag="11")]
     pub pane_history: ::prost::alloc::vec::Vec<ClientPaneHistory>,
+    #[prost(uint64, tag="12")]
+    pub creation_time: u64,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -541,6 +547,10 @@ pub struct PaneInfo {
     pub is_selectable: bool,
     #[prost(message, repeated, tag="23")]
     pub index_in_pane_group: ::prost::alloc::vec::Vec<IndexInPaneGroup>,
+    #[prost(string, optional, tag="24")]
+    pub default_fg: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag="25")]
+    pub default_bg: ::core::option::Option<::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -585,6 +595,12 @@ pub struct TabInfo {
     pub selectable_tiled_panes_count: u32,
     #[prost(uint32, tag="16")]
     pub selectable_floating_panes_count: u32,
+    #[prost(uint32, tag="17")]
+    pub tab_id: u32,
+    #[prost(bool, tag="18")]
+    pub has_bell_notification: bool,
+    #[prost(bool, tag="19")]
+    pub is_flashing_bell: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -709,6 +725,24 @@ pub struct ActionCompletePayload {
     #[prost(message, repeated, tag="3")]
     pub context: ::prost::alloc::vec::Vec<ContextItem>,
 }
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PluginConfigurationChangedPayload {
+    #[prost(message, repeated, tag="1")]
+    pub configuration: ::prost::alloc::vec::Vec<ContextItem>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct HighlightClickedPayload {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+    #[prost(string, tag="2")]
+    pub pattern: ::prost::alloc::string::String,
+    #[prost(string, tag="3")]
+    pub matched_string: ::prost::alloc::string::String,
+    #[prost(message, repeated, tag="4")]
+    pub context: ::prost::alloc::vec::Vec<ContextItem>,
+}
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
 pub enum EventType {
@@ -767,6 +801,8 @@ pub enum EventType {
     ActionComplete = 38,
     CwdChanged = 39,
     AvailableLayoutInfo = 40,
+    PluginConfigurationChanged = 41,
+    HighlightClicked = 42,
 }
 impl EventType {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -815,6 +851,8 @@ impl EventType {
             EventType::ActionComplete => "ActionComplete",
             EventType::CwdChanged => "CwdChanged",
             EventType::AvailableLayoutInfo => "AvailableLayoutInfo",
+            EventType::PluginConfigurationChanged => "PluginConfigurationChanged",
+            EventType::HighlightClicked => "HighlightClicked",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -860,6 +898,8 @@ impl EventType {
             "ActionComplete" => Some(Self::ActionComplete),
             "CwdChanged" => Some(Self::CwdChanged),
             "AvailableLayoutInfo" => Some(Self::AvailableLayoutInfo),
+            "PluginConfigurationChanged" => Some(Self::PluginConfigurationChanged),
+            "HighlightClicked" => Some(Self::HighlightClicked),
             _ => None,
         }
     }

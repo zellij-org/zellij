@@ -41,6 +41,10 @@ impl Selection {
         self.end = end;
     }
 
+    pub fn finalize(&mut self) {
+        self.active = false;
+    }
+
     pub fn set_start_and_end_positions(&mut self, start: Position, end: Position) {
         self.active = true;
         self.start = start;

@@ -62,6 +62,7 @@ pub fn create_first_message(
     mut config_opts: Options,
     should_create_session: bool,
     session_name: &str,
+    initial_layout: Option<LayoutInfo>,
 ) -> ClientToServerMsg {
     let resurrection_layout = resurrection_layout(&session_name).ok().flatten();
 
@@ -73,7 +74,7 @@ pub fn create_first_message(
             LayoutMetadata::default(),
         ))
     } else {
-        None
+        initial_layout
     };
 
     config_opts.web_server = Some(true);
@@ -133,6 +134,10 @@ pub fn create_first_message(
 }
 
 pub fn create_ipc_pipe(session_name: &str) -> PathBuf {
+    if let Err(e) = zellij_utils::sessions::validate_session_name(session_name) {
+        log::error!("Invalid session name: {}", e);
+        panic!("Invalid session name: {}", e);
+    }
     let zellij_ipc_pipe: PathBuf = {
         let mut sock_dir = zellij_utils::consts::ZELLIJ_SOCK_DIR.clone();
         fs::create_dir_all(&sock_dir).unwrap();

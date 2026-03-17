@@ -20,6 +20,7 @@ pub use super::generated_api::api::{
         PaneManifest as ProtobufPaneManifest, PaneMetadata as ProtobufPaneMetadata,
         PaneRenderReportPayload as ProtobufPaneRenderReportPayload,
         PaneScrollbackResponse as ProtobufPaneScrollbackResponse, PaneType as ProtobufPaneType,
+        PluginConfigurationChangedPayload as ProtobufPluginConfigurationChangedPayload,
         PluginInfo as ProtobufPluginInfo, ResurrectableSession as ProtobufResurrectableSession,
         SelectedText as ProtobufSelectedText, SessionManifest as ProtobufSessionManifest,
         SyntaxError as ProtobufSyntaxError, TabInfo as ProtobufTabInfo,
@@ -487,6 +488,37 @@ impl TryFrom<ProtobufEvent> for Event {
                     ))
                 },
                 _ => Err("Malformed payload for the AvailableLayoutInfo Event"),
+            },
+            Some(ProtobufEventType::PluginConfigurationChanged) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::PluginConfigurationChangedPayload(payload)) => {
+                    let configuration = payload
+                        .configuration
+                        .into_iter()
+                        .map(|item| (item.name, item.value))
+                        .collect();
+                    Ok(Event::PluginConfigurationChanged(configuration))
+                },
+                _ => Err("Malformed payload for PluginConfigurationChanged Event"),
+            },
+            Some(ProtobufEventType::HighlightClicked) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::HighlightClickedPayload(p)) => {
+                    let pane_id = p
+                        .pane_id
+                        .ok_or("Missing pane_id in HighlightClicked")?
+                        .try_into()?;
+                    let context = p
+                        .context
+                        .into_iter()
+                        .map(|item| (item.name, item.value))
+                        .collect();
+                    Ok(Event::HighlightClicked {
+                        pane_id,
+                        pattern: p.pattern,
+                        matched_string: p.matched_string,
+                        context,
+                    })
+                },
+                _ => Err("Malformed payload for HighlightClicked Event"),
             },
             None => Err("Unknown Protobuf Event"),
         }
@@ -964,6 +996,40 @@ impl TryFrom<Event> for ProtobufEvent {
                     )),
                 })
             },
+            Event::PluginConfigurationChanged(configuration) => {
+                let configuration_items: Vec<ProtobufContextItem> = configuration
+                    .into_iter()
+                    .map(|(name, value)| ProtobufContextItem { name, value })
+                    .collect();
+
+                let payload = ProtobufPluginConfigurationChangedPayload {
+                    configuration: configuration_items,
+                };
+
+                Ok(ProtobufEvent {
+                    name: ProtobufEventType::PluginConfigurationChanged as i32,
+                    payload: Some(event::Payload::PluginConfigurationChangedPayload(payload)),
+                })
+            },
+            Event::HighlightClicked {
+                pane_id,
+                pattern,
+                matched_string,
+                context,
+            } => Ok(ProtobufEvent {
+                name: ProtobufEventType::HighlightClicked as i32,
+                payload: Some(event::Payload::HighlightClickedPayload(
+                    HighlightClickedPayload {
+                        pane_id: pane_id.try_into().ok(),
+                        pattern,
+                        matched_string,
+                        context: context
+                            .into_iter()
+                            .map(|(name, value)| ProtobufContextItem { name, value })
+                            .collect(),
+                    },
+                )),
+            }),
         }
     }
 }
@@ -1014,6 +1080,7 @@ impl TryFrom<SessionInfo> for ProtobufSessionManifest {
                 .into_iter()
                 .map(|p| ProtobufClientPaneHistory::from(p))
                 .collect(),
+            creation_time: session_info.creation_time.as_secs(),
         })
     }
 }
@@ -1124,6 +1191,7 @@ impl TryFrom<ProtobufSessionManifest> for SessionInfo {
             web_client_count: protobuf_session_manifest.web_client_count as usize,
             tab_history,
             pane_history,
+            creation_time: Duration::from_secs(protobuf_session_manifest.creation_time),
         })
     }
 }
@@ -1533,6 +1601,8 @@ impl TryFrom<ProtobufPaneInfo> for PaneInfo {
                     )
                 })
                 .collect(),
+            default_fg: protobuf_pane_info.default_fg,
+            default_bg: protobuf_pane_info.default_bg,
         })
     }
 }
@@ -1576,6 +1646,8 @@ impl TryFrom<PaneInfo> for ProtobufPaneInfo {
                     index: index as u32,
                 })
                 .collect(),
+            default_fg: pane_info.default_fg,
+            default_bg: pane_info.default_bg,
         })
     }
 }
@@ -1605,6 +1677,9 @@ impl TryFrom<ProtobufTabInfo> for TabInfo {
             selectable_tiled_panes_count: protobuf_tab_info.selectable_tiled_panes_count as usize,
             selectable_floating_panes_count: protobuf_tab_info.selectable_floating_panes_count
                 as usize,
+            tab_id: protobuf_tab_info.tab_id as usize,
+            has_bell_notification: protobuf_tab_info.has_bell_notification,
+            is_flashing_bell: protobuf_tab_info.is_flashing_bell,
         })
     }
 }
@@ -1633,6 +1708,9 @@ impl TryFrom<TabInfo> for ProtobufTabInfo {
             display_area_columns: tab_info.display_area_columns as u32,
             selectable_tiled_panes_count: tab_info.selectable_tiled_panes_count as u32,
             selectable_floating_panes_count: tab_info.selectable_floating_panes_count as u32,
+            tab_id: tab_info.tab_id as u32,
+            has_bell_notification: tab_info.has_bell_notification,
+            is_flashing_bell: tab_info.is_flashing_bell,
         })
     }
 }
@@ -1863,6 +1941,8 @@ impl TryFrom<ProtobufEventType> for EventType {
             ProtobufEventType::ActionComplete => EventType::ActionComplete,
             ProtobufEventType::CwdChanged => EventType::CwdChanged,
             ProtobufEventType::AvailableLayoutInfo => EventType::AvailableLayoutInfo,
+            ProtobufEventType::PluginConfigurationChanged => EventType::PluginConfigurationChanged,
+            ProtobufEventType::HighlightClicked => EventType::HighlightClicked,
         })
     }
 }
@@ -1911,6 +1991,8 @@ impl TryFrom<EventType> for ProtobufEventType {
             EventType::ActionComplete => ProtobufEventType::ActionComplete,
             EventType::CwdChanged => ProtobufEventType::CwdChanged,
             EventType::AvailableLayoutInfo => ProtobufEventType::AvailableLayoutInfo,
+            EventType::PluginConfigurationChanged => ProtobufEventType::PluginConfigurationChanged,
+            EventType::HighlightClicked => ProtobufEventType::HighlightClicked,
         })
     }
 }
@@ -2118,6 +2200,9 @@ fn serialize_tab_update_event_with_non_default_values() {
             display_area_columns: 10,
             selectable_tiled_panes_count: 10,
             selectable_floating_panes_count: 10,
+            tab_id: 0,
+            has_bell_notification: false,
+            is_flashing_bell: false,
         },
         TabInfo {
             position: 1,
@@ -2136,6 +2221,9 @@ fn serialize_tab_update_event_with_non_default_values() {
             display_area_columns: 10,
             selectable_tiled_panes_count: 10,
             selectable_floating_panes_count: 10,
+            tab_id: 1,
+            has_bell_notification: false,
+            is_flashing_bell: false,
         },
         TabInfo::default(),
     ]);
@@ -2409,6 +2497,9 @@ fn serialize_session_update_event_with_non_default_values() {
             display_area_columns: 10,
             selectable_tiled_panes_count: 10,
             selectable_floating_panes_count: 10,
+            tab_id: 0,
+            has_bell_notification: false,
+            is_flashing_bell: false,
         },
         TabInfo {
             position: 1,
@@ -2427,6 +2518,9 @@ fn serialize_session_update_event_with_non_default_values() {
             display_area_columns: 10,
             selectable_tiled_panes_count: 10,
             selectable_floating_panes_count: 10,
+            tab_id: 1,
+            has_bell_notification: false,
+            is_flashing_bell: false,
         },
         TabInfo::default(),
     ];
@@ -2464,6 +2558,8 @@ fn serialize_session_update_event_with_non_default_values() {
             plugin_url: None,
             is_selectable: true,
             index_in_pane_group: index_in_pane_group_1,
+            default_fg: None,
+            default_bg: None,
         },
         PaneInfo {
             id: 1,
@@ -2489,6 +2585,8 @@ fn serialize_session_update_event_with_non_default_values() {
             plugin_url: Some("i_am_a_fake_plugin".to_owned()),
             is_selectable: true,
             index_in_pane_group: index_in_pane_group_2,
+            default_fg: None,
+            default_bg: None,
         },
     ];
     panes.insert(0, panes_list);
@@ -2535,6 +2633,7 @@ fn serialize_session_update_event_with_non_default_values() {
         web_client_count: 1,
         tab_history,
         pane_history: Default::default(),
+        creation_time: Duration::from_secs(100),
     };
     let session_info_2 = SessionInfo {
         name: "session 2".to_owned(),
@@ -2568,6 +2667,7 @@ fn serialize_session_update_event_with_non_default_values() {
         web_client_count: 0,
         tab_history: Default::default(),
         pane_history: Default::default(),
+        creation_time: Duration::from_secs(200),
     };
     let session_infos = vec![session_info_1, session_info_2];
     let resurrectable_sessions = vec![];

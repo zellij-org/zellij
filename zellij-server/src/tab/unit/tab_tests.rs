@@ -2,12 +2,7 @@ use super::Tab;
 use crate::pane_groups::PaneGroups;
 use crate::panes::sixel::SixelImageStore;
 use crate::screen::CopyOptions;
-use crate::{
-    os_input_output::{AsyncReader, Pid, ServerOsApi},
-    panes::PaneId,
-    thread_bus::ThreadSenders,
-    ClientId,
-};
+use crate::{os_input_output::ServerOsApi, panes::PaneId, thread_bus::ThreadSenders, ClientId};
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::PathBuf;
 use zellij_utils::data::{Direction, NewPanePlacement, Resize, ResizeStrategy, WebSharing};
@@ -16,12 +11,12 @@ use zellij_utils::input::layout::{SplitDirection, SplitSize, TiledPaneLayout};
 use zellij_utils::ipc::IpcReceiverWithContext;
 use zellij_utils::pane_size::{Size, SizeInPixels};
 
+use crate::os_input_output::AsyncReader;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::os::unix::io::RawFd;
 use std::rc::Rc;
 
-use interprocess::local_socket::LocalSocketStream;
+use interprocess::local_socket::Stream as LocalSocketStream;
 use zellij_utils::{
     data::{ModeInfo, Palette, Style},
     input::command::{RunCommand, TerminalAction},
@@ -48,13 +43,7 @@ impl ServerOsApi for FakeInputOutput {
         _file_to_open: TerminalAction,
         _quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
         _default_editor: Option<PathBuf>,
-    ) -> Result<(u32, RawFd, RawFd)> {
-        unimplemented!()
-    }
-    fn read_from_tty_stdout(&self, _fd: RawFd, _buf: &mut [u8]) -> Result<usize> {
-        unimplemented!()
-    }
-    fn async_file_reader(&self, _fd: RawFd) -> Box<dyn AsyncReader> {
+    ) -> Result<(u32, Box<dyn AsyncReader>, Option<u32>)> {
         unimplemented!()
     }
     fn write_to_tty_stdin(&self, _id: u32, _buf: &[u8]) -> Result<usize> {
@@ -63,10 +52,10 @@ impl ServerOsApi for FakeInputOutput {
     fn tcdrain(&self, _id: u32) -> Result<()> {
         unimplemented!()
     }
-    fn kill(&self, _pid: Pid) -> Result<()> {
+    fn kill(&self, _pid: u32) -> Result<()> {
         unimplemented!()
     }
-    fn force_kill(&self, _pid: Pid) -> Result<()> {
+    fn force_kill(&self, _pid: u32) -> Result<()> {
         unimplemented!()
     }
     fn box_clone(&self) -> Box<dyn ServerOsApi> {
@@ -82,13 +71,21 @@ impl ServerOsApi for FakeInputOutput {
     ) -> Result<IpcReceiverWithContext<ClientToServerMsg>> {
         unimplemented!()
     }
+    fn new_client_with_reply(
+        &mut self,
+        _client_id: ClientId,
+        _stream: LocalSocketStream,
+        _reply_stream: LocalSocketStream,
+    ) -> Result<IpcReceiverWithContext<ClientToServerMsg>> {
+        unimplemented!()
+    }
     fn remove_client(&mut self, _client_id: ClientId) -> Result<()> {
         unimplemented!()
     }
     fn load_palette(&self) -> Palette {
         unimplemented!()
     }
-    fn get_cwd(&self, _pid: Pid) -> Option<PathBuf> {
+    fn get_cwd(&self, _pid: u32) -> Option<PathBuf> {
         unimplemented!()
     }
 
@@ -99,14 +96,14 @@ impl ServerOsApi for FakeInputOutput {
         &self,
         _terminal_id: u32,
         _run_command: RunCommand,
-        _quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>, // u32 is the exit status
-    ) -> Result<(RawFd, RawFd)> {
+        _quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
+    ) -> Result<(Box<dyn AsyncReader>, Option<u32>)> {
         unimplemented!()
     }
     fn clear_terminal_id(&self, _terminal_id: u32) -> Result<()> {
         unimplemented!()
     }
-    fn send_sigint(&self, pid: Pid) -> Result<()> {
+    fn send_sigint(&self, _pid: u32) -> Result<()> {
         unimplemented!()
     }
 }
@@ -215,6 +212,9 @@ fn create_new_tab(size: Size, stacked_resize: bool) -> Tab {
         current_pane_group,
         currently_marking_pane_group,
         advanced_mouse_actions,
+        true,  // mouse_hover_effects
+        false, // focus_follows_mouse
+        false, // mouse_click_through
         web_server_ip,
         web_server_port,
     );
@@ -298,6 +298,9 @@ fn create_new_tab_with_layout(size: Size, layout: TiledPaneLayout) -> Tab {
         current_pane_group,
         currently_marking_pane_group,
         advanced_mouse_actions,
+        true,  // mouse_hover_effects
+        false, // focus_follows_mouse
+        false, // mouse_click_through
         web_server_ip,
         web_server_port,
     );
@@ -387,6 +390,9 @@ fn create_new_tab_with_cell_size(
         current_pane_group,
         currently_marking_pane_group,
         advanced_mouse_actions,
+        true,  // mouse_hover_effects
+        false, // focus_follows_mouse
+        false, // mouse_click_through
         web_server_ip,
         web_server_port,
     );
@@ -15253,5 +15259,86 @@ fn get_pane_z_index_returns_none_for_nonexistent_pane() {
     assert_ne!(
         z_index_2, z_index_3,
         "Different floating panes should have different z-indices"
+    );
+}
+
+#[test]
+pub fn bell_in_unfocused_pane_sets_notification() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
+    let new_pane_id = PaneId::Terminal(2);
+    let client_id = 1;
+
+    // Create a second pane; client is focused on pane 1 (PaneId::Terminal(1))
+    tab.horizontal_split(new_pane_id, None, client_id, None, None)
+        .unwrap();
+    // Move focus back to pane 1
+    tab.move_focus_up(client_id).unwrap();
+
+    // Simulate bell in pane 2 via pty bytes (\x07)
+    tab.handle_pty_bytes(2, vec![7u8]).unwrap();
+
+    // Now call check_and_handle_bell_notifications as non-active tab
+    let (new_panes, tab_newly_set) = tab.check_and_handle_bell_notifications(false);
+
+    assert!(
+        new_panes.contains(&new_pane_id),
+        "Pane 2 should be in new_panes"
+    );
+    assert!(
+        tab.panes_with_pending_bell.contains(&new_pane_id),
+        "Pane 2 should be in panes_with_pending_bell"
+    );
+    assert!(
+        tab.tab_has_pending_bell,
+        "tab_has_pending_bell should be true"
+    );
+    assert!(tab_newly_set, "tab_bell_newly_set should be true");
+    assert!(
+        tab.get_pane_with_id(new_pane_id)
+            .map(|p| p.get_bell_notification())
+            .unwrap_or(false),
+        "Pane 2 should have bell notification"
+    );
+}
+
+#[test]
+pub fn clearing_last_pane_bell_clears_tab_bell() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
+    let new_pane_id = PaneId::Terminal(2);
+    let client_id = 1;
+
+    tab.horizontal_split(new_pane_id, None, client_id, None, None)
+        .unwrap();
+    tab.move_focus_up(client_id).unwrap();
+
+    // Set bell on unfocused pane 2 via check_and_handle_bell_notifications
+    tab.handle_pty_bytes(2, vec![7u8]).unwrap();
+    tab.check_and_handle_bell_notifications(false);
+
+    assert!(
+        tab.tab_has_pending_bell,
+        "tab_has_pending_bell should be set before clearing"
+    );
+
+    // Clear bell for pane 2
+    tab.clear_bell_notification_for_pane(new_pane_id);
+
+    assert!(
+        tab.panes_with_pending_bell.is_empty(),
+        "panes_with_pending_bell should be empty after clearing"
+    );
+    assert!(
+        !tab.tab_has_pending_bell,
+        "tab_has_pending_bell should be false after last pane bell cleared"
     );
 }

@@ -63,6 +63,7 @@ impl ZellijPlugin for State {
             PermissionType::Reconfigure,
             PermissionType::WriteToClipboard,
             PermissionType::RunActionsAsUser,
+            PermissionType::ReadSessionEnvironmentVariables,
         ]);
         self.configuration = configuration;
         subscribe(&[
@@ -74,6 +75,8 @@ impl ZellijPlugin for State {
             EventType::FileSystemUpdate,
             EventType::FileSystemDelete,
             EventType::BeforeClose,
+            EventType::PluginConfigurationChanged,
+            EventType::HighlightClicked,
         ]);
         watch_filesystem();
     }
@@ -99,7 +102,7 @@ impl ZellijPlugin for State {
                     );
                 },
                 BareKey::Char('c') if key.has_no_modifiers() => {
-                    new_tab(Some("new_tab_name"), Some("/path/to/my/cwd"))
+                    new_tab(Some("new_tab_name"), Some("/path/to/my/cwd"));
                 },
                 BareKey::Char('d') if key.has_no_modifiers() => go_to_next_tab(),
                 BareKey::Char('e') if key.has_no_modifiers() => go_to_previous_tab(),
@@ -166,7 +169,7 @@ impl ZellijPlugin for State {
                 },
                 BareKey::Char('d') if key.has_only_modifiers(&[KeyModifier::Ctrl]) => {
                     let tab_name = "my tab name";
-                    focus_or_create_tab(tab_name)
+                    focus_or_create_tab(tab_name);
                 },
                 BareKey::Char('e') if key.has_only_modifiers(&[KeyModifier::Ctrl]) => {
                     let tab_index = 2;
@@ -341,7 +344,7 @@ impl ZellijPlugin for State {
                     switch_session_with_layout(
                         Some("my_other_new_session_with_cwd"),
                         LayoutInfo::BuiltIn("compact".to_owned()),
-                        Some(std::path::PathBuf::from("/tmp")),
+                        Some(std::path::PathBuf::from("/foo/bar")),
                     );
                 },
                 BareKey::Char('0') if key.has_only_modifiers(&[KeyModifier::Ctrl]) => {
@@ -588,6 +591,25 @@ impl ZellijPlugin for State {
                     // Test send_sigkill_to_pane_id
                     send_sigkill_to_pane_id(PaneId::Terminal(1));
                 },
+                BareKey::Char('g') if key.has_only_modifiers(&[KeyModifier::Super]) => {
+                    // Test set_pane_regex_highlights
+                    let highlights = vec![RegexHighlight {
+                        pattern: "test_pattern".to_string(),
+                        style: HighlightStyle::Emphasis0,
+                        layer: HighlightLayer::Hint,
+                        context: BTreeMap::new(),
+                        on_hover: false,
+                        bold: false,
+                        italic: true,
+                        underline: true,
+                        tooltip_text: None,
+                    }];
+                    set_pane_regex_highlights(PaneId::Terminal(1), highlights);
+                },
+                BareKey::Char('h') if key.has_only_modifiers(&[KeyModifier::Super]) => {
+                    // Test clear_pane_highlights
+                    clear_pane_highlights(PaneId::Terminal(1));
+                },
                 BareKey::Char('a')
                     if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Shift]) =>
                 {
@@ -721,6 +743,17 @@ impl ZellijPlugin for State {
                         Err(e) => {
                             self.explicit_string_to_render = Some(format!("Parse error: {:?}", e))
                         },
+                    }
+                },
+                BareKey::Char('j')
+                    if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Shift]) =>
+                {
+                    let env_vars = get_session_environment_variables();
+                    if !env_vars.is_empty() {
+                        self.explicit_string_to_render =
+                            Some(format!("Got environment variables: {:#?}", env_vars,));
+                    } else {
+                        self.explicit_string_to_render = Some(format!("Error: Got empty env vars"));
                     }
                 },
                 BareKey::Char('a')
@@ -896,6 +929,9 @@ impl ZellijPlugin for State {
             Event::BeforeClose => {
                 // this is just to assert something to make sure this event was triggered
                 highlight_and_unhighlight_panes(vec![PaneId::Terminal(1)], vec![PaneId::Plugin(1)]);
+            },
+            Event::PluginConfigurationChanged(new_config) => {
+                self.configuration = new_config.clone();
             },
             Event::SystemClipboardFailure => {
                 // this is just to trigger the worker message

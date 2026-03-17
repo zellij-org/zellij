@@ -9,7 +9,6 @@ use async_trait::async_trait;
 use futures_util::{SinkExt, StreamExt};
 use serial_test::serial;
 use std::io::{self, Write};
-use std::os::unix::io::RawFd;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::mpsc;
@@ -77,13 +76,13 @@ impl std::fmt::Debug for TestClientOsApi {
 }
 
 impl ClientOsApi for TestClientOsApi {
-    fn get_terminal_size_using_fd(&self, _fd: RawFd) -> Size {
+    fn get_terminal_size(&self) -> Size {
         self.terminal_size
     }
 
-    fn set_raw_mode(&mut self, _fd: RawFd) {}
+    fn set_raw_mode(&mut self) {}
 
-    fn unset_raw_mode(&self, _fd: RawFd) -> Result<(), nix::Error> {
+    fn unset_raw_mode(&self) -> Result<(), std::io::Error> {
         Ok(())
     }
 
@@ -113,7 +112,13 @@ impl ClientOsApi for TestClientOsApi {
         None
     }
 
-    fn handle_signals(&self, _sigwinch_cb: Box<dyn Fn()>, _quit_cb: Box<dyn Fn()>) {}
+    fn handle_signals(
+        &self,
+        _sigwinch_cb: Box<dyn Fn()>,
+        _quit_cb: Box<dyn Fn()>,
+        _resize_receiver: Option<std::sync::mpsc::Receiver<()>>,
+    ) {
+    }
 
     fn connect_to_server(&self, _path: &std::path::Path) {}
 
@@ -127,10 +132,6 @@ impl ClientOsApi for TestClientOsApi {
 
     fn disable_mouse(&self) -> anyhow::Result<()> {
         Ok(())
-    }
-
-    fn stdin_poller(&self) -> crate::os_input_output::StdinPoller {
-        crate::os_input_output::StdinPoller::default()
     }
 
     fn get_async_stdin_reader(&self) -> Box<dyn AsyncStdin> {

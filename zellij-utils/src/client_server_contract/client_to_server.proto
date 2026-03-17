@@ -21,6 +21,7 @@ message ClientToServerMsg {
     WebServerStartedMsg web_server_started = 14;
     FailedToStartWebServerMsg failed_to_start_web_server = 15;
     AttachWatcherClientMsg attach_watcher_client = 16;
+    SubscribeToPaneRendersMsg subscribe_to_pane_renders = 17;
   }
 }
 
@@ -96,4 +97,9 @@ message WebServerStartedMsg {
 
 message FailedToStartWebServerMsg {
   string error = 1;
+}
+
+message SubscribeToPaneRendersMsg {
+  repeated PaneId pane_ids = 1;
+  optional uint32 scrollback = 2;
 }

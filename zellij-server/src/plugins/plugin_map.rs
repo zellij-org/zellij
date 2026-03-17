@@ -11,7 +11,7 @@ use wasmi_wasi::WasiCtx;
 
 use crate::{thread_bus::ThreadSenders, ClientId};
 
-use async_channel::Sender;
+use tokio::sync::mpsc::UnboundedSender;
 use zellij_utils::{
     data::EventType,
     data::InputMode,
@@ -36,7 +36,7 @@ pub struct PluginMap {
         (
             Arc<Mutex<RunningPlugin>>,
             Arc<Mutex<Subscriptions>>,
-            HashMap<String, Sender<MessageToWorker>>,
+            HashMap<String, UnboundedSender<MessageToWorker>>,
         ),
     >,
 }
@@ -50,7 +50,7 @@ impl PluginMap {
         (
             Arc<Mutex<RunningPlugin>>,
             Arc<Mutex<Subscriptions>>,
-            HashMap<String, Sender<MessageToWorker>>,
+            HashMap<String, UnboundedSender<MessageToWorker>>,
         ),
     > {
         let mut removed = HashMap::new();
@@ -136,7 +136,7 @@ impl PluginMap {
         plugin_id: PluginId,
         client_id: ClientId,
         worker_name: &str,
-    ) -> Option<Sender<MessageToWorker>> {
+    ) -> Option<UnboundedSender<MessageToWorker>> {
         self.plugin_assets
             .iter()
             .find(|((p_id, c_id), _)| p_id == &plugin_id && c_id == &client_id)
@@ -162,7 +162,7 @@ impl PluginMap {
                 let running_plugin = running_plugin.lock().unwrap();
                 let plugin_config = &running_plugin.store.data().plugin;
                 let running_plugin_location = &plugin_config.location;
-                let running_plugin_configuration = &plugin_config.userspace_configuration;
+                let running_plugin_configuration = &plugin_config.initial_userspace_configuration;
                 running_plugin_location == plugin_location
                     && running_plugin_configuration == plugin_configuration
             })
@@ -185,7 +185,7 @@ impl PluginMap {
             let running_plugin = running_plugin.lock().unwrap();
             let plugin_config = &running_plugin.store.data().plugin;
             let running_plugin_location = &plugin_config.location;
-            let running_plugin_configuration = &plugin_config.userspace_configuration;
+            let running_plugin_configuration = &plugin_config.initial_userspace_configuration;
             match cloned_plugin_assets.get_mut(running_plugin_location) {
                 Some(location_map) => match location_map.get_mut(running_plugin_configuration) {
                     Some(plugin_instances_info) => {
@@ -222,7 +222,7 @@ impl PluginMap {
         client_id: ClientId,
         running_plugin: Arc<Mutex<RunningPlugin>>,
         subscriptions: Arc<Mutex<Subscriptions>>,
-        running_workers: HashMap<String, Sender<MessageToWorker>>,
+        running_workers: HashMap<String, UnboundedSender<MessageToWorker>>,
     ) {
         self.plugin_assets.insert(
             (plugin_id, client_id),
@@ -237,7 +237,8 @@ impl PluginMap {
                     let running_plugin = running_plugin.lock().unwrap();
                     let plugin_config = &running_plugin.store.data().plugin;
                     let run_plugin_location = plugin_config.location.clone();
-                    let run_plugin_configuration = plugin_config.userspace_configuration.clone();
+                    let run_plugin_configuration =
+                        plugin_config.initial_userspace_configuration.clone();
                     let initial_cwd = plugin_config.initial_cwd.clone();
                     Some(RunPlugin {
                         _allow_exec_host_cmd: false,
@@ -290,6 +291,7 @@ pub struct PluginEnv {
     pub default_layout: Box<Layout>,
     pub layout_dir: Option<PathBuf>,
     pub plugin_cwd: PathBuf,
+    pub session_env_vars: std::collections::BTreeMap<String, String>,
     pub input_pipes_to_unblock: Arc<Mutex<HashSet<String>>>,
     pub input_pipes_to_block: Arc<Mutex<HashSet<String>>>,
     pub default_mode: InputMode,

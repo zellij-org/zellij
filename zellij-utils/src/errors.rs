@@ -259,6 +259,7 @@ pub enum ScreenContext {
     ClearScreen,
     DumpScreen,
     DumpLayout,
+    SaveSession,
     EditScrollback,
     GetPaneScrollback,
     ScrollUp,
@@ -296,6 +297,10 @@ pub enum ScreenContext {
     UndoRenameTab,
     MoveTabLeft,
     MoveTabRight,
+    GoToTabWithId,
+    CloseTabWithId,
+    RenameTabWithId,
+    BreakPanesToTabWithId,
     TerminalResize,
     TerminalPixelDimensions,
     TerminalBackgroundColor,
@@ -322,6 +327,7 @@ pub enum ScreenContext {
     SearchToggleWrap,
     AddRedPaneFrameColorOverride,
     ClearPaneFrameColorOverride,
+    SetTabBellFlash,
     PreviousSwapLayout,
     NextSwapLayout,
     OverrideLayout,
@@ -348,18 +354,27 @@ pub enum ScreenContext {
     BreakPaneRight,
     BreakPaneLeft,
     UpdateSessionInfos,
+    UpdateAvailableLayouts,
     ReplacePane,
     NewInPlacePluginPane,
     SerializeLayoutForResurrection,
     RenameSession,
     DumpLayoutToPlugin,
     GetFocusedPaneInfo,
+    GetPaneInfo,
+    GetTabInfo,
     ListClientsMetadata,
+    ListPanes,
+    ListTabs,
+    GetCurrentTabInfo,
     Reconfigure,
     RerunCommandPane,
     ResizePaneWithId,
     EditScrollbackForPaneWithId,
     WriteToPaneId,
+    Paste,
+    SetPaneColor,
+    WriteKeyToPaneId,
     CopyTextToClipboard,
     MovePaneWithPaneId,
     MovePaneWithPaneIdInDirection,
@@ -397,7 +412,12 @@ pub enum ScreenContext {
     AddWatcherClient,
     RemoveWatcherClient,
     SetFollowedClient,
-    WatcherTerminalResize, // NEW
+    WatcherTerminalResize,
+    ClearMouseHelpText,
+    SetPluginRegexHighlights,
+    ClearPluginHighlights,
+    SubscribeToPaneRenders,
+    NotifyPaneClosedToSubscribers,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.
@@ -418,6 +438,7 @@ pub enum PtyContext {
     SpawnInPlaceTerminal,
     DumpLayout,
     LogLayoutToHd,
+    SaveSessionToDisk,
     FillPluginCwd,
     DumpLayoutToPlugin,
     ListClientsMetadata,
@@ -427,6 +448,8 @@ pub enum PtyContext {
     SendSigintToPaneId,
     SendSigkillToPaneId,
     GetPanePid,
+    GetPaneRunningCommand,
+    GetPaneCwd,
     UpdateAndReportCwds,
     Exit,
 }
@@ -474,6 +497,10 @@ pub enum PluginContext {
     UserInput,
     LayoutListUpdate,
     RequestStateUpdateForPlugin,
+    UpdateSessionSaveTime,
+    GetLastSessionSaveTime,
+    DetectPluginConfigChanges,
+    HighlightClicked,
 }
 
 /// Stack call representations corresponding to the different types of [`ClientInstruction`]s.
@@ -534,6 +561,7 @@ pub enum ServerContext {
     WebServerStarted,
     FailedToStartWebServer,
     SendWebClientsForbidden,
+    ClearMouseHelpText,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -560,6 +588,11 @@ pub enum BackgroundJobContext {
     RenderToClients,
     HighlightPanesWithMessage,
     QueryZellijWebServerStatus,
+    ClearHelpText,
+    FlashPaneBell,
+    StopFlashPaneBell,
+    FlashTabBell,
+    StopFlashTabBell,
     Exit,
 }
 
