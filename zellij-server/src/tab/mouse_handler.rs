@@ -1616,7 +1616,7 @@ impl MouseHandler {
                         .with_context(err_context)?;
                 }
             } else {
-                pane.scroll_down(lines, client_id);
+                pane.scroll_left(lines, client_id);
                 if !pane.is_scrolled() {
                     if let PaneId::Terminal(pid) = pane.pid() {
                         tab.process_pending_vte_events(pid)
