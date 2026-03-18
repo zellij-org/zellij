@@ -1259,6 +1259,7 @@ pub(crate) struct Screen {
     cached_layout_errors: Vec<LayoutWithError>,
     pane_render_subscribers: HashMap<ClientId, PaneRenderSubscription>,
     plugins_need_ansi_pane_contents: bool,
+    last_forwarded_osc7: HashMap<ClientId, Option<String>>,
 }
 
 impl Screen {
@@ -1359,6 +1360,7 @@ impl Screen {
             cached_layout_errors: vec![],
             pane_render_subscribers: HashMap::new(),
             plugins_need_ansi_pane_contents: false,
+            last_forwarded_osc7: HashMap::new(),
         }
     }
 
@@ -1983,7 +1985,33 @@ impl Screen {
                 );
             }
 
-            if non_watcher_output_was_dirty || has_bell {
+            let mut has_osc7_update = false;
+
+            // Forward OSC 7 (working directory) for each client's focused pane
+            for (&client_id, &tab_index) in &self.active_tab_ids {
+                if self.watcher_clients.contains_key(&client_id) {
+                    continue;
+                }
+                if let Some(tab) = self.tabs.get(&tab_index) {
+                    let current_osc7 = tab
+                        .get_active_pane(client_id)
+                        .and_then(|pane| pane.osc7_payload())
+                        .map(|s| s.to_owned());
+                    let last = self.last_forwarded_osc7.get(&client_id);
+                    if last != Some(&current_osc7) {
+                        if let Some(ref uri) = current_osc7 {
+                            output.add_post_vte_instruction_to_client(
+                                client_id,
+                                &format!("\x1b]7;{}\x1b\\", uri),
+                            );
+                            has_osc7_update = true;
+                        }
+                        self.last_forwarded_osc7.insert(client_id, current_osc7);
+                    }
+                }
+            }
+
+            if non_watcher_output_was_dirty || has_bell || has_osc7_update {
                 let serialized_output = output.serialize().context(err_context)?;
                 let _ = self
                     .bus
