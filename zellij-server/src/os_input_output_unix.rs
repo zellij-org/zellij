@@ -17,7 +17,7 @@ use signal_hook;
 use signal_hook::consts::*;
 
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::BTreeMap,
     fs::File,
     io,
     os::fd::FromRawFd,
