@@ -778,6 +778,64 @@ pub fn has_bell_reflects_grid_ring_bell() {
 }
 
 #[test]
+pub fn osc7_payload_stored_from_pty_bytes() {
+    let mut terminal_pane = make_terminal_pane_for_bell();
+
+    assert!(
+        terminal_pane.osc7_payload().is_none(),
+        "Initially osc7_payload should be None"
+    );
+
+    // Send OSC 7 sequence: \x1b]7;file://localhost/tmp\x1b\\
+    let osc7_bytes = b"\x1b]7;file://localhost/tmp\x1b\\";
+    terminal_pane.handle_pty_bytes(osc7_bytes.to_vec());
+
+    assert_eq!(
+        terminal_pane.osc7_payload(),
+        Some("file://localhost/tmp"),
+        "osc7_payload should contain the URI after OSC 7"
+    );
+}
+
+#[test]
+pub fn osc7_payload_updated_on_subsequent_osc7() {
+    let mut terminal_pane = make_terminal_pane_for_bell();
+
+    let osc7_first = b"\x1b]7;file://localhost/first\x1b\\";
+    terminal_pane.handle_pty_bytes(osc7_first.to_vec());
+    assert_eq!(terminal_pane.osc7_payload(), Some("file://localhost/first"));
+
+    let osc7_second = b"\x1b]7;file://localhost/second\x1b\\";
+    terminal_pane.handle_pty_bytes(osc7_second.to_vec());
+    assert_eq!(terminal_pane.osc7_payload(), Some("file://localhost/second"));
+}
+
+#[test]
+pub fn osc7_payload_preserves_percent_encoding() {
+    let mut terminal_pane = make_terminal_pane_for_bell();
+
+    let osc7_bytes = b"\x1b]7;file://localhost/path%20with%20spaces\x1b\\";
+    terminal_pane.handle_pty_bytes(osc7_bytes.to_vec());
+    assert_eq!(
+        terminal_pane.osc7_payload(),
+        Some("file://localhost/path%20with%20spaces"),
+    );
+}
+
+#[test]
+pub fn osc7_payload_works_with_bel_terminator() {
+    let mut terminal_pane = make_terminal_pane_for_bell();
+
+    // BEL (\x07) is an alternative terminator for OSC sequences
+    let osc7_bytes = b"\x1b]7;file://localhost/tmp\x07";
+    terminal_pane.handle_pty_bytes(osc7_bytes.to_vec());
+    assert_eq!(
+        terminal_pane.osc7_payload(),
+        Some("file://localhost/tmp"),
+    );
+}
+
+#[test]
 pub fn frameless_pane_position_is_on_frame() {
     let mut fake_win_size = PaneGeom {
         x: 10,

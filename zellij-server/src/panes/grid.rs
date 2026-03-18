@@ -534,6 +534,7 @@ pub struct Grid {
     // key: plugin_id (u32), inner vec: (pattern, compiled) pairs
     pub hover_position: Option<Position>, // pane-relative cursor cell; None when outside pane
     pub cached_hover_tooltip: Option<String>,
+    pub osc7_payload: Option<String>,
 }
 
 impl Grid {
@@ -817,7 +818,11 @@ impl Grid {
             plugin_highlights: HashMap::new(),
             hover_position: None,
             cached_hover_tooltip: None,
+            osc7_payload: None,
         }
+    }
+    pub fn osc7_payload(&self) -> Option<&str> {
+        self.osc7_payload.as_deref()
     }
     pub fn render_full_viewport(&mut self) {
         self.output_buffer.update_all_lines();
@@ -3462,6 +3467,23 @@ impl Perform for Grid {
             // Reset text cursor color.
             b"112" => {
                 // TBD - reset text cursor color - currently unimplemented
+            },
+
+            // Working directory reporting (OSC 7).
+            // Store the raw URI for forwarding to the parent terminal.
+            // Join params[1..] with ";" to handle URIs containing semicolons
+            // (same pattern used by the b"0"|b"2" title handler above).
+            b"7" => {
+                if params.len() >= 2 {
+                    let uri = params[1..]
+                        .iter()
+                        .flat_map(|x| str::from_utf8(x))
+                        .collect::<Vec<&str>>()
+                        .join(";");
+                    if !uri.is_empty() {
+                        self.osc7_payload = Some(uri);
+                    }
+                }
             },
 
             _ => {
