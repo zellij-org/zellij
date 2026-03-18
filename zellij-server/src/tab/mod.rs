@@ -1461,7 +1461,7 @@ impl Tab {
             } => {
                 if let Some(client_id) = client_id {
                     if direction == Direction::Left || direction == Direction::Right {
-                        self.vertical_split_with_size(
+                        self.vertical_split(
                             pid,
                             initial_pane_title,
                             client_id,
@@ -1470,7 +1470,7 @@ impl Tab {
                             size,
                         )?;
                     } else {
-                        self.horizontal_split_with_size(
+                        self.horizontal_split(
                             pid,
                             initial_pane_title,
                             client_id,
@@ -2304,23 +2304,6 @@ impl Tab {
         client_id: ClientId,
         completion_tx: Option<NotificationEnd>,
         borderless: Option<bool>,
-    ) -> Result<()> {
-        self.horizontal_split_with_size(
-            pid,
-            initial_pane_title,
-            client_id,
-            completion_tx,
-            borderless,
-            None,
-        )
-    }
-    pub fn horizontal_split_with_size(
-        &mut self,
-        pid: PaneId,
-        initial_pane_title: Option<String>,
-        client_id: ClientId,
-        completion_tx: Option<NotificationEnd>,
-        borderless: Option<bool>,
         size: Option<PercentOrFixed>,
     ) -> Result<()> {
         let err_context =
@@ -2387,23 +2370,6 @@ impl Tab {
         Ok(())
     }
     pub fn vertical_split(
-        &mut self,
-        pid: PaneId,
-        initial_pane_title: Option<String>,
-        client_id: ClientId,
-        completion_tx: Option<NotificationEnd>,
-        borderless: Option<bool>,
-    ) -> Result<()> {
-        self.vertical_split_with_size(
-            pid,
-            initial_pane_title,
-            client_id,
-            completion_tx,
-            borderless,
-            None,
-        )
-    }
-    pub fn vertical_split_with_size(
         &mut self,
         pid: PaneId,
         initial_pane_title: Option<String>,

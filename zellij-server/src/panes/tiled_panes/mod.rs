@@ -3,7 +3,7 @@ mod stacked_panes;
 mod tiled_pane_grid;
 
 use crate::resize_pty;
-use tiled_pane_grid::{split, split_with_size, TiledPaneGrid, RESIZE_PERCENT};
+use tiled_pane_grid::{split, TiledPaneGrid, RESIZE_PERCENT};
 
 use crate::{
     os_input_output::ServerOsApi,
@@ -303,7 +303,7 @@ impl TiledPanes {
                 // this unwrap is safe because floating panes should not be visible if there are no floating panes
                 let pane_to_split = self.panes.get_mut(&pane_id_to_split).unwrap();
                 let size_of_both_panes = pane_to_split.position_and_size();
-                if let Some((first_geom, second_geom)) = split(split_direction, &size_of_both_panes)
+                if let Some((first_geom, second_geom)) = split(split_direction, &size_of_both_panes, None)
                 {
                     pane_to_split.set_geom(first_geom);
                     pane.set_geom(second_geom);
@@ -373,7 +373,7 @@ impl TiledPanes {
                 // this unwrap is safe because floating panes should not be visible if there are no floating panes
                 let pane_to_split = self.panes.get_mut(&pane_id_to_split).unwrap();
                 let size_of_both_panes = pane_to_split.position_and_size();
-                if let Some((first_geom, second_geom)) = split(split_direction, &size_of_both_panes)
+                if let Some((first_geom, second_geom)) = split(split_direction, &size_of_both_panes, None)
                 {
                     pane_to_split.set_geom(first_geom);
                     pane.set_geom(second_geom);
@@ -624,7 +624,7 @@ impl TiledPanes {
                 if full_pane_size.rows.as_usize() < MIN_TERMINAL_HEIGHT * 2 {
                     return false;
                 } else {
-                    return split(SplitDirection::Horizontal, &full_pane_size).is_some();
+                    return split(SplitDirection::Horizontal, &full_pane_size, None).is_some();
                 }
             }
         }
@@ -649,7 +649,7 @@ impl TiledPanes {
                 if full_pane_size.cols.as_usize() < MIN_TERMINAL_WIDTH * 2 {
                     return false;
                 }
-                return split(SplitDirection::Vertical, &full_pane_size).is_some();
+                return split(SplitDirection::Vertical, &full_pane_size, None).is_some();
             }
         }
         false
@@ -681,7 +681,7 @@ impl TiledPanes {
         }
         let active_pane = self.panes.get_mut(active_pane_id).unwrap();
         if let Some((top_winsize, bottom_winsize)) =
-            split_with_size(SplitDirection::Horizontal, &full_pane_size, size)
+            split(SplitDirection::Horizontal, &full_pane_size, size)
         {
             if active_pane.position_and_size().is_stacked() {
                 match StackedPanes::new_from_btreemap(&mut self.panes, &self.panes_to_hide)
@@ -727,7 +727,7 @@ impl TiledPanes {
         }
         let active_pane = self.panes.get_mut(active_pane_id).unwrap();
         if let Some((left_winsize, right_winsize)) =
-            split_with_size(SplitDirection::Vertical, &full_pane_size, size)
+            split(SplitDirection::Vertical, &full_pane_size, size)
         {
             if active_pane.position_and_size().is_stacked() {
                 match StackedPanes::new_from_btreemap(&mut self.panes, &self.panes_to_hide)

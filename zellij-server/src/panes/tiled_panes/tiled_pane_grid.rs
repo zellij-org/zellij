@@ -2325,11 +2325,7 @@ impl<'a> TiledPaneGrid<'a> {
     }
 }
 
-pub fn split(direction: SplitDirection, rect: &PaneGeom) -> Option<(PaneGeom, PaneGeom)> {
-    split_with_size(direction, rect, None)
-}
-
-pub fn split_with_size(
+pub fn split(
     direction: SplitDirection,
     rect: &PaneGeom,
     size: Option<PercentOrFixed>,
@@ -2409,7 +2405,7 @@ mod tests {
     #[test]
     fn split_vertical_default_gives_equal_halves() {
         let rect = make_rect(0, 0, 100.0, 100.0);
-        let (first, second) = split(SplitDirection::Vertical, &rect).unwrap();
+        let (first, second) = split(SplitDirection::Vertical, &rect, None).unwrap();
         assert_eq!(first.cols.as_percent().unwrap(), 50.0);
         assert_eq!(second.cols.as_percent().unwrap(), 50.0);
         assert_eq!(first.rows.as_percent().unwrap(), 100.0);
@@ -2419,7 +2415,7 @@ mod tests {
     #[test]
     fn split_horizontal_default_gives_equal_halves() {
         let rect = make_rect(0, 0, 100.0, 100.0);
-        let (first, second) = split(SplitDirection::Horizontal, &rect).unwrap();
+        let (first, second) = split(SplitDirection::Horizontal, &rect, None).unwrap();
         assert_eq!(first.rows.as_percent().unwrap(), 50.0);
         assert_eq!(second.rows.as_percent().unwrap(), 50.0);
         assert_eq!(first.cols.as_percent().unwrap(), 100.0);
@@ -2430,7 +2426,7 @@ mod tests {
     fn split_with_size_percent_vertical() {
         let rect = make_rect(0, 0, 100.0, 100.0);
         let size = Some(PercentOrFixed::Percent(30));
-        let (first, second) = split_with_size(SplitDirection::Vertical, &rect, size).unwrap();
+        let (first, second) = split(SplitDirection::Vertical, &rect, size).unwrap();
         // New pane gets 30% of the total, existing pane gets 70%
         assert_eq!(first.cols.as_percent().unwrap(), 70.0);
         assert_eq!(second.cols.as_percent().unwrap(), 30.0);
@@ -2440,7 +2436,7 @@ mod tests {
     fn split_with_size_percent_horizontal() {
         let rect = make_rect(0, 0, 100.0, 100.0);
         let size = Some(PercentOrFixed::Percent(25));
-        let (first, second) = split_with_size(SplitDirection::Horizontal, &rect, size).unwrap();
+        let (first, second) = split(SplitDirection::Horizontal, &rect, size).unwrap();
         // New pane gets 25% of the total, existing pane gets 75%
         assert_eq!(first.rows.as_percent().unwrap(), 75.0);
         assert_eq!(second.rows.as_percent().unwrap(), 25.0);
@@ -2449,7 +2445,7 @@ mod tests {
     #[test]
     fn split_with_size_none_gives_equal_halves() {
         let rect = make_rect(0, 0, 100.0, 100.0);
-        let (first, second) = split_with_size(SplitDirection::Vertical, &rect, None).unwrap();
+        let (first, second) = split(SplitDirection::Vertical, &rect, None).unwrap();
         assert_eq!(first.cols.as_percent().unwrap(), 50.0);
         assert_eq!(second.cols.as_percent().unwrap(), 50.0);
     }
@@ -2458,7 +2454,7 @@ mod tests {
     fn split_with_size_percent_clamps_over_100() {
         let rect = make_rect(0, 0, 100.0, 100.0);
         let size = Some(PercentOrFixed::Percent(150));
-        let (first, second) = split_with_size(SplitDirection::Vertical, &rect, size).unwrap();
+        let (first, second) = split(SplitDirection::Vertical, &rect, size).unwrap();
         // Clamped to 100%, so new pane gets all, existing pane gets 0
         assert_eq!(first.cols.as_percent().unwrap(), 0.0);
         assert_eq!(second.cols.as_percent().unwrap(), 100.0);
@@ -2468,7 +2464,7 @@ mod tests {
     fn split_with_size_fixed_falls_back_to_equal() {
         let rect = make_rect(0, 0, 100.0, 100.0);
         let size = Some(PercentOrFixed::Fixed(10));
-        let (first, second) = split_with_size(SplitDirection::Vertical, &rect, size).unwrap();
+        let (first, second) = split(SplitDirection::Vertical, &rect, size).unwrap();
         // Fixed falls back to 50/50 in percent space
         assert_eq!(first.cols.as_percent().unwrap(), 50.0);
         assert_eq!(second.cols.as_percent().unwrap(), 50.0);
@@ -2478,7 +2474,7 @@ mod tests {
     fn split_with_size_preserves_coordinates() {
         let rect = make_rect(5, 10, 80.0, 60.0);
         let size = Some(PercentOrFixed::Percent(40));
-        let (first, second) = split_with_size(SplitDirection::Vertical, &rect, size).unwrap();
+        let (first, second) = split(SplitDirection::Vertical, &rect, size).unwrap();
         assert_eq!(first.x, 5);
         assert_eq!(first.y, 10);
         assert_eq!(second.x, 6); // first.x + 1
@@ -2495,7 +2491,7 @@ mod tests {
     fn split_with_size_horizontal_preserves_coordinates() {
         let rect = make_rect(5, 10, 80.0, 60.0);
         let size = Some(PercentOrFixed::Percent(40));
-        let (first, second) = split_with_size(SplitDirection::Horizontal, &rect, size).unwrap();
+        let (first, second) = split(SplitDirection::Horizontal, &rect, size).unwrap();
         assert_eq!(first.x, 5);
         assert_eq!(first.y, 10);
         assert_eq!(second.x, 5);
