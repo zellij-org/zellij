@@ -5216,6 +5216,7 @@ impl Screen {
         }
         self.client_sizes.remove(&client_id);
         self.pane_render_subscribers.remove(&client_id);
+        self.last_forwarded_osc7.remove(&client_id);
         self.client_host_focused.remove(&client_id);
         self.client_notification_protocols.remove(&client_id);
         self.client_host_terminal_env.remove(&client_id);
