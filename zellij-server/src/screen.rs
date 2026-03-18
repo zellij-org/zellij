@@ -2552,6 +2552,7 @@ impl Screen {
         }
         self.connected_clients.borrow_mut().remove(&client_id);
         self.pane_render_subscribers.remove(&client_id);
+        self.last_forwarded_osc7.remove(&client_id);
         self.log_and_report_session_state()
             .with_context(err_context)
     }

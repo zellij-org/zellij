@@ -3480,7 +3480,7 @@ impl Perform for Grid {
                         .flat_map(|x| str::from_utf8(x))
                         .collect::<Vec<&str>>()
                         .join(";");
-                    if !uri.is_empty() {
+                    if !uri.is_empty() && !uri.bytes().any(|b| b < 0x20 || b == 0x7f) {
                         self.osc7_payload = Some(uri);
                     }
                 }
