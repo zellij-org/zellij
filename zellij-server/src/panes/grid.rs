@@ -889,6 +889,7 @@ pub struct Grid {
     osc133_command_selection: bool,
     command_output_flash: Option<Selection>,
     word_separators: String,
+    pub osc7_payload: Option<String>,
 }
 
 impl Grid {
@@ -1262,6 +1263,7 @@ impl Grid {
             osc133_command_selection: true,
             command_output_flash: None,
             word_separators: DEFAULT_WORD_SEPARATORS.to_owned(),
+            osc7_payload: None,
         }
     }
     pub fn set_selection_options(&mut self, osc133_command_selection: bool, word_separators: &str) {
@@ -1269,6 +1271,9 @@ impl Grid {
         if self.word_separators != word_separators {
             self.word_separators = word_separators.to_owned();
         }
+    }
+    pub fn osc7_payload(&self) -> Option<&str> {
+        self.osc7_payload.as_deref()
     }
     pub fn render_full_viewport(&mut self) {
         self.output_buffer.update_all_lines();
@@ -4913,6 +4918,23 @@ impl Perform for Grid {
                     if !title.is_empty() || !body.is_empty() {
                         self.pending_desktop_notifications
                             .push(PendingNotification::Osc777 { title, body });
+                    }
+                }
+            },
+
+            // Working directory reporting (OSC 7).
+            // Store the raw URI for forwarding to the parent terminal.
+            // Join params[1..] with ";" to handle URIs containing semicolons
+            // (same pattern used by the b"0"|b"2" title handler above).
+            b"7" => {
+                if params.len() >= 2 {
+                    let uri = params[1..]
+                        .iter()
+                        .flat_map(|x| str::from_utf8(x))
+                        .collect::<Vec<&str>>()
+                        .join(";");
+                    if !uri.is_empty() {
+                        self.osc7_payload = Some(uri);
                     }
                 }
             },
