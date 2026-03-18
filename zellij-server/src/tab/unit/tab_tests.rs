@@ -4227,7 +4227,8 @@ pub fn resize_down_with_panes_above_aligned_left_with_current_pane() {
     tab.vertical_split(focused_pane, None, 1, None, None, None)
         .unwrap();
     tab.move_focus_up(1).unwrap();
-    tab.vertical_split(pane_above, None, 1, None, None, None).unwrap();
+    tab.vertical_split(pane_above, None, 1, None, None, None)
+        .unwrap();
     tab.move_focus_down(1).unwrap();
     tab_resize_down(&mut tab, 1);
 
@@ -4427,7 +4428,8 @@ pub fn resize_down_with_panes_below_aligned_left_with_current_pane() {
     let focused_pane = PaneId::Terminal(4);
     tab.horizontal_split(pane_below_and_left, None, 1, None, None, None)
         .unwrap();
-    tab.vertical_split(pane_below, None, 1, None, None, None).unwrap();
+    tab.vertical_split(pane_below, None, 1, None, None, None)
+        .unwrap();
     tab.move_focus_up(1).unwrap();
     tab.vertical_split(focused_pane, None, 1, None, None, None)
         .unwrap();

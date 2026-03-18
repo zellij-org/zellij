@@ -303,7 +303,8 @@ impl TiledPanes {
                 // this unwrap is safe because floating panes should not be visible if there are no floating panes
                 let pane_to_split = self.panes.get_mut(&pane_id_to_split).unwrap();
                 let size_of_both_panes = pane_to_split.position_and_size();
-                if let Some((first_geom, second_geom)) = split(split_direction, &size_of_both_panes, None)
+                if let Some((first_geom, second_geom)) =
+                    split(split_direction, &size_of_both_panes, None)
                 {
                     pane_to_split.set_geom(first_geom);
                     pane.set_geom(second_geom);
@@ -373,7 +374,8 @@ impl TiledPanes {
                 // this unwrap is safe because floating panes should not be visible if there are no floating panes
                 let pane_to_split = self.panes.get_mut(&pane_id_to_split).unwrap();
                 let size_of_both_panes = pane_to_split.position_and_size();
-                if let Some((first_geom, second_geom)) = split(split_direction, &size_of_both_panes, None)
+                if let Some((first_geom, second_geom)) =
+                    split(split_direction, &size_of_both_panes, None)
                 {
                     pane_to_split.set_geom(first_geom);
                     pane.set_geom(second_geom);
