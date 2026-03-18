@@ -48,6 +48,8 @@ fn termwiz_mouse_convert(original_event: &mut MouseEvent, event: &TermwizMouseEv
         && !button_bits.contains(MouseButtons::WHEEL_POSITIVE);
     original_event.wheel_left = button_bits.contains(MouseButtons::HORZ_WHEEL)
         && button_bits.contains(MouseButtons::WHEEL_POSITIVE);
+    original_event.wheel_right = button_bits.contains(MouseButtons::HORZ_WHEEL)
+        && !button_bits.contains(MouseButtons::WHEEL_POSITIVE);
 
     let mods = &event.modifiers;
     original_event.shift = mods.contains(Modifiers::SHIFT);
@@ -76,6 +78,7 @@ pub fn from_termwiz(old_event: &mut MouseEvent, event: TermwizMouseEvent) -> Mou
         || new_event.wheel_up
         || new_event.wheel_down
         || new_event.wheel_left
+        || new_event.wheel_right
     {
         // This is a mouse Press event.
         new_event.event_type = MouseEventType::Press;

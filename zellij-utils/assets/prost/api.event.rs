@@ -999,12 +999,13 @@ impl CopyDestination {
 pub enum MouseEventName {
     MouseScrollUp = 0,
     MouseScrollDown = 1,
-    MouseLeftClick = 2,
-    MouseRightClick = 3,
-    MouseHold = 4,
-    MouseRelease = 5,
-    MouseHover = 6,
-    MouseScrollLeft = 7,
+    MouseScrollLeft = 2,
+    MouseScrollRight = 3,
+    MouseLeftClick = 4,
+    MouseRightClick = 5,
+    MouseHold = 6,
+    MouseRelease = 7,
+    MouseHover = 8,
 }
 impl MouseEventName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -1016,6 +1017,7 @@ impl MouseEventName {
             MouseEventName::MouseScrollUp => "MouseScrollUp",
             MouseEventName::MouseScrollDown => "MouseScrollDown",
             MouseEventName::MouseScrollLeft => "MouseScrollLeft",
+            MouseEventName::MouseScrollRight => "MouseScrollRight",
             MouseEventName::MouseLeftClick => "MouseLeftClick",
             MouseEventName::MouseRightClick => "MouseRightClick",
             MouseEventName::MouseHold => "MouseHold",
@@ -1029,6 +1031,7 @@ impl MouseEventName {
             "MouseScrollUp" => Some(Self::MouseScrollUp),
             "MouseScrollDown" => Some(Self::MouseScrollDown),
             "MouseScrollLeft" => Some(Self::MouseScrollLeft),
+            "MouseScrollRight" => Some(Self::MouseScrollRight),
             "MouseLeftClick" => Some(Self::MouseLeftClick),
             "MouseRightClick" => Some(Self::MouseRightClick),
             "MouseHold" => Some(Self::MouseHold),

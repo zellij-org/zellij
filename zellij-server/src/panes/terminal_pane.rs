@@ -565,6 +565,7 @@ impl Pane for TerminalPane {
         self.set_should_render(true);
     }
     fn scroll_left(&mut self, count: usize, client_id: ClientId) {}
+    fn scroll_right(&mut self, count: usize, client_id: ClientId) {}
     fn clear_scroll(&mut self) {
         self.grid.reset_viewport();
         self.set_should_render(true);
@@ -706,6 +707,9 @@ impl Pane for TerminalPane {
     }
     fn mouse_scroll_left(&self, position: &Position) -> Option<String> {
         self.grid.mouse_scroll_left_signal(position)
+    }
+    fn mouse_scroll_right(&self, position: &Position) -> Option<String> {
+        self.grid.mouse_scroll_right_signal(position)
     }
     fn focus_event(&self) -> Option<String> {
         self.grid.focus_event()

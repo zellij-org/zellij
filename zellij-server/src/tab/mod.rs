@@ -296,6 +296,7 @@ pub trait Pane {
     fn scroll_up(&mut self, count: usize, client_id: ClientId);
     fn scroll_down(&mut self, count: usize, client_id: ClientId);
     fn scroll_left(&mut self, count: usize, client_id: ClientId);
+    fn scroll_right(&mut self, count: usize, client_id: ClientId);
     fn clear_scroll(&mut self);
     fn is_scrolled(&self) -> bool;
     fn active_at(&self) -> Instant;
@@ -513,6 +514,9 @@ pub trait Pane {
         None
     }
     fn mouse_scroll_left(&self, _position: &Position) -> Option<String> {
+        None
+    }
+    fn mouse_scroll_right(&self, _position: &Position) -> Option<String> {
         None
     }
     fn focus_event(&self) -> Option<String> {

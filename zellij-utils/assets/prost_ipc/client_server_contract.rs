@@ -1649,15 +1649,17 @@ pub struct MouseEvent {
     #[prost(bool, tag="6")]
     pub wheel_down: bool,
     #[prost(bool, tag="7")]
-    pub shift: bool,
-    #[prost(bool, tag="8")]
-    pub alt: bool,
-    #[prost(bool, tag="9")]
-    pub ctrl: bool,
-    #[prost(message, optional, tag="10")]
-    pub position: ::core::option::Option<Position>,
-    #[prost(bool, tag="11")]
     pub wheel_left: bool,
+    #[prost(bool, tag="8")]
+    pub wheel_right: bool,
+    #[prost(bool, tag="9")]
+    pub shift: bool,
+    #[prost(bool, tag="10")]
+    pub alt: bool,
+    #[prost(bool, tag="11")]
+    pub ctrl: bool,
+    #[prost(message, optional, tag="12")]
+    pub position: ::core::option::Option<Position>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
