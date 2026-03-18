@@ -836,6 +836,22 @@ pub fn osc7_payload_works_with_bel_terminator() {
 }
 
 #[test]
+pub fn osc7_payload_rejects_control_characters() {
+    // Test the Grid's osc_dispatch directly, since the VTE parser strips
+    // control characters before they reach osc_dispatch. This validates
+    // the defense-in-depth guard in the b"7" handler.
+    use vte::Perform;
+
+    let mut terminal_pane = make_terminal_pane_for_bell();
+    let params: &[&[u8]] = &[b"7", b"file://host/path\x01bad"];
+    terminal_pane.grid.osc_dispatch(params, false);
+    assert!(
+        terminal_pane.osc7_payload().is_none(),
+        "URIs with control characters should be rejected"
+    );
+}
+
+#[test]
 pub fn frameless_pane_position_is_on_frame() {
     let mut fake_win_size = PaneGeom {
         x: 10,
