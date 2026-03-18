@@ -807,7 +807,10 @@ pub fn osc7_payload_updated_on_subsequent_osc7() {
 
     let osc7_second = b"\x1b]7;file://localhost/second\x1b\\";
     terminal_pane.handle_pty_bytes(osc7_second.to_vec());
-    assert_eq!(terminal_pane.osc7_payload(), Some("file://localhost/second"));
+    assert_eq!(
+        terminal_pane.osc7_payload(),
+        Some("file://localhost/second")
+    );
 }
 
 #[test]
@@ -829,10 +832,7 @@ pub fn osc7_payload_works_with_bel_terminator() {
     // BEL (\x07) is an alternative terminator for OSC sequences
     let osc7_bytes = b"\x1b]7;file://localhost/tmp\x07";
     terminal_pane.handle_pty_bytes(osc7_bytes.to_vec());
-    assert_eq!(
-        terminal_pane.osc7_payload(),
-        Some("file://localhost/tmp"),
-    );
+    assert_eq!(terminal_pane.osc7_payload(), Some("file://localhost/tmp"),);
 }
 
 #[test]
