@@ -3478,13 +3478,13 @@ impl Perform for Grid {
             // (same pattern used by the b"0"|b"2" title handler above).
             b"7" => {
                 if params.len() >= 2 {
-                    let uri = params[1..]
-                        .iter()
-                        .flat_map(|x| str::from_utf8(x))
-                        .collect::<Vec<&str>>()
-                        .join(";");
-                    if !uri.is_empty() && !uri.bytes().any(|b| b < 0x20 || b == 0x7f) {
-                        self.osc7_payload = Some(uri);
+                    let segments: Option<Vec<&str>> =
+                        params[1..].iter().map(|x| str::from_utf8(x).ok()).collect();
+                    if let Some(segments) = segments {
+                        let uri = segments.join(";");
+                        if !uri.is_empty() && !uri.chars().any(|c| c.is_control()) {
+                            self.osc7_payload = Some(uri);
+                        }
                     }
                 }
             },

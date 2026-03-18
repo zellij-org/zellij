@@ -1995,18 +1995,21 @@ impl Screen {
                 if let Some(tab) = self.tabs.get(&tab_index) {
                     let current_osc7 = tab
                         .get_active_pane(client_id)
-                        .and_then(|pane| pane.osc7_payload())
-                        .map(|s| s.to_owned());
-                    let last = self.last_forwarded_osc7.get(&client_id);
-                    if last != Some(&current_osc7) {
-                        if let Some(ref uri) = current_osc7 {
+                        .and_then(|pane| pane.osc7_payload());
+                    let last = self
+                        .last_forwarded_osc7
+                        .get(&client_id)
+                        .and_then(|s| s.as_deref());
+                    if current_osc7 != last {
+                        if let Some(uri) = current_osc7 {
                             output.add_post_vte_instruction_to_client(
                                 client_id,
                                 &format!("\x1b]7;{}\x1b\\", uri),
                             );
                             has_osc7_update = true;
                         }
-                        self.last_forwarded_osc7.insert(client_id, current_osc7);
+                        self.last_forwarded_osc7
+                            .insert(client_id, current_osc7.map(|s| s.to_owned()));
                     }
                 }
             }

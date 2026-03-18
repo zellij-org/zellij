@@ -836,7 +836,7 @@ pub fn osc7_payload_works_with_bel_terminator() {
 }
 
 #[test]
-pub fn osc7_payload_rejects_control_characters() {
+pub fn osc7_payload_rejects_c0_control_characters() {
     // Test the Grid's osc_dispatch directly, since the VTE parser strips
     // control characters before they reach osc_dispatch. This validates
     // the defense-in-depth guard in the b"7" handler.
@@ -847,7 +847,23 @@ pub fn osc7_payload_rejects_control_characters() {
     terminal_pane.grid.osc_dispatch(params, false);
     assert!(
         terminal_pane.osc7_payload().is_none(),
-        "URIs with control characters should be rejected"
+        "URIs with C0 control characters should be rejected"
+    );
+}
+
+#[test]
+pub fn osc7_payload_rejects_c1_control_characters() {
+    // C1 control characters (U+0080..U+009F) include ST (U+009C) which
+    // could terminate the OSC sequence in the parent terminal.
+    use vte::Perform;
+
+    let mut terminal_pane = make_terminal_pane_for_bell();
+    // U+009C (ST) in UTF-8 is 0xC2 0x9C
+    let params: &[&[u8]] = &[b"7", "file://host/path\u{9c}bad".as_bytes()];
+    terminal_pane.grid.osc_dispatch(params, false);
+    assert!(
+        terminal_pane.osc7_payload().is_none(),
+        "URIs with C1 control characters should be rejected"
     );
 }
 
