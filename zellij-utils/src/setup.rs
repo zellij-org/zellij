@@ -441,7 +441,7 @@ impl Setup {
 
         writeln!(&mut message, "[Version]: {:?}", VERSION).unwrap();
         if let Some(config_dir) = config_dir {
-            writeln!(&mut message, "[CONFIG DIR]: {}", config_dir.display()).unwrap();
+            writeln!(&mut message, "[CONFIG DIR]: \"{}\"", config_dir.display()).unwrap();
         } else {
             message.push_str("[CONFIG DIR]: Not Found\n");
             let mut default_config_dirs = default_config_dirs()
@@ -453,13 +453,13 @@ impl Setup {
                 " On your system zellij looks in the following config directories by default:\n",
             );
             for dir in default_config_dirs {
-                writeln!(&mut message, " {}", dir.display()).unwrap();
+                writeln!(&mut message, " \"{}\"", dir.display()).unwrap();
             }
         }
         if let Some(config_file) = config_file {
             writeln!(
                 &mut message,
-                "[LOOKING FOR CONFIG FILE FROM]: {}",
+                "[LOOKING FOR CONFIG FILE FROM]: \"{}\"",
                 config_file.display()
             )
             .unwrap();
@@ -482,8 +482,8 @@ impl Setup {
             .unwrap();
         }
         writeln!(&mut message, "[CACHE DIR]: {}", ZELLIJ_CACHE_DIR.display()).unwrap();
-        writeln!(&mut message, "[DATA DIR]: {}", data_dir.display()).unwrap();
-        writeln!(&mut message, "[PLUGIN DIR]: {}", plugin_dir.display()).unwrap();
+        writeln!(&mut message, "[DATA DIR]: \"{}\"", data_dir.display()).unwrap();
+        writeln!(&mut message, "[PLUGIN DIR]: \"{}\"", plugin_dir.display()).unwrap();
         if !cfg!(feature = "disable_automatic_asset_installation") {
             writeln!(
                 &mut message,
@@ -497,13 +497,13 @@ impl Setup {
             .unwrap();
         }
         if let Some(layout_dir) = layout_dir {
-            writeln!(&mut message, "[LAYOUT DIR]: {}", layout_dir.display()).unwrap();
+            writeln!(&mut message, "[LAYOUT DIR]: \"{}\"", layout_dir.display()).unwrap();
         } else {
             message.push_str("[LAYOUT DIR]: Not Found\n");
         }
         writeln!(
             &mut message,
-            "[SYSTEM DATA DIR]: {}",
+            "[SYSTEM DATA DIR]: \"{}\"",
             system_data_dir.display()
         )
         .unwrap();
