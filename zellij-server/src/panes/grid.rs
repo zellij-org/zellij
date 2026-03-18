@@ -1272,6 +1272,8 @@ impl Grid {
             self.word_separators = word_separators.to_owned();
         }
     }
+    /// Returns the last OSC 7 working directory URI reported by the child process,
+    /// or `None` if no OSC 7 has been received (or was rejected for invalid content).
     pub fn osc7_payload(&self) -> Option<&str> {
         self.osc7_payload.as_deref()
     }
@@ -2817,6 +2819,7 @@ impl Grid {
         self.pane_default_fg = None;
         self.pane_default_bg = None;
         self.osc133_markers_seen = false;
+        self.osc7_payload = None;
         if let Some(images_to_reap) = self.sixel_grid.clear() {
             self.sixel_grid.reap_images(images_to_reap);
         }
