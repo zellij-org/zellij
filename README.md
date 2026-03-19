@@ -8,15 +8,8 @@
 </h1>
 
 <p align="center">
-  <a href="https://discord.gg/CrUAFH3"><img alt="Discord Chat" src="https://img.shields.io/discord/771367133715628073?color=5865F2&label=discord&style=flat-square"></a>
-  <a href="https://matrix.to/#/#zellij_general:matrix.org"><img alt="Matrix Chat" src="https://img.shields.io/matrix/zellij_general:matrix.org?color=1d7e64&label=matrix%20chat&style=flat-square&logo=matrix"></a>
-  <a href="https://zellij.dev/documentation/"><img alt="Zellij documentation" src="https://img.shields.io/badge/zellij-documentation-fc0060?style=flat-square"></a>
-</p>
-
-<p align="center">
   <img src="https://raw.githubusercontent.com/zellij-org/zellij/main/assets/demo.gif" alt="demo">
 </p>
-
 <h4 align="center">
   [<a href="https://zellij.dev/documentation/installation">Installation</a>]
   [<a href="https://zellij.dev/screencasts/">Screencasts & Tutorials</a>]
@@ -24,12 +17,19 @@
   [<a href="https://zellij.dev/documentation/layouts">Layouts</a>]
   [<a href="https://zellij.dev/documentation/faq">FAQ</a>]
 </h4>
+<p align="center">
+  <a href="https://discord.gg/CrUAFH3"><img alt="Discord Chat" src="https://img.shields.io/discord/771367133715628073?color=5865F2&label=discord&style=flat-square"></a>
+  <a href="https://matrix.to/#/#zellij_general:matrix.org"><img alt="Matrix Chat" src="https://img.shields.io/matrix/zellij_general:matrix.org?color=1d7e64&label=matrix%20chat&style=flat-square&logo=matrix"></a>
+  <a href="https://zellij.dev/documentation/"><img alt="Zellij documentation" src="https://img.shields.io/badge/zellij-documentation-fc0060?style=flat-square"></a>
+</p>
+
 <br>
     <p align="center">
     <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://github.com/user-attachments/assets/5e35b0c7-ef3e-4a71-aac3-f14b31f8e5c7">
-      <img src="https://github.com/user-attachments/assets/f7bffce4-de6b-4fc3-a9ac-39ba9d2bab4c" alt="Sponsored by ">
+      <source media="(prefers-color-scheme: dark)" srcset="https://github.com/user-attachments/assets/bc5daac4-140a-4b83-8729-71c944ee1100">
+      <img src="https://github.com/user-attachments/assets/55156624-a71a-46b5-939e-f562e3b2dd7f" alt="Sponsored by ">
     </picture>
+    &nbsp;
     &nbsp;
     <a href="https://www.gresearch.com/">
         <picture>
