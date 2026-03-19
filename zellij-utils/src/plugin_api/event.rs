@@ -1488,7 +1488,7 @@ impl TryFrom<MouseEventPayload> for Mouse {
                     Some(mouse_event_payload::MouseEventPayload::LineCount(line_count)) => {
                         Ok(Mouse::ScrollRight(line_count as usize))
                     },
-                    _ => Err("Malformed payload for mouse scroll Right"),
+                    _ => Err("Malformed payload for mouse scroll right"),
                 }
             },
             Some(MouseEventName::MouseLeftClick) => match mouse_event_payload.mouse_event_payload {

@@ -1281,18 +1281,14 @@ impl MouseHandler {
 
         if event.wheel_left {
             if let Some(pane_id) = ctx.pane_id_at_position {
-                if event.wheel_left {
-                    return Ok(MouseAction::ScrollLeft { pane_id, lines: 3 });
-                }
+                return Ok(MouseAction::ScrollLeft { pane_id, lines: 3 });
             }
             return Ok(MouseAction::NoAction);
         }
 
         if event.wheel_right {
             if let Some(pane_id) = ctx.pane_id_at_position {
-                if event.wheel_right {
-                    return Ok(MouseAction::ScrollRight { pane_id, lines: 3 });
-                }
+                return Ok(MouseAction::ScrollRight { pane_id, lines: 3 });
             }
             return Ok(MouseAction::NoAction);
         }
@@ -1663,7 +1659,7 @@ impl MouseHandler {
                 tab.write_to_terminal_at(mouse_event.into_bytes(), point, client_id)
                     .with_context(err_context)?;
             } else if pane.is_alternate_mode_active() {
-                // faux scrolling, send LEFT n times
+                // faux scrolling, send RIGHT n times
                 // do n separate writes to make sure the sequence gets adjusted for cursor keys mode
                 for _ in 0..lines {
                     tab.write_to_terminal_at("\u{1b}[C".as_bytes().to_owned(), point, client_id)
