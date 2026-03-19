@@ -5,7 +5,7 @@ use std::cmp::{max, min};
 use std::collections::BTreeMap;
 use std::convert::TryInto;
 
-use tab::get_tab_to_focus;
+use tab::{get_clicked_line_part, get_tab_to_focus};
 use zellij_tile::prelude::*;
 
 use crate::line::tab_line;
@@ -87,6 +87,17 @@ impl ZellijPlugin for State {
                 },
                 Mouse::ScrollDown(_) => {
                     switch_tab_to(max(self.active_tab_idx.saturating_sub(1), 1) as u32);
+                },
+                Mouse::MiddleClick(_, col) => {
+                    let clicked_part = get_clicked_line_part(&self.tab_line, col);
+                    match clicked_part.and_then(|p| p.tab_index) {
+                        Some(tab_idx) => {
+                            close_tab_with_index(tab_idx);
+                        },
+                        None => {
+                            new_tab(None::<&str>, None::<&str>);
+                        },
+                    }
                 },
                 _ => {},
             },

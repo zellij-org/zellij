@@ -897,6 +897,7 @@ pub enum Mouse {
     ScrollDown(usize),        // number of lines
     LeftClick(isize, usize),  // line and column
     RightClick(isize, usize), // line and column
+    MiddleClick(isize, usize), // line and column
     Hold(isize, usize),       // line and column
     Release(isize, usize),    // line and column
     Hover(isize, usize),      // line and column
@@ -908,6 +909,7 @@ impl Mouse {
         match self {
             Mouse::LeftClick(line, column) => Some((*line as usize, *column as usize)),
             Mouse::RightClick(line, column) => Some((*line as usize, *column as usize)),
+            Mouse::MiddleClick(line, column) => Some((*line as usize, *column as usize)),
             Mouse::Hold(line, column) => Some((*line as usize, *column as usize)),
             Mouse::Release(line, column) => Some((*line as usize, *column as usize)),
             Mouse::Hover(line, column) => Some((*line as usize, *column as usize)),
