@@ -2,9 +2,9 @@ use crate::data::LayoutInfo;
 use crate::input::options::Options;
 use crate::pane_size::Size;
 use crate::{
-    home::find_default_config_dir,
+    home::{find_default_config_dir, get_theme_dir},
     input::{config::Config, layout::Layout, theme::Themes},
-    setup::{get_default_themes, get_theme_dir},
+    setup::get_default_themes,
 };
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;

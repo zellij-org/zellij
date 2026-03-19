@@ -101,7 +101,7 @@ impl LayoutListScreen {
                     self.open_selected_layout(display_layouts);
                     KeyResponse::none()
                 },
-                BareKey::Char('o') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
+                BareKey::Char('w') if key.has_modifiers(&[KeyModifier::Alt]) => {
                     self.apply_selected_layout(display_layouts);
                     KeyResponse::none()
                 },
@@ -138,7 +138,7 @@ impl LayoutListScreen {
         key: KeyWithModifier,
         display_layouts: &[DisplayLayout],
     ) -> KeyResponse {
-        // Search-first mode: Enter opens, Ctrl+O applies, Tab autocompletes,
+        // Search-first mode: Enter opens, Alt+W applies, Tab autocompletes,
         // arrows navigate, Esc exits to management mode
         match key.bare_key {
             BareKey::Esc if key.has_no_modifiers() => {
@@ -156,7 +156,7 @@ impl LayoutListScreen {
                 self.open_selected_layout(display_layouts);
                 return KeyResponse::none();
             },
-            BareKey::Char('o') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
+            BareKey::Char('w') if key.has_modifiers(&[KeyModifier::Alt]) => {
                 // Apply/override the currently selected layout to the session
                 self.apply_selected_layout(display_layouts);
                 return KeyResponse::none();
