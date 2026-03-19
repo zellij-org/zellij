@@ -7329,3 +7329,119 @@ fn dch_on_second_half_of_wide_char() {
     assert_eq!(row.columns[4].grapheme(), "3", "col 4: 3 shifted left");
     assert_eq!(row.columns[5].grapheme(), " ", "col 5: right margin fill");
 }
+
+// ── Grapheme-aware search tests ─────────────────────────────────────────────
+
+#[test]
+fn search_finds_ascii_text() {
+    // Baseline: plain ASCII search still works after the grapheme refactor.
+    let mut grid = create_grid_with_content("hello world");
+    grid.set_search_string("world");
+    assert_eq!(grid.search_results.selections.len(), 1, "should find 'world'");
+    let sel = &grid.search_results.selections[0];
+    assert_eq!(sel.start.column(), 6);
+    assert_eq!(sel.end.column(), 11);
+}
+
+#[test]
+fn search_finds_nfc_composed_character() {
+    // Search for NFC "é" (U+00E9) in content that has NFC "é".
+    let mut grid = create_grid_with_content("caf\u{00E9}");
+    grid.set_search_string("\u{00E9}");
+    assert_eq!(
+        grid.search_results.selections.len(),
+        1,
+        "should find NFC é"
+    );
+}
+
+#[test]
+fn search_finds_combining_mark_grapheme() {
+    // Content has NFD "é" = e + combining acute (U+0301), stored as one cell.
+    // Search for the same NFD sequence.
+    let nfd_e_acute = "e\u{0301}";
+    let content = format!("caf{}", nfd_e_acute);
+    let mut grid = create_grid_with_content(&content);
+    grid.set_search_string(nfd_e_acute);
+    assert_eq!(
+        grid.search_results.selections.len(),
+        1,
+        "should find NFD e+combining_acute as a single grapheme"
+    );
+}
+
+#[test]
+fn search_finds_zwj_emoji() {
+    // ZWJ family emoji stored as one cell.
+    let family = "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}";
+    let content = format!("a{}b", family);
+    let mut grid = create_grid_with_content(&content);
+    grid.set_search_string(family);
+    assert_eq!(
+        grid.search_results.selections.len(),
+        1,
+        "should find ZWJ emoji sequence"
+    );
+}
+
+#[test]
+fn search_finds_hangul_jamo_nfd() {
+    // NFD Hangul "가" = ᄀ(U+1100) + ᅡ(U+1161), stored as one cell.
+    let nfd_ga = "\u{1100}\u{1161}";
+    let content = format!("x{}y", nfd_ga);
+    let mut grid = create_grid_with_content(&content);
+    grid.set_search_string(nfd_ga);
+    assert_eq!(
+        grid.search_results.selections.len(),
+        1,
+        "should find NFD Hangul Jamo sequence"
+    );
+}
+
+#[test]
+fn search_finds_devanagari_with_vowel_sign() {
+    // हि = HA(U+0939) + vowel sign I(U+093F), stored as one cell.
+    let content = "x\u{0939}\u{093F}y";
+    let mut grid = create_grid_with_content(content);
+    grid.set_search_string("\u{0939}\u{093F}");
+    assert_eq!(
+        grid.search_results.selections.len(),
+        1,
+        "should find Devanagari base + vowel sign"
+    );
+}
+
+#[test]
+fn search_case_insensitive_with_graphemes() {
+    let mut grid = create_grid_with_content("Hello");
+    grid.search_results.case_insensitive = true;
+    grid.set_search_string("hello");
+    assert_eq!(
+        grid.search_results.selections.len(),
+        1,
+        "case-insensitive search should match"
+    );
+}
+
+#[test]
+fn search_multiple_grapheme_matches() {
+    // Two instances of "à" (NFC) in the content.
+    let mut grid = create_grid_with_content("d\u{00E9}j\u{00E0} vu, d\u{00E9}j\u{00E0}");
+    grid.set_search_string("d\u{00E9}j\u{00E0}");
+    assert_eq!(
+        grid.search_results.selections.len(),
+        2,
+        "should find both occurrences of 'déjà'"
+    );
+}
+
+#[test]
+fn search_selection_uses_display_columns_after_wide_graphemes() {
+    let mut grid = create_grid_with_content("ascii 中 😀 cafe\u{0301} 👩‍💻 🇯🇵 폴더명");
+    grid.set_search_string("caf");
+
+    assert_eq!(grid.search_results.selections.len(), 1, "should find 'caf'");
+    let sel = &grid.search_results.selections[0];
+    assert_eq!(sel.start.column(), 12, "selection should start at display col 12");
+    assert_eq!(sel.end.column(), 15, "selection should end at display col 15");
+}
