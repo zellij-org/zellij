@@ -27,14 +27,14 @@
 <br>
     <p align="center">
     <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://github.com/user-attachments/assets/dbe6c98f-0a7d-4a9a-b690-74f27568a175">
-      <img src="https://github.com/user-attachments/assets/22e04e63-72c2-4015-8b24-6df797ef81ea" height="30px" alt="Sponsored by ">
+      <source media="(prefers-color-scheme: dark)" srcset="https://github.com/user-attachments/assets/5e35b0c7-ef3e-4a71-aac3-f14b31f8e5c7">
+      <img src="https://github.com/user-attachments/assets/f7bffce4-de6b-4fc3-a9ac-39ba9d2bab4c" alt="Sponsored by ">
     </picture>
     &nbsp;
     <a href="https://www.gresearch.com/">
         <picture>
-          <source media="(prefers-color-scheme: dark)" srcset="https://github.com/user-attachments/assets/60cb10c6-d70e-404d-b63d-5476dd2cbd95">
-          <img src="https://github.com/user-attachments/assets/9c8ff2f6-c139-4b4a-b693-0ab129652103" height="30px" alt="gresearch logo">
+          <source media="(prefers-color-scheme: dark)" srcset="https://github.com/user-attachments/assets/d609936a-abf8-4406-8cfc-889f76a09d74">
+          <img src="https://github.com/user-attachments/assets/742ae902-fe9d-41c6-baf2-4bc143061da3" alt="gresearch logo">
         </picture>
     </a>
 </p>
