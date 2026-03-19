@@ -10308,7 +10308,7 @@ fn test_left_click_on_inactive_tiled_pane_changes_focus() {
     let mut tab = create_new_tab(size, ModeInfo::default());
     let new_pane_id = PaneId::Terminal(2);
 
-    tab.vertical_split(new_pane_id, None, client_id, None, None)
+    tab.vertical_split(new_pane_id, None, client_id, None, None, None)
         .unwrap();
 
     tab.handle_pty_bytes(1, Vec::from("Left pane".as_bytes()))
@@ -10381,7 +10381,7 @@ fn test_ctrl_click_on_tiled_pane_edge_starts_resize() {
     let _output = Output::default();
 
     // Create a vertical split
-    tab.vertical_split(new_pane_id, None, client_id, None, None)
+    tab.vertical_split(new_pane_id, None, client_id, None, None, None)
         .unwrap();
 
     tab.handle_pty_bytes(1, Vec::from("Left".as_bytes()))
@@ -10414,7 +10414,7 @@ fn test_ctrl_drag_resizes_tiled_pane_horizontally() {
     let new_pane_id = PaneId::Terminal(2);
     let mut output = Output::default();
 
-    tab.vertical_split(new_pane_id, None, client_id, None, None)
+    tab.vertical_split(new_pane_id, None, client_id, None, None, None)
         .unwrap();
 
     tab.handle_pty_bytes(1, Vec::from("Left pane content".as_bytes()))
@@ -10477,7 +10477,7 @@ fn test_ctrl_drag_resizes_tiled_pane_vertically() {
     let new_pane_id = PaneId::Terminal(2);
     let mut output = Output::default();
 
-    tab.horizontal_split(new_pane_id, None, client_id, None, None)
+    tab.horizontal_split(new_pane_id, None, client_id, None, None, None)
         .unwrap();
 
     tab.handle_pty_bytes(1, Vec::from("Top pane".as_bytes()))
@@ -10540,7 +10540,7 @@ fn test_ctrl_drag_resizes_unfocused_tiled_pane_vertically() {
     let new_pane_id = PaneId::Terminal(2);
     let mut output = Output::default();
 
-    tab.horizontal_split(new_pane_id, None, client_id, None, None)
+    tab.horizontal_split(new_pane_id, None, client_id, None, None, None)
         .unwrap();
 
     tab.handle_pty_bytes(1, Vec::from("Top pane".as_bytes()))
@@ -10607,7 +10607,7 @@ fn test_ctrl_click_on_pane_body_does_nothing() {
     let _output = Output::default();
 
     // Create a vertical split
-    tab.vertical_split(new_pane_id, None, client_id, None, None)
+    tab.vertical_split(new_pane_id, None, client_id, None, None, None)
         .unwrap();
 
     tab.handle_pty_bytes(1, Vec::from("Left".as_bytes()))
@@ -11224,7 +11224,7 @@ fn test_alt_left_click_toggles_pane_group() {
     let _output = Output::default();
 
     // Create a vertical split
-    tab.vertical_split(new_pane_id, None, client_id, None, None)
+    tab.vertical_split(new_pane_id, None, client_id, None, None, None)
         .unwrap();
 
     tab.handle_pty_bytes(1, Vec::from("Left".as_bytes()))
@@ -11258,9 +11258,9 @@ fn test_alt_left_drag_adds_panes_to_group() {
     let _output = Output::default();
 
     // Create two vertical splits (3 panes)
-    tab.vertical_split(new_pane_id_2, None, client_id, None, None)
+    tab.vertical_split(new_pane_id_2, None, client_id, None, None, None)
         .unwrap();
-    tab.vertical_split(new_pane_id_3, None, client_id, None, None)
+    tab.vertical_split(new_pane_id_3, None, client_id, None, None, None)
         .unwrap();
 
     tab.handle_pty_bytes(1, Vec::from("Pane 1".as_bytes()))
@@ -11314,7 +11314,7 @@ fn test_right_alt_click_ungroups_panes() {
     let _output = Output::default();
 
     // Create a vertical split
-    tab.vertical_split(new_pane_id, None, client_id, None, None)
+    tab.vertical_split(new_pane_id, None, client_id, None, None, None)
         .unwrap();
 
     tab.handle_pty_bytes(1, Vec::from("Left".as_bytes()))
@@ -11471,7 +11471,7 @@ fn test_scroll_on_inactive_pane_scrolls_that_pane() {
     let mut output = Output::default();
 
     // Create a vertical split
-    tab.vertical_split(new_pane_id, None, client_id, None, None)
+    tab.vertical_split(new_pane_id, None, client_id, None, None, None)
         .unwrap();
 
     // Fill both panes with scrollable content
@@ -11587,7 +11587,7 @@ fn test_hover_over_inactive_pane_sets_hover_state() {
     let _output = Output::default();
 
     // Create a vertical split
-    tab.vertical_split(new_pane_id, None, client_id, None, None)
+    tab.vertical_split(new_pane_id, None, client_id, None, None, None)
         .unwrap();
 
     tab.handle_pty_bytes(1, Vec::from("Left".as_bytes()))
@@ -11623,7 +11623,7 @@ fn test_hover_over_active_pane_unsets_hover() {
     let _output = Output::default();
 
     // Create a vertical split
-    tab.vertical_split(new_pane_id, None, client_id, None, None)
+    tab.vertical_split(new_pane_id, None, client_id, None, None, None)
         .unwrap();
 
     tab.handle_pty_bytes(1, Vec::from("Left".as_bytes()))
@@ -11667,7 +11667,7 @@ fn test_resize_tiled_then_move_floating_sequence() {
     let _output = Output::default();
 
     // Create tiled split
-    tab.vertical_split(tiled_pane_id, None, client_id, None, None)
+    tab.vertical_split(tiled_pane_id, None, client_id, None, None, None)
         .unwrap();
 
     tab.handle_pty_bytes(1, Vec::from("Tiled Left".as_bytes()))
@@ -11802,7 +11802,7 @@ fn test_left_click_on_tiled_frame_edge_starts_resize() {
     let _output = Output::default();
 
     // Create a vertical split
-    tab.vertical_split(new_pane_id, None, client_id, None, None)
+    tab.vertical_split(new_pane_id, None, client_id, None, None, None)
         .unwrap();
 
     tab.handle_pty_bytes(1, Vec::from("Left".as_bytes()))
@@ -11900,7 +11900,7 @@ fn test_ctrl_scroll_up_on_active_tiled_pane_increases_pane_size() {
     let new_pane_id = PaneId::Terminal(2);
     let mut output = Output::default();
 
-    tab.vertical_split(new_pane_id, None, client_id, None, None)
+    tab.vertical_split(new_pane_id, None, client_id, None, None, None)
         .unwrap();
 
     tab.handle_pty_bytes(1, Vec::from("Left pane".as_bytes()))
@@ -11950,7 +11950,7 @@ fn test_ctrl_scroll_down_on_active_tiled_pane_decreases_pane_size() {
     let new_pane_id = PaneId::Terminal(2);
     let mut output = Output::default();
 
-    tab.vertical_split(new_pane_id, None, client_id, None, None)
+    tab.vertical_split(new_pane_id, None, client_id, None, None, None)
         .unwrap();
 
     tab.handle_pty_bytes(1, Vec::from("Left pane".as_bytes()))
@@ -12000,7 +12000,7 @@ fn test_ctrl_scroll_up_on_inactive_tiled_pane_increases_active_tiled_pane_size()
     let new_pane_id = PaneId::Terminal(2);
     let mut output = Output::default();
 
-    tab.vertical_split(new_pane_id, None, client_id, None, None)
+    tab.vertical_split(new_pane_id, None, client_id, None, None, None)
         .unwrap();
 
     tab.handle_pty_bytes(1, Vec::from("Left pane".as_bytes()))
@@ -12050,7 +12050,7 @@ fn test_ctrl_scroll_down_on_inactive_tiled_pane_decreases_active_tiled_pane_size
     let new_pane_id = PaneId::Terminal(2);
     let mut output = Output::default();
 
-    tab.vertical_split(new_pane_id, None, client_id, None, None)
+    tab.vertical_split(new_pane_id, None, client_id, None, None, None)
         .unwrap();
 
     tab.handle_pty_bytes(1, Vec::from("Left pane".as_bytes()))
@@ -12369,6 +12369,7 @@ fn in_place_pane_with_close_replaced_pane_false_restores_original() {
         false,
         false,
         NewPanePlacement::Tiled {
+            size: None,
             direction: None,
             borderless: None,
         },
@@ -12432,6 +12433,7 @@ fn in_place_pane_with_close_replaced_pane_true_closes_original() {
         false,
         false,
         NewPanePlacement::Tiled {
+            size: None,
             direction: None,
             borderless: None,
         },
@@ -12767,7 +12769,7 @@ fn hover_on_unfocused_pane_no_highlight() {
     let mut output = Output::default();
 
     // Create a vertical split
-    tab.vertical_split(new_pane_id, None, client_id, None, None)
+    tab.vertical_split(new_pane_id, None, client_id, None, None, None)
         .unwrap();
 
     tab.handle_pty_bytes(1, Vec::from("link_text".as_bytes()))
@@ -12880,7 +12882,7 @@ fn set_and_clear_highlights_across_tiled_and_floating() {
     let pane3 = PaneId::Terminal(3);
 
     // Create a second tiled pane
-    tab.vertical_split(pane2, None, client_id, None, None)
+    tab.vertical_split(pane2, None, client_id, None, None, None)
         .unwrap();
 
     // Create a floating pane
@@ -13423,7 +13425,7 @@ fn focus_follows_mouse_focuses_tiled_pane_on_hover() {
     let new_pane_id = PaneId::Terminal(2);
 
     // Create a vertical split: pane 1 (left), pane 2 (right)
-    tab.vertical_split(new_pane_id, None, client_id, None, None)
+    tab.vertical_split(new_pane_id, None, client_id, None, None, None)
         .unwrap();
 
     // Active pane is pane 2 (right) after split
@@ -13455,7 +13457,7 @@ fn focus_follows_mouse_disabled_does_not_change_focus() {
     let mut tab = create_new_tab(size, ModeInfo::default());
     let new_pane_id = PaneId::Terminal(2);
 
-    tab.vertical_split(new_pane_id, None, client_id, None, None)
+    tab.vertical_split(new_pane_id, None, client_id, None, None, None)
         .unwrap();
 
     // Active pane is pane 2 (right) after split
@@ -13558,7 +13560,7 @@ fn focus_follows_mouse_skips_unselectable_panes() {
     let mut tab = create_new_tab(size, ModeInfo::default());
     let new_pane_id = PaneId::Terminal(2);
 
-    tab.vertical_split(new_pane_id, None, client_id, None, None)
+    tab.vertical_split(new_pane_id, None, client_id, None, None, None)
         .unwrap();
 
     // Mark pane 1 (left) as unselectable
@@ -13592,7 +13594,7 @@ fn focus_follows_mouse_no_op_on_active_pane() {
     let mut tab = create_new_tab(size, ModeInfo::default());
     let new_pane_id = PaneId::Terminal(2);
 
-    tab.vertical_split(new_pane_id, None, client_id, None, None)
+    tab.vertical_split(new_pane_id, None, client_id, None, None, None)
         .unwrap();
 
     // Active pane is pane 2 (right)
@@ -13623,7 +13625,7 @@ fn focus_follows_mouse_respects_live_toggle() {
     let mut tab = create_new_tab(size, ModeInfo::default());
     let new_pane_id = PaneId::Terminal(2);
 
-    tab.vertical_split(new_pane_id, None, client_id, None, None)
+    tab.vertical_split(new_pane_id, None, client_id, None, None, None)
         .unwrap();
 
     // Active pane is pane 2 (right)
@@ -13662,7 +13664,7 @@ fn focus_follows_mouse_repeated_hover_same_pane() {
     let mut tab = create_new_tab(size, ModeInfo::default());
     let new_pane_id = PaneId::Terminal(2);
 
-    tab.vertical_split(new_pane_id, None, client_id, None, None)
+    tab.vertical_split(new_pane_id, None, client_id, None, None, None)
         .unwrap();
 
     assert_eq!(tab.get_active_pane_id(client_id), Some(PaneId::Terminal(2)));
@@ -13697,7 +13699,7 @@ fn focus_follows_mouse_ignores_tiled_pane_when_floating_visible() {
     let new_pane_id = PaneId::Terminal(2);
 
     // Create a vertical split so there are two tiled panes
-    tab.vertical_split(new_pane_id, None, client_id, None, None)
+    tab.vertical_split(new_pane_id, None, client_id, None, None, None)
         .unwrap();
 
     // Open floating layer with a floating pane
@@ -13934,7 +13936,7 @@ fn mouse_click_through_sends_click_to_newly_focused_tiled_pane() {
     pty_instruction_bus.start();
 
     let new_pane_id = PaneId::Terminal(2);
-    tab.vertical_split(new_pane_id, None, client_id, None, None)
+    tab.vertical_split(new_pane_id, None, client_id, None, None, None)
         .unwrap();
 
     // Active pane is pane 2 (right) after split
@@ -13990,7 +13992,7 @@ fn mouse_click_through_disabled_does_not_send_click_to_focused_pane() {
     pty_instruction_bus.start();
 
     let new_pane_id = PaneId::Terminal(2);
-    tab.vertical_split(new_pane_id, None, client_id, None, None)
+    tab.vertical_split(new_pane_id, None, client_id, None, None, None)
         .unwrap();
 
     // Enable SGR mouse mode on pane 1 (inactive)
@@ -14123,7 +14125,7 @@ fn mouse_click_through_does_not_apply_when_focus_follows_mouse_is_enabled() {
     pty_instruction_bus.start();
 
     let new_pane_id = PaneId::Terminal(2);
-    tab.vertical_split(new_pane_id, None, client_id, None, None)
+    tab.vertical_split(new_pane_id, None, client_id, None, None, None)
         .unwrap();
     assert_eq!(tab.get_active_pane_id(client_id), Some(PaneId::Terminal(2)));
 
@@ -14171,7 +14173,7 @@ fn mouse_click_through_starts_selection_on_non_mouse_mode_pane() {
     let mut tab = create_new_tab(size, ModeInfo::default());
     let new_pane_id = PaneId::Terminal(2);
 
-    tab.vertical_split(new_pane_id, None, client_id, None, None)
+    tab.vertical_split(new_pane_id, None, client_id, None, None, None)
         .unwrap();
     assert_eq!(tab.get_active_pane_id(client_id), Some(PaneId::Terminal(2)));
 
@@ -14215,7 +14217,7 @@ fn mouse_click_through_respects_live_toggle() {
     pty_instruction_bus.start();
 
     let new_pane_id = PaneId::Terminal(2);
-    tab.vertical_split(new_pane_id, None, client_id, None, None)
+    tab.vertical_split(new_pane_id, None, client_id, None, None, None)
         .unwrap();
 
     // Enable SGR mouse mode on pane 1

@@ -15274,7 +15274,7 @@ pub fn bell_in_unfocused_pane_sets_notification() {
     let client_id = 1;
 
     // Create a second pane; client is focused on pane 1 (PaneId::Terminal(1))
-    tab.horizontal_split(new_pane_id, None, client_id, None, None)
+    tab.horizontal_split(new_pane_id, None, client_id, None, None, None)
         .unwrap();
     // Move focus back to pane 1
     tab.move_focus_up(client_id).unwrap();
@@ -15317,7 +15317,7 @@ pub fn clearing_last_pane_bell_clears_tab_bell() {
     let new_pane_id = PaneId::Terminal(2);
     let client_id = 1;
 
-    tab.horizontal_split(new_pane_id, None, client_id, None, None)
+    tab.horizontal_split(new_pane_id, None, client_id, None, None, None)
         .unwrap();
     tab.move_focus_up(client_id).unwrap();
 
@@ -15475,7 +15475,7 @@ pub fn close_pane_by_pane_id() {
     let stacked_resize = true;
     let mut tab = create_new_tab(size, stacked_resize);
     let new_pane_id = PaneId::Terminal(2);
-    tab.horizontal_split(new_pane_id, None, 1, None, None)
+    tab.horizontal_split(new_pane_id, None, 1, None, None, None)
         .unwrap();
     assert_eq!(tab.tiled_panes.panes.len(), 2);
     tab.close_pane_by_pane_id(new_pane_id, None).unwrap();
@@ -15491,7 +15491,7 @@ pub fn resize_by_pane_id() {
     };
     let mut tab = create_new_tab(size, true);
     let new_pane_id = PaneId::Terminal(2);
-    tab.horizontal_split(new_pane_id, None, 1, None, None)
+    tab.horizontal_split(new_pane_id, None, 1, None, None, None)
         .unwrap();
     assert_eq!(tab.tiled_panes.panes.len(), 2);
     tab.resize_by_pane_id(
@@ -15508,7 +15508,7 @@ pub fn toggle_fullscreen_by_pane_id() {
     };
     let mut tab = create_new_tab(size, true);
     let new_pane_id = PaneId::Terminal(2);
-    tab.horizontal_split(new_pane_id, None, 1, None, None)
+    tab.horizontal_split(new_pane_id, None, 1, None, None, None)
         .unwrap();
     assert_eq!(tab.tiled_panes.panes.len(), 2);
     tab.toggle_fullscreen_by_pane_id(new_pane_id);
@@ -15522,7 +15522,7 @@ pub fn move_pane_by_pane_id_down() {
     };
     let mut tab = create_new_tab(size, true);
     let new_pane_id = PaneId::Terminal(2);
-    tab.horizontal_split(new_pane_id, None, 1, None, None)
+    tab.horizontal_split(new_pane_id, None, 1, None, None, None)
         .unwrap();
     assert_eq!(tab.tiled_panes.panes.len(), 2);
     tab.move_pane_by_pane_id(new_pane_id, Some(Direction::Down));
@@ -15536,7 +15536,7 @@ pub fn move_pane_backwards_by_pane_id() {
     };
     let mut tab = create_new_tab(size, true);
     let new_pane_id = PaneId::Terminal(2);
-    tab.horizontal_split(new_pane_id, None, 1, None, None)
+    tab.horizontal_split(new_pane_id, None, 1, None, None, None)
         .unwrap();
     assert_eq!(tab.tiled_panes.panes.len(), 2);
     tab.move_pane_backwards_by_pane_id(new_pane_id);

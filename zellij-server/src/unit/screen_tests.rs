@@ -5030,6 +5030,7 @@ pub fn send_cli_new_pane_in_place_with_close_replaced_pane() {
     );
     let cli_action = CliAction::NewPane {
         direction: None,
+        size: None,
         command: vec!["bash".into()],
         plugin: None,
         cwd: None,
