@@ -15,7 +15,10 @@ pub const DEFAULT_SCROLL_BUFFER_SIZE: usize = 10_000;
 pub static SCROLL_BUFFER_SIZE: OnceLock<usize> = OnceLock::new();
 pub static DEBUG_MODE: OnceLock<bool> = OnceLock::new();
 
+#[cfg(not(windows))]
 pub const SYSTEM_DEFAULT_CONFIG_DIR: &str = "/etc/zellij";
+#[cfg(windows)]
+pub const SYSTEM_DEFAULT_CONFIG_DIR: &str = "C:\\ProgramData\\Zellij";
 pub const SYSTEM_DEFAULT_DATA_DIR_PREFIX: &str = system_default_data_dir();
 
 pub static ZELLIJ_DEFAULT_THEMES: Dir = include_dir!("$CARGO_MANIFEST_DIR/assets/themes");
@@ -53,6 +56,8 @@ pub fn create_config_and_cache_folders() {
 const fn system_default_data_dir() -> &'static str {
     if let Some(data_dir) = std::option_env!("PREFIX") {
         data_dir
+    } else if cfg!(windows) {
+        "C:\\ProgramData\\Zellij"
     } else {
         "/usr"
     }
@@ -61,8 +66,13 @@ const fn system_default_data_dir() -> &'static str {
 lazy_static! {
     pub static ref CLIENT_SERVER_CONTRACT_DIR: String =
         format!("contract_version_{}", CLIENT_SERVER_CONTRACT_VERSION);
-    pub static ref ZELLIJ_PROJ_DIR: ProjectDirs =
-        ProjectDirs::from("org", "Zellij Contributors", "Zellij").unwrap();
+    pub static ref ZELLIJ_PROJ_DIR: ProjectDirs = {
+        if cfg!(windows) {
+            ProjectDirs::from("", "", "Zellij").unwrap()
+        } else {
+            ProjectDirs::from("org", "Zellij Contributors", "Zellij").unwrap()
+        }
+    };
     pub static ref ZELLIJ_CACHE_DIR: PathBuf = ZELLIJ_PROJ_DIR.cache_dir().to_path_buf();
     pub static ref ZELLIJ_SESSION_CACHE_DIR: PathBuf = ZELLIJ_PROJ_DIR
         .cache_dir()
