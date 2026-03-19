@@ -731,12 +731,20 @@ impl Pane for TerminalPane {
     }
 
     fn update_search_term(&mut self, needle: &str) {
+        use unicode_segmentation::UnicodeSegmentation;
         match needle {
             TERMINATING_STRING => {
                 self.search_term = String::new();
             },
             DELETE_KEY | BACKSPACE_KEY => {
-                self.search_term.pop();
+                // Remove the last grapheme cluster, not just the last char.
+                // This ensures backspace over a composed character (e.g. base + combining mark)
+                // deletes the whole visual unit.
+                if let Some((last_boundary, _)) =
+                    self.search_term.grapheme_indices(true).next_back()
+                {
+                    self.search_term.truncate(last_boundary);
+                }
             },
             c => {
                 self.search_term.push_str(c);
