@@ -18,15 +18,16 @@ impl Platform {
     pub fn detect(initial_cwd: &str) -> Self {
         let bytes = initial_cwd.as_bytes();
         // Drive letter: X:\ or X:/
-        if bytes.len() >= 3
-            && bytes[0].is_ascii_alphabetic()
-            && bytes[1] == b':'
-            && (bytes[2] == b'\\' || bytes[2] == b'/')
-        {
+        let is_drive_letter = matches!(
+            (bytes.get(0), bytes.get(1), bytes.get(2)),
+            (Some(c), Some(b':'), Some(b'\\' | b'/')) if c.is_ascii_alphabetic()
+        );
+        if is_drive_letter {
             return Platform::Windows;
         }
         // UNC path: \\server\share
-        if bytes.len() >= 2 && bytes[0] == b'\\' && bytes[1] == b'\\' {
+        let is_unc_path = matches!((bytes.get(0), bytes.get(1)), (Some(b'\\'), Some(b'\\')));
+        if is_unc_path {
             return Platform::Windows;
         }
         Platform::Unix
@@ -67,7 +68,11 @@ impl Platform {
     pub fn ensure_drive_root(path: PathBuf, platform: Platform) -> PathBuf {
         if platform == Platform::Windows {
             let s = path.to_string_lossy();
-            if s.len() == 2 && s.as_bytes()[0].is_ascii_alphabetic() && s.as_bytes()[1] == b':' {
+            let bytes = s.as_bytes();
+            let is_bare_drive = s.len() == 2
+                && matches!(bytes.get(0), Some(c) if c.is_ascii_alphabetic())
+                && matches!(bytes.get(1), Some(b':'));
+            if is_bare_drive {
                 return PathBuf::from(format!("{}/", s));
             }
         }
@@ -99,16 +104,19 @@ impl Platform {
         match platform {
             Platform::Unix => s == "/" || s.is_empty(),
             Platform::Windows => {
+                let bytes = s.as_bytes();
                 // Drive root: "C:/" or "C:"
-                if s.len() == 3
-                    && s.as_bytes()[0].is_ascii_alphabetic()
-                    && s.as_bytes()[1] == b':'
-                    && s.as_bytes()[2] == b'/'
-                {
+                let is_drive_root_slash = s.len() == 3
+                    && matches!(bytes.get(0), Some(c) if c.is_ascii_alphabetic())
+                    && matches!(bytes.get(1), Some(b':'))
+                    && matches!(bytes.get(2), Some(b'/'));
+                if is_drive_root_slash {
                     return true;
                 }
-                if s.len() == 2 && s.as_bytes()[0].is_ascii_alphabetic() && s.as_bytes()[1] == b':'
-                {
+                let is_bare_drive = s.len() == 2
+                    && matches!(bytes.get(0), Some(c) if c.is_ascii_alphabetic())
+                    && matches!(bytes.get(1), Some(b':'));
+                if is_bare_drive {
                     return true;
                 }
                 // UNC root: //server/share (at most 4 path components)
