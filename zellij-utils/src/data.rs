@@ -3555,6 +3555,12 @@ pub enum PluginCommand {
     SetPaneColor(PaneId, Option<String>, Option<String>), // (pane_id, fg, bg)
     SetPaneRegexHighlights(PaneId, Vec<RegexHighlight>),
     ClearPaneHighlights(PaneId),
+    OpenPluginPaneFloating {
+        plugin_url: String,
+        configuration: BTreeMap<String, String>,
+        floating_pane_coordinates: Option<FloatingPaneCoordinates>,
+        context: BTreeMap<String, String>,
+    },
 }
 
 // Response type for plugin API methods that open a pane in a new tab
@@ -3597,3 +3603,4 @@ pub type OpenCommandPaneBackgroundResponse = Option<PaneId>;
 pub type OpenCommandPaneInPlaceOfPaneIdResponse = Option<PaneId>;
 pub type OpenTerminalPaneInPlaceOfPaneIdResponse = Option<PaneId>;
 pub type OpenEditPaneInPlaceOfPaneIdResponse = Option<PaneId>;
+pub type OpenPluginPaneFloatingResponse = Option<PaneId>;

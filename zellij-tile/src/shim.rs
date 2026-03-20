@@ -28,7 +28,7 @@ use zellij_utils::plugin_api::plugin_command::{
     ProtobufOpenCommandPaneFloatingResponse, ProtobufOpenCommandPaneInPlaceOfPaneIdResponse,
     ProtobufOpenCommandPaneInPlaceOfPluginResponse, ProtobufOpenCommandPaneInPlaceResponse,
     ProtobufOpenCommandPaneNearPluginResponse, ProtobufOpenCommandPaneResponse,
-    ProtobufOpenEditPaneInPlaceOfPaneIdResponse, ProtobufOpenFileFloatingNearPluginResponse,
+    ProtobufOpenEditPaneInPlaceOfPaneIdResponse, ProtobufOpenFileFloatingNearPluginResponse, ProtobufOpenPluginPaneFloatingResponse,
     ProtobufOpenFileFloatingResponse, ProtobufOpenFileInPlaceOfPluginResponse,
     ProtobufOpenFileInPlaceResponse, ProtobufOpenFileNearPluginResponse, ProtobufOpenFileResponse,
     ProtobufOpenPaneInNewTabResponse, ProtobufOpenTerminalFloatingNearPluginResponse,
@@ -996,6 +996,30 @@ pub fn open_plugin_pane_in_new_tab(
         ProtobufOpenPaneInNewTabResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
     let result = OpenPaneInNewTabResponse::try_from(response).unwrap();
     (result.tab_id, result.pane_id)
+}
+
+/// Open a new floating plugin pane with the specified plugin URL and configuration.
+/// Returns the pane ID of the newly created plugin pane, if successful.
+pub fn open_plugin_pane_floating(
+    plugin_url: &str,
+    configuration: BTreeMap<String, String>,
+    coordinates: Option<FloatingPaneCoordinates>,
+    context: BTreeMap<String, String>,
+) -> Option<PaneId> {
+    let plugin_command = PluginCommand::OpenPluginPaneFloating {
+        plugin_url: plugin_url.to_owned(),
+        configuration,
+        floating_pane_coordinates: coordinates,
+        context,
+    };
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+
+    let response =
+        ProtobufOpenPluginPaneFloatingResponse::decode(bytes_from_stdin().unwrap().as_slice())
+            .unwrap();
+    OpenPluginPaneFloatingResponse::try_from(response).unwrap()
 }
 
 /// Opens a new tab with an editor pane for `file_to_open`.

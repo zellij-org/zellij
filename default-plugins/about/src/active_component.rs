@@ -55,6 +55,16 @@ impl ActiveComponent {
                 run_command(&[&executable.borrow(), &link], Default::default());
                 None
             },
+            Some(ClickAction::LaunchPlugin(plugin_url)) => {
+                open_plugin_pane_floating(
+                    &plugin_url,
+                    Default::default(),
+                    None,
+                    Default::default(),
+                );
+                self.left_click_action = Some(ClickAction::LaunchPlugin(plugin_url));
+                None
+            },
             None => None,
         }
     }
@@ -125,6 +135,7 @@ impl ComponentCoordinates {
 pub enum ClickAction {
     ChangePage(Box<dyn FnOnce() -> Page>),
     OpenLink(String, Rc<RefCell<String>>), // (destination, executable)
+    LaunchPlugin(String),                    // plugin URL (e.g. "zellij:share")
 }
 
 impl std::fmt::Debug for ClickAction {
@@ -133,6 +144,9 @@ impl std::fmt::Debug for ClickAction {
             ClickAction::ChangePage(_) => write!(f, "ChangePage"),
             ClickAction::OpenLink(destination, executable) => {
                 write!(f, "OpenLink: {}, {:?}", destination, executable)
+            },
+            ClickAction::LaunchPlugin(url) => {
+                write!(f, "LaunchPlugin: {}", url)
             },
         }
     }
@@ -147,5 +161,8 @@ impl ClickAction {
     }
     pub fn new_open_link(destination: String, executable: Rc<RefCell<String>>) -> Self {
         ClickAction::OpenLink(destination, executable)
+    }
+    pub fn new_launch_plugin(plugin_url: String) -> Self {
+        ClickAction::LaunchPlugin(plugin_url)
     }
 }

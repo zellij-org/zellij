@@ -81,6 +81,7 @@ pub use super::generated_api::api::{
         OpenFileNearPluginResponse as ProtobufOpenFileNearPluginResponse, OpenFilePayload,
         OpenFileResponse as ProtobufOpenFileResponse,
         OpenPaneInNewTabResponse as ProtobufOpenPaneInNewTabResponse,
+        OpenPluginPaneFloatingPayload, OpenPluginPaneFloatingResponse as ProtobufOpenPluginPaneFloatingResponse,
         OpenPluginPaneInNewTabPayload as ProtobufOpenPluginPaneInNewTabPayload,
         OpenTerminalFloatingNearPluginPayload,
         OpenTerminalFloatingNearPluginResponse as ProtobufOpenTerminalFloatingNearPluginResponse,
@@ -2543,6 +2544,28 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 },
                 _ => Err("Mismatched payload for ClearPaneHighlights"),
             },
+            Some(CommandName::OpenPluginPaneFloating) => {
+                match protobuf_plugin_command.payload {
+                    Some(Payload::OpenPluginPaneFloatingPayload(payload)) => {
+                        let configuration: BTreeMap<String, String> =
+                            payload.configuration.into_iter().collect();
+                        let floating_pane_coordinates =
+                            payload.floating_pane_coordinates.map(|f| f.into());
+                        let context: BTreeMap<String, String> = payload
+                            .context
+                            .into_iter()
+                            .map(|e| (e.name, e.value))
+                            .collect();
+                        Ok(PluginCommand::OpenPluginPaneFloating {
+                            plugin_url: payload.plugin_url,
+                            configuration,
+                            floating_pane_coordinates,
+                            context,
+                        })
+                    },
+                    _ => Err("Mismatched payload for OpenPluginPaneFloating"),
+                }
+            },
             None => Err("Unrecognized plugin command"),
         }
     }
@@ -4202,6 +4225,31 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     },
                 )),
             }),
+            PluginCommand::OpenPluginPaneFloating {
+                plugin_url,
+                configuration,
+                floating_pane_coordinates,
+                context,
+            } => {
+                let context: Vec<_> = context
+                    .into_iter()
+                    .map(|(name, value)| ContextItem { name, value })
+                    .collect();
+                let configuration: std::collections::HashMap<String, String> =
+                    configuration.into_iter().collect();
+                Ok(ProtobufPluginCommand {
+                    name: CommandName::OpenPluginPaneFloating as i32,
+                    payload: Some(Payload::OpenPluginPaneFloatingPayload(
+                        OpenPluginPaneFloatingPayload {
+                            plugin_url,
+                            configuration,
+                            floating_pane_coordinates: floating_pane_coordinates
+                                .map(|f| f.into()),
+                            context,
+                        },
+                    )),
+                })
+            },
         }
     }
 }
@@ -4219,6 +4267,7 @@ use crate::data::{
     OpenTerminalFloatingNearPluginResponse, OpenTerminalFloatingResponse,
     OpenTerminalInPlaceOfPluginResponse, OpenTerminalInPlaceResponse,
     OpenTerminalNearPluginResponse, OpenTerminalPaneInPlaceOfPaneIdResponse, OpenTerminalResponse,
+    OpenPluginPaneFloatingResponse,
 };
 
 impl TryFrom<ProtobufNewTabResponse> for NewTabResponse {
@@ -4807,6 +4856,24 @@ impl TryFrom<ProtobufOpenEditPaneInPlaceOfPaneIdResponse> for OpenEditPaneInPlac
 impl From<OpenEditPaneInPlaceOfPaneIdResponse> for ProtobufOpenEditPaneInPlaceOfPaneIdResponse {
     fn from(response: OpenEditPaneInPlaceOfPaneIdResponse) -> Self {
         ProtobufOpenEditPaneInPlaceOfPaneIdResponse {
+            pane_id: response.map(|p| p.try_into().unwrap()),
+        }
+    }
+}
+
+impl TryFrom<ProtobufOpenPluginPaneFloatingResponse> for OpenPluginPaneFloatingResponse {
+    type Error = &'static str;
+    fn try_from(protobuf: ProtobufOpenPluginPaneFloatingResponse) -> Result<Self, Self::Error> {
+        match protobuf.pane_id {
+            Some(pane_id) => Ok(Some(pane_id.try_into()?)),
+            None => Ok(None),
+        }
+    }
+}
+
+impl From<OpenPluginPaneFloatingResponse> for ProtobufOpenPluginPaneFloatingResponse {
+    fn from(response: OpenPluginPaneFloatingResponse) -> Self {
+        ProtobufOpenPluginPaneFloatingResponse {
             pane_id: response.map(|p| p.try_into().unwrap()),
         }
     }

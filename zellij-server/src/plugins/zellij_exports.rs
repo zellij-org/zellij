@@ -30,7 +30,7 @@ use zellij_utils::data::{
     OpenCommandPaneFloatingNearPluginResponse, OpenCommandPaneFloatingResponse,
     OpenCommandPaneInPlaceOfPaneIdResponse, OpenCommandPaneInPlaceOfPluginResponse,
     OpenCommandPaneInPlaceResponse, OpenCommandPaneNearPluginResponse, OpenCommandPaneResponse,
-    OpenEditPaneInPlaceOfPaneIdResponse, OpenFileFloatingNearPluginResponse,
+    OpenEditPaneInPlaceOfPaneIdResponse, OpenFileFloatingNearPluginResponse, OpenPluginPaneFloatingResponse,
     OpenFileFloatingResponse, OpenFileInPlaceOfPluginResponse, OpenFileInPlaceResponse,
     OpenFileNearPluginResponse, OpenFileResponse, OpenPaneInNewTabResponse,
     OpenTerminalFloatingNearPluginResponse, OpenTerminalFloatingResponse,
@@ -90,7 +90,7 @@ use zellij_utils::{
             ProtobufOpenCommandPaneInPlaceOfPaneIdResponse,
             ProtobufOpenCommandPaneInPlaceOfPluginResponse, ProtobufOpenCommandPaneInPlaceResponse,
             ProtobufOpenCommandPaneNearPluginResponse, ProtobufOpenCommandPaneResponse,
-            ProtobufOpenEditPaneInPlaceOfPaneIdResponse,
+            ProtobufOpenEditPaneInPlaceOfPaneIdResponse, ProtobufOpenPluginPaneFloatingResponse,
             ProtobufOpenFileFloatingNearPluginResponse, ProtobufOpenFileFloatingResponse,
             ProtobufOpenFileInPlaceOfPluginResponse, ProtobufOpenFileInPlaceResponse,
             ProtobufOpenFileNearPluginResponse, ProtobufOpenFileResponse,
@@ -700,6 +700,20 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     } => {
                         open_plugin_pane_in_new_tab(env, plugin_url, configuration, context);
                     },
+                    PluginCommand::OpenPluginPaneFloating {
+                        plugin_url,
+                        configuration,
+                        floating_pane_coordinates,
+                        context,
+                    } => {
+                        open_plugin_pane_floating(
+                            env,
+                            plugin_url,
+                            configuration,
+                            floating_pane_coordinates,
+                            context,
+                        );
+                    },
                     PluginCommand::OpenEditorPaneInNewTab(file_to_open, context) => {
                         open_editor_pane_in_new_tab(env, file_to_open, context);
                     },
@@ -1110,6 +1124,53 @@ fn open_plugin_pane_in_new_tab(
         ProtobufOpenPaneInNewTabResponse::from(OpenPaneInNewTabResponse { tab_id, pane_id });
     wasi_write_object(env, &response.encode_to_vec())
         .with_context(|| format!("failed to write open_plugin_pane_in_new_tab response"))
+        .non_fatal();
+}
+
+fn open_plugin_pane_floating(
+    env: &PluginEnv,
+    plugin_url: String,
+    configuration: BTreeMap<String, String>,
+    floating_pane_coordinates: Option<FloatingPaneCoordinates>,
+    context: BTreeMap<String, String>,
+) {
+    let run_plugin_or_alias = RunPluginOrAlias::from_url(
+        &plugin_url,
+        &Some(configuration),
+        None,
+        Some(env.plugin_cwd.clone()),
+    );
+    let run_plugin_or_alias = match run_plugin_or_alias {
+        Ok(r) => r,
+        Err(e) => {
+            log::error!("Failed to parse plugin url '{}': {}", plugin_url, e);
+            let response =
+                ProtobufOpenPluginPaneFloatingResponse::from(OpenPluginPaneFloatingResponse::default());
+            wasi_write_object(env, &response.encode_to_vec())
+                .with_context(|| {
+                    format!("failed to write open_plugin_pane_floating error response")
+                })
+                .non_fatal();
+            return;
+        },
+    };
+    let _ = context; // context is not currently used for plugin panes
+    let action = Action::NewFloatingPluginPane {
+        plugin: run_plugin_or_alias,
+        pane_name: None,
+        skip_cache: false,
+        cwd: Some(env.plugin_cwd.clone()),
+        coordinates: floating_pane_coordinates,
+    };
+    let error_msg = || format!("Failed to open floating plugin pane");
+    let result = apply_action!(action, error_msg, env);
+
+    let pane_id: OpenPluginPaneFloatingResponse = result
+        .and_then(|r| r.affected_pane_id)
+        .map(|p| p.into());
+    let response = ProtobufOpenPluginPaneFloatingResponse::from(pane_id);
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to write open_plugin_pane_floating response"))
         .non_fatal();
 }
 
@@ -5014,6 +5075,8 @@ fn check_command_permission(
         | PluginCommand::OpenTerminalFloatingNearPlugin(..)
         | PluginCommand::OpenTerminalInPlace(..)
         | PluginCommand::OpenTerminalInPlaceOfPlugin(..)
+        | PluginCommand::OpenPluginPaneInNewTab { .. }
+        | PluginCommand::OpenPluginPaneFloating { .. }
         | PluginCommand::OpenTerminalPaneInPlaceOfPaneId(..) => {
             PermissionType::OpenTerminalsOrPlugins
         },
@@ -5174,7 +5237,6 @@ fn check_command_permission(
             PermissionType::ReadSessionEnvironmentVariables
         },
         PluginCommand::OpenCommandPaneInNewTab(..)
-        | PluginCommand::OpenPluginPaneInNewTab { .. }
         | PluginCommand::OpenEditorPaneInNewTab(..) => PermissionType::ChangeApplicationState,
         _ => return (PermissionStatus::Granted, None),
     };
