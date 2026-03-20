@@ -4108,13 +4108,64 @@ impl Perform for Grid {
                             self.multi_cursor_state.cursor_color =
                                 Self::parse_extra_cursor_color(param_iter);
                         },
+                        100 => {
+                            // Query currently set cursors.
+                            use std::fmt::Write as _;
+                            let state = &self.multi_cursor_state;
+                            let mut reply = String::from("\x1b[>100");
+                            if !state.coords.is_empty() {
+                                let _ = write!(reply, ";{}", state.shape);
+                                for coord in &state.coords {
+                                    match coord {
+                                        MultiCursorCoord::MainCursor => {
+                                            let _ = write!(reply, ":0");
+                                        },
+                                        MultiCursorCoord::Point(r, c) => {
+                                            let _ = write!(reply, ":2:{}:{}", r, c);
+                                        },
+                                        MultiCursorCoord::Rect(t, l, b, r) => {
+                                            let _ = write!(reply, ":4:{}:{}:{}:{}", t, l, b, r);
+                                        },
+                                        MultiCursorCoord::FullScreen => {
+                                            let _ = write!(reply, ":4");
+                                        },
+                                    }
+                                }
+                            }
+                            reply.push_str(" q");
+                            self.pending_messages_to_pty
+                                .push(reply.into_bytes());
+                        },
+                        101 => {
+                            // Query extra cursor colors.
+                            use std::fmt::Write as _;
+                            let mut reply = String::from("\x1b[>101");
+                            let fmt_color = |c: &ExtraCursorColor| -> String {
+                                match c {
+                                    ExtraCursorColor::Unset => "0".to_string(),
+                                    ExtraCursorColor::Special => "1".to_string(),
+                                    ExtraCursorColor::Rgb(r, g, b) => {
+                                        format!("2:{}:{}:{}", r, g, b)
+                                    },
+                                    ExtraCursorColor::Indexed(i) => format!("5:{}", i),
+                                }
+                            };
+                            let _ = write!(
+                                reply,
+                                ";30:{};40:{}",
+                                fmt_color(&self.multi_cursor_state.text_color),
+                                fmt_color(&self.multi_cursor_state.cursor_color),
+                            );
+                            reply.push_str(" q");
+                            self.pending_messages_to_pty
+                                .push(reply.into_bytes());
+                        },
                         _ => {},
                     }
                 } else {
                     // Support detection query (no params): respond with supported shapes.
-                    // Only advertise shapes we actually handle (not 100/101 queries).
                     self.pending_messages_to_pty
-                        .push(b"\x1b[>1;2;3;29;30;40 q".to_vec());
+                        .push(b"\x1b[>1;2;3;29;30;40;100;101 q".to_vec());
                 }
             } else if matches!(intermediates.get(0), Some(b'>')) {
                 let version = version_number(VERSION);
