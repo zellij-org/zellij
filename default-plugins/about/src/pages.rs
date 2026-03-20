@@ -214,11 +214,13 @@ impl Page {
                     Text::new("Sessions can now be shared in read-only mode."),
                 ))]),
                 ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
-                    Text::new("Useful for demonstrations, teaching, monitoring and pair programming")
-                        .color_substring(2, "demonstrations")
-                        .color_substring(2, "teaching")
-                        .color_substring(2, "monitoring")
-                        .color_substring(2, "pair programming"),
+                    Text::new(
+                        "Useful for demonstrations, teaching, monitoring and pair programming",
+                    )
+                    .color_substring(2, "demonstrations")
+                    .color_substring(2, "teaching")
+                    .color_substring(2, "monitoring")
+                    .color_substring(2, "pair programming"),
                 ))]),
                 ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
                     Text::new("where one participant should observe without interfering."),
@@ -230,15 +232,14 @@ impl Page {
                         .color_substring(2, "read-only web token"),
                 ))]),
                 ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
-                    Text::new("zellij web --create-read-only-token")
-                        .color_range(3, ..),
+                    Text::new("zellij web --create-read-only-token").color_range(3, ..),
                 ))]),
             ])
-            .with_paragraph(vec![
-                ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
-                    Text::new("Share the token for view-only access without risk of unintended input."),
-                ))]),
-            ])
+            .with_paragraph(vec![ComponentLine::new(vec![ActiveComponent::new(
+                TextOrCustomRender::Text(Text::new(
+                    "Share the token for view-only access without risk of unintended input.",
+                )),
+            )])])
             .with_paragraph(vec![ComponentLine::new(vec![
                 ActiveComponent::new(TextOrCustomRender::Text(
                     Text::new("Learn more: ").color_range(2, ..),
@@ -331,13 +332,13 @@ impl Page {
                         .color_substring(3, "Ctrl+drag"),
                 ))]),
             ])
-            .with_paragraph(vec![
-                ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
+            .with_paragraph(vec![ComponentLine::new(vec![ActiveComponent::new(
+                TextOrCustomRender::Text(
                     Text::new("Try it: Ctrl+drag on the borders of this pane.")
                         .color_substring(2, "Try it:")
                         .color_substring(3, "Ctrl+drag"),
-                ))]),
-            ])
+                ),
+            )])])
             .with_help(Box::new(|_hovering_over_link, _menu_item_is_selected| {
                 esc_to_go_back_help()
             }))
@@ -386,24 +387,26 @@ impl Page {
             .with_title(Text::new("Layout Manager").color_range(0, ..))
             .with_paragraph(vec![
                 ComponentLine::new(vec![
-                    ActiveComponent::new(TextOrCustomRender::Text(
-                        Text::new("A new "),
-                    )),
+                    ActiveComponent::new(TextOrCustomRender::Text(Text::new("A new "))),
                     ActiveComponent::new(TextOrCustomRender::Text(
                         Text::new("layout-manager interface").color_range(3, ..),
                     ))
                     .with_hover(TextOrCustomRender::Text(
-                        Text::new("layout-manager interface").color_range(3, ..).selected(),
+                        Text::new("layout-manager interface")
+                            .color_range(3, ..)
+                            .selected(),
                     ))
                     .with_left_click_action(ClickAction::new_launch_plugin(
                         "zellij:layout-manager".to_owned(),
                     )),
-                    ActiveComponent::new(TextOrCustomRender::Text(
-                        Text::new(" allows overriding layouts at runtime."),
-                    )),
+                    ActiveComponent::new(TextOrCustomRender::Text(Text::new(
+                        " allows overriding layouts at runtime.",
+                    ))),
                 ]),
                 ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
-                    Text::new("Workspaces can be reconfigured dynamically without restarting sessions."),
+                    Text::new(
+                        "Workspaces can be reconfigured dynamically without restarting sessions.",
+                    ),
                 ))]),
             ])
             .with_paragraph(vec![
@@ -412,8 +415,7 @@ impl Page {
                         .color_substring(2, "session menu"),
                 ))]),
                 ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
-                    Text::new("zellij plugin -- zellij:layout-manager")
-                        .color_range(3, ..),
+                    Text::new("zellij plugin -- zellij:layout-manager").color_range(3, ..),
                 ))]),
             ])
             .with_help(Box::new(|_hovering_over_link, _menu_item_is_selected| {

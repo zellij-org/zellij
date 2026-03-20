@@ -30,11 +30,11 @@ use zellij_utils::data::{
     OpenCommandPaneFloatingNearPluginResponse, OpenCommandPaneFloatingResponse,
     OpenCommandPaneInPlaceOfPaneIdResponse, OpenCommandPaneInPlaceOfPluginResponse,
     OpenCommandPaneInPlaceResponse, OpenCommandPaneNearPluginResponse, OpenCommandPaneResponse,
-    OpenEditPaneInPlaceOfPaneIdResponse, OpenFileFloatingNearPluginResponse, OpenPluginPaneFloatingResponse,
+    OpenEditPaneInPlaceOfPaneIdResponse, OpenFileFloatingNearPluginResponse,
     OpenFileFloatingResponse, OpenFileInPlaceOfPluginResponse, OpenFileInPlaceResponse,
     OpenFileNearPluginResponse, OpenFileResponse, OpenPaneInNewTabResponse,
-    OpenTerminalFloatingNearPluginResponse, OpenTerminalFloatingResponse,
-    OpenTerminalInPlaceOfPluginResponse, OpenTerminalInPlaceResponse,
+    OpenPluginPaneFloatingResponse, OpenTerminalFloatingNearPluginResponse,
+    OpenTerminalFloatingResponse, OpenTerminalInPlaceOfPluginResponse, OpenTerminalInPlaceResponse,
     OpenTerminalNearPluginResponse, OpenTerminalPaneInPlaceOfPaneIdResponse, OpenTerminalResponse,
     OriginatingPlugin, PaneScrollbackResponse, PermissionStatus, PermissionType, PluginPermission,
     RegexHighlight, RenameLayoutResponse, SaveLayoutResponse, TabMetadata,
@@ -90,13 +90,14 @@ use zellij_utils::{
             ProtobufOpenCommandPaneInPlaceOfPaneIdResponse,
             ProtobufOpenCommandPaneInPlaceOfPluginResponse, ProtobufOpenCommandPaneInPlaceResponse,
             ProtobufOpenCommandPaneNearPluginResponse, ProtobufOpenCommandPaneResponse,
-            ProtobufOpenEditPaneInPlaceOfPaneIdResponse, ProtobufOpenPluginPaneFloatingResponse,
+            ProtobufOpenEditPaneInPlaceOfPaneIdResponse,
             ProtobufOpenFileFloatingNearPluginResponse, ProtobufOpenFileFloatingResponse,
             ProtobufOpenFileInPlaceOfPluginResponse, ProtobufOpenFileInPlaceResponse,
             ProtobufOpenFileNearPluginResponse, ProtobufOpenFileResponse,
-            ProtobufOpenPaneInNewTabResponse, ProtobufOpenTerminalFloatingNearPluginResponse,
-            ProtobufOpenTerminalFloatingResponse, ProtobufOpenTerminalInPlaceOfPluginResponse,
-            ProtobufOpenTerminalInPlaceResponse, ProtobufOpenTerminalNearPluginResponse,
+            ProtobufOpenPaneInNewTabResponse, ProtobufOpenPluginPaneFloatingResponse,
+            ProtobufOpenTerminalFloatingNearPluginResponse, ProtobufOpenTerminalFloatingResponse,
+            ProtobufOpenTerminalInPlaceOfPluginResponse, ProtobufOpenTerminalInPlaceResponse,
+            ProtobufOpenTerminalNearPluginResponse,
             ProtobufOpenTerminalPaneInPlaceOfPaneIdResponse, ProtobufOpenTerminalResponse,
             ProtobufParseLayoutResponse, ProtobufPluginCommand, ProtobufRenameLayoutResponse,
             ProtobufSaveLayoutResponse, ProtobufSaveSessionResponse,
@@ -1144,8 +1145,9 @@ fn open_plugin_pane_floating(
         Ok(r) => r,
         Err(e) => {
             log::error!("Failed to parse plugin url '{}': {}", plugin_url, e);
-            let response =
-                ProtobufOpenPluginPaneFloatingResponse::from(OpenPluginPaneFloatingResponse::default());
+            let response = ProtobufOpenPluginPaneFloatingResponse::from(
+                OpenPluginPaneFloatingResponse::default(),
+            );
             wasi_write_object(env, &response.encode_to_vec())
                 .with_context(|| {
                     format!("failed to write open_plugin_pane_floating error response")
@@ -1165,9 +1167,8 @@ fn open_plugin_pane_floating(
     let error_msg = || format!("Failed to open floating plugin pane");
     let result = apply_action!(action, error_msg, env);
 
-    let pane_id: OpenPluginPaneFloatingResponse = result
-        .and_then(|r| r.affected_pane_id)
-        .map(|p| p.into());
+    let pane_id: OpenPluginPaneFloatingResponse =
+        result.and_then(|r| r.affected_pane_id).map(|p| p.into());
     let response = ProtobufOpenPluginPaneFloatingResponse::from(pane_id);
     wasi_write_object(env, &response.encode_to_vec())
         .with_context(|| format!("failed to write open_plugin_pane_floating response"))
@@ -5236,8 +5237,9 @@ fn check_command_permission(
         PluginCommand::GetSessionEnvironmentVariables => {
             PermissionType::ReadSessionEnvironmentVariables
         },
-        PluginCommand::OpenCommandPaneInNewTab(..)
-        | PluginCommand::OpenEditorPaneInNewTab(..) => PermissionType::ChangeApplicationState,
+        PluginCommand::OpenCommandPaneInNewTab(..) | PluginCommand::OpenEditorPaneInNewTab(..) => {
+            PermissionType::ChangeApplicationState
+        },
         _ => return (PermissionStatus::Granted, None),
     };
 

@@ -135,7 +135,7 @@ impl ComponentCoordinates {
 pub enum ClickAction {
     ChangePage(Box<dyn FnOnce() -> Page>),
     OpenLink(String, Rc<RefCell<String>>), // (destination, executable)
-    LaunchPlugin(String),                    // plugin URL (e.g. "zellij:share")
+    LaunchPlugin(String),                  // plugin URL (e.g. "zellij:share")
 }
 
 impl std::fmt::Debug for ClickAction {

@@ -81,7 +81,8 @@ pub use super::generated_api::api::{
         OpenFileNearPluginResponse as ProtobufOpenFileNearPluginResponse, OpenFilePayload,
         OpenFileResponse as ProtobufOpenFileResponse,
         OpenPaneInNewTabResponse as ProtobufOpenPaneInNewTabResponse,
-        OpenPluginPaneFloatingPayload, OpenPluginPaneFloatingResponse as ProtobufOpenPluginPaneFloatingResponse,
+        OpenPluginPaneFloatingPayload,
+        OpenPluginPaneFloatingResponse as ProtobufOpenPluginPaneFloatingResponse,
         OpenPluginPaneInNewTabPayload as ProtobufOpenPluginPaneInNewTabPayload,
         OpenTerminalFloatingNearPluginPayload,
         OpenTerminalFloatingNearPluginResponse as ProtobufOpenTerminalFloatingNearPluginResponse,
@@ -2544,27 +2545,25 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 },
                 _ => Err("Mismatched payload for ClearPaneHighlights"),
             },
-            Some(CommandName::OpenPluginPaneFloating) => {
-                match protobuf_plugin_command.payload {
-                    Some(Payload::OpenPluginPaneFloatingPayload(payload)) => {
-                        let configuration: BTreeMap<String, String> =
-                            payload.configuration.into_iter().collect();
-                        let floating_pane_coordinates =
-                            payload.floating_pane_coordinates.map(|f| f.into());
-                        let context: BTreeMap<String, String> = payload
-                            .context
-                            .into_iter()
-                            .map(|e| (e.name, e.value))
-                            .collect();
-                        Ok(PluginCommand::OpenPluginPaneFloating {
-                            plugin_url: payload.plugin_url,
-                            configuration,
-                            floating_pane_coordinates,
-                            context,
-                        })
-                    },
-                    _ => Err("Mismatched payload for OpenPluginPaneFloating"),
-                }
+            Some(CommandName::OpenPluginPaneFloating) => match protobuf_plugin_command.payload {
+                Some(Payload::OpenPluginPaneFloatingPayload(payload)) => {
+                    let configuration: BTreeMap<String, String> =
+                        payload.configuration.into_iter().collect();
+                    let floating_pane_coordinates =
+                        payload.floating_pane_coordinates.map(|f| f.into());
+                    let context: BTreeMap<String, String> = payload
+                        .context
+                        .into_iter()
+                        .map(|e| (e.name, e.value))
+                        .collect();
+                    Ok(PluginCommand::OpenPluginPaneFloating {
+                        plugin_url: payload.plugin_url,
+                        configuration,
+                        floating_pane_coordinates,
+                        context,
+                    })
+                },
+                _ => Err("Mismatched payload for OpenPluginPaneFloating"),
             },
             None => Err("Unrecognized plugin command"),
         }
@@ -4243,8 +4242,7 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                         OpenPluginPaneFloatingPayload {
                             plugin_url,
                             configuration,
-                            floating_pane_coordinates: floating_pane_coordinates
-                                .map(|f| f.into()),
+                            floating_pane_coordinates: floating_pane_coordinates.map(|f| f.into()),
                             context,
                         },
                     )),
@@ -4264,10 +4262,9 @@ use crate::data::{
     OpenEditPaneInPlaceOfPaneIdResponse, OpenFileFloatingNearPluginResponse,
     OpenFileFloatingResponse, OpenFileInPlaceOfPluginResponse, OpenFileInPlaceResponse,
     OpenFileNearPluginResponse, OpenFileResponse, OpenPaneInNewTabResponse,
-    OpenTerminalFloatingNearPluginResponse, OpenTerminalFloatingResponse,
-    OpenTerminalInPlaceOfPluginResponse, OpenTerminalInPlaceResponse,
+    OpenPluginPaneFloatingResponse, OpenTerminalFloatingNearPluginResponse,
+    OpenTerminalFloatingResponse, OpenTerminalInPlaceOfPluginResponse, OpenTerminalInPlaceResponse,
     OpenTerminalNearPluginResponse, OpenTerminalPaneInPlaceOfPaneIdResponse, OpenTerminalResponse,
-    OpenPluginPaneFloatingResponse,
 };
 
 impl TryFrom<ProtobufNewTabResponse> for NewTabResponse {
