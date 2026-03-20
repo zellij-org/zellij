@@ -1016,8 +1016,7 @@ impl TerminalCharacter {
             self.width = 1;
         } else if c == '\u{FE0F}' && is_keycap_base {
             // VS16 on keycap bases (#, *, 0-9): don't widen — terminal consensus.
-        } else if UnicodeWidthChar::width(c) != Some(1)
-            || ('\u{1F1E6}'..='\u{1F1FF}').contains(&c)
+        } else if UnicodeWidthChar::width(c) != Some(1) || ('\u{1F1E6}'..='\u{1F1FF}').contains(&c)
         {
             // Recompute width from the full grapheme string. Covers VS16 widening,
             // ZWJ sequences, flag pairs, skin tones, etc.
@@ -1166,4 +1165,3 @@ pub fn render_first_run_banner(
         },
     }
 }
-
