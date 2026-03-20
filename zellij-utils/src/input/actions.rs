@@ -996,6 +996,9 @@ impl Action {
                 pinned,
                 stacked,
                 blocking,
+                block_until_exit_success,
+                block_until_exit_failure,
+                block_until_exit,
                 unblock_condition,
                 near_current_pane,
                 borderless,
@@ -1007,6 +1010,17 @@ impl Action {
                 let cwd = cwd
                     .map(|cwd| current_dir.join(cwd))
                     .or_else(|| Some(current_dir.clone()));
+                let unblock_condition = unblock_condition.or_else(|| {
+                    if block_until_exit_success {
+                        Some(UnblockCondition::OnExitSuccess)
+                    } else if block_until_exit_failure {
+                        Some(UnblockCondition::OnExitFailure)
+                    } else if block_until_exit {
+                        Some(UnblockCondition::OnAnyExit)
+                    } else {
+                        None
+                    }
+                });
                 if blocking || unblock_condition.is_some() {
                     // For blocking panes, we don't support plugins
                     if plugin.is_some() {

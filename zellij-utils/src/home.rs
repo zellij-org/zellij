@@ -2,15 +2,14 @@
 //! # This module contain everything you'll need to access local system paths
 //! containing configuration and layouts
 
-use crate::consts::{SYSTEM_DEFAULT_DATA_DIR_PREFIX, ZELLIJ_PROJ_DIR};
+use crate::consts::{SYSTEM_DEFAULT_CONFIG_DIR, ZELLIJ_PROJ_DIR};
 
-#[cfg(not(test))]
-use crate::consts::SYSTEM_DEFAULT_CONFIG_DIR;
-
-use directories::BaseDirs;
 use std::{path::Path, path::PathBuf};
 
-pub(crate) const CONFIG_LOCATION: &str = ".config/zellij";
+#[cfg(not(windows))]
+use crate::home_unix as platform;
+#[cfg(windows)]
+use crate::home_windows as platform;
 
 #[cfg(not(test))]
 /// Goes through a predefined list and checks for an already
@@ -29,7 +28,6 @@ pub fn find_default_config_dir() -> Option<PathBuf> {
 }
 
 /// Order in which config directories are checked
-#[cfg(not(test))]
 pub(crate) fn default_config_dirs() -> Vec<Option<PathBuf>> {
     vec![
         home_config_dir(),
@@ -41,13 +39,10 @@ pub(crate) fn default_config_dirs() -> Vec<Option<PathBuf>> {
 /// Looks for an existing dir, uses that, else returns a
 /// dir matching the config spec.
 pub fn get_default_data_dir() -> PathBuf {
-    [
-        xdg_data_dir(),
-        Path::new(SYSTEM_DEFAULT_DATA_DIR_PREFIX).join("share/zellij"),
-    ]
-    .into_iter()
-    .find(|p| p.exists())
-    .unwrap_or_else(xdg_data_dir)
+    [xdg_data_dir(), platform::system_data_dir()]
+        .into_iter()
+        .find(|p| p.exists())
+        .unwrap_or_else(xdg_data_dir)
 }
 
 pub fn xdg_config_dir() -> PathBuf {
@@ -59,21 +54,15 @@ pub fn xdg_data_dir() -> PathBuf {
 }
 
 pub fn home_config_dir() -> Option<PathBuf> {
-    if let Some(user_dirs) = BaseDirs::new() {
-        let config_dir = user_dirs.home_dir().join(CONFIG_LOCATION);
-        Some(config_dir)
-    } else {
-        None
-    }
+    platform::home_config_dir()
 }
 
 pub fn try_create_home_config_dir() {
-    if let Some(user_dirs) = BaseDirs::new() {
-        let config_dir = user_dirs.home_dir().join(CONFIG_LOCATION);
-        if let Err(e) = std::fs::create_dir_all(config_dir) {
-            log::error!("Failed to create config dir: {:?}", e);
-        }
-    }
+    platform::try_create_home_config_dir()
+}
+
+pub fn system_data_dir() -> PathBuf {
+    platform::system_data_dir()
 }
 
 pub fn get_layout_dir(config_dir: Option<PathBuf>) -> Option<PathBuf> {

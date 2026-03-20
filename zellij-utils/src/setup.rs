@@ -4,10 +4,7 @@ use crate::input::theme::Themes;
 #[allow(unused_imports)]
 use crate::{
     cli::{CliArgs, Command, SessionCommand, Sessions},
-    consts::{
-        FEATURES, SYSTEM_DEFAULT_CONFIG_DIR, SYSTEM_DEFAULT_DATA_DIR_PREFIX, VERSION,
-        ZELLIJ_CACHE_DIR, ZELLIJ_DEFAULT_THEMES, ZELLIJ_PROJ_DIR,
-    },
+    consts::{FEATURES, VERSION, ZELLIJ_CACHE_DIR, ZELLIJ_DEFAULT_THEMES},
     data::LayoutInfo,
     errors::prelude::*,
     home::*,
@@ -19,57 +16,12 @@ use crate::{
 };
 use clap::{Args, IntoApp};
 use clap_complete::Shell;
-use directories::BaseDirs;
 use log::info;
 use serde::{Deserialize, Serialize};
-use std::{
-    convert::TryFrom,
-    fmt::Write as FmtWrite,
-    fs,
-    io::Write,
-    path::{Path, PathBuf},
-    process,
-};
+use std::{convert::TryFrom, fmt::Write as FmtWrite, fs, io::Write, path::PathBuf, process};
 
 const CONFIG_NAME: &str = "config.kdl";
 static ARROW_SEPARATOR: &str = "";
-
-#[cfg(not(test))]
-/// Goes through a predefined list and checks for an already
-/// existing config directory, returns the first match
-pub fn find_default_config_dir() -> Option<PathBuf> {
-    default_config_dirs()
-        .into_iter()
-        .filter(|p| p.is_some())
-        .find(|p| p.clone().unwrap().exists())
-        .flatten()
-}
-
-#[cfg(test)]
-pub fn find_default_config_dir() -> Option<PathBuf> {
-    None
-}
-
-/// Order in which config directories are checked
-fn default_config_dirs() -> Vec<Option<PathBuf>> {
-    vec![
-        home_config_dir(),
-        Some(xdg_config_dir()),
-        Some(Path::new(SYSTEM_DEFAULT_CONFIG_DIR).to_path_buf()),
-    ]
-}
-
-/// Looks for an existing dir, uses that, else returns a
-/// dir matching the config spec.
-pub fn get_default_data_dir() -> PathBuf {
-    [
-        xdg_data_dir(),
-        Path::new(SYSTEM_DEFAULT_DATA_DIR_PREFIX).join("share/zellij"),
-    ]
-    .into_iter()
-    .find(|p| p.exists())
-    .unwrap_or_else(xdg_data_dir)
-}
 
 #[cfg(not(test))]
 pub fn get_default_themes() -> Themes {
@@ -89,31 +41,6 @@ pub fn get_default_themes() -> Themes {
 #[cfg(test)]
 pub fn get_default_themes() -> Themes {
     Themes::default()
-}
-
-pub fn xdg_config_dir() -> PathBuf {
-    ZELLIJ_PROJ_DIR.config_dir().to_owned()
-}
-
-pub fn xdg_data_dir() -> PathBuf {
-    ZELLIJ_PROJ_DIR.data_dir().to_owned()
-}
-
-pub fn home_config_dir() -> Option<PathBuf> {
-    if let Some(user_dirs) = BaseDirs::new() {
-        let config_dir = user_dirs.home_dir().join(CONFIG_LOCATION);
-        Some(config_dir)
-    } else {
-        None
-    }
-}
-
-pub fn get_layout_dir(config_dir: Option<PathBuf>) -> Option<PathBuf> {
-    config_dir.map(|dir| dir.join("layouts"))
-}
-
-pub fn get_theme_dir(config_dir: Option<PathBuf>) -> Option<PathBuf> {
-    config_dir.map(|dir| dir.join("themes"))
 }
 
 pub fn dump_asset(asset: &[u8]) -> std::io::Result<()> {
@@ -498,7 +425,7 @@ impl Setup {
             .layout_dir
             .clone()
             .or_else(|| get_layout_dir(config_dir.clone()));
-        let system_data_dir = PathBuf::from(SYSTEM_DEFAULT_DATA_DIR_PREFIX).join("share/zellij");
+        let system_data_dir = system_data_dir();
         let config_file = opts
             .config
             .clone()
@@ -514,7 +441,7 @@ impl Setup {
 
         writeln!(&mut message, "[Version]: {:?}", VERSION).unwrap();
         if let Some(config_dir) = config_dir {
-            writeln!(&mut message, "[CONFIG DIR]: {:?}", config_dir).unwrap();
+            writeln!(&mut message, "[CONFIG DIR]: \"{}\"", config_dir.display()).unwrap();
         } else {
             message.push_str("[CONFIG DIR]: Not Found\n");
             let mut default_config_dirs = default_config_dirs()
@@ -526,14 +453,14 @@ impl Setup {
                 " On your system zellij looks in the following config directories by default:\n",
             );
             for dir in default_config_dirs {
-                writeln!(&mut message, " {:?}", dir).unwrap();
+                writeln!(&mut message, " \"{}\"", dir.display()).unwrap();
             }
         }
         if let Some(config_file) = config_file {
             writeln!(
                 &mut message,
-                "[LOOKING FOR CONFIG FILE FROM]: {:?}",
-                config_file
+                "[LOOKING FOR CONFIG FILE FROM]: \"{}\"",
+                config_file.display()
             )
             .unwrap();
             match Config::from_path(&config_file, None) {
@@ -555,8 +482,8 @@ impl Setup {
             .unwrap();
         }
         writeln!(&mut message, "[CACHE DIR]: {}", ZELLIJ_CACHE_DIR.display()).unwrap();
-        writeln!(&mut message, "[DATA DIR]: {:?}", data_dir).unwrap();
-        message.push_str(&format!("[PLUGIN DIR]: {:?}\n", plugin_dir));
+        writeln!(&mut message, "[DATA DIR]: \"{}\"", data_dir.display()).unwrap();
+        writeln!(&mut message, "[PLUGIN DIR]: \"{}\"", plugin_dir.display()).unwrap();
         if !cfg!(feature = "disable_automatic_asset_installation") {
             writeln!(
                 &mut message,
@@ -570,11 +497,16 @@ impl Setup {
             .unwrap();
         }
         if let Some(layout_dir) = layout_dir {
-            writeln!(&mut message, "[LAYOUT DIR]: {:?}", layout_dir).unwrap();
+            writeln!(&mut message, "[LAYOUT DIR]: \"{}\"", layout_dir.display()).unwrap();
         } else {
             message.push_str("[LAYOUT DIR]: Not Found\n");
         }
-        writeln!(&mut message, "[SYSTEM DATA DIR]: {:?}", system_data_dir).unwrap();
+        writeln!(
+            &mut message,
+            "[SYSTEM DATA DIR]: \"{}\"",
+            system_data_dir.display()
+        )
+        .unwrap();
 
         writeln!(&mut message, "[ARROW SEPARATOR]: {}", ARROW_SEPARATOR).unwrap();
         message.push_str(" Is the [ARROW_SEPARATOR] displayed correctly?\n");
