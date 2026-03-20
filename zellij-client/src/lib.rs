@@ -123,7 +123,9 @@ impl From<std::io::Error> for RemoteClientError {
     }
 }
 
-use crate::stdin_ansi_parser::{AnsiStdinInstruction, HostGraphemeSupport, StdinAnsiParser, SyncOutput};
+use crate::stdin_ansi_parser::{
+    AnsiStdinInstruction, HostGraphemeSupport, StdinAnsiParser, SyncOutput,
+};
 use crate::{
     command_is_executing::CommandIsExecuting, input_handler::input_loop,
     os_input_output::ClientOsApi, stdin_handler::stdin_loop,

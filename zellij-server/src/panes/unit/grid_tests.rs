@@ -6182,8 +6182,8 @@ fn devanagari_virama_conjunct() {
 
     assert_eq!(row.columns.len(), 1, "virama conjunct = 1 grapheme cluster");
     assert_eq!(row.columns[0].first_char(), Some('\u{0915}')); // KA
-    // Conjunct ligature: terminals render as width 1 (single glyph).
-    // VIRAMA(0) doesn't change width; SSA(1) extends the cluster without adding columns.
+                                                               // Conjunct ligature: terminals render as width 1 (single glyph).
+                                                               // VIRAMA(0) doesn't change width; SSA(1) extends the cluster without adding columns.
     assert_eq!(row.columns[0].width(), 1);
     assert_eq!(grid.cursor.x, 1);
 }
@@ -6366,7 +6366,11 @@ fn devanagari_vowel_sign_width_one() {
 
     assert_eq!(row.columns.len(), 1, "HA + vowel sign I = 1 cell");
     assert_eq!(row.columns[0].first_char(), Some('\u{0939}')); // HA
-    assert_eq!(row.columns[0].width(), 1, "Mc vowel sign must not inflate width");
+    assert_eq!(
+        row.columns[0].width(),
+        1,
+        "Mc vowel sign must not inflate width"
+    );
     assert_eq!(grid.cursor.x, 1);
 
     // Multiple हि should each occupy 1 column
@@ -6390,7 +6394,11 @@ fn tamil_vowel_sign_i_width_one() {
 
     assert_eq!(row.columns.len(), 1, "Tamil KA + vowel sign I = 1 cell");
     assert_eq!(row.columns[0].first_char(), Some('\u{0B95}'));
-    assert_eq!(row.columns[0].width(), 1, "Tamil Mc vowel sign must not inflate width");
+    assert_eq!(
+        row.columns[0].width(),
+        1,
+        "Tamil Mc vowel sign must not inflate width"
+    );
     assert_eq!(grid.cursor.x, 1);
 }
 
@@ -6403,7 +6411,11 @@ fn bengali_vowel_sign_width_one() {
 
     assert_eq!(row.columns.len(), 1, "Bengali KA + vowel sign I = 1 cell");
     assert_eq!(row.columns[0].first_char(), Some('\u{0995}'));
-    assert_eq!(row.columns[0].width(), 1, "Bengali Mc vowel sign must not inflate width");
+    assert_eq!(
+        row.columns[0].width(),
+        1,
+        "Bengali Mc vowel sign must not inflate width"
+    );
     assert_eq!(grid.cursor.x, 1);
 }
 
@@ -6416,7 +6428,11 @@ fn myanmar_vowel_sign_e_width_one() {
 
     assert_eq!(row.columns.len(), 1, "Myanmar MA + vowel sign E = 1 cell");
     assert_eq!(row.columns[0].first_char(), Some('\u{1019}'));
-    assert_eq!(row.columns[0].width(), 1, "Myanmar Mc vowel sign must not inflate width");
+    assert_eq!(
+        row.columns[0].width(),
+        1,
+        "Myanmar Mc vowel sign must not inflate width"
+    );
     assert_eq!(grid.cursor.x, 1);
 }
 
@@ -6470,7 +6486,10 @@ fn vs16_widens_emoji_with_text_presentation() {
     );
     assert_eq!(row.columns[1].width(), 2, "rainbow flag must be width 2");
     // 'b' should be at col 3 (after width-2 emoji at 1-2)
-    assert_eq!(grid.cursor.x, 4, "cursor at col 4 after a + width-2 flag + b");
+    assert_eq!(
+        grid.cursor.x, 4,
+        "cursor at col 4 after a + width-2 flag + b"
+    );
 }
 
 #[test]
@@ -6505,7 +6524,9 @@ fn vs16_widening_at_last_column_wraps() {
     grid2.change_size(5, 2);
     feed_bytes(&mut grid2, "\u{1F3F3}\u{FE0F}b".as_bytes());
     assert_eq!(grid2.cursor.y, 1, "b should be on row 1");
-    assert!(grid2.viewport[0].columns[0].grapheme().contains('\u{1F3F3}'));
+    assert!(grid2.viewport[0].columns[0]
+        .grapheme()
+        .contains('\u{1F3F3}'));
     assert_eq!(grid2.viewport[1].columns[0].grapheme(), "b");
 
     // Overflow case: 3-col grid, "ab🏳️c"
@@ -6523,8 +6544,14 @@ fn vs16_widening_at_last_column_wraps() {
     assert!(
         row1.columns[0].grapheme().contains('\u{1F3F3}'),
         "widened flag should wrap to row 1, got row0={:?} row1={:?}",
-        row0.columns.iter().map(|c| c.grapheme().to_string()).collect::<Vec<_>>(),
-        row1.columns.iter().map(|c| c.grapheme().to_string()).collect::<Vec<_>>(),
+        row0.columns
+            .iter()
+            .map(|c| c.grapheme().to_string())
+            .collect::<Vec<_>>(),
+        row1.columns
+            .iter()
+            .map(|c| c.grapheme().to_string())
+            .collect::<Vec<_>>(),
     );
     // No phantom space: row 0 should have exactly 2 logical columns ("a", "b").
     assert_eq!(
@@ -6607,7 +6634,11 @@ fn search_finds_ascii_text() {
     // Baseline: plain ASCII search still works after the grapheme refactor.
     let mut grid = create_grid_with_content("hello world");
     grid.set_search_string("world");
-    assert_eq!(grid.search_results.selections.len(), 1, "should find 'world'");
+    assert_eq!(
+        grid.search_results.selections.len(),
+        1,
+        "should find 'world'"
+    );
     let sel = &grid.search_results.selections[0];
     assert_eq!(sel.start.column(), 6);
     assert_eq!(sel.end.column(), 11);
@@ -6618,11 +6649,7 @@ fn search_finds_nfc_composed_character() {
     // Search for NFC "é" (U+00E9) in content that has NFC "é".
     let mut grid = create_grid_with_content("caf\u{00E9}");
     grid.set_search_string("\u{00E9}");
-    assert_eq!(
-        grid.search_results.selections.len(),
-        1,
-        "should find NFC é"
-    );
+    assert_eq!(grid.search_results.selections.len(), 1, "should find NFC é");
 }
 
 #[test]
@@ -6712,6 +6739,14 @@ fn search_selection_uses_display_columns_after_wide_graphemes() {
 
     assert_eq!(grid.search_results.selections.len(), 1, "should find 'caf'");
     let sel = &grid.search_results.selections[0];
-    assert_eq!(sel.start.column(), 12, "selection should start at display col 12");
-    assert_eq!(sel.end.column(), 15, "selection should end at display col 15");
+    assert_eq!(
+        sel.start.column(),
+        12,
+        "selection should start at display col 12"
+    );
+    assert_eq!(
+        sel.end.column(),
+        15,
+        "selection should end at display col 15"
+    );
 }

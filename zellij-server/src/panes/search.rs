@@ -44,7 +44,12 @@ impl<'a> SearchSource<'a> {
     }
 
     fn display_column_for_cell(&self, hidx: usize) -> usize {
-        self.row().columns.iter().take(hidx).map(|c| c.width()).sum()
+        self.row()
+            .columns
+            .iter()
+            .take(hidx)
+            .map(|c| c.width())
+            .sum()
     }
 
     fn cell_display_width(&self, hidx: usize) -> usize {
@@ -260,14 +265,16 @@ impl SearchResult {
             if graphemes_match {
                 // If the needle is only 1 long, the next `if` could also happen, so we are not merging it into one big if-else
                 if nidx == 0 {
-                    start = Some((Position::new(ridx as i32, haystack_display_col as u16), hidx));
+                    start = Some((
+                        Position::new(ridx as i32, haystack_display_col as u16),
+                        hidx,
+                    ));
                 }
                 if nidx == needle_graphemes.len() - 1 {
                     let mut end_found = true;
                     // If we search whole-word-only, the next non-needle grapheme needs to be a word-boundary,
                     // otherwise its not a hit (e.g. some occurrence inside a longer word).
-                    if self.whole_word_only
-                        && !is_word_boundary(&next_haystack_grapheme.as_deref())
+                    if self.whole_word_only && !is_word_boundary(&next_haystack_grapheme.as_deref())
                     {
                         // The end of the match is not a word boundary, so this is not a hit!
                         // We have to jump back from where we started (plus one cell)
