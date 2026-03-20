@@ -351,7 +351,8 @@ impl Page {
                     Text::new("Zellij now detects file paths in the terminal viewport."),
                 ))]),
                 ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
-                    Text::new("Click on a file path to open it."),
+                    Text::new("Alt-Click on a file path to open it.")
+                        .color_substring(3, "Alt-Click"),
                 ))]),
             ])
             .with_paragraph(vec![
