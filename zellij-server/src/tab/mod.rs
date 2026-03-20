@@ -4823,9 +4823,9 @@ impl Tab {
             // characters like emoji, CJK, Devanagari, etc.), plus control characters
             // used for terminating (0x00), backspace (0x08), and delete (0x7F).
             if let Ok(s) = str::from_utf8(&buf) {
-                let is_updatable = s.chars().all(|c| {
-                    !c.is_control() || matches!(c, '\0' | '\u{08}' | '\u{7F}')
-                });
+                let is_updatable = s
+                    .chars()
+                    .all(|c| !c.is_control() || matches!(c, '\0' | '\u{08}' | '\u{7F}'));
                 if is_updatable {
                     active_pane.update_search_term(s);
                 }

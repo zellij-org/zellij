@@ -1926,9 +1926,7 @@ impl Grid {
                                 self.add_character_at_cursor_position(tc, false);
                                 let placed_x = self.cursor.x;
                                 let placed_y = self.cursor.y;
-                                self.move_cursor_forward_until_edge(
-                                    (width_change + 1) as usize,
-                                );
+                                self.move_cursor_forward_until_edge((width_change + 1) as usize);
                                 let state = self.egc_state.as_mut().unwrap();
                                 state.x = placed_x;
                                 state.y = placed_y;
