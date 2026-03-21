@@ -1,3 +1,4 @@
+use crate::platform::Platform;
 use std::path::PathBuf;
 use unicode_width::UnicodeWidthStr;
 use zellij_tile::prelude::*;
@@ -78,14 +79,28 @@ pub fn render_search_term(search_term: &str) {
     println!("")
 }
 
+pub fn render_virtual_root_header(_cols: usize) {
+    let prompt = "PATH: ";
+    let title = "Computer";
+    let prompt_len = prompt.width();
+    let path_end = prompt_len + title.width();
+    let text = Text::new(format!("{}{}", prompt, title))
+        .color_range(2, 0..prompt_len)
+        .color_range(0, prompt_len..path_end);
+    print_text(text);
+    println!();
+    println!();
+}
+
 pub fn render_current_path(
     full_path: &PathBuf,
     path_is_dir: bool,
     handling_filepick: bool,
     max_cols: usize,
+    platform: Platform,
 ) {
     let prompt = "PATH: ";
-    let current_path = full_path.display().to_string();
+    let current_path = Platform::to_host_display(full_path, platform);
     let prompt_len = prompt.width();
     let current_path_len = current_path.width();
 
@@ -117,6 +132,7 @@ pub fn render_current_path(
             truncate_path(
                 full_path.clone(),
                 current_path_len.saturating_sub(max_path_len),
+                platform,
             )
         };
         let current_path_len = current_path.width();
@@ -131,7 +147,8 @@ pub fn render_current_path(
     println!();
 }
 
-fn truncate_path(path: PathBuf, mut char_count_to_remove: usize) -> String {
+fn truncate_path(path: PathBuf, mut char_count_to_remove: usize, platform: Platform) -> String {
+    let sep = platform.separator();
     let mut truncated = String::new();
     let component_count = path.iter().count();
     for (i, component) in path.iter().enumerate() {
@@ -139,13 +156,13 @@ fn truncate_path(path: PathBuf, mut char_count_to_remove: usize) -> String {
         if char_count_to_remove > 0 {
             truncated.push(component_str.remove(0));
             if i != 0 && i + 1 != component_count {
-                truncated.push('/');
+                truncated.push(sep);
             }
             char_count_to_remove = char_count_to_remove.saturating_sub(component_str.width() + 1);
         } else {
             truncated.push_str(&component_str);
             if i != 0 && i + 1 != component_count {
-                truncated.push('/');
+                truncated.push(sep);
             }
         }
     }

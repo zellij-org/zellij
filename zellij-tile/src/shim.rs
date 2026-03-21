@@ -1587,6 +1587,16 @@ where
     unsafe { host_run_plugin_command() };
 }
 
+/// List Windows volumes (drives and WSL distributions).
+/// Results are returned via the `FileSystemUpdate` event.
+/// This command is only supported on Windows and requires FullHdAccess permission.
+pub fn list_windows_volumes() {
+    let plugin_command = PluginCommand::ListWindowsVolumes;
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 /// Scan a specific folder in the host filesystem (this is a hack around some WASI runtime performance
 /// issues), will not follow symlinks
 pub fn scan_host_folder<S: AsRef<Path>>(folder_to_scan: &S) {

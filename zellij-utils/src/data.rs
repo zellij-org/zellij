@@ -3561,6 +3561,7 @@ pub enum PluginCommand {
         floating_pane_coordinates: Option<FloatingPaneCoordinates>,
         context: BTreeMap<String, String>,
     },
+    ListWindowsVolumes,
 }
 
 // Response type for plugin API methods that open a pane in a new tab
