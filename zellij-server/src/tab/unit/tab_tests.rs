@@ -206,6 +206,7 @@ fn create_new_tab(size: Size, stacked_resize: bool) -> Tab {
         styled_underlines,
         osc8_hyperlinks,
         explicitly_disable_kitty_keyboard_protocol,
+        true, // support_kitty_multi_cursor_protocol
         None,
         false,
         web_sharing,
@@ -292,6 +293,7 @@ fn create_new_tab_with_layout(size: Size, layout: TiledPaneLayout) -> Tab {
         styled_underlines,
         osc8_hyperlinks,
         explicitly_disable_kitty_keyboard_protocol,
+        true, // support_kitty_multi_cursor_protocol
         None,
         false,
         web_sharing,
@@ -384,6 +386,7 @@ fn create_new_tab_with_cell_size(
         styled_underlines,
         osc8_hyperlinks,
         explicitly_disable_kitty_keyboard_protocol,
+        true, // support_kitty_multi_cursor_protocol
         None,
         false,
         web_sharing,

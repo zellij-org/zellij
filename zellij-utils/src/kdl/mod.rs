@@ -2743,6 +2743,11 @@ impl Options {
             "support_kitty_keyboard_protocol"
         )
         .map(|(v, _)| v);
+        let support_kitty_multi_cursor_protocol = kdl_property_first_arg_as_bool_or_error!(
+            kdl_options,
+            "support_kitty_multi_cursor_protocol"
+        )
+        .map(|(v, _)| v);
         let web_server =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "web_server").map(|(v, _)| v);
         let web_sharing =
@@ -2847,6 +2852,7 @@ impl Options {
             serialization_interval,
             disable_session_metadata,
             support_kitty_keyboard_protocol,
+            support_kitty_multi_cursor_protocol,
             web_server,
             web_sharing,
             stacked_resize,

@@ -459,6 +459,7 @@ fn test_client_messages() {
                 serialization_interval: Some(1),
                 disable_session_metadata: Some(true),
                 support_kitty_keyboard_protocol: Some(true),
+                support_kitty_multi_cursor_protocol: Some(true),
                 web_server: Some(true),
                 web_sharing: Some(WebSharing::On),
                 stacked_resize: Some(true),
