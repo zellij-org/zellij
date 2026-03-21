@@ -707,7 +707,7 @@ impl MouseHandler {
             MouseAction::FocusPane {
                 pane_id: _,
                 position,
-            } => Self::execute_focus_pane(tab, position, client_id),
+            } => Self::execute_focus_pane(tab, position, event, client_id),
             MouseAction::FocusPaneAndClickThrough {
                 pane_id: _,
                 position,
@@ -819,10 +819,22 @@ impl MouseHandler {
     fn execute_focus_pane(
         tab: &mut Tab,
         position: Position,
+        event: &MouseEvent,
         client_id: ClientId,
     ) -> Result<MouseEffect> {
         let err_context = || "failed to focus pane";
         clear_hover_for_client(tab, client_id);
+
+        // Middle-click on unselectable panes (e.g. tab bar) should only
+        // deliver the event without changing focus or moving floating panes.
+        if event.middle {
+            if let Some(pane_at_position) = Self::unselectable_pane_at_position(tab, &position) {
+                let relative_position = pane_at_position.relative_position(&position);
+                pane_at_position.handle_middle_click(&relative_position, client_id);
+            }
+            return Ok(MouseEffect::default());
+        }
+
         let active_pane_id_before = tab
             .get_active_pane_id(client_id)
             .ok_or_else(|| anyhow!("Failed to find active pane"))?;
@@ -1375,7 +1387,7 @@ impl MouseHandler {
             return Ok(MouseAction::NoAction);
         }
 
-        if event.middle {
+        if event.middle && event.event_type == MouseEventType::Press {
             let Some(pane_id) = ctx.pane_id_at_position else {
                 return Ok(MouseAction::NoAction);
             };
@@ -1386,6 +1398,13 @@ impl MouseHandler {
                     event: *event,
                 });
             }
+            return Ok(MouseAction::FocusPane {
+                pane_id,
+                position: event.position,
+            });
+        }
+        if event.middle {
+            // middle-click motion/release on non-active panes — ignore
             return Ok(MouseAction::NoAction);
         }
 

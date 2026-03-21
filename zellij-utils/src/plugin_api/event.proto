@@ -283,6 +283,7 @@ enum MouseEventName {
     MouseHold = 4;
     MouseRelease = 5;
     MouseHover = 6;
+    MouseMiddleClick = 7;
 }
 
 message TabUpdatePayload {

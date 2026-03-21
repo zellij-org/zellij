@@ -484,6 +484,7 @@ pub trait Pane {
 
     // TODO: this should probably be merged with the mouse_right_click
     fn handle_right_click(&mut self, _to: &Position, _client_id: ClientId) {}
+    fn handle_middle_click(&mut self, _to: &Position, _client_id: ClientId) {}
     fn mouse_event(&self, _event: &MouseEvent, _client_id: ClientId) -> Option<String> {
         None
     }
