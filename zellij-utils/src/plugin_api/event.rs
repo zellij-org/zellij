@@ -1475,6 +1475,22 @@ impl TryFrom<MouseEventPayload> for Mouse {
                     _ => Err("Malformed payload for mouse scroll down"),
                 }
             },
+            Some(MouseEventName::MouseScrollLeft) => {
+                match mouse_event_payload.mouse_event_payload {
+                    Some(mouse_event_payload::MouseEventPayload::LineCount(line_count)) => {
+                        Ok(Mouse::ScrollLeft(line_count as usize))
+                    },
+                    _ => Err("Malformed payload for mouse scroll left"),
+                }
+            },
+            Some(MouseEventName::MouseScrollRight) => {
+                match mouse_event_payload.mouse_event_payload {
+                    Some(mouse_event_payload::MouseEventPayload::LineCount(line_count)) => {
+                        Ok(Mouse::ScrollRight(line_count as usize))
+                    },
+                    _ => Err("Malformed payload for mouse scroll right"),
+                }
+            },
             Some(MouseEventName::MouseLeftClick) => match mouse_event_payload.mouse_event_payload {
                 Some(mouse_event_payload::MouseEventPayload::Position(position)) => Ok(
                     Mouse::LeftClick(position.line as isize, position.column as usize),
@@ -1524,6 +1540,18 @@ impl TryFrom<Mouse> for MouseEventPayload {
             }),
             Mouse::ScrollDown(number_of_lines) => Ok(MouseEventPayload {
                 mouse_event_name: MouseEventName::MouseScrollDown as i32,
+                mouse_event_payload: Some(mouse_event_payload::MouseEventPayload::LineCount(
+                    number_of_lines as u32,
+                )),
+            }),
+            Mouse::ScrollLeft(number_of_lines) => Ok(MouseEventPayload {
+                mouse_event_name: MouseEventName::MouseScrollLeft as i32,
+                mouse_event_payload: Some(mouse_event_payload::MouseEventPayload::LineCount(
+                    number_of_lines as u32,
+                )),
+            }),
+            Mouse::ScrollRight(number_of_lines) => Ok(MouseEventPayload {
+                mouse_event_name: MouseEventName::MouseScrollRight as i32,
                 mouse_event_payload: Some(mouse_event_payload::MouseEventPayload::LineCount(
                     number_of_lines as u32,
                 )),

@@ -148,6 +148,14 @@ enum MouseAction {
         pane_id: PaneId,
         lines: usize,
     },
+    ScrollLeft {
+        pane_id: PaneId,
+        lines: usize,
+    },
+    ScrollRight {
+        pane_id: PaneId,
+        lines: usize,
+    },
     ResizeScrollUp {
         pane_id: PaneId,
     },
@@ -769,6 +777,14 @@ impl MouseHandler {
                 Self::handle_scrollwheel_down(tab, &event.position, lines, client_id)
                     .with_context(err_context)
             },
+            MouseAction::ScrollLeft { pane_id: _, lines } => {
+                Self::handle_scrollwheel_left(tab, &event.position, lines, client_id)
+                    .with_context(err_context)
+            },
+            MouseAction::ScrollRight { pane_id: _, lines } => {
+                Self::handle_scrollwheel_right(tab, &event.position, lines, client_id)
+                    .with_context(err_context)
+            },
             MouseAction::ResizeScrollUp { pane_id } => {
                 Self::handle_resize_scroll_up(tab, pane_id, client_id).with_context(err_context)
             },
@@ -1263,6 +1279,20 @@ impl MouseHandler {
             return Ok(MouseAction::NoAction);
         }
 
+        if event.wheel_left {
+            if let Some(pane_id) = ctx.pane_id_at_position {
+                return Ok(MouseAction::ScrollLeft { pane_id, lines: 3 });
+            }
+            return Ok(MouseAction::NoAction);
+        }
+
+        if event.wheel_right {
+            if let Some(pane_id) = ctx.pane_id_at_position {
+                return Ok(MouseAction::ScrollRight { pane_id, lines: 3 });
+            }
+            return Ok(MouseAction::NoAction);
+        }
+
         let is_ctrl_left_press =
             event.ctrl && event.left && event.event_type == MouseEventType::Press;
         if is_ctrl_left_press {
@@ -1574,6 +1604,79 @@ impl MouseHandler {
         Ok(MouseEffect::default())
     }
 
+    pub(crate) fn handle_scrollwheel_left(
+        tab: &mut Tab,
+        point: &Position,
+        lines: usize,
+        client_id: ClientId,
+    ) -> Result<MouseEffect> {
+        let err_context = || {
+            format!(
+                "failed to handle scrollwheel left at position {point:?} for client {client_id}"
+            )
+        };
+
+        if let Some(pane) = Self::get_pane_at(tab, point, false).with_context(err_context)? {
+            let relative_position = pane.relative_position(point);
+            if let Some(mouse_event) = pane.mouse_scroll_left(&relative_position) {
+                tab.write_to_terminal_at(mouse_event.into_bytes(), point, client_id)
+                    .with_context(err_context)?;
+            } else if pane.is_alternate_mode_active() {
+                // faux scrolling, send LEFT n times
+                // do n separate writes to make sure the sequence gets adjusted for cursor keys mode
+                for _ in 0..lines {
+                    tab.write_to_terminal_at("\u{1b}[D".as_bytes().to_owned(), point, client_id)
+                        .with_context(err_context)?;
+                }
+            } else {
+                pane.scroll_left(lines, client_id);
+                if !pane.is_scrolled() {
+                    if let PaneId::Terminal(pid) = pane.pid() {
+                        tab.process_pending_vte_events(pid)
+                            .with_context(err_context)?;
+                    }
+                }
+            }
+        }
+        Ok(MouseEffect::default())
+    }
+
+    pub(crate) fn handle_scrollwheel_right(
+        tab: &mut Tab,
+        point: &Position,
+        lines: usize,
+        client_id: ClientId,
+    ) -> Result<MouseEffect> {
+        let err_context = || {
+            format!(
+                "failed to handle scrollwheel right at position {point:?} for client {client_id}"
+            )
+        };
+
+        if let Some(pane) = Self::get_pane_at(tab, point, false).with_context(err_context)? {
+            let relative_position = pane.relative_position(point);
+            if let Some(mouse_event) = pane.mouse_scroll_right(&relative_position) {
+                tab.write_to_terminal_at(mouse_event.into_bytes(), point, client_id)
+                    .with_context(err_context)?;
+            } else if pane.is_alternate_mode_active() {
+                // faux scrolling, send RIGHT n times
+                // do n separate writes to make sure the sequence gets adjusted for cursor keys mode
+                for _ in 0..lines {
+                    tab.write_to_terminal_at("\u{1b}[C".as_bytes().to_owned(), point, client_id)
+                        .with_context(err_context)?;
+                }
+            } else {
+                pane.scroll_right(lines, client_id);
+                if !pane.is_scrolled() {
+                    if let PaneId::Terminal(pid) = pane.pid() {
+                        tab.process_pending_vte_events(pid)
+                            .with_context(err_context)?;
+                    }
+                }
+            }
+        }
+        Ok(MouseEffect::default())
+    }
     fn handle_resize_scroll_up(
         tab: &mut Tab,
         pane_id: PaneId,

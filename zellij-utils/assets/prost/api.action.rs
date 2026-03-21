@@ -776,14 +776,18 @@ pub struct MouseEventPayload {
     #[prost(bool, tag="6")]
     pub wheel_down: bool,
     #[prost(bool, tag="7")]
-    pub shift: bool,
+    pub wheel_left: bool,
     #[prost(bool, tag="8")]
-    pub alt: bool,
+    pub wheel_right: bool,
     #[prost(bool, tag="9")]
+    pub shift: bool,
+    #[prost(bool, tag="10")]
+    pub alt: bool,
+    #[prost(bool, tag="11")]
     pub ctrl: bool,
-    #[prost(int64, tag="10")]
+    #[prost(int64, tag="12")]
     pub line: i64,
-    #[prost(int64, tag="11")]
+    #[prost(int64, tag="13")]
     pub column: i64,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
