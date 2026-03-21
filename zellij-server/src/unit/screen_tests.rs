@@ -257,8 +257,9 @@ impl ServerOsApi for FakeInputOutput {
     }
 }
 
-fn create_new_screen(
+fn create_new_screen_with_session_mode(
     size: Size,
+    session_is_mirrored: bool,
     advanced_mouse_actions: bool,
     mouse_hover_effects: bool,
 ) -> Screen {
@@ -274,7 +275,6 @@ fn create_new_screen(
     mode_info.session_name = Some("zellij-test".into());
     let draw_pane_frames = false;
     let auto_layout = true;
-    let session_is_mirrored = true;
     let copy_options = CopyOptions::default();
     let default_layout = Box::new(Layout::default());
     let default_layout_name = None;
@@ -328,6 +328,14 @@ fn create_new_screen(
         web_server_port,
     );
     screen
+}
+
+fn create_new_screen(
+    size: Size,
+    advanced_mouse_actions: bool,
+    mouse_hover_effects: bool,
+) -> Screen {
+    create_new_screen_with_session_mode(size, true, advanced_mouse_actions, mouse_hover_effects)
 }
 
 struct MockScreen {
@@ -1525,7 +1533,85 @@ fn attach_after_first_tab_closed() {
 
     screen.close_tab_by_id(0).expect("TEST");
     screen.remove_client(1).expect("TEST");
-    screen.add_client(1, false).expect("TEST");
+    screen.add_client(1, false, None).expect("TEST");
+}
+
+#[test]
+fn tab_sizes_follow_only_clients_connected_to_each_tab() {
+    let client_1_size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_2_size = Size { cols: 80, rows: 15 };
+    let client_2_resized = Size { cols: 60, rows: 10 };
+    let mut screen = create_new_screen_with_session_mode(client_1_size, false, true, true);
+
+    new_tab(&mut screen, 1, 0);
+    screen
+        .add_client(2, false, Some(client_2_size))
+        .expect("TEST");
+    new_tab(&mut screen, 2, 1);
+
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().get_display_area(),
+        client_2_size,
+        "tab 0 should only track client 2 after client 1 moved away"
+    );
+    assert_eq!(
+        screen.tabs.get(&1).unwrap().get_display_area(),
+        client_1_size,
+        "tab 1 should keep client 1's larger size"
+    );
+
+    screen
+        .update_client_size(2, client_2_resized)
+        .expect("TEST");
+
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().get_display_area(),
+        client_2_resized,
+        "resizing client 2 should only affect tab 0"
+    );
+    assert_eq!(
+        screen.tabs.get(&1).unwrap().get_display_area(),
+        client_1_size,
+        "resizing client 2 should not affect tab 1"
+    );
+}
+
+#[test]
+fn tab_sizes_recompute_when_clients_switch_tabs() {
+    let client_1_size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_2_size = Size { cols: 80, rows: 15 };
+    let mut screen = create_new_screen_with_session_mode(client_1_size, false, true, true);
+
+    new_tab(&mut screen, 1, 0);
+    screen
+        .add_client(2, false, Some(client_2_size))
+        .expect("TEST");
+    new_tab(&mut screen, 2, 1);
+
+    screen.go_to_tab(2, 2).expect("TEST");
+    assert_eq!(
+        screen.tabs.get(&1).unwrap().get_display_area(),
+        client_2_size,
+        "when both clients share tab 1 it should use their minimum size"
+    );
+
+    screen.go_to_tab(1, 2).expect("TEST");
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().get_display_area(),
+        client_2_size,
+        "tab 0 should restore client 2's size after switching back"
+    );
+    assert_eq!(
+        screen.tabs.get(&1).unwrap().get_display_area(),
+        client_1_size,
+        "tab 1 should restore client 1's size after client 2 leaves"
+    );
 }
 
 #[test]
