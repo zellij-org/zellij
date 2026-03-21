@@ -358,6 +358,7 @@ impl FloatingPanes {
             pane.set_should_render_boundaries(true);
             pane.render_full_viewport();
         }
+        self.window_title = None;
     }
     pub fn set_pane_frames(&mut self) -> Result<()> {
         let err_context =
