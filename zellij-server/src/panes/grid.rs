@@ -543,6 +543,7 @@ pub struct Grid {
     // key: plugin_id (u32), inner vec: (pattern, compiled) pairs
     pub hover_position: Option<Position>, // pane-relative cursor cell; None when outside pane
     pub cached_hover_tooltip: Option<String>,
+    pub osc7_payload: Option<String>,
 }
 
 impl Grid {
@@ -826,7 +827,13 @@ impl Grid {
             plugin_highlights: HashMap::new(),
             hover_position: None,
             cached_hover_tooltip: None,
+            osc7_payload: None,
         }
+    }
+    /// Returns the last OSC 7 working directory URI reported by the child process,
+    /// or `None` if no OSC 7 has been received (or was rejected for invalid content).
+    pub fn osc7_payload(&self) -> Option<&str> {
+        self.osc7_payload.as_deref()
     }
     pub fn render_full_viewport(&mut self) {
         self.output_buffer.update_all_lines();
@@ -2073,6 +2080,7 @@ impl Grid {
         self.set_scroll_region_to_viewport_size();
         self.pane_default_fg = None;
         self.pane_default_bg = None;
+        self.osc7_payload = None;
         if let Some(images_to_reap) = self.sixel_grid.clear() {
             self.sixel_grid.reap_images(images_to_reap);
         }
@@ -3483,6 +3491,23 @@ impl Perform for Grid {
             // Reset text cursor color.
             b"112" => {
                 // TBD - reset text cursor color - currently unimplemented
+            },
+
+            // Working directory reporting (OSC 7).
+            // Store the raw URI for forwarding to the parent terminal.
+            // Join params[1..] with ";" to handle URIs containing semicolons
+            // (same pattern used by the b"0"|b"2" title handler above).
+            b"7" => {
+                if params.len() >= 2 {
+                    let segments: Option<Vec<&str>> =
+                        params[1..].iter().map(|x| str::from_utf8(x).ok()).collect();
+                    if let Some(segments) = segments {
+                        let uri = segments.join(";");
+                        if !uri.is_empty() && !uri.chars().any(|c| c.is_control()) {
+                            self.osc7_payload = Some(uri);
+                        }
+                    }
+                }
             },
 
             _ => {
