@@ -1736,6 +1736,7 @@ fn open_terminal_near_plugin(env: &PluginEnv, cwd: PathBuf) {
         name,
         NewPanePlacement::Tiled {
             direction: None,
+            split_size: None,
             borderless: None,
         },
         false,
@@ -2190,6 +2191,7 @@ fn open_command_pane_near_plugin(
         name,
         NewPanePlacement::Tiled {
             direction: None,
+            split_size: None,
             borderless: None,
         },
         false,

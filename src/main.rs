@@ -32,6 +32,7 @@ fn main() {
         if let Some(Command::Sessions(Sessions::Run {
             command,
             direction,
+            split_size,
             cwd,
             floating,
             in_place,
@@ -71,6 +72,7 @@ fn main() {
                 command,
                 plugin: None,
                 direction,
+                split_size,
                 cwd,
                 floating,
                 in_place,
