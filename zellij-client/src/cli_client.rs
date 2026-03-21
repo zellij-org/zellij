@@ -208,6 +208,13 @@ fn individual_messages_client(
     action: Action,
     pane_id: Option<u32>,
 ) {
+    let is_blocking = matches!(
+        &action,
+        Action::NewBlockingPane {
+            unblock_condition: Some(_),
+            ..
+        }
+    );
     let msg = ClientToServerMsg::Action {
         action,
         terminal_id: pane_id,
@@ -217,7 +224,7 @@ fn individual_messages_client(
     os_input.send_to_server(msg);
     loop {
         match os_input.recv_from_server() {
-            Some((ServerToClientMsg::UnblockInputThread, _)) => {
+            Some((ServerToClientMsg::UnblockInputThread, _)) if !is_blocking => {
                 break;
             },
             Some((ServerToClientMsg::Log { lines: log_lines }, _)) => {
