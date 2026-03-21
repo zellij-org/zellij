@@ -43,6 +43,8 @@ message Key {
     Pause = 29;
     Menu = 30;
     Enter = 31;
+    ScrollUp = 32;
+    ScrollDown = 33;
   }
 
   enum Char {

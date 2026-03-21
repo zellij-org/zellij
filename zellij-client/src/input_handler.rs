@@ -314,8 +314,13 @@ impl InputHandler {
         }
     }
     fn handle_mouse_event(&mut self, mouse_event: &MouseEvent) {
-        // This dispatch handles all of the output(s) to terminal
-        // pane(s).
+        // If this is a modifier+scroll event, route through the keybinding system
+        // so users can bind e.g. "Ctrl ScrollUp" to GoToPreviousTab
+        if let Some(key) = mouse_event.to_key_with_modifier() {
+            self.handle_key(&key, vec![], false);
+            return;
+        }
+        // Otherwise, dispatch as a regular mouse event to the terminal pane(s)
         self.dispatch_action(
             Action::MouseEvent {
                 event: *mouse_event,
