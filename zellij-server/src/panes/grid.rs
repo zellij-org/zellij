@@ -482,6 +482,39 @@ fn position_in_span(
     after_start && before_end
 }
 
+pub const MAX_MULTI_CURSORS: usize = 64;
+
+/// Coordinate group from the kitty multi-cursor protocol.
+#[derive(Clone, Debug, PartialEq)]
+pub enum MultiCursorCoord {
+    /// Type 0: main cursor position.
+    MainCursor,
+    /// Type 2: point at (row, col), 1-indexed.
+    Point(u16, u16),
+    /// Type 4: rectangle (top, left, bottom, right), 1-indexed.
+    Rect(u16, u16, u16, u16),
+    /// Type 4 with no params: full screen.
+    FullScreen,
+}
+
+/// Color specification for extra cursors (shapes 30, 40).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub enum ExtraCursorColor {
+    #[default]
+    Unset,
+    Special,
+    Rgb(u8, u8, u8),
+    Indexed(u8),
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct MultiCursorState {
+    pub shape: u8,                         // 1-3 or 29; 0 means cleared
+    pub coords: Vec<MultiCursorCoord>,     // coordinate groups as received
+    pub text_color: ExtraCursorColor,      // shape 30
+    pub cursor_color: ExtraCursorColor,    // shape 40
+}
+
 #[derive(Clone)]
 pub struct Grid {
     pub(crate) lines_above: VecDeque<Row>,
@@ -535,6 +568,7 @@ pub struct Grid {
     pub supports_kitty_keyboard_protocol: bool, // has the app requested kitty keyboard support?
     explicitly_disable_kitty_keyboard_protocol: bool, // has kitty keyboard support been explicitly
     // disabled by user config?
+    pub multi_cursor_state: MultiCursorState,
     click: Click,
     hyperlink_tracker: HyperlinkTracker,
     pub pane_default_fg: Option<AnsiCode>,
@@ -819,6 +853,7 @@ impl Grid {
             lock_renders: false,
             supports_kitty_keyboard_protocol: false,
             explicitly_disable_kitty_keyboard_protocol,
+            multi_cursor_state: MultiCursorState::default(),
             click: Click::default(),
             hyperlink_tracker: HyperlinkTracker::new(),
             pane_default_fg: None,
@@ -830,6 +865,26 @@ impl Grid {
     }
     pub fn render_full_viewport(&mut self) {
         self.output_buffer.update_all_lines();
+    }
+    fn parse_extra_cursor_color<'a>(
+        mut params: impl Iterator<Item = &'a [u16]>,
+    ) -> ExtraCursorColor {
+        if let Some(group) = params.next() {
+            if group.is_empty() {
+                return ExtraCursorColor::Unset;
+            }
+            match group[0] {
+                0 => ExtraCursorColor::Unset,
+                1 => ExtraCursorColor::Special,
+                2 if group.len() >= 4 => {
+                    ExtraCursorColor::Rgb(group[1] as u8, group[2] as u8, group[3] as u8)
+                },
+                5 if group.len() >= 2 => ExtraCursorColor::Indexed(group[1] as u8),
+                _ => ExtraCursorColor::Unset,
+            }
+        } else {
+            ExtraCursorColor::Unset
+        }
     }
     pub fn update_line_for_rendering(&mut self, line_index: usize) {
         self.output_buffer.update_line(line_index);
@@ -3548,12 +3603,18 @@ impl Perform for Grid {
                     if let Some(images_to_reap) = self.sixel_grid.clear() {
                         self.sixel_grid.reap_images(images_to_reap);
                     }
+                    // Per kitty spec: ED 2 removes all extra cursors.
+                    self.multi_cursor_state = MultiCursorState::default();
                 } else if clear_type == 3 {
                     self.clear_lines_above();
                     if let Some(images_to_reap) = self.sixel_grid.clear() {
                         self.sixel_grid.reap_images(images_to_reap);
                     }
+                    // Per kitty spec: ED 3 removes all extra cursors.
+                    self.multi_cursor_state = MultiCursorState::default();
                 }
+                // TODO: ED 22 (clear saved lines + viewport) should also clear multi-cursors
+                // per kitty spec ("parameters 2, 3 and 22"). ED 22 is not handled by Zellij.
             };
         } else if c == 'H' || c == 'f' {
             // goto row/col
@@ -3605,6 +3666,8 @@ impl Perform for Grid {
                                     &mut self.sixel_grid,
                                     &mut self.supports_kitty_keyboard_protocol,
                                 );
+                                // Per kitty spec: alt screen switch removes all extra cursors.
+                                self.multi_cursor_state = MultiCursorState::default();
                             }
                             self.alternate_screen_state = None;
                             self.clear_viewport_before_rendering = true;
@@ -3715,6 +3778,8 @@ impl Perform for Grid {
                                 alternate_sixelgrid,
                                 current_supports_kitty_keyboard_protocol,
                             ));
+                            // Per kitty spec: alt screen switch removes all extra cursors.
+                            self.multi_cursor_state = MultiCursorState::default();
                             self.clear_viewport_before_rendering = true;
                             self.scrollback_buffer_lines =
                                 self.recalculate_scrollback_buffer_count();
@@ -3982,6 +4047,74 @@ impl Perform for Grid {
                 };
                 if let Some(cursor_shape) = shape {
                     self.cursor.change_shape(cursor_shape);
+                }
+            } else if intermediates == &[b'>', b' '] {
+                // Kitty multi-cursor protocol: CSI > Ps ; ... SP q
+                let mut param_iter = params.iter();
+                if let Some(first) = param_iter.next().filter(|f| !f.is_empty()) {
+                    let shape = first[0];
+                    match shape {
+                        0 => {
+                            self.multi_cursor_state = MultiCursorState::default();
+                        },
+                        1..=3 | 29 => {
+                            let mut coords = std::mem::take(&mut self.multi_cursor_state.coords);
+                            coords.clear();
+                            for group in param_iter {
+                                if group.is_empty() {
+                                    continue;
+                                }
+                                match group[0] {
+                                    0 => coords.push(MultiCursorCoord::MainCursor),
+                                    2 => {
+                                        let c = &group[1..];
+                                        for pair in c.chunks(2) {
+                                            if pair.len() == 2 && pair[0] > 0 && pair[1] > 0 {
+                                                coords.push(MultiCursorCoord::Point(pair[0], pair[1]));
+                                            }
+                                        }
+                                    },
+                                    4 => {
+                                        let c = &group[1..];
+                                        if c.is_empty() {
+                                            coords.push(MultiCursorCoord::FullScreen);
+                                        } else {
+                                            for rect in c.chunks(4) {
+                                                if rect.len() == 4 && rect.iter().all(|&v| v > 0) {
+                                                    coords.push(MultiCursorCoord::Rect(
+                                                        rect[0], rect[1], rect[2], rect[3],
+                                                    ));
+                                                }
+                                            }
+                                        }
+                                    },
+                                    _ => {},
+                                }
+                                if coords.len() >= MAX_MULTI_CURSORS {
+                                    coords.truncate(MAX_MULTI_CURSORS);
+                                    break;
+                                }
+                            }
+                            self.multi_cursor_state.shape = shape as u8;
+                            self.multi_cursor_state.coords = coords;
+                        },
+                        30 => {
+                            // Text color under extra cursors.
+                            self.multi_cursor_state.text_color =
+                                Self::parse_extra_cursor_color(param_iter);
+                        },
+                        40 => {
+                            // Extra cursor color.
+                            self.multi_cursor_state.cursor_color =
+                                Self::parse_extra_cursor_color(param_iter);
+                        },
+                        _ => {},
+                    }
+                } else {
+                    // Support detection query (no params): respond with supported shapes.
+                    // Only advertise shapes we actually handle (not 100/101 queries).
+                    self.pending_messages_to_pty
+                        .push(b"\x1b[>1;2;3;29;30;40 q".to_vec());
                 }
             } else if matches!(intermediates.get(0), Some(b'>')) {
                 let version = version_number(VERSION);
