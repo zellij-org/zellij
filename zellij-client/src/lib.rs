@@ -123,7 +123,9 @@ impl From<std::io::Error> for RemoteClientError {
     }
 }
 
-use crate::stdin_ansi_parser::{AnsiStdinInstruction, StdinAnsiParser, SyncOutput};
+use crate::stdin_ansi_parser::{
+    AnsiStdinInstruction, HostGraphemeSupport, StdinAnsiParser, SyncOutput,
+};
 use crate::{
     command_is_executing::CommandIsExecuting, input_handler::input_loop,
     os_input_output::ClientOsApi, stdin_handler::stdin_loop,
@@ -155,6 +157,7 @@ pub(crate) enum ClientInstruction {
     LogError(Vec<String>),
     SwitchSession(ConnectToSession),
     SetSynchronizedOutput(Option<SyncOutput>),
+    SetGraphemeClusterMode(HostGraphemeSupport),
     UnblockCliPipeInput(()), // String -> pipe name
     CliPipeOutput((), ()),   // String -> pipe name, String -> output
     QueryTerminalSize,
@@ -205,6 +208,7 @@ impl From<&ClientInstruction> for ClientContext {
             ClientInstruction::DoneParsingStdinQuery => ClientContext::DoneParsingStdinQuery,
             ClientInstruction::SwitchSession(..) => ClientContext::SwitchSession,
             ClientInstruction::SetSynchronizedOutput(..) => ClientContext::SetSynchronisedOutput,
+            ClientInstruction::SetGraphemeClusterMode(..) => ClientContext::SetGraphemeClusterMode,
             ClientInstruction::UnblockCliPipeInput(..) => ClientContext::UnblockCliPipeInput,
             ClientInstruction::CliPipeOutput(..) => ClientContext::CliPipeOutput,
             ClientInstruction::QueryTerminalSize => ClientContext::QueryTerminalSize,
@@ -1090,6 +1094,7 @@ pub fn start_client(
         Some("alacritty") => Some(SyncOutput::DCS),
         _ => None,
     };
+    let mut host_grapheme_cluster_mode = false;
 
     let mut stdout = os_input.get_stdout_writer();
 
@@ -1206,6 +1211,20 @@ pub fn start_client(
             ClientInstruction::SetSynchronizedOutput(enabled) => {
                 synchronised_output = enabled;
             },
+            ClientInstruction::SetGraphemeClusterMode(support) => {
+                if support == HostGraphemeSupport::Supported {
+                    // Host supports 2027 but hasn't enabled it — enable it ourselves
+                    // and take responsibility for disabling on exit.
+                    let mut stdout = os_input.get_stdout_writer();
+                    stdout
+                        .write_all(b"\x1b[?2027h")
+                        .expect("cannot write to stdout");
+                    stdout.flush().expect("could not flush");
+                    host_grapheme_cluster_mode = true;
+                }
+                // AlreadyEnabled: host had 2027 on before we started — don't toggle.
+                // Unsupported: nothing to do.
+            },
             ClientInstruction::QueryTerminalSize => {
                 os_input.send_to_server(ClientToServerMsg::TerminalResize {
                     new_size: os_input.get_terminal_size(),
@@ -1257,11 +1276,18 @@ pub fn start_client(
             let _ = stdout.write(exit_kitty_keyboard_mode.as_bytes()).unwrap();
             stdout.flush().unwrap();
         }
+        if host_grapheme_cluster_mode {
+            let _ = stdout.write(b"\x1b[?2027l").unwrap();
+            stdout.flush().unwrap();
+        }
         let _ = stdout.write(goodbye_message.as_bytes()).unwrap();
         stdout.flush().unwrap();
     } else {
-        let clear_screen = "\u{1b}[2J";
         let mut stdout = os_input.get_stdout_writer();
+        if host_grapheme_cluster_mode {
+            let _ = stdout.write(b"\x1b[?2027l").unwrap();
+        }
+        let clear_screen = "\u{1b}[2J";
         let _ = stdout.write(clear_screen.as_bytes()).unwrap();
         stdout.flush().unwrap();
     }

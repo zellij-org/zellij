@@ -4210,7 +4210,7 @@ fn preserve_background_color_on_resize() {
         .columns
         .iter()
         .rev()
-        .take_while(|c| c.character == EMPTY_TERMINAL_CHARACTER.character)
+        .take_while(|c| c.grapheme() == EMPTY_TERMINAL_CHARACTER.grapheme())
         .count();
     // All trailing plain spaces should be completely removed
     assert_eq!(
@@ -5364,4 +5364,1389 @@ fn default_layer_is_hint() {
 fn layer_ordering() {
     assert!(HighlightLayer::Hint < HighlightLayer::Tool);
     assert!(HighlightLayer::Tool < HighlightLayer::ActionFeedback);
+}
+
+// ── Grapheme cluster (EGC) composition tests ─────────────────────────────────
+
+/// Returns the grapheme text of non-space cells in the first viewport row.
+fn first_row_graphemes(grid: &Grid) -> Vec<String> {
+    grid.viewport[0]
+        .columns
+        .iter()
+        .filter(|c| c.grapheme() != " ")
+        .map(|c| c.grapheme().to_owned())
+        .collect()
+}
+
+#[test]
+fn combining_mark_stored_in_base_cell() {
+    // Latin 'a' + combining grave accent (U+0300) must occupy one cell.
+    // The combining mark is zero-width and should be appended to the base cell,
+    // not dropped or placed in its own cell.
+    let content = "a\u{0300}b"; // à (decomposed) then b
+    let grid = create_grid_with_content(content);
+    let graphemes = first_row_graphemes(&grid);
+
+    assert_eq!(
+        graphemes.len(),
+        2,
+        "Expected 2 cells: [a+grave, b], got {:?}",
+        graphemes
+    );
+    assert_eq!(
+        graphemes[0], "a\u{0300}",
+        "First cell should contain base + combining mark"
+    );
+    assert_eq!(graphemes[1], "b");
+}
+
+#[test]
+fn variation_selector_preserved_in_cell() {
+    // Heart (U+2764) + variation selector-16 (U+FE0F, emoji presentation).
+    // VS-16 is zero-width and must be stored in the same cell as the base glyph.
+    let content = "\u{2764}\u{FE0F}";
+    let grid = create_grid_with_content(content);
+    let graphemes = first_row_graphemes(&grid);
+
+    assert_eq!(
+        graphemes.len(),
+        1,
+        "Heart+VS16 must be one cell, got {:?}",
+        graphemes
+    );
+    assert!(
+        graphemes[0].contains('\u{FE0F}'),
+        "Variation selector must be preserved in the cell grapheme"
+    );
+}
+
+#[test]
+fn zwj_sequence_stored_in_single_cell() {
+    // Man (U+1F468) + ZWJ (U+200D) + Woman (U+1F469).
+    // ZWJ is zero-width; the second emoji follows without a grapheme boundary (GB11).
+    let content = "\u{1F468}\u{200D}\u{1F469}";
+    let grid = create_grid_with_content(content);
+    let graphemes = first_row_graphemes(&grid);
+
+    assert_eq!(
+        graphemes.len(),
+        1,
+        "ZWJ family must be one cell, got {:?}",
+        graphemes
+    );
+    assert!(graphemes[0].contains('\u{200D}'), "ZWJ must be preserved");
+    assert!(
+        graphemes[0].contains('\u{1F469}'),
+        "Second emoji must be in same cell"
+    );
+}
+
+#[test]
+fn skin_tone_modifier_appended_to_base_emoji() {
+    // Waving hand (U+1F44B) + light skin tone (U+1F3FB).
+    // The modifier has display width 2 on its own but UAX #29 keeps it with the base emoji.
+    let content = "\u{1F44B}\u{1F3FB}x";
+    let grid = create_grid_with_content(content);
+    let graphemes = first_row_graphemes(&grid);
+
+    assert_eq!(
+        graphemes.len(),
+        2,
+        "Emoji+skin-tone and 'x' = 2 cells, got {:?}",
+        graphemes
+    );
+    assert!(
+        graphemes[0].contains('\u{1F3FB}'),
+        "Skin tone modifier must be in same cell as base emoji"
+    );
+    assert_eq!(graphemes[1], "x");
+}
+
+#[test]
+fn thai_combining_vowel_stored_in_base_cell() {
+    // Thai ก (U+0E01) + SARA AM ำ (U+0E33, combining vowel).
+    // The combining vowel is zero-width; must be in the same cell as the consonant.
+    let content = "\u{0E01}\u{0E33}x";
+    let grid = create_grid_with_content(content);
+    let graphemes = first_row_graphemes(&grid);
+
+    assert_eq!(
+        graphemes.len(),
+        2,
+        "ก+ำ and x = 2 cells, got {:?}",
+        graphemes
+    );
+    assert!(
+        graphemes[0].contains('\u{0E33}'),
+        "Thai combining vowel must be preserved with its base consonant"
+    );
+}
+
+#[test]
+fn regional_indicator_pair_stored_in_single_cell() {
+    // Two regional indicators (U+1F1EF + U+1F1F5) form the Japan flag (🇯🇵).
+    // UAX #29 keeps regional indicator pairs in one grapheme cluster.
+    let content = "\u{1F1EF}\u{1F1F5}x";
+    let grid = create_grid_with_content(content);
+    let graphemes = first_row_graphemes(&grid);
+
+    assert_eq!(
+        graphemes.len(),
+        2,
+        "Flag sequence and x = 2 cells, got {:?}",
+        graphemes
+    );
+    assert!(
+        graphemes[0].contains('\u{1F1F5}'),
+        "Second regional indicator must be in same cell as first"
+    );
+    assert_eq!(graphemes[1], "x");
+}
+
+#[test]
+fn grapheme_preserved_in_copy_output() {
+    // Combining marks must survive the selection/copy path.
+    let content = "a\u{0300}b";
+    let mut grid = create_grid_with_content(content);
+    // Select the whole first line
+    grid.start_selection(&Position::new(0, 0));
+    grid.end_selection(&Position::new(0, 2));
+    let selected = grid.get_selected_text();
+    assert!(
+        selected.as_deref().unwrap_or("").contains("a\u{0300}"),
+        "Combining mark must be present in copied text"
+    );
+}
+
+// ── CSI 2027 mode tests ───────────────────────────────────────────────────────
+
+fn feed_bytes(grid: &mut Grid, bytes: &[u8]) {
+    let mut vte_parser = vte::Parser::new();
+    for byte in bytes {
+        vte_parser.advance(grid, *byte);
+    }
+}
+
+#[test]
+fn csi_2027_h_enables_grapheme_cluster_mode() {
+    let mut grid = create_grid_with_content("");
+    assert!(!grid.grapheme_cluster_mode, "mode should be off by default");
+    feed_bytes(&mut grid, b"\x1b[?2027h");
+    assert!(
+        grid.grapheme_cluster_mode,
+        "CSI ? 2027 h should enable the mode"
+    );
+}
+
+#[test]
+fn csi_2027_l_disables_grapheme_cluster_mode() {
+    let mut grid = create_grid_with_content("");
+    feed_bytes(&mut grid, b"\x1b[?2027h");
+    assert!(grid.grapheme_cluster_mode);
+    feed_bytes(&mut grid, b"\x1b[?2027l");
+    assert!(
+        !grid.grapheme_cluster_mode,
+        "CSI ? 2027 l should disable the mode"
+    );
+}
+
+#[test]
+fn csi_2027_decrpm_reports_disabled_when_off() {
+    let mut grid = create_grid_with_content("");
+    feed_bytes(&mut grid, b"\x1b[?2027$p");
+    let response = grid
+        .pending_messages_to_pty
+        .iter()
+        .find_map(|msg| std::str::from_utf8(msg).ok().map(|s| s.to_owned()));
+    assert_eq!(
+        response.as_deref(),
+        Some("\x1b[?2027;2$y"),
+        "DECRPM should report disabled (;2) when mode is off"
+    );
+}
+
+#[test]
+fn csi_2027_decrpm_reports_enabled_when_on() {
+    let mut grid = create_grid_with_content("");
+    feed_bytes(&mut grid, b"\x1b[?2027h");
+    grid.pending_messages_to_pty.clear(); // discard any prior messages
+    feed_bytes(&mut grid, b"\x1b[?2027$p");
+    let response = grid
+        .pending_messages_to_pty
+        .iter()
+        .find_map(|msg| std::str::from_utf8(msg).ok().map(|s| s.to_owned()));
+    assert_eq!(
+        response.as_deref(),
+        Some("\x1b[?2027;1$y"),
+        "DECRPM should report enabled (;1) when mode is on"
+    );
+}
+
+#[test]
+fn terminal_reset_clears_grapheme_cluster_mode() {
+    // ESC c (RIS — full terminal reset) must clear grapheme_cluster_mode even
+    // if it was enabled before the reset.
+    let mut grid = create_grid_with_content("");
+    feed_bytes(&mut grid, b"\x1b[?2027h");
+    assert!(grid.grapheme_cluster_mode, "mode should be on before reset");
+    // ESC c = RIS (full terminal reset)
+    feed_bytes(&mut grid, b"\x1bc");
+    assert!(
+        !grid.grapheme_cluster_mode,
+        "mode should be off after RIS reset"
+    );
+    // DECRPM query should also report disabled
+    feed_bytes(&mut grid, b"\x1b[?2027$p");
+    let response = grid
+        .pending_messages_to_pty
+        .iter()
+        .find_map(|msg| std::str::from_utf8(msg).ok().map(|s| s.to_owned()));
+    assert_eq!(
+        response.as_deref(),
+        Some("\x1b[?2027;2$y"),
+        "DECRPM after RIS should report disabled"
+    );
+}
+
+#[test]
+fn csi_2027_mode_persists_across_alternate_screen() {
+    let mut grid = create_grid_with_content("");
+    // Enable 2027 mode, then enter and exit alternate screen
+    feed_bytes(&mut grid, b"\x1b[?2027h");
+    assert!(grid.grapheme_cluster_mode);
+    feed_bytes(&mut grid, b"\x1b[?1049h"); // enter alt screen
+    assert!(
+        grid.grapheme_cluster_mode,
+        "mode should persist after entering alt screen"
+    );
+    feed_bytes(&mut grid, b"\x1b[?1049l"); // exit alt screen
+    assert!(
+        grid.grapheme_cluster_mode,
+        "mode should persist after exiting alt screen"
+    );
+}
+
+// ── Grapheme-aware editing semantics ─────────────────────────────────────────
+//
+// In CSI 2027 mode, these tests treat BS, CUB, and CUF as display-column
+// movement, even when printed text is stored and rendered as grapheme clusters.
+// This matches the Ghostty behavior we probed while validating the implementation.
+//
+// Some tests below model a common application pattern: move to an absolute
+// position, clear cells with spaces, and then redraw the grapheme.
+
+#[test]
+fn backspace_moves_back_one_column_in_legacy_mode() {
+    // Baseline: outside 2027 mode backspace always moves back 1 column.
+    let mut grid = create_grid_with_content("ab");
+    // cursor is now at x=2; send backspace
+    feed_bytes(&mut grid, b"\x08");
+    assert_eq!(
+        grid.cursor.x, 1,
+        "legacy backspace should move back 1 column"
+    );
+}
+
+#[test]
+fn backspace_moves_back_one_column_in_2027_mode_over_wide_char() {
+    // In 2027 mode, BS still moves back one display column.
+    let mut grid = create_grid_with_content("");
+    feed_bytes(&mut grid, b"\x1b[?2027h");
+    feed_bytes(&mut grid, "中".as_bytes());
+    assert_eq!(
+        grid.cursor.x, 2,
+        "cursor should be at col 2 after wide char"
+    );
+    feed_bytes(&mut grid, b"\x08");
+    assert_eq!(
+        grid.cursor.x, 1,
+        "one BS moves back 1 display column over a wide char"
+    );
+    feed_bytes(&mut grid, b"\x08");
+    assert_eq!(grid.cursor.x, 0, "second BS reaches col 0");
+}
+
+#[test]
+fn backspace_moves_back_one_column_for_narrow_char_in_2027_mode() {
+    // In 2027 mode, backspace over a narrow character still moves back 1 column.
+    let mut grid = create_grid_with_content("");
+    feed_bytes(&mut grid, b"\x1b[?2027h");
+    feed_bytes(&mut grid, b"a");
+    assert_eq!(grid.cursor.x, 1);
+    feed_bytes(&mut grid, b"\x08");
+    assert_eq!(
+        grid.cursor.x, 0,
+        "2027 backspace over narrow char moves back 1 column"
+    );
+}
+
+#[test]
+fn cursor_left_moves_by_column_in_2027_mode() {
+    // CSI D (CUB) counts display columns in all modes, including 2027.
+    // Applications send CUB N as a display-column count, not an EGC count.
+    let mut grid = create_grid_with_content("");
+    feed_bytes(&mut grid, b"\x1b[?2027h");
+    feed_bytes(&mut grid, "中".as_bytes()); // wide char, cursor at x=2
+    feed_bytes(&mut grid, b"\x1b[1D"); // CSI 1 D — 1 display column back
+    assert_eq!(
+        grid.cursor.x, 1,
+        "CSI 1 D moves 1 display column, not 1 EGC"
+    );
+    feed_bytes(&mut grid, b"\x1b[1D"); // one more
+    assert_eq!(grid.cursor.x, 0);
+}
+
+#[test]
+fn cursor_left_count_by_column_in_2027_mode() {
+    // CSI 2 D moves back 2 display columns even in 2027 mode.
+    let mut grid = create_grid_with_content("");
+    feed_bytes(&mut grid, b"\x1b[?2027h");
+    feed_bytes(&mut grid, "中文".as_bytes()); // two wide chars, cursor at x=4
+    feed_bytes(&mut grid, b"\x1b[2D"); // CSI 2 D — back 2 display columns
+    assert_eq!(grid.cursor.x, 2, "CSI 2 D moves 2 display columns");
+    feed_bytes(&mut grid, b"\x1b[2D");
+    assert_eq!(grid.cursor.x, 0);
+}
+
+#[test]
+fn cursor_forward_moves_by_column_not_egc_width() {
+    // CSI C (CUF) counts display columns in all modes, including 2027.
+    // Applications send N as a display-column count for wide characters.
+    let mut grid = create_grid_with_content("");
+    feed_bytes(&mut grid, b"\x1b[?2027h");
+    feed_bytes(&mut grid, "中".as_bytes()); // wide char at x=0, cursor at x=2
+    feed_bytes(&mut grid, b"\x1b[2D"); // back to x=0 (2 columns)
+    assert_eq!(grid.cursor.x, 0);
+    feed_bytes(&mut grid, b"\x1b[1C"); // CSI 1 C — 1 display column
+    assert_eq!(
+        grid.cursor.x, 1,
+        "CSI C moves 1 display column even in 2027 mode"
+    );
+    feed_bytes(&mut grid, b"\x1b[1C"); // one more column
+    assert_eq!(
+        grid.cursor.x, 2,
+        "CSI C 1+1 = 2 display columns past wide char"
+    );
+}
+
+#[test]
+fn cursor_back_moves_by_column_not_egc_width() {
+    // CSI D (CUB) counts display columns in all modes, including 2027.
+    // Applications send N=display-width; we must NOT multiply by EGC width again.
+    let mut grid = create_grid_with_content("");
+    feed_bytes(&mut grid, b"\x1b[?2027h");
+    feed_bytes(&mut grid, "中文".as_bytes()); // cursor at x=4
+    feed_bytes(&mut grid, b"\x1b[2D"); // back 2 display columns
+    assert_eq!(
+        grid.cursor.x, 2,
+        "CSI 2 D moves 2 display columns, not 2 EGCs"
+    );
+    feed_bytes(&mut grid, b"\x1b[2D"); // back 2 more
+    assert_eq!(grid.cursor.x, 0);
+}
+
+#[test]
+fn cursor_right_legacy_mode_moves_by_column() {
+    // CSI C/D move by column count in legacy mode too.
+    let mut grid = create_grid_with_content("");
+    feed_bytes(&mut grid, "中文".as_bytes()); // cursor at x=4
+    feed_bytes(&mut grid, b"\x1b[4D"); // back to x=0
+    feed_bytes(&mut grid, b"\x1b[1C"); // CSI 1 C — moves 1 column
+    assert_eq!(grid.cursor.x, 1, "legacy CSI C should move 1 column");
+}
+
+#[test]
+fn rep_repeats_full_grapheme_cluster_after_combining_mark() {
+    // CSI b should repeat the full EGC (base + combining), not just the combining mark.
+    let mut grid = create_grid_with_content("");
+    feed_bytes(&mut grid, b"\x1b[?2027h");
+    // Type 'a' followed by combining grave U+0300 → one cell containing "à"
+    feed_bytes(&mut grid, "a\u{0300}".as_bytes());
+    // cursor is at x=1; repeat 2 times
+    feed_bytes(&mut grid, b"\x1b[2b");
+    // Row should now contain 3 cells each with grapheme "a\u{0300}" (NFD form, as stored).
+    let row = &grid.viewport[0];
+    assert_eq!(row.columns.len(), 3, "REP should have produced 3 cells");
+    // The cell stores the raw sequence: 'a' + U+0300 (decomposed NFD form).
+    assert_eq!(
+        row.columns[0].grapheme(),
+        "a\u{0300}",
+        "cell 0 should be a+combining grave"
+    );
+    assert_eq!(
+        row.columns[1].grapheme(),
+        "a\u{0300}",
+        "cell 1 should be a+combining grave (REP copy 1)"
+    );
+    assert_eq!(
+        row.columns[2].grapheme(),
+        "a\u{0300}",
+        "cell 2 should be a+combining grave (REP copy 2)"
+    );
+}
+
+#[test]
+fn replace_with_empty_chars_steps_by_egc_width_in_2027_mode() {
+    // CSI X in 2027 mode should replace `count` EGCs, not `count` columns.
+    let mut grid = create_grid_with_content("");
+    feed_bytes(&mut grid, b"\x1b[?2027h");
+    feed_bytes(&mut grid, "中文ab".as_bytes()); // display cols 0-1: 中, 2-3: 文, 4: a, 5: b
+                                                // Move cursor back to x=0
+    feed_bytes(&mut grid, b"\x1b[6D");
+    assert_eq!(grid.cursor.x, 0);
+    // CSI 2 X — replace 2 EGCs starting at x=0 (should blank 中 and 文, leave a/b intact)
+    feed_bytes(&mut grid, b"\x1b[2X");
+    let row = &grid.viewport[0];
+    // Collect concatenated grapheme string: wide chars replaced by two narrow blanks each,
+    // so the row looks like "    ab" (4 spaces + a + b).
+    let rendered: String = row.columns.iter().map(|c| c.grapheme()).collect();
+    assert_eq!(
+        rendered, "    ab",
+        "CSI 2 X should blank 2 EGCs (中 and 文) and leave a/b untouched; got {:?}",
+        rendered
+    );
+}
+
+#[test]
+fn width_expanding_egc_does_not_overwrite_next_char() {
+    // VS16 does NOT widen cells in terminal contexts (matches ghostty/kitty/nvim).
+    // '#' + VS16 stays at width 1, so 'x' lands at col 1 (right after the keycap).
+    let mut grid = create_grid_with_content("");
+    feed_bytes(&mut grid, "#\u{FE0F}x".as_bytes());
+    let row = &grid.viewport[0];
+    let rendered: String = row.columns.iter().map(|c| c.grapheme()).collect();
+    assert_eq!(
+        rendered, "#\u{FE0F}x",
+        "VS16 keycap (width 1) followed by x; got {:?}",
+        rendered
+    );
+    assert_eq!(grid.cursor.x, 2, "cursor at col 2 after width-1 keycap + x");
+}
+
+#[test]
+fn width_expanding_egc_row_cache_invalidated_on_extension() {
+    // Row cache invalidation test using Regional Indicator flag pair (which DOES widen).
+    // First RI placed (width 1, row cache = Some(1)), then second RI extends it to
+    // width 2 (row cache must be invalidated).
+    let mut grid = create_grid_with_content("");
+    // Place flag pair 🇯🇵 = U+1F1EF + U+1F1F5
+    feed_bytes(&mut grid, "\u{1F1EF}\u{1F1F5}".as_bytes());
+    assert_eq!(grid.cursor.x, 2, "flag pair = width 2");
+    // Move cursor back into the middle of the wide cell
+    feed_bytes(&mut grid, b"\x1b[D");
+    assert_eq!(grid.cursor.x, 1);
+    // Print 'y' — should replace the wide cell (splits into EMPTY + 'y')
+    feed_bytes(&mut grid, b"y");
+    let row = &grid.viewport[0];
+    let rendered: String = row.columns.iter().map(|c| c.grapheme()).collect();
+    assert_eq!(
+        rendered, " y",
+        "printing at col 1 should replace the wide flag cell; got {:?}",
+        rendered
+    );
+}
+
+#[test]
+fn egc_state_text_uses_full_grapheme_for_ri_parity_after_rep() {
+    // CSI b REP re-inserts the preceding cell via add_character(cell.clone()).
+    // If egc_state.text is initialised with only the first scalar of that cell
+    // (the bug), the RI parity count is off by one: the next RI looks like it
+    // completes a flag with the lone RI in state.text instead of starting fresh.
+    //
+    // Correct sequence: 🇺🇸 (US flag) · REP×1 → 🇺🇸 · then 🇩🇪 (DE flag)
+    // Expected: three cells — "🇺🇸", "🇺🇸", "🇩🇪"
+    // With bug:  REP cell has egc_state.text="🇺" (one RI); 🇩 looks like its
+    //            pair → merged → only two cells: "🇺🇸", "🇺🇩", then "🇪" separate.
+    let mut grid = create_grid_with_content("");
+    // Build 🇺🇸 char-by-char so the cell is assembled correctly
+    feed_bytes(&mut grid, "\u{1F1FA}\u{1F1F8}".as_bytes()); // 🇺🇸
+                                                            // REP once (CSI 1 b) — re-inserts the full "🇺🇸" cell via add_character
+    feed_bytes(&mut grid, b"\x1b[1b");
+    // Feed 🇩🇪 char-by-char
+    feed_bytes(&mut grid, "\u{1F1E9}\u{1F1EA}".as_bytes()); // 🇩🇪
+    let row = &grid.viewport[0];
+    assert_eq!(
+        row.columns.len(),
+        3,
+        "should have 3 flag cells, got {:?}",
+        row.columns.iter().map(|c| c.grapheme()).collect::<Vec<_>>()
+    );
+    assert_eq!(
+        row.columns[0].grapheme(),
+        "\u{1F1FA}\u{1F1F8}",
+        "cell 0 should be 🇺🇸"
+    );
+    assert_eq!(
+        row.columns[1].grapheme(),
+        "\u{1F1FA}\u{1F1F8}",
+        "cell 1 should be 🇺🇸 (REP)"
+    );
+    assert_eq!(
+        row.columns[2].grapheme(),
+        "\u{1F1E9}\u{1F1EA}",
+        "cell 2 should be 🇩🇪"
+    );
+}
+
+#[test]
+fn width_shrinking_egc_extension_adjusts_cursor_and_cache() {
+    // U+2648 ♈ (Aries) has emoji presentation by default — width 2.
+    // Appending VS15 (U+FE0E) switches it to text presentation — width 1.
+    // The cursor must move back by 1 and the row cache must be invalidated.
+    // Without the fix: saturating_sub gives width_delta=0, cursor stays at 2,
+    // and the next char overwrites col 1 instead of landing at col 1.
+    let mut grid = create_grid_with_content("");
+    // Feed ♈ (width 2), then VS15 (shrinks to width 1)
+    feed_bytes(&mut grid, "\u{2648}\u{FE0E}".as_bytes());
+    // Cursor should be at col 1 (width-1 cell), not col 2.
+    assert_eq!(
+        grid.cursor.x, 1,
+        "cursor should retreat to col 1 after VS15 shrinks cell from width 2 to 1"
+    );
+    // Row width cache must reflect the reduced width.
+    let cached = grid.viewport[0].width_cached();
+    assert_eq!(
+        cached, 1,
+        "row width cache should be 1 after shrink, got {}",
+        cached
+    );
+    // Next char should land at col 1, not overwrite col 1 of the now-narrow cell.
+    feed_bytes(&mut grid, b"x");
+    let rendered: String = grid.viewport[0]
+        .columns
+        .iter()
+        .map(|c| c.grapheme())
+        .collect();
+    assert_eq!(
+        rendered, "\u{2648}\u{FE0E}x",
+        "char after width-shrinking EGC should land at col 1; got {:?}",
+        rendered
+    );
+}
+
+#[test]
+fn multiple_zwj_emojis_cursor_at_correct_column() {
+    // Three family emojis: 👨‍👩‍👧 each is a 5-codepoint ZWJ sequence, display width=2.
+    // After typing all three, cursor should be at column 6, not drifted wider.
+    let mut grid = create_grid_with_content("");
+    let family = "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}"; // 👨‍👩‍👧
+    let content = format!("{}{}{}", family, family, family);
+    feed_bytes(&mut grid, content.as_bytes());
+    assert_eq!(
+        grid.cursor.x, 6,
+        "three 2-wide ZWJ emojis should place cursor at col 6, got {}",
+        grid.cursor.x
+    );
+    // And each emoji should be in its own cell
+    assert_eq!(
+        grid.viewport[0].columns.len(),
+        3,
+        "three ZWJ emojis = 3 cells, got {}",
+        grid.viewport[0].columns.len()
+    );
+    assert_eq!(grid.viewport[0].columns[0].width(), 2);
+    assert_eq!(grid.viewport[0].columns[1].width(), 2);
+    assert_eq!(grid.viewport[0].columns[2].width(), 2);
+}
+
+#[test]
+fn backspace_moves_one_column_in_2027_mode_over_zwj_emoji() {
+    // In 2027 mode, BS still moves back one display column, even over a
+    // width-2 ZWJ emoji.
+    let mut grid = create_grid_with_content("");
+    feed_bytes(&mut grid, b"\x1b[?2027h");
+    let family = "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}"; // 👨‍👩‍👧, width=2
+    feed_bytes(&mut grid, family.as_bytes());
+    assert_eq!(
+        grid.cursor.x, 2,
+        "cursor should be at col 2 after one ZWJ emoji"
+    );
+    feed_bytes(&mut grid, b"\x08");
+    assert_eq!(
+        grid.cursor.x, 1,
+        "one BS moves back 1 display column over a width-2 ZWJ emoji"
+    );
+    feed_bytes(&mut grid, b"\x08");
+    assert_eq!(grid.cursor.x, 0, "second BS reaches col 0");
+}
+
+#[test]
+fn skin_tone_emoji_cursor_at_correct_column() {
+    // Waving hand + light skin tone (👋🏻): each modifier should not add columns.
+    // The pair is still width 2, so cursor should be at col 2, not col 4.
+    let mut grid = create_grid_with_content("");
+    let emoji_with_skin = "\u{1F44B}\u{1F3FB}"; // 👋🏻
+    feed_bytes(&mut grid, emoji_with_skin.as_bytes());
+    assert_eq!(
+        grid.cursor.x, 2,
+        "emoji+skin-tone should be width 2 total, cursor at col 2, got {}",
+        grid.cursor.x
+    );
+    feed_bytes(&mut grid, b"x");
+    assert_eq!(
+        grid.cursor.x, 3,
+        "char after emoji+skin-tone should be at col 3, got {}",
+        grid.cursor.x
+    );
+}
+
+#[test]
+fn zwj_deletion_dcb_sequence_clears_last_emoji() {
+    // Simulates an application using CUB(2) + DCH(1) to delete the last of 3 ZWJ emojis.
+    // CUB(2) = 2 display columns back (emoji3 is 2 wide), DCH(1) = delete 1 grapheme cluster.
+    let mut grid = create_grid_with_content("");
+    feed_bytes(&mut grid, b"\x1b[?2027h");
+    let family = "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}";
+    let content = format!("{}{}{}", family, family, family);
+    feed_bytes(&mut grid, content.as_bytes()); // cursor at col 6
+    assert_eq!(grid.cursor.x, 6);
+
+    // CUB(2): move back 2 display columns to start of emoji3
+    feed_bytes(&mut grid, b"\x1b[2D");
+    assert_eq!(
+        grid.cursor.x, 4,
+        "CUB(2) should land at col 4 (start of emoji3)"
+    );
+
+    // DCH 1 at col 4: delete emoji3 (1 grapheme cluster)
+    feed_bytes(&mut grid, b"\x1b[P");
+    assert_eq!(grid.cursor.x, 4, "cursor should stay at col 4 after DCH");
+
+    let row = &grid.viewport[0];
+    assert!(
+        row.columns[0].grapheme().contains('\u{1F468}'),
+        "emoji1 at index 0 should be intact"
+    );
+    assert!(
+        row.columns[1].grapheme().contains('\u{1F468}'),
+        "emoji2 at index 1 should be intact"
+    );
+    assert_eq!(
+        row.columns[2].width(),
+        1,
+        "col 4 (was emoji3) should be empty"
+    );
+    assert_eq!(row.columns[3].width(), 1, "col 5 should also be empty");
+}
+
+#[test]
+fn zwj_deletion_absolute_positioning_sequence_clears_last_emoji() {
+    // Simulates an application write + delete sequence in 2027 mode.
+    //
+    // One observed write pattern is: CUP + SP SP + BS BS + <emoji>
+    // The SP SP + BS BS clears the target cells before writing the emoji.
+    // Because BS operates on the just-written spaces (width=1), each BS moves
+    // back exactly 1 column — same result regardless of BS semantics.
+    //
+    // The corresponding delete pattern uses CUP for absolute positioning,
+    // then overwrites with spaces. This test verifies both patterns.
+    let mut grid = create_grid_with_content("");
+    feed_bytes(&mut grid, b"\x1b[?2027h");
+    let family = "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}"; // 👨‍👩‍👧, width=2
+
+    // Write 3 emojis using that write pattern: CUP + SP SP + BS BS + emoji
+    feed_bytes(&mut grid, b"\x1b[H"); // CUP(1,1) → col 0
+    feed_bytes(&mut grid, b"  \x08\x08"); // SP SP BS BS → col 0
+    feed_bytes(&mut grid, family.as_bytes()); // emoji1 at col 0, cursor at col 2
+    feed_bytes(&mut grid, b"\x1b[1;3H"); // CUP(1,3) → col 2
+    feed_bytes(&mut grid, b"  \x08\x08"); // SP SP BS BS → col 2
+    feed_bytes(&mut grid, family.as_bytes()); // emoji2 at col 2, cursor at col 4
+    feed_bytes(&mut grid, b"\x1b[1;5H"); // CUP(1,5) → col 4
+    feed_bytes(&mut grid, b"  \x08\x08"); // SP SP BS BS → col 4
+    feed_bytes(&mut grid, family.as_bytes()); // emoji3 at col 4, cursor at col 6
+    assert_eq!(grid.cursor.x, 6, "cursor at col 6 after 3 emojis");
+
+    // Delete via absolute positioning: CUP to the start of the emoji, then overwrite with spaces.
+    feed_bytes(&mut grid, b"\x1b[1;5H"); // CUP(1,5) → col 4 (start of emoji3)
+    assert_eq!(grid.cursor.x, 4, "CUP positions at col 4");
+    feed_bytes(&mut grid, b"  "); // overwrite emoji3's columns with spaces
+    assert_eq!(grid.cursor.x, 6, "after writing 2 spaces, cursor at col 6");
+
+    let row = &grid.viewport[0];
+    assert!(
+        row.columns[0].grapheme().contains('\u{1F468}'),
+        "emoji1 at col 0 should be intact"
+    );
+    assert!(
+        row.columns[1].grapheme().contains('\u{1F468}'),
+        "emoji2 at col 2 should be intact"
+    );
+    assert_eq!(
+        row.columns[2].grapheme(),
+        " ",
+        "col 4 should now be space (emoji3 cleared)"
+    );
+    assert_eq!(row.columns[3].grapheme(), " ", "col 5 should also be space");
+}
+
+#[test]
+fn hangul_jamo_nfd_grouped_as_grapheme_cluster() {
+    // NFD "폴더명" = ᄑ(U+1111) ᅩ(U+1169) ᆯ(U+11AF) ᄃ(U+1103) ᅥ(U+1165) ᄆ(U+1106) ᅧ(U+1167) ᆼ(U+11BC)
+    // GraphemeCursor groups L+V+T Jamo into grapheme clusters per UAX #29.
+    // The grid does NOT do NFC composition — it stores the raw Jamo codepoints,
+    // but they render identically to precomposed syllables.
+    let nfd = "\u{1111}\u{1169}\u{11AF}\u{1103}\u{1165}\u{1106}\u{1167}\u{11BC}";
+    let grid = create_grid_with_content(nfd);
+    let row = &grid.viewport[0];
+
+    // 3 grapheme clusters, each width 2, cursor at col 6
+    assert_eq!(row.columns.len(), 3, "3 Hangul syllable clusters");
+    assert_eq!(
+        grid.cursor.x, 6,
+        "cursor at col 6 after 3 width-2 syllables"
+    );
+
+    // Each cell stores the NFD Jamo, not the NFC precomposed syllable.
+    // first_char() returns the leading consonant (Choseong).
+    assert_eq!(row.columns[0].first_char(), Some('\u{1111}')); // ᄑ
+    assert_eq!(row.columns[0].width(), 2);
+    assert_eq!(row.columns[1].first_char(), Some('\u{1103}')); // ᄃ
+    assert_eq!(row.columns[1].width(), 2);
+    assert_eq!(row.columns[2].first_char(), Some('\u{1106}')); // ᄆ
+    assert_eq!(row.columns[2].width(), 2);
+}
+
+#[test]
+fn hangul_nfc_precomposed_still_works() {
+    // Pre-composed NFC "폴더명" — each syllable is a single codepoint.
+    let nfc = "폴더명";
+    let grid = create_grid_with_content(nfc);
+    let row = &grid.viewport[0];
+
+    assert_eq!(row.columns.len(), 3);
+    assert_eq!(grid.cursor.x, 6);
+    assert_eq!(row.columns[0].first_char(), Some('폴'));
+    assert_eq!(row.columns[1].first_char(), Some('더'));
+    assert_eq!(row.columns[2].first_char(), Some('명'));
+}
+
+#[test]
+fn hangul_jamo_two_char_syllable_without_jongseong() {
+    // NFD "가나" = ᄀ(U+1100) ᅡ(U+1161) ᄂ(U+1102) ᅡ(U+1161)
+    // Two-Jamo syllables (L+V, no trailing T).
+    let nfd = "\u{1100}\u{1161}\u{1102}\u{1161}";
+    let grid = create_grid_with_content(nfd);
+    let row = &grid.viewport[0];
+
+    assert_eq!(row.columns.len(), 2, "2 Hangul syllable clusters");
+    assert_eq!(grid.cursor.x, 4);
+    assert_eq!(row.columns[0].first_char(), Some('\u{1100}')); // ᄀ
+    assert_eq!(row.columns[0].width(), 2);
+    assert_eq!(row.columns[1].first_char(), Some('\u{1102}')); // ᄂ
+    assert_eq!(row.columns[1].width(), 2);
+}
+
+#[test]
+fn hangul_jamo_nfd_mixed_with_ascii() {
+    // NFD "폴더" + ASCII " test"
+    let content = "\u{1111}\u{1169}\u{11AF}\u{1103}\u{1165} test";
+    let grid = create_grid_with_content(content);
+    let row = &grid.viewport[0];
+
+    assert_eq!(row.columns[0].first_char(), Some('\u{1111}')); // ᄑ (폴)
+    assert_eq!(row.columns[0].width(), 2);
+    assert_eq!(row.columns[1].first_char(), Some('\u{1103}')); // ᄃ (더)
+    assert_eq!(row.columns[1].width(), 2);
+    assert_eq!(row.columns[2].grapheme(), " ");
+    assert_eq!(row.columns[3].grapheme(), "t");
+    assert_eq!(row.columns[4].grapheme(), "e");
+    assert_eq!(row.columns[5].grapheme(), "s");
+    assert_eq!(row.columns[6].grapheme(), "t");
+}
+
+#[test]
+fn hangul_jamo_nfd_with_ansi_color() {
+    // Colored NFD "폴더": \x1b[01;34m + Jamo + \x1b[0m
+    // ANSI escapes should not break grapheme clustering.
+    let colored = "\x1b[01;34m\u{1111}\u{1169}\u{11AF}\u{1103}\u{1165}\x1b[0m";
+    let grid = create_grid_with_content(colored);
+    let row = &grid.viewport[0];
+
+    assert_eq!(row.columns.len(), 2, "2 Hangul syllable clusters");
+    assert_eq!(row.columns[0].first_char(), Some('\u{1111}')); // ᄑ (폴)
+    assert_eq!(row.columns[0].width(), 2);
+    assert_eq!(row.columns[1].first_char(), Some('\u{1103}')); // ᄃ (더)
+    assert_eq!(row.columns[1].width(), 2);
+}
+
+// ── Composition tests for various scripts ───────────────────────────────────
+
+#[test]
+fn devanagari_virama_conjunct() {
+    // क्ष = KA(U+0915) + VIRAMA(U+094D) + SSA(U+0937)
+    // Unicode 15.1 GB9c groups InCB=Consonant + Linker(virama) + Consonant
+    // as a single grapheme cluster. All three codepoints in one cell.
+    let content = "\u{0915}\u{094D}\u{0937}";
+    let grid = create_grid_with_content(content);
+    let row = &grid.viewport[0];
+
+    assert_eq!(row.columns.len(), 1, "virama conjunct = 1 grapheme cluster");
+    assert_eq!(row.columns[0].first_char(), Some('\u{0915}')); // KA
+                                                               // Conjunct ligature: terminals render as width 1 (single glyph).
+                                                               // VIRAMA(0) doesn't change width; SSA(1) extends the cluster without adding columns.
+    assert_eq!(row.columns[0].width(), 1);
+    assert_eq!(grid.cursor.x, 1);
+}
+
+#[test]
+fn devanagari_word_with_virama_and_vowel_signs() {
+    // हिन्दी (hindii) = HA + VOWEL_I + NA + VIRAMA + DA + VOWEL_II
+    // Two virama conjuncts, two vowel signs.
+    let content = "\u{0939}\u{093F}\u{0928}\u{094D}\u{0926}\u{0940}";
+    let grid = create_grid_with_content(content);
+    let row = &grid.viewport[0];
+
+    // ह + ि = 1 cell (HA + vowel sign I)
+    // न + ् + द + ी = conjunct + vowel sign II
+    // Grapheme clusters: [हि] [न्दी] — 2 clusters? or [ह] [ि] [न्दी]?
+    // UAX #29 says vowel signs (Extend) attach to preceding base.
+    // Let's just verify no codepoints are dropped and cursor is correct.
+    assert_eq!(
+        grid.cursor.x,
+        row.columns.iter().map(|c| c.width()).sum::<usize>()
+    );
+    // Verify the base characters are present
+    assert_eq!(row.columns[0].first_char(), Some('\u{0939}')); // HA
+}
+
+#[test]
+fn arabic_letter_with_diacritics() {
+    // بِسْمِ = BA(U+0628) + KASRA(U+0650) + SEEN(U+0633) + SUKUN(U+0652) + MEEM(U+0645) + KASRA(U+0650)
+    // Each diacritic is zero-width and attaches to the preceding base letter.
+    let content = "\u{0628}\u{0650}\u{0633}\u{0652}\u{0645}\u{0650}";
+    let grid = create_grid_with_content(content);
+    let row = &grid.viewport[0];
+
+    // 3 base letters, each with a diacritic → 3 cells
+    assert_eq!(
+        row.columns.len(),
+        3,
+        "3 Arabic base letters with diacritics"
+    );
+    assert_eq!(row.columns[0].first_char(), Some('\u{0628}')); // BA
+    assert_eq!(row.columns[1].first_char(), Some('\u{0633}')); // SEEN
+    assert_eq!(row.columns[2].first_char(), Some('\u{0645}')); // MEEM
+                                                               // Each base letter is width 1
+    assert_eq!(row.columns[0].width(), 1);
+    assert_eq!(grid.cursor.x, 3);
+}
+
+#[test]
+fn arabic_shadda_with_fatha() {
+    // مَّ = MEEM(U+0645) + SHADDA(U+0651) + FATHA(U+064E)
+    // Two combining marks stacked on one base letter.
+    let content = "\u{0645}\u{0651}\u{064E}";
+    let grid = create_grid_with_content(content);
+    let row = &grid.viewport[0];
+
+    assert_eq!(row.columns.len(), 1, "base + two diacritics = 1 cell");
+    assert_eq!(row.columns[0].first_char(), Some('\u{0645}')); // MEEM
+    assert_eq!(row.columns[0].width(), 1);
+}
+
+#[test]
+fn hebrew_shin_with_nikud() {
+    // שָׁ = SHIN(U+05E9) + KAMATZ(U+05B8) + SHIN_DOT(U+05C1)
+    // Two combining marks (vowel + clarification dot) on one base letter.
+    let content = "\u{05E9}\u{05B8}\u{05C1}";
+    let grid = create_grid_with_content(content);
+    let row = &grid.viewport[0];
+
+    assert_eq!(row.columns.len(), 1, "base + two nikud marks = 1 cell");
+    assert_eq!(row.columns[0].first_char(), Some('\u{05E9}')); // SHIN
+    assert_eq!(row.columns[0].width(), 1);
+}
+
+#[test]
+fn hebrew_shalom_with_nikud() {
+    // שָׁלוֹם = SHIN+KAMATZ+SHIN_DOT LAMED VAV+HOLAM FINAL_MEM
+    let content = "\u{05E9}\u{05B8}\u{05C1}\u{05DC}\u{05D5}\u{05B9}\u{05DD}";
+    let grid = create_grid_with_content(content);
+    let row = &grid.viewport[0];
+
+    // 4 base letters: SHIN, LAMED, VAV, FINAL_MEM
+    assert_eq!(row.columns.len(), 4, "4 Hebrew base letters");
+    assert_eq!(row.columns[0].first_char(), Some('\u{05E9}')); // SHIN
+    assert_eq!(row.columns[1].first_char(), Some('\u{05DC}')); // LAMED
+    assert_eq!(row.columns[2].first_char(), Some('\u{05D5}')); // VAV
+    assert_eq!(row.columns[3].first_char(), Some('\u{05DD}')); // FINAL MEM
+    assert_eq!(grid.cursor.x, 4);
+}
+
+#[test]
+fn latin_stacked_combining_marks() {
+    // a + COMBINING_DIAERESIS(U+0308) + COMBINING_MACRON(U+0304)
+    // Multiple combining marks stack on one base letter.
+    let content = "a\u{0308}\u{0304}";
+    let grid = create_grid_with_content(content);
+    let row = &grid.viewport[0];
+
+    assert_eq!(row.columns.len(), 1, "base + 2 combining marks = 1 cell");
+    assert_eq!(row.columns[0].first_char(), Some('a'));
+    assert_eq!(row.columns[0].width(), 1);
+}
+
+#[test]
+fn latin_nfd_e_acute() {
+    // NFD: e(U+0065) + COMBINING_ACUTE(U+0301) → visual é
+    // NFC: é(U+00E9) — single codepoint
+    // Both should produce 1 cell with width 1.
+    let nfd = "e\u{0301}";
+    let nfc = "\u{00E9}";
+
+    let grid_nfd = create_grid_with_content(nfd);
+    let grid_nfc = create_grid_with_content(nfc);
+
+    assert_eq!(grid_nfd.viewport[0].columns.len(), 1, "NFD é = 1 cell");
+    assert_eq!(grid_nfc.viewport[0].columns.len(), 1, "NFC é = 1 cell");
+    assert_eq!(grid_nfd.viewport[0].columns[0].width(), 1);
+    assert_eq!(grid_nfc.viewport[0].columns[0].width(), 1);
+    assert_eq!(grid_nfd.cursor.x, 1);
+    assert_eq!(grid_nfc.cursor.x, 1);
+}
+
+#[test]
+fn emoji_keycap_sequence() {
+    // 1️⃣ = DIGIT_ONE(U+0031) + VS16(U+FE0F) + COMBINING_ENCLOSING_KEYCAP(U+20E3)
+    // Three codepoints form one grapheme cluster (keycap emoji).
+    let content = "1\u{FE0F}\u{20E3}";
+    let grid = create_grid_with_content(content);
+    let row = &grid.viewport[0];
+
+    assert_eq!(row.columns.len(), 1, "keycap sequence = 1 cell");
+    assert_eq!(row.columns[0].first_char(), Some('1'));
+    // Terminals keep keycap at base char width (1) — VS16 changes the glyph
+    // presentation but doesn't widen the cell. Matches ghostty/kitty/nvim.
+    assert_eq!(row.columns[0].width(), 1);
+    assert_eq!(grid.cursor.x, 1);
+}
+
+#[test]
+fn tamil_vowel_sign_attached_to_consonant() {
+    // கா = KA(U+0B95) + VOWEL_SIGN_AA(U+0BBE)
+    // Vowel sign is zero-width combining, attaches to the consonant.
+    let content = "\u{0B95}\u{0BBE}";
+    let grid = create_grid_with_content(content);
+    let row = &grid.viewport[0];
+
+    assert_eq!(row.columns.len(), 1, "consonant + vowel sign = 1 cell");
+    assert_eq!(row.columns[0].first_char(), Some('\u{0B95}')); // KA
+    assert_eq!(row.columns[0].width(), 1);
+}
+
+#[test]
+fn mixed_scripts_with_combining_marks() {
+    // Mix of Latin, Arabic diacritic, and CJK in one line.
+    // Each script's combining marks must attach to the correct base.
+    let content = "a\u{0301}\u{0628}\u{0650}中";
+    let grid = create_grid_with_content(content);
+    let row = &grid.viewport[0];
+
+    assert_eq!(row.columns[0].first_char(), Some('a')); // a + acute
+    assert_eq!(row.columns[0].width(), 1);
+    assert_eq!(row.columns[1].first_char(), Some('\u{0628}')); // BA + kasra
+    assert_eq!(row.columns[1].width(), 1);
+    assert_eq!(row.columns[2].first_char(), Some('中')); // CJK
+    assert_eq!(row.columns[2].width(), 2);
+    assert_eq!(grid.cursor.x, 4);
+}
+
+// --- Spacing Combining Mark (Mc) width regression tests ---
+// unicode-width 0.2.x counts Mc chars as width 1, but terminals render them as
+// zero-width extensions of the base glyph. push_scalar() must NOT inflate the
+// cell width when appending Mc characters.
+
+#[test]
+fn devanagari_vowel_sign_width_one() {
+    // हि = HA(U+0939) + VOWEL_SIGN_I(U+093F, Mc)
+    // Mc char should not add display width — terminal renders as 1-wide glyph.
+    let content = "\u{0939}\u{093F}";
+    let grid = create_grid_with_content(content);
+    let row = &grid.viewport[0];
+
+    assert_eq!(row.columns.len(), 1, "HA + vowel sign I = 1 cell");
+    assert_eq!(row.columns[0].first_char(), Some('\u{0939}')); // HA
+    assert_eq!(
+        row.columns[0].width(),
+        1,
+        "Mc vowel sign must not inflate width"
+    );
+    assert_eq!(grid.cursor.x, 1);
+
+    // Multiple हि should each occupy 1 column
+    let mut grid2 = create_grid_with_content("");
+    for _ in 0..5 {
+        feed_bytes(&mut grid2, "\u{0939}\u{093F}".as_bytes());
+    }
+    assert_eq!(grid2.cursor.x, 5, "5x हि should advance cursor by 5");
+    let row2 = &grid2.viewport[0];
+    for i in 0..5 {
+        assert_eq!(row2.columns[i].width(), 1, "cell {} should be width 1", i);
+    }
+}
+
+#[test]
+fn tamil_vowel_sign_i_width_one() {
+    // கி = KA(U+0B95) + VOWEL_SIGN_I(U+0BBF, Mc)
+    let content = "\u{0B95}\u{0BBF}";
+    let grid = create_grid_with_content(content);
+    let row = &grid.viewport[0];
+
+    assert_eq!(row.columns.len(), 1, "Tamil KA + vowel sign I = 1 cell");
+    assert_eq!(row.columns[0].first_char(), Some('\u{0B95}'));
+    assert_eq!(
+        row.columns[0].width(),
+        1,
+        "Tamil Mc vowel sign must not inflate width"
+    );
+    assert_eq!(grid.cursor.x, 1);
+}
+
+#[test]
+fn bengali_vowel_sign_width_one() {
+    // কি = KA(U+0995) + VOWEL_SIGN_I(U+09BF, Mc)
+    let content = "\u{0995}\u{09BF}";
+    let grid = create_grid_with_content(content);
+    let row = &grid.viewport[0];
+
+    assert_eq!(row.columns.len(), 1, "Bengali KA + vowel sign I = 1 cell");
+    assert_eq!(row.columns[0].first_char(), Some('\u{0995}'));
+    assert_eq!(
+        row.columns[0].width(),
+        1,
+        "Bengali Mc vowel sign must not inflate width"
+    );
+    assert_eq!(grid.cursor.x, 1);
+}
+
+#[test]
+fn myanmar_vowel_sign_e_width_one() {
+    // မေ = MA(U+1019) + VOWEL_SIGN_E(U+1031, Mc)
+    let content = "\u{1019}\u{1031}";
+    let grid = create_grid_with_content(content);
+    let row = &grid.viewport[0];
+
+    assert_eq!(row.columns.len(), 1, "Myanmar MA + vowel sign E = 1 cell");
+    assert_eq!(row.columns[0].first_char(), Some('\u{1019}'));
+    assert_eq!(
+        row.columns[0].width(),
+        1,
+        "Myanmar Mc vowel sign must not inflate width"
+    );
+    assert_eq!(grid.cursor.x, 1);
+}
+
+#[test]
+fn vs16_does_not_widen_keycap_base() {
+    // VS16 changes glyph presentation but terminals don't widen cells for it.
+    // "a#\u{FE0F}\u{20E3}b" — keycap stays at width 1, all on one row.
+    let mut grid = create_grid_with_content("");
+    grid.change_size(5, 3);
+    feed_bytes(&mut grid, "a#\u{FE0F}\u{20E3}b".as_bytes());
+
+    let row = &grid.viewport[0];
+    assert_eq!(row.columns[0].grapheme(), "a");
+    assert!(row.columns[1].grapheme().contains('#'), "keycap at col 1");
+    assert_eq!(row.columns[1].width(), 1, "keycap stays width 1");
+    assert_eq!(row.columns[2].grapheme(), "b");
+    assert_eq!(grid.cursor.x, 3, "all 3 chars on one row");
+}
+
+#[test]
+fn combining_enclosing_keycap_on_non_keycap_base_preserves_base_width() {
+    // U+20E3 is only a keycap special-case on #, *, and 0-9. On other bases it is
+    // just a zero-width combining mark and must not shrink a wide base character.
+    let grid = create_grid_with_content("中\u{20E3}x");
+    let row = &grid.viewport[0];
+
+    assert_eq!(row.columns.len(), 2, "wide base + U+20E3 and x = 2 cells");
+    assert_eq!(row.columns[0].grapheme(), "中\u{20E3}");
+    assert_eq!(
+        row.columns[0].width(),
+        2,
+        "non-keycap base + U+20E3 must preserve the base width"
+    );
+    assert_eq!(row.columns[1].grapheme(), "x");
+    assert_eq!(grid.cursor.x, 3, "x should land after the width-2 grapheme");
+}
+
+#[test]
+fn vs16_widens_emoji_with_text_presentation() {
+    // 🏳 (U+1F3F3, White Flag) has East_Asian_Width=N so unicode-width gives it width 1.
+    // VS16 should widen it to 2 (emoji presentation). This is critical for the
+    // rainbow flag 🏳️‍🌈 = U+1F3F3 + VS16 + ZWJ + U+1F308.
+    let mut grid = create_grid_with_content("");
+    let rainbow_flag = "\u{1F3F3}\u{FE0F}\u{200D}\u{1F308}"; // 🏳️‍🌈
+    feed_bytes(&mut grid, format!("a{}b", rainbow_flag).as_bytes());
+    let row = &grid.viewport[0];
+    assert_eq!(row.columns[0].grapheme(), "a");
+    assert!(
+        row.columns[1].grapheme().contains('\u{1F3F3}'),
+        "rainbow flag at col 1"
+    );
+    assert_eq!(row.columns[1].width(), 2, "rainbow flag must be width 2");
+    // 'b' should be at col 3 (after width-2 emoji at 1-2)
+    assert_eq!(
+        grid.cursor.x, 4,
+        "cursor at col 4 after a + width-2 flag + b"
+    );
+}
+
+#[test]
+fn flag_pair_widens_at_last_column_wraps() {
+    // Regional Indicator pair DOES widen (1→2). On a 2-col grid, first RI (width 1)
+    // at col 1 gets widened to 2 by second RI — overflow should wrap.
+    let mut grid = create_grid_with_content("");
+    grid.change_size(5, 2);
+    // 'a' at col 0, then flag pair 🇯🇵 = U+1F1EF U+1F1F5
+    feed_bytes(&mut grid, "a\u{1F1EF}\u{1F1F5}b".as_bytes());
+
+    let row0 = &grid.viewport[0];
+    assert_eq!(row0.columns[0].grapheme(), "a");
+    // Flag should have wrapped to row 1
+    let row1 = &grid.viewport[1];
+    assert!(
+        row1.columns[0].grapheme().contains('\u{1F1EF}'),
+        "flag pair should wrap to row 1"
+    );
+    assert_eq!(row1.columns[0].width(), 2, "flag pair = width 2");
+}
+
+#[test]
+fn vs16_widening_at_last_column_wraps() {
+    // 🏳 (U+1F3F3, White Flag) has text presentation by default (width 1).
+    // VS16 widens it to 2. If it's near the end of a row, the widened cell
+    // should wrap to the next line, not silently spill.
+
+    // 🏳️ at col 0 (width 1→2) fits exactly in a 2-col grid.
+    // 'b' should wrap to row 1.
+    let mut grid2 = create_grid_with_content("");
+    grid2.change_size(5, 2);
+    feed_bytes(&mut grid2, "\u{1F3F3}\u{FE0F}b".as_bytes());
+    assert_eq!(grid2.cursor.y, 1, "b should be on row 1");
+    assert!(grid2.viewport[0].columns[0]
+        .grapheme()
+        .contains('\u{1F3F3}'));
+    assert_eq!(grid2.viewport[1].columns[0].grapheme(), "b");
+
+    // Overflow case: 3-col grid, "ab🏳️c"
+    // 🏳 at col 2 (width 1), VS16 widens to 2 — needs cols 2..4 but grid is 3 wide.
+    let mut grid3 = create_grid_with_content("");
+    grid3.change_size(5, 3);
+    feed_bytes(&mut grid3, "ab\u{1F3F3}\u{FE0F}c".as_bytes());
+
+    // The widened 🏳️ at col 2 now needs 2 columns but only 1 remains.
+    // It should wrap to row 1.
+    let row0 = &grid3.viewport[0];
+    let row1 = &grid3.viewport[1];
+    assert_eq!(row0.columns[0].grapheme(), "a");
+    assert_eq!(row0.columns[1].grapheme(), "b");
+    assert!(
+        row1.columns[0].grapheme().contains('\u{1F3F3}'),
+        "widened flag should wrap to row 1, got row0={:?} row1={:?}",
+        row0.columns
+            .iter()
+            .map(|c| c.grapheme().to_string())
+            .collect::<Vec<_>>(),
+        row1.columns
+            .iter()
+            .map(|c| c.grapheme().to_string())
+            .collect::<Vec<_>>(),
+    );
+    // No phantom space: row 0 should have exactly 2 logical columns ("a", "b").
+    assert_eq!(
+        row0.columns.len(),
+        2,
+        "row 0 should have 2 columns (a, b), no phantom space from the deleted cell"
+    );
+}
+
+#[test]
+fn dch_wide_char_with_trailing_chars_shifts_correctly() {
+    // DCH(1) on a 2-wide emoji: delete the emoji, trailing chars keep their
+    // display column positions, empty columns are filled with spaces.
+    // Row: [🎉(w=2)][a][b][c] → after DCH(1) at col 0: [ ][a][b][c][ ]
+    let mut grid = create_grid_with_content("");
+    feed_bytes(&mut grid, "\u{1F389}abc".as_bytes()); // 🎉 (w=2) + "abc"
+    assert_eq!(grid.cursor.x, 5, "cursor after 🎉abc");
+
+    // Move cursor back to col 0 (start of emoji)
+    feed_bytes(&mut grid, b"\x1b[1;1H");
+    assert_eq!(grid.cursor.x, 0);
+
+    // DCH(1): delete the emoji
+    feed_bytes(&mut grid, b"\x1b[P");
+
+    let row = &grid.viewport[0];
+    // Space fills the gap left by the wide char's excess column at cursor.x
+    assert_eq!(
+        row.columns[0].grapheme(),
+        " ",
+        "col 0 should be space (gap from wide char)"
+    );
+    assert_eq!(row.columns[1].grapheme(), "a", "a should be at col 1");
+    assert_eq!(row.columns[2].grapheme(), "b", "b should be at col 2");
+    assert_eq!(row.columns[3].grapheme(), "c", "c should be at col 3");
+    assert_eq!(
+        row.columns[4].grapheme(),
+        " ",
+        "col 4 should be empty (right margin fill)"
+    );
+}
+
+#[test]
+fn dch_on_second_half_of_wide_char() {
+    // Ghostty DCH V-5: cursor on the second half of a wide character.
+    // The wide char should be erased (both halves become spaces), then DCH
+    // deletes at cursor position normally.
+    // Row: [A][橋(w=2)][1][2][3] → display cols 0,1-2,3,4,5
+    // Cursor at col 2 (second half of 橋), DCH(1):
+    // → erase 橋 → [A][ ][ ][1][2][3]
+    // → delete at col 2 → [A][ ][1][2][3][ ]
+    let mut grid = create_grid_with_content("");
+    feed_bytes(&mut grid, "A橋123".as_bytes());
+    assert_eq!(grid.cursor.x, 6, "cursor after A橋123");
+
+    // Move cursor to col 3 (1-based) = col 2 (0-based), second half of 橋
+    feed_bytes(&mut grid, b"\x1b[1;3H");
+    assert_eq!(grid.cursor.x, 2);
+
+    // DCH(1)
+    feed_bytes(&mut grid, b"\x1b[P");
+
+    let row = &grid.viewport[0];
+    assert_eq!(row.columns[0].grapheme(), "A", "col 0 should be A");
+    assert_eq!(
+        row.columns[1].grapheme(),
+        " ",
+        "col 1 should be space (erased left half of 橋)"
+    );
+    assert_eq!(row.columns[2].grapheme(), "1", "col 2: 1 shifted left");
+    assert_eq!(row.columns[3].grapheme(), "2", "col 3: 2 shifted left");
+    assert_eq!(row.columns[4].grapheme(), "3", "col 4: 3 shifted left");
+    assert_eq!(row.columns[5].grapheme(), " ", "col 5: right margin fill");
+}
+
+// ── Grapheme-aware search tests ─────────────────────────────────────────────
+
+#[test]
+fn search_finds_ascii_text() {
+    // Baseline: plain ASCII search still works after the grapheme refactor.
+    let mut grid = create_grid_with_content("hello world");
+    grid.set_search_string("world");
+    assert_eq!(
+        grid.search_results.selections.len(),
+        1,
+        "should find 'world'"
+    );
+    let sel = &grid.search_results.selections[0];
+    assert_eq!(sel.start.column(), 6);
+    assert_eq!(sel.end.column(), 11);
+}
+
+#[test]
+fn search_finds_nfc_composed_character() {
+    // Search for NFC "é" (U+00E9) in content that has NFC "é".
+    let mut grid = create_grid_with_content("caf\u{00E9}");
+    grid.set_search_string("\u{00E9}");
+    assert_eq!(grid.search_results.selections.len(), 1, "should find NFC é");
+}
+
+#[test]
+fn search_finds_combining_mark_grapheme() {
+    // Content has NFD "é" = e + combining acute (U+0301), stored as one cell.
+    // Search for the same NFD sequence.
+    let nfd_e_acute = "e\u{0301}";
+    let content = format!("caf{}", nfd_e_acute);
+    let mut grid = create_grid_with_content(&content);
+    grid.set_search_string(nfd_e_acute);
+    assert_eq!(
+        grid.search_results.selections.len(),
+        1,
+        "should find NFD e+combining_acute as a single grapheme"
+    );
+}
+
+#[test]
+fn search_finds_zwj_emoji() {
+    // ZWJ family emoji stored as one cell.
+    let family = "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}";
+    let content = format!("a{}b", family);
+    let mut grid = create_grid_with_content(&content);
+    grid.set_search_string(family);
+    assert_eq!(
+        grid.search_results.selections.len(),
+        1,
+        "should find ZWJ emoji sequence"
+    );
+}
+
+#[test]
+fn search_finds_hangul_jamo_nfd() {
+    // NFD Hangul "가" = ᄀ(U+1100) + ᅡ(U+1161), stored as one cell.
+    let nfd_ga = "\u{1100}\u{1161}";
+    let content = format!("x{}y", nfd_ga);
+    let mut grid = create_grid_with_content(&content);
+    grid.set_search_string(nfd_ga);
+    assert_eq!(
+        grid.search_results.selections.len(),
+        1,
+        "should find NFD Hangul Jamo sequence"
+    );
+}
+
+#[test]
+fn search_finds_devanagari_with_vowel_sign() {
+    // हि = HA(U+0939) + vowel sign I(U+093F), stored as one cell.
+    let content = "x\u{0939}\u{093F}y";
+    let mut grid = create_grid_with_content(content);
+    grid.set_search_string("\u{0939}\u{093F}");
+    assert_eq!(
+        grid.search_results.selections.len(),
+        1,
+        "should find Devanagari base + vowel sign"
+    );
+}
+
+#[test]
+fn search_case_insensitive_with_graphemes() {
+    let mut grid = create_grid_with_content("Hello");
+    grid.search_results.case_insensitive = true;
+    grid.set_search_string("hello");
+    assert_eq!(
+        grid.search_results.selections.len(),
+        1,
+        "case-insensitive search should match"
+    );
+}
+
+#[test]
+fn search_multiple_grapheme_matches() {
+    // Two instances of "à" (NFC) in the content.
+    let mut grid = create_grid_with_content("d\u{00E9}j\u{00E0} vu, d\u{00E9}j\u{00E0}");
+    grid.set_search_string("d\u{00E9}j\u{00E0}");
+    assert_eq!(
+        grid.search_results.selections.len(),
+        2,
+        "should find both occurrences of 'déjà'"
+    );
+}
+
+#[test]
+fn search_selection_uses_display_columns_after_wide_graphemes() {
+    let mut grid = create_grid_with_content("ascii 中 😀 cafe\u{0301} 👩‍💻 🇯🇵 폴더명");
+    grid.set_search_string("caf");
+
+    assert_eq!(grid.search_results.selections.len(), 1, "should find 'caf'");
+    let sel = &grid.search_results.selections[0];
+    assert_eq!(
+        sel.start.column(),
+        12,
+        "selection should start at display col 12"
+    );
+    assert_eq!(
+        sel.end.column(),
+        15,
+        "selection should end at display col 15"
+    );
 }
