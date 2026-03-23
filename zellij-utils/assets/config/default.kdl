@@ -532,6 +532,12 @@ load_plugins {
 //
 // post_command_discovery_hook "echo $RESURRECT_COMMAND | sed <your_regex_here>"
 
+// Ignore pane-emitted synchronized output for panes whose current foreground command matches one
+// of the following values. Matching checks both the full command path and the executable name.
+// Useful for streaming apps that should repaint immediately even inside a multiplexer.
+//
+// pane_synchronized_output_ignore_commands "pi" "codex"
+
 // Number of async worker tasks to spawn per active client.
 //
 // Allocating few tasks may result in resource contention and lags. Small values (around 4) should

@@ -351,6 +351,7 @@ pub enum ScreenInstruction {
     ToggleActiveTerminalFullscreen(ClientId, Option<NotificationEnd>),
     TogglePaneFrames(Option<NotificationEnd>),
     SetSelectable(PaneId, bool),
+    SetPaneSynchronizedOutputIgnore(PaneId, bool),
     ShowPluginCursor(u32, ClientId, Option<(usize, usize)>),
     ClosePane(
         PaneId,
@@ -816,6 +817,9 @@ impl From<&ScreenInstruction> for ScreenContext {
             },
             ScreenInstruction::TogglePaneFrames(..) => ScreenContext::TogglePaneFrames,
             ScreenInstruction::SetSelectable(..) => ScreenContext::SetSelectable,
+            ScreenInstruction::SetPaneSynchronizedOutputIgnore(..) => {
+                ScreenContext::SetPaneSynchronizedOutputIgnore
+            },
             ScreenInstruction::ShowPluginCursor(..) => ScreenContext::ShowPluginCursor,
             ScreenInstruction::ClosePane(..) => ScreenContext::ClosePane,
             ScreenInstruction::HoldPane(..) => ScreenContext::HoldPane,
@@ -5860,6 +5864,22 @@ pub(crate) fn screen_thread_main(
                 }
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
+            },
+            ScreenInstruction::SetPaneSynchronizedOutputIgnore(pid, should_ignore) => {
+                let all_tabs = screen.get_tabs_mut();
+                let mut found_pane = false;
+                for tab in all_tabs.values_mut() {
+                    if tab.has_pane_with_pid(&pid) {
+                        tab.set_pane_synchronized_output_ignore(pid, should_ignore);
+                        found_pane = true;
+                        break;
+                    }
+                }
+                if !found_pane {
+                    pending_events_waiting_for_tab.push(
+                        ScreenInstruction::SetPaneSynchronizedOutputIgnore(pid, should_ignore),
+                    );
+                }
             },
             ScreenInstruction::ShowPluginCursor(pid, client_id, cursor_position) => {
                 let all_tabs = screen.get_tabs_mut();

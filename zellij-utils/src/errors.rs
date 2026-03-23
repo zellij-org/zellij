@@ -281,6 +281,7 @@ pub enum ScreenContext {
     ToggleActiveTerminalFullscreen,
     TogglePaneFrames,
     SetSelectable,
+    SetPaneSynchronizedOutputIgnore,
     ShowPluginCursor,
     SetInvisibleBorders,
     SetFixedHeight,

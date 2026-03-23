@@ -93,6 +93,35 @@ pub(crate) fn command_exists(cmd: &RunCommand) -> bool {
     resolve_command(cmd).is_some()
 }
 
+pub(crate) fn current_terminal_command(
+    os_input: &dyn ServerOsApi,
+    child_pid: u32,
+    post_command_discovery_hook: &Option<String>,
+) -> Option<Vec<String>> {
+    let ppids_to_cmds = os_input.get_all_cmds_by_ppid(post_command_discovery_hook);
+    let cmd_ps = ppids_to_cmds.get(&child_pid.to_string());
+    let (_cwds, cmds) = os_input.get_cwds(vec![child_pid]);
+    let cmd_sysinfo = cmds.get(&child_pid);
+
+    cmd_ps.cloned().or_else(|| cmd_sysinfo.cloned())
+}
+
+pub(crate) fn command_matches_path_or_basename(
+    command_args: &[String],
+    candidates: &[String],
+) -> bool {
+    let Some(command) = command_args.first() else {
+        return false;
+    };
+    let basename = std::path::Path::new(command)
+        .file_name()
+        .and_then(|name| name.to_str());
+
+    candidates
+        .iter()
+        .any(|candidate| candidate == command || basename == Some(candidate.as_str()))
+}
+
 // this is a utility method to separate the arguments from a pathbuf before we turn it into a
 // Command. eg. "/usr/bin/vim -e" ==> "/usr/bin/vim" + "-e" (the latter will be pushed to args)
 fn separate_command_arguments(command: &mut PathBuf, args: &mut Vec<String>) {

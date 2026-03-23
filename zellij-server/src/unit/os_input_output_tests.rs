@@ -63,6 +63,31 @@ fn stdin_reader_cmd() -> Command {
 }
 
 #[test]
+fn command_match_checks_full_path_and_basename() {
+    let command = vec![
+        String::from("/opt/homebrew/bin/codex"),
+        String::from("--full-auto"),
+    ];
+
+    assert!(command_matches_path_or_basename(
+        &command,
+        &[String::from("codex")],
+    ));
+    assert!(command_matches_path_or_basename(
+        &command,
+        &[String::from("/opt/homebrew/bin/codex")],
+    ));
+    assert!(!command_matches_path_or_basename(
+        &command,
+        &[String::from("pi")],
+    ));
+    assert!(!command_matches_path_or_basename(
+        &[],
+        &[String::from("codex")]
+    ));
+}
+
+#[test]
 fn get_cwd() {
     let server = make_server();
 

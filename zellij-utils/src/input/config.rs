@@ -669,6 +669,7 @@ mod config_test {
             scrollback_editor "/path/to/my/scrollback-editor"
             session_name "my awesome session"
             attach_to_session true
+            pane_synchronized_output_ignore_commands "pi" "codex"
         "#;
         let config = Config::from_kdl(config_contents, None).unwrap();
         assert_eq!(
@@ -764,6 +765,11 @@ mod config_test {
         assert_eq!(
             config.options.attach_to_session,
             Some(true),
+            "Option set in config"
+        );
+        assert_eq!(
+            config.options.pane_synchronized_output_ignore_commands,
+            Some(vec![String::from("pi"), String::from("codex")]),
             "Option set in config"
         );
     }

@@ -1,7 +1,7 @@
 use crate::background_jobs::write_session_state_to_disk;
 use crate::background_jobs::BackgroundJob;
 use crate::global_async_runtime::get_tokio_runtime as async_runtime;
-use crate::os_input_output::{AsyncReader, NullAsyncReader};
+use crate::os_input_output::{current_terminal_command, AsyncReader, NullAsyncReader};
 use crate::route::NotificationEnd;
 use crate::terminal_bytes::TerminalBytes;
 use crate::{
@@ -12,7 +12,7 @@ use crate::{
     thread_bus::{Bus, ThreadSenders},
     ClientId, ServerInstruction,
 };
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use std::{collections::HashMap, path::PathBuf};
 use tokio::task::JoinHandle;
 use zellij_utils::{
@@ -136,6 +136,7 @@ pub enum PtyInstruction {
         client_id: ClientId,
         default_editor: Option<PathBuf>,
         post_command_discovery_hook: Option<String>,
+        pane_synchronized_output_ignore_commands: Option<Vec<String>>,
     },
     ListClientsToPlugin(SessionLayoutMetadata, PluginId, ClientId),
     ReportPluginCwd(PluginId, PathBuf),
@@ -191,6 +192,35 @@ impl From<&PtyInstruction> for PtyContext {
     }
 }
 
+#[derive(Debug, Default)]
+pub(crate) struct PtyRuntimeConfiguration {
+    pub post_command_discovery_hook: Option<String>,
+    pub pane_synchronized_output_ignore_commands: Vec<String>,
+}
+
+impl PtyRuntimeConfiguration {
+    fn new(
+        post_command_discovery_hook: Option<String>,
+        pane_synchronized_output_ignore_commands: Option<Vec<String>>,
+    ) -> Self {
+        Self {
+            post_command_discovery_hook,
+            pane_synchronized_output_ignore_commands: pane_synchronized_output_ignore_commands
+                .unwrap_or_default(),
+        }
+    }
+
+    fn reconfigure(
+        &mut self,
+        post_command_discovery_hook: Option<String>,
+        pane_synchronized_output_ignore_commands: Option<Vec<String>>,
+    ) {
+        self.post_command_discovery_hook = post_command_discovery_hook;
+        self.pane_synchronized_output_ignore_commands =
+            pane_synchronized_output_ignore_commands.unwrap_or_default();
+    }
+}
+
 pub(crate) struct Pty {
     pub active_panes: HashMap<ClientId, PaneId>,
     pub bus: Bus<PtyInstruction>,
@@ -199,7 +229,7 @@ pub(crate) struct Pty {
     debug_to_file: bool,
     task_handles: HashMap<u32, JoinHandle<()>>, // terminal_id to join-handle
     default_editor: Option<PathBuf>,
-    post_command_discovery_hook: Option<String>,
+    runtime_configuration: Arc<RwLock<PtyRuntimeConfiguration>>,
     plugin_cwds: HashMap<u32, PathBuf>,   // plugin_id -> cwd
     terminal_cwds: HashMap<u32, PathBuf>, // terminal_id -> cwd
 }
@@ -852,9 +882,14 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
             PtyInstruction::Reconfigure {
                 default_editor,
                 post_command_discovery_hook,
+                pane_synchronized_output_ignore_commands,
                 client_id: _,
             } => {
-                pty.reconfigure(default_editor, post_command_discovery_hook);
+                pty.reconfigure(
+                    default_editor,
+                    post_command_discovery_hook,
+                    pane_synchronized_output_ignore_commands,
+                );
             },
             PtyInstruction::SendSigintToPaneId(pane_id) => {
                 pty.send_sigint_to_pane(pane_id);
@@ -898,6 +933,7 @@ impl Pty {
         debug_to_file: bool,
         default_editor: Option<PathBuf>,
         post_command_discovery_hook: Option<String>,
+        pane_synchronized_output_ignore_commands: Option<Vec<String>>,
     ) -> Self {
         Pty {
             active_panes: HashMap::new(),
@@ -907,7 +943,10 @@ impl Pty {
             task_handles: HashMap::new(),
             default_editor,
             originating_plugins: HashMap::new(),
-            post_command_discovery_hook,
+            runtime_configuration: Arc::new(RwLock::new(PtyRuntimeConfiguration::new(
+                post_command_discovery_hook,
+                pane_synchronized_output_ignore_commands,
+            ))),
             plugin_cwds: HashMap::new(),
             terminal_cwds: HashMap::new(),
         }
@@ -1119,12 +1158,22 @@ impl Pty {
                 |terminal_id: u32| format!("failed to run async task for terminal {terminal_id}");
             let senders = self.bus.senders.clone();
             let debug_to_file = self.debug_to_file;
+            let os_input = self.bus.os_input.clone();
+            let runtime_configuration = self.runtime_configuration.clone();
             async move {
-                TerminalBytes::new(terminal_id, reader, senders, debug_to_file)
-                    .listen()
-                    .await
-                    .with_context(|| err_context(terminal_id))
-                    .fatal();
+                TerminalBytes::new(
+                    terminal_id,
+                    reader,
+                    senders,
+                    os_input,
+                    child_pid,
+                    runtime_configuration,
+                    debug_to_file,
+                )
+                .listen()
+                .await
+                .with_context(|| err_context(terminal_id))
+                .fatal();
             }
         });
 
@@ -1317,12 +1366,23 @@ impl Pty {
                     let terminal_bytes = async_runtime().spawn({
                         let senders = self.bus.senders.clone();
                         let debug_to_file = self.debug_to_file;
+                        let os_input = self.bus.os_input.clone();
+                        let child_pid = self.id_to_child_pid.get(&terminal_id).copied();
+                        let runtime_configuration = self.runtime_configuration.clone();
                         async move {
-                            TerminalBytes::new(terminal_id, reader, senders, debug_to_file)
-                                .listen()
-                                .await
-                                .context("failed to spawn terminals for layout")
-                                .fatal();
+                            TerminalBytes::new(
+                                terminal_id,
+                                reader,
+                                senders,
+                                os_input,
+                                child_pid,
+                                runtime_configuration,
+                                debug_to_file,
+                            )
+                            .listen()
+                            .await
+                            .context("failed to spawn terminals for layout")
+                            .fatal();
                         }
                     });
                     self.task_handles.insert(terminal_id, terminal_bytes);
@@ -1485,12 +1545,23 @@ impl Pty {
                     let terminal_bytes = async_runtime().spawn({
                         let senders = self.bus.senders.clone();
                         let debug_to_file = self.debug_to_file;
+                        let os_input = self.bus.os_input.clone();
+                        let child_pid = self.id_to_child_pid.get(&terminal_id).copied();
+                        let runtime_configuration = self.runtime_configuration.clone();
                         async move {
-                            TerminalBytes::new(terminal_id, reader, senders, debug_to_file)
-                                .listen()
-                                .await
-                                .context("failed to spawn terminals for layout")
-                                .fatal();
+                            TerminalBytes::new(
+                                terminal_id,
+                                reader,
+                                senders,
+                                os_input,
+                                child_pid,
+                                runtime_configuration,
+                                debug_to_file,
+                            )
+                            .listen()
+                            .await
+                            .context("failed to spawn terminals for layout")
+                            .fatal();
                         }
                     });
                     self.task_handles.insert(terminal_id, terminal_bytes);
@@ -1866,12 +1937,22 @@ impl Pty {
                         |pane_id| format!("failed to run async task for pane {pane_id:?}");
                     let senders = self.bus.senders.clone();
                     let debug_to_file = self.debug_to_file;
+                    let os_input = self.bus.os_input.clone();
+                    let runtime_configuration = self.runtime_configuration.clone();
                     async move {
-                        TerminalBytes::new(id, reader, senders, debug_to_file)
-                            .listen()
-                            .await
-                            .with_context(|| err_context(pane_id))
-                            .fatal();
+                        TerminalBytes::new(
+                            id,
+                            reader,
+                            senders,
+                            os_input,
+                            child_pid,
+                            runtime_configuration,
+                            debug_to_file,
+                        )
+                        .listen()
+                        .await
+                        .with_context(|| err_context(pane_id))
+                        .fatal();
                     }
                 });
 
@@ -1914,11 +1995,17 @@ impl Pty {
             .as_ref()
             .map(|os_input| os_input.get_cwds(pids))
             .unwrap_or_default();
+        let post_command_discovery_hook = self
+            .runtime_configuration
+            .read()
+            .unwrap()
+            .post_command_discovery_hook
+            .clone();
         let ppids_to_cmds = self
             .bus
             .os_input
             .as_ref()
-            .map(|os_input| os_input.get_all_cmds_by_ppid(&self.post_command_discovery_hook))
+            .map(|os_input| os_input.get_all_cmds_by_ppid(&post_command_discovery_hook))
             .unwrap_or_default();
 
         for terminal_id in terminal_ids {
@@ -2065,9 +2152,13 @@ impl Pty {
         &mut self,
         default_editor: Option<PathBuf>,
         post_command_discovery_hook: Option<String>,
+        pane_synchronized_output_ignore_commands: Option<Vec<String>>,
     ) {
         self.default_editor = default_editor;
-        self.post_command_discovery_hook = post_command_discovery_hook;
+        self.runtime_configuration.write().unwrap().reconfigure(
+            post_command_discovery_hook,
+            pane_synchronized_output_ignore_commands,
+        );
     }
 
     pub fn send_sigint_to_pane(&self, pane_id: PaneId) {
@@ -2137,21 +2228,20 @@ impl Pty {
         match pane_id {
             PaneId::Terminal(terminal_id) => {
                 if let Some(&child_pid) = self.id_to_child_pid.get(&terminal_id) {
-                    // Query OS for current running command
                     if let Some(os_input) = self.bus.os_input.as_ref() {
-                        // First, try to get child process command (e.g., nvim running in bash)
-                        let ppids_to_cmds =
-                            os_input.get_all_cmds_by_ppid(&self.post_command_discovery_hook);
-                        let cmd_ps = ppids_to_cmds.get(&format!("{}", child_pid));
+                        let post_command_discovery_hook = self
+                            .runtime_configuration
+                            .read()
+                            .unwrap()
+                            .post_command_discovery_hook
+                            .clone();
 
-                        // If no child process, fall back to parent process (e.g., the shell itself)
-                        let (_cwds, cmds) = os_input.get_cwds(vec![child_pid]);
-                        let cmd_sysinfo = cmds.get(&child_pid);
-
-                        if let Some(command_args) = cmd_ps {
-                            GetPaneRunningCommandResponse::Ok(command_args.clone())
-                        } else if let Some(command_args) = cmd_sysinfo {
-                            GetPaneRunningCommandResponse::Ok(command_args.clone())
+                        if let Some(command_args) = current_terminal_command(
+                            os_input.as_ref(),
+                            child_pid,
+                            &post_command_discovery_hook,
+                        ) {
+                            GetPaneRunningCommandResponse::Ok(command_args)
                         } else {
                             GetPaneRunningCommandResponse::Err(format!(
                                 "Could not retrieve running command for terminal pane {}",

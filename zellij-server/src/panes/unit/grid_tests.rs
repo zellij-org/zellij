@@ -5365,3 +5365,57 @@ fn layer_ordering() {
     assert!(HighlightLayer::Hint < HighlightLayer::Tool);
     assert!(HighlightLayer::Tool < HighlightLayer::ActionFeedback);
 }
+
+fn create_test_grid() -> Grid {
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    Grid::new(
+        10,
+        10,
+        Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(Some(SizeInPixels {
+            width: 10,
+            height: 20,
+        }))),
+        sixel_image_store,
+        Style::default(),
+        false,
+        true,
+        true,
+        true,
+        false,
+    )
+}
+
+#[test]
+fn pane_sync_ignore_reports_no_support_and_keeps_renders_unlocked() {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = create_test_grid();
+    grid.set_ignore_pane_synchronized_output(true);
+
+    for byte in "\u{1b}[?2026h\u{1b}[?2026$p".bytes() {
+        vte_parser.advance(&mut grid, byte);
+    }
+
+    assert!(!grid.lock_renders);
+    assert_eq!(
+        grid.pending_messages_to_pty,
+        vec!["\u{1b}[?2026;0$y".as_bytes().to_vec()]
+    );
+}
+
+#[test]
+fn enabling_pane_sync_ignore_unlocks_an_in_progress_frame() {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = create_test_grid();
+
+    for byte in "\u{1b}[?2026h".bytes() {
+        vte_parser.advance(&mut grid, byte);
+    }
+
+    assert!(grid.lock_renders);
+    grid.set_ignore_pane_synchronized_output(true);
+    assert!(!grid.lock_renders);
+}

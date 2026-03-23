@@ -504,6 +504,7 @@ pub struct Grid {
     pub changed_colors: Option<[Option<AnsiCode>; 256]>,
     pub should_render: bool,
     pub lock_renders: bool,
+    pub ignore_pane_synchronized_output: bool,
     pub cursor_key_mode: bool, // DECCKM - when set, cursor keys should send ANSI direction codes (eg. "OD") instead of the arrow keys (eg. "[D")
     pub bracketed_paste_mode: bool, // when set, paste instructions to the terminal should be escaped with a special sequence
     pub erasure_mode: bool,         // ERM
@@ -817,6 +818,7 @@ impl Grid {
             styled_underlines,
             osc8_hyperlinks,
             lock_renders: false,
+            ignore_pane_synchronized_output: false,
             supports_kitty_keyboard_protocol: false,
             explicitly_disable_kitty_keyboard_protocol,
             click: Click::default(),
@@ -3074,6 +3076,12 @@ impl Grid {
     pub fn unlock_renders(&mut self) {
         self.lock_renders = false;
     }
+    pub fn set_ignore_pane_synchronized_output(&mut self, should_ignore: bool) {
+        self.ignore_pane_synchronized_output = should_ignore;
+        if should_ignore {
+            self.unlock_renders();
+        }
+    }
     pub fn update_theme(&mut self, theme: Styling) {
         self.style.colors = theme.clone();
     }
@@ -3583,7 +3591,9 @@ impl Perform for Grid {
                 for param in params_iter.map(|param| param[0]) {
                     match param {
                         2026 => {
-                            self.unlock_renders();
+                            if !self.ignore_pane_synchronized_output {
+                                self.unlock_renders();
+                            }
                         },
                         2004 => {
                             self.bracketed_paste_mode = false;
@@ -3682,7 +3692,9 @@ impl Perform for Grid {
                             self.mark_for_rerender();
                         },
                         2026 => {
-                            self.lock_renders();
+                            if !self.ignore_pane_synchronized_output {
+                                self.lock_renders();
+                            }
                         },
                         2004 => {
                             self.bracketed_paste_mode = true;
@@ -3783,7 +3795,11 @@ impl Perform for Grid {
                 for param in params_iter.map(|param| param[0]) {
                     match param {
                         2026 => {
-                            let response = "\u{1b}[?2026;2$y";
+                            let response = if self.ignore_pane_synchronized_output {
+                                "\u{1b}[?2026;0$y"
+                            } else {
+                                "\u{1b}[?2026;2$y"
+                            };
                             self.pending_messages_to_pty
                                 .push(response.as_bytes().to_vec());
                         },

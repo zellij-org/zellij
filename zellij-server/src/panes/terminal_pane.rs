@@ -823,6 +823,9 @@ impl Pane for TerminalPane {
     fn set_title(&mut self, title: String) {
         self.pane_title = title;
     }
+    fn set_ignore_pane_synchronized_output(&mut self, should_ignore: bool) {
+        self.grid.set_ignore_pane_synchronized_output(should_ignore);
+    }
     fn current_title(&self) -> String {
         if self.pane_name.is_empty() {
             self.grid

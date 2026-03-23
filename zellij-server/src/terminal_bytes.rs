@@ -1,5 +1,16 @@
-use crate::{os_input_output::AsyncReader, screen::ScreenInstruction, thread_bus::ThreadSenders};
-use std::time::{Duration, Instant};
+use crate::{
+    os_input_output::{
+        command_matches_path_or_basename, current_terminal_command, AsyncReader, ServerOsApi,
+    },
+    panes::PaneId,
+    pty::PtyRuntimeConfiguration,
+    screen::ScreenInstruction,
+    thread_bus::ThreadSenders,
+};
+use std::{
+    sync::{Arc, RwLock},
+    time::{Duration, Instant},
+};
 use tokio::task;
 use zellij_utils::{
     errors::{get_current_ctx, prelude::*, ContextType},
@@ -10,6 +21,10 @@ pub(crate) struct TerminalBytes {
     terminal_id: u32,
     senders: ThreadSenders,
     async_reader: Box<dyn AsyncReader>,
+    os_input: Option<Box<dyn ServerOsApi>>,
+    child_pid: Option<u32>,
+    runtime_configuration: Arc<RwLock<PtyRuntimeConfiguration>>,
+    ignore_pane_synchronized_output: bool,
     debug: bool,
 }
 
@@ -18,13 +33,20 @@ impl TerminalBytes {
         terminal_id: u32,
         async_reader: Box<dyn AsyncReader>,
         senders: ThreadSenders,
+        os_input: Option<Box<dyn ServerOsApi>>,
+        child_pid: Option<u32>,
+        runtime_configuration: Arc<RwLock<PtyRuntimeConfiguration>>,
         debug: bool,
     ) -> Self {
         TerminalBytes {
             terminal_id,
             senders,
-            debug,
             async_reader,
+            os_input,
+            child_pid,
+            runtime_configuration,
+            ignore_pane_synchronized_output: false,
+            debug,
         }
     }
     pub async fn listen(&mut self) -> Result<()> {
@@ -56,6 +78,22 @@ impl TerminalBytes {
                     if self.debug {
                         let _ = debug_to_file(bytes, self.terminal_id as i32);
                     }
+                    let should_ignore_pane_synchronized_output =
+                        self.pane_synchronized_output_should_be_ignored();
+                    if should_ignore_pane_synchronized_output
+                        != self.ignore_pane_synchronized_output
+                    {
+                        self.async_send_to_screen(
+                            ScreenInstruction::SetPaneSynchronizedOutputIgnore(
+                                PaneId::Terminal(self.terminal_id),
+                                should_ignore_pane_synchronized_output,
+                            ),
+                        )
+                        .await
+                        .with_context(err_context)?;
+                        self.ignore_pane_synchronized_output =
+                            should_ignore_pane_synchronized_output;
+                    }
                     self.async_send_to_screen(ScreenInstruction::PtyBytes(
                         self.terminal_id,
                         bytes.to_vec(),
@@ -84,6 +122,34 @@ impl TerminalBytes {
 
         Ok(())
     }
+
+    fn pane_synchronized_output_should_be_ignored(&self) -> bool {
+        let Some(child_pid) = self.child_pid else {
+            return false;
+        };
+        let Some(os_input) = self.os_input.as_ref() else {
+            return false;
+        };
+        let runtime_configuration = self.runtime_configuration.read().unwrap();
+        if runtime_configuration
+            .pane_synchronized_output_ignore_commands
+            .is_empty()
+        {
+            return false;
+        }
+        let Some(current_command) = current_terminal_command(
+            os_input.as_ref(),
+            child_pid,
+            &runtime_configuration.post_command_discovery_hook,
+        ) else {
+            return false;
+        };
+        command_matches_path_or_basename(
+            &current_command,
+            &runtime_configuration.pane_synchronized_output_ignore_commands,
+        )
+    }
+
     async fn async_send_to_screen(
         &self,
         screen_instruction: ScreenInstruction,

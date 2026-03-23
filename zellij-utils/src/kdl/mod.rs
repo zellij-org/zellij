@@ -2781,6 +2781,10 @@ impl Options {
         let post_command_discovery_hook =
             kdl_property_first_arg_as_string_or_error!(kdl_options, "post_command_discovery_hook")
                 .map(|(hook, _entry)| hook.to_string());
+        let pane_synchronized_output_ignore_commands = kdl_options
+            .get("pane_synchronized_output_ignore_commands")
+            .map(|commands| kdl_arguments_that_are_strings(commands.entries().iter()))
+            .transpose()?;
         let client_async_worker_tasks =
             match kdl_property_first_arg_as_i64_or_error!(kdl_options, "client_async_worker_tasks")
             {
@@ -2850,6 +2854,7 @@ impl Options {
             web_server_key,
             enforce_https_for_localhost,
             post_command_discovery_hook,
+            pane_synchronized_output_ignore_commands,
             client_async_worker_tasks,
         })
     }
@@ -4140,6 +4145,38 @@ impl Options {
             None
         }
     }
+    fn pane_synchronized_output_ignore_commands_to_kdl(
+        &self,
+        add_comments: bool,
+    ) -> Option<KdlNode> {
+        let comment_text = r#"
+// Ignore pane-emitted synchronized output for panes whose current foreground command matches one
+// of the following values. Matching checks both the full command path and the executable name.
+// Useful for streaming apps that should repaint immediately even inside a multiplexer.
+// Examples:
+// pane_synchronized_output_ignore_commands "pi" "codex"
+// pane_synchronized_output_ignore_commands "/opt/homebrew/bin/codex""#;
+        let create_node = |node_values: &[String]| -> KdlNode {
+            let mut node = KdlNode::new("pane_synchronized_output_ignore_commands");
+            for node_value in node_values {
+                node.push(node_value.to_owned());
+            }
+            node
+        };
+        if let Some(commands) = &self.pane_synchronized_output_ignore_commands {
+            let mut node = create_node(commands);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(&["pi".to_owned(), "codex".to_owned()]);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
     fn client_async_worker_tasks_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
         let comment_text = r#"
 // Number of async worker tasks to spawn per active client.
@@ -4307,6 +4344,11 @@ impl Options {
             self.post_command_discovery_hook_to_kdl(add_comments)
         {
             nodes.push(post_command_discovery_hook);
+        }
+        if let Some(pane_synchronized_output_ignore_commands) =
+            self.pane_synchronized_output_ignore_commands_to_kdl(add_comments)
+        {
+            nodes.push(pane_synchronized_output_ignore_commands);
         }
         if let Some(client_async_worker_tasks) = self.client_async_worker_tasks_to_kdl(add_comments)
         {
@@ -7027,6 +7069,7 @@ fn config_options_to_string() {
         support_kitty_keyboard_protocol false
         web_server true
         web_sharing "disabled"
+        pane_synchronized_output_ignore_commands "pi" "codex"
     "##;
     let document: KdlDocument = fake_config.parse().unwrap();
     let deserialized = Options::from_kdl(&document).unwrap();
@@ -7074,6 +7117,7 @@ fn config_options_to_string_with_comments() {
         support_kitty_keyboard_protocol false
         web_server true
         web_sharing "disabled"
+        pane_synchronized_output_ignore_commands "pi" "codex"
     "##;
     let document: KdlDocument = fake_config.parse().unwrap();
     let deserialized = Options::from_kdl(&document).unwrap();

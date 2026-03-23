@@ -147,6 +147,7 @@ pub type SuppressedPanes = HashMap<PaneId, (bool, Box<dyn Pane>)>; // bool => is
 
 enum BufferedTabInstruction {
     SetPaneSelectable(PaneId, bool),
+    SetPaneSynchronizedOutputIgnore(PaneId, bool),
     HandlePtyBytes(u32, VteBytes),
     HoldPane(PaneId, Option<i32>, bool, RunCommand), // Option<i32> is the exit status, bool is is_first_run
 }
@@ -567,6 +568,7 @@ pub trait Pane {
     fn frame_color_override(&self) -> Option<PaletteColor>;
     fn invoked_with(&self) -> &Option<Run>;
     fn set_title(&mut self, title: String);
+    fn set_ignore_pane_synchronized_output(&mut self, _should_ignore: bool) {}
     fn update_loading_indication(&mut self, _loading_indication: LoadingIndication) {} // only relevant for plugins
     fn start_loading_indication(&mut self, _loading_indication: LoadingIndication) {} // only relevant for plugins
     fn progress_animation_offset(&mut self) {} // only relevant for plugins
@@ -1118,6 +1120,9 @@ impl Tab {
             match buffered_instruction {
                 BufferedTabInstruction::SetPaneSelectable(pane_id, selectable) => {
                     self.set_pane_selectable(pane_id, selectable);
+                },
+                BufferedTabInstruction::SetPaneSynchronizedOutputIgnore(pane_id, should_ignore) => {
+                    self.set_pane_synchronized_output_ignore(pane_id, should_ignore);
                 },
                 BufferedTabInstruction::HandlePtyBytes(terminal_id, bytes) => {
                     self.handle_pty_bytes(terminal_id, bytes)?;
@@ -3798,6 +3803,25 @@ impl Tab {
             &mut self.tiled_panes,
             self.draw_pane_frames,
         );
+    }
+    pub fn set_pane_synchronized_output_ignore(&mut self, id: PaneId, should_ignore: bool) {
+        if self.is_pending {
+            self.pending_instructions.push(
+                BufferedTabInstruction::SetPaneSynchronizedOutputIgnore(id, should_ignore),
+            );
+            return;
+        }
+        if let Some(pane) = self.tiled_panes.get_pane_mut(id) {
+            pane.set_ignore_pane_synchronized_output(should_ignore);
+        } else if let Some(pane) = self.floating_panes.get_pane_mut(id) {
+            pane.set_ignore_pane_synchronized_output(should_ignore);
+        } else if let Some((_is_scrollback_editor, pane)) = self
+            .suppressed_panes
+            .values_mut()
+            .find(|suppressed_pane| suppressed_pane.1.pid() == id)
+        {
+            pane.set_ignore_pane_synchronized_output(should_ignore);
+        }
     }
     pub fn set_mouse_selection_support(&mut self, pane_id: PaneId, selection_support: bool) {
         MouseHandler::set_mouse_selection_support(self, pane_id, selection_support);

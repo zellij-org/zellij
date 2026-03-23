@@ -31,3 +31,4 @@ disable_session_metadata true
 support_kitty_keyboard_protocol false
 web_server true
 web_sharing "disabled"
+pane_synchronized_output_ignore_commands "pi" "codex"

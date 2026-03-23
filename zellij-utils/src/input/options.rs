@@ -261,6 +261,12 @@ pub struct Options {
     #[clap(long, value_parser)]
     pub post_command_discovery_hook: Option<String>,
 
+    /// Ignore pane-emitted synchronized output for panes whose current foreground command matches
+    /// one of these values. Matching checks both the full command path and the executable name.
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub pane_synchronized_output_ignore_commands: Option<Vec<String>>,
+
     /// Number of async worker tasks to spawn per active client.
     ///
     /// Allocating few tasks may result in resource contention and lags. Small values (around 4)
@@ -369,6 +375,9 @@ impl Options {
         let post_command_discovery_hook = other
             .post_command_discovery_hook
             .or(self.post_command_discovery_hook.clone());
+        let pane_synchronized_output_ignore_commands = other
+            .pane_synchronized_output_ignore_commands
+            .or_else(|| self.pane_synchronized_output_ignore_commands.clone());
         let client_async_worker_tasks = other
             .client_async_worker_tasks
             .or(self.client_async_worker_tasks);
@@ -418,6 +427,7 @@ impl Options {
             web_server_key,
             enforce_https_for_localhost,
             post_command_discovery_hook,
+            pane_synchronized_output_ignore_commands,
             client_async_worker_tasks,
         }
     }
@@ -500,6 +510,9 @@ impl Options {
         let post_command_discovery_hook = other
             .post_command_discovery_hook
             .or_else(|| self.post_command_discovery_hook.clone());
+        let pane_synchronized_output_ignore_commands = other
+            .pane_synchronized_output_ignore_commands
+            .or_else(|| self.pane_synchronized_output_ignore_commands.clone());
         let client_async_worker_tasks = other
             .client_async_worker_tasks
             .or(self.client_async_worker_tasks);
@@ -549,6 +562,7 @@ impl Options {
             web_server_key,
             enforce_https_for_localhost,
             post_command_discovery_hook,
+            pane_synchronized_output_ignore_commands,
             client_async_worker_tasks,
         }
     }

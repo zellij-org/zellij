@@ -1895,6 +1895,8 @@ pub struct Options {
     pub focus_follows_mouse: ::core::option::Option<bool>,
     #[prost(bool, optional, tag="45")]
     pub mouse_click_through: ::core::option::Option<bool>,
+    #[prost(string, repeated, tag="46")]
+    pub pane_synchronized_output_ignore_commands: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
 }
 /// Pane-targeting action messages
 #[allow(clippy::derive_partial_eq_without_eq)]
