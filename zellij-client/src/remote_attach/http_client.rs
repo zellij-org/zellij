@@ -31,13 +31,19 @@ pub fn create_http_client(
 pub struct HttpClientWithCookies {
     client: HttpClient,
     cookies: Arc<Mutex<HashMap<String, String>>>,
+    custom_headers: Vec<(String, String)>,
 }
 
 impl HttpClientWithCookies {
-    pub fn new(ca_cert: Option<&Path>, insecure: bool) -> Result<Self, isahc::Error> {
+    pub fn new(
+        ca_cert: Option<&Path>,
+        insecure: bool,
+        custom_headers: &[(String, String)],
+    ) -> Result<Self, isahc::Error> {
         Ok(Self {
             client: create_http_client(ca_cert, insecure)?,
             cookies: Arc::new(Mutex::new(HashMap::new())),
+            custom_headers: custom_headers.to_vec(),
         })
     }
 
@@ -46,6 +52,16 @@ impl HttpClientWithCookies {
         request: T,
     ) -> Result<Response<AsyncBody>, isahc::Error> {
         let mut req = request.into();
+
+        // Add custom headers
+        for (name, value) in &self.custom_headers {
+            if let (Ok(header_name), Ok(header_value)) = (
+                name.parse::<isahc::http::header::HeaderName>(),
+                value.parse::<isahc::http::header::HeaderValue>(),
+            ) {
+                req.headers_mut().insert(header_name, header_value);
+            }
+        }
 
         // Add cookies to request
         if let Ok(cookies) = self.cookies.lock() {
@@ -119,4 +135,5 @@ impl HttpClientWithCookies {
             cookies.insert(name, value);
         }
     }
+
 }

@@ -92,6 +92,7 @@ pub enum RemoteClientError {
     ConnectionFailed(String),
     UrlParseError(url::ParseError),
     IoError(std::io::Error),
+    InvalidHeader(String),
     Other(Box<dyn std::error::Error + Send + Sync>),
 }
 
@@ -104,6 +105,7 @@ impl std::fmt::Display for RemoteClientError {
             RemoteClientError::ConnectionFailed(msg) => write!(f, "Connection failed: {}", msg),
             RemoteClientError::UrlParseError(e) => write!(f, "Invalid URL: {}", e),
             RemoteClientError::IoError(e) => write!(f, "IO error: {}", e),
+            RemoteClientError::InvalidHeader(msg) => write!(f, "Invalid header: {}", msg),
             RemoteClientError::Other(e) => write!(f, "{}", e),
         }
     }
@@ -572,6 +574,22 @@ pub async fn run_remote_client_terminal_loop(
 }
 
 #[cfg(feature = "web_server_capability")]
+fn parse_custom_headers(headers: &[String]) -> Result<Vec<(String, String)>, RemoteClientError> {
+    headers
+        .iter()
+        .map(|h| {
+            let (name, value) = h.split_once(':').ok_or_else(|| {
+                RemoteClientError::InvalidHeader(format!(
+                    "expected \"Name: Value\" format, got {:?}",
+                    h
+                ))
+            })?;
+            Ok((name.trim().to_string(), value.trim().to_string()))
+        })
+        .collect()
+}
+
+#[cfg(feature = "web_server_capability")]
 pub fn start_remote_client(
     mut os_input: Box<dyn ClientOsApi>,
     remote_session_url: &str,
@@ -580,11 +598,14 @@ pub fn start_remote_client(
     forget: bool,
     ca_cert: Option<std::path::PathBuf>,
     insecure: bool,
+    headers: Vec<String>,
     async_worker_tasks: Option<usize>,
 ) -> Result<Option<ConnectToSession>, RemoteClientError> {
     info!("Starting Zellij client!");
 
     let runtime = crate::async_runtime(async_worker_tasks);
+
+    let custom_headers = parse_custom_headers(&headers)?;
 
     let connections = remote_attach::attach_to_remote_session(
         runtime.clone(),
@@ -595,6 +616,7 @@ pub fn start_remote_client(
         forget,
         ca_cert.as_deref(),
         insecure,
+        &custom_headers,
     )?;
 
     let reconnect_to_session = None;
