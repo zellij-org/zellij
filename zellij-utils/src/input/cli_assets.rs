@@ -72,7 +72,13 @@ impl CliAssets {
             .as_ref()
             .and_then(|o| o.theme_dir.clone())
             .or_else(|| {
-                get_theme_dir(self.config_dir.clone().or_else(find_default_config_dir))
+                config_with_merged_layout_opts
+                    .options
+                    .theme_dir
+                    .clone()
+                    .or_else(|| {
+                        get_theme_dir(self.config_dir.clone().or_else(find_default_config_dir))
+                    })
                     .filter(|dir| dir.exists())
             });
         if let Some(themes) = user_theme_dir.and_then(|u| Themes::from_dir(u).ok()) {
