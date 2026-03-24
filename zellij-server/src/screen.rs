@@ -3479,7 +3479,7 @@ impl Screen {
                     pane_id,
                     None,
                     true,
-                    Some(client_id)
+                    Some(client_id),
                 )?;
             // TODO: also should_be_in_place
             } else {
@@ -3759,7 +3759,13 @@ impl Screen {
 
             if pane_to_break_is_floating {
                 new_active_tab.show_floating_panes();
-                new_active_tab.add_floating_pane(active_pane, active_pane_id, None, true, Some(client_id))?;
+                new_active_tab.add_floating_pane(
+                    active_pane,
+                    active_pane_id,
+                    None,
+                    true,
+                    Some(client_id),
+                )?;
             } else {
                 new_active_tab.hide_floating_panes();
                 new_active_tab.add_tiled_pane(
@@ -3846,7 +3852,7 @@ impl Screen {
                         pane_id,
                         Some(floating_pane_coordinates),
                         false,
-                        Some(client_id)
+                        Some(client_id),
                     )?;
                 } else {
                     // here we pass None instead of the ClientId, because we do not want this pane to be

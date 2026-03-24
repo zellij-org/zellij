@@ -41,11 +41,7 @@ impl ActivePanes {
         self.active_panes.insert(client_id, pane_id);
         self.focus_pane(pane_id, panes);
     }
-    pub fn set_last_pane(
-        &mut self,
-        client_id: ClientId,
-        pane_id: PaneId,
-    ) {
+    pub fn set_last_pane(&mut self, client_id: ClientId, pane_id: PaneId) {
         self.last_panes.insert(client_id, pane_id);
     }
     pub fn clear(&mut self, panes: &mut BTreeMap<PaneId, Box<dyn Pane>>) {

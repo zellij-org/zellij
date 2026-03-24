@@ -2437,7 +2437,8 @@ fn move_floating_pane_focus_to_last_pane() {
     let new_pane_id_4 = PaneId::Terminal(5);
     let new_pane_id_5 = PaneId::Terminal(6);
     let mut output = Output::default();
-    tab.toggle_floating_panes(Some(client_id), None, None).unwrap();
+    tab.toggle_floating_panes(Some(client_id), None, None)
+        .unwrap();
     tab.new_pane(
         new_pane_id_1,
         None,
@@ -2523,7 +2524,6 @@ fn move_floating_pane_focus_to_last_pane() {
 
     assert_snapshot!(snapshot);
 }
-
 
 #[test]
 fn move_pane_focus_with_mouse_to_non_floating_pane() {
