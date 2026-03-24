@@ -17,7 +17,7 @@ use signal_hook;
 use signal_hook::consts::*;
 
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::BTreeMap,
     fs::File,
     io,
     os::fd::FromRawFd,
@@ -26,7 +26,10 @@ use std::{
         process::CommandExt,
     },
     process::{Child, Command},
-    sync::{Arc, Mutex},
+    sync::{
+        atomic::{AtomicU32, Ordering},
+        Arc, Mutex,
+    },
     thread,
     time::Duration,
 };
@@ -276,6 +279,7 @@ fn handle_terminal(
 pub(crate) struct UnixPtyBackend {
     orig_termios: Arc<Mutex<Option<termios::Termios>>>,
     terminal_id_to_raw_fd: Arc<Mutex<BTreeMap<u32, Option<RawFd>>>>,
+    next_terminal_id_counter: Arc<AtomicU32>,
 }
 
 /// Try to write as many bytes from `buf` as possible to `fd` without blocking.
@@ -307,6 +311,7 @@ impl UnixPtyBackend {
         Ok(Self {
             orig_termios: Arc::new(Mutex::new(current_termios)),
             terminal_id_to_raw_fd: Arc::new(Mutex::new(BTreeMap::new())),
+            next_terminal_id_counter: Arc::new(AtomicU32::new(0)),
         })
     }
 
@@ -439,15 +444,10 @@ impl UnixPtyBackend {
     }
 
     pub fn next_terminal_id(&self) -> Option<u32> {
-        self.terminal_id_to_raw_fd
-            .lock()
-            .unwrap()
-            .keys()
-            .copied()
-            .collect::<BTreeSet<u32>>()
-            .last()
-            .map(|l| l + 1)
-            .or(Some(0))
+        Some(
+            self.next_terminal_id_counter
+                .fetch_add(1, Ordering::Relaxed),
+        )
     }
 }
 

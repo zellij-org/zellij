@@ -1,3 +1,5 @@
+// false positive: thiserror's derive macro triggers unused_assignments on struct-style enum variant fields
+#![allow(unused_assignments)]
 //! Error context system based on a thread-local representation of the call stack, itself based on
 //! the instructions that are sent between threads.
 //!
@@ -11,6 +13,7 @@
 
 use anyhow::Context;
 use colored::*;
+#[allow(unused_imports)] // used in set_panic_handler; may appear unused under wasm target
 use log::error;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Error, Formatter};

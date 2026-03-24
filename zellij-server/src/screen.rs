@@ -1101,6 +1101,7 @@ impl CopyOptions {
 #[derive(Debug, Clone)]
 pub struct RenderBlocker {
     blocking_plugins: HashMap<u32, Instant>,
+    #[cfg_attr(test, allow(dead_code))]
     timeout_ms: u64,
 }
 
@@ -1232,7 +1233,9 @@ pub(crate) struct Screen {
     styled_underlines: bool,
     osc8_hyperlinks: bool,
     arrow_fonts: bool,
+    #[cfg_attr(test, allow(dead_code))]
     layout_dir: Option<PathBuf>,
+    #[cfg_attr(test, allow(dead_code))]
     default_layout_name: Option<String>,
     explicitly_disable_kitty_keyboard_protocol: bool,
     default_editor: Option<PathBuf>,
@@ -1377,13 +1380,6 @@ impl Screen {
     /// Gets a mutable tab by its stable ID (BTreeMap key).
     fn get_tab_by_id_mut(&mut self, id: usize) -> Option<&mut Tab> {
         self.tabs.get_mut(&id)
-    }
-
-    /// Gets a tab by its display position (0-based).
-    ///
-    /// Use this when you have a position from user input or visual operations.
-    fn get_tab_by_position(&self, position: usize) -> Option<&Tab> {
-        self.tabs.values().find(|t| t.position == position)
     }
 
     /// Gets a mutable tab by its display position (0-based).
@@ -5937,6 +5933,16 @@ pub(crate) fn screen_thread_main(
                         }
                     },
                 }
+
+                // Clean up PTY-side resources (async reader task, child PID mapping,
+                // terminal_id_to_raw_fd entry). This is needed because the natural
+                // child exit path (quit_cb) only sends ScreenInstruction::ClosePane
+                // and never sends PtyInstruction::ClosePane. The handler in Pty is
+                // idempotent, so this is safe even if ClosePane was already sent.
+                let _ = screen
+                    .bus
+                    .senders
+                    .send_to_pty(PtyInstruction::ClosePane(id, None));
 
                 screen.log_and_report_session_state()?;
                 screen.retain_only_existing_panes_in_pane_groups();

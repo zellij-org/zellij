@@ -485,15 +485,7 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
         },
-        Action::EditScrollbackRaw => {
-            senders
-                .send_to_screen(ScreenInstruction::EditScrollback(
-                    client_id,
-                    true,
-                    Some(NotificationEnd::new(completion_tx)),
-                ))
-                .with_context(err_context)?;
-        },
+
         Action::ScrollUp => {
             senders
                 .send_to_screen(ScreenInstruction::ScrollUp(
@@ -2552,7 +2544,7 @@ pub(crate) fn route_thread_main(
                             ref scrollback,
                             ansi,
                         } => {
-                            send_to_screen_or_retry_queue!(
+                            let _ = send_to_screen_or_retry_queue!(
                                 senders,
                                 ScreenInstruction::SubscribeToPaneRenders {
                                     client_id,

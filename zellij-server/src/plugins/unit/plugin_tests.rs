@@ -12329,7 +12329,6 @@ pub fn get_session_environment_variables_plugin_command() {
 // =====================================================================
 
 use crate::panes::PaneId;
-use zellij_utils::data::{HighlightStyle, RegexHighlight};
 
 #[test]
 #[ignore]

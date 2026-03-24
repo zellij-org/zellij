@@ -15,7 +15,7 @@ use zellij_utils::input::command::{RunCommand, TerminalAction};
 use zellij_utils::input::config::Config;
 use zellij_utils::input::layout::{
     FloatingPaneLayout, Layout, PercentOrFixed, PluginAlias, PluginUserConfiguration, Run,
-    RunPlugin, RunPluginLocation, RunPluginOrAlias, SplitDirection, SplitSize, TiledPaneLayout,
+    RunPlugin, RunPluginLocation, RunPluginOrAlias, SplitDirection, TiledPaneLayout,
 };
 use zellij_utils::input::mouse::MouseEvent;
 use zellij_utils::input::options::Options;
@@ -49,7 +49,7 @@ use crate::panes::grid::Grid;
 use crate::panes::link_handler::LinkHandler;
 use crate::panes::sixel::SixelImageStore;
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::rc::Rc;
 use zellij_utils::data::{PaneContents, PaneRenderReport};
 use zellij_utils::ipc::ExitReason;
@@ -334,6 +334,7 @@ struct MockScreen {
     pub main_client_id: u16,
     pub pty_receiver: Option<Receiver<(PtyInstruction, ErrorContext)>>,
     pub pty_writer_receiver: Option<Receiver<(PtyWriteInstruction, ErrorContext)>>,
+    #[allow(dead_code)]
     pub background_jobs_receiver: Option<Receiver<(BackgroundJob, ErrorContext)>>,
     pub screen_receiver: Option<Receiver<(ScreenInstruction, ErrorContext)>>,
     pub server_receiver: Option<Receiver<(ServerInstruction, ErrorContext)>>,
@@ -346,6 +347,7 @@ struct MockScreen {
     pub to_background_jobs: SenderWithContext<BackgroundJob>,
     pub os_input: FakeInputOutput,
     pub client_attributes: ClientAttributes,
+    #[allow(dead_code)]
     pub config_options: Options,
     pub session_metadata: SessionMetaData,
     pub config: Config,
@@ -3037,6 +3039,9 @@ pub fn send_cli_new_pane_action_with_default_parameters() {
         pinned: None,
         stacked: false,
         blocking: false,
+        block_until_exit_success: false,
+        block_until_exit_failure: false,
+        block_until_exit: false,
         unblock_condition: None,
         near_current_pane: false,
         borderless: Some(false),
@@ -3087,6 +3092,9 @@ pub fn send_cli_new_pane_action_with_split_direction() {
         pinned: None,
         stacked: false,
         blocking: false,
+        block_until_exit_success: false,
+        block_until_exit_failure: false,
+        block_until_exit: false,
         unblock_condition: None,
         near_current_pane: false,
         borderless: Some(false),
@@ -3137,6 +3145,9 @@ pub fn send_cli_new_pane_action_with_command_and_cwd() {
         pinned: None,
         stacked: false,
         blocking: false,
+        block_until_exit_success: false,
+        block_until_exit_failure: false,
+        block_until_exit: false,
         unblock_condition: None,
         near_current_pane: false,
         borderless: Some(false),
@@ -3198,6 +3209,9 @@ pub fn send_cli_new_pane_action_with_floating_pane_and_coordinates() {
         pinned: None,
         stacked: false,
         blocking: false,
+        block_until_exit_success: false,
+        block_until_exit_failure: false,
+        block_until_exit: false,
         unblock_condition: None,
         near_current_pane: false,
         borderless: Some(false),
@@ -3410,7 +3424,7 @@ pub fn send_cli_toggle_pane_embed_or_float() {
         received_server_instructions.lock().unwrap().iter(),
         size,
     );
-    let snapshot_count = snapshots.len();
+    let _snapshot_count = snapshots.len();
     let last_three_snapshots = snapshots.clone().into_iter().rev().take(3).rev(); // we do this to
                                                                                   // prevent extra
                                                                                   // renders from
@@ -5028,6 +5042,9 @@ pub fn send_cli_new_pane_in_place_with_close_replaced_pane() {
         pinned: None,
         stacked: false,
         blocking: false,
+        block_until_exit_success: false,
+        block_until_exit_failure: false,
+        block_until_exit: false,
         unblock_condition: None,
         near_current_pane: false,
         borderless: None,
@@ -5721,7 +5738,7 @@ fn close_pane_notifies_subscribers_via_instruction() {
     let size = Size { cols: 80, rows: 20 };
     let mut mock_screen = MockScreen::new(size);
     mock_screen.drop_all_pty_messages();
-    let session_metadata = mock_screen.clone_session_metadata();
+    let _session_metadata = mock_screen.clone_session_metadata();
 
     let mut initial_layout = TiledPaneLayout::default();
     initial_layout.children_split_direction = SplitDirection::Vertical;

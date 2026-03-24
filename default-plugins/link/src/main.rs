@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use zellij_tile::prelude::*;
 
-const FILE_PATH_REGEX: &str = r#"(?:(?:\./|\.\./|/)[A-Za-z0-9_./\-+@%,#=~!\$\{\}\[\]]+|~/[A-Za-z0-9_./\-+@%,#=~!\$\{\}\[\]]+|\$\{?[A-Za-z_][A-Za-z0-9_]*\}?/[A-Za-z0-9_./\-+@%,#=~!\$\{\}\[\]]+|[a-zA-Z0-9_][a-zA-Z0-9_.\-]*/[A-Za-z0-9_./\-+@%,#=~!\$\{\}\[\]]+)(?::\d+(?::\d+)?)?"#;
+const FILE_PATH_REGEX: &str = r#"(?:^|\s)((?:(?:\./|\.\./|/)[A-Za-z0-9_./\-+@%,#=~!\$\{\}\[\]]+|~/[A-Za-z0-9_./\-+@%,#=~!\$\{\}\[\]]+|\$\{?[A-Za-z_][A-Za-z0-9_]*\}?/[A-Za-z0-9_./\-+@%,#=~!\$\{\}\[\]]+)(?::\d+(?::\d+)?)?)(?::|\s|$)"#;
 
 const CWD_CONTEXT_KEY: &str = "cwd";
 
@@ -187,7 +187,11 @@ impl State {
         // Directory-entry patterns for the pane's current CWD
         if let Some(entries) = self.pane_dir_entries.get(&pane_id) {
             for entry_name in entries {
-                let pattern = regex_escape(entry_name);
+                let path_chars = r#"[A-Za-z0-9_./\-+@%,#=~!\$\{\}\[\]]"#;
+                let pattern = format!(
+                    "(?:^|\\s)({}(?:/{path_chars}+)?(?::\\d+(?::\\d+)?)?)(?::|\\s|$)",
+                    regex_escape(entry_name),
+                );
                 highlights.push(RegexHighlight {
                     pattern,
                     style: HighlightStyle::None,
@@ -222,6 +226,10 @@ impl State {
 
 /// Scan a directory for first-level file and folder names.
 /// Returns an empty vec on any error.
+/// Maximum number of directory entries to scan. Directories with more entries
+/// than this are skipped entirely to avoid excessive regex pattern count.
+const MAX_DIR_ENTRIES: usize = 500;
+
 fn scan_directory(path: &Path) -> Vec<String> {
     let mut entries = Vec::new();
     let read_dir = match std::fs::read_dir(path) {
@@ -232,6 +240,9 @@ fn scan_directory(path: &Path) -> Vec<String> {
         if let Ok(entry) = entry {
             if let Some(name) = entry.file_name().to_str() {
                 entries.push(name.to_owned());
+                if entries.len() > MAX_DIR_ENTRIES {
+                    return Vec::new();
+                }
             }
         }
     }
