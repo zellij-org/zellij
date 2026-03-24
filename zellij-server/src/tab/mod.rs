@@ -1376,7 +1376,13 @@ impl Tab {
             }
             if let Some(embedded_pane_to_float) = self.extract_pane(focused_pane_id, true) {
                 self.show_floating_panes();
-                self.add_floating_pane(embedded_pane_to_float, focused_pane_id, None, true, Some(client_id))?;
+                self.add_floating_pane(
+                    embedded_pane_to_float,
+                    focused_pane_id,
+                    None,
+                    true,
+                    Some(client_id),
+                )?;
             }
         }
         Ok(())
@@ -1887,7 +1893,13 @@ impl Tab {
                 .insert(pid, (is_scrollback_editor, new_pane));
             Ok(())
         } else {
-            self.add_floating_pane(new_pane, pid, floating_pane_coordinates, should_focus_pane, None)
+            self.add_floating_pane(
+                new_pane,
+                pid,
+                floating_pane_coordinates,
+                should_focus_pane,
+                None,
+            )
         }
     }
     pub fn new_in_place_pane(
@@ -3674,8 +3686,7 @@ impl Tab {
         }
         if self.floating_panes.panes_are_visible() {
             self.floating_panes.focus_last_pane(client_id);
-        }
-        else if self.tiled_panes.fullscreen_is_active() {
+        } else if self.tiled_panes.fullscreen_is_active() {
             self.switch_last_pane_fullscreen(client_id);
             return;
         }
