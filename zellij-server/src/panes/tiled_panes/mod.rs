@@ -757,9 +757,7 @@ impl TiledPanes {
                 let _ = StackedPanes::new_from_btreemap(&mut self.panes, &self.panes_to_hide)
                     .expand_pane(&pane_id);
             }
-            self.active_panes
-                .insert(client_id, pane_id, &mut self.panes);
-            self.set_pane_active_at(pane_id);
+            self.focus_pane(pane_id, client_id);
         }
         self.set_force_render();
         self.reapply_pane_frames();
@@ -856,17 +854,6 @@ impl TiledPanes {
             .expand_pane(&pane_id)
         {
             Ok(all_panes_in_stack) => {
-                let connected_clients: Vec<ClientId> =
-                    self.connected_clients.borrow().iter().copied().collect();
-                for client_id in connected_clients {
-                    if let Some(focused_pane_id_for_client) = self.active_panes.get(&client_id) {
-                        if all_panes_in_stack.contains(focused_pane_id_for_client) {
-                            self.active_panes
-                                .insert(client_id, pane_id, &mut self.panes);
-                            self.set_pane_active_at(pane_id);
-                        }
-                    }
-                }
                 self.set_force_render();
                 self.reapply_pane_frames();
                 all_panes_in_stack
