@@ -2444,7 +2444,11 @@ pub fn send_cli_focus_last_pane_action() {
     let client_id = 10; // fake client id should not appear in the screen's state
     let mut initial_layout = TiledPaneLayout::default();
     initial_layout.children_split_direction = SplitDirection::Vertical;
-    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default(), TiledPaneLayout::default()];
+    initial_layout.children = vec![
+        TiledPaneLayout::default(),
+        TiledPaneLayout::default(),
+        TiledPaneLayout::default(),
+    ];
     let mut mock_screen = MockScreen::new(size);
     let session_metadata = mock_screen.clone_session_metadata();
     let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
@@ -2464,10 +2468,10 @@ pub fn send_cli_focus_last_pane_action() {
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for the async render
     send_cli_action_to_server(&session_metadata, move_focus_action.clone(), client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for the async render
-    // move focus 3 -> 2
+                                                               // move focus 3 -> 2
     send_cli_action_to_server(&session_metadata, focus_last_pane_action.clone(), client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for the async render
-    // move focus 2 -> 3
+                                                               // move focus 2 -> 3
     send_cli_action_to_server(&session_metadata, focus_last_pane_action.clone(), client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for the async render
     mock_screen.teardown(vec![server_instruction, screen_thread]);

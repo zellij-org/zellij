@@ -1861,10 +1861,7 @@ impl TiledPanes {
         };
 
         let previously_active_pane_id = self.active_panes.get(&client_id).unwrap();
-        let previously_active_pane = self
-            .panes
-            .get_mut(previously_active_pane_id)
-            .unwrap();
+        let previously_active_pane = self.panes.get_mut(previously_active_pane_id).unwrap();
 
         previously_active_pane.set_should_render(true);
         // we render the full viewport to remove any ui elements that might have been
