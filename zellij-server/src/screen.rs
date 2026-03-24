@@ -1258,6 +1258,7 @@ pub(crate) struct Screen {
     cached_layouts: Vec<LayoutInfo>,
     cached_layout_errors: Vec<LayoutWithError>,
     pane_render_subscribers: HashMap<ClientId, PaneRenderSubscription>,
+    plugins_need_pane_contents: bool,
     plugins_need_ansi_pane_contents: bool,
 }
 
@@ -1358,6 +1359,7 @@ impl Screen {
             cached_layouts: vec![],
             cached_layout_errors: vec![],
             pane_render_subscribers: HashMap::new(),
+            plugins_need_pane_contents: false,
             plugins_need_ansi_pane_contents: false,
         }
     }
@@ -1903,6 +1905,9 @@ impl Screen {
                 self.osc8_hyperlinks,
             );
 
+            let has_plain_subscribers = !self.pane_render_subscribers.is_empty();
+            output.collect_pane_contents =
+                has_plain_subscribers || self.plugins_need_pane_contents;
             let has_ansi_subscribers = self.pane_render_subscribers.values().any(|s| s.ansi);
             output.collect_ansi_pane_contents =
                 has_ansi_subscribers || self.plugins_need_ansi_pane_contents;

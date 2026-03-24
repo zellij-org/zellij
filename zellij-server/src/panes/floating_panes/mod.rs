@@ -403,11 +403,13 @@ impl FloatingPanes {
         for (kind, pane) in &self.panes {
             match kind {
                 PaneId::Terminal(_) => {
-                    output.add_pane_contents(
-                        &connected_clients,
-                        pane.pid(),
-                        pane.pane_contents(None, false, None),
-                    );
+                    if output.collect_pane_contents {
+                        output.add_pane_contents(
+                            &connected_clients,
+                            pane.pid(),
+                            pane.pane_contents(None, false, None),
+                        );
+                    }
                     if output.collect_ansi_pane_contents {
                         output.add_pane_contents_with_ansi(
                             &connected_clients,
@@ -418,11 +420,13 @@ impl FloatingPanes {
                 },
                 PaneId::Plugin(_) => {
                     for client_id in &connected_clients {
-                        output.add_pane_contents(
-                            &[*client_id],
-                            pane.pid(),
-                            pane.pane_contents(Some(*client_id), false, None),
-                        );
+                        if output.collect_pane_contents {
+                            output.add_pane_contents(
+                                &[*client_id],
+                                pane.pid(),
+                                pane.pane_contents(Some(*client_id), false, None),
+                            );
+                        }
                         if output.collect_ansi_pane_contents {
                             output.add_pane_contents_with_ansi(
                                 &[*client_id],
