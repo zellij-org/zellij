@@ -791,6 +791,9 @@ impl Pane for TerminalPane {
     fn consume_bell(&mut self) {
         self.grid.ring_bell = false;
     }
+    fn osc7_payload(&self) -> Option<&str> {
+        self.grid.osc7_payload()
+    }
     fn set_bell_notification(&mut self, val: bool) {
         self.has_bell_notification = val;
     }
