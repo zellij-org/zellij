@@ -792,6 +792,7 @@ impl From<crate::input::actions::Action>
             ClearScreenByPaneIdAction,
             CliPipeAction,
             CloseFocusAction,
+            ReloadPaneAction,
             CloseFocusByPaneIdAction,
             ClosePluginPaneAction,
             CloseTabAction,
@@ -1170,6 +1171,9 @@ impl From<crate::input::actions::Action>
             },
             crate::input::actions::Action::CloseFocus => {
                 ActionType::CloseFocus(CloseFocusAction {})
+            },
+            crate::input::actions::Action::ReloadPane => {
+                ActionType::ReloadPane(ReloadPaneAction {})
             },
             crate::input::actions::Action::PaneNameInput { input } => {
                 ActionType::PaneNameInput(PaneNameInputAction {
@@ -1980,6 +1984,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                 })
             },
             ActionType::CloseFocus(_) => Ok(crate::input::actions::Action::CloseFocus),
+            ActionType::ReloadPane(_) => Ok(crate::input::actions::Action::ReloadPane),
             ActionType::PaneNameInput(pane_name_action) => {
                 Ok(crate::input::actions::Action::PaneNameInput {
                     input: pane_name_action

@@ -428,6 +428,10 @@ impl TryFrom<ProtobufAction> for Action {
                 Some(_) => Err("CloseFocus should not have a payload"),
                 None => Ok(Action::CloseFocus),
             },
+            Some(ProtobufActionName::ReloadPane) => match protobuf_action.optional_payload {
+                Some(_) => Err("ReloadPane should not have a payload"),
+                None => Ok(Action::ReloadPane),
+            },
             Some(ProtobufActionName::PaneNameInput) => match protobuf_action.optional_payload {
                 Some(OptionalPayload::PaneNameInputPayload(bytes)) => {
                     Ok(Action::PaneNameInput { input: bytes })
@@ -1382,6 +1386,10 @@ impl TryFrom<Action> for ProtobufAction {
             }),
             Action::CloseFocus => Ok(ProtobufAction {
                 name: ProtobufActionName::CloseFocus as i32,
+                optional_payload: None,
+            }),
+            Action::ReloadPane => Ok(ProtobufAction {
+                name: ProtobufActionName::ReloadPane as i32,
                 optional_payload: None,
             }),
             Action::PaneNameInput { input: bytes } => Ok(ProtobufAction {

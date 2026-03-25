@@ -66,6 +66,7 @@ macro_rules! parse_kdl_action_arguments {
                 "ShowFloatingPanes" => Ok(Action::ShowFloatingPanes { tab_id: None }),
                 "HideFloatingPanes" => Ok(Action::HideFloatingPanes { tab_id: None }),
                 "CloseFocus" => Ok(Action::CloseFocus),
+                "ReloadPane" => Ok(Action::ReloadPane),
                 "UndoRenamePane" => Ok(Action::UndoRenamePane),
                 "NoOp" => Ok(Action::NoOp),
                 "GoToNextTab" => Ok(Action::GoToNextTab),
@@ -762,6 +763,7 @@ impl Action {
                 Some(node)
             },
             Action::CloseFocus => Some(KdlNode::new("CloseFocus")),
+            Action::ReloadPane => Some(KdlNode::new("ReloadPane")),
             Action::PaneNameInput { input: bytes } => {
                 let mut node = KdlNode::new("PaneNameInput");
                 for byte in bytes {
