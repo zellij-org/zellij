@@ -714,20 +714,8 @@ pub(crate) fn route_action(
         },
         Action::SwitchModeForAllClients { input_mode } => {
             let attrs = &client_attributes;
-            senders
-                .send_to_plugin(PluginInstruction::Update(vec![(
-                    None,
-                    None,
-                    Event::ModeUpdate(get_mode_info(
-                        input_mode,
-                        attrs,
-                        capabilities,
-                        &client_keybinds,
-                        Some(default_mode),
-                    )),
-                )]))
-                .with_context(err_context)?;
-
+            // ModeUpdate broadcast is handled by the screen thread via
+            // change_mode_for_all_clients() -> change_mode() -> update_input_modes()
             senders
                 .send_to_server(ServerInstruction::ChangeModeForAllClients(input_mode))
                 .with_context(err_context)?;

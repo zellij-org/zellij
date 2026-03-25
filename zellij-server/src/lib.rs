@@ -55,7 +55,7 @@ use zellij_utils::{
         DEFAULT_SCROLL_BUFFER_SIZE, SCROLL_BUFFER_SIZE, ZELLIJ_SEEN_RELEASE_NOTES_CACHE_FILE,
     },
     data::{
-        ConnectToSession, Event, InputMode, KeyWithModifier, LayoutInfo, LayoutWithError,
+        ConnectToSession, InputMode, KeyWithModifier, LayoutInfo, LayoutWithError,
         PluginCapabilities, Style, WebSharing,
     },
     errors::{prelude::*, ContextType, ErrorInstruction, FatalError, ServerContext},
@@ -1012,21 +1012,15 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                         .get_client_keybinds(&client_id),
                     Some(default_mode),
                 );
+                // ModeUpdate broadcast is handled by the screen thread via
+                // change_mode() -> update_input_modes()
                 session_data
                     .senders
                     .send_to_screen(ScreenInstruction::ChangeMode(
-                        mode_info.clone(),
+                        mode_info,
                         client_id,
                         None,
                     ))
-                    .unwrap();
-                session_data
-                    .senders
-                    .send_to_plugin(PluginInstruction::Update(vec![(
-                        None,
-                        Some(client_id),
-                        Event::ModeUpdate(mode_info),
-                    )]))
                     .unwrap();
             },
             ServerInstruction::AttachWatcherClient(client_id, terminal_size, is_web_client) => {

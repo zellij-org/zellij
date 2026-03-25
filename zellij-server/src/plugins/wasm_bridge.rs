@@ -952,6 +952,7 @@ impl WasmBridge {
                             let running_plugin = running_plugin.clone();
                             let event = event.clone();
                             let _s = shutdown_sender.clone();
+                            let plugin_subs = subs.clone();
                             move |senders,
                                   _plugin_map,
                                   _connected_clients,
@@ -971,6 +972,7 @@ impl WasmBridge {
                                     &event,
                                     &mut plugin_render_assets,
                                     senders.clone(),
+                                    &plugin_subs,
                                 ) {
                                     Ok(()) => {
                                         let _ = senders.send_to_screen(
@@ -1399,6 +1401,53 @@ impl WasmBridge {
             ));
     }
 
+    pub fn notify_screen_of_background_plugin_subscriptions(
+        &self,
+        plugin_id: PluginId,
+        client_id: ClientId,
+        events: HashSet<EventType>,
+    ) {
+        // Check if this plugin is a background plugin (tab_index == None)
+        let is_background = {
+            let mut plugin_map = self.plugin_map.lock().unwrap();
+            plugin_map
+                .running_plugins_and_subscriptions()
+                .iter()
+                .any(|(pid, cid, rp, _)| {
+                    *pid == plugin_id
+                        && *cid == client_id
+                        && rp.lock().unwrap().store.data().tab_index.is_none()
+                })
+        };
+        if is_background {
+            let _ = self
+                .senders
+                .send_to_screen(ScreenInstruction::UpdateBackgroundPluginSubscriptions(
+                    plugin_id, client_id, events,
+                ));
+        }
+    }
+
+    pub fn send_initial_keybinds_to_plugin(&self, plugin_id: PluginId, client_id: ClientId) {
+        let keybinds = {
+            let mut plugin_map = self.plugin_map.lock().unwrap();
+            plugin_map
+                .running_plugins_and_subscriptions()
+                .iter()
+                .find(|(pid, cid, _, _)| *pid == plugin_id && *cid == client_id)
+                .map(|(_, _, rp, _)| {
+                    rp.lock().unwrap().store.data().keybinds.to_keybinds_vec()
+                })
+        };
+        if let Some(keybinds) = keybinds {
+            let _ = self.senders.send_to_plugin(PluginInstruction::Update(vec![(
+                Some(plugin_id),
+                Some(client_id),
+                Event::InitialKeybinds(keybinds),
+            )]));
+        }
+    }
+
     pub fn cleanup(&mut self) {
         self.loading_plugins.clear();
 
@@ -1454,6 +1503,26 @@ impl WasmBridge {
         }
         self.default_shell = default_shell.clone();
         self.layout_dir = layout_dir.clone();
+        // Collect plugins subscribed to InitialKeybinds for post-reconfigure notification
+        let plugins_subscribed_to_initial_keybinds: Vec<PluginId> = if keybinds.is_some() {
+            self.plugin_map
+                .lock()
+                .unwrap()
+                .running_plugins_and_subscriptions()
+                .iter()
+                .filter(|(_, cid, _, subs)| {
+                    *cid == client_id
+                        && subs
+                            .lock()
+                            .unwrap()
+                            .contains(&EventType::InitialKeybinds)
+                })
+                .map(|(pid, _, _, _)| *pid)
+                .collect()
+        } else {
+            vec![]
+        };
+
         for (plugin_id, running_plugin) in plugins_to_reconfigure {
             self.plugin_executor.execute_for_plugin(plugin_id, {
                 let running_plugin = running_plugin.clone();
@@ -1477,6 +1546,10 @@ impl WasmBridge {
                     running_plugin.update_layout_dir(layout_dir);
                 }
             });
+        }
+        // Send InitialKeybinds to subscribed plugins after reconfiguration
+        for plugin_id in plugins_subscribed_to_initial_keybinds {
+            self.send_initial_keybinds_to_plugin(plugin_id, client_id);
         }
         Ok(())
     }
@@ -1536,6 +1609,7 @@ impl WasmBridge {
                                                     &event,
                                                     &mut plugin_render_assets,
                                                     senders.clone(),
+                                                    &subs,
                                                 ) {
                                                     Ok(()) => {
                                                         let _ = senders.send_to_screen(
@@ -2109,6 +2183,7 @@ pub fn apply_event_to_plugin(
     event: &Event,
     plugin_render_assets: &mut Vec<PluginRenderAsset>,
     senders: ThreadSenders,
+    plugin_subscriptions: &HashSet<EventType>,
 ) -> Result<()> {
     let apply_timer = std::time::Instant::now();
     let event_name = event.to_string();
@@ -2122,15 +2197,14 @@ pub fn apply_event_to_plugin(
         (PermissionStatus::Granted, _) => {
             let mut event = event.clone();
             if let Event::ModeUpdate(mode_info) = &mut event {
-                // we do this because there can be some cases where this event arrives here with
-                // the wrong keybindings or default mode (for example: when triggered from the CLI,
-                // where we do not know the target client_id and thus don't know if their keybindings are the
-                // default or if they have changed at runtime), the keybindings in running_plugin
-                // should always be up-to-date. Ideally, we would have changed the keybindings in
-                // ModeInfo to an Option, but alas - this is already part of our contract and that
-                // would be a breaking change.
-                mode_info.keybinds = running_plugin.store.data().keybinds.to_keybinds_vec();
                 mode_info.base_mode = Some(running_plugin.store.data().default_mode);
+                if plugin_subscriptions.contains(&EventType::InitialKeybinds) {
+                    // Plugin caches keybindings via InitialKeybinds — send lightweight ModeUpdate
+                    mode_info.keybinds = vec![];
+                } else {
+                    // Legacy plugin — send full keybindings as before
+                    mode_info.keybinds = running_plugin.store.data().keybinds.to_keybinds_vec();
+                }
             }
             let t_proto = std::time::Instant::now();
             let protobuf_event: Result<ProtobufEvent, _> = event.clone().try_into();

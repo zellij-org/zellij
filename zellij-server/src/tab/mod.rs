@@ -18,6 +18,7 @@ use zellij_utils::data::{
     Direction, KeyWithModifier, NewPanePlacement, PaneInfo, PermissionStatus, PermissionType,
     PluginPermission, RegexHighlight, ResizeStrategy, Style, WebSharing,
 };
+use crate::plugins::PluginId;
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
 use zellij_utils::input::mouse::MouseEvent;
@@ -1145,10 +1146,11 @@ impl Tab {
         self.update_input_modes()
     }
     pub fn update_input_modes(&mut self) -> Result<()> {
-        // this updates all plugins with the client's input mode
+        // this updates only this tab's plugins with the client's input mode
         let mode_infos = self.mode_info.borrow();
         let mut plugin_updates = vec![];
         let currently_marking_pane_group = self.currently_marking_pane_group.borrow();
+        let tab_plugin_ids = self.get_plugin_ids();
         for client_id in self.connected_clients.borrow().iter() {
             let mut mode_info = mode_infos
                 .get(client_id)
@@ -1172,11 +1174,19 @@ impl Tab {
             } else {
                 mode_info.web_server_capability = Some(false);
             }
-            plugin_updates.push((None, Some(*client_id), Event::ModeUpdate(mode_info)));
+            for plugin_id in &tab_plugin_ids {
+                plugin_updates.push((
+                    Some(*plugin_id),
+                    Some(*client_id),
+                    Event::ModeUpdate(mode_info.clone()),
+                ));
+            }
         }
-        self.senders
-            .send_to_plugin(PluginInstruction::Update(plugin_updates))
-            .with_context(|| format!("failed to update plugins with mode info"))?;
+        if !plugin_updates.is_empty() {
+            self.senders
+                .send_to_plugin(PluginInstruction::Update(plugin_updates))
+                .with_context(|| format!("failed to update plugins with mode info"))?;
+        }
         Ok(())
     }
     pub fn add_client(&mut self, client_id: ClientId, mode_info: Option<ModeInfo>) -> Result<()> {
@@ -3730,6 +3740,15 @@ impl Tab {
             .pane_ids()
             .chain(self.floating_panes.pane_ids())
             .copied()
+            .collect()
+    }
+    pub fn get_plugin_ids(&self) -> Vec<PluginId> {
+        self.get_static_and_floating_pane_ids()
+            .into_iter()
+            .filter_map(|pane_id| match pane_id {
+                PaneId::Plugin(pid) => Some(pid),
+                _ => None,
+            })
             .collect()
     }
     pub fn get_pane_info(&self, pane_id: PaneId) -> Option<PaneInfo> {

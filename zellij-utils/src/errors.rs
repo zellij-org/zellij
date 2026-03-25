@@ -449,6 +449,8 @@ pub enum ScreenContext {
     NextSwapLayoutWithTabId,
     MoveTabWithTabId,
     PluginSubscribedToAnsiPaneContents,
+    UpdateBackgroundPluginSubscriptions,
+    BroadcastModeUpdate,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.

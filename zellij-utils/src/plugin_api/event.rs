@@ -528,6 +528,35 @@ impl TryFrom<ProtobufEvent> for Event {
                 },
                 _ => Err("Malformed payload for HighlightClicked Event"),
             },
+            Some(ProtobufEventType::InitialKeybinds) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::InitialKeybindsPayload(p)) => {
+                    let keybinds = p
+                        .keybinds
+                        .into_iter()
+                        .filter_map(|imk| {
+                            let mode: InputMode = ProtobufInputMode::from_i32(imk.mode)?
+                                .try_into()
+                                .ok()?;
+                            let key_binds: Vec<(KeyWithModifier, Vec<Action>)> = imk
+                                .key_bind
+                                .into_iter()
+                                .filter_map(|kb| {
+                                    let key: KeyWithModifier = kb.key?.try_into().ok()?;
+                                    let actions: Vec<Action> = kb
+                                        .action
+                                        .into_iter()
+                                        .filter_map(|a| a.try_into().ok())
+                                        .collect();
+                                    Some((key, actions))
+                                })
+                                .collect();
+                            Some((mode, key_binds))
+                        })
+                        .collect();
+                    Ok(Event::InitialKeybinds(keybinds))
+                },
+                _ => Err("Malformed payload for InitialKeybinds Event"),
+            },
             None => Err("Unknown Protobuf Event"),
         }
     }
@@ -1044,6 +1073,38 @@ impl TryFrom<Event> for ProtobufEvent {
                     },
                 )),
             }),
+            Event::InitialKeybinds(keybinds) => {
+                let mut protobuf_keybinds: Vec<ProtobufInputModeKeybinds> = vec![];
+                for (input_mode, input_mode_keybinds) in keybinds {
+                    let mode: ProtobufInputMode = input_mode.try_into()?;
+                    let mut key_binds: Vec<ProtobufKeyBind> = vec![];
+                    for (key, actions) in input_mode_keybinds {
+                        let protobuf_key: ProtobufKey = key.try_into()?;
+                        let mut protobuf_actions: Vec<ProtobufAction> = vec![];
+                        for action in actions {
+                            if let Ok(protobuf_action) = action.try_into() {
+                                protobuf_actions.push(protobuf_action);
+                            }
+                        }
+                        key_binds.push(ProtobufKeyBind {
+                            key: Some(protobuf_key),
+                            action: protobuf_actions,
+                        });
+                    }
+                    protobuf_keybinds.push(ProtobufInputModeKeybinds {
+                        mode: mode as i32,
+                        key_bind: key_binds,
+                    });
+                }
+                Ok(ProtobufEvent {
+                    name: ProtobufEventType::InitialKeybinds as i32,
+                    payload: Some(event::Payload::InitialKeybindsPayload(
+                        InitialKeybindsPayload {
+                            keybinds: protobuf_keybinds,
+                        },
+                    )),
+                })
+            },
         }
     }
 }
@@ -1958,6 +2019,7 @@ impl TryFrom<ProtobufEventType> for EventType {
             ProtobufEventType::AvailableLayoutInfo => EventType::AvailableLayoutInfo,
             ProtobufEventType::PluginConfigurationChanged => EventType::PluginConfigurationChanged,
             ProtobufEventType::HighlightClicked => EventType::HighlightClicked,
+            ProtobufEventType::InitialKeybinds => EventType::InitialKeybinds,
         })
     }
 }
@@ -2009,6 +2071,7 @@ impl TryFrom<EventType> for ProtobufEventType {
             EventType::AvailableLayoutInfo => ProtobufEventType::AvailableLayoutInfo,
             EventType::PluginConfigurationChanged => ProtobufEventType::PluginConfigurationChanged,
             EventType::HighlightClicked => ProtobufEventType::HighlightClicked,
+            EventType::InitialKeybinds => ProtobufEventType::InitialKeybinds,
         })
     }
 }
