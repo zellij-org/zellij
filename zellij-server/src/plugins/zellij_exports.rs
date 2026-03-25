@@ -437,6 +437,7 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                         scan_host_folder(env, folder_to_scan)
                     },
                     PluginCommand::WatchFilesystem => watch_filesystem(env),
+                    PluginCommand::ListWindowsVolumes => list_windows_volumes(env),
                     PluginCommand::DumpSessionLayout { tab_index } => {
                         dump_session_layout(env, tab_index)
                     },
@@ -3725,7 +3726,10 @@ fn scan_host_folder(env: &PluginEnv, folder_to_scan: PathBuf) {
         );
         return;
     }
-    let plugin_host_folder = env.plugin_cwd.clone();
+    let plugin_host_folder = env
+        .plugin_cwd
+        .canonicalize()
+        .unwrap_or_else(|_| env.plugin_cwd.clone());
     let folder_to_scan = plugin_host_folder.join(folder_to_scan.strip_prefix("/host").unwrap());
     match folder_to_scan.canonicalize() {
         Ok(folder_to_scan) => {
@@ -3782,6 +3786,88 @@ fn scan_host_folder(env: &PluginEnv, folder_to_scan: PathBuf) {
             );
         },
     }
+}
+
+#[cfg(not(windows))]
+fn list_windows_volumes(_env: &PluginEnv) {
+    log::error!("ListWindowsVolumes is only supported on Windows");
+}
+
+#[cfg(windows)]
+fn list_windows_volumes(env: &PluginEnv) {
+    let send_plugin_instructions = env.senders.to_plugin.clone();
+    let update_target = Some(env.plugin_id);
+    let client_id = env.client_id;
+    thread::spawn(move || {
+        let mut entries = enumerate_drives();
+        entries.extend(enumerate_wsl_distributions());
+        let _ = send_plugin_instructions
+            .ok_or(anyhow!("found no sender to send plugin instruction to"))
+            .map(|sender| {
+                let _ = sender.send(PluginInstruction::Update(vec![(
+                    update_target,
+                    Some(client_id),
+                    Event::FileSystemUpdate(entries),
+                )]));
+            })
+            .non_fatal();
+    });
+}
+
+#[cfg(windows)]
+fn enumerate_drives() -> Vec<(PathBuf, Option<zellij_utils::data::FileMetadata>)> {
+    use windows_sys::Win32::Storage::FileSystem::GetLogicalDriveStringsW;
+    let mut buf = [0u16; 256];
+    let len = unsafe { GetLogicalDriveStringsW(buf.len() as u32, buf.as_mut_ptr()) };
+    if len == 0 {
+        return vec![];
+    }
+    let drive_strings = &buf[..len as usize];
+    let mut entries = vec![];
+    for chunk in drive_strings.split(|&c| c == 0) {
+        if chunk.is_empty() {
+            continue;
+        }
+        let drive = String::from_utf16_lossy(chunk);
+        let normalized = drive.replace('\\', "/");
+        let drive_path = PathBuf::from(&normalized);
+        let metadata = drive_path.metadata().ok().map(|m| m.into());
+        entries.push((drive_path, metadata));
+    }
+    entries
+}
+
+#[cfg(windows)]
+fn enumerate_wsl_distributions() -> Vec<(PathBuf, Option<zellij_utils::data::FileMetadata>)> {
+    // read_dir on \\wsl.localhost\ or \\wsl$\ can fail with OS error 64/67
+    // even when WSL is running, so enumerate distros via `wsl -l -q` instead.
+    let output = match std::process::Command::new("wsl")
+        .args(["-l", "-q"])
+        .output()
+    {
+        Ok(o) if o.status.success() => o,
+        _ => return vec![],
+    };
+    // wsl -l -q outputs UTF-16LE on Windows
+    let stdout: Vec<u16> = output
+        .stdout
+        .chunks(2)
+        .map(|c| u16::from_le_bytes([c[0], *c.get(1).unwrap_or(&0)]))
+        .collect();
+    let text = String::from_utf16_lossy(&stdout);
+    let mut entries = vec![];
+    for line in text.lines() {
+        let name = line.trim().trim_matches('\0');
+        if name.is_empty() {
+            continue;
+        }
+        // Verify the distro is reachable before listing it
+        let unc = format!("\\\\wsl.localhost\\{}", name);
+        let metadata = std::fs::metadata(&unc).ok().map(|m| m.into());
+        let wsl_path = PathBuf::from(format!("//wsl.localhost/{}/", name));
+        entries.push((wsl_path, metadata));
+    }
+    entries
 }
 
 fn resize_pane_with_id(env: &PluginEnv, resize: ResizeStrategy, pane_id: PaneId) {
@@ -5218,7 +5304,9 @@ fn check_command_permission(
         PluginCommand::RebindKeys { .. } | PluginCommand::Reconfigure(..) => {
             PermissionType::Reconfigure
         },
-        PluginCommand::ChangeHostFolder(..) => PermissionType::FullHdAccess,
+        PluginCommand::ChangeHostFolder(..) | PluginCommand::ListWindowsVolumes => {
+            PermissionType::FullHdAccess
+        },
         PluginCommand::ShareCurrentSession
         | PluginCommand::StopSharingCurrentSession
         | PluginCommand::StopWebServer

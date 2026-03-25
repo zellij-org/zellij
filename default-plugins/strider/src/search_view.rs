@@ -1,3 +1,5 @@
+use crate::file_list_view::FsEntry;
+use crate::platform::Platform;
 use crate::shared::{calculate_list_bounds, render_list_tip};
 use fuzzy_matcher::skim::SkimMatcherV2;
 use fuzzy_matcher::FuzzyMatcher;
@@ -5,12 +7,11 @@ use pretty_bytes::converter::convert as pretty_bytes;
 use unicode_width::UnicodeWidthStr;
 use zellij_tile::prelude::*;
 
-use crate::file_list_view::FsEntry;
-
 #[derive(Default, Debug)]
 pub struct SearchView {
     pub search_results: Vec<SearchResult>,
     pub selected_search_result: usize,
+    pub platform: Platform,
 }
 
 impl SearchView {
@@ -67,7 +68,7 @@ impl SearchView {
                     .map(|s| pretty_bytes(s as f64))
                     .unwrap_or("".to_owned());
                 if search_result.is_folder() {
-                    search_result_text.push('/');
+                    search_result_text.push(self.platform.separator());
                 }
 
                 let search_result_text_width = search_result_text.width();

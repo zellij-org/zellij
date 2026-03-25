@@ -5,6 +5,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+
+## [0.44.0] - 2026-03-23
 * fix: meta key handling in web client (https://github.com/zellij-org/zellij/pull/4376)
 * refactor: move logical structures from client to server (https://github.com/zellij-org/zellij/pull/4383)
 * fix: make sessions compatible across versions (https://github.com/zellij-org/zellij/pull/4439)
