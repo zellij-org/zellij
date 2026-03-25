@@ -306,6 +306,17 @@ impl<T: Serialize> IpcSenderWithContext<T> {
     }
 }
 
+/// Result of attempting to receive an IPC message.
+#[derive(Debug)]
+pub enum RecvResult<T> {
+    /// Successfully received and decoded a message.
+    Ok(T),
+    /// The message was received but could not be decoded (unknown variant).
+    UnknownMessage,
+    /// The underlying stream is broken (EOF, broken pipe, connection reset).
+    StreamBroken,
+}
+
 /// Receives messages on a stream socket, along with an [`ErrorContext`].
 pub struct IpcReceiverWithContext<T> {
     receiver: io::BufReader<Box<dyn IpcStream>>,
@@ -331,29 +342,51 @@ where
         }
     }
 
-    pub fn recv_client_msg(&mut self) -> Option<(ClientToServerMsg, ErrorContext)> {
+    pub fn recv_client_msg(&mut self) -> RecvResult<(ClientToServerMsg, ErrorContext)> {
         match read_protobuf_message::<ProtoClientToServerMsg>(&mut self.receiver) {
             Ok(proto_msg) => match proto_msg.try_into() {
-                Ok(rust_msg) => Some((rust_msg, ErrorContext::default())),
+                Ok(rust_msg) => RecvResult::Ok((rust_msg, ErrorContext::default())),
                 Err(e) => {
                     warn!("Error converting protobuf to ClientToServerMsg: {:?}", e);
-                    None
+                    RecvResult::UnknownMessage
                 },
             },
-            Err(_e) => None,
+            Err(e) => {
+                if let Some(io_err) = e.downcast_ref::<std::io::Error>() {
+                    match io_err.kind() {
+                        std::io::ErrorKind::UnexpectedEof
+                        | std::io::ErrorKind::BrokenPipe
+                        | std::io::ErrorKind::ConnectionReset => RecvResult::StreamBroken,
+                        _ => RecvResult::UnknownMessage,
+                    }
+                } else {
+                    RecvResult::UnknownMessage
+                }
+            },
         }
     }
 
-    pub fn recv_server_msg(&mut self) -> Option<(ServerToClientMsg, ErrorContext)> {
+    pub fn recv_server_msg(&mut self) -> RecvResult<(ServerToClientMsg, ErrorContext)> {
         match read_protobuf_message::<ProtoServerToClientMsg>(&mut self.receiver) {
             Ok(proto_msg) => match proto_msg.try_into() {
-                Ok(rust_msg) => Some((rust_msg, ErrorContext::default())),
+                Ok(rust_msg) => RecvResult::Ok((rust_msg, ErrorContext::default())),
                 Err(e) => {
                     warn!("Error converting protobuf to ServerToClientMsg: {:?}", e);
-                    None
+                    RecvResult::UnknownMessage
                 },
             },
-            Err(_e) => None,
+            Err(e) => {
+                if let Some(io_err) = e.downcast_ref::<std::io::Error>() {
+                    match io_err.kind() {
+                        std::io::ErrorKind::UnexpectedEof
+                        | std::io::ErrorKind::BrokenPipe
+                        | std::io::ErrorKind::ConnectionReset => RecvResult::StreamBroken,
+                        _ => RecvResult::UnknownMessage,
+                    }
+                } else {
+                    RecvResult::UnknownMessage
+                }
+            },
         }
     }
 

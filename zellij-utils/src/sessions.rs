@@ -5,7 +5,10 @@ use crate::{
     },
     envs,
     input::layout::Layout,
-    ipc::{ClientToServerMsg, IpcReceiverWithContext, IpcSenderWithContext, ServerToClientMsg},
+    ipc::{
+        ClientToServerMsg, IpcReceiverWithContext, IpcSenderWithContext, RecvResult,
+        ServerToClientMsg,
+    },
 };
 use anyhow;
 use humantime::format_duration;
@@ -153,8 +156,10 @@ fn assert_socket(name: &str) -> bool {
             let _ = sender.send_client_msg(ClientToServerMsg::ConnStatus);
             let mut receiver: IpcReceiverWithContext<ServerToClientMsg> = sender.get_receiver();
             match receiver.recv_server_msg() {
-                Some((ServerToClientMsg::Connected, _)) => true,
-                None | Some((_, _)) => false,
+                RecvResult::Ok((ServerToClientMsg::Connected, _)) => true,
+                RecvResult::Ok((_, _))
+                | RecvResult::UnknownMessage
+                | RecvResult::StreamBroken => false,
             }
         },
         Err(e) if e.kind() == io::ErrorKind::ConnectionRefused => {

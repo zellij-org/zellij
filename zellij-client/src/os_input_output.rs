@@ -21,7 +21,10 @@ use std::{io, thread, time};
 use zellij_utils::{
     data::Palette,
     errors::ErrorContext,
-    ipc::{ClientToServerMsg, IpcReceiverWithContext, IpcSenderWithContext, ServerToClientMsg},
+    ipc::{
+        ClientToServerMsg, IpcReceiverWithContext, IpcSenderWithContext, RecvResult,
+        ServerToClientMsg,
+    },
     shared::default_palette,
 };
 
@@ -243,12 +246,17 @@ impl ClientOsApi for ClientOsInputOutput {
         }
     }
     fn recv_from_server(&self) -> Option<(ServerToClientMsg, ErrorContext)> {
-        self.receive_instructions_from_server
+        match self
+            .receive_instructions_from_server
             .lock()
             .unwrap()
             .as_mut()
             .unwrap()
             .recv_server_msg()
+        {
+            RecvResult::Ok(msg) => Some(msg),
+            RecvResult::UnknownMessage | RecvResult::StreamBroken => None,
+        }
     }
     fn handle_signals(
         &self,
