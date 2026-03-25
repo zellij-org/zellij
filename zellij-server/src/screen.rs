@@ -1258,7 +1258,6 @@ pub(crate) struct Screen {
     cached_layouts: Vec<LayoutInfo>,
     cached_layout_errors: Vec<LayoutWithError>,
     pane_render_subscribers: HashMap<ClientId, PaneRenderSubscription>,
-    plugins_need_pane_contents: bool,
     plugins_need_ansi_pane_contents: bool,
 }
 
@@ -1359,7 +1358,6 @@ impl Screen {
             cached_layouts: vec![],
             cached_layout_errors: vec![],
             pane_render_subscribers: HashMap::new(),
-            plugins_need_pane_contents: false,
             plugins_need_ansi_pane_contents: false,
         }
     }
@@ -1536,6 +1534,7 @@ impl Screen {
         )
         };
 
+        let switch_tab_timer = std::time::Instant::now();
         if let Some(new_tab) = self.tabs.values().find(|t| t.position == new_tab_pos) {
             match self.get_active_tab(client_id) {
                 Ok(current_tab) => {
@@ -1612,9 +1611,13 @@ impl Screen {
                             .send_to_background_jobs(BackgroundJob::StopFlashTabBell(tab_id));
                     }
 
+                    let t = std::time::Instant::now();
                     self.log_and_report_session_state()
                         .with_context(err_context)?;
-                    return self.render(None).with_context(err_context);
+                    log::info!("[PERF] switch_active_tab: log_and_report_session_state took {:?}", t.elapsed());
+                    self.render(None).with_context(err_context)?;
+                    log::info!("[PERF] switch_active_tab: total took {:?}", switch_tab_timer.elapsed());
+                    return Ok(());
                 },
                 Err(err) => Err::<(), _>(err).with_context(err_context).non_fatal(),
             }
@@ -1881,6 +1884,7 @@ impl Screen {
     pub fn render_to_clients(&mut self) -> Result<()> {
         // this method does the actual rendering and is triggered by a debounced BackgroundJob (see
         // the render method for more details)
+        let render_timer = std::time::Instant::now();
         let err_context = "failed to render screen";
 
         // Separate rendering for regular clients and watchers
@@ -1905,9 +1909,6 @@ impl Screen {
                 self.osc8_hyperlinks,
             );
 
-            let has_plain_subscribers = !self.pane_render_subscribers.is_empty();
-            output.collect_pane_contents =
-                has_plain_subscribers || self.plugins_need_pane_contents;
             let has_ansi_subscribers = self.pane_render_subscribers.values().any(|s| s.ansi);
             output.collect_ansi_pane_contents =
                 has_ansi_subscribers || self.plugins_need_ansi_pane_contents;
@@ -2090,6 +2091,7 @@ impl Screen {
                 .non_fatal();
         }
 
+        log::info!("[PERF] render_to_clients: total took {:?}", render_timer.elapsed());
         Ok(())
     }
 
@@ -4855,6 +4857,7 @@ pub(crate) fn screen_thread_main(
                     .send_to_background_jobs(BackgroundJob::RenderToClients);
             },
             ScreenInstruction::PluginBytes(mut plugin_render_assets) => {
+                let plugin_bytes_timer = std::time::Instant::now();
                 for plugin_render_asset in plugin_render_assets.iter_mut() {
                     let plugin_id = plugin_render_asset.plugin_id;
                     let client_id = plugin_render_asset.client_id;
@@ -4870,6 +4873,7 @@ pub(crate) fn screen_thread_main(
                     }
                     screen.render_blocker.remove_blocking_plugin(plugin_id);
                 }
+                log::info!("[PERF] PluginBytes: processing {} assets took {:?}", plugin_render_assets.len(), plugin_bytes_timer.elapsed());
                 screen.render(Some(plugin_render_assets))?;
             },
             ScreenInstruction::Render => {

@@ -363,7 +363,6 @@ pub struct Output {
     styled_underlines: bool,
     osc8_hyperlinks: bool,
     pane_render_report: PaneRenderReport,
-    pub collect_pane_contents: bool,
     pub collect_ansi_pane_contents: bool,
     cursor_coordinates: Option<(usize, usize)>,
 }

@@ -910,6 +910,8 @@ impl WasmBridge {
         mut updates: Vec<(Option<PluginId>, Option<ClientId>, Event)>,
         shutdown_sender: Sender<()>,
     ) -> Result<()> {
+        let update_timer = std::time::Instant::now();
+        let event_names: Vec<String> = updates.iter().map(|(_, _, e)| e.to_string()).collect();
         let plugins_to_update: Vec<(
             PluginId,
             ClientId,
@@ -942,6 +944,8 @@ impl WasmBridge {
                         && Self::message_is_directed_at_plugin(pid, cid, plugin_id, client_id)
                     {
                         // Execute directly on pinned thread (no async I/O needed for event processing)
+                        let dispatched_at = std::time::Instant::now();
+                        let dispatched_event_name = event.to_string();
                         plugin_executor.execute_for_plugin(*plugin_id, {
                             let plugin_id = *plugin_id;
                             let client_id = *client_id;
@@ -954,8 +958,11 @@ impl WasmBridge {
                                   _default_layout,
                                   _plugin_cache,
                                   _engine| {
+                                log::info!("[PERF] executor: plugin {} event {}: dispatch-to-execution latency {:?}", plugin_id, dispatched_event_name, dispatched_at.elapsed());
                                 let _s = _s; // guard to allow the task to complete before cleanup/shutdown
+                                let t_lock = std::time::Instant::now();
                                 let mut running_plugin = running_plugin.lock().unwrap();
+                                log::info!("[PERF] executor: plugin {} event {}: running_plugin mutex acquire took {:?}", plugin_id, dispatched_event_name, t_lock.elapsed());
                                 let mut plugin_render_assets = vec![];
                                 match apply_event_to_plugin(
                                     plugin_id,
@@ -1000,6 +1007,7 @@ impl WasmBridge {
                 }
             }
         }
+        log::info!("[PERF] update_plugins: dispatch of {:?} took {:?}", event_names, update_timer.elapsed());
         Ok(())
     }
     pub fn get_plugin_cwd(&self, plugin_id: PluginId, client_id: ClientId) -> Option<PathBuf> {
@@ -1335,6 +1343,8 @@ impl WasmBridge {
         pane_render_report: PaneRenderReport,
         shutdown_sender: Sender<()>,
     ) -> Result<()> {
+        let report_timer = std::time::Instant::now();
+        let pane_count = pane_render_report.all_pane_contents.values().map(|v| v.len()).sum::<usize>();
         // Plain content (existing behavior)
         let changed_panes_per_client = self.get_changed_panes_per_client(
             &pane_render_report.all_pane_contents,
@@ -1366,6 +1376,7 @@ impl WasmBridge {
         }
 
         self.previous_pane_render_report = Some(pane_render_report);
+        log::info!("[PERF] handle_pane_render_report: {} panes, took {:?}", pane_count, report_timer.elapsed());
         Ok(())
     }
 
@@ -2099,6 +2110,9 @@ pub fn apply_event_to_plugin(
     plugin_render_assets: &mut Vec<PluginRenderAsset>,
     senders: ThreadSenders,
 ) -> Result<()> {
+    let apply_timer = std::time::Instant::now();
+    let event_name = event.to_string();
+    let plugin_name = running_plugin.store.data().plugin.location.to_string();
     let instance = &running_plugin.instance;
     let rows = running_plugin.rows;
     let columns = running_plugin.columns;
@@ -2118,17 +2132,25 @@ pub fn apply_event_to_plugin(
                 mode_info.keybinds = running_plugin.store.data().keybinds.to_keybinds_vec();
                 mode_info.base_mode = Some(running_plugin.store.data().default_mode);
             }
+            let t_proto = std::time::Instant::now();
             let protobuf_event: Result<ProtobufEvent, _> = event.clone().try_into();
             match protobuf_event {
                 Ok(protobuf_event) => {
+                    let encoded_bytes = protobuf_event.encode_to_vec();
+                    let encoded_len = encoded_bytes.len();
+                    log::info!("[PERF] apply_event plugin={} event={}: protobuf encode ({} bytes) took {:?}", plugin_name, event_name, encoded_len, t_proto.elapsed());
                     let update = instance
                         .get_typed_func::<(), i32>(&mut running_plugin.store, "update")
                         .with_context(err_context)?;
-                    wasi_write_object(running_plugin.store.data(), &protobuf_event.encode_to_vec())
+                    let t_write = std::time::Instant::now();
+                    wasi_write_object(running_plugin.store.data(), &encoded_bytes)
                         .with_context(err_context)?;
+                    log::info!("[PERF] apply_event plugin={} event={}: wasi_write_object took {:?}", plugin_name, event_name, t_write.elapsed());
+                    let t_update = std::time::Instant::now();
                     let should_render = update
                         .call(&mut running_plugin.store, ())
                         .with_context(err_context)?;
+                    log::info!("[PERF] apply_event plugin={} event={}: wasmi update() call took {:?}", plugin_name, event_name, t_update.elapsed());
                     let mut should_render = should_render == 1;
                     if let Event::PermissionRequestResult(..) = event {
                         // we always render in this case, otherwise the request permission screen stays on
@@ -2136,6 +2158,7 @@ pub fn apply_event_to_plugin(
                         should_render = true;
                     }
                     if rows > 0 && columns > 0 && should_render {
+                        let t_render = std::time::Instant::now();
                         let rendered_bytes = instance
                             .get_typed_func::<(i32, i32), ()>(&mut running_plugin.store, "render")
                             .and_then(|render| {
@@ -2148,6 +2171,7 @@ pub fn apply_event_to_plugin(
                                     .map_err(|e| anyhow!(e))
                             })
                             .with_context(err_context)?;
+                        log::info!("[PERF] apply_event plugin={} event={}: wasmi render() call took {:?}", plugin_name, event_name, t_render.elapsed());
                         let pipes_to_block_or_unblock =
                             pipes_to_block_or_unblock(running_plugin, None);
                         let plugin_render_asset = PluginRenderAsset::new(
@@ -2188,6 +2212,7 @@ pub fn apply_event_to_plugin(
             );
         },
     }
+    log::info!("[PERF] apply_event plugin={} event={}: total took {:?}", plugin_name, event_name, apply_timer.elapsed());
     Ok(())
 }
 
