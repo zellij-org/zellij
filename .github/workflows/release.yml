@@ -33,6 +33,7 @@ jobs:
         build:
           - linux musl x64
           - linux musl aarch64
+          - linux gnu riscv64
           - macos x64
           - macos aarch64
           - windows x64
@@ -43,6 +44,9 @@ jobs:
           - build: linux musl aarch64
             os: ubuntu-latest
             target: aarch64-unknown-linux-musl
+          - build: linux gnu riscv64
+            os: ubuntu-latest
+            target: riscv64gc-unknown-linux-gnu
           - build: macos x64
             os: macos-latest
             target: x86_64-apple-darwin
@@ -224,6 +228,7 @@ jobs:
         build:
           - linux musl x64
           - linux musl aarch64
+          - linux gnu riscv64
           - macos x64
           - macos aarch64
           - windows x64
@@ -234,6 +239,9 @@ jobs:
           - build: linux musl aarch64
             os: ubuntu-latest
             target: aarch64-unknown-linux-musl
+          - build: linux gnu riscv64
+            os: ubuntu-latest
+            target: riscv64gc-unknown-linux-gnu
           - build: macos x64
             os: macos-latest
             target: x86_64-apple-darwin
@@ -403,3 +411,4 @@ jobs:
           asset_path: ${{ steps.make-checksum-msi.outputs.checksum_name }}
           asset_name: zellij-no-web-${{ matrix.target }}-installer.sha256sum
           asset_content_type: text/plain
+
