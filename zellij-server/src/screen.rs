@@ -40,7 +40,7 @@ use crate::route::NotificationEnd;
 
 use log::{debug, warn};
 use zellij_utils::data::{
-    CommandOrPlugin, Direction, FloatingPaneCoordinates, GetFocusedPaneInfoResponse,
+    CommandOrPlugin, Direction, EventType, FloatingPaneCoordinates, GetFocusedPaneInfoResponse,
     KeyWithModifier, LayoutInfo, LayoutWithError, ListPanesResponse, ListTabsResponse,
     NewPanePlacement, PaneContents, PaneInfo, PaneListEntry, PaneManifest, PaneRenderReport,
     PaneScrollbackResponse, PluginPermission, RegexHighlight, Resize, ResizeStrategy, SessionInfo,
@@ -702,6 +702,8 @@ pub enum ScreenInstruction {
         pane_id: zellij_utils::data::PaneId,
     },
     PluginSubscribedToAnsiPaneContents(bool), // true = at least one plugin needs ANSI content
+    UpdateBackgroundPluginSubscriptions(PluginId, ClientId, HashSet<EventType>),
+    BroadcastModeUpdate(ModeInfo, Option<ClientId>), // ModeInfo, optional specific client_id (None = all clients)
     // Pane-targeting CLI variants
     ScrollUpWithPaneId(PaneId, Option<NotificationEnd>),
     ScrollDownWithPaneId(PaneId, Option<NotificationEnd>),
@@ -1006,6 +1008,10 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::PluginSubscribedToAnsiPaneContents(..) => {
                 ScreenContext::PluginSubscribedToAnsiPaneContents
             },
+            ScreenInstruction::UpdateBackgroundPluginSubscriptions(..) => {
+                ScreenContext::UpdateBackgroundPluginSubscriptions
+            },
+            ScreenInstruction::BroadcastModeUpdate(..) => ScreenContext::BroadcastModeUpdate,
             // Pane-targeting CLI variants
             ScreenInstruction::ScrollUpWithPaneId(..) => ScreenContext::ScrollUpWithPaneId,
             ScreenInstruction::ScrollDownWithPaneId(..) => ScreenContext::ScrollDownWithPaneId,
@@ -1259,6 +1265,7 @@ pub(crate) struct Screen {
     cached_layout_errors: Vec<LayoutWithError>,
     pane_render_subscribers: HashMap<ClientId, PaneRenderSubscription>,
     plugins_need_ansi_pane_contents: bool,
+    background_plugin_subscriptions: HashMap<(PluginId, ClientId), HashSet<EventType>>,
 }
 
 impl Screen {
@@ -1359,6 +1366,7 @@ impl Screen {
             cached_layout_errors: vec![],
             pane_render_subscribers: HashMap::new(),
             plugins_need_ansi_pane_contents: false,
+            background_plugin_subscriptions: HashMap::new(),
         }
     }
 
@@ -2645,7 +2653,14 @@ impl Screen {
                 plugin_tab_updates.push(tab_info_for_plugins);
             }
             plugin_tab_updates.sort_by(|a, b| a.position.cmp(&b.position));
-            plugin_updates.push((None, Some(*client_id), Event::TabUpdate(plugin_tab_updates)));
+            let target_plugin_ids = self.targeted_plugin_ids(*client_id, EventType::TabUpdate);
+            for plugin_id in target_plugin_ids {
+                plugin_updates.push((
+                    Some(plugin_id),
+                    Some(*client_id),
+                    Event::TabUpdate(plugin_tab_updates.clone()),
+                ));
+            }
         }
         self.bus
             .senders
@@ -2658,14 +2673,24 @@ impl Screen {
         for tab in self.tabs.values() {
             pane_manifest.panes.insert(tab.position, tab.pane_infos());
         }
-        self.bus
-            .senders
-            .send_to_plugin(PluginInstruction::Update(vec![(
-                None,
-                None,
-                Event::PaneUpdate(pane_manifest.clone()),
-            )]))
-            .context("failed to update tabs")?;
+        let mut plugin_updates = vec![];
+        let client_ids: Vec<ClientId> = self.active_tab_ids.keys().copied().collect();
+        for client_id in client_ids {
+            let target_plugin_ids = self.targeted_plugin_ids(client_id, EventType::PaneUpdate);
+            for plugin_id in target_plugin_ids {
+                plugin_updates.push((
+                    Some(plugin_id),
+                    Some(client_id),
+                    Event::PaneUpdate(pane_manifest.clone()),
+                ));
+            }
+        }
+        if !plugin_updates.is_empty() {
+            self.bus
+                .senders
+                .send_to_plugin(PluginInstruction::Update(plugin_updates))
+                .context("failed to update pane state")?;
+        }
 
         Ok(pane_manifest)
     }
@@ -3122,6 +3147,23 @@ impl Screen {
             tab.mark_active_pane_for_rerender(client_id);
             tab.update_input_modes()?;
         }
+        // Notify background plugins subscribed to ModeUpdate
+        let mut bg_updates = vec![];
+        for ((bg_pid, bg_cid), subs) in &self.background_plugin_subscriptions {
+            if subs.contains(&EventType::ModeUpdate) && *bg_cid == client_id {
+                bg_updates.push((
+                    Some(*bg_pid),
+                    Some(*bg_cid),
+                    Event::ModeUpdate(mode_info.clone()),
+                ));
+            }
+        }
+        if !bg_updates.is_empty() {
+            self.bus
+                .senders
+                .send_to_plugin(PluginInstruction::Update(bg_updates))
+                .context("failed to update background plugins with mode info")?;
+        }
         Ok(())
     }
     pub fn change_mode_for_all_clients(&mut self, mode_info: ModeInfo) -> Result<()> {
@@ -3136,6 +3178,57 @@ impl Screen {
         for client_id in connected_client_ids {
             self.change_mode(mode_info.clone(), client_id)
                 .with_context(err_context)?;
+        }
+        Ok(())
+    }
+    /// Collect plugin IDs that should receive a broadcast event for a given client.
+    /// Returns plugin IDs from the client's active tab plus background plugins
+    /// subscribed to the given event type.
+    fn targeted_plugin_ids(&self, client_id: ClientId, event_type: EventType) -> Vec<PluginId> {
+        let mut plugin_ids = Vec::new();
+        // Active-tab plugins
+        if let Some(active_tab_id) = self.active_tab_ids.get(&client_id) {
+            if let Some(tab) = self.tabs.get(active_tab_id) {
+                plugin_ids.extend(tab.get_plugin_ids());
+            }
+        }
+        // Background plugins subscribed to this event type
+        for ((bg_pid, bg_cid), subs) in &self.background_plugin_subscriptions {
+            if subs.contains(&event_type) && *bg_cid == client_id {
+                if !plugin_ids.contains(bg_pid) {
+                    plugin_ids.push(*bg_pid);
+                }
+            }
+        }
+        plugin_ids
+    }
+    /// Broadcast a ModeUpdate event to active-tab plugins and subscribed background plugins.
+    pub fn broadcast_mode_update(
+        &mut self,
+        mode_info: ModeInfo,
+        target_client_id: Option<ClientId>,
+    ) -> Result<()> {
+        let mut plugin_updates = vec![];
+        let client_ids: Vec<ClientId> = if let Some(cid) = target_client_id {
+            vec![cid]
+        } else {
+            self.active_tab_ids.keys().copied().collect()
+        };
+        for client_id in client_ids {
+            let plugin_ids = self.targeted_plugin_ids(client_id, EventType::ModeUpdate);
+            for plugin_id in plugin_ids {
+                plugin_updates.push((
+                    Some(plugin_id),
+                    Some(client_id),
+                    Event::ModeUpdate(mode_info.clone()),
+                ));
+            }
+        }
+        if !plugin_updates.is_empty() {
+            self.bus
+                .senders
+                .send_to_plugin(PluginInstruction::Update(plugin_updates))
+                .context("failed to broadcast mode update")?;
         }
         Ok(())
     }
@@ -4028,14 +4121,18 @@ impl Screen {
                     should_render = true;
                 }
                 if !mouse_effect.leave_clipboard_message {
-                    let _ = self
-                        .bus
-                        .senders
-                        .send_to_plugin(PluginInstruction::Update(vec![(
-                            None,
-                            Some(client_id),
-                            Event::InputReceived,
-                        )]));
+                    let target_plugin_ids =
+                        self.targeted_plugin_ids(client_id, EventType::InputReceived);
+                    let plugin_updates: Vec<_> = target_plugin_ids
+                        .into_iter()
+                        .map(|pid| (Some(pid), Some(client_id), Event::InputReceived))
+                        .collect();
+                    if !plugin_updates.is_empty() {
+                        let _ = self
+                            .bus
+                            .senders
+                            .send_to_plugin(PluginInstruction::Update(plugin_updates));
+                    }
                     should_render = true; // TODO: do we need this?
                 }
                 if should_render {
@@ -8310,6 +8407,24 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::PluginSubscribedToAnsiPaneContents(has_subscribers) => {
                 screen.plugins_need_ansi_pane_contents = has_subscribers;
+            },
+            ScreenInstruction::UpdateBackgroundPluginSubscriptions(
+                plugin_id,
+                client_id,
+                subscriptions,
+            ) => {
+                if subscriptions.is_empty() {
+                    screen
+                        .background_plugin_subscriptions
+                        .remove(&(plugin_id, client_id));
+                } else {
+                    screen
+                        .background_plugin_subscriptions
+                        .insert((plugin_id, client_id), subscriptions);
+                }
+            },
+            ScreenInstruction::BroadcastModeUpdate(mode_info, target_client_id) => {
+                screen.broadcast_mode_update(mode_info, target_client_id)?;
             },
             // Pane-targeting CLI handlers
             ScreenInstruction::ScrollUpWithPaneId(pane_id, mut _completion_tx) => {

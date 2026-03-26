@@ -8,7 +8,7 @@ use insta::assert_snapshot;
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::PathBuf;
 use zellij_utils::cli::CliAction;
-use zellij_utils::data::{Event, Resize, Style, WebSharing};
+use zellij_utils::data::{Event, EventType, Resize, Style, WebSharing};
 use zellij_utils::errors::{prelude::*, ErrorContext};
 use zellij_utils::input::actions::Action;
 use zellij_utils::input::command::{RunCommand, TerminalAction};
@@ -26,6 +26,7 @@ use zellij_utils::position::Position;
 use crate::background_jobs::BackgroundJob;
 use crate::os_input_output::AsyncReader;
 use crate::pty_writer::PtyWriteInstruction;
+use std::collections::HashSet;
 use std::env::set_var;
 use std::sync::{Arc, Mutex};
 
@@ -566,6 +567,54 @@ impl MockScreen {
             vec![], // floating panes ids
             plugin_ids,
             0,
+            true,
+            (self.main_client_id, false),
+            None,
+            None,
+        ));
+        self.last_opened_tab_index = Some(tab_index);
+    }
+    pub fn new_tab_with_plugins(&mut self, plugin_pane_ids: Vec<u32>) {
+        // Build a layout where each child is a plugin pane
+        let fake_plugin_url = "file:/path/to/fake/plugin";
+        let run_plugin = RunPluginOrAlias::from_url(fake_plugin_url, &None, None, None).unwrap();
+        let mut tab_layout = TiledPaneLayout::default();
+        tab_layout.children_split_direction = SplitDirection::Vertical;
+        tab_layout.children = plugin_pane_ids
+            .iter()
+            .map(|_| {
+                let mut child = TiledPaneLayout::default();
+                child.run = Some(Run::Plugin(run_plugin.clone()));
+                child
+            })
+            .collect();
+        let pane_ids = vec![]; // no terminal panes
+        let mut plugin_ids = HashMap::new();
+        plugin_ids.insert(run_plugin, plugin_pane_ids);
+        let default_shell = None;
+        let tab_name = None;
+        let tab_index = self.last_opened_tab_index.map(|l| l + 1).unwrap_or(0);
+        let should_change_focus_to_new_tab = true;
+        let _ = self.to_screen.send(ScreenInstruction::NewTab(
+            None,
+            default_shell,
+            Some(tab_layout.clone()),
+            vec![], // floating_panes_layout
+            tab_name,
+            (vec![], vec![]), // swap layouts
+            None,             // initial_panes
+            false,
+            should_change_focus_to_new_tab,
+            (self.main_client_id, false),
+            None,
+        ));
+        let _ = self.to_screen.send(ScreenInstruction::ApplyLayout(
+            tab_layout,
+            vec![], // floating_panes_layout
+            pane_ids,
+            vec![], // floating panes ids
+            plugin_ids,
+            tab_index,
             true,
             (self.main_client_id, false),
             None,
@@ -7370,5 +7419,247 @@ fn integration_subscribe_with_ansi_flag() {
         has_ansi_content,
         "ANSI subscriber should receive viewport lines with ANSI escape codes. Messages: {:?}",
         subscriber_msgs
+    );
+}
+
+#[test]
+pub fn background_plugin_receives_broadcasts_regardless_of_active_tab() {
+    // Tab 0: plugin pane 2 (from new_tab_with_plugins, queued before run)
+    // Tab 1: plugin pane 3 (from new_tab_with_plugins, queued before run)
+    // Tab 2: terminal panes only (from run, starts screen thread)
+    // After run, client is on tab 2. Switch to tab 0 (plugin 2).
+    // Background plugin 99 should also receive updates.
+    let size = Size { cols: 80, rows: 10 };
+    let client_id = 10;
+
+    let mut mock_screen = MockScreen::new(size);
+    mock_screen.new_tab_with_plugins(vec![2]);
+    mock_screen.new_tab_with_plugins(vec![3]);
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(None, vec![]);
+
+    // Register background plugin 99 with the main_client_id (1), not the CLI client_id (10)
+    let main_client_id = mock_screen.main_client_id;
+    let mut bg_subs = HashSet::new();
+    bg_subs.insert(EventType::TabUpdate);
+    bg_subs.insert(EventType::ModeUpdate);
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::UpdateBackgroundPluginSubscriptions(
+            99,
+            main_client_id,
+            bg_subs,
+        ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    let received_plugin_instructions = Arc::new(Mutex::new(vec![]));
+    let plugin_receiver = mock_screen.plugin_receiver.take().unwrap();
+    let plugin_thread = log_actions_in_thread!(
+        received_plugin_instructions,
+        PluginInstruction::Exit,
+        plugin_receiver
+    );
+
+    // Drain initial setup instructions before the GoToTab action
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let instructions_before_switch = received_plugin_instructions.lock().unwrap().len();
+
+    // Switch to tab 0 (1-based index 1 = position 0 = tab with plugin 2)
+    let goto_tab = CliAction::GoToTab { index: 1 };
+    send_cli_action_to_server(&session_metadata, goto_tab, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    mock_screen.teardown(vec![plugin_thread, screen_thread]);
+
+    let instructions = received_plugin_instructions.lock().unwrap();
+    // Only examine instructions sent after the switch
+    let instructions_after_switch = &instructions[instructions_before_switch..];
+    let mut plugin_ids_that_received_tab_update: Vec<u32> = vec![];
+    let mut plugin_ids_that_received_mode_update: Vec<u32> = vec![];
+    for instruction in instructions_after_switch.iter() {
+        if let PluginInstruction::Update(updates) = instruction {
+            for (pid, _cid, event) in updates {
+                match event {
+                    Event::TabUpdate(..) => {
+                        if let Some(id) = pid {
+                            plugin_ids_that_received_tab_update.push(*id);
+                        }
+                    },
+                    Event::ModeUpdate(..) => {
+                        if let Some(id) = pid {
+                            plugin_ids_that_received_mode_update.push(*id);
+                        }
+                    },
+                    _ => {},
+                }
+            }
+        }
+    }
+
+    // Plugin 2 (active tab) and plugin 99 (background) should receive updates
+    assert!(
+        plugin_ids_that_received_tab_update.contains(&2),
+        "Active tab plugin 2 should receive TabUpdate, got: {:?}",
+        plugin_ids_that_received_tab_update
+    );
+    assert!(
+        plugin_ids_that_received_tab_update.contains(&99),
+        "Background plugin 99 should receive TabUpdate, got: {:?}",
+        plugin_ids_that_received_tab_update
+    );
+    // Plugin 3 (inactive tab) should NOT receive updates
+    assert!(
+        !plugin_ids_that_received_tab_update.contains(&3),
+        "Inactive tab plugin 3 should NOT receive TabUpdate, got: {:?}",
+        plugin_ids_that_received_tab_update
+    );
+
+    // ModeUpdate is sent via update_input_modes() to tab plugins only (not background plugins).
+    // Background plugins receive ModeUpdate only via explicit broadcast_mode_update calls.
+    // So during tab switch, only the active tab's plugins get ModeUpdate.
+    assert!(
+        plugin_ids_that_received_mode_update.contains(&2),
+        "Active tab plugin 2 should receive ModeUpdate, got: {:?}",
+        plugin_ids_that_received_mode_update
+    );
+    assert!(
+        !plugin_ids_that_received_mode_update.contains(&3),
+        "Inactive tab plugin 3 should NOT receive ModeUpdate, got: {:?}",
+        plugin_ids_that_received_mode_update
+    );
+}
+
+#[test]
+pub fn tab_switch_only_updates_active_tab_plugins() {
+    // Tab 0: plugin pane 2 (from new_tab_with_plugins)
+    // Tab 1: plugin pane 3 (from new_tab_with_plugins)
+    // Tab 2: terminal panes only (from run)
+    // After run, client is on tab 2. Switch to tab 0 (plugin 2).
+    // Only plugin 2 should receive updates; plugin 3 should not.
+    let size = Size { cols: 80, rows: 10 };
+    let client_id = 10;
+
+    let mut mock_screen = MockScreen::new(size);
+    mock_screen.new_tab_with_plugins(vec![2]);
+    mock_screen.new_tab_with_plugins(vec![3]);
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(None, vec![]);
+
+    let received_plugin_instructions = Arc::new(Mutex::new(vec![]));
+    let plugin_receiver = mock_screen.plugin_receiver.take().unwrap();
+    let plugin_thread = log_actions_in_thread!(
+        received_plugin_instructions,
+        PluginInstruction::Exit,
+        plugin_receiver
+    );
+
+    // Drain initial setup instructions before the GoToTab action
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let instructions_before_switch = received_plugin_instructions.lock().unwrap().len();
+
+    // Switch to tab 0 (1-based index 1 = position 0 = tab with plugin 2)
+    let goto_tab = CliAction::GoToTab { index: 1 };
+    send_cli_action_to_server(&session_metadata, goto_tab, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    mock_screen.teardown(vec![plugin_thread, screen_thread]);
+
+    let instructions = received_plugin_instructions.lock().unwrap();
+    let instructions_after_switch = &instructions[instructions_before_switch..];
+    let mut plugin_ids_that_received_updates: Vec<u32> = vec![];
+    for instruction in instructions_after_switch.iter() {
+        if let PluginInstruction::Update(updates) = instruction {
+            for (pid, _cid, event) in updates {
+                match event {
+                    Event::TabUpdate(..) | Event::ModeUpdate(..) => {
+                        if let Some(id) = pid {
+                            plugin_ids_that_received_updates.push(*id);
+                        }
+                    },
+                    _ => {},
+                }
+            }
+        }
+    }
+
+    // Only plugin 2 (active tab after switch) should receive TabUpdate/ModeUpdate
+    assert!(
+        plugin_ids_that_received_updates.contains(&2),
+        "Active tab plugin 2 should receive updates, got: {:?}",
+        plugin_ids_that_received_updates
+    );
+    assert!(
+        !plugin_ids_that_received_updates.contains(&3),
+        "Inactive tab plugin 3 should NOT receive updates, got: {:?}",
+        plugin_ids_that_received_updates
+    );
+}
+
+#[test]
+pub fn inactive_tab_plugins_get_fresh_state_on_activation() {
+    // Tab 0: plugin pane 2 (from new_tab_with_plugins)
+    // Tab 1: terminal panes only (from run, client starts here)
+    // Switch to tab 0 → plugin 2 becomes active and receives TabUpdate with both tabs.
+    let size = Size { cols: 80, rows: 10 };
+    let client_id = 10;
+
+    let mut mock_screen = MockScreen::new(size);
+    mock_screen.new_tab_with_plugins(vec![2]);
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(None, vec![]);
+
+    let received_plugin_instructions = Arc::new(Mutex::new(vec![]));
+    let plugin_receiver = mock_screen.plugin_receiver.take().unwrap();
+    let plugin_thread = log_actions_in_thread!(
+        received_plugin_instructions,
+        PluginInstruction::Exit,
+        plugin_receiver
+    );
+
+    // Drain initial setup instructions before the GoToTab action
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let instructions_before_switch = received_plugin_instructions.lock().unwrap().len();
+
+    // Switch to tab 0 (1-based index 1 = position 0 = tab with plugin 2)
+    let goto_tab = CliAction::GoToTab { index: 1 };
+    send_cli_action_to_server(&session_metadata, goto_tab, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    mock_screen.teardown(vec![plugin_thread, screen_thread]);
+
+    let instructions = received_plugin_instructions.lock().unwrap();
+    let instructions_after_switch = &instructions[instructions_before_switch..];
+    let tab_update_for_plugin_2 = instructions_after_switch.iter().find_map(|instruction| {
+        if let PluginInstruction::Update(updates) = instruction {
+            for (pid, _cid, event) in updates {
+                if let (Some(2), Event::TabUpdate(tab_infos)) = (pid, event) {
+                    return Some(tab_infos.clone());
+                }
+            }
+        }
+        None
+    });
+
+    assert!(
+        tab_update_for_plugin_2.is_some(),
+        "Plugin 2 should receive a TabUpdate after becoming active"
+    );
+    let tab_infos = tab_update_for_plugin_2.unwrap();
+    assert!(
+        tab_infos.len() >= 2,
+        "TabUpdate should contain info for both tabs, got {} tabs",
+        tab_infos.len()
+    );
+    let active_tab = tab_infos.iter().find(|t| t.active);
+    assert!(
+        active_tab.is_some(),
+        "TabUpdate should have an active tab marked"
+    );
+    // Tab at position 0 should be active after switching to GoToTab index 1 (1-based)
+    let active_tab = active_tab.unwrap();
+    assert_eq!(
+        active_tab.position, 0,
+        "The first tab (position 0) should be active, got position {}",
+        active_tab.position
     );
 }
