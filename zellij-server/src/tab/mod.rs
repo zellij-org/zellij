@@ -608,6 +608,14 @@ pub trait Pane {
         _get_full_scrollback: bool,
         _max_scrollback_lines: Option<usize>,
     ) -> PaneContents;
+    fn pane_contents_with_ansi(
+        &self,
+        _client_id: Option<ClientId>,
+        _get_full_scrollback: bool,
+        _max_scrollback_lines: Option<usize>,
+    ) -> PaneContents {
+        Default::default()
+    }
     fn update_exit_status(&mut self, _exit_status: i32) {}
     fn set_plugin_regex_highlights(
         &mut self,
@@ -4102,6 +4110,18 @@ impl Tab {
         }
         Ok(())
     }
+    pub fn dump_with_ansi_terminal_screen(
+        &mut self,
+        file: Option<String>,
+        pane_id: PaneId,
+        full: bool,
+    ) -> Result<()> {
+        if let Some(pane) = self.get_pane_with_id(pane_id) {
+            let dump = pane.dump_screen_with_ansi(full, None);
+            self.os_api.write_to_file(dump, file).non_fatal()
+        }
+        Ok(())
+    }
     pub fn get_dump_active_terminal_screen(&mut self, client_id: ClientId, full: bool) -> String {
         if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
             active_pane.dump_screen(full, Some(client_id))
@@ -4109,9 +4129,31 @@ impl Tab {
             String::new()
         }
     }
+    pub fn get_dump_with_ansi_active_terminal_screen(
+        &mut self,
+        client_id: ClientId,
+        full: bool,
+    ) -> String {
+        if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
+            active_pane.dump_screen_with_ansi(full, Some(client_id))
+        } else {
+            String::new()
+        }
+    }
     pub fn get_dump_terminal_screen(&mut self, pane_id: PaneId, full: bool) -> Option<String> {
         if let Some(pane) = self.get_pane_with_id(pane_id) {
             Some(pane.dump_screen(full, None))
+        } else {
+            None
+        }
+    }
+    pub fn get_dump_with_ansi_terminal_screen(
+        &mut self,
+        pane_id: PaneId,
+        full: bool,
+    ) -> Option<String> {
+        if let Some(pane) = self.get_pane_with_id(pane_id) {
+            Some(pane.dump_screen_with_ansi(full, None))
         } else {
             None
         }
@@ -4180,6 +4222,34 @@ impl Tab {
             file.push(format!("{}.dump", Uuid::new_v4()));
             self.dump_terminal_screen(Some(String::from(file.to_string_lossy())), pane_id, true)
                 .non_fatal();
+            let line_number = self
+                .get_pane_with_id(pane_id)
+                .and_then(|a_t| a_t.get_line_number());
+            self.senders.send_to_pty(PtyInstruction::OpenInPlaceEditor(
+                file,
+                line_number,
+                ClientTabIndexOrPaneId::PaneId(pane_id),
+                completion_tx,
+            ))
+        } else {
+            log::error!("Editing plugin pane scrollback is currently unsupported.");
+            Ok(())
+        }
+    }
+    pub fn edit_scrollback_raw_for_pane_with_id(
+        &mut self,
+        pane_id: PaneId,
+        completion_tx: Option<NotificationEnd>,
+    ) -> Result<()> {
+        if let PaneId::Terminal(_terminal_pane_id) = pane_id {
+            let mut file = temp_dir();
+            file.push(format!("{}.dump", Uuid::new_v4()));
+            self.dump_with_ansi_terminal_screen(
+                Some(String::from(file.to_string_lossy())),
+                pane_id,
+                true,
+            )
+            .non_fatal();
             let line_number = self
                 .get_pane_with_id(pane_id)
                 .and_then(|a_t| a_t.get_line_number());
@@ -4391,40 +4461,6 @@ impl Tab {
         client_id: ClientId,
     ) -> Result<MouseEffect> {
         MouseHandler::handle_scrollwheel_down(self, point, lines, client_id)
-    }
-
-    fn get_pane_at(
-        &mut self,
-        point: &Position,
-        search_selectable: bool,
-    ) -> Result<Option<&mut Box<dyn Pane>>> {
-        let err_context = || format!("failed to get pane at position {point:?}");
-
-        if self.floating_panes.panes_are_visible() {
-            if let Some(pane_id) = self
-                .floating_panes
-                .get_pane_id_at(point, search_selectable)
-                .with_context(err_context)?
-            {
-                return Ok(self.floating_panes.get_pane_mut(pane_id));
-            }
-        } else if self.floating_panes.has_pinned_panes() {
-            if let Some(pane_id) = self
-                .floating_panes
-                .get_pinned_pane_id_at(point, search_selectable)
-                .with_context(err_context)?
-            {
-                return Ok(self.floating_panes.get_pane_mut(pane_id));
-            }
-        }
-        if let Some(pane_id) = self
-            .get_pane_id_at(point, search_selectable)
-            .with_context(err_context)?
-        {
-            Ok(self.tiled_panes.get_pane_mut(pane_id))
-        } else {
-            Ok(None)
-        }
     }
 
     fn get_pane_id_at(
@@ -5696,6 +5732,191 @@ impl Tab {
         self.get_pane_with_id(pane_id)
             .map(|p| p.position_and_size().stacked.is_some())
             .unwrap_or(false)
+    }
+    // --- Pane-targeting CLI methods ---
+    pub fn scroll_up_by_pane_id(&mut self, pane_id: PaneId) {
+        let fictitious_client_id = 1;
+        if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
+            pane.scroll_up(1, fictitious_client_id);
+        }
+    }
+    pub fn scroll_down_by_pane_id(&mut self, pane_id: PaneId) -> Result<()> {
+        let fictitious_client_id = 1;
+        if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
+            pane.scroll_down(1, fictitious_client_id);
+            if !pane.is_scrolled() {
+                if let PaneId::Terminal(raw_fd) = pane.pid() {
+                    self.process_pending_vte_events(raw_fd)?;
+                }
+            }
+        }
+        Ok(())
+    }
+    pub fn scroll_to_top_by_pane_id(&mut self, pane_id: PaneId) -> Result<()> {
+        let fictitious_client_id = 1;
+        if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
+            pane.clear_scroll();
+            if let Some(size) = pane.get_line_number() {
+                pane.scroll_up(size, fictitious_client_id);
+            }
+        }
+        Ok(())
+    }
+    pub fn scroll_to_bottom_by_pane_id(&mut self, pane_id: PaneId) -> Result<()> {
+        if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
+            pane.clear_scroll();
+            if !pane.is_scrolled() {
+                if let PaneId::Terminal(raw_fd) = pane.pid() {
+                    self.process_pending_vte_events(raw_fd)?;
+                }
+            }
+        }
+        Ok(())
+    }
+    pub fn page_scroll_up_by_pane_id(&mut self, pane_id: PaneId) {
+        let fictitious_client_id = 1;
+        if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
+            let scroll_rows = pane.rows().max(1).saturating_sub(1);
+            pane.scroll_up(scroll_rows, fictitious_client_id);
+        }
+    }
+    pub fn page_scroll_down_by_pane_id(&mut self, pane_id: PaneId) -> Result<()> {
+        let fictitious_client_id = 1;
+        if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
+            let scroll_rows = pane.get_content_rows();
+            pane.scroll_down(scroll_rows, fictitious_client_id);
+            if !pane.is_scrolled() {
+                if let PaneId::Terminal(raw_fd) = pane.pid() {
+                    self.process_pending_vte_events(raw_fd)?;
+                }
+            }
+        }
+        Ok(())
+    }
+    pub fn half_page_scroll_up_by_pane_id(&mut self, pane_id: PaneId) {
+        let fictitious_client_id = 1;
+        if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
+            let scroll_rows = (pane.rows().max(1).saturating_sub(1)) / 2;
+            pane.scroll_up(scroll_rows, fictitious_client_id);
+        }
+    }
+    pub fn half_page_scroll_down_by_pane_id(&mut self, pane_id: PaneId) -> Result<()> {
+        let fictitious_client_id = 1;
+        if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
+            let scroll_rows = (pane.rows().max(1).saturating_sub(1)) / 2;
+            pane.scroll_down(scroll_rows, fictitious_client_id);
+            if !pane.is_scrolled() {
+                if let PaneId::Terminal(raw_fd) = pane.pid() {
+                    self.process_pending_vte_events(raw_fd)?;
+                }
+            }
+        }
+        Ok(())
+    }
+    pub fn resize_by_pane_id(&mut self, pane_id: PaneId, strategy: ResizeStrategy) {
+        self.resize_pane_with_id(strategy, pane_id).non_fatal();
+    }
+    pub fn move_pane_by_pane_id(&mut self, pane_id: PaneId, direction: Option<Direction>) {
+        if !self.has_selectable_panes() {
+            return;
+        }
+        if self.tiled_panes.fullscreen_is_active() {
+            return;
+        }
+        match direction {
+            Some(Direction::Left) => {
+                if self.floating_panes.panes_contain(&pane_id) {
+                    self.floating_panes.move_pane_left(pane_id);
+                    self.swap_layouts.set_is_floating_damaged();
+                    self.set_force_render();
+                } else {
+                    self.tiled_panes.move_pane_left(pane_id);
+                }
+            },
+            Some(Direction::Right) => {
+                if self.floating_panes.panes_contain(&pane_id) {
+                    self.floating_panes.move_pane_right(pane_id);
+                    self.swap_layouts.set_is_floating_damaged();
+                    self.set_force_render();
+                } else {
+                    self.tiled_panes.move_pane_right(pane_id);
+                }
+            },
+            Some(Direction::Up) => {
+                if self.floating_panes.panes_contain(&pane_id) {
+                    self.floating_panes.move_pane_up(pane_id);
+                    self.swap_layouts.set_is_floating_damaged();
+                    self.set_force_render();
+                } else {
+                    self.tiled_panes.move_pane_up(pane_id);
+                }
+            },
+            Some(Direction::Down) => {
+                if self.floating_panes.panes_contain(&pane_id) {
+                    self.floating_panes.move_pane_down(pane_id);
+                    self.swap_layouts.set_is_floating_damaged();
+                    self.set_force_render();
+                } else {
+                    self.tiled_panes.move_pane_down(pane_id);
+                }
+            },
+            None => {
+                let search_backwards = false;
+                if self.floating_panes.panes_contain(&pane_id) {
+                    self.floating_panes.move_pane(search_backwards, pane_id);
+                } else {
+                    self.tiled_panes.move_pane(search_backwards, pane_id);
+                }
+            },
+        }
+    }
+    pub fn move_pane_backwards_by_pane_id(&mut self, pane_id: PaneId) {
+        if !self.has_selectable_panes() {
+            return;
+        }
+        if self.tiled_panes.fullscreen_is_active() {
+            return;
+        }
+        let search_backwards = true;
+        if self.floating_panes.panes_contain(&pane_id) {
+            self.floating_panes.move_pane(search_backwards, pane_id);
+        } else {
+            self.tiled_panes.move_pane(search_backwards, pane_id);
+        }
+    }
+    pub fn clear_screen_by_pane_id(&mut self, pane_id: PaneId) -> Result<()> {
+        self.clear_screen_for_pane_id(pane_id);
+        Ok(())
+    }
+    pub fn toggle_fullscreen_by_pane_id(&mut self, pane_id: PaneId) {
+        self.toggle_pane_fullscreen(pane_id);
+    }
+    pub fn close_pane_by_pane_id(
+        &mut self,
+        pane_id: PaneId,
+        completion_tx: Option<NotificationEnd>,
+    ) -> Result<()> {
+        self.close_pane(pane_id, false, None);
+        self.senders
+            .send_to_pty(PtyInstruction::ClosePane(pane_id, completion_tx))?;
+        Ok(())
+    }
+    pub fn rename_pane_by_pane_id(&mut self, pane_id: PaneId, name: Vec<u8>) -> Result<()> {
+        if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
+            pane.rename(name);
+        }
+        Ok(())
+    }
+    pub fn undo_rename_pane_by_pane_id(&mut self, pane_id: PaneId) {
+        if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
+            pane.load_pane_name();
+        }
+    }
+    pub fn toggle_pane_pinned_by_pane_id(&mut self, pane_id: PaneId) {
+        if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
+            pane.toggle_pinned();
+            self.set_force_render();
+        }
     }
 }
 

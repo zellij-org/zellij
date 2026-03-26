@@ -5,6 +5,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+* fix: don't display default ports as offline in `share` plugin (https://github.com/zellij-org/zellij/pull/4908)
+
+## [0.44.0] - 2026-03-23
 * fix: meta key handling in web client (https://github.com/zellij-org/zellij/pull/4376)
 * refactor: move logical structures from client to server (https://github.com/zellij-org/zellij/pull/4383)
 * fix: make sessions compatible across versions (https://github.com/zellij-org/zellij/pull/4439)
@@ -79,7 +82,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: allow specifying --ip and --port with `zellij web --status` rather than relying on those in the config (https://github.com/zellij-org/zellij/pull/4825)
 * fix: make sure clients are focused when atomically showing floating panes (https://github.com/zellij-org/zellij/pull/4834)
 * feat: allow configuring focus_follows_mouse and mouse_click_through (https://github.com/zellij-org/zellij/pull/4836)
-
+* fix: handle very large writes to the pty (https://github.com/zellij-org/zellij/pull/4818)
+* feat: add --pane-id and --tab-id to all relevant CLI actions (https://github.com/zellij-org/zellij/pull/4846)
+* feat: add --ansi flag to all relevant CLI/plugin-api screendump commands (https://github.com/zellij-org/zellij/pull/4848)
+* fix: sixel aspect-ratio and padding issues (https://github.com/zellij-org/zellij/pull/4858)
+* fix: don't recycle pane ids for terminals (https://github.com/zellij-org/zellij/pull/4859)
 
 ## [0.43.1] - 2025-08-08
 * fix: pane rename backspace regression (https://github.com/zellij-org/zellij/pull/4346)

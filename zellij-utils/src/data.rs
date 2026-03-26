@@ -1009,6 +1009,7 @@ pub enum Event {
     /// An action was performed by the user (requires InterceptInput permission)
     UserAction(Action, ClientId, Option<u32>, Option<ClientId>), // Action, client_id, terminal_id, cli_client_id
     PaneRenderReport(HashMap<PaneId, PaneContents>),
+    PaneRenderReportWithAnsi(HashMap<PaneId, PaneContents>),
     ActionComplete(Action, Option<PaneId>, BTreeMap<String, String>), // Action, pane_id, context
     CwdChanged(PaneId, PathBuf, Vec<ClientId>), // pane_id, cwd, focused_client_ids
     AvailableLayoutInfo(Vec<LayoutInfo>, Vec<LayoutWithError>),
@@ -2374,6 +2375,7 @@ impl ClientInfo {
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct PaneRenderReport {
     pub all_pane_contents: HashMap<ClientId, HashMap<PaneId, PaneContents>>,
+    pub all_pane_contents_with_ansi: HashMap<ClientId, HashMap<PaneId, PaneContents>>,
 }
 
 impl PaneRenderReport {
@@ -2386,6 +2388,20 @@ impl PaneRenderReport {
         for client_id in client_ids {
             let p = self
                 .all_pane_contents
+                .entry(*client_id)
+                .or_insert_with(|| HashMap::new());
+            p.insert(pane_id, pane_contents.clone());
+        }
+    }
+    pub fn add_pane_contents_with_ansi(
+        &mut self,
+        client_ids: &[ClientId],
+        pane_id: PaneId,
+        pane_contents: PaneContents,
+    ) {
+        for client_id in client_ids {
+            let p = self
+                .all_pane_contents_with_ansi
                 .entry(*client_id)
                 .or_insert_with(|| HashMap::new());
             p.insert(pane_id, pane_contents.clone());
@@ -3539,6 +3555,13 @@ pub enum PluginCommand {
     SetPaneColor(PaneId, Option<String>, Option<String>), // (pane_id, fg, bg)
     SetPaneRegexHighlights(PaneId, Vec<RegexHighlight>),
     ClearPaneHighlights(PaneId),
+    OpenPluginPaneFloating {
+        plugin_url: String,
+        configuration: BTreeMap<String, String>,
+        floating_pane_coordinates: Option<FloatingPaneCoordinates>,
+        context: BTreeMap<String, String>,
+    },
+    ListWindowsVolumes,
 }
 
 // Response type for plugin API methods that open a pane in a new tab
@@ -3581,3 +3604,4 @@ pub type OpenCommandPaneBackgroundResponse = Option<PaneId>;
 pub type OpenCommandPaneInPlaceOfPaneIdResponse = Option<PaneId>;
 pub type OpenTerminalPaneInPlaceOfPaneIdResponse = Option<PaneId>;
 pub type OpenEditPaneInPlaceOfPaneIdResponse = Option<PaneId>;
+pub type OpenPluginPaneFloatingResponse = Option<PaneId>;

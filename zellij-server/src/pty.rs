@@ -14,7 +14,7 @@ use crate::{
 };
 use std::sync::Arc;
 use std::{collections::HashMap, path::PathBuf};
-use tokio::task::{self, JoinHandle};
+use tokio::task::JoinHandle;
 use zellij_utils::{
     data::{
         CommandOrPlugin, Event, FloatingPaneCoordinates, GetPaneCwdResponse, GetPanePidResponse,
@@ -1761,7 +1761,9 @@ impl Pty {
         let err_context = || format!("failed to close for pane {id:?}");
         match id {
             PaneId::Terminal(id) => {
-                self.task_handles.remove(&id);
+                if let Some(handle) = self.task_handles.remove(&id) {
+                    handle.abort();
+                }
                 if let Some(child_pid) = self.id_to_child_pid.remove(&id) {
                     let err_context = || format!("failed to kill child processes for pane {id}");
                     self.bus

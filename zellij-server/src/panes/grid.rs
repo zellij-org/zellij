@@ -458,6 +458,15 @@ fn match_to_selection(
     Some((sel, start_row, start_col, end_row, end_col))
 }
 
+/// Extract the effective match from a set of captures.
+/// If capture group 1 exists, it is used (allowing patterns to include
+/// context such as surrounding whitespace in the full match while
+/// highlighting only the content in group 1). Otherwise the full match
+/// (group 0) is returned.
+fn highlight_match<'t>(captures: &regex::Captures<'t>) -> Option<regex::Match<'t>> {
+    captures.get(1).or_else(|| captures.get(0))
+}
+
 /// Check whether a (row, col) position falls within a display span.
 /// The span is inclusive at start and exclusive at end.
 fn position_in_span(
@@ -1392,7 +1401,7 @@ impl Grid {
         if self.lock_renders {
             return Ok(None);
         }
-        let mut raw_vte_output = String::new();
+        let raw_vte_output = String::new();
 
         let (mut character_chunks, sixel_image_chunks) = self.read_changes(content_x, content_y);
 
@@ -2163,7 +2172,10 @@ impl Grid {
         )> = None;
         for (plugin_id, pattern_map) in &self.plugin_highlights {
             for (pattern, compiled) in pattern_map {
-                for mat in compiled.regex.find_iter(&logical_text) {
+                for captures in compiled.regex.captures_iter(&logical_text) {
+                    let Some(mat) = highlight_match(&captures) else {
+                        continue;
+                    };
                     if let Some((_sel, start_row, start_col, end_row, end_col)) =
                         match_to_selection(&mat, &boundaries, &self.viewport)
                     {
@@ -2250,7 +2262,10 @@ impl Grid {
                 if !compiled.on_hover || compiled.tooltip_text.is_none() {
                     continue;
                 }
-                for mat in compiled.regex.find_iter(&logical_text) {
+                for captures in compiled.regex.captures_iter(&logical_text) {
+                    let Some(mat) = highlight_match(&captures) else {
+                        continue;
+                    };
                     if let Some((_sel, start_row, start_col, end_row, end_col)) =
                         match_to_selection(&mat, &boundaries, &self.viewport)
                     {
@@ -2306,7 +2321,10 @@ impl Grid {
                                 if !compiled.on_hover || !compiled.has_visual_effect() {
                                     continue;
                                 }
-                                for mat in compiled.regex.find_iter(&logical_text) {
+                                for captures in compiled.regex.captures_iter(&logical_text) {
+                                    let Some(mat) = highlight_match(&captures) else {
+                                        continue;
+                                    };
                                     if let Some((sel, start_row, start_col, end_row, end_col)) =
                                         match_to_selection(&mat, &boundaries, &self.viewport)
                                     {
@@ -2340,7 +2358,10 @@ impl Grid {
                     if compiled.on_hover || !compiled.has_visual_effect() {
                         continue;
                     }
-                    for mat in compiled.regex.find_iter(&logical_text) {
+                    for captures in compiled.regex.captures_iter(&logical_text) {
+                        let Some(mat) = highlight_match(&captures) else {
+                            continue;
+                        };
                         if let Some((sel, _, _, _, _)) =
                             match_to_selection(&mat, &boundaries, &self.viewport)
                         {
@@ -3089,6 +3110,72 @@ impl Grid {
             for row in &self.lines_below {
                 let s: String = (&row.columns).into_iter().map(|x| x.character).collect();
                 lines_below_viewport.push(s);
+            }
+            PaneContents::new_with_scrollback(
+                viewport,
+                self.selection.start,
+                self.selection.end,
+                lines_above_viewport,
+                lines_below_viewport,
+            )
+        } else {
+            PaneContents::new(viewport, self.selection.start, self.selection.end)
+        }
+    }
+    pub fn pane_contents_with_ansi(
+        &self,
+        get_full_scrollback: bool,
+        max_scrollback_lines: Option<usize>,
+    ) -> PaneContents {
+        use std::fmt::Write;
+
+        let extract_row_with_ansi = |row: &Row| -> String {
+            let mut buf = String::new();
+            let mut last_styles: Option<RcCharacterStyles> = None;
+
+            let last_non_space = row
+                .columns
+                .iter()
+                .rposition(|tc| {
+                    let space = tc.character == ' ';
+                    let styled = !matches!(tc.styles.background, Some(AnsiCode::Reset) | None);
+                    !space || styled
+                })
+                .map(|i| i + 1)
+                .unwrap_or(0);
+
+            for tc in row.columns.iter().take(last_non_space) {
+                if last_styles.as_ref() != Some(&tc.styles) {
+                    write!(buf, "{}", tc.styles).unwrap();
+                    last_styles = Some(tc.styles.clone());
+                }
+                buf.push(tc.character);
+            }
+            if last_styles.is_some() {
+                buf.push_str("\u{1b}[m");
+            }
+            buf
+        };
+
+        let mut viewport: Vec<String> = Vec::with_capacity(self.viewport.len());
+        for row in &self.viewport {
+            viewport.push(extract_row_with_ansi(row));
+        }
+
+        if get_full_scrollback {
+            let mut lines_above_viewport: Vec<String> = Vec::with_capacity(self.lines_above.len());
+            for row in &self.lines_above {
+                lines_above_viewport.push(extract_row_with_ansi(row));
+            }
+            if let Some(max) = max_scrollback_lines {
+                if max > 0 && lines_above_viewport.len() > max {
+                    let start = lines_above_viewport.len() - max;
+                    lines_above_viewport = lines_above_viewport.split_off(start);
+                }
+            }
+            let mut lines_below_viewport: Vec<String> = Vec::with_capacity(self.lines_below.len());
+            for row in &self.lines_below {
+                lines_below_viewport.push(extract_row_with_ansi(row));
             }
             PaneContents::new_with_scrollback(
                 viewport,

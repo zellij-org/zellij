@@ -9,7 +9,7 @@ pub struct EventNameList {
 pub struct Event {
     #[prost(enumeration="EventType", tag="1")]
     pub name: i32,
-    #[prost(oneof="event::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36")]
+    #[prost(oneof="event::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37")]
     pub payload: ::core::option::Option<event::Payload>,
 }
 /// Nested message and enum types in `Event`.
@@ -87,6 +87,8 @@ pub mod event {
         PluginConfigurationChangedPayload(super::PluginConfigurationChangedPayload),
         #[prost(message, tag="36")]
         HighlightClickedPayload(super::HighlightClickedPayload),
+        #[prost(message, tag="37")]
+        PaneRenderReportWithAnsiPayload(super::PaneRenderReportPayload),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -803,6 +805,7 @@ pub enum EventType {
     AvailableLayoutInfo = 40,
     PluginConfigurationChanged = 41,
     HighlightClicked = 42,
+    PaneRenderReportWithAnsi = 43,
 }
 impl EventType {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -853,6 +856,7 @@ impl EventType {
             EventType::AvailableLayoutInfo => "AvailableLayoutInfo",
             EventType::PluginConfigurationChanged => "PluginConfigurationChanged",
             EventType::HighlightClicked => "HighlightClicked",
+            EventType::PaneRenderReportWithAnsi => "PaneRenderReportWithAnsi",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -900,6 +904,7 @@ impl EventType {
             "AvailableLayoutInfo" => Some(Self::AvailableLayoutInfo),
             "PluginConfigurationChanged" => Some(Self::PluginConfigurationChanged),
             "HighlightClicked" => Some(Self::HighlightClicked),
+            "PaneRenderReportWithAnsi" => Some(Self::PaneRenderReportWithAnsi),
             _ => None,
         }
     }

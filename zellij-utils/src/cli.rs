@@ -153,6 +153,10 @@ pub struct SubscribeCli {
     /// Output format
     #[clap(short, long, default_value = "raw", arg_enum)]
     pub format: SubscribeFormat,
+
+    /// Preserve ANSI styling in the output
+    #[clap(long, value_parser, default_value("false"), takes_value(false))]
+    pub ansi: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ArgEnum)]
@@ -732,6 +736,9 @@ pub enum CliAction {
     Resize {
         resize: Resize,
         direction: Option<Direction>,
+        /// Target a specific pane by ID (eg. terminal_1, plugin_2, or 3)
+        #[clap(short, long, value_parser)]
+        pane_id: Option<String>,
     },
     /// Change focus to the next pane
     FocusNextPane,
@@ -750,11 +757,22 @@ pub enum CliAction {
     /// [right|left|up|down]
     MovePane {
         direction: Option<Direction>,
+        /// Target a specific pane by ID (eg. terminal_1, plugin_2, or 3)
+        #[clap(short, long, value_parser)]
+        pane_id: Option<String>,
     },
     /// Rotate the location of the previous pane backwards
-    MovePaneBackwards,
+    MovePaneBackwards {
+        /// Target a specific pane by ID (eg. terminal_1, plugin_2, or 3)
+        #[clap(short, long, value_parser)]
+        pane_id: Option<String>,
+    },
     /// Clear all buffers for a focused pane
-    Clear,
+    Clear {
+        /// Target a specific pane by ID (eg. terminal_1, plugin_2, or 3)
+        #[clap(short, long, value_parser)]
+        pane_id: Option<String>,
+    },
     /// Dumps the viewport and optionally scrollback of a pane to a file or STDOUT
     DumpScreen {
         /// File path to dump the pane content to. If omitted, prints to STDOUT.
@@ -768,35 +786,87 @@ pub enum CliAction {
         /// The pane_id of the pane, eg. terminal_1, plugin_2 or 3 (equivalent to terminal_3). If not specified, dumps the focused pane.
         #[clap(short, long, value_parser)]
         pane_id: Option<String>,
+
+        /// Preserve ANSI styling in the dump output
+        #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
+        ansi: bool,
     },
     /// Dump current layout to stdout
     DumpLayout,
     /// Save the current session state to disk immediately
     SaveSession,
     /// Open the pane scrollback in your default editor
-    EditScrollback,
+    EditScrollback {
+        /// Target a specific pane by ID (eg. terminal_1, plugin_2, or 3)
+        #[clap(short, long, value_parser)]
+        pane_id: Option<String>,
+
+        /// Preserve ANSI styling in the scrollback dump
+        #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
+        ansi: bool,
+    },
     /// Scroll up in the focused pane
-    ScrollUp,
+    ScrollUp {
+        /// Target a specific pane by ID (eg. terminal_1, plugin_2, or 3)
+        #[clap(short, long, value_parser)]
+        pane_id: Option<String>,
+    },
     /// Scroll down in focus pane.
-    ScrollDown,
+    ScrollDown {
+        /// Target a specific pane by ID (eg. terminal_1, plugin_2, or 3)
+        #[clap(short, long, value_parser)]
+        pane_id: Option<String>,
+    },
     /// Scroll down to bottom in focus pane.
-    ScrollToBottom,
+    ScrollToBottom {
+        /// Target a specific pane by ID (eg. terminal_1, plugin_2, or 3)
+        #[clap(short, long, value_parser)]
+        pane_id: Option<String>,
+    },
     /// Scroll up to top in focus pane.
-    ScrollToTop,
+    ScrollToTop {
+        /// Target a specific pane by ID (eg. terminal_1, plugin_2, or 3)
+        #[clap(short, long, value_parser)]
+        pane_id: Option<String>,
+    },
     /// Scroll up one page in focus pane.
-    PageScrollUp,
+    PageScrollUp {
+        /// Target a specific pane by ID (eg. terminal_1, plugin_2, or 3)
+        #[clap(short, long, value_parser)]
+        pane_id: Option<String>,
+    },
     /// Scroll down one page in focus pane.
-    PageScrollDown,
+    PageScrollDown {
+        /// Target a specific pane by ID (eg. terminal_1, plugin_2, or 3)
+        #[clap(short, long, value_parser)]
+        pane_id: Option<String>,
+    },
     /// Scroll up half page in focus pane.
-    HalfPageScrollUp,
+    HalfPageScrollUp {
+        /// Target a specific pane by ID (eg. terminal_1, plugin_2, or 3)
+        #[clap(short, long, value_parser)]
+        pane_id: Option<String>,
+    },
     /// Scroll down half page in focus pane.
-    HalfPageScrollDown,
+    HalfPageScrollDown {
+        /// Target a specific pane by ID (eg. terminal_1, plugin_2, or 3)
+        #[clap(short, long, value_parser)]
+        pane_id: Option<String>,
+    },
     /// Toggle between fullscreen focus pane and normal layout.
-    ToggleFullscreen,
+    ToggleFullscreen {
+        /// Target a specific pane by ID (eg. terminal_1, plugin_2, or 3)
+        #[clap(short, long, value_parser)]
+        pane_id: Option<String>,
+    },
     /// Toggle frames around panes in the UI
     TogglePaneFrames,
     /// Toggle between sending text commands to all panes on the current tab and normal mode.
-    ToggleActiveSyncTab,
+    ToggleActiveSyncTab {
+        /// Target a specific tab by ID
+        #[clap(short, long, value_parser)]
+        tab_id: Option<usize>,
+    },
     /// Open a new pane in the specified direction [right|down]
     /// If no direction is specified, will try to use the biggest available space.
     /// Returns: Created pane ID (format: terminal_<id> or plugin_<id>)
@@ -893,10 +963,47 @@ pub enum CliAction {
             takes_value(false)
         )]
         stacked: bool,
+        /// Block until the command has finished and its pane has been closed
         #[clap(short, long)]
         blocking: bool,
 
-        // TODO: clean this up
+        /// Block until the command exits successfully (exit status 0) OR its pane has been closed
+        #[clap(
+            long,
+            value_parser,
+            default_value("false"),
+            takes_value(false),
+            conflicts_with("blocking"),
+            conflicts_with("block-until-exit-failure"),
+            conflicts_with("block-until-exit")
+        )]
+        block_until_exit_success: bool,
+
+        /// Block until the command exits with failure (non-zero exit status) OR its pane has been
+        /// closed
+        #[clap(
+            long,
+            value_parser,
+            default_value("false"),
+            takes_value(false),
+            conflicts_with("blocking"),
+            conflicts_with("block-until-exit-success"),
+            conflicts_with("block-until-exit")
+        )]
+        block_until_exit_failure: bool,
+
+        /// Block until the command exits (regardless of exit status) OR its pane has been closed
+        #[clap(
+            long,
+            value_parser,
+            default_value("false"),
+            takes_value(false),
+            conflicts_with("blocking"),
+            conflicts_with("block-until-exit-success"),
+            conflicts_with("block-until-exit-failure")
+        )]
+        block_until_exit: bool,
+
         #[clap(skip)]
         unblock_condition: Option<UnblockCondition>,
 
@@ -978,9 +1085,17 @@ pub enum CliAction {
         input_mode: InputMode,
     },
     /// Embed focused pane if floating or float focused pane if embedded
-    TogglePaneEmbedOrFloating,
+    TogglePaneEmbedOrFloating {
+        /// Target a specific pane by ID (eg. terminal_1, plugin_2, or 3)
+        #[clap(short, long, value_parser)]
+        pane_id: Option<String>,
+    },
     /// Toggle the visibility of all floating panes in the current Tab, open one if none exist
-    ToggleFloatingPanes,
+    ToggleFloatingPanes {
+        /// Target a specific tab by ID
+        #[clap(short, long, value_parser)]
+        tab_id: Option<usize>,
+    },
     /// Show all floating panes in the specified tab (or active tab if tab_id is not provided).
     ///
     /// Returns exit code 0 if state was changed, 2 if already visible, 1 if tab not found.
@@ -996,19 +1111,34 @@ pub enum CliAction {
         tab_id: Option<usize>,
     },
     /// Close the focused pane.
-    ClosePane,
+    ClosePane {
+        /// Target a specific pane by ID (eg. terminal_1, plugin_2, or 3)
+        #[clap(short, long, value_parser)]
+        pane_id: Option<String>,
+    },
     /// Renames the focused pane
     RenamePane {
         name: String,
+        /// Target a specific pane by ID (eg. terminal_1, plugin_2, or 3)
+        #[clap(short, long, value_parser)]
+        pane_id: Option<String>,
     },
     /// Remove a previously set pane name
-    UndoRenamePane,
+    UndoRenamePane {
+        /// Target a specific pane by ID (eg. terminal_1, plugin_2, or 3)
+        #[clap(short, long, value_parser)]
+        pane_id: Option<String>,
+    },
     /// Go to the next tab.
     GoToNextTab,
     /// Go to the previous tab.
     GoToPreviousTab,
     /// Close the current tab.
-    CloseTab,
+    CloseTab {
+        /// Target a specific tab by ID
+        #[clap(short, long, value_parser)]
+        tab_id: Option<usize>,
+    },
     /// Go to tab with index [index]
     GoToTab {
         index: u32,
@@ -1025,9 +1155,16 @@ pub enum CliAction {
     /// Renames the focused pane
     RenameTab {
         name: String,
+        /// Target a specific tab by ID
+        #[clap(short, long, value_parser)]
+        tab_id: Option<usize>,
     },
     /// Remove a previously set tab name
-    UndoRenameTab,
+    UndoRenameTab {
+        /// Target a specific tab by ID
+        #[clap(short, long, value_parser)]
+        tab_id: Option<usize>,
+    },
     /// Go to tab with stable ID
     GoToTabById {
         id: u64,
@@ -1134,9 +1271,20 @@ pub enum CliAction {
     /// Move the focused tab in the specified direction. [right|left]
     MoveTab {
         direction: Direction,
+        /// Target a specific tab by ID
+        #[clap(short, long, value_parser)]
+        tab_id: Option<usize>,
     },
-    PreviousSwapLayout,
-    NextSwapLayout,
+    PreviousSwapLayout {
+        /// Target a specific tab by ID
+        #[clap(short, long, value_parser)]
+        tab_id: Option<usize>,
+    },
+    NextSwapLayout {
+        /// Target a specific tab by ID
+        #[clap(short, long, value_parser)]
+        tab_id: Option<usize>,
+    },
     /// Override the layout of the active tab
     OverrideLayout {
         /// Path to the layout file
@@ -1354,7 +1502,11 @@ tail -f /tmp/my-live-logfile | zellij action pipe --name logs --plugin https://e
         #[clap(short, long, value_parser)]
         json: bool,
     },
-    TogglePanePinned,
+    TogglePanePinned {
+        /// Target a specific pane by ID (eg. terminal_1, plugin_2, or 3)
+        #[clap(short, long, value_parser)]
+        pane_id: Option<String>,
+    },
     /// Stack pane ids
     /// Ids are a space separated list of pane ids.
     /// They should either be in the form of `terminal_<int>` (eg. terminal_1), `plugin_<int>` (eg.

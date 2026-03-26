@@ -173,6 +173,7 @@ pub enum PluginInstruction {
         skip_cache: bool,
         cli_client_id: ClientId,
         plugin_and_client_id: Option<(u32, ClientId)>,
+        notification_end: Option<NotificationEnd>,
     },
     CachePluginEvents {
         plugin_id: PluginId,
@@ -759,8 +760,7 @@ pub(crate) fn plugin_thread_main(
                 wasm_bridge.update_plugins(updates, shutdown_send.clone())?;
             },
             PluginInstruction::PluginSubscribedToEvents(_plugin_id, _client_id, _events) => {
-                // no-op, there used to be stuff we did here - now there isn't, but we might want
-                // to add stuff here in the future
+                wasm_bridge.notify_screen_of_ansi_subscription_change();
             },
             PluginInstruction::PermissionRequestResult(
                 plugin_id,
@@ -972,7 +972,7 @@ pub(crate) fn plugin_thread_main(
                         );
                     },
                 }
-                wasm_bridge.pipe_messages(pipe_messages, shutdown_send.clone())?;
+                wasm_bridge.pipe_messages(pipe_messages, shutdown_send.clone(), None)?;
             },
             PluginInstruction::KeybindPipe {
                 name,
@@ -987,6 +987,7 @@ pub(crate) fn plugin_thread_main(
                 skip_cache,
                 cli_client_id,
                 plugin_and_client_id,
+                notification_end,
             } => {
                 let should_float = floating.unwrap_or(true);
                 let mut pipe_messages = vec![];
@@ -1036,7 +1037,11 @@ pub(crate) fn plugin_thread_main(
                         },
                     }
                 }
-                wasm_bridge.pipe_messages(pipe_messages, shutdown_send.clone())?;
+                wasm_bridge.pipe_messages(
+                    pipe_messages,
+                    shutdown_send.clone(),
+                    notification_end,
+                )?;
             },
             PluginInstruction::CachePluginEvents { plugin_id } => {
                 wasm_bridge.cache_plugin_events(plugin_id);
@@ -1130,7 +1135,7 @@ pub(crate) fn plugin_thread_main(
                         );
                     },
                 }
-                wasm_bridge.pipe_messages(pipe_messages, shutdown_send.clone())?;
+                wasm_bridge.pipe_messages(pipe_messages, shutdown_send.clone(), None)?;
             },
             PluginInstruction::UnblockCliPipes(pipes_to_unblock) => {
                 let pipes_to_unblock = wasm_bridge.update_cli_pipe_state(pipes_to_unblock);

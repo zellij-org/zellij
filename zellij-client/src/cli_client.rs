@@ -208,6 +208,13 @@ fn individual_messages_client(
     action: Action,
     pane_id: Option<u32>,
 ) {
+    let is_blocking = matches!(
+        &action,
+        Action::NewBlockingPane {
+            unblock_condition: Some(_),
+            ..
+        }
+    );
     let msg = ClientToServerMsg::Action {
         action,
         terminal_id: pane_id,
@@ -217,7 +224,7 @@ fn individual_messages_client(
     os_input.send_to_server(msg);
     loop {
         match os_input.recv_from_server() {
-            Some((ServerToClientMsg::UnblockInputThread, _)) => {
+            Some((ServerToClientMsg::UnblockInputThread, _)) if !is_blocking => {
                 break;
             },
             Some((ServerToClientMsg::Log { lines: log_lines }, _)) => {
@@ -246,7 +253,7 @@ fn individual_messages_client(
 }
 
 pub fn start_subscribe_client(
-    mut os_input: Box<dyn ClientOsApi>,
+    os_input: Box<dyn ClientOsApi>,
     session_name: &str,
     subscribe_cli: SubscribeCli,
 ) {
@@ -275,6 +282,7 @@ pub fn start_subscribe_client(
     os_input.send_to_server(ClientToServerMsg::SubscribeToPaneRenders {
         pane_ids: pane_ids.clone(),
         scrollback: subscribe_cli.scrollback,
+        ansi: subscribe_cli.ansi,
     });
 
     // Track remaining panes for exit-on-all-closed

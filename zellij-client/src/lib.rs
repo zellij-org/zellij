@@ -221,7 +221,7 @@ impl ErrorInstruction for ClientInstruction {
     }
 }
 
-#[cfg(feature = "web_server_capability")]
+#[cfg(all(feature = "web_server_capability", not(windows)))]
 fn spawn_web_server(cli_args: &CliArgs) -> Result<String, String> {
     let mut cmd = Command::new(current_exe().map_err(|e| e.to_string())?);
     if let Some(config_file_path) = Config::config_file_path(cli_args) {
@@ -246,6 +246,48 @@ fn spawn_web_server(cli_args: &CliArgs) -> Result<String, String> {
                 Ok(String::from_utf8_lossy(&output.stdout).to_string())
             } else {
                 Err(String::from_utf8_lossy(&output.stderr).to_string())
+            }
+        },
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+/// On Windows, cmd.output() creates pipe handles for stdout/stderr. The child
+/// (zellij web -d) spawns a grandchild (the web server) which inherits these
+/// pipe handles. cmd.output() waits for EOF on the pipes, but the long-lived
+/// grandchild keeps them open — hanging forever.
+///
+/// Redirecting the grandchild's stdio to null is not sufficient: on Windows,
+/// CreateProcess with bInheritHandles=TRUE inherits ALL inheritable handles,
+/// not just the stdio handles specified in STARTUPINFO. The pipe handles leak
+/// through regardless of the grandchild's stdio configuration.
+///
+/// Use cmd.status() instead: no pipes are created, so nothing to hang on.
+#[cfg(all(feature = "web_server_capability", windows))]
+fn spawn_web_server(cli_args: &CliArgs) -> Result<String, String> {
+    let mut cmd = Command::new(current_exe().map_err(|e| e.to_string())?);
+    if let Some(config_file_path) = Config::config_file_path(cli_args) {
+        let config_file_path_exists = Path::new(&config_file_path).exists();
+        if !config_file_path_exists {
+            return Err(format!(
+                "Config file: {} does not exist",
+                config_file_path.display()
+            ));
+        }
+        cmd.arg("--config");
+        cmd.arg(format!("{}", config_file_path.display()));
+    }
+    cmd.arg("web");
+    cmd.arg("-d");
+    match cmd.status() {
+        Ok(status) => {
+            if status.success() {
+                Ok(String::new())
+            } else {
+                Err(format!(
+                    "Web server process exited with code: {}",
+                    status.code().unwrap_or(-1)
+                ))
             }
         },
         Err(e) => Err(e.to_string()),
@@ -342,6 +384,7 @@ impl ClientInfo {
 pub(crate) enum InputInstruction {
     KeyEvent(InputEvent, Vec<u8>),
     KeyWithModifierEvent(KeyWithModifier, Vec<u8>, bool), // bool = is_kitty_keyboard_protocol
+    #[allow(dead_code)] // constructed in stdin_handler_windows.rs (Windows-only)
     MouseEvent(zellij_utils::input::mouse::MouseEvent),
     AnsiStdinInstructions(Vec<AnsiStdinInstruction>),
     StartedParsing,
@@ -588,6 +631,8 @@ pub fn start_remote_client(
         use zellij_utils::errors::handle_panic;
         let os_input = os_input.clone();
         Box::new(move |info| {
+            os_input.disable_mouse().non_fatal();
+            os_input.restore_console_mode();
             if let Ok(()) = os_input.unset_raw_mode() {
                 handle_panic::<ClientInstruction>(info, None);
             }
@@ -595,13 +640,14 @@ pub fn start_remote_client(
     });
 
     let reset_controlling_terminal_state = |e: String, exit_status: i32| {
+        os_input.disable_mouse().non_fatal();
         os_input.unset_raw_mode().unwrap();
+        os_input.restore_console_mode();
         let goto_start_of_last_line = format!("\u{1b}[{};{}H", full_screen_ws.rows, 1);
         let restore_alternate_screen = "\u{1b}[?1049l";
         let exit_kitty_keyboard_mode = "\u{1b}[<1u";
         let reset_style = "\u{1b}[m";
         let show_cursor = "\u{1b}[?25h";
-        os_input.disable_mouse().non_fatal();
         let error = format!(
             "{}{}{}{}\n{}{}\n",
             reset_style,
@@ -896,6 +942,8 @@ pub fn start_client(
         let send_client_instructions = send_client_instructions.clone();
         let os_input = os_input.clone();
         Box::new(move |info| {
+            os_input.disable_mouse().non_fatal();
+            os_input.restore_console_mode();
             if let Ok(()) = os_input.unset_raw_mode() {
                 handle_panic(info, Some(&send_client_instructions));
             }
@@ -1015,10 +1063,11 @@ pub fn start_client(
         .unwrap();
 
     let handle_error = |backtrace: String| {
+        os_input.disable_mouse().non_fatal();
         os_input.unset_raw_mode().unwrap();
+        os_input.restore_console_mode();
         let goto_start_of_last_line = format!("\u{1b}[{};{}H", full_screen_ws.rows, 1);
         let restore_snapshot = "\u{1b}[?1049l";
-        os_input.disable_mouse().non_fatal();
         let error = format!(
             "{}\n{}{}\n",
             restore_snapshot, goto_start_of_last_line, backtrace
@@ -1201,6 +1250,7 @@ pub fn start_client(
         os_input.disable_mouse().non_fatal();
         info!("{}", exit_msg);
         os_input.unset_raw_mode().unwrap();
+        os_input.restore_console_mode();
         let mut stdout = os_input.get_stdout_writer();
         let exit_kitty_keyboard_mode = "\u{1b}[<1u";
         if !explicitly_disable_kitty_keyboard_protocol {

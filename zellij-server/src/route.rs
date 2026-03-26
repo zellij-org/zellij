@@ -45,6 +45,7 @@ pub struct ActionCompletionResult {
     pub exit_status: Option<i32>,
     pub affected_pane_id: Option<PaneId>,
     pub affected_tab_id: Option<usize>,
+    pub error_message: Option<String>,
 }
 
 pub fn wait_for_action_completion(
@@ -63,6 +64,7 @@ pub fn wait_for_action_completion(
                         exit_status: None,
                         affected_pane_id: None,
                         affected_tab_id: None,
+                        error_message: None,
                     }
                 },
             }
@@ -82,6 +84,7 @@ pub fn wait_for_action_completion(
                     exit_status: None,
                     affected_pane_id: None,
                     affected_tab_id: None,
+                    error_message: None,
                 }
             },
         }
@@ -101,6 +104,7 @@ pub struct NotificationEnd {
     unblock_condition: Option<UnblockCondition>,
     affected_pane_id: Option<PaneId>, // optional payload of the pane id affected by this action
     affected_tab_id: Option<usize>,   // optional payload of the tab id affected by this action
+    error_message: Option<String>,
 }
 
 impl Clone for NotificationEnd {
@@ -112,6 +116,7 @@ impl Clone for NotificationEnd {
             unblock_condition: self.unblock_condition,
             affected_pane_id: self.affected_pane_id,
             affected_tab_id: self.affected_tab_id,
+            error_message: self.error_message.clone(),
         }
     }
 }
@@ -124,6 +129,7 @@ impl NotificationEnd {
             unblock_condition: None,
             affected_pane_id: None,
             affected_tab_id: None,
+            error_message: None,
         }
     }
 
@@ -137,6 +143,7 @@ impl NotificationEnd {
             unblock_condition: Some(unblock_condition),
             affected_pane_id: None,
             affected_tab_id: None,
+            error_message: None,
         }
     }
 
@@ -152,6 +159,10 @@ impl NotificationEnd {
         self.affected_tab_id = Some(tab_id);
     }
 
+    pub fn set_error_message(&mut self, message: String) {
+        self.error_message = Some(message);
+    }
+
     pub fn unblock_condition(&self) -> Option<UnblockCondition> {
         self.unblock_condition
     }
@@ -164,6 +175,7 @@ impl Drop for NotificationEnd {
                 exit_status: self.exit_status,
                 affected_pane_id: self.affected_pane_id,
                 affected_tab_id: self.affected_tab_id,
+                error_message: self.error_message.take(),
             };
             let _ = tx.send(result);
         }
@@ -427,6 +439,7 @@ pub(crate) fn route_action(
             file_path,
             include_scrollback,
             pane_id,
+            ansi,
         } => {
             senders
                 .send_to_screen(ScreenInstruction::DumpScreen(
@@ -436,6 +449,7 @@ pub(crate) fn route_action(
                     pane_id.map(|p| p.into()),
                     Some(NotificationEnd::new(completion_tx)),
                     cli_client_id,
+                    ansi,
                 ))
                 .with_context(err_context)?;
         },
@@ -462,22 +476,16 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
         },
-        Action::EditScrollback => {
+        Action::EditScrollback { ansi } => {
             senders
                 .send_to_screen(ScreenInstruction::EditScrollback(
                     client_id,
+                    ansi,
                     Some(NotificationEnd::new(completion_tx)),
                 ))
                 .with_context(err_context)?;
         },
-        Action::EditScrollbackRaw => {
-            senders
-                .send_to_screen(ScreenInstruction::EditScrollbackRaw(
-                    client_id,
-                    Some(NotificationEnd::new(completion_tx)),
-                ))
-                .with_context(err_context)?;
-        },
+
         Action::ScrollUp => {
             senders
                 .send_to_screen(ScreenInstruction::ScrollUp(
@@ -1601,6 +1609,7 @@ pub(crate) fn route_action(
                         skip_cache,
                         cli_client_id: client_id,
                         plugin_and_client_id: plugin_id.map(|plugin_id| (plugin_id, client_id)),
+                        notification_end: Some(NotificationEnd::new(completion_tx)),
                     })
                     .with_context(err_context)?;
             } else {
@@ -1794,9 +1803,233 @@ pub(crate) fn route_action(
                 })
                 .with_context(err_context)?;
         },
+        // Pane-targeting CLI-only variants
+        Action::ScrollUpByPaneId { pane_id } => {
+            senders
+                .send_to_screen(ScreenInstruction::ScrollUpWithPaneId(
+                    pane_id.into(),
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
+        Action::ScrollDownByPaneId { pane_id } => {
+            senders
+                .send_to_screen(ScreenInstruction::ScrollDownWithPaneId(
+                    pane_id.into(),
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
+        Action::ScrollToTopByPaneId { pane_id } => {
+            senders
+                .send_to_screen(ScreenInstruction::ScrollToTopWithPaneId(
+                    pane_id.into(),
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
+        Action::ScrollToBottomByPaneId { pane_id } => {
+            senders
+                .send_to_screen(ScreenInstruction::ScrollToBottomWithPaneId(
+                    pane_id.into(),
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
+        Action::PageScrollUpByPaneId { pane_id } => {
+            senders
+                .send_to_screen(ScreenInstruction::PageScrollUpWithPaneId(
+                    pane_id.into(),
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
+        Action::PageScrollDownByPaneId { pane_id } => {
+            senders
+                .send_to_screen(ScreenInstruction::PageScrollDownWithPaneId(
+                    pane_id.into(),
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
+        Action::HalfPageScrollUpByPaneId { pane_id } => {
+            senders
+                .send_to_screen(ScreenInstruction::HalfPageScrollUpWithPaneId(
+                    pane_id.into(),
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
+        Action::HalfPageScrollDownByPaneId { pane_id } => {
+            senders
+                .send_to_screen(ScreenInstruction::HalfPageScrollDownWithPaneId(
+                    pane_id.into(),
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
+        Action::ResizeByPaneId {
+            pane_id,
+            resize,
+            direction,
+        } => {
+            let resize_strategy = ResizeStrategy::new(resize, direction);
+            senders
+                .send_to_screen(ScreenInstruction::ResizeWithPaneId(
+                    pane_id.into(),
+                    resize_strategy,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
+        Action::MovePaneByPaneId { pane_id, direction } => {
+            senders
+                .send_to_screen(ScreenInstruction::MovePaneWithPaneIdCli(
+                    pane_id.into(),
+                    direction,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
+        Action::MovePaneBackwardsByPaneId { pane_id } => {
+            senders
+                .send_to_screen(ScreenInstruction::MovePaneBackwardsWithPaneId(
+                    pane_id.into(),
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
+        Action::ClearScreenByPaneId { pane_id } => {
+            senders
+                .send_to_screen(ScreenInstruction::ClearScreenWithPaneId(
+                    pane_id.into(),
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
+        Action::EditScrollbackByPaneId { pane_id, ansi } => {
+            senders
+                .send_to_screen(ScreenInstruction::EditScrollbackWithPaneId(
+                    pane_id.into(),
+                    ansi,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
+        Action::ToggleFocusFullscreenByPaneId { pane_id } => {
+            senders
+                .send_to_screen(ScreenInstruction::ToggleFullscreenWithPaneId(
+                    pane_id.into(),
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
+        Action::TogglePaneEmbedOrFloatingByPaneId { pane_id } => {
+            senders
+                .send_to_screen(ScreenInstruction::TogglePaneEmbedOrFloatingWithPaneId(
+                    pane_id.into(),
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
+        Action::CloseFocusByPaneId { pane_id } => {
+            senders
+                .send_to_screen(ScreenInstruction::CloseFocusWithPaneId(
+                    pane_id.into(),
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
+        Action::RenamePaneByPaneId { pane_id, name } => {
+            senders
+                .send_to_screen(ScreenInstruction::RenamePaneWithPaneId(
+                    pane_id.into(),
+                    name,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
+        Action::UndoRenamePaneByPaneId { pane_id } => {
+            senders
+                .send_to_screen(ScreenInstruction::UndoRenamePaneWithPaneId(
+                    pane_id.into(),
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
+        Action::TogglePanePinnedByPaneId { pane_id } => {
+            senders
+                .send_to_screen(ScreenInstruction::TogglePanePinnedWithPaneId(
+                    pane_id.into(),
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
+        // Tab-targeting CLI-only variants
+        Action::UndoRenameTabByTabId { id } => {
+            senders
+                .send_to_screen(ScreenInstruction::UndoRenameTabWithTabId(
+                    id as usize,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
+        Action::ToggleActiveSyncTabByTabId { id } => {
+            senders
+                .send_to_screen(ScreenInstruction::ToggleActiveSyncTabWithTabId(
+                    id as usize,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
+        Action::ToggleFloatingPanesByTabId { id } => {
+            senders
+                .send_to_screen(ScreenInstruction::ToggleFloatingPanesWithTabId(
+                    id as usize,
+                    default_shell.clone(),
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
+        Action::PreviousSwapLayoutByTabId { id } => {
+            senders
+                .send_to_screen(ScreenInstruction::PreviousSwapLayoutWithTabId(
+                    id as usize,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
+        Action::NextSwapLayoutByTabId { id } => {
+            senders
+                .send_to_screen(ScreenInstruction::NextSwapLayoutWithTabId(
+                    id as usize,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
+        Action::MoveTabByTabId { id, direction } => {
+            senders
+                .send_to_screen(ScreenInstruction::MoveTabWithTabId(
+                    id as usize,
+                    direction,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
     }
     let result = wait_for_action_completion(completion_rx, &action_name, wait_forever);
-    if let Some(exit_status) = result.exit_status {
+    if let Some(error_message) = &result.error_message {
+        if let Some(cli_client_id) = cli_client_id {
+            if let Some(ref os_input) = os_input {
+                let _ = os_input.send_to_client(
+                    cli_client_id,
+                    ServerToClientMsg::LogError {
+                        lines: vec![error_message.clone()],
+                    },
+                );
+            }
+        }
+    } else if let Some(exit_status) = result.exit_status {
         if let Some(cli_client_id) = cli_client_id {
             if let Some(ref os_input) = os_input {
                 let _ = os_input.send_to_client(
@@ -2309,13 +2542,15 @@ pub(crate) fn route_thread_main(
                         ClientToServerMsg::SubscribeToPaneRenders {
                             ref pane_ids,
                             ref scrollback,
+                            ansi,
                         } => {
-                            send_to_screen_or_retry_queue!(
+                            let _ = send_to_screen_or_retry_queue!(
                                 senders,
                                 ScreenInstruction::SubscribeToPaneRenders {
                                     client_id,
                                     pane_ids: pane_ids.clone(),
                                     scrollback: *scrollback,
+                                    ansi,
                                 },
                                 instruction,
                                 retry_queue
@@ -2856,6 +3091,7 @@ mod tests {
             exit_status: None,
             affected_pane_id: None,
             affected_tab_id: Some(123),
+            error_message: None,
         };
 
         assert_eq!(result.affected_tab_id, Some(123));

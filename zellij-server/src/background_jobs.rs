@@ -1,10 +1,13 @@
+#[allow(unused_imports)] // some imports used only with web_server_capability feature
 use zellij_utils::consts::{
     session_info_cache_file_name, session_info_folder_for_session, session_layout_cache_file_name,
     VERSION, ZELLIJ_SESSION_INFO_CACHE_DIR, ZELLIJ_SOCK_DIR,
 };
+#[allow(unused_imports)]
 use zellij_utils::data::{Event, HttpVerb, SessionInfo, WebServerStatus};
 use zellij_utils::errors::{prelude::*, BackgroundJobContext, ContextType};
 use zellij_utils::input::layout::RunPlugin;
+#[allow(unused_imports)]
 use zellij_utils::shared::parse_base_url;
 
 #[cfg(feature = "web_server_capability")]
@@ -116,6 +119,7 @@ static DEFAULT_SERIALIZATION_INTERVAL: u64 = 60000;
 static REPAINT_DELAY_MS: u64 = 10;
 static HELP_TEXT_DEBOUNCE_DURATION: u64 = 5000;
 
+#[allow(unused_variables)] // web_server_base_url used only with web_server_capability feature
 pub(crate) fn background_jobs_main(
     bus: Bus<BackgroundJob>,
     serialization_interval: Option<u64>,
@@ -252,7 +256,7 @@ pub(crate) fn background_jobs_main(
                                 );
 
                                 // Send SavedCurrentSession instruction to plugin thread
-                                let timestamp_millis = std::time::SystemTime::now()
+                                let _timestamp_millis = std::time::SystemTime::now()
                                     .duration_since(std::time::UNIX_EPOCH)
                                     .unwrap_or_default()
                                     .as_millis()
@@ -435,7 +439,7 @@ pub(crate) fn background_jobs_main(
                         .unwrap_or(WebServerStatus::Offline);
                     runtime.spawn({
                         let senders = bus.senders.clone();
-                        let web_server_base_url = web_server_base_url.clone();
+                        let _web_server_base_url = web_server_base_url.clone();
                         async move {
                             let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
                                 None,

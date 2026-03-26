@@ -222,4 +222,22 @@ impl<T> Bus<T> {
         let idx = oper.index();
         oper.recv(&self.receivers[idx])
     }
+
+    pub fn recv_timeout(
+        &self,
+        timeout: std::time::Duration,
+    ) -> Result<(T, ErrorContext), channels::RecvTimeoutError> {
+        let mut selector = channels::Select::new();
+        self.receivers.iter().for_each(|r| {
+            selector.recv(r);
+        });
+        match selector.select_timeout(timeout) {
+            Ok(oper) => {
+                let idx = oper.index();
+                oper.recv(&self.receivers[idx])
+                    .map_err(|_| channels::RecvTimeoutError::Disconnected)
+            },
+            Err(_) => Err(channels::RecvTimeoutError::Timeout),
+        }
+    }
 }

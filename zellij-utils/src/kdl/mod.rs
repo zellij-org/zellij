@@ -49,8 +49,7 @@ macro_rules! parse_kdl_action_arguments {
                 "FocusNextPane" => Ok(Action::FocusNextPane),
                 "FocusPreviousPane" => Ok(Action::FocusPreviousPane),
                 "SwitchFocus" => Ok(Action::SwitchFocus),
-                "EditScrollback" => Ok(Action::EditScrollback),
-                "EditScrollbackRaw" => Ok(Action::EditScrollbackRaw),
+                "EditScrollback" => Ok(Action::EditScrollback { ansi: false }),
                 "ScrollUp" => Ok(Action::ScrollUp),
                 "ScrollDown" => Ok(Action::ScrollDown),
                 "ScrollToBottom" => Ok(Action::ScrollToBottom),
@@ -544,6 +543,7 @@ impl Action {
                 file_path: Some(string),
                 include_scrollback: false,
                 pane_id: None,
+                ansi: false,
             }),
             "DumpLayout" => Ok(Action::DumpLayout),
             "NewPane" => {
@@ -696,6 +696,7 @@ impl Action {
                 file_path: Some(file),
                 include_scrollback: _,
                 pane_id: _,
+                ansi: _,
             } => {
                 let mut node = KdlNode::new("DumpScreen");
                 node.push(file.clone());
@@ -705,8 +706,17 @@ impl Action {
                 file_path: None, ..
             } => None,
             Action::DumpLayout => Some(KdlNode::new("DumpLayout")),
-            Action::EditScrollback => Some(KdlNode::new("EditScrollback")),
-            Action::EditScrollbackRaw => Some(KdlNode::new("EditScrollbackRaw")),
+            Action::EditScrollback { ansi } => {
+                let mut node = KdlNode::new("EditScrollback");
+                if *ansi {
+                    let mut children = KdlDocument::new();
+                    let mut ansi_node = KdlNode::new("ansi");
+                    ansi_node.push(KdlValue::Bool(true));
+                    children.nodes_mut().push(ansi_node);
+                    node.set_children(children);
+                }
+                Some(node)
+            },
             Action::ScrollUp => Some(KdlNode::new("ScrollUp")),
             Action::ScrollDown => Some(KdlNode::new("ScrollDown")),
             Action::ScrollToBottom => Some(KdlNode::new("ScrollToBottom")),
@@ -1492,10 +1502,9 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
             },
             "SwitchFocus" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
             "EditScrollback" => {
-                parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
-            },
-            "EditScrollbackRaw" => {
-                parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
+                let ansi = crate::kdl_get_bool_property_or_child_value!(kdl_action, "ansi")
+                    .unwrap_or(false);
+                Ok(Action::EditScrollback { ansi })
             },
             "ScrollUp" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
             "ScrollDown" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
