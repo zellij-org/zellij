@@ -7,6 +7,7 @@ mod layout_applier;
 mod mouse_handler;
 mod swap_layouts;
 
+use crate::plugins::PluginId;
 use copy_command::CopyCommand;
 pub use mouse_handler::{MouseEffect, MouseHandler, PaneEdge, PaneResizeState};
 use std::env::temp_dir;
@@ -18,7 +19,6 @@ use zellij_utils::data::{
     Direction, KeyWithModifier, NewPanePlacement, PaneInfo, PermissionStatus, PermissionType,
     PluginPermission, RegexHighlight, ResizeStrategy, Style, WebSharing,
 };
-use crate::plugins::PluginId;
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
 use zellij_utils::input::mouse::MouseEvent;

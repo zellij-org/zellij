@@ -1409,11 +1409,11 @@ impl WasmBridge {
                 })
         };
         if is_background {
-            let _ = self
-                .senders
-                .send_to_screen(ScreenInstruction::UpdateBackgroundPluginSubscriptions(
+            let _ = self.senders.send_to_screen(
+                ScreenInstruction::UpdateBackgroundPluginSubscriptions(
                     plugin_id, client_id, events,
-                ));
+                ),
+            );
         }
     }
 
@@ -1424,9 +1424,7 @@ impl WasmBridge {
                 .running_plugins_and_subscriptions()
                 .iter()
                 .find(|(pid, cid, _, _)| *pid == plugin_id && *cid == client_id)
-                .map(|(_, _, rp, _)| {
-                    rp.lock().unwrap().store.data().keybinds.to_keybinds_vec()
-                })
+                .map(|(_, _, rp, _)| rp.lock().unwrap().store.data().keybinds.to_keybinds_vec())
         };
         if let Some(keybinds) = keybinds {
             let _ = self.senders.send_to_plugin(PluginInstruction::Update(vec![(
@@ -1500,11 +1498,7 @@ impl WasmBridge {
                 .running_plugins_and_subscriptions()
                 .iter()
                 .filter(|(_, cid, _, subs)| {
-                    *cid == client_id
-                        && subs
-                            .lock()
-                            .unwrap()
-                            .contains(&EventType::InitialKeybinds)
+                    *cid == client_id && subs.lock().unwrap().contains(&EventType::InitialKeybinds)
                 })
                 .map(|(pid, _, _, _)| *pid)
                 .collect()

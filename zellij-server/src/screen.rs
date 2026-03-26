@@ -1011,9 +1011,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::UpdateBackgroundPluginSubscriptions(..) => {
                 ScreenContext::UpdateBackgroundPluginSubscriptions
             },
-            ScreenInstruction::BroadcastModeUpdate(..) => {
-                ScreenContext::BroadcastModeUpdate
-            },
+            ScreenInstruction::BroadcastModeUpdate(..) => ScreenContext::BroadcastModeUpdate,
             // Pane-targeting CLI variants
             ScreenInstruction::ScrollUpWithPaneId(..) => ScreenContext::ScrollUpWithPaneId,
             ScreenInstruction::ScrollDownWithPaneId(..) => ScreenContext::ScrollDownWithPaneId,
@@ -3186,11 +3184,7 @@ impl Screen {
     /// Collect plugin IDs that should receive a broadcast event for a given client.
     /// Returns plugin IDs from the client's active tab plus background plugins
     /// subscribed to the given event type.
-    fn targeted_plugin_ids(
-        &self,
-        client_id: ClientId,
-        event_type: EventType,
-    ) -> Vec<PluginId> {
+    fn targeted_plugin_ids(&self, client_id: ClientId, event_type: EventType) -> Vec<PluginId> {
         let mut plugin_ids = Vec::new();
         // Active-tab plugins
         if let Some(active_tab_id) = self.active_tab_ids.get(&client_id) {
@@ -8414,11 +8408,19 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::PluginSubscribedToAnsiPaneContents(has_subscribers) => {
                 screen.plugins_need_ansi_pane_contents = has_subscribers;
             },
-            ScreenInstruction::UpdateBackgroundPluginSubscriptions(plugin_id, client_id, subscriptions) => {
+            ScreenInstruction::UpdateBackgroundPluginSubscriptions(
+                plugin_id,
+                client_id,
+                subscriptions,
+            ) => {
                 if subscriptions.is_empty() {
-                    screen.background_plugin_subscriptions.remove(&(plugin_id, client_id));
+                    screen
+                        .background_plugin_subscriptions
+                        .remove(&(plugin_id, client_id));
                 } else {
-                    screen.background_plugin_subscriptions.insert((plugin_id, client_id), subscriptions);
+                    screen
+                        .background_plugin_subscriptions
+                        .insert((plugin_id, client_id), subscriptions);
                 }
             },
             ScreenInstruction::BroadcastModeUpdate(mode_info, target_client_id) => {

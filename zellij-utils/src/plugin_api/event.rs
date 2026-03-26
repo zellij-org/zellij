@@ -534,9 +534,8 @@ impl TryFrom<ProtobufEvent> for Event {
                         .keybinds
                         .into_iter()
                         .filter_map(|imk| {
-                            let mode: InputMode = ProtobufInputMode::from_i32(imk.mode)?
-                                .try_into()
-                                .ok()?;
+                            let mode: InputMode =
+                                ProtobufInputMode::from_i32(imk.mode)?.try_into().ok()?;
                             let key_binds: Vec<(KeyWithModifier, Vec<Action>)> = imk
                                 .key_bind
                                 .into_iter()

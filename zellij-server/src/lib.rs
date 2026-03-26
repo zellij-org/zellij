@@ -1016,11 +1016,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 // change_mode() -> update_input_modes()
                 session_data
                     .senders
-                    .send_to_screen(ScreenInstruction::ChangeMode(
-                        mode_info,
-                        client_id,
-                        None,
-                    ))
+                    .send_to_screen(ScreenInstruction::ChangeMode(mode_info, client_id, None))
                     .unwrap();
             },
             ServerInstruction::AttachWatcherClient(client_id, terminal_size, is_web_client) => {

@@ -762,7 +762,9 @@ pub(crate) fn plugin_thread_main(
             PluginInstruction::PluginSubscribedToEvents(plugin_id, client_id, events) => {
                 wasm_bridge.notify_screen_of_ansi_subscription_change();
                 wasm_bridge.notify_screen_of_background_plugin_subscriptions(
-                    plugin_id, client_id, events.clone(),
+                    plugin_id,
+                    client_id,
+                    events.clone(),
                 );
                 if events.contains(&EventType::InitialKeybinds) {
                     wasm_bridge.send_initial_keybinds_to_plugin(plugin_id, client_id);
