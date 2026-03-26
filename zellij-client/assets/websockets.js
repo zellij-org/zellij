@@ -52,6 +52,19 @@ export function initWebSockets(
         let data = event.data;
 
         if (typeof data === "string") {
+            // Intercept OSC 52 (clipboard) sequences and copy to local clipboard
+            const osc52Regex = /\x1b\]52;[pc];([^\x07\x1b\]*)(?:\x07|\x1b\)/g;
+            data = data.replace(osc52Regex, (match, base64Content) => {
+                try {
+                    const decoded = atob(base64Content);
+                    navigator.clipboard.writeText(decoded).catch((err) => {
+                        console.warn("Failed to write to clipboard:", err);
+                    });
+                } catch (e) {
+                    console.warn("Failed to decode clipboard content:", e);
+                }
+                return ""; // Remove OSC52 sequence from terminal output
+            });
             // Handle ANSI title change sequences
             const titleRegex = /\x1b\]0;([^\x07\x1b]*?)(?:\x07|\x1b\\)/g;
             let match;
