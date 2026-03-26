@@ -765,6 +765,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
             web_server_cert: options.web_server_cert.map(std::path::PathBuf::from),
             web_server_key: options.web_server_key.map(std::path::PathBuf::from),
             enforce_https_for_localhost: options.enforce_https_for_localhost,
+            skip_auth_for_local_network_access: None,
             post_command_discovery_hook: options.post_command_discovery_hook,
             client_async_worker_tasks: options.client_async_worker_tasks.map(|v| v as usize),
             visual_bell: options.visual_bell,
@@ -1144,7 +1145,7 @@ impl From<crate::input::actions::Action>
                 tab_position: tab_position.map(|p| p as u32),
                 pane_id: pane_id.map(|(id, is_plugin)| PaneIdWithPlugin {
                     pane_id: id,
-                    is_plugin: is_plugin,
+                    is_plugin,
                 }),
                 layout: layout.as_ref().map(|l| l.clone().into()),
                 cwd: cwd.as_ref().map(|p| p.to_string_lossy().to_string()),

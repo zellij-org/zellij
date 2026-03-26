@@ -2840,6 +2840,7 @@ impl Options {
             web_server_cert,
             web_server_key,
             enforce_https_for_localhost,
+            skip_auth_for_local_network_access: None,
             post_command_discovery_hook,
             client_async_worker_tasks,
         })

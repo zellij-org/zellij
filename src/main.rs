@@ -292,6 +292,7 @@ fn main() {
                 web_opts.cert.clone(),
                 web_opts.key.clone(),
                 web_opts.server_startup_timeout,
+                web_opts.no_auth_for_local,
             );
         } else if web_opts.stop {
             match commands::stop_web_server() {

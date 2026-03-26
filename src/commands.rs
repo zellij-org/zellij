@@ -173,6 +173,7 @@ pub(crate) fn start_web_server(
     cert: Option<PathBuf>,
     key: Option<PathBuf>,
     startup_timeout: Option<u64>,
+    skip_auth_for_local_network_access: bool,
 ) {
     // TODO: move this outside of this function
     let (config, _layout, config_options, _config_without_layout, _config_options_without_layout) =
@@ -188,6 +189,10 @@ pub(crate) fn start_web_server(
                 process::exit(1);
             },
         };
+    let skip_auth = skip_auth_for_local_network_access
+        || config_options
+            .skip_auth_for_local_network_access
+            .unwrap_or(false);
     start_web_client_impl(
         config,
         config_options,
@@ -198,6 +203,7 @@ pub(crate) fn start_web_server(
         cert,
         key,
         startup_timeout,
+        skip_auth,
     );
 }
 
@@ -210,6 +216,7 @@ pub(crate) fn start_web_server(
     _cert: Option<PathBuf>,
     _key: Option<PathBuf>,
     _startup_timeout: Option<u64>,
+    _skip_auth_for_local_network_access: bool,
 ) {
     log::error!(
         "This version of Zellij was compiled without web server support, cannot run web server!"
