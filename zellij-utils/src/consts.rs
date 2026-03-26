@@ -307,24 +307,39 @@ mod not_unix {
     use super::*;
     use crate::envs;
     pub use crate::shared::set_permissions;
+    #[cfg(windows)]
+    use dunce;
     use lazy_static::lazy_static;
     use std::env::temp_dir;
+
+    #[cfg(windows)]
+    fn canonicalize_path(path: PathBuf) -> PathBuf {
+        dunce::canonicalize(&path).unwrap_or(path)
+    }
+
+    #[cfg(not(windows))]
+    fn canonicalize_path(path: PathBuf) -> PathBuf {
+        path
+    }
 
     pub const ZELLIJ_SOCK_MAX_LENGTH: usize = 256;
 
     lazy_static! {
-        pub static ref ZELLIJ_TMP_DIR: PathBuf = temp_dir().join("zellij");
+        pub static ref ZELLIJ_TMP_DIR: PathBuf = {
+            let tmp_dir = canonicalize_path(temp_dir());
+            tmp_dir.join("zellij")
+        };
         pub static ref ZELLIJ_TMP_LOG_DIR: PathBuf = ZELLIJ_TMP_DIR.join("zellij-log");
         pub static ref ZELLIJ_TMP_LOG_FILE: PathBuf = ZELLIJ_TMP_LOG_DIR.join("zellij.log");
         pub static ref ZELLIJ_SOCK_DIR: PathBuf = {
-            let mut ipc_dir = envs::get_socket_dir().map_or_else(
+            let mut ipc_dir = canonicalize_path(envs::get_socket_dir().map_or_else(
                 |_| {
                     ZELLIJ_PROJ_DIR
                         .runtime_dir()
                         .map_or_else(|| ZELLIJ_TMP_DIR.clone(), |p| p.to_owned())
                 },
                 PathBuf::from,
-            );
+            ));
             ipc_dir.push(CLIENT_SERVER_CONTRACT_DIR.clone());
             ipc_dir
         };

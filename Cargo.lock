@@ -4960,6 +4960,7 @@ dependencies = [
  "crossterm",
  "curl-sys",
  "directories",
+ "dunce",
  "expect-test",
  "humantime",
  "include_dir",
