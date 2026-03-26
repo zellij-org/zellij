@@ -427,10 +427,7 @@ pub(crate) fn plugin_thread_main(
                 );
             },
             PluginInstruction::Update(updates) => {
-                let t = std::time::Instant::now();
-                let event_names: Vec<String> = updates.iter().map(|(_, _, e)| e.to_string()).collect();
                 wasm_bridge.update_plugins(updates, shutdown_send.clone())?;
-                log::info!("[PERF] plugin thread: processed Update({:?}) in {:?}", event_names, t.elapsed());
             },
             PluginInstruction::Unload(pid) => {
                 wasm_bridge.unload_plugin(pid)?;
@@ -1219,11 +1216,9 @@ pub(crate) fn plugin_thread_main(
                     .non_fatal();
             },
             PluginInstruction::PaneRenderReport(pane_render_report) => {
-                let t = std::time::Instant::now();
                 wasm_bridge
                     .handle_pane_render_report(pane_render_report, shutdown_send.clone())
                     .non_fatal();
-                log::info!("[PERF] plugin thread: processed PaneRenderReport in {:?}", t.elapsed());
             },
             PluginInstruction::UserInput {
                 client_id,
