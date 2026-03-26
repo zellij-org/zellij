@@ -26,8 +26,8 @@ use zellij_utils::position::Position;
 use crate::background_jobs::BackgroundJob;
 use crate::os_input_output::AsyncReader;
 use crate::pty_writer::PtyWriteInstruction;
-use std::env::set_var;
 use std::collections::HashSet;
+use std::env::set_var;
 use std::sync::{Arc, Mutex};
 
 use crate::{
@@ -577,8 +577,7 @@ impl MockScreen {
     pub fn new_tab_with_plugins(&mut self, plugin_pane_ids: Vec<u32>) {
         // Build a layout where each child is a plugin pane
         let fake_plugin_url = "file:/path/to/fake/plugin";
-        let run_plugin =
-            RunPluginOrAlias::from_url(fake_plugin_url, &None, None, None).unwrap();
+        let run_plugin = RunPluginOrAlias::from_url(fake_plugin_url, &None, None, None).unwrap();
         let mut tab_layout = TiledPaneLayout::default();
         tab_layout.children_split_direction = SplitDirection::Vertical;
         tab_layout.children = plugin_pane_ids
@@ -7447,7 +7446,9 @@ pub fn background_plugin_receives_broadcasts_regardless_of_active_tab() {
     let _ = mock_screen
         .to_screen
         .send(ScreenInstruction::UpdateBackgroundPluginSubscriptions(
-            99, main_client_id, bg_subs,
+            99,
+            main_client_id,
+            bg_subs,
         ));
     std::thread::sleep(std::time::Duration::from_millis(100));
 

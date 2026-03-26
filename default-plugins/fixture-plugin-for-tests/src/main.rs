@@ -67,8 +67,14 @@ impl ZellijPlugin for State {
             PermissionType::RunActionsAsUser,
             PermissionType::ReadSessionEnvironmentVariables,
         ]);
-        let should_subscribe_initial_keybinds = configuration.get("subscribe_initial_keybinds").map(|v| v == "true").unwrap_or(false);
-        let should_subscribe_mode_update = configuration.get("subscribe_mode_update").map(|v| v == "true").unwrap_or(false);
+        let should_subscribe_initial_keybinds = configuration
+            .get("subscribe_initial_keybinds")
+            .map(|v| v == "true")
+            .unwrap_or(false);
+        let should_subscribe_mode_update = configuration
+            .get("subscribe_mode_update")
+            .map(|v| v == "true")
+            .unwrap_or(false);
         self.configuration = configuration;
         subscribe(&[
             EventType::InputReceived,

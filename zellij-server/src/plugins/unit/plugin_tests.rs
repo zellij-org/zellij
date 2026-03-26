@@ -11,8 +11,8 @@ use zellij_utils::data::{
     BareKey, Event, InputMode, KeyWithModifier, ModeInfo, PermissionStatus, PermissionType,
     PluginCapabilities,
 };
-use zellij_utils::input::actions::Action;
 use zellij_utils::errors::ErrorContext;
+use zellij_utils::input::actions::Action;
 use zellij_utils::input::keybinds::Keybinds;
 use zellij_utils::input::layout::{
     Layout, PluginAlias, PluginUserConfiguration, RunPlugin, RunPluginLocation, RunPluginOrAlias,
@@ -12625,10 +12625,7 @@ pub fn mode_update_payload_is_lightweight_for_opted_in_plugins() {
 
     // Plugin B: subscribes to InitialKeybinds + ModeUpdate (lightweight)
     let mut config_b = BTreeMap::new();
-    config_b.insert(
-        "subscribe_initial_keybinds".to_owned(),
-        "true".to_owned(),
-    );
+    config_b.insert("subscribe_initial_keybinds".to_owned(), "true".to_owned());
     let run_plugin_b = RunPluginOrAlias::RunPlugin(RunPlugin {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
@@ -12650,15 +12647,14 @@ pub fn mode_update_payload_is_lightweight_for_opted_in_plugins() {
                     .expect("failed to receive event on channel");
                 match event {
                     ScreenInstruction::RequestPluginPermissions(plugin_id, plugin_permission) => {
-                        let _ = plugin_thread_sender.send(
-                            PluginInstruction::PermissionRequestResult(
+                        let _ =
+                            plugin_thread_sender.send(PluginInstruction::PermissionRequestResult(
                                 plugin_id,
                                 Some(client_id),
                                 plugin_permission.permissions,
                                 PermissionStatus::Granted,
                                 Some(cache_path.clone()),
-                            ),
-                        );
+                            ));
                     },
                     ScreenInstruction::Exit => {
                         break;
@@ -12715,10 +12711,7 @@ pub fn mode_update_payload_is_lightweight_for_opted_in_plugins() {
     // will have non-empty keybinds in its internal state
     let mut keybind_map = std::collections::HashMap::new();
     let mut mode_map = std::collections::HashMap::new();
-    mode_map.insert(
-        KeyWithModifier::new(BareKey::Char('q')),
-        vec![Action::Quit],
-    );
+    mode_map.insert(KeyWithModifier::new(BareKey::Char('q')), vec![Action::Quit]);
     keybind_map.insert(InputMode::Normal, mode_map);
     let test_keybinds = Keybinds(keybind_map);
 
@@ -12797,10 +12790,7 @@ pub fn reconfiguration_resends_keybinds_to_opted_in_plugins() {
 
     // Plugin subscribes to InitialKeybinds + ModeUpdate
     let mut config = BTreeMap::new();
-    config.insert(
-        "subscribe_initial_keybinds".to_owned(),
-        "true".to_owned(),
-    );
+    config.insert("subscribe_initial_keybinds".to_owned(), "true".to_owned());
     let run_plugin = RunPluginOrAlias::RunPlugin(RunPlugin {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
@@ -12822,15 +12812,14 @@ pub fn reconfiguration_resends_keybinds_to_opted_in_plugins() {
                     .expect("failed to receive event on channel");
                 match event {
                     ScreenInstruction::RequestPluginPermissions(plugin_id, plugin_permission) => {
-                        let _ = plugin_thread_sender.send(
-                            PluginInstruction::PermissionRequestResult(
+                        let _ =
+                            plugin_thread_sender.send(PluginInstruction::PermissionRequestResult(
                                 plugin_id,
                                 Some(client_id),
                                 plugin_permission.permissions,
                                 PermissionStatus::Granted,
                                 Some(cache_path.clone()),
-                            ),
-                        );
+                            ));
                     },
                     ScreenInstruction::Exit => {
                         break;
@@ -12866,10 +12855,7 @@ pub fn reconfiguration_resends_keybinds_to_opted_in_plugins() {
     // Build new keybinds for reconfiguration
     let mut keybind_map = std::collections::HashMap::new();
     let mut mode_map = std::collections::HashMap::new();
-    mode_map.insert(
-        KeyWithModifier::new(BareKey::Char('x')),
-        vec![Action::Quit],
-    );
+    mode_map.insert(KeyWithModifier::new(BareKey::Char('x')), vec![Action::Quit]);
     keybind_map.insert(InputMode::Normal, mode_map);
     let new_keybinds = Keybinds(keybind_map);
 
