@@ -3203,6 +3203,7 @@ pub enum NewPanePlacement {
     },
     Tiled {
         direction: Option<Direction>,
+        size: Option<PercentOrFixed>,
         borderless: Option<bool>,
     },
     Floating(Option<FloatingPaneCoordinates>),

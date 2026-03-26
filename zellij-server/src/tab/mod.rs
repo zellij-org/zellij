@@ -60,8 +60,8 @@ use zellij_utils::{
     input::{
         command::TerminalAction,
         layout::{
-            FloatingPaneLayout, Run, RunPluginOrAlias, SwapFloatingLayout, SwapTiledLayout,
-            TiledPaneLayout,
+            FloatingPaneLayout, PercentOrFixed, Run, RunPluginOrAlias, SwapFloatingLayout,
+            SwapTiledLayout, TiledPaneLayout,
         },
         parse_keys,
     },
@@ -1451,6 +1451,7 @@ impl Tab {
             ),
             NewPanePlacement::Tiled {
                 direction: None,
+                size: _,
                 borderless,
             } => self.new_tiled_pane(
                 pid,
@@ -1464,6 +1465,7 @@ impl Tab {
             ),
             NewPanePlacement::Tiled {
                 direction: Some(direction),
+                size,
                 borderless,
             } => {
                 if let Some(client_id) = client_id {
@@ -1473,6 +1475,7 @@ impl Tab {
                             initial_pane_title,
                             client_id,
                             blocking_notification,
+                            size,
                             borderless,
                         )?;
                     } else {
@@ -1481,6 +1484,7 @@ impl Tab {
                             initial_pane_title,
                             client_id,
                             blocking_notification,
+                            size,
                             borderless,
                         )?;
                     }
@@ -2308,6 +2312,7 @@ impl Tab {
         initial_pane_title: Option<String>,
         client_id: ClientId,
         completion_tx: Option<NotificationEnd>,
+        size: Option<PercentOrFixed>,
         borderless: Option<bool>,
     ) -> Result<()> {
         let err_context =
@@ -2346,8 +2351,12 @@ impl Tab {
                 if let Some(borderless) = borderless {
                     new_terminal.set_borderless(borderless);
                 }
-                self.tiled_panes
-                    .split_pane_horizontally(pid, Box::new(new_terminal), client_id);
+                self.tiled_panes.split_pane_horizontally(
+                    pid,
+                    Box::new(new_terminal),
+                    client_id,
+                    size,
+                );
                 self.set_should_clear_display_before_rendering();
                 self.tiled_panes.focus_pane(pid, client_id);
                 self.swap_layouts.set_is_tiled_damaged();
@@ -2375,6 +2384,7 @@ impl Tab {
         initial_pane_title: Option<String>,
         client_id: ClientId,
         completion_tx: Option<NotificationEnd>,
+        size: Option<PercentOrFixed>,
         borderless: Option<bool>,
     ) -> Result<()> {
         let err_context =
@@ -2413,8 +2423,12 @@ impl Tab {
                 if let Some(borderless) = borderless {
                     new_terminal.set_borderless(borderless);
                 }
-                self.tiled_panes
-                    .split_pane_vertically(pid, Box::new(new_terminal), client_id);
+                self.tiled_panes.split_pane_vertically(
+                    pid,
+                    Box::new(new_terminal),
+                    client_id,
+                    size,
+                );
                 self.set_should_clear_display_before_rendering();
                 self.tiled_panes.focus_pane(pid, client_id);
                 self.swap_layouts.set_is_tiled_damaged();

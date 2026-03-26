@@ -83,11 +83,10 @@ use crate::errors::prelude::*;
 use crate::input::actions::Action;
 use crate::input::actions::{SearchDirection, SearchOption};
 use crate::input::command::{OpenFilePayload, RunCommandAction};
-use crate::input::layout::SplitSize;
 use crate::input::layout::{
     FloatingPaneLayout, LayoutConstraint, PercentOrFixed, PluginAlias, PluginUserConfiguration,
-    Run, RunPlugin, RunPluginLocation, RunPluginOrAlias, SplitDirection, SwapFloatingLayout,
-    SwapTiledLayout, TabLayoutInfo, TiledPaneLayout,
+    Run, RunPlugin, RunPluginLocation, RunPluginOrAlias, SplitDirection, SplitSize,
+    SwapFloatingLayout, SwapTiledLayout, TabLayoutInfo, TiledPaneLayout,
 };
 use crate::input::mouse::{MouseEvent, MouseEventType};
 use crate::position::Position;
@@ -372,11 +371,14 @@ impl TryFrom<ProtobufAction> for Action {
                         .and_then(|d| d.try_into().ok());
                     let near_current_pane = payload.near_current_pane;
                     let borderless = payload.borderless;
+                    let size: Option<PercentOrFixed> =
+                        payload.split_size.map(|s| s.try_into()).transpose()?;
                     if let Some(payload) = payload.command {
                         let pane_name = payload.pane_name.clone();
                         let run_command_action: RunCommandAction = payload.try_into()?;
                         Ok(Action::NewTiledPane {
                             direction,
+                            size,
                             command: Some(run_command_action),
                             pane_name,
                             near_current_pane,
@@ -385,6 +387,7 @@ impl TryFrom<ProtobufAction> for Action {
                     } else {
                         Ok(Action::NewTiledPane {
                             direction,
+                            size,
                             command: None,
                             pane_name: None,
                             near_current_pane,
@@ -1328,6 +1331,7 @@ impl TryFrom<Action> for ProtobufAction {
             },
             Action::NewTiledPane {
                 direction,
+                size,
                 command: run_command_action,
                 pane_name,
                 near_current_pane,
@@ -1337,6 +1341,7 @@ impl TryFrom<Action> for ProtobufAction {
                     let protobuf_direction: ProtobufResizeDirection = direction.try_into().ok()?;
                     Some(protobuf_direction as i32)
                 });
+                let split_size = size.and_then(|s| s.try_into().ok());
                 let command = run_command_action.and_then(|r| {
                     let mut protobuf_run_command_action: ProtobufRunCommandAction =
                         r.try_into().ok()?;
@@ -1352,6 +1357,7 @@ impl TryFrom<Action> for ProtobufAction {
                             command,
                             near_current_pane,
                             borderless,
+                            split_size,
                         },
                     )),
                 })
@@ -2386,8 +2392,10 @@ impl TryFrom<ProtobufNewPanePlacement> for NewPanePlacement {
                     .direction
                     .and_then(|d| ProtobufResizeDirection::from_i32(d))
                     .and_then(|d| d.try_into().ok());
+                let size: Option<PercentOrFixed> = tiled.split_size.and_then(|s| s.try_into().ok());
                 Ok(NewPanePlacement::Tiled {
                     direction,
+                    size,
                     borderless: tiled.borderless,
                 })
             },
@@ -2430,6 +2438,7 @@ impl TryFrom<NewPanePlacement> for ProtobufNewPanePlacement {
             },
             NewPanePlacement::Tiled {
                 direction,
+                size,
                 borderless,
             } => {
                 let direction = direction.and_then(|d| {
@@ -2439,6 +2448,7 @@ impl TryFrom<NewPanePlacement> for ProtobufNewPanePlacement {
                 Some(PlacementVariant::Tiled(ProtobufTiledPlacement {
                     direction,
                     borderless,
+                    split_size: size.and_then(|s| s.try_into().ok()),
                 }))
             },
             NewPanePlacement::Floating(coords) => {

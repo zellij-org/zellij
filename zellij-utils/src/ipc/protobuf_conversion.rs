@@ -1106,12 +1106,14 @@ impl From<crate::input::actions::Action>
             }),
             crate::input::actions::Action::NewTiledPane {
                 direction,
+                size,
                 command,
                 pane_name,
                 near_current_pane,
                 borderless,
             } => ActionType::NewTiledPane(NewTiledPaneAction {
                 direction: direction.map(|d| direction_to_proto_i32(d)),
+                split_size: size.map(|s| crate::input::layout::SplitSize::from(s).into()),
                 command: command.map(|c| c.into()),
                 pane_name,
                 near_current_pane,
@@ -1910,11 +1912,25 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                 })
             },
             ActionType::NewTiledPane(new_tiled_action) => {
+                use crate::client_server_contract::client_server_contract::split_size::SizeType;
+                let size = new_tiled_action
+                    .split_size
+                    .and_then(|size| match size.size_type {
+                        Some(SizeType::Percent(percent)) => Some(
+                            crate::input::layout::PercentOrFixed::Percent(percent as usize),
+                        ),
+                        Some(SizeType::Fixed(fixed)) => {
+                            Some(crate::input::layout::PercentOrFixed::Fixed(fixed as usize))
+                        },
+                        None => None,
+                    });
+
                 Ok(crate::input::actions::Action::NewTiledPane {
                     direction: new_tiled_action
                         .direction
                         .map(|d| proto_i32_to_direction(d))
                         .transpose()?,
+                    size,
                     command: new_tiled_action.command.map(|c| c.try_into()).transpose()?,
                     pane_name: new_tiled_action.pane_name,
                     near_current_pane: new_tiled_action.near_current_pane,
@@ -3271,13 +3287,16 @@ impl From<crate::data::NewPanePlacement>
             },
             crate::data::NewPanePlacement::Tiled {
                 direction,
+                size,
                 borderless: Some(b),
             } => PlacementType::TiledWithOptions(TiledPlacement {
                 direction: direction.map(direction_to_proto_i32),
                 borderless: Some(b),
+                split_size: size.map(|s| crate::input::layout::SplitSize::from(s).into()),
             }),
             crate::data::NewPanePlacement::Tiled {
                 direction,
+                size: _,
                 borderless: None,
             } => PlacementType::Tiled(direction.map(direction_to_proto_i32).unwrap_or(0)),
             crate::data::NewPanePlacement::Floating(coords) => {
@@ -3336,9 +3355,21 @@ impl TryFrom<crate::client_server_contract::client_server_contract::NewPanePlace
                 })
             },
             PlacementType::TiledWithOptions(opts) => {
+                use crate::client_server_contract::client_server_contract::split_size::SizeType;
                 let direction = opts.direction.map(proto_i32_to_direction).transpose()?;
+                let size = opts.split_size.and_then(|size| match size.size_type {
+                    Some(SizeType::Percent(percent)) => Some(
+                        crate::input::layout::PercentOrFixed::Percent(percent as usize),
+                    ),
+                    Some(SizeType::Fixed(fixed)) => {
+                        Some(crate::input::layout::PercentOrFixed::Fixed(fixed as usize))
+                    },
+                    None => None,
+                });
+
                 Ok(crate::data::NewPanePlacement::Tiled {
                     direction,
+                    size,
                     borderless: opts.borderless,
                 })
             },
@@ -3364,6 +3395,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::NewPanePlace
                 };
                 Ok(crate::data::NewPanePlacement::Tiled {
                     direction,
+                    size: None,
                     borderless: None,
                 })
             },
