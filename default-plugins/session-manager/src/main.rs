@@ -152,8 +152,19 @@ impl ZellijPlugin for State {
                         &self.sessions.session_ui_infos,
                         &self.resurrectable_sessions.all_resurrectable_sessions,
                     );
+                    let previous_selection =
+                        self.single_screen_state.layout_list.selected_layout_index;
+                    let previous_search_term = self
+                        .single_screen_state
+                        .layout_list
+                        .layout_search_term
+                        .clone();
                     self.single_screen_state.layout_list =
                         self.new_session_info.get_layout_list_clone();
+                    self.single_screen_state.layout_list.layout_search_term = previous_search_term;
+                    self.single_screen_state.layout_list.update_search_term();
+                    self.single_screen_state.layout_list.selected_layout_index =
+                        previous_selection.min(self.single_screen_state.layout_list.max_index());
                 }
                 should_render = true;
             },
