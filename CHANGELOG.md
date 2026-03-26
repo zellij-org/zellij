@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+* fix: don't display default ports as offline in `share` plugin (https://github.com/zellij-org/zellij/pull/4908)
 
 ## [0.44.0] - 2026-03-23
 * fix: meta key handling in web client (https://github.com/zellij-org/zellij/pull/4376)
