@@ -784,6 +784,7 @@ impl From<crate::input::actions::Action>
     fn from(action: crate::input::actions::Action) -> Self {
         use crate::client_server_contract::client_server_contract::{
             action::ActionType,
+            AreFloatingPanesVisibleAction,
             BreakPaneAction,
             BreakPaneLeftAction,
             BreakPaneRightAction,
@@ -808,6 +809,7 @@ impl From<crate::input::actions::Action>
             EditScrollbackAction,
             EditScrollbackByPaneIdAction,
             FocusNextPaneAction,
+            FocusPaneByPaneIdAction,
             FocusPluginPaneWithIdAction,
             FocusPreviousPaneAction,
             FocusTerminalPaneWithIdAction,
@@ -1165,6 +1167,11 @@ impl From<crate::input::actions::Action>
             },
             crate::input::actions::Action::HideFloatingPanes { tab_id } => {
                 ActionType::HideFloatingPanes(HideFloatingPanesAction {
+                    tab_id: tab_id.map(|id| id as u32),
+                })
+            },
+            crate::input::actions::Action::AreFloatingPanesVisible { tab_id } => {
+                ActionType::AreFloatingPanesVisible(AreFloatingPanesVisibleAction {
                     tab_id: tab_id.map(|id| id as u32),
                 })
             },
@@ -1689,6 +1696,11 @@ impl From<crate::input::actions::Action>
                     pane_id: Some(pane_id.into()),
                 })
             },
+            crate::input::actions::Action::FocusPaneByPaneId { pane_id } => {
+                ActionType::FocusPaneByPaneId(FocusPaneByPaneIdAction {
+                    pane_id: Some(pane_id.into()),
+                })
+            },
             // Tab-targeting CLI-only variants
             crate::input::actions::Action::UndoRenameTabByTabId { id } => {
                 ActionType::UndoRenameTabByTabId(UndoRenameTabByTabIdAction { id })
@@ -1976,6 +1988,11 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
             },
             ActionType::HideFloatingPanes(a) => {
                 Ok(crate::input::actions::Action::HideFloatingPanes {
+                    tab_id: a.tab_id.map(|id| id as usize),
+                })
+            },
+            ActionType::AreFloatingPanesVisible(a) => {
+                Ok(crate::input::actions::Action::AreFloatingPanesVisible {
                     tab_id: a.tab_id.map(|id| id as usize),
                 })
             },
@@ -2590,6 +2607,14 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                     pane_id: a
                         .pane_id
                         .ok_or_else(|| anyhow!("TogglePanePinnedByPaneId missing pane_id"))?
+                        .try_into()?,
+                })
+            },
+            ActionType::FocusPaneByPaneId(a) => {
+                Ok(crate::input::actions::Action::FocusPaneByPaneId {
+                    pane_id: a
+                        .pane_id
+                        .ok_or_else(|| anyhow!("FocusPaneByPaneId missing pane_id"))?
                         .try_into()?,
                 })
             },

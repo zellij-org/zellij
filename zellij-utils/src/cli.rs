@@ -735,6 +735,11 @@ pub enum CliAction {
     FocusNextPane,
     /// Change focus to the previous pane
     FocusPreviousPane,
+    /// Focus a specific pane by its ID
+    FocusPaneId {
+        /// The pane_id of the pane, eg. terminal_1, plugin_2 or 3
+        pane_id: String,
+    },
     /// Move the focused pane in the specified direction. [right|left|up|down]
     MoveFocus {
         direction: Direction,
@@ -1098,6 +1103,14 @@ pub enum CliAction {
     ///
     /// Returns exit code 0 if state was changed, 2 if already hidden, 1 if tab not found.
     HideFloatingPanes {
+        #[clap(short, long, value_parser)]
+        tab_id: Option<usize>,
+    },
+    /// Check if floating panes are visible in the specified tab (or active tab).
+    ///
+    /// Prints "true" to stdout and exits 0 if visible.
+    /// Prints "false" to stdout and exits 1 if not visible.
+    AreFloatingPanesVisible {
         #[clap(short, long, value_parser)]
         tab_id: Option<usize>,
     },

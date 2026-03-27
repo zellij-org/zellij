@@ -113,6 +113,7 @@ NewTab(
             affected_pane_id: None,
             affected_tab_id: None,
             error_message: None,
+            stdout_message: None,
         },
     ),
 )

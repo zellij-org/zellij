@@ -274,6 +274,11 @@ pub enum ScreenInstruction {
         tab_id: Option<usize>,
         completion: Option<NotificationEnd>,
     },
+    AreFloatingPanesVisible {
+        client_id: ClientId,
+        tab_id: Option<usize>,
+        completion: Option<NotificationEnd>,
+    },
     WriteCharacter(
         Option<KeyWithModifier>,
         Vec<u8>,
@@ -748,6 +753,9 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::ToggleFloatingPanes(..) => ScreenContext::ToggleFloatingPanes,
             ScreenInstruction::ShowFloatingPanes { .. } => ScreenContext::ShowFloatingPanes,
             ScreenInstruction::HideFloatingPanes { .. } => ScreenContext::HideFloatingPanes,
+            ScreenInstruction::AreFloatingPanesVisible { .. } => {
+                ScreenContext::AreFloatingPanesVisible
+            },
             ScreenInstruction::WriteCharacter(..) => ScreenContext::WriteCharacter,
             ScreenInstruction::Resize(.., strategy, _) => match strategy {
                 ResizeStrategy {
@@ -2260,6 +2268,39 @@ impl Screen {
             },
             Some(tab) => tab.hide_floating_panes_atomic(completion),
         }
+        Ok(())
+    }
+
+    pub fn are_floating_panes_visible_in_tab(
+        &self,
+        client_id: ClientId,
+        tab_id: Option<usize>,
+        completion: Option<NotificationEnd>,
+    ) -> Result<()> {
+        let tab = match tab_id {
+            Some(id) => self.tabs.get(&id),
+            None => self.get_active_tab(client_id).ok(),
+        };
+        let mut completion = completion;
+        match tab {
+            None => {
+                if let Some(c) = completion.as_mut() {
+                    c.set_error_message("Tab not found".to_string());
+                }
+            },
+            Some(tab) => {
+                if tab.are_floating_panes_visible() {
+                    if let Some(c) = completion.as_mut() {
+                        c.set_stdout_message("true".to_string());
+                    }
+                } else {
+                    if let Some(c) = completion.as_mut() {
+                        c.set_error_message("false".to_string());
+                    }
+                }
+            },
+        }
+        drop(completion);
         Ok(())
     }
 
@@ -5143,6 +5184,13 @@ pub(crate) fn screen_thread_main(
                 screen.log_and_report_session_state()?;
                 screen.render(None)?;
             },
+            ScreenInstruction::AreFloatingPanesVisible {
+                client_id,
+                tab_id,
+                completion,
+            } => {
+                screen.are_floating_panes_visible_in_tab(client_id, tab_id, completion)?;
+            },
             ScreenInstruction::WriteCharacter(
                 key_with_modifier,
                 raw_bytes,
@@ -7405,17 +7453,38 @@ pub(crate) fn screen_thread_main(
                 should_float_if_hidden,
                 should_be_in_place_if_hidden,
                 client_id,
-                _completion_tx, // the action ends here, dropping this will release anything
-                                // waiting for it
+                mut completion_tx,
             ) => {
-                screen.focus_pane_with_id(
-                    pane_id,
-                    should_float_if_hidden,
-                    should_be_in_place_if_hidden,
-                    client_id,
-                )?;
-                screen.clear_bell_for_pane_id(pane_id, client_id);
-                screen.log_and_report_session_state()?;
+                let pane_exists = screen
+                    .tabs
+                    .iter()
+                    .any(|(_, tab)| tab.has_pane_with_pid(&pane_id));
+                if !pane_exists {
+                    if let Some(c) = completion_tx.as_mut() {
+                        c.set_exit_status(1);
+                        c.set_error_message(format!("Pane with id {:?} not found", pane_id));
+                    }
+                } else {
+                    let already_focused = screen
+                        .get_active_pane_id(&client_id)
+                        .map(|active| active == pane_id)
+                        .unwrap_or(false);
+                    if already_focused {
+                        if let Some(c) = completion_tx.as_mut() {
+                            c.set_exit_status(1);
+                            c.set_error_message(format!("Pane {:?} is already focused", pane_id));
+                        }
+                    } else {
+                        screen.focus_pane_with_id(
+                            pane_id,
+                            should_float_if_hidden,
+                            should_be_in_place_if_hidden,
+                            client_id,
+                        )?;
+                        screen.clear_bell_for_pane_id(pane_id, client_id);
+                        screen.log_and_report_session_state()?;
+                    }
+                }
             },
             ScreenInstruction::RenamePane(
                 pane_id,
