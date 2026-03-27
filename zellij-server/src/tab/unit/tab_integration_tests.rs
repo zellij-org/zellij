@@ -5,7 +5,7 @@ use crate::Arc;
 
 use crate::{
     os_input_output::ServerOsApi, pane_groups::PaneGroups, panes::PaneId,
-    plugins::PluginInstruction, thread_bus::ThreadSenders, ClientId,
+    plugins::PluginInstruction, thread_bus::ThreadSenders, ClientId, ServerInstruction,
 };
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::PathBuf;
@@ -14266,5 +14266,401 @@ fn mouse_click_through_respects_live_toggle() {
         output[0].starts_with("\u{1b}[<0;"),
         "Expected SGR left-click sequence, got: {:?}",
         output[0]
+    );
+}
+
+// ========================================================================
+// OSC 99 Desktop Notification Integration Tests
+// ========================================================================
+
+/// Creates a Tab with a real `to_server` sender so that `ServerInstruction::Render`
+/// calls from `forward_desktop_notifications` can be captured on the receiver.
+fn create_new_tab_with_server_receiver(
+    size: Size,
+    default_mode: ModeInfo,
+) -> (Tab, Receiver<(ServerInstruction, ErrorContext)>) {
+    set_session_name("test".into());
+    let index = 0;
+    let position = 0;
+    let name = String::new();
+    let os_api = Box::new(FakeInputOutput::default());
+
+    // Set up real server channel to capture ServerInstruction::Render
+    let (server_sender, server_receiver) = channels::unbounded();
+    let server_sender = SenderWithContext::new(server_sender);
+    let mut senders = ThreadSenders::default().silently_fail_on_send();
+    senders.to_server = Some(server_sender);
+
+    let max_panes = None;
+    let client_id = 1;
+    let mut connected_clients = HashMap::new();
+    connected_clients.insert(client_id, false);
+    let connected_clients = Rc::new(RefCell::new(connected_clients));
+    let character_cell_info = Rc::new(RefCell::new(None));
+    let stacked_resize = Rc::new(RefCell::new(true));
+    let terminal_emulator_colors = Rc::new(RefCell::new(Palette::default()));
+    let copy_options = CopyOptions::default();
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let current_group = Rc::new(RefCell::new(PaneGroups::new(ThreadSenders::default())));
+    let currently_marking_pane_group = Rc::new(RefCell::new(HashMap::new()));
+    let mut tab = Tab::new(
+        index,
+        position,
+        name,
+        size,
+        character_cell_info,
+        stacked_resize,
+        sixel_image_store,
+        os_api,
+        senders,
+        max_panes,
+        Style::default(),
+        default_mode,
+        true,  // draw_pane_frames
+        true,  // auto_layout
+        connected_clients,
+        true,  // session_is_mirrored
+        Some(client_id),
+        copy_options,
+        terminal_emulator_colors,
+        terminal_emulator_color_codes,
+        (vec![], vec![]),
+        PathBuf::from("my_default_shell"),
+        false, // debug
+        true,  // arrow_fonts
+        true,  // styled_underlines
+        true,  // osc8_hyperlinks
+        false, // explicitly_disable_kitty_keyboard_protocol
+        None,
+        false,
+        WebSharing::Off,
+        current_group,
+        currently_marking_pane_group,
+        true,  // advanced_mouse_actions
+        true,  // mouse_hover_effects
+        false, // focus_follows_mouse
+        false, // mouse_click_through
+        IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
+        8080,
+    );
+    tab.apply_layout(
+        TiledPaneLayout::default(),
+        vec![],
+        vec![(1, None)],
+        vec![],
+        HashMap::new(),
+        client_id,
+        None,
+    )
+    .unwrap();
+    (tab, server_receiver)
+}
+
+/// Helper: collect all ServerInstruction::Render messages from the receiver,
+/// concatenate the per-client strings, and return the combined output.
+fn collect_render_output(
+    receiver: &Receiver<(ServerInstruction, ErrorContext)>,
+) -> String {
+    let mut output = String::new();
+    while let Ok((instruction, _)) = receiver.try_recv() {
+        if let ServerInstruction::Render(Some(client_map)) = instruction {
+            for (_client_id, content) in client_map {
+                output.push_str(&content);
+            }
+        }
+    }
+    output
+}
+
+#[test]
+fn osc99_notification_forwarded_through_tab_to_server_render() {
+    // Integration test: OSC 99 sequence emitted by a pane's PTY is parsed by Grid,
+    // drained by Tab, namespaced, and forwarded via ServerInstruction::Render.
+    let size = Size { cols: 80, rows: 24 };
+    let (mut tab, server_receiver) =
+        create_new_tab_with_server_receiver(size, ModeInfo::default());
+
+    // Feed OSC 99 sequence to pane (pid=1) — BEL terminated
+    tab.handle_pty_bytes(1, Vec::from("\x1b]99;i=test1:p=title;Hello World\x07"))
+        .unwrap();
+
+    let output = collect_render_output(&server_receiver);
+
+    // The forwarded output should contain a namespaced OSC 99 sequence
+    assert!(
+        output.contains("\x1b]99;"),
+        "Render output should contain OSC 99 prefix, got: {:?}",
+        output
+    );
+    // The identifier should be namespaced with pane ID (pid=1)
+    assert!(
+        output.contains("i=p1.test1"),
+        "Identifier should be namespaced as i=p1.test1, got: {:?}",
+        output
+    );
+    // The payload should be preserved
+    assert!(
+        output.contains("Hello World"),
+        "Payload 'Hello World' should be forwarded, got: {:?}",
+        output
+    );
+}
+
+#[test]
+fn osc99_notification_st_terminator_forwarded() {
+    // Same as above but with ESC \ (ST) terminator
+    let size = Size { cols: 80, rows: 24 };
+    let (mut tab, server_receiver) =
+        create_new_tab_with_server_receiver(size, ModeInfo::default());
+
+    tab.handle_pty_bytes(1, Vec::from("\x1b]99;i=test2:p=title;Build done\x1b\\"))
+        .unwrap();
+
+    let output = collect_render_output(&server_receiver);
+
+    assert!(
+        output.contains("i=p1.test2"),
+        "Identifier should be namespaced, got: {:?}",
+        output
+    );
+    assert!(
+        output.contains("Build done"),
+        "Payload should be forwarded, got: {:?}",
+        output
+    );
+}
+
+#[test]
+fn osc99_notification_without_identifier_gets_default() {
+    // When no i= key is present, namespace_notification_id adds i=p<N>.0
+    let size = Size { cols: 80, rows: 24 };
+    let (mut tab, server_receiver) =
+        create_new_tab_with_server_receiver(size, ModeInfo::default());
+
+    tab.handle_pty_bytes(1, Vec::from("\x1b]99;p=title;No ID here\x07"))
+        .unwrap();
+
+    let output = collect_render_output(&server_receiver);
+
+    assert!(
+        output.contains("i=p1.0"),
+        "Missing i= should get default i=p1.0, got: {:?}",
+        output
+    );
+    assert!(
+        output.contains("No ID here"),
+        "Payload should be forwarded, got: {:?}",
+        output
+    );
+}
+
+#[test]
+fn osc99_multiple_notifications_forwarded() {
+    // Multiple OSC 99 sequences in one PTY write should all be forwarded
+    let size = Size { cols: 80, rows: 24 };
+    let (mut tab, server_receiver) =
+        create_new_tab_with_server_receiver(size, ModeInfo::default());
+
+    tab.handle_pty_bytes(
+        1,
+        Vec::from("\x1b]99;i=n1:p=title;First\x07\x1b]99;i=n2:p=title;Second\x07"),
+    )
+    .unwrap();
+
+    let output = collect_render_output(&server_receiver);
+
+    assert!(
+        output.contains("i=p1.n1"),
+        "First notification should be namespaced, got: {:?}",
+        output
+    );
+    assert!(
+        output.contains("i=p1.n2"),
+        "Second notification should be namespaced, got: {:?}",
+        output
+    );
+    assert!(
+        output.contains("First") && output.contains("Second"),
+        "Both payloads should be forwarded, got: {:?}",
+        output
+    );
+}
+
+#[test]
+fn osc99_notification_mixed_with_regular_output() {
+    // OSC 99 embedded in regular terminal output should be extracted and forwarded
+    let size = Size { cols: 80, rows: 24 };
+    let (mut tab, server_receiver) =
+        create_new_tab_with_server_receiver(size, ModeInfo::default());
+
+    tab.handle_pty_bytes(
+        1,
+        Vec::from("hello\x1b]99;i=mid:p=title;Inline notification\x07world"),
+    )
+    .unwrap();
+
+    let output = collect_render_output(&server_receiver);
+
+    assert!(
+        output.contains("i=p1.mid"),
+        "Notification should be forwarded, got: {:?}",
+        output
+    );
+    assert!(
+        output.contains("Inline notification"),
+        "Notification payload should be present, got: {:?}",
+        output
+    );
+}
+
+#[test]
+fn osc99_notification_preserves_metadata_keys() {
+    // All metadata keys (p=, a=, u=, etc.) should be preserved through forwarding
+    let size = Size { cols: 80, rows: 24 };
+    let (mut tab, server_receiver) =
+        create_new_tab_with_server_receiver(size, ModeInfo::default());
+
+    tab.handle_pty_bytes(
+        1,
+        Vec::from("\x1b]99;i=rich:p=title:a=report:u=2;Important!\x07"),
+    )
+    .unwrap();
+
+    let output = collect_render_output(&server_receiver);
+
+    assert!(
+        output.contains("i=p1.rich"),
+        "Identifier should be namespaced, got: {:?}",
+        output
+    );
+    assert!(
+        output.contains("p=title"),
+        "p=title metadata should be preserved, got: {:?}",
+        output
+    );
+    assert!(
+        output.contains("a=report"),
+        "a=report metadata should be preserved, got: {:?}",
+        output
+    );
+    assert!(
+        output.contains("u=2"),
+        "u=2 metadata should be preserved, got: {:?}",
+        output
+    );
+}
+
+#[test]
+fn osc99_grid_parses_and_stores_notification() {
+    // Direct Grid-level test: feed OSC 99 bytes through vte parser,
+    // verify pending_desktop_notifications is populated correctly.
+    use crate::panes::grid::Grid;
+    use crate::panes::link_handler::LinkHandler;
+
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let character_cell_size = Rc::new(RefCell::new(Some(SizeInPixels {
+        width: 8,
+        height: 21,
+    })));
+
+    let mut grid = Grid::new(
+        24,
+        80,
+        Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
+        Rc::new(RefCell::new(LinkHandler::new())),
+        character_cell_size,
+        sixel_image_store,
+        Style::default(),
+        false, // debug
+        true,  // arrow_fonts
+        true,  // styled_underlines
+        true,  // osc8_hyperlinks
+        false, // explicitly_disable_kitty_keyboard_protocol
+    );
+
+    // Feed OSC 99 through vte parser
+    let mut vte_parser = vte::Parser::new();
+    for &byte in b"\x1b]99;i=gridtest:p=title;Grid notification\x07" {
+        vte_parser.advance(&mut grid, byte);
+    }
+
+    assert_eq!(
+        grid.pending_desktop_notifications.len(),
+        1,
+        "Should have one pending notification"
+    );
+
+    let (ref payload, ref _terminator) = grid.pending_desktop_notifications.first().unwrap();
+    assert!(
+        payload.contains("i=gridtest"),
+        "Payload should contain i=gridtest, got: {:?}",
+        payload
+    );
+}
+
+#[test]
+fn osc99_namespace_denormalize_roundtrip() {
+    // Test that namespace_notification_id and denormalize_notification_response
+    // are inverse operations.
+    use crate::panes::grid::namespace_notification_id;
+    use crate::screen::denormalize_notification_response;
+
+    let original_metadata = "i=mynotif:p=title:a=report";
+    let pane_id: u32 = 42;
+
+    // Namespace
+    let namespaced = namespace_notification_id(original_metadata, pane_id);
+    assert!(
+        namespaced.contains("i=p42.mynotif"),
+        "Should namespace to i=p42.mynotif, got: {:?}",
+        namespaced
+    );
+
+    // Simulate a response with the namespaced ID
+    let response_payload = format!("i=p42.mynotif:p=close;activated");
+    let result = denormalize_notification_response(response_payload.as_bytes());
+    assert!(result.is_some(), "Should successfully denormalize");
+
+    let (terminal_id, response_bytes) = result.unwrap();
+    assert_eq!(terminal_id, 42, "Should extract pane_id 42");
+
+    let response_str = String::from_utf8_lossy(&response_bytes);
+    assert!(
+        response_str.contains("i=mynotif"),
+        "Should restore original i=mynotif, got: {:?}",
+        response_str
+    );
+    assert!(
+        !response_str.contains("p42"),
+        "Should not contain namespaced prefix, got: {:?}",
+        response_str
+    );
+}
+
+#[test]
+fn osc99_denormalize_with_no_namespace_returns_none() {
+    use crate::screen::denormalize_notification_response;
+
+    // A response without the p<N>. namespace pattern should return None
+    let result = denormalize_notification_response(b"i=plain_id;data");
+    assert!(
+        result.is_none(),
+        "Should return None for non-namespaced response"
+    );
+}
+
+#[test]
+fn osc99_namespace_without_identifier_adds_default() {
+    use crate::panes::grid::namespace_notification_id;
+
+    let metadata = "p=title:a=report";
+    let namespaced = namespace_notification_id(metadata, 7);
+    assert!(
+        namespaced.contains("i=p7.0"),
+        "Should add default i=p7.0 when no i= present, got: {:?}",
+        namespaced
     );
 }

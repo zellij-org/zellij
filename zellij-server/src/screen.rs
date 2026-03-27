@@ -101,7 +101,7 @@ use zellij_utils::{
 /// Returns Some((terminal_id, full_osc_bytes)) where full_osc_bytes is
 /// the complete reconstructed OSC 99 sequence with original identifier,
 /// ready to write to the pane's PTY.
-fn denormalize_notification_response(payload: &[u8]) -> Option<(u32, Vec<u8>)> {
+pub(crate) fn denormalize_notification_response(payload: &[u8]) -> Option<(u32, Vec<u8>)> {
     let payload_str = str::from_utf8(payload).ok()?;
 
     // Split into metadata and response payload on first ';'
