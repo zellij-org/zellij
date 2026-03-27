@@ -784,6 +784,7 @@ impl From<crate::input::actions::Action>
     fn from(action: crate::input::actions::Action) -> Self {
         use crate::client_server_contract::client_server_contract::{
             action::ActionType,
+            AreFloatingPanesVisibleAction,
             BreakPaneAction,
             BreakPaneLeftAction,
             BreakPaneRightAction,
@@ -1166,6 +1167,11 @@ impl From<crate::input::actions::Action>
             },
             crate::input::actions::Action::HideFloatingPanes { tab_id } => {
                 ActionType::HideFloatingPanes(HideFloatingPanesAction {
+                    tab_id: tab_id.map(|id| id as u32),
+                })
+            },
+            crate::input::actions::Action::AreFloatingPanesVisible { tab_id } => {
+                ActionType::AreFloatingPanesVisible(AreFloatingPanesVisibleAction {
                     tab_id: tab_id.map(|id| id as u32),
                 })
             },
@@ -1982,6 +1988,11 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
             },
             ActionType::HideFloatingPanes(a) => {
                 Ok(crate::input::actions::Action::HideFloatingPanes {
+                    tab_id: a.tab_id.map(|id| id as usize),
+                })
+            },
+            ActionType::AreFloatingPanesVisible(a) => {
+                Ok(crate::input::actions::Action::AreFloatingPanesVisible {
                     tab_id: a.tab_id.map(|id| id as usize),
                 })
             },

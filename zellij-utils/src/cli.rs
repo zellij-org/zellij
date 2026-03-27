@@ -1106,6 +1106,14 @@ pub enum CliAction {
         #[clap(short, long, value_parser)]
         tab_id: Option<usize>,
     },
+    /// Check if floating panes are visible in the specified tab (or active tab).
+    ///
+    /// Prints "true" to stdout and exits 0 if visible.
+    /// Prints "false" to stdout and exits 1 if not visible.
+    AreFloatingPanesVisible {
+        #[clap(short, long, value_parser)]
+        tab_id: Option<usize>,
+    },
     /// Close the focused pane.
     ClosePane {
         /// Target a specific pane by ID (eg. terminal_1, plugin_2, or 3)

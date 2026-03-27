@@ -46,6 +46,7 @@ pub struct ActionCompletionResult {
     pub affected_pane_id: Option<PaneId>,
     pub affected_tab_id: Option<usize>,
     pub error_message: Option<String>,
+    pub stdout_message: Option<String>,
 }
 
 pub fn wait_for_action_completion(
@@ -65,6 +66,7 @@ pub fn wait_for_action_completion(
                         affected_pane_id: None,
                         affected_tab_id: None,
                         error_message: None,
+                        stdout_message: None,
                     }
                 },
             }
@@ -85,6 +87,7 @@ pub fn wait_for_action_completion(
                     affected_pane_id: None,
                     affected_tab_id: None,
                     error_message: None,
+                    stdout_message: None,
                 }
             },
         }
@@ -105,6 +108,7 @@ pub struct NotificationEnd {
     affected_pane_id: Option<PaneId>, // optional payload of the pane id affected by this action
     affected_tab_id: Option<usize>,   // optional payload of the tab id affected by this action
     error_message: Option<String>,
+    stdout_message: Option<String>,
 }
 
 impl Clone for NotificationEnd {
@@ -117,6 +121,7 @@ impl Clone for NotificationEnd {
             affected_pane_id: self.affected_pane_id,
             affected_tab_id: self.affected_tab_id,
             error_message: self.error_message.clone(),
+            stdout_message: self.stdout_message.clone(),
         }
     }
 }
@@ -130,6 +135,7 @@ impl NotificationEnd {
             affected_pane_id: None,
             affected_tab_id: None,
             error_message: None,
+            stdout_message: None,
         }
     }
 
@@ -144,6 +150,7 @@ impl NotificationEnd {
             affected_pane_id: None,
             affected_tab_id: None,
             error_message: None,
+            stdout_message: None,
         }
     }
 
@@ -163,6 +170,10 @@ impl NotificationEnd {
         self.error_message = Some(message);
     }
 
+    pub fn set_stdout_message(&mut self, message: String) {
+        self.stdout_message = Some(message);
+    }
+
     pub fn unblock_condition(&self) -> Option<UnblockCondition> {
         self.unblock_condition
     }
@@ -176,6 +187,7 @@ impl Drop for NotificationEnd {
                 affected_pane_id: self.affected_pane_id,
                 affected_tab_id: self.affected_tab_id,
                 error_message: self.error_message.take(),
+                stdout_message: self.stdout_message.take(),
             };
             let _ = tx.send(result);
         }
@@ -1802,6 +1814,15 @@ pub(crate) fn route_action(
                 })
                 .with_context(err_context)?;
         },
+        Action::AreFloatingPanesVisible { tab_id } => {
+            senders
+                .send_to_screen(ScreenInstruction::AreFloatingPanesVisible {
+                    client_id,
+                    tab_id,
+                    completion: Some(NotificationEnd::new(completion_tx)),
+                })
+                .with_context(err_context)?;
+        },
         // Pane-targeting CLI-only variants
         Action::ScrollUpByPaneId { pane_id } => {
             senders
@@ -2024,6 +2045,17 @@ pub(crate) fn route_action(
                     cli_client_id,
                     ServerToClientMsg::LogError {
                         lines: vec![error_message.clone()],
+                    },
+                );
+            }
+        }
+    } else if let Some(stdout_message) = &result.stdout_message {
+        if let Some(cli_client_id) = cli_client_id {
+            if let Some(ref os_input) = os_input {
+                let _ = os_input.send_to_client(
+                    cli_client_id,
+                    ServerToClientMsg::Log {
+                        lines: vec![stdout_message.clone()],
                     },
                 );
             }
@@ -3091,6 +3123,7 @@ mod tests {
             affected_pane_id: None,
             affected_tab_id: Some(123),
             error_message: None,
+            stdout_message: None,
         };
 
         assert_eq!(result.affected_tab_id, Some(123));

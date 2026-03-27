@@ -289,6 +289,10 @@ pub enum Action {
     HideFloatingPanes {
         tab_id: Option<usize>,
     },
+    /// Check if floating panes are visible in the specified tab (or active tab if tab_id is None)
+    AreFloatingPanesVisible {
+        tab_id: Option<usize>,
+    },
     /// Close the focus pane.
     CloseFocus,
     PaneNameInput {
@@ -1279,6 +1283,9 @@ impl Action {
             },
             CliAction::HideFloatingPanes { tab_id } => {
                 Ok(vec![Action::HideFloatingPanes { tab_id }])
+            },
+            CliAction::AreFloatingPanesVisible { tab_id } => {
+                Ok(vec![Action::AreFloatingPanesVisible { tab_id }])
             },
             CliAction::ClosePane { pane_id } => match pane_id {
                 Some(pane_id_str) => {

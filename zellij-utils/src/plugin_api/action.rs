@@ -7,6 +7,7 @@ pub use super::generated_api::api::{
         run_plugin_or_alias::PluginType,
         Action as ProtobufAction,
         ActionName as ProtobufActionName,
+        AreFloatingPanesVisiblePayload,
         BareKey as ProtobufBareKey,
         // New layout-related types
         CommandOrPlugin as ProtobufCommandOrPlugin,
@@ -423,6 +424,17 @@ impl TryFrom<ProtobufAction> for Action {
                 },
                 None => Ok(Action::HideFloatingPanes { tab_id: None }),
                 _ => Err("Wrong payload for HideFloatingPanes"),
+            },
+            Some(ProtobufActionName::AreFloatingPanesVisible) => {
+                match protobuf_action.optional_payload {
+                    Some(OptionalPayload::AreFloatingPanesVisiblePayload(payload)) => {
+                        Ok(Action::AreFloatingPanesVisible {
+                            tab_id: payload.tab_id.map(|id| id as usize),
+                        })
+                    },
+                    None => Ok(Action::AreFloatingPanesVisible { tab_id: None }),
+                    _ => Err("Wrong payload for AreFloatingPanesVisible"),
+                }
             },
             Some(ProtobufActionName::CloseFocus) => match protobuf_action.optional_payload {
                 Some(_) => Err("CloseFocus should not have a payload"),
@@ -1377,6 +1389,14 @@ impl TryFrom<Action> for ProtobufAction {
                 name: ProtobufActionName::HideFloatingPanes as i32,
                 optional_payload: Some(OptionalPayload::HideFloatingPanesPayload(
                     HideFloatingPanesPayload {
+                        tab_id: tab_id.map(|id| id as u32),
+                    },
+                )),
+            }),
+            Action::AreFloatingPanesVisible { tab_id } => Ok(ProtobufAction {
+                name: ProtobufActionName::AreFloatingPanesVisible as i32,
+                optional_payload: Some(OptionalPayload::AreFloatingPanesVisiblePayload(
+                    AreFloatingPanesVisiblePayload {
                         tab_id: tab_id.map(|id| id as u32),
                     },
                 )),
