@@ -136,6 +136,9 @@ pub enum InputEvent {
     Paste(String),
     /// The program has woken the input thread.
     Wake,
+    /// An Operating System Command sequence was received.
+    /// Contains the raw payload between \x1b] and the terminator.
+    OperatingSystemCommand(Vec<u8>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -801,6 +804,45 @@ fn parse_sgr_mouse(buf: &[u8]) -> Option<(InputEvent, usize)> {
         }),
         consumed,
     ))
+}
+
+/// Attempt to parse an OSC (Operating System Command) sequence from the buffer.
+/// Returns `Some((InputEvent::OperatingSystemCommand(payload), len))` if a complete
+/// OSC sequence is found, where `payload` is the bytes between `\x1b]` and the
+/// terminator, and `len` is the total number of bytes consumed.
+/// Returns `None` if the buffer does not start with `\x1b]` or the sequence is incomplete.
+fn parse_osc(buf: &[u8]) -> Option<(InputEvent, usize)> {
+    // OSC sequences start with ESC ] (0x1b 0x5d)
+    if buf.get(0) != Some(&0x1b) || buf.get(1) != Some(&b']') {
+        return None;
+    }
+    let mut i = 2;
+    while i < buf.len() {
+        match buf.get(i) {
+            Some(&0x07) => {
+                // BEL terminator
+                let payload = buf.get(2..i).unwrap_or_default().to_vec();
+                return Some((InputEvent::OperatingSystemCommand(payload), i + 1));
+            },
+            Some(&0x1b) => {
+                // Possible ST terminator (ESC \)
+                if buf.get(i + 1) == Some(&b'\\') {
+                    let payload = buf.get(2..i).unwrap_or_default().to_vec();
+                    return Some((InputEvent::OperatingSystemCommand(payload), i + 2));
+                }
+                // Bare ESC inside OSC — malformed, but don't consume further
+                return None;
+            },
+            Some(_) => {
+                i += 1;
+            },
+            None => {
+                // Should not happen since i < buf.len(), but handle gracefully
+                return None;
+            },
+        }
+    }
+    None // incomplete — no terminator found yet
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1507,11 +1549,25 @@ impl InputParser {
                     }
                 },
                 InputState::EscapeMaybeAlt | InputState::Normal => {
-                    if self.state == InputState::Normal && self.buf.as_slice()[0] == b'\x1b' {
+                    if self.state == InputState::Normal
+                        && self.buf.as_slice().get(0) == Some(&b'\x1b')
+                    {
                         if let Some((event, len)) = parse_sgr_mouse(self.buf.as_slice()) {
                             self.buf.advance(len);
                             callback(event);
                             continue;
+                        }
+
+                        // OSC sequence check — must come before the incomplete-SGR-mouse early return
+                        if let Some((event, len)) = parse_osc(self.buf.as_slice()) {
+                            self.buf.advance(len);
+                            callback(event);
+                            continue;
+                        }
+
+                        // Incomplete OSC — buffer and wait for more data
+                        if maybe_more && self.buf.as_slice().starts_with(b"\x1b]") {
+                            return;
                         }
 
                         if maybe_more && self.buf.as_slice().starts_with(b"\x1b[<") {
@@ -2291,5 +2347,141 @@ mod test {
         let res = p.parse_as_vec(b"\x1b[<0;1M", false);
         // Should NOT parse as mouse - falls through to keymap
         assert!(res.iter().all(|e| matches!(e, InputEvent::Key(_))));
+    }
+
+    #[test]
+    fn osc_bel_terminated() {
+        // Complete OSC sequence with BEL terminator
+        let mut p = InputParser::new();
+        let inputs = p.parse_as_vec(b"\x1b]99;i=test:p=title;Hello\x07", NO_MORE);
+        assert_eq!(
+            vec![InputEvent::OperatingSystemCommand(
+                b"99;i=test:p=title;Hello".to_vec()
+            )],
+            inputs
+        );
+    }
+
+    #[test]
+    fn osc_st_terminated() {
+        // Complete OSC sequence with ST terminator (ESC \)
+        let mut p = InputParser::new();
+        let inputs = p.parse_as_vec(b"\x1b]99;i=test:p=title;Hello\x1b\\", NO_MORE);
+        assert_eq!(
+            vec![InputEvent::OperatingSystemCommand(
+                b"99;i=test:p=title;Hello".to_vec()
+            )],
+            inputs
+        );
+    }
+
+    #[test]
+    fn osc_partial_across_reads() {
+        // OSC sequence split across two reads — must buffer first part
+        let mut p = InputParser::new();
+        let mut inputs = Vec::new();
+        p.parse(
+            b"\x1b]99;i=test:p=title;Hel",
+            |evt| inputs.push(evt),
+            MAYBE_MORE,
+        );
+        assert!(inputs.is_empty(), "no events yet - sequence incomplete");
+        p.parse(b"lo\x1b\\", |evt| inputs.push(evt), MAYBE_MORE);
+        assert_eq!(
+            vec![InputEvent::OperatingSystemCommand(
+                b"99;i=test:p=title;Hello".to_vec()
+            )],
+            inputs
+        );
+    }
+
+    #[test]
+    fn osc_followed_by_keypress() {
+        // OSC sequence then regular key in same buffer
+        let mut p = InputParser::new();
+        let inputs = p.parse_as_vec(b"\x1b]99;i=test;clicked\x07x", NO_MORE);
+        assert_eq!(
+            vec![
+                InputEvent::OperatingSystemCommand(b"99;i=test;clicked".to_vec()),
+                InputEvent::Key(KeyEvent {
+                    modifiers: Modifiers::NONE,
+                    key: KeyCode::Char('x'),
+                }),
+            ],
+            inputs
+        );
+    }
+
+    #[test]
+    fn keypress_followed_by_osc() {
+        // Regular key then OSC sequence in same buffer
+        let mut p = InputParser::new();
+        let inputs = p.parse_as_vec(b"x\x1b]99;i=test;clicked\x07", NO_MORE);
+        assert_eq!(
+            vec![
+                InputEvent::Key(KeyEvent {
+                    modifiers: Modifiers::NONE,
+                    key: KeyCode::Char('x'),
+                }),
+                InputEvent::OperatingSystemCommand(b"99;i=test;clicked".to_vec()),
+            ],
+            inputs
+        );
+    }
+
+    #[test]
+    fn osc_incomplete_degrades_to_keys() {
+        // Incomplete OSC that never gets a terminator — when finalized with
+        // maybe_more=false, must degrade to individual key events (not hang)
+        let mut p = InputParser::new();
+        let mut inputs = Vec::new();
+        p.parse(
+            b"\x1b]99;no-terminator",
+            |evt| inputs.push(evt),
+            MAYBE_MORE,
+        );
+        assert!(inputs.is_empty(), "buffered while maybe_more=true");
+        p.parse(b"", |evt| inputs.push(evt), NO_MORE);
+        assert!(!inputs.is_empty(), "must emit something on finalization");
+    }
+
+    #[test]
+    fn osc_non_99_code() {
+        // Non-99 OSC codes are also captured as OperatingSystemCommand
+        let mut p = InputParser::new();
+        let inputs =
+            p.parse_as_vec(b"\x1b]11;rgb:0000/0000/0000\x1b\\", NO_MORE);
+        assert_eq!(
+            vec![InputEvent::OperatingSystemCommand(
+                b"11;rgb:0000/0000/0000".to_vec()
+            )],
+            inputs
+        );
+    }
+
+    #[test]
+    fn osc_empty_payload() {
+        // Edge case: OSC with no payload between \x1b] and terminator
+        let mut p = InputParser::new();
+        let inputs = p.parse_as_vec(b"\x1b]\x07", NO_MORE);
+        assert_eq!(
+            vec![InputEvent::OperatingSystemCommand(b"".to_vec())],
+            inputs
+        );
+    }
+
+    #[test]
+    fn csi_not_captured_as_osc() {
+        // ESC [ (CSI) must NOT be captured as an OSC sequence.
+        // This validates that only ESC ] triggers OSC parsing.
+        let mut p = InputParser::new();
+        let inputs = p.parse_as_vec(b"\x1b[A", NO_MORE);
+        assert_eq!(
+            vec![InputEvent::Key(KeyEvent {
+                modifiers: Modifiers::NONE,
+                key: KeyCode::UpArrow,
+            })],
+            inputs
+        );
     }
 }

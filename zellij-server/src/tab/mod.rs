@@ -41,6 +41,7 @@ use crate::{
     output::{CharacterChunk, Output, SixelImageChunk},
     panes::floating_panes::floating_pane_grid::half_size_middle_geom,
     panes::sixel::SixelImageStore,
+    panes::grid::namespace_notification_id,
     panes::{FloatingPanes, TiledPanes},
     panes::{LinkHandler, PaneId, PluginPane, TerminalPane},
     plugins::PluginInstruction,
@@ -406,6 +407,9 @@ pub trait Pane {
     }
     fn drain_clipboard_update(&mut self) -> Option<String> {
         None
+    }
+    fn drain_desktop_notifications(&mut self) -> Vec<(String, String)> {
+        vec![]
     }
     fn render_full_viewport(&mut self) {}
     fn relative_position(&self, position_on_screen: &Position) -> Position {
@@ -2711,12 +2715,17 @@ impl Tab {
             terminal_output.handle_pty_bytes(bytes);
             let messages_to_pty = terminal_output.drain_messages_to_pty();
             let clipboard_update = terminal_output.drain_clipboard_update();
+            let desktop_notifications = terminal_output.drain_desktop_notifications();
             for message in messages_to_pty {
                 self.write_to_pane_id_without_preprocessing(message, PaneId::Terminal(pid))
                     .with_context(err_context)?;
             }
             if let Some(string) = clipboard_update {
                 self.write_selection_to_clipboard(&string)
+                    .with_context(err_context)?;
+            }
+            if !desktop_notifications.is_empty() {
+                self.forward_desktop_notifications(desktop_notifications, pid)
                     .with_context(err_context)?;
             }
         }
@@ -4635,6 +4644,53 @@ impl Tab {
             .context("failed to notify plugins about new clipboard event")
             .non_fatal();
 
+        Ok(())
+    }
+    fn forward_desktop_notifications(
+        &self,
+        notifications: Vec<(String, String)>,
+        pane_id: u32,
+    ) -> Result<()> {
+        let err_context =
+            || "failed to forward desktop notifications to host terminal".to_string();
+        let mut output = Output::default();
+        // Use all clients in the app, not just those viewing this tab —
+        // desktop notifications should reach the host terminal regardless
+        // of which tab is currently focused.
+        let all_clients: HashSet<ClientId> = {
+            self.connected_clients_in_app
+                .borrow()
+                .keys()
+                .copied()
+                .collect()
+        };
+        output.add_clients(&all_clients, self.link_handler.clone(), None);
+        for (payload, terminator) in notifications {
+            // Apply identifier namespacing (Phase 3)
+            // The first semicolon-delimited part of payload is the metadata
+            let (metadata, rest) = match payload.find(';') {
+                Some(idx) => (
+                    payload.get(..idx).unwrap_or_default(),
+                    payload.get(idx..).unwrap_or_default(),
+                ),
+                None => (payload.as_str(), ""),
+            };
+            let namespaced_metadata =
+                namespace_notification_id(metadata, pane_id);
+            let raw = if rest.is_empty() {
+                format!("\x1b]99;{}{}", namespaced_metadata, terminator)
+            } else {
+                format!("\x1b]99;{}{}{}", namespaced_metadata, rest, terminator)
+            };
+            output.add_post_vte_instruction_to_multiple_clients(
+                all_clients.iter().copied(),
+                &raw,
+            );
+        }
+        let serialized_output = output.serialize().with_context(err_context)?;
+        self.senders
+            .send_to_server(ServerInstruction::Render(Some(serialized_output)))
+            .with_context(err_context)?;
         Ok(())
     }
     pub fn visible(&mut self, visible: bool) -> Result<()> {

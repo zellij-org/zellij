@@ -27,6 +27,34 @@ use zellij_utils::{
 const TABSTOP_WIDTH: usize = 8; // TODO: is this always right?
 pub const MAX_TITLE_STACK_SIZE: usize = 1000;
 
+/// Rewrites the `i=` value in OSC 99 metadata to include a pane ID prefix.
+/// Input:  "i=myid:p=title:d=1"
+/// Output: "i=p42.myid:p=title:d=1"  (for pane_id 42)
+///
+/// If no `i=` key is present, one is added as "i=p42.0" (using "0" as
+/// the fallback identifier per the OSC 99 spec's backwards-compat convention).
+pub(crate) fn namespace_notification_id(metadata: &str, pane_id: u32) -> String {
+    let mut found_id = false;
+    let result = metadata
+        .split(':')
+        .map(|kv| {
+            if let Some(id_value) = kv.strip_prefix("i=") {
+                found_id = true;
+                format!("i=p{}.{}", pane_id, id_value)
+            } else {
+                kv.to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(":");
+    if found_id {
+        result
+    } else {
+        // No i= key present — add one for routing purposes
+        format!("i=p{}.0:{}", pane_id, metadata)
+    }
+}
+
 use vte::{Params, Perform};
 use zellij_utils::{consts::VERSION, shared::version_number};
 
@@ -526,6 +554,9 @@ pub struct Grid {
     pub focus_event_tracking: bool,
     pub search_results: SearchResult,
     pub pending_clipboard_update: Option<String>,
+    /// Pending desktop notifications: (payload, terminator)
+    /// Payload is the semicolon-joined params after "99", terminator is "\x07" or "\x1b\\"
+    pub pending_desktop_notifications: Vec<(String, String)>,
     ui_component_bytes: Option<Vec<u8>>,
     style: Style,
     debug: bool,
@@ -810,6 +841,7 @@ impl Grid {
             search_results: Default::default(),
             sixel_grid,
             pending_clipboard_update: None,
+            pending_desktop_notifications: Vec::new(),
             ui_component_bytes: None,
             style,
             debug,
@@ -3483,6 +3515,23 @@ impl Perform for Grid {
             // Reset text cursor color.
             b"112" => {
                 // TBD - reset text cursor color - currently unimplemented
+            },
+
+            b"99" => {
+                if params.len() > 1 {
+                    let payload = params.get(1..)
+                        .unwrap_or_default()
+                        .iter()
+                        .flat_map(|x| str::from_utf8(x))
+                        .collect::<Vec<&str>>()
+                        .join(";");
+                    if !payload.is_empty() {
+                        // Store raw payload and terminator; namespacing applied at Tab level
+                        self.pending_desktop_notifications.push(
+                            (payload, terminator.to_string()),
+                        );
+                    }
+                }
             },
 
             _ => {

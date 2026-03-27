@@ -92,6 +92,56 @@ use zellij_utils::{
     ipc::{ClientAttributes, PixelDimensions},
 };
 
+/// Parses a namespaced OSC 99 response and extracts the original pane ID
+/// and un-namespaced response bytes.
+///
+/// Input bytes (the termwiz OperatingSystemCommand payload after stripping "99;"):
+/// e.g. b"i=p42.mynotif" or b"i=p42.mynotif:p=close;some_data"
+///
+/// Returns Some((terminal_id, full_osc_bytes)) where full_osc_bytes is
+/// the complete reconstructed OSC 99 sequence with original identifier,
+/// ready to write to the pane's PTY.
+fn denormalize_notification_response(payload: &[u8]) -> Option<(u32, Vec<u8>)> {
+    let payload_str = str::from_utf8(payload).ok()?;
+
+    // Split into metadata and response payload on first ';'
+    let (metadata, response_payload) = match payload_str.find(';') {
+        Some(idx) => (
+            payload_str.get(..idx).unwrap_or_default(),
+            payload_str.get(idx..).unwrap_or_default(),
+        ),
+        None => (payload_str, ""),
+    };
+
+    // Find the i= key in colon-separated metadata
+    let mut terminal_id = None;
+    let mut restored_parts = Vec::new();
+
+    for kv in metadata.split(':') {
+        if let Some(namespaced_value) = kv.strip_prefix("i=p") {
+            // Parse "p<N>.<original_id>"
+            if let Some(dot_pos) = namespaced_value.find('.') {
+                let pane_id_str = namespaced_value.get(..dot_pos).unwrap_or_default();
+                let original_id = namespaced_value.get(dot_pos + 1..).unwrap_or_default();
+                if let Ok(pid) = pane_id_str.parse::<u32>() {
+                    terminal_id = Some(pid);
+                    restored_parts.push(format!("i={}", original_id));
+                    continue;
+                }
+            }
+        }
+        restored_parts.push(kv.to_string());
+    }
+
+    let terminal_id = terminal_id?;
+    let restored_metadata = restored_parts.join(":");
+    let full_response = format!(
+        "\x1b]99;{}{}\x1b\\",
+        restored_metadata, response_payload
+    );
+    Some((terminal_id, full_response.into_bytes()))
+}
+
 /// Get the active tab and call a closure on it
 ///
 /// If no active tab can be found, an error is logged instead.
@@ -706,6 +756,7 @@ pub enum ScreenInstruction {
     NotifyPaneClosedToSubscribers {
         pane_id: zellij_utils::data::PaneId,
     },
+    DesktopNotificationResponse(Vec<u8>, ClientId),
     PluginSubscribedToAnsiPaneContents(bool), // true = at least one plugin needs ANSI content
     UpdateBackgroundPluginSubscriptions(PluginId, ClientId, HashSet<EventType>),
     BroadcastModeUpdate(ModeInfo, Option<ClientId>), // ModeInfo, optional specific client_id (None = all clients)
@@ -1007,6 +1058,9 @@ impl From<&ScreenInstruction> for ScreenContext {
             },
             ScreenInstruction::ClearPluginHighlights { .. } => ScreenContext::ClearPluginHighlights,
             ScreenInstruction::ClearAllPluginHighlights(..) => ScreenContext::ClearPluginHighlights,
+            ScreenInstruction::DesktopNotificationResponse(..) => {
+                ScreenContext::DesktopNotificationResponse
+            },
             ScreenInstruction::SubscribeToPaneRenders { .. } => {
                 ScreenContext::SubscribeToPaneRenders
             },
@@ -8462,6 +8516,35 @@ pub(crate) fn screen_thread_main(
                     tab.clear_all_plugin_highlights(plugin_id);
                 }
                 screen.render(None)?;
+            },
+            ScreenInstruction::DesktopNotificationResponse(raw_bytes, client_id) => {
+                if let Some((terminal_id, rewritten_bytes)) =
+                    denormalize_notification_response(&raw_bytes)
+                {
+                    let pane_id = PaneId::Terminal(terminal_id);
+                    let all_tabs = screen.get_tabs_mut();
+                    for tab in all_tabs.values_mut() {
+                        if tab.has_pane_with_pid(&pane_id) {
+                            tab.write_to_pane_id(
+                                &None,
+                                rewritten_bytes,
+                                false,
+                                pane_id,
+                                None,
+                                None,
+                            )
+                            .non_fatal();
+                            break;
+                        }
+                    }
+                    // Focus the pane that originated the notification,
+                    // switching tabs if necessary
+                    screen
+                        .focus_pane_with_id(pane_id, false, false, client_id)
+                        .non_fatal();
+                    screen.render(None)?;
+                    screen.log_and_report_session_state()?;
+                }
             },
             ScreenInstruction::SubscribeToPaneRenders {
                 client_id,
