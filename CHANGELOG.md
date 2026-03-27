@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: theme folder not being picked up on startup (https://github.com/zellij-org/zellij/pull/4892)
 * fix: do not reset selection in session-manager on SessionInfo update (https://github.com/zellij-org/zellij/pull/4919)
 * fix: performance regression when switching tabs (https://github.com/zellij-org/zellij/pull/4918)
+* feat: add "focus-pane-with-id" and "are-floating-panes-visible" cli commands (https://github.com/zellij-org/zellij/pull/4926)
 
 ## [0.44.0] - 2026-03-23
 * fix: meta key handling in web client (https://github.com/zellij-org/zellij/pull/4376)
