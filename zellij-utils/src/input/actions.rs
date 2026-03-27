@@ -603,6 +603,9 @@ pub enum Action {
     TogglePanePinnedByPaneId {
         pane_id: PaneId,
     },
+    FocusPaneByPaneId {
+        pane_id: PaneId,
+    },
     // Tab-targeting CLI-only variants
     UndoRenameTabByTabId {
         id: u64,
@@ -796,6 +799,13 @@ impl Action {
             },
             CliAction::FocusNextPane => Ok(vec![Action::FocusNextPane]),
             CliAction::FocusPreviousPane => Ok(vec![Action::FocusPreviousPane]),
+            CliAction::FocusPaneId { pane_id } => {
+                let pane_id = PaneId::from_str(&pane_id)
+                    .map_err(|_| format!(
+                        "Malformed pane id: {pane_id}, expecting either a bare integer (eg. 1), a terminal pane id (eg. terminal_1) or a plugin pane id (eg. plugin_1)"
+                    ))?;
+                Ok(vec![Action::FocusPaneByPaneId { pane_id }])
+            },
             CliAction::MoveFocus { direction } => Ok(vec![Action::MoveFocus { direction }]),
             CliAction::MoveFocusOrTab { direction } => {
                 Ok(vec![Action::MoveFocusOrTab { direction }])
@@ -3099,5 +3109,65 @@ mod tests {
             },
             _ => panic!("Expected DumpScreen action"),
         }
+    }
+
+    #[test]
+    fn test_focus_pane_id() {
+        let cli_action = CliAction::FocusPaneId {
+            pane_id: "terminal_7".to_string(),
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::FocusPaneByPaneId { pane_id } => {
+                assert!(matches!(pane_id, PaneId::Terminal(7)));
+            },
+            _ => panic!("Expected FocusPaneByPaneId action"),
+        }
+    }
+
+    #[test]
+    fn test_focus_pane_id_bare_int() {
+        let cli_action = CliAction::FocusPaneId {
+            pane_id: "3".to_string(),
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::FocusPaneByPaneId { pane_id } => {
+                assert!(matches!(pane_id, PaneId::Terminal(3)));
+            },
+            _ => panic!("Expected FocusPaneByPaneId action"),
+        }
+    }
+
+    #[test]
+    fn test_focus_pane_id_plugin() {
+        let cli_action = CliAction::FocusPaneId {
+            pane_id: "plugin_2".to_string(),
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::FocusPaneByPaneId { pane_id } => {
+                assert!(matches!(pane_id, PaneId::Plugin(2)));
+            },
+            _ => panic!("Expected FocusPaneByPaneId action"),
+        }
+    }
+
+    #[test]
+    fn test_focus_pane_id_malformed() {
+        let cli_action = CliAction::FocusPaneId {
+            pane_id: "invalid_id".to_string(),
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_err());
     }
 }

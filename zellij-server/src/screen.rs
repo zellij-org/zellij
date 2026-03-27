@@ -7405,17 +7405,44 @@ pub(crate) fn screen_thread_main(
                 should_float_if_hidden,
                 should_be_in_place_if_hidden,
                 client_id,
-                _completion_tx, // the action ends here, dropping this will release anything
-                                // waiting for it
+                mut completion_tx,
             ) => {
-                screen.focus_pane_with_id(
-                    pane_id,
-                    should_float_if_hidden,
-                    should_be_in_place_if_hidden,
-                    client_id,
-                )?;
-                screen.clear_bell_for_pane_id(pane_id, client_id);
-                screen.log_and_report_session_state()?;
+                let pane_exists = screen
+                    .tabs
+                    .iter()
+                    .any(|(_, tab)| tab.has_pane_with_pid(&pane_id));
+                if !pane_exists {
+                    if let Some(c) = completion_tx.as_mut() {
+                        c.set_exit_status(1);
+                        c.set_error_message(format!(
+                            "Pane with id {:?} not found",
+                            pane_id
+                        ));
+                    }
+                } else {
+                    let already_focused = screen
+                        .get_active_pane_id(&client_id)
+                        .map(|active| active == pane_id)
+                        .unwrap_or(false);
+                    if already_focused {
+                        if let Some(c) = completion_tx.as_mut() {
+                            c.set_exit_status(1);
+                            c.set_error_message(format!(
+                                "Pane {:?} is already focused",
+                                pane_id
+                            ));
+                        }
+                    } else {
+                        screen.focus_pane_with_id(
+                            pane_id,
+                            should_float_if_hidden,
+                            should_be_in_place_if_hidden,
+                            client_id,
+                        )?;
+                        screen.clear_bell_for_pane_id(pane_id, client_id);
+                        screen.log_and_report_session_state()?;
+                    }
+                }
             },
             ScreenInstruction::RenamePane(
                 pane_id,

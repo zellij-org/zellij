@@ -1086,6 +1086,7 @@ impl TryFrom<Action> for ProtobufAction {
             | Action::RenamePaneByPaneId { .. }
             | Action::UndoRenamePaneByPaneId { .. }
             | Action::TogglePanePinnedByPaneId { .. }
+            | Action::FocusPaneByPaneId { .. }
             | Action::UndoRenameTabByTabId { .. }
             | Action::ToggleActiveSyncTabByTabId { .. }
             | Action::ToggleFloatingPanesByTabId { .. }

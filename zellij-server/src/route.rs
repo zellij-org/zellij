@@ -369,6 +369,17 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
         },
+        Action::FocusPaneByPaneId { pane_id } => {
+            senders
+                .send_to_screen(ScreenInstruction::FocusPaneWithId(
+                    pane_id.into(),
+                    true,  // should_float_if_hidden
+                    false, // should_be_in_place_if_hidden
+                    client_id,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
         Action::MoveFocus { direction } => {
             let notification_end = Some(NotificationEnd::new(completion_tx));
 

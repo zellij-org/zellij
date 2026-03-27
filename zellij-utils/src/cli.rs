@@ -735,6 +735,11 @@ pub enum CliAction {
     FocusNextPane,
     /// Change focus to the previous pane
     FocusPreviousPane,
+    /// Focus a specific pane by its ID
+    FocusPaneId {
+        /// The pane_id of the pane, eg. terminal_1, plugin_2 or 3
+        pane_id: String,
+    },
     /// Move the focused pane in the specified direction. [right|left|up|down]
     MoveFocus {
         direction: Direction,

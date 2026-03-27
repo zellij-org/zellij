@@ -272,6 +272,7 @@ message Action {
     PreviousSwapLayoutByTabIdAction previous_swap_layout_by_tab_id = 132;
     NextSwapLayoutByTabIdAction next_swap_layout_by_tab_id = 133;
     MoveTabByTabIdAction move_tab_by_tab_id = 134;
+    FocusPaneByPaneIdAction focus_pane_by_pane_id = 135;
   }
 }
 
@@ -1200,6 +1201,7 @@ message CloseFocusByPaneIdAction { PaneId pane_id = 1; }
 message RenamePaneByPaneIdAction { PaneId pane_id = 1; bytes name = 2; }
 message UndoRenamePaneByPaneIdAction { PaneId pane_id = 1; }
 message TogglePanePinnedByPaneIdAction { PaneId pane_id = 1; }
+message FocusPaneByPaneIdAction { PaneId pane_id = 1; }
 
 // Tab-targeting action messages
 message UndoRenameTabByTabIdAction { uint64 id = 1; }

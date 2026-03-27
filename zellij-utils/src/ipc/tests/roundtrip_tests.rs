@@ -3295,6 +3295,14 @@ fn test_client_messages() {
         client_id: Some(100),
         is_cli_client: true,
     });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::FocusPaneByPaneId {
+            pane_id: PaneId::Terminal(1),
+        },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
     // Tab-targeting roundtrips
     test_client_roundtrip!(ClientToServerMsg::Action {
         action: Action::UndoRenameTabByTabId { id: 5 },

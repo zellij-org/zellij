@@ -808,6 +808,7 @@ impl From<crate::input::actions::Action>
             EditScrollbackAction,
             EditScrollbackByPaneIdAction,
             FocusNextPaneAction,
+            FocusPaneByPaneIdAction,
             FocusPluginPaneWithIdAction,
             FocusPreviousPaneAction,
             FocusTerminalPaneWithIdAction,
@@ -1686,6 +1687,11 @@ impl From<crate::input::actions::Action>
             },
             crate::input::actions::Action::TogglePanePinnedByPaneId { pane_id } => {
                 ActionType::TogglePanePinnedByPaneId(TogglePanePinnedByPaneIdAction {
+                    pane_id: Some(pane_id.into()),
+                })
+            },
+            crate::input::actions::Action::FocusPaneByPaneId { pane_id } => {
+                ActionType::FocusPaneByPaneId(FocusPaneByPaneIdAction {
                     pane_id: Some(pane_id.into()),
                 })
             },
@@ -2590,6 +2596,14 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                     pane_id: a
                         .pane_id
                         .ok_or_else(|| anyhow!("TogglePanePinnedByPaneId missing pane_id"))?
+                        .try_into()?,
+                })
+            },
+            ActionType::FocusPaneByPaneId(a) => {
+                Ok(crate::input::actions::Action::FocusPaneByPaneId {
+                    pane_id: a
+                        .pane_id
+                        .ok_or_else(|| anyhow!("FocusPaneByPaneId missing pane_id"))?
                         .try_into()?,
                 })
             },
