@@ -484,6 +484,7 @@ enum ActionName {
     RenameTabById = 97;
     ShowFloatingPanes = 98;
     HideFloatingPanes = 99;
+    ReloadPane = 100;
 }
 
 message Position {

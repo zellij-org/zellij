@@ -291,6 +291,8 @@ pub enum Action {
     },
     /// Close the focus pane.
     CloseFocus,
+    /// Reload the focused pane (re-run its command in-place).
+    ReloadPane,
     PaneNameInput {
         input: Vec<u8>,
     },

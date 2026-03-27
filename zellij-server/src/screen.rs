@@ -348,6 +348,7 @@ pub enum ScreenInstruction {
     HalfPageScrollDown(ClientId, Option<NotificationEnd>),
     ClearScroll(ClientId),
     CloseFocusedPane(ClientId, Option<NotificationEnd>),
+    ReloadFocusedPane(ClientId, Option<NotificationEnd>),
     ToggleActiveTerminalFullscreen(ClientId, Option<NotificationEnd>),
     TogglePaneFrames(Option<NotificationEnd>),
     SetSelectable(PaneId, bool),
@@ -813,6 +814,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::HalfPageScrollDown(..) => ScreenContext::HalfPageScrollDown,
             ScreenInstruction::ClearScroll(..) => ScreenContext::ClearScroll,
             ScreenInstruction::CloseFocusedPane(..) => ScreenContext::CloseFocusedPane,
+            ScreenInstruction::ReloadFocusedPane(..) => ScreenContext::ReloadFocusedPane,
             ScreenInstruction::ToggleActiveTerminalFullscreen(..) => {
                 ScreenContext::ToggleActiveTerminalFullscreen
             },
@@ -5937,6 +5939,15 @@ pub(crate) fn screen_thread_main(
                     screen,
                     client_id,
                     |tab: &mut Tab, client_id: ClientId| tab.close_focused_pane(client_id, completion_tx), ?
+                );
+                screen.render(None)?;
+                screen.log_and_report_session_state()?;
+            },
+            ScreenInstruction::ReloadFocusedPane(client_id, completion_tx) => {
+                active_tab_and_connected_client_id!(
+                    screen,
+                    client_id,
+                    |tab: &mut Tab, client_id: ClientId| tab.reload_focused_pane(client_id, completion_tx), ?
                 );
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;

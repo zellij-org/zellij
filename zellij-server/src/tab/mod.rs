@@ -4072,6 +4072,26 @@ impl Tab {
         }
         Ok(())
     }
+    pub fn reload_focused_pane(
+        &mut self,
+        client_id: ClientId,
+        completion_tx: Option<NotificationEnd>,
+    ) -> Result<()> {
+        match self.get_active_pane_id(client_id) {
+            Some(PaneId::Terminal(id)) => {
+                self.rerun_terminal_pane_with_id(id, completion_tx);
+                Ok(())
+            },
+            Some(PaneId::Plugin(_)) => {
+                log::error!("reload_focused_pane: plugin panes cannot be re-run");
+                Ok(())
+            },
+            None => {
+                log::error!("reload_focused_pane: no active pane for client {client_id}");
+                Ok(())
+            },
+        }
+    }
     pub fn clear_active_terminal_screen(&mut self, client_id: ClientId) -> Result<()> {
         if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
             active_pane.clear_screen();

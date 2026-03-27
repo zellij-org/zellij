@@ -1108,6 +1108,7 @@ pub enum ActionName {
     RenameTabById = 97,
     ShowFloatingPanes = 98,
     HideFloatingPanes = 99,
+    ReloadPane = 100,
 }
 impl ActionName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -1213,6 +1214,7 @@ impl ActionName {
             ActionName::RenameTabById => "RenameTabById",
             ActionName::ShowFloatingPanes => "ShowFloatingPanes",
             ActionName::HideFloatingPanes => "HideFloatingPanes",
+            ActionName::ReloadPane => "ReloadPane",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -1315,6 +1317,7 @@ impl ActionName {
             "RenameTabById" => Some(Self::RenameTabById),
             "ShowFloatingPanes" => Some(Self::ShowFloatingPanes),
             "HideFloatingPanes" => Some(Self::HideFloatingPanes),
+            "ReloadPane" => Some(Self::ReloadPane),
             _ => None,
         }
     }

@@ -939,6 +939,14 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
         },
+        Action::ReloadPane => {
+            senders
+                .send_to_screen(ScreenInstruction::ReloadFocusedPane(
+                    client_id,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
         Action::NewTab {
             tiled_layout: tab_layout,
             floating_layouts: floating_panes_layout,
