@@ -2435,11 +2435,7 @@ mod test {
         // maybe_more=false, must degrade to individual key events (not hang)
         let mut p = InputParser::new();
         let mut inputs = Vec::new();
-        p.parse(
-            b"\x1b]99;no-terminator",
-            |evt| inputs.push(evt),
-            MAYBE_MORE,
-        );
+        p.parse(b"\x1b]99;no-terminator", |evt| inputs.push(evt), MAYBE_MORE);
         assert!(inputs.is_empty(), "buffered while maybe_more=true");
         p.parse(b"", |evt| inputs.push(evt), NO_MORE);
         assert!(!inputs.is_empty(), "must emit something on finalization");
@@ -2449,8 +2445,7 @@ mod test {
     fn osc_non_99_code() {
         // Non-99 OSC codes are also captured as OperatingSystemCommand
         let mut p = InputParser::new();
-        let inputs =
-            p.parse_as_vec(b"\x1b]11;rgb:0000/0000/0000\x1b\\", NO_MORE);
+        let inputs = p.parse_as_vec(b"\x1b]11;rgb:0000/0000/0000\x1b\\", NO_MORE);
         assert_eq!(
             vec![InputEvent::OperatingSystemCommand(
                 b"11;rgb:0000/0000/0000".to_vec()

@@ -3555,7 +3555,8 @@ impl Perform for Grid {
 
             b"99" => {
                 if params.len() > 1 {
-                    let payload = params.get(1..)
+                    let payload = params
+                        .get(1..)
                         .unwrap_or_default()
                         .iter()
                         .flat_map(|x| str::from_utf8(x))
@@ -3563,9 +3564,8 @@ impl Perform for Grid {
                         .join(";");
                     if !payload.is_empty() {
                         // Store raw payload and terminator; namespacing applied at Tab level
-                        self.pending_desktop_notifications.push(
-                            (payload, terminator.to_string()),
-                        );
+                        self.pending_desktop_notifications
+                            .push((payload, terminator.to_string()));
                     }
                 }
             },

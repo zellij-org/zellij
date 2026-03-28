@@ -40,8 +40,8 @@ use crate::{
     os_input_output::ServerOsApi,
     output::{CharacterChunk, Output, SixelImageChunk},
     panes::floating_panes::floating_pane_grid::half_size_middle_geom,
-    panes::sixel::SixelImageStore,
     panes::grid::namespace_notification_id,
+    panes::sixel::SixelImageStore,
     panes::{FloatingPanes, TiledPanes},
     panes::{LinkHandler, PaneId, PluginPane, TerminalPane},
     plugins::PluginInstruction,
@@ -4651,8 +4651,7 @@ impl Tab {
         notifications: Vec<(String, String)>,
         pane_id: u32,
     ) -> Result<()> {
-        let err_context =
-            || "failed to forward desktop notifications to host terminal".to_string();
+        let err_context = || "failed to forward desktop notifications to host terminal".to_string();
         let mut output = Output::default();
         // Use all clients in the app, not just those viewing this tab —
         // desktop notifications should reach the host terminal regardless
@@ -4675,17 +4674,13 @@ impl Tab {
                 ),
                 None => (payload.as_str(), ""),
             };
-            let namespaced_metadata =
-                namespace_notification_id(metadata, pane_id);
+            let namespaced_metadata = namespace_notification_id(metadata, pane_id);
             let raw = if rest.is_empty() {
                 format!("\x1b]99;{}{}", namespaced_metadata, terminator)
             } else {
                 format!("\x1b]99;{}{}{}", namespaced_metadata, rest, terminator)
             };
-            output.add_post_vte_instruction_to_multiple_clients(
-                all_clients.iter().copied(),
-                &raw,
-            );
+            output.add_post_vte_instruction_to_multiple_clients(all_clients.iter().copied(), &raw);
         }
         let serialized_output = output.serialize().with_context(err_context)?;
         self.senders

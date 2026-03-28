@@ -108,9 +108,7 @@ use zellij_utils::{
 /// - `app_wants_report`: whether the app originally requested `a=report`
 ///   (indicated by an `r` suffix on the pane ID, e.g. `i=p42r.myid`)
 /// - `restored_response_bytes`: the response with the original `i=` value restored
-pub(crate) fn denormalize_notification_response(
-    payload: &[u8],
-) -> Option<(u32, bool, Vec<u8>)> {
+pub(crate) fn denormalize_notification_response(payload: &[u8]) -> Option<(u32, bool, Vec<u8>)> {
     let payload_str = str::from_utf8(payload).ok()?;
 
     // Split into metadata and response payload on first ';'
@@ -152,10 +150,7 @@ pub(crate) fn denormalize_notification_response(
 
     let terminal_id = terminal_id?;
     let restored_metadata = restored_parts.join(":");
-    let full_response = format!(
-        "\x1b]99;{}{}\x1b\\",
-        restored_metadata, response_payload
-    );
+    let full_response = format!("\x1b]99;{}{}\x1b\\", restored_metadata, response_payload);
     Some((terminal_id, app_wants_report, full_response.into_bytes()))
 }
 

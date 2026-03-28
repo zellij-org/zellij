@@ -247,13 +247,11 @@ impl InputHandler {
                         self.handle_stdin_ansi_instruction(ansi_instruction);
                     }
                 },
-                Ok((
-                    InputInstruction::DesktopNotificationResponse(raw_bytes),
-                    _error_context,
-                )) => {
-                    self.os_input.send_to_server(
-                        ClientToServerMsg::DesktopNotificationResponse { raw_bytes },
-                    );
+                Ok((InputInstruction::DesktopNotificationResponse(raw_bytes), _error_context)) => {
+                    self.os_input
+                        .send_to_server(ClientToServerMsg::DesktopNotificationResponse {
+                            raw_bytes,
+                        });
                 },
                 Ok((InputInstruction::StartedParsing, _error_context)) => {
                     self.send_client_instructions

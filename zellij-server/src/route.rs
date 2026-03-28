@@ -2574,7 +2574,8 @@ pub(crate) fn route_thread_main(
                             let _ = send_to_screen_or_retry_queue!(
                                 senders,
                                 ScreenInstruction::DesktopNotificationResponse(
-                                    raw_bytes.clone(), client_id,
+                                    raw_bytes.clone(),
+                                    client_id,
                                 ),
                                 instruction,
                                 retry_queue

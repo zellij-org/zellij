@@ -14317,10 +14317,10 @@ fn create_new_tab_with_server_receiver(
         max_panes,
         Style::default(),
         default_mode,
-        true,  // draw_pane_frames
-        true,  // auto_layout
+        true, // draw_pane_frames
+        true, // auto_layout
         connected_clients,
-        true,  // session_is_mirrored
+        true, // session_is_mirrored
         Some(client_id),
         copy_options,
         terminal_emulator_colors,
@@ -14359,9 +14359,7 @@ fn create_new_tab_with_server_receiver(
 
 /// Helper: collect all ServerInstruction::Render messages from the receiver,
 /// concatenate the per-client strings, and return the combined output.
-fn collect_render_output(
-    receiver: &Receiver<(ServerInstruction, ErrorContext)>,
-) -> String {
+fn collect_render_output(receiver: &Receiver<(ServerInstruction, ErrorContext)>) -> String {
     let mut output = String::new();
     while let Ok((instruction, _)) = receiver.try_recv() {
         if let ServerInstruction::Render(Some(client_map)) = instruction {
@@ -14378,8 +14376,7 @@ fn osc99_notification_forwarded_through_tab_to_server_render() {
     // Integration test: OSC 99 sequence emitted by a pane's PTY is parsed by Grid,
     // drained by Tab, namespaced, and forwarded via ServerInstruction::Render.
     let size = Size { cols: 80, rows: 24 };
-    let (mut tab, server_receiver) =
-        create_new_tab_with_server_receiver(size, ModeInfo::default());
+    let (mut tab, server_receiver) = create_new_tab_with_server_receiver(size, ModeInfo::default());
 
     // Feed OSC 99 sequence to pane (pid=1) — BEL terminated
     tab.handle_pty_bytes(1, Vec::from("\x1b]99;i=test1:p=title;Hello World\x07"))
@@ -14411,8 +14408,7 @@ fn osc99_notification_forwarded_through_tab_to_server_render() {
 fn osc99_notification_st_terminator_forwarded() {
     // Same as above but with ESC \ (ST) terminator
     let size = Size { cols: 80, rows: 24 };
-    let (mut tab, server_receiver) =
-        create_new_tab_with_server_receiver(size, ModeInfo::default());
+    let (mut tab, server_receiver) = create_new_tab_with_server_receiver(size, ModeInfo::default());
 
     tab.handle_pty_bytes(1, Vec::from("\x1b]99;i=test2:p=title;Build done\x1b\\"))
         .unwrap();
@@ -14435,8 +14431,7 @@ fn osc99_notification_st_terminator_forwarded() {
 fn osc99_notification_without_identifier_gets_default() {
     // When no i= key is present, namespace_notification_id adds i=p<N>.0
     let size = Size { cols: 80, rows: 24 };
-    let (mut tab, server_receiver) =
-        create_new_tab_with_server_receiver(size, ModeInfo::default());
+    let (mut tab, server_receiver) = create_new_tab_with_server_receiver(size, ModeInfo::default());
 
     tab.handle_pty_bytes(1, Vec::from("\x1b]99;p=title;No ID here\x07"))
         .unwrap();
@@ -14459,8 +14454,7 @@ fn osc99_notification_without_identifier_gets_default() {
 fn osc99_multiple_notifications_forwarded() {
     // Multiple OSC 99 sequences in one PTY write should all be forwarded
     let size = Size { cols: 80, rows: 24 };
-    let (mut tab, server_receiver) =
-        create_new_tab_with_server_receiver(size, ModeInfo::default());
+    let (mut tab, server_receiver) = create_new_tab_with_server_receiver(size, ModeInfo::default());
 
     tab.handle_pty_bytes(
         1,
@@ -14491,8 +14485,7 @@ fn osc99_multiple_notifications_forwarded() {
 fn osc99_notification_mixed_with_regular_output() {
     // OSC 99 embedded in regular terminal output should be extracted and forwarded
     let size = Size { cols: 80, rows: 24 };
-    let (mut tab, server_receiver) =
-        create_new_tab_with_server_receiver(size, ModeInfo::default());
+    let (mut tab, server_receiver) = create_new_tab_with_server_receiver(size, ModeInfo::default());
 
     tab.handle_pty_bytes(
         1,
@@ -14518,8 +14511,7 @@ fn osc99_notification_mixed_with_regular_output() {
 fn osc99_notification_preserves_metadata_keys() {
     // All metadata keys (p=, a=, u=, etc.) should be preserved through forwarding
     let size = Size { cols: 80, rows: 24 };
-    let (mut tab, server_receiver) =
-        create_new_tab_with_server_receiver(size, ModeInfo::default());
+    let (mut tab, server_receiver) = create_new_tab_with_server_receiver(size, ModeInfo::default());
 
     tab.handle_pty_bytes(
         1,
