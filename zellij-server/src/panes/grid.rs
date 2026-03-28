@@ -332,6 +332,7 @@ pub struct Grid {
     pub changed_colors: Option<[Option<AnsiCode>; 256]>,
     pub should_render: bool,
     pub lock_renders: bool,
+    cursor_position_at_last_esu: Option<(usize, usize)>, // saved at ESU (End Synchronized Update)
     pub cursor_key_mode: bool, // DECCKM - when set, cursor keys should send ANSI direction codes (eg. "OD") instead of the arrow keys (eg. "[D")
     pub bracketed_paste_mode: bool, // when set, paste instructions to the terminal should be escaped with a special sequence
     pub erasure_mode: bool,         // ERM
@@ -551,6 +552,7 @@ impl Grid {
             styled_underlines,
             osc8_hyperlinks,
             lock_renders: false,
+            cursor_position_at_last_esu: None,
             supports_kitty_keyboard_protocol: false,
             explicitly_disable_kitty_keyboard_protocol,
             click: Click::default(),
@@ -1208,16 +1210,15 @@ impl Grid {
             Some((self.cursor.x, self.cursor.y))
         }
     }
-    /// Returns the cursor position ignoring whether the cursor is hidden.
-    /// Used for IME cursor positioning: apps like ink (React terminal UI) hide the cursor
-    /// during BSU/ESU render cycles, so by the time zellij's background render fires the
-    /// cursor may appear hidden even though its logical position is valid.
+    /// Returns the cursor position for IME use.
+    ///
+    /// Uses the position saved at ESU (End Synchronized Update) time, rather than the
+    /// current `cursor.x/y`. By the time zellij's background render fires (~10ms after
+    /// ESU), the next BSU cycle may have already moved the cursor to (0,0) for its
+    /// erase-and-redraw sequence. The ESU-time position is the correct input-cursor
+    /// location that the OS IME should use.
     pub fn cursor_position_for_ime(&self) -> Option<(usize, usize)> {
-        if self.cursor.x < self.width && self.cursor.y < self.height {
-            Some((self.cursor.x, self.cursor.y))
-        } else {
-            None
-        }
+        self.cursor_position_at_last_esu
     }
     pub fn is_mid_frame(&self) -> bool {
         self.lock_renders
@@ -2454,6 +2455,13 @@ impl Grid {
     }
     pub fn unlock_renders(&mut self) {
         self.lock_renders = false;
+        // Save cursor position at ESU time. By the time zellij's background render fires
+        // (~10ms later), the next BSU cycle may have moved the cursor to (0,0) for its
+        // erase-and-redraw sequence. Using the ESU-time position ensures IME sees the
+        // cursor at the correct input location, not some intermediate render position.
+        if self.cursor.x < self.width && self.cursor.y < self.height {
+            self.cursor_position_at_last_esu = Some((self.cursor.x, self.cursor.y));
+        }
     }
     pub fn update_theme(&mut self, theme: Styling) {
         self.style.colors = theme.clone();
