@@ -27,31 +27,67 @@ use zellij_utils::{
 const TABSTOP_WIDTH: usize = 8; // TODO: is this always right?
 pub const MAX_TITLE_STACK_SIZE: usize = 1000;
 
-/// Rewrites the `i=` value in OSC 99 metadata to include a pane ID prefix.
-/// Input:  "i=myid:p=title:d=1"
-/// Output: "i=p42.myid:p=title:d=1"  (for pane_id 42)
+/// Rewrites OSC 99 metadata for multiplexer forwarding:
 ///
-/// If no `i=` key is present, one is added as "i=p42.0" (using "0" as
-/// the fallback identifier per the OSC 99 spec's backwards-compat convention).
+/// 1. Namespaces the `i=` value with a pane ID prefix so activation responses
+///    can be routed back to the originating pane.
+///    - `i=myid` → `i=p42.myid` (or `i=p42r.myid` if the app requested `a=report`)
+///    - The `r` suffix signals that the activation response should be written
+///      back to the pane's PTY, not just used for focus routing.
+///
+/// 2. Ensures `a=report` is always present so the host terminal sends the
+///    activation response back to Zellij (needed for pane focus routing).
+///
+/// If no `i=` key is present, one is added as `i=p42.0`.
 pub(crate) fn namespace_notification_id(metadata: &str, pane_id: u32) -> String {
     let mut found_id = false;
+    let mut found_action = false;
+    let mut app_wants_report = false;
     let result = metadata
         .split(':')
         .map(|kv| {
-            if let Some(id_value) = kv.strip_prefix("i=") {
+            if kv.starts_with("i=") {
                 found_id = true;
-                format!("i=p{}.{}", pane_id, id_value)
+                // Defer i= rewriting until we know app_wants_report
+                kv.to_string()
+            } else if let Some(action_value) = kv.strip_prefix("a=") {
+                found_action = true;
+                app_wants_report = action_value.split(',').any(|v| v == "report");
+                if app_wants_report {
+                    kv.to_string()
+                } else {
+                    format!("a={},report", action_value)
+                }
             } else {
                 kv.to_string()
             }
         })
         .collect::<Vec<_>>()
         .join(":");
-    if found_id {
-        result
+
+    // Now rewrite i= with the report flag
+    let report_flag = if app_wants_report { "r" } else { "" };
+    let result = result
+        .split(':')
+        .map(|kv| {
+            if let Some(id_value) = kv.strip_prefix("i=") {
+                format!("i=p{}{}.{}", pane_id, report_flag, id_value)
+            } else {
+                kv.to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(":");
+
+    let result = if !found_id {
+        format!("i=p{}{}.0:{}", pane_id, report_flag, result)
     } else {
-        // No i= key present — add one for routing purposes
-        format!("i=p{}.0:{}", pane_id, metadata)
+        result
+    };
+    if !found_action {
+        format!("{}:a=report", result)
+    } else {
+        result
     }
 }
 

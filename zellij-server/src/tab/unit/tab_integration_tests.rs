@@ -14530,8 +14530,8 @@ fn osc99_notification_preserves_metadata_keys() {
     let output = collect_render_output(&server_receiver);
 
     assert!(
-        output.contains("i=p1.rich"),
-        "Identifier should be namespaced, got: {:?}",
+        output.contains("i=p1r.rich"),
+        "Identifier should be namespaced with 'r' flag (a=report present), got: {:?}",
         output
     );
     assert!(
@@ -14611,21 +14611,25 @@ fn osc99_namespace_denormalize_roundtrip() {
     let original_metadata = "i=mynotif:p=title:a=report";
     let pane_id: u32 = 42;
 
-    // Namespace
+    // Namespace — a=report means 'r' flag is set
     let namespaced = namespace_notification_id(original_metadata, pane_id);
     assert!(
-        namespaced.contains("i=p42.mynotif"),
-        "Should namespace to i=p42.mynotif, got: {:?}",
+        namespaced.contains("i=p42r.mynotif"),
+        "Should namespace to i=p42r.mynotif (a=report → 'r' flag), got: {:?}",
         namespaced
     );
 
     // Simulate a response with the namespaced ID
-    let response_payload = format!("i=p42.mynotif:p=close;activated");
+    let response_payload = format!("i=p42r.mynotif:p=close;activated");
     let result = denormalize_notification_response(response_payload.as_bytes());
     assert!(result.is_some(), "Should successfully denormalize");
 
-    let (terminal_id, response_bytes) = result.unwrap();
+    let (terminal_id, app_wants_report, response_bytes) = result.unwrap();
     assert_eq!(terminal_id, 42, "Should extract pane_id 42");
+    assert!(
+        app_wants_report,
+        "'r' flag in i=p42r.mynotif means app_wants_report should be true"
+    );
 
     let response_str = String::from_utf8_lossy(&response_bytes);
     assert!(
@@ -14656,11 +14660,100 @@ fn osc99_denormalize_with_no_namespace_returns_none() {
 fn osc99_namespace_without_identifier_adds_default() {
     use crate::panes::grid::namespace_notification_id;
 
+    // With a=report → 'r' flag
     let metadata = "p=title:a=report";
     let namespaced = namespace_notification_id(metadata, 7);
     assert!(
-        namespaced.contains("i=p7.0"),
-        "Should add default i=p7.0 when no i= present, got: {:?}",
+        namespaced.contains("i=p7r.0"),
+        "Should add default i=p7r.0 when no i= present (a=report → 'r' flag), got: {:?}",
         namespaced
     );
+
+    // Without a=report → no 'r' flag
+    let metadata = "p=title";
+    let namespaced = namespace_notification_id(metadata, 7);
+    assert!(
+        namespaced.contains("i=p7.0"),
+        "Should add default i=p7.0 when no i= and no a=report, got: {:?}",
+        namespaced
+    );
+}
+
+#[test]
+fn osc99_namespace_ensures_report_action() {
+    use crate::panes::grid::namespace_notification_id;
+
+    // a=focus → a=focus,report
+    let result = namespace_notification_id("i=test:p=title:a=focus", 1);
+    assert!(
+        result.contains("a=focus,report"),
+        "a=focus should be augmented with report, got: {:?}",
+        result
+    );
+
+    // a=report → unchanged
+    let result = namespace_notification_id("i=test:p=title:a=report", 1);
+    assert!(
+        result.contains("a=report"),
+        "a=report should be preserved, got: {:?}",
+        result
+    );
+    assert!(
+        !result.contains("a=report,report"),
+        "Should not duplicate report, got: {:?}",
+        result
+    );
+
+    // a=focus,report → unchanged
+    let result = namespace_notification_id("i=test:p=title:a=focus,report", 1);
+    assert!(
+        result.contains("a=focus,report"),
+        "a=focus,report should be preserved, got: {:?}",
+        result
+    );
+
+    // No a= key → a=report added
+    let result = namespace_notification_id("i=test:p=title", 1);
+    assert!(
+        result.contains("a=report"),
+        "Missing a= should get a=report appended, got: {:?}",
+        result
+    );
+}
+
+#[test]
+fn osc99_report_flag_roundtrip() {
+    use crate::panes::grid::namespace_notification_id;
+    use crate::screen::denormalize_notification_response;
+
+    // App sends a=report → namespaced with 'r' flag → denormalize returns app_wants_report=true
+    let namespaced = namespace_notification_id("i=myid:p=title:a=report", 5);
+    assert!(
+        namespaced.contains("i=p5r.myid"),
+        "a=report should produce 'r' flag in namespace, got: {:?}",
+        namespaced
+    );
+    let response = format!("i=p5r.myid;activated");
+    let (pane_id, wants_report, _bytes) =
+        denormalize_notification_response(response.as_bytes()).unwrap();
+    assert_eq!(pane_id, 5);
+    assert!(wants_report, "Should detect 'r' flag as app_wants_report");
+
+    // App sends a=focus (no report) → namespaced without 'r' flag → denormalize returns false
+    let namespaced = namespace_notification_id("i=myid:p=title:a=focus", 5);
+    assert!(
+        namespaced.contains("i=p5.myid"),
+        "a=focus should NOT produce 'r' flag, got: {:?}",
+        namespaced
+    );
+    assert!(
+        namespaced.contains("a=focus,report"),
+        "a=focus should be augmented with report for the host terminal, got: {:?}",
+        namespaced
+    );
+    let response = format!("i=p5.myid;activated");
+    let (pane_id, wants_report, _bytes) =
+        denormalize_notification_response(response.as_bytes()).unwrap();
+    assert_eq!(pane_id, 5);
+    assert!(!wants_report, "No 'r' flag means app did not want report");
 }

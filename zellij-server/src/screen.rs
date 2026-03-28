@@ -101,7 +101,16 @@ use zellij_utils::{
 /// Returns Some((terminal_id, full_osc_bytes)) where full_osc_bytes is
 /// the complete reconstructed OSC 99 sequence with original identifier,
 /// ready to write to the pane's PTY.
-pub(crate) fn denormalize_notification_response(payload: &[u8]) -> Option<(u32, Vec<u8>)> {
+/// Denormalizes a namespaced OSC 99 activation response.
+///
+/// Returns `(pane_id, app_wants_report, restored_response_bytes)`:
+/// - `pane_id`: the terminal pane that originated the notification
+/// - `app_wants_report`: whether the app originally requested `a=report`
+///   (indicated by an `r` suffix on the pane ID, e.g. `i=p42r.myid`)
+/// - `restored_response_bytes`: the response with the original `i=` value restored
+pub(crate) fn denormalize_notification_response(
+    payload: &[u8],
+) -> Option<(u32, bool, Vec<u8>)> {
     let payload_str = str::from_utf8(payload).ok()?;
 
     // Split into metadata and response payload on first ';'
@@ -115,16 +124,24 @@ pub(crate) fn denormalize_notification_response(payload: &[u8]) -> Option<(u32, 
 
     // Find the i= key in colon-separated metadata
     let mut terminal_id = None;
+    let mut app_wants_report = false;
     let mut restored_parts = Vec::new();
 
     for kv in metadata.split(':') {
         if let Some(namespaced_value) = kv.strip_prefix("i=p") {
-            // Parse "p<N>.<original_id>"
+            // Parse "p<N>[r].<original_id>"
             if let Some(dot_pos) = namespaced_value.find('.') {
-                let pane_id_str = namespaced_value.get(..dot_pos).unwrap_or_default();
+                let pane_id_part = namespaced_value.get(..dot_pos).unwrap_or_default();
                 let original_id = namespaced_value.get(dot_pos + 1..).unwrap_or_default();
+                let (pane_id_str, has_report_flag) =
+                    if let Some(stripped) = pane_id_part.strip_suffix('r') {
+                        (stripped, true)
+                    } else {
+                        (pane_id_part, false)
+                    };
                 if let Ok(pid) = pane_id_str.parse::<u32>() {
                     terminal_id = Some(pid);
+                    app_wants_report = has_report_flag;
                     restored_parts.push(format!("i={}", original_id));
                     continue;
                 }
@@ -139,7 +156,7 @@ pub(crate) fn denormalize_notification_response(payload: &[u8]) -> Option<(u32, 
         "\x1b]99;{}{}\x1b\\",
         restored_metadata, response_payload
     );
-    Some((terminal_id, full_response.into_bytes()))
+    Some((terminal_id, app_wants_report, full_response.into_bytes()))
 }
 
 /// Get the active tab and call a closure on it
@@ -8518,23 +8535,25 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
             },
             ScreenInstruction::DesktopNotificationResponse(raw_bytes, client_id) => {
-                if let Some((terminal_id, rewritten_bytes)) =
+                if let Some((terminal_id, app_wants_report, rewritten_bytes)) =
                     denormalize_notification_response(&raw_bytes)
                 {
                     let pane_id = PaneId::Terminal(terminal_id);
-                    let all_tabs = screen.get_tabs_mut();
-                    for tab in all_tabs.values_mut() {
-                        if tab.has_pane_with_pid(&pane_id) {
-                            tab.write_to_pane_id(
-                                &None,
-                                rewritten_bytes,
-                                false,
-                                pane_id,
-                                None,
-                                None,
-                            )
-                            .non_fatal();
-                            break;
+                    if app_wants_report {
+                        let all_tabs = screen.get_tabs_mut();
+                        for tab in all_tabs.values_mut() {
+                            if tab.has_pane_with_pid(&pane_id) {
+                                tab.write_to_pane_id(
+                                    &None,
+                                    rewritten_bytes,
+                                    false,
+                                    pane_id,
+                                    None,
+                                    None,
+                                )
+                                .non_fatal();
+                                break;
+                            }
                         }
                     }
                     // Focus the pane that originated the notification,
