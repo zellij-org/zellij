@@ -155,7 +155,12 @@ pub(crate) fn denormalize_notification_response(
     let terminal_id = terminal_id?;
     let restored_metadata = restored_parts.join(":");
     let full_response = format!("\x1b]99;{}{}\x1b\\", restored_metadata, response_payload);
-    Some((terminal_id, app_wants_report, is_query, full_response.into_bytes()))
+    Some((
+        terminal_id,
+        app_wants_report,
+        is_query,
+        full_response.into_bytes(),
+    ))
 }
 
 /// Get the active tab and call a closure on it
