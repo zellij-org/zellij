@@ -295,6 +295,13 @@ pub trait Pane {
     fn handle_plugin_bytes(&mut self, _client_id: ClientId, _bytes: VteBytes) {}
     fn show_cursor(&mut self, _client_id: ClientId, _cursor_position: Option<(usize, usize)>) {}
     fn cursor_coordinates(&self, _client_id: Option<ClientId>) -> Option<(usize, usize)>;
+    /// Returns the cursor position for IME use, ignoring whether the cursor is currently hidden.
+    /// Terminal apps using BSU/ESU (e.g. ink) hide the cursor mid-render; by the time
+    /// zellij's background render fires the cursor appears hidden even though its position is
+    /// valid. Default implementation falls back to cursor_coordinates.
+    fn cursor_position_for_ime(&self, client_id: Option<ClientId>) -> Option<(usize, usize)> {
+        self.cursor_coordinates(client_id)
+    }
     fn is_mid_frame(&self) -> bool {
         false
     }
@@ -2878,6 +2885,29 @@ impl Tab {
                 (x, y)
             })
     }
+    fn get_active_terminal_cursor_position_for_ime(
+        &self,
+        client_id: ClientId,
+    ) -> Option<(usize, usize)> {
+        let active_pane_id = if self.floating_panes.panes_are_visible() {
+            self.floating_panes
+                .get_active_pane_id(client_id)
+                .or_else(|| self.tiled_panes.get_active_pane_id(client_id))?
+        } else {
+            self.tiled_panes.get_active_pane_id(client_id)?
+        };
+        let active_terminal = &self
+            .floating_panes
+            .get(&active_pane_id)
+            .or_else(|| self.tiled_panes.get_pane(active_pane_id))?;
+        active_terminal
+            .cursor_position_for_ime(Some(client_id))
+            .map(|(x_in_terminal, y_in_terminal)| {
+                let x = active_terminal.x() + x_in_terminal;
+                let y = active_terminal.y() + y_in_terminal;
+                (x, y)
+            })
+    }
     pub fn toggle_active_pane_fullscreen(&mut self, client_id: ClientId) {
         if self.floating_panes.panes_are_visible() {
             return;
@@ -3053,6 +3083,7 @@ impl Tab {
     fn render_cursor(&mut self, output: &mut Output) {
         let connected_clients: Vec<ClientId> =
             { self.connected_clients.borrow().iter().copied().collect() };
+        log::info!("[IME DEBUG] render_cursor called for {} clients", connected_clients.len());
         for client_id in connected_clients {
             match self
                 .get_active_terminal_cursor_position(client_id)
@@ -3088,12 +3119,48 @@ impl Tab {
                         .active_terminal_is_mid_frame(client_id)
                         .unwrap_or(false);
 
+                    log::info!(
+                        "[IME DEBUG] render_cursor: client={} pos=({},{}) mid_frame={} dirty={} changed={}",
+                        client_id,
+                        cursor_position_x,
+                        cursor_position_y,
+                        active_terminal_is_mid_frame,
+                        output.is_dirty(),
+                        cursor_changed_position_or_shape,
+                    );
+
                     if active_terminal_is_mid_frame {
-                        // no-op, this means the active terminal is currently rendering a frame,
-                        // which means the cursor can be jumping around and we definitely do not
-                        // want to render it
+                        // The active terminal is currently rendering a synchronized frame
+                        // (BSU/ESU - Begin/End Synchronized Update, CSI ?2026h/l).
+                        // We skip updating the cursor to intermediate positions to avoid
+                        // showing the cursor jumping around during the render.
                         //
-                        // (I felt this was clearer than expanding the if conditional below)
+                        // However, if other panes caused output to be rendered
+                        // (output.is_dirty()), the actual terminal cursor has moved as a
+                        // side-effect of printing those characters. We must reposition the
+                        // cursor back to the last known correct position so that IME (Input
+                        // Method Editor) for CJK languages sees the right cursor location.
+                        if output.is_dirty() {
+                            if let Some(&(prev_x, prev_y, ref prev_shape)) =
+                                self.cursor_positions_and_shape.get(&client_id)
+                            {
+                                let show_cursor = "\u{1b}[?25h";
+                                let goto_cursor_position = format!(
+                                    "\u{1b}[{};{}H\u{1b}[m{}",
+                                    prev_y + 1,
+                                    prev_x + 1,
+                                    prev_shape
+                                );
+                                output.add_post_vte_instruction_to_client(
+                                    client_id,
+                                    show_cursor,
+                                );
+                                output.add_post_vte_instruction_to_client(
+                                    client_id,
+                                    &goto_cursor_position,
+                                );
+                            }
+                        }
                     } else if output.is_dirty() || cursor_changed_position_or_shape {
                         let show_cursor = "\u{1b}[?25h";
                         let goto_cursor_position = &format!(
@@ -3111,8 +3178,39 @@ impl Tab {
                     }
                 },
                 None => {
-                    let hide_cursor = "\u{1b}[?25l";
-                    output.add_post_vte_instruction_to_client(client_id, hide_cursor);
+                    log::info!("[IME DEBUG] render_cursor: client={} cursor NOT visible (hidden or out of bounds)", client_id);
+                    // cursor_coordinates() returned None (cursor is hidden or out of bounds).
+                    // For IME: if the cursor has a valid position despite being hidden (e.g.
+                    // ink hides cursor during BSU render cycles), emit the position so the OS
+                    // IME can show its composition window at the right place.
+                    if let Some((ime_x, ime_y)) =
+                        self.get_active_terminal_cursor_position_for_ime(client_id)
+                    {
+                        log::info!("[IME DEBUG] render_cursor: client={} using IME fallback pos=({},{})", client_id, ime_x, ime_y);
+                        let desired_cursor_shape = self
+                            .get_active_pane(client_id)
+                            .map(|ap| ap.cursor_shape_csi())
+                            .unwrap_or_default();
+                        let show_cursor = "\u{1b}[?25h";
+                        let goto_cursor_position = format!(
+                            "\u{1b}[{};{}H\u{1b}[m{}",
+                            ime_y + 1,
+                            ime_x + 1,
+                            desired_cursor_shape
+                        );
+                        output.add_post_vte_instruction_to_client(client_id, show_cursor);
+                        output.add_post_vte_instruction_to_client(
+                            client_id,
+                            &goto_cursor_position,
+                        );
+                        self.cursor_positions_and_shape.insert(
+                            client_id,
+                            (ime_x, ime_y, desired_cursor_shape),
+                        );
+                    } else {
+                        let hide_cursor = "\u{1b}[?25l";
+                        output.add_post_vte_instruction_to_client(client_id, hide_cursor);
+                    }
                 },
             }
         }

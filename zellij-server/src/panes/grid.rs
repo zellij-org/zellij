@@ -1203,9 +1203,23 @@ impl Grid {
     }
     pub fn cursor_coordinates(&self) -> Option<(usize, usize)> {
         if self.cursor_is_hidden || self.cursor.x >= self.width || self.cursor.y >= self.height {
+            log::info!("[IME DEBUG] grid.cursor_coordinates None: hidden={} x={} >= width={}: {} y={} >= height={}: {}",
+                self.cursor_is_hidden, self.cursor.x, self.width, self.cursor.x >= self.width,
+                self.cursor.y, self.height, self.cursor.y >= self.height);
             None
         } else {
             Some((self.cursor.x, self.cursor.y))
+        }
+    }
+    /// Returns the cursor position ignoring whether the cursor is hidden.
+    /// Used for IME cursor positioning: apps like ink (React terminal UI) hide the cursor
+    /// during BSU/ESU render cycles, so by the time zellij's background render fires the
+    /// cursor may appear hidden even though its logical position is valid.
+    pub fn cursor_position_for_ime(&self) -> Option<(usize, usize)> {
+        if self.cursor.x < self.width && self.cursor.y < self.height {
+            Some((self.cursor.x, self.cursor.y))
+        } else {
+            None
         }
     }
     pub fn is_mid_frame(&self) -> bool {
@@ -2864,6 +2878,7 @@ impl Perform for Grid {
                 for param in params_iter.map(|param| param[0]) {
                     match param {
                         2026 => {
+                            log::info!("[IME DEBUG] ESU received, cursor=({},{}) lock_renders=true->false", self.cursor.x, self.cursor.y);
                             self.unlock_renders();
                         },
                         2004 => {
@@ -2963,6 +2978,7 @@ impl Perform for Grid {
                             self.mark_for_rerender();
                         },
                         2026 => {
+                            log::info!("[IME DEBUG] BSU received, cursor=({},{}) lock_renders={}->true", self.cursor.x, self.cursor.y, self.lock_renders);
                             self.lock_renders();
                         },
                         2004 => {
