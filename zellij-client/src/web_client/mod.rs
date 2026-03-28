@@ -35,6 +35,7 @@ use interprocess::unnamed_pipe::pipe;
 #[cfg(unix)]
 use nix::sys::stat::{umask, Mode};
 
+#[cfg(unix)]
 use std::io::prelude::*;
 #[cfg(unix)]
 use std::io::{BufRead, BufReader};
