@@ -217,6 +217,14 @@ jobs:
           asset_name: zellij-${{ matrix.target }}-installer.sha256sum
           asset_content_type: text/plain
 
+      - name: Publish to Winget
+        if: runner.os == 'Windows'
+        uses: vedantmgoyal9/winget-releaser@main
+        with:
+          identifier: Zellij.Zellij
+          release-tag: ${{ env.RELEASE_TAG }}
+          token: ${{ secrets.WINGET_TOKEN }}
+
   build-release-noweb:
     needs: create-release
     name: build-release-noweb
