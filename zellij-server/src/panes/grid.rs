@@ -1666,7 +1666,12 @@ impl Grid {
         let mut pad_character = EMPTY_TERMINAL_CHARACTER;
         pad_character.styles = self.cursor.pending_styles.clone();
         for _ in 0..count {
-            if scroll_region_top < self.viewport.len() {
+            if scroll_region_top == 0
+                && self.alternate_screen_state.is_none()
+                && !self.viewport.is_empty()
+            {
+                self.transfer_rows_to_lines_above(1);
+            } else if scroll_region_top < self.viewport.len() {
                 self.viewport.remove(scroll_region_top);
             }
             let columns = VecDeque::from(vec![pad_character.clone(); self.width]);
@@ -1719,7 +1724,20 @@ impl Grid {
                 self.viewport.push_back(Row::new().canonical());
                 self.selection.move_up(1);
             } else {
-                if scroll_region_top < self.viewport.len() {
+                if scroll_region_top == 0
+                    && self.alternate_screen_state.is_none()
+                    && !self.viewport.is_empty()
+                {
+                    // Partial scroll region starting at the top of the
+                    // viewport: transfer the line scrolled off the top into
+                    // the scrollback buffer (lines_above) so that users can
+                    // reach it via mouse-wheel scrolling.  This matches the
+                    // behavior of other terminal multiplexers (e.g. tmux)
+                    // and is required by applications that use scroll
+                    // regions to push rendered content into scrollback
+                    // (e.g. Codex CLI's insert_history_lines).
+                    self.transfer_rows_to_lines_above(1);
+                } else if scroll_region_top < self.viewport.len() {
                     self.viewport.remove(scroll_region_top);
                 }
                 if self.viewport.len() >= scroll_region_bottom {
