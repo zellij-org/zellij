@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: performance regression when switching tabs (https://github.com/zellij-org/zellij/pull/4918)
 * feat: add "focus-pane-with-id" and "are-floating-panes-visible" cli commands (https://github.com/zellij-org/zellij/pull/4926)
 * build: add risc64 binaries to releases (https://github.com/zellij-org/zellij/pull/4913)
+* feat: support and forward OSC-99 desktop notifications (https://github.com/zellij-org/zellij/pull/4931)
 
 ## [0.44.0] - 2026-03-23
 * fix: meta key handling in web client (https://github.com/zellij-org/zellij/pull/4376)
