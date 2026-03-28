@@ -3,15 +3,15 @@ use crate::{
         client_to_server_msg, server_to_client_msg, ActionMsg, AttachClientMsg,
         AttachWatcherClientMsg, BackgroundColorMsg, CliPipeOutputMsg, ClientExitedMsg,
         ClientToServerMsg as ProtoClientToServerMsg, ColorRegistersMsg, ConfigFileUpdatedMsg,
-        ConnStatusMsg, ConnectedMsg, DetachSessionMsg, ExitMsg, ExitReason as ProtoExitReason,
-        FailedToStartWebServerMsg, FirstClientConnectedMsg, ForegroundColorMsg,
-        InputMode as ProtoInputMode, KeyMsg, KillSessionMsg, LayoutMetadata as ProtoLayoutMetadata,
-        LogErrorMsg, LogMsg, PaneMetadata as ProtoPaneMetadata, PaneRenderUpdateMsg,
-        QueryTerminalSizeMsg, RenamedSessionMsg, RenderMsg,
-        ServerToClientMsg as ProtoServerToClientMsg, StartWebServerMsg, SubscribeToPaneRendersMsg,
-        SubscribedPaneClosedMsg, SwitchSessionMsg, TabMetadata as ProtoTabMetadata,
-        TerminalPixelDimensionsMsg, TerminalResizeMsg, UnblockCliPipeInputMsg,
-        UnblockInputThreadMsg, WebServerStartedMsg,
+        ConnStatusMsg, ConnectedMsg, DesktopNotificationResponseMsg, DetachSessionMsg, ExitMsg,
+        ExitReason as ProtoExitReason, FailedToStartWebServerMsg, FirstClientConnectedMsg,
+        ForegroundColorMsg, InputMode as ProtoInputMode, KeyMsg, KillSessionMsg,
+        LayoutMetadata as ProtoLayoutMetadata, LogErrorMsg, LogMsg,
+        PaneMetadata as ProtoPaneMetadata, PaneRenderUpdateMsg, QueryTerminalSizeMsg,
+        RenamedSessionMsg, RenderMsg, ServerToClientMsg as ProtoServerToClientMsg,
+        StartWebServerMsg, SubscribeToPaneRendersMsg, SubscribedPaneClosedMsg, SwitchSessionMsg,
+        TabMetadata as ProtoTabMetadata, TerminalPixelDimensionsMsg, TerminalResizeMsg,
+        UnblockCliPipeInputMsg, UnblockInputThreadMsg, WebServerStartedMsg,
     },
     data::{InputMode, PaneId},
     errors::prelude::*,
@@ -124,6 +124,11 @@ impl From<ClientToServerMsg> for ProtoClientToServerMsg {
                 scrollback: scrollback.map(|s| s as u32),
                 ansi,
             }),
+            ClientToServerMsg::DesktopNotificationResponse { raw_bytes } => {
+                client_to_server_msg::Message::DesktopNotificationResponse(
+                    DesktopNotificationResponseMsg { raw_bytes },
+                )
+            },
         };
 
         ProtoClientToServerMsg {
@@ -245,6 +250,11 @@ impl TryFrom<ProtoClientToServerMsg> for ClientToServerMsg {
                     pane_ids: pane_ids?,
                     scrollback: msg.scrollback.map(|s| s as usize),
                     ansi: msg.ansi,
+                })
+            },
+            Some(client_to_server_msg::Message::DesktopNotificationResponse(msg)) => {
+                Ok(ClientToServerMsg::DesktopNotificationResponse {
+                    raw_bytes: msg.raw_bytes,
                 })
             },
             None => Err(anyhow!("Empty ClientToServerMsg message")),

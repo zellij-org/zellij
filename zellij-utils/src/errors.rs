@@ -420,6 +420,7 @@ pub enum ScreenContext {
     ClearMouseHelpText,
     SetPluginRegexHighlights,
     ClearPluginHighlights,
+    DesktopNotificationResponse,
     SubscribeToPaneRenders,
     NotifyPaneClosedToSubscribers,
     // Pane-targeting CLI variants

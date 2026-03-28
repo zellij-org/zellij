@@ -387,6 +387,7 @@ pub(crate) enum InputInstruction {
     #[allow(dead_code)] // constructed in stdin_handler_windows.rs (Windows-only)
     MouseEvent(zellij_utils::input::mouse::MouseEvent),
     AnsiStdinInstructions(Vec<AnsiStdinInstruction>),
+    DesktopNotificationResponse(Vec<u8>),
     StartedParsing,
     DoneParsing,
     Exit,

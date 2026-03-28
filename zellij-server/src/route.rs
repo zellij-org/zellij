@@ -2570,6 +2570,17 @@ pub(crate) fn route_thread_main(
                             let _ =
                                 to_server.send(ServerInstruction::FailedToStartWebServer(error));
                         },
+                        ClientToServerMsg::DesktopNotificationResponse { ref raw_bytes } => {
+                            let _ = send_to_screen_or_retry_queue!(
+                                senders,
+                                ScreenInstruction::DesktopNotificationResponse(
+                                    raw_bytes.clone(),
+                                    client_id,
+                                ),
+                                instruction,
+                                retry_queue
+                            );
+                        },
                         ClientToServerMsg::SubscribeToPaneRenders {
                             ref pane_ids,
                             ref scrollback,

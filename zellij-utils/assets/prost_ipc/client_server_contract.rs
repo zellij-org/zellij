@@ -2835,7 +2835,7 @@ impl WebSharing {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ClientToServerMsg {
-    #[prost(oneof="client_to_server_msg::Message", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17")]
+    #[prost(oneof="client_to_server_msg::Message", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18")]
     pub message: ::core::option::Option<client_to_server_msg::Message>,
 }
 /// Nested message and enum types in `ClientToServerMsg`.
@@ -2877,6 +2877,8 @@ pub mod client_to_server_msg {
         AttachWatcherClient(super::AttachWatcherClientMsg),
         #[prost(message, tag="17")]
         SubscribeToPaneRenders(super::SubscribeToPaneRendersMsg),
+        #[prost(message, tag="18")]
+        DesktopNotificationResponse(super::DesktopNotificationResponseMsg),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -3001,6 +3003,12 @@ pub struct SubscribeToPaneRendersMsg {
     pub scrollback: ::core::option::Option<u32>,
     #[prost(bool, tag="3")]
     pub ansi: bool,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct DesktopNotificationResponseMsg {
+    #[prost(bytes="vec", tag="1")]
+    pub raw_bytes: ::prost::alloc::vec::Vec<u8>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
