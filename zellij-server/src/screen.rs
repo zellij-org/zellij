@@ -101,14 +101,16 @@ use zellij_utils::{
 /// Returns Some((terminal_id, full_osc_bytes)) where full_osc_bytes is
 /// the complete reconstructed OSC 99 sequence with original identifier,
 /// ready to write to the pane's PTY.
-/// Denormalizes a namespaced OSC 99 activation response.
+/// Denormalizes a namespaced OSC 99 response.
 ///
-/// Returns `(pane_id, app_wants_report, restored_response_bytes)`:
+/// Parses the namespaced `i=p<N>[r][q].<original_id>` format and returns:
 /// - `pane_id`: the terminal pane that originated the notification
-/// - `app_wants_report`: whether the app originally requested `a=report`
-///   (indicated by an `r` suffix on the pane ID, e.g. `i=p42r.myid`)
+/// - `app_wants_report`: `r` flag — app originally requested `a=report`
+/// - `is_query`: `q` flag — this was a capability query (`p=?`)
 /// - `restored_response_bytes`: the response with the original `i=` value restored
-pub(crate) fn denormalize_notification_response(payload: &[u8]) -> Option<(u32, bool, Vec<u8>)> {
+pub(crate) fn denormalize_notification_response(
+    payload: &[u8],
+) -> Option<(u32, bool, bool, Vec<u8>)> {
     let payload_str = str::from_utf8(payload).ok()?;
 
     // Split into metadata and response payload on first ';'
@@ -123,24 +125,26 @@ pub(crate) fn denormalize_notification_response(payload: &[u8]) -> Option<(u32, 
     // Find the i= key in colon-separated metadata
     let mut terminal_id = None;
     let mut app_wants_report = false;
+    let mut is_query = false;
     let mut restored_parts = Vec::new();
 
     for kv in metadata.split(':') {
         if let Some(namespaced_value) = kv.strip_prefix("i=p") {
-            // Parse "p<N>[r].<original_id>"
+            // Parse "p<N>[r][q].<original_id>"
             if let Some(dot_pos) = namespaced_value.find('.') {
-                let pane_id_part = namespaced_value.get(..dot_pos).unwrap_or_default();
+                let flags_part = namespaced_value.get(..dot_pos).unwrap_or_default();
                 let original_id = namespaced_value.get(dot_pos + 1..).unwrap_or_default();
-                let (pane_id_str, has_report_flag) =
-                    if let Some(stripped) = pane_id_part.strip_suffix('r') {
-                        (stripped, true)
-                    } else {
-                        (pane_id_part, false)
-                    };
+                let pane_id_str = flags_part.trim_end_matches(|c| c == 'r' || c == 'q');
+                let flag_chars = flags_part.get(pane_id_str.len()..).unwrap_or_default();
                 if let Ok(pid) = pane_id_str.parse::<u32>() {
                     terminal_id = Some(pid);
-                    app_wants_report = has_report_flag;
-                    restored_parts.push(format!("i={}", original_id));
+                    app_wants_report = flag_chars.contains('r');
+                    is_query = flag_chars.contains('q');
+                    // Empty original_id means the app never sent an i= key;
+                    // don't inject one into the response
+                    if !original_id.is_empty() {
+                        restored_parts.push(format!("i={}", original_id));
+                    }
                     continue;
                 }
             }
@@ -151,7 +155,7 @@ pub(crate) fn denormalize_notification_response(payload: &[u8]) -> Option<(u32, 
     let terminal_id = terminal_id?;
     let restored_metadata = restored_parts.join(":");
     let full_response = format!("\x1b]99;{}{}\x1b\\", restored_metadata, response_payload);
-    Some((terminal_id, app_wants_report, full_response.into_bytes()))
+    Some((terminal_id, app_wants_report, is_query, full_response.into_bytes()))
 }
 
 /// Get the active tab and call a closure on it
@@ -8530,11 +8534,13 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
             },
             ScreenInstruction::DesktopNotificationResponse(raw_bytes, client_id) => {
-                if let Some((terminal_id, app_wants_report, rewritten_bytes)) =
+                if let Some((terminal_id, app_wants_report, is_query, rewritten_bytes)) =
                     denormalize_notification_response(&raw_bytes)
                 {
                     let pane_id = PaneId::Terminal(terminal_id);
-                    if app_wants_report {
+                    // Write response to the pane if the app expects it:
+                    // capability query answers (q flag) or activation reports (r flag)
+                    if app_wants_report || is_query {
                         let all_tabs = screen.get_tabs_mut();
                         for tab in all_tabs.values_mut() {
                             if tab.has_pane_with_pid(&pane_id) {
@@ -8551,11 +8557,12 @@ pub(crate) fn screen_thread_main(
                             }
                         }
                     }
-                    // Focus the pane that originated the notification,
-                    // switching tabs if necessary
-                    screen
-                        .focus_pane_with_id(pane_id, false, false, client_id)
-                        .non_fatal();
+                    // Focus the pane on activation click (not on query responses)
+                    if !is_query {
+                        screen
+                            .focus_pane_with_id(pane_id, false, false, client_id)
+                            .non_fatal();
+                    }
                     screen.render(None)?;
                     screen.log_and_report_session_state()?;
                 }

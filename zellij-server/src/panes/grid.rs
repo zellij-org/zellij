@@ -29,26 +29,30 @@ pub const MAX_TITLE_STACK_SIZE: usize = 1000;
 
 /// Rewrites OSC 99 metadata for multiplexer forwarding:
 ///
-/// 1. Namespaces the `i=` value with a pane ID prefix so activation responses
+/// 1. Namespaces the `i=` value with a pane ID prefix and flags so responses
 ///    can be routed back to the originating pane.
-///    - `i=myid` → `i=p42.myid` (or `i=p42r.myid` if the app requested `a=report`)
-///    - The `r` suffix signals that the activation response should be written
-///      back to the pane's PTY, not just used for focus routing.
+///    Format: `i=p<pane_id>[r][q].<original_id>`
+///    - `r` flag: app requested `a=report` — activation response should be
+///      written back to the pane's PTY
+///    - `q` flag: this is a capability query (`p=?`) — response must be
+///      written back to the pane's PTY
+///    - Neither: activation response used only for focus routing, not forwarded
 ///
 /// 2. Ensures `a=report` is always present so the host terminal sends the
 ///    activation response back to Zellij (needed for pane focus routing).
 ///
-/// If no `i=` key is present, one is added as `i=p42.0`.
+/// If no `i=` key is present, one is added with an empty original ID.
 pub(crate) fn namespace_notification_id(metadata: &str, pane_id: u32) -> String {
     let mut found_id = false;
     let mut found_action = false;
     let mut app_wants_report = false;
+    let mut is_query = false;
     let result = metadata
         .split(':')
         .map(|kv| {
             if kv.starts_with("i=") {
                 found_id = true;
-                // Defer i= rewriting until we know app_wants_report
+                // Defer i= rewriting until we know the flags
                 kv.to_string()
             } else if let Some(action_value) = kv.strip_prefix("a=") {
                 found_action = true;
@@ -58,6 +62,9 @@ pub(crate) fn namespace_notification_id(metadata: &str, pane_id: u32) -> String 
                 } else {
                     format!("a={},report", action_value)
                 }
+            } else if kv == "p=?" {
+                is_query = true;
+                kv.to_string()
             } else {
                 kv.to_string()
             }
@@ -65,13 +72,21 @@ pub(crate) fn namespace_notification_id(metadata: &str, pane_id: u32) -> String 
         .collect::<Vec<_>>()
         .join(":");
 
-    // Now rewrite i= with the report flag
-    let report_flag = if app_wants_report { "r" } else { "" };
+    // Build flags suffix
+    let mut flags = String::new();
+    if app_wants_report {
+        flags.push('r');
+    }
+    if is_query {
+        flags.push('q');
+    }
+
+    // Rewrite i= with pane ID and flags
     let result = result
         .split(':')
         .map(|kv| {
             if let Some(id_value) = kv.strip_prefix("i=") {
-                format!("i=p{}{}.{}", pane_id, report_flag, id_value)
+                format!("i=p{}{}.{}", pane_id, flags, id_value)
             } else {
                 kv.to_string()
             }
@@ -80,7 +95,7 @@ pub(crate) fn namespace_notification_id(metadata: &str, pane_id: u32) -> String 
         .join(":");
 
     let result = if !found_id {
-        format!("i=p{}{}.0:{}", pane_id, report_flag, result)
+        format!("i=p{}{}.:{}", pane_id, flags, result)
     } else {
         result
     };
