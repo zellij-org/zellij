@@ -81,6 +81,22 @@ fn full_shortcut_list_nonstandard_mode(help: &ModeInfo) -> LinePart {
     line_part
 }
 
+fn plugin_key(
+    keymap: &[(KeyWithModifier, Vec<Action>)],
+    plugin_url: &str,
+) -> Vec<KeyWithModifier> {
+    keymap
+        .iter()
+        .find_map(|(key, acvec)| {
+            if acvec.iter().any(|a| a.launches_plugin(plugin_url)) {
+                Some(vec![key.clone()])
+            } else {
+                None
+            }
+        })
+        .unwrap_or_default()
+}
+
 /// Collect all relevant keybindings and hints to display.
 ///
 /// Creates a vector with tuples containing the following entries:
@@ -154,6 +170,9 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<KeyWithModifier
         (s("Toggle Floating"), s("Floating"),
             action_key(&km, &[A::ToggleFloatingPanes, TO_NORMAL])),
         (s("Toggle Embed"), s("Embed"), action_key(&km, &[A::TogglePaneEmbedOrFloating, TO_NORMAL])),
+        (s("Split Right"), s("Right"), action_key(&km, &[A::NewPane{direction: Some(Dir::Right), pane_name: None, start_suppressed: false}, TO_NORMAL])),
+        (s("Split Down"), s("Down"), action_key(&km, &[A::NewPane{direction: Some(Dir::Down), pane_name: None, start_suppressed: false}, TO_NORMAL])),
+        (s("Stack"), s("Stack"), action_key(&km, &[A::NewStackedPane{command: None, pane_name: None, near_current_pane: false}, TO_NORMAL])),
         (s("Select pane"), s("Select"), to_normal_key),
     ]} else if mi.mode == IM::Tab {
         // With the default bindings, "Move focus" for tabs is tricky: It binds all the arrow keys
@@ -219,6 +238,7 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<KeyWithModifier
         (s("Switch Location"), s("Move"), action_key_group(&km, &[
             &[Action::MovePane{direction: Some(Dir::Left)}], &[Action::MovePane{direction: Some(Dir::Down)}],
             &[Action::MovePane{direction: Some(Dir::Up)}], &[Action::MovePane{direction: Some(Dir::Right)}]])),
+        (s("When done"), s("Back"), to_normal_key),
     ]} else if mi.mode == IM::Scroll { vec![
         (s("Enter search term"), s("Search"),
             action_key(&km, &[A::SwitchToMode{input_mode: IM::EnterSearch}, A::SearchInput{input: vec![0]}])),
@@ -254,7 +274,12 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<KeyWithModifier
             action_key(&km, &[A::SearchToggleOption{option: SOpt::WholeWord}])),
     ]} else if mi.mode == IM::Session { vec![
         (s("Detach"), s("Detach"), action_key(&km, &[Action::Detach])),
-        (s("Session Manager"), s("Manager"), action_key(&km, &[A::LaunchOrFocusPlugin{plugin: Default::default(), should_float: true, move_to_focused_tab: true, should_open_in_place: false, close_replaced_pane: false, skip_cache: false}, TO_NORMAL])), // not entirely accurate
+        (s("Session Manager"), s("Manager"), plugin_key(&km, "session-manager")),
+        (s("Share"), s("Share"), plugin_key(&km, "zellij:share")),
+        (s("Configure"), s("Config"), plugin_key(&km, "configuration")),
+        (s("Layout Manager"), s("Layouts"), plugin_key(&km, "zellij:layout-manager")),
+        (s("Plugin Manager"), s("Plugins"), plugin_key(&km, "plugin-manager")),
+        (s("About"), s("About"), plugin_key(&km, "zellij:about")),
         (s("Select pane"), s("Select"), to_normal_key),
     ]} else if mi.mode == IM::Tmux { vec![
         (s("Move focus"), s("Move"), action_key_group(&km, &[
