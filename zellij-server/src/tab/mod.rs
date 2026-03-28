@@ -3083,7 +3083,6 @@ impl Tab {
     fn render_cursor(&mut self, output: &mut Output) {
         let connected_clients: Vec<ClientId> =
             { self.connected_clients.borrow().iter().copied().collect() };
-        log::info!("[IME DEBUG] render_cursor called for {} clients", connected_clients.len());
         for client_id in connected_clients {
             match self
                 .get_active_terminal_cursor_position(client_id)
@@ -3118,16 +3117,6 @@ impl Tab {
                     let active_terminal_is_mid_frame = self
                         .active_terminal_is_mid_frame(client_id)
                         .unwrap_or(false);
-
-                    log::info!(
-                        "[IME DEBUG] render_cursor: client={} pos=({},{}) mid_frame={} dirty={} changed={}",
-                        client_id,
-                        cursor_position_x,
-                        cursor_position_y,
-                        active_terminal_is_mid_frame,
-                        output.is_dirty(),
-                        cursor_changed_position_or_shape,
-                    );
 
                     if active_terminal_is_mid_frame {
                         // The active terminal is currently rendering a synchronized frame
@@ -3178,7 +3167,6 @@ impl Tab {
                     }
                 },
                 None => {
-                    log::info!("[IME DEBUG] render_cursor: client={} cursor NOT visible (hidden or out of bounds)", client_id);
                     // cursor_coordinates() returned None (cursor is hidden or out of bounds).
                     // For IME: if the cursor has a valid position despite being hidden (e.g.
                     // ink hides cursor during BSU render cycles), emit the position so the OS
@@ -3186,7 +3174,6 @@ impl Tab {
                     if let Some((ime_x, ime_y)) =
                         self.get_active_terminal_cursor_position_for_ime(client_id)
                     {
-                        log::info!("[IME DEBUG] render_cursor: client={} using IME fallback pos=({},{})", client_id, ime_x, ime_y);
                         let desired_cursor_shape = self
                             .get_active_pane(client_id)
                             .map(|ap| ap.cursor_shape_csi())

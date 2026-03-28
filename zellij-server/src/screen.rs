@@ -1560,7 +1560,6 @@ impl Screen {
     pub fn render_to_clients(&mut self) -> Result<()> {
         // this method does the actual rendering and is triggered by a debounced BackgroundJob (see
         // the render method for more details)
-        log::info!("[IME DEBUG] render_to_clients called");
         let err_context = "failed to render screen";
 
         // Separate rendering for regular clients and watchers

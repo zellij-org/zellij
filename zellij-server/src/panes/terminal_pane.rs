@@ -200,8 +200,6 @@ impl Pane for TerminalPane {
     fn cursor_coordinates(&self, _client_id: Option<ClientId>) -> Option<(usize, usize)> {
         // (x, y)
         if self.get_content_rows() < 1 || self.get_content_columns() < 1 {
-            log::info!("[IME DEBUG] terminal_pane.cursor_coordinates None: content_rows={} content_cols={}",
-                self.get_content_rows(), self.get_content_columns());
             // do not render cursor if there's no room for it
             return None;
         }

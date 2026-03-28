@@ -1203,9 +1203,6 @@ impl Grid {
     }
     pub fn cursor_coordinates(&self) -> Option<(usize, usize)> {
         if self.cursor_is_hidden || self.cursor.x >= self.width || self.cursor.y >= self.height {
-            log::info!("[IME DEBUG] grid.cursor_coordinates None: hidden={} x={} >= width={}: {} y={} >= height={}: {}",
-                self.cursor_is_hidden, self.cursor.x, self.width, self.cursor.x >= self.width,
-                self.cursor.y, self.height, self.cursor.y >= self.height);
             None
         } else {
             Some((self.cursor.x, self.cursor.y))
@@ -2878,7 +2875,6 @@ impl Perform for Grid {
                 for param in params_iter.map(|param| param[0]) {
                     match param {
                         2026 => {
-                            log::info!("[IME DEBUG] ESU received, cursor=({},{}) lock_renders=true->false", self.cursor.x, self.cursor.y);
                             self.unlock_renders();
                         },
                         2004 => {
@@ -2978,7 +2974,6 @@ impl Perform for Grid {
                             self.mark_for_rerender();
                         },
                         2026 => {
-                            log::info!("[IME DEBUG] BSU received, cursor=({},{}) lock_renders={}->true", self.cursor.x, self.cursor.y, self.lock_renders);
                             self.lock_renders();
                         },
                         2004 => {
