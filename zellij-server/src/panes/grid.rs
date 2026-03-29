@@ -3605,11 +3605,10 @@ impl Perform for Grid {
                                     &mut self.sixel_grid,
                                     &mut self.supports_kitty_keyboard_protocol,
                                 );
+                                self.clear_viewport_before_rendering = true;
+                                self.force_change_size(self.height, self.width); // the alternative_viewport might have been of a different size...
+                                self.mark_for_rerender();
                             }
-                            self.alternate_screen_state = None;
-                            self.clear_viewport_before_rendering = true;
-                            self.force_change_size(self.height, self.width); // the alternative_viewport might have been of a different size...
-                            self.mark_for_rerender();
                         },
                         25 => {
                             self.hide_cursor();
