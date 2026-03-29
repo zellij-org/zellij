@@ -18,6 +18,7 @@ use zellij_utils::sessions::{
     generate_unique_session_name, get_active_session, get_resurrectable_sessions, get_sessions,
     get_sessions_sorted_by_mtime, kill_session as kill_session_impl, match_session_name,
     print_sessions, print_sessions_with_index, resurrection_layout, session_exists,
+    session_or_resurrectable_exists,
     validate_session_name, ActiveSession, SessionNameMatch,
 };
 
@@ -803,7 +804,7 @@ pub(crate) fn start_client(opts: CliArgs) {
                 } else {
                     let session_exists = session_name
                         .as_ref()
-                        .and_then(|s| session_exists(&s).ok())
+                        .and_then(|s| session_or_resurrectable_exists(&s).ok())
                         .unwrap_or(false);
                     let resurrection_layout =
                         session_name

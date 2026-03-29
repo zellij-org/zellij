@@ -438,6 +438,10 @@ pub fn session_exists(name: &str) -> Result<bool, io::ErrorKind> {
     }
 }
 
+pub fn session_or_resurrectable_exists(name: &str) -> Result<bool, io::ErrorKind> {
+    Ok(session_exists(name)? || get_resurrectable_session_names().iter().any(|s| s == name))
+}
+
 // if the session is resurrecable, the returned layout is the one to be used to resurrect it
 pub fn resurrection_layout(session_name_to_resurrect: &str) -> Result<Option<Layout>, String> {
     let layout_file_name = session_layout_cache_file_name(&session_name_to_resurrect);
