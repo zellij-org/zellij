@@ -804,10 +804,17 @@ fn query_webserver_via_ipc(web_server_base_url: &str) -> Result<WebServerStatus>
 
         match query_webserver_with_response(path_str, InstructionForWebServer::QueryVersion, 500) {
             Ok(WebServerResponse::Version(info)) => {
-                let matches_expected =
-                    info.ip == expected_addr.ip && info.port == expected_addr.port;
+                let matches_expected = info.ip == expected_addr.ip
+                    && info.port == expected_addr.port;
 
-                if !matches_expected {
+                let expected_port_is_reserved = matches!(expected_addr.port, 80 | 443);
+                let reported_port_is_reserved = matches!(info.port, 80 | 443);
+
+                let matches_reserved_port_alias = expected_port_is_reserved
+                    && reported_port_is_reserved
+                    && info.ip == expected_addr.ip;
+
+                if !matches_expected && !matches_reserved_port_alias {
                     continue;
                 }
 
