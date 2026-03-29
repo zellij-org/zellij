@@ -5,8 +5,10 @@ use crate::{
     },
     envs,
     input::layout::Layout,
-    ipc::{ClientToServerMsg, IpcReceiverWithContext, IpcSenderWithContext, ServerToClientMsg},
+    ipc::{ClientToServerMsg, IpcSenderWithContext},
 };
+#[cfg(windows)]
+use crate::ipc::{ClientToServerMsg, IpcReceiverWithContext, ServerToClientMsg};
 use anyhow;
 use humantime::format_duration;
 use std::collections::HashMap;
@@ -140,23 +142,19 @@ pub fn get_sessions_sorted_by_mtime() -> anyhow::Result<Vec<String>> {
 
 /// Probe a session socket to check if a server is alive.
 ///
-/// On Unix, connects and sends a `ConnStatus` message to verify the server responds.
+/// On Unix, connects to the socket to verify a server is listening.
+///
+/// We intentionally avoid requiring a successful protocol roundtrip here because
+/// a newly upgraded client should still be able to discover a still-running
+/// session from an older server version, even if their IPC message formats are
+/// no longer compatible.
 /// On Windows, reads the server PID from the marker file and checks process liveness.
 #[cfg(unix)]
 fn assert_socket(name: &str) -> bool {
     use crate::consts::ipc_connect;
     let path = &*ZELLIJ_SOCK_DIR.join(name);
     match ipc_connect(path) {
-        Ok(stream) => {
-            let mut sender: IpcSenderWithContext<ClientToServerMsg> =
-                IpcSenderWithContext::new(stream);
-            let _ = sender.send_client_msg(ClientToServerMsg::ConnStatus);
-            let mut receiver: IpcReceiverWithContext<ServerToClientMsg> = sender.get_receiver();
-            match receiver.recv_server_msg() {
-                Some((ServerToClientMsg::Connected, _)) => true,
-                None | Some((_, _)) => false,
-            }
-        },
+        Ok(_) => true,
         Err(e) if e.kind() == io::ErrorKind::ConnectionRefused => {
             drop(fs::remove_file(path));
             false
