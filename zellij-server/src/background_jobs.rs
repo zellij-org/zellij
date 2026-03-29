@@ -233,6 +233,18 @@ pub(crate) fn background_jobs_main(
                     continue;
                 }
                 running_jobs.insert(job, Instant::now());
+                if let Ok(current_session_name) = current_session_name.lock() {
+                    let current_session_name = current_session_name.to_string();
+                    let current_session_info = current_session_info.lock().unwrap().clone();
+                    let current_session_layout = current_session_layout.lock().unwrap().clone();
+                    if !disable_session_metadata {
+                        write_session_state_to_disk(
+                            current_session_name.clone(),
+                            current_session_info,
+                            current_session_layout,
+                        );
+                    }
+                }
                 runtime.spawn({
                     let senders = bus.senders.clone();
                     let current_session_info = current_session_info.clone();
