@@ -15482,6 +15482,27 @@ pub fn close_pane_by_pane_id() {
 }
 
 #[test]
+pub fn close_fixed_size_layout_pane_moves_focus_to_remaining_pane() {
+    let size = Size { cols: 121, rows: 20 };
+    let mut initial_layout = TiledPaneLayout::default();
+    initial_layout.children_split_direction = SplitDirection::Vertical;
+    let mut fixed_child = TiledPaneLayout::default();
+    fixed_child.split_size = Some(SplitSize::Fixed(40));
+    initial_layout.children = vec![fixed_child, TiledPaneLayout::default()];
+
+    let mut tab = create_new_tab_with_layout(size, initial_layout);
+    let fixed_pane_id = PaneId::Terminal(1);
+
+    tab.close_pane(fixed_pane_id, false, None);
+
+    assert_eq!(tab.tiled_panes.panes.len(), 1);
+    assert!(!tab.has_pane_with_pid(&fixed_pane_id));
+    let new_active_pane_id = tab.tiled_panes.get_active_pane_id(1).unwrap();
+    assert_ne!(new_active_pane_id, fixed_pane_id);
+    assert!(tab.has_pane_with_pid(&new_active_pane_id));
+}
+
+#[test]
 pub fn resize_by_pane_id() {
     let size = Size {
         cols: 121,

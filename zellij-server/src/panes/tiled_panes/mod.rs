@@ -979,7 +979,15 @@ impl TiledPanes {
         self.panes.get_mut(&pane_id)
     }
     pub fn get_active_pane_id(&self, client_id: ClientId) -> Option<PaneId> {
-        self.active_panes.get(&client_id).copied()
+        match self.active_panes.get(&client_id).copied() {
+            Some(pane_id) if self.panes.contains_key(&pane_id) => Some(pane_id),
+            Some(_) | None => self
+                .panes
+                .iter()
+                .filter(|(p_id, p)| !self.panes_to_hide.contains(p_id) && p.selectable())
+                .max_by_key(|(_pane_id, pane)| pane.active_at())
+                .map(|(pane_id, _pane)| *pane_id),
+        }
     }
     pub fn panes_contain(&self, pane_id: &PaneId) -> bool {
         self.panes.contains_key(pane_id)
