@@ -637,6 +637,7 @@ pub(crate) fn route_action(
             command,
             unblock_condition,
             near_current_pane,
+            tab_id,
         } => {
             let command = command
                 .map(|cmd| TerminalAction::RunCommand(cmd.into()))
@@ -668,7 +669,9 @@ pub(crate) fn route_action(
                 _ => pane_id,
             };
 
-            let client_tab_index_or_paneid = if near_current_pane && pane_id.is_some() {
+            let client_tab_index_or_paneid = if let Some(tab_id) = tab_id {
+                ClientTabIndexOrPaneId::TabIndex(tab_id)
+            } else if near_current_pane && pane_id.is_some() {
                 ClientTabIndexOrPaneId::PaneId(pane_id.unwrap())
             } else {
                 ClientTabIndexOrPaneId::ClientId(client_id)
@@ -695,27 +698,31 @@ pub(crate) fn route_action(
             start_suppressed,
             coordinates: floating_pane_coordinates,
             near_current_pane,
+            tab_id,
         } => {
             let title = format!("Editing: {}", open_file_payload.path.display());
             let open_file = TerminalAction::OpenFile(open_file_payload);
             let pty_instr = if should_open_in_place {
-                match pane_id {
-                    Some(pane_id) if near_current_pane => PtyInstruction::SpawnInPlaceTerminal(
-                        Some(open_file),
-                        Some(title),
-                        close_replaced_pane,
-                        ClientTabIndexOrPaneId::PaneId(pane_id),
-                        Some(NotificationEnd::new(completion_tx)),
-                    ),
-                    _ => PtyInstruction::SpawnInPlaceTerminal(
-                        Some(open_file),
-                        Some(title),
-                        close_replaced_pane,
-                        ClientTabIndexOrPaneId::ClientId(client_id),
-                        Some(NotificationEnd::new(completion_tx)),
-                    ),
-                }
+                let client_tab_index_or_paneid = if let Some(tab_id) = tab_id {
+                    ClientTabIndexOrPaneId::TabIndex(tab_id)
+                } else if near_current_pane && pane_id.is_some() {
+                    ClientTabIndexOrPaneId::PaneId(pane_id.unwrap())
+                } else {
+                    ClientTabIndexOrPaneId::ClientId(client_id)
+                };
+                PtyInstruction::SpawnInPlaceTerminal(
+                    Some(open_file),
+                    Some(title),
+                    close_replaced_pane,
+                    client_tab_index_or_paneid,
+                    Some(NotificationEnd::new(completion_tx)),
+                )
             } else {
+                let client_tab_index_or_paneid = if let Some(tab_id) = tab_id {
+                    ClientTabIndexOrPaneId::TabIndex(tab_id)
+                } else {
+                    ClientTabIndexOrPaneId::ClientId(client_id)
+                };
                 PtyInstruction::SpawnTerminal(
                     Some(open_file),
                     Some(title),
@@ -728,7 +735,7 @@ pub(crate) fn route_action(
                         }
                     },
                     start_suppressed,
-                    ClientTabIndexOrPaneId::ClientId(client_id),
+                    client_tab_index_or_paneid,
                     Some(NotificationEnd::new(completion_tx)),
                     false, // set_blocking
                 )
@@ -761,11 +768,14 @@ pub(crate) fn route_action(
             pane_name: name,
             coordinates: floating_pane_coordinates,
             near_current_pane,
+            tab_id,
         } => {
             let run_cmd = run_command
                 .map(|cmd| TerminalAction::RunCommand(cmd.into()))
                 .or_else(|| default_shell.clone());
-            let client_tab_index_or_paneid = if near_current_pane && pane_id.is_some() {
+            let client_tab_index_or_paneid = if let Some(tab_id) = tab_id {
+                ClientTabIndexOrPaneId::TabIndex(tab_id)
+            } else if near_current_pane && pane_id.is_some() {
                 ClientTabIndexOrPaneId::PaneId(pane_id.unwrap())
             } else {
                 ClientTabIndexOrPaneId::ClientId(client_id)
@@ -788,6 +798,7 @@ pub(crate) fn route_action(
             near_current_pane,
             pane_id_to_replace,
             close_replaced_pane,
+            tab_id,
         } => {
             let run_cmd = run_command
                 .map(|cmd| TerminalAction::RunCommand(cmd.into()))
@@ -796,74 +807,70 @@ pub(crate) fn route_action(
                 Some(pane_id_to_replace) => pane_id_to_replace.try_into().ok(),
                 None => pane_id,
             };
-            match pane_id {
-                Some(pane_id) if near_current_pane => {
-                    senders
-                        .send_to_pty(PtyInstruction::SpawnInPlaceTerminal(
-                            run_cmd,
-                            name,
-                            close_replaced_pane,
-                            ClientTabIndexOrPaneId::PaneId(pane_id),
-                            Some(NotificationEnd::new(completion_tx)),
-                        ))
-                        .with_context(err_context)?;
-                },
-                _ => {
-                    senders
-                        .send_to_pty(PtyInstruction::SpawnInPlaceTerminal(
-                            run_cmd,
-                            name,
-                            close_replaced_pane,
-                            ClientTabIndexOrPaneId::ClientId(client_id),
-                            Some(NotificationEnd::new(completion_tx)),
-                        ))
-                        .with_context(err_context)?;
-                },
-            }
+            let client_tab_index_or_paneid = if let Some(tab_id) = tab_id {
+                ClientTabIndexOrPaneId::TabIndex(tab_id)
+            } else if near_current_pane && pane_id.is_some() {
+                ClientTabIndexOrPaneId::PaneId(pane_id.unwrap())
+            } else {
+                ClientTabIndexOrPaneId::ClientId(client_id)
+            };
+            senders
+                .send_to_pty(PtyInstruction::SpawnInPlaceTerminal(
+                    run_cmd,
+                    name,
+                    close_replaced_pane,
+                    client_tab_index_or_paneid,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
         },
         Action::NewStackedPane {
             command: run_command,
             pane_name: name,
             near_current_pane,
+            tab_id,
         } => {
             let run_cmd = run_command
                 .map(|cmd| TerminalAction::RunCommand(cmd.into()))
                 .or_else(|| default_shell.clone());
 
-            match pane_id {
-                Some(pane_id) if near_current_pane => {
-                    senders
-                        .send_to_pty(PtyInstruction::SpawnTerminal(
-                            run_cmd,
-                            name,
-                            NewPanePlacement::Stacked {
-                                pane_id_to_stack_under: Some(pane_id.into()),
-                                borderless: None,
-                            },
-                            false,
-                            ClientTabIndexOrPaneId::PaneId(pane_id),
-                            Some(NotificationEnd::new(completion_tx)),
-                            false, // set_blocking
-                        ))
-                        .with_context(err_context)?;
-                },
-                _ => {
-                    senders
-                        .send_to_pty(PtyInstruction::SpawnTerminal(
-                            run_cmd,
-                            name,
-                            NewPanePlacement::Stacked {
-                                pane_id_to_stack_under: None,
-                                borderless: None,
-                            },
-                            false,
-                            ClientTabIndexOrPaneId::ClientId(client_id),
-                            Some(NotificationEnd::new(completion_tx)),
-                            false, // set_blocking
-                        ))
-                        .with_context(err_context)?;
-                },
-            }
+            let (pane_placement, client_tab_index_or_paneid) = if let Some(tab_id) = tab_id {
+                (
+                    NewPanePlacement::Stacked {
+                        pane_id_to_stack_under: None,
+                        borderless: None,
+                    },
+                    ClientTabIndexOrPaneId::TabIndex(tab_id),
+                )
+            } else if near_current_pane && pane_id.is_some() {
+                let pane_id = pane_id.unwrap();
+                (
+                    NewPanePlacement::Stacked {
+                        pane_id_to_stack_under: Some(pane_id.into()),
+                        borderless: None,
+                    },
+                    ClientTabIndexOrPaneId::PaneId(pane_id),
+                )
+            } else {
+                (
+                    NewPanePlacement::Stacked {
+                        pane_id_to_stack_under: None,
+                        borderless: None,
+                    },
+                    ClientTabIndexOrPaneId::ClientId(client_id),
+                )
+            };
+            senders
+                .send_to_pty(PtyInstruction::SpawnTerminal(
+                    run_cmd,
+                    name,
+                    pane_placement,
+                    false,
+                    client_tab_index_or_paneid,
+                    Some(NotificationEnd::new(completion_tx)),
+                    false, // set_blocking
+                ))
+                .with_context(err_context)?;
         },
         Action::NewTiledPane {
             direction,
@@ -871,11 +878,14 @@ pub(crate) fn route_action(
             pane_name: name,
             near_current_pane,
             borderless,
+            tab_id,
         } => {
             let run_cmd = run_command
                 .map(|cmd| TerminalAction::RunCommand(cmd.into()))
                 .or_else(|| default_shell.clone());
-            let client_tab_index_or_paneid = if near_current_pane && pane_id.is_some() {
+            let client_tab_index_or_paneid = if let Some(tab_id) = tab_id {
+                ClientTabIndexOrPaneId::TabIndex(tab_id)
+            } else if near_current_pane && pane_id.is_some() {
                 ClientTabIndexOrPaneId::PaneId(pane_id.unwrap())
             } else {
                 ClientTabIndexOrPaneId::ClientId(client_id)
@@ -1296,6 +1306,7 @@ pub(crate) fn route_action(
             pane_name: name,
             skip_cache,
             cwd,
+            tab_id,
         } => {
             senders
                 .send_to_screen(ScreenInstruction::NewTiledPluginPane(
@@ -1305,6 +1316,7 @@ pub(crate) fn route_action(
                     cwd,
                     client_id,
                     Some(NotificationEnd::new(completion_tx)),
+                    tab_id,
                 ))
                 .with_context(err_context)?;
         },
@@ -1314,6 +1326,7 @@ pub(crate) fn route_action(
             skip_cache,
             cwd,
             coordinates: floating_pane_coordinates,
+            tab_id,
         } => {
             senders
                 .send_to_screen(ScreenInstruction::NewFloatingPluginPane(
@@ -1324,6 +1337,7 @@ pub(crate) fn route_action(
                     floating_pane_coordinates,
                     client_id,
                     Some(NotificationEnd::new(completion_tx)),
+                    tab_id,
                 ))
                 .with_context(err_context)?;
         },
@@ -1332,6 +1346,7 @@ pub(crate) fn route_action(
             pane_name: name,
             skip_cache,
             close_replaced_pane,
+            tab_id,
         } => {
             if let Some(pane_id) = pane_id {
                 senders
@@ -1343,6 +1358,7 @@ pub(crate) fn route_action(
                         close_replaced_pane,
                         client_id,
                         Some(NotificationEnd::new(completion_tx)),
+                        tab_id,
                     ))
                     .with_context(err_context)?;
             } else {
@@ -1365,6 +1381,7 @@ pub(crate) fn route_action(
             should_open_in_place,
             close_replaced_pane,
             skip_cache,
+            tab_id,
         } => {
             senders
                 .send_to_screen(ScreenInstruction::LaunchOrFocusPlugin(
@@ -1377,6 +1394,7 @@ pub(crate) fn route_action(
                     skip_cache,
                     client_id,
                     Some(NotificationEnd::new(completion_tx)),
+                    tab_id,
                 ))
                 .with_context(err_context)?;
         },
@@ -1387,6 +1405,7 @@ pub(crate) fn route_action(
             close_replaced_pane,
             skip_cache,
             cwd,
+            tab_id,
         } => {
             senders
                 .send_to_screen(ScreenInstruction::LaunchPlugin(
@@ -1399,6 +1418,7 @@ pub(crate) fn route_action(
                     cwd,
                     client_id,
                     Some(NotificationEnd::new(completion_tx)),
+                    tab_id,
                 ))
                 .with_context(err_context)?;
         },

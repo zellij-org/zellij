@@ -3094,6 +3094,7 @@ pub fn send_cli_new_pane_action_with_default_parameters() {
         unblock_condition: None,
         near_current_pane: false,
         borderless: Some(false),
+        tab_id: None,
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -3147,6 +3148,7 @@ pub fn send_cli_new_pane_action_with_split_direction() {
         unblock_condition: None,
         near_current_pane: false,
         borderless: Some(false),
+        tab_id: None,
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -3200,6 +3202,7 @@ pub fn send_cli_new_pane_action_with_command_and_cwd() {
         unblock_condition: None,
         near_current_pane: false,
         borderless: Some(false),
+        tab_id: None,
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -3264,6 +3267,7 @@ pub fn send_cli_new_pane_action_with_floating_pane_and_coordinates() {
         unblock_condition: None,
         near_current_pane: false,
         borderless: Some(false),
+        tab_id: None,
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -3306,6 +3310,7 @@ pub fn send_cli_edit_action_with_default_parameters() {
         pinned: None,
         borderless: Some(false),
         near_current_pane: false,
+        tab_id: None,
     };
     send_cli_action_to_server(&session_metadata, cli_edit_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -3348,6 +3353,7 @@ pub fn send_cli_edit_action_with_line_number() {
         pinned: None,
         borderless: Some(false),
         near_current_pane: false,
+        tab_id: None,
     };
     send_cli_action_to_server(&session_metadata, cli_edit_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -3390,6 +3396,7 @@ pub fn send_cli_edit_action_with_split_direction() {
         pinned: None,
         borderless: Some(false),
         near_current_pane: false,
+        tab_id: None,
     };
     send_cli_action_to_server(&session_metadata, cli_edit_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -3580,6 +3587,7 @@ pub fn send_cli_new_tab_action_default_params() {
     let new_tab_action = CliAction::NewTab {
         name: None,
         layout: None,
+        layout_string: None,
         layout_dir: None,
         cwd: None,
         initial_command: vec![],
@@ -3627,6 +3635,7 @@ pub fn send_cli_new_tab_action_with_name_and_layout() {
             "{}/src/unit/fixtures/layout-with-three-panes.kdl",
             env!("CARGO_MANIFEST_DIR")
         ))),
+        layout_string: None,
         layout_dir: None,
         cwd: None,
         initial_command: vec![],
@@ -3959,6 +3968,7 @@ pub fn send_cli_launch_or_focus_plugin_action() {
         url: "file:/path/to/fake/plugin".to_owned(),
         configuration: Default::default(),
         skip_plugin_cache: false,
+        tab_id: None,
     };
     send_cli_action_to_server(&session_metadata, cli_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -4021,6 +4031,7 @@ pub fn send_cli_launch_or_focus_plugin_action_when_plugin_is_already_loaded() {
         url: "file:/path/to/fake/plugin".to_owned(),
         configuration: Default::default(),
         skip_plugin_cache: false,
+        tab_id: None,
     };
     send_cli_action_to_server(&session_metadata, cli_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -4105,6 +4116,7 @@ pub fn send_cli_launch_or_focus_plugin_action_when_plugin_is_already_loaded_for_
         url: "fixture_plugin_for_tests".to_owned(),
         configuration: Default::default(),
         skip_plugin_cache: false,
+        tab_id: None,
     };
     send_cli_action_to_server(&session_metadata, cli_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -5097,6 +5109,7 @@ pub fn send_cli_new_pane_in_place_with_close_replaced_pane() {
         unblock_condition: None,
         near_current_pane: false,
         borderless: None,
+        tab_id: None,
     };
     send_cli_action_to_server(&session_metadata, cli_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -5147,6 +5160,7 @@ pub fn send_cli_edit_in_place_with_close_replaced_pane() {
         pinned: None,
         near_current_pane: false,
         borderless: None,
+        tab_id: None,
     };
     send_cli_action_to_server(&session_metadata, cli_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -5192,6 +5206,7 @@ pub fn send_cli_launch_or_focus_plugin_in_place_with_close_replaced_pane() {
         url: "file:/path/to/fake/plugin".to_owned(),
         configuration: Default::default(),
         skip_plugin_cache: false,
+        tab_id: None,
     };
     send_cli_action_to_server(&session_metadata, cli_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -7661,5 +7676,404 @@ pub fn inactive_tab_plugins_get_fresh_state_on_activation() {
         active_tab.position, 0,
         "The first tab (position 0) should be active, got position {}",
         active_tab.position
+    );
+}
+
+#[test]
+pub fn send_cli_new_tab_action_with_layout_string() {
+    let size = Size { cols: 80, rows: 10 };
+    let client_id = 10;
+    let mut initial_layout = TiledPaneLayout::default();
+    initial_layout.children_split_direction = SplitDirection::Vertical;
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
+    let mut mock_screen = MockScreen::new(size);
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
+    let received_plugin_instructions = Arc::new(Mutex::new(vec![]));
+    let plugin_receiver = mock_screen.plugin_receiver.take().unwrap();
+    let plugin_thread = log_actions_in_thread!(
+        received_plugin_instructions,
+        PluginInstruction::Exit,
+        plugin_receiver
+    );
+    // Same layout as layout-with-three-panes.kdl but passed as a string
+    let new_tab_action = CliAction::NewTab {
+        name: None,
+        layout: None,
+        layout_string: Some("layout {\n    pane\n    pane\n    pane\n}\n".into()),
+        layout_dir: None,
+        cwd: None,
+        initial_command: vec![],
+        initial_plugin: None,
+        close_on_exit: Default::default(),
+        start_suspended: Default::default(),
+        block_until_exit: false,
+        block_until_exit_success: false,
+        block_until_exit_failure: false,
+    };
+    send_cli_action_to_server(&session_metadata, new_tab_action, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![plugin_thread, screen_thread]);
+    let new_tab_instruction = received_plugin_instructions
+        .lock()
+        .unwrap()
+        .iter()
+        .rev()
+        .find(|i| {
+            if let PluginInstruction::NewTab(..) = i {
+                return true;
+            } else {
+                return false;
+            }
+        })
+        .unwrap()
+        .clone();
+    let output = format!("{:#?}", new_tab_instruction);
+    // Normalize Windows path separators for cross-platform snapshot consistency
+    let output = output.replace("\\\\", "/");
+    assert_snapshot!(output);
+}
+
+#[test]
+pub fn send_cli_new_tab_action_with_layout_string_and_name() {
+    let size = Size { cols: 80, rows: 10 };
+    let client_id = 10;
+    let mut initial_layout = TiledPaneLayout::default();
+    initial_layout.children_split_direction = SplitDirection::Vertical;
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
+    let mut mock_screen = MockScreen::new(size);
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
+    let received_plugin_instructions = Arc::new(Mutex::new(vec![]));
+    let plugin_receiver = mock_screen.plugin_receiver.take().unwrap();
+    let plugin_thread = log_actions_in_thread!(
+        received_plugin_instructions,
+        PluginInstruction::Exit,
+        plugin_receiver
+    );
+    let new_tab_action = CliAction::NewTab {
+        name: Some("my-string-layout-tab".into()),
+        layout: None,
+        layout_string: Some("layout {\n    pane\n    pane\n    pane\n}\n".into()),
+        layout_dir: None,
+        cwd: None,
+        initial_command: vec![],
+        initial_plugin: None,
+        close_on_exit: Default::default(),
+        start_suspended: Default::default(),
+        block_until_exit: false,
+        block_until_exit_success: false,
+        block_until_exit_failure: false,
+    };
+    send_cli_action_to_server(&session_metadata, new_tab_action, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![plugin_thread, screen_thread]);
+    let new_tab_instruction = received_plugin_instructions
+        .lock()
+        .unwrap()
+        .iter()
+        .rev()
+        .find(|i| {
+            if let PluginInstruction::NewTab(..) = i {
+                return true;
+            } else {
+                return false;
+            }
+        })
+        .unwrap()
+        .clone();
+    let output = format!("{:#?}", new_tab_instruction);
+    // Normalize Windows path separators for cross-platform snapshot consistency
+    let output = output.replace("\\\\", "/");
+    assert_snapshot!(output);
+}
+
+#[test]
+pub fn send_cli_new_pane_action_with_tab_id() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 10;
+    let mut mock_screen = MockScreen::new(size);
+    let pty_receiver = mock_screen.pty_receiver.take().unwrap();
+    let session_metadata = mock_screen.clone_session_metadata();
+    let mut initial_layout = TiledPaneLayout::default();
+    initial_layout.children_split_direction = SplitDirection::Vertical;
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
+    let received_pty_instructions = Arc::new(Mutex::new(vec![]));
+    let pty_thread = log_actions_in_thread!(
+        received_pty_instructions,
+        PtyInstruction::Exit,
+        pty_receiver
+    );
+    let cli_new_pane_action = CliAction::NewPane {
+        direction: Some(Direction::Right),
+        command: vec![],
+        plugin: None,
+        cwd: None,
+        floating: false,
+        in_place: false,
+        close_replaced_pane: false,
+        name: None,
+        close_on_exit: false,
+        start_suspended: false,
+        configuration: None,
+        skip_plugin_cache: false,
+        x: None,
+        y: None,
+        width: None,
+        height: None,
+        pinned: None,
+        stacked: false,
+        blocking: false,
+        block_until_exit_success: false,
+        block_until_exit_failure: false,
+        block_until_exit: false,
+        unblock_condition: None,
+        near_current_pane: false,
+        borderless: Some(false),
+        tab_id: Some(0),
+    };
+    send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![pty_thread, screen_thread]);
+    let pty_instructions = received_pty_instructions.lock().unwrap();
+    // Verify that the PTY instruction uses TabIndex(0) instead of ClientId
+    let pty_debug = format!("{:?}", *pty_instructions);
+    assert!(
+        pty_debug.contains("TabIndex(0)"),
+        "Expected TabIndex(0) in PTY instructions, got: {}",
+        pty_debug
+    );
+}
+
+#[test]
+pub fn send_cli_new_floating_pane_action_with_tab_id() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 10;
+    let mut mock_screen = MockScreen::new(size);
+    let pty_receiver = mock_screen.pty_receiver.take().unwrap();
+    let session_metadata = mock_screen.clone_session_metadata();
+    let mut initial_layout = TiledPaneLayout::default();
+    initial_layout.children_split_direction = SplitDirection::Vertical;
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
+    let received_pty_instructions = Arc::new(Mutex::new(vec![]));
+    let pty_thread = log_actions_in_thread!(
+        received_pty_instructions,
+        PtyInstruction::Exit,
+        pty_receiver
+    );
+    let cli_new_pane_action = CliAction::NewPane {
+        direction: None,
+        command: vec![],
+        plugin: None,
+        cwd: None,
+        floating: true,
+        in_place: false,
+        close_replaced_pane: false,
+        name: None,
+        close_on_exit: false,
+        start_suspended: false,
+        configuration: None,
+        skip_plugin_cache: false,
+        x: None,
+        y: None,
+        width: None,
+        height: None,
+        pinned: None,
+        stacked: false,
+        blocking: false,
+        block_until_exit_success: false,
+        block_until_exit_failure: false,
+        block_until_exit: false,
+        unblock_condition: None,
+        near_current_pane: false,
+        borderless: None,
+        tab_id: Some(0),
+    };
+    send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![pty_thread, screen_thread]);
+    let pty_instructions = received_pty_instructions.lock().unwrap();
+    let pty_debug = format!("{:?}", *pty_instructions);
+    assert!(
+        pty_debug.contains("TabIndex(0)"),
+        "Expected TabIndex(0) in PTY instructions for floating pane, got: {}",
+        pty_debug
+    );
+}
+
+#[test]
+pub fn send_cli_edit_action_with_tab_id() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 10;
+    let mut mock_screen = MockScreen::new(size);
+    let pty_receiver = mock_screen.pty_receiver.take().unwrap();
+    let session_metadata = mock_screen.clone_session_metadata();
+    let mut initial_layout = TiledPaneLayout::default();
+    initial_layout.children_split_direction = SplitDirection::Vertical;
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
+    let received_pty_instructions = Arc::new(Mutex::new(vec![]));
+    let pty_thread = log_actions_in_thread!(
+        received_pty_instructions,
+        PtyInstruction::Exit,
+        pty_receiver
+    );
+    let cli_edit_action = CliAction::Edit {
+        file: PathBuf::from("/tmp/test.rs"),
+        direction: None,
+        line_number: None,
+        floating: false,
+        in_place: false,
+        close_replaced_pane: false,
+        cwd: None,
+        x: None,
+        y: None,
+        width: None,
+        height: None,
+        pinned: None,
+        near_current_pane: false,
+        borderless: None,
+        tab_id: Some(0),
+    };
+    send_cli_action_to_server(&session_metadata, cli_edit_action, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![pty_thread, screen_thread]);
+    let pty_instructions = received_pty_instructions.lock().unwrap();
+    let pty_debug = format!("{:?}", *pty_instructions);
+    assert!(
+        pty_debug.contains("TabIndex(0)"),
+        "Expected TabIndex(0) in PTY instructions for edit, got: {}",
+        pty_debug
+    );
+}
+
+#[test]
+pub fn send_cli_new_pane_action_with_tab_id_and_direction() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 10;
+    let mut mock_screen = MockScreen::new(size);
+    let pty_receiver = mock_screen.pty_receiver.take().unwrap();
+    let session_metadata = mock_screen.clone_session_metadata();
+    let mut initial_layout = TiledPaneLayout::default();
+    initial_layout.children_split_direction = SplitDirection::Vertical;
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
+    let received_pty_instructions = Arc::new(Mutex::new(vec![]));
+    let pty_thread = log_actions_in_thread!(
+        received_pty_instructions,
+        PtyInstruction::Exit,
+        pty_receiver
+    );
+    let cli_new_pane_action = CliAction::NewPane {
+        direction: Some(Direction::Right),
+        command: vec![],
+        plugin: None,
+        cwd: None,
+        floating: false,
+        in_place: false,
+        close_replaced_pane: false,
+        name: None,
+        close_on_exit: false,
+        start_suspended: false,
+        configuration: None,
+        skip_plugin_cache: false,
+        x: None,
+        y: None,
+        width: None,
+        height: None,
+        pinned: None,
+        stacked: false,
+        blocking: false,
+        block_until_exit_success: false,
+        block_until_exit_failure: false,
+        block_until_exit: false,
+        unblock_condition: None,
+        near_current_pane: false,
+        borderless: Some(false),
+        tab_id: Some(0),
+    };
+    send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![pty_thread, screen_thread]);
+    let pty_instructions = received_pty_instructions.lock().unwrap();
+    let pty_debug = format!("{:?}", *pty_instructions);
+    assert!(
+        pty_debug.contains("TabIndex(0)"),
+        "Expected TabIndex(0) in PTY instructions with direction, got: {}",
+        pty_debug
+    );
+}
+
+#[test]
+pub fn send_cli_new_pane_action_with_tab_id_and_stacked() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 10;
+    let mut mock_screen = MockScreen::new(size);
+    let pty_receiver = mock_screen.pty_receiver.take().unwrap();
+    let session_metadata = mock_screen.clone_session_metadata();
+    let mut initial_layout = TiledPaneLayout::default();
+    initial_layout.children_split_direction = SplitDirection::Vertical;
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
+    let received_pty_instructions = Arc::new(Mutex::new(vec![]));
+    let pty_thread = log_actions_in_thread!(
+        received_pty_instructions,
+        PtyInstruction::Exit,
+        pty_receiver
+    );
+    let cli_new_pane_action = CliAction::NewPane {
+        direction: None,
+        command: vec!["ls".into()],
+        plugin: None,
+        cwd: None,
+        floating: false,
+        in_place: false,
+        close_replaced_pane: false,
+        name: None,
+        close_on_exit: false,
+        start_suspended: false,
+        configuration: None,
+        skip_plugin_cache: false,
+        x: None,
+        y: None,
+        width: None,
+        height: None,
+        pinned: None,
+        stacked: true,
+        blocking: false,
+        block_until_exit_success: false,
+        block_until_exit_failure: false,
+        block_until_exit: false,
+        unblock_condition: None,
+        near_current_pane: false,
+        borderless: None,
+        tab_id: Some(0),
+    };
+    send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![pty_thread, screen_thread]);
+    let pty_instructions = received_pty_instructions.lock().unwrap();
+    let pty_debug = format!("{:?}", *pty_instructions);
+    assert!(
+        pty_debug.contains("TabIndex(0)"),
+        "Expected TabIndex(0) in PTY instructions with stacked, got: {}",
+        pty_debug
     );
 }

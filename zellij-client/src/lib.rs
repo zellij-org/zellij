@@ -772,22 +772,26 @@ pub fn start_client(
                 config_dir: cli_args.config_dir.clone(),
                 should_ignore_config: cli_args.is_setup_clean(),
                 configuration_options: Some(config_options.clone()),
-                layout: cli_args
-                    .layout
-                    .as_ref()
-                    .and_then(|l| {
-                        LayoutInfo::from_cli(
-                            &config_options.layout_dir,
-                            &Some(l.clone()),
-                            std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
-                        )
-                    })
-                    .or_else(|| {
-                        LayoutInfo::from_config(
-                            &config_options.layout_dir,
-                            &config_options.default_layout,
-                        )
-                    }),
+                layout: if let Some(layout_string) = &cli_args.layout_string {
+                    Some(LayoutInfo::Stringified(layout_string.clone()))
+                } else {
+                    cli_args
+                        .layout
+                        .as_ref()
+                        .and_then(|l| {
+                            LayoutInfo::from_cli(
+                                &config_options.layout_dir,
+                                &Some(l.clone()),
+                                std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+                            )
+                        })
+                        .or_else(|| {
+                            LayoutInfo::from_config(
+                                &config_options.layout_dir,
+                                &config_options.default_layout,
+                            )
+                        })
+                },
                 terminal_window_size: full_screen_ws,
                 data_dir: cli_args.data_dir.clone(),
                 is_debug: cli_args.debug,

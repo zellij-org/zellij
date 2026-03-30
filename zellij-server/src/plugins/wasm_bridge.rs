@@ -287,7 +287,7 @@ impl WasmBridge {
         skip_cache: bool,
         client_id: Option<ClientId>,
     ) -> Result<(PluginId, ClientId)> {
-        let err_context = move || format!("failed to load plugin");
+        let _err_context = move || format!("failed to load plugin");
 
         let client_id = client_id
             .and_then(|client_id| {
@@ -321,9 +321,22 @@ impl WasmBridge {
 
         match run {
             Some(run) => {
-                let plugin = PluginConfig::from_run_plugin(run)
-                    .with_context(|| format!("failed to resolve plugin {run:?}"))
-                    .with_context(err_context)?;
+                let plugin = match PluginConfig::from_run_plugin(run) {
+                    Some(plugin) => plugin,
+                    None => {
+                        self.next_plugin_id += 1;
+                        let mut loading_indication =
+                            LoadingIndication::new(run.location.to_string());
+                        handle_plugin_loading_failure(
+                            &self.senders,
+                            plugin_id,
+                            &mut loading_indication,
+                            format!("Failed to resolve plugin: {}", run.location),
+                            Some(client_id),
+                        );
+                        return Ok((plugin_id, client_id));
+                    },
+                };
                 let plugin_name = run.location.to_string();
 
                 self.cached_events_for_pending_plugins
