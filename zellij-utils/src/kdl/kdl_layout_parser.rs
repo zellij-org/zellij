@@ -2505,9 +2505,23 @@ impl<'a> KdlLayoutParser<'a> {
             let layout_has_hide_floating =
                 kdl_get_bool_property_or_child_value!(layout_node, "hide_floating_panes").is_some();
 
-            if layout_has_tab_name || layout_has_split_direction || layout_has_hide_floating {
+            if layout_has_tab_name {
                 return Err(ConfigError::new_layout_kdl_error(
-                    "Tab properties on the layout node can only be used when there are no explicit tab nodes".into(),
+                    "The 'name' property on the layout node is treated as a tab name and cannot be used when there are explicit tab nodes. To name individual tabs, use: tab name=\"my-tab\" { ... }".into(),
+                    layout_node.span().offset(),
+                    layout_node.span().len(),
+                ));
+            }
+            if layout_has_split_direction {
+                return Err(ConfigError::new_layout_kdl_error(
+                    "The 'split_direction' property on the layout node is treated as a tab property and cannot be used when there are explicit tab nodes. To set split direction, place it on individual tab nodes: tab split_direction=\"vertical\" { ... }".into(),
+                    layout_node.span().offset(),
+                    layout_node.span().len(),
+                ));
+            }
+            if layout_has_hide_floating {
+                return Err(ConfigError::new_layout_kdl_error(
+                    "The 'hide_floating_panes' property on the layout node is treated as a tab property and cannot be used when there are explicit tab nodes. To hide floating panes, place it on individual tab nodes: tab hide_floating_panes=true { ... }".into(),
                     layout_node.span().offset(),
                     layout_node.span().len(),
                 ));
