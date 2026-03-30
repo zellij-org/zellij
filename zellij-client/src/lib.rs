@@ -302,6 +302,23 @@ fn spawn_web_server(_cli_args: &CliArgs) -> Result<String, String> {
     Ok("".to_owned())
 }
 
+fn check_ipc_pipe_length(ipc_pipe: &Path) {
+    use zellij_utils::consts::ZELLIJ_SOCK_MAX_LENGTH;
+    let path_len = ipc_pipe.as_os_str().len();
+    if path_len >= ZELLIJ_SOCK_MAX_LENGTH {
+        eprintln!(
+            "Error: the IPC socket path is too long ({} bytes, max {}):\n  {}\n\n\
+             This is usually caused by a long $TMPDIR path.\n\
+             To fix this, set a shorter socket directory, eg.:\n  \
+             ZELLIJ_SOCKET_DIR=/tmp/zellij zellij",
+            path_len,
+            ZELLIJ_SOCK_MAX_LENGTH - 1,
+            ipc_pipe.display()
+        );
+        std::process::exit(1);
+    }
+}
+
 /// Spawn the Zellij server process.
 ///
 /// On Unix the server daemonizes (double-fork) inside start_server(), so
@@ -757,6 +774,7 @@ pub fn start_client(
         std::fs::create_dir_all(&sock_dir).unwrap();
         set_permissions(&sock_dir, 0o700).unwrap();
         sock_dir.push(envs::get_session_name().unwrap());
+        check_ipc_pipe_length(&sock_dir);
         sock_dir
     };
 
@@ -1293,6 +1311,7 @@ pub fn start_server_detached(
         std::fs::create_dir_all(&sock_dir).unwrap();
         set_permissions(&sock_dir, 0o700).unwrap();
         sock_dir.push(envs::get_session_name().unwrap());
+        check_ipc_pipe_length(&sock_dir);
         sock_dir
     };
 
