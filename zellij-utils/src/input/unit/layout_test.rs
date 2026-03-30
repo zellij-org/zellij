@@ -2341,7 +2341,7 @@ fn layout_node_with_multiple_tab_properties() {
 }
 
 #[test]
-fn layout_node_with_tab_properties_and_explicit_tabs_errors() {
+fn layout_node_with_name_and_explicit_tabs_errors() {
     let kdl_layout = r#"
         layout name="test" {
             tab {
@@ -2355,7 +2355,45 @@ fn layout_node_with_tab_properties_and_explicit_tabs_errors() {
     assert!(layout.is_err());
     let error_message = format!("{:?}", layout.unwrap_err());
     assert!(error_message.contains(
-        "Tab properties on the layout node can only be used when there are no explicit tab nodes"
+        "name' property on the layout node is treated as a tab name and cannot be used when there are explicit tab nodes"
+    ));
+}
+
+#[test]
+fn layout_node_with_split_direction_and_explicit_tabs_errors() {
+    let kdl_layout = r#"
+        layout split_direction="vertical" {
+            tab {
+                pane
+            }
+        }
+    "#;
+
+    let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None);
+
+    assert!(layout.is_err());
+    let error_message = format!("{:?}", layout.unwrap_err());
+    assert!(error_message.contains(
+        "split_direction' property on the layout node is treated as a tab property and cannot be used when there are explicit tab nodes"
+    ));
+}
+
+#[test]
+fn layout_node_with_hide_floating_panes_and_explicit_tabs_errors() {
+    let kdl_layout = r#"
+        layout hide_floating_panes=true {
+            tab {
+                pane
+            }
+        }
+    "#;
+
+    let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None);
+
+    assert!(layout.is_err());
+    let error_message = format!("{:?}", layout.unwrap_err());
+    assert!(error_message.contains(
+        "hide_floating_panes' property on the layout node is treated as a tab property and cannot be used when there are explicit tab nodes"
     ));
 }
 
