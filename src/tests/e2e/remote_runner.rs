@@ -17,7 +17,7 @@ use std::path::Path;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-const ZELLIJ_EXECUTABLE_LOCATION: &str = "/usr/src/zellij/x86_64-unknown-linux-musl/release/zellij";
+const ZELLIJ_EXECUTABLE_LOCATION: &str = "/usr/src/zellij/zellij";
 const SET_ENV_VARIABLES: &str = "EDITOR=/usr/bin/vi";
 const ZELLIJ_CONFIG_PATH: &str = "/usr/src/zellij/fixtures/configs";
 const ZELLIJ_CONFIG_DIRS_PATH: &str = "/usr/src/zellij/fixtures/config-dirs";
@@ -74,6 +74,13 @@ fn stop_zellij(channel: &mut ssh2::Channel) {
         .unwrap();
     channel
         .write_all(b"rm -rf ~/.cache/zellij/permissions.kdl\n")
+        .unwrap();
+    // create an arch-independent symlink so the binary path in snapshots is stable across
+    // x86_64 (CI) and aarch64 (Apple Silicon local dev)
+    channel
+        .write_all(
+            b"ln -sf /usr/src/zellij/$(uname -m)-unknown-linux-musl/release/zellij /usr/src/zellij/zellij\n",
+        )
         .unwrap();
 }
 
@@ -431,13 +438,15 @@ impl RemoteTerminal {
             .unwrap();
     }
     pub fn attach_to_original_session(&mut self) {
-        let mut channel = self.channel.lock().unwrap();
-        channel
-            .write_all(
-                format!("{} attach {}\n", ZELLIJ_EXECUTABLE_LOCATION, SESSION_NAME).as_bytes(),
-            )
-            .unwrap();
-        channel.flush().unwrap();
+        {
+            let mut channel = self.channel.lock().unwrap();
+            channel
+                .write_all(
+                    format!("{} attach {}\n", ZELLIJ_EXECUTABLE_LOCATION, SESSION_NAME).as_bytes(),
+                )
+                .unwrap();
+            channel.flush().unwrap();
+        } // release mutex before sleeping so the reader thread can process Zellij's startup output
         std::thread::sleep(std::time::Duration::from_secs(1)); // wait until Zellij stops parsing startup ANSI codes from the terminal STDIN
     }
     pub fn run_zellij_action(&mut self, action_and_arguments: &str) {
@@ -709,7 +718,7 @@ impl RemoteRunner {
         let sess = ssh_connect();
         let mut channel = sess.channel_session().unwrap();
         setup_remote_environment(&mut channel, win_size);
-        start_zellij(&mut channel);
+        stop_zellij(&mut channel);
     }
     pub fn new_with_session_name(win_size: Size, session_name: &str, mirrored: bool) -> Self {
         // notice that this method does not have a timeout, so use with caution!

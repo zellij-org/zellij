@@ -296,6 +296,7 @@ pub fn scrolling_inside_a_pane() {
                     let mut step_is_complete = false;
                     if remote_terminal.cursor_position_is(63, 21)
                         && remote_terminal.snapshot_contains("line21")
+                        && remote_terminal.status_bar_appears()
                     {
                         // all lines have been written to the pane
                         remote_terminal.send_key(&SCROLL_MODE);
@@ -1135,8 +1136,11 @@ pub fn detach_and_attach_session() {
                 name: "Reattach session",
                 instruction: |mut remote_terminal: RemoteTerminal| -> bool {
                     let mut step_is_complete = false;
-                    if !remote_terminal.status_bar_appears() {
-                        // we don't see the toolbar, so we can assume we've already detached
+                    if !remote_terminal.status_bar_appears()
+                        && remote_terminal.snapshot_contains("Bye from Zellij!")
+                    {
+                        // we don't see the toolbar and Zellij's exit message is visible,
+                        // so Zellij has fully exited and the server is ready to accept connections
                         remote_terminal.attach_to_original_session();
                         step_is_complete = true;
                     }
@@ -2474,7 +2478,10 @@ pub fn send_blocking_command_through_the_cli() {
             name: "Verify CLI returned with proper exit status after command completed",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
+                // wait until echo $? is visible in history AND cursor is back at a blank prompt,
+                // which means the command has actually executed (not just been typed)
                 if remote_terminal.snapshot_contains("echo $?")
+                    && remote_terminal.snapshot_contains("$ \u{2588}")
                     && remote_terminal.status_bar_appears()
                 {
                     step_is_complete = true
