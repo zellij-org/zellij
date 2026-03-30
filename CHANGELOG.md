@@ -15,6 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: normalize temp socket paths in windows (https://github.com/zellij-org/zellij/pull/4923)
 * fix: compilation warnings in windows (https://github.com/zellij-org/zellij/pull/4890)
 * feat: add --layout-string to allow for in-line layouts, add --tab-id to all new-pane CLI commands (https://github.com/zellij-org/zellij/pull/4956)
+* fix: proper error on socket paths that are too long (https://github.com/zellij-org/zellij/pull/4957)
 
 ## [0.44.0] - 2026-03-23
 * fix: meta key handling in web client (https://github.com/zellij-org/zellij/pull/4376)
