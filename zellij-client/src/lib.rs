@@ -782,8 +782,7 @@ pub fn start_client(
                             LayoutInfo::from_cli(
                                 &config_options.layout_dir,
                                 &Some(l.clone()),
-                                std::env::current_dir()
-                                    .unwrap_or_else(|_| PathBuf::from(".")),
+                                std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
                             )
                         })
                         .or_else(|| {

@@ -521,6 +521,14 @@ pub enum Sessions {
         /// mouse)
         #[clap(short, long, value_parser)]
         borderless: Option<bool>,
+        /// Target a specific tab by ID
+        #[clap(
+            long,
+            value_parser,
+            conflicts_with("near-current-pane"),
+            conflicts_with("in-place")
+        )]
+        tab_id: Option<usize>,
     },
     /// Load a plugin
     /// Returns: Created pane ID (format: plugin_<id>)
@@ -581,6 +589,9 @@ pub enum Sessions {
         /// mouse)
         #[clap(short, long, value_parser)]
         borderless: Option<bool>,
+        /// Target a specific tab by ID
+        #[clap(long, value_parser, conflicts_with("in-place"))]
+        tab_id: Option<usize>,
     },
     /// Edit file with default $EDITOR / $VISUAL
     /// Returns: Created pane ID (format: terminal_<id>)
@@ -647,6 +658,14 @@ pub enum Sessions {
         /// mouse)
         #[clap(short, long, value_parser)]
         borderless: Option<bool>,
+        /// Target a specific tab by ID
+        #[clap(
+            long,
+            value_parser,
+            conflicts_with("near-current-pane"),
+            conflicts_with("in-place")
+        )]
+        tab_id: Option<usize>,
     },
     ConvertConfig {
         old_config_file: PathBuf,
@@ -1016,6 +1035,14 @@ pub enum CliAction {
         /// mouse)
         #[clap(long, value_parser)]
         borderless: Option<bool>,
+        /// Target a specific tab by ID
+        #[clap(
+            long,
+            value_parser,
+            conflicts_with("near-current-pane"),
+            conflicts_with("in-place")
+        )]
+        tab_id: Option<usize>,
     },
     /// Open the specified file in a new zellij pane with your default EDITOR
     /// Returns: Created pane ID (format: terminal_<id>)
@@ -1081,6 +1108,14 @@ pub enum CliAction {
         /// mouse)
         #[clap(short, long, value_parser)]
         borderless: Option<bool>,
+        /// Target a specific tab by ID
+        #[clap(
+            long,
+            value_parser,
+            conflicts_with("near-current-pane"),
+            conflicts_with("in-place")
+        )]
+        tab_id: Option<usize>,
     },
     /// Switch input mode of all connected clients [locked|pane|tab|resize|move|search|session]
     SwitchMode {
@@ -1302,7 +1337,11 @@ pub enum CliAction {
     /// Override the layout of the active tab
     OverrideLayout {
         /// Path to the layout file
-        #[clap(value_parser, required_unless_present = "layout-string", conflicts_with = "layout-string")]
+        #[clap(
+            value_parser,
+            required_unless_present = "layout-string",
+            conflicts_with = "layout-string"
+        )]
         layout: Option<PathBuf>,
 
         /// Raw KDL layout string to use directly (instead of a layout file path)
@@ -1355,6 +1394,9 @@ pub enum CliAction {
         configuration: Option<PluginUserConfiguration>,
         #[clap(short, long, value_parser)]
         skip_plugin_cache: bool,
+        /// Target a specific tab by ID
+        #[clap(long, value_parser, conflicts_with("in-place"))]
+        tab_id: Option<usize>,
     },
     /// Returns: Plugin pane ID (format: plugin_<id>)
     LaunchPlugin {
@@ -1376,6 +1418,9 @@ pub enum CliAction {
         configuration: Option<PluginUserConfiguration>,
         #[clap(short, long, value_parser)]
         skip_plugin_cache: bool,
+        /// Target a specific tab by ID
+        #[clap(long, value_parser, conflicts_with("in-place"))]
+        tab_id: Option<usize>,
     },
     RenameSession {
         name: String,

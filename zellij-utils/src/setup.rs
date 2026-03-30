@@ -895,7 +895,10 @@ mod setup_test {
         };
         let (_, layout_info, _, _, _) = Setup::from_cli_args(&cli_args).unwrap();
         let Some(LayoutInfo::Stringified(content)) = layout_info else {
-            panic!("layout info should be Stringified variant, got: {:#?}", layout_info);
+            panic!(
+                "layout info should be Stringified variant, got: {:#?}",
+                layout_info
+            );
         };
         assert_eq!(content, layout_kdl);
     }

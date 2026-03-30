@@ -232,6 +232,7 @@ pub enum Action {
         command: Option<RunCommandAction>,
         unblock_condition: Option<UnblockCondition>,
         near_current_pane: bool,
+        tab_id: Option<usize>,
     },
     /// Open the file in a new pane using the default editor
     /// Returns: Created pane ID (format: terminal_<id>)
@@ -244,6 +245,7 @@ pub enum Action {
         start_suppressed: bool,
         coordinates: Option<FloatingPaneCoordinates>,
         near_current_pane: bool,
+        tab_id: Option<usize>,
     },
     /// Open a new floating pane
     /// Returns: Created pane ID (format: terminal_<id> or plugin_<id>)
@@ -252,6 +254,7 @@ pub enum Action {
         pane_name: Option<String>,
         coordinates: Option<FloatingPaneCoordinates>,
         near_current_pane: bool,
+        tab_id: Option<usize>,
     },
     /// Open a new tiled (embedded, non-floating) pane
     /// Returns: Created pane ID (format: terminal_<id> or plugin_<id>)
@@ -261,6 +264,7 @@ pub enum Action {
         pane_name: Option<String>,
         near_current_pane: bool,
         borderless: Option<bool>,
+        tab_id: Option<usize>,
     },
     /// Open a new pane in place of the focused one, suppressing it instead
     /// Returns: Created pane ID (format: terminal_<id> or plugin_<id>)
@@ -270,12 +274,14 @@ pub enum Action {
         near_current_pane: bool,
         pane_id_to_replace: Option<PaneId>,
         close_replaced_pane: bool,
+        tab_id: Option<usize>,
     },
     /// Returns: Created pane ID (format: terminal_<id> or plugin_<id>)
     NewStackedPane {
         command: Option<RunCommandAction>,
         pane_name: Option<String>,
         near_current_pane: bool,
+        tab_id: Option<usize>,
     },
     /// Embed focused pane in tab if floating or float focused pane if embedded
     TogglePaneEmbedOrFloating,
@@ -363,6 +369,7 @@ pub enum Action {
         should_open_in_place: bool,
         close_replaced_pane: bool,
         skip_cache: bool,
+        tab_id: Option<usize>,
     },
     /// Returns: Plugin pane ID (format: plugin_<id>)
     LaunchPlugin {
@@ -372,6 +379,7 @@ pub enum Action {
         close_replaced_pane: bool,
         skip_cache: bool,
         cwd: Option<PathBuf>,
+        tab_id: Option<usize>,
     },
     MouseEvent {
         event: MouseEvent,
@@ -416,6 +424,7 @@ pub enum Action {
         pane_name: Option<String>,
         skip_cache: bool,
         cwd: Option<PathBuf>,
+        tab_id: Option<usize>,
     },
     /// Returns: Created pane ID (format: plugin_<id>)
     NewFloatingPluginPane {
@@ -424,6 +433,7 @@ pub enum Action {
         skip_cache: bool,
         cwd: Option<PathBuf>,
         coordinates: Option<FloatingPaneCoordinates>,
+        tab_id: Option<usize>,
     },
     /// Returns: Created pane ID (format: plugin_<id>)
     NewInPlacePluginPane {
@@ -431,6 +441,7 @@ pub enum Action {
         pane_name: Option<String>,
         skip_cache: bool,
         close_replaced_pane: bool,
+        tab_id: Option<usize>,
     },
     StartOrReloadPlugin {
         plugin: RunPluginOrAlias,
@@ -1016,6 +1027,7 @@ impl Action {
                 unblock_condition,
                 near_current_pane,
                 borderless,
+                tab_id,
             } => {
                 let current_dir = get_current_dir();
                 // cwd should only be specified in a plugin alias if it was explicitly given to us,
@@ -1087,6 +1099,7 @@ impl Action {
                         command,
                         unblock_condition,
                         near_current_pane,
+                        tab_id,
                     }])
                 } else if let Some(plugin) = plugin {
                     let plugin = match RunPluginLocation::parse(&plugin, cwd.clone()) {
@@ -1118,6 +1131,7 @@ impl Action {
                             coordinates: FloatingPaneCoordinates::new(
                                 x, y, width, height, pinned, borderless,
                             ),
+                            tab_id,
                         }])
                     } else if in_place {
                         Ok(vec![Action::NewInPlacePluginPane {
@@ -1125,6 +1139,7 @@ impl Action {
                             pane_name: name,
                             skip_cache: skip_plugin_cache,
                             close_replaced_pane,
+                            tab_id,
                         }])
                     } else {
                         // it is intentional that a new tiled plugin pane cannot include a
@@ -1140,6 +1155,7 @@ impl Action {
                             pane_name: name,
                             skip_cache: skip_plugin_cache,
                             cwd,
+                            tab_id,
                         }])
                     }
                 } else if !command.is_empty() {
@@ -1164,6 +1180,7 @@ impl Action {
                                 x, y, width, height, pinned, borderless,
                             ),
                             near_current_pane,
+                            tab_id,
                         }])
                     } else if in_place {
                         Ok(vec![Action::NewInPlacePane {
@@ -1172,12 +1189,14 @@ impl Action {
                             near_current_pane,
                             pane_id_to_replace: None, // TODO: support this
                             close_replaced_pane,
+                            tab_id,
                         }])
                     } else if stacked {
                         Ok(vec![Action::NewStackedPane {
                             command: Some(run_command_action),
                             pane_name: name,
                             near_current_pane,
+                            tab_id,
                         }])
                     } else {
                         Ok(vec![Action::NewTiledPane {
@@ -1186,6 +1205,7 @@ impl Action {
                             pane_name: name,
                             near_current_pane,
                             borderless,
+                            tab_id,
                         }])
                     }
                 } else {
@@ -1197,6 +1217,7 @@ impl Action {
                                 x, y, width, height, pinned, borderless,
                             ),
                             near_current_pane,
+                            tab_id,
                         }])
                     } else if in_place {
                         Ok(vec![Action::NewInPlacePane {
@@ -1205,12 +1226,14 @@ impl Action {
                             near_current_pane,
                             pane_id_to_replace: None, // TODO: support this
                             close_replaced_pane,
+                            tab_id,
                         }])
                     } else if stacked {
                         Ok(vec![Action::NewStackedPane {
                             command: None,
                             pane_name: name,
                             near_current_pane,
+                            tab_id,
                         }])
                     } else {
                         Ok(vec![Action::NewTiledPane {
@@ -1219,6 +1242,7 @@ impl Action {
                             pane_name: name,
                             near_current_pane,
                             borderless,
+                            tab_id,
                         }])
                     }
                 }
@@ -1238,6 +1262,7 @@ impl Action {
                 pinned,
                 near_current_pane,
                 borderless,
+                tab_id,
             } => {
                 let mut file = file;
                 let current_dir = get_current_dir();
@@ -1261,6 +1286,7 @@ impl Action {
                         x, y, width, height, pinned, borderless,
                     ),
                     near_current_pane,
+                    tab_id,
                 }])
             },
             CliAction::SwitchMode { input_mode } => Ok(vec![Action::SwitchToMode { input_mode }]),
@@ -1536,7 +1562,11 @@ impl Action {
                             None,
                         )
                     } else {
-                        layout_source_name = layout_path.as_path().as_os_str().to_string_lossy().to_string();
+                        layout_source_name = layout_path
+                            .as_path()
+                            .as_os_str()
+                            .to_string_lossy()
+                            .to_string();
                         Layout::stringified_from_path_or_default(Some(&layout_path), layout_dir)
                             .map_err(|e| format!("Failed to load layout: {}", e))?
                     };
@@ -1662,18 +1692,19 @@ impl Action {
 
                 // Load layout from string, URL, or file path
                 let layout_source_name;
-                let (path_to_raw_layout, raw_layout, swap_layouts) = if let Some(raw) = layout_string {
+                let (path_to_raw_layout, raw_layout, swap_layouts) = if let Some(raw) =
+                    layout_string
+                {
                     layout_source_name = "layout-string".to_owned();
                     (layout_source_name.clone(), raw, None)
                 } else if let Some(layout_path) = &layout {
-                    if let Some(layout_url) =
-                        layout_path.to_str().and_then(|l| {
-                            if l.starts_with("http://") || l.starts_with("https://") {
-                                Some(l)
-                            } else {
-                                None
-                            }
-                        }) {
+                    if let Some(layout_url) = layout_path.to_str().and_then(|l| {
+                        if l.starts_with("http://") || l.starts_with("https://") {
+                            Some(l)
+                        } else {
+                            None
+                        }
+                    }) {
                         layout_source_name = layout_url.to_owned();
                         (
                             layout_url.to_owned(),
@@ -1682,7 +1713,11 @@ impl Action {
                             None,
                         )
                     } else {
-                        layout_source_name = layout_path.as_path().as_os_str().to_string_lossy().to_string();
+                        layout_source_name = layout_path
+                            .as_path()
+                            .as_os_str()
+                            .to_string_lossy()
+                            .to_string();
                         Layout::stringified_from_path_or_default(Some(layout_path), layout_dir)
                             .map_err(|e| format!("Failed to load layout: {}", e))?
                     }
@@ -1700,10 +1735,8 @@ impl Action {
                 .map_err(|e| {
                     let stringified_error = match e {
                         ConfigError::KdlError(kdl_error) => {
-                            let error = kdl_error.add_src(
-                                layout_source_name.clone(),
-                                String::from(raw_layout),
-                            );
+                            let error = kdl_error
+                                .add_src(layout_source_name.clone(), String::from(raw_layout));
                             let report: Report = error.into();
                             format!("{:?}", report)
                         },
@@ -1774,6 +1807,7 @@ impl Action {
                 move_to_focused_tab,
                 configuration,
                 skip_plugin_cache,
+                tab_id,
             } => {
                 let current_dir = get_current_dir();
                 let run_plugin_or_alias = RunPluginOrAlias::from_url(
@@ -1789,6 +1823,7 @@ impl Action {
                     should_open_in_place: in_place,
                     close_replaced_pane,
                     skip_cache: skip_plugin_cache,
+                    tab_id,
                 }])
             },
             CliAction::LaunchPlugin {
@@ -1798,6 +1833,7 @@ impl Action {
                 close_replaced_pane,
                 configuration,
                 skip_plugin_cache,
+                tab_id,
             } => {
                 let current_dir = get_current_dir();
                 let run_plugin_or_alias = RunPluginOrAlias::from_url(
@@ -1813,6 +1849,7 @@ impl Action {
                     close_replaced_pane,
                     skip_cache: skip_plugin_cache,
                     cwd: Some(current_dir),
+                    tab_id,
                 }])
             },
             CliAction::RenameSession { name } => Ok(vec![Action::RenameSession { name }]),
@@ -3452,7 +3489,10 @@ mod tests {
         assert_eq!(actions.len(), 1);
         match &actions[0] {
             Action::SwitchSession { layout, .. } => {
-                assert!(matches!(layout, Some(crate::data::LayoutInfo::Stringified(_))));
+                assert!(matches!(
+                    layout,
+                    Some(crate::data::LayoutInfo::Stringified(_))
+                ));
             },
             _ => panic!("Expected SwitchSession action"),
         }
@@ -3471,5 +3511,363 @@ mod tests {
         };
         let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
         assert!(result.is_err());
+    }
+
+    // Tab-targeting for pane creation commands
+
+    #[test]
+    fn test_new_pane_tiled_with_tab_id() {
+        let cli_action = CliAction::NewPane {
+            direction: Some(Direction::Right),
+            command: vec![],
+            plugin: None,
+            cwd: None,
+            floating: false,
+            in_place: false,
+            close_replaced_pane: false,
+            name: None,
+            close_on_exit: false,
+            start_suspended: false,
+            configuration: None,
+            skip_plugin_cache: false,
+            x: None,
+            y: None,
+            width: None,
+            height: None,
+            pinned: None,
+            stacked: false,
+            blocking: false,
+            block_until_exit_success: false,
+            block_until_exit_failure: false,
+            block_until_exit: false,
+            unblock_condition: None,
+            near_current_pane: false,
+            borderless: None,
+            tab_id: Some(3),
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::NewTiledPane { tab_id, .. } => {
+                assert_eq!(*tab_id, Some(3));
+            },
+            _ => panic!("Expected NewTiledPane action"),
+        }
+    }
+
+    #[test]
+    fn test_new_pane_tiled_without_tab_id() {
+        let cli_action = CliAction::NewPane {
+            direction: None,
+            command: vec![],
+            plugin: None,
+            cwd: None,
+            floating: false,
+            in_place: false,
+            close_replaced_pane: false,
+            name: None,
+            close_on_exit: false,
+            start_suspended: false,
+            configuration: None,
+            skip_plugin_cache: false,
+            x: None,
+            y: None,
+            width: None,
+            height: None,
+            pinned: None,
+            stacked: false,
+            blocking: false,
+            block_until_exit_success: false,
+            block_until_exit_failure: false,
+            block_until_exit: false,
+            unblock_condition: None,
+            near_current_pane: false,
+            borderless: None,
+            tab_id: None,
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::NewTiledPane { tab_id, .. } => {
+                assert_eq!(*tab_id, None);
+            },
+            _ => panic!("Expected NewTiledPane action"),
+        }
+    }
+
+    #[test]
+    fn test_new_pane_floating_with_tab_id() {
+        let cli_action = CliAction::NewPane {
+            direction: None,
+            command: vec![],
+            plugin: None,
+            cwd: None,
+            floating: true,
+            in_place: false,
+            close_replaced_pane: false,
+            name: None,
+            close_on_exit: false,
+            start_suspended: false,
+            configuration: None,
+            skip_plugin_cache: false,
+            x: None,
+            y: None,
+            width: None,
+            height: None,
+            pinned: None,
+            stacked: false,
+            blocking: false,
+            block_until_exit_success: false,
+            block_until_exit_failure: false,
+            block_until_exit: false,
+            unblock_condition: None,
+            near_current_pane: false,
+            borderless: None,
+            tab_id: Some(5),
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::NewFloatingPane { tab_id, .. } => {
+                assert_eq!(*tab_id, Some(5));
+            },
+            _ => panic!("Expected NewFloatingPane action"),
+        }
+    }
+
+    #[test]
+    fn test_new_pane_stacked_with_tab_id() {
+        let cli_action = CliAction::NewPane {
+            direction: None,
+            command: vec!["ls".into()],
+            plugin: None,
+            cwd: None,
+            floating: false,
+            in_place: false,
+            close_replaced_pane: false,
+            name: None,
+            close_on_exit: false,
+            start_suspended: false,
+            configuration: None,
+            skip_plugin_cache: false,
+            x: None,
+            y: None,
+            width: None,
+            height: None,
+            pinned: None,
+            stacked: true,
+            blocking: false,
+            block_until_exit_success: false,
+            block_until_exit_failure: false,
+            block_until_exit: false,
+            unblock_condition: None,
+            near_current_pane: false,
+            borderless: None,
+            tab_id: Some(1),
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::NewStackedPane { tab_id, .. } => {
+                assert_eq!(*tab_id, Some(1));
+            },
+            _ => panic!("Expected NewStackedPane action"),
+        }
+    }
+
+    #[test]
+    fn test_new_pane_blocking_with_tab_id() {
+        let cli_action = CliAction::NewPane {
+            direction: None,
+            command: vec!["ls".into()],
+            plugin: None,
+            cwd: None,
+            floating: false,
+            in_place: false,
+            close_replaced_pane: false,
+            name: None,
+            close_on_exit: false,
+            start_suspended: false,
+            configuration: None,
+            skip_plugin_cache: false,
+            x: None,
+            y: None,
+            width: None,
+            height: None,
+            pinned: None,
+            stacked: false,
+            blocking: true,
+            block_until_exit_success: false,
+            block_until_exit_failure: false,
+            block_until_exit: false,
+            unblock_condition: None,
+            near_current_pane: false,
+            borderless: None,
+            tab_id: Some(2),
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::NewBlockingPane { tab_id, .. } => {
+                assert_eq!(*tab_id, Some(2));
+            },
+            _ => panic!("Expected NewBlockingPane action"),
+        }
+    }
+
+    #[test]
+    fn test_edit_with_tab_id() {
+        let cli_action = CliAction::Edit {
+            file: PathBuf::from("/tmp/test.rs"),
+            direction: None,
+            line_number: None,
+            floating: false,
+            in_place: false,
+            close_replaced_pane: false,
+            cwd: None,
+            x: None,
+            y: None,
+            width: None,
+            height: None,
+            pinned: None,
+            near_current_pane: false,
+            borderless: None,
+            tab_id: Some(4),
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::EditFile { tab_id, .. } => {
+                assert_eq!(*tab_id, Some(4));
+            },
+            _ => panic!("Expected EditFile action"),
+        }
+    }
+
+    #[test]
+    fn test_edit_without_tab_id() {
+        let cli_action = CliAction::Edit {
+            file: PathBuf::from("/tmp/test.rs"),
+            direction: None,
+            line_number: None,
+            floating: false,
+            in_place: false,
+            close_replaced_pane: false,
+            cwd: None,
+            x: None,
+            y: None,
+            width: None,
+            height: None,
+            pinned: None,
+            near_current_pane: false,
+            borderless: None,
+            tab_id: None,
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::EditFile { tab_id, .. } => {
+                assert_eq!(*tab_id, None);
+            },
+            _ => panic!("Expected EditFile action"),
+        }
+    }
+
+    #[test]
+    fn test_new_pane_plugin_tiled_with_tab_id() {
+        let cli_action = CliAction::NewPane {
+            direction: None,
+            command: vec![],
+            plugin: Some("zellij:strider".into()),
+            cwd: None,
+            floating: false,
+            in_place: false,
+            close_replaced_pane: false,
+            name: None,
+            close_on_exit: false,
+            start_suspended: false,
+            configuration: None,
+            skip_plugin_cache: false,
+            x: None,
+            y: None,
+            width: None,
+            height: None,
+            pinned: None,
+            stacked: false,
+            blocking: false,
+            block_until_exit_success: false,
+            block_until_exit_failure: false,
+            block_until_exit: false,
+            unblock_condition: None,
+            near_current_pane: false,
+            borderless: None,
+            tab_id: Some(2),
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::NewTiledPluginPane { tab_id, .. } => {
+                assert_eq!(*tab_id, Some(2));
+            },
+            _ => panic!("Expected NewTiledPluginPane action"),
+        }
+    }
+
+    #[test]
+    fn test_new_pane_plugin_floating_with_tab_id() {
+        let cli_action = CliAction::NewPane {
+            direction: None,
+            command: vec![],
+            plugin: Some("zellij:strider".into()),
+            cwd: None,
+            floating: true,
+            in_place: false,
+            close_replaced_pane: false,
+            name: None,
+            close_on_exit: false,
+            start_suspended: false,
+            configuration: None,
+            skip_plugin_cache: false,
+            x: None,
+            y: None,
+            width: None,
+            height: None,
+            pinned: None,
+            stacked: false,
+            blocking: false,
+            block_until_exit_success: false,
+            block_until_exit_failure: false,
+            block_until_exit: false,
+            unblock_condition: None,
+            near_current_pane: false,
+            borderless: None,
+            tab_id: Some(1),
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::NewFloatingPluginPane { tab_id, .. } => {
+                assert_eq!(*tab_id, Some(1));
+            },
+            _ => panic!("Expected NewFloatingPluginPane action"),
+        }
     }
 }

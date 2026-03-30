@@ -51,6 +51,7 @@ fn main() {
             block_until_exit,
             near_current_pane,
             borderless,
+            tab_id,
         })) = opts.command
         {
             let cwd = cwd.or_else(|| std::env::current_dir().ok());
@@ -93,6 +94,7 @@ fn main() {
                 unblock_condition,
                 near_current_pane,
                 borderless,
+                tab_id,
             };
             commands::send_action_to_session(command_cli_action, opts.session, config);
             std::process::exit(0);
@@ -110,6 +112,7 @@ fn main() {
             height,
             pinned,
             borderless,
+            tab_id,
         })) = opts.command
         {
             let cwd = None;
@@ -142,6 +145,7 @@ fn main() {
                 unblock_condition,
                 near_current_pane: false,
                 borderless,
+                tab_id,
             };
             commands::send_action_to_session(command_cli_action, opts.session, config);
             std::process::exit(0);
@@ -161,6 +165,7 @@ fn main() {
             pinned,
             near_current_pane,
             borderless,
+            tab_id,
         })) = opts.command
         {
             let mut file = file;
@@ -185,6 +190,7 @@ fn main() {
                 pinned,
                 near_current_pane,
                 borderless,
+                tab_id,
             };
             commands::send_action_to_session(command_cli_action, opts.session, config);
             std::process::exit(0);
