@@ -2892,7 +2892,9 @@ pub fn override_layout_from_default_to_compact() {
         let last_snapshot = runner.take_snapshot_after(Step {
             name: "Wait for compact layout to appear",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
+                // wait for both the layout indicator and the session name to render
                 remote_terminal.snapshot_contains("NORMAL")
+                    && remote_terminal.snapshot_contains("e2e-test")
             },
         });
 
