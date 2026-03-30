@@ -306,7 +306,7 @@ fn read_from_channel(
                             let current_snapshot = take_snapshot(&mut terminal_output);
                             let mut last_snapshot = last_snapshot.lock().unwrap();
                             *cursor_coordinates.lock().unwrap() =
-                                terminal_output.cursor_coordinates().unwrap_or((0, 0));
+                                terminal_output.cursor_coordinates().map(|(x, y, _)| (x, y)).unwrap_or((0, 0));
                             *last_snapshot = current_snapshot;
                             should_sleep = true;
                         },
@@ -317,7 +317,7 @@ fn read_from_channel(
                             let current_snapshot = take_snapshot(&mut terminal_output);
                             let mut last_snapshot = last_snapshot.lock().unwrap();
                             *cursor_coordinates.lock().unwrap() =
-                                terminal_output.grid.cursor_coordinates().unwrap_or((0, 0));
+                                terminal_output.grid.cursor_coordinates().map(|(x, y, _)| (x, y)).unwrap_or((0, 0));
                             *last_snapshot = current_snapshot;
                             should_sleep = true;
                         },
@@ -326,7 +326,7 @@ fn read_from_channel(
                                 let current_snapshot = take_snapshot(&mut terminal_output);
                                 let mut last_snapshot = last_snapshot.lock().unwrap();
                                 *cursor_coordinates.lock().unwrap() =
-                                    terminal_output.cursor_coordinates().unwrap_or((0, 0));
+                                    terminal_output.cursor_coordinates().map(|(x, y, _)| (x, y)).unwrap_or((0, 0));
                                 *last_snapshot = current_snapshot;
                                 should_sleep = true;
                             } else if retries_left > 0 {
@@ -345,7 +345,9 @@ fn read_from_channel(
 
 pub fn take_snapshot(terminal_output: &mut TerminalPane) -> String {
     let output_lines = terminal_output.read_buffer_as_lines();
-    let cursor_coordinates = terminal_output.cursor_coordinates();
+    let cursor_coordinates = terminal_output
+        .cursor_coordinates()
+        .and_then(|(x, y, visible)| if visible { Some((x, y)) } else { None });
     let mut snapshot = String::new();
     for (line_index, line) in output_lines.iter().enumerate() {
         for (character_index, terminal_character) in line.iter().enumerate() {

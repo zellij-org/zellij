@@ -63,7 +63,10 @@ fn take_snapshot_and_cursor_coordinates(
     for &byte in ansi_instructions.as_bytes() {
         vte_parser.advance(grid, byte);
     }
-    (grid.cursor_coordinates(), format!("{:?}", grid))
+    let coords = grid
+        .cursor_coordinates()
+        .and_then(|(x, y, visible)| if visible { Some((x, y)) } else { None });
+    (coords, format!("{:?}", grid))
 }
 
 fn take_snapshots_and_cursor_coordinates_from_render_events<'a>(

@@ -990,7 +990,10 @@ fn take_snapshot_and_cursor_position(
     for &byte in ansi_instructions.as_bytes() {
         vte_parser.advance(&mut grid, byte);
     }
-    (format!("{:?}", grid), grid.cursor_coordinates())
+    let coords = grid
+        .cursor_coordinates()
+        .and_then(|(x, y, visible)| if visible { Some((x, y)) } else { None });
+    (format!("{:?}", grid), coords)
 }
 
 #[test]
