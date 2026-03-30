@@ -561,7 +561,6 @@ fn position_in_span(
     after_start && before_end
 }
 
-pub const MAX_MULTI_CURSORS: usize = 64;
 
 /// Coordinate group from the kitty multi-cursor protocol.
 #[derive(Clone, Debug, PartialEq)]
@@ -4207,7 +4206,12 @@ impl Perform for Grid {
                                     2 => {
                                         let c = &group[1..];
                                         for pair in c.chunks(2) {
-                                            if pair.len() == 2 && pair[0] > 0 && pair[1] > 0 {
+                                            if pair.len() == 2
+                                                && pair[0] > 0
+                                                && pair[1] > 0
+                                                && (pair[0] as usize) <= self.height
+                                                && (pair[1] as usize) <= self.width
+                                            {
                                                 coords.push(MultiCursorCoord::Point(pair[0], pair[1]));
                                             }
                                         }
@@ -4227,10 +4231,6 @@ impl Perform for Grid {
                                         }
                                     },
                                     _ => {},
-                                }
-                                if coords.len() >= MAX_MULTI_CURSORS {
-                                    coords.truncate(MAX_MULTI_CURSORS);
-                                    break;
                                 }
                             }
                             self.multi_cursor_state.shape = shape as u8;
