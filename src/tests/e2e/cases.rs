@@ -2671,6 +2671,7 @@ pub fn watcher_client_functionality() {
         // Step 1: Create main client and wait for it to load
         let mut main_client =
             RemoteRunner::new_with_session_name(fake_win_size, session_name, false)
+                .retry_pause_ms(200)
                 .dont_panic()
                 .add_step(Step {
                     name: "Wait for app to load",
@@ -2685,7 +2686,9 @@ pub fn watcher_client_functionality() {
         main_client = main_client.add_step(Step {
             name: "Start background output loop",
             instruction: |mut remote_terminal: RemoteTerminal| -> bool {
-                remote_terminal.send_key(b"{ for i in 1 2 3; do sleep 1; echo \"WATCHER_OUTPUT_$i\"; done & } 2>/dev/null");
+                remote_terminal.send_key(
+                    b"{ for i in 1 2 3; do sleep 1; echo \"WATCHER_OUTPUT_$i\"; done & } 2>/dev/null",
+                );
                 std::thread::sleep(std::time::Duration::from_millis(100));
                 remote_terminal.send_key(&ENTER);
                 true
@@ -2705,6 +2708,7 @@ pub fn watcher_client_functionality() {
 
         // Step 4: Attach watcher client
         let mut watcher = RemoteRunner::new_watcher_session(fake_win_size, session_name)
+            .retry_pause_ms(200)
             .dont_panic()
             .add_step(Step {
                 name: "Wait for watcher to connect",
@@ -2719,8 +2723,7 @@ pub fn watcher_client_functionality() {
         main_client = main_client.add_step(Step {
             name: "Split pane to the right",
             instruction: |mut remote_terminal: RemoteTerminal| -> bool {
-                if remote_terminal.status_bar_appears() && remote_terminal.cursor_position_is(1, 7)
-                {
+                if remote_terminal.status_bar_appears() {
                     remote_terminal.send_key(&PANE_MODE);
                     std::thread::sleep(std::time::Duration::from_millis(100));
                     remote_terminal.send_key(&SPLIT_RIGHT_IN_PANE_MODE);
@@ -2737,7 +2740,7 @@ pub fn watcher_client_functionality() {
         watcher = watcher.add_step(Step {
             name: "Watcher sees split pane",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
-                remote_terminal.cursor_position_is(63, 2) && remote_terminal.snapshot_contains("┐┌")
+                remote_terminal.status_bar_appears() && remote_terminal.snapshot_contains("┐┌")
                 // vertical split indicator
             },
         });

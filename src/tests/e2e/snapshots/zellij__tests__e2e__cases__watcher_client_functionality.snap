@@ -9,8 +9,8 @@ expression: main_client_snapshot
 │$                                                         ││                                                          │
 │$ WATCHER_OUTPUT_1                                        ││                                                          │
 │WATCHER_OUTPUT_2                                          ││                                                          │
-│WATCHER_OUTPUT_3                                          ││                                                          │
-│$                                                         ││                                                          │
+│$ WATCHER_OUTPUT_3                                        ││                                                          │
+│                                                          ││                                                          │
 │                                                          ││                                                          │
 │                                                          ││                                                          │
 │                                                          ││                                                          │

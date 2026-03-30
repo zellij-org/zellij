@@ -28,6 +28,7 @@ const CONNECTION_USERNAME: &str = "test";
 const CONNECTION_PASSWORD: &str = "test";
 const SESSION_NAME: &str = "e2e-test";
 const RETRIES: usize = 10;
+const CLEANUP_DONE_MARKER: &str = "__ZELLIJ_CLEANUP_DONE__";
 
 fn ssh_connect() -> ssh2::Session {
     let tcp = TcpStream::connect(CONNECTION_STRING).unwrap();
@@ -252,6 +253,26 @@ fn wait_for_startup(last_snapshot: &Arc<Mutex<String>>) {
             break; // timed out — let the test proceed and fail naturally
         }
         std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+}
+
+fn wait_for_shell_output(channel: &mut ssh2::Channel, needle: &str) {
+    let start = std::time::Instant::now();
+    let timeout = std::time::Duration::from_secs(10);
+    let mut output = String::new();
+    let mut buf = [0u8; 4096];
+    loop {
+        if output.contains(needle) || start.elapsed() > timeout {
+            break;
+        }
+        match channel.read(&mut buf) {
+            Ok(0) => std::thread::sleep(std::time::Duration::from_millis(50)),
+            Ok(count) => output.push_str(&String::from_utf8_lossy(&buf[..count])),
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            },
+            Err(_) => break,
+        }
     }
 }
 
@@ -728,6 +749,12 @@ impl RemoteRunner {
         let mut channel = sess.channel_session().unwrap();
         setup_remote_environment(&mut channel, win_size);
         stop_zellij(&mut channel);
+        channel
+            .write_all(format!("printf '{}\\n'\n", CLEANUP_DONE_MARKER).as_bytes())
+            .unwrap();
+        channel.flush().unwrap();
+        sess.set_blocking(false);
+        wait_for_shell_output(&mut channel, CLEANUP_DONE_MARKER);
     }
     pub fn new_with_session_name(win_size: Size, session_name: &str, mirrored: bool) -> Self {
         // notice that this method does not have a timeout, so use with caution!
