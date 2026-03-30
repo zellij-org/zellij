@@ -28,6 +28,10 @@ impl ReadBuffer {
     /// the contents of the buffer such that the remainder of the
     /// bytes are available at the front of the buffer.
     pub fn advance(&mut self, len: usize) {
+        if len >= self.storage.len() {
+            self.storage.clear();
+            return;
+        }
         let remain = self.storage.len() - len;
         self.storage.rotate_left(len);
         self.storage.truncate(remain);
