@@ -612,7 +612,9 @@ impl Setup {
         // the chosen layout can either be a path relative to the layout_dir or a name of one
         // of our assets, this distinction is made when parsing the layout - TODO: ideally, this
         // logic should not be split up and all the decisions should happen here
-        let (layout_info, chosen_layout) = if let Some(chosen_layout) = cli_args.layout.clone() {
+        let (layout_info, chosen_layout) = if let Some(ref layout_string) = cli_args.layout_string {
+            (Some(LayoutInfo::Stringified(layout_string.clone())), None)
+        } else if let Some(chosen_layout) = cli_args.layout.clone() {
             let layout_info = LayoutInfo::from_cli(
                 &layout_dir,
                 &Some(chosen_layout.clone()),
@@ -630,6 +632,10 @@ impl Setup {
         match layout_info {
             Some(LayoutInfo::Url(ref layout_url)) => {
                 Layout::from_url(layout_url, config).map(|(_layout, config)| (layout_info, config))
+            },
+            Some(LayoutInfo::Stringified(ref raw_layout)) => {
+                Layout::from_stringified_layout(raw_layout, config)
+                    .map(|(_layout, config)| (layout_info, config))
             },
             _ => Layout::from_path_or_default(chosen_layout.as_ref(), layout_dir.clone(), config)
                 .map(|(_layout, config)| (layout_info, config)),
@@ -878,5 +884,19 @@ mod setup_test {
         };
         let expected = cwd.join("assets/layouts/compact");
         assert_eq!(layout_path, expected.display().to_string());
+    }
+
+    #[test]
+    fn layout_string_cli_argument() {
+        let layout_kdl = "layout {\n    pane\n    pane\n}\n".to_string();
+        let cli_args = CliArgs {
+            layout_string: Some(layout_kdl.clone()),
+            ..Default::default()
+        };
+        let (_, layout_info, _, _, _) = Setup::from_cli_args(&cli_args).unwrap();
+        let Some(LayoutInfo::Stringified(content)) = layout_info else {
+            panic!("layout info should be Stringified variant, got: {:#?}", layout_info);
+        };
+        assert_eq!(content, layout_kdl);
     }
 }

@@ -256,7 +256,7 @@ fn main() {
         commands::delete_session(target_session, force);
     } else if let Some(path) = opts.server {
         commands::start_server(path, opts.debug);
-    } else if let Some(layout) = &opts.layout {
+    } else if opts.layout.is_some() || opts.layout_string.is_some() {
         if let Some(session_name) = opts
             .session
             .as_ref()
@@ -266,7 +266,8 @@ fn main() {
             let config = Config::try_from(&opts).ok();
             let options = Setup::from_cli_args(&opts).ok().map(|r| r.2);
             let new_layout_cli_action = CliAction::NewTab {
-                layout: Some(layout.clone()),
+                layout: opts.layout.clone(),
+                layout_string: opts.layout_string.clone(),
                 layout_dir: options.as_ref().and_then(|o| o.layout_dir.clone()),
                 name: None,
                 cwd: options.as_ref().and_then(|o| o.default_cwd.clone()),

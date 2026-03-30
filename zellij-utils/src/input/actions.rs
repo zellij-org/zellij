@@ -1357,6 +1357,7 @@ impl Action {
             CliAction::NewTab {
                 name,
                 layout,
+                layout_string,
                 layout_dir,
                 cwd,
                 initial_command,
@@ -1421,35 +1422,16 @@ impl Action {
                 } else {
                     None
                 };
-                if let Some(layout_path) = layout {
-                    let layout_dir = layout_dir
-                        .or_else(|| config.and_then(|c| c.options.layout_dir))
-                        .or_else(|| get_layout_dir(find_default_config_dir()));
-
-                    let mut should_start_layout_commands_suspended = false;
-                    let (path_to_raw_layout, raw_layout, swap_layouts) = if let Some(layout_url) =
-                        layout_path.to_str().and_then(|l| {
-                            if l.starts_with("http://") || l.starts_with("https://") {
-                                Some(l)
-                            } else {
-                                None
-                            }
-                        }) {
-                        should_start_layout_commands_suspended = true;
-                        (
-                            layout_url.to_owned(),
-                            Layout::stringified_from_url(layout_url)
-                                .map_err(|e| format!("Failed to load layout: {}", e))?,
-                            None,
-                        )
-                    } else {
-                        Layout::stringified_from_path_or_default(Some(&layout_path), layout_dir)
-                            .map_err(|e| format!("Failed to load layout: {}", e))?
-                    };
+                if let Some(raw_layout) = layout_string {
+                    let layout_source_name = "layout-string".to_owned();
+                    let path_to_raw_layout = layout_source_name.clone();
+                    let swap_layouts: Option<(String, String)> = None;
+                    let should_start_layout_commands_suspended = false;
+                    let raw_layout_for_error = raw_layout.clone();
                     let mut layout = Layout::from_str(&raw_layout, path_to_raw_layout, swap_layouts.as_ref().map(|(f, p)| (f.as_str(), p.as_str())), cwd).map_err(|e| {
                         let stringified_error = match e {
                             ConfigError::KdlError(kdl_error) => {
-                                let error = kdl_error.add_src(layout_path.as_path().as_os_str().to_string_lossy().to_string(), String::from(raw_layout));
+                                let error = kdl_error.add_src(layout_source_name.clone(), raw_layout_for_error);
                                 let report: Report = error.into();
                                 format!("{:?}", report)
                             }
@@ -1466,7 +1448,119 @@ impl Action {
                                 };
                                 let kdl_error = KdlError {
                                     error_message,
-                                    src: Some(NamedSource::new(layout_path.as_path().as_os_str().to_string_lossy().to_string(), String::from(raw_layout))),
+                                    src: Some(NamedSource::new(layout_source_name.clone(), raw_layout_for_error)),
+                                    offset: Some(kdl_error.span.offset()),
+                                    len: Some(kdl_error.span.len()),
+                                    help_message: None,
+                                };
+                                let report: Report = kdl_error.into();
+                                format!("{:?}", report)
+                            },
+                            e => format!("{}", e)
+                        };
+                        stringified_error
+                    })?;
+                    if should_start_layout_commands_suspended {
+                        layout.recursively_add_start_suspended_including_template(Some(true));
+                    }
+                    let mut tabs = layout.tabs();
+                    if !tabs.is_empty() {
+                        let swap_tiled_layouts = Some(layout.swap_tiled_layouts.clone());
+                        let swap_floating_layouts = Some(layout.swap_floating_layouts.clone());
+                        let mut new_tab_actions = vec![];
+                        let mut has_focused_tab = tabs
+                            .iter()
+                            .any(|(_, layout, _)| layout.focus.unwrap_or(false));
+                        for (tab_name, layout, floating_panes_layout) in tabs.drain(..) {
+                            let name = tab_name.or_else(|| name.clone());
+                            let should_change_focus_to_new_tab =
+                                layout.focus.unwrap_or_else(|| {
+                                    if !has_focused_tab {
+                                        has_focused_tab = true;
+                                        true
+                                    } else {
+                                        false
+                                    }
+                                });
+                            new_tab_actions.push(Action::NewTab {
+                                tiled_layout: Some(layout),
+                                floating_layouts: floating_panes_layout,
+                                swap_tiled_layouts: swap_tiled_layouts.clone(),
+                                swap_floating_layouts: swap_floating_layouts.clone(),
+                                tab_name: name,
+                                should_change_focus_to_new_tab,
+                                cwd: None,
+                                initial_panes: initial_panes.clone(),
+                                first_pane_unblock_condition,
+                            });
+                        }
+                        Ok(new_tab_actions)
+                    } else {
+                        let swap_tiled_layouts = Some(layout.swap_tiled_layouts.clone());
+                        let swap_floating_layouts = Some(layout.swap_floating_layouts.clone());
+                        let (layout, floating_panes_layout) = layout.new_tab();
+                        let should_change_focus_to_new_tab = true;
+                        Ok(vec![Action::NewTab {
+                            tiled_layout: Some(layout),
+                            floating_layouts: floating_panes_layout,
+                            swap_tiled_layouts,
+                            swap_floating_layouts,
+                            tab_name: name,
+                            should_change_focus_to_new_tab,
+                            cwd: None,
+                            initial_panes,
+                            first_pane_unblock_condition,
+                        }])
+                    }
+                } else if let Some(layout_path) = layout {
+                    let layout_dir = layout_dir
+                        .or_else(|| config.and_then(|c| c.options.layout_dir))
+                        .or_else(|| get_layout_dir(find_default_config_dir()));
+
+                    let mut should_start_layout_commands_suspended = false;
+                    let layout_source_name;
+                    let (path_to_raw_layout, raw_layout, swap_layouts) = if let Some(layout_url) =
+                        layout_path.to_str().and_then(|l| {
+                            if l.starts_with("http://") || l.starts_with("https://") {
+                                Some(l)
+                            } else {
+                                None
+                            }
+                        }) {
+                        should_start_layout_commands_suspended = true;
+                        layout_source_name = layout_url.to_owned();
+                        (
+                            layout_url.to_owned(),
+                            Layout::stringified_from_url(layout_url)
+                                .map_err(|e| format!("Failed to load layout: {}", e))?,
+                            None,
+                        )
+                    } else {
+                        layout_source_name = layout_path.as_path().as_os_str().to_string_lossy().to_string();
+                        Layout::stringified_from_path_or_default(Some(&layout_path), layout_dir)
+                            .map_err(|e| format!("Failed to load layout: {}", e))?
+                    };
+                    let mut layout = Layout::from_str(&raw_layout, path_to_raw_layout, swap_layouts.as_ref().map(|(f, p)| (f.as_str(), p.as_str())), cwd).map_err(|e| {
+                        let stringified_error = match e {
+                            ConfigError::KdlError(kdl_error) => {
+                                let error = kdl_error.add_src(layout_source_name.clone(), String::from(raw_layout));
+                                let report: Report = error.into();
+                                format!("{:?}", report)
+                            }
+                            ConfigError::KdlDeserializationError(kdl_error) => {
+                                let error_message = match kdl_error.kind {
+                                    kdl::KdlErrorKind::Context("valid node terminator") => {
+                                        format!("Failed to deserialize KDL node. \nPossible reasons:\n{}\n{}\n{}\n{}",
+                                        "- Missing `;` after a node name, eg. { node; another_node; }",
+                                        "- Missing quotations (\") around an argument node eg. { first_node \"argument_node\"; }",
+                                        "- Missing an equal sign (=) between node arguments on a title line. eg. argument=\"value\"",
+                                        "- Found an extraneous equal sign (=) between node child arguments and their values. eg. { argument=\"value\" }")
+                                    },
+                                    _ => String::from(kdl_error.help.unwrap_or("Kdl Deserialization Error")),
+                                };
+                                let kdl_error = KdlError {
+                                    error_message,
+                                    src: Some(NamedSource::new(layout_source_name.clone(), String::from(raw_layout))),
                                     offset: Some(kdl_error.span.offset()),
                                     len: Some(kdl_error.span.len()),
                                     help_message: None,
@@ -1555,6 +1649,7 @@ impl Action {
             },
             CliAction::OverrideLayout {
                 layout,
+                layout_string,
                 layout_dir,
                 retain_existing_terminal_panes,
                 retain_existing_plugin_panes,
@@ -1565,24 +1660,34 @@ impl Action {
                     .or_else(|| config.and_then(|c| c.options.layout_dir))
                     .or_else(|| get_layout_dir(find_default_config_dir()));
 
-                // Load layout from URL or file path
-                let (path_to_raw_layout, raw_layout, swap_layouts) = if let Some(layout_url) =
-                    layout.to_str().and_then(|l| {
-                        if l.starts_with("http://") || l.starts_with("https://") {
-                            Some(l)
-                        } else {
-                            None
-                        }
-                    }) {
-                    (
-                        layout_url.to_owned(),
-                        Layout::stringified_from_url(layout_url)
-                            .map_err(|e| format!("Failed to load layout from URL: {}", e))?,
-                        None,
-                    )
+                // Load layout from string, URL, or file path
+                let layout_source_name;
+                let (path_to_raw_layout, raw_layout, swap_layouts) = if let Some(raw) = layout_string {
+                    layout_source_name = "layout-string".to_owned();
+                    (layout_source_name.clone(), raw, None)
+                } else if let Some(layout_path) = &layout {
+                    if let Some(layout_url) =
+                        layout_path.to_str().and_then(|l| {
+                            if l.starts_with("http://") || l.starts_with("https://") {
+                                Some(l)
+                            } else {
+                                None
+                            }
+                        }) {
+                        layout_source_name = layout_url.to_owned();
+                        (
+                            layout_url.to_owned(),
+                            Layout::stringified_from_url(layout_url)
+                                .map_err(|e| format!("Failed to load layout from URL: {}", e))?,
+                            None,
+                        )
+                    } else {
+                        layout_source_name = layout_path.as_path().as_os_str().to_string_lossy().to_string();
+                        Layout::stringified_from_path_or_default(Some(layout_path), layout_dir)
+                            .map_err(|e| format!("Failed to load layout: {}", e))?
+                    }
                 } else {
-                    Layout::stringified_from_path_or_default(Some(&layout), layout_dir)
-                        .map_err(|e| format!("Failed to load layout: {}", e))?
+                    return Err("Either layout or layout-string must be provided".to_string());
                 };
 
                 // Parse KDL layout
@@ -1596,7 +1701,7 @@ impl Action {
                     let stringified_error = match e {
                         ConfigError::KdlError(kdl_error) => {
                             let error = kdl_error.add_src(
-                                layout.as_path().as_os_str().to_string_lossy().to_string(),
+                                layout_source_name.clone(),
                                 String::from(raw_layout),
                             );
                             let report: Report = error.into();
@@ -1919,6 +2024,7 @@ impl Action {
                 tab_position,
                 pane_id,
                 layout,
+                layout_string,
                 layout_dir,
                 cwd,
             } => {
@@ -1946,10 +2052,83 @@ impl Action {
                     current_dir.join(layout_dir)
                 });
 
-                let layout_info = if let Some(layout_path) = layout {
+                let layout_info = if let Some(layout_string) = layout_string {
+                    // validate the layout string before sending it to the target session
+                    let layout_source_name = "layout-string".to_owned();
+                    let raw_layout_for_error = layout_string.clone();
+                    Layout::from_str(&layout_string, layout_source_name.clone(), None, None)
+                        .map_err(|e| {
+                            match e {
+                                ConfigError::KdlError(kdl_error) => {
+                                    let error = kdl_error.add_src(layout_source_name, raw_layout_for_error);
+                                    let report: Report = error.into();
+                                    format!("{:?}", report)
+                                },
+                                ConfigError::KdlDeserializationError(kdl_error) => {
+                                    let error_message = match kdl_error.kind {
+                                        kdl::KdlErrorKind::Context("valid node terminator") => {
+                                            format!("Failed to deserialize KDL node. \nPossible reasons:\n{}\n{}\n{}\n{}",
+                                            "- Missing `;` after a node name, eg. {{ node; another_node; }}",
+                                            "- Missing quotations (\") around an argument node eg. {{ first_node \"argument_node\"; }}",
+                                            "- Missing an equal sign (=) between node arguments on a title line. eg. argument=\"value\"",
+                                            "- Found an extraneous equal sign (=) between node child arguments and their values. eg. {{ argument=\"value\" }}")
+                                        },
+                                        _ => String::from(kdl_error.help.unwrap_or("Kdl Deserialization Error")),
+                                    };
+                                    let kdl_error = KdlError {
+                                        error_message,
+                                        src: Some(NamedSource::new(layout_source_name, raw_layout_for_error)),
+                                        offset: Some(kdl_error.span.offset()),
+                                        len: Some(kdl_error.span.len()),
+                                        help_message: None,
+                                    };
+                                    let report: Report = kdl_error.into();
+                                    format!("{:?}", report)
+                                },
+                                e => format!("{}", e),
+                            }
+                        })?;
+                    Some(LayoutInfo::Stringified(layout_string))
+                } else if let Some(layout_path) = layout {
                     let layout_dir = layout_dir
                         .or_else(|| config.and_then(|c| c.options.layout_dir.clone()))
                         .or_else(|| get_layout_dir(find_default_config_dir()));
+                    // validate the layout file before sending it to the target session
+                    let layout_source_name = layout_path.display().to_string();
+                    Layout::from_path_or_default_without_config(
+                        Some(&layout_path),
+                        layout_dir.clone(),
+                    )
+                    .map_err(|e| {
+                        match e {
+                            ConfigError::KdlError(kdl_error) => {
+                                let report: Report = kdl_error.into();
+                                format!("{:?}", report)
+                            },
+                            ConfigError::KdlDeserializationError(kdl_error) => {
+                                let error_message = match kdl_error.kind {
+                                    kdl::KdlErrorKind::Context("valid node terminator") => {
+                                        format!("Failed to deserialize KDL node. \nPossible reasons:\n{}\n{}\n{}\n{}",
+                                        "- Missing `;` after a node name, eg. {{ node; another_node; }}",
+                                        "- Missing quotations (\") around an argument node eg. {{ first_node \"argument_node\"; }}",
+                                        "- Missing an equal sign (=) between node arguments on a title line. eg. argument=\"value\"",
+                                        "- Found an extraneous equal sign (=) between node child arguments and their values. eg. {{ argument=\"value\" }}")
+                                    },
+                                    _ => String::from(kdl_error.help.unwrap_or("Kdl Deserialization Error")),
+                                };
+                                let kdl_error = KdlError {
+                                    error_message,
+                                    src: Some(NamedSource::new(layout_source_name, String::new())),
+                                    offset: Some(kdl_error.span.offset()),
+                                    len: Some(kdl_error.span.len()),
+                                    help_message: None,
+                                };
+                                let report: Report = kdl_error.into();
+                                format!("{:?}", report)
+                            },
+                            e => format!("{}", e),
+                        }
+                    })?;
                     LayoutInfo::from_config(&layout_dir, &Some(layout_path))
                 } else {
                     None
@@ -3173,6 +3352,122 @@ mod tests {
     fn test_focus_pane_id_malformed() {
         let cli_action = CliAction::FocusPaneId {
             pane_id: "invalid_id".to_string(),
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_new_tab_with_layout_string() {
+        let cli_action = CliAction::NewTab {
+            name: None,
+            layout: None,
+            layout_string: Some("layout {\n    pane\n    pane\n}\n".into()),
+            layout_dir: None,
+            cwd: None,
+            initial_command: vec![],
+            initial_plugin: None,
+            close_on_exit: Default::default(),
+            start_suspended: Default::default(),
+            block_until_exit: false,
+            block_until_exit_success: false,
+            block_until_exit_failure: false,
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::NewTab {
+                tiled_layout,
+                floating_layouts,
+                ..
+            } => {
+                assert!(tiled_layout.is_some());
+                let layout = tiled_layout.as_ref().unwrap();
+                // layout { pane; pane } produces a layout with 2 children
+                assert_eq!(layout.children.len(), 2);
+                assert!(floating_layouts.is_empty());
+            },
+            _ => panic!("Expected NewTab action"),
+        }
+    }
+
+    #[test]
+    fn test_new_tab_with_invalid_layout_string() {
+        let cli_action = CliAction::NewTab {
+            name: None,
+            layout: None,
+            layout_string: Some("invalid { kdl".into()),
+            layout_dir: None,
+            cwd: None,
+            initial_command: vec![],
+            initial_plugin: None,
+            close_on_exit: Default::default(),
+            start_suspended: Default::default(),
+            block_until_exit: false,
+            block_until_exit_success: false,
+            block_until_exit_failure: false,
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_override_layout_with_layout_string() {
+        let cli_action = CliAction::OverrideLayout {
+            layout: None,
+            layout_string: Some("layout {\n    pane\n    pane\n}\n".into()),
+            layout_dir: None,
+            retain_existing_terminal_panes: false,
+            retain_existing_plugin_panes: false,
+            apply_only_to_active_tab: false,
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::OverrideLayout { tabs, .. } => {
+                assert!(!tabs.is_empty());
+            },
+            _ => panic!("Expected OverrideLayout action"),
+        }
+    }
+
+    #[test]
+    fn test_switch_session_with_layout_string() {
+        let cli_action = CliAction::SwitchSession {
+            name: "test-session".into(),
+            tab_position: None,
+            pane_id: None,
+            layout: None,
+            layout_string: Some("layout {\n    pane\n}\n".into()),
+            layout_dir: None,
+            cwd: None,
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::SwitchSession { layout, .. } => {
+                assert!(matches!(layout, Some(crate::data::LayoutInfo::Stringified(_))));
+            },
+            _ => panic!("Expected SwitchSession action"),
+        }
+    }
+
+    #[test]
+    fn test_switch_session_with_invalid_layout_string() {
+        let cli_action = CliAction::SwitchSession {
+            name: "test-session".into(),
+            tab_position: None,
+            pane_id: None,
+            layout: None,
+            layout_string: Some("invalid { kdl".into()),
+            layout_dir: None,
+            cwd: None,
         };
         let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
         assert!(result.is_err());
