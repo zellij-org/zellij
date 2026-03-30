@@ -276,6 +276,15 @@ mod unix_only {
     use nix::unistd::Uid;
     use std::env::temp_dir;
 
+    // Maximum length of a Unix domain socket path (from sockaddr_un.sun_path).
+    // macOS (and other BSDs) use 104, Linux/Android/Solaris use 108.
+    // The not(target_os = "macos") fallback of 108 is used for all other Unix
+    // platforms — this is correct for Linux/Android/Solaris and only 4 bytes
+    // over for BSDs, which would cause a slightly late error rather than a
+    // missed one.
+    #[cfg(target_os = "macos")]
+    pub const ZELLIJ_SOCK_MAX_LENGTH: usize = 104;
+    #[cfg(not(target_os = "macos"))]
     pub const ZELLIJ_SOCK_MAX_LENGTH: usize = 108;
 
     lazy_static! {
