@@ -65,8 +65,10 @@ windows-sys = { workspace = true, features = [
 
 [dev-dependencies]
 insta = "1.6.0"
+rcgen = "0.13"
 serde_json = "1.0"
 serial_test = "3.0"
+tempfile = "3"
 
 [features]
 unstable = []

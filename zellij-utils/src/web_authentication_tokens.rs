@@ -89,6 +89,7 @@ fn open_db() -> Result<Connection> {
 }
 
 fn init_db(conn: &Connection) -> Result<()> {
+    conn.execute_batch("PRAGMA busy_timeout = 5000")?;
     conn.execute_batch("PRAGMA foreign_keys = ON")?;
 
     conn.execute(
