@@ -5365,3 +5365,230 @@ fn layer_ordering() {
     assert!(HighlightLayer::Hint < HighlightLayer::Tool);
     assert!(HighlightLayer::Tool < HighlightLayer::ActionFeedback);
 }
+
+fn row_text(row: &super::super::Row) -> String {
+    row.columns
+        .iter()
+        .map(|c| c.character)
+        .collect::<String>()
+        .trim_end()
+        .to_string()
+}
+
+fn scrollback_texts(grid: &Grid) -> Vec<String> {
+    grid.lines_above.iter().map(|r| row_text(r)).collect()
+}
+
+fn viewport_texts(grid: &Grid) -> Vec<String> {
+    grid.viewport.iter().map(|r| row_text(r)).collect()
+}
+
+fn create_grid_with_size_and_raw(rows: usize, cols: usize, content: &[u8]) -> Grid {
+    let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let mut grid = Grid::new(
+        rows,
+        cols,
+        Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
+        sixel_image_store,
+        Style::default(),
+        false,
+        true,
+        true,
+        true,
+        false,
+    );
+    for byte in content {
+        vte_parser.advance(&mut grid, *byte);
+    }
+    grid
+}
+
+fn feed_bytes(grid: &mut Grid, bytes: &[u8]) {
+    let mut vte_parser = vte::Parser::new();
+    for byte in bytes {
+        vte_parser.advance(grid, *byte);
+    }
+}
+
+// All tests below use a 10-row, 40-col grid with scroll region 1;8
+// (0-based: rows 0-7), leaving rows 8-9 outside the region.
+const PARTIAL_SR: &[u8] = b"\x1b[1;8r";
+const FILL_8_LINES: &[u8] = b"AAA\r\nBBB\r\nCCC\r\nDDD\r\nEEE\r\nFFF\r\nGGG\r\nHHH";
+
+#[test]
+fn partial_scroll_region_newline_transfers_to_scrollback() {
+    let mut content: Vec<u8> = Vec::new();
+    content.extend_from_slice(PARTIAL_SR);
+    content.extend_from_slice(FILL_8_LINES);
+    content.extend_from_slice(b"\r\nIII\r\nJJJ");
+
+    let grid = create_grid_with_size_and_raw(10, 40, &content);
+
+    assert_eq!(scrollback_texts(&grid), vec!["AAA", "BBB"]);
+    let vp = viewport_texts(&grid);
+    assert_eq!(vp[0], "CCC");
+    assert_eq!(vp[1], "DDD");
+    assert_eq!(vp[6], "III");
+    assert_eq!(vp[7], "JJJ");
+}
+
+#[test]
+fn partial_scroll_region_csi_s_transfers_to_scrollback() {
+    let mut content: Vec<u8> = Vec::new();
+    content.extend_from_slice(PARTIAL_SR);
+    content.extend_from_slice(FILL_8_LINES);
+    content.extend_from_slice(b"\x1b[3S");
+
+    let grid = create_grid_with_size_and_raw(10, 40, &content);
+
+    assert_eq!(scrollback_texts(&grid), vec!["AAA", "BBB", "CCC"]);
+    let vp = viewport_texts(&grid);
+    assert_eq!(vp[0], "DDD");
+    assert_eq!(vp[4], "HHH");
+    assert_eq!(vp[5], "");
+    assert_eq!(vp[7], "");
+}
+
+#[test]
+fn partial_scroll_region_csi_m_at_top_transfers_to_scrollback() {
+    let mut content: Vec<u8> = Vec::new();
+    content.extend_from_slice(PARTIAL_SR);
+    content.extend_from_slice(FILL_8_LINES);
+    content.extend_from_slice(b"\x1b[1;1H\x1b[2M");
+
+    let grid = create_grid_with_size_and_raw(10, 40, &content);
+
+    assert_eq!(scrollback_texts(&grid), vec!["AAA", "BBB"]);
+    let vp = viewport_texts(&grid);
+    assert_eq!(vp[0], "CCC");
+    assert_eq!(vp[5], "HHH");
+    assert_eq!(vp[6], "");
+    assert_eq!(vp[7], "");
+}
+
+#[test]
+fn partial_scroll_region_csi_m_mid_region_does_not_transfer() {
+    let mut content: Vec<u8> = Vec::new();
+    content.extend_from_slice(PARTIAL_SR);
+    content.extend_from_slice(FILL_8_LINES);
+    // Cursor to row 3, delete 2 lines
+    content.extend_from_slice(b"\x1b[4;1H\x1b[2M");
+
+    let grid = create_grid_with_size_and_raw(10, 40, &content);
+
+    assert_eq!(grid.lines_above.len(), 0);
+    let vp = viewport_texts(&grid);
+    assert_eq!(vp[0], "AAA");
+    assert_eq!(vp[2], "CCC");
+    assert_eq!(vp[3], "FFF");
+    assert_eq!(vp[5], "HHH");
+    assert_eq!(vp[6], "");
+    assert_eq!(vp[7], "");
+}
+
+#[test]
+fn partial_scroll_region_does_not_transfer_on_alternate_screen() {
+    let mut content: Vec<u8> = Vec::new();
+    content.extend_from_slice(b"\x1b[?1049h");
+    content.extend_from_slice(PARTIAL_SR);
+    content.extend_from_slice(FILL_8_LINES);
+    content.extend_from_slice(b"\x1b[3S");
+
+    let grid = create_grid_with_size_and_raw(10, 40, &content);
+
+    assert_eq!(grid.lines_above.len(), 0);
+    let vp = viewport_texts(&grid);
+    assert_eq!(vp[0], "DDD");
+    assert_eq!(vp[4], "HHH");
+}
+
+#[test]
+fn partial_scroll_region_nonzero_top_does_not_transfer() {
+    let mut content: Vec<u8> = Vec::new();
+    content.extend_from_slice(b"AAA\r\nBBB\r\nCCC\r\nDDD\r\nEEE\r\nFFF");
+    // Scroll region rows 3-6 (1-based), so top is row 2, not 0
+    content.extend_from_slice(b"\x1b[3;6r");
+    content.extend_from_slice(b"\x1b[2S");
+
+    let grid = create_grid_with_size_and_raw(10, 40, &content);
+
+    assert_eq!(grid.lines_above.len(), 0);
+    let vp = viewport_texts(&grid);
+    assert_eq!(vp[0], "AAA");
+    assert_eq!(vp[1], "BBB");
+    assert_eq!(vp[2], "EEE");
+    assert_eq!(vp[3], "FFF");
+    assert_eq!(vp[4], "");
+    assert_eq!(vp[5], "");
+}
+
+#[test]
+fn partial_scroll_region_selection_adjusted_on_newline() {
+    let mut grid = create_grid_with_size_and_raw(10, 40, FILL_8_LINES);
+    feed_bytes(&mut grid, PARTIAL_SR);
+
+    let pos = Position::new(3, 5);
+    grid.start_selection(&pos);
+    grid.end_selection(&pos);
+    let start_before = grid.selection.start.line.0;
+    let end_before = grid.selection.end.line.0;
+
+    feed_bytes(&mut grid, b"\x1b[8;1H\r\nnew line");
+
+    assert_eq!(grid.selection.start.line.0, start_before - 1);
+    assert_eq!(grid.selection.end.line.0, end_before - 1);
+}
+
+#[test]
+fn partial_scroll_region_selection_adjusted_on_csi_s() {
+    let mut grid = create_grid_with_size_and_raw(10, 40, FILL_8_LINES);
+    feed_bytes(&mut grid, PARTIAL_SR);
+
+    let pos = Position::new(4, 2);
+    grid.start_selection(&pos);
+    grid.end_selection(&pos);
+    let start_before = grid.selection.start.line.0;
+    let end_before = grid.selection.end.line.0;
+
+    feed_bytes(&mut grid, b"\x1b[2S");
+
+    assert_eq!(grid.selection.start.line.0, start_before - 2);
+    assert_eq!(grid.selection.end.line.0, end_before - 2);
+}
+
+#[test]
+fn partial_scroll_region_selection_adjusted_on_csi_m() {
+    let mut grid = create_grid_with_size_and_raw(10, 40, FILL_8_LINES);
+    feed_bytes(&mut grid, PARTIAL_SR);
+
+    let pos = Position::new(5, 2);
+    grid.start_selection(&pos);
+    grid.end_selection(&pos);
+    let start_before = grid.selection.start.line.0;
+    let end_before = grid.selection.end.line.0;
+
+    feed_bytes(&mut grid, b"\x1b[3M");
+
+    assert_eq!(grid.selection.start.line.0, start_before - 3);
+    assert_eq!(grid.selection.end.line.0, end_before - 3);
+}
+
+#[test]
+fn partial_scroll_region_all_three_mechanisms_transfer_in_order() {
+    let mut content: Vec<u8> = Vec::new();
+    content.extend_from_slice(PARTIAL_SR);
+    content.extend_from_slice(FILL_8_LINES);
+    // Newline scrolls AAA off, CSI S scrolls BBB off, CSI M scrolls CCC off
+    content.extend_from_slice(b"\r\nIII");
+    content.extend_from_slice(b"\x1b[1S");
+    content.extend_from_slice(b"\x1b[1;1H\x1b[1M");
+
+    let grid = create_grid_with_size_and_raw(10, 40, &content);
+
+    assert_eq!(scrollback_texts(&grid), vec!["AAA", "BBB", "CCC"]);
+}

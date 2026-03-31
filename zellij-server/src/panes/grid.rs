@@ -1666,7 +1666,13 @@ impl Grid {
         let mut pad_character = EMPTY_TERMINAL_CHARACTER;
         pad_character.styles = self.cursor.pending_styles.clone();
         for _ in 0..count {
-            if scroll_region_top < self.viewport.len() {
+            if scroll_region_top == 0
+                && self.alternate_screen_state.is_none()
+                && !self.viewport.is_empty()
+            {
+                self.transfer_rows_to_lines_above(1);
+                self.selection.move_up(1);
+            } else if scroll_region_top < self.viewport.len() {
                 self.viewport.remove(scroll_region_top);
             }
             let columns = VecDeque::from(vec![pad_character.clone(); self.width]);
@@ -1719,7 +1725,15 @@ impl Grid {
                 self.viewport.push_back(Row::new().canonical());
                 self.selection.move_up(1);
             } else {
-                if scroll_region_top < self.viewport.len() {
+                if scroll_region_top == 0
+                    && self.alternate_screen_state.is_none()
+                    && !self.viewport.is_empty()
+                {
+                    // Partial scroll region starting at top: preserve
+                    // scrolled-off lines in scrollback
+                    self.transfer_rows_to_lines_above(1);
+                    self.selection.move_up(1);
+                } else if scroll_region_top < self.viewport.len() {
                     self.viewport.remove(scroll_region_top);
                 }
                 if self.viewport.len() >= scroll_region_bottom {
@@ -2035,7 +2049,14 @@ impl Grid {
             // so we delete the current line(s) and add an empty line at the end of the scroll
             // region
             for _ in 0..count {
-                if current_line_index < self.viewport.len() {
+                if current_line_index == 0
+                    && scroll_region_top == 0
+                    && self.alternate_screen_state.is_none()
+                    && !self.viewport.is_empty()
+                {
+                    self.transfer_rows_to_lines_above(1);
+                    self.selection.move_up(1);
+                } else if current_line_index < self.viewport.len() {
                     self.viewport.remove(current_line_index);
                 }
                 let columns = VecDeque::from(vec![pad_character.clone(); self.width]);
