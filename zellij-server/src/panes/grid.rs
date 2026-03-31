@@ -17,7 +17,10 @@ use std::{
 
 use vte;
 use zellij_utils::{
-    consts::{DEFAULT_SCROLL_BUFFER_SIZE, SCROLL_BUFFER_SIZE},
+    consts::{
+        DEFAULT_SCROLL_BUFFER_SIZE, DEFAULT_SELECT_BY_WORD_CHARACTERS, SCROLL_BUFFER_SIZE,
+        SELECT_BY_WORD_CHARACTERS,
+    },
     data::{Palette, PaletteColor, Styling},
     input::mouse::{MouseEvent, MouseEventType},
     pane_size::SizeInPixels,
@@ -4785,15 +4788,17 @@ impl Row {
 }
 
 fn is_selection_boundary_character(character: char) -> bool {
-    character.is_ascii_whitespace()
-        || character == '['
-        || character == ']'
-        || character == '{'
-        || character == '}'
-        || character == '<'
-        || character == '>'
-        || character == '('
-        || character == ')'
+    if character.is_ascii_whitespace() {
+        return true;
+    }
+    if character.is_alphanumeric() {
+        return false;
+    }
+    let word_chars = SELECT_BY_WORD_CHARACTERS
+        .get()
+        .map(|s| s.as_str())
+        .unwrap_or(DEFAULT_SELECT_BY_WORD_CHARACTERS);
+    !word_chars.contains(character)
 }
 
 #[cfg(test)]

@@ -1927,6 +1927,8 @@ pub struct Options {
     pub focus_follows_mouse: ::core::option::Option<bool>,
     #[prost(bool, optional, tag="45")]
     pub mouse_click_through: ::core::option::Option<bool>,
+    #[prost(string, optional, tag="46")]
+    pub select_by_word_characters: ::core::option::Option<::prost::alloc::string::String>,
 }
 /// Pane-targeting action messages
 #[allow(clippy::derive_partial_eq_without_eq)]

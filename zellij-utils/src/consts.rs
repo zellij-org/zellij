@@ -14,6 +14,8 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const DEFAULT_SCROLL_BUFFER_SIZE: usize = 10_000;
 pub static SCROLL_BUFFER_SIZE: OnceLock<usize> = OnceLock::new();
 pub static DEBUG_MODE: OnceLock<bool> = OnceLock::new();
+pub const DEFAULT_SELECT_BY_WORD_CHARACTERS: &str = "@-./_~?&=%+#";
+pub static SELECT_BY_WORD_CHARACTERS: OnceLock<String> = OnceLock::new();
 
 #[cfg(not(windows))]
 pub const SYSTEM_DEFAULT_CONFIG_DIR: &str = "/etc/zellij";
