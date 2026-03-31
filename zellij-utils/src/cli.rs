@@ -205,28 +205,83 @@ pub struct WebCli {
     pub server_startup_timeout: Option<u64>,
     /// Create a login token for the web interface, will only be displayed once and cannot later be
     /// retrieved. Returns the token name and the token.
-    #[clap(long, value_parser, exclusive(true), display_order = 7)]
+    #[clap(
+        long,
+        value_parser,
+        conflicts_with_all(&[
+            "stop",
+            "status",
+            "create-read-only-token",
+            "revoke-token",
+            "revoke-all-tokens",
+            "list-tokens"
+        ]),
+        display_order = 7
+    )]
     pub create_token: bool,
     /// Optional name for the token
     #[clap(long, value_parser, value_name = "TOKEN_NAME", display_order = 8)]
     pub token_name: Option<String>,
     /// Create a read-only login token (can only attach to existing sessions as watcher)
-    #[clap(long, value_parser, exclusive(true), display_order = 9)]
+    #[clap(
+        long,
+        value_parser,
+        conflicts_with_all(&[
+            "stop",
+            "status",
+            "create-token",
+            "revoke-token",
+            "revoke-all-tokens",
+            "list-tokens"
+        ]),
+        display_order = 9
+    )]
     pub create_read_only_token: bool,
     /// Revoke a login token by its name
     #[clap(
         long,
         value_parser,
-        exclusive(true),
+        conflicts_with_all(&[
+            "stop",
+            "status",
+            "create-token",
+            "create-read-only-token",
+            "revoke-all-tokens",
+            "list-tokens"
+        ]),
         value_name = "TOKEN NAME",
         display_order = 10
     )]
     pub revoke_token: Option<String>,
     /// Revoke all login tokens
-    #[clap(long, value_parser, exclusive(true), display_order = 11)]
+    #[clap(
+        long,
+        value_parser,
+        conflicts_with_all(&[
+            "stop",
+            "status",
+            "create-token",
+            "create-read-only-token",
+            "revoke-token",
+            "list-tokens"
+        ]),
+        display_order = 11
+    )]
     pub revoke_all_tokens: bool,
     /// List token names and their creation dates (cannot show actual tokens)
-    #[clap(long, value_parser, exclusive(true), display_order = 12)]
+    #[clap(
+        long,
+        value_parser,
+        conflicts_with_all(&[
+            "stop",
+            "status",
+            "create-token",
+            "create-read-only-token",
+            "revoke-token",
+            "revoke-all-tokens"
+        ]),
+        display_order = 12
+    )]
     pub list_tokens: bool,
     /// The ip address to listen on locally for connections (defaults to 127.0.0.1)
     #[clap(
