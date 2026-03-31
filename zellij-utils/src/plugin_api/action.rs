@@ -49,6 +49,7 @@ pub use super::generated_api::api::{
         PluginTag as ProtobufPluginTag,
         PluginUserConfiguration as ProtobufPluginUserConfiguration,
         Position as ProtobufPosition,
+        RenameActivePanePayload,
         RunCommandAction as ProtobufRunCommandAction,
         RunEditFileAction as ProtobufRunEditFileAction,
         RunPlugin as ProtobufRunPlugin,
@@ -454,6 +455,12 @@ impl TryFrom<ProtobufAction> for Action {
             Some(ProtobufActionName::UndoRenamePane) => match protobuf_action.optional_payload {
                 Some(_) => Err("UndoRenamePane should not have a payload"),
                 None => Ok(Action::UndoRenamePane),
+            },
+            Some(ProtobufActionName::RenameActivePane) => match protobuf_action.optional_payload {
+                Some(OptionalPayload::RenameActivePanePayload(payload)) => {
+                    Ok(Action::RenameActivePane { name: payload.name })
+                },
+                _ => Err("RenameActivePane requires a payload"),
             },
             Some(ProtobufActionName::NewTab) => {
                 match protobuf_action.optional_payload {
@@ -1428,6 +1435,12 @@ impl TryFrom<Action> for ProtobufAction {
             Action::UndoRenamePane => Ok(ProtobufAction {
                 name: ProtobufActionName::UndoRenamePane as i32,
                 optional_payload: None,
+            }),
+            Action::RenameActivePane { name } => Ok(ProtobufAction {
+                name: ProtobufActionName::RenameActivePane as i32,
+                optional_payload: Some(OptionalPayload::RenameActivePanePayload(
+                    RenameActivePanePayload { name },
+                )),
             }),
             Action::NewTab {
                 tiled_layout,

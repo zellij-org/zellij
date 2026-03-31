@@ -245,6 +245,7 @@ message Action {
     ShowFloatingPanesPayload show_floating_panes_payload = 58;
     HideFloatingPanesPayload hide_floating_panes_payload = 59;
     AreFloatingPanesVisiblePayload are_floating_panes_visible_payload = 60;
+    RenameActivePanePayload rename_active_pane_payload = 61;
   }
 }
 
@@ -275,6 +276,10 @@ message HideFloatingPanesPayload {
 
 message AreFloatingPanesVisiblePayload {
   optional uint32 tab_id = 1;
+}
+
+message RenameActivePanePayload {
+  bytes name = 1;
 }
 
 message PaneIdAndShouldFloat {
@@ -490,6 +495,7 @@ enum ActionName {
     ShowFloatingPanes = 98;
     HideFloatingPanes = 99;
     AreFloatingPanesVisible = 100;
+    RenameActivePane = 101;
 }
 
 message Position {

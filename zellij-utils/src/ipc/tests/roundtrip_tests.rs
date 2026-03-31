@@ -1481,6 +1481,22 @@ fn test_client_messages() {
         is_cli_client: true,
     });
     test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::RenameActivePane {
+            name: "spark".as_bytes().to_vec(),
+        },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::RenameActivePane {
+            name: "x".as_bytes().to_vec(),
+        },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
         action: Action::NewTab {
             tiled_layout: None,
             floating_layouts: vec![],
@@ -3689,6 +3705,45 @@ fn set_pane_color_wire_roundtrip() {
 
     // proto struct -> Rust
     let roundtrip: ClientToServerMsg = decoded_proto
+        .try_into()
+        .expect("Failed to convert decoded protobuf back to Rust");
+
+    assert_eq!(original, roundtrip);
+}
+
+/// Tests that RenameActivePane survives a full wire-level round-trip
+/// (Rust → proto struct → bytes → proto struct → Rust).
+///
+/// The struct-level round-trip in `test_client_roundtrip!` doesn't catch
+/// issues with prost's `tags` attribute on oneof fields, because prost
+/// only uses the tags list during byte decoding, not struct-to-struct
+/// conversion.
+#[test]
+fn rename_active_pane_wire_roundtrip() {
+    use prost::Message;
+
+    let original = ClientToServerMsg::Action {
+        action: Action::RenameActivePane {
+            name: "x".as_bytes().to_vec(),
+        },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    };
+
+    // Rust → proto struct
+    let proto: crate::client_server_contract::client_server_contract::ClientToServerMsg =
+        original.clone().into();
+
+    // proto struct → bytes → proto struct (the actual wire path)
+    let mut buf = Vec::new();
+    proto.encode(&mut buf).expect("Failed to encode protobuf");
+    let decoded =
+        crate::client_server_contract::client_server_contract::ClientToServerMsg::decode(&buf[..])
+            .expect("Failed to decode protobuf bytes");
+
+    // proto struct → Rust
+    let roundtrip: ClientToServerMsg = decoded
         .try_into()
         .expect("Failed to convert decoded protobuf back to Rust");
 

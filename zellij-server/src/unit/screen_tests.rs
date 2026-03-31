@@ -8077,3 +8077,100 @@ pub fn send_cli_new_pane_action_with_tab_id_and_stacked() {
         pty_debug
     );
 }
+
+// ========== Focused-pane CLI rename routing tests ==========
+// These test the screen-level rename behavior to verify that CLI rename
+// without --pane-id correctly replaces the pane name (not appends).
+// The routing from PaneNameInput → RenameActivePane vs UpdatePaneName
+// is in route.rs, but we verify the end result here.
+
+#[test]
+fn cli_rename_active_pane_via_screen_replaces_name() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    let client_id = 1;
+    new_tab(&mut screen, 1, 0);
+
+    // First give the pane a name
+    let pane_id = PaneId::Terminal(1);
+    if let Ok(tab) = screen.get_active_tab_mut(client_id) {
+        let _ = tab.rename_pane_by_pane_id(pane_id, "flame".as_bytes().to_vec());
+    }
+
+    // Now rename via the active pane path (what CLI rename without --pane-id does)
+    if let Ok(tab) = screen.get_active_tab_mut(client_id) {
+        let _ = tab.rename_active_pane("spark".as_bytes().to_vec(), client_id);
+    }
+
+    let tab = screen.get_active_tab(client_id).unwrap();
+    let pane = tab.get_pane_with_id(pane_id).unwrap();
+    assert_eq!(
+        pane.current_title(),
+        "spark",
+        "CLI rename should fully replace the name"
+    );
+}
+
+#[test]
+fn cli_rename_active_pane_single_char_via_screen() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    let client_id = 1;
+    new_tab(&mut screen, 1, 0);
+
+    let pane_id = PaneId::Terminal(1);
+    if let Ok(tab) = screen.get_active_tab_mut(client_id) {
+        let _ = tab.rename_pane_by_pane_id(pane_id, "flame".as_bytes().to_vec());
+    }
+
+    // Single char rename via active pane path
+    if let Ok(tab) = screen.get_active_tab_mut(client_id) {
+        let _ = tab.rename_active_pane("x".as_bytes().to_vec(), client_id);
+    }
+
+    let tab = screen.get_active_tab(client_id).unwrap();
+    let pane = tab.get_pane_with_id(pane_id).unwrap();
+    assert_eq!(
+        pane.current_title(),
+        "x",
+        "Single-char CLI rename should replace, not append"
+    );
+}
+
+#[test]
+fn cli_rename_focused_pane_single_char_via_rename_active_pane() {
+    // Tests that single-char CLI rename via RenameActivePane (the path used
+    // by `zellij action rename-pane "x"` without --pane-id) correctly
+    // replaces the existing name.
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    let client_id = 1;
+    new_tab(&mut screen, 1, 0);
+
+    let pane_id = PaneId::Terminal(1);
+    if let Ok(tab) = screen.get_active_tab_mut(client_id) {
+        let _ = tab.rename_pane_by_pane_id(pane_id, "flame".as_bytes().to_vec());
+    }
+
+    // CLI rename single char via RenameActivePane (full replacement)
+    if let Ok(tab) = screen.get_active_tab_mut(client_id) {
+        let _ = tab.rename_active_pane("x".as_bytes().to_vec(), client_id);
+    }
+
+    let tab = screen.get_active_tab(client_id).unwrap();
+    let pane = tab.get_pane_with_id(pane_id).unwrap();
+    assert_eq!(
+        pane.current_title(),
+        "x",
+        "Single-char CLI rename should replace the name, not append"
+    );
+}

@@ -305,6 +305,11 @@ pub enum Action {
         input: Vec<u8>,
     },
     UndoRenamePane,
+    /// Rename the focused pane, fully replacing any existing name.
+    /// Used by CLI `rename-pane` without `--pane-id`.
+    RenameActivePane {
+        name: Vec<u8>,
+    },
     /// Create a new tab, optionally with a specified tab layout.
     NewTab {
         tiled_layout: Option<TiledPaneLayout>,
@@ -1334,12 +1339,9 @@ impl Action {
                         name: name.as_bytes().to_vec(),
                     }])
                 },
-                None => Ok(vec![
-                    Action::UndoRenamePane,
-                    Action::PaneNameInput {
-                        input: name.as_bytes().to_vec(),
-                    },
-                ]),
+                None => Ok(vec![Action::RenameActivePane {
+                    name: name.as_bytes().to_vec(),
+                }]),
             },
             CliAction::UndoRenamePane { pane_id } => match pane_id {
                 Some(pane_id_str) => {
@@ -2915,9 +2917,8 @@ mod tests {
         let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
         assert!(result.is_ok());
         let actions = result.unwrap();
-        assert_eq!(actions.len(), 2);
-        assert!(matches!(actions[0], Action::UndoRenamePane));
-        assert!(matches!(actions[1], Action::PaneNameInput { .. }));
+        assert_eq!(actions.len(), 1);
+        assert!(matches!(actions[0], Action::RenameActivePane { .. }));
     }
 
     // 18. UndoRenamePane

@@ -939,6 +939,15 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
         },
+        Action::RenameActivePane { name } => {
+            senders
+                .send_to_screen(ScreenInstruction::RenameActivePane(
+                    name,
+                    client_id,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
         Action::Run {
             command,
             near_current_pane,

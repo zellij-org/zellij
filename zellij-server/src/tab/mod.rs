@@ -1552,7 +1552,7 @@ impl Tab {
                     PaneGeom::default(), // this will be filled out later
                     self.style,
                     next_terminal_position,
-                    String::new(),
+                    initial_pane_title.clone().unwrap_or_default(),
                     self.link_handler.clone(),
                     self.character_cell_size.clone(),
                     self.sixel_image_store.clone(),
@@ -1665,7 +1665,7 @@ impl Tab {
                     PaneGeom::default(), // this will be filled out later
                     self.style,
                     next_terminal_position,
-                    String::new(),
+                    initial_pane_title.clone().unwrap_or_default(),
                     self.link_handler.clone(),
                     self.character_cell_size.clone(),
                     self.sixel_image_store.clone(),
@@ -1767,7 +1767,7 @@ impl Tab {
                     PaneGeom::default(), // this will be filled out later
                     self.style,
                     next_terminal_position,
-                    String::new(),
+                    initial_pane_title.clone().unwrap_or_default(),
                     self.link_handler.clone(),
                     self.character_cell_size.clone(),
                     self.sixel_image_store.clone(),
@@ -1913,7 +1913,7 @@ impl Tab {
                     PaneGeom::default(), // this will be filled out later
                     self.style,
                     next_terminal_position,
-                    String::new(),
+                    initial_pane_title.clone().unwrap_or_default(),
                     self.link_handler.clone(),
                     self.character_cell_size.clone(),
                     self.sixel_image_store.clone(),
@@ -4747,6 +4747,13 @@ impl Tab {
             })
             .with_context(err_context)?;
         pane.rename(buf);
+        Ok(())
+    }
+
+    pub fn rename_active_pane(&mut self, buf: Vec<u8>, client_id: ClientId) -> Result<()> {
+        if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
+            active_pane.rename(buf);
+        }
         Ok(())
     }
 
