@@ -315,8 +315,10 @@ pub fn scrolling_inside_a_pane() {
                 if remote_terminal.cursor_position_is(63, 21)
                     && remote_terminal.snapshot_contains("line3 ")
                     && remote_terminal.snapshot_contains("SCROLL:  1/3")
+                    && remote_terminal.snapshot_contains("PgDn|PgUp")
                 {
                     // keyboard scrolls up 1 line, scrollback is 4 lines: cat command + 2 extra lines from fixture + prompt
+                    // PgDn|PgUp only appears in the scroll mode status bar, confirming we're still in scroll mode
                     step_is_complete = true;
                 }
                 step_is_complete
@@ -2682,14 +2684,16 @@ pub fn watcher_client_functionality() {
                 });
         main_client.run_all_steps();
 
-        // Step 2: Start a background process that produces periodic output
+        // Step 2: Start a foreground process that produces periodic output and then
+        // replaces the shell with a long sleep. Using exec means pane 1 never returns
+        // to an interactive shell prompt, so a SIGWINCH on re-attach cannot trigger a
+        // prompt redraw — the snapshot is deterministic.
         main_client = main_client.add_step(Step {
-            name: "Start background output loop",
+            name: "Start foreground output loop",
             instruction: |mut remote_terminal: RemoteTerminal| -> bool {
                 remote_terminal.send_key(
-                    b"{ for i in 1 2 3; do sleep 1; echo \"WATCHER_OUTPUT_$i\"; done & } 2>/dev/null",
+                    b"for i in 1 2 3; do sleep 1; echo WATCHER_OUTPUT_$i; done; echo WATCHER_DONE; exec sleep 1000000",
                 );
-                std::thread::sleep(std::time::Duration::from_millis(100));
                 remote_terminal.send_key(&ENTER);
                 true
             },
@@ -2698,7 +2702,7 @@ pub fn watcher_client_functionality() {
 
         // Step 3: Wait for first output line to appear
         main_client = main_client.add_step(Step {
-            name: "Wait for first background output",
+            name: "Wait for first output",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let found = remote_terminal.snapshot_contains("WATCHER_OUTPUT_1");
                 found
@@ -2799,7 +2803,7 @@ pub fn watcher_client_functionality() {
         });
         main_client.run_all_steps();
 
-        // Step 11: Verify watcher receives background output even with no main client
+        // Step 11: Verify watcher receives output even with no main client
         watcher = watcher.add_step(Step {
             name: "Watcher sees WATCHER_OUTPUT_2",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
@@ -2834,11 +2838,14 @@ pub fn watcher_client_functionality() {
 
         watcher.run_all_steps();
 
-        // Step 15: Take final snapshots
+        // Take final snapshots — WATCHER_DONE means the loop finished and pane 1 is now
+        // running `sleep 1000000` (via exec), so no interactive shell and no prompt redraws.
         let main_client_snapshot = main_client_reattached.take_snapshot_after(Step {
             name: "Take main client final snapshot",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 remote_terminal.status_bar_appears()
+                    && remote_terminal.snapshot_contains("WATCHER_DONE")
+                    && remote_terminal.snapshot_contains("┐┌")
             },
         });
 
@@ -2846,6 +2853,8 @@ pub fn watcher_client_functionality() {
             name: "Take watcher final snapshot",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 remote_terminal.status_bar_appears()
+                    && remote_terminal.snapshot_contains("WATCHER_DONE")
+                    && remote_terminal.snapshot_contains("┐┌")
             },
         });
 
