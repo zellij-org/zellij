@@ -4359,8 +4359,7 @@ impl Options {
         {
             nodes.push(client_async_worker_tasks);
         }
-        if let Some(select_by_word_characters) =
-            self.select_by_word_characters_to_kdl(add_comments)
+        if let Some(select_by_word_characters) = self.select_by_word_characters_to_kdl(add_comments)
         {
             nodes.push(select_by_word_characters);
         }
