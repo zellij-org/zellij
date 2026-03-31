@@ -247,14 +247,12 @@ mod tls_mock_server {
 
         // Create server cert with IP SAN only (no DNS name for IP addresses)
         let mut server_params = rcgen::CertificateParams::new(Vec::<String>::new()).unwrap();
-        server_params.subject_alt_names = vec![rcgen::SanType::IpAddress(
-            std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
-        )];
+        server_params.subject_alt_names = vec![rcgen::SanType::IpAddress(std::net::IpAddr::V4(
+            std::net::Ipv4Addr::LOCALHOST,
+        ))];
         server_params.extended_key_usages = vec![rcgen::ExtendedKeyUsagePurpose::ServerAuth];
         let server_key = rcgen::KeyPair::generate().unwrap();
-        let server_cert = server_params
-            .signed_by(&server_key, &ca, &ca_key)
-            .unwrap();
+        let server_cert = server_params.signed_by(&server_key, &ca, &ca_key).unwrap();
 
         // Write to temp files
         let ca_cert_file = tempfile::NamedTempFile::new().unwrap();
@@ -281,28 +279,20 @@ mod tls_mock_server {
         certs: &TlsTestCerts,
     ) -> (u16, Handle, tokio::task::JoinHandle<()>) {
         let app = Router::new()
-            .route(
-                "/command/login",
-                post(super::mock_server::handle_login),
-            )
+            .route("/command/login", post(super::mock_server::handle_login))
             .route("/session", post(super::mock_server::handle_session))
-            .route(
-                "/ws/terminal",
-                get(super::mock_server::handle_ws_terminal),
-            )
+            .route("/ws/terminal", get(super::mock_server::handle_ws_terminal))
             .route(
                 "/ws/terminal/{session_name}",
                 get(super::mock_server::handle_ws_terminal),
             )
-            .route(
-                "/ws/control",
-                get(super::mock_server::handle_ws_control),
-            )
+            .route("/ws/control", get(super::mock_server::handle_ws_control))
             .with_state(state);
 
-        let rustls_config = RustlsConfig::from_pem_file(&certs.server_cert_path, &certs.server_key_path)
-            .await
-            .expect("Failed to load test TLS config");
+        let rustls_config =
+            RustlsConfig::from_pem_file(&certs.server_cert_path, &certs.server_key_path)
+                .await
+                .expect("Failed to load test TLS config");
 
         let listener =
             std::net::TcpListener::bind("127.0.0.1:0").expect("Failed to bind test TLS server");
@@ -795,7 +785,10 @@ mod tests {
     /// http_client).
     fn seed_mock_session(
         server_state: &MockRemoteServerState,
-    ) -> (String, crate::remote_attach::http_client::HttpClientWithCookies) {
+    ) -> (
+        String,
+        crate::remote_attach::http_client::HttpClientWithCookies,
+    ) {
         let session_token = uuid::Uuid::new_v4().to_string();
         let web_client_id = uuid::Uuid::new_v4().to_string();
         server_state
