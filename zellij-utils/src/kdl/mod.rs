@@ -2650,9 +2650,23 @@ impl Options {
             };
         let simplified_ui =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "simplified_ui").map(|(v, _)| v);
-        let default_shell =
-            kdl_property_first_arg_as_string_or_error!(kdl_options, "default_shell")
-                .map(|(string, _entry)| PathBuf::from(string));
+        let default_shell = {
+            let shell_path =
+                kdl_property_first_arg_as_string_or_error!(kdl_options, "default_shell")
+                    .map(|(string, _entry)| PathBuf::from(string));
+            let shell_args: Vec<String> = if let Some(args_node) = kdl_options
+                .get("default_shell")
+                .and_then(|shell_node| kdl_get_child!(shell_node, "args"))
+            {
+                kdl_string_arguments!(args_node)
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect()
+            } else {
+                vec![]
+            };
+            shell_path.map(|path| crate::input::options::DefaultShell::with_args(path, shell_args))
+        };
         let default_cwd = kdl_property_first_arg_as_string_or_error!(kdl_options, "default_cwd")
             .map(|(string, _entry)| PathBuf::from(string));
         let pane_frames =
@@ -2985,7 +2999,7 @@ impl Options {
             node
         };
         if let Some(default_shell) = &self.default_shell {
-            let mut node = create_node(&default_shell.display().to_string());
+            let mut node = create_node(&default_shell.path.display().to_string());
             if add_comments {
                 node.set_leading(format!("{}\n", comment_text));
             }

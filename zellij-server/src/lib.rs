@@ -372,7 +372,8 @@ impl SessionMetaData {
 
             self.default_shell = new_config.options.default_shell.as_ref().map(|shell| {
                 TerminalAction::RunCommand(RunCommand {
-                    command: shell.clone(),
+                    command: shell.path.clone(),
+                    args: shell.args.clone(),
                     cwd: new_config.options.default_cwd.clone(),
                     use_terminal_title: true,
                     ..Default::default()
@@ -390,7 +391,7 @@ impl SessionMetaData {
                         .theme_config(new_config.options.theme.as_ref())
                         .unwrap_or_else(|| default_palette().into()),
                     simplified_ui: new_config.options.simplified_ui.unwrap_or(false),
-                    default_shell: new_config.options.default_shell,
+                    default_shell: new_config.options.default_shell.map(|s| s.path),
                     pane_frames: new_config.options.pane_frames.unwrap_or(true),
                     copy_command: new_config.options.copy_command,
                     copy_to_clipboard: new_config.options.copy_clipboard,
@@ -843,7 +844,8 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
 
                 let default_shell = runtime_config_options.default_shell.map(|shell| {
                     TerminalAction::RunCommand(RunCommand {
-                        command: shell,
+                        command: shell.path,
+                        args: shell.args,
                         cwd: config.options.default_cwd.clone(),
                         use_terminal_title: true,
                         ..Default::default()
@@ -1773,9 +1775,10 @@ fn init_session(
         config_options.web_server_cert.is_some() && config_options.web_server_key.is_some();
     let enforce_https_for_localhost = config_options.enforce_https_for_localhost.unwrap_or(false);
 
-    let default_shell = config_options.default_shell.clone().map(|command| {
+    let default_shell = config_options.default_shell.clone().map(|shell| {
         TerminalAction::RunCommand(RunCommand {
-            command,
+            command: shell.path,
+            args: shell.args,
             use_terminal_title: true,
             ..Default::default()
         })
@@ -1783,6 +1786,7 @@ fn init_session(
     let path_to_default_shell = config_options
         .default_shell
         .clone()
+        .map(|s| s.path)
         .unwrap_or_else(|| get_default_shell());
 
     let default_mode = config_options.default_mode.unwrap_or_default();

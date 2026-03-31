@@ -4943,11 +4943,13 @@ pub(crate) fn screen_thread_main(
     let default_shell = config_options
         .default_shell
         .clone()
+        .map(|s| s.path)
         .unwrap_or(PathBuf::from("/bin/sh"));
     #[cfg(not(test))]
     let default_shell = config_options
         .default_shell
         .clone()
+        .map(|s| s.path)
         .unwrap_or_else(|| get_default_shell());
     let default_editor = config_options
         .scrollback_editor

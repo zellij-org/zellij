@@ -34,6 +34,36 @@ impl FromStr for OnForceClose {
     }
 }
 
+/// Default shell configuration: path and optional arguments.
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+pub struct DefaultShell {
+    pub path: PathBuf,
+    #[serde(default)]
+    pub args: Vec<String>,
+}
+
+impl DefaultShell {
+    pub fn new(path: PathBuf) -> Self {
+        Self { path, args: vec![] }
+    }
+    pub fn with_args(path: PathBuf, args: Vec<String>) -> Self {
+        Self { path, args }
+    }
+}
+
+impl From<PathBuf> for DefaultShell {
+    fn from(path: PathBuf) -> Self {
+        Self::new(path)
+    }
+}
+
+impl FromStr for DefaultShell {
+    type Err = std::convert::Infallible;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(Self::new(PathBuf::from(s)))
+    }
+}
+
 #[derive(Clone, Default, Debug, PartialEq, Deserialize, Serialize, Args)]
 /// Options that can be set either through the config file,
 /// or cli flags - cli flags should take precedence over the config file
@@ -53,7 +83,7 @@ pub struct Options {
     pub default_mode: Option<InputMode>,
     /// Set the default shell
     #[clap(long, value_parser)]
-    pub default_shell: Option<PathBuf>,
+    pub default_shell: Option<DefaultShell>,
     /// Set the default cwd
     #[clap(long, value_parser)]
     pub default_cwd: Option<PathBuf>,
