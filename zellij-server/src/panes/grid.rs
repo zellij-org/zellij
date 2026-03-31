@@ -1671,6 +1671,7 @@ impl Grid {
                 && !self.viewport.is_empty()
             {
                 self.transfer_rows_to_lines_above(1);
+                self.selection.move_up(1);
             } else if scroll_region_top < self.viewport.len() {
                 self.viewport.remove(scroll_region_top);
             }
@@ -1728,15 +1729,10 @@ impl Grid {
                     && self.alternate_screen_state.is_none()
                     && !self.viewport.is_empty()
                 {
-                    // Partial scroll region starting at the top of the
-                    // viewport: transfer the line scrolled off the top into
-                    // the scrollback buffer (lines_above) so that users can
-                    // reach it via mouse-wheel scrolling.  This matches the
-                    // behavior of other terminal multiplexers (e.g. tmux)
-                    // and is required by applications that use scroll
-                    // regions to push rendered content into scrollback
-                    // (e.g. Codex CLI's insert_history_lines).
+                    // Partial scroll region starting at top: preserve
+                    // scrolled-off lines in scrollback
                     self.transfer_rows_to_lines_above(1);
+                    self.selection.move_up(1);
                 } else if scroll_region_top < self.viewport.len() {
                     self.viewport.remove(scroll_region_top);
                 }
@@ -2053,7 +2049,14 @@ impl Grid {
             // so we delete the current line(s) and add an empty line at the end of the scroll
             // region
             for _ in 0..count {
-                if current_line_index < self.viewport.len() {
+                if current_line_index == 0
+                    && scroll_region_top == 0
+                    && self.alternate_screen_state.is_none()
+                    && !self.viewport.is_empty()
+                {
+                    self.transfer_rows_to_lines_above(1);
+                    self.selection.move_up(1);
+                } else if current_line_index < self.viewport.len() {
                     self.viewport.remove(current_line_index);
                 }
                 let columns = VecDeque::from(vec![pad_character.clone(); self.width]);
