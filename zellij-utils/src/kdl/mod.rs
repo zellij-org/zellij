@@ -5019,10 +5019,86 @@ fn load_plugins_from_kdl(
                 )
             })?
             .with_initial_cwd(cwd);
+
+            // Pre-grant permissions if configured
+            let permissions_to_grant =
+                load_plugin_permissions_from_kdl(&plugin_block, &run_plugin_or_alias);
+            if !permissions_to_grant.is_empty() {
+                let mut permission_cache = PermissionCache::from_path_or_default(None);
+                let location_string = match &run_plugin_or_alias {
+                    RunPluginOrAlias::RunPlugin(run_plugin) => {
+                        run_plugin.location.to_string()
+                    },
+                    RunPluginOrAlias::Alias(alias) => alias.name.clone(),
+                };
+                permission_cache.cache(location_string, permissions_to_grant);
+                if let Err(e) = permission_cache.write_to_file() {
+                    log::error!("Failed to write permission cache: {}", e);
+                }
+            }
+
             load_plugins.insert(run_plugin_or_alias);
         }
     }
     Ok(load_plugins)
+}
+
+fn all_permission_types() -> Vec<PermissionType> {
+    vec![
+        PermissionType::ReadApplicationState,
+        PermissionType::ChangeApplicationState,
+        PermissionType::OpenFiles,
+        PermissionType::RunCommands,
+        PermissionType::OpenTerminalsOrPlugins,
+        PermissionType::WriteToStdin,
+        PermissionType::WebAccess,
+        PermissionType::ReadCliPipes,
+        PermissionType::MessageAndLaunchOtherPlugins,
+        PermissionType::Reconfigure,
+        PermissionType::FullHdAccess,
+        PermissionType::StartWebServer,
+        PermissionType::InterceptInput,
+        PermissionType::ReadPaneContents,
+        PermissionType::RunActionsAsUser,
+        PermissionType::WriteToClipboard,
+        PermissionType::ReadSessionEnvironmentVariables,
+    ]
+}
+
+fn load_plugin_permissions_from_kdl(
+    plugin_block: &KdlNode,
+    _run_plugin_or_alias: &RunPluginOrAlias,
+) -> Vec<PermissionType> {
+    // grant_all_permissions true
+    let grant_all = plugin_block
+        .get("grant_all_permissions")
+        .and_then(|e| e.value().as_bool())
+        .or_else(|| {
+            plugin_block
+                .children()
+                .and_then(|c| c.get("grant_all_permissions"))
+                .and_then(|c| c.get(0))
+                .and_then(|e| e.value().as_bool())
+        })
+        .unwrap_or(false);
+    if grant_all {
+        return all_permission_types();
+    }
+
+    // grant_permissions { ReadApplicationState; RunCommands; ... }
+    if let Some(grant_node) = kdl_get_child!(plugin_block, "grant_permissions") {
+        if let Some(children) = kdl_children_nodes!(grant_node) {
+            return children
+                .iter()
+                .filter_map(|node| {
+                    let name = kdl_name!(node);
+                    PermissionType::from_str(name).ok()
+                })
+                .collect();
+        }
+    }
+
+    vec![]
 }
 
 impl UiConfig {
@@ -7181,4 +7257,90 @@ fn osc8_hyperlinks_config_parsing() {
     let serialized = config.to_string(false);
     let deserialized = Config::from_kdl(&serialized, None).unwrap();
     assert_eq!(deserialized.options.osc8_hyperlinks, Some(true));
+}
+
+#[test]
+fn load_plugins_grant_all_permissions() {
+    let kdl_string = r#"
+        load_plugins {
+            "file:/path/to/plugin.wasm" {
+                grant_all_permissions true
+            }
+        }
+    "#;
+    let kdl_doc: KdlDocument = kdl_string.parse().unwrap();
+    let load_plugins_node = kdl_doc.get("load_plugins").unwrap();
+    let plugin_node = load_plugins_node.children().unwrap().nodes().first().unwrap();
+    let run_plugin = RunPluginOrAlias::from_url(
+        &plugin_node.name().value(),
+        &None,
+        None,
+        None,
+    )
+    .unwrap();
+    let permissions = load_plugin_permissions_from_kdl(plugin_node, &run_plugin);
+    let expected_count = all_permission_types().len();
+    assert_eq!(permissions.len(), expected_count, "Should grant all {} permission types", expected_count);
+    assert!(permissions.contains(&PermissionType::ReadApplicationState));
+    assert!(permissions.contains(&PermissionType::ChangeApplicationState));
+    assert!(permissions.contains(&PermissionType::RunCommands));
+    assert!(permissions.contains(&PermissionType::ReadCliPipes));
+    assert!(permissions.contains(&PermissionType::MessageAndLaunchOtherPlugins));
+    assert!(permissions.contains(&PermissionType::Reconfigure));
+    assert!(permissions.contains(&PermissionType::WriteToClipboard));
+    assert!(permissions.contains(&PermissionType::ReadSessionEnvironmentVariables));
+}
+
+#[test]
+fn load_plugins_grant_specific_permissions() {
+    let kdl_string = r#"
+        load_plugins {
+            "file:/path/to/plugin.wasm" {
+                grant_permissions {
+                    ReadApplicationState
+                    RunCommands
+                    ReadCliPipes
+                }
+            }
+        }
+    "#;
+    let kdl_doc: KdlDocument = kdl_string.parse().unwrap();
+    let load_plugins_node = kdl_doc.get("load_plugins").unwrap();
+    let plugin_node = load_plugins_node.children().unwrap().nodes().first().unwrap();
+    let run_plugin = RunPluginOrAlias::from_url(
+        &plugin_node.name().value(),
+        &None,
+        None,
+        None,
+    )
+    .unwrap();
+    let permissions = load_plugin_permissions_from_kdl(plugin_node, &run_plugin);
+    assert_eq!(permissions.len(), 3, "Should grant exactly 3 permissions");
+    assert!(permissions.contains(&PermissionType::ReadApplicationState));
+    assert!(permissions.contains(&PermissionType::RunCommands));
+    assert!(permissions.contains(&PermissionType::ReadCliPipes));
+    assert!(!permissions.contains(&PermissionType::ChangeApplicationState));
+}
+
+#[test]
+fn load_plugins_no_grant_permissions() {
+    let kdl_string = r#"
+        load_plugins {
+            "file:/path/to/plugin.wasm" {
+                config_key "config_value"
+            }
+        }
+    "#;
+    let kdl_doc: KdlDocument = kdl_string.parse().unwrap();
+    let load_plugins_node = kdl_doc.get("load_plugins").unwrap();
+    let plugin_node = load_plugins_node.children().unwrap().nodes().first().unwrap();
+    let run_plugin = RunPluginOrAlias::from_url(
+        &plugin_node.name().value(),
+        &None,
+        None,
+        None,
+    )
+    .unwrap();
+    let permissions = load_plugin_permissions_from_kdl(plugin_node, &run_plugin);
+    assert!(permissions.is_empty(), "Should not grant any permissions");
 }
