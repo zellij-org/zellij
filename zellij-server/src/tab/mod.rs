@@ -760,7 +760,16 @@ impl Tab {
 
         let clipboard_provider = match copy_options.command {
             Some(command) => ClipboardProvider::Command(CopyCommand::new(command)),
-            None => ClipboardProvider::Osc52(copy_options.clipboard),
+            None => {
+                #[cfg(target_os = "macos")]
+                {
+                    ClipboardProvider::Command(CopyCommand::new("pbcopy".to_string()))
+                }
+                #[cfg(not(target_os = "macos"))]
+                {
+                    ClipboardProvider::Osc52(copy_options.clipboard)
+                }
+            },
         };
         let swap_layouts = SwapLayouts::new(swap_layouts, display_area.clone());
 
@@ -5464,9 +5473,22 @@ impl Tab {
     pub fn update_copy_options(&mut self, copy_options: &CopyOptions) {
         self.clipboard_provider = match &copy_options.command {
             Some(command) => ClipboardProvider::Command(CopyCommand::new(command.clone())),
-            None => ClipboardProvider::Osc52(copy_options.clipboard),
+            None => {
+                #[cfg(target_os = "macos")]
+                {
+                    ClipboardProvider::Command(CopyCommand::new("pbcopy".to_string()))
+                }
+                #[cfg(not(target_os = "macos"))]
+                {
+                    ClipboardProvider::Osc52(copy_options.clipboard)
+                }
+            },
         };
         self.copy_on_select = copy_options.copy_on_select;
+    }
+    #[cfg(test)]
+    pub fn clipboard_provider_is_command(&self) -> bool {
+        matches!(self.clipboard_provider, clipboard::ClipboardProvider::Command(_))
     }
     pub fn update_auto_layout(&mut self, auto_layout: bool) {
         self.auto_layout = auto_layout;

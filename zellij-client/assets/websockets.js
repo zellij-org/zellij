@@ -53,7 +53,7 @@ export function initWebSockets(
 
         if (typeof data === "string") {
             // Intercept OSC 52 (clipboard) sequences and copy to local clipboard
-            const osc52Regex = /\x1b\]52;[pc];([^\x07\x1b\]*)(?:\x07|\x1b\)/g;
+            const osc52Regex = /\x1b\]52;[pc];([^\x07\x1b]*)(?:\x07|\x1b\)/g;
             data = data.replace(osc52Regex, (match, base64Content) => {
                 try {
                     const decoded = atob(base64Content);
