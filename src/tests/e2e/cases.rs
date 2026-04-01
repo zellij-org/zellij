@@ -2425,9 +2425,8 @@ pub fn send_blocking_command_through_the_cli() {
                         && remote_terminal.cursor_position_is(3, 2)
                     {
                         std::thread::sleep(std::time::Duration::from_millis(100));
-                        remote_terminal.send_blocking_command_through_the_cli(
-                            "bash -c 'sleep 2 && exit 42'",
-                        );
+                        remote_terminal
+                            .send_blocking_command_through_the_cli("bash -c 'sleep 2 && exit 42'");
                         std::thread::sleep(std::time::Duration::from_millis(100));
                         remote_terminal.send_key(&ENTER);
                         std::thread::sleep(std::time::Duration::from_millis(100));
