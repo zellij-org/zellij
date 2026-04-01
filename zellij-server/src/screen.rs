@@ -1711,6 +1711,12 @@ impl Screen {
                             .send_to_background_jobs(BackgroundJob::StopFlashTabBell(tab_id));
                     }
 
+                    // Invalidate cursor cache so the next render sends
+                    // DECSCUSR, resetting the terminal's blink timeout.
+                    if let Some(new_tab) = self.get_indexed_tab_mut(new_tab_index) {
+                        new_tab.invalidate_cursor_cache();
+                    }
+
                     self.log_and_report_session_state()
                         .with_context(err_context)?;
                     return self.render(None).with_context(err_context);

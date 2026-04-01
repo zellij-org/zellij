@@ -3545,13 +3545,18 @@ impl Perform for Grid {
                                 } else {
                                     None
                                 };
-                                let (r, g, b) = color_rgb.unwrap_or((0, 0, 0));
-                                let color_response_message = format!(
-                                    "\u{1b}]{};rgb:{1:02x}{1:02x}/{2:02x}{2:02x}/{3:02x}{3:02x}{4}",
-                                    dynamic_code, r, g, b, terminator
-                                );
-                                self.pending_messages_to_pty
-                                    .push(color_response_message.as_bytes().to_vec());
+                                // Only respond if we have a real color. Responding
+                                // with (0,0,0) when the bg is unknown causes apps
+                                // to store black as the "original" and restore it
+                                // on exit, overriding the terminal's actual default.
+                                if let Some((r, g, b)) = color_rgb {
+                                    let color_response_message = format!(
+                                        "\u{1b}]{};rgb:{1:02x}{1:02x}/{2:02x}{2:02x}/{3:02x}{3:02x}{4}",
+                                        dynamic_code, r, g, b, terminator
+                                    );
+                                    self.pending_messages_to_pty
+                                        .push(color_response_message.as_bytes().to_vec());
+                                }
                             } else {
                                 // Set: parse color and store as pane default
                                 if let Some(color) = xparse_color(param) {
@@ -3807,6 +3812,12 @@ impl Perform for Grid {
                                 self.multi_cursor_state = MultiCursorState::default();
                             }
                             self.alternate_screen_state = None;
+                            // Reset pane default colors set during alt screen
+                            // (e.g. OSC 11 from Helix themes). The app may send
+                            // OSC 111 after this, but a render can happen between
+                            // the two if they arrive in separate PTY reads.
+                            self.pane_default_fg = None;
+                            self.pane_default_bg = None;
                             self.clear_viewport_before_rendering = true;
                             self.force_change_size(self.height, self.width); // the alternative_viewport might have been of a different size...
                             self.mark_for_rerender();

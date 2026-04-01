@@ -3166,6 +3166,13 @@ impl Tab {
         Ok(())
     }
 
+    /// Invalidate the cursor position/shape cache so the next render
+    /// re-sends DECSCUSR to the outer terminal. Call when this tab
+    /// becomes the active tab for a client.
+    pub fn invalidate_cursor_cache(&mut self) {
+        self.cursor_positions_and_shape.clear();
+    }
+
     pub fn render(
         &mut self,
         output: &mut Output,
@@ -3363,13 +3370,13 @@ impl Tab {
                     }
                 },
                 None => {
-                    // Insert empty tombstone to track "cleared" state. Sends exactly
-                    // one clear per transition (including tab switch where the new tab
-                    // has no entry for this client but stale cursors may remain).
-                    let prev = self.last_multi_cursor_sequence.insert(client_id, String::new());
-                    if prev.as_ref().map_or(true, |s| !s.is_empty()) {
-                        output.add_post_vte_instruction_to_client(client_id, "\x1b[>0;4 q");
-                    }
+                    // Always send clear when this pane has no multi-cursors.
+                    // Per-tab tombstone dedup was wrong: switching Tab A (cursors)
+                    // → Tab B (no cursors) → Tab A → Tab B would skip the clear
+                    // on the second visit because Tab B's tombstone was still set
+                    // from the first visit, before Tab A re-sent cursors.
+                    self.last_multi_cursor_sequence.insert(client_id, String::new());
+                    output.add_post_vte_instruction_to_client(client_id, "\x1b[>0;4 q");
                 },
             }
         }
@@ -3446,16 +3453,27 @@ impl Tab {
                             .unwrap_or(true);
                         if output.is_dirty() || cursor_changed_position_or_shape {
                             let show_cursor = "\u{1b}[?25h";
-                            let goto_cursor_position = &format!(
-                                "\u{1b}[{};{}H\u{1b}[m{}",
-                                cursor_position_y + 1,
-                                cursor_position_x + 1,
-                                desired_cursor_shape
-                            ); // goto row/col
+                            // Only include DECSCUSR when the cursor actually
+                            // changed. Re-sending the shape every dirty frame
+                            // resets the terminal's cursor blink timeout.
+                            let goto_cursor_position = if cursor_changed_position_or_shape {
+                                format!(
+                                    "\u{1b}[{};{}H\u{1b}[m{}",
+                                    cursor_position_y + 1,
+                                    cursor_position_x + 1,
+                                    desired_cursor_shape,
+                                )
+                            } else {
+                                format!(
+                                    "\u{1b}[{};{}H\u{1b}[m",
+                                    cursor_position_y + 1,
+                                    cursor_position_x + 1,
+                                )
+                            };
                             output.add_post_vte_instruction_to_client(client_id, show_cursor);
                             output.add_post_vte_instruction_to_client(
                                 client_id,
-                                goto_cursor_position,
+                                &goto_cursor_position,
                             );
                             self.cursor_positions_and_shape.insert(
                                 client_id,
@@ -3465,8 +3483,7 @@ impl Tab {
                     } else if not_occluded {
                         // Cursor is hidden by the app but not occluded by a floating
                         // pane. Position the host terminal cursor at the correct
-                        // location (for IME) then hide it. The IME subsystem reads
-                        // the cursor position regardless of visibility.
+                        // location (for IME) then hide it.
                         let hide_cursor = "\u{1b}[?25l";
                         let goto_cursor_position = &format!(
                             "\u{1b}[{};{}H",
