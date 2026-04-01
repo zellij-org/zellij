@@ -1215,11 +1215,9 @@ pub fn quit_and_resurrect_session() {
         let last_snapshot = runner.take_snapshot_after(Step {
             name: "Wait for session to be resurrected",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
-                let mut step_is_complete = false;
-                if remote_terminal.snapshot_contains("(FLOATING PANES VISIBLE)") {
-                    step_is_complete = true;
-                }
-                step_is_complete
+                remote_terminal.snapshot_contains("(FLOATING PANES VISIBLE)")
+                    && remote_terminal.status_bar_appears()
+                    && remote_terminal.tab_bar_appears()
             },
         });
         if runner.test_timed_out && test_attempts > 0 {
@@ -1276,11 +1274,9 @@ pub fn quit_and_resurrect_session_with_viewport_serialization() {
         let last_snapshot = runner.take_snapshot_after(Step {
             name: "Wait for session to be resurrected",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
-                let mut step_is_complete = false;
-                if remote_terminal.snapshot_contains("(FLOATING PANES VISIBLE)") {
-                    step_is_complete = true;
-                }
-                step_is_complete
+                remote_terminal.snapshot_contains("(FLOATING PANES VISIBLE)")
+                    && remote_terminal.status_bar_appears()
+                    && remote_terminal.tab_bar_appears()
             },
         });
         if runner.test_timed_out && test_attempts > 0 {
@@ -2428,12 +2424,8 @@ pub fn send_blocking_command_through_the_cli() {
                     if remote_terminal.status_bar_appears()
                         && remote_terminal.cursor_position_is(3, 2)
                     {
-                        // Send a command that sleeps for 2 seconds then exits with status 42
-                        // Using bash -c with proper escaping
-                        // remote_terminal.send_key("aaa\n".as_bytes());
                         std::thread::sleep(std::time::Duration::from_millis(100));
                         remote_terminal.send_blocking_command_through_the_cli(
-                            // "lskdjlskdjf"
                             "bash -c 'sleep 2 && exit 42'",
                         );
                         std::thread::sleep(std::time::Duration::from_millis(100));
@@ -2463,8 +2455,13 @@ pub fn send_blocking_command_through_the_cli() {
                 instruction: |mut remote_terminal: RemoteTerminal| -> bool {
                     let mut step_is_complete = false;
                     // After 2+ seconds, the command should complete and the floating pane should close
-                    // then we do echo $? to make sure we got back its exit status
-                    if !remote_terminal.snapshot_contains("PIN [ ]") {
+                    // Wait until the floating pane is gone AND the shell prompt is back before
+                    // asking for $?, otherwise we can race the blocking CLI process itself
+                    // returning to the shell.
+                    if !remote_terminal.snapshot_contains("PIN [ ]")
+                        && remote_terminal.snapshot_contains("$ \u{2588}")
+                        && remote_terminal.status_bar_appears()
+                    {
                         remote_terminal.send_key("echo $?".as_bytes());
                         std::thread::sleep(std::time::Duration::from_millis(100));
                         remote_terminal.send_key(&ENTER);
@@ -2480,9 +2477,10 @@ pub fn send_blocking_command_through_the_cli() {
             name: "Verify CLI returned with proper exit status after command completed",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                // wait until echo $? is visible in history AND cursor is back at a blank prompt,
-                // which means the command has actually executed (not just been typed)
+                // wait until echo $? is visible, the exit status rendered, and the cursor is back
+                // at a blank prompt, which means the shell command actually executed
                 if remote_terminal.snapshot_contains("echo $?")
+                    && remote_terminal.snapshot_contains("│42")
                     && remote_terminal.snapshot_contains("$ \u{2588}")
                     && remote_terminal.status_bar_appears()
                 {
