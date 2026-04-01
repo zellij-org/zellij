@@ -81,6 +81,11 @@ pub struct Options {
     #[serde(default)]
     /// Mirror session when multiple users are connected (true or false)
     pub mirror_session: Option<bool>,
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    /// Hide pane frames, tab bar and status bar when entering lock mode (true or false)
+    /// Default: true (hide UI elements in lock mode)
+    pub lock_hide_toggle: Option<bool>,
     /// Set behaviour on force close (quit or detach)
     #[clap(long, arg_enum, hide_possible_values = true, value_parser)]
     pub on_force_close: Option<OnForceClose>,
@@ -311,6 +316,7 @@ impl Options {
         let pane_frames = other.pane_frames.or(self.pane_frames);
         let auto_layout = other.auto_layout.or(self.auto_layout);
         let mirror_session = other.mirror_session.or(self.mirror_session);
+        let lock_hide_toggle = other.lock_hide_toggle.or(self.lock_hide_toggle);
         let simplified_ui = other.simplified_ui.or(self.simplified_ui);
         let default_mode = other.default_mode.or(self.default_mode);
         let default_shell = other.default_shell.or_else(|| self.default_shell.clone());
@@ -385,6 +391,7 @@ impl Options {
             mouse_mode,
             pane_frames,
             mirror_session,
+            lock_hide_toggle,
             on_force_close,
             scroll_buffer_size,
             copy_command,
@@ -442,6 +449,7 @@ impl Options {
         let pane_frames = merge_bool(other.pane_frames, self.pane_frames);
         let auto_layout = merge_bool(other.auto_layout, self.auto_layout);
         let mirror_session = merge_bool(other.mirror_session, self.mirror_session);
+        let lock_hide_toggle = merge_bool(other.lock_hide_toggle, self.lock_hide_toggle);
         let session_serialization =
             merge_bool(other.session_serialization, self.session_serialization);
         let serialize_pane_viewport =
@@ -516,6 +524,7 @@ impl Options {
             mouse_mode,
             pane_frames,
             mirror_session,
+            lock_hide_toggle,
             on_force_close,
             scroll_buffer_size,
             copy_command,

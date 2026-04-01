@@ -2715,6 +2715,8 @@ impl Options {
                 .map(|(string, _entry)| PathBuf::from(string));
         let mirror_session =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "mirror_session").map(|(v, _)| v);
+        let lock_hide_toggle =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "lock_hide_toggle").map(|(v, _)| v);
         let session_name = kdl_property_first_arg_as_string_or_error!(kdl_options, "session_name")
             .map(|(session_name, _entry)| session_name.to_string());
         let attach_to_session =
@@ -2830,6 +2832,7 @@ impl Options {
             mouse_mode,
             pane_frames,
             mirror_session,
+            lock_hide_toggle,
             on_force_close,
             scroll_buffer_size,
             copy_command,
@@ -3203,6 +3206,37 @@ impl Options {
         };
         if let Some(mirror_session) = self.mirror_session {
             let mut node = create_node(mirror_session);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(true);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
+    fn lock_hide_toggle_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!(
+            "{}\n{}\n{}\n{}\n{}\n{}\n{}",
+            " ",
+            "// Hide pane frames, tab bar and status bar when entering lock mode",
+            "// Set to true to hide UI elements in lock mode (Ctrl+g)",
+            "// Set to false to keep UI elements visible in lock mode",
+            "// (Requires restart)",
+            "// Default: true",
+            "// ",
+        );
+
+        let create_node = |node_value: bool| -> KdlNode {
+            let mut node = KdlNode::new("lock_hide_toggle");
+            node.push(KdlValue::Bool(node_value));
+            node
+        };
+        if let Some(lock_hide_toggle) = self.lock_hide_toggle {
+            let mut node = create_node(lock_hide_toggle);
             if add_comments {
                 node.set_leading(format!("{}\n", comment_text));
             }
@@ -4216,6 +4250,9 @@ impl Options {
         }
         if let Some(mirror_session) = self.mirror_session_to_kdl(add_comments) {
             nodes.push(mirror_session);
+        }
+        if let Some(lock_hide_toggle) = self.lock_hide_toggle_to_kdl(add_comments) {
+            nodes.push(lock_hide_toggle);
         }
         if let Some(on_force_close) = self.on_force_close_to_kdl(add_comments) {
             nodes.push(on_force_close);

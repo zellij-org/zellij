@@ -4790,6 +4790,40 @@ impl Tab {
         self.set_should_clear_display_before_rendering();
         self.set_force_render();
     }
+    pub fn hide_non_selectable_panes(&mut self) {
+        let non_selectable_pane_ids = self.tiled_panes.non_selectable_pane_ids();
+        for pane_id in non_selectable_pane_ids {
+            self.tiled_panes.add_to_hidden_panels(pane_id);
+        }
+        // Re-layout panes to allow other panes to expand into the hidden space
+        let display_area = *self.display_area.borrow();
+        self.tiled_panes.resize(display_area);
+        // Reset viewport to the entire display_area since non-selectable panes are hidden
+        {
+            let mut viewport = self.viewport.borrow_mut();
+            *viewport = display_area.into();
+        }
+        self.set_should_clear_display_before_rendering();
+        self.set_force_render();
+    }
+    pub fn show_non_selectable_panes(&mut self) {
+        let non_selectable_pane_ids = self.tiled_panes.non_selectable_pane_ids();
+        for pane_id in non_selectable_pane_ids {
+            self.tiled_panes.remove_from_hidden_panels(pane_id);
+        }
+        // Re-layout panes
+        let display_area = *self.display_area.borrow();
+        self.tiled_panes.resize(display_area);
+        // Recalculate viewport, considering non-selectable panes
+        LayoutApplier::offset_viewport(
+            self.viewport.clone(),
+            self.display_area.clone(),
+            &mut self.tiled_panes,
+            self.draw_pane_frames,
+        );
+        self.set_should_clear_display_before_rendering();
+        self.set_force_render();
+    }
     pub fn panes_to_hide_count(&self) -> usize {
         self.tiled_panes.panes_to_hide_count()
     }

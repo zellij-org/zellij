@@ -327,6 +327,7 @@ fn create_new_screen(
         false, // mouse_click_through
         web_server_ip,
         web_server_port,
+        true, // lock_hide_toggle
     );
     screen
 }
@@ -5295,6 +5296,7 @@ fn create_new_screen_with_message_capture(
         false, // mouse_click_through
         web_server_ip,
         web_server_port,
+        true, // lock_hide_toggle
     );
     (screen, messages)
 }

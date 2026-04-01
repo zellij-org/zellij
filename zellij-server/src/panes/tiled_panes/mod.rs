@@ -511,6 +511,18 @@ impl TiledPanes {
             })
             .collect()
     }
+    pub fn non_selectable_pane_ids(&self) -> Vec<PaneId> {
+        self.panes
+            .iter()
+            .filter_map(|(id, p)| {
+                if !p.selectable() {
+                    Some(*id)
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
     pub fn first_selectable_pane_id(&self) -> Option<PaneId> {
         self.panes
             .iter()

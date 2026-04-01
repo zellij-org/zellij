@@ -638,6 +638,7 @@ impl From<crate::input::options::Options>
             mouse_mode: options.mouse_mode,
             pane_frames: options.pane_frames,
             mirror_session: options.mirror_session,
+            lock_hide_toggle: options.lock_hide_toggle,
             on_force_close: options.on_force_close.map(|o| match o {
                 crate::input::options::OnForceClose::Quit => ProtoOnForceClose::Quit as i32,
                 crate::input::options::OnForceClose::Detach => ProtoOnForceClose::Detach as i32,
@@ -719,6 +720,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
             mouse_mode: options.mouse_mode,
             pane_frames: options.pane_frames,
             mirror_session: options.mirror_session,
+            lock_hide_toggle: options.lock_hide_toggle,
             on_force_close: options
                 .on_force_close
                 .map(|o| match ProtoOnForceClose::from_i32(o) {

@@ -1927,6 +1927,9 @@ pub struct Options {
     pub focus_follows_mouse: ::core::option::Option<bool>,
     #[prost(bool, optional, tag="45")]
     pub mouse_click_through: ::core::option::Option<bool>,
+    /// Hide UI elements in lock mode
+    #[prost(bool, optional, tag="46")]
+    pub lock_hide_toggle: ::core::option::Option<bool>,
 }
 /// Pane-targeting action messages
 #[allow(clippy::derive_partial_eq_without_eq)]

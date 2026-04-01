@@ -1310,6 +1310,8 @@ pub(crate) struct Screen {
     default_mode_info: ModeInfo, // TODO: restructure ModeInfo to prevent this duplication
     style: Style,
     draw_pane_frames: bool,
+    draw_pane_frames_before_lock: Option<bool>, // Save pane frames state before entering lock mode
+    lock_hide_toggle: bool, // Whether to hide UI elements in lock mode
     auto_layout: bool,
     session_serialization: bool,
     serialize_pane_viewport: bool,
@@ -1390,6 +1392,7 @@ impl Screen {
         mouse_click_through: bool,
         web_server_ip: IpAddr,
         web_server_port: u16,
+        lock_hide_toggle: bool,
     ) -> Self {
         let session_name = mode_info.session_name.clone().unwrap_or_default();
         let session_info = SessionInfo::new(session_name.clone());
@@ -1417,6 +1420,8 @@ impl Screen {
             mode_info: BTreeMap::new(),
             default_mode_info: mode_info,
             draw_pane_frames,
+            draw_pane_frames_before_lock: None,
+            lock_hide_toggle,
             auto_layout,
             session_is_mirrored,
             copy_options,
@@ -3262,6 +3267,29 @@ impl Screen {
         }
 
         self.style = mode_info.style;
+        
+        // Handle pane frames show/hide for lock mode (only effective when lock_hide_toggle is true)
+        if self.lock_hide_toggle {
+            if mode_info.mode == InputMode::Locked && previous_mode != InputMode::Locked {
+                // Entering lock mode: save current state and hide pane frames
+                self.draw_pane_frames_before_lock = Some(self.draw_pane_frames);
+                self.draw_pane_frames = false;
+                for tab in self.tabs.values_mut() {
+                    tab.set_pane_frames(false);
+                    tab.hide_non_selectable_panes(); // Hide non-selectable panes like tab bar
+                }
+            } else if previous_mode == InputMode::Locked && mode_info.mode != InputMode::Locked {
+                // Exiting lock mode: restore previous state
+                if let Some(previous_draw_pane_frames) = self.draw_pane_frames_before_lock.take() {
+                    self.draw_pane_frames = previous_draw_pane_frames;
+                    for tab in self.tabs.values_mut() {
+                        tab.set_pane_frames(previous_draw_pane_frames);
+                        tab.show_non_selectable_panes(); // Show non-selectable panes like tab bar
+                    }
+                }
+            }
+        }
+        
         self.mode_info.insert(client_id, mode_info.clone());
         for tab in self.tabs.values_mut() {
             tab.change_mode_info(mode_info.clone(), client_id);
@@ -4990,6 +5018,7 @@ pub(crate) fn screen_thread_main(
     let visual_bell = config_options.visual_bell.unwrap_or(true);
     let focus_follows_mouse = config_options.focus_follows_mouse.unwrap_or(false);
     let mouse_click_through = config_options.mouse_click_through.unwrap_or(false);
+    let lock_hide_toggle = config_options.lock_hide_toggle.unwrap_or(true); // Default to true, i.e., hide UI in lock mode
 
     let thread_senders = bus.senders.clone();
     let mut screen = Screen::new(
@@ -5033,6 +5062,7 @@ pub(crate) fn screen_thread_main(
         mouse_click_through,
         web_server_ip,
         web_server_port,
+        lock_hide_toggle,
     );
 
     let mut pending_tab_ids: HashSet<usize> = HashSet::new();
