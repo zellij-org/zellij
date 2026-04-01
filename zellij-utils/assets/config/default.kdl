@@ -245,10 +245,31 @@ plugins {
 }
 
 // Plugins to load in the background when a new session starts
+// Background plugins cannot show the interactive permission dialog,
+// so permissions can be granted directly here.
+//
+// grant_all_permissions: grants every permission type
+// grant_permissions:     grants only the listed permission types
+//   Available permissions:
+//     ReadApplicationState, ChangeApplicationState, OpenFiles,
+//     RunCommands, OpenTerminalsOrPlugins, WriteToStdin, WebAccess,
+//     ReadCliPipes, MessageAndLaunchOtherPlugins, Reconfigure,
+//     FullHdAccess, StartWebServer, InterceptInput, ReadPaneContents,
+//     RunActionsAsUser, WriteToClipboard, ReadSessionEnvironmentVariables
 load_plugins {
     "zellij:link"
     // "file:/path/to/my-plugin.wasm"
     // "https://example.com/my-plugin.wasm"
+    // "file:/path/to/my-plugin.wasm" {
+    //     grant_all_permissions true
+    // }
+    // "file:/path/to/my-plugin.wasm" {
+    //     grant_permissions {
+    //         ReadApplicationState
+    //         ChangeApplicationState
+    //         RunCommands
+    //     }
+    // }
 }
 
 // Choose what to do when zellij receives SIGTERM, SIGINT, SIGQUIT or SIGHUP
