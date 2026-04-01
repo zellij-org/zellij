@@ -242,7 +242,7 @@ function startWsControl(wsControl, term, fitAddon, ownWebClientId, userConfig) {
         } else if (msg.type === "SwitchedSession") {
             const { new_session_name } = msg;
             const baseUrl = getBaseUrl();
-            window.location.href = `${baseUrl}/${new_session_name}`;
+            window.location.href = `${baseUrl}/${encodeURIComponent(new_session_name)}`;
         }
     };
 
