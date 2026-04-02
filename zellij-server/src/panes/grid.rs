@@ -1581,6 +1581,13 @@ impl Grid {
             Some((self.cursor.x, self.cursor.y))
         }
     }
+    pub fn cursor_position_for_ime(&self) -> Option<(usize, usize)> {
+        if self.cursor.x >= self.width || self.cursor.y >= self.height {
+            None
+        } else {
+            Some((self.cursor.x, self.cursor.y))
+        }
+    }
     pub fn is_mid_frame(&self) -> bool {
         self.lock_renders
     }

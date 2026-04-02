@@ -191,6 +191,7 @@ pub(crate) struct Tab {
     cursor_positions_and_shape: HashMap<ClientId, (usize, usize, String)>, // (x_position,
     // y_position,
     // cursor_shape_csi)
+    ime_cursor_positions: HashMap<ClientId, (usize, usize)>,
     is_pending: bool, // a pending tab is one that is still being loaded or otherwise waiting
     pending_instructions: Vec<BufferedTabInstruction>, // instructions that came while the tab was
     // pending and need to be re-applied
@@ -241,6 +242,9 @@ pub trait Pane {
     fn handle_plugin_bytes(&mut self, _client_id: ClientId, _bytes: VteBytes) {}
     fn show_cursor(&mut self, _client_id: ClientId, _cursor_position: Option<(usize, usize)>) {}
     fn cursor_coordinates(&self, _client_id: Option<ClientId>) -> Option<(usize, usize)>;
+    fn cursor_position_for_ime(&self, client_id: Option<ClientId>) -> Option<(usize, usize)> {
+        self.cursor_coordinates(client_id)
+    }
     fn is_mid_frame(&self) -> bool {
         false
     }
@@ -803,6 +807,7 @@ impl Tab {
             terminal_emulator_color_codes,
             pids_waiting_resize: HashSet::new(),
             cursor_positions_and_shape: HashMap::new(),
+            ime_cursor_positions: HashMap::new(),
             is_pending: true, // will be switched to false once the layout is applied
             pending_instructions: vec![],
             swap_layouts,
@@ -3058,6 +3063,29 @@ impl Tab {
                 (x, y)
             })
     }
+    pub fn get_active_terminal_ime_cursor_position(
+        &self,
+        client_id: ClientId,
+    ) -> Option<(usize, usize)> {
+        let active_pane_id = if self.floating_panes.panes_are_visible() {
+            self.floating_panes
+                .get_active_pane_id(client_id)
+                .or_else(|| self.tiled_panes.get_active_pane_id(client_id))?
+        } else {
+            self.tiled_panes.get_active_pane_id(client_id)?
+        };
+        let active_terminal = &self
+            .floating_panes
+            .get(&active_pane_id)
+            .or_else(|| self.tiled_panes.get_pane(active_pane_id))?;
+        active_terminal
+            .cursor_position_for_ime(Some(client_id))
+            .map(|(x_in_terminal, y_in_terminal)| {
+                let x = active_terminal.x() + x_in_terminal;
+                let y = active_terminal.y() + y_in_terminal;
+                (x, y)
+            })
+    }
     pub fn toggle_active_pane_fullscreen(&mut self, client_id: ClientId) {
         if self.floating_panes.panes_are_visible() {
             return;
@@ -3295,6 +3323,35 @@ impl Tab {
                 None => {
                     let hide_cursor = "\u{1b}[?25l";
                     output.add_post_vte_instruction_to_client(client_id, hide_cursor);
+
+                    let active_terminal_is_mid_frame = self
+                        .active_terminal_is_mid_frame(client_id)
+                        .unwrap_or(false);
+                    if !active_terminal_is_mid_frame {
+                        if let Some((ime_x, ime_y)) =
+                            self.get_active_terminal_ime_cursor_position(client_id)
+                        {
+                            let active_pane_z_index = self
+                                .get_active_pane_id(client_id)
+                                .and_then(|pane_id| self.floating_panes.get_pane_z_index(pane_id));
+                            let ime_position_changed = self
+                                .ime_cursor_positions
+                                .get(&client_id)
+                                .map(|(prev_x, prev_y)| prev_x != &ime_x || prev_y != &ime_y)
+                                .unwrap_or(true);
+                            if (output.is_dirty() || ime_position_changed)
+                                && output.is_cursor_not_occluded(ime_x, ime_y, active_pane_z_index)
+                            {
+                                let goto_cursor_position =
+                                    &format!("\u{1b}[{};{}H", ime_y + 1, ime_x + 1);
+                                output.add_post_vte_instruction_to_client(
+                                    client_id,
+                                    goto_cursor_position,
+                                );
+                                self.ime_cursor_positions.insert(client_id, (ime_x, ime_y));
+                            }
+                        }
+                    }
                 },
             }
         }
