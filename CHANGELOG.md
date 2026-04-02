@@ -20,6 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: remote attach issues on macOS (https://github.com/zellij-org/zellij/pull/4972)
 * test: improve e2e test reliability and local macOS dev support (https://github.com/zellij-org/zellij/pull/4952)
 * fix: preserve background color in trailing and skipped characters (https://github.com/zellij-org/zellij/pull/4992)
+* fix: make web client use base URL when switching sessions (https://github.com/zellij-org/zellij/pull/4981)
 
 ## [0.44.0] - 2026-03-23
 * fix: meta key handling in web client (https://github.com/zellij-org/zellij/pull/4376)
