@@ -59,11 +59,11 @@ mod mock_server {
     }
 
     #[derive(Deserialize)]
-    struct LoginRequest {
-        auth_token: String,
+    pub struct LoginRequest {
+        pub auth_token: String,
     }
 
-    async fn handle_login(
+    pub async fn handle_login(
         State(state): State<MockRemoteServerState>,
         jar: CookieJar,
         Json(payload): Json<LoginRequest>,
@@ -101,7 +101,7 @@ mod mock_server {
         ))
     }
 
-    async fn handle_session(
+    pub async fn handle_session(
         State(state): State<MockRemoteServerState>,
         jar: CookieJar,
     ) -> Result<Json<serde_json::Value>, StatusCode> {
@@ -124,7 +124,7 @@ mod mock_server {
         })))
     }
 
-    async fn handle_ws_terminal(
+    pub async fn handle_ws_terminal(
         ws: axum::extract::ws::WebSocketUpgrade,
         State(state): State<MockRemoteServerState>,
         jar: CookieJar,
@@ -157,7 +157,7 @@ mod mock_server {
         }))
     }
 
-    async fn handle_ws_control(
+    pub async fn handle_ws_control(
         ws: axum::extract::ws::WebSocketUpgrade,
         State(state): State<MockRemoteServerState>,
         jar: CookieJar,
@@ -212,6 +212,112 @@ mod mock_server {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         (port, server_handle)
+    }
+}
+
+#[cfg(feature = "web_server_capability")]
+mod tls_mock_server {
+    use super::mock_server::MockRemoteServerState;
+    use axum::routing::{get, post};
+    use axum::Router;
+    use axum_server::tls_rustls::RustlsConfig;
+    use axum_server::Handle;
+    use std::path::PathBuf;
+    use std::time::Duration;
+
+    pub struct TlsTestCerts {
+        pub ca_cert_path: PathBuf,
+        _ca_cert_file: tempfile::NamedTempFile,
+        _server_cert_file: tempfile::NamedTempFile,
+        _server_key_file: tempfile::NamedTempFile,
+        server_cert_path: PathBuf,
+        server_key_path: PathBuf,
+    }
+
+    pub fn generate_test_certs() -> TlsTestCerts {
+        // Create a CA with proper key usage
+        let ca_key = rcgen::KeyPair::generate().unwrap();
+        let mut ca_params = rcgen::CertificateParams::new(Vec::<String>::new()).unwrap();
+        ca_params.is_ca = rcgen::IsCa::Ca(rcgen::BasicConstraints::Unconstrained);
+        ca_params.key_usages = vec![
+            rcgen::KeyUsagePurpose::KeyCertSign,
+            rcgen::KeyUsagePurpose::CrlSign,
+        ];
+        let ca = ca_params.self_signed(&ca_key).unwrap();
+
+        // Create server cert with IP SAN only (no DNS name for IP addresses)
+        let mut server_params = rcgen::CertificateParams::new(Vec::<String>::new()).unwrap();
+        server_params.subject_alt_names = vec![rcgen::SanType::IpAddress(std::net::IpAddr::V4(
+            std::net::Ipv4Addr::LOCALHOST,
+        ))];
+        server_params.extended_key_usages = vec![rcgen::ExtendedKeyUsagePurpose::ServerAuth];
+        let server_key = rcgen::KeyPair::generate().unwrap();
+        let server_cert = server_params.signed_by(&server_key, &ca, &ca_key).unwrap();
+
+        // Write to temp files
+        let ca_cert_file = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(ca_cert_file.path(), ca.pem()).unwrap();
+
+        let server_cert_file = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(server_cert_file.path(), server_cert.pem()).unwrap();
+
+        let server_key_file = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(server_key_file.path(), server_key.serialize_pem()).unwrap();
+
+        TlsTestCerts {
+            ca_cert_path: ca_cert_file.path().to_path_buf(),
+            server_cert_path: server_cert_file.path().to_path_buf(),
+            server_key_path: server_key_file.path().to_path_buf(),
+            _ca_cert_file: ca_cert_file,
+            _server_cert_file: server_cert_file,
+            _server_key_file: server_key_file,
+        }
+    }
+
+    pub async fn start_tls_mock_server(
+        state: MockRemoteServerState,
+        certs: &TlsTestCerts,
+    ) -> (u16, Handle, tokio::task::JoinHandle<()>) {
+        let app = Router::new()
+            .route("/command/login", post(super::mock_server::handle_login))
+            .route("/session", post(super::mock_server::handle_session))
+            .route("/ws/terminal", get(super::mock_server::handle_ws_terminal))
+            .route(
+                "/ws/terminal/{session_name}",
+                get(super::mock_server::handle_ws_terminal),
+            )
+            .route("/ws/control", get(super::mock_server::handle_ws_control))
+            .with_state(state);
+
+        let rustls_config =
+            RustlsConfig::from_pem_file(&certs.server_cert_path, &certs.server_key_path)
+                .await
+                .expect("Failed to load test TLS config");
+
+        let listener =
+            std::net::TcpListener::bind("127.0.0.1:0").expect("Failed to bind test TLS server");
+        let port = listener.local_addr().unwrap().port();
+
+        let handle = Handle::new();
+        let server_handle = handle.clone();
+
+        let server_task = tokio::spawn(async move {
+            axum_server::from_tcp_rustls(listener, rustls_config)
+                .handle(server_handle)
+                .serve(app.into_make_service())
+                .await
+                .unwrap();
+        });
+
+        // Wait for the server to be listening (deterministic, no sleep)
+        handle.listening().await;
+
+        (port, handle, server_task)
+    }
+
+    pub async fn shutdown_server(handle: Handle, server_task: tokio::task::JoinHandle<()>) {
+        handle.graceful_shutdown(Some(Duration::from_secs(1)));
+        let _ = server_task.await;
     }
 }
 
@@ -657,6 +763,172 @@ mod tests {
             result.unwrap_err(),
             RemoteClientError::UrlParseError(_)
         ));
+    }
+
+    // -- TLS tests ------------------------------------------------------------
+    //
+    // These tests exercise the rustls WebSocket TLS code paths added by the
+    // native-tls → rustls migration. They call establish_websocket_connections
+    // directly rather than going through attach_to_remote_session, because:
+    //
+    // 1. The HTTP auth step (isahc/curl) uses a separate TLS stack that was
+    //    not changed by this migration — it is tested by the non-TLS tests above.
+    // 2. attach_to_remote_session opens the SQLite session-token database,
+    //    which can cause I/O contention with web_client tests that use a
+    //    different SQLite database in the same directory.
+    //
+    // Each test seeds a session directly in the mock server state and
+    // pre-populates the HTTP client cookie, then connects over wss://.
+
+    /// Helper: create an HTTP client with a pre-seeded session cookie and
+    /// register the session in the mock server state. Returns (web_client_id,
+    /// http_client).
+    fn seed_mock_session(
+        server_state: &MockRemoteServerState,
+    ) -> (
+        String,
+        crate::remote_attach::http_client::HttpClientWithCookies,
+    ) {
+        let session_token = uuid::Uuid::new_v4().to_string();
+        let web_client_id = uuid::Uuid::new_v4().to_string();
+        server_state
+            .session_tokens
+            .lock()
+            .unwrap()
+            .insert(session_token.clone(), web_client_id.clone());
+
+        // The HTTP client is only used for its cookie jar (WebSocket upgrade
+        // sends the session cookie). TLS for this client is irrelevant since
+        // it never makes HTTP requests in these tests.
+        let http_client =
+            crate::remote_attach::http_client::HttpClientWithCookies::new(None, true).unwrap();
+        http_client.set_cookie("session_token".to_string(), session_token);
+
+        (web_client_id, http_client)
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_tls_insecure_mode() {
+        use crate::remote_attach::websockets;
+
+        let certs = tls_mock_server::generate_test_certs();
+        let server_state = MockRemoteServerState::new();
+
+        let (port, handle, server_task) =
+            tls_mock_server::start_tls_mock_server(server_state.clone(), &certs).await;
+
+        let (web_client_id, http_client) = seed_mock_session(&server_state);
+        let server_base_url = format!("https://127.0.0.1:{}", port);
+
+        let result = tokio::time::timeout(
+            Duration::from_secs(10),
+            websockets::establish_websocket_connections(
+                &web_client_id,
+                &http_client,
+                &server_base_url,
+                "test-session",
+                None,
+                true, // insecure — exercises NoVerifier
+            ),
+        )
+        .await
+        .expect("Test timed out");
+
+        assert!(
+            result.is_ok(),
+            "TLS insecure mode should connect successfully: {:?}",
+            result.err()
+        );
+
+        let connections = result.unwrap();
+        assert!(!connections.web_client_id.is_empty());
+
+        let endpoints = server_state.get_endpoints_called();
+        assert!(endpoints.contains(&"/ws/terminal".to_string()));
+        assert!(endpoints.contains(&"/ws/control".to_string()));
+
+        tls_mock_server::shutdown_server(handle, server_task).await;
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_tls_ca_cert_mode() {
+        use crate::remote_attach::websockets;
+
+        let certs = tls_mock_server::generate_test_certs();
+        let server_state = MockRemoteServerState::new();
+
+        let (port, handle, server_task) =
+            tls_mock_server::start_tls_mock_server(server_state.clone(), &certs).await;
+
+        let (web_client_id, http_client) = seed_mock_session(&server_state);
+        let server_base_url = format!("https://127.0.0.1:{}", port);
+
+        let result = tokio::time::timeout(
+            Duration::from_secs(10),
+            websockets::establish_websocket_connections(
+                &web_client_id,
+                &http_client,
+                &server_base_url,
+                "test-session",
+                Some(certs.ca_cert_path.as_path()),
+                false, // not insecure — verify against CA cert
+            ),
+        )
+        .await
+        .expect("Test timed out");
+
+        assert!(
+            result.is_ok(),
+            "WebSocket TLS with CA cert should connect successfully: {:?}",
+            result.err()
+        );
+
+        let connections = result.unwrap();
+        assert!(!connections.web_client_id.is_empty());
+
+        let endpoints = server_state.get_endpoints_called();
+        assert!(endpoints.contains(&"/ws/terminal".to_string()));
+        assert!(endpoints.contains(&"/ws/control".to_string()));
+
+        tls_mock_server::shutdown_server(handle, server_task).await;
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_tls_rejects_untrusted_cert() {
+        use crate::remote_attach::websockets;
+
+        let certs = tls_mock_server::generate_test_certs();
+        let server_state = MockRemoteServerState::new();
+
+        let (port, handle, server_task) =
+            tls_mock_server::start_tls_mock_server(server_state.clone(), &certs).await;
+
+        let (web_client_id, http_client) = seed_mock_session(&server_state);
+        let server_base_url = format!("https://127.0.0.1:{}", port);
+
+        let result = tokio::time::timeout(
+            Duration::from_secs(10),
+            websockets::establish_websocket_connections(
+                &web_client_id,
+                &http_client,
+                &server_base_url,
+                "test-session",
+                None,  // no CA cert
+                false, // not insecure — should reject self-signed
+            ),
+        )
+        .await
+        .expect("Test timed out");
+
+        assert!(
+            result.is_err(),
+            "TLS without CA cert should reject self-signed server"
+        );
+
+        tls_mock_server::shutdown_server(handle, server_task).await;
     }
 }
 

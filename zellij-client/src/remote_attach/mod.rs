@@ -1,7 +1,7 @@
 mod auth;
 mod config;
-mod http_client;
-mod websockets;
+pub mod http_client;
+pub mod websockets;
 
 #[cfg(test)]
 mod unit;

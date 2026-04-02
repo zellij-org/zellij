@@ -4,8 +4,8 @@ expression: last_snapshot
 ---
  Zellij (e2e-test)  Tab #1                                                                                                    Alt <[]>  VERTICAL 
 ┌ Pane #1 ────────────────────────────────────────────────────────────────┐┌ /usr/src/zellij/fixtures/append-echo-script.sh ─────────────────────────┐
-│$ /usr/src/zellij/x86_64-unknown-linux-musl/release/zellij run -s -- "/us││foo                                                                      │
-│r/src/zellij/fixtures/append-echo-script.sh"                             ││foo                                                                      │
+│$ /usr/src/zellij/zellij run -s -- "/usr/src/zellij/fixtures/append-echo-││foo                                                                      │
+│script.sh"                                                               ││foo                                                                      │
 │terminal_1                                                               ││█                                                                        │
 │$                                                                        ││                                                                         │
 │$                                                                        ││                                                                         │
