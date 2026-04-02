@@ -1544,7 +1544,7 @@ impl InputParser {
                     if let Some(idx) = self.buf.find_subsequence(offset, end_paste) {
                         let pasted =
                             String::from_utf8_lossy(&self.buf.as_slice()[0..idx]).to_string();
-                        self.buf.advance(pasted.len() + end_paste.len());
+                        self.buf.advance(idx + end_paste.len());
                         callback(InputEvent::Paste(pasted));
                         self.state = InputState::Normal;
                     } else {
