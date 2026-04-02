@@ -5592,3 +5592,96 @@ fn partial_scroll_region_all_three_mechanisms_transfer_in_order() {
 
     assert_eq!(scrollback_texts(&grid), vec!["AAA", "BBB", "CCC"]);
 }
+
+#[test]
+fn scroll_region_newline_sets_bg_color_on_new_row() {
+    // Set bg color, set scroll region 1-5, fill 5 lines, then newline to scroll
+    let content = b"\x1b[48;2;26;26;26m\x1b[1;5r\
+        AAA\r\nBBB\r\nCCC\r\nDDD\r\nEEE\r\nFFF";
+    let grid = create_grid_with_size_and_raw(10, 40, content);
+    // The new row at the bottom of the scroll region (row index 4) should have bg_color
+    let new_row = &grid.viewport[4];
+    assert_eq!(
+        new_row.bg_color,
+        Some(AnsiCode::RgbCode((26, 26, 26))),
+        "scroll-created row should carry the cursor background color"
+    );
+}
+
+#[test]
+fn scroll_region_newline_bg_color_used_for_trailing_padding() {
+    // Set bg, scroll region 1-5, fill lines, scroll, then write short text on new row
+    let content = b"\x1b[48;2;26;26;26m\x1b[1;5rAAA\r\nBBB\r\nCCC\r\nDDD\r\nEEE\r\nhi";
+    let mut grid = create_grid_with_size_and_raw(10, 40, content);
+    // read_changes returns character chunks with padding applied
+    let (chunks, _) = grid.read_changes(0, 0);
+    // Find the chunk for row 4 (the scroll-created row with "hi")
+    let row_4_chunk = chunks.iter().find(|c| c.y == 4).expect("row 4 chunk");
+    // The trailing padding character (last column) should have the row's bg_color
+    let pad_char = &row_4_chunk.terminal_characters[39];
+    assert_eq!(
+        pad_char.styles.background,
+        Some(AnsiCode::RgbCode((26, 26, 26))),
+        "trailing padding should use the row's background color"
+    );
+}
+
+#[test]
+fn scroll_region_newline_bg_color_used_for_cursor_forward_gaps() {
+    // Set bg, scroll region 1-5, fill lines, scroll, then cursor-forward and write
+    // This simulates vim's [12C behavior on a scroll-created row
+    let content = b"\x1b[48;2;26;26;26m\x1b[1;5rAAA\r\nBBB\r\nCCC\r\nDDD\r\nEEE\
+        \r\n\x1b[0m\x1b[10Cx";
+    let grid = create_grid_with_size_and_raw(10, 40, content);
+    let new_row = &grid.viewport[4];
+    // Position 5 (within the gap created by cursor forward) should have the bg_color
+    let gap_char = &new_row.columns[5];
+    assert_eq!(
+        gap_char.styles.background,
+        Some(AnsiCode::RgbCode((26, 26, 26))),
+        "cursor-forward gap should use the row's background color"
+    );
+}
+
+#[test]
+fn scroll_region_bg_color_does_not_override_explicit_background() {
+    // Set bg, scroll region 1-5, fill lines, scroll, then write with different bg
+    let content = b"\x1b[48;2;26;26;26m\x1b[1;5rAAA\r\nBBB\r\nCCC\r\nDDD\r\nEEE\
+        \r\n\x1b[48;2;255;0;0mRED";
+    let grid = create_grid_with_size_and_raw(10, 40, content);
+    let new_row = &grid.viewport[4];
+    // The 'R' character should have the explicitly set red background, not the row bg
+    let r_char = &new_row.columns[0];
+    assert_eq!(
+        r_char.styles.background,
+        Some(AnsiCode::RgbCode((255, 0, 0))),
+        "explicitly set background should not be overridden by row bg_color"
+    );
+}
+
+#[test]
+fn full_scroll_region_newline_sets_bg_color_on_new_row() {
+    // Full scroll region (entire viewport), set bg, fill, then scroll
+    let content = b"\x1b[48;2;26;26;26m\x1b[1;10r\
+        L1\r\nL2\r\nL3\r\nL4\r\nL5\r\nL6\r\nL7\r\nL8\r\nL9\r\nL10\r\nL11";
+    let grid = create_grid_with_size_and_raw(10, 40, content);
+    // The new row at the bottom (row 9) should have bg_color
+    let new_row = &grid.viewport[9];
+    assert_eq!(
+        new_row.bg_color,
+        Some(AnsiCode::RgbCode((26, 26, 26))),
+        "full scroll region: new row should carry the cursor background color"
+    );
+}
+
+#[test]
+fn row_without_scroll_has_no_bg_color() {
+    // Normal content without scroll should not set bg_color on rows
+    let content = b"\x1b[48;2;26;26;26mHello";
+    let grid = create_grid_with_size_and_raw(10, 40, content);
+    let row = &grid.viewport[0];
+    assert_eq!(
+        row.bg_color, None,
+        "rows not created by scroll should have no bg_color"
+    );
+}
