@@ -218,6 +218,15 @@ impl Pane for TerminalPane {
             .cursor_coordinates()
             .map(|(x, y)| (x + left, y + top))
     }
+    fn cursor_position_for_ime(&self, _client_id: Option<ClientId>) -> Option<(usize, usize)> {
+        if self.get_content_rows() < 1 || self.get_content_columns() < 1 {
+            return None;
+        }
+        let Offset { top, left, .. } = self.content_offset;
+        self.grid
+            .cursor_position_for_ime()
+            .map(|(x, y)| (x + left, y + top))
+    }
     fn is_mid_frame(&self) -> bool {
         self.grid.is_mid_frame()
     }

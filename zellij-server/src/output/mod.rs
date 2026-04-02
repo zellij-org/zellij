@@ -663,6 +663,19 @@ impl Output {
             .map(|s| s.cursor_is_visible(cursor_x, cursor_y, z_index))
             .unwrap_or(true)
     }
+    /// Check whether a cursor position is occluded by floating panes without
+    /// mutating the tracked cursor coordinates used elsewhere during render.
+    pub fn is_cursor_not_occluded(
+        &self,
+        cursor_x: usize,
+        cursor_y: usize,
+        z_index: Option<usize>,
+    ) -> bool {
+        self.floating_panes_stack
+            .as_ref()
+            .map(|s| s.cursor_is_visible(cursor_x, cursor_y, z_index))
+            .unwrap_or(true)
+    }
     pub fn add_pane_contents(
         &mut self,
         client_ids: &[ClientId],
