@@ -1581,6 +1581,17 @@ impl Grid {
             Some((self.cursor.x, self.cursor.y))
         }
     }
+    /// Returns the cursor position ignoring whether the cursor is hidden.
+    /// Used for IME cursor positioning: apps like ink (React terminal UI) hide the cursor
+    /// during BSU/ESU render cycles, so by the time zellij's background render fires the
+    /// cursor may appear hidden even though its logical position is valid.
+    pub fn cursor_position_for_ime(&self) -> Option<(usize, usize)> {
+        if self.cursor.x < self.width && self.cursor.y < self.height {
+            Some((self.cursor.x, self.cursor.y))
+        } else {
+            None
+        }
+    }
     pub fn is_mid_frame(&self) -> bool {
         self.lock_renders
     }

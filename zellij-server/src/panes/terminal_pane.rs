@@ -218,6 +218,20 @@ impl Pane for TerminalPane {
             .cursor_coordinates()
             .map(|(x, y)| (x + left, y + top))
     }
+    fn cursor_position_for_ime(&self, _client_id: Option<ClientId>) -> Option<(usize, usize)> {
+        // Use cursor position even when cursor_is_hidden, because ink-based apps (e.g. Claude
+        // Code) hide the cursor during BSU render cycles. By the time zellij's background render
+        // fires (10ms after ESU), the next BSU cycle has already sent \e[?25l, making
+        // cursor_coordinates() return None. We still need to emit the correct cursor position
+        // so the OS IME can show the composition window at the right place.
+        if self.get_content_rows() < 1 || self.get_content_columns() < 1 {
+            return None;
+        }
+        let Offset { top, left, .. } = self.content_offset;
+        self.grid
+            .cursor_position_for_ime()
+            .map(|(x, y)| (x + left, y + top))
+    }
     fn is_mid_frame(&self) -> bool {
         self.grid.is_mid_frame()
     }
@@ -337,9 +351,18 @@ impl Pane for TerminalPane {
                 return Ok(None);
             }
             match self.grid.render(content_x, content_y, &self.style) {
-                Ok(rendered_assets) => {
+                Ok(Some(rendered_assets)) => {
                     self.set_should_render(false);
-                    return Ok(rendered_assets);
+                    return Ok(Some(rendered_assets));
+                },
+                Ok(None) => {
+                    // grid.render() returns None when renders are locked (e.g., during a
+                    // BSU/ESU synchronized update). In this case we keep should_render=true
+                    // so that a render is triggered once the lock is released.
+                    if !self.grid.is_mid_frame() {
+                        self.set_should_render(false);
+                    }
+                    return Ok(None);
                 },
                 e => return e,
             }
