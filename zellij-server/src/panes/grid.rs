@@ -1715,6 +1715,7 @@ impl Grid {
                 // the state is corrupted
                 return;
             }
+            let scroll_bg = self.cursor.pending_styles.background;
             if scroll_region_bottom == self.height.saturating_sub(1) && scroll_region_top == 0 {
                 if self.alternate_screen_state.is_none() {
                     self.transfer_rows_to_lines_above(1);
@@ -1722,7 +1723,8 @@ impl Grid {
                     self.viewport.pop_front();
                 }
 
-                self.viewport.push_back(Row::new().canonical());
+                self.viewport
+                    .push_back(Row::new().canonical().with_bg_color(scroll_bg));
                 self.selection.move_up(1);
             } else {
                 if scroll_region_top == 0
@@ -1736,11 +1738,11 @@ impl Grid {
                 } else if scroll_region_top < self.viewport.len() {
                     self.viewport.remove(scroll_region_top);
                 }
+                let new_row = Row::new().canonical().with_bg_color(scroll_bg);
                 if self.viewport.len() >= scroll_region_bottom {
-                    self.viewport
-                        .insert(scroll_region_bottom, Row::new().canonical());
+                    self.viewport.insert(scroll_region_bottom, new_row);
                 } else {
-                    self.viewport.push_back(Row::new().canonical());
+                    self.viewport.push_back(new_row);
                 }
             }
             self.output_buffer.update_all_lines(); // TODO: only update scroll region lines
@@ -1933,8 +1935,19 @@ impl Grid {
             self.pad_lines_until(self.cursor.y, pad_character.clone());
         }
         if let Some(current_row) = self.viewport.get_mut(self.cursor.y) {
+            let mut effective_pad = pad_character;
+            if let Some(bg_color) = current_row.bg_color {
+                if matches!(
+                    effective_pad.styles.background,
+                    Some(AnsiCode::Reset) | None
+                ) {
+                    effective_pad
+                        .styles
+                        .update(|styles| styles.background = Some(bg_color));
+                }
+            }
             for _ in current_row.width()..position {
-                current_row.push(pad_character.clone());
+                current_row.push(effective_pad.clone());
             }
             self.output_buffer.update_line(self.cursor.y);
         }
@@ -4354,6 +4367,7 @@ pub struct Row {
     pub columns: VecDeque<TerminalCharacter>,
     pub is_canonical: bool,
     width: Option<usize>,
+    pub bg_color: Option<AnsiCode>,
 }
 
 impl Debug for Row {
@@ -4371,6 +4385,7 @@ impl Row {
             columns: VecDeque::new(),
             is_canonical: false,
             width: None,
+            bg_color: None,
         }
     }
     pub fn from_columns(columns: VecDeque<TerminalCharacter>) -> Self {
@@ -4378,6 +4393,7 @@ impl Row {
             columns,
             is_canonical: false,
             width: None,
+            bg_color: None,
         }
     }
     pub fn from_rows(mut rows: Vec<Row>) -> Self {
@@ -4398,6 +4414,10 @@ impl Row {
     }
     pub fn canonical(mut self) -> Self {
         self.is_canonical = true;
+        self
+    }
+    pub fn with_bg_color(mut self, bg_color: Option<AnsiCode>) -> Self {
+        self.bg_color = bg_color;
         self
     }
     pub fn width_cached(&mut self) -> usize {
@@ -4479,8 +4499,14 @@ impl Row {
                 // adding the character after the end of the current line
                 // we pad the line up to the character and then add it
                 let width_offset = self.excess_width_until(x);
+                let mut gap_fill = EMPTY_TERMINAL_CHARACTER;
+                if let Some(bg_color) = self.bg_color {
+                    gap_fill
+                        .styles
+                        .update(|styles| styles.background = Some(bg_color));
+                }
                 self.columns
-                    .resize(x.saturating_sub(width_offset), EMPTY_TERMINAL_CHARACTER);
+                    .resize(x.saturating_sub(width_offset), gap_fill);
                 self.columns.push_back(terminal_character);
                 self.width = None;
             },
