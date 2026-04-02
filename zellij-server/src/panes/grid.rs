@@ -1937,7 +1937,10 @@ impl Grid {
         if let Some(current_row) = self.viewport.get_mut(self.cursor.y) {
             let mut effective_pad = pad_character;
             if let Some(bg_color) = current_row.bg_color {
-                if matches!(effective_pad.styles.background, Some(AnsiCode::Reset) | None) {
+                if matches!(
+                    effective_pad.styles.background,
+                    Some(AnsiCode::Reset) | None
+                ) {
                     effective_pad
                         .styles
                         .update(|styles| styles.background = Some(bg_color));
