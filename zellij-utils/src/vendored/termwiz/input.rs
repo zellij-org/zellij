@@ -1470,6 +1470,10 @@ impl InputParser {
                 Some((c, len))
             },
             Err(err) => {
+                if err.error_len().is_none() {
+                    return None;
+                }
+
                 let valid_up_to = err.valid_up_to().min(bytes.len());
                 let valid = &bytes[..valid_up_to];
                 if !valid.is_empty() {
@@ -2479,5 +2483,34 @@ mod test {
             })],
             inputs
         );
+    }
+
+    #[test]
+    fn utf8_split_across_reads_waits_for_more_data() {
+        let mut p = InputParser::new();
+        let mut inputs = Vec::new();
+
+        // Send first 2 bytes of 3-byte UTF-8 char '你' (0xe4 0xbd 0xa0)
+        p.parse("你".as_bytes()[..2].as_ref(), |evt| inputs.push(evt), MAYBE_MORE);
+        assert!(inputs.is_empty(), "incomplete utf8 should be buffered");
+
+        // Send remaining byte
+        p.parse(&"你".as_bytes()[2..], |evt| inputs.push(evt), MAYBE_MORE);
+        assert_eq!(
+            vec![InputEvent::Key(KeyEvent {
+                modifiers: Modifiers::NONE,
+                key: KeyCode::Char('你'),
+            })],
+            inputs
+        );
+    }
+
+    #[test]
+    fn finalized_incomplete_utf8_does_not_panic() {
+        let mut p = InputParser::new();
+        // Send first 2 bytes of 3-byte '┌' (0xe2 0x94 0x8c) with no more data coming
+        let inputs = p.parse_as_vec(&"┌".as_bytes()[..2], false);
+        // Should not panic — incomplete sequence is dropped gracefully
+        assert!(inputs.is_empty());
     }
 }
