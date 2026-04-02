@@ -12894,3 +12894,146 @@ pub fn reconfiguration_resends_keybinds_to_opted_in_plugins() {
     // between the executor thread updating keybinds and send_initial_keybinds_to_plugin
     // reading them synchronously. The important thing is that the event IS delivered.
 }
+
+#[test]
+#[ignore]
+pub fn granted_permission_shared_across_same_url_instances() {
+    // Test that granting permissions for one plugin instance auto-grants
+    // other instances of the same URL that are also waiting for permissions.
+    // This is the fix for #4982: when a single WASM binary is loaded as both
+    // a background plugin (load_plugins) and a layout plugin, granting
+    // permissions to one should unblock the other.
+    let temp_folder = tempdir().unwrap();
+    let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
+
+    let (plugin_thread_sender, screen_receiver, teardown) =
+        create_plugin_thread(Some(plugin_host_folder), None);
+    let plugin_should_float = Some(false);
+    let run_plugin = RunPluginOrAlias::RunPlugin(RunPlugin {
+        _allow_exec_host_cmd: false,
+        location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
+        ..Default::default()
+    });
+    // Second instance: same URL, different configuration
+    let mut second_config = BTreeMap::new();
+    second_config.insert("mode".to_string(), "backend".to_string());
+    let run_plugin_2 = RunPluginOrAlias::RunPlugin(RunPlugin {
+        _allow_exec_host_cmd: false,
+        location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: PluginUserConfiguration::new(second_config),
+        ..Default::default()
+    });
+    let tab_index = 1;
+    let client_id = 1;
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+
+    // Fake screen thread: grant permissions only for the FIRST request,
+    // then wait for a second request that should NOT arrive (because the
+    // fix auto-grants siblings).
+    let screen_thread = std::thread::Builder::new()
+        .name("fake_screen_thread".to_string())
+        .spawn({
+            let cache_path = cache_path.clone();
+            let plugin_thread_sender = plugin_thread_sender.clone();
+            move || {
+                let mut granted_count = 0;
+                loop {
+                    let (event, _err_ctx) = screen_receiver
+                        .recv()
+                        .expect("failed to receive event on channel");
+                    match event {
+                        ScreenInstruction::RequestPluginPermissions(
+                            plugin_id,
+                            plugin_permission,
+                        ) => {
+                            granted_count += 1;
+                            let _ = plugin_thread_sender.send(
+                                PluginInstruction::PermissionRequestResult(
+                                    plugin_id,
+                                    Some(client_id),
+                                    plugin_permission.permissions,
+                                    PermissionStatus::Granted,
+                                    Some(cache_path.clone()),
+                                ),
+                            );
+                            if granted_count >= 2 {
+                                break;
+                            }
+                        },
+                        ScreenInstruction::Exit => {
+                            break;
+                        },
+                        _ => {},
+                    }
+                }
+                granted_count
+            }
+        })
+        .unwrap();
+
+    let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
+
+    // Load first instance
+    let _ = plugin_thread_sender.send(PluginInstruction::Load(
+        plugin_should_float,
+        false,
+        false,
+        Some("plugin_1".to_owned()),
+        run_plugin.clone(),
+        Some(tab_index),
+        None,
+        client_id,
+        size,
+        None,
+        None,
+        false,
+        None,
+        None,
+        None,
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(500));
+
+    // Load second instance (same URL, different config)
+    let _ = plugin_thread_sender.send(PluginInstruction::Load(
+        plugin_should_float,
+        false,
+        false,
+        Some("plugin_2".to_owned()),
+        run_plugin_2.clone(),
+        Some(tab_index),
+        None,
+        client_id,
+        size,
+        None,
+        None,
+        false,
+        None,
+        None,
+        None,
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(500));
+
+    // Trigger permission requests from both instances
+    let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
+        None,
+        Some(client_id),
+        Event::Key(KeyWithModifier::new(BareKey::Char('1')).with_ctrl_modifier()),
+    )]));
+
+    screen_thread.join().unwrap();
+    teardown();
+
+    // Verify: the permission cache should contain permissions for our plugin URL
+    let permission_cache = PermissionCache::from_path_or_default(Some(cache_path));
+    let permissions = permission_cache
+        .get_permissions(PathBuf::from(&*PLUGIN_FIXTURE).display().to_string());
+    assert!(
+        permissions.is_some(),
+        "Permission cache should contain entry for the plugin URL after granting"
+    );
+}
