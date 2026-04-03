@@ -240,7 +240,11 @@ pub trait Pane {
     fn handle_pty_bytes(&mut self, _bytes: VteBytes) {}
     fn handle_plugin_bytes(&mut self, _client_id: ClientId, _bytes: VteBytes) {}
     fn show_cursor(&mut self, _client_id: ClientId, _cursor_position: Option<(usize, usize)>) {}
-    fn cursor_coordinates(&self, _client_id: Option<ClientId>) -> Option<(usize, usize)>;
+    /// Returns the cursor position and whether it is visible.
+    /// The position is returned unconditionally (as long as the cursor is within
+    /// bounds) so that the host terminal can position the cursor for IME even
+    /// when the app has hidden it. The bool is true when the cursor is visible.
+    fn cursor_coordinates(&self, _client_id: Option<ClientId>) -> Option<(usize, usize, bool)>;
     fn is_mid_frame(&self) -> bool {
         false
     }
@@ -3037,8 +3041,8 @@ impl Tab {
     pub fn get_active_terminal_cursor_position(
         &self,
         client_id: ClientId,
-    ) -> Option<(usize, usize)> {
-        // (x, y)
+    ) -> Option<(usize, usize, bool)> {
+        // (x, y, is_cursor_visible)
         let active_pane_id = if self.floating_panes.panes_are_visible() {
             self.floating_panes
                 .get_active_pane_id(client_id)
@@ -3050,13 +3054,13 @@ impl Tab {
             .floating_panes
             .get(&active_pane_id)
             .or_else(|| self.tiled_panes.get_pane(active_pane_id))?;
-        active_terminal
-            .cursor_coordinates(Some(client_id))
-            .map(|(x_in_terminal, y_in_terminal)| {
+        active_terminal.cursor_coordinates(Some(client_id)).map(
+            |(x_in_terminal, y_in_terminal, is_visible)| {
                 let x = active_terminal.x() + x_in_terminal;
                 let y = active_terminal.y() + y_in_terminal;
-                (x, y)
-            })
+                (x, y, is_visible)
+            },
+        )
     }
     pub fn toggle_active_pane_fullscreen(&mut self, client_id: ClientId) {
         if self.floating_panes.panes_are_visible() {
@@ -3236,36 +3240,16 @@ impl Tab {
         let connected_clients: Vec<ClientId> =
             { self.connected_clients.borrow().iter().copied().collect() };
         for client_id in connected_clients {
-            match self
-                .get_active_terminal_cursor_position(client_id)
-                .and_then(|(cursor_position_x, cursor_position_y)| {
+            match self.get_active_terminal_cursor_position(client_id) {
+                Some((cursor_position_x, cursor_position_y, is_cursor_visible)) => {
                     let active_pane_z_index = self
                         .get_active_pane_id(client_id)
                         .and_then(|pane_id| self.floating_panes.get_pane_z_index(pane_id));
-                    if output.cursor_is_visible(
+                    let not_occluded = output.cursor_is_visible(
                         cursor_position_x,
                         cursor_position_y,
                         active_pane_z_index,
-                    ) {
-                        Some((cursor_position_x, cursor_position_y))
-                    } else {
-                        None
-                    }
-                }) {
-                Some((cursor_position_x, cursor_position_y)) => {
-                    let desired_cursor_shape = self
-                        .get_active_pane(client_id)
-                        .map(|ap| ap.cursor_shape_csi())
-                        .unwrap_or_default();
-                    let cursor_changed_position_or_shape = self
-                        .cursor_positions_and_shape
-                        .get(&client_id)
-                        .map(|(previous_x, previous_y, previous_shape)| {
-                            previous_x != &cursor_position_x
-                                || previous_y != &cursor_position_y
-                                || previous_shape != &desired_cursor_shape
-                        })
-                        .unwrap_or(true);
+                    );
                     let active_terminal_is_mid_frame = self
                         .active_terminal_is_mid_frame(client_id)
                         .unwrap_or(false);
@@ -3274,22 +3258,54 @@ impl Tab {
                         // no-op, this means the active terminal is currently rendering a frame,
                         // which means the cursor can be jumping around and we definitely do not
                         // want to render it
-                        //
-                        // (I felt this was clearer than expanding the if conditional below)
-                    } else if output.is_dirty() || cursor_changed_position_or_shape {
-                        let show_cursor = "\u{1b}[?25h";
+                    } else if not_occluded && is_cursor_visible {
+                        let desired_cursor_shape = self
+                            .get_active_pane(client_id)
+                            .map(|ap| ap.cursor_shape_csi())
+                            .unwrap_or_default();
+                        let cursor_changed_position_or_shape = self
+                            .cursor_positions_and_shape
+                            .get(&client_id)
+                            .map(|(previous_x, previous_y, previous_shape)| {
+                                previous_x != &cursor_position_x
+                                    || previous_y != &cursor_position_y
+                                    || previous_shape != &desired_cursor_shape
+                            })
+                            .unwrap_or(true);
+                        if output.is_dirty() || cursor_changed_position_or_shape {
+                            let show_cursor = "\u{1b}[?25h";
+                            let goto_cursor_position = &format!(
+                                "\u{1b}[{};{}H\u{1b}[m{}",
+                                cursor_position_y + 1,
+                                cursor_position_x + 1,
+                                desired_cursor_shape
+                            ); // goto row/col
+                            output.add_post_vte_instruction_to_client(client_id, show_cursor);
+                            output.add_post_vte_instruction_to_client(
+                                client_id,
+                                goto_cursor_position,
+                            );
+                            self.cursor_positions_and_shape.insert(
+                                client_id,
+                                (cursor_position_x, cursor_position_y, desired_cursor_shape),
+                            );
+                        }
+                    } else if not_occluded {
+                        // Cursor is hidden by the app but not occluded by a floating
+                        // pane. Position the host terminal cursor at the correct
+                        // location (for IME) then hide it. The IME subsystem reads
+                        // the cursor position regardless of visibility.
+                        let hide_cursor = "\u{1b}[?25l";
                         let goto_cursor_position = &format!(
-                            "\u{1b}[{};{}H\u{1b}[m{}",
+                            "\u{1b}[{};{}H",
                             cursor_position_y + 1,
                             cursor_position_x + 1,
-                            desired_cursor_shape
-                        ); // goto row/col
-                        output.add_post_vte_instruction_to_client(client_id, show_cursor);
-                        output.add_post_vte_instruction_to_client(client_id, goto_cursor_position);
-                        self.cursor_positions_and_shape.insert(
-                            client_id,
-                            (cursor_position_x, cursor_position_y, desired_cursor_shape),
                         );
+                        output.add_post_vte_instruction_to_client(client_id, hide_cursor);
+                        output.add_post_vte_instruction_to_client(client_id, goto_cursor_position);
+                    } else {
+                        let hide_cursor = "\u{1b}[?25l";
+                        output.add_post_vte_instruction_to_client(client_id, hide_cursor);
                     }
                 },
                 None => {
@@ -6004,7 +6020,9 @@ pub fn pane_info_for_pane(
     pane_info.pane_content_rows = pane.get_content_rows();
     pane_info.pane_columns = pane.cols();
     pane_info.pane_content_columns = pane.get_content_columns();
-    pane_info.cursor_coordinates_in_pane = pane.cursor_coordinates(None);
+    pane_info.cursor_coordinates_in_pane = pane
+        .cursor_coordinates(None)
+        .and_then(|(x, y, is_visible)| if is_visible { Some((x, y)) } else { None });
     pane_info.is_selectable = pane.selectable();
     pane_info.title = pane.current_title();
     pane_info.exited = pane.exited();

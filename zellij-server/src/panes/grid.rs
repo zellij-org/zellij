@@ -1574,11 +1574,15 @@ impl Grid {
             sixel_image_chunks,
         )));
     }
-    pub fn cursor_coordinates(&self) -> Option<(usize, usize)> {
-        if self.cursor_is_hidden || self.cursor.x >= self.width || self.cursor.y >= self.height {
+    /// Returns the cursor position and whether it is visible.
+    /// The position is returned unconditionally (as long as the cursor is within
+    /// bounds) so that the host terminal can position the cursor for IME even
+    /// when the app has hidden it. The bool is true when the cursor is visible.
+    pub fn cursor_coordinates(&self) -> Option<(usize, usize, bool)> {
+        if self.cursor.x >= self.width || self.cursor.y >= self.height {
             None
         } else {
-            Some((self.cursor.x, self.cursor.y))
+            Some((self.cursor.x, self.cursor.y, !self.cursor_is_hidden))
         }
     }
     pub fn is_mid_frame(&self) -> bool {
