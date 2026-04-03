@@ -207,8 +207,8 @@ impl Pane for TerminalPane {
             self.vte_parser.advance(&mut self.grid, byte);
         }
     }
-    fn cursor_coordinates(&self, _client_id: Option<ClientId>) -> Option<(usize, usize)> {
-        // (x, y)
+    fn cursor_coordinates(&self, _client_id: Option<ClientId>) -> Option<(usize, usize, bool)> {
+        // (x, y, is_visible)
         if self.get_content_rows() < 1 || self.get_content_columns() < 1 {
             // do not render cursor if there's no room for it
             return None;
@@ -216,7 +216,7 @@ impl Pane for TerminalPane {
         let Offset { top, left, .. } = self.content_offset;
         self.grid
             .cursor_coordinates()
-            .map(|(x, y)| (x + left, y + top))
+            .map(|(x, y, is_visible)| (x + left, y + top, is_visible))
     }
     fn is_mid_frame(&self) -> bool {
         self.grid.is_mid_frame()
@@ -458,7 +458,7 @@ impl Pane for TerminalPane {
         text_color: PaletteColor,
     ) -> Option<String> {
         let mut vte_output = None;
-        if let Some((cursor_x, cursor_y)) = self.cursor_coordinates() {
+        if let Some((cursor_x, cursor_y, true)) = self.cursor_coordinates() {
             let mut character_under_cursor = self
                 .grid
                 .get_character_under_cursor()
@@ -1117,8 +1117,8 @@ impl TerminalPane {
     pub fn read_buffer_as_lines(&self) -> Vec<Vec<TerminalCharacter>> {
         self.grid.as_character_lines()
     }
-    pub fn cursor_coordinates(&self) -> Option<(usize, usize)> {
-        // (x, y)
+    pub fn cursor_coordinates(&self) -> Option<(usize, usize, bool)> {
+        // (x, y, is_visible)
         if self.get_content_rows() < 1 || self.get_content_columns() < 1 {
             // do not render cursor if there's no room for it
             return None;
