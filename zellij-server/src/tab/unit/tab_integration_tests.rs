@@ -14807,10 +14807,7 @@ fn hidden_cursor_still_emits_cup_for_host_terminal_positioning() {
     // When an app hides the cursor the host
     // terminal still needs a CUP sequence so that IME composition candidates and
     // other cursor-position-dependent features appear in the correct location.
-    let size = Size {
-        cols: 80,
-        rows: 24,
-    };
+    let size = Size { cols: 80, rows: 24 };
     let client_id = 1;
     let mut tab = create_new_tab(size, ModeInfo::default());
 

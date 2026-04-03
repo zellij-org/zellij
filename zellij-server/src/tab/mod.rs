@@ -3054,13 +3054,13 @@ impl Tab {
             .floating_panes
             .get(&active_pane_id)
             .or_else(|| self.tiled_panes.get_pane(active_pane_id))?;
-        active_terminal
-            .cursor_coordinates(Some(client_id))
-            .map(|(x_in_terminal, y_in_terminal, is_visible)| {
+        active_terminal.cursor_coordinates(Some(client_id)).map(
+            |(x_in_terminal, y_in_terminal, is_visible)| {
                 let x = active_terminal.x() + x_in_terminal;
                 let y = active_terminal.y() + y_in_terminal;
                 (x, y, is_visible)
-            })
+            },
+        )
     }
     pub fn toggle_active_pane_fullscreen(&mut self, client_id: ClientId) {
         if self.floating_panes.panes_are_visible() {
@@ -3280,8 +3280,7 @@ impl Tab {
                                 cursor_position_x + 1,
                                 desired_cursor_shape
                             ); // goto row/col
-                            output
-                                .add_post_vte_instruction_to_client(client_id, show_cursor);
+                            output.add_post_vte_instruction_to_client(client_id, show_cursor);
                             output.add_post_vte_instruction_to_client(
                                 client_id,
                                 goto_cursor_position,
@@ -3303,10 +3302,7 @@ impl Tab {
                             cursor_position_x + 1,
                         );
                         output.add_post_vte_instruction_to_client(client_id, hide_cursor);
-                        output.add_post_vte_instruction_to_client(
-                            client_id,
-                            goto_cursor_position,
-                        );
+                        output.add_post_vte_instruction_to_client(client_id, goto_cursor_position);
                     } else {
                         let hide_cursor = "\u{1b}[?25l";
                         output.add_post_vte_instruction_to_client(client_id, hide_cursor);

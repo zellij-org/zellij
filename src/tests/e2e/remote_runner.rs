@@ -337,8 +337,10 @@ fn read_from_channel(
                         Ok(0) => {
                             let current_snapshot = take_snapshot(&mut terminal_output);
                             let mut last_snapshot = last_snapshot.lock().unwrap();
-                            *cursor_coordinates.lock().unwrap() =
-                                terminal_output.cursor_coordinates().map(|(x, y, _)| (x, y)).unwrap_or((0, 0));
+                            *cursor_coordinates.lock().unwrap() = terminal_output
+                                .cursor_coordinates()
+                                .map(|(x, y, _)| (x, y))
+                                .unwrap_or((0, 0));
                             *last_snapshot = current_snapshot;
                             should_sleep = true;
                         },
@@ -348,8 +350,11 @@ fn read_from_channel(
                             }
                             let current_snapshot = take_snapshot(&mut terminal_output);
                             let mut last_snapshot = last_snapshot.lock().unwrap();
-                            *cursor_coordinates.lock().unwrap() =
-                                terminal_output.grid.cursor_coordinates().map(|(x, y, _)| (x, y)).unwrap_or((0, 0));
+                            *cursor_coordinates.lock().unwrap() = terminal_output
+                                .grid
+                                .cursor_coordinates()
+                                .map(|(x, y, _)| (x, y))
+                                .unwrap_or((0, 0));
                             *last_snapshot = current_snapshot;
                             should_sleep = true;
                         },
@@ -357,8 +362,10 @@ fn read_from_channel(
                             if e.kind() == std::io::ErrorKind::WouldBlock {
                                 let current_snapshot = take_snapshot(&mut terminal_output);
                                 let mut last_snapshot = last_snapshot.lock().unwrap();
-                                *cursor_coordinates.lock().unwrap() =
-                                    terminal_output.cursor_coordinates().map(|(x, y, _)| (x, y)).unwrap_or((0, 0));
+                                *cursor_coordinates.lock().unwrap() = terminal_output
+                                    .cursor_coordinates()
+                                    .map(|(x, y, _)| (x, y))
+                                    .unwrap_or((0, 0));
                                 *last_snapshot = current_snapshot;
                                 should_sleep = true;
                             } else if retries_left > 0 {
