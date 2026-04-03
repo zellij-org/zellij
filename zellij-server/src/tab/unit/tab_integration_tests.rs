@@ -14801,3 +14801,50 @@ fn osc99_query_flag_roundtrip() {
     assert!(!wants_report);
     assert!(!is_query);
 }
+
+#[test]
+fn hidden_cursor_still_emits_cup_for_host_terminal_positioning() {
+    // When an app hides the cursor the host
+    // terminal still needs a CUP sequence so that IME composition candidates and
+    // other cursor-position-dependent features appear in the correct location.
+    let size = Size {
+        cols: 80,
+        rows: 24,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+
+    // Move cursor to a known position, then hide it
+    tab.handle_pty_bytes(1, Vec::from("\u{1b}[10;20H\u{1b}[?25l".as_bytes()))
+        .unwrap();
+
+    let mut output = Output::default();
+    tab.render(&mut output, None).unwrap();
+    let serialized = output.serialize().unwrap();
+    let client_output = serialized.get(&client_id).unwrap();
+
+    // The output must contain a hide-cursor instruction
+    assert!(
+        client_output.contains("\u{1b}[?25l"),
+        "Expected hide-cursor sequence in output"
+    );
+
+    // The output must contain a CUP sequence positioning the cursor where the app
+    // left it (row 10, col 20 — 1-indexed in the pane, plus the content offset
+    // from the pane frame). The key point is that a CUP is emitted at all, even
+    // though the cursor is hidden.
+    //
+    // With draw_pane_frames=true the content offset is (1, 1), so the absolute
+    // position is row 11, col 21.
+    assert!(
+        client_output.contains("\u{1b}[11;21H"),
+        "Expected CUP sequence for hidden cursor positioning, got: {:?}",
+        client_output
+    );
+
+    // The output must NOT contain a show-cursor instruction
+    assert!(
+        !client_output.contains("\u{1b}[?25h"),
+        "Show-cursor sequence must not be present when app has hidden the cursor"
+    );
+}
