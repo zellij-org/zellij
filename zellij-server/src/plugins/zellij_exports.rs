@@ -307,6 +307,9 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::FocusPreviousPane => focus_previous_pane(env),
                     PluginCommand::MoveFocus(direction) => move_focus(env, direction),
                     PluginCommand::MoveFocusOrTab(direction) => move_focus_or_tab(env, direction),
+                    PluginCommand::MoveFocusOrWrap(direction) => {
+                        move_focus_or_wrap(env, direction)
+                    },
                     PluginCommand::Detach => detach(env),
                     PluginCommand::EditScrollback => edit_scrollback(env),
                     PluginCommand::Write(bytes) => write(env, bytes),
@@ -2859,6 +2862,12 @@ fn move_focus_or_tab(env: &PluginEnv, direction: Direction) {
     apply_action!(action, error_msg, env);
 }
 
+fn move_focus_or_wrap(env: &PluginEnv, direction: Direction) {
+    let error_msg = || format!("failed to move focus in plugin {}", env.name());
+    let action = Action::MoveFocusOrWrap { direction };
+    apply_action!(action, error_msg, env);
+}
+
 fn detach(env: &PluginEnv) {
     let action = Action::Detach;
     let error_msg = || format!("Failed to detach");
@@ -5206,6 +5215,7 @@ fn check_command_permission(
         | PluginCommand::FocusNextPane
         | PluginCommand::MoveFocus(..)
         | PluginCommand::MoveFocusOrTab(..)
+        | PluginCommand::MoveFocusOrWrap(..)
         | PluginCommand::Detach
         | PluginCommand::EditScrollback
         | PluginCommand::EditScrollbackForPaneWithId(..)

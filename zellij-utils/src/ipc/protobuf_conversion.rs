@@ -842,6 +842,7 @@ impl From<crate::input::actions::Action>
             MouseEventAction,
             MoveFocusAction,
             MoveFocusOrTabAction,
+            MoveFocusOrWrapAction,
             MovePaneAction,
             MovePaneBackwardsAction,
             MovePaneBackwardsByPaneIdAction,
@@ -1000,6 +1001,11 @@ impl From<crate::input::actions::Action>
             },
             crate::input::actions::Action::MoveFocusOrTab { direction } => {
                 ActionType::MoveFocusOrTab(MoveFocusOrTabAction {
+                    direction: direction_to_proto_i32(direction),
+                })
+            },
+            crate::input::actions::Action::MoveFocusOrWrap { direction } => {
+                ActionType::MoveFocusOrWrap(MoveFocusOrWrapAction {
                     direction: direction_to_proto_i32(direction),
                 })
             },
@@ -1857,6 +1863,11 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
             },
             ActionType::MoveFocusOrTab(move_focus_action) => {
                 Ok(crate::input::actions::Action::MoveFocusOrTab {
+                    direction: proto_i32_to_direction(move_focus_action.direction)?,
+                })
+            },
+            ActionType::MoveFocusOrWrap(move_focus_action) => {
+                Ok(crate::input::actions::Action::MoveFocusOrWrap {
                     direction: proto_i32_to_direction(move_focus_action.direction)?,
                 })
             },

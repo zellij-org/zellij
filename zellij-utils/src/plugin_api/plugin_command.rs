@@ -828,6 +828,17 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 },
                 _ => Err("Mismatched payload for MoveFocusOrTab"),
             },
+            Some(CommandName::MoveFocusOrWrap) => match protobuf_plugin_command.payload {
+                Some(Payload::MoveFocusOrWrapPayload(move_payload)) => {
+                    match move_payload.direction {
+                        Some(direction) => {
+                            Ok(PluginCommand::MoveFocusOrWrap(direction.try_into()?))
+                        },
+                        None => Err("Malformed move focus or wrap payload"),
+                    }
+                },
+                _ => Err("Mismatched payload for MoveFocusOrWrap"),
+            },
             Some(CommandName::Detach) => {
                 if protobuf_plugin_command.payload.is_some() {
                     return Err("Detach should not have a payload");
@@ -2779,6 +2790,12 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
             PluginCommand::MoveFocusOrTab(direction) => Ok(ProtobufPluginCommand {
                 name: CommandName::MoveFocusOrTab as i32,
                 payload: Some(Payload::MoveFocusOrTabPayload(MovePayload {
+                    direction: Some(direction.try_into()?),
+                })),
+            }),
+            PluginCommand::MoveFocusOrWrap(direction) => Ok(ProtobufPluginCommand {
+                name: CommandName::MoveFocusOrWrap as i32,
+                payload: Some(Payload::MoveFocusOrWrapPayload(MovePayload {
                     direction: Some(direction.try_into()?),
                 })),
             }),

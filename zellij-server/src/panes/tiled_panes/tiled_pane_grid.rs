@@ -1083,6 +1083,118 @@ impl<'a> TiledPaneGrid<'a> {
             .copied();
         next_index
     }
+    pub fn leftmost_selectable_pane_id_with_overlap(
+        &self,
+        current_pane_id: &PaneId,
+    ) -> Option<PaneId> {
+        let panes = self.panes.borrow();
+        let current_pane = panes.get(current_pane_id)?;
+        let panes: Vec<(PaneId, &&mut Box<dyn Pane>)> = panes
+            .iter()
+            .filter(|(_, p)| p.selectable())
+            .map(|(p_id, p)| (*p_id, p))
+            .collect();
+        let next_pane = panes
+            .iter()
+            .filter(|(_, c)| c.horizontally_overlaps_with(Box::as_ref(current_pane)))
+            .min_by(|(_, a), (_, b)| {
+                let x_comparison = a.x().cmp(&b.x());
+                match x_comparison {
+                    Ordering::Equal => a.active_at().cmp(&b.active_at()),
+                    _ => x_comparison,
+                }
+            })
+            .map(|(_, pane)| pane);
+        let next_pane_is_stacked = next_pane
+            .map(|p| p.current_geom().is_stacked())
+            .unwrap_or(false);
+        if next_pane_is_stacked {
+            if let Some(next_pane_id) = next_pane.map(|p| p.pid()) {
+                return StackedPanes::new(self.panes.clone())
+                    .flexible_pane_id_in_stack(&next_pane_id);
+            }
+        }
+        next_pane.map(|p| p.pid())
+    }
+    pub fn rightmost_selectable_pane_id_with_overlap(
+        &self,
+        current_pane_id: &PaneId,
+    ) -> Option<PaneId> {
+        let panes = self.panes.borrow();
+        let current_pane = panes.get(current_pane_id)?;
+        let panes: Vec<(PaneId, &&mut Box<dyn Pane>)> = panes
+            .iter()
+            .filter(|(_, p)| p.selectable())
+            .map(|(p_id, p)| (*p_id, p))
+            .collect();
+        let next_pane = panes
+            .iter()
+            .filter(|(_, c)| c.horizontally_overlaps_with(Box::as_ref(current_pane)))
+            .max_by(|(_, a), (_, b)| {
+                let x_comparison = a.x().cmp(&b.x());
+                match x_comparison {
+                    Ordering::Equal => a.active_at().cmp(&b.active_at()),
+                    _ => x_comparison,
+                }
+            })
+            .map(|(_, pane)| pane);
+        let next_pane_is_stacked = next_pane
+            .map(|p| p.current_geom().is_stacked())
+            .unwrap_or(false);
+        if next_pane_is_stacked {
+            if let Some(next_pane_id) = next_pane.map(|p| p.pid()) {
+                return StackedPanes::new(self.panes.clone())
+                    .flexible_pane_id_in_stack(&next_pane_id);
+            }
+        }
+        next_pane.map(|p| p.pid())
+    }
+    pub fn topmost_selectable_pane_id_with_overlap(
+        &self,
+        current_pane_id: &PaneId,
+    ) -> Option<PaneId> {
+        let panes = self.panes.borrow();
+        let current_pane = panes.get(current_pane_id)?;
+        let panes: Vec<(PaneId, &&mut Box<dyn Pane>)> = panes
+            .iter()
+            .filter(|(_, p)| p.selectable())
+            .map(|(p_id, p)| (*p_id, p))
+            .collect();
+        panes
+            .iter()
+            .filter(|(_, c)| c.vertically_overlaps_with(Box::as_ref(current_pane)))
+            .min_by(|(_, a), (_, b)| {
+                let y_comparison = a.y().cmp(&b.y());
+                match y_comparison {
+                    Ordering::Equal => a.active_at().cmp(&b.active_at()),
+                    _ => y_comparison,
+                }
+            })
+            .map(|(pid, _)| *pid)
+    }
+    pub fn bottommost_selectable_pane_id_with_overlap(
+        &self,
+        current_pane_id: &PaneId,
+    ) -> Option<PaneId> {
+        let panes = self.panes.borrow();
+        let current_pane = panes.get(current_pane_id)?;
+        let panes: Vec<(PaneId, &&mut Box<dyn Pane>)> = panes
+            .iter()
+            .filter(|(_, p)| p.selectable())
+            .map(|(p_id, p)| (*p_id, p))
+            .collect();
+        panes
+            .iter()
+            .filter(|(_, c)| c.vertically_overlaps_with(Box::as_ref(current_pane)))
+            .max_by(|(_, a), (_, b)| {
+                let y_comparison = a.y().cmp(&b.y());
+                match y_comparison {
+                    Ordering::Equal => a.active_at().cmp(&b.active_at()),
+                    _ => y_comparison,
+                }
+            })
+            .map(|(pid, _)| *pid)
+    }
     pub fn next_selectable_pane_id_above(
         &self,
         current_pane_id: &PaneId,

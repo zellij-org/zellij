@@ -368,6 +368,10 @@ pub enum ScreenInstruction {
     MoveFocusUp(ClientId, Option<NotificationEnd>),
     MoveFocusRight(ClientId, Option<NotificationEnd>),
     MoveFocusRightOrNextTab(ClientId, Option<NotificationEnd>),
+    MoveFocusLeftOrWrap(ClientId, Option<NotificationEnd>),
+    MoveFocusRightOrWrap(ClientId, Option<NotificationEnd>),
+    MoveFocusUpOrWrap(ClientId, Option<NotificationEnd>),
+    MoveFocusDownOrWrap(ClientId, Option<NotificationEnd>),
     MovePane(ClientId, Option<NotificationEnd>),
     MovePaneBackwards(ClientId, Option<NotificationEnd>),
     MovePaneUp(ClientId, Option<NotificationEnd>),
@@ -871,6 +875,10 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::MoveFocusRightOrNextTab(..) => {
                 ScreenContext::MoveFocusRightOrNextTab
             },
+            ScreenInstruction::MoveFocusLeftOrWrap(..) => ScreenContext::MoveFocusLeftOrWrap,
+            ScreenInstruction::MoveFocusRightOrWrap(..) => ScreenContext::MoveFocusRightOrWrap,
+            ScreenInstruction::MoveFocusUpOrWrap(..) => ScreenContext::MoveFocusUpOrWrap,
+            ScreenInstruction::MoveFocusDownOrWrap(..) => ScreenContext::MoveFocusDownOrWrap,
             ScreenInstruction::MovePane(..) => ScreenContext::MovePane,
             ScreenInstruction::MovePaneBackwards(..) => ScreenContext::MovePaneBackwards,
             ScreenInstruction::MovePaneDown(..) => ScreenContext::MovePaneDown,
@@ -5529,6 +5537,86 @@ pub(crate) fn screen_thread_main(
                     }
                 } else {
                     screen.move_focus_right_or_next_tab(client_id)?;
+                    screen.clear_bell_for_focused_pane(client_id);
+                    screen.add_active_pane_to_group_if_marking(&client_id);
+                    screen.render(None)?;
+                    screen.log_and_report_session_state()?;
+                }
+            },
+            ScreenInstruction::MoveFocusLeftOrWrap(client_id, mut _completion_tx) => {
+                if screen.get_first_client_id().is_none() {
+                    log::error!("No connected clients to move focus for");
+                    if let Some(ref mut c) = _completion_tx {
+                        c.set_exit_status(1);
+                        c.set_error_message("No connected clients to move focus for".to_string());
+                    }
+                } else {
+                    active_tab_and_connected_client_id!(
+                        screen,
+                        client_id,
+                        |tab: &mut Tab, client_id: ClientId| tab.move_focus_left_or_wrap(client_id),
+                        ?
+                    );
+                    screen.clear_bell_for_focused_pane(client_id);
+                    screen.add_active_pane_to_group_if_marking(&client_id);
+                    screen.render(None)?;
+                    screen.log_and_report_session_state()?;
+                }
+            },
+            ScreenInstruction::MoveFocusRightOrWrap(client_id, mut _completion_tx) => {
+                if screen.get_first_client_id().is_none() {
+                    log::error!("No connected clients to move focus for");
+                    if let Some(ref mut c) = _completion_tx {
+                        c.set_exit_status(1);
+                        c.set_error_message("No connected clients to move focus for".to_string());
+                    }
+                } else {
+                    active_tab_and_connected_client_id!(
+                        screen,
+                        client_id,
+                        |tab: &mut Tab, client_id: ClientId| tab.move_focus_right_or_wrap(client_id),
+                        ?
+                    );
+                    screen.clear_bell_for_focused_pane(client_id);
+                    screen.add_active_pane_to_group_if_marking(&client_id);
+                    screen.render(None)?;
+                    screen.log_and_report_session_state()?;
+                }
+            },
+            ScreenInstruction::MoveFocusUpOrWrap(client_id, mut _completion_tx) => {
+                if screen.get_first_client_id().is_none() {
+                    log::error!("No connected clients to move focus for");
+                    if let Some(ref mut c) = _completion_tx {
+                        c.set_exit_status(1);
+                        c.set_error_message("No connected clients to move focus for".to_string());
+                    }
+                } else {
+                    active_tab_and_connected_client_id!(
+                        screen,
+                        client_id,
+                        |tab: &mut Tab, client_id: ClientId| tab.move_focus_up_or_wrap(client_id),
+                        ?
+                    );
+                    screen.clear_bell_for_focused_pane(client_id);
+                    screen.add_active_pane_to_group_if_marking(&client_id);
+                    screen.render(None)?;
+                    screen.log_and_report_session_state()?;
+                }
+            },
+            ScreenInstruction::MoveFocusDownOrWrap(client_id, mut _completion_tx) => {
+                if screen.get_first_client_id().is_none() {
+                    log::error!("No connected clients to move focus for");
+                    if let Some(ref mut c) = _completion_tx {
+                        c.set_exit_status(1);
+                        c.set_error_message("No connected clients to move focus for".to_string());
+                    }
+                } else {
+                    active_tab_and_connected_client_id!(
+                        screen,
+                        client_id,
+                        |tab: &mut Tab, client_id: ClientId| tab.move_focus_down_or_wrap(client_id),
+                        ?
+                    );
                     screen.clear_bell_for_focused_pane(client_id);
                     screen.add_active_pane_to_group_if_marking(&client_id);
                     screen.render(None)?;

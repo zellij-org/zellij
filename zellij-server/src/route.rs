@@ -422,6 +422,27 @@ pub(crate) fn route_action(
                 .send_to_screen(screen_instr)
                 .with_context(err_context)?;
         },
+        Action::MoveFocusOrWrap { direction } => {
+            let notification_end = Some(NotificationEnd::new(completion_tx));
+
+            let screen_instr = match direction {
+                Direction::Left => {
+                    ScreenInstruction::MoveFocusLeftOrWrap(client_id, notification_end)
+                },
+                Direction::Right => {
+                    ScreenInstruction::MoveFocusRightOrWrap(client_id, notification_end)
+                },
+                Direction::Up => {
+                    ScreenInstruction::MoveFocusUpOrWrap(client_id, notification_end)
+                },
+                Direction::Down => {
+                    ScreenInstruction::MoveFocusDownOrWrap(client_id, notification_end)
+                },
+            };
+            senders
+                .send_to_screen(screen_instr)
+                .with_context(err_context)?;
+        },
         Action::MovePane { direction } => {
             let notification_end = Some(NotificationEnd::new(completion_tx));
 

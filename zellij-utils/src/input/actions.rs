@@ -168,6 +168,11 @@ pub enum Action {
     MoveFocusOrTab {
         direction: Direction,
     },
+    /// Tries to move the focus pane in specified direction.
+    /// If there is no pane in the direction, wrap to the opposite side.
+    MoveFocusOrWrap {
+        direction: Direction,
+    },
     MovePane {
         direction: Option<Direction>,
     },
@@ -824,6 +829,9 @@ impl Action {
             CliAction::MoveFocus { direction } => Ok(vec![Action::MoveFocus { direction }]),
             CliAction::MoveFocusOrTab { direction } => {
                 Ok(vec![Action::MoveFocusOrTab { direction }])
+            },
+            CliAction::MoveFocusOrWrap { direction } => {
+                Ok(vec![Action::MoveFocusOrWrap { direction }])
             },
             CliAction::MovePane { direction, pane_id } => match pane_id {
                 Some(pane_id_str) => {

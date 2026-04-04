@@ -3334,6 +3334,7 @@ pub enum PluginCommand {
     FocusPreviousPane,
     MoveFocus(Direction),
     MoveFocusOrTab(Direction),
+    MoveFocusOrWrap(Direction),
     Detach,
     EditScrollback,
     Write(Vec<u8>), // bytes

@@ -192,6 +192,16 @@ impl TryFrom<ProtobufAction> for Action {
                 },
                 _ => Err("Wrong payload for Action::MoveFocusOrTab"),
             },
+            Some(ProtobufActionName::MoveFocusOrWrap) => match protobuf_action.optional_payload {
+                Some(OptionalPayload::MoveFocusOrWrapPayload(move_focus_or_wrap_payload)) => {
+                    let direction: Direction =
+                        ProtobufResizeDirection::from_i32(move_focus_or_wrap_payload)
+                            .ok_or("Malformed resize direction for Action::MoveFocusOrWrap")?
+                            .try_into()?;
+                    Ok(Action::MoveFocusOrWrap { direction })
+                },
+                _ => Err("Wrong payload for Action::MoveFocusOrWrap"),
+            },
             Some(ProtobufActionName::MovePane) => match protobuf_action.optional_payload {
                 Some(OptionalPayload::MovePanePayload(payload)) => {
                     let direction: Option<Direction> = payload
@@ -1177,6 +1187,15 @@ impl TryFrom<Action> for ProtobufAction {
                 Ok(ProtobufAction {
                     name: ProtobufActionName::MoveFocusOrTab as i32,
                     optional_payload: Some(OptionalPayload::MoveFocusOrTabPayload(
+                        direction as i32,
+                    )),
+                })
+            },
+            Action::MoveFocusOrWrap { direction } => {
+                let direction: ProtobufResizeDirection = direction.try_into()?;
+                Ok(ProtobufAction {
+                    name: ProtobufActionName::MoveFocusOrWrap as i32,
+                    optional_payload: Some(OptionalPayload::MoveFocusOrWrapPayload(
                         direction as i32,
                     )),
                 })

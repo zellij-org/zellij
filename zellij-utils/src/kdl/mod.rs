@@ -504,6 +504,16 @@ impl Action {
                 })?;
                 Ok(Action::MoveFocusOrTab { direction })
             },
+            "MoveFocusOrWrap" => {
+                let direction = Direction::from_str(string.as_str()).map_err(|_| {
+                    ConfigError::new_kdl_error(
+                        format!("Invalid direction: '{}'", string),
+                        action_node.span().offset(),
+                        action_node.span().len(),
+                    )
+                })?;
+                Ok(Action::MoveFocusOrWrap { direction })
+            },
             "MoveTab" => {
                 let direction = Direction::from_str(string.as_str()).map_err(|_| {
                     ConfigError::new_kdl_error(
@@ -670,6 +680,17 @@ impl Action {
             },
             Action::MoveFocusOrTab { direction } => {
                 let mut node = KdlNode::new("MoveFocusOrTab");
+                let direction = match direction {
+                    Direction::Left => "left",
+                    Direction::Right => "right",
+                    Direction::Up => "up",
+                    Direction::Down => "down",
+                };
+                node.push(direction);
+                Some(node)
+            },
+            Action::MoveFocusOrWrap { direction } => {
+                let mut node = KdlNode::new("MoveFocusOrWrap");
                 let direction = match direction {
                     Direction::Left => "left",
                     Direction::Right => "right",
@@ -1665,6 +1686,11 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 kdl_action
             ),
             "MoveFocusOrTab" => parse_kdl_action_char_or_string_arguments!(
+                action_name,
+                action_arguments,
+                kdl_action
+            ),
+            "MoveFocusOrWrap" => parse_kdl_action_char_or_string_arguments!(
                 action_name,
                 action_arguments,
                 kdl_action

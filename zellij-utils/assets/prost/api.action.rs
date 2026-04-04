@@ -422,6 +422,8 @@ pub mod action {
         HideFloatingPanesPayload(super::HideFloatingPanesPayload),
         #[prost(message, tag="60")]
         AreFloatingPanesVisiblePayload(super::AreFloatingPanesVisiblePayload),
+        #[prost(enumeration="super::super::resize::ResizeDirection", tag="61")]
+        MoveFocusOrWrapPayload(i32),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -1030,6 +1032,7 @@ pub enum ActionName {
     SwitchFocus = 8,
     MoveFocus = 9,
     MoveFocusOrTab = 10,
+    MoveFocusOrWrap = 101,
     MovePane = 11,
     MovePaneBackwards = 12,
     ClearScreen = 13,
@@ -1136,6 +1139,7 @@ impl ActionName {
             ActionName::SwitchFocus => "SwitchFocus",
             ActionName::MoveFocus => "MoveFocus",
             ActionName::MoveFocusOrTab => "MoveFocusOrTab",
+            ActionName::MoveFocusOrWrap => "MoveFocusOrWrap",
             ActionName::MovePane => "MovePane",
             ActionName::MovePaneBackwards => "MovePaneBackwards",
             ActionName::ClearScreen => "ClearScreen",
@@ -1239,6 +1243,7 @@ impl ActionName {
             "SwitchFocus" => Some(Self::SwitchFocus),
             "MoveFocus" => Some(Self::MoveFocus),
             "MoveFocusOrTab" => Some(Self::MoveFocusOrTab),
+            "MoveFocusOrWrap" => Some(Self::MoveFocusOrWrap),
             "MovePane" => Some(Self::MovePane),
             "MovePaneBackwards" => Some(Self::MovePaneBackwards),
             "ClearScreen" => Some(Self::ClearScreen),

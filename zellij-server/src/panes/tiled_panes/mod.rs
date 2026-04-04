@@ -1941,6 +1941,39 @@ impl TiledPanes {
             None => false,
         }
     }
+    pub fn move_focus_left_or_wrap(&mut self, client_id: ClientId) -> bool {
+        if !self.move_focus_left(client_id) {
+            if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
+                let pane_grid = TiledPaneGrid::new(
+                    &mut self.panes,
+                    &self.panes_to_hide,
+                    *self.display_area.borrow(),
+                    *self.viewport.borrow(),
+                );
+                let next_index =
+                    pane_grid.rightmost_selectable_pane_id_with_overlap(&active_pane_id);
+                if let Some(p) = next_index {
+                    let previously_active_pane = self
+                        .panes
+                        .get_mut(self.active_panes.get(&client_id).unwrap())
+                        .unwrap();
+                    previously_active_pane.set_should_render(true);
+                    previously_active_pane.render_full_viewport();
+
+                    let next_active_pane = self.panes.get_mut(&p).unwrap();
+                    next_active_pane.set_should_render(true);
+                    next_active_pane.render_full_viewport();
+
+                    self.focus_pane(p, client_id);
+                    self.set_pane_active_at(p);
+                    return true;
+                }
+            }
+            false
+        } else {
+            true
+        }
+    }
     pub fn move_focus_down(&mut self, client_id: ClientId) -> bool {
         match self.get_active_pane_id(client_id) {
             Some(active_pane_id) => {
@@ -1990,6 +2023,39 @@ impl TiledPanes {
                 }
             },
             None => false,
+        }
+    }
+    pub fn move_focus_down_or_wrap(&mut self, client_id: ClientId) -> bool {
+        if !self.move_focus_down(client_id) {
+            if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
+                let pane_grid = TiledPaneGrid::new(
+                    &mut self.panes,
+                    &self.panes_to_hide,
+                    *self.display_area.borrow(),
+                    *self.viewport.borrow(),
+                );
+                let next_index =
+                    pane_grid.topmost_selectable_pane_id_with_overlap(&active_pane_id);
+                if let Some(p) = next_index {
+                    let previously_active_pane = self
+                        .panes
+                        .get_mut(self.active_panes.get(&client_id).unwrap())
+                        .unwrap();
+                    previously_active_pane.set_should_render(true);
+                    previously_active_pane.render_full_viewport();
+
+                    let next_active_pane = self.panes.get_mut(&p).unwrap();
+                    next_active_pane.set_should_render(true);
+                    next_active_pane.render_full_viewport();
+
+                    self.focus_pane(p, client_id);
+                    self.set_pane_active_at(p);
+                    return true;
+                }
+            }
+            false
+        } else {
+            true
         }
     }
     pub fn move_focus_up(&mut self, client_id: ClientId) -> bool {
@@ -2043,6 +2109,39 @@ impl TiledPanes {
             None => false,
         }
     }
+    pub fn move_focus_up_or_wrap(&mut self, client_id: ClientId) -> bool {
+        if !self.move_focus_up(client_id) {
+            if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
+                let pane_grid = TiledPaneGrid::new(
+                    &mut self.panes,
+                    &self.panes_to_hide,
+                    *self.display_area.borrow(),
+                    *self.viewport.borrow(),
+                );
+                let next_index =
+                    pane_grid.bottommost_selectable_pane_id_with_overlap(&active_pane_id);
+                if let Some(p) = next_index {
+                    let previously_active_pane = self
+                        .panes
+                        .get_mut(self.active_panes.get(&client_id).unwrap())
+                        .unwrap();
+                    previously_active_pane.set_should_render(true);
+                    previously_active_pane.render_full_viewport();
+
+                    let next_active_pane = self.panes.get_mut(&p).unwrap();
+                    next_active_pane.set_should_render(true);
+                    next_active_pane.render_full_viewport();
+
+                    self.focus_pane(p, client_id);
+                    self.set_pane_active_at(p);
+                    return true;
+                }
+            }
+            false
+        } else {
+            true
+        }
+    }
     pub fn move_focus_right(&mut self, client_id: ClientId) -> bool {
         match self.get_active_pane_id(client_id) {
             Some(active_pane_id) => {
@@ -2082,6 +2181,39 @@ impl TiledPanes {
                 }
             },
             None => false,
+        }
+    }
+    pub fn move_focus_right_or_wrap(&mut self, client_id: ClientId) -> bool {
+        if !self.move_focus_right(client_id) {
+            if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
+                let pane_grid = TiledPaneGrid::new(
+                    &mut self.panes,
+                    &self.panes_to_hide,
+                    *self.display_area.borrow(),
+                    *self.viewport.borrow(),
+                );
+                let next_index =
+                    pane_grid.leftmost_selectable_pane_id_with_overlap(&active_pane_id);
+                if let Some(p) = next_index {
+                    let previously_active_pane = self
+                        .panes
+                        .get_mut(self.active_panes.get(&client_id).unwrap())
+                        .unwrap();
+                    previously_active_pane.set_should_render(true);
+                    previously_active_pane.render_full_viewport();
+
+                    let next_active_pane = self.panes.get_mut(&p).unwrap();
+                    next_active_pane.set_should_render(true);
+                    next_active_pane.render_full_viewport();
+
+                    self.focus_pane(p, client_id);
+                    self.set_pane_active_at(p);
+                    return true;
+                }
+            }
+            false
+        } else {
+            true
         }
     }
     pub fn switch_active_pane_with(&mut self, pane_id: PaneId) {

@@ -1122,6 +1122,14 @@ pub fn move_focus_or_tab(direction: Direction) {
     unsafe { host_run_plugin_command() };
 }
 
+/// Change the focused pane in the specified direction, wrapping to the opposite side if at the edge.
+pub fn move_focus_or_wrap(direction: Direction) {
+    let plugin_command = PluginCommand::MoveFocusOrWrap(direction);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 /// Detach the user from the active session
 pub fn detach() {
     let plugin_command = PluginCommand::Detach;

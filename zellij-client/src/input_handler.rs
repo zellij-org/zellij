@@ -392,7 +392,8 @@ impl InputHandler {
             | Action::MoveTab { .. }
             | Action::GoToTabName { .. }
             | Action::ToggleTab
-            | Action::MoveFocusOrTab { .. } => {
+            | Action::MoveFocusOrTab { .. }
+            | Action::MoveFocusOrWrap { .. } => {
                 self.command_is_executing.blocking_input_thread();
                 self.os_input.send_to_server(ClientToServerMsg::Action {
                     action,

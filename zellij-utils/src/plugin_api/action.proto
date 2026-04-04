@@ -245,6 +245,7 @@ message Action {
     ShowFloatingPanesPayload show_floating_panes_payload = 58;
     HideFloatingPanesPayload hide_floating_panes_payload = 59;
     AreFloatingPanesVisiblePayload are_floating_panes_visible_payload = 60;
+    resize.ResizeDirection move_focus_or_wrap_payload = 61;
   }
 }
 
@@ -403,6 +404,7 @@ enum ActionName {
     SwitchFocus = 8;
     MoveFocus = 9;
     MoveFocusOrTab = 10;
+    MoveFocusOrWrap = 101;
     MovePane = 11;
     MovePaneBackwards = 12;
     ClearScreen = 13;

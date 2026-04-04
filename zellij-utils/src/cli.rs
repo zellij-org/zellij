@@ -774,6 +774,11 @@ pub enum CliAction {
     MoveFocusOrTab {
         direction: Direction,
     },
+    /// Move focus to the pane in the specified direction, wrapping to the opposite side if at
+    /// the edge [right|left|up|down]
+    MoveFocusOrWrap {
+        direction: Direction,
+    },
     /// Change the location of the focused pane in the specified direction or rotate forwrads
     /// [right|left|up|down]
     MovePane {

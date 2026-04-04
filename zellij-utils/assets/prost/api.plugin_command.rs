@@ -303,6 +303,8 @@ pub mod plugin_command {
         ClearPaneHighlightsPayload(super::ClearPaneHighlightsPayload),
         #[prost(message, tag="160")]
         OpenPluginPaneFloatingPayload(super::OpenPluginPaneFloatingPayload),
+        #[prost(message, tag="161")]
+        MoveFocusOrWrapPayload(super::MovePayload),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -1931,6 +1933,7 @@ pub enum CommandName {
     FocusPreviousPane = 26,
     MoveFocus = 27,
     MoveFocusOrTab = 28,
+    MoveFocusOrWrap = 211,
     Detach = 29,
     EditScrollback = 30,
     Write = 31,
@@ -2129,6 +2132,7 @@ impl CommandName {
             CommandName::FocusPreviousPane => "FocusPreviousPane",
             CommandName::MoveFocus => "MoveFocus",
             CommandName::MoveFocusOrTab => "MoveFocusOrTab",
+            CommandName::MoveFocusOrWrap => "MoveFocusOrWrap",
             CommandName::Detach => "Detach",
             CommandName::EditScrollback => "EditScrollback",
             CommandName::Write => "Write",
@@ -2324,6 +2328,7 @@ impl CommandName {
             "FocusPreviousPane" => Some(Self::FocusPreviousPane),
             "MoveFocus" => Some(Self::MoveFocus),
             "MoveFocusOrTab" => Some(Self::MoveFocusOrTab),
+            "MoveFocusOrWrap" => Some(Self::MoveFocusOrWrap),
             "Detach" => Some(Self::Detach),
             "EditScrollback" => Some(Self::EditScrollback),
             "Write" => Some(Self::Write),

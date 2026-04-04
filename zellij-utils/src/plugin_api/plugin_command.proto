@@ -203,6 +203,7 @@ enum CommandName {
   ClearPaneHighlights = 208;
   OpenPluginPaneFloating = 209;
   ListWindowsVolumes = 210;
+  MoveFocusOrWrap = 211;
 }
 
 message PluginCommand {
@@ -354,6 +355,7 @@ message PluginCommand {
     SetPaneRegexHighlightsPayload set_pane_regex_highlights_payload = 158;
     ClearPaneHighlightsPayload clear_pane_highlights_payload = 159;
     OpenPluginPaneFloatingPayload open_plugin_pane_floating_payload = 160;
+    MovePayload move_focus_or_wrap_payload = 161;
   }
 }
 

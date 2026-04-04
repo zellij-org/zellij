@@ -3569,6 +3569,93 @@ impl Tab {
             Ok(self.tiled_panes.move_focus_right(client_id))
         }
     }
+    pub fn move_focus_left_or_wrap(&mut self, client_id: ClientId) -> Result<bool> {
+        let err_context = || format!("failed to move focus left or wrap for client {}", client_id);
+
+        if self.floating_panes.panes_are_visible() {
+            self.floating_panes
+                .move_focus(
+                    client_id,
+                    &self.connected_clients.borrow().iter().copied().collect(),
+                    &Direction::Left,
+                )
+                .with_context(err_context)
+        } else {
+            if !self.has_selectable_panes() {
+                return Ok(false);
+            }
+            if self.tiled_panes.fullscreen_is_active() {
+                return Ok(self.focus_pane_left_fullscreen(client_id));
+            }
+            Ok(self.tiled_panes.move_focus_left_or_wrap(client_id))
+        }
+    }
+    pub fn move_focus_right_or_wrap(&mut self, client_id: ClientId) -> Result<bool> {
+        let err_context =
+            || format!("failed to move focus right or wrap for client {}", client_id);
+
+        if self.floating_panes.panes_are_visible() {
+            self.floating_panes
+                .move_focus(
+                    client_id,
+                    &self.connected_clients.borrow().iter().copied().collect(),
+                    &Direction::Right,
+                )
+                .with_context(err_context)
+        } else {
+            if !self.has_selectable_panes() {
+                return Ok(false);
+            }
+            if self.tiled_panes.fullscreen_is_active() {
+                return Ok(self.focus_pane_right_fullscreen(client_id));
+            }
+            Ok(self.tiled_panes.move_focus_right_or_wrap(client_id))
+        }
+    }
+    pub fn move_focus_up_or_wrap(&mut self, client_id: ClientId) -> Result<bool> {
+        let err_context = || format!("failed to move focus up or wrap for client {}", client_id);
+
+        if self.floating_panes.panes_are_visible() {
+            self.floating_panes
+                .move_focus(
+                    client_id,
+                    &self.connected_clients.borrow().iter().copied().collect(),
+                    &Direction::Up,
+                )
+                .with_context(err_context)
+        } else {
+            if !self.has_selectable_panes() {
+                return Ok(false);
+            }
+            if self.tiled_panes.fullscreen_is_active() {
+                self.focus_pane_up_fullscreen(client_id);
+                return Ok(true);
+            }
+            Ok(self.tiled_panes.move_focus_up_or_wrap(client_id))
+        }
+    }
+    pub fn move_focus_down_or_wrap(&mut self, client_id: ClientId) -> Result<bool> {
+        let err_context = || format!("failed to move focus down or wrap for client {}", client_id);
+
+        if self.floating_panes.panes_are_visible() {
+            self.floating_panes
+                .move_focus(
+                    client_id,
+                    &self.connected_clients.borrow().iter().copied().collect(),
+                    &Direction::Down,
+                )
+                .with_context(err_context)
+        } else {
+            if !self.has_selectable_panes() {
+                return Ok(false);
+            }
+            if self.tiled_panes.fullscreen_is_active() {
+                self.focus_pane_down_fullscreen(client_id);
+                return Ok(true);
+            }
+            Ok(self.tiled_panes.move_focus_down_or_wrap(client_id))
+        }
+    }
     pub fn move_active_pane(&mut self, client_id: ClientId) {
         if !self.has_selectable_panes() {
             return;

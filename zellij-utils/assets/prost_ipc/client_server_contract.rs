@@ -401,6 +401,8 @@ pub mod action {
         FocusPaneByPaneId(super::FocusPaneByPaneIdAction),
         #[prost(message, tag="136")]
         AreFloatingPanesVisible(super::AreFloatingPanesVisibleAction),
+        #[prost(message, tag="137")]
+        MoveFocusOrWrap(super::MoveFocusOrWrapAction),
     }
 }
 // Action message definitions (all 92 variants)
@@ -742,6 +744,12 @@ pub struct MoveFocusAction {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MoveFocusOrTabAction {
+    #[prost(enumeration="Direction", tag="1")]
+    pub direction: i32,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MoveFocusOrWrapAction {
     #[prost(enumeration="Direction", tag="1")]
     pub direction: i32,
 }
