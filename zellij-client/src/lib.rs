@@ -780,7 +780,7 @@ pub fn start_client(
 
     let (first_msg, ipc_pipe) = match info {
         ClientInfo::Attach(name, config_options) => {
-            envs::set_session_name(name.clone());
+            envs::set_session_name(&name);
             os_input.update_session_name(name);
             let ipc_pipe = create_ipc_pipe();
             let is_web_client = false;
@@ -830,7 +830,7 @@ pub fn start_client(
             )
         },
         ClientInfo::Watch(name, _config_options) => {
-            envs::set_session_name(name.clone());
+            envs::set_session_name(&name);
             os_input.update_session_name(name);
             let ipc_pipe = create_ipc_pipe();
             let is_web_client = false;
@@ -844,7 +844,7 @@ pub fn start_client(
             )
         },
         ClientInfo::Resurrect(name, path_to_layout, force_run_commands, cwd) => {
-            envs::set_session_name(name.clone());
+            envs::set_session_name(&name);
 
             let cli_assets = CliAssets {
                 config_file_path: Config::config_file_path(&cli_args),
@@ -884,7 +884,7 @@ pub fn start_client(
             )
         },
         ClientInfo::New(name, layout_info, layout_cwd) => {
-            envs::set_session_name(name.clone());
+            envs::set_session_name(&name);
 
             let cli_assets = CliAssets {
                 config_file_path: Config::config_file_path(&cli_args),
@@ -1317,7 +1317,7 @@ pub fn start_server_detached(
 
     let (first_msg, ipc_pipe) = match info {
         ClientInfo::Resurrect(name, path_to_layout, force_run_commands, cwd) => {
-            envs::set_session_name(name.clone());
+            envs::set_session_name(&name);
 
             let cli_assets = CliAssets {
                 config_file_path: Config::config_file_path(&cli_args),
@@ -1358,7 +1358,7 @@ pub fn start_server_detached(
             )
         },
         ClientInfo::New(name, layout_info, layout_cwd) => {
-            envs::set_session_name(name.clone());
+            envs::set_session_name(&name);
 
             let cli_assets = CliAssets {
                 config_file_path: Config::config_file_path(&cli_args),

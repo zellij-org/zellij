@@ -7940,7 +7940,7 @@ pub(crate) fn screen_thread_main(
                         .with_context(err_context)?;
 
                     // set the env variable
-                    set_session_name(name.clone());
+                    set_session_name(&name);
                     let connected_client_ids: Vec<ClientId> =
                         screen.active_tab_ids.keys().copied().collect();
                     for client_id in connected_client_ids {

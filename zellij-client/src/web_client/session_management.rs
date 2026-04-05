@@ -50,7 +50,7 @@ pub fn spawn_new_session(
     zellij_ipc_pipe: &PathBuf,
 ) {
     let debug = false;
-    envs::set_session_name(session_name.to_owned());
+    envs::set_session_name(session_name);
     os_input.update_session_name(session_name.to_owned());
     spawn_server(&*zellij_ipc_pipe, debug).unwrap();
 }
