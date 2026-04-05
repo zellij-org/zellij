@@ -181,8 +181,8 @@ pub fn dump_specified_layout(layout: &str) -> std::io::Result<()> {
 
             match (path, layout_exists) {
                 (Some(path), true) => {
-                    let content = fs::read_to_string(path)?;
-                    std::io::stdout().write_all(content.as_bytes())
+                    let content = fs::read(path)?;
+                    std::io::stdout().write_all(&content)
                 },
                 _ => {
                     log::error!("No layout named {custom} found");
