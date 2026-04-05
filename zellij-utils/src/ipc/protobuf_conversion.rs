@@ -1214,11 +1214,6 @@ impl From<crate::input::actions::Action>
             crate::input::actions::Action::UndoRenamePane => {
                 ActionType::UndoRenamePane(UndoRenamePaneAction {})
             },
-            crate::input::actions::Action::RenameActivePane { name } => {
-                ActionType::RenameActivePane(PaneNameInputAction {
-                    input: name.iter().map(|b| *b as u32).collect(),
-                })
-            },
             crate::input::actions::Action::NewTab {
                 tiled_layout,
                 floating_layouts,
@@ -1730,7 +1725,7 @@ impl From<crate::input::actions::Action>
             },
             crate::input::actions::Action::RenamePaneByPaneId { pane_id, name } => {
                 ActionType::RenamePaneByPaneId(RenamePaneByPaneIdAction {
-                    pane_id: Some(pane_id.into()),
+                    pane_id: pane_id.map(|id| id.into()),
                     name,
                 })
             },
@@ -2054,15 +2049,6 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
             ActionType::PaneNameInput(pane_name_action) => {
                 Ok(crate::input::actions::Action::PaneNameInput {
                     input: pane_name_action
-                        .input
-                        .into_iter()
-                        .map(|b| b as u8)
-                        .collect(),
-                })
-            },
-            ActionType::RenameActivePane(pane_name_action) => {
-                Ok(crate::input::actions::Action::RenameActivePane {
-                    name: pane_name_action
                         .input
                         .into_iter()
                         .map(|b| b as u8)
@@ -2655,10 +2641,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
             },
             ActionType::RenamePaneByPaneId(a) => {
                 Ok(crate::input::actions::Action::RenamePaneByPaneId {
-                    pane_id: a
-                        .pane_id
-                        .ok_or_else(|| anyhow!("RenamePaneByPaneId missing pane_id"))?
-                        .try_into()?,
+                    pane_id: a.pane_id.map(|p| p.try_into()).transpose()?,
                     name: a.name,
                 })
             },

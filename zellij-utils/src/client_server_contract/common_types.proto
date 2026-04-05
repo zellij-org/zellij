@@ -274,7 +274,6 @@ message Action {
     MoveTabByTabIdAction move_tab_by_tab_id = 134;
     FocusPaneByPaneIdAction focus_pane_by_pane_id = 135;
     AreFloatingPanesVisibleAction are_floating_panes_visible = 136;
-    PaneNameInputAction rename_active_pane = 137;
   }
 }
 

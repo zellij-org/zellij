@@ -15588,9 +15588,6 @@ pub fn scroll_up_nonexistent_pane_id_does_not_panic() {
     tab.scroll_up_by_pane_id(pane_id);
 }
 
-// ========== Pane/Tab Rename Semantic Tests ==========
-// See docs/pane-tab-renaming-spec.md for the full feature spec.
-
 #[test]
 pub fn rename_pane_sets_current_title() {
     let size = Size {
@@ -15895,10 +15892,6 @@ pub fn cli_rename_then_undo_clears_to_fallback() {
     let pane = tab.get_pane_with_id(pane_id).unwrap();
     assert_eq!(pane.current_title(), fallback_title);
 }
-
-// ========== Focused-pane CLI rename tests ==========
-// These test the path used by `zellij action rename-pane "name"` without
-// --pane-id, which goes through rename_active_pane (full replacement).
 
 #[test]
 pub fn cli_rename_active_pane_replaces_name() {

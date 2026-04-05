@@ -1481,7 +1481,8 @@ fn test_client_messages() {
         is_cli_client: true,
     });
     test_client_roundtrip!(ClientToServerMsg::Action {
-        action: Action::RenameActivePane {
+        action: Action::RenamePaneByPaneId {
+            pane_id: None,
             name: "spark".as_bytes().to_vec(),
         },
         terminal_id: Some(1),
@@ -1489,7 +1490,8 @@ fn test_client_messages() {
         is_cli_client: true,
     });
     test_client_roundtrip!(ClientToServerMsg::Action {
-        action: Action::RenameActivePane {
+        action: Action::RenamePaneByPaneId {
+            pane_id: None,
             name: "x".as_bytes().to_vec(),
         },
         terminal_id: Some(1),
@@ -3465,7 +3467,7 @@ fn test_client_messages() {
     });
     test_client_roundtrip!(ClientToServerMsg::Action {
         action: Action::RenamePaneByPaneId {
-            pane_id: PaneId::Terminal(1),
+            pane_id: Some(PaneId::Terminal(1)),
             name: "test-name".as_bytes().to_vec(),
         },
         terminal_id: Some(1),
@@ -3711,7 +3713,8 @@ fn set_pane_color_wire_roundtrip() {
     assert_eq!(original, roundtrip);
 }
 
-/// Tests that RenameActivePane survives a full wire-level round-trip
+/// Tests that RenamePaneByPaneId with `pane_id: None` (the active-pane CLI
+/// rename case) survives a full wire-level round-trip
 /// (Rust → proto struct → bytes → proto struct → Rust).
 ///
 /// The struct-level round-trip in `test_client_roundtrip!` doesn't catch
@@ -3723,7 +3726,8 @@ fn rename_active_pane_wire_roundtrip() {
     use prost::Message;
 
     let original = ClientToServerMsg::Action {
-        action: Action::RenameActivePane {
+        action: Action::RenamePaneByPaneId {
+            pane_id: None,
             name: "x".as_bytes().to_vec(),
         },
         terminal_id: Some(1),

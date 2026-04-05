@@ -8078,12 +8078,6 @@ pub fn send_cli_new_pane_action_with_tab_id_and_stacked() {
     );
 }
 
-// ========== Focused-pane CLI rename routing tests ==========
-// These test the screen-level rename behavior to verify that CLI rename
-// without --pane-id correctly replaces the pane name (not appends).
-// The routing from PaneNameInput → RenameActivePane vs UpdatePaneName
-// is in route.rs, but we verify the end result here.
-
 #[test]
 fn cli_rename_active_pane_via_screen_replaces_name() {
     let size = Size {
