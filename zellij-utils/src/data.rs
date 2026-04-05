@@ -1720,6 +1720,7 @@ pub struct ModeInfo {
     pub session_name: Option<String>,
     pub editor: Option<PathBuf>,
     pub shell: Option<PathBuf>,
+    pub shell_args: Option<Vec<String>>,
     pub web_clients_allowed: Option<bool>,
     pub web_sharing: Option<WebSharing>,
     pub currently_marking_pane_group: Option<bool>,

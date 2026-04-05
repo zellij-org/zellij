@@ -391,7 +391,12 @@ impl SessionMetaData {
                         .theme_config(new_config.options.theme.as_ref())
                         .unwrap_or_else(|| default_palette().into()),
                     simplified_ui: new_config.options.simplified_ui.unwrap_or(false),
-                    default_shell: new_config.options.default_shell.map(|s| s.path),
+                    default_shell: new_config
+                        .options
+                        .default_shell
+                        .as_ref()
+                        .map(|s| s.path.clone()),
+                    default_shell_args: new_config.options.default_shell.map(|s| s.args),
                     pane_frames: new_config.options.pane_frames.unwrap_or(true),
                     copy_command: new_config.options.copy_command,
                     copy_to_clipboard: new_config.options.copy_clipboard,

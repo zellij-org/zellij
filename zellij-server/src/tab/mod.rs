@@ -196,6 +196,7 @@ pub(crate) struct Tab {
     // pending and need to be re-applied
     swap_layouts: SwapLayouts,
     default_shell: PathBuf,
+    default_shell_args: Vec<String>,
     default_editor: Option<PathBuf>,
     debug: bool,
     arrow_fonts: bool,
@@ -701,6 +702,7 @@ impl Tab {
         terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
         swap_layouts: (Vec<SwapTiledLayout>, Vec<SwapFloatingLayout>),
         default_shell: PathBuf,
+        default_shell_args: Vec<String>,
         debug: bool,
         arrow_fonts: bool,
         styled_underlines: bool,
@@ -807,6 +809,7 @@ impl Tab {
             pending_instructions: vec![],
             swap_layouts,
             default_shell,
+            default_shell_args,
             debug,
             arrow_fonts,
             styled_underlines,
@@ -1161,6 +1164,11 @@ impl Tab {
                 .unwrap_or(&self.default_mode_info)
                 .clone();
             mode_info.shell = Some(self.default_shell.clone());
+            mode_info.shell_args = if self.default_shell_args.is_empty() {
+                None
+            } else {
+                Some(self.default_shell_args.clone())
+            };
             mode_info.editor = self.default_editor.clone();
             mode_info.web_clients_allowed = Some(self.web_clients_allowed);
             mode_info.web_sharing = Some(self.web_sharing);
@@ -5521,9 +5529,16 @@ impl Tab {
             pane.update_arrow_fonts(should_support_arrow_fonts);
         }
     }
-    pub fn update_default_shell(&mut self, mut default_shell: Option<PathBuf>) {
+    pub fn update_default_shell(
+        &mut self,
+        mut default_shell: Option<PathBuf>,
+        default_shell_args: Option<Vec<String>>,
+    ) {
         if let Some(default_shell) = default_shell.take() {
             self.default_shell = default_shell;
+        }
+        if let Some(args) = default_shell_args {
+            self.default_shell_args = args;
         }
     }
     pub fn update_default_editor(&mut self, mut default_editor: Option<PathBuf>) {

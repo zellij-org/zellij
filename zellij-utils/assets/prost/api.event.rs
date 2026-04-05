@@ -639,6 +639,8 @@ pub struct ModeUpdatePayload {
     pub web_server_port: ::core::option::Option<u32>,
     #[prost(bool, optional, tag="15")]
     pub web_server_capability: ::core::option::Option<bool>,
+    #[prost(string, repeated, tag="16")]
+    pub shell_args: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

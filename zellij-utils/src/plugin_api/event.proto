@@ -460,6 +460,7 @@ message ModeUpdatePayload {
   optional string web_server_ip = 13;
   optional uint32 web_server_port = 14;
   optional bool web_server_capability = 15;
+  repeated string shell_args = 16;
 }
 
 enum WebSharing {
