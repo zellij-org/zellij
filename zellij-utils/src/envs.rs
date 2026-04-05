@@ -12,7 +12,7 @@ pub const ZELLIJ_ENV_KEY: &str = "ZELLIJ";
 pub fn get_zellij() -> Result<String> {
     Ok(var(ZELLIJ_ENV_KEY)?)
 }
-pub fn set_zellij(v: String) {
+pub fn set_zellij(v: &str) {
     set_var(ZELLIJ_ENV_KEY, v);
 }
 

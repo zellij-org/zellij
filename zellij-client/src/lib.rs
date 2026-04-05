@@ -635,7 +635,7 @@ pub fn start_remote_client(
         .write(enter_kitty_keyboard_mode.as_bytes())
         .unwrap();
 
-    envs::set_zellij("0".to_string());
+    envs::set_zellij("0");
 
     let full_screen_ws = os_input.get_terminal_size();
 
@@ -756,7 +756,7 @@ pub fn start_client(
                 .unwrap();
         }
     }
-    envs::set_zellij("0".to_string());
+    envs::set_zellij("0");
     config.env.set_vars();
 
     let full_screen_ws = os_input.get_terminal_size();
@@ -1301,7 +1301,7 @@ pub fn start_server_detached(
     config_options: Options,
     info: ClientInfo,
 ) {
-    envs::set_zellij("0".to_string());
+    envs::set_zellij("0");
     config.env.set_vars();
 
     let should_start_web_server = config_options.web_server.map(|w| w).unwrap_or(false);

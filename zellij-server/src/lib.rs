@@ -681,7 +681,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
         }
     }
 
-    envs::set_zellij("0".to_string());
+    envs::set_zellij("0");
 
     let (to_server, server_receiver): ChannelWithContext<ServerInstruction> = channels::bounded(50);
     let to_server = SenderWithContext::new(to_server);
