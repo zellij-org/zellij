@@ -888,9 +888,9 @@ mod setup_test {
 
     #[test]
     fn layout_string_cli_argument() {
-        let layout_kdl = "layout {\n    pane\n    pane\n}\n".to_string();
+        let layout_kdl = "layout {\n    pane\n    pane\n}\n";
         let cli_args = CliArgs {
-            layout_string: Some(layout_kdl.clone()),
+            layout_string: Some(layout_kdl.to_string()),
             ..Default::default()
         };
         let (_, layout_info, _, _, _) = Setup::from_cli_args(&cli_args).unwrap();
