@@ -1943,19 +1943,19 @@ mod test {
 
         assert_eq!(
             KeyCode::Enter.encode(Modifiers::CTRL, mode, true).unwrap(),
-            "\r".to_string()
+            "\r"
         );
         assert_eq!(
             KeyCode::Enter
                 .encode(Modifiers::CTRL, mode_1, true)
                 .unwrap(),
-            "\x1b[27;5;13~".to_string()
+            "\x1b[27;5;13~"
         );
         assert_eq!(
             KeyCode::Enter
                 .encode(Modifiers::CTRL | Modifiers::SHIFT, mode_1, true)
                 .unwrap(),
-            "\x1b[27;6;13~".to_string()
+            "\x1b[27;6;13~"
         );
 
         // This case is not conformant with xterm!
@@ -1963,62 +1963,62 @@ mod test {
         // is not set.
         assert_eq!(
             KeyCode::Tab.encode(Modifiers::CTRL, mode, true).unwrap(),
-            "\x1b[9;5u".to_string()
+            "\x1b[9;5u"
         );
         assert_eq!(
             KeyCode::Tab.encode(Modifiers::CTRL, mode_1, true).unwrap(),
-            "\x1b[27;5;9~".to_string()
+            "\x1b[27;5;9~"
         );
         assert_eq!(
             KeyCode::Tab
                 .encode(Modifiers::CTRL | Modifiers::SHIFT, mode_1, true)
                 .unwrap(),
-            "\x1b[27;6;9~".to_string()
+            "\x1b[27;6;9~"
         );
 
         assert_eq!(
             KeyCode::Char('c')
                 .encode(Modifiers::CTRL, mode, true)
                 .unwrap(),
-            "\x03".to_string()
+            "\x03"
         );
         assert_eq!(
             KeyCode::Char('c')
                 .encode(Modifiers::CTRL, mode_1, true)
                 .unwrap(),
-            "\x03".to_string()
+            "\x03"
         );
         assert_eq!(
             KeyCode::Char('c')
                 .encode(Modifiers::CTRL, mode_2, true)
                 .unwrap(),
-            "\x1b[27;5;99~".to_string()
+            "\x1b[27;5;99~"
         );
 
         assert_eq!(
             KeyCode::Char('1')
                 .encode(Modifiers::CTRL, mode, true)
                 .unwrap(),
-            "1".to_string()
+            "1"
         );
         assert_eq!(
             KeyCode::Char('1')
                 .encode(Modifiers::CTRL, mode_2, true)
                 .unwrap(),
-            "\x1b[27;5;49~".to_string()
+            "\x1b[27;5;49~"
         );
 
         assert_eq!(
             KeyCode::Char(',')
                 .encode(Modifiers::CTRL, mode, true)
                 .unwrap(),
-            ",".to_string()
+            ","
         );
         assert_eq!(
             KeyCode::Char(',')
                 .encode(Modifiers::CTRL, mode_2, true)
                 .unwrap(),
-            "\x1b[27;5;44~".to_string()
+            "\x1b[27;5;44~"
         );
     }
 
@@ -2035,43 +2035,43 @@ mod test {
             KeyCode::LeftArrow
                 .encode(Modifiers::NONE, mode, true)
                 .unwrap(),
-            "\x1b[D".to_string()
+            "\x1b[D"
         );
         assert_eq!(
             KeyCode::LeftArrow
                 .encode(Modifiers::ALT, mode, true)
                 .unwrap(),
-            "\x1b[1;3D".to_string()
+            "\x1b[1;3D"
         );
         assert_eq!(
             KeyCode::Home.encode(Modifiers::NONE, mode, true).unwrap(),
-            "\x1b[H".to_string()
+            "\x1b[H"
         );
         assert_eq!(
             KeyCode::Home.encode(Modifiers::ALT, mode, true).unwrap(),
-            "\x1b[1;3H".to_string()
+            "\x1b[1;3H"
         );
         assert_eq!(
             KeyCode::End.encode(Modifiers::NONE, mode, true).unwrap(),
-            "\x1b[F".to_string()
+            "\x1b[F"
         );
         assert_eq!(
             KeyCode::End.encode(Modifiers::ALT, mode, true).unwrap(),
-            "\x1b[1;3F".to_string()
+            "\x1b[1;3F"
         );
         assert_eq!(
             KeyCode::Tab.encode(Modifiers::ALT, mode, true).unwrap(),
-            "\x1b\t".to_string()
+            "\x1b\t"
         );
         assert_eq!(
             KeyCode::PageUp.encode(Modifiers::ALT, mode, true).unwrap(),
-            "\x1b[5;3~".to_string()
+            "\x1b[5;3~"
         );
         assert_eq!(
             KeyCode::Function(1)
                 .encode(Modifiers::NONE, mode, true)
                 .unwrap(),
-            "\x1bOP".to_string()
+            "\x1bOP"
         );
     }
 
@@ -2129,26 +2129,26 @@ mod test {
             KeyCode::Numpad0
                 .encode(Modifiers::NONE, mode, true)
                 .unwrap(),
-            "\u{1b}[2~".to_string()
+            "\u{1b}[2~"
         );
         assert_eq!(
             KeyCode::Numpad0
                 .encode(Modifiers::SHIFT, mode, true)
                 .unwrap(),
-            "\u{1b}[2;2~".to_string()
+            "\u{1b}[2;2~"
         );
 
         assert_eq!(
             KeyCode::Numpad1
                 .encode(Modifiers::NONE, mode, true)
                 .unwrap(),
-            "\u{1b}[F".to_string()
+            "\u{1b}[F"
         );
         assert_eq!(
             KeyCode::Numpad1
                 .encode(Modifiers::NONE | Modifiers::SHIFT, mode, true)
                 .unwrap(),
-            "\u{1b}[1;2F".to_string()
+            "\u{1b}[1;2F"
         );
     }
 
