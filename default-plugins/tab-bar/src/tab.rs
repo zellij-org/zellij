@@ -66,23 +66,10 @@ pub fn render_tab(
         let (cursor_section, extra_length) =
             cursors(focused_clients, palette.multiplayer_user_colors);
         tab_text_len += extra_length + 2; // 2 for cursor_beginning and cursor_end
-        let mut s = String::new();
-        let cursor_beginning = style!(foreground_color, background_color)
-            .bold()
-            .paint("[")
-            .to_string();
-        let cursor_section = ANSIStrings(&cursor_section).to_string();
-        let cursor_end = style!(foreground_color, background_color)
-            .bold()
-            .paint("]")
-            .to_string();
-        s.push_str(&left_separator.to_string());
-        s.push_str(&tab_styled_text.to_string());
-        s.push_str(&cursor_beginning);
-        s.push_str(&cursor_section);
-        s.push_str(&cursor_end);
-        s.push_str(&right_separator.to_string());
-        s
+        let cursor_beginning = style!(foreground_color, background_color).bold().paint("[");
+        let cursor_section = ANSIStrings(&cursor_section);
+        let cursor_end = style!(foreground_color, background_color).bold().paint("]");
+        format!("{left_separator}{tab_styled_text}{cursor_beginning}{cursor_section}{cursor_end}{right_separator}")
     } else {
         ANSIStrings(&[left_separator, tab_styled_text, right_separator]).to_string()
     };
