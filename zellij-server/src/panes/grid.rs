@@ -561,10 +561,9 @@ fn position_in_span(
     after_start && before_end
 }
 
-#[derive(Clone)]
 /// Tracks the last-placed cell so that subsequent codepoints can be checked for grapheme
 /// cluster boundaries before deciding whether to extend that cell or start a new one.
-#[derive(Default)]
+#[derive(Clone, Default)]
 struct PendingGrapheme {
     /// Accumulated EGC text placed in the cell so far.
     text: String,
@@ -576,6 +575,7 @@ struct PendingGrapheme {
     end_x: usize,
 }
 
+#[derive(Clone)]
 pub struct Grid {
     pub(crate) lines_above: VecDeque<Row>,
     pub(crate) viewport: VecDeque<Row>,
