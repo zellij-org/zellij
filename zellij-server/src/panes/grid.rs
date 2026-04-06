@@ -3623,20 +3623,24 @@ impl Perform for Grid {
             8 => {
                 // backspace
                 // BS moves back one display column, including in 2027 mode.
+                self.egc_state = None;
                 self.move_cursor_back(1);
             },
             9 => {
                 // tab
+                self.egc_state = None;
                 self.advance_to_next_tabstop(self.cursor.pending_styles.clone());
             },
             10 | 11 | 12 => {
                 // 0a, newline
                 // 0b, vertical tabulation
                 // 0c, form feed
+                self.egc_state = None;
                 self.add_newline();
             },
             13 => {
                 // 0d, carriage return
+                self.egc_state = None;
                 self.move_cursor_to_beginning_of_line();
             },
             14 => {
@@ -3986,6 +3990,7 @@ impl Perform for Grid {
         } else if c == 'C' || c == 'a' {
             // move cursor forward
             // CUF counts display columns in all modes, including 2027.
+            self.egc_state = None;
             let move_by = next_param_or(1);
             self.move_cursor_forward_until_edge(move_by);
         } else if c == 'K' {
@@ -4034,20 +4039,24 @@ impl Perform for Grid {
         } else if c == 'H' || c == 'f' {
             // goto row/col
             // we subtract 1 from the row/column because these are 1 indexed
+            self.egc_state = None;
             let row = next_param_or(1).saturating_sub(1);
             let col = next_param_or(1).saturating_sub(1);
             self.move_cursor_to(col, row, EMPTY_TERMINAL_CHARACTER);
         } else if c == 'A' {
             // move cursor up until edge of screen
+            self.egc_state = None;
             let move_up_count = next_param_or(1);
             self.move_cursor_up(move_up_count as usize);
         } else if c == 'B' || c == 'e' {
             // move cursor down until edge of screen
+            self.egc_state = None;
             let move_down_count = next_param_or(1);
             let pad_character = EMPTY_TERMINAL_CHARACTER;
             self.move_cursor_down_until_edge_of_screen(move_down_count as usize, pad_character);
         } else if c == 'D' {
             // CUB counts display columns in all modes, including 2027.
+            self.egc_state = None;
             let move_back_count = next_param_or(1) as usize;
             self.move_cursor_back(move_back_count);
         } else if c == 'l' {
@@ -4331,6 +4340,7 @@ impl Perform for Grid {
             pad_character.styles = self.cursor.pending_styles.clone();
             self.add_empty_lines_in_scroll_region(line_count_to_add, pad_character);
         } else if c == 'G' || c == '`' {
+            self.egc_state = None;
             let column = next_param_or(1).saturating_sub(1);
             let column = std::cmp::min(column, self.width.saturating_sub(1));
             self.move_cursor_to_column(column);
@@ -4343,6 +4353,7 @@ impl Perform for Grid {
             }
         } else if c == 'd' {
             // goto line
+            self.egc_state = None;
             let line = next_param_or(1).saturating_sub(1);
             let pad_character = EMPTY_TERMINAL_CHARACTER;
             self.move_cursor_to_line(line, pad_character);
@@ -4443,6 +4454,7 @@ impl Perform for Grid {
                 }
             }
         } else if c == 'u' {
+            self.egc_state = None;
             self.restore_cursor_position();
         } else if c == '@' {
             let count = next_param_or(1);
@@ -4459,16 +4471,19 @@ impl Perform for Grid {
             }
         } else if c == 'E' {
             // Moves cursor to beginning of the line n (default 1) lines down.
+            self.egc_state = None;
             let count = next_param_or(1);
             let pad_character = EMPTY_TERMINAL_CHARACTER;
             self.move_cursor_down_until_edge_of_screen(count, pad_character);
             self.move_cursor_to_beginning_of_line();
         } else if c == 'F' {
             // Moves cursor to beginning of the line n (default 1) lines up.
+            self.egc_state = None;
             let count = next_param_or(1);
             self.move_cursor_up(count);
             self.move_cursor_to_beginning_of_line();
         } else if c == 'I' {
+            self.egc_state = None;
             for _ in 0..next_param_or(1) {
                 self.advance_to_next_tabstop(self.cursor.pending_styles.clone());
             }
@@ -4668,14 +4683,17 @@ impl Perform for Grid {
                 );
             },
             (b'D', None) => {
+                self.egc_state = None;
                 self.add_newline();
             },
             (b'E', None) => {
+                self.egc_state = None;
                 self.add_newline();
                 self.move_cursor_to_beginning_of_line();
             },
             (b'M', None) => {
                 // TODO: if cursor is at the top, it should go down one
+                self.egc_state = None;
                 self.move_cursor_up_with_scrolling(1);
             },
             (b'c', None) => {
@@ -4693,6 +4711,7 @@ impl Perform for Grid {
                     .push(terminal_capabilities.as_bytes().to_vec());
             },
             (b'8', None) => {
+                self.egc_state = None;
                 self.restore_cursor_position();
             },
             (b'8', Some(b'#')) => {
