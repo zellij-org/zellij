@@ -1114,7 +1114,9 @@ pub fn start_client(
         })
         .unwrap();
 
-    let handle_error = |backtrace: String| {
+    let mut host_grapheme_cluster_mode = false;
+
+    let handle_error = |backtrace: String, enabled_2027: bool| {
         os_input.disable_mouse().non_fatal();
         os_input.unset_raw_mode().unwrap();
         os_input.restore_console_mode();
@@ -1124,6 +1126,9 @@ pub fn start_client(
             !explicitly_disable_kitty_keyboard_protocol,
         );
         let mut stdout = os_input.get_stdout_writer();
+        if enabled_2027 {
+            let _ = stdout.write(b"\x1b[?2027l");
+        }
         stdout.write_all(error.as_bytes()).unwrap();
         stdout.flush().unwrap();
         std::process::exit(1);
@@ -1134,7 +1139,6 @@ pub fn start_client(
         Some("alacritty") => Some(SyncOutput::DCS),
         _ => None,
     };
-    let mut host_grapheme_cluster_mode = false;
 
     loop {
         let (client_instruction, mut err_ctx) = receive_client_instructions
@@ -1148,13 +1152,13 @@ pub fn start_client(
                 os_input.send_to_server(ClientToServerMsg::ClientExited);
 
                 if let ExitReason::Error(_) = reason {
-                    handle_error(reason.to_string());
+                    handle_error(reason.to_string(), host_grapheme_cluster_mode);
                 }
                 exit_msg = reason.to_string();
                 break;
             },
             ClientInstruction::Error(backtrace) => {
-                handle_error(backtrace);
+                handle_error(backtrace, host_grapheme_cluster_mode);
             },
             ClientInstruction::Render(output) => {
                 let mut stdout = os_input.get_stdout_writer();
