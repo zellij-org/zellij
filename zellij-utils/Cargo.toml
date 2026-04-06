@@ -1,10 +1,10 @@
 [package]
 name = "zellij-utils"
-version = "0.44.0"
+version.workspace = true
 authors = ["Kunal Mohan <kunalmohan99@gmail.com>"]
-edition = "2021"
+edition.workspace = true
 description = "A utility library for Zellij client and server"
-license = "MIT"
+license.workspace = true
 include = ["src/**/*", "assets/"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -24,10 +24,8 @@ kdl = { version = "4.5.0", default-features = false, features = ["span"] }
 lazy_static = { workspace = true }
 log = { workspace = true }
 miette = { workspace = true }
-nix = { workspace = true }
 percent-encoding = { version = "2.1.0", default-features = false, features = ["std"] }
 prost = { workspace = true }
-rmp-serde = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 shellexpand = { version = "3.0.0", default-features = false, features = ["base-0", "tilde"] }
@@ -40,11 +38,13 @@ unicode-width = { workspace = true }
 url = { workspace = true }
 uuid = { workspace = true }
 sha2 = { workspace = true }
+libc = { workspace = true }
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
-async-std = { workspace = true }
+tokio = { workspace = true }
+tokio-stream = { version = "0.1" }
+tokio-util = { version = "0.7", default-features = false, features = ["compat", "io"] }
 log4rs = { version = "1.2.0", default-features = false, features = ["pattern_encoder", "rolling_file_appender", "compound_policy", "fixed_window_roller", "size_trigger"] }
-termwiz = { workspace = true }
 interprocess = { workspace = true }
 openssl-sys = { version = "0.9.93", default-features = false, features = ["vendored"], optional = true }
 isahc = { workspace = true }
@@ -54,14 +54,22 @@ suggest = { workspace = true }
 names = { workspace = true }
 rusqlite = { version = "0.30", default-features = false, features = ["bundled"], optional = true }
 notify = { workspace = true }
-tokio = { workspace = true }
+
+[target.'cfg(unix)'.dependencies]
+nix = { workspace = true }
+
+[target.'cfg(windows)'.dependencies]
+crossterm = { workspace = true, features = ["events"] }
+windows-sys = { workspace = true, features = [
+    "Win32_Foundation",
+    "Win32_System_Threading",
+] }
+winapi = { version = "0.3.9", default-features = false }
+dunce = "1.0"
 
 [dev-dependencies]
 insta = { version = "1.6.0", features = ["backtrace"] }
 expect-test = "1.4.1"
-
-[build-dependencies]
-prost-build = "0.11.9"
 
 [features]
 # If this feature is NOT set (default):

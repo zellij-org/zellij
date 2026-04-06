@@ -154,12 +154,14 @@ impl NamedColor {
 }
 
 // This enum carefully only has two variants so
-// enum niche optimisations can keep it to 8 bytes
+// enum niche optimisations can keep it at the same byte size as pointers
 #[derive(Clone, Debug, PartialEq)]
 pub enum RcCharacterStyles {
     Reset,
     Rc(Rc<CharacterStyles>),
 }
+
+#[cfg(target_arch = "x86_64")]
 const _: [(); 8] = [(); std::mem::size_of::<RcCharacterStyles>()];
 
 impl From<CharacterStyles> for RcCharacterStyles {
@@ -691,16 +693,11 @@ impl Display for CharacterStyles {
                     write!(f, "\u{1b}[1m")?;
                 },
                 AnsiCode::Reset => {
-                    write!(f, "\u{1b}[22m\u{1b}[24m")?;
-                    // TODO: this cancels bold + underline, if this behaviour is indeed correct, we
-                    // need to properly handle it in the struct methods etc like dim
+                    write!(f, "\u{1b}[22m")?;
                 },
                 _ => {},
             }
         }
-        // notice the order is important here, bold must be before underline
-        // because the bold reset also resets underline, and would override it
-        // otherwise
         if let Some(ansi_code) = self.underline {
             match ansi_code {
                 AnsiCode::Underline(None) => {
@@ -926,8 +923,10 @@ pub struct TerminalCharacter {
     pub styles: RcCharacterStyles,
     width: u8,
 }
+
 // This size has significant memory and CPU implications for long lines,
 // be careful about allowing it to grow
+#[cfg(target_arch = "x86_64")]
 const _: [(); 16] = [(); std::mem::size_of::<TerminalCharacter>()];
 
 impl TerminalCharacter {

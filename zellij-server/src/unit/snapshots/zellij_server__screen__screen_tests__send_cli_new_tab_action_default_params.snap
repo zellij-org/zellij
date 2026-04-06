@@ -1,5 +1,6 @@
 ---
 source: zellij-server/src/./unit/screen_tests.rs
+assertion_line: 3515
 expression: "format!(\"{:#?}\", new_tab_action)"
 ---
 Some(
@@ -17,7 +18,7 @@ Some(
                         children: [],
                         split_size: None,
                         run: None,
-                        borderless: false,
+                        borderless: None,
                         focus: None,
                         external_children_index: None,
                         children_are_stacked: false,
@@ -26,6 +27,8 @@ Some(
                         run_instructions_to_ignore: [],
                         hide_floating_panes: false,
                         pane_initial_contents: None,
+                        default_fg: None,
+                        default_bg: None,
                     },
                     TiledPaneLayout {
                         children_split_direction: Horizontal,
@@ -33,7 +36,7 @@ Some(
                         children: [],
                         split_size: None,
                         run: None,
-                        borderless: false,
+                        borderless: None,
                         focus: None,
                         external_children_index: None,
                         children_are_stacked: false,
@@ -42,11 +45,13 @@ Some(
                         run_instructions_to_ignore: [],
                         hide_floating_panes: false,
                         pane_initial_contents: None,
+                        default_fg: None,
+                        default_bg: None,
                     },
                 ],
                 split_size: None,
                 run: None,
-                borderless: false,
+                borderless: None,
                 focus: None,
                 external_children_index: None,
                 children_are_stacked: false,
@@ -55,14 +60,19 @@ Some(
                 run_instructions_to_ignore: [],
                 hide_floating_panes: false,
                 pane_initial_contents: None,
+                default_fg: None,
+                default_bg: None,
             },
         ),
         [],
         0,
+        None,
+        false,
         true,
         (
             1,
             false,
         ),
+        None,
     ),
 )

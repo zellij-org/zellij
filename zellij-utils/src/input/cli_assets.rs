@@ -2,14 +2,14 @@ use crate::data::LayoutInfo;
 use crate::input::options::Options;
 use crate::pane_size::Size;
 use crate::{
-    home::find_default_config_dir,
+    home::{find_default_config_dir, get_theme_dir},
     input::{config::Config, layout::Layout, theme::Themes},
-    setup::{get_default_themes, get_theme_dir},
+    setup::get_default_themes,
 };
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct CliAssets {
     pub config_file_path: Option<PathBuf>,
     pub config_dir: Option<PathBuf>,
@@ -72,8 +72,13 @@ impl CliAssets {
             .as_ref()
             .and_then(|o| o.theme_dir.clone())
             .or_else(|| {
-                get_theme_dir(config_with_merged_layout_opts.options.theme_dir.clone())
-                    .or_else(find_default_config_dir)
+                config_with_merged_layout_opts
+                    .options
+                    .theme_dir
+                    .clone()
+                    .or_else(|| {
+                        get_theme_dir(self.config_dir.clone().or_else(find_default_config_dir))
+                    })
                     .filter(|dir| dir.exists())
             });
         if let Some(themes) = user_theme_dir.and_then(|u| Themes::from_dir(u).ok()) {

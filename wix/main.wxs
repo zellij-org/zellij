@@ -1,0 +1,347 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Zellij MSI installer (WiX v6).
+
+  Custom UI built from individual WixToolset.UI.wixext stock dialogs plus a
+  custom welcome/EULA dialog (ZellijWelcomeDlg).  We do NOT use the stock
+  WixUI_Advanced dialog set because:
+    - It does not support dual-scope packages (wixtoolset/issues#7137)
+    - Its AdvancedWelcomeEulaDlg cannot be overridden (not declared virtual)
+    - It includes a Print button and FeaturesDlg we don't need
+
+  Instead we reference stock dialogs individually (InstallScopeDlg,
+  InstallDirDlg, VerifyReadyDlg, etc.) and wire up navigation ourselves.
+
+  Dual-scope support:
+    Scope="perUserOrMachine" sets ALLUSERS=2, MSIINSTALLPERUSER=1.
+    Custom actions (SetFolderPerUser / SetFolderPerMachine) resolve
+    APPLICATIONFOLDER to the correct path based on scope selection.
+    The stock WixUI_Advanced folder CAs are broken for this scenario.
+
+  Dialog flow:
+    New install:  ZellijWelcomeDlg → [Advanced] → InstallScopeDlg
+                  → InstallDirDlg → VerifyReadyDlg
+    Quick install: ZellijWelcomeDlg → [Install] (per-user, no UAC)
+    Maintenance:   MaintenanceWelcomeDlg → MaintenanceTypeDlg → VerifyReadyDlg
+
+  Build:
+    wix build wix\main.wxs wix\Zellij.wxl -d Version=X.Y.Z -arch x64
+      -ext WixToolset.UI.wixext -o target\wix\zellij-x86_64-pc-windows-msvc.msi
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+
+  <Package Name="Zellij"
+           Manufacturer="Zellij Contributors"
+           Version="$(var.Version)"
+           UpgradeCode="BEE7A897-6DE0-4243-9977-5924C8CDB391"
+           Scope="perUserOrMachine"
+           InstallerVersion="500">
+
+    <!-- Properties used by stock InstallScopeDlg and InstallDirDlg -->
+    <Property Id="ApplicationFolderName" Value="Zellij" />
+    <Property Id="WixAppFolder" Value="WixPerUserFolder" />
+    <Property Id="WIXUI_INSTALLDIR" Value="APPLICATIONFOLDER" />
+
+    <!-- Icon shown in Add/Remove Programs -->
+    <Icon Id="ZellijIcon" SourceFile="assets\logo128.ico" />
+    <Property Id="ARPPRODUCTICON" Value="ZellijIcon" />
+
+    <!-- Auto-remove previous versions -->
+    <MajorUpgrade DowngradeErrorMessage="A newer version of Zellij is already installed." />
+
+    <!-- Embed the .cab inside the MSI -->
+    <MediaTemplate EmbedCab="yes" />
+
+    <!-- ===== Directory tree ===== -->
+    <StandardDirectory Id="ProgramFilesFolder">
+      <Directory Id="APPLICATIONFOLDER" Name="Zellij" />
+    </StandardDirectory>
+
+    <!-- ===== Custom actions for folder resolution =====
+         The stock WixUI_Advanced CAs (WixSetPerUserFolder / WixSetPerMachineFolder)
+         resolve incorrectly under Scope="perUserOrMachine" because WixPerMachineFolder
+         is evaluated before the user selects a scope.  We bypass them entirely and set
+         APPLICATIONFOLDER to explicit paths based on MSIINSTALLPERUSER. -->
+    <CustomAction Id="SetFolderPerUser"
+                  Property="APPLICATIONFOLDER"
+                  Value="[LocalAppDataFolder]Zellij" />
+    <CustomAction Id="SetFolderPerMachine"
+                  Property="APPLICATIONFOLDER"
+                  Value="[ProgramFilesFolder]Zellij" />
+
+    <!-- Schedule in both UI and Execute sequences so the correct path is set
+         even after UAC elevation re-launches the server process. -->
+    <InstallExecuteSequence>
+      <Custom Action="SetFolderPerUser" Before="CostFinalize"
+              Condition="MSIINSTALLPERUSER = 1" />
+      <Custom Action="SetFolderPerMachine" Before="CostFinalize"
+              Condition="NOT MSIINSTALLPERUSER" />
+    </InstallExecuteSequence>
+
+    <InstallUISequence>
+      <Custom Action="SetFolderPerUser" Before="CostFinalize"
+              Condition="MSIINSTALLPERUSER = 1" />
+      <Custom Action="SetFolderPerMachine" Before="CostFinalize"
+              Condition="NOT MSIINSTALLPERUSER" />
+    </InstallUISequence>
+
+    <!-- ===== Components =====
+         Three components: binary (always), plus two conditional PATH components.
+         ALLUSERS is set by InstallScopeDlg: 1 for per-machine, empty for per-user.
+         Default (quick install without scope dialog): ALLUSERS=2, which is <> 1,
+         so path_user activates — correct for the per-user default. -->
+
+    <Component Id="binary"
+               Directory="APPLICATIONFOLDER"
+               Guid="BC9D18AE-17CA-4790-ADB0-C64530DEDE57">
+      <File Id="zellij_exe"
+            Source="target\release\zellij.exe"
+            KeyPath="yes" />
+    </Component>
+
+    <Component Id="path_machine"
+               Directory="APPLICATIONFOLDER"
+               Guid="85C2CC85-8379-4C27-8337-A90EAD9AC265"
+               Condition="ALLUSERS = 1">
+      <RegistryValue Root="HKLM"
+                     Key="Software\Zellij"
+                     Name="InstallPath"
+                     Type="string"
+                     Value="[APPLICATIONFOLDER]"
+                     KeyPath="yes" />
+      <Environment Id="PATH_machine"
+                   Name="PATH"
+                   Value="[APPLICATIONFOLDER]"
+                   Permanent="no"
+                   Part="last"
+                   Action="set"
+                   System="yes" />
+    </Component>
+
+    <Component Id="path_user"
+               Directory="APPLICATIONFOLDER"
+               Guid="EED3D01E-8FBC-4F3D-A3E5-DF55939970CD"
+               Condition="ALLUSERS &lt;&gt; 1">
+      <RegistryValue Root="HKCU"
+                     Key="Software\Zellij"
+                     Name="InstallPath"
+                     Type="string"
+                     Value="[APPLICATIONFOLDER]"
+                     KeyPath="yes" />
+      <Environment Id="PATH_user"
+                   Name="PATH"
+                   Value="[APPLICATIONFOLDER]"
+                   Permanent="no"
+                   Part="last"
+                   Action="set"
+                   System="no" />
+    </Component>
+
+    <!-- ===== Feature ===== -->
+    <Feature Id="MainFeature" Title="Zellij" Level="1">
+      <ComponentRef Id="binary" />
+      <ComponentRef Id="path_machine" />
+      <ComponentRef Id="path_user" />
+    </Feature>
+
+    <!-- ===== Custom UI =====
+         We define our own UI element instead of using <ui:WixUI Id="WixUI_Advanced" />
+         because WiX v6 does not allow overriding extension dialogs (they are not
+         declared virtual).  We reference individual stock dialogs from
+         WixToolset.UI.wixext and provide our own ZellijWelcomeDlg and navigation. -->
+    <UI>
+      <TextStyle Id="WixUI_Font_Normal" FaceName="Tahoma" Size="8" />
+      <TextStyle Id="WixUI_Font_Bigger" FaceName="Tahoma" Size="12" />
+      <TextStyle Id="WixUI_Font_Title" FaceName="Tahoma" Size="9" Bold="yes" />
+      <TextStyle Id="WixUI_Font_Emphasized" FaceName="Tahoma" Size="9" Bold="yes" />
+      <Property Id="DefaultUIFont" Value="WixUI_Font_Normal" />
+
+      <!-- Individual stock dialogs from WixToolset.UI.wixext -->
+      <DialogRef Id="BrowseDlg" />
+      <DialogRef Id="DiskCostDlg" />
+      <DialogRef Id="ErrorDlg" />
+      <DialogRef Id="ExitDialog" />
+      <DialogRef Id="FatalError" />
+      <DialogRef Id="FilesInUse" />
+      <DialogRef Id="InstallDirDlg" />
+      <DialogRef Id="InstallScopeDlg" />
+      <DialogRef Id="MaintenanceTypeDlg" />
+      <DialogRef Id="MaintenanceWelcomeDlg" />
+      <DialogRef Id="MsiRMFilesInUse" />
+      <DialogRef Id="PrepareDlg" />
+      <DialogRef Id="ProgressDlg" />
+      <DialogRef Id="ResumeDlg" />
+      <DialogRef Id="UserExit" />
+      <DialogRef Id="VerifyReadyDlg" />
+      <DialogRef Id="WaitForCostingDlg" />
+
+      <!-- ==========================================
+           ZellijWelcomeDlg — custom welcome + EULA dialog.
+           Based on the stock AdvancedWelcomeEulaDlg from WixToolset.UI.wixext
+           (src/ext/UI/wixlib/AdvancedWelcomeEulaDlg.wxs) with Print button removed.
+           Localization strings (!(loc.XXX)) come from the extension's WXL files;
+           overrides are in wix/Zellij.wxl.
+           ========================================== -->
+      <Dialog Id="ZellijWelcomeDlg" Width="370" Height="270"
+              Title="!(loc.AdvancedWelcomeEulaDlg_Title)">
+        <Control Id="BannerBitmap" Type="Bitmap" X="0" Y="0" Width="370" Height="44"
+                 TabSkip="no" Text="!(loc.AdvancedWelcomeEulaDlgBannerBitmap)" />
+        <Control Id="BottomLine" Type="Line" X="0" Y="234" Width="373" Height="0" />
+        <Control Id="Title" Type="Text" X="20" Y="10" Width="300" Height="24"
+                 Transparent="yes" NoPrefix="yes"
+                 Text="!(loc.AdvancedWelcomeEulaDlgTitle)" />
+        <Control Id="DescriptionPerMachine" Type="Text" X="20" Y="202" Width="330" Height="31"
+                 Transparent="yes" NoPrefix="yes" Hidden="yes"
+                 Text="!(loc.AdvancedWelcomeEulaDlgDescriptionPerMachine)"
+                 ShowCondition="ALLUSERS" />
+        <Control Id="DescriptionPerUser" Type="Text" X="20" Y="202" Width="330" Height="31"
+                 Transparent="yes" NoPrefix="yes" Hidden="yes"
+                 Text="!(loc.AdvancedWelcomeEulaDlgDescriptionPerUser)"
+                 ShowCondition="NOT ALLUSERS" />
+        <Control Id="LicenseAcceptedCheckBox" Type="CheckBox" X="20" Y="180" Width="226" Height="18"
+                 CheckBoxValue="1" Property="LicenseAccepted"
+                 Text="!(loc.WelcomeEulaDlgLicenseAcceptedCheckBox)" />
+        <Control Id="LicenseText" Type="ScrollableText" X="20" Y="55" Width="330" Height="121"
+                 Sunken="yes" TabSkip="no">
+          <Text SourceFile="!(wix.WixUILicenseRtf)" />
+        </Control>
+        <Control Id="Advanced" Type="PushButton" X="156" Y="243" Width="56" Height="17"
+                 Text="!(loc.AdvancedWelcomeEulaDlgAdvanced)"
+                 DisableCondition="LicenseAccepted &lt;&gt; &quot;1&quot;"
+                 EnableCondition="LicenseAccepted = &quot;1&quot;" />
+        <Control Id="Install" Type="PushButton" ElevationShield="yes"
+                 X="212" Y="243" Width="80" Height="17" Default="yes"
+                 Text="!(loc.AdvancedWelcomeEulaDlgInstall)" Hidden="yes"
+                 DisableCondition="LicenseAccepted &lt;&gt; &quot;1&quot;"
+                 EnableCondition="LicenseAccepted = &quot;1&quot;"
+                 ShowCondition="ALLUSERS">
+          <Publish Event="SpawnWaitDialog" Value="WaitForCostingDlg"
+                   Condition="!(wix.WixUICostingPopupOptOut) OR CostingComplete = 1" />
+          <Publish Event="EndDialog" Value="Return"
+                   Condition="OutOfDiskSpace &lt;&gt; 1" />
+          <Publish Event="SpawnDialog" Value="OutOfRbDiskDlg"
+                   Condition="OutOfDiskSpace = 1 AND OutOfNoRbDiskSpace = 0 AND (PROMPTROLLBACKCOST=&quot;P&quot; OR NOT PROMPTROLLBACKCOST)" />
+          <Publish Event="EndDialog" Value="Return"
+                   Condition="OutOfDiskSpace = 1 AND OutOfNoRbDiskSpace = 0 AND PROMPTROLLBACKCOST=&quot;D&quot;" />
+          <Publish Event="EnableRollback" Value="False"
+                   Condition="OutOfDiskSpace = 1 AND OutOfNoRbDiskSpace = 0 AND PROMPTROLLBACKCOST=&quot;D&quot;" />
+          <Publish Event="SpawnDialog" Value="OutOfDiskDlg"
+                   Condition="(OutOfDiskSpace = 1 AND OutOfNoRbDiskSpace = 1) OR (OutOfDiskSpace = 1 AND PROMPTROLLBACKCOST=&quot;F&quot;)" />
+        </Control>
+        <Control Id="InstallNoShield" Type="PushButton" ElevationShield="no"
+                 X="212" Y="243" Width="80" Height="17" Default="yes"
+                 Text="!(loc.AdvancedWelcomeEulaDlgInstall)" Hidden="yes"
+                 DisableCondition="LicenseAccepted &lt;&gt; &quot;1&quot;"
+                 EnableCondition="LicenseAccepted = &quot;1&quot;"
+                 ShowCondition="NOT ALLUSERS">
+          <Publish Event="SpawnWaitDialog" Value="WaitForCostingDlg"
+                   Condition="!(wix.WixUICostingPopupOptOut) OR CostingComplete = 1" />
+          <Publish Event="EndDialog" Value="Return"
+                   Condition="OutOfDiskSpace &lt;&gt; 1" />
+          <Publish Event="SpawnDialog" Value="OutOfRbDiskDlg"
+                   Condition="OutOfDiskSpace = 1 AND OutOfNoRbDiskSpace = 0 AND (PROMPTROLLBACKCOST=&quot;P&quot; OR NOT PROMPTROLLBACKCOST)" />
+          <Publish Event="EndDialog" Value="Return"
+                   Condition="OutOfDiskSpace = 1 AND OutOfNoRbDiskSpace = 0 AND PROMPTROLLBACKCOST=&quot;D&quot;" />
+          <Publish Event="EnableRollback" Value="False"
+                   Condition="OutOfDiskSpace = 1 AND OutOfNoRbDiskSpace = 0 AND PROMPTROLLBACKCOST=&quot;D&quot;" />
+          <Publish Event="SpawnDialog" Value="OutOfDiskDlg"
+                   Condition="(OutOfDiskSpace = 1 AND OutOfNoRbDiskSpace = 1) OR (OutOfDiskSpace = 1 AND PROMPTROLLBACKCOST=&quot;F&quot;)" />
+        </Control>
+        <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17"
+                 Cancel="yes" Text="!(loc.WixUICancel)">
+          <Publish Event="SpawnDialog" Value="CancelDlg" />
+        </Control>
+      </Dialog>
+
+      <!-- ==========================================
+           Navigation: new install flow.
+           Scope dialog sets ALLUSERS, MSIINSTALLPERUSER, and fires our
+           folder CAs so InstallDirDlg shows the correct default path.
+           ========================================== -->
+      <Publish Dialog="ZellijWelcomeDlg" Control="Advanced"
+               Event="NewDialog" Value="InstallScopeDlg" />
+
+      <Publish Dialog="InstallScopeDlg" Control="Back"
+               Event="NewDialog" Value="ZellijWelcomeDlg" />
+      <Publish Dialog="InstallScopeDlg" Control="Next"
+               Property="WixAppFolder" Value="WixPerUserFolder" Order="1"
+               Condition="NOT Privileged" />
+      <Publish Dialog="InstallScopeDlg" Control="Next"
+               Property="ALLUSERS" Value="{}" Order="2"
+               Condition="WixAppFolder = &quot;WixPerUserFolder&quot;" />
+      <Publish Dialog="InstallScopeDlg" Control="Next"
+               Property="ALLUSERS" Value="1" Order="3"
+               Condition="WixAppFolder = &quot;WixPerMachineFolder&quot;" />
+      <Publish Dialog="InstallScopeDlg" Control="Next"
+               Property="MSIINSTALLPERUSER" Value="1" Order="4"
+               Condition="WixAppFolder = &quot;WixPerUserFolder&quot;" />
+      <Publish Dialog="InstallScopeDlg" Control="Next"
+               Property="MSIINSTALLPERUSER" Value="{}" Order="5"
+               Condition="WixAppFolder = &quot;WixPerMachineFolder&quot;" />
+      <Publish Dialog="InstallScopeDlg" Control="Next"
+               Event="DoAction" Value="SetFolderPerUser" Order="6"
+               Condition="WixAppFolder = &quot;WixPerUserFolder&quot;" />
+      <Publish Dialog="InstallScopeDlg" Control="Next"
+               Event="DoAction" Value="SetFolderPerMachine" Order="7"
+               Condition="WixAppFolder = &quot;WixPerMachineFolder&quot;" />
+      <Publish Dialog="InstallScopeDlg" Control="Next"
+               Event="NewDialog" Value="InstallDirDlg" Order="8" />
+
+      <Publish Dialog="InstallDirDlg" Control="Back"
+               Event="NewDialog" Value="InstallScopeDlg" />
+      <Publish Dialog="InstallDirDlg" Control="Next"
+               Event="SetTargetPath" Value="[WIXUI_INSTALLDIR]" Order="1" />
+      <Publish Dialog="InstallDirDlg" Control="Next"
+               Event="NewDialog" Value="VerifyReadyDlg" Order="2" />
+      <Publish Dialog="InstallDirDlg" Control="ChangeFolder"
+               Property="_BrowseProperty" Value="[WIXUI_INSTALLDIR]" Order="1" />
+      <Publish Dialog="InstallDirDlg" Control="ChangeFolder"
+               Event="SpawnDialog" Value="BrowseDlg" Order="2" />
+
+      <Publish Dialog="BrowseDlg" Control="OK"
+               Event="SetTargetPath" Value="[_BrowseProperty]" Order="1" />
+      <Publish Dialog="BrowseDlg" Control="OK"
+               Event="EndDialog" Value="Return" Order="2" />
+
+      <Publish Dialog="VerifyReadyDlg" Control="Back"
+               Event="NewDialog" Value="InstallDirDlg" Order="1"
+               Condition="NOT Installed" />
+      <Publish Dialog="VerifyReadyDlg" Control="Back"
+               Event="NewDialog" Value="MaintenanceTypeDlg" Order="2"
+               Condition="Installed AND NOT PATCH" />
+
+      <Publish Dialog="ExitDialog" Control="Finish"
+               Event="EndDialog" Value="Return" Order="999" />
+
+      <!-- Navigation: maintenance (repair/uninstall) -->
+      <Publish Dialog="MaintenanceWelcomeDlg" Control="Next"
+               Event="NewDialog" Value="MaintenanceTypeDlg" />
+      <Publish Dialog="MaintenanceTypeDlg" Control="RepairButton"
+               Event="NewDialog" Value="VerifyReadyDlg" />
+      <Publish Dialog="MaintenanceTypeDlg" Control="RemoveButton"
+               Event="NewDialog" Value="VerifyReadyDlg" />
+      <Publish Dialog="MaintenanceTypeDlg" Control="Back"
+               Event="NewDialog" Value="MaintenanceWelcomeDlg" />
+    </UI>
+
+    <!-- Show our welcome dialog for new installs -->
+    <InstallUISequence>
+      <Show Dialog="ZellijWelcomeDlg" Before="ProgressDlg"
+            Condition="NOT Installed" />
+    </InstallUISequence>
+
+    <!-- WixUI_Common provides shared error/progress/cancel dialogs -->
+    <UIRef Id="WixUI_Common" />
+
+    <!-- These variables were originally defined in the WixUI_Advanced fragment
+         which we no longer use.  InstallScopeDlg references them to decide
+         which radio buttons to show. -->
+    <WixVariable Id="WixUISupportPerUser" Value="1" />
+    <WixVariable Id="WixUISupportPerMachine" Value="1" />
+
+    <WixVariable Id="WixUILicenseRtf" Value="wix\License.rtf" />
+    <WixVariable Id="WixUIBannerBmp" Value="wix\banner.bmp" />
+    <WixVariable Id="WixUIDialogBmp" Value="wix\dialog.bmp" />
+
+  </Package>
+</Wix>

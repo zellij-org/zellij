@@ -1,7 +1,6 @@
 ---
 source: zellij-server/src/plugins/./unit/plugin_tests.rs
-assertion_line: 6236
-expression: "format!(\"{:#?}\", switch_session_event)"
+expression: "format!(\"{:#?}\",\nswitch_session_event).replace(&format!(\"{:?}\", temp_folder.path()), \"\\\"CWD\\\"\")"
 ---
 Some(
     SwitchSession(
@@ -12,8 +11,21 @@ Some(
             tab_position: None,
             pane_id: None,
             layout: None,
-            cwd: None,
+            cwd: Some(
+                "CWD",
+            ),
         },
         1,
+        Some(
+            NotificationEnd {
+                channel: None,
+                exit_status: None,
+                unblock_condition: None,
+                affected_pane_id: None,
+                affected_tab_id: None,
+                error_message: None,
+                stdout_message: None,
+            },
+        ),
     ),
 )

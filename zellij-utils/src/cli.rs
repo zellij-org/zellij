@@ -1,10 +1,10 @@
-use crate::data::{Direction, InputMode, Resize};
+use crate::data::{Direction, InputMode, Resize, UnblockCondition};
 use crate::setup::Setup;
 use crate::{
     consts::{ZELLIJ_CONFIG_DIR_ENV, ZELLIJ_CONFIG_FILE_ENV},
     input::{layout::PluginUserConfiguration, options::Options},
 };
-use clap::{Args, Parser, Subcommand};
+use clap::{ArgEnum, Args, Parser, Subcommand};
 use serde::{Deserialize, Serialize};
 use std::net::IpAddr;
 use std::path::PathBuf;
@@ -59,6 +59,12 @@ pub struct CliArgs {
     #[clap(short, long, value_parser, overrides_with = "layout")]
     pub layout: Option<PathBuf>,
 
+    /// Raw KDL layout string to use directly (instead of a file path)
+    /// if inside a session (or using the --session flag) will be added to the session as a new tab
+    /// or tabs, otherwise will start a new session
+    #[clap(long, value_parser, conflicts_with_all = &["layout", "new-session-with-layout"])]
+    pub layout_string: Option<String>,
+
     /// Name of a predefined layout inside the layout directory or the path to a layout file
     /// Will always start a new session, even if inside an existing session
     #[clap(short, long, value_parser, overrides_with = "new_session_with_layout")]
@@ -111,9 +117,58 @@ pub enum Command {
     #[clap(name = "web", value_parser)]
     Web(WebCli),
 
+    /// Send actions to a specific session
+    #[clap(visible_alias = "ac")]
+    #[clap(subcommand)]
+    Action(Box<CliAction>),
+
     /// Explore existing zellij sessions
     #[clap(flatten)]
     Sessions(Sessions),
+
+    /// Subscribe to pane render updates (viewport and scrollback)
+    #[clap(override_usage(
+        "zellij [--session <OTHER SESSION NAME>] subscribe [OPTIONS] --pane-id..."
+    ))]
+    Subscribe(SubscribeCli),
+}
+
+#[derive(Debug, Parser, Clone, Serialize, Deserialize)]
+pub struct SubscribeCli {
+    /// Pane ID(s) to subscribe to (e.g. terminal_1, plugin_2, or bare number like 1)
+    #[clap(
+        short,
+        long,
+        required = true,
+        multiple_values = true,
+        multiple_occurrences = true
+    )]
+    pub pane_id: Vec<String>,
+
+    /// Include scrollback lines in initial delivery.
+    /// Bare --scrollback = all scrollback, --scrollback N = last N lines.
+    #[clap(
+        short,
+        long,
+        min_values = 0,
+        max_values = 1,
+        default_missing_value = "0"
+    )]
+    pub scrollback: Option<usize>,
+
+    /// Output format
+    #[clap(short, long, default_value = "raw", arg_enum)]
+    pub format: SubscribeFormat,
+
+    /// Preserve ANSI styling in the output
+    #[clap(long, value_parser, default_value("false"), takes_value(false))]
+    pub ansi: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ArgEnum)]
+pub enum SubscribeFormat {
+    Raw,
+    Json,
 }
 
 #[derive(Debug, Clone, Args, Serialize, Deserialize)]
@@ -127,8 +182,12 @@ pub struct WebCli {
     pub stop: bool,
 
     /// Get the server status
-    #[clap(long, value_parser, exclusive(true), display_order = 3)]
+    #[clap(long, value_parser, conflicts_with("start"), display_order = 3)]
     pub status: bool,
+
+    /// Timeout in seconds for the status check (default: 30)
+    #[clap(long, value_parser, requires = "status", display_order = 4)]
+    pub timeout: Option<u64>,
 
     /// Run the server in the background
     #[clap(
@@ -136,42 +195,53 @@ pub struct WebCli {
         long,
         value_parser,
         conflicts_with_all(&["stop", "status", "create-token", "revoke-token", "revoke-all-tokens"]),
-        display_order = 4
+        display_order = 5
     )]
     pub daemonize: bool,
+    /// Timeout in seconds waiting for the server to start (default: 10).
+    /// Only used on Windows where the daemonized server is polled via TCP.
+    /// On Unix, startup signaling uses pipes and this option is ignored.
+    #[clap(long, value_parser, display_order = 6)]
+    pub server_startup_timeout: Option<u64>,
     /// Create a login token for the web interface, will only be displayed once and cannot later be
     /// retrieved. Returns the token name and the token.
-    #[clap(long, value_parser, exclusive(true), display_order = 5)]
+    #[clap(long, value_parser, exclusive(true), display_order = 7)]
     pub create_token: bool,
+    /// Optional name for the token
+    #[clap(long, value_parser, value_name = "TOKEN_NAME", display_order = 8)]
+    pub token_name: Option<String>,
+    /// Create a read-only login token (can only attach to existing sessions as watcher)
+    #[clap(long, value_parser, exclusive(true), display_order = 9)]
+    pub create_read_only_token: bool,
     /// Revoke a login token by its name
     #[clap(
         long,
         value_parser,
         exclusive(true),
         value_name = "TOKEN NAME",
-        display_order = 6
+        display_order = 10
     )]
     pub revoke_token: Option<String>,
     /// Revoke all login tokens
-    #[clap(long, value_parser, exclusive(true), display_order = 7)]
+    #[clap(long, value_parser, exclusive(true), display_order = 11)]
     pub revoke_all_tokens: bool,
     /// List token names and their creation dates (cannot show actual tokens)
-    #[clap(long, value_parser, exclusive(true), display_order = 8)]
+    #[clap(long, value_parser, exclusive(true), display_order = 12)]
     pub list_tokens: bool,
     /// The ip address to listen on locally for connections (defaults to 127.0.0.1)
     #[clap(
         long,
         value_parser,
-        conflicts_with_all(&["stop", "status", "create-token", "revoke-token", "revoke-all-tokens"]),
-        display_order = 9
+        conflicts_with_all(&["stop", "create-token", "revoke-token", "revoke-all-tokens"]),
+        display_order = 13
     )]
     pub ip: Option<IpAddr>,
     /// The port to listen on locally for connections (defaults to 8082)
     #[clap(
         long,
         value_parser,
-        conflicts_with_all(&["stop", "status", "create-token", "revoke-token", "revoke-all-tokens"]),
-        display_order = 10
+        conflicts_with_all(&["stop", "create-token", "revoke-token", "revoke-all-tokens"]),
+        display_order = 14
     )]
     pub port: Option<u16>,
     /// The path to the SSL certificate (required if not listening on 127.0.0.1)
@@ -179,7 +249,7 @@ pub struct WebCli {
         long,
         value_parser,
         conflicts_with_all(&["stop", "status", "create-token", "revoke-token", "revoke-all-tokens"]),
-        display_order = 11
+        display_order = 15
     )]
     pub cert: Option<PathBuf>,
     /// The path to the SSL key (required if not listening on 127.0.0.1)
@@ -187,7 +257,7 @@ pub struct WebCli {
         long,
         value_parser,
         conflicts_with_all(&["stop", "status", "create-token", "revoke-token", "revoke-all-tokens"]),
-        display_order = 12
+        display_order = 16
     )]
     pub key: Option<PathBuf>,
 }
@@ -198,6 +268,7 @@ impl WebCli {
             || !(self.stop
                 || self.status
                 || self.create_token
+                || self.create_read_only_token
                 || self.revoke_token.is_some()
                 || self.revoke_all_tokens
                 || self.list_tokens)
@@ -257,6 +328,34 @@ pub enum Sessions {
         /// If resurrecting a dead session, immediately run all its commands on startup
         #[clap(short, long, value_parser, takes_value(false), default_value("false"))]
         force_run_commands: bool,
+
+        /// Authentication token for remote sessions
+        #[clap(short('t'), long, value_parser)]
+        token: Option<String>,
+
+        /// Save session for automatic re-authentication (4 weeks)
+        #[clap(short('r'), long, value_parser)]
+        remember: bool,
+
+        /// Delete saved session before connecting
+        #[clap(long, value_parser)]
+        forget: bool,
+
+        /// Path to a custom CA certificate (PEM format) for verifying the remote server
+        #[clap(long, value_name = "FILE", value_parser)]
+        ca_cert: Option<PathBuf>,
+
+        /// Skip TLS certificate validation (DANGEROUS — development only)
+        #[clap(long, value_parser)]
+        insecure: bool,
+    },
+
+    /// Watch a session (read-only)
+    #[clap(visible_alias = "w")]
+    Watch {
+        /// Name of the session to watch
+        #[clap(value_parser)]
+        session_name: Option<String>,
     },
 
     /// Kill a specific session
@@ -297,11 +396,8 @@ pub enum Sessions {
         force: bool,
     },
 
-    /// Send actions to a specific session
-    #[clap(visible_alias = "ac")]
-    #[clap(subcommand)]
-    Action(CliAction),
     /// Run a command in a new pane
+    /// Returns: Created pane ID (format: terminal_<id>)
     #[clap(visible_alias = "r")]
     Run {
         /// Command to run
@@ -331,6 +427,16 @@ pub enum Sessions {
             conflicts_with("direction")
         )]
         in_place: bool,
+
+        /// Close the replaced pane instead of suspending it (only effective with --in-place)
+        #[clap(
+            long,
+            value_parser,
+            default_value("false"),
+            takes_value(false),
+            requires("in-place")
+        )]
+        close_replaced_pane: bool,
 
         /// Name of the new pane
         #[clap(short, long, value_parser)]
@@ -368,8 +474,64 @@ pub enum Sessions {
             takes_value(false)
         )]
         stacked: bool,
+        /// Block until the command has finished and its pane has been closed
+        #[clap(long, value_parser, default_value("false"), takes_value(false))]
+        blocking: bool,
+
+        /// Block until the command exits successfully (exit status 0) OR its pane has been closed
+        #[clap(
+            long,
+            value_parser,
+            default_value("false"),
+            takes_value(false),
+            conflicts_with("blocking"),
+            conflicts_with("block-until-exit-failure"),
+            conflicts_with("block-until-exit")
+        )]
+        block_until_exit_success: bool,
+
+        /// Block until the command exits with failure (non-zero exit status) OR its pane has been
+        /// closed
+        #[clap(
+            long,
+            value_parser,
+            default_value("false"),
+            takes_value(false),
+            conflicts_with("blocking"),
+            conflicts_with("block-until-exit-success"),
+            conflicts_with("block-until-exit")
+        )]
+        block_until_exit_failure: bool,
+
+        /// Block until the command exits (regardless of exit status) OR its pane has been closed
+        #[clap(
+            long,
+            value_parser,
+            default_value("false"),
+            takes_value(false),
+            conflicts_with("blocking"),
+            conflicts_with("block-until-exit-success"),
+            conflicts_with("block-until-exit-failure")
+        )]
+        block_until_exit: bool,
+        /// if set, will open the pane near the current one rather than following the user's focus
+        #[clap(long)]
+        near_current_pane: bool,
+        /// start this pane without a border (warning: will make it impossible to move with the
+        /// mouse)
+        #[clap(short, long, value_parser)]
+        borderless: Option<bool>,
+        /// Target a specific tab by ID
+        #[clap(
+            long,
+            value_parser,
+            conflicts_with("near-current-pane"),
+            conflicts_with("in-place")
+        )]
+        tab_id: Option<usize>,
     },
     /// Load a plugin
+    /// Returns: Created pane ID (format: plugin_<id>)
     #[clap(visible_alias = "p")]
     Plugin {
         /// Plugin URL, can either start with http(s), file: or zellij:
@@ -395,6 +557,16 @@ pub enum Sessions {
         )]
         in_place: bool,
 
+        /// Close the replaced pane instead of suspending it (only effective with --in-place)
+        #[clap(
+            long,
+            value_parser,
+            default_value("false"),
+            takes_value(false),
+            requires("in-place")
+        )]
+        close_replaced_pane: bool,
+
         /// Skip the memory and HD cache and force recompile of the plugin (good for development)
         #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
         skip_plugin_cache: bool,
@@ -413,8 +585,16 @@ pub enum Sessions {
         /// Whether to pin a floating pane so that it is always on top
         #[clap(long, requires("floating"))]
         pinned: Option<bool>,
+        /// start this pane without a border (warning: will make it impossible to move with the
+        /// mouse)
+        #[clap(short, long, value_parser)]
+        borderless: Option<bool>,
+        /// Target a specific tab by ID
+        #[clap(long, value_parser, conflicts_with("in-place"))]
+        tab_id: Option<usize>,
     },
     /// Edit file with default $EDITOR / $VISUAL
+    /// Returns: Created pane ID (format: terminal_<id>)
     #[clap(visible_alias = "e")]
     Edit {
         file: PathBuf,
@@ -439,6 +619,16 @@ pub enum Sessions {
         )]
         in_place: bool,
 
+        /// Close the replaced pane instead of suspending it (only effective with --in-place)
+        #[clap(
+            long,
+            value_parser,
+            default_value("false"),
+            takes_value(false),
+            requires("in-place")
+        )]
+        close_replaced_pane: bool,
+
         /// Open the new pane in floating mode
         #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
         floating: bool,
@@ -461,6 +651,21 @@ pub enum Sessions {
         /// Whether to pin a floating pane so that it is always on top
         #[clap(long, requires("floating"))]
         pinned: Option<bool>,
+        /// if set, will open the pane near the current one rather than following the user's focus
+        #[clap(long)]
+        near_current_pane: bool,
+        /// start this pane without a border (warning: will make it impossible to move with the
+        /// mouse)
+        #[clap(short, long, value_parser)]
+        borderless: Option<bool>,
+        /// Target a specific tab by ID
+        #[clap(
+            long,
+            value_parser,
+            conflicts_with("near-current-pane"),
+            conflicts_with("in-place")
+        )]
+        tab_id: Option<usize>,
     },
     ConvertConfig {
         old_config_file: PathBuf,
@@ -515,20 +720,51 @@ pub enum CliAction {
     /// Write bytes to the terminal.
     Write {
         bytes: Vec<u8>,
+        /// The pane_id of the pane, eg. terminal_1, plugin_2 or 3 (equivalent to terminal_3)
+        #[clap(short, long, value_parser)]
+        pane_id: Option<String>,
     },
     /// Write characters to the terminal.
     WriteChars {
         chars: String,
+        /// The pane_id of the pane, eg. terminal_1, plugin_2 or 3 (equivalent to terminal_3)
+        #[clap(short, long, value_parser)]
+        pane_id: Option<String>,
+    },
+    /// Paste text to the terminal (using bracketed paste mode).
+    Paste {
+        chars: String,
+        /// The pane_id of the pane, eg. terminal_1, plugin_2 or 3 (equivalent to terminal_3)
+        #[clap(short, long, value_parser)]
+        pane_id: Option<String>,
+    },
+    /// Send one or more keys to the terminal (e.g., "Ctrl a", "F1", "Alt Shift b")
+    SendKeys {
+        /// Keys to send as space-separated strings
+        #[clap(value_parser, required = true)]
+        keys: Vec<String>,
+
+        /// The pane_id of the pane, eg. terminal_1, plugin_2 or 3 (equivalent to terminal_3)
+        #[clap(short, long, value_parser)]
+        pane_id: Option<String>,
     },
     /// [increase|decrease] the focused panes area at the [left|down|up|right] border.
     Resize {
         resize: Resize,
         direction: Option<Direction>,
+        /// Target a specific pane by ID (eg. terminal_1, plugin_2, or 3)
+        #[clap(short, long, value_parser)]
+        pane_id: Option<String>,
     },
     /// Change focus to the next pane
     FocusNextPane,
     /// Change focus to the previous pane
     FocusPreviousPane,
+    /// Focus a specific pane by its ID
+    FocusPaneId {
+        /// The pane_id of the pane, eg. terminal_1, plugin_2 or 3
+        pane_id: String,
+    },
     /// Move the focused pane in the specified direction. [right|left|up|down]
     MoveFocus {
         direction: Direction,
@@ -542,47 +778,119 @@ pub enum CliAction {
     /// [right|left|up|down]
     MovePane {
         direction: Option<Direction>,
+        /// Target a specific pane by ID (eg. terminal_1, plugin_2, or 3)
+        #[clap(short, long, value_parser)]
+        pane_id: Option<String>,
     },
     /// Rotate the location of the previous pane backwards
-    MovePaneBackwards,
+    MovePaneBackwards {
+        /// Target a specific pane by ID (eg. terminal_1, plugin_2, or 3)
+        #[clap(short, long, value_parser)]
+        pane_id: Option<String>,
+    },
     /// Clear all buffers for a focused pane
-    Clear,
-    /// Dump the focused pane to a file
+    Clear {
+        /// Target a specific pane by ID (eg. terminal_1, plugin_2, or 3)
+        #[clap(short, long, value_parser)]
+        pane_id: Option<String>,
+    },
+    /// Dumps the viewport and optionally scrollback of a pane to a file or STDOUT
     DumpScreen {
-        path: PathBuf,
+        /// File path to dump the pane content to. If omitted, prints to STDOUT.
+        #[clap(long, value_parser)]
+        path: Option<PathBuf>,
 
         /// Dump the pane with full scrollback
         #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
         full: bool,
+
+        /// The pane_id of the pane, eg. terminal_1, plugin_2 or 3 (equivalent to terminal_3). If not specified, dumps the focused pane.
+        #[clap(short, long, value_parser)]
+        pane_id: Option<String>,
+
+        /// Preserve ANSI styling in the dump output
+        #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
+        ansi: bool,
     },
     /// Dump current layout to stdout
     DumpLayout,
+    /// Save the current session state to disk immediately
+    SaveSession,
     /// Open the pane scrollback in your default editor
-    EditScrollback,
+    EditScrollback {
+        /// Target a specific pane by ID (eg. terminal_1, plugin_2, or 3)
+        #[clap(short, long, value_parser)]
+        pane_id: Option<String>,
+
+        /// Preserve ANSI styling in the scrollback dump
+        #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
+        ansi: bool,
+    },
     /// Scroll up in the focused pane
-    ScrollUp,
+    ScrollUp {
+        /// Target a specific pane by ID (eg. terminal_1, plugin_2, or 3)
+        #[clap(short, long, value_parser)]
+        pane_id: Option<String>,
+    },
     /// Scroll down in focus pane.
-    ScrollDown,
+    ScrollDown {
+        /// Target a specific pane by ID (eg. terminal_1, plugin_2, or 3)
+        #[clap(short, long, value_parser)]
+        pane_id: Option<String>,
+    },
     /// Scroll down to bottom in focus pane.
-    ScrollToBottom,
+    ScrollToBottom {
+        /// Target a specific pane by ID (eg. terminal_1, plugin_2, or 3)
+        #[clap(short, long, value_parser)]
+        pane_id: Option<String>,
+    },
     /// Scroll up to top in focus pane.
-    ScrollToTop,
+    ScrollToTop {
+        /// Target a specific pane by ID (eg. terminal_1, plugin_2, or 3)
+        #[clap(short, long, value_parser)]
+        pane_id: Option<String>,
+    },
     /// Scroll up one page in focus pane.
-    PageScrollUp,
+    PageScrollUp {
+        /// Target a specific pane by ID (eg. terminal_1, plugin_2, or 3)
+        #[clap(short, long, value_parser)]
+        pane_id: Option<String>,
+    },
     /// Scroll down one page in focus pane.
-    PageScrollDown,
+    PageScrollDown {
+        /// Target a specific pane by ID (eg. terminal_1, plugin_2, or 3)
+        #[clap(short, long, value_parser)]
+        pane_id: Option<String>,
+    },
     /// Scroll up half page in focus pane.
-    HalfPageScrollUp,
+    HalfPageScrollUp {
+        /// Target a specific pane by ID (eg. terminal_1, plugin_2, or 3)
+        #[clap(short, long, value_parser)]
+        pane_id: Option<String>,
+    },
     /// Scroll down half page in focus pane.
-    HalfPageScrollDown,
+    HalfPageScrollDown {
+        /// Target a specific pane by ID (eg. terminal_1, plugin_2, or 3)
+        #[clap(short, long, value_parser)]
+        pane_id: Option<String>,
+    },
     /// Toggle between fullscreen focus pane and normal layout.
-    ToggleFullscreen,
+    ToggleFullscreen {
+        /// Target a specific pane by ID (eg. terminal_1, plugin_2, or 3)
+        #[clap(short, long, value_parser)]
+        pane_id: Option<String>,
+    },
     /// Toggle frames around panes in the UI
     TogglePaneFrames,
     /// Toggle between sending text commands to all panes on the current tab and normal mode.
-    ToggleActiveSyncTab,
+    ToggleActiveSyncTab {
+        /// Target a specific tab by ID
+        #[clap(short, long, value_parser)]
+        tab_id: Option<usize>,
+    },
     /// Open a new pane in the specified direction [right|down]
     /// If no direction is specified, will try to use the biggest available space.
+    /// Returns: Created pane ID (format: terminal_<id> or plugin_<id>)
     NewPane {
         /// Direction to open the new pane in
         #[clap(short, long, value_parser, conflicts_with("floating"))]
@@ -613,6 +921,16 @@ pub enum CliAction {
             conflicts_with("direction")
         )]
         in_place: bool,
+
+        /// Close the replaced pane instead of suspending it (only effective with --in-place)
+        #[clap(
+            long,
+            value_parser,
+            default_value("false"),
+            takes_value(false),
+            requires("in-place")
+        )]
+        close_replaced_pane: bool,
 
         /// Name of the new pane
         #[clap(short, long, value_parser)]
@@ -666,8 +984,68 @@ pub enum CliAction {
             takes_value(false)
         )]
         stacked: bool,
+        /// Block until the command has finished and its pane has been closed
+        #[clap(short, long)]
+        blocking: bool,
+
+        /// Block until the command exits successfully (exit status 0) OR its pane has been closed
+        #[clap(
+            long,
+            value_parser,
+            default_value("false"),
+            takes_value(false),
+            conflicts_with("blocking"),
+            conflicts_with("block-until-exit-failure"),
+            conflicts_with("block-until-exit")
+        )]
+        block_until_exit_success: bool,
+
+        /// Block until the command exits with failure (non-zero exit status) OR its pane has been
+        /// closed
+        #[clap(
+            long,
+            value_parser,
+            default_value("false"),
+            takes_value(false),
+            conflicts_with("blocking"),
+            conflicts_with("block-until-exit-success"),
+            conflicts_with("block-until-exit")
+        )]
+        block_until_exit_failure: bool,
+
+        /// Block until the command exits (regardless of exit status) OR its pane has been closed
+        #[clap(
+            long,
+            value_parser,
+            default_value("false"),
+            takes_value(false),
+            conflicts_with("blocking"),
+            conflicts_with("block-until-exit-success"),
+            conflicts_with("block-until-exit-failure")
+        )]
+        block_until_exit: bool,
+
+        #[clap(skip)]
+        unblock_condition: Option<UnblockCondition>,
+
+        /// if set, will open the pane near the current one rather than following the user's focus
+        #[clap(long)]
+        near_current_pane: bool,
+        /// start this pane without a border (warning: will make it impossible to move with the
+        /// mouse)
+        #[clap(long, value_parser)]
+        borderless: Option<bool>,
+        /// Target a specific tab by ID
+        #[clap(
+            long,
+            value_parser,
+            conflicts_with("near-current-pane"),
+            conflicts_with("in-place")
+        )]
+        tab_id: Option<usize>,
     },
     /// Open the specified file in a new zellij pane with your default EDITOR
+    /// Returns: Created pane ID (format: terminal_<id>)
     Edit {
         file: PathBuf,
 
@@ -695,6 +1073,16 @@ pub enum CliAction {
         )]
         in_place: bool,
 
+        /// Close the replaced pane instead of suspending it (only effective with --in-place)
+        #[clap(
+            long,
+            value_parser,
+            default_value("false"),
+            takes_value(false),
+            requires("in-place")
+        )]
+        close_replaced_pane: bool,
+
         /// Change the working directory of the editor
         #[clap(long, value_parser)]
         cwd: Option<PathBuf>,
@@ -713,34 +1101,96 @@ pub enum CliAction {
         /// Whether to pin a floating pane so that it is always on top
         #[clap(long, requires("floating"))]
         pinned: Option<bool>,
+        /// if set, will open the pane near the current one rather than following the user's focus
+        #[clap(long)]
+        near_current_pane: bool,
+        /// start this pane without a border (warning: will make it impossible to move with the
+        /// mouse)
+        #[clap(short, long, value_parser)]
+        borderless: Option<bool>,
+        /// Target a specific tab by ID
+        #[clap(
+            long,
+            value_parser,
+            conflicts_with("near-current-pane"),
+            conflicts_with("in-place")
+        )]
+        tab_id: Option<usize>,
     },
     /// Switch input mode of all connected clients [locked|pane|tab|resize|move|search|session]
     SwitchMode {
         input_mode: InputMode,
     },
     /// Embed focused pane if floating or float focused pane if embedded
-    TogglePaneEmbedOrFloating,
+    TogglePaneEmbedOrFloating {
+        /// Target a specific pane by ID (eg. terminal_1, plugin_2, or 3)
+        #[clap(short, long, value_parser)]
+        pane_id: Option<String>,
+    },
     /// Toggle the visibility of all floating panes in the current Tab, open one if none exist
-    ToggleFloatingPanes,
+    ToggleFloatingPanes {
+        /// Target a specific tab by ID
+        #[clap(short, long, value_parser)]
+        tab_id: Option<usize>,
+    },
+    /// Show all floating panes in the specified tab (or active tab if tab_id is not provided).
+    ///
+    /// Returns exit code 0 if state was changed, 2 if already visible, 1 if tab not found.
+    ShowFloatingPanes {
+        #[clap(short, long, value_parser)]
+        tab_id: Option<usize>,
+    },
+    /// Hide all floating panes in the specified tab (or active tab if tab_id is not provided).
+    ///
+    /// Returns exit code 0 if state was changed, 2 if already hidden, 1 if tab not found.
+    HideFloatingPanes {
+        #[clap(short, long, value_parser)]
+        tab_id: Option<usize>,
+    },
+    /// Check if floating panes are visible in the specified tab (or active tab).
+    ///
+    /// Prints "true" to stdout and exits 0 if visible.
+    /// Prints "false" to stdout and exits 1 if not visible.
+    AreFloatingPanesVisible {
+        #[clap(short, long, value_parser)]
+        tab_id: Option<usize>,
+    },
     /// Close the focused pane.
-    ClosePane,
+    ClosePane {
+        /// Target a specific pane by ID (eg. terminal_1, plugin_2, or 3)
+        #[clap(short, long, value_parser)]
+        pane_id: Option<String>,
+    },
     /// Renames the focused pane
     RenamePane {
         name: String,
+        /// Target a specific pane by ID (eg. terminal_1, plugin_2, or 3)
+        #[clap(short, long, value_parser)]
+        pane_id: Option<String>,
     },
     /// Remove a previously set pane name
-    UndoRenamePane,
+    UndoRenamePane {
+        /// Target a specific pane by ID (eg. terminal_1, plugin_2, or 3)
+        #[clap(short, long, value_parser)]
+        pane_id: Option<String>,
+    },
     /// Go to the next tab.
     GoToNextTab,
     /// Go to the previous tab.
     GoToPreviousTab,
     /// Close the current tab.
-    CloseTab,
+    CloseTab {
+        /// Target a specific tab by ID
+        #[clap(short, long, value_parser)]
+        tab_id: Option<usize>,
+    },
     /// Go to tab with index [index]
     GoToTab {
         index: u32,
     },
     /// Go to tab with name [name]
+    ///
+    /// Returns: When --create is used and tab is created, outputs the tab ID as a single number
     GoToTabName {
         name: String,
         /// Create a tab if one does not exist.
@@ -750,14 +1200,40 @@ pub enum CliAction {
     /// Renames the focused pane
     RenameTab {
         name: String,
+        /// Target a specific tab by ID
+        #[clap(short, long, value_parser)]
+        tab_id: Option<usize>,
     },
     /// Remove a previously set tab name
-    UndoRenameTab,
+    UndoRenameTab {
+        /// Target a specific tab by ID
+        #[clap(short, long, value_parser)]
+        tab_id: Option<usize>,
+    },
+    /// Go to tab with stable ID
+    GoToTabById {
+        id: u64,
+    },
+    /// Close tab with stable ID
+    CloseTabById {
+        id: u64,
+    },
+    /// Rename tab by stable ID
+    RenameTabById {
+        id: u64,
+        name: String,
+    },
     /// Create a new tab, optionally with a specified tab layout and name
+    ///
+    /// Returns: The created tab's ID as a single number on stdout
     NewTab {
         /// Layout to use for the new tab
-        #[clap(short, long, value_parser)]
+        #[clap(short, long, value_parser, conflicts_with = "layout-string")]
         layout: Option<PathBuf>,
+
+        /// Raw KDL layout string to use directly (instead of a layout file path)
+        #[clap(long, value_parser, conflicts_with = "layout")]
+        layout_string: Option<String>,
 
         /// Default folder to look for layouts
         #[clap(long, value_parser, requires("layout"))]
@@ -770,13 +1246,125 @@ pub enum CliAction {
         /// Change the working directory of the new tab
         #[clap(short, long, value_parser)]
         cwd: Option<PathBuf>,
+
+        /// Optional initial command to run in the new tab
+        #[clap(
+            value_parser,
+            conflicts_with("initial-plugin"),
+            multiple_values(true),
+            takes_value(true),
+            last(true)
+        )]
+        initial_command: Vec<String>,
+
+        /// Initial plugin to load in the new tab
+        #[clap(long, value_parser, conflicts_with("initial-command"))]
+        initial_plugin: Option<String>,
+
+        /// Close the pane immediately when its command exits
+        #[clap(
+            long,
+            value_parser,
+            default_value("false"),
+            takes_value(false),
+            requires("initial-command")
+        )]
+        close_on_exit: bool,
+
+        /// Start the command suspended, only running it after you first press ENTER
+        #[clap(
+            long,
+            value_parser,
+            default_value("false"),
+            takes_value(false),
+            requires("initial-command")
+        )]
+        start_suspended: bool,
+
+        /// Block until the command exits successfully (exit status 0) OR its pane has been closed
+        #[clap(
+            long,
+            value_parser,
+            default_value("false"),
+            takes_value(false),
+            requires("initial-command"),
+            conflicts_with("block-until-exit-failure"),
+            conflicts_with("block-until-exit")
+        )]
+        block_until_exit_success: bool,
+
+        /// Block until the command exits with failure (non-zero exit status) OR its pane has been closed
+        #[clap(
+            long,
+            value_parser,
+            default_value("false"),
+            takes_value(false),
+            requires("initial-command"),
+            conflicts_with("block-until-exit-success"),
+            conflicts_with("block-until-exit")
+        )]
+        block_until_exit_failure: bool,
+
+        /// Block until the command exits (regardless of exit status) OR its pane has been closed
+        #[clap(
+            long,
+            value_parser,
+            default_value("false"),
+            takes_value(false),
+            requires("initial-command"),
+            conflicts_with("block-until-exit-success"),
+            conflicts_with("block-until-exit-failure")
+        )]
+        block_until_exit: bool,
     },
     /// Move the focused tab in the specified direction. [right|left]
     MoveTab {
         direction: Direction,
+        /// Target a specific tab by ID
+        #[clap(short, long, value_parser)]
+        tab_id: Option<usize>,
     },
-    PreviousSwapLayout,
-    NextSwapLayout,
+    PreviousSwapLayout {
+        /// Target a specific tab by ID
+        #[clap(short, long, value_parser)]
+        tab_id: Option<usize>,
+    },
+    NextSwapLayout {
+        /// Target a specific tab by ID
+        #[clap(short, long, value_parser)]
+        tab_id: Option<usize>,
+    },
+    /// Override the layout of the active tab
+    OverrideLayout {
+        /// Path to the layout file
+        #[clap(
+            value_parser,
+            required_unless_present = "layout-string",
+            conflicts_with = "layout-string"
+        )]
+        layout: Option<PathBuf>,
+
+        /// Raw KDL layout string to use directly (instead of a layout file path)
+        #[clap(long, value_parser, conflicts_with = "layout")]
+        layout_string: Option<String>,
+
+        /// Default folder to look for layouts
+        #[clap(long, value_parser)]
+        layout_dir: Option<PathBuf>,
+
+        /// Retain existing terminal panes that do not fit in the layout (default: false)
+        #[clap(long, value_parser, takes_value(false), default_value("false"))]
+        retain_existing_terminal_panes: bool,
+
+        /// Retain existing plugin panes that do not fit with the layout default: false)
+        #[clap(long, value_parser, takes_value(false), default_value("false"))]
+        retain_existing_plugin_panes: bool,
+
+        /// Only apply the layout to the active tab (uses just the first layout tab if it has
+        /// multiple)
+        #[clap(long, value_parser, takes_value(false), default_value("false"))]
+        apply_only_to_active_tab: bool,
+    },
     /// Query all tab names
     QueryTabNames,
     StartOrReloadPlugin {
@@ -784,11 +1372,21 @@ pub enum CliAction {
         #[clap(short, long, value_parser)]
         configuration: Option<PluginUserConfiguration>,
     },
+    /// Returns: Plugin pane ID (format: plugin_<id>) when creating or focusing plugin
     LaunchOrFocusPlugin {
         #[clap(short, long, value_parser)]
         floating: bool,
         #[clap(short, long, value_parser)]
         in_place: bool,
+        /// Close the replaced pane instead of suspending it (only effective with --in-place)
+        #[clap(
+            long,
+            value_parser,
+            default_value("false"),
+            takes_value(false),
+            requires("in-place")
+        )]
+        close_replaced_pane: bool,
         #[clap(short, long, value_parser)]
         move_to_focused_tab: bool,
         url: String,
@@ -796,17 +1394,33 @@ pub enum CliAction {
         configuration: Option<PluginUserConfiguration>,
         #[clap(short, long, value_parser)]
         skip_plugin_cache: bool,
+        /// Target a specific tab by ID
+        #[clap(long, value_parser, conflicts_with("in-place"))]
+        tab_id: Option<usize>,
     },
+    /// Returns: Plugin pane ID (format: plugin_<id>)
     LaunchPlugin {
         #[clap(short, long, value_parser)]
         floating: bool,
         #[clap(short, long, value_parser)]
         in_place: bool,
+        /// Close the replaced pane instead of suspending it (only effective with --in-place)
+        #[clap(
+            long,
+            value_parser,
+            default_value("false"),
+            takes_value(false),
+            requires("in-place")
+        )]
+        close_replaced_pane: bool,
         url: Url,
         #[clap(short, long, value_parser)]
         configuration: Option<PluginUserConfiguration>,
         #[clap(short, long, value_parser)]
         skip_plugin_cache: bool,
+        /// Target a specific tab by ID
+        #[clap(long, value_parser, conflicts_with("in-place"))]
+        tab_id: Option<usize>,
     },
     RenameSession {
         name: String,
@@ -887,7 +1501,75 @@ tail -f /tmp/my-live-logfile | zellij action pipe --name logs --plugin https://e
         plugin_title: Option<String>,
     },
     ListClients,
-    TogglePanePinned,
+    /// List all panes in the current session
+    ///
+    /// Returns: Formatted list of panes (table or JSON) to stdout
+    ListPanes {
+        /// Include tab information (name, position, ID)
+        #[clap(short, long, value_parser)]
+        tab: bool,
+
+        /// Include running command information
+        #[clap(short, long, value_parser)]
+        command: bool,
+
+        /// Include pane state (focused, floating, exited, etc.)
+        #[clap(short, long, value_parser)]
+        state: bool,
+
+        /// Include geometry (position, size)
+        #[clap(short, long, value_parser)]
+        geometry: bool,
+
+        /// Include all available fields
+        #[clap(short, long, value_parser)]
+        all: bool,
+
+        /// Output as JSON
+        #[clap(short, long, value_parser)]
+        json: bool,
+    },
+    /// List all tabs with their information
+    ///
+    /// Returns: Tab information in table or JSON format
+    ListTabs {
+        /// Include state information (active, fullscreen, sync, floating visibility)
+        #[clap(short, long, value_parser)]
+        state: bool,
+
+        /// Include dimension information (viewport, display area)
+        #[clap(short, long, value_parser)]
+        dimensions: bool,
+
+        /// Include pane counts
+        #[clap(short, long, value_parser)]
+        panes: bool,
+
+        /// Include layout information (swap layout name and dirty state)
+        #[clap(short, long, value_parser)]
+        layout: bool,
+
+        /// Include all available fields
+        #[clap(short, long, value_parser)]
+        all: bool,
+
+        /// Output as JSON
+        #[clap(short, long, value_parser)]
+        json: bool,
+    },
+    /// Get information about the currently active tab
+    ///
+    /// Returns: Tab name and ID by default, or full info in JSON
+    CurrentTabInfo {
+        /// Output as JSON with full TabInfo
+        #[clap(short, long, value_parser)]
+        json: bool,
+    },
+    TogglePanePinned {
+        /// Target a specific pane by ID (eg. terminal_1, plugin_2, or 3)
+        #[clap(short, long, value_parser)]
+        pane_id: Option<String>,
+    },
     /// Stack pane ids
     /// Ids are a space separated list of pane ids.
     /// They should either be in the form of `terminal_<int>` (eg. terminal_1), `plugin_<int>` (eg.
@@ -919,5 +1601,136 @@ tail -f /tmp/my-live-logfile | zellij action pipe --name logs --plugin https://e
         /// Whether to pin a floating pane so that it is always on top
         #[clap(long)]
         pinned: Option<bool>,
+        /// change this pane to be with/without a border (warning: will make it impossible to move with the
+        /// mouse if without a border)
+        #[clap(short, long, value_parser)]
+        borderless: Option<bool>,
     },
+    TogglePaneBorderless {
+        /// The pane_id of the pane, eg. terminal_1, plugin_2 or 3 (equivalent to terminal_3)
+        #[clap(short, long, value_parser)]
+        pane_id: String,
+    },
+    SetPaneBorderless {
+        /// The pane_id of the pane, eg. terminal_1, plugin_2 or 3 (equivalent to terminal_3)
+        #[clap(short, long, value_parser)]
+        pane_id: String,
+        /// Whether the pane should be borderless (flag present) or bordered (flag absent)
+        #[clap(short, long, value_parser)]
+        borderless: bool,
+    },
+    /// Detach from the current session
+    Detach,
+    /// Switch to a different session
+    SwitchSession {
+        /// Name of the session to switch to
+        name: String,
+        /// Optional tab position to focus
+        #[clap(long)]
+        tab_position: Option<usize>,
+        /// Optional pane ID to focus (eg. "terminal_1" for terminal pane with id 1, or "plugin_2" for plugin pane with id 2)
+        #[clap(long)]
+        pane_id: Option<String>,
+        /// Layout to apply when switching to the session (relative paths start at layout-dir)
+        #[clap(short, long, value_parser, conflicts_with = "layout-string")]
+        layout: Option<PathBuf>,
+        /// Raw KDL layout string to use directly
+        #[clap(long, value_parser, conflicts_with = "layout")]
+        layout_string: Option<String>,
+        /// Default folder to look for layouts
+        #[clap(long, value_parser, requires("layout"))]
+        layout_dir: Option<PathBuf>,
+        /// Change the working directory when switching
+        #[clap(short, long, value_parser)]
+        cwd: Option<PathBuf>,
+    },
+    /// Set the default foreground/background color of a pane
+    SetPaneColor {
+        /// The pane_id of the pane, eg. terminal_1, plugin_2 or 3 (equivalent to terminal_3).
+        /// Defaults to $ZELLIJ_PANE_ID if not provided.
+        #[clap(short, long, value_parser)]
+        pane_id: Option<String>,
+        /// Foreground color (e.g. "#00e000", "rgb:00/e0/00")
+        #[clap(long, value_parser)]
+        fg: Option<String>,
+        /// Background color (e.g. "#001a3a", "rgb:00/1a/3a")
+        #[clap(long, value_parser)]
+        bg: Option<String>,
+        /// Reset pane colors to terminal defaults
+        #[clap(long, value_parser, conflicts_with_all(&["fg", "bg"]))]
+        reset: bool,
+    },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::Parser;
+
+    fn parse_subscribe(args: &[&str]) -> SubscribeCli {
+        let mut full_args = vec!["zellij"];
+        full_args.extend_from_slice(args);
+        let cli = CliArgs::try_parse_from(full_args).unwrap();
+        match cli.command {
+            Some(Command::Subscribe(s)) => s,
+            other => panic!("Expected Subscribe, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn subscribe_scrollback_bare_flag() {
+        let s = parse_subscribe(&["subscribe", "--pane-id", "terminal_1", "--scrollback"]);
+        assert_eq!(s.scrollback, Some(0));
+    }
+
+    #[test]
+    fn subscribe_scrollback_with_value() {
+        let s = parse_subscribe(&[
+            "subscribe",
+            "--pane-id",
+            "terminal_1",
+            "--scrollback",
+            "100",
+        ]);
+        assert_eq!(s.scrollback, Some(100));
+    }
+
+    #[test]
+    fn subscribe_scrollback_absent() {
+        let s = parse_subscribe(&["subscribe", "--pane-id", "terminal_1"]);
+        assert_eq!(s.scrollback, None);
+    }
+
+    #[test]
+    fn subscribe_format_json() {
+        let s = parse_subscribe(&["subscribe", "--pane-id", "terminal_1", "--format", "json"]);
+        assert!(matches!(s.format, SubscribeFormat::Json));
+    }
+
+    #[test]
+    fn subscribe_format_default_raw() {
+        let s = parse_subscribe(&["subscribe", "--pane-id", "terminal_1"]);
+        assert!(matches!(s.format, SubscribeFormat::Raw));
+    }
+
+    #[test]
+    fn subscribe_multiple_pane_ids() {
+        let s = parse_subscribe(&[
+            "subscribe",
+            "--pane-id",
+            "terminal_1",
+            "--pane-id",
+            "plugin_2",
+        ]);
+        assert_eq!(
+            s.pane_id,
+            vec!["terminal_1".to_string(), "plugin_2".to_string()]
+        );
+    }
+
+    #[test]
+    fn subscribe_requires_pane_id() {
+        let result = CliArgs::try_parse_from(["zellij", "subscribe"]);
+        assert!(result.is_err());
+    }
 }

@@ -7,7 +7,7 @@ use std::path::PathBuf;
 
 use serde::de::{Error, Visitor};
 use serde::{Deserialize, Deserializer, Serialize};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use url::Url;
 
 const ON_FORCE_CLOSE_DESCRIPTION: &'static str = "
@@ -560,23 +560,6 @@ struct OldUnbindFromYaml {
     unbind: OldUnbind,
 }
 
-/// Main configuration.
-#[derive(Debug, Clone, PartialEq, Deserialize)]
-struct OldConfig {
-    pub keybinds: OldKeybinds,
-    pub options: OldOptions,
-    pub themes: Option<OldThemesFromYamlIntermediate>,
-    pub plugins: OldPluginsConfig,
-    pub ui: Option<OldUiConfigFromYaml>,
-    pub env: OldEnvironmentVariablesFromYaml,
-}
-
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
-struct OldKeybinds(HashMap<OldInputMode, OldModeKeybinds>);
-
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
-struct OldModeKeybinds(BTreeMap<OldKey, Vec<OldAction>>);
-
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct OldThemesFromYamlIntermediate(HashMap<String, OldTheme>);
 
@@ -719,36 +702,6 @@ impl Default for OldPluginTypeFromYaml {
 /// Tag used to identify the plugin in layout and config yaml files
 #[derive(Debug, Default, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 struct OldPluginTag(String);
-
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
-struct OldPluginsConfig(HashMap<OldPluginTag, OldPluginConfig>);
-
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
-struct OldPluginConfig {
-    /// Path of the plugin, see resolve_wasm_bytes for resolution semantics
-    pub path: PathBuf,
-    /// Plugin type
-    pub run: OldPluginType,
-    /// Allow command execution from plugin
-    pub _allow_exec_host_cmd: bool,
-    /// Original location of the
-    pub location: OldRunPluginLocation,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
-enum OldRunPluginLocation {
-    File(PathBuf),
-    Zellij(OldPluginTag),
-}
-
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
-#[serde(rename_all = "kebab-case")]
-enum OldPluginType {
-    /// Starts immediately when Zellij is started and runs without a visible pane
-    Headless,
-    /// Runs once per pane declared inside a layout file
-    Pane(Option<usize>), // tab_index
-}
 
 #[derive(Copy, Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub enum OldOnForceClose {

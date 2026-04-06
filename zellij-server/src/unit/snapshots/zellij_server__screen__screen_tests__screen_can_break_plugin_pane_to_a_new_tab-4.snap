@@ -1,10 +1,9 @@
 ---
 source: zellij-server/src/./unit/screen_tests.rs
-assertion_line: 3429
 expression: "format!(\"{}\", snapshot)"
 ---
 00 (C): ┌ plugin_pane_to_break_free ───────────────────────────────────────────────────┐
-01 (C): │Loading file:/path/to/fake/plugin                                             │
+01 (C): │                                                                              │
 02 (C): │                                                                              │
 03 (C): │                                                                              │
 04 (C): │                                                                              │
@@ -23,4 +22,3 @@ expression: "format!(\"{}\", snapshot)"
 17 (C): │                                                                              │
 18 (C): │                                                                              │
 19 (C): └──────────────────────────────────────────────────────────────────────────────┘
-

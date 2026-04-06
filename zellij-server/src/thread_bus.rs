@@ -143,6 +143,11 @@ impl ThreadSenders {
         // this is mostly used for the tests, see struct
         self.to_pty_writer.replace(new_pty_writer);
     }
+    #[allow(unused)]
+    pub fn replace_to_pty(&mut self, new_pty: SenderWithContext<PtyInstruction>) {
+        // this is mostly used for the tests, see struct
+        self.to_pty.replace(new_pty);
+    }
 
     #[allow(unused)]
     pub fn replace_to_plugin(&mut self, new_to_plugin: SenderWithContext<PluginInstruction>) {
@@ -216,5 +221,23 @@ impl<T> Bus<T> {
         let oper = selector.select();
         let idx = oper.index();
         oper.recv(&self.receivers[idx])
+    }
+
+    pub fn recv_timeout(
+        &self,
+        timeout: std::time::Duration,
+    ) -> Result<(T, ErrorContext), channels::RecvTimeoutError> {
+        let mut selector = channels::Select::new();
+        self.receivers.iter().for_each(|r| {
+            selector.recv(r);
+        });
+        match selector.select_timeout(timeout) {
+            Ok(oper) => {
+                let idx = oper.index();
+                oper.recv(&self.receivers[idx])
+                    .map_err(|_| channels::RecvTimeoutError::Disconnected)
+            },
+            Err(_) => Err(channels::RecvTimeoutError::Timeout),
+        }
     }
 }

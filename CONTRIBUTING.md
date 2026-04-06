@@ -59,21 +59,20 @@ Zellij includes some end-to-end tests which test the whole application as a blac
 These tests work by running a docker container which contains the Zellij binary, connecting to it via ssh, sending some commands and comparing the output received against predefined snapshots.
 
 <details>
-<summary>Should you be a macOS (including m1) user, please follow these commands before. (expand here):</summary>
+<summary>macOS prerequisites (expand here):</summary>
 
-1. `rustup target add x86_64-unknown-linux-musl`
-2. `brew install messense/macos-cross-toolchains/x86_64-unknown-linux-musl`
-3. `export CC_x86_64_unknown_linux_musl=$(brew --prefix)/bin/x86_64-unknown-linux-musl-gcc`
-4. `export AR_x86_64_unknown_linux_musl=$(brew --prefix)/bin/x86_64-unknown-linux-musl-ar`
-5. `export CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER=$CC_x86_64_unknown_linux_musl`
+The build uses `cargo-zigbuild` to cross-compile a native musl binary (arm64 on Apple Silicon, amd64 on Intel) so the Docker container runs without emulation on any Mac.
+
+1. `cargo install cargo-zigbuild`
+2. `brew install zig`
 </details>
 
 
-To run these tests locally, you'll need to have either `docker` or `podman` and also `docker-compose` installed.
+To run these tests locally, you'll need to have either `docker` or `podman` and also `docker compose` installed.
 Once you do, in the repository root:
 
-1. `docker-compose up -d` will start up the docker container
-2. `cargo xtask ci e2e --build` will build the generic linux executable of Zellij in the target folder, which is shared with the container
+1. `docker compose up -d` will start up the docker container
+2. `cargo xtask ci e2e --build` will build the Zellij binary in the target folder, which is shared with the container
 3. `cargo xtask ci e2e --test` will run the tests
 
 To re-run the tests after you've changed something in the code base, be sure to repeat steps 2 and 3.
@@ -105,6 +104,31 @@ We currently use clippy in [GitHub Actions](https://github.com/zellij-org/zellij
 Since we just cannot afford to manage them, we are always welcome to fix them!
 
 Here is [the detailed discussion](https://github.com/zellij-org/zellij/pull/1090) if you want to see it.
+
+
+## Toolchain Versions and MSRV
+
+Development aims to track the current stable Rust toolchain version, although
+with a slight delay. The reason behind this is that users running `cargo
+install --locked zellij` will use whatever toolchain version they have
+installed locally and we cannot influence this (except for terminating
+compilation on a "mismatch" from our expectation). By using current toolchain
+versions we hope to ensure that bugs are caught before users experience them.
+It hopefully also ensures that (at least for a certain time after a release has
+been made) the binary obtained by installation from source doesn't deviate
+(much at least) from the pre-built binaries attached as release assets. The
+delay in toolchain updates is due to a certain amount of manual testing that is
+performed afterward.
+
+At this point in time, there is no MSRV policy. As our resources are limited,
+we try to focus on making the code work with whatever development toolchain is
+currently mentioned in `rust-toolchain.toml`. While it may still be possible to
+compile Zellij with older Rust versions, we cannot offer support in such
+situations.
+
+For questions and suggestions regarding the currently used Rust toolchain
+version, please mention @har7an in your issue or pull request.
+
 
 ## Looking for something to work on?
 

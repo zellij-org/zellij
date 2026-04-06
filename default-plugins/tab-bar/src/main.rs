@@ -25,7 +25,7 @@ impl LinePart {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 struct State {
     tabs: Vec<TabInfo>,
     active_tab_idx: usize,
@@ -33,6 +33,7 @@ struct State {
     tab_line: Vec<LinePart>,
     hide_swap_layout_indication: bool,
     render_tab_index: bool,
+    cached_keybinds: KeybindsVec,
 }
 
 static ARROW_SEPARATOR: &str = "";
@@ -54,13 +55,26 @@ impl ZellijPlugin for State {
             EventType::TabUpdate,
             EventType::ModeUpdate,
             EventType::Mouse,
+            EventType::InitialKeybinds,
         ]);
     }
 
     fn update(&mut self, event: Event) -> bool {
         let mut should_render = false;
         match event {
-            Event::ModeUpdate(mode_info) => {
+            Event::InitialKeybinds(keybinds) => {
+                self.cached_keybinds = keybinds;
+                if !self.cached_keybinds.is_empty() {
+                    self.mode_info.keybinds = self.cached_keybinds.clone();
+                }
+                should_render = true;
+            },
+            Event::ModeUpdate(mut mode_info) => {
+                if mode_info.keybinds.is_empty() && !self.cached_keybinds.is_empty() {
+                    mode_info.keybinds = self.cached_keybinds.clone();
+                } else if !mode_info.keybinds.is_empty() {
+                    self.cached_keybinds = mode_info.keybinds.clone();
+                }
                 if self.mode_info != mode_info {
                     should_render = true;
                 }
@@ -98,6 +112,11 @@ impl ZellijPlugin for State {
             _ => {
                 eprintln!("Got unrecognized event: {:?}", event);
             },
+        }
+        if self.tabs.is_empty() {
+            // no need to render if we have no tabs, this can sometimes happen on startup before we
+            // get the tab update and then we definitely don't want to render
+            should_render = false;
         }
         should_render
     }

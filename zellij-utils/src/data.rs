@@ -1,28 +1,67 @@
 use crate::home::default_layout_dir;
-use crate::input::actions::Action;
-use crate::input::config::ConversionError;
+use crate::input::actions::{Action, RunCommandAction};
+use crate::input::config::{ConversionError, KdlError};
 use crate::input::keybinds::Keybinds;
-use crate::input::layout::{RunPlugin, SplitSize};
+use crate::input::layout::{
+    Layout, PercentOrFixed, Run, RunPlugin, RunPluginLocation, RunPluginOrAlias,
+};
 use crate::pane_size::PaneGeom;
+use crate::position::Position;
 use crate::shared::{colors as default_colors, eightbit_to_rgb};
 use clap::ArgEnum;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt;
 use std::fs::Metadata;
+use std::hash::{Hash, Hasher};
 use std::net::IpAddr;
 use std::path::{Path, PathBuf};
 use std::str::{self, FromStr};
 use std::time::Duration;
-use strum_macros::{Display, EnumDiscriminants, EnumIter, EnumString, ToString};
+use strum_macros::{Display, EnumDiscriminants, EnumIter, EnumString};
+use unicode_width::UnicodeWidthChar;
 
 #[cfg(not(target_family = "wasm"))]
-use termwiz::{
-    escape::csi::KittyKeyboardFlags,
+use crate::vendored::termwiz::{
+    input::KittyKeyboardFlags,
     input::{KeyCode, KeyCodeEncodeModes, KeyboardEncoding, Modifiers},
 };
 
 pub type ClientId = u16; // TODO: merge with crate type?
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum UnblockCondition {
+    /// Unblock only when exit status is 0 (success)
+    OnExitSuccess,
+    /// Unblock only when exit status is non-zero (failure)
+    OnExitFailure,
+    /// Unblock on any exit (success or failure)
+    OnAnyExit,
+}
+
+impl UnblockCondition {
+    /// Check if the condition is met for the given exit status
+    pub fn is_met(&self, exit_status: i32) -> bool {
+        match self {
+            UnblockCondition::OnExitSuccess => exit_status == 0,
+            UnblockCondition::OnExitFailure => exit_status != 0,
+            UnblockCondition::OnAnyExit => true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum CommandOrPlugin {
+    Command(RunCommandAction),
+    Plugin(RunPluginOrAlias),
+    File(FileToOpen), // open file in configured editor
+}
+
+impl CommandOrPlugin {
+    pub fn new_command(command: Vec<String>) -> Self {
+        CommandOrPlugin::Command(RunCommandAction::new(command))
+    }
+}
 
 pub fn client_id_to_colors(
     client_id: ClientId,
@@ -250,7 +289,7 @@ impl FromStr for BareKey {
 }
 
 #[derive(
-    Eq, Clone, Copy, Debug, PartialEq, Hash, Deserialize, Serialize, PartialOrd, Ord, ToString,
+    Eq, Clone, Copy, Debug, PartialEq, Hash, Deserialize, Serialize, PartialOrd, Ord, Display,
 )]
 pub enum KeyModifier {
     Ctrl,
@@ -577,6 +616,17 @@ impl KeyWithModifier {
         }
         true
     }
+    pub fn has_only_modifiers(&self, modifiers: &[KeyModifier]) -> bool {
+        for modifier in modifiers {
+            if !self.key_modifiers.contains(modifier) {
+                return false;
+            }
+        }
+        if self.key_modifiers.len() != modifiers.len() {
+            return false;
+        }
+        true
+    }
 }
 
 #[derive(Eq, Clone, Copy, Debug, PartialEq, Hash, Deserialize, Serialize, PartialOrd, Ord)]
@@ -585,6 +635,12 @@ pub enum Direction {
     Right,
     Up,
     Down,
+}
+
+impl Default for Direction {
+    fn default() -> Self {
+        Direction::Left
+    }
 }
 
 impl Direction {
@@ -638,6 +694,12 @@ impl FromStr for Direction {
 pub enum Resize {
     Increase,
     Decrease,
+}
+
+impl Default for Resize {
+    fn default() -> Self {
+        Resize::Increase
+    }
 }
 
 impl Resize {
@@ -875,7 +937,7 @@ impl From<Metadata> for FileMetadata {
 
 /// These events can be subscribed to with subscribe method exported by `zellij-tile`.
 /// Once subscribed to, they will trigger the `update` method of the `ZellijPlugin` trait.
-#[derive(Debug, Clone, PartialEq, EnumDiscriminants, ToString, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, EnumDiscriminants, Display, Serialize, Deserialize)]
 #[strum_discriminants(derive(EnumString, Hash, Serialize, Deserialize))]
 #[strum_discriminants(name(EventType))]
 #[non_exhaustive]
@@ -944,9 +1006,27 @@ pub enum Event {
     FailedToStartWebServer(String),
     BeforeClose,
     InterceptedKeyPress(KeyWithModifier),
+    /// An action was performed by the user (requires InterceptInput permission)
+    UserAction(Action, ClientId, Option<u32>, Option<ClientId>), // Action, client_id, terminal_id, cli_client_id
+    PaneRenderReport(HashMap<PaneId, PaneContents>),
+    PaneRenderReportWithAnsi(HashMap<PaneId, PaneContents>),
+    ActionComplete(Action, Option<PaneId>, BTreeMap<String, String>), // Action, pane_id, context
+    CwdChanged(PaneId, PathBuf, Vec<ClientId>), // pane_id, cwd, focused_client_ids
+    AvailableLayoutInfo(Vec<LayoutInfo>, Vec<LayoutWithError>),
+    PluginConfigurationChanged(BTreeMap<String, String>),
+    HighlightClicked {
+        pane_id: PaneId,
+        pattern: String,
+        matched_string: String,
+        context: BTreeMap<String, String>,
+    },
+    /// Initial keybindings sent once on plugin load and on reconfiguration.
+    /// Plugins that subscribe to this event signal they cache keybindings
+    /// and can handle lightweight ModeUpdate events without keybindings.
+    InitialKeybinds(KeybindsVec),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, EnumDiscriminants, ToString, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, EnumDiscriminants, Display, Serialize, Deserialize)]
 pub enum WebServerStatus {
     Online(String), // String -> base url
     Offline,
@@ -961,7 +1041,7 @@ pub enum WebServerStatus {
     Copy,
     Clone,
     EnumDiscriminants,
-    ToString,
+    Display,
     Serialize,
     Deserialize,
     PartialOrd,
@@ -984,6 +1064,10 @@ pub enum Permission {
     FullHdAccess,
     StartWebServer,
     InterceptInput,
+    ReadPaneContents,
+    RunActionsAsUser,
+    WriteToClipboard,
+    ReadSessionEnvironmentVariables,
 }
 
 impl PermissionType {
@@ -1010,6 +1094,14 @@ impl PermissionType {
                 "Start a local web server to serve Zellij sessions".to_owned()
             },
             PermissionType::InterceptInput => "Intercept Input (keyboard & mouse)".to_owned(),
+            PermissionType::ReadPaneContents => {
+                "Read pane contents (viewport and selection)".to_owned()
+            },
+            PermissionType::RunActionsAsUser => "Execute actions as the user".to_owned(),
+            PermissionType::WriteToClipboard => "Write to clipboard".to_owned(),
+            PermissionType::ReadSessionEnvironmentVariables => {
+                "Read environment variables present upon session creation".to_owned()
+            },
         }
     }
 }
@@ -1114,6 +1206,60 @@ impl Default for PaletteColor {
     fn default() -> PaletteColor {
         PaletteColor::EightBit(0)
     }
+}
+
+/// Priority layer for plugin-supplied regex highlights.
+/// Higher-priority layers take visual precedence over lower ones
+/// when highlights overlap.  Built-in highlights (mouse selection,
+/// search results) always take precedence over all plugin layers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum HighlightLayer {
+    Hint,           // lowest: pure pattern matching (paths, URLs, IPs)
+    Tool,           // middle: backed by runtime domain knowledge (git, docker, k8s)
+    ActionFeedback, // highest: result of an explicit user action (search, bookmarks)
+}
+
+impl Default for HighlightLayer {
+    fn default() -> Self {
+        HighlightLayer::Hint
+    }
+}
+
+/// Style for a plugin-supplied regex highlight.
+/// Theme-based variants reference `style.colors.text_unselected.*`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum HighlightStyle {
+    None,      // no color override — use with bold/italic/underline for style-only highlights
+    Emphasis0, // fg = emphasis_0, no bg override
+    Emphasis1, // fg = emphasis_1, no bg override
+    Emphasis2, // fg = emphasis_2, no bg override
+    Emphasis3, // fg = emphasis_3, no bg override
+    BackgroundEmphasis0, // bg = emphasis_0, fg = background
+    BackgroundEmphasis1, // bg = emphasis_1, fg = background
+    BackgroundEmphasis2, // bg = emphasis_2, fg = background
+    BackgroundEmphasis3, // bg = emphasis_3, fg = background
+    CustomRgb {
+        fg: Option<(u8, u8, u8)>,
+        bg: Option<(u8, u8, u8)>,
+    },
+    CustomIndex {
+        fg: Option<u8>,
+        bg: Option<u8>,
+    },
+}
+
+/// One pattern + style pair sent by a plugin.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RegexHighlight {
+    pub pattern: String, // key for upsert; also the regex source
+    pub style: HighlightStyle,
+    pub layer: HighlightLayer,
+    pub context: BTreeMap<String, String>, // arbitrary data echoed back verbatim on click
+    pub on_hover: bool, // if true, only rendered when the cursor overlaps this match
+    pub bold: bool,
+    pub italic: bool,
+    pub underline: bool,
+    pub tooltip_text: Option<String>, // shown at bottom of pane frame when hovering over match
 }
 
 // these are used for the web client
@@ -1617,6 +1763,11 @@ impl ModeInfo {
     pub fn update_hide_session_name(&mut self, hide_session_name: bool) {
         self.style.hide_session_name = hide_session_name;
     }
+    pub fn change_to_default_mode(&mut self) {
+        if let Some(base_mode) = self.base_mode {
+            self.mode = base_mode;
+        }
+    }
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -1631,6 +1782,8 @@ pub struct SessionInfo {
     pub web_clients_allowed: bool,
     pub web_client_count: usize,
     pub tab_history: BTreeMap<ClientId, Vec<usize>>,
+    pub pane_history: BTreeMap<ClientId, Vec<PaneId>>,
+    pub creation_time: Duration,
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -1651,16 +1804,266 @@ impl From<RunPlugin> for PluginInfo {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub enum LayoutInfo {
     BuiltIn(String),
-    File(String),
+    File(String, LayoutMetadata),
     Url(String),
     Stringified(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct LayoutWithError {
+    pub layout_name: String,
+    pub error: LayoutParsingError,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub enum LayoutParsingError {
+    KdlError {
+        kdl_error: KdlError,
+        file_name: String,
+        source_code: String,
+    },
+    SyntaxError,
+}
+
+impl AsRef<LayoutInfo> for LayoutInfo {
+    fn as_ref(&self) -> &LayoutInfo {
+        self
+    }
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct LayoutMetadata {
+    pub tabs: Vec<TabMetadata>,
+    pub creation_time: String,
+    pub update_time: String,
+}
+
+impl From<&PathBuf> for LayoutMetadata {
+    fn from(path: &PathBuf) -> LayoutMetadata {
+        match Layout::stringified_from_path(path) {
+            Ok((path_str, stringified_layout, _swap_layouts)) => {
+                match Layout::from_kdl(&stringified_layout, Some(path_str), None, None) {
+                    Ok(layout) => {
+                        let layout_tabs = layout.tabs();
+                        let tabs = if layout_tabs.is_empty() {
+                            let (tiled_pane_layout, floating_pane_layout) = layout.new_tab();
+                            vec![TabMetadata::from(&(
+                                None,
+                                tiled_pane_layout,
+                                floating_pane_layout,
+                            ))]
+                        } else {
+                            layout
+                                .tabs()
+                                .into_iter()
+                                .map(|tab| TabMetadata::from(&tab))
+                                .collect()
+                        };
+
+                        // Get file metadata for creation and modification times as Unix epochs
+                        let (creation_time, update_time) =
+                            LayoutMetadata::creation_and_update_times(&path);
+
+                        LayoutMetadata {
+                            tabs,
+                            creation_time,
+                            update_time,
+                        }
+                    },
+                    Err(e) => {
+                        log::error!("Failed to parse layout: {}", e);
+                        LayoutMetadata::default()
+                    },
+                }
+            },
+            Err(e) => {
+                log::error!("Failed to read layout file: {}", e);
+                LayoutMetadata::default()
+            },
+        }
+    }
+}
+
+impl LayoutMetadata {
+    fn creation_and_update_times(path: &PathBuf) -> (String, String) {
+        // (creation_time, update_time) returns stringified unix epoch
+        match std::fs::metadata(path) {
+            Ok(metadata) => {
+                let creation_time = metadata
+                    .created()
+                    .ok()
+                    .and_then(|t| {
+                        t.duration_since(std::time::UNIX_EPOCH)
+                            .ok()
+                            .map(|d| d.as_secs().to_string())
+                    })
+                    .unwrap_or_default();
+
+                let update_time = metadata
+                    .modified()
+                    .ok()
+                    .and_then(|t| {
+                        t.duration_since(std::time::UNIX_EPOCH)
+                            .ok()
+                            .map(|d| d.as_secs().to_string())
+                    })
+                    .unwrap_or_default();
+
+                (creation_time, update_time)
+            },
+            Err(_) => (String::new(), String::new()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct TabMetadata {
+    pub panes: Vec<PaneMetadata>,
+    pub name: Option<String>,
+}
+
+impl
+    From<&(
+        Option<String>,
+        crate::input::layout::TiledPaneLayout,
+        Vec<crate::input::layout::FloatingPaneLayout>,
+    )> for TabMetadata
+{
+    fn from(
+        tab: &(
+            Option<String>,
+            crate::input::layout::TiledPaneLayout,
+            Vec<crate::input::layout::FloatingPaneLayout>,
+        ),
+    ) -> Self {
+        let (tab_name, tiled_pane_layout, floating_panes) = tab;
+
+        // Collect panes from tiled layout (only leaf nodes are real panes)
+        let mut panes = Vec::new();
+        collect_leaf_panes(&tiled_pane_layout, &mut panes);
+
+        // Collect panes from floating panes
+        for floating_pane in floating_panes {
+            panes.push(PaneMetadata::from(floating_pane));
+        }
+
+        TabMetadata {
+            panes,
+            name: tab_name.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct PaneMetadata {
+    pub name: Option<String>,
+    pub is_plugin: bool,
+    pub is_builtin_plugin: bool,
+}
+
+impl From<&crate::input::layout::TiledPaneLayout> for PaneMetadata {
+    fn from(pane: &crate::input::layout::TiledPaneLayout) -> Self {
+        let mut is_plugin = false;
+        let mut is_builtin_plugin = false;
+
+        // Try to get the name from the pane's name field first
+        let name = if let Some(ref name) = pane.name {
+            Some(name.clone())
+        } else if let Some(ref run) = pane.run {
+            // If no explicit name, glean it from the run configuration
+            match run {
+                Run::Command(cmd) => {
+                    // Use the command name
+                    Some(cmd.command.to_string_lossy().to_string())
+                },
+                Run::EditFile(path, _line, _cwd) => {
+                    // Use the file name
+                    path.file_name().map(|n| n.to_string_lossy().to_string())
+                },
+                Run::Plugin(plugin) => {
+                    is_plugin = true;
+                    is_builtin_plugin = plugin.is_builtin_plugin();
+                    Some(plugin.location_string())
+                },
+                Run::Cwd(_) => None,
+            }
+        } else {
+            None
+        };
+
+        PaneMetadata {
+            name,
+            is_plugin,
+            is_builtin_plugin,
+        }
+    }
+}
+
+impl From<&crate::input::layout::FloatingPaneLayout> for PaneMetadata {
+    fn from(pane: &crate::input::layout::FloatingPaneLayout) -> Self {
+        let mut is_plugin = false;
+        let mut is_builtin_plugin = false;
+
+        // Try to get the name from the pane's name field first
+        let name = if let Some(ref name) = pane.name {
+            Some(name.clone())
+        } else if let Some(ref run) = pane.run {
+            // If no explicit name, glean it from the run configuration
+            match run {
+                Run::Command(cmd) => {
+                    // Use the command name
+                    Some(cmd.command.to_string_lossy().to_string())
+                },
+                Run::EditFile(path, _line, _cwd) => {
+                    // Use the file name
+                    path.file_name().map(|n| n.to_string_lossy().to_string())
+                },
+                Run::Plugin(plugin) => {
+                    is_plugin = true;
+                    is_builtin_plugin = match plugin {
+                        crate::input::layout::RunPluginOrAlias::RunPlugin(run_plugin) => {
+                            matches!(run_plugin.location, RunPluginLocation::Zellij(_))
+                        },
+                        crate::input::layout::RunPluginOrAlias::Alias(_) => false,
+                    };
+                    // Use the plugin location string
+                    Some(plugin.location_string())
+                },
+                Run::Cwd(_) => None,
+            }
+        } else {
+            None
+        };
+
+        PaneMetadata {
+            name,
+            is_plugin,
+            is_builtin_plugin,
+        }
+    }
+}
+
+// Helper function to recursively collect leaf panes from TiledPaneLayout
+fn collect_leaf_panes(
+    pane: &crate::input::layout::TiledPaneLayout,
+    result: &mut Vec<PaneMetadata>,
+) {
+    if pane.children.is_empty() {
+        // This is a leaf node (actual pane)
+        result.push(PaneMetadata::from(pane));
+    } else {
+        // This is a container, recurse into children
+        for child in &pane.children {
+            collect_leaf_panes(child, result);
+        }
+    }
 }
 
 impl LayoutInfo {
     pub fn name(&self) -> &str {
         match self {
             LayoutInfo::BuiltIn(name) => &name,
-            LayoutInfo::File(name) => &name,
+            LayoutInfo::File(name, _) => &name,
             LayoutInfo::Url(url) => &url,
             LayoutInfo::Stringified(layout) => &layout,
         }
@@ -1668,41 +2071,123 @@ impl LayoutInfo {
     pub fn is_builtin(&self) -> bool {
         match self {
             LayoutInfo::BuiltIn(_name) => true,
-            LayoutInfo::File(_name) => false,
+            LayoutInfo::File(_name, _) => false,
             LayoutInfo::Url(_url) => false,
             LayoutInfo::Stringified(_stringified) => false,
         }
     }
+    pub fn from_cli(
+        layout_dir: &Option<PathBuf>,
+        maybe_layout_path: &Option<PathBuf>,
+        cwd: PathBuf,
+    ) -> Option<Self> {
+        // If we're not given a layout path, fall back to "default". Since we cannot tell ahead of
+        // time whether the user has a layout named "default.kdl" in their layout directory, we
+        // cannot blindly assume that this is indeed the builtin default layout. The layout
+        // resolution below will correctly handle this.
+        // The docs promise this behavior, so we have to abide:
+        // <https://zellij.dev/documentation/layouts.html#layout-default-directory>
+        let layout_path = maybe_layout_path
+            .clone()
+            .unwrap_or(PathBuf::from("default"));
+
+        if layout_path.starts_with("http://") || layout_path.starts_with("https://") {
+            Some(LayoutInfo::Url(layout_path.display().to_string()))
+        } else if layout_path.extension().is_some() || layout_path.components().count() > 1 {
+            let layout_dir = cwd;
+            let file_path = layout_dir.join(layout_path);
+            Some(LayoutInfo::File(
+                // layout_dir.join(layout_path).display().to_string(),
+                file_path.display().to_string(),
+                LayoutMetadata::from(&file_path),
+            ))
+        } else {
+            // Attempt to interpret the layout as bare layout name from the layout application
+            // directory. This is described in the docs:
+            // <https://zellij.dev/documentation/layouts.html#layout-default-directory>
+            if let Some(layout_dir) = layout_dir
+                .as_ref()
+                .map(|l| l.clone())
+                .or_else(default_layout_dir)
+            {
+                let file_path = layout_dir.join(&layout_path);
+                if file_path.exists() {
+                    return Some(LayoutInfo::File(
+                        file_path.display().to_string(),
+                        LayoutMetadata::from(&file_path),
+                    ));
+                }
+                let file_path_with_ext = file_path.with_extension("kdl");
+                if file_path_with_ext.exists() {
+                    return Some(LayoutInfo::File(
+                        file_path_with_ext.display().to_string(),
+                        LayoutMetadata::from(&file_path_with_ext),
+                    ));
+                }
+            }
+            // Assume a builtin layout by default
+            Some(LayoutInfo::BuiltIn(layout_path.display().to_string()))
+        }
+    }
     pub fn from_config(
         layout_dir: &Option<PathBuf>,
-        layout_path: &Option<PathBuf>,
+        maybe_layout_path: &Option<PathBuf>,
     ) -> Option<Self> {
-        match layout_path {
-            Some(layout_path) => {
-                if layout_path.extension().is_some() || layout_path.components().count() > 1 {
-                    let Some(layout_dir) = layout_dir
-                        .as_ref()
-                        .map(|l| l.clone())
-                        .or_else(default_layout_dir)
-                    else {
-                        return None;
-                    };
-                    Some(LayoutInfo::File(
-                        layout_dir.join(layout_path).display().to_string(),
-                    ))
-                } else if layout_path.starts_with("http://") || layout_path.starts_with("https://")
-                {
-                    Some(LayoutInfo::Url(layout_path.display().to_string()))
-                } else {
-                    Some(LayoutInfo::BuiltIn(layout_path.display().to_string()))
+        // If we're not given a layout path, fall back to "default". Since we cannot tell ahead of
+        // time whether the user has a layout named "default.kdl" in their layout directory, we
+        // cannot blindly assume that this is indeed the builtin default layout. The layout
+        // resolution below will correctly handle this.
+        // The docs promise this behavior, so we have to abide:
+        // <https://zellij.dev/documentation/layouts.html#layout-default-directory>
+        let layout_path = maybe_layout_path
+            .clone()
+            .unwrap_or(PathBuf::from("default"));
+
+        if layout_path.starts_with("http://") || layout_path.starts_with("https://") {
+            Some(LayoutInfo::Url(layout_path.display().to_string()))
+        } else if layout_path.extension().is_some() || layout_path.components().count() > 1 {
+            let Some(layout_dir) = layout_dir
+                .as_ref()
+                .map(|l| l.clone())
+                .or_else(default_layout_dir)
+            else {
+                return None;
+            };
+            let file_path = layout_dir.join(layout_path);
+            Some(LayoutInfo::File(
+                // layout_dir.join(layout_path).display().to_string(),
+                file_path.display().to_string(),
+                LayoutMetadata::from(&file_path),
+            ))
+        } else {
+            // Attempt to interpret the layout as bare layout name from the layout application
+            // directory. This is described in the docs:
+            // <https://zellij.dev/documentation/layouts.html#layout-default-directory>
+            if let Some(layout_dir) = layout_dir
+                .as_ref()
+                .map(|l| l.clone())
+                .or_else(default_layout_dir)
+            {
+                let file_path = layout_dir.join(&layout_path);
+                if file_path.exists() {
+                    return Some(LayoutInfo::File(
+                        file_path.display().to_string(),
+                        LayoutMetadata::from(&file_path),
+                    ));
                 }
-            },
-            None => None,
+                let file_path_with_ext = file_path.with_extension("kdl");
+                if file_path_with_ext.exists() {
+                    return Some(LayoutInfo::File(
+                        file_path_with_ext.display().to_string(),
+                        LayoutMetadata::from(&file_path_with_ext),
+                    ));
+                }
+            }
+            // Assume a builtin layout by default
+            Some(LayoutInfo::BuiltIn(layout_path.display().to_string()))
         }
     }
 }
-
-use std::hash::{Hash, Hasher};
 
 #[allow(clippy::derive_hash_xor_eq)]
 impl Hash for SessionInfo {
@@ -1771,6 +2256,12 @@ pub struct TabInfo {
     pub selectable_tiled_panes_count: usize,
     /// The number of selectable (eg. not the UI bars) floating panes currently in this tab
     pub selectable_floating_panes_count: usize,
+    /// The stable identifier for this tab
+    pub tab_id: usize,
+    /// Whether this tab has an active (persistent) bell notification
+    pub has_bell_notification: bool,
+    /// Whether this tab is currently flashing its bell (transient 400ms state)
+    pub is_flashing_bell: bool,
 }
 
 /// The `PaneManifest` contains a dictionary of panes, indexed by the tab position (0 indexed).
@@ -1839,7 +2330,28 @@ pub struct PaneInfo {
     /// Grouped panes (usually through an explicit user action) that are staged for a bulk action
     /// the index is kept track of in order to preserve the pane group order
     pub index_in_pane_group: BTreeMap<ClientId, usize>,
+    /// The default foreground color of this pane, if set (e.g. "#00e000")
+    pub default_fg: Option<String>,
+    /// The default background color of this pane, if set (e.g. "#001a3a")
+    pub default_bg: Option<String>,
 }
+
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+pub struct PaneListEntry {
+    #[serde(flatten)]
+    pub pane_info: PaneInfo,
+    pub tab_id: usize,
+    pub tab_position: usize,
+    pub tab_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pane_command: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pane_cwd: Option<String>,
+}
+
+pub type ListPanesResponse = Vec<PaneListEntry>;
+pub type ListTabsResponse = Vec<TabInfo>;
+
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct ClientInfo {
     pub client_id: ClientId,
@@ -1860,6 +2372,287 @@ impl ClientInfo {
             pane_id,
             running_command,
             is_current_client,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct PaneRenderReport {
+    pub all_pane_contents: HashMap<ClientId, HashMap<PaneId, PaneContents>>,
+    pub all_pane_contents_with_ansi: HashMap<ClientId, HashMap<PaneId, PaneContents>>,
+}
+
+impl PaneRenderReport {
+    pub fn add_pane_contents(
+        &mut self,
+        client_ids: &[ClientId],
+        pane_id: PaneId,
+        pane_contents: PaneContents,
+    ) {
+        for client_id in client_ids {
+            let p = self
+                .all_pane_contents
+                .entry(*client_id)
+                .or_insert_with(|| HashMap::new());
+            p.insert(pane_id, pane_contents.clone());
+        }
+    }
+    pub fn add_pane_contents_with_ansi(
+        &mut self,
+        client_ids: &[ClientId],
+        pane_id: PaneId,
+        pane_contents: PaneContents,
+    ) {
+        for client_id in client_ids {
+            let p = self
+                .all_pane_contents_with_ansi
+                .entry(*client_id)
+                .or_insert_with(|| HashMap::new());
+            p.insert(pane_id, pane_contents.clone());
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct PaneContents {
+    // NOTE: both lines_above_viewport and lines_below_viewport are only populated if explicitly
+    // requested (eg. with get_full_scrollback true in the plugin command) this is for performance
+    // reasons
+    pub lines_above_viewport: Vec<String>,
+    pub lines_below_viewport: Vec<String>,
+    pub viewport: Vec<String>,
+    pub selected_text: Option<SelectedText>,
+}
+
+/// Extract text from a line between two column positions, accounting for wide characters
+fn extract_text_by_columns(line: &str, start_col: usize, end_col: usize) -> String {
+    let mut current_col = 0;
+    let mut result = String::new();
+    let mut capturing = false;
+
+    for ch in line.chars() {
+        let char_width = ch.width().unwrap_or(0);
+
+        // Start capturing when we reach start_col
+        if current_col >= start_col && !capturing {
+            capturing = true;
+        }
+
+        // Stop if we've reached or passed end_col
+        if current_col >= end_col {
+            break;
+        }
+
+        // Capture character if we're in the range
+        if capturing {
+            result.push(ch);
+        }
+
+        current_col += char_width;
+    }
+
+    result
+}
+
+/// Extract text from a line starting at a column position, accounting for wide characters
+fn extract_text_from_column(line: &str, start_col: usize) -> String {
+    let mut current_col = 0;
+    let mut result = String::new();
+    let mut capturing = false;
+
+    for ch in line.chars() {
+        let char_width = ch.width().unwrap_or(0);
+
+        if current_col >= start_col {
+            capturing = true;
+        }
+
+        if capturing {
+            result.push(ch);
+        }
+
+        current_col += char_width;
+    }
+
+    result
+}
+
+/// Extract text from a line up to a column position, accounting for wide characters
+fn extract_text_to_column(line: &str, end_col: usize) -> String {
+    let mut current_col = 0;
+    let mut result = String::new();
+
+    for ch in line.chars() {
+        let char_width = ch.width().unwrap_or(0);
+
+        if current_col >= end_col {
+            break;
+        }
+
+        result.push(ch);
+        current_col += char_width;
+    }
+
+    result
+}
+
+impl PaneContents {
+    pub fn new(viewport: Vec<String>, selection_start: Position, selection_end: Position) -> Self {
+        PaneContents {
+            viewport,
+            selected_text: SelectedText::from_positions(selection_start, selection_end),
+            ..Default::default()
+        }
+    }
+    pub fn new_with_scrollback(
+        viewport: Vec<String>,
+        selection_start: Position,
+        selection_end: Position,
+        lines_above_viewport: Vec<String>,
+        lines_below_viewport: Vec<String>,
+    ) -> Self {
+        PaneContents {
+            viewport,
+            selected_text: SelectedText::from_positions(selection_start, selection_end),
+            lines_above_viewport,
+            lines_below_viewport,
+        }
+    }
+
+    /// Returns the actual text content of the selection, if any exists.
+    /// Selection only occurs within the viewport.
+    pub fn get_selected_text(&self) -> Option<String> {
+        let selected_text = self.selected_text?;
+
+        let start_line = selected_text.start.line() as usize;
+        let start_col = selected_text.start.column();
+        let end_line = selected_text.end.line() as usize;
+        let end_col = selected_text.end.column();
+
+        // Handle out of bounds
+        if start_line >= self.viewport.len() || end_line >= self.viewport.len() {
+            return None;
+        }
+
+        if start_line == end_line {
+            // Single line selection
+            let line = &self.viewport[start_line];
+            Some(extract_text_by_columns(line, start_col, end_col))
+        } else {
+            // Multi-line selection
+            let mut result = String::new();
+
+            // First line - from start column to end of line
+            let first_line = &self.viewport[start_line];
+            result.push_str(&extract_text_from_column(first_line, start_col));
+            result.push('\n');
+
+            // Middle lines - complete lines
+            for i in (start_line + 1)..end_line {
+                result.push_str(&self.viewport[i]);
+                result.push('\n');
+            }
+
+            // Last line - from start to end column
+            let last_line = &self.viewport[end_line];
+            result.push_str(&extract_text_to_column(last_line, end_col));
+
+            Some(result)
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum PaneScrollbackResponse {
+    Ok(PaneContents),
+    Err(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum GetPanePidResponse {
+    Ok(i32),
+    Err(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum GetPaneRunningCommandResponse {
+    Ok(Vec<String>),
+    Err(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum GetPaneCwdResponse {
+    Ok(PathBuf),
+    Err(String),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum GetFocusedPaneInfoResponse {
+    Ok { tab_index: usize, pane_id: PaneId },
+    Err(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SaveLayoutResponse {
+    Ok(()),
+    Err(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DeleteLayoutResponse {
+    Ok(()),
+    Err(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RenameLayoutResponse {
+    Ok(()),
+    Err(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum EditLayoutResponse {
+    Ok(()),
+    Err(String),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SelectedText {
+    pub start: Position,
+    pub end: Position,
+}
+
+impl SelectedText {
+    pub fn new(start: Position, end: Position) -> Self {
+        // Normalize: ensure start <= end
+        let (normalized_start, normalized_end) = if start <= end {
+            (start, end)
+        } else {
+            (end, start)
+        };
+
+        // Normalize negative line values to 0
+        // (column is already usize so can't be negative)
+        let normalized_start = Position::new(
+            normalized_start.line().max(0) as i32,
+            normalized_start.column() as u16,
+        );
+        let normalized_end = Position::new(
+            normalized_end.line().max(0) as i32,
+            normalized_end.column() as u16,
+        );
+
+        SelectedText {
+            start: normalized_start,
+            end: normalized_end,
+        }
+    }
+
+    pub fn from_positions(start: Position, end: Position) -> Option<Self> {
+        if start == end {
+            None
+        } else {
+            Some(Self::new(start, end))
         }
     }
 }
@@ -1919,7 +2712,7 @@ pub enum PermissionStatus {
     Denied,
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FileToOpen {
     pub path: PathBuf,
     pub line_number: Option<usize>,
@@ -1996,6 +2789,12 @@ pub enum PaneId {
     Plugin(u32),
 }
 
+impl Default for PaneId {
+    fn default() -> Self {
+        PaneId::Terminal(0)
+    }
+}
+
 impl FromStr for PaneId {
     type Err = Box<dyn std::error::Error>;
     fn from_str(stringified_pane_id: &str) -> Result<Self, Self::Err> {
@@ -2011,6 +2810,15 @@ impl FromStr for PaneId {
             u32::from_str_radix(&stringified_pane_id, 10)
                 .map(|id| PaneId::Terminal(id))
                 .map_err(|e| e.into())
+        }
+    }
+}
+
+impl std::fmt::Display for PaneId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PaneId::Terminal(id) => write!(f, "terminal_{}", id),
+            PaneId::Plugin(id) => write!(f, "plugin_{}", id),
         }
     }
 }
@@ -2082,9 +2890,15 @@ impl MessageToPlugin {
         new_plugin_args.should_focus = Some(true);
         self
     }
+    pub fn has_cwd(&self) -> bool {
+        self.new_plugin_args
+            .as_ref()
+            .map(|n| n.cwd.is_some())
+            .unwrap_or(false)
+    }
 }
 
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ConnectToSession {
     pub name: Option<String>,
     pub tab_position: Option<usize>,
@@ -2095,7 +2909,7 @@ pub struct ConnectToSession {
 
 impl ConnectToSession {
     pub fn apply_layout_dir(&mut self, layout_dir: &PathBuf) {
-        if let Some(LayoutInfo::File(file_path)) = self.layout.as_mut() {
+        if let Some(LayoutInfo::File(file_path, _layout_metadata)) = self.layout.as_mut() {
             *file_path = Path::join(layout_dir, &file_path)
                 .to_string_lossy()
                 .to_string();
@@ -2171,11 +2985,12 @@ impl PipeMessage {
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize, Default)]
 pub struct FloatingPaneCoordinates {
-    pub x: Option<SplitSize>,
-    pub y: Option<SplitSize>,
-    pub width: Option<SplitSize>,
-    pub height: Option<SplitSize>,
+    pub x: Option<PercentOrFixed>,
+    pub y: Option<PercentOrFixed>,
+    pub width: Option<PercentOrFixed>,
+    pub height: Option<PercentOrFixed>,
     pub pinned: Option<bool>,
+    pub borderless: Option<bool>,
 }
 
 impl FloatingPaneCoordinates {
@@ -2185,12 +3000,39 @@ impl FloatingPaneCoordinates {
         width: Option<String>,
         height: Option<String>,
         pinned: Option<bool>,
+        borderless: Option<bool>,
     ) -> Option<Self> {
-        let x = x.and_then(|x| SplitSize::from_str(&x).ok());
-        let y = y.and_then(|y| SplitSize::from_str(&y).ok());
-        let width = width.and_then(|width| SplitSize::from_str(&width).ok());
-        let height = height.and_then(|height| SplitSize::from_str(&height).ok());
-        if x.is_none() && y.is_none() && width.is_none() && height.is_none() && pinned.is_none() {
+        // Parse x/y coordinates - allows 0% or 0
+        let x = x.and_then(|x| PercentOrFixed::from_str(&x).ok());
+        let y = y.and_then(|y| PercentOrFixed::from_str(&y).ok());
+
+        // Parse width/height - reject 0% or 0
+        let width = width.and_then(|w| {
+            PercentOrFixed::from_str(&w)
+                .ok()
+                .and_then(|size| match size {
+                    PercentOrFixed::Percent(0) => None,
+                    PercentOrFixed::Fixed(0) => None,
+                    _ => Some(size),
+                })
+        });
+        let height = height.and_then(|h| {
+            PercentOrFixed::from_str(&h)
+                .ok()
+                .and_then(|size| match size {
+                    PercentOrFixed::Percent(0) => None,
+                    PercentOrFixed::Fixed(0) => None,
+                    _ => Some(size),
+                })
+        });
+
+        if x.is_none()
+            && y.is_none()
+            && width.is_none()
+            && height.is_none()
+            && pinned.is_none()
+            && borderless.is_none()
+        {
             None
         } else {
             Some(FloatingPaneCoordinates {
@@ -2199,11 +3041,12 @@ impl FloatingPaneCoordinates {
                 width,
                 height,
                 pinned,
+                borderless,
             })
         }
     }
     pub fn with_x_fixed(mut self, x: usize) -> Self {
-        self.x = Some(SplitSize::Fixed(x));
+        self.x = Some(PercentOrFixed::Fixed(x));
         self
     }
     pub fn with_x_percent(mut self, x: usize) -> Self {
@@ -2211,11 +3054,11 @@ impl FloatingPaneCoordinates {
             eprintln!("x must be between 0 and 100");
             return self;
         }
-        self.x = Some(SplitSize::Percent(x));
+        self.x = Some(PercentOrFixed::Percent(x));
         self
     }
     pub fn with_y_fixed(mut self, y: usize) -> Self {
-        self.y = Some(SplitSize::Fixed(y));
+        self.y = Some(PercentOrFixed::Fixed(y));
         self
     }
     pub fn with_y_percent(mut self, y: usize) -> Self {
@@ -2223,11 +3066,11 @@ impl FloatingPaneCoordinates {
             eprintln!("y must be between 0 and 100");
             return self;
         }
-        self.y = Some(SplitSize::Percent(y));
+        self.y = Some(PercentOrFixed::Percent(y));
         self
     }
     pub fn with_width_fixed(mut self, width: usize) -> Self {
-        self.width = Some(SplitSize::Fixed(width));
+        self.width = Some(PercentOrFixed::Fixed(width));
         self
     }
     pub fn with_width_percent(mut self, width: usize) -> Self {
@@ -2235,11 +3078,11 @@ impl FloatingPaneCoordinates {
             eprintln!("width must be between 0 and 100");
             return self;
         }
-        self.width = Some(SplitSize::Percent(width));
+        self.width = Some(PercentOrFixed::Percent(width));
         self
     }
     pub fn with_height_fixed(mut self, height: usize) -> Self {
-        self.height = Some(SplitSize::Fixed(height));
+        self.height = Some(PercentOrFixed::Fixed(height));
         self
     }
     pub fn with_height_percent(mut self, height: usize) -> Self {
@@ -2247,7 +3090,7 @@ impl FloatingPaneCoordinates {
             eprintln!("height must be between 0 and 100");
             return self;
         }
-        self.height = Some(SplitSize::Percent(height));
+        self.height = Some(PercentOrFixed::Percent(height));
         self
     }
 }
@@ -2255,11 +3098,12 @@ impl FloatingPaneCoordinates {
 impl From<PaneGeom> for FloatingPaneCoordinates {
     fn from(pane_geom: PaneGeom) -> Self {
         FloatingPaneCoordinates {
-            x: Some(SplitSize::Fixed(pane_geom.x)),
-            y: Some(SplitSize::Fixed(pane_geom.y)),
-            width: Some(SplitSize::Fixed(pane_geom.cols.as_usize())),
-            height: Some(SplitSize::Fixed(pane_geom.rows.as_usize())),
+            x: Some(PercentOrFixed::Fixed(pane_geom.x)),
+            y: Some(PercentOrFixed::Fixed(pane_geom.y)),
+            width: Some(PercentOrFixed::Fixed(pane_geom.cols.as_usize())),
+            height: Some(PercentOrFixed::Fixed(pane_geom.rows.as_usize())),
             pinned: Some(pane_geom.is_pinned),
+            borderless: None,
         }
     }
 }
@@ -2352,15 +3196,115 @@ impl FromStr for WebSharing {
     }
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum NewPanePlacement {
+    NoPreference {
+        borderless: Option<bool>,
+    },
+    Tiled {
+        direction: Option<Direction>,
+        borderless: Option<bool>,
+    },
+    Floating(Option<FloatingPaneCoordinates>),
+    InPlace {
+        pane_id_to_replace: Option<PaneId>,
+        close_replaced_pane: bool,
+        borderless: Option<bool>,
+    },
+    Stacked {
+        pane_id_to_stack_under: Option<PaneId>,
+        borderless: Option<bool>,
+    },
+}
+
+impl Default for NewPanePlacement {
+    fn default() -> Self {
+        NewPanePlacement::NoPreference { borderless: None }
+    }
+}
+
+impl NewPanePlacement {
+    pub fn with_floating_pane_coordinates(
+        floating_pane_coordinates: Option<FloatingPaneCoordinates>,
+    ) -> Self {
+        NewPanePlacement::Floating(floating_pane_coordinates)
+    }
+    pub fn with_should_be_in_place(
+        self,
+        should_be_in_place: bool,
+        close_replaced_pane: bool,
+    ) -> Self {
+        if should_be_in_place {
+            NewPanePlacement::InPlace {
+                pane_id_to_replace: None,
+                close_replaced_pane,
+                borderless: None,
+            }
+        } else {
+            self
+        }
+    }
+    pub fn with_pane_id_to_replace(
+        pane_id_to_replace: Option<PaneId>,
+        close_replaced_pane: bool,
+    ) -> Self {
+        NewPanePlacement::InPlace {
+            pane_id_to_replace,
+            close_replaced_pane,
+            borderless: None,
+        }
+    }
+    pub fn should_float(&self) -> Option<bool> {
+        match self {
+            NewPanePlacement::Floating(_) => Some(true),
+            NewPanePlacement::Tiled { .. } => Some(false),
+            _ => None,
+        }
+    }
+    pub fn floating_pane_coordinates(&self) -> Option<FloatingPaneCoordinates> {
+        match self {
+            NewPanePlacement::Floating(floating_pane_coordinates) => {
+                floating_pane_coordinates.clone()
+            },
+            _ => None,
+        }
+    }
+    pub fn should_stack(&self) -> bool {
+        match self {
+            NewPanePlacement::Stacked { .. } => true,
+            _ => false,
+        }
+    }
+    pub fn id_of_stack_root(&self) -> Option<PaneId> {
+        match self {
+            NewPanePlacement::Stacked {
+                pane_id_to_stack_under,
+                ..
+            } => *pane_id_to_stack_under,
+            _ => None,
+        }
+    }
+    pub fn get_borderless(&self) -> Option<bool> {
+        match self {
+            NewPanePlacement::NoPreference { borderless } => *borderless,
+            NewPanePlacement::Tiled { borderless, .. } => *borderless,
+            NewPanePlacement::Floating(coords) => coords.as_ref().and_then(|c| c.borderless),
+            NewPanePlacement::InPlace { borderless, .. } => *borderless,
+            NewPanePlacement::Stacked { borderless, .. } => *borderless,
+        }
+    }
+}
+
 type Context = BTreeMap<String, String>;
 
-#[derive(Debug, Clone, EnumDiscriminants, ToString)]
+#[derive(Debug, Clone, EnumDiscriminants, Display)]
 #[strum_discriminants(derive(EnumString, Hash, Serialize, Deserialize))]
 #[strum_discriminants(name(CommandType))]
 pub enum PluginCommand {
     Subscribe(HashSet<EventType>),
     Unsubscribe(HashSet<EventType>),
     SetSelectable(bool),
+    ShowCursor(Option<(usize, usize)>),
     GetPluginIds,
     GetZellijVersion,
     OpenFile(FileToOpen, Context),
@@ -2417,16 +3361,16 @@ pub enum PluginCommand {
     NextSwapLayout,
     GoToTabName(String),
     FocusOrCreateTab(String),
-    GoToTab(u32),                    // tab index
-    StartOrReloadPlugin(String),     // plugin url (eg. file:/path/to/plugin.wasm)
-    CloseTerminalPane(u32),          // terminal pane id
-    ClosePluginPane(u32),            // plugin pane id
-    FocusTerminalPane(u32, bool),    // terminal pane id, should_float_if_hidden
-    FocusPluginPane(u32, bool),      // plugin pane id, should_float_if_hidden
-    RenameTerminalPane(u32, String), // terminal pane id, new name
-    RenamePluginPane(u32, String),   // plugin pane id, new name
-    RenameTab(u32, String),          // tab index, new name
-    ReportPanic(String),             // stringified panic
+    GoToTab(u32),                       // tab index
+    StartOrReloadPlugin(String),        // plugin url (eg. file:/path/to/plugin.wasm)
+    CloseTerminalPane(u32),             // terminal pane id
+    ClosePluginPane(u32),               // plugin pane id
+    FocusTerminalPane(u32, bool, bool), // terminal pane id, should_float_if_hidden, should_be_in_place_if_hidden
+    FocusPluginPane(u32, bool, bool), // plugin pane id, should_float_if_hidden, should_be_in_place_if_hidden
+    RenameTerminalPane(u32, String),  // terminal pane id, new name
+    RenamePluginPane(u32, String),    // plugin pane id, new name
+    RenameTab(u32, String),           // tab index, new name
+    ReportPanic(String),              // stringified panic
     RequestPluginPermissions(Vec<PermissionType>),
     SwitchSession(ConnectToSession),
     DeleteDeadSession(String),       // String -> session name
@@ -2456,19 +3400,36 @@ pub enum PluginCommand {
     KillSessions(Vec<String>), // one or more session names
     ScanHostFolder(PathBuf),   // TODO: rename to ScanHostFolder
     WatchFilesystem,
-    DumpSessionLayout,
+    DumpSessionLayout {
+        tab_index: Option<usize>,
+    },
     CloseSelf,
     NewTabsWithLayoutInfo(LayoutInfo),
     Reconfigure(String, bool), // String -> stringified configuration, bool -> save configuration
     // file to disk
     HidePaneWithId(PaneId),
-    ShowPaneWithId(PaneId, bool), // bool -> should_float_if_hidden
+    ShowPaneWithId(PaneId, bool, bool), // bools -> should_float_if_hidden, should_focus_pane
     OpenCommandPaneBackground(CommandToRun, Context),
     RerunCommandPane(u32), // u32  - terminal pane id
     ResizePaneIdWithDirection(ResizeStrategy, PaneId),
     EditScrollbackForPaneWithId(PaneId),
+    GetPaneScrollback {
+        pane_id: PaneId,
+        get_full_scrollback: bool,
+    },
     WriteToPaneId(Vec<u8>, PaneId),
     WriteCharsToPaneId(String, PaneId),
+    SendSigintToPaneId(PaneId),
+    SendSigkillToPaneId(PaneId),
+    GetPanePid {
+        pane_id: PaneId,
+    },
+    GetPaneRunningCommand {
+        pane_id: PaneId,
+    },
+    GetPaneCwd {
+        pane_id: PaneId,
+    },
     MovePaneWithPaneId(PaneId),
     MovePaneWithPaneIdInDirection(PaneId, Direction),
     ClearScreenForPaneId(PaneId),
@@ -2487,6 +3448,12 @@ pub enum PluginCommand {
     // the new tab
     BreakPanesToTabWithIndex(Vec<PaneId>, usize, bool), // usize - tab_index, bool -
     // should_change_focus_to_new_tab
+    SwitchTabToId(u64),                            // u64 - tab_id
+    GoToTabWithId(u64),                            // u64 - tab_id
+    CloseTabWithId(u64),                           // u64 - tab_id
+    RenameTabWithId(u64, String),                  // u64 - tab_id, String - new name
+    BreakPanesToTabWithId(Vec<PaneId>, u64, bool), // u64 - tab_id, bool -
+    // should_change_focus_to_target_tab
     ReloadPlugin(u32), // u32 - plugin pane id
     LoadNewPlugin {
         url: String,
@@ -2504,6 +3471,8 @@ pub enum PluginCommand {
     SetFloatingPanePinned(PaneId, bool), // bool -> should be pinned
     StackPanes(Vec<PaneId>),
     ChangeFloatingPanesCoordinates(Vec<(PaneId, FloatingPaneCoordinates)>),
+    TogglePaneBorderless(PaneId),
+    SetPaneBorderless(PaneId, bool),
     OpenCommandPaneNearPlugin(CommandToRun, Context),
     OpenTerminalNearPlugin(FileToOpen),
     OpenTerminalFloatingNearPlugin(FileToOpen, Option<FloatingPaneCoordinates>),
@@ -2527,12 +3496,116 @@ pub enum PluginCommand {
     EmbedMultiplePanes(Vec<PaneId>),
     QueryWebServerStatus,
     SetSelfMouseSelectionSupport(bool),
-    GenerateWebLoginToken(Option<String>), // String -> optional token label
-    RevokeWebLoginToken(String),           // String -> token id (provided name or generated id)
+    GenerateWebLoginToken(Option<String>, bool), // (token_label, read_only)
+    RevokeWebLoginToken(String), // String -> token id (provided name or generated id)
     ListWebLoginTokens,
     RevokeAllWebLoginTokens,
     RenameWebLoginToken(String, String), // (original_name, new_name)
     InterceptKeyPresses,
     ClearKeyPressesIntercepts,
-    ReplacePaneWithExistingPane(PaneId, PaneId), // (pane id to replace, pane id of existing)
+    ReplacePaneWithExistingPane(PaneId, PaneId, bool), // (pane id to replace, pane id of existing,
+    // suppress_replaced_pane)
+    RunAction(Action, BTreeMap<String, String>),
+    CopyToClipboard(String), // text to copy
+    OverrideLayout(
+        LayoutInfo,
+        bool,                     // retain_existing_terminal_panes
+        bool,                     // retain_existing_plugin_panes
+        bool,                     // apply_only_to_active_tab,
+        BTreeMap<String, String>, // context
+    ),
+    SaveLayout {
+        layout_name: String,
+        layout_kdl: String,
+        overwrite: bool,
+    },
+    DeleteLayout {
+        layout_name: String,
+    },
+    RenameLayout {
+        old_layout_name: String,
+        new_layout_name: String,
+    },
+    EditLayout {
+        layout_name: String,
+        context: Context,
+    },
+    GenerateRandomName,
+    DumpLayout(String),
+    ParseLayout(String), // String contains raw KDL layout
+    GetLayoutDir,
+    GetFocusedPaneInfo,
+    SaveSession,
+    CurrentSessionLastSavedTime,
+    GetPaneInfo(PaneId),
+    GetTabInfo(usize), // tab_id
+    GetSessionEnvironmentVariables,
+    OpenCommandPaneInNewTab(CommandToRun, Context),
+    OpenPluginPaneInNewTab {
+        plugin_url: String,
+        configuration: BTreeMap<String, String>,
+        context: Context,
+    },
+    OpenEditorPaneInNewTab(FileToOpen, Context),
+    OpenCommandPaneInPlaceOfPaneId(PaneId, CommandToRun, bool, Context), // bool = close_replaced_pane
+    OpenTerminalPaneInPlaceOfPaneId(PaneId, FileToOpen, bool),
+    OpenEditPaneInPlaceOfPaneId(PaneId, FileToOpen, bool, Context),
+    HideFloatingPanes {
+        tab_id: Option<usize>,
+    },
+    ShowFloatingPanes {
+        tab_id: Option<usize>,
+    },
+    SetPaneColor(PaneId, Option<String>, Option<String>), // (pane_id, fg, bg)
+    SetPaneRegexHighlights(PaneId, Vec<RegexHighlight>),
+    ClearPaneHighlights(PaneId),
+    OpenPluginPaneFloating {
+        plugin_url: String,
+        configuration: BTreeMap<String, String>,
+        floating_pane_coordinates: Option<FloatingPaneCoordinates>,
+        context: BTreeMap<String, String>,
+    },
+    ListWindowsVolumes,
 }
+
+// Response type for plugin API methods that open a pane in a new tab
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct OpenPaneInNewTabResponse {
+    pub tab_id: Option<usize>,
+    pub pane_id: Option<PaneId>,
+}
+
+// Response types for plugin API methods that create tabs
+pub type NewTabResponse = Option<usize>;
+pub type NewTabsResponse = Vec<usize>;
+pub type FocusOrCreateTabResponse = Option<usize>;
+pub type BreakPanesToNewTabResponse = Option<usize>;
+pub type BreakPanesToTabWithIndexResponse = Option<usize>;
+pub type BreakPanesToTabWithIdResponse = Option<usize>;
+
+// Response types for plugin API methods that create panes
+pub type OpenFileResponse = Option<PaneId>;
+pub type OpenFileFloatingResponse = Option<PaneId>;
+pub type OpenFileInPlaceResponse = Option<PaneId>;
+pub type OpenFileNearPluginResponse = Option<PaneId>;
+pub type OpenFileFloatingNearPluginResponse = Option<PaneId>;
+pub type OpenFileInPlaceOfPluginResponse = Option<PaneId>;
+
+pub type OpenTerminalResponse = Option<PaneId>;
+pub type OpenTerminalFloatingResponse = Option<PaneId>;
+pub type OpenTerminalInPlaceResponse = Option<PaneId>;
+pub type OpenTerminalNearPluginResponse = Option<PaneId>;
+pub type OpenTerminalFloatingNearPluginResponse = Option<PaneId>;
+pub type OpenTerminalInPlaceOfPluginResponse = Option<PaneId>;
+
+pub type OpenCommandPaneResponse = Option<PaneId>;
+pub type OpenCommandPaneFloatingResponse = Option<PaneId>;
+pub type OpenCommandPaneInPlaceResponse = Option<PaneId>;
+pub type OpenCommandPaneNearPluginResponse = Option<PaneId>;
+pub type OpenCommandPaneFloatingNearPluginResponse = Option<PaneId>;
+pub type OpenCommandPaneInPlaceOfPluginResponse = Option<PaneId>;
+pub type OpenCommandPaneBackgroundResponse = Option<PaneId>;
+pub type OpenCommandPaneInPlaceOfPaneIdResponse = Option<PaneId>;
+pub type OpenTerminalPaneInPlaceOfPaneIdResponse = Option<PaneId>;
+pub type OpenEditPaneInPlaceOfPaneIdResponse = Option<PaneId>;
+pub type OpenPluginPaneFloatingResponse = Option<PaneId>;

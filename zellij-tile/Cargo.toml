@@ -1,10 +1,10 @@
 [package]
 name = "zellij-tile"
-version = "0.44.0"
+version.workspace = true
 authors = ["Brooks J Rady <b.j.rady@gmail.com>"]
-edition = "2021"
+edition.workspace = true
 description = "A small client-side library for writing Zellij plugins"
-license = "MIT"
+license.workspace = true
 
 [dependencies]
 clap = { workspace = true }

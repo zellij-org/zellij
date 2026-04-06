@@ -15,10 +15,15 @@ pub const DEFAULT_SCROLL_BUFFER_SIZE: usize = 10_000;
 pub static SCROLL_BUFFER_SIZE: OnceLock<usize> = OnceLock::new();
 pub static DEBUG_MODE: OnceLock<bool> = OnceLock::new();
 
+#[cfg(not(windows))]
 pub const SYSTEM_DEFAULT_CONFIG_DIR: &str = "/etc/zellij";
+#[cfg(windows)]
+pub const SYSTEM_DEFAULT_CONFIG_DIR: &str = "C:\\ProgramData\\Zellij";
 pub const SYSTEM_DEFAULT_DATA_DIR_PREFIX: &str = system_default_data_dir();
 
 pub static ZELLIJ_DEFAULT_THEMES: Dir = include_dir!("$CARGO_MANIFEST_DIR/assets/themes");
+
+pub const CLIENT_SERVER_CONTRACT_VERSION: usize = 1;
 
 pub fn session_info_cache_file_name(session_name: &str) -> PathBuf {
     session_info_folder_for_session(session_name).join("session-metadata.kdl")
@@ -51,14 +56,23 @@ pub fn create_config_and_cache_folders() {
 const fn system_default_data_dir() -> &'static str {
     if let Some(data_dir) = std::option_env!("PREFIX") {
         data_dir
+    } else if cfg!(windows) {
+        "C:\\ProgramData\\Zellij"
     } else {
         "/usr"
     }
 }
 
 lazy_static! {
-    pub static ref ZELLIJ_PROJ_DIR: ProjectDirs =
-        ProjectDirs::from("org", "Zellij Contributors", "Zellij").unwrap();
+    pub static ref CLIENT_SERVER_CONTRACT_DIR: String =
+        format!("contract_version_{}", CLIENT_SERVER_CONTRACT_VERSION);
+    pub static ref ZELLIJ_PROJ_DIR: ProjectDirs = {
+        if cfg!(windows) {
+            ProjectDirs::from("", "", "Zellij").unwrap()
+        } else {
+            ProjectDirs::from("org", "Zellij Contributors", "Zellij").unwrap()
+        }
+    };
     pub static ref ZELLIJ_CACHE_DIR: PathBuf = ZELLIJ_PROJ_DIR.cache_dir().to_path_buf();
     pub static ref ZELLIJ_SESSION_CACHE_DIR: PathBuf = ZELLIJ_PROJ_DIR
         .cache_dir()
@@ -66,8 +80,9 @@ lazy_static! {
         .join(format!("{}", Uuid::new_v4()));
     pub static ref ZELLIJ_PLUGIN_PERMISSIONS_CACHE: PathBuf =
         ZELLIJ_CACHE_DIR.join("permissions.kdl");
-    pub static ref ZELLIJ_SESSION_INFO_CACHE_DIR: PathBuf =
-        ZELLIJ_CACHE_DIR.join(VERSION).join("session_info");
+    pub static ref ZELLIJ_SESSION_INFO_CACHE_DIR: PathBuf = ZELLIJ_CACHE_DIR
+        .join(CLIENT_SERVER_CONTRACT_DIR.clone())
+        .join("session_info");
     pub static ref ZELLIJ_STDIN_CACHE_FILE: PathBuf =
         ZELLIJ_CACHE_DIR.join(VERSION).join("stdin_cache");
     pub static ref ZELLIJ_PLUGIN_ARTIFACT_DIR: PathBuf = ZELLIJ_CACHE_DIR.join(VERSION);
@@ -133,9 +148,120 @@ mod not_wasm {
             add_plugin!(assets, "about.wasm");
             add_plugin!(assets, "share.wasm");
             add_plugin!(assets, "multiple-select.wasm");
+            add_plugin!(assets, "layout-manager.wasm");
+            add_plugin!(assets, "link.wasm");
             assets
         };
     }
+}
+
+/// Check if a filesystem entry is an IPC socket.
+///
+/// On Unix, this checks `FileTypeExt::is_socket()`. On non-Unix platforms,
+/// this checks `is_file()` to detect marker files created by `ipc_bind()`
+/// and `ipc_bind_async()` alongside kernel-level named pipes.
+#[cfg(unix)]
+pub fn is_ipc_socket(file_type: &std::fs::FileType) -> bool {
+    use std::os::unix::fs::FileTypeExt;
+    file_type.is_socket()
+}
+
+#[cfg(not(unix))]
+pub fn is_ipc_socket(file_type: &std::fs::FileType) -> bool {
+    file_type.is_file()
+}
+
+/// Connect to an IPC socket at the given path.
+///
+/// On Unix, this uses Unix domain sockets via `GenericFilePath`.
+/// On Windows, this uses named pipes via `GenericNamespaced`.
+#[cfg(unix)]
+pub fn ipc_connect(path: &std::path::Path) -> std::io::Result<interprocess::local_socket::Stream> {
+    use interprocess::local_socket::{prelude::*, GenericFilePath, Stream as LocalSocketStream};
+    let fs_name = path.to_fs_name::<GenericFilePath>()?;
+    LocalSocketStream::connect(fs_name)
+}
+
+#[cfg(windows)]
+pub fn ipc_connect(path: &std::path::Path) -> std::io::Result<interprocess::local_socket::Stream> {
+    use interprocess::local_socket::{prelude::*, GenericNamespaced, Stream as LocalSocketStream};
+    let name = path.to_string_lossy().to_string();
+    let ns_name = name.to_ns_name::<GenericNamespaced>()?;
+    LocalSocketStream::connect(ns_name)
+}
+
+/// Create an IPC listener bound to the given path.
+///
+/// On Unix, this uses Unix domain sockets via `GenericFilePath`.
+/// On Windows, this uses named pipes via `GenericNamespaced` and creates
+/// a marker file for session discovery.
+#[cfg(unix)]
+pub fn ipc_bind(path: &std::path::Path) -> std::io::Result<interprocess::local_socket::Listener> {
+    use interprocess::local_socket::{prelude::*, GenericFilePath, ListenerOptions};
+    let fs_name = path.to_fs_name::<GenericFilePath>()?;
+    ListenerOptions::new().name(fs_name).create_sync()
+}
+
+#[cfg(windows)]
+pub fn ipc_bind(path: &std::path::Path) -> std::io::Result<interprocess::local_socket::Listener> {
+    use interprocess::local_socket::{prelude::*, GenericNamespaced, ListenerOptions};
+    let name = path.to_string_lossy().to_string();
+    let ns_name = name.to_ns_name::<GenericNamespaced>()?;
+    let listener = ListenerOptions::new().name(ns_name).create_sync()?;
+    std::fs::write(path, std::process::id().to_string())?;
+    Ok(listener)
+}
+
+/// Create an async (tokio) IPC listener bound to the given path.
+///
+/// On Unix, this uses Unix domain sockets via `GenericFilePath`.
+/// On Windows, this uses named pipes via `GenericNamespaced` and creates
+/// a marker file for session discovery.
+#[cfg(unix)]
+pub fn ipc_bind_async(
+    path: &std::path::Path,
+) -> std::io::Result<interprocess::local_socket::tokio::Listener> {
+    use interprocess::local_socket::{prelude::*, GenericFilePath, ListenerOptions};
+    let fs_name = path.to_fs_name::<GenericFilePath>()?;
+    ListenerOptions::new().name(fs_name).create_tokio()
+}
+
+#[cfg(windows)]
+pub fn ipc_bind_async(
+    path: &std::path::Path,
+) -> std::io::Result<interprocess::local_socket::tokio::Listener> {
+    use interprocess::local_socket::{prelude::*, GenericNamespaced, ListenerOptions};
+    let name = path.to_string_lossy().to_string();
+    let ns_name = name.to_ns_name::<GenericNamespaced>()?;
+    let listener = ListenerOptions::new().name(ns_name).create_tokio()?;
+    std::fs::write(path, std::process::id().to_string())?;
+    Ok(listener)
+}
+
+/// Connect to the reply pipe for a given IPC path (Windows only).
+///
+/// Uses `path-reply` as the named pipe for the server→client direction.
+#[cfg(windows)]
+pub fn ipc_connect_reply(
+    path: &std::path::Path,
+) -> std::io::Result<interprocess::local_socket::Stream> {
+    use interprocess::local_socket::{prelude::*, GenericNamespaced, Stream as LocalSocketStream};
+    let name = format!("{}-reply", path.to_string_lossy());
+    let ns_name = name.to_ns_name::<GenericNamespaced>()?;
+    LocalSocketStream::connect(ns_name)
+}
+
+/// Create an IPC listener for the reply pipe (Windows only).
+///
+/// Binds to `path-reply` as the named pipe for the server→client direction.
+#[cfg(windows)]
+pub fn ipc_bind_reply(
+    path: &std::path::Path,
+) -> std::io::Result<interprocess::local_socket::Listener> {
+    use interprocess::local_socket::{prelude::*, GenericNamespaced, ListenerOptions};
+    let name = format!("{}-reply", path.to_string_lossy());
+    let ns_name = name.to_ns_name::<GenericNamespaced>()?;
+    ListenerOptions::new().name(ns_name).create_sync()
 }
 
 #[cfg(unix)]
@@ -150,6 +276,15 @@ mod unix_only {
     use nix::unistd::Uid;
     use std::env::temp_dir;
 
+    // Maximum length of a Unix domain socket path (from sockaddr_un.sun_path).
+    // macOS (and other BSDs) use 104, Linux/Android/Solaris use 108.
+    // The not(target_os = "macos") fallback of 108 is used for all other Unix
+    // platforms — this is correct for Linux/Android/Solaris and only 4 bytes
+    // over for BSDs, which would cause a slightly late error rather than a
+    // missed one.
+    #[cfg(target_os = "macos")]
+    pub const ZELLIJ_SOCK_MAX_LENGTH: usize = 104;
+    #[cfg(not(target_os = "macos"))]
     pub const ZELLIJ_SOCK_MAX_LENGTH: usize = 108;
 
     lazy_static! {
@@ -166,7 +301,55 @@ mod unix_only {
                 },
                 PathBuf::from,
             );
-            ipc_dir.push(VERSION);
+            ipc_dir.push(CLIENT_SERVER_CONTRACT_DIR.clone());
+            ipc_dir
+        };
+        pub static ref WEBSERVER_SOCKET_PATH: PathBuf = ZELLIJ_SOCK_DIR.join("web_server_bus");
+    }
+}
+
+#[cfg(not(unix))]
+pub use not_unix::*;
+
+#[cfg(not(unix))]
+mod not_unix {
+    use super::*;
+    use crate::envs;
+    pub use crate::shared::set_permissions;
+    #[cfg(windows)]
+    use dunce;
+    use lazy_static::lazy_static;
+    use std::env::temp_dir;
+
+    #[cfg(windows)]
+    fn canonicalize_path(path: PathBuf) -> PathBuf {
+        dunce::canonicalize(&path).unwrap_or(path)
+    }
+
+    #[cfg(not(windows))]
+    fn canonicalize_path(path: PathBuf) -> PathBuf {
+        path
+    }
+
+    pub const ZELLIJ_SOCK_MAX_LENGTH: usize = 256;
+
+    lazy_static! {
+        pub static ref ZELLIJ_TMP_DIR: PathBuf = {
+            let tmp_dir = canonicalize_path(temp_dir());
+            tmp_dir.join("zellij")
+        };
+        pub static ref ZELLIJ_TMP_LOG_DIR: PathBuf = ZELLIJ_TMP_DIR.join("zellij-log");
+        pub static ref ZELLIJ_TMP_LOG_FILE: PathBuf = ZELLIJ_TMP_LOG_DIR.join("zellij.log");
+        pub static ref ZELLIJ_SOCK_DIR: PathBuf = {
+            let mut ipc_dir = canonicalize_path(envs::get_socket_dir().map_or_else(
+                |_| {
+                    ZELLIJ_PROJ_DIR
+                        .runtime_dir()
+                        .map_or_else(|| ZELLIJ_TMP_DIR.clone(), |p| p.to_owned())
+                },
+                PathBuf::from,
+            ));
+            ipc_dir.push(CLIENT_SERVER_CONTRACT_DIR.clone());
             ipc_dir
         };
         pub static ref WEBSERVER_SOCKET_PATH: PathBuf = ZELLIJ_SOCK_DIR.join("web_server_bus");

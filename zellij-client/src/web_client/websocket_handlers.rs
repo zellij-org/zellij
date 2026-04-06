@@ -1,3 +1,4 @@
+use crate::web_client::authentication::SessionTokenHash;
 use crate::web_client::control_message::{
     SetConfigPayload, WebClientToWebServerControlMessage,
     WebClientToWebServerControlMessagePayload, WebServerToWebClientControlMessage,
@@ -16,6 +17,7 @@ use axum::{
     response::IntoResponse,
 };
 use futures::StreamExt;
+use std::sync::{atomic::AtomicBool, Arc};
 use tokio_util::sync::CancellationToken;
 use zellij_utils::{input::mouse::MouseEvent, ipc::ClientToServerMsg};
 
@@ -23,8 +25,9 @@ pub async fn ws_handler_control(
     ws: WebSocketUpgrade,
     _path: Option<AxumPath<String>>,
     State(state): State<AppState>,
+    axum::Extension(session_token_hash): axum::Extension<SessionTokenHash>,
 ) -> impl IntoResponse {
-    ws.on_upgrade(move |socket| handle_ws_control(socket, state))
+    ws.on_upgrade(move |socket| handle_ws_control(socket, state, session_token_hash))
 }
 
 pub async fn ws_handler_terminal(
@@ -32,11 +35,18 @@ pub async fn ws_handler_terminal(
     session_name: Option<AxumPath<String>>,
     Query(params): Query<TerminalParams>,
     State(state): State<AppState>,
+    axum::Extension(session_token_hash): axum::Extension<SessionTokenHash>,
 ) -> impl IntoResponse {
-    ws.on_upgrade(move |socket| handle_ws_terminal(socket, session_name, params, state))
+    ws.on_upgrade(move |socket| {
+        handle_ws_terminal(socket, session_name, params, state, session_token_hash)
+    })
 }
 
-async fn handle_ws_control(socket: WebSocket, state: AppState) {
+async fn handle_ws_control(
+    socket: WebSocket,
+    state: AppState,
+    session_token_hash: SessionTokenHash,
+) {
     let payload = SetConfigPayload::from(&*state.config.lock().unwrap());
     let set_config_msg = WebServerToWebClientControlMessage::SetConfig(payload);
 
@@ -62,7 +72,7 @@ async fn handle_ws_control(socket: WebSocket, state: AppState) {
         };
         let client_msg = match deserialized_msg.payload {
             WebClientToWebServerControlMessagePayload::TerminalResize(size) => {
-                ClientToServerMsg::TerminalResize(size)
+                ClientToServerMsg::TerminalResize { new_size: size }
             },
         };
 
@@ -78,6 +88,21 @@ async fn handle_ws_control(socket: WebSocket, state: AppState) {
                     serde_json::from_str(&msg);
                 match deserialized_msg {
                     Ok(deserialized_msg) => {
+                        if !state
+                            .connection_table
+                            .lock()
+                            .unwrap()
+                            .verify_client_ownership(
+                                &deserialized_msg.web_client_id,
+                                &session_token_hash.0,
+                            )
+                        {
+                            log::error!(
+                                "Client attempted to use web_client_id {} that does not belong to their session",
+                                deserialized_msg.web_client_id
+                            );
+                            return;
+                        }
                         if !set_client_control_channel {
                             set_client_control_channel = true;
                             state
@@ -111,8 +136,24 @@ async fn handle_ws_terminal(
     session_name: Option<AxumPath<String>>,
     params: TerminalParams,
     state: AppState,
+    session_token_hash: SessionTokenHash,
 ) {
     let web_client_id = params.web_client_id;
+
+    // Verify the session token owns this web_client_id
+    if !state
+        .connection_table
+        .lock()
+        .unwrap()
+        .verify_client_ownership(&web_client_id, &session_token_hash.0)
+    {
+        log::error!(
+            "Terminal WebSocket: client does not own web_client_id {}",
+            web_client_id
+        );
+        return;
+    }
+
     let Some(os_input) = state
         .connection_table
         .lock()
@@ -132,6 +173,8 @@ async fn handle_ws_terminal(
         .unwrap()
         .add_client_terminal_tx(&web_client_id, stdout_channel_tx);
 
+    let (attachment_complete_tx, attachment_complete_rx) = tokio::sync::oneshot::channel();
+
     zellij_server_listener(
         os_input.clone(),
         state.connection_table.clone(),
@@ -141,13 +184,21 @@ async fn handle_ws_terminal(
         Some(state.config_file_path.clone()),
         web_client_id.clone(),
         state.session_manager.clone(),
+        Some(attachment_complete_tx),
     );
 
     let terminal_channel_cancellation_token = CancellationToken::new();
+    let should_not_reconnect = state
+        .connection_table
+        .lock()
+        .unwrap()
+        .get_should_not_reconnect_flag(&web_client_id)
+        .unwrap_or_else(|| Arc::new(AtomicBool::new(false)));
     render_to_client(
         stdout_channel_rx,
         client_terminal_channel_tx,
         terminal_channel_cancellation_token.clone(),
+        should_not_reconnect,
     );
     state
         .connection_table
@@ -166,9 +217,30 @@ async fn handle_ws_terminal(
         .support_kitty_keyboard_protocol
         .map(|e| !e)
         .unwrap_or(false);
+
+    let _ = attachment_complete_rx.await;
+
     let mut mouse_old_event = MouseEvent::new();
     while let Some(Ok(msg)) = client_terminal_channel_rx.next().await {
         match msg {
+            Message::Binary(buf) => {
+                let Some(client_connection) = state
+                    .connection_table
+                    .lock()
+                    .unwrap()
+                    .get_client_os_api(&web_client_id)
+                    .cloned()
+                else {
+                    log::error!("Unknown web_client_id: {}", web_client_id);
+                    continue;
+                };
+                parse_stdin(
+                    &buf,
+                    client_connection.clone(),
+                    &mut mouse_old_event,
+                    explicitly_disable_kitty_keyboard_protocol,
+                );
+            },
             Message::Text(msg) => {
                 let Some(client_connection) = state
                     .connection_table
@@ -195,6 +267,7 @@ async fn handle_ws_terminal(
                     .remove_client(&web_client_id);
                 break;
             },
+            // TODO: support Message::Binary
             _ => {
                 log::error!("Unsupported websocket msg type");
             },

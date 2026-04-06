@@ -1,0 +1,59 @@
+---
+source: zellij-server/src/tab/./unit/layout_applier_tests.rs
+expression: "take_pane_state_snapshot(&tiled_panes, &floating_panes, &focus_pane_id,\n&viewport, &display_area,)"
+---
+VIEWPORT: x=0, y=0, cols=120, rows=40
+DISPLAY: cols=120, rows=40
+FOCUS: None
+
+TILED PANES (4)
+  Terminal(1):
+    geom: x=0, y=20, cols=60, rows=20
+    logical_position: 1
+    run: Command(htop)
+    selectable: true
+    title: htop
+    borderless: false
+
+  Terminal(2):
+    geom: x=60, y=20, cols=60, rows=20
+    logical_position: 1
+    run: Command(vim)
+    selectable: true
+    title: vim
+    borderless: false
+
+  Terminal(3):
+    geom: x=60, y=0, cols=60, rows=20
+    logical_position: 2
+    run: Command(tail) args=["-f", "/var/log/syslog"]
+    selectable: true
+    title: tail -f /var/log/syslog
+    borderless: false
+
+  Terminal(5):
+    geom: x=0, y=0, cols=60, rows=20
+    logical_position: 0
+    run: Command(top)
+    selectable: true
+    title: top
+    borderless: false
+
+FLOATING PANES (2)
+  Terminal(4):
+    geom: x=30, y=10, cols=60, rows=20
+    logical_position: 1
+    run: Command(watch) args=["df", "-h"]
+    pinned: false
+    selectable: true
+    title: watch df -h
+    borderless: false
+
+  Terminal(6):
+    geom: x=20, y=15, cols=50, rows=25
+    logical_position: 0
+    run: Command(watch) args=["free", "-h"]
+    pinned: false
+    selectable: true
+    title: watch free -h
+    borderless: false

@@ -14,6 +14,10 @@ pub enum PermissionType {
     FullHdAccess = 10,
     StartWebServer = 11,
     InterceptInput = 12,
+    ReadPaneContents = 13,
+    RunActionsAsUser = 14,
+    WriteToClipboard = 15,
+    ReadSessionEnvironmentVariables = 16,
 }
 impl PermissionType {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -35,6 +39,10 @@ impl PermissionType {
             PermissionType::FullHdAccess => "FullHdAccess",
             PermissionType::StartWebServer => "StartWebServer",
             PermissionType::InterceptInput => "InterceptInput",
+            PermissionType::ReadPaneContents => "ReadPaneContents",
+            PermissionType::RunActionsAsUser => "RunActionsAsUser",
+            PermissionType::WriteToClipboard => "WriteToClipboard",
+            PermissionType::ReadSessionEnvironmentVariables => "ReadSessionEnvironmentVariables",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -53,6 +61,10 @@ impl PermissionType {
             "FullHdAccess" => Some(Self::FullHdAccess),
             "StartWebServer" => Some(Self::StartWebServer),
             "InterceptInput" => Some(Self::InterceptInput),
+            "ReadPaneContents" => Some(Self::ReadPaneContents),
+            "RunActionsAsUser" => Some(Self::RunActionsAsUser),
+            "WriteToClipboard" => Some(Self::WriteToClipboard),
+            "ReadSessionEnvironmentVariables" => Some(Self::ReadSessionEnvironmentVariables),
             _ => None,
         }
     }

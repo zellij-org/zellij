@@ -108,6 +108,11 @@ pub struct Options {
     #[serde(default)]
     pub copy_on_select: Option<bool>,
 
+    /// Enable OSC8 hyperlink output (true or false)
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub osc8_hyperlinks: Option<bool>,
+
     /// Explicit full path to open the scrollback editor (default is $EDITOR or $VISUAL)
     #[clap(long, value_parser)]
     pub scrollback_editor: Option<PathBuf>,
@@ -220,6 +225,30 @@ pub struct Options {
     #[serde(default)]
     pub advanced_mouse_actions: Option<bool>,
 
+    /// Whether to enable mouse hover visual effects (frame highlight and help text)
+    /// default is true
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub mouse_hover_effects: Option<bool>,
+
+    /// Whether to show visual bell indicators (pane/tab frame flash and [!] suffix)
+    /// default is true
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub visual_bell: Option<bool>,
+
+    /// Whether to focus panes on mouse hover (true or false)
+    /// default is false
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub focus_follows_mouse: Option<bool>,
+
+    /// Whether clicking a pane to focus it also sends the click into the pane (true or false)
+    /// default is false
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub mouse_click_through: Option<bool>,
+
     // these are intentionally excluded from the CLI options as they must be specified in the
     // configuration file
     pub web_server_ip: Option<IpAddr>,
@@ -231,6 +260,14 @@ pub struct Options {
     /// of manipulating the command (eg. with a regex) before it gets serialized
     #[clap(long, value_parser)]
     pub post_command_discovery_hook: Option<String>,
+
+    /// Number of async worker tasks to spawn per active client.
+    ///
+    /// Allocating few tasks may result in resource contention and lags. Small values (around 4)
+    /// should typically work best. Set to 0 to use the number of (physical) CPU cores.
+    /// NOTE: This only applies to web clients at the moment.
+    #[clap(long)]
+    pub client_async_worker_tasks: Option<usize>,
 }
 
 #[derive(ArgEnum, Deserialize, Serialize, Debug, Clone, Copy, PartialEq)]
@@ -287,6 +324,7 @@ impl Options {
         let copy_command = other.copy_command.or_else(|| self.copy_command.clone());
         let copy_clipboard = other.copy_clipboard.or(self.copy_clipboard);
         let copy_on_select = other.copy_on_select.or(self.copy_on_select);
+        let osc8_hyperlinks = other.osc8_hyperlinks.or(self.osc8_hyperlinks);
         let scrollback_editor = other
             .scrollback_editor
             .or_else(|| self.scrollback_editor.clone());
@@ -315,6 +353,10 @@ impl Options {
         let show_startup_tips = other.show_startup_tips.or(self.show_startup_tips);
         let show_release_notes = other.show_release_notes.or(self.show_release_notes);
         let advanced_mouse_actions = other.advanced_mouse_actions.or(self.advanced_mouse_actions);
+        let mouse_hover_effects = other.mouse_hover_effects.or(self.mouse_hover_effects);
+        let visual_bell = other.visual_bell.or(self.visual_bell);
+        let focus_follows_mouse = other.focus_follows_mouse.or(self.focus_follows_mouse);
+        let mouse_click_through = other.mouse_click_through.or(self.mouse_click_through);
         let web_server_ip = other.web_server_ip.or(self.web_server_ip);
         let web_server_port = other.web_server_port.or(self.web_server_port);
         let web_server_cert = other
@@ -327,6 +369,9 @@ impl Options {
         let post_command_discovery_hook = other
             .post_command_discovery_hook
             .or(self.post_command_discovery_hook.clone());
+        let client_async_worker_tasks = other
+            .client_async_worker_tasks
+            .or(self.client_async_worker_tasks);
 
         Options {
             simplified_ui,
@@ -345,6 +390,7 @@ impl Options {
             copy_command,
             copy_clipboard,
             copy_on_select,
+            osc8_hyperlinks,
             scrollback_editor,
             session_name,
             attach_to_session,
@@ -362,12 +408,17 @@ impl Options {
             show_startup_tips,
             show_release_notes,
             advanced_mouse_actions,
+            mouse_hover_effects,
+            visual_bell,
+            focus_follows_mouse,
+            mouse_click_through,
             web_server_ip,
             web_server_port,
             web_server_cert,
             web_server_key,
             enforce_https_for_localhost,
             post_command_discovery_hook,
+            client_async_worker_tasks,
         }
     }
 
@@ -408,6 +459,7 @@ impl Options {
         let copy_command = other.copy_command.or_else(|| self.copy_command.clone());
         let copy_clipboard = other.copy_clipboard.or(self.copy_clipboard);
         let copy_on_select = other.copy_on_select.or(self.copy_on_select);
+        let osc8_hyperlinks = other.osc8_hyperlinks.or(self.osc8_hyperlinks);
         let scrollback_editor = other
             .scrollback_editor
             .or_else(|| self.scrollback_editor.clone());
@@ -432,6 +484,10 @@ impl Options {
         let show_startup_tips = other.show_startup_tips.or(self.show_startup_tips);
         let show_release_notes = other.show_release_notes.or(self.show_release_notes);
         let advanced_mouse_actions = other.advanced_mouse_actions.or(self.advanced_mouse_actions);
+        let mouse_hover_effects = other.mouse_hover_effects.or(self.mouse_hover_effects);
+        let visual_bell = other.visual_bell.or(self.visual_bell);
+        let focus_follows_mouse = merge_bool(other.focus_follows_mouse, self.focus_follows_mouse);
+        let mouse_click_through = merge_bool(other.mouse_click_through, self.mouse_click_through);
         let web_server_ip = other.web_server_ip.or(self.web_server_ip);
         let web_server_port = other.web_server_port.or(self.web_server_port);
         let web_server_cert = other
@@ -444,6 +500,9 @@ impl Options {
         let post_command_discovery_hook = other
             .post_command_discovery_hook
             .or_else(|| self.post_command_discovery_hook.clone());
+        let client_async_worker_tasks = other
+            .client_async_worker_tasks
+            .or(self.client_async_worker_tasks);
 
         Options {
             simplified_ui,
@@ -462,6 +521,7 @@ impl Options {
             copy_command,
             copy_clipboard,
             copy_on_select,
+            osc8_hyperlinks,
             scrollback_editor,
             session_name,
             attach_to_session,
@@ -479,12 +539,17 @@ impl Options {
             show_startup_tips,
             show_release_notes,
             advanced_mouse_actions,
+            mouse_hover_effects,
+            visual_bell,
+            focus_follows_mouse,
+            mouse_click_through,
             web_server_ip,
             web_server_port,
             web_server_cert,
             web_server_key,
             enforce_https_for_localhost,
             post_command_discovery_hook,
+            client_async_worker_tasks,
         }
     }
 

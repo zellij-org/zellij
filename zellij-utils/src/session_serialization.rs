@@ -1,5 +1,5 @@
 use kdl::{KdlDocument, KdlEntry, KdlNode, KdlValue};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::PathBuf;
 
 use crate::{
@@ -36,6 +36,8 @@ pub struct PaneLayoutManifest {
     pub title: Option<String>,
     pub is_focused: bool,
     pub pane_contents: Option<String>,
+    pub default_fg: Option<String>,
+    pub default_bg: Option<String>,
 }
 
 pub fn serialize_session_layout(
@@ -182,6 +184,16 @@ fn serialize_tiled_pane(
     );
 
     serialize_tiled_layout_attributes(&layout, ignore_size, &mut tiled_pane_node);
+    if let Some(ref fg) = layout.default_fg {
+        tiled_pane_node
+            .entries_mut()
+            .push(KdlEntry::new_prop("default_fg", fg.to_owned()));
+    }
+    if let Some(ref bg) = layout.default_bg {
+        tiled_pane_node
+            .entries_mut()
+            .push(KdlEntry::new_prop("default_bg", bg.to_owned()));
+    }
     let has_child_attributes = !layout.children.is_empty()
         || layout.external_children_index.is_some()
         || !args.is_empty()
@@ -363,7 +375,7 @@ fn serialize_tiled_layout_attributes(
             None => (),
         };
     }
-    if layout.borderless {
+    if layout.borderless.unwrap_or(false) {
         kdl_node
             .entries_mut()
             .push(KdlEntry::new_prop("borderless", KdlValue::Bool(true)));
@@ -659,6 +671,16 @@ fn serialize_floating_pane(
         has_children,
         &mut floating_pane_node,
     );
+    if let Some(ref fg) = layout.default_fg {
+        floating_pane_node
+            .entries_mut()
+            .push(KdlEntry::new_prop("default_fg", fg.to_owned()));
+    }
+    if let Some(ref bg) = layout.default_bg {
+        floating_pane_node
+            .entries_mut()
+            .push(KdlEntry::new_prop("default_bg", bg.to_owned()));
+    }
     serialize_start_suspended(&command, &mut floating_pane_node_children);
     serialize_floating_layout_attributes(&layout, &mut floating_pane_node_children);
     serialize_args(args, &mut floating_pane_node_children);
@@ -709,7 +731,16 @@ fn tiled_pane_layout_from_manifest(
     manifest: Option<&PaneLayoutManifest>,
     split_size: Option<SplitSize>,
 ) -> TiledPaneLayout {
-    let (run, borderless, is_expanded_in_stack, name, focus, pane_initial_contents) = manifest
+    let (
+        run,
+        borderless,
+        is_expanded_in_stack,
+        name,
+        focus,
+        pane_initial_contents,
+        default_fg,
+        default_bg,
+    ) = manifest
         .map(|g| {
             let mut run = g.run.clone();
             if let Some(cwd) = &g.cwd {
@@ -721,14 +752,16 @@ fn tiled_pane_layout_from_manifest(
             }
             (
                 run,
-                g.is_borderless,
+                Some(g.is_borderless),
                 g.geom.is_stacked() && g.geom.rows.inner > 1,
                 g.title.clone(),
                 Some(g.is_focused),
                 g.pane_contents.clone(),
+                g.default_fg.clone(),
+                g.default_bg.clone(),
             )
         })
-        .unwrap_or((None, false, false, None, None, None));
+        .unwrap_or((None, None, false, None, None, None, None, None));
     TiledPaneLayout {
         split_size,
         run,
@@ -737,6 +770,8 @@ fn tiled_pane_layout_from_manifest(
         name,
         focus,
         pane_initial_contents,
+        default_fg,
+        default_bg,
         ..Default::default()
     }
 }
@@ -789,14 +824,6 @@ fn get_tiled_panes_layout_from_panegeoms(
         }
     }
 
-    if let Some(SplitSize::Fixed(fixed_size)) = split_size {
-        if fixed_size == 1 && !new_geoms.is_empty() {
-            // invalid state, likely an off-by-one error somewhere, we do not serialize
-            log::error!("invalid state, not serializing");
-            return None;
-        }
-    }
-
     let new_split_sizes = get_split_sizes(&new_constraints);
 
     for (subgeoms, subsplit_size) in new_geoms.iter().zip(new_split_sizes) {
@@ -810,9 +837,7 @@ fn get_tiled_panes_layout_from_panegeoms(
         }
     }
     let children_are_stacked = children_split_direction == SplitDirection::Horizontal
-        && new_geoms
-            .iter()
-            .all(|c| c.iter().all(|c| c.geom.is_stacked()));
+        && all_geoms_are_from_the_same_stack(&new_geoms);
     Some(TiledPaneLayout {
         children_split_direction,
         split_size,
@@ -820,6 +845,16 @@ fn get_tiled_panes_layout_from_panegeoms(
         children_are_stacked,
         ..Default::default()
     })
+}
+
+fn all_geoms_are_from_the_same_stack(manifests: &Vec<Vec<PaneLayoutManifest>>) -> bool {
+    let mut stack_ids = HashSet::new();
+    for manifest_group in manifests {
+        for pane_layout_manifest in manifest_group {
+            stack_ids.insert(pane_layout_manifest.geom.stacked);
+        }
+    }
+    stack_ids.len() == 1 && !stack_ids.contains(&None)
 }
 
 fn get_floating_panes_layout_from_panegeoms(
@@ -844,6 +879,9 @@ fn get_floating_panes_layout_from_panegeoms(
                 already_running: false,
                 pane_initial_contents: m.pane_contents.clone(),
                 logical_position: None,
+                borderless: Some(m.is_borderless),
+                default_fg: m.default_fg.clone(),
+                default_bg: m.default_bg.clone(),
             }
         })
         .collect()

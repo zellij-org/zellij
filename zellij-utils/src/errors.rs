@@ -1,3 +1,5 @@
+// false positive: thiserror's derive macro triggers unused_assignments on struct-style enum variant fields
+#![allow(unused_assignments)]
 //! Error context system based on a thread-local representation of the call stack, itself based on
 //! the instructions that are sent between threads.
 //!
@@ -11,6 +13,7 @@
 
 use anyhow::Context;
 use colored::*;
+#[allow(unused_imports)] // used in set_panic_handler; may appear unused under wasm target
 use log::error;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Error, Formatter};
@@ -219,6 +222,7 @@ pub enum ScreenContext {
     ToggleFloatingPanes,
     ShowFloatingPanes,
     HideFloatingPanes,
+    AreFloatingPanesVisible,
     TogglePaneEmbedOrFloating,
     HorizontalSplit,
     VerticalSplit,
@@ -259,7 +263,9 @@ pub enum ScreenContext {
     ClearScreen,
     DumpScreen,
     DumpLayout,
+    SaveSession,
     EditScrollback,
+    GetPaneScrollback,
     ScrollUp,
     ScrollUpAt,
     ScrollDown,
@@ -276,6 +282,7 @@ pub enum ScreenContext {
     ToggleActiveTerminalFullscreen,
     TogglePaneFrames,
     SetSelectable,
+    ShowPluginCursor,
     SetInvisibleBorders,
     SetFixedHeight,
     SetFixedWidth,
@@ -294,6 +301,10 @@ pub enum ScreenContext {
     UndoRenameTab,
     MoveTabLeft,
     MoveTabRight,
+    GoToTabWithId,
+    CloseTabWithId,
+    RenameTabWithId,
+    BreakPanesToTabWithId,
     TerminalResize,
     TerminalPixelDimensions,
     TerminalBackgroundColor,
@@ -312,10 +323,6 @@ pub enum ScreenContext {
     ToggleTab,
     AddClient,
     RemoveClient,
-    AddOverlay,
-    RemoveOverlay,
-    ConfirmPrompt,
-    DenyPrompt,
     UpdateSearch,
     SearchDown,
     SearchUp,
@@ -324,8 +331,11 @@ pub enum ScreenContext {
     SearchToggleWrap,
     AddRedPaneFrameColorOverride,
     ClearPaneFrameColorOverride,
+    SetTabBellFlash,
     PreviousSwapLayout,
     NextSwapLayout,
+    OverrideLayout,
+    OverrideLayoutComplete,
     QueryTabNames,
     NewTiledPluginPane,
     StartOrReloadPluginPane,
@@ -338,25 +348,39 @@ pub enum ScreenContext {
     LaunchOrFocusPlugin,
     LaunchPlugin,
     SuppressPane,
+    UnsuppressPane,
+    UnsuppressOrExpandPane,
     FocusPaneWithId,
     RenamePane,
+    RenameActivePane,
     RenameTab,
     RequestPluginPermissions,
     BreakPane,
     BreakPaneRight,
     BreakPaneLeft,
     UpdateSessionInfos,
+    UpdateAvailableLayouts,
     ReplacePane,
     NewInPlacePluginPane,
     SerializeLayoutForResurrection,
     RenameSession,
     DumpLayoutToPlugin,
+    GetFocusedPaneInfo,
+    GetPaneInfo,
+    GetTabInfo,
     ListClientsMetadata,
+    ListPanes,
+    ListTabs,
+    GetCurrentTabInfo,
     Reconfigure,
     RerunCommandPane,
     ResizePaneWithId,
     EditScrollbackForPaneWithId,
     WriteToPaneId,
+    Paste,
+    SetPaneColor,
+    WriteKeyToPaneId,
+    CopyTextToClipboard,
     MovePaneWithPaneId,
     MovePaneWithPaneIdInDirection,
     ClearScreenForPaneId,
@@ -376,6 +400,8 @@ pub enum ScreenContext {
     SetFloatingPanePinned,
     StackPanes,
     ChangeFloatingPanesCoordinates,
+    TogglePaneBorderless,
+    SetPaneBorderless,
     AddHighlightPaneFrameColorOverride,
     GroupAndUngroupPanes,
     HighlightAndUnhighlightPanes,
@@ -388,6 +414,46 @@ pub enum ScreenContext {
     InterceptKeyPresses,
     ClearKeyPressesIntercepts,
     ReplacePaneWithExistingPane,
+    AddWatcherClient,
+    RemoveWatcherClient,
+    SetFollowedClient,
+    WatcherTerminalResize,
+    ClearMouseHelpText,
+    SetPluginRegexHighlights,
+    ClearPluginHighlights,
+    DesktopNotificationResponse,
+    SubscribeToPaneRenders,
+    NotifyPaneClosedToSubscribers,
+    // Pane-targeting CLI variants
+    ScrollUpWithPaneId,
+    ScrollDownWithPaneId,
+    ScrollToTopWithPaneId,
+    ScrollToBottomWithPaneId,
+    PageScrollUpWithPaneId,
+    PageScrollDownWithPaneId,
+    HalfPageScrollUpWithPaneId,
+    HalfPageScrollDownWithPaneId,
+    ResizeWithPaneId,
+    MovePaneWithPaneIdCli,
+    MovePaneBackwardsWithPaneId,
+    ClearScreenWithPaneId,
+    EditScrollbackWithPaneId,
+    ToggleFullscreenWithPaneId,
+    TogglePaneEmbedOrFloatingWithPaneId,
+    CloseFocusWithPaneId,
+    RenamePaneWithPaneId,
+    UndoRenamePaneWithPaneId,
+    TogglePanePinnedWithPaneId,
+    // Tab-targeting CLI variants
+    UndoRenameTabWithTabId,
+    ToggleActiveSyncTabWithTabId,
+    ToggleFloatingPanesWithTabId,
+    PreviousSwapLayoutWithTabId,
+    NextSwapLayoutWithTabId,
+    MoveTabWithTabId,
+    PluginSubscribedToAnsiPaneContents,
+    UpdateBackgroundPluginSubscriptions,
+    BroadcastModeUpdate,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.
@@ -400,6 +466,7 @@ pub enum PtyContext {
     UpdateActivePane,
     GoToTab,
     NewTab,
+    OverrideLayout,
     ClosePane,
     CloseTab,
     ReRunCommandInPane,
@@ -407,12 +474,19 @@ pub enum PtyContext {
     SpawnInPlaceTerminal,
     DumpLayout,
     LogLayoutToHd,
+    SaveSessionToDisk,
     FillPluginCwd,
     DumpLayoutToPlugin,
     ListClientsMetadata,
     Reconfigure,
     ListClientsToPlugin,
     ReportPluginCwd,
+    SendSigintToPaneId,
+    SendSigkillToPaneId,
+    GetPanePid,
+    GetPaneRunningCommand,
+    GetPaneCwd,
+    UpdateAndReportCwds,
     Exit,
 }
 
@@ -431,6 +505,7 @@ pub enum PluginContext {
     AddClient,
     RemoveClient,
     NewTab,
+    OverrideLayout,
     ApplyCachedEvents,
     ApplyCachedWorkerMessages,
     PostMessageToPluginWorker,
@@ -454,6 +529,14 @@ pub enum PluginContext {
     ChangePluginHostDir,
     WebServerStarted,
     FailedToStartWebServer,
+    PaneRenderReport,
+    UserInput,
+    LayoutListUpdate,
+    RequestStateUpdateForPlugin,
+    UpdateSessionSaveTime,
+    GetLastSessionSaveTime,
+    DetectPluginConfigChanges,
+    HighlightClicked,
 }
 
 /// Stack call representations corresponding to the different types of [`ClientInstruction`]s.
@@ -514,6 +597,7 @@ pub enum ServerContext {
     WebServerStarted,
     FailedToStartWebServer,
     SendWebClientsForbidden,
+    ClearMouseHelpText,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -540,6 +624,11 @@ pub enum BackgroundJobContext {
     RenderToClients,
     HighlightPanesWithMessage,
     QueryZellijWebServerStatus,
+    ClearHelpText,
+    FlashPaneBell,
+    StopFlashPaneBell,
+    FlashTabBell,
+    StopFlashTabBell,
     Exit,
 }
 
@@ -624,6 +713,9 @@ open an issue on GitHub:
 
     #[error("The plugin does not exist")]
     PluginDoesNotExist,
+
+    #[error("Ran out of room for spans")]
+    RanOutOfRoomForSpans,
 }
 
 #[cfg(not(target_family = "wasm"))]
@@ -679,7 +771,7 @@ mod not_wasm {
     }
 
     /// Custom panic handler/hook. Prints the [`ErrorContext`].
-    pub fn handle_panic<T>(info: &PanicHookInfo<'_>, sender: &SenderWithContext<T>)
+    pub fn handle_panic<T>(info: &PanicHookInfo<'_>, sender: Option<&SenderWithContext<T>>)
     where
         T: ErrorInstruction + Clone,
     {
@@ -728,14 +820,14 @@ mod not_wasm {
             )
         );
 
-        if thread == "main" {
+        if thread == "main" || sender.is_none() {
             // here we only show the first line because the backtrace is not readable otherwise
             // a better solution would be to escape raw mode before we do this, but it's not trivial
             // to get os_input here
             println!("\u{1b}[2J{}", fmt_report(report));
             process::exit(1);
         } else {
-            let _ = sender.send(T::error(fmt_report(report)));
+            let _ = sender.unwrap().send(T::error(fmt_report(report)));
         }
     }
 

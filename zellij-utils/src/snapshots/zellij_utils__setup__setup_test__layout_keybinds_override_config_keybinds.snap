@@ -11,9 +11,9 @@ Config {
                 ),
                 key_modifiers: {},
             }: [
-                SwitchToMode(
-                    Session,
-                ),
+                SwitchToMode {
+                    input_mode: Session,
+                },
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -23,9 +23,9 @@ Config {
                     Ctrl,
                 },
             }: [
-                SwitchToMode(
-                    Resize,
-                ),
+                SwitchToMode {
+                    input_mode: Resize,
+                },
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -35,9 +35,9 @@ Config {
                     Ctrl,
                 },
             }: [
-                SwitchToMode(
-                    Resize,
-                ),
+                SwitchToMode {
+                    input_mode: Resize,
+                },
             ],
         },
         Resize: {
@@ -47,9 +47,9 @@ Config {
                 ),
                 key_modifiers: {},
             }: [
-                SwitchToMode(
-                    Locked,
-                ),
+                SwitchToMode {
+                    input_mode: Locked,
+                },
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -59,9 +59,9 @@ Config {
                     Ctrl,
                 },
             }: [
-                SwitchToMode(
-                    Resize,
-                ),
+                SwitchToMode {
+                    input_mode: Resize,
+                },
             ],
         },
         Scroll: {
@@ -71,9 +71,9 @@ Config {
                 ),
                 key_modifiers: {},
             }: [
-                SwitchToMode(
-                    Locked,
-                ),
+                SwitchToMode {
+                    input_mode: Locked,
+                },
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -83,9 +83,9 @@ Config {
                     Ctrl,
                 },
             }: [
-                SwitchToMode(
-                    Resize,
-                ),
+                SwitchToMode {
+                    input_mode: Resize,
+                },
             ],
         },
     },
@@ -106,6 +106,7 @@ Config {
         copy_command: None,
         copy_clipboard: None,
         copy_on_select: None,
+        osc8_hyperlinks: None,
         scrollback_editor: None,
         session_name: None,
         attach_to_session: None,
@@ -123,12 +124,17 @@ Config {
         show_startup_tips: None,
         show_release_notes: None,
         advanced_mouse_actions: None,
+        mouse_hover_effects: None,
+        visual_bell: None,
+        focus_follows_mouse: None,
+        mouse_click_through: None,
         web_server_ip: None,
         web_server_port: None,
         web_server_cert: None,
         web_server_key: None,
         enforce_https_for_localhost: None,
         post_command_discovery_hook: None,
+        client_async_worker_tasks: None,
     },
     themes: {},
     plugins: PluginAliases {
@@ -266,7 +272,22 @@ Config {
         },
     },
     env: {},
-    background_plugins: {},
+    background_plugins: {
+        RunPlugin(
+            RunPlugin {
+                _allow_exec_host_cmd: false,
+                location: Zellij(
+                    PluginTag(
+                        "link",
+                    ),
+                ),
+                configuration: PluginUserConfiguration(
+                    {},
+                ),
+                initial_cwd: None,
+            },
+        ),
+    },
     web_client: WebClientConfig {
         font: "monospace",
         theme: None,
@@ -274,5 +295,6 @@ Config {
         cursor_inactive_style: None,
         cursor_style: None,
         mac_option_is_meta: true,
+        base_url: None,
     },
 }

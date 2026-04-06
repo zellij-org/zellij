@@ -1,0 +1,40 @@
+---
+source: zellij-server/src/tab/./unit/layout_applier_tests.rs
+expression: "take_pane_state_snapshot(&tiled_panes, &floating_panes, &focus_pane_id,\n&viewport, &display_area,)"
+---
+VIEWPORT: x=0, y=0, cols=200, rows=50
+DISPLAY: cols=200, rows=50
+FOCUS: None
+
+TILED PANES (4)
+  Terminal(1):
+    geom: x=40, y=0, cols=120, rows=25
+    logical_position: 1
+    run: Command(vim)
+    selectable: true
+    title: vim
+    borderless: false
+
+  Terminal(2):
+    geom: x=40, y=25, cols=120, rows=25
+    logical_position: 3
+    run: Command(cargo) args=["watch", "-x", "test"]
+    selectable: true
+    title: cargo watch -x test
+    borderless: false
+
+  Plugin(102):
+    geom: x=0, y=0, cols=40, rows=50
+    logical_position: 0
+    run: Plugin(file:/path/to/filebrowser.wasm)
+    selectable: true
+    title: file:/path/to/filebrowser.wasm
+    borderless: false
+
+  Plugin(103):
+    geom: x=160, y=0, cols=40, rows=50
+    logical_position: 2
+    run: Plugin(zellij:compact-bar)
+    selectable: true
+    title: zellij:compact-bar
+    borderless: false

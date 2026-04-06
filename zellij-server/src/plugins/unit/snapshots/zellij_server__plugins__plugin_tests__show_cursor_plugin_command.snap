@@ -1,0 +1,16 @@
+---
+source: zellij-server/src/plugins/./unit/plugin_tests.rs
+expression: "format!(\"{:#?}\", show_cursor_instruction)"
+---
+Some(
+    (
+        0,
+        1,
+        Some(
+            (
+                5,
+                10,
+            ),
+        ),
+    ),
+)

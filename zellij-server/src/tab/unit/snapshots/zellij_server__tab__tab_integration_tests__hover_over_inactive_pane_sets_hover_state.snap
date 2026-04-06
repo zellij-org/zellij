@@ -1,0 +1,5 @@
+---
+source: zellij-server/src/tab/./unit/tab_integration_tests.rs
+expression: "format!(\"{:?}\", hover_panes)"
+---
+{1: Terminal(1)}

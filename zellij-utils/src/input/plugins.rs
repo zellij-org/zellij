@@ -40,7 +40,7 @@ pub struct PluginConfig {
     /// Original location of the
     pub location: RunPluginLocation,
     /// Custom configuration for this plugin
-    pub userspace_configuration: PluginUserConfiguration,
+    pub initial_userspace_configuration: PluginUserConfiguration,
     /// plugin initial working directory
     pub initial_cwd: Option<PathBuf>,
 }
@@ -52,7 +52,7 @@ impl PluginConfig {
                 path: path.clone(),
                 _allow_exec_host_cmd: run_plugin._allow_exec_host_cmd,
                 location: run_plugin.location.clone(),
-                userspace_configuration: run_plugin.configuration.clone(),
+                initial_userspace_configuration: run_plugin.configuration.clone(),
                 initial_cwd: run_plugin.initial_cwd.clone(),
             }),
             RunPluginLocation::Zellij(tag) => {
@@ -67,13 +67,15 @@ impl PluginConfig {
                     || tag == "about"
                     || tag == "share"
                     || tag == "multiple-select"
+                    || tag == "layout-manager"
+                    || tag == "link"
                 {
                     Some(PluginConfig {
                         path: PathBuf::from(&tag),
                         _allow_exec_host_cmd: run_plugin._allow_exec_host_cmd,
                         location: RunPluginLocation::parse(&format!("zellij:{}", tag), None)
                             .ok()?,
-                        userspace_configuration: run_plugin.configuration.clone(),
+                        initial_userspace_configuration: run_plugin.configuration.clone(),
                         initial_cwd: run_plugin.initial_cwd.clone(),
                     })
                 } else {
@@ -84,7 +86,7 @@ impl PluginConfig {
                 path: PathBuf::new(),
                 _allow_exec_host_cmd: run_plugin._allow_exec_host_cmd,
                 location: run_plugin.location.clone(),
-                userspace_configuration: run_plugin.configuration.clone(),
+                initial_userspace_configuration: run_plugin.configuration.clone(),
                 initial_cwd: run_plugin.initial_cwd.clone(),
             }),
         }

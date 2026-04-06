@@ -1,7 +1,7 @@
 //! Tasks related to zellij CI
 use crate::{
     build,
-    flags::{self, CiCmd, Cross, E2e},
+    flags::{self, BuildRelease, CiCmd, Cross, E2e},
     metadata,
 };
 use anyhow::Context;
@@ -40,6 +40,7 @@ pub fn main(sh: &Shell, flags: flags::Ci) -> anyhow::Result<()> {
             args,
         }) => e2e_test(sh, args),
         CiCmd::Cross(Cross { triple, no_web }) => cross_compile(sh, &triple, no_web),
+        CiCmd::BuildRelease(BuildRelease { no_web }) => build_release(sh, no_web),
     }
     .context(err_context)
 }
@@ -88,14 +89,101 @@ fn e2e_build(sh: &Shell) -> anyhow::Result<()> {
     }
 
     let _pd = sh.push_dir(project_root);
+    // On Windows, build natively (MSVC).
+    // On macOS: use cargo-zigbuild which handles musl cross-compilation for any arch without
+    //   needing a separate linker toolchain. The target arch matches the host so the Docker
+    //   container runs natively without emulation (arm64 on Apple Silicon, amd64 on Intel).
+    //   Install with: cargo install cargo-zigbuild && brew install zig
+    // On Linux: cross-compile for musl.
+    if cfg!(windows) {
+        crate::cargo()
+            .and_then(|cargo| {
+                cmd!(sh, "{cargo} build --release")
+                    .run()
+                    .map_err(anyhow::Error::new)
+            })
+            .context(err_context)
+    } else if cfg!(target_os = "macos") {
+        let target = if cfg!(target_arch = "aarch64") {
+            "aarch64-unknown-linux-musl"
+        } else {
+            "x86_64-unknown-linux-musl"
+        };
+        crate::cargo()
+            .and_then(|cargo| {
+                if which::which("cargo-zigbuild").is_err() {
+                    eprintln!("!! 'cargo-zigbuild' wasn't found but is needed on macOS.");
+                    eprintln!("!! Please install it with:");
+                    eprintln!("!!   cargo install cargo-zigbuild");
+                    eprintln!("!!   brew install zig");
+                    return Err(anyhow::anyhow!("couldn't find 'cargo-zigbuild'"));
+                }
+                cmd!(sh, "rustup target add {target}")
+                    .run()
+                    .map_err(anyhow::Error::new)?;
+                cmd!(sh, "{cargo} zigbuild --release --target {target}")
+                    .run()
+                    .map_err(anyhow::Error::new)
+            })
+            .context(err_context)
+    } else {
+        crate::cargo()
+            .and_then(|cargo| {
+                cmd!(
+                    sh,
+                    "{cargo} build --release --target x86_64-unknown-linux-musl"
+                )
+                .run()
+                .map_err(anyhow::Error::new)
+            })
+            .context(err_context)
+    }
+}
+
+/// Native release build: builds plugins, generates protobufs, and runs
+/// `cargo build --release` without cross-compilation.
+fn build_release(sh: &Shell, no_web: bool) -> anyhow::Result<()> {
+    let err_context = "failed to perform native release build";
+
+    // Build plugins and generate protobufs
+    build::build(
+        sh,
+        flags::Build {
+            release: true,
+            no_plugins: false,
+            plugins_only: true,
+            no_web,
+        },
+    )
+    .context(err_context)?;
+
+    // Build the main binary natively
+    let _pd = sh.push_dir(crate::project_root());
     crate::cargo()
         .and_then(|cargo| {
-            cmd!(
-                sh,
-                "{cargo} build --release --target x86_64-unknown-linux-musl"
-            )
-            .run()
-            .map_err(anyhow::Error::new)
+            if no_web {
+                match metadata::get_no_web_features(sh, ".")
+                    .context("Failed to check web features for build-release")?
+                {
+                    Some(features) => {
+                        let mut cmd = cmd!(
+                            sh,
+                            "{cargo} build --verbose --release --no-default-features"
+                        );
+                        if !features.is_empty() {
+                            cmd = cmd.arg("--features").arg(features);
+                        }
+                        cmd.run().map_err(anyhow::Error::new)
+                    },
+                    None => cmd!(sh, "{cargo} build --verbose --release")
+                        .run()
+                        .map_err(anyhow::Error::new),
+                }
+            } else {
+                cmd!(sh, "{cargo} build --verbose --release")
+                    .run()
+                    .map_err(anyhow::Error::new)
+            }
         })
         .context(err_context)
 }

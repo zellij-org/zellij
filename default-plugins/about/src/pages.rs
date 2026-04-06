@@ -27,51 +27,70 @@ impl Page {
             .with_title(main_screen_title(zellij_version.clone(), is_release_notes))
             .with_bulletin_list(BulletinList::new(whats_new_title()).with_items(vec![
                     ActiveComponent::new(TextOrCustomRender::Text(main_menu_item(
-                        "Web Client",
+                        "Windows Support",
                     )))
                     .with_hover(TextOrCustomRender::Text(
-                        main_menu_item("Web Client").selected(),
+                        main_menu_item("Windows Support").selected(),
+                    ))
+                    .with_left_click_action(ClickAction::new_change_page({
+                        move || Page::new_windows_support()
+                    })),
+                    ActiveComponent::new(TextOrCustomRender::Text(main_menu_item(
+                        "Remote Sessions",
+                    )))
+                    .with_hover(TextOrCustomRender::Text(
+                        main_menu_item("Remote Sessions").selected(),
                     ))
                     .with_left_click_action(ClickAction::new_change_page({
                         let link_executable = link_executable.clone();
-                        move || Page::new_web_client(link_executable.clone())
+                        move || Page::new_remote_sessions(link_executable.clone())
                     })),
                     ActiveComponent::new(TextOrCustomRender::Text(main_menu_item(
-                        "Multiple Pane Select",
+                        "Read-Only Session Sharing",
                     )))
                     .with_hover(TextOrCustomRender::Text(
-                        main_menu_item("Multiple Pane Select").selected(),
-                    ))
-                    .with_left_click_action(ClickAction::new_change_page(move || {
-                        Page::new_multiple_select()
-                    })),
-                    ActiveComponent::new(TextOrCustomRender::Text(main_menu_item(
-                        "Key Tooltips for the compact-bar",
-                    )))
-                    .with_hover(TextOrCustomRender::Text(
-                        main_menu_item("Key Tooltips for the compact-bar").selected(),
+                        main_menu_item("Read-Only Session Sharing").selected(),
                     ))
                     .with_left_click_action(ClickAction::new_change_page({
                         let link_executable = link_executable.clone();
-                        move || Page::new_key_tooltips_for_compact_bar(link_executable.clone())
+                        move || Page::new_read_only_sharing(link_executable.clone())
                     })),
                     ActiveComponent::new(TextOrCustomRender::Text(main_menu_item(
-                        "Stack Keybinding",
+                        "CLI Automation",
                     )))
                     .with_hover(TextOrCustomRender::Text(
-                        main_menu_item("Stack Keybinding").selected(),
-                    ))
-                    .with_left_click_action(ClickAction::new_change_page(move || {
-                        Page::new_stack_keybinding()
-                    })),
-                    ActiveComponent::new(TextOrCustomRender::Text(main_menu_item(
-                        "Performance Improvements",
-                    )))
-                    .with_hover(TextOrCustomRender::Text(
-                        main_menu_item("Performance Improvements").selected(),
+                        main_menu_item("CLI Automation").selected(),
                     ))
                     .with_left_click_action(ClickAction::new_change_page({
-                        move || Page::new_performance_improvements()
+                        let link_executable = link_executable.clone();
+                        move || Page::new_cli_automation(link_executable.clone())
+                    })),
+                    ActiveComponent::new(TextOrCustomRender::Text(main_menu_item(
+                        "Mouse Resize",
+                    )))
+                    .with_hover(TextOrCustomRender::Text(
+                        main_menu_item("Mouse Resize").selected(),
+                    ))
+                    .with_left_click_action(ClickAction::new_change_page(move || {
+                        Page::new_mouse_resize()
+                    })),
+                    ActiveComponent::new(TextOrCustomRender::Text(main_menu_item(
+                        "Click-to-Open File Paths",
+                    )))
+                    .with_hover(TextOrCustomRender::Text(
+                        main_menu_item("Click-to-Open File Paths").selected(),
+                    ))
+                    .with_left_click_action(ClickAction::new_change_page({
+                        move || Page::new_click_to_open()
+                    })),
+                    ActiveComponent::new(TextOrCustomRender::Text(main_menu_item(
+                        "Layout Manager",
+                    )))
+                    .with_hover(TextOrCustomRender::Text(
+                        main_menu_item("Layout Manager").selected(),
+                    ))
+                    .with_left_click_action(ClickAction::new_change_page({
+                        move || Page::new_layout_manager()
                     })),
                 ]))
             .with_paragraph(vec![ComponentLine::new(vec![
@@ -113,110 +132,73 @@ impl Page {
                 })
             })
     }
-    pub fn new_web_client(link_executable: Rc<RefCell<String>>) -> Page {
+    fn new_windows_support() -> Page {
         Page::new()
-            .with_title(Text::new("Web Client").color_range(0, ..))
-            .with_paragraph(vec![
-                ComponentLine::new(vec![
-                    // ActiveComponent::new(TextOrCustomRender::Text(Text::new("This version includes a new resizing algorithm that helps better manage panes"))),
-                    ActiveComponent::new(TextOrCustomRender::Text(Text::new("This version includes a web client, allowing you to share sessions in the browser."))),
-                ]),
-            ])
-            .with_bulletin_list(BulletinList::new(Text::new("The web client:").color_range(2, ..))
-                .with_items(vec![
-                    ActiveComponent::new(TextOrCustomRender::Text(
-                            Text::new("Allows you to bookmark sessions")
-                                .color_substring(3, "bookmark sessions")
-                    )),
-                    ActiveComponent::new(TextOrCustomRender::Text(
-                            Text::new("Includes built-in authentication")
-                    )),
-                    ActiveComponent::new(TextOrCustomRender::Text(
-                            Text::new("Can be used as a daily-driver, making your terminal emulator optional")
-                    )),
-                    ActiveComponent::new(TextOrCustomRender::Text(
-                            Text::new("Is completely opt-in")
-                    )),
-                ])
-            )
-            .with_paragraph(vec![
-                ComponentLine::new(vec![
-                    ActiveComponent::new(TextOrCustomRender::Text(
-                        Text::new("For more details, see: ")
-                            .color_range(2, ..)
-                    )),
-                    ActiveComponent::new(TextOrCustomRender::Text(Text::new("https://zellij.dev/tutorials/web-client")))
-                        .with_hover(TextOrCustomRender::CustomRender(Box::new(web_client_screencast_link_selected), Box::new(web_client_screencast_link_selected_len)))
-                        .with_left_click_action(ClickAction::new_open_link("https://zellij.dev/tutorials/web-client".to_owned(), link_executable.clone()))
-                ])
-            ])
-            .with_help(Box::new(|hovering_over_link, menu_item_is_selected| esc_go_back_plus_link_hover(hovering_over_link, menu_item_is_selected)))
-    }
-    fn new_multiple_select() -> Page {
-        Page::new()
-            .with_title(Text::new("Multiple Pane Select").color_range(0, ..))
+            .with_title(Text::new("Windows Support").color_range(0, ..))
             .with_paragraph(vec![
                 ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
-                    Text::new("This version adds the ability to perform bulk operations on panes"),
+                    Text::new("Zellij now runs natively on Windows."),
                 ))]),
                 ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
-                    Text::new("eg. close, make floating, break to a new tab, etc."),
-                ))]),
-            ])
-            .with_bulletin_list(
-                BulletinList::new(
-                    Text::new(format!("To select multiple panes: ")).color_range(2, ..),
-                )
-                .with_items(vec![
-                    ActiveComponent::new(TextOrCustomRender::Text(
-                        Text::new(format!("Alt <left-click> them"))
-                            .color_substring(3, "Alt <left-click>"),
-                    )),
-                    ActiveComponent::new(TextOrCustomRender::Text(
-                        Text::new(format!("Toggle with Alt p")).color_substring(3, "Alt p"),
-                    )),
-                ]),
-            )
-            .with_paragraph(vec![
-                ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
-                    Text::new("To disable this behavior (and the associated hover effects)"),
+                    Text::new("Windows users can now enjoy the same workspace management, plugin ecosystem"),
                 ))]),
                 ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
-                    Text::new(format!("add advanced_mouse_actions false to the config."))
-                        .color_substring(3, "advanced_mouse_actions false"),
+                    Text::new("and multiplayer capabilities that have been available on Linux and macOS."),
                 ))]),
             ])
             .with_help(Box::new(|_hovering_over_link, _menu_item_is_selected| {
                 esc_to_go_back_help()
             }))
     }
-    fn new_key_tooltips_for_compact_bar(link_executable: Rc<RefCell<String>>) -> Page {
+    pub fn new_remote_sessions(link_executable: Rc<RefCell<String>>) -> Page {
         Page::new()
-            .with_title(Text::new("Key Tooltips for the compact-bar").color_range(0, ..))
+            .with_title(Text::new("Remote Sessions").color_range(0, ..))
             .with_paragraph(vec![
                 ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
-                    Text::new(
-                        "Starting this version, it's possible to add toggle-able key tooltips",
-                    )
-                    .color_range(3, 37..=58),
+                    Text::new("Attach to remote Zellij sessions over HTTPS, directly from the terminal."),
                 ))]),
                 ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
-                    Text::new("when using the compact-bar.").color_substring(3, "compact-bar"),
+                    Text::new("The remote session needs to be running the Zellij web client."),
+                ))]),
+                ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
+                    Text::new("Zellij will attach to it exactly as a browser would, through the same interface."),
                 ))]),
             ])
+            .with_bulletin_list(
+                BulletinList::new(Text::new("Try it:").color_range(2, ..))
+                    .with_items(vec![
+                        ActiveComponent::new(TextOrCustomRender::Text(
+                            Text::new("Run the Zellij web server on one machine")
+                                .color_substring(3, "Zellij web server"),
+                        ))
+                        .with_hover(TextOrCustomRender::Text(
+                            Text::new("Run the Zellij web server on one machine")
+                                .color_substring(3, "Zellij web server")
+                                .selected(),
+                        ))
+                        .with_left_click_action(ClickAction::new_launch_plugin(
+                            "zellij:share".to_owned(),
+                        )),
+                        ActiveComponent::new(TextOrCustomRender::Text(
+                            Text::new("From another: zellij attach https://<ip>/<session-name>")
+                                .color_substring(3, "zellij attach")
+                                .color_substring(2, "https://<ip>/<session-name>"),
+                        )),
+                    ]),
+            )
             .with_paragraph(vec![ComponentLine::new(vec![
                 ActiveComponent::new(TextOrCustomRender::Text(
-                    Text::new("For more information: ").color_range(2, ..),
+                    Text::new("Learn more about the web client: ").color_range(2, ..),
                 )),
                 ActiveComponent::new(TextOrCustomRender::Text(Text::new(
-                    "https://zellij.dev/documentation/faq.html",
+                    "https://zellij.dev/tutorials/web-client/",
                 )))
                 .with_hover(TextOrCustomRender::CustomRender(
-                    Box::new(compact_bar_link_selected),
-                    Box::new(compact_bar_link_selected_len),
+                    Box::new(web_client_link_selected),
+                    Box::new(web_client_link_selected_len),
                 ))
                 .with_left_click_action(ClickAction::new_open_link(
-                    "https://zellij.dev/documentation/faq.html".to_owned(),
+                    "https://zellij.dev/tutorials/web-client/".to_owned(),
                     link_executable.clone(),
                 )),
             ])])
@@ -224,44 +206,217 @@ impl Page {
                 esc_go_back_plus_link_hover(hovering_over_link, menu_item_is_selected)
             }))
     }
-    fn new_stack_keybinding() -> Page {
+    fn new_read_only_sharing(link_executable: Rc<RefCell<String>>) -> Page {
         Page::new()
-            .with_title(Text::new("New Stack Keybinding").color_range(0, ..))
+            .with_title(Text::new("Read-Only Session Sharing").color_range(0, ..))
             .with_paragraph(vec![
                 ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
-                    Text::new("It's now possible to open a stacked pane directly on top of the current pane").color_substring(2, "stacked pane"),
+                    Text::new("Sessions can now be shared in read-only mode."),
+                ))]),
+                ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
+                    Text::new(
+                        "Useful for demonstrations, teaching, monitoring and pair programming",
+                    )
+                    .color_substring(2, "demonstrations")
+                    .color_substring(2, "teaching")
+                    .color_substring(2, "monitoring")
+                    .color_substring(2, "pair programming"),
+                ))]),
+                ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
+                    Text::new("where one participant should observe without interfering."),
                 ))]),
             ])
             .with_paragraph(vec![
-                ComponentLine::new(vec![
-                    ActiveComponent::new(TextOrCustomRender::Text(
-                        Text::new("By default: Ctrl p + s").color_substring(3, "Ctrl p").color_substring(3, " s"),
-                    )),
-                ]),
-                ComponentLine::new(vec![
-                    ActiveComponent::new(TextOrCustomRender::Text(
-                        Text::new("In unlock first: Ctrl g + p + s").color_substring(3, "Ctrl g").color_substring(3, " p").color_substring(3, " s"),
-                    )),
-                ]),
+                ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
+                    Text::new("Create a read-only web token with:")
+                        .color_substring(2, "read-only web token"),
+                ))]),
+                ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
+                    Text::new("zellij web --create-read-only-token").color_range(3, ..),
+                ))]),
+            ])
+            .with_paragraph(vec![ComponentLine::new(vec![ActiveComponent::new(
+                TextOrCustomRender::Text(Text::new(
+                    "Share the token for view-only access without risk of unintended input.",
+                )),
+            )])])
+            .with_paragraph(vec![ComponentLine::new(vec![
+                ActiveComponent::new(TextOrCustomRender::Text(
+                    Text::new("Learn more: ").color_range(2, ..),
+                )),
+                ActiveComponent::new(TextOrCustomRender::Text(Text::new(
+                    "https://zellij.dev/tutorials/web-client/",
+                )))
+                .with_hover(TextOrCustomRender::CustomRender(
+                    Box::new(web_client_link_selected),
+                    Box::new(web_client_link_selected_len),
+                ))
+                .with_left_click_action(ClickAction::new_open_link(
+                    "https://zellij.dev/tutorials/web-client/".to_owned(),
+                    link_executable.clone(),
+                )),
+            ])])
+            .with_help(Box::new(|hovering_over_link, menu_item_is_selected| {
+                esc_go_back_plus_link_hover(hovering_over_link, menu_item_is_selected)
+            }))
+    }
+    fn new_cli_automation(link_executable: Rc<RefCell<String>>) -> Page {
+        Page::new()
+            .with_title(Text::new("CLI Automation").color_range(0, ..))
+            .with_paragraph(vec![
+                ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
+                    Text::new("This release significantly expands the CLI's control surface,"),
+                ))]),
+                ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
+                    Text::new("enabling the building of powerful workspace automations."),
+                ))]),
+            ])
+            .with_bulletin_list(
+                BulletinList::new(Text::new("New and expanded capabilities:").color_range(2, ..))
+                    .with_items(vec![
+                        ActiveComponent::new(TextOrCustomRender::Text(
+                            Text::new("list-panes, list-tabs, dump-screen, dump-layout with --json output")
+                                .color_substring(3, "list-panes")
+                                .color_substring(3, "list-tabs")
+                                .color_substring(3, "dump-screen")
+                                .color_substring(3, "dump-layout")
+                                .color_substring(3, "--json"),
+                        )),
+                        ActiveComponent::new(TextOrCustomRender::Text(
+                            Text::new("zellij run optionally blocks until success/failure")
+                                .color_substring(3, "zellij run"),
+                        )),
+                        ActiveComponent::new(TextOrCustomRender::Text(
+                            Text::new("zellij subscribe can stream pane scrollback in real time")
+                                .color_substring(3, "zellij subscribe"),
+                        )),
+                        ActiveComponent::new(TextOrCustomRender::Text(
+                            Text::new("zellij send-keys/paste can send human readable keys to other panes or sessions")
+                                .color_substring(3, "zellij send-keys/paste"),
+                        )),
+                    ]),
+            )
+            .with_paragraph(vec![ComponentLine::new(vec![
+                ActiveComponent::new(TextOrCustomRender::Text(
+                    Text::new("Learn more: ").color_range(2, ..),
+                )),
+                ActiveComponent::new(TextOrCustomRender::Text(Text::new(
+                    "https://zellij.dev/documentation/controlling-zellij-through-cli.html",
+                )))
+                .with_hover(TextOrCustomRender::CustomRender(
+                    Box::new(cli_automation_link_selected),
+                    Box::new(cli_automation_link_selected_len),
+                ))
+                .with_left_click_action(ClickAction::new_open_link(
+                    "https://zellij.dev/documentation/controlling-zellij-through-cli.html".to_owned(),
+                    link_executable.clone(),
+                )),
+            ])])
+            .with_help(Box::new(|hovering_over_link, menu_item_is_selected| {
+                esc_go_back_plus_link_hover(hovering_over_link, menu_item_is_selected)
+            }))
+    }
+    fn new_mouse_resize() -> Page {
+        Page::new()
+            .with_title(Text::new("Mouse Resize").color_range(0, ..))
+            .with_paragraph(vec![
+                ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
+                    Text::new("Panes can now be resized by dragging their borders with the mouse."),
+                ))]),
+                ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
+                    Text::new("Tiled panes can be resized with or without Ctrl held down.")
+                        .color_substring(3, "Ctrl"),
+                ))]),
+                ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
+                    Text::new("Floating panes require Ctrl+drag to resize.")
+                        .color_substring(3, "Ctrl+drag"),
+                ))]),
+            ])
+            .with_paragraph(vec![ComponentLine::new(vec![ActiveComponent::new(
+                TextOrCustomRender::Text(
+                    Text::new("Try it: Ctrl+drag on the borders of this pane.")
+                        .color_substring(2, "Try it:")
+                        .color_substring(3, "Ctrl+drag"),
+                ),
+            )])])
+            .with_help(Box::new(|_hovering_over_link, _menu_item_is_selected| {
+                esc_to_go_back_help()
+            }))
+    }
+    fn new_click_to_open() -> Page {
+        Page::new()
+            .with_title(Text::new("Click-to-Open File Paths").color_range(0, ..))
+            .with_paragraph(vec![
+                ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
+                    Text::new("Zellij now detects file paths in the terminal viewport."),
+                ))]),
+                ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
+                    Text::new("Alt-Click on a file path to open it.")
+                        .color_substring(3, "Alt-Click"),
+                ))]),
             ])
             .with_paragraph(vec![
                 ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
-                    Text::new("To add to an existing config, see the release notes.")
+                    Text::new("Useful for navigating compiler errors, grep results,")
+                        .color_substring(2, "compiler errors")
+                        .color_substring(2, "grep results"),
+                ))]),
+                ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
+                    Text::new("log files, or any output containing file paths.")
+                        .color_substring(2, "log files"),
+                ))]),
+            ])
+            .with_paragraph(vec![
+                ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
+                    Text::new("Plugins can also highlight arbitrary text in the viewport,"),
+                ))]),
+                ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
+                    Text::new("opening possibilities for custom link handlers")
+                        .color_substring(3, "custom link handlers"),
+                ))]),
+                ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
+                    Text::new("and interactive overlays.")
+                        .color_substring(3, "interactive overlays"),
                 ))]),
             ])
             .with_help(Box::new(|_hovering_over_link, _menu_item_is_selected| {
                 esc_to_go_back_help()
             }))
     }
-    fn new_performance_improvements() -> Page {
+    fn new_layout_manager() -> Page {
         Page::new()
-            .with_title(Text::new("Performance Improvements").color_range(0, ..))
+            .with_title(Text::new("Layout Manager").color_range(0, ..))
+            .with_paragraph(vec![
+                ComponentLine::new(vec![
+                    ActiveComponent::new(TextOrCustomRender::Text(Text::new("A new "))),
+                    ActiveComponent::new(TextOrCustomRender::Text(
+                        Text::new("layout-manager interface").color_range(3, ..),
+                    ))
+                    .with_hover(TextOrCustomRender::Text(
+                        Text::new("layout-manager interface")
+                            .color_range(3, ..)
+                            .selected(),
+                    ))
+                    .with_left_click_action(ClickAction::new_launch_plugin(
+                        "zellij:layout-manager".to_owned(),
+                    )),
+                    ActiveComponent::new(TextOrCustomRender::Text(Text::new(
+                        " allows overriding layouts at runtime.",
+                    ))),
+                ]),
+                ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
+                    Text::new(
+                        "Workspaces can be reconfigured dynamically without restarting sessions.",
+                    ),
+                ))]),
+            ])
             .with_paragraph(vec![
                 ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
-                    Text::new("This version adds a debounced asynchronous render mechanism"),
+                    Text::new("Access it through the session menu, or run:")
+                        .color_substring(2, "session menu"),
                 ))]),
                 ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
-                    Text::new("making rendering much smoother across the whole application."),
+                    Text::new("zellij plugin -- zellij:layout-manager").color_range(3, ..),
                 ))]),
             ])
             .with_help(Box::new(|_hovering_over_link, _menu_item_is_selected| {
@@ -597,29 +752,30 @@ fn sponsors_link_text_selected_len() -> usize {
     34
 }
 
-fn web_client_screencast_link_selected(x: usize, y: usize) -> usize {
+fn cli_automation_link_selected(x: usize, y: usize) -> usize {
     print!(
-        "\u{1b}[{};{}H\u{1b}[m\u{1b}[1;4mhttps://zellij.dev/tutorials/web-client",
+        "\u{1b}[{};{}H\u{1b}[m\u{1b}[1;4mhttps://zellij.dev/documentation/controlling-zellij-through-cli.html",
         y + 1,
         x + 1
     );
-    39
+    68
 }
 
-fn web_client_screencast_link_selected_len() -> usize {
-    39
+fn cli_automation_link_selected_len() -> usize {
+    68
 }
 
-fn compact_bar_link_selected(x: usize, y: usize) -> usize {
+fn web_client_link_selected(x: usize, y: usize) -> usize {
     print!(
-        "\u{1b}[{};{}H\u{1b}[m\u{1b}[1;4mhttps://zellij.dev/documentation/faq.html",
+        "\u{1b}[{};{}H\u{1b}[m\u{1b}[1;4mhttps://zellij.dev/tutorials/web-client/",
         y + 1,
         x + 1
     );
-    41
+    40
 }
-fn compact_bar_link_selected_len() -> usize {
-    41
+
+fn web_client_link_selected_len() -> usize {
+    40
 }
 
 // Text components

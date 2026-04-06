@@ -1,9 +1,11 @@
 use super::sixel::{PixelRect, SixelGrid, SixelImageStore};
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::rc::Rc;
-use zellij_utils::data::Style;
+use unicode_width::UnicodeWidthChar;
+use zellij_utils::data::{HighlightLayer, HighlightStyle, RegexHighlight, Style};
 use zellij_utils::errors::prelude::*;
 
 use std::{
@@ -25,22 +27,102 @@ use zellij_utils::{
 const TABSTOP_WIDTH: usize = 8; // TODO: is this always right?
 pub const MAX_TITLE_STACK_SIZE: usize = 1000;
 
+/// Rewrites OSC 99 metadata for multiplexer forwarding:
+///
+/// 1. Namespaces the `i=` value with a pane ID prefix and flags so responses
+///    can be routed back to the originating pane.
+///    Format: `i=p<pane_id>[r][q].<original_id>`
+///    - `r` flag: app requested `a=report` — activation response should be
+///      written back to the pane's PTY
+///    - `q` flag: this is a capability query (`p=?`) — response must be
+///      written back to the pane's PTY
+///    - Neither: activation response used only for focus routing, not forwarded
+///
+/// 2. Ensures `a=report` is always present so the host terminal sends the
+///    activation response back to Zellij (needed for pane focus routing).
+///
+/// If no `i=` key is present, one is added with an empty original ID.
+pub(crate) fn namespace_notification_id(metadata: &str, pane_id: u32) -> String {
+    let mut found_id = false;
+    let mut found_action = false;
+    let mut app_wants_report = false;
+    let mut is_query = false;
+    let result = metadata
+        .split(':')
+        .map(|kv| {
+            if kv.starts_with("i=") {
+                found_id = true;
+                // Defer i= rewriting until we know the flags
+                kv.to_string()
+            } else if let Some(action_value) = kv.strip_prefix("a=") {
+                found_action = true;
+                app_wants_report = action_value.split(',').any(|v| v == "report");
+                if app_wants_report {
+                    kv.to_string()
+                } else {
+                    format!("a={},report", action_value)
+                }
+            } else if kv == "p=?" {
+                is_query = true;
+                kv.to_string()
+            } else {
+                kv.to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(":");
+
+    // Build flags suffix
+    let mut flags = String::new();
+    if app_wants_report {
+        flags.push('r');
+    }
+    if is_query {
+        flags.push('q');
+    }
+
+    // Rewrite i= with pane ID and flags
+    let result = result
+        .split(':')
+        .map(|kv| {
+            if let Some(id_value) = kv.strip_prefix("i=") {
+                format!("i=p{}{}.{}", pane_id, flags, id_value)
+            } else {
+                kv.to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(":");
+
+    let result = if !found_id {
+        format!("i=p{}{}.:{}", pane_id, flags, result)
+    } else {
+        result
+    };
+    if !found_action {
+        format!("{}:a=report", result)
+    } else {
+        result
+    }
+}
+
 use vte::{Params, Perform};
 use zellij_utils::{consts::VERSION, shared::version_number};
 
-use crate::output::{CharacterChunk, OutputBuffer, SixelImageChunk};
+use crate::output::{CharacterChunk, HighlightSelection, OutputBuffer, SixelImageChunk};
 use crate::panes::alacritty_functions::{parse_number, xparse_color};
 use crate::panes::hyperlink_tracker::HyperlinkTracker;
 use crate::panes::link_handler::LinkHandler;
 use crate::panes::search::SearchResult;
-use crate::panes::selection::Selection;
 use crate::panes::terminal_character::{
     AnsiCode, CharsetIndex, Cursor, CursorShape, RcCharacterStyles, StandardCharset,
     TerminalCharacter, EMPTY_TERMINAL_CHARACTER,
 };
+use crate::panes::Selection;
 use crate::ui::components::UiComponentParser;
+use zellij_utils::data::PaneContents;
 
-fn get_top_non_canonical_rows(rows: &mut Vec<Row>) -> Vec<Row> {
+fn get_top_non_canonical_rows(rows: &mut VecDeque<Row>) -> Vec<Row> {
     let mut index_of_last_non_canonical_row = None;
     for (i, row) in rows.iter().enumerate() {
         if row.is_canonical {
@@ -73,7 +155,7 @@ fn get_lines_above_bottom_canonical_row_and_wraps(rows: &mut VecDeque<Row>) -> V
     }
 }
 
-fn get_viewport_bottom_canonical_row_and_wraps(viewport: &mut Vec<Row>) -> Vec<Row> {
+fn get_viewport_bottom_canonical_row_and_wraps(viewport: &mut VecDeque<Row>) -> Vec<Row> {
     let mut index_of_last_non_canonical_row = None;
     for (i, row) in viewport.iter().enumerate().rev() {
         index_of_last_non_canonical_row = Some(i);
@@ -89,7 +171,7 @@ fn get_viewport_bottom_canonical_row_and_wraps(viewport: &mut Vec<Row>) -> Vec<R
     }
 }
 
-fn get_top_canonical_row_and_wraps(rows: &mut Vec<Row>) -> Vec<Row> {
+fn get_top_canonical_row_and_wraps(rows: &mut VecDeque<Row>) -> Vec<Row> {
     let mut index_of_first_non_canonical_row = None;
     let mut end_index_of_first_canonical_line = None;
     for (i, row) in rows.iter().enumerate() {
@@ -118,7 +200,7 @@ fn get_top_canonical_row_and_wraps(rows: &mut Vec<Row>) -> Vec<Row> {
 
 fn transfer_rows_from_lines_above_to_viewport(
     lines_above: &mut VecDeque<Row>,
-    viewport: &mut Vec<Row>,
+    viewport: &mut VecDeque<Row>,
     sixel_grid: &mut SixelGrid,
     count: usize,
     max_viewport_width: usize,
@@ -146,7 +228,7 @@ fn transfer_rows_from_lines_above_to_viewport(
                 None => break, // no more rows
             }
         }
-        viewport.insert(0, next_lines.pop().unwrap());
+        viewport.push_front(next_lines.pop().unwrap());
         lines_added_to_viewport += 1;
     }
     if !next_lines.is_empty() {
@@ -160,7 +242,7 @@ fn transfer_rows_from_lines_above_to_viewport(
 }
 
 fn transfer_rows_from_viewport_to_lines_above(
-    viewport: &mut Vec<Row>,
+    viewport: &mut VecDeque<Row>,
     lines_above: &mut VecDeque<Row>,
     sixel_grid: &mut SixelGrid,
     count: usize,
@@ -188,8 +270,8 @@ fn transfer_rows_from_viewport_to_lines_above(
 }
 
 fn transfer_rows_from_lines_below_to_viewport(
-    lines_below: &mut Vec<Row>,
-    viewport: &mut Vec<Row>,
+    lines_below: &mut VecDeque<Row>,
+    viewport: &mut VecDeque<Row>,
     count: usize,
     max_viewport_width: usize,
 ) {
@@ -217,13 +299,13 @@ fn transfer_rows_from_lines_below_to_viewport(
         }
         for _ in 0..(lines_pulled_from_viewport + 1) {
             if !next_lines.is_empty() {
-                viewport.push(next_lines.remove(0));
+                viewport.push_back(next_lines.remove(0));
             }
         }
     }
     if !next_lines.is_empty() {
         let excess_row = Row::from_rows(next_lines);
-        lines_below.insert(0, excess_row);
+        lines_below.push_front(excess_row);
     }
 }
 
@@ -287,6 +369,45 @@ macro_rules! dump_screen {
     }};
 }
 
+macro_rules! dump_screen_with_ansi {
+    ($lines:expr) => {{
+        use std::fmt::Write;
+        let mut is_first = true;
+        let mut buf = String::new();
+        let mut last_styles: Option<RcCharacterStyles> = None;
+
+        for line in &$lines {
+            if line.is_canonical && !is_first {
+                buf.push_str("\n");
+                last_styles = None;
+            }
+
+            let last_non_space = line
+                .columns
+                .iter()
+                .rposition(|tc| {
+                    let space = tc.character == ' ';
+                    let styled = !matches!(tc.styles.background, Some(AnsiCode::Reset) | None);
+                    !space || styled // it's, something drawable
+                })
+                .map(|i| i + 1)
+                .unwrap_or(0);
+
+            for tc in line.columns.iter().take(last_non_space) {
+                // Only output style codes if style changed
+                if last_styles.as_ref() != Some(&tc.styles) {
+                    write!(buf, "{}", tc.styles).unwrap();
+                    last_styles = Some(tc.styles.clone());
+                }
+                buf.push(tc.character);
+            }
+            is_first = false;
+        }
+        buf.push_str("\u{1b}[m");
+        buf
+    }};
+}
+
 fn utf8_mouse_coordinates(column: usize, line: isize) -> Vec<u8> {
     let mut coordinates = vec![];
     let mouse_pos_encode = |pos: usize| -> Vec<u8> {
@@ -309,11 +430,142 @@ fn utf8_mouse_coordinates(column: usize, line: isize) -> Vec<u8> {
     coordinates
 }
 
+/// Find the canonical root row for a logical line group containing `row_idx`,
+/// collect the non-canonical tail rows, and build the concatenated text with
+/// a byte-offset boundary table.
+///
+/// Returns `(canonical_idx, group_len, text, boundaries)` where `group_len`
+/// is the total number of viewport rows in the group (1 + tail count).
+/// Returns `None` if `row_idx` is out of bounds.
+fn collect_and_build_logical_line(
+    viewport: &VecDeque<Row>,
+    row_idx: usize,
+) -> Option<(usize, usize, String, Vec<(usize, usize)>)> {
+    if row_idx >= viewport.len() {
+        return None;
+    }
+    // Walk backward to find the canonical root.
+    let mut canonical = row_idx;
+    while canonical > 0 {
+        match viewport.get(canonical) {
+            Some(r) if !r.is_canonical => canonical -= 1,
+            _ => break,
+        }
+    }
+    let canonical_row = viewport.get(canonical)?;
+    // Collect non-canonical tail rows.
+    let mut tail_count = 0;
+    loop {
+        let tail_idx = canonical + tail_count + 1;
+        match viewport.get(tail_idx) {
+            Some(r) if !r.is_canonical => tail_count += 1,
+            _ => break,
+        }
+    }
+    let group_len = 1 + tail_count;
+    // Build concatenated text and boundary table.
+    let mut text = String::new();
+    let mut boundaries: Vec<(usize, usize)> = Vec::with_capacity(group_len);
+    boundaries.push((canonical, 0));
+    for ch in &canonical_row.columns {
+        text.push(ch.character);
+    }
+    for i in 0..tail_count {
+        let idx = canonical + 1 + i;
+        boundaries.push((idx, text.len()));
+        if let Some(row) = viewport.get(idx) {
+            for ch in &row.columns {
+                text.push(ch.character);
+            }
+        }
+    }
+    Some((canonical, group_len, text, boundaries))
+}
+
+/// Map a byte offset in the concatenated logical-line string back to
+/// (viewport_row_idx, display_column).
+///
+/// display_column is the sum of character.width() for all characters
+/// before the target character in that row — NOT a char count or byte count.
+/// This correctly handles wide characters (CJK, emoji).
+///
+/// `boundaries` is the table produced by `collect_and_build_logical_line`.
+/// `viewport` is `&self.viewport`.
+fn byte_offset_to_display_col(
+    byte_offset: usize,
+    boundaries: &[(usize, usize)],
+    viewport: &VecDeque<Row>,
+) -> Option<(usize, usize)> {
+    if boundaries.is_empty() {
+        return None;
+    }
+    // Find which row the byte offset falls in (last boundary whose byte_start <= offset).
+    let boundary_idx = boundaries
+        .partition_point(|&(_, byte_start)| byte_start <= byte_offset)
+        .saturating_sub(1);
+    let &(row_idx, row_byte_start) = boundaries.get(boundary_idx)?;
+    let intra_byte_offset = byte_offset - row_byte_start;
+
+    // Count display columns up to (but not including) the character at intra_byte_offset.
+    let row = viewport.get(row_idx)?;
+    let mut display_col = 0usize;
+    let mut bytes_seen = 0usize;
+    for ch in &row.columns {
+        if bytes_seen >= intra_byte_offset {
+            break;
+        }
+        bytes_seen += ch.character.len_utf8();
+        display_col += ch.character.width().unwrap_or(1);
+    }
+    Some((row_idx, display_col))
+}
+
+/// Convert a regex match into a `Selection` spanning the matched display region.
+/// Returns `None` if the boundary table or viewport lookup fails.
+fn match_to_selection(
+    mat: &regex::Match,
+    boundaries: &[(usize, usize)],
+    viewport: &VecDeque<Row>,
+) -> Option<(Selection, usize, usize, usize, usize)> {
+    let (start_row, start_col) = byte_offset_to_display_col(mat.start(), boundaries, viewport)?;
+    let (end_row, end_col) = byte_offset_to_display_col(mat.end(), boundaries, viewport)?;
+    let mut sel = Selection::default();
+    sel.set_start_and_end_positions(
+        Position::new(start_row as i32, start_col as u16),
+        Position::new(end_row as i32, end_col as u16),
+    );
+    Some((sel, start_row, start_col, end_row, end_col))
+}
+
+/// Extract the effective match from a set of captures.
+/// If capture group 1 exists, it is used (allowing patterns to include
+/// context such as surrounding whitespace in the full match while
+/// highlighting only the content in group 1). Otherwise the full match
+/// (group 0) is returned.
+fn highlight_match<'t>(captures: &regex::Captures<'t>) -> Option<regex::Match<'t>> {
+    captures.get(1).or_else(|| captures.get(0))
+}
+
+/// Check whether a (row, col) position falls within a display span.
+/// The span is inclusive at start and exclusive at end.
+fn position_in_span(
+    row: usize,
+    col: usize,
+    start_row: usize,
+    start_col: usize,
+    end_row: usize,
+    end_col: usize,
+) -> bool {
+    let after_start = row > start_row || (row == start_row && col >= start_col);
+    let before_end = row < end_row || (row == end_row && col < end_col);
+    after_start && before_end
+}
+
 #[derive(Clone)]
 pub struct Grid {
     pub(crate) lines_above: VecDeque<Row>,
-    pub(crate) viewport: Vec<Row>,
-    pub(crate) lines_below: Vec<Row>,
+    pub(crate) viewport: VecDeque<Row>,
+    pub(crate) lines_below: VecDeque<Row>,
     horizontal_tabstops: BTreeSet<usize>,
     alternate_screen_state: Option<AlternateScreenState>,
     cursor: Cursor,
@@ -353,16 +605,71 @@ pub struct Grid {
     pub focus_event_tracking: bool,
     pub search_results: SearchResult,
     pub pending_clipboard_update: Option<String>,
+    /// Pending desktop notifications: (payload, terminator)
+    /// Payload is the semicolon-joined params after "99", terminator is "\x07" or "\x1b\\"
+    pub pending_desktop_notifications: Vec<(String, String)>,
     ui_component_bytes: Option<Vec<u8>>,
     style: Style,
     debug: bool,
     arrow_fonts: bool,
     styled_underlines: bool,
+    osc8_hyperlinks: bool,
     pub supports_kitty_keyboard_protocol: bool, // has the app requested kitty keyboard support?
     explicitly_disable_kitty_keyboard_protocol: bool, // has kitty keyboard support been explicitly
     // disabled by user config?
     click: Click,
     hyperlink_tracker: HyperlinkTracker,
+    pub pane_default_fg: Option<AnsiCode>,
+    pub pane_default_bg: Option<AnsiCode>,
+    pub plugin_highlights: HashMap<u32, Vec<(String, CompiledHighlight)>>,
+    // key: plugin_id (u32), inner vec: (pattern, compiled) pairs
+    pub hover_position: Option<Position>, // pane-relative cursor cell; None when outside pane
+    pub cached_hover_tooltip: Option<String>,
+}
+
+impl Grid {
+    pub fn set_pane_default_colors(&mut self, fg: Option<String>, bg: Option<String>) {
+        self.pane_default_fg = fg.as_ref().and_then(|s| xparse_color(s.as_bytes()));
+        self.pane_default_bg = bg.as_ref().and_then(|s| xparse_color(s.as_bytes()));
+        self.output_buffer.update_all_lines();
+    }
+    pub fn get_pane_default_color_strings(&self) -> (Option<String>, Option<String>) {
+        (
+            self.pane_default_fg.and_then(ansi_code_to_color_string),
+            self.pane_default_bg.and_then(ansi_code_to_color_string),
+        )
+    }
+}
+
+fn ansi_code_to_color_string(code: AnsiCode) -> Option<String> {
+    match code {
+        AnsiCode::RgbCode((r, g, b)) => Some(format!("#{:02x}{:02x}{:02x}", r, g, b)),
+        AnsiCode::ColorIndex(idx) => Some(format!("{}", idx)),
+        AnsiCode::NamedColor(named) => Some(format!("{:?}", named).to_lowercase()),
+        _ => None,
+    }
+}
+
+/// A compiled highlight entry for one plugin/pattern combination.
+#[derive(Clone)]
+pub struct CompiledHighlight {
+    pub regex: regex::Regex,
+    pub fg: Option<AnsiCode>,
+    pub bg: Option<AnsiCode>,
+    pub context: BTreeMap<String, String>,
+    pub on_hover: bool,
+    pub bold: bool,
+    pub italic: bool,
+    pub underline: bool,
+    pub tooltip_text: Option<String>,
+    pub layer: HighlightLayer,
+}
+
+impl CompiledHighlight {
+    /// Whether this highlight would produce any visible styling change.
+    pub fn has_visual_effect(&self) -> bool {
+        self.bg.is_some() || self.fg.is_some() || self.bold || self.italic || self.underline
+    }
 }
 
 const CLICK_TIME_THRESHOLD: u128 = 400; // Doherty Threshold
@@ -417,7 +724,7 @@ impl Default for MouseMode {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum MouseTracking {
     Off,
     Normal,
@@ -433,7 +740,7 @@ impl Default for MouseTracking {
 
 impl Debug for Grid {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let mut buffer: Vec<Row> = self.viewport.clone();
+        let mut buffer: Vec<Row> = Vec::from(self.viewport.clone());
         // pad buffer
         for _ in buffer.len()..self.height {
             buffer.push(Row::new().canonical());
@@ -478,6 +785,49 @@ impl Debug for Grid {
     }
 }
 
+fn resolve_highlight_colors(
+    style_decl: &HighlightStyle,
+    style: &Style,
+) -> (Option<AnsiCode>, Option<AnsiCode>) {
+    let palette_to_ansi = |c: PaletteColor| -> AnsiCode {
+        match c {
+            PaletteColor::Rgb(rgb) => AnsiCode::RgbCode(rgb),
+            PaletteColor::EightBit(i) => AnsiCode::ColorIndex(i),
+        }
+    };
+    let tu = &style.colors.text_unselected;
+    let emphasis = [tu.emphasis_0, tu.emphasis_1, tu.emphasis_2, tu.emphasis_3];
+    match style_decl {
+        HighlightStyle::None => (None, None),
+        HighlightStyle::Emphasis0 => (Some(palette_to_ansi(emphasis[0])), None),
+        HighlightStyle::Emphasis1 => (Some(palette_to_ansi(emphasis[1])), None),
+        HighlightStyle::Emphasis2 => (Some(palette_to_ansi(emphasis[2])), None),
+        HighlightStyle::Emphasis3 => (Some(palette_to_ansi(emphasis[3])), None),
+        HighlightStyle::BackgroundEmphasis0 => (
+            Some(palette_to_ansi(tu.background)),
+            Some(palette_to_ansi(emphasis[0])),
+        ),
+        HighlightStyle::BackgroundEmphasis1 => (
+            Some(palette_to_ansi(tu.background)),
+            Some(palette_to_ansi(emphasis[1])),
+        ),
+        HighlightStyle::BackgroundEmphasis2 => (
+            Some(palette_to_ansi(tu.background)),
+            Some(palette_to_ansi(emphasis[2])),
+        ),
+        HighlightStyle::BackgroundEmphasis3 => (
+            Some(palette_to_ansi(tu.background)),
+            Some(palette_to_ansi(emphasis[3])),
+        ),
+        HighlightStyle::CustomRgb { fg, bg } => {
+            (fg.map(AnsiCode::RgbCode), bg.map(AnsiCode::RgbCode))
+        },
+        HighlightStyle::CustomIndex { fg, bg } => {
+            (fg.map(AnsiCode::ColorIndex), bg.map(AnsiCode::ColorIndex))
+        },
+    }
+}
+
 impl Grid {
     pub fn new(
         rows: usize,
@@ -491,6 +841,7 @@ impl Grid {
         debug: bool,
         arrow_fonts: bool,
         styled_underlines: bool,
+        osc8_hyperlinks: bool,
         explicitly_disable_kitty_keyboard_protocol: bool,
     ) -> Self {
         let sixel_grid = SixelGrid::new(character_cell_size.clone(), sixel_image_store);
@@ -501,8 +852,8 @@ impl Grid {
         let _ = SCROLL_BUFFER_SIZE.set(DEFAULT_SCROLL_BUFFER_SIZE);
         Grid {
             lines_above: VecDeque::new(),
-            viewport: vec![Row::new().canonical()],
-            lines_below: vec![],
+            viewport: VecDeque::from(vec![Row::new().canonical()]),
+            lines_below: VecDeque::new(),
             horizontal_tabstops: create_horizontal_tabstops(columns),
             cursor: Cursor::new(0, 0, styled_underlines),
             cursor_is_hidden: false,
@@ -541,16 +892,23 @@ impl Grid {
             search_results: Default::default(),
             sixel_grid,
             pending_clipboard_update: None,
+            pending_desktop_notifications: Vec::new(),
             ui_component_bytes: None,
             style,
             debug,
             arrow_fonts,
             styled_underlines,
+            osc8_hyperlinks,
             lock_renders: false,
             supports_kitty_keyboard_protocol: false,
             explicitly_disable_kitty_keyboard_protocol,
             click: Click::default(),
             hyperlink_tracker: HyperlinkTracker::new(),
+            pane_default_fg: None,
+            pane_default_bg: None,
+            plugin_highlights: HashMap::new(),
+            hover_position: None,
+            cached_hover_tooltip: None,
         }
     }
     pub fn render_full_viewport(&mut self) {
@@ -605,10 +963,10 @@ impl Grid {
         )
     }
 
-    fn recalculate_scrollback_buffer_count(&self) -> usize {
+    fn recalculate_scrollback_buffer_count(&mut self) -> usize {
         let mut scrollback_buffer_count = 0;
-        for row in &self.lines_above {
-            let row_width = row.width();
+        for row in &mut self.lines_above {
+            let row_width = row.width_cached();
             // rows in lines_above are unwrapped, so we need to account for that
             if row_width > self.width {
                 scrollback_buffer_count += calculate_row_display_height(row_width, self.width);
@@ -711,8 +1069,8 @@ impl Grid {
         let mut found_something = false;
         if !self.lines_above.is_empty() && self.viewport.len() == self.height {
             self.is_scrolled = true;
-            let line_to_push_down = self.viewport.pop().unwrap();
-            self.lines_below.insert(0, line_to_push_down);
+            let line_to_push_down = self.viewport.pop_back().unwrap();
+            self.lines_below.push_front(line_to_push_down);
 
             let transferred_rows_height = transfer_rows_from_lines_above_to_viewport(
                 &mut self.lines_above,
@@ -736,8 +1094,11 @@ impl Grid {
     }
     pub fn scroll_down_one_line(&mut self) -> bool {
         let mut found_something = false;
-        if !self.lines_below.is_empty() && self.viewport.len() == self.height {
-            let mut line_to_push_up = self.viewport.remove(0);
+        if !self.lines_below.is_empty()
+            && self.viewport.len() == self.height
+            && !self.viewport.is_empty()
+        {
+            let mut line_to_push_up = self.viewport.pop_front().unwrap();
 
             self.scrollback_buffer_lines +=
                 calculate_row_display_height(line_to_push_up.width(), self.width);
@@ -815,6 +1176,8 @@ impl Grid {
             // is in control now...
             self.height = new_rows;
             self.width = new_columns;
+            self.set_scroll_region_to_viewport_size();
+            self.output_buffer.update_all_lines();
             return;
         }
         self.selection.reset();
@@ -857,9 +1220,17 @@ impl Grid {
             for line in &mut viewport_canonical_lines {
                 let mut trim_at = None;
                 for (index, character) in line.columns.iter().enumerate() {
-                    if character.character != EMPTY_TERMINAL_CHARACTER.character {
+                    let is_trimmable_space = character.character
+                        == EMPTY_TERMINAL_CHARACTER.character
+                        && matches!(character.styles.background, Some(AnsiCode::Reset) | None);
+
+                    if !is_trimmable_space {
+                        // we can't trim this character, meaning that if we had a previous
+                        // character that we marked as the trim_at point, we need to clear it
                         trim_at = None;
                     } else if trim_at.is_none() {
+                        // we CAN trim this character, set the trim_at point only if it's not set
+                        // because we want the trim_at point to be the EARLIEST trimmable character
                         trim_at = Some(index);
                     }
                 }
@@ -871,32 +1242,16 @@ impl Grid {
 
             let mut new_viewport_rows = vec![];
             for mut canonical_line in viewport_canonical_lines {
-                let mut canonical_line_parts: Vec<Row> = vec![];
-                if canonical_line.columns.is_empty() {
-                    canonical_line_parts.push(Row::new().canonical());
-                }
-                while !canonical_line.columns.is_empty() {
-                    let next_wrap = canonical_line.drain_until(new_columns);
-                    // If the next character is wider than the grid (i.e. there is nothing in
-                    // `next_wrap`, then just abort the resizing
-                    if next_wrap.is_empty() {
-                        break;
-                    }
-                    let row = Row::from_columns(next_wrap);
-                    // if there are no more parts, this row is canonical as long as it originally
-                    // was canonical (it might not have been for example if it's the first row in
-                    // the viewport, and the actual canonical row is above it in the scrollback)
-                    let row = if canonical_line_parts.is_empty() && canonical_line.is_canonical {
-                        row.canonical()
-                    } else {
-                        row
-                    };
-                    canonical_line_parts.push(row);
+                let mut canonical_line_parts = canonical_line.split_to_rows_of_length(new_columns);
+                // If a character is wider than the grid, split_to_rows_of_length returns an empty
+                // vec — skip the line, matching the old `break` behavior
+                if canonical_line_parts.is_empty() {
+                    continue;
                 }
                 new_viewport_rows.append(&mut canonical_line_parts);
             }
 
-            self.viewport = new_viewport_rows;
+            self.viewport = VecDeque::from(new_viewport_rows);
 
             let mut new_cursor_y = self.canonical_line_y_coordinates(cursor_canonical_line_index)
                 + (cursor_index_in_canonical_line / new_columns);
@@ -1068,7 +1423,7 @@ impl Grid {
         y_offset: usize,
     ) -> (Vec<CharacterChunk>, Vec<SixelImageChunk>) {
         let changed_character_chunks = self.output_buffer.changed_chunks_in_viewport(
-            &self.viewport,
+            self.viewport.make_contiguous(),
             self.width,
             self.height,
             x_offset,
@@ -1108,9 +1463,16 @@ impl Grid {
                 for line in &self.viewport {
                     to_serialize.push(line.clone())
                 }
-                self.output_buffer.serialize(to_serialize.as_slice()).ok()
+                self.output_buffer
+                    .serialize(to_serialize.as_slice(), self.osc8_hyperlinks, None)
+                    .ok()
             },
-            None => self.output_buffer.serialize(&self.viewport).ok(),
+            None => {
+                let viewport_vec: Vec<Row> = self.viewport.iter().cloned().collect();
+                self.output_buffer
+                    .serialize(&viewport_vec, self.osc8_hyperlinks, None)
+                    .ok()
+            },
         }
     }
     pub fn render(
@@ -1122,11 +1484,15 @@ impl Grid {
         if self.lock_renders {
             return Ok(None);
         }
-        let mut raw_vte_output = String::new();
+        let raw_vte_output = String::new();
 
         let (mut character_chunks, sixel_image_chunks) = self.read_changes(content_x, content_y);
+
+        let plugin_highlight_selections = self.compute_plugin_highlight_selections();
+
         for character_chunk in character_chunks.iter_mut() {
             character_chunk.add_changed_colors(self.changed_colors);
+            character_chunk.add_pane_defaults(self.pane_default_fg, self.pane_default_bg);
             if self
                 .selection
                 .contains_row(character_chunk.y.saturating_sub(content_y))
@@ -1141,9 +1507,15 @@ impl Grid {
                 };
 
                 character_chunk.add_selection_and_colors(
-                    self.selection,
-                    background_color,
-                    Some(foreground_color),
+                    HighlightSelection {
+                        selection: self.selection,
+                        bg: Some(background_color),
+                        fg: Some(foreground_color),
+                        bold: false,
+                        italic: false,
+                        underline: false,
+                        layer: HighlightLayer::ActionFeedback,
+                    },
                     content_x,
                     content_y,
                 );
@@ -1171,20 +1543,30 @@ impl Grid {
                             PaletteColor::EightBit(col) => AnsiCode::ColorIndex(col),
                         };
                         character_chunk.add_selection_and_colors(
-                            *res,
-                            background_color,
-                            Some(foreground_color),
+                            HighlightSelection {
+                                selection: *res,
+                                bg: Some(background_color),
+                                fg: Some(foreground_color),
+                                bold: false,
+                                italic: false,
+                                underline: false,
+                                layer: HighlightLayer::ActionFeedback,
+                            },
                             content_x,
                             content_y,
                         );
                     }
                 }
             }
-        }
-        if self.ring_bell {
-            let ring_bell = '\u{7}';
-            raw_vte_output.push(ring_bell);
-            self.ring_bell = false;
+            // Apply pre-computed plugin highlight selections to this chunk.
+            for hs in &plugin_highlight_selections {
+                if hs
+                    .selection
+                    .contains_row(character_chunk.y.saturating_sub(content_y))
+                {
+                    character_chunk.add_selection_and_colors(*hs, content_x, content_y);
+                }
+            }
         }
         return Ok(Some((
             character_chunks,
@@ -1192,11 +1574,15 @@ impl Grid {
             sixel_image_chunks,
         )));
     }
-    pub fn cursor_coordinates(&self) -> Option<(usize, usize)> {
-        if self.cursor_is_hidden || self.cursor.x >= self.width || self.cursor.y >= self.height {
+    /// Returns the cursor position and whether it is visible.
+    /// The position is returned unconditionally (as long as the cursor is within
+    /// bounds) so that the host terminal can position the cursor for IME even
+    /// when the app has hidden it. The bool is true when the cursor is visible.
+    pub fn cursor_coordinates(&self) -> Option<(usize, usize, bool)> {
+        if self.cursor.x >= self.width || self.cursor.y >= self.height {
             None
         } else {
-            Some((self.cursor.x, self.cursor.y))
+            Some((self.cursor.x, self.cursor.y, !self.cursor_is_hidden))
         }
     }
     pub fn is_mid_frame(&self) -> bool {
@@ -1218,6 +1604,19 @@ impl Grid {
             return viewport;
         }
         let mut scrollback: String = dump_screen!(self.lines_above);
+        if !scrollback.is_empty() {
+            scrollback.push('\n');
+        }
+        scrollback.push_str(&viewport);
+        scrollback
+    }
+    /// Dumps all lines (with ansi) above terminal viewport and the viewport itself to a string
+    pub fn dump_screen_with_ansi(&self, full: bool) -> String {
+        let viewport: String = dump_screen_with_ansi!(self.viewport);
+        if !full {
+            return viewport;
+        }
+        let mut scrollback: String = dump_screen_with_ansi!(self.lines_above);
         if !scrollback.is_empty() {
             scrollback.push('\n');
         }
@@ -1271,7 +1670,13 @@ impl Grid {
         let mut pad_character = EMPTY_TERMINAL_CHARACTER;
         pad_character.styles = self.cursor.pending_styles.clone();
         for _ in 0..count {
-            if scroll_region_top < self.viewport.len() {
+            if scroll_region_top == 0
+                && self.alternate_screen_state.is_none()
+                && !self.viewport.is_empty()
+            {
+                self.transfer_rows_to_lines_above(1);
+                self.selection.move_up(1);
+            } else if scroll_region_top < self.viewport.len() {
                 self.viewport.remove(scroll_region_top);
             }
             let columns = VecDeque::from(vec![pad_character.clone(); self.width]);
@@ -1289,7 +1694,8 @@ impl Grid {
 
         for _ in 0..self.height {
             let columns = VecDeque::from(vec![character.clone(); self.width]);
-            self.viewport.push(Row::from_columns(columns).canonical());
+            self.viewport
+                .push_back(Row::from_columns(columns).canonical());
         }
         self.output_buffer.update_all_lines();
     }
@@ -1313,22 +1719,34 @@ impl Grid {
                 // the state is corrupted
                 return;
             }
+            let scroll_bg = self.cursor.pending_styles.background;
             if scroll_region_bottom == self.height.saturating_sub(1) && scroll_region_top == 0 {
                 if self.alternate_screen_state.is_none() {
                     self.transfer_rows_to_lines_above(1);
-                } else {
-                    self.viewport.remove(0);
+                } else if !self.viewport.is_empty() {
+                    self.viewport.pop_front();
                 }
 
-                self.viewport.push(Row::new().canonical());
+                self.viewport
+                    .push_back(Row::new().canonical().with_bg_color(scroll_bg));
                 self.selection.move_up(1);
             } else {
-                self.viewport.remove(scroll_region_top);
+                if scroll_region_top == 0
+                    && self.alternate_screen_state.is_none()
+                    && !self.viewport.is_empty()
+                {
+                    // Partial scroll region starting at top: preserve
+                    // scrolled-off lines in scrollback
+                    self.transfer_rows_to_lines_above(1);
+                    self.selection.move_up(1);
+                } else if scroll_region_top < self.viewport.len() {
+                    self.viewport.remove(scroll_region_top);
+                }
+                let new_row = Row::new().canonical().with_bg_color(scroll_bg);
                 if self.viewport.len() >= scroll_region_bottom {
-                    self.viewport
-                        .insert(scroll_region_bottom, Row::new().canonical());
+                    self.viewport.insert(scroll_region_bottom, new_row);
                 } else {
-                    self.viewport.push(Row::new().canonical());
+                    self.viewport.push_back(new_row);
                 }
             }
             self.output_buffer.update_all_lines(); // TODO: only update scroll region lines
@@ -1339,7 +1757,7 @@ impl Grid {
             // but for some reason this breaks rendering in various situations
             // it needs to be investigated and fixed
             let new_row = Row::new().canonical();
-            self.viewport.push(new_row);
+            self.viewport.push_back(new_row);
         }
         if self.cursor.y == self.height.saturating_sub(1) {
             self.output_buffer.update_all_lines();
@@ -1401,10 +1819,10 @@ impl Grid {
             None => {
                 // pad lines until cursor if they do not exist
                 for _ in self.viewport.len()..self.cursor.y {
-                    self.viewport.push(Row::new().canonical());
+                    self.viewport.push_back(Row::new().canonical());
                 }
                 self.viewport
-                    .push(Row::new().with_character(terminal_character).canonical());
+                    .push_back(Row::new().with_character(terminal_character).canonical());
                 self.output_buffer.update_line(self.cursor.y);
             },
         }
@@ -1493,18 +1911,18 @@ impl Grid {
             if self.alternate_screen_state.is_none() {
                 self.transfer_rows_to_lines_above(1);
                 self.hyperlink_tracker.offset_cursor_lines(1);
-            } else {
-                self.viewport.remove(0);
+            } else if !self.viewport.is_empty() {
+                self.viewport.pop_front();
             }
             let wrapped_row = Row::new();
-            self.viewport.push(wrapped_row);
+            self.viewport.push_back(wrapped_row);
             self.selection.move_up(1);
             self.output_buffer.update_all_lines();
         } else {
             self.cursor.y += 1;
             if self.viewport.len() <= self.cursor.y {
                 let line_wrapped_row = Row::new();
-                self.viewport.push(line_wrapped_row);
+                self.viewport.push_back(line_wrapped_row);
                 self.output_buffer.update_line(self.cursor.y);
             } else if let Some(current_line) = self.viewport.get_mut(self.cursor.y) {
                 current_line.is_canonical = false;
@@ -1521,8 +1939,19 @@ impl Grid {
             self.pad_lines_until(self.cursor.y, pad_character.clone());
         }
         if let Some(current_row) = self.viewport.get_mut(self.cursor.y) {
+            let mut effective_pad = pad_character;
+            if let Some(bg_color) = current_row.bg_color {
+                if matches!(
+                    effective_pad.styles.background,
+                    Some(AnsiCode::Reset) | None
+                ) {
+                    effective_pad
+                        .styles
+                        .update(|styles| styles.background = Some(bg_color));
+                }
+            }
             for _ in current_row.width()..position {
-                current_row.push(pad_character.clone());
+                current_row.push(effective_pad.clone());
             }
             self.output_buffer.update_line(self.cursor.y);
         }
@@ -1530,7 +1959,8 @@ impl Grid {
     fn pad_lines_until(&mut self, position: usize, pad_character: TerminalCharacter) {
         for _ in self.viewport.len()..=position {
             let columns = VecDeque::from(vec![pad_character.clone(); self.width]);
-            self.viewport.push(Row::from_columns(columns).canonical());
+            self.viewport
+                .push_back(Row::from_columns(columns).canonical());
             self.output_buffer.update_line(self.viewport.len() - 1);
         }
     }
@@ -1636,13 +2066,23 @@ impl Grid {
             // so we delete the current line(s) and add an empty line at the end of the scroll
             // region
             for _ in 0..count {
-                self.viewport.remove(current_line_index);
+                if current_line_index == 0
+                    && scroll_region_top == 0
+                    && self.alternate_screen_state.is_none()
+                    && !self.viewport.is_empty()
+                {
+                    self.transfer_rows_to_lines_above(1);
+                    self.selection.move_up(1);
+                } else if current_line_index < self.viewport.len() {
+                    self.viewport.remove(current_line_index);
+                }
                 let columns = VecDeque::from(vec![pad_character.clone(); self.width]);
                 if self.viewport.len() > scroll_region_bottom {
                     self.viewport
                         .insert(scroll_region_bottom, Row::from_columns(columns).canonical());
                 } else {
-                    self.viewport.push(Row::from_columns(columns).canonical());
+                    self.viewport
+                        .push_back(Row::from_columns(columns).canonical());
                 }
             }
             self.output_buffer.update_all_lines(); // TODO: move accurately
@@ -1728,8 +2168,9 @@ impl Grid {
     }
     pub fn reset_terminal_state(&mut self) {
         self.lines_above = VecDeque::new();
-        self.lines_below = vec![];
-        self.viewport = vec![Row::new().canonical()];
+        self.lines_below = VecDeque::new();
+        self.is_scrolled = false;
+        self.viewport = VecDeque::from(vec![Row::new().canonical()]);
         self.alternate_screen_state = None;
         self.cursor_key_mode = false;
         self.clear_viewport_before_rendering = true;
@@ -1751,6 +2192,8 @@ impl Grid {
         self.cursor_is_hidden = false;
         self.supports_kitty_keyboard_protocol = false;
         self.set_scroll_region_to_viewport_size();
+        self.pane_default_fg = None;
+        self.pane_default_bg = None;
         if let Some(images_to_reap) = self.sixel_grid.clear() {
             self.sixel_grid.reap_images(images_to_reap);
         }
@@ -1758,6 +2201,317 @@ impl Grid {
     fn set_preceding_character(&mut self, terminal_character: TerminalCharacter) {
         self.preceding_char = Some(terminal_character);
     }
+    /// Called by the server-side handler for SetPaneRegexHighlights.
+    /// Upserts highlights keyed by pattern string for the given plugin.
+    pub fn set_plugin_regex_highlights(
+        &mut self,
+        plugin_id: u32,
+        highlights: Vec<RegexHighlight>,
+        style: &Style,
+    ) {
+        let slot = self
+            .plugin_highlights
+            .entry(plugin_id)
+            .or_insert_with(Vec::new);
+        for h in highlights {
+            let (fg, bg) = resolve_highlight_colors(&h.style, style);
+            if let Ok(regex) = regex::Regex::new(&h.pattern) {
+                // Upsert: replace existing entry with same pattern and on_hover flag, or push new
+                let on_hover = h.on_hover;
+                if let Some(existing) = slot
+                    .iter_mut()
+                    .find(|(p, c)| p == &h.pattern && c.on_hover == on_hover)
+                {
+                    existing.1 = CompiledHighlight {
+                        regex,
+                        fg,
+                        bg,
+                        context: h.context,
+                        on_hover: h.on_hover,
+                        bold: h.bold,
+                        italic: h.italic,
+                        underline: h.underline,
+                        tooltip_text: h.tooltip_text.clone(),
+                        layer: h.layer,
+                    };
+                } else {
+                    slot.push((
+                        h.pattern,
+                        CompiledHighlight {
+                            regex,
+                            fg,
+                            bg,
+                            context: h.context,
+                            on_hover: h.on_hover,
+                            bold: h.bold,
+                            italic: h.italic,
+                            underline: h.underline,
+                            tooltip_text: h.tooltip_text,
+                            layer: h.layer,
+                        },
+                    ));
+                }
+            } else {
+                log::warn!(
+                    "Plugin {} supplied invalid regex: {:?}",
+                    plugin_id,
+                    h.pattern
+                );
+            }
+        }
+        self.output_buffer.update_all_lines();
+        self.recompute_hover_tooltip();
+    }
+
+    /// Called by the server-side handler for ClearPaneHighlights.
+    pub fn clear_plugin_highlights(&mut self, plugin_id: u32) {
+        if self.plugin_highlights.remove(&plugin_id).is_some() {
+            self.output_buffer.update_all_lines();
+            self.recompute_hover_tooltip();
+        }
+    }
+
+    /// Returns (plugin_id, pattern, matched_string, context) if the given
+    /// pane-relative position falls inside any plugin highlight match, or None.
+    /// Uses logical-line grouping so multi-line (wrapped) matches are detected.
+    pub fn plugin_highlight_at(
+        &self,
+        position: &Position,
+    ) -> Option<(u32, String, String, BTreeMap<String, String>)> {
+        let click_row = position.line.0 as usize;
+        let click_col = position.column.0 as usize;
+
+        let (_canonical, _group_len, logical_text, boundaries) =
+            collect_and_build_logical_line(&self.viewport, click_row)?;
+
+        let mut best: Option<(
+            HighlightLayer,
+            u32,
+            String,
+            String,
+            BTreeMap<String, String>,
+        )> = None;
+        for (plugin_id, pattern_map) in &self.plugin_highlights {
+            for (pattern, compiled) in pattern_map {
+                for captures in compiled.regex.captures_iter(&logical_text) {
+                    let Some(mat) = highlight_match(&captures) else {
+                        continue;
+                    };
+                    if let Some((_sel, start_row, start_col, end_row, end_col)) =
+                        match_to_selection(&mat, &boundaries, &self.viewport)
+                    {
+                        if position_in_span(
+                            click_row, click_col, start_row, start_col, end_row, end_col,
+                        ) {
+                            let dominated = match &best {
+                                Some((best_layer, ..)) => compiled.layer > *best_layer,
+                                None => true,
+                            };
+                            if dominated {
+                                best = Some((
+                                    compiled.layer,
+                                    *plugin_id,
+                                    pattern.clone(),
+                                    mat.as_str().to_string(),
+                                    compiled.context.clone(),
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        best.map(|(_layer, plugin_id, pattern, matched, ctx)| (plugin_id, pattern, matched, ctx))
+    }
+
+    pub fn set_hover_position(&mut self, new_pos: Option<Position>) {
+        if self.hover_position == new_pos {
+            return;
+        }
+
+        // Mark the canonical group containing the old hover row dirty.
+        if let Some(old_pos) = self.hover_position {
+            self.mark_logical_line_dirty(old_pos.line.0 as usize);
+        }
+        // Mark the canonical group containing the new hover row dirty.
+        if let Some(new_pos_inner) = new_pos {
+            self.mark_logical_line_dirty(new_pos_inner.line.0 as usize);
+        }
+
+        self.hover_position = new_pos;
+        self.recompute_hover_tooltip();
+    }
+
+    /// Mark all physical rows belonging to the logical line group that contains
+    /// `row_idx` as dirty in the output buffer.
+    fn mark_logical_line_dirty(&mut self, row_idx: usize) {
+        if let Some((canonical, group_len, _, _)) =
+            collect_and_build_logical_line(&self.viewport, row_idx)
+        {
+            for r in canonical..canonical + group_len {
+                self.output_buffer.update_line(r);
+            }
+        }
+    }
+
+    /// Recompute the cached hover tooltip from the current hover position and
+    /// plugin highlights.  Called whenever the hover position, highlight set, or
+    /// highlight clearing changes.
+    fn recompute_hover_tooltip(&mut self) {
+        self.cached_hover_tooltip = None;
+        let hover_pos = match self.hover_position {
+            Some(p) => p,
+            None => return,
+        };
+        if self.mouse_tracking != MouseTracking::Off {
+            return;
+        }
+        if self.plugin_highlights.is_empty() {
+            return;
+        }
+        let hover_row = hover_pos.line.0 as usize;
+        let hover_col = hover_pos.column.0 as usize;
+        let (_canonical, _group_len, logical_text, boundaries) =
+            match collect_and_build_logical_line(&self.viewport, hover_row) {
+                Some(v) => v,
+                None => return,
+            };
+        let mut best_layer: Option<HighlightLayer> = None;
+        let mut best_tooltip: Option<String> = None;
+        for (_plugin_id, pattern_map) in &self.plugin_highlights {
+            for (_pattern, compiled) in pattern_map {
+                if !compiled.on_hover || compiled.tooltip_text.is_none() {
+                    continue;
+                }
+                for captures in compiled.regex.captures_iter(&logical_text) {
+                    let Some(mat) = highlight_match(&captures) else {
+                        continue;
+                    };
+                    if let Some((_sel, start_row, start_col, end_row, end_col)) =
+                        match_to_selection(&mat, &boundaries, &self.viewport)
+                    {
+                        if position_in_span(
+                            hover_row, hover_col, start_row, start_col, end_row, end_col,
+                        ) {
+                            let dominated = match best_layer {
+                                Some(bl) => compiled.layer > bl,
+                                None => true,
+                            };
+                            if dominated {
+                                best_layer = Some(compiled.layer);
+                                best_tooltip = compiled.tooltip_text.clone();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        self.cached_hover_tooltip = best_tooltip;
+    }
+
+    /// Pre-compute plugin highlight selections across all logical line groups in
+    /// the viewport.  Hover highlights are emitted first so they take priority
+    /// when the cursor overlaps a match; non-hover highlights follow.
+    fn compute_plugin_highlight_selections(&self) -> Vec<HighlightSelection> {
+        if self.plugin_highlights.is_empty() {
+            return vec![];
+        }
+        let mut selections = Vec::new();
+        let viewport_len = self.viewport.len();
+        let mut ridx = 0;
+        while ridx < viewport_len {
+            let (_canonical, group_len, logical_text, boundaries) =
+                match collect_and_build_logical_line(&self.viewport, ridx) {
+                    Some(v) => v,
+                    None => break,
+                };
+
+            // Hover highlights are pushed first so that `.find()` in
+            // `adjust_styles_for_possible_selection` returns the hover
+            // style when the cursor overlaps the match.  They are suppressed
+            // when mouse tracking is active (events pass through to the app)
+            // and on unfocused panes (hover_position is not set for those).
+            if self.mouse_tracking == MouseTracking::Off {
+                if let Some(hover_pos) = self.hover_position {
+                    let hover_row = hover_pos.line.0 as usize;
+                    let group_end_row = ridx + group_len - 1;
+                    if hover_row >= ridx && hover_row <= group_end_row {
+                        let hover_col = hover_pos.column.0;
+                        for (_plugin_id, pattern_map) in &self.plugin_highlights {
+                            for (_pattern, compiled) in pattern_map {
+                                if !compiled.on_hover || !compiled.has_visual_effect() {
+                                    continue;
+                                }
+                                for captures in compiled.regex.captures_iter(&logical_text) {
+                                    let Some(mat) = highlight_match(&captures) else {
+                                        continue;
+                                    };
+                                    if let Some((sel, start_row, start_col, end_row, end_col)) =
+                                        match_to_selection(&mat, &boundaries, &self.viewport)
+                                    {
+                                        if position_in_span(
+                                            hover_row, hover_col, start_row, start_col, end_row,
+                                            end_col,
+                                        ) {
+                                            selections.push(HighlightSelection {
+                                                selection: sel,
+                                                bg: compiled.bg,
+                                                fg: compiled.fg,
+                                                bold: compiled.bold,
+                                                italic: compiled.italic,
+                                                underline: compiled.underline,
+                                                layer: compiled.layer,
+                                            });
+                                            break; // only one match per pattern per hover
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Non-hover highlights are pushed after hover so that hover
+            // takes precedence for overlapping regions.
+            for (_plugin_id, pattern_map) in &self.plugin_highlights {
+                for (_pattern, compiled) in pattern_map {
+                    if compiled.on_hover || !compiled.has_visual_effect() {
+                        continue;
+                    }
+                    for captures in compiled.regex.captures_iter(&logical_text) {
+                        let Some(mat) = highlight_match(&captures) else {
+                            continue;
+                        };
+                        if let Some((sel, _, _, _, _)) =
+                            match_to_selection(&mat, &boundaries, &self.viewport)
+                        {
+                            selections.push(HighlightSelection {
+                                selection: sel,
+                                bg: compiled.bg,
+                                fg: compiled.fg,
+                                bold: compiled.bold,
+                                italic: compiled.italic,
+                                underline: compiled.underline,
+                                layer: compiled.layer,
+                            });
+                        }
+                    }
+                }
+            }
+
+            ridx += group_len; // advance past this logical line group
+        }
+        // Sort by layer priority (highest first) and within the same layer,
+        // hover highlights before non-hover (hover entries were pushed first,
+        // so a stable sort preserves their relative order).
+        selections.sort_by(|a, b| {
+            use std::cmp::Reverse;
+            Reverse(a.layer).cmp(&Reverse(b.layer))
+        });
+        selections
+    }
+
     pub fn start_selection(&mut self, start: &Position) {
         let old_selection = self.selection;
         self.click.record_click(*start);
@@ -1833,6 +2587,12 @@ impl Grid {
             let old_selection = self.selection;
             self.selection.end(*end);
             self.update_selected_lines(&old_selection, &self.selection.clone());
+        } else {
+            // we do this rather than using .end() so that the selection will be marked as inactive
+            // (so we won't keep changing its start/end points as we scroll) but so we won't update
+            // its end position to the above "end" position (which is incorrect behavior for
+            // double/triple click - it will mean we won't mark until the end of the word/line)
+            self.selection.finalize();
         }
         self.mark_for_rerender();
     }
@@ -2444,6 +3204,111 @@ impl Grid {
     pub fn has_selection(&self) -> bool {
         !self.selection.is_empty()
     }
+    pub fn pane_contents(
+        &self,
+        get_full_scrollback: bool,
+        max_scrollback_lines: Option<usize>,
+    ) -> PaneContents {
+        let mut viewport: Vec<String> = Vec::with_capacity(self.viewport.len());
+        for row in &self.viewport {
+            let s: String = (&row.columns).into_iter().map(|x| x.character).collect();
+            viewport.push(s);
+        }
+        if get_full_scrollback {
+            let mut lines_above_viewport: Vec<String> = Vec::with_capacity(self.lines_above.len());
+            for row in &self.lines_above {
+                let s: String = (&row.columns).into_iter().map(|x| x.character).collect();
+                lines_above_viewport.push(s);
+            }
+            // Truncate to last N lines if max specified (Some(0) means "all" — no truncation)
+            if let Some(max) = max_scrollback_lines {
+                if max > 0 && lines_above_viewport.len() > max {
+                    let start = lines_above_viewport.len() - max;
+                    lines_above_viewport = lines_above_viewport.split_off(start);
+                }
+            }
+            let mut lines_below_viewport: Vec<String> = Vec::with_capacity(self.lines_below.len());
+            for row in &self.lines_below {
+                let s: String = (&row.columns).into_iter().map(|x| x.character).collect();
+                lines_below_viewport.push(s);
+            }
+            PaneContents::new_with_scrollback(
+                viewport,
+                self.selection.start,
+                self.selection.end,
+                lines_above_viewport,
+                lines_below_viewport,
+            )
+        } else {
+            PaneContents::new(viewport, self.selection.start, self.selection.end)
+        }
+    }
+    pub fn pane_contents_with_ansi(
+        &self,
+        get_full_scrollback: bool,
+        max_scrollback_lines: Option<usize>,
+    ) -> PaneContents {
+        use std::fmt::Write;
+
+        let extract_row_with_ansi = |row: &Row| -> String {
+            let mut buf = String::new();
+            let mut last_styles: Option<RcCharacterStyles> = None;
+
+            let last_non_space = row
+                .columns
+                .iter()
+                .rposition(|tc| {
+                    let space = tc.character == ' ';
+                    let styled = !matches!(tc.styles.background, Some(AnsiCode::Reset) | None);
+                    !space || styled
+                })
+                .map(|i| i + 1)
+                .unwrap_or(0);
+
+            for tc in row.columns.iter().take(last_non_space) {
+                if last_styles.as_ref() != Some(&tc.styles) {
+                    write!(buf, "{}", tc.styles).unwrap();
+                    last_styles = Some(tc.styles.clone());
+                }
+                buf.push(tc.character);
+            }
+            if last_styles.is_some() {
+                buf.push_str("\u{1b}[m");
+            }
+            buf
+        };
+
+        let mut viewport: Vec<String> = Vec::with_capacity(self.viewport.len());
+        for row in &self.viewport {
+            viewport.push(extract_row_with_ansi(row));
+        }
+
+        if get_full_scrollback {
+            let mut lines_above_viewport: Vec<String> = Vec::with_capacity(self.lines_above.len());
+            for row in &self.lines_above {
+                lines_above_viewport.push(extract_row_with_ansi(row));
+            }
+            if let Some(max) = max_scrollback_lines {
+                if max > 0 && lines_above_viewport.len() > max {
+                    let start = lines_above_viewport.len() - max;
+                    lines_above_viewport = lines_above_viewport.split_off(start);
+                }
+            }
+            let mut lines_below_viewport: Vec<String> = Vec::with_capacity(self.lines_below.len());
+            for row in &self.lines_below {
+                lines_below_viewport.push(extract_row_with_ansi(row));
+            }
+            PaneContents::new_with_scrollback(
+                viewport,
+                self.selection.start,
+                self.selection.end,
+                lines_above_viewport,
+                lines_below_viewport,
+            )
+        } else {
+            PaneContents::new(viewport, self.selection.start, self.selection.end)
+        }
+    }
 }
 
 impl Perform for Grid {
@@ -2605,34 +3470,44 @@ impl Perform for Grid {
                 if params.len() >= 2 {
                     if let Some(mut dynamic_code) = parse_number(params[0]) {
                         for param in &params[1..] {
-                            // currently only getting the color sequence is supported,
-                            // setting still isn't
                             if param == b"?" {
-                                let saved_terminal_color = if dynamic_code == 10 {
-                                    Some(self.terminal_emulator_colors.borrow().fg)
+                                // Query: respond with pane default if set, else terminal default
+                                let color_rgb = if dynamic_code == 10 {
+                                    match self.pane_default_fg {
+                                        Some(AnsiCode::RgbCode((r, g, b))) => Some((r, g, b)),
+                                        _ => match self.terminal_emulator_colors.borrow().fg {
+                                            PaletteColor::Rgb((r, g, b)) => Some((r, g, b)),
+                                            _ => None,
+                                        },
+                                    }
                                 } else if dynamic_code == 11 {
-                                    Some(self.terminal_emulator_colors.borrow().bg)
+                                    match self.pane_default_bg {
+                                        Some(AnsiCode::RgbCode((r, g, b))) => Some((r, g, b)),
+                                        _ => match self.terminal_emulator_colors.borrow().bg {
+                                            PaletteColor::Rgb((r, g, b)) => Some((r, g, b)),
+                                            _ => None,
+                                        },
+                                    }
                                 } else {
                                     None
                                 };
-                                let color_response_message = match saved_terminal_color {
-                                    Some(PaletteColor::Rgb((r, g, b))) => {
-                                        format!(
-                                            "\u{1b}]{};rgb:{1:02x}{1:02x}/{2:02x}{2:02x}/{3:02x}{3:02x}{4}",
-                                            // dynamic_code, color.r, color.g, color.b, terminator
-                                            dynamic_code, r, g, b, terminator
-                                        )
-                                    },
-                                    _ => {
-                                        format!(
-                                            "\u{1b}]{};rgb:{1:02x}{1:02x}/{2:02x}{2:02x}/{3:02x}{3:02x}{4}",
-                                            // dynamic_code, color.r, color.g, color.b, terminator
-                                            dynamic_code, 0, 0, 0, terminator
-                                        )
-                                    },
-                                };
+                                let (r, g, b) = color_rgb.unwrap_or((0, 0, 0));
+                                let color_response_message = format!(
+                                    "\u{1b}]{};rgb:{1:02x}{1:02x}/{2:02x}{2:02x}/{3:02x}{3:02x}{4}",
+                                    dynamic_code, r, g, b, terminator
+                                );
                                 self.pending_messages_to_pty
                                     .push(color_response_message.as_bytes().to_vec());
+                            } else {
+                                // Set: parse color and store as pane default
+                                if let Some(color) = xparse_color(param) {
+                                    if dynamic_code == 10 {
+                                        self.pane_default_fg = Some(color);
+                                    } else if dynamic_code == 11 {
+                                        self.pane_default_bg = Some(color);
+                                    }
+                                    self.output_buffer.update_all_lines();
+                                }
                             }
                             dynamic_code += 1;
                         }
@@ -2716,17 +3591,36 @@ impl Perform for Grid {
 
             // Reset foreground color.
             b"110" => {
-                // TBD - reset foreground color - currently unimplemented
+                self.pane_default_fg = None;
+                self.output_buffer.update_all_lines();
             },
 
             // Reset background color.
             b"111" => {
-                // TBD - reset background color - currently unimplemented
+                self.pane_default_bg = None;
+                self.output_buffer.update_all_lines();
             },
 
             // Reset text cursor color.
             b"112" => {
                 // TBD - reset text cursor color - currently unimplemented
+            },
+
+            b"99" => {
+                if params.len() > 1 {
+                    let payload = params
+                        .get(1..)
+                        .unwrap_or_default()
+                        .iter()
+                        .flat_map(|x| str::from_utf8(x))
+                        .collect::<Vec<&str>>()
+                        .join(";");
+                    if !payload.is_empty() {
+                        // Store raw payload and terminator; namespacing applied at Tab level
+                        self.pending_desktop_notifications
+                            .push((payload, terminator.to_string()));
+                    }
+                }
             },
 
             _ => {
@@ -2935,8 +3829,10 @@ impl Perform for Grid {
                             // enter alternate buffer
                             let current_lines_above =
                                 std::mem::replace(&mut self.lines_above, VecDeque::new());
-                            let current_viewport =
-                                std::mem::replace(&mut self.viewport, vec![Row::new().canonical()]);
+                            let current_viewport = std::mem::replace(
+                                &mut self.viewport,
+                                VecDeque::from(vec![Row::new().canonical()]),
+                            );
                             let current_cursor = std::mem::replace(
                                 &mut self.cursor,
                                 Cursor::new(0, 0, self.styled_underlines),
@@ -3430,7 +4326,7 @@ impl Perform for Grid {
 #[derive(Clone)]
 pub struct AlternateScreenState {
     lines_above: VecDeque<Row>,
-    viewport: Vec<Row>,
+    viewport: VecDeque<Row>,
     cursor: Cursor,
     sixel_grid: SixelGrid,
     supports_kitty_keyboard_protocol: bool,
@@ -3438,7 +4334,7 @@ pub struct AlternateScreenState {
 impl AlternateScreenState {
     pub fn new(
         lines_above: VecDeque<Row>,
-        viewport: Vec<Row>,
+        viewport: VecDeque<Row>,
         cursor: Cursor,
         sixel_grid: SixelGrid,
         supports_kitty_keyboard_protocol: bool,
@@ -3454,7 +4350,7 @@ impl AlternateScreenState {
     pub fn apply_contents_to(
         &mut self,
         lines_above: &mut VecDeque<Row>,
-        viewport: &mut Vec<Row>,
+        viewport: &mut VecDeque<Row>,
         cursor: &mut Cursor,
         sixel_grid: &mut SixelGrid,
         supports_kitty_keyboard_protocol: &mut bool,
@@ -3475,6 +4371,7 @@ pub struct Row {
     pub columns: VecDeque<TerminalCharacter>,
     pub is_canonical: bool,
     width: Option<usize>,
+    pub bg_color: Option<AnsiCode>,
 }
 
 impl Debug for Row {
@@ -3492,6 +4389,7 @@ impl Row {
             columns: VecDeque::new(),
             is_canonical: false,
             width: None,
+            bg_color: None,
         }
     }
     pub fn from_columns(columns: VecDeque<TerminalCharacter>) -> Self {
@@ -3499,6 +4397,7 @@ impl Row {
             columns,
             is_canonical: false,
             width: None,
+            bg_color: None,
         }
     }
     pub fn from_rows(mut rows: Vec<Row>) -> Self {
@@ -3519,6 +4418,10 @@ impl Row {
     }
     pub fn canonical(mut self) -> Self {
         self.is_canonical = true;
+        self
+    }
+    pub fn with_bg_color(mut self, bg_color: Option<AnsiCode>) -> Self {
+        self.bg_color = bg_color;
         self
     }
     pub fn width_cached(&mut self) -> usize {
@@ -3600,8 +4503,14 @@ impl Row {
                 // adding the character after the end of the current line
                 // we pad the line up to the character and then add it
                 let width_offset = self.excess_width_until(x);
+                let mut gap_fill = EMPTY_TERMINAL_CHARACTER;
+                if let Some(bg_color) = self.bg_color {
+                    gap_fill
+                        .styles
+                        .update(|styles| styles.background = Some(bg_color));
+                }
                 self.columns
-                    .resize(x.saturating_sub(width_offset), EMPTY_TERMINAL_CHARACTER);
+                    .resize(x.saturating_sub(width_offset), gap_fill);
                 self.columns.push_back(terminal_character);
                 self.width = None;
             },

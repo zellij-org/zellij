@@ -30,6 +30,17 @@ pub struct OpenFilePayload {
     pub originating_plugin: Option<OriginatingPlugin>,
 }
 
+impl Default for OpenFilePayload {
+    fn default() -> Self {
+        OpenFilePayload {
+            path: PathBuf::new(),
+            line_number: None,
+            cwd: None,
+            originating_plugin: None,
+        }
+    }
+}
+
 impl OpenFilePayload {
     pub fn new(path: PathBuf, line_number: Option<usize>, cwd: Option<PathBuf>) -> Self {
         OpenFilePayload {
@@ -126,6 +137,23 @@ impl From<RunCommand> for RunCommandAction {
             originating_plugin: run_command.originating_plugin,
             use_terminal_title: run_command.use_terminal_title,
         }
+    }
+}
+
+impl RunCommandAction {
+    pub fn new(mut command: Vec<String>) -> Self {
+        if command.is_empty() {
+            Default::default()
+        } else {
+            RunCommandAction {
+                command: PathBuf::from(command.remove(0)),
+                args: command,
+                ..Default::default()
+            }
+        }
+    }
+    pub fn populate_originating_plugin(&mut self, originating_plugin: OriginatingPlugin) {
+        self.originating_plugin = Some(originating_plugin);
     }
 }
 

@@ -51,6 +51,7 @@ impl Write for LoggingPipe {
         }
 
         self.buffer.extend(buf);
+        self.flush()?;
 
         Ok(buf.len())
     }

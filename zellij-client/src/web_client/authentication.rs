@@ -3,7 +3,15 @@ use axum::body::Body;
 use axum::http::header::SET_COOKIE;
 use axum::{extract::Request, http::StatusCode, middleware::Next, response::Response};
 use axum_extra::extract::cookie::{Cookie, SameSite};
-use zellij_utils::web_authentication_tokens::validate_session_token;
+use zellij_utils::web_authentication_tokens::{
+    hash_token, is_session_token_read_only, validate_session_token,
+};
+
+#[derive(Clone)]
+pub struct SessionTokenHash(pub String);
+
+#[derive(Clone, Copy)]
+pub struct IsReadOnly(pub bool);
 
 pub async fn auth_middleware(request: Request, next: Next) -> Result<Response, StatusCode> {
     let cookies = parse_cookies(&request);
@@ -15,6 +23,19 @@ pub async fn auth_middleware(request: Request, next: Next) -> Result<Response, S
 
     match validate_session_token(&session_token) {
         Ok(true) => {
+            // Check if this is a read-only token
+            let is_read_only = is_session_token_read_only(&session_token).unwrap_or(true);
+
+            // Compute session token hash for client ownership verification
+            let session_token_hash = hash_token(&session_token);
+
+            // Store in request extensions for downstream handlers
+            let mut request = request;
+            request.extensions_mut().insert(IsReadOnly(is_read_only));
+            request
+                .extensions_mut()
+                .insert(SessionTokenHash(session_token_hash));
+
             let response = next.run(request).await;
             Ok(response)
         },

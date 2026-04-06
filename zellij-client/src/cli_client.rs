@@ -1,13 +1,16 @@
 //! The `[cli_client]` is used to attach to a running server session
 //! and dispatch actions, that are specified through the command line.
-use std::collections::BTreeMap;
-use std::io::BufRead;
+use std::collections::{BTreeMap, HashSet};
+use std::io::{self, BufRead, Write};
 use std::process;
+use std::str::FromStr;
 use std::{fs, path::PathBuf};
 
 use crate::os_input_output::ClientOsApi;
 use uuid::Uuid;
 use zellij_utils::{
+    cli::{SubscribeCli, SubscribeFormat},
+    data::PaneId,
     errors::prelude::*,
     input::actions::Action,
     ipc::{ClientToServerMsg, ExitReason, ServerToClientMsg},
@@ -25,6 +28,7 @@ pub fn start_cli_client(
         sock_dir.push(session_name);
         sock_dir
     };
+    crate::check_ipc_pipe_length(&zellij_ipc_pipe);
     os_input.connect_to_server(&*zellij_ipc_pipe);
     let pane_id = os_input
         .env_variable("ZELLIJ_PANE_ID")
@@ -104,8 +108,8 @@ fn pipe_client(
             .insert("_zellij_id".to_owned(), Uuid::new_v4().to_string());
     }
     let create_msg = |payload: Option<String>| -> ClientToServerMsg {
-        ClientToServerMsg::Action(
-            Action::CliPipe {
+        ClientToServerMsg::Action {
+            action: Action::CliPipe {
                 pipe_id: pipe_id.clone(),
                 name: name.clone(),
                 payload,
@@ -119,9 +123,10 @@ fn pipe_client(
                 cwd: cwd.clone(),
                 pane_title: pane_title.clone(),
             },
-            pane_id,
-            None,
-        )
+            terminal_id: pane_id,
+            client_id: None,
+            is_cli_client: true,
+        }
     };
     let is_piped = !os_input.stdin_is_terminal();
     loop {
@@ -151,7 +156,7 @@ fn pipe_client(
         loop {
             // wait for a response and act accordingly
             match os_input.recv_from_server() {
-                Some((ServerToClientMsg::UnblockCliPipeInput(pipe_name), _)) => {
+                Some((ServerToClientMsg::UnblockCliPipeInput { pipe_name }, _)) => {
                     // unblock this pipe, meaning we need to stop waiting for a response and read
                     // once more from STDIN
                     if pipe_name == pipe_id {
@@ -164,7 +169,7 @@ fn pipe_client(
                         }
                     }
                 },
-                Some((ServerToClientMsg::CliPipeOutput(pipe_name, output), _)) => {
+                Some((ServerToClientMsg::CliPipeOutput { pipe_name, output }, _)) => {
                     // send data to STDOUT, this *does not* mean we need to unblock the input
                     let err_context = "Failed to write to stdout";
                     if pipe_name == pipe_id {
@@ -176,15 +181,15 @@ fn pipe_client(
                         stdout.flush().context(err_context).non_fatal();
                     }
                 },
-                Some((ServerToClientMsg::Log(log_lines), _)) => {
+                Some((ServerToClientMsg::Log { lines: log_lines }, _)) => {
                     log_lines.iter().for_each(|line| println!("{line}"));
                     process::exit(0);
                 },
-                Some((ServerToClientMsg::LogError(log_lines), _)) => {
+                Some((ServerToClientMsg::LogError { lines: log_lines }, _)) => {
                     log_lines.iter().for_each(|line| eprintln!("{line}"));
                     process::exit(2);
                 },
-                Some((ServerToClientMsg::Exit(exit_reason), _)) => match exit_reason {
+                Some((ServerToClientMsg::Exit { exit_reason }, _)) => match exit_reason {
                     ExitReason::Error(e) => {
                         eprintln!("{}", e);
                         process::exit(2);
@@ -204,25 +209,40 @@ fn individual_messages_client(
     action: Action,
     pane_id: Option<u32>,
 ) {
-    let msg = ClientToServerMsg::Action(action, pane_id, None);
+    let is_blocking = matches!(
+        &action,
+        Action::NewBlockingPane {
+            unblock_condition: Some(_),
+            ..
+        }
+    );
+    let msg = ClientToServerMsg::Action {
+        action,
+        terminal_id: pane_id,
+        client_id: None,
+        is_cli_client: true,
+    };
     os_input.send_to_server(msg);
     loop {
         match os_input.recv_from_server() {
-            Some((ServerToClientMsg::UnblockInputThread, _)) => {
+            Some((ServerToClientMsg::UnblockInputThread, _)) if !is_blocking => {
                 break;
             },
-            Some((ServerToClientMsg::Log(log_lines), _)) => {
+            Some((ServerToClientMsg::Log { lines: log_lines }, _)) => {
                 log_lines.iter().for_each(|line| println!("{line}"));
                 break;
             },
-            Some((ServerToClientMsg::LogError(log_lines), _)) => {
+            Some((ServerToClientMsg::LogError { lines: log_lines }, _)) => {
                 log_lines.iter().for_each(|line| eprintln!("{line}"));
                 process::exit(2);
             },
-            Some((ServerToClientMsg::Exit(exit_reason), _)) => match exit_reason {
+            Some((ServerToClientMsg::Exit { exit_reason }, _)) => match exit_reason {
                 ExitReason::Error(e) => {
                     eprintln!("{}", e);
                     process::exit(2);
+                },
+                ExitReason::CustomExitStatus(exit_status) => {
+                    process::exit(exit_status);
                 },
                 _ => {
                     break;
@@ -231,4 +251,111 @@ fn individual_messages_client(
             _ => {},
         }
     }
+}
+
+pub fn start_subscribe_client(
+    os_input: Box<dyn ClientOsApi>,
+    session_name: &str,
+    subscribe_cli: SubscribeCli,
+) {
+    let zellij_ipc_pipe: PathBuf = {
+        let mut sock_dir = zellij_utils::consts::ZELLIJ_SOCK_DIR.clone();
+        fs::create_dir_all(&sock_dir).unwrap();
+        zellij_utils::shared::set_permissions(&sock_dir, 0o700).unwrap();
+        sock_dir.push(session_name);
+        sock_dir
+    };
+    crate::check_ipc_pipe_length(&zellij_ipc_pipe);
+    os_input.connect_to_server(&*zellij_ipc_pipe);
+
+    // Parse pane IDs
+    let pane_ids: Vec<PaneId> = subscribe_cli
+        .pane_id
+        .iter()
+        .map(|s| {
+            PaneId::from_str(s).unwrap_or_else(|e| {
+                eprintln!("Invalid pane ID '{}': {}", s, e);
+                process::exit(2);
+            })
+        })
+        .collect();
+
+    // Send subscribe message
+    os_input.send_to_server(ClientToServerMsg::SubscribeToPaneRenders {
+        pane_ids: pane_ids.clone(),
+        scrollback: subscribe_cli.scrollback,
+        ansi: subscribe_cli.ansi,
+    });
+
+    // Track remaining panes for exit-on-all-closed
+    let mut remaining_panes: HashSet<PaneId> = pane_ids.into_iter().collect();
+
+    // Streaming receive loop
+    let stdout = io::stdout();
+    let mut stdout = stdout.lock();
+
+    loop {
+        match os_input.recv_from_server() {
+            Some((
+                ServerToClientMsg::PaneRenderUpdate {
+                    pane_id,
+                    viewport,
+                    scrollback,
+                    is_initial,
+                },
+                _,
+            )) => match subscribe_cli.format {
+                SubscribeFormat::Raw => {
+                    if let Some(ref scrollback_lines) = scrollback {
+                        for line in scrollback_lines {
+                            let _ = writeln!(stdout, "{}", line);
+                        }
+                    }
+                    for line in &viewport {
+                        let _ = writeln!(stdout, "{}", line);
+                    }
+                    let _ = stdout.flush();
+                },
+                SubscribeFormat::Json => {
+                    let json = serde_json::json!({
+                        "event": "pane_update",
+                        "pane_id": pane_id.to_string(),
+                        "viewport": viewport,
+                        "scrollback": scrollback,
+                        "is_initial": is_initial,
+                    });
+                    let _ = writeln!(stdout, "{}", json);
+                    let _ = stdout.flush();
+                },
+            },
+            Some((ServerToClientMsg::SubscribedPaneClosed { pane_id }, _)) => {
+                remaining_panes.remove(&pane_id);
+                match subscribe_cli.format {
+                    SubscribeFormat::Raw => {},
+                    SubscribeFormat::Json => {
+                        let json = serde_json::json!({
+                            "event": "pane_closed",
+                            "pane_id": pane_id.to_string(),
+                        });
+                        let _ = writeln!(stdout, "{}", json);
+                        let _ = stdout.flush();
+                    },
+                }
+                if remaining_panes.is_empty() {
+                    break;
+                }
+            },
+            Some((ServerToClientMsg::Exit { .. }, _)) => break,
+            Some((ServerToClientMsg::LogError { lines }, _)) => {
+                for line in lines {
+                    eprintln!("{}", line);
+                }
+                process::exit(2);
+            },
+            None => break,
+            _ => {},
+        }
+    }
+
+    os_input.send_to_server(ClientToServerMsg::ClientExited);
 }

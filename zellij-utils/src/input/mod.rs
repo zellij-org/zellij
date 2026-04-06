@@ -20,8 +20,8 @@ mod not_wasm {
         data::{BareKey, InputMode, KeyModifier, KeyWithModifier, ModeInfo, PluginCapabilities},
         envs,
         ipc::ClientAttributes,
+        vendored::termwiz::input::{InputEvent, InputParser, KeyCode, KeyEvent, Modifiers},
     };
-    use termwiz::input::{InputEvent, InputParser, KeyCode, KeyEvent, Modifiers};
 
     use super::keybinds::Keybinds;
     use std::collections::BTreeSet;
@@ -146,5 +146,316 @@ mod not_wasm {
             KeyCode::Enter => KeyWithModifier::new_with_modifiers(BareKey::Enter, modifiers),
             _ => KeyWithModifier::new(BareKey::Esc),
         }
+    }
+
+    /// Convert a crossterm `MouseEvent` into a zellij `MouseEvent`.
+    ///
+    /// Crossterm's mouse events are richer than termwiz's (they distinguish
+    /// Down/Up/Drag/Moved directly), so no state tracking is needed.
+    #[cfg(windows)]
+    pub fn from_crossterm_mouse(event: crossterm::event::MouseEvent) -> super::mouse::MouseEvent {
+        use super::mouse;
+        use crossterm::event::{KeyModifiers, MouseButton as CButton, MouseEventKind};
+
+        let position = crate::position::Position::new(event.row as i32, event.column);
+        let modifiers = event.modifiers;
+        let shift = modifiers.contains(KeyModifiers::SHIFT);
+        let alt = modifiers.contains(KeyModifiers::ALT);
+        let ctrl = modifiers.contains(KeyModifiers::CONTROL);
+
+        let (event_type, left, right, middle, wheel_up, wheel_down) = match event.kind {
+            MouseEventKind::Down(CButton::Left) => (
+                mouse::MouseEventType::Press,
+                true,
+                false,
+                false,
+                false,
+                false,
+            ),
+            MouseEventKind::Down(CButton::Right) => (
+                mouse::MouseEventType::Press,
+                false,
+                true,
+                false,
+                false,
+                false,
+            ),
+            MouseEventKind::Down(CButton::Middle) => (
+                mouse::MouseEventType::Press,
+                false,
+                false,
+                true,
+                false,
+                false,
+            ),
+            MouseEventKind::Up(CButton::Left) => (
+                mouse::MouseEventType::Release,
+                true,
+                false,
+                false,
+                false,
+                false,
+            ),
+            MouseEventKind::Up(CButton::Right) => (
+                mouse::MouseEventType::Release,
+                false,
+                true,
+                false,
+                false,
+                false,
+            ),
+            MouseEventKind::Up(CButton::Middle) => (
+                mouse::MouseEventType::Release,
+                false,
+                false,
+                true,
+                false,
+                false,
+            ),
+            MouseEventKind::Drag(CButton::Left) => (
+                mouse::MouseEventType::Motion,
+                true,
+                false,
+                false,
+                false,
+                false,
+            ),
+            MouseEventKind::Drag(CButton::Right) => (
+                mouse::MouseEventType::Motion,
+                false,
+                true,
+                false,
+                false,
+                false,
+            ),
+            MouseEventKind::Drag(CButton::Middle) => (
+                mouse::MouseEventType::Motion,
+                false,
+                false,
+                true,
+                false,
+                false,
+            ),
+            MouseEventKind::Moved => (
+                mouse::MouseEventType::Motion,
+                false,
+                false,
+                false,
+                false,
+                false,
+            ),
+            MouseEventKind::ScrollUp => (
+                mouse::MouseEventType::Press,
+                false,
+                false,
+                false,
+                true,
+                false,
+            ),
+            MouseEventKind::ScrollDown => (
+                mouse::MouseEventType::Press,
+                false,
+                false,
+                false,
+                false,
+                true,
+            ),
+            MouseEventKind::ScrollLeft | MouseEventKind::ScrollRight => (
+                mouse::MouseEventType::Motion,
+                false,
+                false,
+                false,
+                false,
+                false,
+            ),
+        };
+
+        mouse::MouseEvent {
+            event_type,
+            left,
+            right,
+            middle,
+            wheel_up,
+            wheel_down,
+            shift,
+            alt,
+            ctrl,
+            position,
+        }
+    }
+
+    /// Convert a crossterm `KeyEvent` into a zellij `KeyWithModifier` plus synthesized raw VT
+    /// bytes suitable for PTY pass-through. Returns `None` for key codes we don't handle
+    /// (e.g. media keys, bare modifier presses).
+    #[cfg(windows)]
+    pub fn cast_crossterm_key(
+        event: crossterm::event::KeyEvent,
+    ) -> Option<(KeyWithModifier, Vec<u8>)> {
+        use crossterm::event::{KeyCode as CKeyCode, KeyModifiers};
+
+        let ct_mods = event.modifiers;
+        let mut modifiers = BTreeSet::new();
+        if ct_mods.contains(KeyModifiers::CONTROL) {
+            modifiers.insert(KeyModifier::Ctrl);
+        }
+        if ct_mods.contains(KeyModifiers::ALT) {
+            modifiers.insert(KeyModifier::Alt);
+        }
+        if ct_mods.contains(KeyModifiers::SHIFT) {
+            modifiers.insert(KeyModifier::Shift);
+        }
+        if ct_mods.contains(KeyModifiers::SUPER) {
+            modifiers.insert(KeyModifier::Super);
+        }
+
+        let has_ctrl = ct_mods.contains(KeyModifiers::CONTROL);
+        let has_alt = ct_mods.contains(KeyModifiers::ALT);
+
+        let (bare_key, raw_bytes) = match event.code {
+            CKeyCode::Char(c) => {
+                // On Windows, the console reports physical modifier flags alongside
+                // the already-translated character. For example, on French AZERTY:
+                //   Shift+ù → Char('%') + SHIFT
+                //   AltGr+_ → Char('\\') + CTRL+ALT  (AltGr = Ctrl+Alt on Windows)
+                //
+                // Strip modifiers that "produced" the character so the resulting
+                // KeyWithModifier matches what Unix terminals report (just the
+                // character, no redundant modifiers):
+                //   - Shift is always redundant for Char events
+                //   - Ctrl+Alt together indicates AltGr; strip both when the
+                //     character is printable (not a control code)
+                modifiers.remove(&KeyModifier::Shift);
+                let is_altgr = has_ctrl && has_alt && !c.is_ascii_control();
+                if is_altgr {
+                    modifiers.remove(&KeyModifier::Ctrl);
+                    modifiers.remove(&KeyModifier::Alt);
+                }
+
+                let bytes = if is_altgr {
+                    let mut buf = [0u8; 4];
+                    c.encode_utf8(&mut buf).as_bytes().to_vec()
+                } else if has_ctrl && has_alt && c.is_ascii_alphabetic() {
+                    vec![0x1b, (c.to_ascii_lowercase() as u8) & 0x1f]
+                } else if has_ctrl && c.is_ascii_alphabetic() {
+                    vec![(c.to_ascii_lowercase() as u8) & 0x1f]
+                } else if has_alt {
+                    let mut b = vec![0x1b];
+                    let mut buf = [0u8; 4];
+                    b.extend_from_slice(c.encode_utf8(&mut buf).as_bytes());
+                    b
+                } else {
+                    let mut buf = [0u8; 4];
+                    c.encode_utf8(&mut buf).as_bytes().to_vec()
+                };
+                (BareKey::Char(c), bytes)
+            },
+            CKeyCode::Enter => (BareKey::Enter, vec![0x0d]),
+            CKeyCode::Tab => (BareKey::Tab, vec![0x09]),
+            CKeyCode::BackTab => {
+                modifiers.insert(KeyModifier::Shift);
+                (BareKey::Tab, vec![0x1b, b'[', b'Z'])
+            },
+            CKeyCode::Backspace => (BareKey::Backspace, vec![0x7f]),
+            CKeyCode::Esc => (BareKey::Esc, vec![0x1b]),
+            CKeyCode::Left => (BareKey::Left, vec![0x1b, b'[', b'D']),
+            CKeyCode::Right => (BareKey::Right, vec![0x1b, b'[', b'C']),
+            CKeyCode::Up => (BareKey::Up, vec![0x1b, b'[', b'A']),
+            CKeyCode::Down => (BareKey::Down, vec![0x1b, b'[', b'B']),
+            CKeyCode::Home => (BareKey::Home, vec![0x1b, b'[', b'H']),
+            CKeyCode::End => (BareKey::End, vec![0x1b, b'[', b'F']),
+            CKeyCode::PageUp => (BareKey::PageUp, b"\x1b[5~".to_vec()),
+            CKeyCode::PageDown => (BareKey::PageDown, b"\x1b[6~".to_vec()),
+            CKeyCode::Delete => (BareKey::Delete, b"\x1b[3~".to_vec()),
+            CKeyCode::Insert => (BareKey::Insert, b"\x1b[2~".to_vec()),
+            CKeyCode::F(n) => {
+                let bytes = match n {
+                    1 => b"\x1bOP".to_vec(),
+                    2 => b"\x1bOQ".to_vec(),
+                    3 => b"\x1bOR".to_vec(),
+                    4 => b"\x1bOS".to_vec(),
+                    5 => b"\x1b[15~".to_vec(),
+                    6 => b"\x1b[17~".to_vec(),
+                    7 => b"\x1b[18~".to_vec(),
+                    8 => b"\x1b[19~".to_vec(),
+                    9 => b"\x1b[20~".to_vec(),
+                    10 => b"\x1b[21~".to_vec(),
+                    11 => b"\x1b[23~".to_vec(),
+                    12 => b"\x1b[24~".to_vec(),
+                    _ => vec![],
+                };
+                (BareKey::F(n), bytes)
+            },
+            CKeyCode::CapsLock => (BareKey::CapsLock, vec![]),
+            CKeyCode::ScrollLock => (BareKey::ScrollLock, vec![]),
+            CKeyCode::NumLock => (BareKey::NumLock, vec![]),
+            CKeyCode::PrintScreen => (BareKey::PrintScreen, vec![]),
+            CKeyCode::Pause => (BareKey::Pause, vec![]),
+            CKeyCode::Menu => (BareKey::Menu, vec![]),
+            CKeyCode::Null => {
+                // ctrl-space
+                return Some((
+                    KeyWithModifier::new(BareKey::Char(' ')).with_ctrl_modifier(),
+                    vec![0x00],
+                ));
+            },
+            // Media keys, bare modifier presses, KeypadBegin — skip
+            _ => return None,
+        };
+
+        // Encode modifiers in VT raw bytes for non-Char keys.
+        //
+        // On the native console path (Windows), crossterm captures modifier
+        // flags from INPUT_RECORD but the raw bytes don't include them.
+        // Without encoding, the inner application never sees the modifiers.
+        let has_shift = modifiers.contains(&KeyModifier::Shift);
+        let has_any_modifier = has_alt || has_ctrl || has_shift;
+        let raw_bytes = if has_any_modifier && !raw_bytes.is_empty() {
+            let modifier_code = 1
+                + if has_shift { 1 } else { 0 }
+                + if has_alt { 2 } else { 0 }
+                + if has_ctrl { 4 } else { 0 };
+            let first = raw_bytes.get(0).copied();
+            let second = raw_bytes.get(1).copied();
+            let third = raw_bytes.get(2).copied();
+            let last = raw_bytes.last().copied();
+            match (first, second, third, last) {
+                // Simple keys (Enter=0x0d, Tab=0x09, Backspace=0x7f):
+                // ALT only uses ESC prefix, other modifiers use CSI u.
+                (Some(b), _, _, _) if b != 0x1b => {
+                    if modifier_code == 3 {
+                        let mut alt_bytes = vec![0x1b];
+                        alt_bytes.extend_from_slice(&raw_bytes);
+                        alt_bytes
+                    } else {
+                        format!("\x1b[{};{}u", b as u32, modifier_code).into_bytes()
+                    }
+                },
+                // CSI letter-final (\x1b[A, \x1b[D, \x1b[H, \x1b[F):
+                // → \x1b[1;{mod}A
+                (Some(0x1b), Some(b'['), Some(final_byte), _) if raw_bytes.len() == 3 => {
+                    format!("\x1b[1;{}{}", modifier_code, final_byte as char).into_bytes()
+                },
+                // CSI tilde (\x1b[5~, \x1b[3~, \x1b[15~):
+                // → \x1b[5;{mod}~
+                (Some(0x1b), Some(b'['), _, Some(b'~')) if raw_bytes.len() >= 4 => {
+                    let num_part = &raw_bytes[2..raw_bytes.len() - 1];
+                    let num_str = std::str::from_utf8(num_part).unwrap_or("1");
+                    format!("\x1b[{};{}~", num_str, modifier_code).into_bytes()
+                },
+                // SS3 (\x1bOP, \x1bOQ, etc. for F1-F4):
+                // → \x1b[1;{mod}P
+                (Some(0x1b), Some(b'O'), Some(final_byte), _) if raw_bytes.len() == 3 => {
+                    format!("\x1b[1;{}{}", modifier_code, final_byte as char).into_bytes()
+                },
+                _ => raw_bytes,
+            }
+        } else {
+            raw_bytes
+        };
+
+        Some((
+            KeyWithModifier::new_with_modifiers(bare_key, modifiers),
+            raw_bytes,
+        ))
     }
 }

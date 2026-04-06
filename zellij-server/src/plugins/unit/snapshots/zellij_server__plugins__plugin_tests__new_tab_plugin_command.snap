@@ -17,10 +17,23 @@ Some(
             [],
             [],
         ),
+        None,
+        false,
         true,
         (
             1,
             false,
+        ),
+        Some(
+            NotificationEnd {
+                channel: None,
+                exit_status: None,
+                unblock_condition: None,
+                affected_pane_id: None,
+                affected_tab_id: None,
+                error_message: None,
+                stdout_message: None,
+            },
         ),
     ),
 )

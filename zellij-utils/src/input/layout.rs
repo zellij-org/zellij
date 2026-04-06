@@ -11,7 +11,7 @@
 #[cfg(not(target_family = "wasm"))]
 use crate::downloader::Downloader;
 use crate::{
-    data::{Direction, LayoutInfo},
+    data::{Direction, LayoutInfo, LayoutMetadata, LayoutParsingError, LayoutWithError},
     home::{default_layout_dir, find_default_config_dir},
     input::{
         command::RunCommand,
@@ -20,8 +20,6 @@ use crate::{
     pane_size::{Constraint, Dimension, PaneGeom},
     setup::{self},
 };
-#[cfg(not(target_family = "wasm"))]
-use async_std::task;
 
 use std::cmp::Ordering;
 use std::fmt::{Display, Formatter};
@@ -71,6 +69,24 @@ pub enum SplitSize {
     Percent(usize), // 1 to 100
     #[serde(alias = "fixed")]
     Fixed(usize), // An absolute number of columns or rows
+}
+
+impl From<PercentOrFixed> for SplitSize {
+    fn from(pof: PercentOrFixed) -> Self {
+        match pof {
+            PercentOrFixed::Percent(p) => SplitSize::Percent(p),
+            PercentOrFixed::Fixed(f) => SplitSize::Fixed(f),
+        }
+    }
+}
+
+impl From<SplitSize> for PercentOrFixed {
+    fn from(ss: SplitSize) -> Self {
+        match ss {
+            SplitSize::Percent(p) => PercentOrFixed::Percent(p),
+            SplitSize::Fixed(f) => PercentOrFixed::Fixed(f),
+        }
+    }
 }
 
 impl SplitSize {
@@ -229,6 +245,11 @@ impl RunPluginOrAlias {
             },
         }
     }
+    pub fn is_builtin_plugin(&self) -> bool {
+        self.get_run_plugin()
+            .map(|r| matches!(r.location, RunPluginLocation::Zellij(_)))
+            .unwrap_or(false)
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
@@ -237,7 +258,7 @@ pub enum Run {
     Plugin(RunPluginOrAlias),
     #[serde(rename = "command")]
     Command(RunCommand),
-    EditFile(PathBuf, Option<usize>, Option<PathBuf>), // TODO: merge this with TerminalAction::OpenFile
+    EditFile(PathBuf, Option<usize>, Option<PathBuf>),
     Cwd(PathBuf),
 }
 
@@ -681,7 +702,18 @@ pub struct Layout {
     pub swap_floating_layouts: Vec<SwapFloatingLayout>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+/// Layout configuration for a single tab in multi-tab override
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+pub struct TabLayoutInfo {
+    pub tab_index: usize,
+    pub tab_name: Option<String>,
+    pub tiled_layout: TiledPaneLayout,
+    pub floating_layouts: Vec<FloatingPaneLayout>,
+    pub swap_tiled_layouts: Option<Vec<SwapTiledLayout>>,
+    pub swap_floating_layouts: Option<Vec<SwapFloatingLayout>>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
 pub enum PercentOrFixed {
     Percent(usize), // 1 to 100
     Fixed(usize),   // An absolute number of columns or rows
@@ -709,6 +741,14 @@ impl PercentOrFixed {
                     *fixed
                 }
             },
+        }
+    }
+    pub fn to_fixed(&self, whole: usize) -> usize {
+        match self {
+            PercentOrFixed::Percent(percent) => {
+                ((*percent as f64 / 100.0) * whole as f64).floor() as usize
+            },
+            PercentOrFixed::Fixed(fixed) => *fixed,
         }
     }
 }
@@ -748,11 +788,14 @@ pub struct FloatingPaneLayout {
     pub x: Option<PercentOrFixed>,
     pub y: Option<PercentOrFixed>,
     pub pinned: Option<bool>,
+    pub borderless: Option<bool>,
     pub run: Option<Run>,
     pub focus: Option<bool>,
     pub already_running: bool,
     pub pane_initial_contents: Option<String>,
     pub logical_position: Option<usize>,
+    pub default_fg: Option<String>,
+    pub default_bg: Option<String>,
 }
 
 impl FloatingPaneLayout {
@@ -764,11 +807,14 @@ impl FloatingPaneLayout {
             x: None,
             y: None,
             pinned: None,
+            borderless: None,
             run: None,
             focus: None,
             already_running: false,
             pane_initial_contents: None,
             logical_position: None,
+            default_fg: None,
+            default_bg: None,
         }
     }
     pub fn add_cwd_to_layout(&mut self, cwd: &PathBuf) {
@@ -804,7 +850,7 @@ pub struct TiledPaneLayout {
     pub children: Vec<TiledPaneLayout>,
     pub split_size: Option<SplitSize>,
     pub run: Option<Run>,
-    pub borderless: bool,
+    pub borderless: Option<bool>,
     pub focus: Option<bool>,
     pub external_children_index: Option<usize>,
     pub children_are_stacked: bool,
@@ -813,6 +859,8 @@ pub struct TiledPaneLayout {
     pub run_instructions_to_ignore: Vec<Option<Run>>,
     pub hide_floating_panes: bool, // only relevant if this is the base layout
     pub pane_initial_contents: Option<String>,
+    pub default_fg: Option<String>,
+    pub default_bg: Option<String>,
 }
 
 impl TiledPaneLayout {
@@ -995,6 +1043,44 @@ impl TiledPaneLayout {
         }
         run_instructions
     }
+    pub fn replace_next_empty_slot_with_run(&mut self, run_to_insert: Run) -> bool {
+        // Replaces the first empty slot (None or Run::Cwd) with the given Run instruction.
+        // Returns true if a replacement was made, false if no empty slot was found.
+        // Traversal order matches extract_run_instructions (breadth-first).
+
+        if self.children.is_empty() {
+            // This is a leaf node - check if it's an empty slot
+            match &self.run {
+                None | Some(Run::Cwd(_)) => {
+                    self.run = Some(run_to_insert);
+                    return true;
+                },
+                _ => return false,
+            }
+        }
+
+        // Check first child of each child (breadth-first first level)
+        for child in self.children.iter_mut() {
+            if child.children.is_empty() {
+                match &child.run {
+                    None | Some(Run::Cwd(_)) => {
+                        child.run = Some(run_to_insert);
+                        return true;
+                    },
+                    _ => {},
+                }
+            }
+        }
+
+        // Recursively check deeper levels (breadth-first continuation)
+        for child in self.children.iter_mut() {
+            if child.replace_next_empty_slot_with_run(run_to_insert.clone()) {
+                return true;
+            }
+        }
+
+        false
+    }
     pub fn ignore_run_instruction(&mut self, run_instruction: Option<Run>) {
         self.run_instructions_to_ignore.push(run_instruction);
     }
@@ -1151,39 +1237,70 @@ impl Layout {
     pub fn list_available_layouts(
         layout_dir: Option<PathBuf>,
         default_layout_name: &Option<String>,
-    ) -> Vec<LayoutInfo> {
-        let mut available_layouts = layout_dir
+    ) -> (Vec<LayoutInfo>, Vec<LayoutWithError>) {
+        let (mut available_layouts, layouts_with_errors) = layout_dir
             .clone()
             .or_else(|| default_layout_dir())
-            .and_then(|layout_dir| match std::fs::read_dir(layout_dir) {
-                Ok(layout_files) => Some(layout_files),
+            .and_then(|layout_dir| match std::fs::read_dir(&layout_dir) {
+                Ok(layout_files) => Some((layout_files, layout_dir)),
                 Err(_) => None,
             })
-            .map(|layout_files| {
+            .map(|(layout_files, layout_dir)| {
                 let mut available_layouts = vec![];
+                let mut layouts_with_errors = vec![];
                 for file in layout_files {
                     if let Ok(file) = file {
                         if file.path().extension().map(|e| e.to_ascii_lowercase())
                             == Some(std::ffi::OsString::from("kdl"))
                         {
-                            if Layout::from_path_or_default_without_config(
+                            let layout_name = file
+                                .path()
+                                .file_stem()
+                                .and_then(|f| f.to_str())
+                                .map(|f| f.to_string())
+                                .unwrap_or_default();
+
+                            match Layout::from_path_or_default_without_config(
                                 Some(&file.path()),
-                                layout_dir.clone(),
-                            )
-                            .is_ok()
-                            {
-                                if let Some(file_name) = file.path().file_stem() {
+                                Some(layout_dir.clone()),
+                            ) {
+                                Ok(_layout) => {
+                                    let file_path = layout_dir.join(file.path()); // TODO: do we
+                                                                                  // need
+                                                                                  // file_stem()
+                                                                                  // here too?
                                     available_layouts.push(LayoutInfo::File(
-                                        file_name.to_string_lossy().to_string(),
+                                        layout_name,
+                                        LayoutMetadata::from(&file_path),
                                     ))
-                                }
+                                },
+                                Err(config_error) => {
+                                    let file_path = file.path();
+                                    let file_name =
+                                        file_path.to_str().unwrap_or("unknown").to_string();
+                                    let source_code =
+                                        std::fs::read_to_string(&file_path).unwrap_or_default();
+
+                                    let error = match config_error {
+                                        ConfigError::KdlError(kdl_err) => {
+                                            LayoutParsingError::KdlError {
+                                                kdl_error: kdl_err,
+                                                file_name,
+                                                source_code,
+                                            }
+                                        },
+                                        _ => LayoutParsingError::SyntaxError,
+                                    };
+                                    layouts_with_errors
+                                        .push(LayoutWithError { layout_name, error });
+                                },
                             }
                         }
                     }
                 }
-                available_layouts
+                (available_layouts, layouts_with_errors)
             })
-            .unwrap_or_else(Default::default);
+            .unwrap_or_else(|| (Default::default(), Default::default()));
         let default_layout_name = default_layout_name
             .as_ref()
             .map(|d| d.as_str())
@@ -1204,7 +1321,7 @@ impl Layout {
                 a_name.cmp(&b_name)
             }
         });
-        available_layouts
+        (available_layouts, layouts_with_errors)
     }
     pub fn from_layout_info(
         layout_dir: &Option<PathBuf>,
@@ -1212,7 +1329,7 @@ impl Layout {
     ) -> Result<Layout, ConfigError> {
         let mut should_start_layout_commands_suspended = false;
         let (path_to_raw_layout, raw_layout, raw_swap_layouts) = match layout_info {
-            LayoutInfo::File(layout_name_without_extension) => {
+            LayoutInfo::File(layout_name_without_extension, _layout_metadata) => {
                 let layout_dir = layout_dir.clone().or_else(|| default_layout_dir());
                 let (path_to_layout, stringified_layout, swap_layouts) =
                     Self::stringified_from_dir(
@@ -1255,7 +1372,7 @@ impl Layout {
     ) -> Result<(Layout, Config), ConfigError> {
         let mut should_start_layout_commands_suspended = false;
         let (path_to_raw_layout, raw_layout, raw_swap_layouts) = match layout_info {
-            LayoutInfo::File(layout_name_without_extension) => {
+            LayoutInfo::File(layout_name_without_extension, _layout_metadata) => {
                 let layout_dir = layout_dir.clone().or_else(|| default_layout_dir());
                 let (path_to_layout, stringified_layout, swap_layouts) =
                     Self::stringified_from_dir(
@@ -1318,20 +1435,27 @@ impl Layout {
     }
     #[cfg(not(target_family = "wasm"))]
     pub fn stringified_from_url(url: &str) -> Result<String, ConfigError> {
-        let raw_layout = task::block_on(async move {
-            let download = Downloader::download_without_cache(url).await;
-            match download {
-                Ok(stringified) => Ok(stringified),
-                Err(e) => Err(ConfigError::DownloadError(format!("{}", e))),
-            }
-        })?;
-        Ok(raw_layout)
+        Downloader::download_without_cache_blocking(url)
+            .map_err(|e| ConfigError::DownloadError(format!("{}", e)))
     }
     #[cfg(target_family = "wasm")]
     pub fn stringified_from_url(_url: &str) -> Result<String, ConfigError> {
         // silently fail - this should not happen in plugins and legacy architecture is hard
         let raw_layout = String::new();
         Ok(raw_layout)
+    }
+    pub fn from_path_without_config(layout_path: &PathBuf) -> Result<Layout, ConfigError> {
+        // (path_to_layout as String, stringified_layout, Option<path_to_swap_layout as String, stringified_swap_layout>)
+        let (path_to_layout, raw_layout, raw_swap_layouts) =
+            Layout::stringified_from_path(layout_path)?;
+        Layout::from_kdl(
+            &raw_layout,
+            Some(path_to_layout),
+            raw_swap_layouts
+                .as_ref()
+                .map(|(r, f)| (r.as_str(), f.as_str())),
+            None,
+        )
     }
     pub fn from_path_or_default(
         layout_path: Option<&PathBuf>,
@@ -1353,13 +1477,8 @@ impl Layout {
     }
     #[cfg(not(target_family = "wasm"))]
     pub fn from_url(url: &str, config: Config) -> Result<(Layout, Config), ConfigError> {
-        let raw_layout = task::block_on(async move {
-            let download = Downloader::download_without_cache(url).await;
-            match download {
-                Ok(stringified) => Ok(stringified),
-                Err(e) => Err(ConfigError::DownloadError(format!("{}", e))),
-            }
-        })?;
+        let raw_layout = Downloader::download_without_cache_blocking(url)
+            .map_err(|e| ConfigError::DownloadError(format!("{}", e)))?;
         let mut layout = Layout::from_kdl(&raw_layout, Some(url.into()), None, None)?;
         layout.recursively_add_start_suspended_including_template(Some(true));
         let config = Config::from_kdl(&raw_layout, Some(config))?; // this merges the two config, with
@@ -1654,6 +1773,21 @@ impl Layout {
                     .run
                     .as_mut()
                     .map(|f| f.populate_run_plugin_if_needed(&plugin_aliases));
+            }
+        }
+        for swap_tiled_layout in &mut self.swap_tiled_layouts {
+            for (_constraint, tiled_pane_layout) in &mut swap_tiled_layout.0 {
+                tiled_pane_layout.populate_plugin_aliases_in_layout(plugin_aliases);
+            }
+        }
+        for swap_floating_layout in &mut self.swap_floating_layouts {
+            for (_constraint, floating_pane_layouts) in &mut swap_floating_layout.0 {
+                for floating_pane_layout in floating_pane_layouts {
+                    floating_pane_layout
+                        .run
+                        .as_mut()
+                        .map(|f| f.populate_run_plugin_if_needed(plugin_aliases));
+                }
             }
         }
     }

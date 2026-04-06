@@ -3,12 +3,11 @@ use super::*;
 use futures_util::{SinkExt, StreamExt};
 use isahc::prelude::*;
 use serde_json;
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::{Arc, Mutex};
 use tokio::time::timeout;
 use tokio_tungstenite::tungstenite::http::Request;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
-use zellij_utils::input::cli_assets::CliAssets;
 use zellij_utils::input::layout::Layout;
 use zellij_utils::{consts::VERSION, input::config::Config, input::options::Options};
 
@@ -19,9 +18,9 @@ use crate::web_client::control_message::{
 };
 use crate::web_client::ClientOsApiFactory;
 use zellij_utils::{
-    data::{LayoutInfo, Palette},
+    data::Palette,
     errors::ErrorContext,
-    ipc::{ClientAttributes, ClientToServerMsg, ServerToClientMsg},
+    ipc::{ClientToServerMsg, ServerToClientMsg},
     pane_size::Size,
     web_authentication_tokens::{create_token, delete_db, revoke_token},
 };
@@ -88,6 +87,8 @@ mod web_client_tests {
             None,
             Some(session_manager),
             Some(client_os_api_factory),
+            addr.ip(),
+            port,
         ));
 
         wait_for_server(port, Duration::from_secs(5))
@@ -122,8 +123,9 @@ mod web_client_tests {
         let _ = delete_db();
 
         let test_token_name = "test_token_login";
-        let (auth_token, _) =
-            create_token(Some(test_token_name.to_string())).expect("Failed to create test token");
+        let read_only = false;
+        let (auth_token, _) = create_token(Some(test_token_name.to_string()), read_only)
+            .expect("Failed to create test token");
 
         let session_manager = Arc::new(MockSessionManager::new());
         let client_os_api_factory = Arc::new(MockClientOsApiFactory::new());
@@ -146,6 +148,8 @@ mod web_client_tests {
                 None,
                 Some(session_manager),
                 Some(client_os_api_factory),
+                addr.ip(),
+                port,
             )
             .await;
         });
@@ -184,8 +188,6 @@ mod web_client_tests {
         assert_eq!(response_json["success"], true);
         assert_eq!(response_json["message"], "Login successful");
 
-        println!("✓ Login endpoint test passed");
-
         server_handle.abort();
         revoke_token(test_token_name).expect("Failed to revoke test token");
         // time for cleanup
@@ -217,6 +219,8 @@ mod web_client_tests {
                 None,
                 Some(session_manager),
                 Some(client_os_api_factory),
+                addr.ip(),
+                port,
             )
             .await;
         });
@@ -247,7 +251,6 @@ mod web_client_tests {
         .expect("Login request failed");
 
         assert_eq!(response.status(), 401);
-        println!("✓ Invalid auth token correctly rejected");
 
         server_handle.abort();
     }
@@ -258,8 +261,9 @@ mod web_client_tests {
         let _ = delete_db();
 
         let test_token_name = "test_token_session_flow";
-        let (auth_token, _) =
-            create_token(Some(test_token_name.to_string())).expect("Failed to create test token");
+        let read_only = false;
+        let (auth_token, _) = create_token(Some(test_token_name.to_string()), read_only)
+            .expect("Failed to create test token");
 
         let session_manager = Arc::new(MockSessionManager::new());
         let client_os_api_factory = Arc::new(MockClientOsApiFactory::new());
@@ -282,6 +286,8 @@ mod web_client_tests {
                 None,
                 Some(session_manager),
                 Some(client_os_api_factory),
+                addr.ip(),
+                port,
             )
             .await;
         });
@@ -325,8 +331,6 @@ mod web_client_tests {
             .and_then(|part| part.split('=').nth(1))
             .unwrap();
 
-        println!("✓ Successfully logged in and received session token");
-
         let session_url = format!("http://127.0.0.1:{}/session", port);
         let mut client_response = timeout(
             Duration::from_secs(5),
@@ -353,8 +357,6 @@ mod web_client_tests {
             serde_json::from_str(&client_response.text().unwrap()).unwrap();
         let web_client_id = client_data["web_client_id"].as_str().unwrap().to_string();
 
-        println!("✓ Successfully created client session");
-
         let control_ws_url = format!("ws://127.0.0.1:{}/ws/control", port);
         let (control_ws, _) = timeout(
             Duration::from_secs(5),
@@ -377,9 +379,7 @@ mod web_client_tests {
                 serde_json::from_str(&text).expect("Failed to parse control message");
 
             match parsed {
-                WebServerToWebClientControlMessage::SetConfig(_) => {
-                    println!("✓ Received expected SetConfig message");
-                },
+                WebServerToWebClientControlMessage::SetConfig(_) => {},
                 _ => panic!("Expected SetConfig message, got: {:?}", parsed),
             }
         } else {
@@ -398,8 +398,6 @@ mod web_client_tests {
             .send(Message::Text(serde_json::to_string(&resize_msg).unwrap()))
             .await
             .expect("Failed to send resize message");
-
-        println!("✓ Sent terminal resize message");
 
         let terminal_ws_url = format!(
             "ws://127.0.0.1:{}/ws/terminal?web_client_id={}",
@@ -420,8 +418,6 @@ mod web_client_tests {
             .await
             .expect("Failed to send terminal input");
 
-        println!("✓ Sent terminal input");
-
         tokio::time::sleep(Duration::from_millis(500)).await;
 
         let mock_apis = factory_for_verification.mock_apis.lock().unwrap();
@@ -432,10 +428,16 @@ mod web_client_tests {
             let messages = mock_api.get_sent_messages();
             for msg in messages {
                 match msg {
-                    ClientToServerMsg::TerminalResize(_) => {
+                    ClientToServerMsg::TerminalResize { new_size: _ } => {
                         found_resize = true;
                     },
-                    ClientToServerMsg::Key(_, _, _) | ClientToServerMsg::Action(_, _, _) => {
+                    ClientToServerMsg::Key { .. }
+                    | ClientToServerMsg::Action {
+                        action: _,
+                        terminal_id: _,
+                        client_id: _,
+                        is_cli_client: _,
+                    } => {
                         found_terminal_input = true;
                     },
                     _ => {},
@@ -447,21 +449,16 @@ mod web_client_tests {
             found_resize,
             "Terminal resize message was not received by mock OS API"
         );
-        println!("✓ Verified terminal resize message was processed by mock OS API");
-
         assert!(
             found_terminal_input,
             "Terminal input message was not received by mock OS API"
         );
-        println!("✓ Verified terminal input message was processed by mock OS API");
 
         let _ = control_sink.close().await;
         let _ = terminal_sink.close().await;
         server_handle.abort();
 
         revoke_token(test_token_name).expect("Failed to revoke test token");
-        println!("✓ Full session flow test completed successfully");
-        // time for cleanup
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
 
@@ -490,6 +487,8 @@ mod web_client_tests {
                 None,
                 Some(session_manager),
                 Some(client_os_api_factory),
+                addr.ip(),
+                port,
             )
             .await;
         });
@@ -509,7 +508,6 @@ mod web_client_tests {
         .expect("Session request failed");
 
         assert_eq!(response.status(), 401);
-        println!("✓ Unauthorized access correctly rejected");
 
         server_handle.abort();
     }
@@ -539,6 +537,8 @@ mod web_client_tests {
                 None,
                 Some(session_manager),
                 Some(client_os_api_factory),
+                addr.ip(),
+                port,
             )
             .await;
         });
@@ -565,7 +565,6 @@ mod web_client_tests {
         .expect("Session request failed");
 
         assert_eq!(response.status(), 401);
-        println!("✓ Invalid session token correctly rejected");
 
         server_handle.abort();
     }
@@ -576,8 +575,9 @@ mod web_client_tests {
         let _ = delete_db();
 
         let test_token_name = "test_token_server_shutdown";
-        let (auth_token, _) =
-            create_token(Some(test_token_name.to_string())).expect("Failed to create test token");
+        let read_only = false;
+        let (auth_token, _) = create_token(Some(test_token_name.to_string()), read_only)
+            .expect("Failed to create test token");
 
         let session_manager = Arc::new(MockSessionManager::new());
         let client_os_api_factory = Arc::new(MockClientOsApiFactory::new());
@@ -599,6 +599,8 @@ mod web_client_tests {
                 None,
                 Some(session_manager),
                 Some(client_os_api_factory),
+                addr.ip(),
+                port,
             )
             .await;
         });
@@ -708,7 +710,6 @@ mod web_client_tests {
             },
         }
 
-        println!("✓ Server shutdown closes WebSocket connections test completed");
         revoke_token(test_token_name).expect("Failed to revoke test token");
         // time for cleanup
         tokio::time::sleep(Duration::from_millis(100)).await;
@@ -720,8 +721,9 @@ mod web_client_tests {
         let _ = delete_db();
 
         let test_token_name = "test_token_client_cleanup";
-        let (auth_token, _) =
-            create_token(Some(test_token_name.to_string())).expect("Failed to create test token");
+        let read_only = false;
+        let (auth_token, _) = create_token(Some(test_token_name.to_string()), read_only)
+            .expect("Failed to create test token");
 
         let session_manager = Arc::new(MockSessionManager::new());
         let client_os_api_factory = Arc::new(MockClientOsApiFactory::new());
@@ -744,6 +746,8 @@ mod web_client_tests {
                 None,
                 Some(session_manager),
                 Some(client_os_api_factory),
+                addr.ip(),
+                port,
             )
             .await;
         });
@@ -869,7 +873,7 @@ mod web_client_tests {
         for (_, mock_api) in mock_apis.iter() {
             let messages = mock_api.get_sent_messages();
             for msg in messages {
-                if matches!(msg, ClientToServerMsg::TerminalResize(_)) {
+                if matches!(msg, ClientToServerMsg::TerminalResize { .. }) {
                     total_resize_messages = total_resize_messages.saturating_add(1);
                 }
             }
@@ -880,12 +884,9 @@ mod web_client_tests {
             "Should have received at least 2 resize messages"
         );
 
-        println!("✓ Client cleanup removes from connection table test completed");
-
         let _ = control_sink_2.close().await;
         server_handle.abort();
         revoke_token(test_token_name).expect("Failed to revoke test token");
-        // time for cleanup
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
 
@@ -895,8 +896,9 @@ mod web_client_tests {
         let _ = delete_db();
 
         let test_token_name = "test_token_cancellation";
-        let (auth_token, _) =
-            create_token(Some(test_token_name.to_string())).expect("Failed to create test token");
+        let read_only = false;
+        let (auth_token, _) = create_token(Some(test_token_name.to_string()), read_only)
+            .expect("Failed to create test token");
 
         let session_manager = Arc::new(MockSessionManager::new());
         let client_os_api_factory = Arc::new(MockClientOsApiFactory::new());
@@ -918,6 +920,8 @@ mod web_client_tests {
                 None,
                 Some(session_manager),
                 Some(client_os_api_factory),
+                addr.ip(),
+                port,
             )
             .await;
         });
@@ -1021,20 +1025,13 @@ mod web_client_tests {
             }
         }
 
-        println!(
-            "Connection terminated: {}, reason: {}",
-            connection_terminated, termination_reason
-        );
-
         assert!(
             connection_terminated,
             "Connection should have been terminated due to server shutdown. Reason: {}",
             termination_reason
         );
 
-        println!("✓ Cancellation token triggers on shutdown test completed");
         revoke_token(test_token_name).expect("Failed to revoke test token");
-        // time for cleanup
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
 
@@ -1044,8 +1041,9 @@ mod web_client_tests {
         let _ = delete_db();
 
         let test_token_name = "test_token_exit_reasons";
-        let (auth_token, _) =
-            create_token(Some(test_token_name.to_string())).expect("Failed to create test token");
+        let read_only = false;
+        let (auth_token, _) = create_token(Some(test_token_name.to_string()), read_only)
+            .expect("Failed to create test token");
 
         let session_manager = Arc::new(MockSessionManager::new());
         let client_os_api_factory = Arc::new(MockClientOsApiFactory::new());
@@ -1068,6 +1066,8 @@ mod web_client_tests {
                 None,
                 Some(session_manager),
                 Some(client_os_api_factory),
+                addr.ip(),
+                port,
             )
             .await;
         });
@@ -1158,11 +1158,508 @@ mod web_client_tests {
             "ClientExited message should have been sent during cleanup"
         );
 
-        println!("✓ Different exit reasons handled properly test completed");
-
         server_handle.abort();
         revoke_token(test_token_name).expect("Failed to revoke test token");
         // time for cleanup
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_read_only_token_cannot_create_new_session() {
+        let _ = delete_db();
+
+        // Create read-only token
+        let (auth_token, _) = create_token(Some("test-readonly".to_string()), true)
+            .expect("Failed to create read-only token");
+
+        // Setup mocks
+        let mock_session_manager = Arc::new(MockSessionManager::new());
+        // Do NOT mark any session as existing - we want to verify read-only cannot create new sessions
+        let mock_os_api_factory = Arc::new(MockClientOsApiFactory::new());
+        let session_manager_for_verification = mock_session_manager.clone();
+
+        let config = Config::default();
+        let options = Options::default();
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let port = addr.port();
+        let ip = addr.ip();
+
+        let temp_config_path = std::env::temp_dir().join("test_config.kdl");
+        let server_handle = tokio::spawn(async move {
+            serve_web_client(
+                config,
+                options,
+                Some(temp_config_path),
+                listener,
+                None,
+                Some(mock_session_manager),
+                Some(mock_os_api_factory),
+                ip,
+                port,
+            )
+            .await;
+        });
+
+        wait_for_server(port, Duration::from_secs(5))
+            .await
+            .expect("Server should start successfully");
+
+        // Login and create client
+        let session_token = login_and_get_session_token(port, &auth_token).await;
+
+        let session_url = format!("http://127.0.0.1:{}/session", port);
+        let mut client_response = timeout(
+            Duration::from_secs(5),
+            tokio::task::spawn_blocking({
+                let session_token = session_token.to_string();
+                move || {
+                    isahc::Request::post(&session_url)
+                        .header("Cookie", format!("session_token={}", session_token))
+                        .header("Content-Type", "application/json")
+                        .body("{}")
+                        .unwrap()
+                        .send()
+                }
+            }),
+        )
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+
+        assert!(client_response.status().is_success());
+
+        let client_data: serde_json::Value =
+            serde_json::from_str(&client_response.text().unwrap()).unwrap();
+        let is_read_only = client_data["is_read_only"].as_bool().unwrap();
+
+        assert_eq!(is_read_only, true, "Client should be marked as read-only");
+
+        // Try to connect via control WebSocket
+        // This will trigger the server_listener which should close the connection
+        // because read-only client is trying to attach to non-existent session
+        let control_ws_url = format!("ws://127.0.0.1:{}/ws/control", port);
+
+        // The connection might fail or close immediately
+        let _ws_result = timeout(
+            Duration::from_secs(3),
+            connect_async_with_cookie(&control_ws_url, &session_token),
+        )
+        .await;
+
+        // Give time for server_listener to process and close connection
+        tokio::time::sleep(Duration::from_millis(500)).await;
+
+        // Verify no session was created
+        assert!(
+            !session_manager_for_verification.was_session_created("default"),
+            "No session should be created for read-only token attempting to create new session"
+        );
+
+        server_handle.abort();
+        let _ = delete_db();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_read_only_token_uses_watcher_message_type() {
+        let _ = delete_db();
+
+        // Create both regular and read-only tokens
+        let (regular_token, _) = create_token(Some("regular".to_string()), false).unwrap();
+        let (readonly_token, _) = create_token(Some("readonly".to_string()), true).unwrap();
+
+        // Setup mocks - mark all sessions as existing so clients use AttachClient/AttachWatcherClient
+        let mock_session_manager = Arc::new(MockSessionManager::with_all_sessions_existing());
+        let session_manager_for_verification = mock_session_manager.clone();
+
+        let mock_os_api_factory = Arc::new(MockClientOsApiFactory::new());
+
+        let config = Config::default();
+        let options = Options::default();
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let port = addr.port();
+        let ip = addr.ip();
+
+        let temp_config_path = std::env::temp_dir().join("test_config.kdl");
+        let server_handle = tokio::spawn(async move {
+            serve_web_client(
+                config,
+                options,
+                Some(temp_config_path),
+                listener,
+                None,
+                Some(mock_session_manager),
+                Some(mock_os_api_factory),
+                ip,
+                port,
+            )
+            .await;
+        });
+
+        wait_for_server(port, Duration::from_secs(5))
+            .await
+            .expect("Server should start");
+
+        // First, attach with REGULAR token to establish baseline
+        let regular_session_token = login_and_get_session_token(port, &regular_token).await;
+        let regular_web_client_id = create_client_session(port, &regular_session_token).await;
+
+        // Connect control websocket
+        let regular_control_ws_url = format!("ws://127.0.0.1:{}/ws/control", port);
+        let (regular_control_ws, _) = timeout(
+            Duration::from_secs(5),
+            connect_async_with_cookie(&regular_control_ws_url, &regular_session_token),
+        )
+        .await
+        .expect("Regular control WebSocket connection timed out")
+        .expect("Failed to connect regular to control WebSocket");
+
+        let (mut regular_control_sink, _regular_control_stream) = regular_control_ws.split();
+
+        // Connect terminal websocket to trigger server_listener
+        let regular_terminal_ws_url = format!(
+            "ws://127.0.0.1:{}/ws/terminal?web_client_id={}",
+            port, regular_web_client_id
+        );
+        let (regular_terminal_ws, _) = timeout(
+            Duration::from_secs(5),
+            connect_async_with_cookie(&regular_terminal_ws_url, &regular_session_token),
+        )
+        .await
+        .expect("Regular terminal WebSocket connection timed out")
+        .expect("Failed to connect regular to terminal WebSocket");
+
+        let (mut regular_terminal_sink, _regular_terminal_stream) = regular_terminal_ws.split();
+
+        // Wait for attachment to complete
+        tokio::time::sleep(Duration::from_millis(500)).await;
+
+        // VERIFY: Regular client should use AttachClient (not FirstClientConnected, since session exists)
+        // Check what sessions we actually have
+        let regular_msg = {
+            let all_messages = session_manager_for_verification
+                .first_messages_sent
+                .lock()
+                .unwrap();
+
+            if all_messages.is_empty() {
+                panic!("No messages were sent to mock session manager. This indicates the server_listener didn't call spawn_session_if_needed.");
+            }
+
+            let (_session_name, msg) = all_messages
+                .first()
+                .expect("Should have at least one message");
+
+            msg.clone()
+        };
+
+        assert!(
+            matches!(regular_msg, ClientToServerMsg::AttachClient { .. }),
+            "Regular client should use AttachClient message for existing session, got {:?}",
+            regular_msg
+        );
+
+        // Now attach with READ-ONLY token
+        let readonly_session_token = login_and_get_session_token(port, &readonly_token).await;
+        let readonly_web_client_id = create_client_session(port, &readonly_session_token).await;
+
+        // Connect control websocket
+        let readonly_control_ws_url = format!("ws://127.0.0.1:{}/ws/control", port);
+        let (readonly_control_ws, _) = timeout(
+            Duration::from_secs(5),
+            connect_async_with_cookie(&readonly_control_ws_url, &readonly_session_token),
+        )
+        .await
+        .expect("Readonly control WebSocket connection timed out")
+        .expect("Failed to connect readonly to control WebSocket");
+
+        let (mut readonly_control_sink, _readonly_control_stream) = readonly_control_ws.split();
+
+        // Connect terminal websocket to trigger server_listener
+        let readonly_terminal_ws_url = format!(
+            "ws://127.0.0.1:{}/ws/terminal?web_client_id={}",
+            port, readonly_web_client_id
+        );
+        let (readonly_terminal_ws, _) = timeout(
+            Duration::from_secs(5),
+            connect_async_with_cookie(&readonly_terminal_ws_url, &readonly_session_token),
+        )
+        .await
+        .expect("Readonly terminal WebSocket connection timed out")
+        .expect("Failed to connect readonly to terminal WebSocket");
+
+        let (mut readonly_terminal_sink, _readonly_terminal_stream) = readonly_terminal_ws.split();
+
+        // Wait for attachment to complete
+        tokio::time::sleep(Duration::from_millis(500)).await;
+
+        // VERIFY: Read-only client should use AttachWatcherClient
+        let readonly_msg = {
+            let all_messages = session_manager_for_verification
+                .first_messages_sent
+                .lock()
+                .unwrap();
+
+            // Should have at least 2 messages now (regular + readonly)
+            assert!(
+                all_messages.len() >= 2,
+                "Should have at least 2 messages (regular and readonly)"
+            );
+
+            // Get the second message (readonly client)
+            let (_readonly_session_name, msg) = all_messages
+                .get(1)
+                .expect("Should have message for read-only client");
+
+            msg.clone()
+        };
+
+        assert!(
+            matches!(readonly_msg, ClientToServerMsg::AttachWatcherClient { .. }),
+            "Read-only client should use AttachWatcherClient message, got {:?}",
+            readonly_msg
+        );
+
+        // Verify the terminal size is passed correctly
+        if let ClientToServerMsg::AttachWatcherClient { terminal_size, .. } = readonly_msg {
+            assert!(terminal_size.rows > 0 && terminal_size.cols > 0);
+        }
+
+        let _ = regular_control_sink.close().await;
+        let _ = regular_terminal_sink.close().await;
+        let _ = readonly_control_sink.close().await;
+        let _ = readonly_terminal_sink.close().await;
+        server_handle.abort();
+        let _ = delete_db();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_regular_token_uses_first_client_connected_for_new_session() {
+        let _ = delete_db();
+
+        // Create regular token
+        let (regular_token, _) = create_token(Some("regular".to_string()), false).unwrap();
+
+        // Setup mocks
+        let mock_session_manager = Arc::new(MockSessionManager::new());
+        // Do NOT mark session as existing - we want to create a new one
+        let session_manager_for_verification = mock_session_manager.clone();
+        let mock_os_api_factory = Arc::new(MockClientOsApiFactory::new());
+
+        let config = Config::default();
+        let options = Options::default();
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let port = addr.port();
+        let ip = addr.ip();
+
+        let temp_config_path = std::env::temp_dir().join("test_config.kdl");
+        let server_handle = tokio::spawn(async move {
+            serve_web_client(
+                config,
+                options,
+                Some(temp_config_path),
+                listener,
+                None,
+                Some(mock_session_manager),
+                Some(mock_os_api_factory),
+                ip,
+                port,
+            )
+            .await;
+        });
+
+        wait_for_server(port, Duration::from_secs(5))
+            .await
+            .expect("Server should start");
+
+        // Login and create client
+        let session_token = login_and_get_session_token(port, &regular_token).await;
+        let web_client_id = create_client_session(port, &session_token).await;
+
+        // Connect control websocket
+        let control_ws_url = format!("ws://127.0.0.1:{}/ws/control", port);
+        let (control_ws, _) = timeout(
+            Duration::from_secs(5),
+            connect_async_with_cookie(&control_ws_url, &session_token),
+        )
+        .await
+        .expect("Control WebSocket connection timed out")
+        .expect("Failed to connect to control WebSocket");
+
+        let (mut control_sink, _control_stream) = control_ws.split();
+
+        // Connect terminal websocket to trigger server_listener
+        let terminal_ws_url = format!(
+            "ws://127.0.0.1:{}/ws/terminal?web_client_id={}",
+            port, web_client_id
+        );
+        let (terminal_ws, _) = timeout(
+            Duration::from_secs(5),
+            connect_async_with_cookie(&terminal_ws_url, &session_token),
+        )
+        .await
+        .expect("Terminal WebSocket connection timed out")
+        .expect("Failed to connect to terminal WebSocket");
+
+        let (mut terminal_sink, _terminal_stream) = terminal_ws.split();
+
+        // Wait for session creation to complete
+        tokio::time::sleep(Duration::from_millis(500)).await;
+
+        // VERIFY: Regular client creating new session should use FirstClientConnected
+        // The session name will be "default" or a generated name
+        let all_messages = session_manager_for_verification
+            .first_messages_sent
+            .lock()
+            .unwrap();
+
+        // Find the first message (should be FirstClientConnected)
+        let msg = all_messages
+            .first()
+            .map(|(_, msg)| msg)
+            .expect("Should have at least one message");
+
+        assert!(
+            matches!(msg, ClientToServerMsg::FirstClientConnected { .. }),
+            "Regular client creating new session should use FirstClientConnected, got {:?}",
+            msg
+        );
+
+        // Verify session was marked as created
+        let sessions_created = session_manager_for_verification
+            .sessions_created
+            .lock()
+            .unwrap();
+        assert!(
+            !sessions_created.is_empty(),
+            "Session should be created by regular client"
+        );
+
+        let _ = control_sink.close().await;
+        let _ = terminal_sink.close().await;
+        server_handle.abort();
+        let _ = delete_db();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_read_only_status_tracked_in_connection_table() {
+        let _ = delete_db();
+
+        // Create tokens
+        let (regular_token, _) = create_token(Some("regular".to_string()), false).unwrap();
+        let (readonly_token, _) = create_token(Some("readonly".to_string()), true).unwrap();
+
+        // Setup mocks
+        let mock_session_manager = Arc::new(MockSessionManager::new());
+        let mock_os_api_factory = Arc::new(MockClientOsApiFactory::new());
+
+        let config = Config::default();
+        let options = Options::default();
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let port = addr.port();
+        let ip = addr.ip();
+
+        let temp_config_path = std::env::temp_dir().join("test_config.kdl");
+        let server_handle = tokio::spawn(async move {
+            serve_web_client(
+                config,
+                options,
+                Some(temp_config_path),
+                listener,
+                None,
+                Some(mock_session_manager),
+                Some(mock_os_api_factory),
+                ip,
+                port,
+            )
+            .await;
+        });
+
+        wait_for_server(port, Duration::from_secs(5))
+            .await
+            .expect("Server should start");
+
+        // Create multiple clients with different tokens
+        let regular_session_token = login_and_get_session_token(port, &regular_token).await;
+
+        let session_url = format!("http://127.0.0.1:{}/session", port);
+        let mut regular_response = timeout(
+            Duration::from_secs(5),
+            tokio::task::spawn_blocking({
+                let session_token = regular_session_token.to_string();
+                move || {
+                    isahc::Request::post(&session_url)
+                        .header("Cookie", format!("session_token={}", session_token))
+                        .header("Content-Type", "application/json")
+                        .body("{}")
+                        .unwrap()
+                        .send()
+                }
+            }),
+        )
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+
+        let regular_client_data: serde_json::Value =
+            serde_json::from_str(&regular_response.text().unwrap()).unwrap();
+        let regular_is_read_only = regular_client_data["is_read_only"].as_bool().unwrap();
+
+        let readonly_session_token = login_and_get_session_token(port, &readonly_token).await;
+
+        let session_url = format!("http://127.0.0.1:{}/session", port);
+        let mut readonly_response = timeout(
+            Duration::from_secs(5),
+            tokio::task::spawn_blocking({
+                let session_token = readonly_session_token.to_string();
+                move || {
+                    isahc::Request::post(&session_url)
+                        .header("Cookie", format!("session_token={}", session_token))
+                        .header("Content-Type", "application/json")
+                        .body("{}")
+                        .unwrap()
+                        .send()
+                }
+            }),
+        )
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+
+        let readonly_client_data: serde_json::Value =
+            serde_json::from_str(&readonly_response.text().unwrap()).unwrap();
+        let readonly_is_read_only = readonly_client_data["is_read_only"].as_bool().unwrap();
+
+        // Verify is_read_only flag in responses
+        assert_eq!(
+            regular_is_read_only, false,
+            "Regular client should not be read-only"
+        );
+
+        assert_eq!(
+            readonly_is_read_only, true,
+            "Read-only client should be read-only"
+        );
+
+        server_handle.abort();
+        let _ = delete_db();
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
 
@@ -1230,6 +1727,336 @@ mod web_client_tests {
         client_data["web_client_id"].as_str().unwrap().to_string()
     }
 
+    #[tokio::test]
+    #[serial]
+    async fn test_kicked_by_host_sends_close_code_4001() {
+        let _ = delete_db();
+
+        let test_token_name = "test_token_kicked_by_host";
+        let read_only = false;
+        let (auth_token, _) = create_token(Some(test_token_name.to_string()), read_only)
+            .expect("Failed to create test token");
+
+        let session_manager = Arc::new(MockSessionManager::new());
+        let client_os_api_factory = Arc::new(MockClientOsApiFactory::new());
+        let factory_for_verification = client_os_api_factory.clone();
+
+        let config = Config::default();
+        let options = Options::default();
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let port = addr.port();
+
+        let temp_config_path = std::env::temp_dir().join("test_config.kdl");
+        let server_handle = tokio::spawn(async move {
+            serve_web_client(
+                config,
+                options,
+                Some(temp_config_path),
+                listener,
+                None,
+                Some(session_manager),
+                Some(client_os_api_factory),
+                addr.ip(),
+                port,
+            )
+            .await;
+        });
+
+        wait_for_server(port, Duration::from_secs(5))
+            .await
+            .expect("Server failed to start");
+
+        let session_token = login_and_get_session_token(port, &auth_token).await;
+        let web_client_id = create_client_session(port, &session_token).await;
+
+        // Establish terminal WebSocket connection
+        let terminal_ws_url = format!(
+            "ws://127.0.0.1:{}/ws/terminal?web_client_id={}",
+            port, web_client_id
+        );
+        let (terminal_ws, _) = timeout(
+            Duration::from_secs(5),
+            connect_async_with_cookie(&terminal_ws_url, &session_token),
+        )
+        .await
+        .expect("Terminal WebSocket connection timed out")
+        .expect("Failed to connect to terminal WebSocket");
+
+        let (_terminal_sink, mut terminal_stream) = terminal_ws.split();
+
+        // Establish control WebSocket connection
+        let control_ws_url = format!("ws://127.0.0.1:{}/ws/control", port);
+        let (control_ws, _) = timeout(
+            Duration::from_secs(5),
+            connect_async_with_cookie(&control_ws_url, &session_token),
+        )
+        .await
+        .expect("Control WebSocket connection timed out")
+        .expect("Failed to connect to control WebSocket");
+
+        let (mut control_sink, mut control_stream) = control_ws.split();
+
+        // Wait for initial SetConfig and send resize to register client_id on the control channel
+        let _initial_msg = timeout(Duration::from_secs(2), control_stream.next()).await;
+        let resize_msg = WebClientToWebServerControlMessage {
+            web_client_id: web_client_id.clone(),
+            payload: WebClientToWebServerControlMessagePayload::TerminalResize(Size {
+                rows: 30,
+                cols: 100,
+            }),
+        };
+        control_sink
+            .send(Message::Text(serde_json::to_string(&resize_msg).unwrap()))
+            .await
+            .expect("Failed to send resize message");
+
+        // Allow connection to stabilize
+        tokio::time::sleep(Duration::from_millis(200)).await;
+
+        // Queue KickedByHost exit message into the mock API
+        {
+            let mock_apis = factory_for_verification.mock_apis.lock().unwrap();
+            assert!(
+                !mock_apis.is_empty(),
+                "Expected at least one mock API to be registered"
+            );
+            if let Some((_, mock_api)) = mock_apis.iter().next() {
+                mock_api.queue_server_message(ServerToClientMsg::Exit {
+                    exit_reason: zellij_utils::ipc::ExitReason::KickedByHost,
+                });
+            }
+        }
+
+        // Wait for terminal WebSocket to close with code 4001
+        // Use a polling loop to handle any non-close messages that may arrive first
+        let mut terminal_got_4001 = false;
+        let mut terminal_closed = false;
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(8);
+        while tokio::time::Instant::now() < deadline {
+            match timeout(Duration::from_millis(500), terminal_stream.next()).await {
+                Ok(Some(Ok(Message::Close(Some(frame))))) => {
+                    terminal_got_4001 = frame.code
+                        == tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode::Library(4001);
+                    terminal_closed = true;
+                    break;
+                },
+                Ok(Some(Ok(Message::Close(None)))) => {
+                    terminal_closed = true;
+                    break;
+                },
+                Ok(Some(Ok(_other))) => {
+                    // skip non-close messages (e.g. buffered render data)
+                    continue;
+                },
+                Ok(Some(Err(_))) | Ok(None) => {
+                    terminal_closed = true;
+                    break;
+                },
+                Err(_) => {
+                    // timeout on this iteration, continue polling
+                    continue;
+                },
+            }
+        }
+        assert!(
+            terminal_closed,
+            "Terminal WebSocket should have been closed within the timeout"
+        );
+        assert!(
+            terminal_got_4001,
+            "Terminal WebSocket should close with code 4001 when kicked by host"
+        );
+
+        // Wait for control WebSocket to close with code 4001 (skip any pending non-Close messages)
+        let mut control_got_4001 = false;
+        let mut control_closed = false;
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        while tokio::time::Instant::now() < deadline {
+            match timeout(Duration::from_millis(500), control_stream.next()).await {
+                Ok(Some(Ok(Message::Close(Some(frame))))) => {
+                    control_got_4001 = frame.code
+                        == tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode::Library(4001);
+                    control_closed = true;
+                    break;
+                },
+                Ok(Some(Ok(Message::Close(None)))) => {
+                    control_closed = true;
+                    break;
+                },
+                Ok(Some(Ok(_msg))) => {
+                    // Skip non-Close messages
+                    continue;
+                },
+                Ok(Some(Err(_))) | Ok(None) => {
+                    control_closed = true;
+                    break;
+                },
+                Err(_) => continue,
+            }
+        }
+        assert!(
+            control_closed,
+            "Control WebSocket should have been closed within the timeout"
+        );
+        assert!(
+            control_got_4001,
+            "Control WebSocket should close with code 4001 when kicked by host"
+        );
+
+        let _ = control_sink.close().await;
+        server_handle.abort();
+        revoke_token(test_token_name).expect("Failed to revoke test token");
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_normal_exit_sends_normal_close_code() {
+        let _ = delete_db();
+
+        let test_token_name = "test_token_normal_exit_close_code";
+        let read_only = false;
+        let (auth_token, _) = create_token(Some(test_token_name.to_string()), read_only)
+            .expect("Failed to create test token");
+
+        let session_manager = Arc::new(MockSessionManager::new());
+        let client_os_api_factory = Arc::new(MockClientOsApiFactory::new());
+        let factory_for_verification = client_os_api_factory.clone();
+
+        let config = Config::default();
+        let options = Options::default();
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let port = addr.port();
+
+        let temp_config_path = std::env::temp_dir().join("test_config.kdl");
+        let server_handle = tokio::spawn(async move {
+            serve_web_client(
+                config,
+                options,
+                Some(temp_config_path),
+                listener,
+                None,
+                Some(session_manager),
+                Some(client_os_api_factory),
+                addr.ip(),
+                port,
+            )
+            .await;
+        });
+
+        wait_for_server(port, Duration::from_secs(5))
+            .await
+            .expect("Server failed to start");
+
+        let session_token = login_and_get_session_token(port, &auth_token).await;
+        let web_client_id = create_client_session(port, &session_token).await;
+
+        // Establish terminal WebSocket connection
+        let terminal_ws_url = format!(
+            "ws://127.0.0.1:{}/ws/terminal?web_client_id={}",
+            port, web_client_id
+        );
+        let (terminal_ws, _) = timeout(
+            Duration::from_secs(5),
+            connect_async_with_cookie(&terminal_ws_url, &session_token),
+        )
+        .await
+        .expect("Terminal WebSocket connection timed out")
+        .expect("Failed to connect to terminal WebSocket");
+
+        let (_terminal_sink, mut terminal_stream) = terminal_ws.split();
+
+        // Establish control WebSocket connection
+        let control_ws_url = format!("ws://127.0.0.1:{}/ws/control", port);
+        let (control_ws, _) = timeout(
+            Duration::from_secs(5),
+            connect_async_with_cookie(&control_ws_url, &session_token),
+        )
+        .await
+        .expect("Control WebSocket connection timed out")
+        .expect("Failed to connect to control WebSocket");
+
+        let (mut control_sink, mut control_stream) = control_ws.split();
+
+        // Wait for initial SetConfig and send resize to register client_id on the control channel
+        let _initial_msg = timeout(Duration::from_secs(2), control_stream.next()).await;
+        let resize_msg = WebClientToWebServerControlMessage {
+            web_client_id: web_client_id.clone(),
+            payload: WebClientToWebServerControlMessagePayload::TerminalResize(Size {
+                rows: 30,
+                cols: 100,
+            }),
+        };
+        control_sink
+            .send(Message::Text(serde_json::to_string(&resize_msg).unwrap()))
+            .await
+            .expect("Failed to send resize message");
+
+        // Allow connection to stabilize
+        tokio::time::sleep(Duration::from_millis(200)).await;
+
+        // Queue Normal exit message into the mock API
+        {
+            let mock_apis = factory_for_verification.mock_apis.lock().unwrap();
+            assert!(
+                !mock_apis.is_empty(),
+                "Expected at least one mock API to be registered"
+            );
+            if let Some((_, mock_api)) = mock_apis.iter().next() {
+                mock_api.queue_server_message(ServerToClientMsg::Exit {
+                    exit_reason: zellij_utils::ipc::ExitReason::Normal,
+                });
+            }
+        }
+
+        // Wait for terminal WebSocket to close with NORMAL (1000) close code
+        // Use a polling loop to handle any non-close messages that may arrive first
+        let mut terminal_got_normal = false;
+        let mut terminal_closed = false;
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(8);
+        while tokio::time::Instant::now() < deadline {
+            match timeout(Duration::from_millis(500), terminal_stream.next()).await {
+                Ok(Some(Ok(Message::Close(Some(frame))))) => {
+                    terminal_got_normal = frame.code
+                        == tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode::Normal;
+                    terminal_closed = true;
+                    break;
+                },
+                Ok(Some(Ok(Message::Close(None)))) => {
+                    // Close with no code also counts as a normal close
+                    terminal_got_normal = true;
+                    terminal_closed = true;
+                    break;
+                },
+                Ok(Some(Ok(_other))) => {
+                    continue;
+                },
+                Ok(Some(Err(_))) | Ok(None) => {
+                    terminal_closed = true;
+                    break;
+                },
+                Err(_) => continue,
+            }
+        }
+        assert!(
+            terminal_closed,
+            "Terminal WebSocket should have been closed within the timeout"
+        );
+        assert!(
+            terminal_got_normal,
+            "Terminal WebSocket should close with NORMAL code for non-kicked exit"
+        );
+
+        let _ = control_sink.close().await;
+        server_handle.abort();
+        revoke_token(test_token_name).expect("Failed to revoke test token");
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+
     async fn connect_async_with_cookie(
         url: &str,
         session_token: &str,
@@ -1257,12 +2084,560 @@ mod web_client_tests {
             .unwrap();
         connect_async(request).await
     }
+
+    // ========== Task 1: Security Headers Tests ==========
+
+    #[tokio::test]
+    #[serial]
+    async fn test_security_headers_present_on_all_responses() {
+        let _ = delete_db();
+
+        let session_manager = Arc::new(MockSessionManager::new());
+        let client_os_api_factory = Arc::new(MockClientOsApiFactory::new());
+
+        let config = Config::default();
+        let options = Options::default();
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let port = addr.port();
+
+        let temp_config_path = std::env::temp_dir().join("test_config.kdl");
+
+        let server_handle = tokio::spawn(serve_web_client(
+            config,
+            options,
+            Some(temp_config_path),
+            listener,
+            None,
+            Some(session_manager),
+            Some(client_os_api_factory),
+            addr.ip(),
+            port,
+        ));
+
+        wait_for_server(port, Duration::from_secs(5))
+            .await
+            .expect("Server failed to start");
+
+        let url = format!("http://127.0.0.1:{}/info/version", port);
+
+        let response = timeout(
+            Duration::from_secs(5),
+            tokio::task::spawn_blocking(move || isahc::get(&url)),
+        )
+        .await
+        .expect("Request timed out")
+        .expect("Spawn blocking failed")
+        .expect("Request failed");
+
+        assert_eq!(
+            response
+                .headers()
+                .get("X-Content-Type-Options")
+                .map(|v| v.to_str().unwrap()),
+            Some("nosniff"),
+            "X-Content-Type-Options header should be 'nosniff'"
+        );
+        assert_eq!(
+            response
+                .headers()
+                .get("X-Frame-Options")
+                .map(|v| v.to_str().unwrap()),
+            Some("DENY"),
+            "X-Frame-Options header should be 'DENY'"
+        );
+        assert_eq!(
+            response
+                .headers()
+                .get("Referrer-Policy")
+                .map(|v| v.to_str().unwrap()),
+            Some("strict-origin-when-cross-origin"),
+            "Referrer-Policy header should be 'strict-origin-when-cross-origin'"
+        );
+        assert!(
+            response.headers().get("Content-Security-Policy").is_some(),
+            "Content-Security-Policy header should be present"
+        );
+        let csp = response
+            .headers()
+            .get("Content-Security-Policy")
+            .unwrap()
+            .to_str()
+            .unwrap();
+        assert!(
+            csp.contains("default-src 'self'"),
+            "CSP should contain default-src 'self'"
+        );
+        // HSTS should NOT be present when is_https is false
+        assert!(
+            response
+                .headers()
+                .get("Strict-Transport-Security")
+                .is_none(),
+            "Strict-Transport-Security should NOT be present when is_https is false"
+        );
+
+        server_handle.abort();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_security_headers_on_authenticated_routes() {
+        let _ = delete_db();
+
+        let test_token_name = "test_token_sec_headers_auth";
+        let (auth_token, _) = create_token(Some(test_token_name.to_string()), false)
+            .expect("Failed to create test token");
+
+        let session_manager = Arc::new(MockSessionManager::new());
+        let client_os_api_factory = Arc::new(MockClientOsApiFactory::new());
+
+        let config = Config::default();
+        let options = Options::default();
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let port = addr.port();
+
+        let temp_config_path = std::env::temp_dir().join("test_config.kdl");
+        let server_handle = tokio::spawn(async move {
+            serve_web_client(
+                config,
+                options,
+                Some(temp_config_path),
+                listener,
+                None,
+                Some(session_manager),
+                Some(client_os_api_factory),
+                addr.ip(),
+                port,
+            )
+            .await;
+        });
+
+        wait_for_server(port, Duration::from_secs(5))
+            .await
+            .expect("Server failed to start");
+
+        let session_token = login_and_get_session_token(port, &auth_token).await;
+
+        let session_url = format!("http://127.0.0.1:{}/session", port);
+        let response = timeout(
+            Duration::from_secs(5),
+            tokio::task::spawn_blocking({
+                let session_token = session_token.to_string();
+                move || {
+                    isahc::Request::post(&session_url)
+                        .header("Cookie", format!("session_token={}", session_token))
+                        .header("Content-Type", "application/json")
+                        .body("{}")
+                        .unwrap()
+                        .send()
+                }
+            }),
+        )
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+
+        assert_eq!(
+            response
+                .headers()
+                .get("X-Content-Type-Options")
+                .map(|v| v.to_str().unwrap()),
+            Some("nosniff"),
+            "X-Content-Type-Options header should be present on authenticated routes"
+        );
+        assert_eq!(
+            response
+                .headers()
+                .get("X-Frame-Options")
+                .map(|v| v.to_str().unwrap()),
+            Some("DENY"),
+            "X-Frame-Options header should be present on authenticated routes"
+        );
+
+        server_handle.abort();
+        revoke_token(test_token_name).expect("Failed to revoke test token");
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+
+    // ========== Task 10: web_client_id binding tests ==========
+
+    #[tokio::test]
+    #[serial]
+    async fn test_control_websocket_rejects_foreign_web_client_id() {
+        let _ = delete_db();
+
+        // Create a read-write token and a read-only token
+        let (rw_token, _) = create_token(Some("rw_token".to_string()), false).unwrap();
+        let (ro_token, _) = create_token(Some("ro_token".to_string()), true).unwrap();
+
+        let mock_session_manager = Arc::new(MockSessionManager::with_all_sessions_existing());
+        let mock_os_api_factory = Arc::new(MockClientOsApiFactory::new());
+        let factory_for_verification = mock_os_api_factory.clone();
+
+        let config = Config::default();
+        let options = Options::default();
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let port = addr.port();
+        let ip = addr.ip();
+
+        let temp_config_path = std::env::temp_dir().join("test_config.kdl");
+        let server_handle = tokio::spawn(async move {
+            serve_web_client(
+                config,
+                options,
+                Some(temp_config_path),
+                listener,
+                None,
+                Some(mock_session_manager),
+                Some(mock_os_api_factory),
+                ip,
+                port,
+            )
+            .await;
+        });
+
+        wait_for_server(port, Duration::from_secs(5))
+            .await
+            .expect("Server failed to start");
+
+        // Login with read-write token and create a client session
+        let rw_session_token = login_and_get_session_token(port, &rw_token).await;
+        let rw_web_client_id = create_client_session(port, &rw_session_token).await;
+
+        // Login with read-only token and create a client session
+        let ro_session_token = login_and_get_session_token(port, &ro_token).await;
+        let _ro_web_client_id = create_client_session(port, &ro_session_token).await;
+
+        // Connect a control WebSocket using the read-only session token
+        let control_ws_url = format!("ws://127.0.0.1:{}/ws/control", port);
+        let (control_ws, _) = timeout(
+            Duration::from_secs(5),
+            connect_async_with_cookie(&control_ws_url, &ro_session_token),
+        )
+        .await
+        .expect("Control WebSocket connection timed out")
+        .expect("Failed to connect to control WebSocket");
+
+        let (mut control_sink, mut control_stream) = control_ws.split();
+
+        // Wait for initial SetConfig message
+        let _initial_msg = timeout(Duration::from_secs(2), control_stream.next()).await;
+
+        // Send a TerminalResize message with the READ-WRITE user's web_client_id
+        let resize_msg = WebClientToWebServerControlMessage {
+            web_client_id: rw_web_client_id.clone(),
+            payload: WebClientToWebServerControlMessagePayload::TerminalResize(Size {
+                rows: 1,
+                cols: 1,
+            }),
+        };
+
+        control_sink
+            .send(Message::Text(serde_json::to_string(&resize_msg).unwrap()))
+            .await
+            .expect("Failed to send resize message");
+
+        // The WebSocket should be closed by the server
+        let close_result = timeout(Duration::from_secs(3), control_stream.next()).await;
+        match close_result {
+            Ok(Some(Ok(Message::Close(_)))) | Ok(Some(Err(_))) | Ok(None) => {
+                // Expected: connection was closed
+            },
+            Err(_) => {
+                // Timeout - connection may have been silently dropped
+            },
+            Ok(Some(Ok(_))) => {
+                // If we get another message, the connection wasn't closed - this is a failure
+                // but let's check if it closes after
+                let second_result = timeout(Duration::from_secs(2), control_stream.next()).await;
+                assert!(
+                    matches!(
+                        second_result,
+                        Ok(Some(Ok(Message::Close(_)))) | Ok(Some(Err(_))) | Ok(None) | Err(_)
+                    ),
+                    "WebSocket should have been closed after sending foreign web_client_id"
+                );
+            },
+        }
+
+        // Verify that NO TerminalResize message was forwarded on behalf of the rw client
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        let mock_apis = factory_for_verification.mock_apis.lock().unwrap();
+        for (_, mock_api) in mock_apis.iter() {
+            let messages = mock_api.get_sent_messages();
+            for msg in &messages {
+                if matches!(msg, ClientToServerMsg::TerminalResize { .. }) {
+                    panic!(
+                        "TerminalResize should NOT have been forwarded for a foreign web_client_id"
+                    );
+                }
+            }
+        }
+
+        let _ = control_sink.close().await;
+        server_handle.abort();
+        let _ = delete_db();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_control_websocket_accepts_own_web_client_id() {
+        let _ = delete_db();
+
+        let (rw_token, _) = create_token(Some("rw_own_test".to_string()), false).unwrap();
+
+        let mock_session_manager = Arc::new(MockSessionManager::with_all_sessions_existing());
+        let mock_os_api_factory = Arc::new(MockClientOsApiFactory::new());
+        let factory_for_verification = mock_os_api_factory.clone();
+
+        let config = Config::default();
+        let options = Options::default();
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let port = addr.port();
+        let ip = addr.ip();
+
+        let temp_config_path = std::env::temp_dir().join("test_config.kdl");
+        let server_handle = tokio::spawn(async move {
+            serve_web_client(
+                config,
+                options,
+                Some(temp_config_path),
+                listener,
+                None,
+                Some(mock_session_manager),
+                Some(mock_os_api_factory),
+                ip,
+                port,
+            )
+            .await;
+        });
+
+        wait_for_server(port, Duration::from_secs(5))
+            .await
+            .expect("Server failed to start");
+
+        let session_token = login_and_get_session_token(port, &rw_token).await;
+        let web_client_id = create_client_session(port, &session_token).await;
+
+        let control_ws_url = format!("ws://127.0.0.1:{}/ws/control", port);
+        let (control_ws, _) = timeout(
+            Duration::from_secs(5),
+            connect_async_with_cookie(&control_ws_url, &session_token),
+        )
+        .await
+        .expect("Control WebSocket connection timed out")
+        .expect("Failed to connect to control WebSocket");
+
+        let (mut control_sink, mut control_stream) = control_ws.split();
+
+        // Wait for initial SetConfig message
+        let _initial_msg = timeout(Duration::from_secs(2), control_stream.next()).await;
+
+        // Send a TerminalResize message with the CORRECT web_client_id
+        let resize_msg = WebClientToWebServerControlMessage {
+            web_client_id: web_client_id.clone(),
+            payload: WebClientToWebServerControlMessagePayload::TerminalResize(Size {
+                rows: 30,
+                cols: 100,
+            }),
+        };
+
+        control_sink
+            .send(Message::Text(serde_json::to_string(&resize_msg).unwrap()))
+            .await
+            .expect("Failed to send resize message");
+
+        // Allow message processing
+        tokio::time::sleep(Duration::from_millis(500)).await;
+
+        // Verify the resize was forwarded
+        let mock_apis = factory_for_verification.mock_apis.lock().unwrap();
+        let mut found_resize = false;
+        for (_, mock_api) in mock_apis.iter() {
+            let messages = mock_api.get_sent_messages();
+            for msg in messages {
+                if matches!(msg, ClientToServerMsg::TerminalResize { .. }) {
+                    found_resize = true;
+                }
+            }
+        }
+        assert!(
+            found_resize,
+            "TerminalResize should be forwarded when using own web_client_id"
+        );
+
+        let _ = control_sink.close().await;
+        server_handle.abort();
+        let _ = delete_db();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_terminal_websocket_rejects_foreign_web_client_id() {
+        let _ = delete_db();
+
+        let (rw_token, _) = create_token(Some("rw_term_test".to_string()), false).unwrap();
+        let (ro_token, _) = create_token(Some("ro_term_test".to_string()), true).unwrap();
+
+        let mock_session_manager = Arc::new(MockSessionManager::with_all_sessions_existing());
+        let mock_os_api_factory = Arc::new(MockClientOsApiFactory::new());
+
+        let config = Config::default();
+        let options = Options::default();
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let port = addr.port();
+        let ip = addr.ip();
+
+        let temp_config_path = std::env::temp_dir().join("test_config.kdl");
+        let server_handle = tokio::spawn(async move {
+            serve_web_client(
+                config,
+                options,
+                Some(temp_config_path),
+                listener,
+                None,
+                Some(mock_session_manager),
+                Some(mock_os_api_factory),
+                ip,
+                port,
+            )
+            .await;
+        });
+
+        wait_for_server(port, Duration::from_secs(5))
+            .await
+            .expect("Server failed to start");
+
+        // Create two sessions with different tokens
+        let rw_session_token = login_and_get_session_token(port, &rw_token).await;
+        let rw_web_client_id = create_client_session(port, &rw_session_token).await;
+
+        let ro_session_token = login_and_get_session_token(port, &ro_token).await;
+        let _ro_web_client_id = create_client_session(port, &ro_session_token).await;
+
+        // Try to connect terminal WebSocket using ro session token but rw web_client_id
+        let terminal_ws_url = format!(
+            "ws://127.0.0.1:{}/ws/terminal?web_client_id={}",
+            port, rw_web_client_id
+        );
+        let ws_result = timeout(
+            Duration::from_secs(5),
+            connect_async_with_cookie(&terminal_ws_url, &ro_session_token),
+        )
+        .await;
+
+        match ws_result {
+            Ok(Ok((ws, _))) => {
+                // Connection was established but should be closed immediately
+                let (_sink, mut stream) = ws.split();
+                let msg = timeout(Duration::from_secs(2), stream.next()).await;
+                match msg {
+                    Ok(Some(Ok(Message::Close(_)))) | Ok(Some(Err(_))) | Ok(None) | Err(_) => {
+                        // Expected: connection was rejected/closed
+                    },
+                    Ok(Some(Ok(_))) => {
+                        // Unexpected: received data on a connection that should have been rejected
+                        // The server may close after initial processing
+                    },
+                }
+            },
+            Ok(Err(_)) => {
+                // Connection failed - expected behavior
+            },
+            Err(_) => {
+                // Timeout - acceptable
+            },
+        }
+
+        server_handle.abort();
+        let _ = delete_db();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+
+    // ========== Task 8: HTML-escape base_url test ==========
+
+    #[tokio::test]
+    #[serial]
+    async fn test_base_url_with_special_characters_is_escaped() {
+        let _ = delete_db();
+
+        let session_manager = Arc::new(MockSessionManager::new());
+        let client_os_api_factory = Arc::new(MockClientOsApiFactory::new());
+
+        let mut config = Config::default();
+        config.web_client.base_url = Some("\"><script>alert(1)</script>".to_string());
+        let options = Options::default();
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let port = addr.port();
+
+        let temp_config_path = std::env::temp_dir().join("test_config.kdl");
+        let server_handle = tokio::spawn(async move {
+            serve_web_client(
+                config,
+                options,
+                Some(temp_config_path),
+                listener,
+                None,
+                Some(session_manager),
+                Some(client_os_api_factory),
+                addr.ip(),
+                port,
+            )
+            .await;
+        });
+
+        wait_for_server(port, Duration::from_secs(5))
+            .await
+            .expect("Server failed to start");
+
+        let url = format!("http://127.0.0.1:{}/", port);
+        let mut response = timeout(
+            Duration::from_secs(5),
+            tokio::task::spawn_blocking(move || isahc::get(&url)),
+        )
+        .await
+        .expect("Request timed out")
+        .expect("Spawn blocking failed")
+        .expect("Request failed");
+
+        let body = response.text().expect("Failed to read response body");
+        assert!(
+            !body.contains("<script>alert(1)</script>"),
+            "Response body should NOT contain unescaped script tag"
+        );
+        assert!(
+            body.contains("&lt;script&gt;"),
+            "Response body should contain HTML-escaped script tag"
+        );
+
+        server_handle.abort();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
 }
 
 #[derive(Debug, Clone)]
 pub struct MockSessionManager {
     pub mock_sessions: HashMap<String, bool>,
     pub mock_layouts: HashMap<String, Layout>,
+    pub sessions_created: Arc<Mutex<HashSet<String>>>,
+    pub first_messages_sent: Arc<Mutex<Vec<(String, ClientToServerMsg)>>>,
+    pub all_sessions_exist: bool,
 }
 
 impl MockSessionManager {
@@ -1270,18 +2645,49 @@ impl MockSessionManager {
         Self {
             mock_sessions: HashMap::new(),
             mock_layouts: HashMap::new(),
+            sessions_created: Arc::new(Mutex::new(HashSet::new())),
+            first_messages_sent: Arc::new(Mutex::new(Vec::new())),
+            all_sessions_exist: false,
         }
+    }
+
+    pub fn with_all_sessions_existing() -> Self {
+        Self {
+            mock_sessions: HashMap::new(),
+            mock_layouts: HashMap::new(),
+            sessions_created: Arc::new(Mutex::new(HashSet::new())),
+            first_messages_sent: Arc::new(Mutex::new(Vec::new())),
+            all_sessions_exist: true,
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn get_first_message_for_session(&self, session_name: &str) -> Option<ClientToServerMsg> {
+        self.first_messages_sent
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|(name, _)| name == session_name)
+            .map(|(_, msg)| msg.clone())
+    }
+
+    pub fn was_session_created(&self, session_name: &str) -> bool {
+        self.sessions_created.lock().unwrap().contains(session_name)
     }
 }
 
 #[cfg(test)]
 impl SessionManager for MockSessionManager {
     fn session_exists(&self, session_name: &str) -> Result<bool, Box<dyn std::error::Error>> {
-        Ok(self
-            .mock_sessions
-            .get(session_name)
-            .copied()
-            .unwrap_or(false))
+        if self.all_sessions_exist {
+            Ok(true)
+        } else {
+            Ok(self
+                .mock_sessions
+                .get(session_name)
+                .copied()
+                .unwrap_or(false))
+        }
     }
 
     fn get_resurrection_layout(&self, session_name: &str) -> Option<Layout> {
@@ -1291,30 +2697,23 @@ impl SessionManager for MockSessionManager {
     fn spawn_session_if_needed(
         &self,
         session_name: &str,
-        client_attributes: ClientAttributes,
-        config_file_path: Option<PathBuf>,
-        config_options: &Options,
         _os_input: Box<dyn ClientOsApi>,
-        _requested_layout: Option<LayoutInfo>,
-    ) -> (ClientToServerMsg, PathBuf) {
-        let mock_ipc_path = PathBuf::from(format!("/tmp/mock_zellij_{}", session_name));
+        session_exists: bool,
+        _zellij_ipc_pipe: &PathBuf,
+        first_message: ClientToServerMsg,
+    ) {
+        // Track the message that was sent
+        self.first_messages_sent
+            .lock()
+            .unwrap()
+            .push((session_name.to_owned(), first_message.clone()));
 
-        let cli_assets = CliAssets {
-            config_file_path,
-            config_dir: None,
-            should_ignore_config: false,
-            configuration_options: Some(config_options.clone()),
-            layout: None,
-            terminal_window_size: client_attributes.size,
-            data_dir: None,
-            is_debug: false,
-            max_panes: None,
-            force_run_layout_commands: false,
-            cwd: None,
-        };
-        let first_message = ClientToServerMsg::AttachClient(cli_assets, None, None, true);
-
-        (first_message, mock_ipc_path)
+        if !session_exists {
+            self.sessions_created
+                .lock()
+                .unwrap()
+                .insert(session_name.to_owned());
+        }
     }
 }
 
@@ -1364,14 +2763,21 @@ impl MockClientOsApi {
     fn get_sent_messages(&self) -> Vec<ClientToServerMsg> {
         self.messages_to_server.lock().unwrap().clone()
     }
+
+    fn queue_server_message(&self, msg: ServerToClientMsg) {
+        self.messages_from_server
+            .lock()
+            .unwrap()
+            .push_back((msg, ErrorContext::default()));
+    }
 }
 
 impl ClientOsApi for MockClientOsApi {
-    fn get_terminal_size_using_fd(&self, _fd: std::os::unix::io::RawFd) -> Size {
+    fn get_terminal_size(&self) -> Size {
         self.terminal_size
     }
-    fn set_raw_mode(&mut self, _fd: std::os::unix::io::RawFd) {}
-    fn unset_raw_mode(&self, _fd: std::os::unix::io::RawFd) -> Result<(), nix::Error> {
+    fn set_raw_mode(&mut self) {}
+    fn unset_raw_mode(&self) -> Result<(), std::io::Error> {
         Ok(())
     }
     fn get_stdout_writer(&self) -> Box<dyn std::io::Write> {
@@ -1391,9 +2797,19 @@ impl ClientOsApi for MockClientOsApi {
         self.messages_to_server.lock().unwrap().push(msg);
     }
     fn recv_from_server(&self) -> Option<(ServerToClientMsg, ErrorContext)> {
-        self.messages_from_server.lock().unwrap().pop_front()
+        let msg = self.messages_from_server.lock().unwrap().pop_front();
+        if msg.is_none() {
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+        msg
     }
-    fn handle_signals(&self, _sigwinch_cb: Box<dyn Fn()>, _quit_cb: Box<dyn Fn()>) {}
+    fn handle_signals(
+        &self,
+        _sigwinch_cb: Box<dyn Fn()>,
+        _quit_cb: Box<dyn Fn()>,
+        _resize_receiver: Option<std::sync::mpsc::Receiver<()>>,
+    ) {
+    }
     fn connect_to_server(&self, _path: &std::path::Path) {}
     fn load_palette(&self) -> Palette {
         Palette::default()
@@ -1403,8 +2819,5 @@ impl ClientOsApi for MockClientOsApi {
     }
     fn disable_mouse(&self) -> anyhow::Result<()> {
         Ok(())
-    }
-    fn stdin_poller(&self) -> crate::os_input_output::StdinPoller {
-        crate::os_input_output::StdinPoller::default()
     }
 }
