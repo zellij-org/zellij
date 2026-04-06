@@ -10,7 +10,7 @@ use zellij_utils::position::Position;
 
 // If the first char of a grapheme is neither alphanumeric nor an underscore,
 // we consider it a word-boundary.
-fn is_word_boundary(grapheme: &Option<&str>) -> bool {
+fn is_word_boundary(grapheme: Option<&str>) -> bool {
     grapheme.map_or(true, |g| {
         g.chars()
             .next()
@@ -43,17 +43,16 @@ impl<'a> SearchSource<'a> {
         }
     }
 
-    fn display_column_for_cell(&self, hidx: usize) -> usize {
-        self.row()
-            .columns
-            .iter()
-            .take(hidx)
-            .map(|c| c.width())
-            .sum()
-    }
-
     fn cell_display_width(&self, hidx: usize) -> usize {
         self.row().columns[hidx].width()
+    }
+
+    fn get_grapheme(&self, hidx: usize) -> &'a str {
+        self.row().columns[hidx].grapheme()
+    }
+
+    fn next_grapheme(&self, hidx: usize) -> Option<&'a str> {
+        self.row().columns.get(hidx + 1).map(|c| c.grapheme())
     }
 
     /// Returns true, if a new source was found, false otherwise (reached the end of the tail).
@@ -102,33 +101,6 @@ impl<'a> SearchSource<'a> {
         }
         // We have found a new source, or we are in the middle of a line, so no need to change anything
         true
-    }
-
-    // Get the grapheme at hidx and, if existing, the following grapheme as well.
-    // Returns owned Strings to avoid borrow conflicts with source reassignment.
-    fn get_next_two_graphemes(
-        &self,
-        hidx: usize,
-        whole_word_search: bool,
-    ) -> (String, Option<String>) {
-        let haystack_grapheme = match self {
-            SearchSource::Main(row) => row.columns[hidx].grapheme().to_string(),
-            SearchSource::Tail(tail) => tail.columns[hidx].grapheme().to_string(),
-        };
-
-        let next_haystack_grapheme = if whole_word_search {
-            match self {
-                SearchSource::Main(row) => {
-                    row.columns.get(hidx + 1).map(|c| c.grapheme().to_string())
-                },
-                SearchSource::Tail(tail) => {
-                    tail.columns.get(hidx + 1).map(|c| c.grapheme().to_string())
-                },
-            }
-        } else {
-            None
-        };
-        (haystack_grapheme, next_haystack_grapheme)
     }
 }
 
@@ -213,7 +185,7 @@ impl SearchResult {
         if graphemes_match
             && self.whole_word_only
             && nidx == 0
-            && !is_word_boundary(&prev_haystack_grapheme)
+            && !is_word_boundary(prev_haystack_grapheme)
         {
             // Start of the match is not a word boundary, so this is not a hit
             graphemes_match = false;
@@ -238,46 +210,42 @@ impl SearchResult {
         }
 
         let mut tailit = tail.iter();
-        let mut source = SearchSource::Main(row); // Where we currently get the haystack-characters from
+        let mut source = SearchSource::Main(row);
         let orig_ridx = ridx;
         let mut start: Option<(Position, usize)> = None; // (display position, cell index)
         let mut nidx = 0; // Needle grapheme index
         let mut hidx = 0; // Haystack cell index
-        let mut prev_haystack_grapheme: Option<String> = None;
+                          // Running display column of the current cell — O(1) per step, no prefix-sum scans.
+        let mut current_display_col: usize = 0;
+        // When a whole-word rejection jumps hidx backwards, the running counter needs
+        // one correction at the top of the next iteration (set to col(start_hidx+1)).
+        let mut col_for_next_iter: Option<usize> = None;
+        let mut prev_haystack_grapheme: Option<&str> = None;
         loop {
-            // Get the current and next haystack grapheme (owned to avoid borrow of source)
-            let (haystack_grapheme, next_haystack_grapheme) =
-                source.get_next_two_graphemes(hidx, self.whole_word_only);
-            let haystack_display_col = source.display_column_for_cell(hidx);
-            let haystack_display_width = source.cell_display_width(hidx);
+            if let Some(col) = col_for_next_iter.take() {
+                current_display_col = col;
+            }
 
-            // Get current needle grapheme
+            let haystack_grapheme: &str = source.get_grapheme(hidx);
+            let haystack_display_width = source.cell_display_width(hidx);
             let needle_grapheme = needle_graphemes[nidx];
 
-            // Check if needle and haystack match (with search-options)
             let graphemes_match = self.check_if_haystack_grapheme_matches_needle(
                 nidx,
                 needle_grapheme,
-                &haystack_grapheme,
-                prev_haystack_grapheme.as_deref(),
+                haystack_grapheme,
+                prev_haystack_grapheme,
             );
 
             if graphemes_match {
-                // If the needle is only 1 long, the next `if` could also happen, so we are not merging it into one big if-else
                 if nidx == 0 {
-                    start = Some((
-                        Position::new(ridx as i32, haystack_display_col as u16),
-                        hidx,
-                    ));
+                    start = Some((Position::new(ridx as i32, current_display_col as u16), hidx));
                 }
+
                 if nidx == needle_graphemes.len() - 1 {
                     let mut end_found = true;
-                    // If we search whole-word-only, the next non-needle grapheme needs to be a word-boundary,
-                    // otherwise its not a hit (e.g. some occurrence inside a longer word).
-                    if self.whole_word_only && !is_word_boundary(&next_haystack_grapheme.as_deref())
-                    {
-                        // The end of the match is not a word boundary, so this is not a hit!
-                        // We have to jump back from where we started (plus one cell)
+                    if self.whole_word_only && !is_word_boundary(source.next_grapheme(hidx)) {
+                        // End of match is not a word boundary — jump back to start+1.
                         let (start_position, start_hidx) = start.unwrap();
                         nidx = 0;
                         ridx = start_position.line() as usize;
@@ -285,27 +253,30 @@ impl SearchResult {
                         if start_position.line() as usize == orig_ridx {
                             source = SearchSource::Main(row);
                         } else {
-                            // The -1 comes from the main row
                             let tail_idx = start_position.line() as usize - orig_ridx - 1;
-                            // We have to reset the tail-iterator as well.
                             tailit = tail[tail_idx..].iter();
                             let trow = tailit.next().unwrap();
                             source = SearchSource::Tail(trow);
                         }
                         start = None;
                         end_found = false;
+                        // The bottom will add haystack_display_width (end cell's width),
+                        // but we need col(start_hidx+1) at the top of the next iteration.
+                        // col(start_hidx+1) = start_position.column + width(start_hidx).
+                        // Both are O(1); schedule the correction as a one-shot override.
+                        col_for_next_iter = Some(
+                            start_position.column() as usize
+                                + source.cell_display_width(start_hidx),
+                        );
                     }
                     if end_found {
+                        let end_col = current_display_col + haystack_display_width;
                         let mut selection = Selection::default();
                         selection.start(start.unwrap().0);
-                        selection.end(Position::new(
-                            ridx as i32,
-                            (haystack_display_col + haystack_display_width) as u16,
-                        ));
+                        selection.end(Position::new(ridx as i32, end_col as u16));
                         res.push(selection);
                         nidx = 0;
                         if matches!(source, SearchSource::Tail(..)) {
-                            // When searching the tail, we can only find one additional selection, so stopping here
                             break;
                         }
                     }
@@ -313,20 +284,24 @@ impl SearchResult {
                     nidx += 1;
                 }
             } else {
-                // Graphemes don't match. Start searching the needle from the beginning
                 start = None;
                 nidx = 0;
                 if matches!(source, SearchSource::Tail(..)) {
-                    // When searching the tail and we find a mismatch, just quit right now
                     break;
                 }
             }
 
+            let prev_ridx = ridx;
             hidx += 1;
+            current_display_col += haystack_display_width;
             prev_haystack_grapheme = Some(haystack_grapheme);
-            // We might need to switch to a new line in the tail
             if !source.get_next_source(&mut ridx, &mut hidx, &mut tailit, start.is_some()) {
                 break;
+            }
+            if ridx != prev_ridx {
+                // Transitioned to a new row; reset the running column.
+                current_display_col = 0;
+                col_for_next_iter = None;
             }
         }
 
