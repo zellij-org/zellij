@@ -23,6 +23,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: make web client use base URL when switching sessions (https://github.com/zellij-org/zellij/pull/4981)
 * fix: position host cursor for CJK IME even when app hides cursor (https://github.com/zellij-org/zellij/pull/4951)
 * fix: encode modifiers in raw bytes for non-Char keys in windows (https://github.com/zellij-org/zellij/pull/4967)
+* fix: respect --name flag when creating new panes (https://github.com/zellij-org/zellij/pull/4979)
 
 ## [0.44.0] - 2026-03-23
 * fix: meta key handling in web client (https://github.com/zellij-org/zellij/pull/4376)
