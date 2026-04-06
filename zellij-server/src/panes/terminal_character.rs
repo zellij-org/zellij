@@ -4,11 +4,11 @@ use std::fmt::{self, Debug, Display, Formatter};
 use std::ops::{Index, IndexMut};
 use std::rc::Rc;
 use unicode_width::UnicodeWidthChar;
-
 use unicode_width::UnicodeWidthStr;
 use vte::ParamsIter;
 use zellij_utils::data::StyleDeclaration;
 use zellij_utils::data::{PaletteColor, Style};
+use zellij_utils::grapheme_width::grapheme_display_width;
 use zellij_utils::input::command::RunCommand;
 
 use crate::panes::alacritty_functions::parse_sgr_color;
@@ -1009,21 +1009,7 @@ impl TerminalCharacter {
     pub fn push_scalar(&mut self, c: char) {
         let mut s = String::from(self.grapheme.as_str());
         s.push(c);
-        let is_keycap_base = matches!(self.first_char(), Some('#' | '*' | '0'..='9'));
-        if c == '\u{20E3}' && is_keycap_base {
-            // Combining Enclosing Keycap on a keycap base (#, *, 0-9) — always width 1.
-            // unicode-width incorrectly reports 2 for keycap sequences.
-            self.width = 1;
-        } else if c == '\u{FE0F}' && is_keycap_base {
-            // VS16 on keycap bases (#, *, 0-9): don't widen — terminal consensus.
-        } else if UnicodeWidthChar::width(c) != Some(1) || ('\u{1F1E6}'..='\u{1F1FF}').contains(&c)
-        {
-            // Recompute width from the full grapheme string. Covers VS16 widening,
-            // ZWJ sequences, flag pairs, skin tones, etc.
-            // The guard above skips width-1 non-RI chars (= Mc spacing combining marks)
-            // because unicode-width counts them as width 1 but terminals render at 0.
-            self.width = UnicodeWidthStr::width(s.as_str()) as u8;
-        }
+        self.width = grapheme_display_width(&s) as u8;
         self.grapheme = ColdString::from(s);
     }
 }
