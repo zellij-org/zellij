@@ -6207,6 +6207,54 @@ fn egc_state_text_uses_full_grapheme_for_ri_parity_after_rep() {
 }
 
 #[test]
+fn delete_lines_in_scroll_region_clears_egc_state() {
+    let mut grid = create_grid_with_content("");
+    feed_bytes(&mut grid, b"a\r\nb");
+
+    assert_eq!(grid.cursor.y, 1, "cursor should be on the deleted row");
+    assert_eq!(grid.cursor.x, 1, "cursor should be just after 'b'");
+
+    // Delete the current row, replacing it with a blank row at the same cursor coordinates.
+    feed_bytes(&mut grid, b"\x1b[M");
+    // A stale egc_state would attach this combining mark to the replacement row's first cell.
+    feed_bytes(&mut grid, "\u{0301}".as_bytes());
+
+    let replacement_row = &grid.viewport[1];
+    assert_eq!(
+        replacement_row.columns[0].grapheme(),
+        " ",
+        "combining mark must be discarded after DL, not attached to the replacement row"
+    );
+}
+
+#[test]
+fn insert_lines_in_scroll_region_clears_egc_state() {
+    let mut grid = create_grid_with_content("");
+    feed_bytes(&mut grid, b"a\r\nb");
+
+    assert_eq!(grid.cursor.y, 1, "cursor should be on the inserted row");
+    assert_eq!(grid.cursor.x, 1, "cursor should be just after 'b'");
+
+    // Insert a blank row at the cursor, pushing the old row down.
+    feed_bytes(&mut grid, b"\x1b[L");
+    // A stale egc_state would attach this combining mark to the new blank row.
+    feed_bytes(&mut grid, "\u{0301}".as_bytes());
+
+    let inserted_row = &grid.viewport[1];
+    let pushed_row = &grid.viewport[2];
+    assert_eq!(
+        inserted_row.columns[0].grapheme(),
+        " ",
+        "combining mark must be discarded after IL, not attached to the inserted blank row"
+    );
+    assert_eq!(
+        pushed_row.columns[0].grapheme(),
+        "b",
+        "the original row should be preserved below the inserted blank row"
+    );
+}
+
+#[test]
 fn width_shrinking_egc_extension_adjusts_cursor_and_cache() {
     // U+2648 ♈ (Aries) has emoji presentation by default — width 2.
     // Appending VS15 (U+FE0E) switches it to text presentation — width 1.
