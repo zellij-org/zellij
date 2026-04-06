@@ -6486,6 +6486,52 @@ fn cursor_right_legacy_mode_moves_by_column() {
 }
 
 #[test]
+fn cursor_roundtrip_does_not_extend_previous_grapheme() {
+    // Regression: egc_state must be cleared by cursor-motion sequences.
+    // Without the fix, moving right then left back to the same column would leave
+    // egc_state intact, causing a subsequent combining mark to be appended to the
+    // old cell instead of being treated as a new (zero-width, dropped) character.
+    let mut grid = create_grid_with_content("");
+    // Print 'a' at col 0 — cursor lands at col 1, egc_state tracks 'a'
+    feed_bytes(&mut grid, b"a");
+    // Move right 1, then left 1 — cursor back to col 1, but egc_state should be cleared
+    feed_bytes(&mut grid, b"\x1b[C\x1b[D");
+    // Print combining grave accent U+0300
+    feed_bytes(&mut grid, "\u{0300}".as_bytes());
+    // The combining mark should NOT have been appended to 'a'. Cell 0 must still be plain 'a'.
+    let graphemes = first_row_graphemes(&grid);
+    assert_eq!(
+        graphemes[0], "a",
+        "cursor motion must break EGC state — combining mark should not attach to 'a'"
+    );
+}
+
+#[test]
+fn cr_clears_egc_state() {
+    // CR (carriage return) must clear egc_state so that a combining mark printed
+    // after CR + repositioning does not extend the previously placed character.
+    let mut grid = create_grid_with_content("");
+    feed_bytes(&mut grid, b"a");
+    // CR moves to col 0, then CUF moves to col 1 (same as egc_state.end_x)
+    feed_bytes(&mut grid, b"\r\x1b[C");
+    feed_bytes(&mut grid, "\u{0300}".as_bytes());
+    let graphemes = first_row_graphemes(&grid);
+    assert_eq!(graphemes[0], "a", "CR must break EGC state");
+}
+
+#[test]
+fn cup_clears_egc_state() {
+    // CUP (CSI H) must clear egc_state even if it moves to the same position.
+    let mut grid = create_grid_with_content("");
+    feed_bytes(&mut grid, b"a"); // cursor at col 1
+                                 // CUP to row 1, col 2 (1-indexed) — same position as cursor
+    feed_bytes(&mut grid, b"\x1b[1;2H");
+    feed_bytes(&mut grid, "\u{0300}".as_bytes());
+    let graphemes = first_row_graphemes(&grid);
+    assert_eq!(graphemes[0], "a", "CUP must break EGC state");
+}
+
+#[test]
 fn rep_repeats_full_grapheme_cluster_after_combining_mark() {
     // CSI b should repeat the full EGC (base + combining), not just the combining mark.
     let mut grid = create_grid_with_content("");
