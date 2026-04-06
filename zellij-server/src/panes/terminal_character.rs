@@ -934,6 +934,8 @@ pub struct TerminalCharacter {
 // be careful about allowing it to grow.
 #[cfg(target_arch = "x86_64")]
 const _: [(); 24] = [(); std::mem::size_of::<TerminalCharacter>()];
+#[cfg(target_arch = "aarch64")]
+const _: [(); 24] = [(); std::mem::size_of::<TerminalCharacter>()];
 
 impl TerminalCharacter {
     #[inline]
