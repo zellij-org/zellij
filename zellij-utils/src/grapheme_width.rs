@@ -1,19 +1,17 @@
 use unicode_width::UnicodeWidthChar;
 use unicode_width::UnicodeWidthStr;
 
-/// Returns the display width of a single grapheme cluster as the grid assigns it.
-///
-/// This is the canonical width policy for Zellij: it matches what
-/// `TerminalCharacter::push_scalar` computes when building a cell, so that
-/// consumers of serialised pane content (e.g. `PaneContents::get_selected_text`)
-/// use the same column arithmetic as the terminal grid itself.
+/// Returns the display width of a single grapheme cluster using Zellij's canonical
+/// width policy. This is the single source of truth used by both the terminal grid
+/// (cell placement) and pane-content consumers (e.g. `PaneContents::get_selected_text`),
+/// so that column arithmetic stays consistent across the whole stack.
 ///
 /// Key rules that differ from a plain `UnicodeWidthStr::width` call:
 /// - Spacing Combining Marks (Unicode category Mc, e.g. Indic vowel signs like ि or ா)
 ///   are treated as width 0 — they attach to the preceding base character visually.
 /// - Keycap sequences (#/*/0–9 + U+FE0F + U+20E3) are always width 1.
 /// - Everything else (VS16 widening, ZWJ sequences, flag pairs, skin tones) defers
-///   to `UnicodeWidthStr::width` on the full grapheme string.
+///   to `UnicodeWidthStr::width` on a partial prefix of the grapheme string.
 pub fn grapheme_display_width(g: &str) -> usize {
     let mut chars = g.chars();
     let base = match chars.next() {
@@ -29,11 +27,17 @@ pub fn grapheme_display_width(g: &str) -> usize {
         return base_width;
     }
 
-    // Multi-codepoint grapheme — apply the same special cases as push_scalar.
+    // Multi-codepoint grapheme. Recompute from a partial prefix on each
+    // triggering scalar (anything other than width-1, plus RI specially)
+    // rather than the full string, then keep iterating so later width-1
+    // non-RI scalars do not add width. E.g. "क्ष": VIRAMA -> width("क्") = 1;
+    // SSA is width-1 non-RI, so it is skipped and the result stays 1.
     let is_keycap_base = matches!(base, '#' | '*' | '0'..='9');
     let mut width = base_width;
+    let mut byte_offset = rest_start;
 
     for c in chars {
+        byte_offset += c.len_utf8();
         if c == '\u{20E3}' && is_keycap_base {
             // Combining Enclosing Keycap on a keycap base — always width 1.
             return 1;
@@ -41,13 +45,12 @@ pub fn grapheme_display_width(g: &str) -> usize {
             // VS16 on a keycap base: don't widen.
         } else if UnicodeWidthChar::width(c) != Some(1) || ('\u{1F1E6}'..='\u{1F1FF}').contains(&c)
         {
-            // Recompute from full string: handles VS16 widening, ZWJ sequences,
-            // flag pairs (RI + RI), skin-tone modifiers, etc.
-            width = UnicodeWidthStr::width(g);
-            break;
+            // Recompute from the partial prefix up to and including this char.
+            // Covers VS16 widening, ZWJ sequences, flag pairs (RI+RI), skin tones, etc.
+            width = UnicodeWidthStr::width(&g[..byte_offset]);
         }
-        // Width-1 non-RI characters are Mc spacing combining marks.
-        // They visually attach to the base glyph and contribute 0 extra columns.
+        // Width-1 non-RI characters (Mc spacing combining marks, conjunct
+        // consonants after a virama): don't add width.
     }
 
     width
@@ -118,6 +121,13 @@ mod tests {
         // U+2764 (heavy black heart, text presentation, width 1) + VS16 → width 2.
         let g = "\u{2764}\u{FE0F}";
         assert_eq!(grapheme_display_width(g), 2);
+    }
+
+    #[test]
+    fn virama_conjunct_is_width_1() {
+        // KA (U+0915) + VIRAMA (U+094D) + SSA (U+0937): conjunct ligature, one cell.
+        let g = "\u{0915}\u{094D}\u{0937}";
+        assert_eq!(grapheme_display_width(g), 1, "क्ष must be width 1");
     }
 
     #[test]
