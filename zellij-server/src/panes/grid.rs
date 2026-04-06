@@ -2314,6 +2314,7 @@ impl Grid {
                         .push_back(Row::from_columns(columns).canonical());
                 }
             }
+            self.egc_state = None;
             self.output_buffer.update_all_lines(); // TODO: move accurately
         }
     }
@@ -2337,6 +2338,7 @@ impl Grid {
                 self.viewport
                     .insert(current_line_index, Row::from_columns(columns).canonical());
             }
+            self.egc_state = None;
             self.output_buffer.update_all_lines(); // TODO: move accurately
         }
     }
