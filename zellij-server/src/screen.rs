@@ -5042,7 +5042,8 @@ pub(crate) fn screen_thread_main(
                                                                                // tab_index
     let mut pending_events_waiting_for_tab: Vec<ScreenInstruction> = vec![];
     let mut pending_events_waiting_for_client: Vec<ScreenInstruction> = vec![];
-    let mut pending_events_waiting_for_pane: HashMap<PaneId, Vec<ScreenInstruction>> = HashMap::new();
+    let mut pending_events_waiting_for_pane: HashMap<PaneId, Vec<ScreenInstruction>> =
+        HashMap::new();
     let mut plugin_loading_message_cache = HashMap::new();
     let mut keybind_intercepts = HashMap::new();
     loop {

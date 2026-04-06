@@ -8178,10 +8178,7 @@ pub fn pty_bytes_and_hold_pane_buffered_before_new_pane() {
     // PtyBytes and HoldPane can arrive at the screen thread before NewPane because the async
     // reader and quit_cb run on separate threads. This test verifies that such early-arriving
     // events are buffered and replayed once NewPane is processed.
-    let size = Size {
-        cols: 80,
-        rows: 20,
-    };
+    let size = Size { cols: 80, rows: 20 };
     let client_id = 10;
     let mut mock_screen = MockScreen::new(size);
     let session_metadata = mock_screen.clone_session_metadata();
@@ -8229,7 +8226,7 @@ pub fn pty_bytes_and_hold_pane_buffered_before_new_pane() {
         NewPanePlacement::default(),
         false, // start_suppressed
         ClientTabIndexOrPaneId::ClientId(client_id),
-        None, // completion_tx
+        None,  // completion_tx
         false, // set_blocking
     ));
     std::thread::sleep(std::time::Duration::from_millis(100));
