@@ -609,7 +609,7 @@ pub enum Action {
         pane_id: PaneId,
     },
     RenamePaneByPaneId {
-        pane_id: PaneId,
+        pane_id: Option<PaneId>,
         name: Vec<u8>,
     },
     UndoRenamePaneByPaneId {
@@ -1323,23 +1323,19 @@ impl Action {
                 },
                 None => Ok(vec![Action::CloseFocus]),
             },
-            CliAction::RenamePane { name, pane_id } => match pane_id {
-                Some(pane_id_str) => {
-                    let pane_id = PaneId::from_str(&pane_id_str)
-                        .map_err(|_| format!(
+            CliAction::RenamePane { name, pane_id } => {
+                let pane_id = match pane_id {
+                    Some(pane_id_str) => Some(
+                        PaneId::from_str(&pane_id_str).map_err(|_| format!(
                             "Malformed pane id: {pane_id_str}, expecting either a bare integer (eg. 1), a terminal pane id (eg. terminal_1) or a plugin pane id (eg. plugin_1)"
-                        ))?;
-                    Ok(vec![Action::RenamePaneByPaneId {
-                        pane_id,
-                        name: name.as_bytes().to_vec(),
-                    }])
-                },
-                None => Ok(vec![
-                    Action::UndoRenamePane,
-                    Action::PaneNameInput {
-                        input: name.as_bytes().to_vec(),
-                    },
-                ]),
+                        ))?,
+                    ),
+                    None => None,
+                };
+                Ok(vec![Action::RenamePaneByPaneId {
+                    pane_id,
+                    name: name.as_bytes().to_vec(),
+                }])
             },
             CliAction::UndoRenamePane { pane_id } => match pane_id {
                 Some(pane_id_str) => {
@@ -2899,7 +2895,7 @@ mod tests {
         assert_eq!(actions.len(), 1);
         match &actions[0] {
             Action::RenamePaneByPaneId { pane_id, name } => {
-                assert!(matches!(pane_id, PaneId::Terminal(19)));
+                assert!(matches!(pane_id, Some(PaneId::Terminal(19))));
                 assert_eq!(name, &"my-pane".as_bytes().to_vec());
             },
             _ => panic!("Expected RenamePaneByPaneId action"),
@@ -2915,9 +2911,14 @@ mod tests {
         let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
         assert!(result.is_ok());
         let actions = result.unwrap();
-        assert_eq!(actions.len(), 2);
-        assert!(matches!(actions[0], Action::UndoRenamePane));
-        assert!(matches!(actions[1], Action::PaneNameInput { .. }));
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::RenamePaneByPaneId { pane_id, name } => {
+                assert!(pane_id.is_none());
+                assert_eq!(name, &"my-pane".as_bytes().to_vec());
+            },
+            _ => panic!("Expected RenamePaneByPaneId action"),
+        }
     }
 
     // 18. UndoRenamePane

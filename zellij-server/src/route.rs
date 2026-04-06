@@ -1981,12 +1981,20 @@ pub(crate) fn route_action(
                 .with_context(err_context)?;
         },
         Action::RenamePaneByPaneId { pane_id, name } => {
-            senders
-                .send_to_screen(ScreenInstruction::RenamePaneWithPaneId(
+            let instruction = match pane_id {
+                Some(pane_id) => ScreenInstruction::RenamePaneWithPaneId(
                     pane_id.into(),
                     name,
                     Some(NotificationEnd::new(completion_tx)),
-                ))
+                ),
+                None => ScreenInstruction::RenameActivePane(
+                    name,
+                    client_id,
+                    Some(NotificationEnd::new(completion_tx)),
+                ),
+            };
+            senders
+                .send_to_screen(instruction)
                 .with_context(err_context)?;
         },
         Action::UndoRenamePaneByPaneId { pane_id } => {

@@ -1725,7 +1725,7 @@ impl From<crate::input::actions::Action>
             },
             crate::input::actions::Action::RenamePaneByPaneId { pane_id, name } => {
                 ActionType::RenamePaneByPaneId(RenamePaneByPaneIdAction {
-                    pane_id: Some(pane_id.into()),
+                    pane_id: pane_id.map(|id| id.into()),
                     name,
                 })
             },
@@ -2641,10 +2641,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
             },
             ActionType::RenamePaneByPaneId(a) => {
                 Ok(crate::input::actions::Action::RenamePaneByPaneId {
-                    pane_id: a
-                        .pane_id
-                        .ok_or_else(|| anyhow!("RenamePaneByPaneId missing pane_id"))?
-                        .try_into()?,
+                    pane_id: a.pane_id.map(|p| p.try_into()).transpose()?,
                     name: a.name,
                 })
             },

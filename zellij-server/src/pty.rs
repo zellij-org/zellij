@@ -226,10 +226,14 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                         Some(TerminalAction::RunCommand(run_command)) => (
                             run_command.hold_on_close,
                             Some(run_command.clone()),
-                            if run_command.use_terminal_title {
+                            if name.is_some() {
+                                // User explicitly provided a name — use it regardless
+                                // of use_terminal_title
+                                name
+                            } else if run_command.use_terminal_title {
                                 None
                             } else {
-                                Some(name.unwrap_or_else(|| run_command.to_string()))
+                                Some(run_command.to_string())
                             },
                             None,
                         ),

@@ -352,6 +352,7 @@ pub enum ScreenContext {
     UnsuppressOrExpandPane,
     FocusPaneWithId,
     RenamePane,
+    RenameActivePane,
     RenameTab,
     RequestPluginPermissions,
     BreakPane,

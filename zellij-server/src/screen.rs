@@ -625,6 +625,7 @@ pub enum ScreenInstruction {
     // should_float_if_hidden,
     // should_be_in_place_if_hidden
     RenamePane(PaneId, Vec<u8>, Option<NotificationEnd>),
+    RenameActivePane(Vec<u8>, ClientId, Option<NotificationEnd>),
     RenameTab(usize, Vec<u8>, Option<NotificationEnd>),
     RequestPluginPermissions(
         u32, // u32 - plugin_id
@@ -991,6 +992,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::UnsuppressOrExpandPane(..) => ScreenContext::UnsuppressOrExpandPane,
             ScreenInstruction::FocusPaneWithId(..) => ScreenContext::FocusPaneWithId,
             ScreenInstruction::RenamePane(..) => ScreenContext::RenamePane,
+            ScreenInstruction::RenameActivePane(..) => ScreenContext::RenameActivePane,
             ScreenInstruction::RenameTab(..) => ScreenContext::RenameTab,
             ScreenInstruction::RequestPluginPermissions(..) => {
                 ScreenContext::RequestPluginPermissions
@@ -7631,6 +7633,17 @@ pub(crate) fn screen_thread_main(
                         break;
                     }
                 }
+                screen.log_and_report_session_state()?;
+            },
+            ScreenInstruction::RenameActivePane(new_name, client_id, _completion_tx) => {
+                active_tab_and_connected_client_id!(
+                    screen,
+                    client_id,
+                    |tab: &mut Tab, client_id: ClientId| tab
+                        .rename_active_pane(new_name, client_id),
+                    ?
+                );
+                screen.render(None)?;
                 screen.log_and_report_session_state()?;
             },
             ScreenInstruction::RenameTab(
