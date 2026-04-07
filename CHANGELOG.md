@@ -5,6 +5,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+
+## [0.44.1] - 2026-04-07
 * fix: don't display default ports as offline in `share` plugin (https://github.com/zellij-org/zellij/pull/4908)
 * fix: theme folder not being picked up on startup (https://github.com/zellij-org/zellij/pull/4892)
 * fix: do not reset selection in session-manager on SessionInfo update (https://github.com/zellij-org/zellij/pull/4919)
