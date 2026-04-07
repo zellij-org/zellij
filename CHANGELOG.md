@@ -26,6 +26,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: respect --name flag when creating new panes (https://github.com/zellij-org/zellij/pull/4979)
 * fix: do not reset underline with CSI 22 (https://github.com/zellij-org/zellij/pull/4962)
 * fix: race when starting short lived command pane (https://github.com/zellij-org/zellij/pull/5010)
+* fix: properly report OSC52 clipboard support (https://github.com/zellij-org/zellij/pull/4545)
 
 ## [0.44.0] - 2026-03-23
 * fix: meta key handling in web client (https://github.com/zellij-org/zellij/pull/4376)
