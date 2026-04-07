@@ -29,11 +29,12 @@ jobs:
     env:
       RUST_BACKTRACE: 1
     strategy:
+      fail-fast: false
       matrix:
         build:
           - linux musl x64
           - linux musl aarch64
-          - linux musl riscv64
+          #- linux musl riscv64
           - macos x64
           - macos aarch64
           - windows x64
@@ -44,9 +45,9 @@ jobs:
           - build: linux musl aarch64
             os: ubuntu-latest
             target: aarch64-unknown-linux-musl
-          - build: linux musl riscv64
-            os: ubuntu-latest
-            target: riscv64gc-unknown-linux-musl
+#          - build: linux musl riscv64
+#            os: ubuntu-latest
+#            target: riscv64gc-unknown-linux-musl
           - build: macos x64
             os: macos-latest
             target: x86_64-apple-darwin
@@ -224,11 +225,12 @@ jobs:
     env:
       RUST_BACKTRACE: 1
     strategy:
+      fail-fast: false
       matrix:
         build:
           - linux musl x64
           - linux musl aarch64
-          - linux musl riscv64
+          #- linux musl riscv64
           - macos x64
           - macos aarch64
           - windows x64
@@ -239,9 +241,9 @@ jobs:
           - build: linux musl aarch64
             os: ubuntu-latest
             target: aarch64-unknown-linux-musl
-          - build: linux musl riscv64
-            os: ubuntu-latest
-            target: riscv64gc-unknown-linux-musl
+#          - build: linux musl riscv64
+#            os: ubuntu-latest
+#            target: riscv64gc-unknown-linux-musl
           - build: macos x64
             os: macos-latest
             target: x86_64-apple-darwin
