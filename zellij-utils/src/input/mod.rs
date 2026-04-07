@@ -409,7 +409,8 @@ mod not_wasm {
         // Without encoding, the inner application never sees the modifiers.
         let has_shift = modifiers.contains(&KeyModifier::Shift);
         let has_any_modifier = has_alt || has_ctrl || has_shift;
-        let raw_bytes = if has_any_modifier && !raw_bytes.is_empty() {
+        let is_char_key = matches!(bare_key, BareKey::Char(_));
+        let raw_bytes = if has_any_modifier && !raw_bytes.is_empty() && !is_char_key {
             let modifier_code = 1
                 + if has_shift { 1 } else { 0 }
                 + if has_alt { 2 } else { 0 }
@@ -457,5 +458,53 @@ mod not_wasm {
             KeyWithModifier::new_with_modifiers(bare_key, modifiers),
             raw_bytes,
         ))
+    }
+}
+
+#[cfg(all(test, windows))]
+mod windows_key_tests {
+    use super::not_wasm::cast_crossterm_key;
+    use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+
+    fn make_key_event(code: KeyCode, modifiers: KeyModifiers) -> KeyEvent {
+        KeyEvent {
+            code,
+            modifiers,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::NONE,
+        }
+    }
+
+    #[test]
+    fn cast_crossterm_key_ctrl_c_produces_raw_byte() {
+        let event = make_key_event(KeyCode::Char('c'), KeyModifiers::CONTROL);
+        let (_, bytes) = cast_crossterm_key(event).unwrap();
+        assert_eq!(
+            bytes,
+            vec![3],
+            "Ctrl+C should produce raw byte 0x03, not CSI u encoding"
+        );
+    }
+
+    #[test]
+    fn cast_crossterm_key_ctrl_w_produces_raw_byte() {
+        let event = make_key_event(KeyCode::Char('w'), KeyModifiers::CONTROL);
+        let (_, bytes) = cast_crossterm_key(event).unwrap();
+        assert_eq!(
+            bytes,
+            vec![23],
+            "Ctrl+W should produce raw byte 0x17, not CSI u encoding"
+        );
+    }
+
+    #[test]
+    fn cast_crossterm_key_ctrl_enter_gets_csi_u_encoding() {
+        let event = make_key_event(KeyCode::Enter, KeyModifiers::CONTROL);
+        let (_, bytes) = cast_crossterm_key(event).unwrap();
+        assert_eq!(
+            bytes,
+            b"\x1b[13;5u".to_vec(),
+            "Ctrl+Enter should get CSI u encoding"
+        );
     }
 }

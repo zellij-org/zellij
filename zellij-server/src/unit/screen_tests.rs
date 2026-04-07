@@ -2268,6 +2268,74 @@ pub fn send_cli_send_keys_action_to_screen() {
 }
 
 #[test]
+pub fn send_cli_ctrl_c_reaches_pty_writer() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 10;
+    let mut mock_screen = MockScreen::new(size);
+    let pty_writer_receiver = mock_screen.pty_writer_receiver.take().unwrap();
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(None, vec![]);
+    let received_pty_instructions = Arc::new(Mutex::new(vec![]));
+    let pty_writer_thread = log_actions_in_thread!(
+        received_pty_instructions,
+        PtyWriteInstruction::Exit,
+        pty_writer_receiver
+    );
+    let cli_action = CliAction::SendKeys {
+        keys: vec!["Ctrl c".to_string()],
+        pane_id: None,
+    };
+    send_cli_action_to_server(&session_metadata, cli_action, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![pty_writer_thread, screen_thread]);
+    let received_write_instructions: Vec<_> = received_pty_instructions
+        .lock()
+        .unwrap()
+        .clone()
+        .into_iter()
+        .filter(|i| matches!(i, PtyWriteInstruction::Write(..)))
+        .collect();
+    assert_snapshot!(format!("{:#?}", received_write_instructions));
+}
+
+#[test]
+pub fn send_cli_ctrl_w_reaches_pty_writer() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 10;
+    let mut mock_screen = MockScreen::new(size);
+    let pty_writer_receiver = mock_screen.pty_writer_receiver.take().unwrap();
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(None, vec![]);
+    let received_pty_instructions = Arc::new(Mutex::new(vec![]));
+    let pty_writer_thread = log_actions_in_thread!(
+        received_pty_instructions,
+        PtyWriteInstruction::Exit,
+        pty_writer_receiver
+    );
+    let cli_action = CliAction::SendKeys {
+        keys: vec!["Ctrl w".to_string()],
+        pane_id: None,
+    };
+    send_cli_action_to_server(&session_metadata, cli_action, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![pty_writer_thread, screen_thread]);
+    let received_write_instructions: Vec<_> = received_pty_instructions
+        .lock()
+        .unwrap()
+        .clone()
+        .into_iter()
+        .filter(|i| matches!(i, PtyWriteInstruction::Write(..)))
+        .collect();
+    assert_snapshot!(format!("{:#?}", received_write_instructions));
+}
+
+#[test]
 pub fn send_cli_resize_action_to_screen() {
     let size = Size { cols: 80, rows: 20 };
     let client_id = 10; // fake client id should not appear in the screen's state
