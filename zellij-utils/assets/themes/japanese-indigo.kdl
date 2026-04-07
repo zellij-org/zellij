@@ -1,121 +1,140 @@
-// Translated from https://github.com/vimpunk/vim-japanese-indigo
+//
+// ┌────────┬─────────┬─────────┬─────────┬─────────┬─────────┬─────────┬─────────┬─────────┐
+// │        │   Red   │ Magenta │  Blue   │  Green  │ Yellow  │  White  │  Grey   │  Black  │
+// ├────────┼─────────┼─────────┼─────────┼─────────┼─────────┼─────────┼─────────┼─────────┤
+// │ Bright │ #c97472 │ #bea9ba │ #88c0d0 │ #acd597 │ #f8f296 │ #d8dee9 │ #9398a1 │ #4f5b66 │
+// ├────────┼─────────┼─────────┼─────────┼─────────┼─────────┼─────────┼─────────┼─────────┤
+// │ Normal │ #bf616a │ #b48ead │ #81a1c1 │ #a3b38c │ #ebcb8b │ #c0c5ce │ #65737e │ #2c343e │
+// ├────────┼─────────┼─────────┼─────────┼─────────┼─────────┼─────────┼─────────┼─────────┤
+// │ Dim    │ #8b4e5e │ #83729a │ #5e81ac │ #778f7d │ #aba37c │ #a7adba │ #4f5b66 │ #252c37 │
+// └────────┴─────────┴─────────┴─────────┴─────────┴─────────┴─────────┴─────────┴─────────┘
+//
+// ┌────────┬─────────────┬─────────────┬─────────────┬─────────────┬─────────────┬─────────────┬─────────────┬─────────────┐
+// │        │     Red     │   Magenta   │    Blue     │    Green    │   Yellow    │    White    │    Grey     │    Black    │
+// ├────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┤
+// │ Bright │ 201 116 114 │ 190 169 186 │ 136 192 208 │ 172 213 151 │ 248 242 150 │ 216 222 233 │ 147 152 161 │ 79 91 102   │
+// ├────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┤
+// │ Normal │ 191 97 106  │ 180 142 173 │ 129 161 193 │ 163 179 140 │ 235 203 139 │ 192 197 206 │ 101 115 126 │ 44 52 62    │
+// ├────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┤
+// │ Dim    │ 139 78 94   │ 131 114 154 │ 94 129 172  │ 119 143 125 │ 171 163 124 │ 167 173 186 │ 79 91 102   │ 37 44 55    │
+// └────────┴─────────────┴─────────────┴─────────────┴─────────────┴─────────────┴─────────────┴─────────────┴─────────────┘
 themes {
     japanese-indigo {
         text_unselected {
-            base 192 197 206        // Medium Silver
-            background 37 44 55     // Indigo dark
-            emphasis_0 216 222 233  // Light Silver
-            emphasis_1 192 197 206  // Medium Silver
-            emphasis_2 167 173 186  // Dark Silver
-            emphasis_3 147 152 161  // Bone White
+            base 192 197 206       // Normal White
+            background 44 52 62    // Normal Black
+            emphasis_0 129 161 193 // Normal Blue
+            emphasis_1 163 179 140 // Normal Green
+            emphasis_2 235 203 139 // Normal Yellow
+            emphasis_3 180 142 173 // Normal Magenta
         }
         text_selected {
-            base 216 222 233        // Light Silver
-            background 44 52 62     // Medium Indigo
-            emphasis_0 255 255 255  // White
-            emphasis_1 216 222 233  // Light Silver
-            emphasis_2 192 197 206  // Medium Silver
-            emphasis_3 167 173 186  // Dark Silver
+            base 192 197 206       // Normal White
+            background 79 91 102 // 37 44 55    // Dim Black
+            emphasis_0 129 161 193 // Normal Blue
+            emphasis_1 163 179 140 // Normal Green
+            emphasis_2 235 203 139 // Normal Yellow
+            emphasis_3 180 142 173 // Normal Magenta
         }
         ribbon_selected {
-            base 37 44 55           // Indigo dark
-            background 136 192 208  // Turquoise
-            emphasis_0 37 44 55     // Indigo dark
-            emphasis_1 44 52 62     // Medium Indigo
-            emphasis_2 79 91 102    // Medium Grey
-            emphasis_3 101 115 126  // Light Indigo
+            base 44 52 62          // Normal Black
+            background 136 192 208  // 129 161 193 // Normal Blue
+            emphasis_0 79 91 102   // Dim Grey
+            emphasis_1 79 91 102   // Dim Grey
+            emphasis_2 79 91 102   // Dim Grey
+            emphasis_3 79 91 102   // Dim Grey
         }
         ribbon_unselected {
-            base 192 197 206        // Medium Silver
-            background 44 52 62     // Medium Indigo
-            emphasis_0 216 222 233  // Light Silver
-            emphasis_1 192 197 206  // Medium Silver
-            emphasis_2 167 173 186  // Dark Silver
-            emphasis_3 147 152 161  // Bone White
+            base 44 52 62          // Normal Black
+            background 79 91 102  // 94 129 172  // Dim Blue
+            emphasis_0 136 192 208 // Bright Blue
+            emphasis_1 172 213 151 // Bright Green
+            emphasis_2 235 203 139 // Normal Yellow
+            emphasis_3 180 142 173 // Normal Magenta
         }
         table_title {
-            base 192 197 206        // Medium Silver
-            background 37 44 55     // Indigo dark
-            emphasis_0 136 192 208  // Turquoise
-            emphasis_1 129 161 193  // Light Blue
-            emphasis_2 94 129 172   // Blue
-            emphasis_3 180 142 173  // Pink
+            base 163 179 140       // Normal Green
+            background 0
+            emphasis_0 136 192 208 // Bright Blue
+            emphasis_1 172 213 151 // Bright Green
+            emphasis_2 248 242 150 // Bright Yellow
+            emphasis_3 190 169 186 // Bright Magenta
         }
         table_cell_selected {
-            base 216 222 233        // Light Silver
-            background 44 52 62     // Medium Indigo
-            emphasis_0 136 192 208  // Turquoise
-            emphasis_1 129 161 193  // Light Blue
-            emphasis_2 94 129 172   // Blue
-            emphasis_3 180 142 173  // Pink
+            base 192 197 206       // Normal White
+            background 37 44 55    // Dim Black
+            emphasis_0 129 161 193 // Normal Blue
+            emphasis_1 163 179 140 // Normal Green
+            emphasis_2 235 203 139 // Normal Yellow
+            emphasis_3 180 142 173 // Normal Magenta
         }
         table_cell_unselected {
-            base 192 197 206        // Medium Silver
-            background 37 44 55     // Indigo dark
-            emphasis_0 167 173 186  // Dark Silver
-            emphasis_1 147 152 161  // Bone White
-            emphasis_2 101 115 126  // Light Indigo
-            emphasis_3 79 91 102    // Medium Grey
+            base 167 173 186       // Dim White
+            background 44 52 62    // Normal Black
+            emphasis_0 94 129 172  // Dim Blue
+            emphasis_1 119 143 125 // Dim Green
+            emphasis_2 171 163 124 // Dim Yellow
+            emphasis_3 131 114 154 // Dim Magenta
         }
         list_selected {
-            base 216 222 233        // Light Silver
-            background 44 52 62     // Medium Indigo
-            emphasis_0 136 192 208  // Turquoise
-            emphasis_1 129 161 193  // Light Blue
-            emphasis_2 94 129 172   // Blue
-            emphasis_3 180 142 173  // Pink
+            base 192 197 206       // Normal White
+            background 37 44 55    // Dim Black
+            emphasis_0 129 161 193 // Normal Blue
+            emphasis_1 163 179 140 // Normal Green
+            emphasis_2 235 203 139 // Normal Yellow
+            emphasis_3 180 142 173 // Normal Magenta
         }
         list_unselected {
-            base 192 197 206        // Medium Silver
-            background 37 44 55     // Indigo dark
-            emphasis_0 216 222 233  // Light Silver
-            emphasis_1 192 197 206  // Medium Silver
-            emphasis_2 167 173 186  // Dark Silver
-            emphasis_3 147 152 161  // Bone White
+            base 192 197 206       // Normal White
+            background 44 52 62    // Normal Black
+            emphasis_0 129 161 193 // Normal Blue
+            emphasis_1 163 179 140 // Normal Green
+            emphasis_2 235 203 139 // Normal Yellow
+            emphasis_3 180 142 173 // Normal Magenta
         }
         frame_selected {
-            base 136 192 208        // Turquoise
-            background 44 52 62     // Medium Indigo
-            emphasis_0 129 161 193  // Light Blue
-            emphasis_1 94 129 172   // Blue
-            emphasis_2 180 142 173  // Pink
-            emphasis_3 163 179 140  // Green
+            base 129 161 193       // Normal Blue
+            background 0
+            emphasis_0 129 161 193 // Normal Blue
+            emphasis_1 163 179 140 // Normal Green
+            emphasis_2 235 203 139 // Normal Yellow
+            emphasis_3 180 142 173 // Normal Magenta
         }
         frame_highlight {
-            base 235 203 139        // Nord Yellow
-            background 44 52 62     // Medium Indigo
-            emphasis_0 208 135 112  // Orange
-            emphasis_1 171 121 103  // Brown
-            emphasis_2 180 142 173  // Pink
-            emphasis_3 136 192 208  // Turquoise
+            base 235 203 139       // Normal Yellow
+            background 0
+            emphasis_0 129 161 193 // Normal Blue
+            emphasis_1 163 179 140 // Normal Green
+            emphasis_2 235 203 139 // Normal Yellow
+            emphasis_3 180 142 173 // Normal Magenta
         }
         exit_code_success {
-            base 163 179 140        // Green
-            background 37 44 55     // Indigo dark
-            emphasis_0 146 161 126  // Dark Green
-            emphasis_1 163 179 140  // Green
-            emphasis_2 136 192 208  // Turquoise
-            emphasis_3 129 161 193  // Light Blue
+            base 163 179 140       // Normal Green
+            background 0
+            emphasis_0 129 161 193 // Normal Blue
+            emphasis_1 163 179 140 // Normal Green
+            emphasis_2 235 203 139 // Normal Yellow
+            emphasis_3 180 142 173 // Normal Magenta
         }
         exit_code_error {
-            base 191 97 106         // Red
-            background 37 44 55     // Indigo dark
-            emphasis_0 157 80 87    // Dark Red
-            emphasis_1 191 97 106   // Red
-            emphasis_2 208 135 112  // Orange
-            emphasis_3 235 203 139  // Yellow
+            base 191 97 106        // Normal Red
+            background 0
+            emphasis_0 129 161 193 // Normal Blue
+            emphasis_1 163 179 140 // Normal Green
+            emphasis_2 235 203 139 // Normal Yellow
+            emphasis_3 180 142 173 // Normal Magenta
         }
         multiplayer_user_colors {
-            user_0 136 192 208      // Turquoise
-            user_1 163 179 140      // Green
-            user_2 180 142 173      // Pink
-            user_3 235 203 139      // Yellow
-            user_4 94 129 172       // Blue
-            user_5 208 135 112      // Orange
-            user_6 129 161 193      // Light Blue
-            user_7 171 121 103      // Brown
-            user_8 191 97 106       // Red
-            user_9 120 169 184      // Dark Turquoise
+            player_1 201 116 114   // Bright Red
+            player_2 129 161 193   // Normal Blue
+            player_3 0
+            player_4 163 179 140   // Normal Green
+            player_5 235 203 139   // Normal Yellow
+            player_6 0
+            player_7 136 192 208   // Bright Blue
+            player_8 0
+            player_9 0
+            player_10 0
         }
     }
 }

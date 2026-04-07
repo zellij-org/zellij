@@ -47,7 +47,7 @@ themes {
             emphasis_3 72 72 72
         }
         ribbon_unselected {
-            base 40 40 40          // Normal Black
+            base 0 0 0
             background 70 104 120  // Dim Blue
             emphasis_0 179 222 239 // Bright Blue
             emphasis_1 201 208 92  // Bright Green

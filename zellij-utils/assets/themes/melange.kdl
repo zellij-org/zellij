@@ -1,121 +1,141 @@
 // Translated from https://github.com/savq/melange-nvim
+//
+// ┌────────┬─────────┬─────────┬─────────┬─────────┬─────────┬─────────┬─────────┬─────────┐
+// │        │   Red   │ Magenta │  Blue   │  Green  │ Yellow  │  White  │  Grey   │  Black  │
+// ├────────┼─────────┼─────────┼─────────┼─────────┼─────────┼─────────┼─────────┼─────────┤
+// │ Bright │ #d47766 │ #c09dcb │ #8caecd │ #85b695 │ #ebc06d │ #ece1d7 │ #c1a78e │ #403a36 │
+// ├────────┼─────────┼─────────┼─────────┼─────────┼─────────┼─────────┼─────────┼─────────┤
+// │ Normal │ #bd8183 │ #b380b0 │ #7f91b2 │ #78997a │ #e49b5d │ #c1a78e │ #867462 │ #34302c │
+// ├────────┼─────────┼─────────┼─────────┼─────────┼─────────┼─────────┼─────────┼─────────┤
+// │ Dim    │ #7d2a2f │ #a66395 │ #727497 │ #6b7c5f │ #8b7449 │ #867462 │ #403a36 │ #292522 │
+// └────────┴─────────┴─────────┴─────────┴─────────┴─────────┴─────────┴─────────┴─────────┘
+//
+// ┌────────┬─────────────┬─────────────┬─────────────┬─────────────┬─────────────┬─────────────┬─────────────┬─────────────┐
+// │        │     Red     │   Magenta   │    Blue     │    Green    │   Yellow    │    White    │    Grey     │    Black    │
+// ├────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┤
+// │ Bright │ 212 119 102 │ 192 157 203 │ 140 174 205 │ 133 182 149 │ 235 192 109 │ 236 225 215 │ 193 167 142 │ 64 58 54    │
+// ├────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┤
+// │ Normal │ 189 129 131 │ 179 128 176 │ 127 145 178 │ 120 153 122 │ 228 155 93  │ 193 167 142 │ 134 116 98  │ 52 48 44    │
+// ├────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┤
+// │ Dim    │ 125 42 47   │ 166 99 149  │ 114 116 151 │ 107 124 95  │ 139 116 73  │ 134 116 98  │ 64 58 54    │ 41 37 34    │
+// └────────┴─────────────┴─────────────┴─────────────┴─────────────┴─────────────┴─────────────┴─────────────┴─────────────┘
 themes {
     melange {
         text_unselected {
-            base 236 225 215        // fg
-            background 41 37 34     // bg
-            emphasis_0 236 225 215  // fg
-            emphasis_1 193 167 142  // com
-            emphasis_2 134 116 98   // ui
-            emphasis_3 134 116 98   // ui
+            base 193 167 142       // Normal White
+            background 0
+            emphasis_0 127 145 178 // Normal Blue
+            emphasis_1 120 153 122 // Normal Green
+            emphasis_2 228 155 93  // Normal Yellow
+            emphasis_3 179 128 176 // Normal Magenta
         }
         text_selected {
-            base 236 225 215        // fg
-            background 64 58 54     // sel
-            emphasis_0 255 255 255  // white
-            emphasis_1 137 179 182  // cyan bright
-            emphasis_2 163 169 206  // blue bright
-            emphasis_3 207 155 194  // magenta bright
+            base 193 167 142       // Normal White
+            background 41 37 34    // Dim Black
+            emphasis_0 127 145 178 // Normal Blue
+            emphasis_1 120 153 122 // Normal Green
+            emphasis_2 228 155 93  // Normal Yellow
+            emphasis_3 179 128 176 // Normal Magenta
         }
         ribbon_selected {
-            base 41 37 34           // bg
-            background 137 179 182  // cyan bright
-            emphasis_0 41 37 34     // bg
-            emphasis_1 52 48 44     // float
-            emphasis_2 64 58 54     // sel
-            emphasis_3 134 116 98   // ui
+            base 52 48 44          // Normal Black
+            background 236 225 215 // Bright White
+            emphasis_0 64 58 54    // Dim Grey
+            emphasis_1 64 58 54    // Dim Grey
+            emphasis_2 64 58 54    // Dim Grey
+            emphasis_3 64 58 54    // Dim Grey
         }
         ribbon_unselected {
-            base 193 167 142        // com
-            background 52 48 44     // float
-            emphasis_0 236 225 215  // fg
-            emphasis_1 193 167 142  // com
-            emphasis_2 134 116 98   // ui
-            emphasis_3 64 58 54     // sel
+            base 52 48 44          // Normal Black
+            background 134 116 98  // Normal Grey
+            emphasis_0 140 174 205 // Bright Blue
+            emphasis_1 133 182 149 // Bright Green
+            emphasis_2 228 155 93  // Normal Yellow
+            emphasis_3 192 157 203 // Bright Magenta
         }
         table_title {
-            base 236 225 215        // fg
-            background 41 37 34     // bg
-            emphasis_0 137 179 182  // cyan bright
-            emphasis_1 163 169 206  // blue bright
-            emphasis_2 133 182 149  // green bright
-            emphasis_3 235 192 109  // yellow bright
+            base 120 153 122       // Normal Green
+            background 0
+            emphasis_0 140 174 205 // Bright Blue
+            emphasis_1 133 182 149 // Bright Green
+            emphasis_2 235 192 109 // Bright Yellow
+            emphasis_3 192 157 203 // Bright Magenta
         }
         table_cell_selected {
-            base 236 225 215        // fg
-            background 64 58 54     // sel
-            emphasis_0 137 179 182  // cyan bright
-            emphasis_1 163 169 206  // blue bright
-            emphasis_2 133 182 149  // green bright
-            emphasis_3 235 192 109  // yellow bright
+            base 193 167 142       // Normal White
+            background 41 37 34    // Dim Black
+            emphasis_0 127 145 178 // Normal Blue
+            emphasis_1 120 153 122 // Normal Green
+            emphasis_2 228 155 93  // Normal Yellow
+            emphasis_3 179 128 176 // Normal Magenta
         }
         table_cell_unselected {
-            base 193 167 142        // com
-            background 41 37 34     // bg
-            emphasis_0 134 116 98   // ui
-            emphasis_1 64 58 54     // sel
-            emphasis_2 52 48 44     // float
-            emphasis_3 41 37 34     // bg
+            base 134 116 98        // Normal Grey
+            background 52 48 44    // Normal Black
+            emphasis_0 114 116 151 // Dim Blue
+            emphasis_1 107 124 95  // Dim Green
+            emphasis_2 139 116 73  // Dim Yellow
+            emphasis_3 166 99 149  // Dim Magenta
         }
         list_selected {
-            base 236 225 215        // fg
-            background 64 58 54     // sel
-            emphasis_0 137 179 182  // cyan bright
-            emphasis_1 163 169 206  // blue bright
-            emphasis_2 207 155 194  // magenta bright
-            emphasis_3 212 119 102  // red bright
+            base 193 167 142       // Normal White
+            background 41 37 34    // Dim Black
+            emphasis_0 127 145 178 // Normal Blue
+            emphasis_1 120 153 122 // Normal Green
+            emphasis_2 228 155 93  // Normal Yellow
+            emphasis_3 179 128 176 // Normal Magenta
         }
         list_unselected {
-            base 193 167 142        // com
-            background 41 37 34     // bg
-            emphasis_0 236 225 215  // fg
-            emphasis_1 193 167 142  // com
-            emphasis_2 134 116 98   // ui
-            emphasis_3 64 58 54     // sel
+            base 193 167 142       // Normal White
+            background 52 48 44    // Normal Black
+            emphasis_0 127 145 178 // Normal Blue
+            emphasis_1 120 153 122 // Normal Green
+            emphasis_2 228 155 93  // Normal Yellow
+            emphasis_3 179 128 176 // Normal Magenta
         }
         frame_selected {
-            base 137 179 182        // cyan bright
-            background 64 58 54     // sel
-            emphasis_0 163 169 206  // blue bright
-            emphasis_1 133 182 149  // green bright
-            emphasis_2 235 192 109  // yellow bright
-            emphasis_3 228 155 93   // yellow medium
+            base 127 145 178       // Normal Blue
+            background 0
+            emphasis_0 127 145 178 // Normal Blue
+            emphasis_1 120 153 122 // Normal Green
+            emphasis_2 228 155 93  // Normal Yellow
+            emphasis_3 179 128 176 // Normal Magenta
         }
         frame_highlight {
-            base 235 192 109        // yellow bright
-            background 64 58 54     // sel
-            emphasis_0 228 155 93   // yellow medium
-            emphasis_1 212 119 102  // red bright
-            emphasis_2 207 155 194  // magenta bright
-            emphasis_3 189 129 131  // red medium
+            base 228 155 93        // Normal Yellow
+            background 0
+            emphasis_0 127 145 178 // Normal Blue
+            emphasis_1 120 153 122 // Normal Green
+            emphasis_2 228 155 93  // Normal Yellow
+            emphasis_3 179 128 176 // Normal Magenta
         }
         exit_code_success {
-            base 133 182 149        // green bright
-            background 41 37 34     // bg
-            emphasis_0 120 153 122  // green medium
-            emphasis_1 133 182 149  // green bright
-            emphasis_2 137 179 182  // cyan bright
-            emphasis_3 123 150 149  // cyan medium
+            base 120 153 122       // Normal Green
+            background 0
+            emphasis_0 127 145 178 // Normal Blue
+            emphasis_1 120 153 122 // Normal Green
+            emphasis_2 228 155 93  // Normal Yellow
+            emphasis_3 179 128 176 // Normal Magenta
         }
         exit_code_error {
-            base 212 119 102        // red bright
-            background 41 37 34     // bg
-            emphasis_0 125 42 47    // red dark
-            emphasis_1 212 119 102  // red bright
-            emphasis_2 189 129 131  // red medium
-            emphasis_3 228 155 93   // yellow medium
+            base 189 129 131       // Normal Red
+            background 0
+            emphasis_0 127 145 178 // Normal Blue
+            emphasis_1 120 153 122 // Normal Green
+            emphasis_2 228 155 93  // Normal Yellow
+            emphasis_3 179 128 176 // Normal Magenta
         }
         multiplayer_user_colors {
-            user_0 137 179 182      // cyan bright
-            user_1 133 182 149      // green bright
-            user_2 163 169 206      // blue bright
-            user_3 207 155 194      // magenta bright
-            user_4 235 192 109      // yellow bright
-            user_5 228 155 93       // yellow medium
-            user_6 212 119 102      // red bright
-            user_7 123 150 149      // cyan medium
-            user_8 189 129 131      // red medium
-            user_9 127 178 178      // blue medium
+            player_1 212 119 102   // Bright Red
+            player_2 127 145 178   // Normal Blue
+            player_3 0
+            player_4 120 153 122   // Normal Green
+            player_5 228 155 93    // Normal Yellow
+            player_6 0
+            player_7 140 174 205   // Bright Blue
+            player_8 0
+            player_9 0
+            player_10 0
         }
     }
 }
