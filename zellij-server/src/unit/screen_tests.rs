@@ -8171,3 +8171,86 @@ fn cli_rename_focused_pane_single_char_via_rename_active_pane() {
         "Single-char CLI rename should replace the name, not append"
     );
 }
+
+#[test]
+pub fn pty_bytes_and_hold_pane_buffered_before_new_pane() {
+    // Regression test: when a command exits very quickly (e.g. `zellij run -- echo hello`),
+    // PtyBytes and HoldPane can arrive at the screen thread before NewPane because the async
+    // reader and quit_cb run on separate threads. This test verifies that such early-arriving
+    // events are buffered and replayed once NewPane is processed.
+    let size = Size { cols: 80, rows: 20 };
+    let client_id = 10;
+    let mut mock_screen = MockScreen::new(size);
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(None, vec![]);
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+
+    // The initial layout creates pane id 0. We will use pane id 2 for the new pane
+    // (id 1 is used by the plugin in the initial layout).
+    let new_pane_id = 2;
+
+    // Simulate the race: send PtyBytes for the new pane BEFORE NewPane
+    let _ = mock_screen.to_screen.send(ScreenInstruction::PtyBytes(
+        new_pane_id,
+        "hello\r\n".as_bytes().to_vec(),
+    ));
+
+    // Send HoldPane before NewPane as well
+    let run_command = RunCommand {
+        command: PathBuf::from("echo"),
+        args: vec!["hello".to_string()],
+        hold_on_close: true,
+        ..Default::default()
+    };
+    let _ = mock_screen.to_screen.send(ScreenInstruction::HoldPane(
+        PaneId::Terminal(new_pane_id),
+        Some(0),
+        run_command,
+    ));
+
+    // Small sleep to ensure the above messages are processed (and buffered) first
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    // Now send NewPane — this should replay the buffered PtyBytes and HoldPane
+    let _ = mock_screen.to_screen.send(ScreenInstruction::NewPane(
+        PaneId::Terminal(new_pane_id),
+        Some("echo hello".to_string()),
+        None, // hold_for_command
+        None, // invoked_with
+        NewPanePlacement::default(),
+        false, // start_suppressed
+        ClientTabIndexOrPaneId::ClientId(client_id),
+        None,  // completion_tx
+        false, // set_blocking
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    // Use DumpScreen to verify the pane received the bytes
+    let cli_action = CliAction::DumpScreen {
+        path: Some(PathBuf::from("/tmp/dump_early_bytes")),
+        full: true,
+        pane_id: None,
+        ansi: false,
+    };
+    send_cli_action_to_server(&session_metadata, cli_action, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+
+    let filesystem = mock_screen.os_input.fake_filesystem.lock().unwrap();
+    let dumped = filesystem
+        .values()
+        .next()
+        .expect("DumpScreen should have written a file");
+    assert!(
+        dumped.contains("hello"),
+        "Pane should contain the buffered output 'hello', but got: {:?}",
+        dumped
+    );
+}
