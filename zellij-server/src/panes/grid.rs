@@ -4692,7 +4692,7 @@ impl Row {
         let mut current_part_len = 0;
         for character in self.columns.drain(..) {
             if current_part_len + character.width() > max_row_length {
-                parts.push(Row::from_columns(current_part));
+                parts.push(Row::from_columns(current_part).with_bg_color(self.bg_color));
                 current_part = VecDeque::new();
                 current_part_len = 0;
             }
@@ -4700,7 +4700,7 @@ impl Row {
             current_part.push_back(character);
         }
         if !current_part.is_empty() {
-            parts.push(Row::from_columns(current_part))
+            parts.push(Row::from_columns(current_part).with_bg_color(self.bg_color))
         };
         if !parts.is_empty() && self.is_canonical {
             if let Some(part) = parts.get_mut(0) {
