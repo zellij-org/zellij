@@ -170,7 +170,7 @@ jobs:
       # ===== Windows MSI installer =====
       - name: Install WiX v6
         if: runner.os == 'Windows'
-        run: dotnet tool install --global wix
+        run: dotnet tool install --global wix --version 6.0.2
 
       - name: Add WiX UI extension
         if: runner.os == 'Windows'
@@ -366,7 +366,7 @@ jobs:
       # ===== Windows MSI installer (no-web) =====
       - name: Install WiX v6
         if: runner.os == 'Windows'
-        run: dotnet tool install --global wix
+        run: dotnet tool install --global wix --version 6.0.2
 
       - name: Add WiX UI extension
         if: runner.os == 'Windows'
