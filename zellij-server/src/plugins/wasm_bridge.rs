@@ -1882,6 +1882,44 @@ impl WasmBridge {
 
         permission_cache.write_to_file().with_context(err_context)
     }
+    /// Find other plugin instances with the same URL that are waiting for
+    /// permissions. When one instance of a URL gets permissions granted, these
+    /// siblings should be auto-resolved since the permission cache (keyed by URL)
+    /// now contains the granted permissions.
+    pub fn waiting_plugin_ids_with_same_url(&self, plugin_id: PluginId) -> Vec<PluginId> {
+        let plugin_map = self.plugin_map.lock().unwrap();
+
+        // Get the location of the granted plugin
+        let granted_location = plugin_map
+            .get_running_plugin(plugin_id, None)
+            .and_then(|rp| {
+                let rp = rp.lock().unwrap();
+                Some(rp.store.data().plugin.location.to_string())
+            });
+
+        let granted_location = match granted_location {
+            Some(loc) => loc,
+            None => return vec![],
+        };
+
+        // Find other waiting plugins with the same location
+        self.plugin_ids_waiting_for_permission_request
+            .iter()
+            .filter(|&&pid| pid != plugin_id)
+            .filter(|&&pid| {
+                plugin_map
+                    .get_running_plugin(pid, None)
+                    .and_then(|rp| {
+                        let rp = rp.lock().unwrap();
+                        Some(rp.store.data().plugin.location.to_string())
+                    })
+                    .map(|loc| loc == granted_location)
+                    .unwrap_or(false)
+            })
+            .copied()
+            .collect()
+    }
+
     pub fn cache_plugin_events(&mut self, plugin_id: PluginId) {
         self.plugin_ids_waiting_for_permission_request
             .insert(plugin_id);

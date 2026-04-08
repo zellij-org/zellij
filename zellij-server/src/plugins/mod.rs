@@ -777,6 +777,7 @@ pub(crate) fn plugin_thread_main(
                 status,
                 cache_path,
             ) => {
+                let permissions_for_siblings = permissions.clone();
                 if let Err(e) = wasm_bridge.cache_plugin_permissions(
                     plugin_id,
                     client_id,
@@ -799,6 +800,41 @@ pub(crate) fn plugin_thread_main(
                     done_receiving_permissions,
                     shutdown_send.clone(),
                 )?;
+
+                // When permissions are granted for a plugin, check if other
+                // instances of the same URL are also waiting. Since the
+                // permission cache is keyed by URL, granting one instance
+                // should unblock all siblings with the same URL.
+                if status == PermissionStatus::Granted {
+                    let sibling_ids =
+                        wasm_bridge.waiting_plugin_ids_with_same_url(plugin_id);
+                    for sibling_id in &sibling_ids {
+                        if let Err(e) = wasm_bridge.cache_plugin_permissions(
+                            *sibling_id,
+                            client_id,
+                            permissions_for_siblings.clone(),
+                            status,
+                            None,
+                        ) {
+                            log::error!("Failed to grant sibling plugin permissions: {}", e);
+                            continue;
+                        }
+                        let sibling_updates = vec![(
+                            Some(*sibling_id),
+                            client_id,
+                            Event::PermissionRequestResult(status),
+                        )];
+                        wasm_bridge.update_plugins(
+                            sibling_updates,
+                            shutdown_send.clone(),
+                        )?;
+                        wasm_bridge.apply_cached_events(
+                            vec![*sibling_id],
+                            done_receiving_permissions,
+                            shutdown_send.clone(),
+                        )?;
+                    }
+                }
             },
             PluginInstruction::DumpLayout(
                 mut session_layout_metadata,
