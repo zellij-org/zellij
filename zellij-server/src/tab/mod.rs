@@ -3167,10 +3167,11 @@ impl Tab {
     }
 
     /// Invalidate the cursor position/shape cache so the next render
-    /// re-sends DECSCUSR to the outer terminal. Call when this tab
-    /// becomes the active tab for a client.
+    /// re-sends DECSCUSR and multi-cursor data to the outer terminal.
+    /// Call when this tab becomes the active tab for a client.
     pub fn invalidate_cursor_cache(&mut self) {
         self.cursor_positions_and_shape.clear();
+        self.last_multi_cursor_sequence.clear();
     }
 
     pub fn render(
@@ -3287,7 +3288,7 @@ impl Tab {
                         match coord {
                             MultiCursorCoord::MainCursor => {
                                 // Resolve to screen-absolute, 1-indexed.
-                                if let Some((cx, cy)) = cursor_coords {
+                                if let Some((cx, cy, _)) = cursor_coords {
                                     let sx = pane.x() + cx;
                                     let sy = pane.y() + cy;
                                     if output.cursor_is_visible(sx, sy, pane_z_index) {
@@ -3432,8 +3433,12 @@ impl Tab {
                     let active_terminal_is_mid_frame = self
                         .active_terminal_is_mid_frame(client_id)
                         .unwrap_or(false);
+                    let is_scrolled = self
+                        .get_active_pane(client_id)
+                        .map(|p| p.is_scrolled())
+                        .unwrap_or(false);
 
-                    if active_terminal_is_mid_frame {
+                    if active_terminal_is_mid_frame || is_scrolled {
                         // no-op, this means the active terminal is currently rendering a frame,
                         // which means the cursor can be jumping around and we definitely do not
                         // want to render it
