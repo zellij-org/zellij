@@ -3172,6 +3172,7 @@ dependencies = [
 name = "share"
 version = "0.1.0"
 dependencies = [
+ "percent-encoding",
  "rand 0.9.0",
  "url",
  "zellij-tile",
