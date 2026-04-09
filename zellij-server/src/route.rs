@@ -32,7 +32,8 @@ use zellij_utils::{
         layout::Layout,
     },
     ipc::{
-        ClientAttributes, ClientToServerMsg, ExitReason, IpcReceiverWithContext, ServerToClientMsg,
+        ClientAttributes, ClientToServerMsg, ExitReason, IpcReceiverWithContext, RecvResult,
+        ServerToClientMsg,
     },
 };
 
@@ -2159,7 +2160,7 @@ pub(crate) fn route_thread_main(
     let mut consecutive_unknown_messages_received = 0;
     'route_loop: loop {
         match receiver.recv_client_msg() {
-            Some((instruction, err_ctx)) => {
+            RecvResult::Ok((instruction, err_ctx)) => {
                 consecutive_unknown_messages_received = 0;
                 err_ctx.update_thread_ctx();
                 let mut handle_instruction = |instruction: ClientToServerMsg,
@@ -2646,7 +2647,18 @@ pub(crate) fn route_thread_main(
                     break 'route_loop;
                 }
             },
-            None => {
+            RecvResult::StreamBroken => {
+                log::error!("Client IPC stream broken, disconnecting client");
+                let _ = os_input.send_to_client(
+                    client_id,
+                    ServerToClientMsg::Exit {
+                        exit_reason: ExitReason::Error("IPC stream broken".to_string()),
+                    },
+                );
+                let _ = to_server.send(ServerInstruction::RemoveClient(client_id));
+                break 'route_loop;
+            },
+            RecvResult::UnknownMessage => {
                 consecutive_unknown_messages_received += 1;
                 if consecutive_unknown_messages_received == 1 {
                     log::error!("Received unknown message from client.");

@@ -39,16 +39,15 @@ export function initWebSockets(
 
     wsTerminal.onopen = function () {
         markConnectionEstablished();
+        // Open control WS eagerly so that SetConfig, QueryTerminalSize,
+        // and SwitchedSession messages are never lost.
+        ownWebClientId = webClientId;
+        const wsControlUrl = `${wsBaseUrl}/ws/control`;
+        wsControl = new WebSocket(wsControlUrl);
+        startWsControl(wsControl, term, fitAddon, ownWebClientId, userConfig);
     };
 
     wsTerminal.onmessage = function (event) {
-        if (ownWebClientId == "") {
-            ownWebClientId = webClientId;
-            const wsControlUrl = `${wsBaseUrl}/ws/control`;
-            wsControl = new WebSocket(wsControlUrl);
-            startWsControl(wsControl, term, fitAddon, ownWebClientId, userConfig);
-        }
-
         let data = event.data;
 
         if (typeof data === "string") {

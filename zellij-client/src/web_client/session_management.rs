@@ -52,7 +52,9 @@ pub fn spawn_new_session(
     let debug = false;
     envs::set_session_name(session_name.to_owned());
     os_input.update_session_name(session_name.to_owned());
-    spawn_server(&*zellij_ipc_pipe, debug).unwrap();
+    if let Err(e) = spawn_server(&*zellij_ipc_pipe, debug) {
+        log::error!("Failed to spawn server for session '{}': {:?}", session_name, e);
+    }
 }
 
 pub fn create_first_message(
