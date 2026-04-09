@@ -2,8 +2,8 @@
 
 pub use super::command::{OpenFilePayload, RunCommandAction};
 use super::layout::{
-    FloatingPaneLayout, Layout, PluginAlias, RunPlugin, RunPluginLocation, RunPluginOrAlias,
-    SwapFloatingLayout, SwapTiledLayout, TabLayoutInfo, TiledPaneLayout,
+    FloatingPaneLayout, Layout, PercentOrFixed, PluginAlias, RunPlugin, RunPluginLocation,
+    RunPluginOrAlias, SwapFloatingLayout, SwapTiledLayout, TabLayoutInfo, TiledPaneLayout,
 };
 use crate::cli::CliAction;
 use crate::data::{
@@ -265,6 +265,7 @@ pub enum Action {
         near_current_pane: bool,
         borderless: Option<bool>,
         tab_id: Option<usize>,
+        size: Option<PercentOrFixed>,
     },
     /// Open a new pane in place of the focused one, suppressing it instead
     /// Returns: Created pane ID (format: terminal_<id> or plugin_<id>)
@@ -1020,6 +1021,7 @@ impl Action {
                 height,
                 pinned,
                 stacked,
+                size,
                 blocking,
                 block_until_exit_success,
                 block_until_exit_failure,
@@ -1036,6 +1038,7 @@ impl Action {
                 let cwd = cwd
                     .map(|cwd| current_dir.join(cwd))
                     .or_else(|| Some(current_dir.clone()));
+                let parsed_size = size.and_then(|s| PercentOrFixed::from_str(&s).ok());
                 let unblock_condition = unblock_condition.or_else(|| {
                     if block_until_exit_success {
                         Some(UnblockCondition::OnExitSuccess)
@@ -1090,6 +1093,7 @@ impl Action {
                         NewPanePlacement::Tiled {
                             direction,
                             borderless,
+                            size: parsed_size,
                         }
                     };
 
@@ -1206,6 +1210,7 @@ impl Action {
                             near_current_pane,
                             borderless,
                             tab_id,
+                            size: parsed_size,
                         }])
                     }
                 } else {
@@ -1243,6 +1248,7 @@ impl Action {
                             near_current_pane,
                             borderless,
                             tab_id,
+                            size: parsed_size,
                         }])
                     }
                 }

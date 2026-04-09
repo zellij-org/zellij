@@ -2058,6 +2058,7 @@ fn group_panes_following_focus() {
                     NewPanePlacement::Tiled {
                         direction: None,
                         borderless: None,
+                        size: None,
                     },
                     Some(client_id),
                     None,
@@ -2119,6 +2120,7 @@ fn break_group_with_mouse() {
                     NewPanePlacement::Tiled {
                         direction: None,
                         borderless: None,
+                        size: None,
                     },
                     Some(client_id),
                     None,
@@ -3098,6 +3100,7 @@ pub fn send_cli_new_pane_action_with_default_parameters() {
         near_current_pane: false,
         borderless: Some(false),
         tab_id: None,
+        size: None,
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -3152,6 +3155,7 @@ pub fn send_cli_new_pane_action_with_split_direction() {
         near_current_pane: false,
         borderless: Some(false),
         tab_id: None,
+        size: None,
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -3206,6 +3210,7 @@ pub fn send_cli_new_pane_action_with_command_and_cwd() {
         near_current_pane: false,
         borderless: Some(false),
         tab_id: None,
+        size: None,
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -3271,6 +3276,7 @@ pub fn send_cli_new_pane_action_with_floating_pane_and_coordinates() {
         near_current_pane: false,
         borderless: Some(false),
         tab_id: None,
+        size: None,
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -5113,6 +5119,7 @@ pub fn send_cli_new_pane_in_place_with_close_replaced_pane() {
         near_current_pane: false,
         borderless: None,
         tab_id: None,
+        size: None,
     };
     send_cli_action_to_server(&session_metadata, cli_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
