@@ -17,12 +17,15 @@ struct State {
     /// Session environment variables, fetched once on load.
     /// Used for `~` and `$VAR` expansion in clicked paths.
     env_vars: BTreeMap<String, String>,
+    /// Optional floating pane coordinates parsed from plugin configuration.
+    /// When `None`, zellij uses its default floating pane size.
+    floating_pane_coordinates: Option<FloatingPaneCoordinates>,
 }
 
 register_plugin!(State);
 
 impl ZellijPlugin for State {
-    fn load(&mut self, _configuration: BTreeMap<String, String>) {
+    fn load(&mut self, configuration: BTreeMap<String, String>) {
         subscribe(&[
             EventType::PaneUpdate,
             EventType::HighlightClicked,
@@ -32,6 +35,14 @@ impl ZellijPlugin for State {
         // allowing std::fs operations on /host/<absolute_path>.
         change_host_folder(PathBuf::from("/"));
         self.env_vars = get_session_environment_variables();
+        self.floating_pane_coordinates = FloatingPaneCoordinates::new(
+            configuration.get("x").cloned(),
+            configuration.get("y").cloned(),
+            configuration.get("width").cloned(),
+            configuration.get("height").cloned(),
+            configuration.get("pinned").map(|v| v == "true"),
+            configuration.get("borderless").map(|v| v == "true"),
+        );
     }
 
     fn update(&mut self, event: Event) -> bool {
@@ -159,7 +170,7 @@ impl State {
             if let Some(line) = line_number {
                 file_to_open = file_to_open.with_line_number(line);
             }
-            open_file_floating(file_to_open, None, BTreeMap::new());
+            open_file_floating(file_to_open, self.floating_pane_coordinates.clone(), BTreeMap::new());
         }
     }
 
