@@ -33,8 +33,8 @@ use zellij_utils::data::{
     OpenEditPaneInPlaceOfPaneIdResponse, OpenFileFloatingNearPluginResponse,
     OpenFileFloatingResponse, OpenFileInPlaceOfPluginResponse, OpenFileInPlaceResponse,
     OpenFileNearPluginResponse, OpenFileResponse, OpenPaneInNewTabResponse,
-    OpenTerminalFloatingNearPluginResponse, OpenTerminalFloatingResponse,
-    OpenTerminalInPlaceOfPluginResponse, OpenTerminalInPlaceResponse,
+    OpenPluginPaneFloatingResponse, OpenTerminalFloatingNearPluginResponse,
+    OpenTerminalFloatingResponse, OpenTerminalInPlaceOfPluginResponse, OpenTerminalInPlaceResponse,
     OpenTerminalNearPluginResponse, OpenTerminalPaneInPlaceOfPaneIdResponse, OpenTerminalResponse,
     OriginatingPlugin, PaneScrollbackResponse, PermissionStatus, PermissionType, PluginPermission,
     RegexHighlight, RenameLayoutResponse, SaveLayoutResponse, TabMetadata,
@@ -94,9 +94,10 @@ use zellij_utils::{
             ProtobufOpenFileFloatingNearPluginResponse, ProtobufOpenFileFloatingResponse,
             ProtobufOpenFileInPlaceOfPluginResponse, ProtobufOpenFileInPlaceResponse,
             ProtobufOpenFileNearPluginResponse, ProtobufOpenFileResponse,
-            ProtobufOpenPaneInNewTabResponse, ProtobufOpenTerminalFloatingNearPluginResponse,
-            ProtobufOpenTerminalFloatingResponse, ProtobufOpenTerminalInPlaceOfPluginResponse,
-            ProtobufOpenTerminalInPlaceResponse, ProtobufOpenTerminalNearPluginResponse,
+            ProtobufOpenPaneInNewTabResponse, ProtobufOpenPluginPaneFloatingResponse,
+            ProtobufOpenTerminalFloatingNearPluginResponse, ProtobufOpenTerminalFloatingResponse,
+            ProtobufOpenTerminalInPlaceOfPluginResponse, ProtobufOpenTerminalInPlaceResponse,
+            ProtobufOpenTerminalNearPluginResponse,
             ProtobufOpenTerminalPaneInPlaceOfPaneIdResponse, ProtobufOpenTerminalResponse,
             ProtobufParseLayoutResponse, ProtobufPluginCommand, ProtobufRenameLayoutResponse,
             ProtobufSaveLayoutResponse, ProtobufSaveSessionResponse,
@@ -436,6 +437,7 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                         scan_host_folder(env, folder_to_scan)
                     },
                     PluginCommand::WatchFilesystem => watch_filesystem(env),
+                    PluginCommand::ListWindowsVolumes => list_windows_volumes(env),
                     PluginCommand::DumpSessionLayout { tab_index } => {
                         dump_session_layout(env, tab_index)
                     },
@@ -699,6 +701,20 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                         context,
                     } => {
                         open_plugin_pane_in_new_tab(env, plugin_url, configuration, context);
+                    },
+                    PluginCommand::OpenPluginPaneFloating {
+                        plugin_url,
+                        configuration,
+                        floating_pane_coordinates,
+                        context,
+                    } => {
+                        open_plugin_pane_floating(
+                            env,
+                            plugin_url,
+                            configuration,
+                            floating_pane_coordinates,
+                            context,
+                        );
                     },
                     PluginCommand::OpenEditorPaneInNewTab(file_to_open, context) => {
                         open_editor_pane_in_new_tab(env, file_to_open, context);
@@ -1113,6 +1129,54 @@ fn open_plugin_pane_in_new_tab(
         .non_fatal();
 }
 
+fn open_plugin_pane_floating(
+    env: &PluginEnv,
+    plugin_url: String,
+    configuration: BTreeMap<String, String>,
+    floating_pane_coordinates: Option<FloatingPaneCoordinates>,
+    context: BTreeMap<String, String>,
+) {
+    let run_plugin_or_alias = RunPluginOrAlias::from_url(
+        &plugin_url,
+        &Some(configuration),
+        None,
+        Some(env.plugin_cwd.clone()),
+    );
+    let run_plugin_or_alias = match run_plugin_or_alias {
+        Ok(r) => r,
+        Err(e) => {
+            log::error!("Failed to parse plugin url '{}': {}", plugin_url, e);
+            let response = ProtobufOpenPluginPaneFloatingResponse::from(
+                OpenPluginPaneFloatingResponse::default(),
+            );
+            wasi_write_object(env, &response.encode_to_vec())
+                .with_context(|| {
+                    format!("failed to write open_plugin_pane_floating error response")
+                })
+                .non_fatal();
+            return;
+        },
+    };
+    let _ = context; // context is not currently used for plugin panes
+    let action = Action::NewFloatingPluginPane {
+        plugin: run_plugin_or_alias,
+        pane_name: None,
+        skip_cache: false,
+        cwd: Some(env.plugin_cwd.clone()),
+        coordinates: floating_pane_coordinates,
+        tab_id: None,
+    };
+    let error_msg = || format!("Failed to open floating plugin pane");
+    let result = apply_action!(action, error_msg, env);
+
+    let pane_id: OpenPluginPaneFloatingResponse =
+        result.and_then(|r| r.affected_pane_id).map(|p| p.into());
+    let response = ProtobufOpenPluginPaneFloatingResponse::from(pane_id);
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to write open_plugin_pane_floating response"))
+        .non_fatal();
+}
+
 fn open_editor_pane_in_new_tab(
     env: &PluginEnv,
     file_to_open: FileToOpen,
@@ -1340,6 +1404,7 @@ fn open_file(env: &PluginEnv, file_to_open: FileToOpen, context: BTreeMap<String
         start_suppressed,
         coordinates: None,
         near_current_pane: false,
+        tab_id: None,
     };
     let result = apply_action!(action, error_msg, env);
 
@@ -1442,6 +1507,7 @@ fn open_file_floating(
         start_suppressed,
         coordinates: floating_pane_coordinates,
         near_current_pane: false,
+        tab_id: None,
     };
     let result = apply_action!(action, error_msg, env);
 
@@ -1482,6 +1548,7 @@ fn open_file_in_place(
         start_suppressed,
         coordinates: None,
         near_current_pane: false,
+        tab_id: None,
     };
     let result = apply_action!(action, error_msg, env);
 
@@ -1642,6 +1709,7 @@ fn open_terminal(env: &PluginEnv, cwd: PathBuf) {
         pane_name: None,
         near_current_pane: false,
         borderless: None,
+        tab_id: None,
     };
     let result = apply_action!(action, error_msg, env);
 
@@ -1717,6 +1785,7 @@ fn open_terminal_floating(
         pane_name: None,
         coordinates: floating_pane_coordinates,
         near_current_pane: false,
+        tab_id: None,
     };
     let result = apply_action!(action, error_msg, env);
 
@@ -1792,6 +1861,7 @@ fn open_terminal_in_place(env: &PluginEnv, cwd: PathBuf) {
         near_current_pane: false,
         pane_id_to_replace: None,
         close_replaced_pane: false,
+        tab_id: None,
     };
     let result = apply_action!(action, error_msg, env);
 
@@ -2076,6 +2146,7 @@ fn open_command_pane(
         pane_name: name,
         near_current_pane: false,
         borderless: None,
+        tab_id: None,
     };
     let result = apply_action!(action, error_msg, env);
 
@@ -2183,6 +2254,7 @@ fn open_command_pane_floating(
         pane_name: name,
         coordinates: floating_pane_coordinates,
         near_current_pane: false,
+        tab_id: None,
     };
     let result = apply_action!(action, error_msg, env);
 
@@ -2293,6 +2365,7 @@ fn open_command_pane_in_place(
         near_current_pane: false,
         pane_id_to_replace: None,
         close_replaced_pane: false,
+        tab_id: None,
     };
     let result = apply_action!(action, error_msg, env);
 
@@ -3663,7 +3736,10 @@ fn scan_host_folder(env: &PluginEnv, folder_to_scan: PathBuf) {
         );
         return;
     }
-    let plugin_host_folder = env.plugin_cwd.clone();
+    let plugin_host_folder = env
+        .plugin_cwd
+        .canonicalize()
+        .unwrap_or_else(|_| env.plugin_cwd.clone());
     let folder_to_scan = plugin_host_folder.join(folder_to_scan.strip_prefix("/host").unwrap());
     match folder_to_scan.canonicalize() {
         Ok(folder_to_scan) => {
@@ -3720,6 +3796,88 @@ fn scan_host_folder(env: &PluginEnv, folder_to_scan: PathBuf) {
             );
         },
     }
+}
+
+#[cfg(not(windows))]
+fn list_windows_volumes(_env: &PluginEnv) {
+    log::error!("ListWindowsVolumes is only supported on Windows");
+}
+
+#[cfg(windows)]
+fn list_windows_volumes(env: &PluginEnv) {
+    let send_plugin_instructions = env.senders.to_plugin.clone();
+    let update_target = Some(env.plugin_id);
+    let client_id = env.client_id;
+    thread::spawn(move || {
+        let mut entries = enumerate_drives();
+        entries.extend(enumerate_wsl_distributions());
+        let _ = send_plugin_instructions
+            .ok_or(anyhow!("found no sender to send plugin instruction to"))
+            .map(|sender| {
+                let _ = sender.send(PluginInstruction::Update(vec![(
+                    update_target,
+                    Some(client_id),
+                    Event::FileSystemUpdate(entries),
+                )]));
+            })
+            .non_fatal();
+    });
+}
+
+#[cfg(windows)]
+fn enumerate_drives() -> Vec<(PathBuf, Option<zellij_utils::data::FileMetadata>)> {
+    use windows_sys::Win32::Storage::FileSystem::GetLogicalDriveStringsW;
+    let mut buf = [0u16; 256];
+    let len = unsafe { GetLogicalDriveStringsW(buf.len() as u32, buf.as_mut_ptr()) };
+    if len == 0 {
+        return vec![];
+    }
+    let drive_strings = &buf[..len as usize];
+    let mut entries = vec![];
+    for chunk in drive_strings.split(|&c| c == 0) {
+        if chunk.is_empty() {
+            continue;
+        }
+        let drive = String::from_utf16_lossy(chunk);
+        let normalized = drive.replace('\\', "/");
+        let drive_path = PathBuf::from(&normalized);
+        let metadata = drive_path.metadata().ok().map(|m| m.into());
+        entries.push((drive_path, metadata));
+    }
+    entries
+}
+
+#[cfg(windows)]
+fn enumerate_wsl_distributions() -> Vec<(PathBuf, Option<zellij_utils::data::FileMetadata>)> {
+    // read_dir on \\wsl.localhost\ or \\wsl$\ can fail with OS error 64/67
+    // even when WSL is running, so enumerate distros via `wsl -l -q` instead.
+    let output = match std::process::Command::new("wsl")
+        .args(["-l", "-q"])
+        .output()
+    {
+        Ok(o) if o.status.success() => o,
+        _ => return vec![],
+    };
+    // wsl -l -q outputs UTF-16LE on Windows
+    let stdout: Vec<u16> = output
+        .stdout
+        .chunks(2)
+        .map(|c| u16::from_le_bytes([c[0], *c.get(1).unwrap_or(&0)]))
+        .collect();
+    let text = String::from_utf16_lossy(&stdout);
+    let mut entries = vec![];
+    for line in text.lines() {
+        let name = line.trim().trim_matches('\0');
+        if name.is_empty() {
+            continue;
+        }
+        // Verify the distro is reachable before listing it
+        let unc = format!("\\\\wsl.localhost\\{}", name);
+        let metadata = std::fs::metadata(&unc).ok().map(|m| m.into());
+        let wsl_path = PathBuf::from(format!("//wsl.localhost/{}/", name));
+        entries.push((wsl_path, metadata));
+    }
+    entries
 }
 
 fn resize_pane_with_id(env: &PluginEnv, resize: ResizeStrategy, pane_id: PaneId) {
@@ -4275,6 +4433,7 @@ fn try_edit_layout(
         start_suppressed: false,
         coordinates: None,
         near_current_pane: true,
+        tab_id: None,
     };
 
     // Route the action - this is fallible
@@ -5014,6 +5173,8 @@ fn check_command_permission(
         | PluginCommand::OpenTerminalFloatingNearPlugin(..)
         | PluginCommand::OpenTerminalInPlace(..)
         | PluginCommand::OpenTerminalInPlaceOfPlugin(..)
+        | PluginCommand::OpenPluginPaneInNewTab { .. }
+        | PluginCommand::OpenPluginPaneFloating { .. }
         | PluginCommand::OpenTerminalPaneInPlaceOfPaneId(..) => {
             PermissionType::OpenTerminalsOrPlugins
         },
@@ -5154,7 +5315,9 @@ fn check_command_permission(
         PluginCommand::RebindKeys { .. } | PluginCommand::Reconfigure(..) => {
             PermissionType::Reconfigure
         },
-        PluginCommand::ChangeHostFolder(..) => PermissionType::FullHdAccess,
+        PluginCommand::ChangeHostFolder(..) | PluginCommand::ListWindowsVolumes => {
+            PermissionType::FullHdAccess
+        },
         PluginCommand::ShareCurrentSession
         | PluginCommand::StopSharingCurrentSession
         | PluginCommand::StopWebServer
@@ -5173,9 +5336,9 @@ fn check_command_permission(
         PluginCommand::GetSessionEnvironmentVariables => {
             PermissionType::ReadSessionEnvironmentVariables
         },
-        PluginCommand::OpenCommandPaneInNewTab(..)
-        | PluginCommand::OpenPluginPaneInNewTab { .. }
-        | PluginCommand::OpenEditorPaneInNewTab(..) => PermissionType::ChangeApplicationState,
+        PluginCommand::OpenCommandPaneInNewTab(..) | PluginCommand::OpenEditorPaneInNewTab(..) => {
+            PermissionType::ChangeApplicationState
+        },
         _ => return (PermissionStatus::Granted, None),
     };
 

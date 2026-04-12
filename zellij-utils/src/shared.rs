@@ -220,7 +220,9 @@ pub fn parse_base_url(url: &str) -> Result<ServerAddress> {
         .host_str()
         .ok_or_else(|| anyhow!("No host in URL"))?
         .to_string();
-    let port = url.port().ok_or_else(|| anyhow!("No port in URL"))?;
+    let port = url
+        .port_or_known_default()
+        .ok_or_else(|| anyhow!("No port in URL"))?;
 
     Ok(ServerAddress { ip, port })
 }

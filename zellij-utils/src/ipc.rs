@@ -153,6 +153,9 @@ pub enum ClientToServerMsg {
         scrollback: Option<usize>,
         ansi: bool,
     },
+    DesktopNotificationResponse {
+        raw_bytes: Vec<u8>,
+    },
 }
 
 // Types of messages sent from the server to the client

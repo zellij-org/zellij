@@ -252,7 +252,7 @@ impl Pane for PluginPane {
 
         self.should_render.insert(client_id, true);
     }
-    fn cursor_coordinates(&self, client_id: Option<ClientId>) -> Option<(usize, usize)> {
+    fn cursor_coordinates(&self, client_id: Option<ClientId>) -> Option<(usize, usize, bool)> {
         let own_content_columns = self.get_content_columns();
         let own_content_rows = self.get_content_rows();
         let Offset { top, left, .. } = self.content_offset;
@@ -265,7 +265,7 @@ impl Pane for PluginPane {
                     if x >= own_content_columns || y >= own_content_rows {
                         None
                     } else {
-                        Some((x, y)) // these are 0 indexed
+                        Some((x, y, true)) // plugins always show cursor when position is set
                     }
                 })
         } else {

@@ -28,6 +28,7 @@ pub fn start_cli_client(
         sock_dir.push(session_name);
         sock_dir
     };
+    crate::check_ipc_pipe_length(&zellij_ipc_pipe);
     os_input.connect_to_server(&*zellij_ipc_pipe);
     let pane_id = os_input
         .env_variable("ZELLIJ_PANE_ID")
@@ -208,6 +209,13 @@ fn individual_messages_client(
     action: Action,
     pane_id: Option<u32>,
 ) {
+    let is_blocking = matches!(
+        &action,
+        Action::NewBlockingPane {
+            unblock_condition: Some(_),
+            ..
+        }
+    );
     let msg = ClientToServerMsg::Action {
         action,
         terminal_id: pane_id,
@@ -217,7 +225,7 @@ fn individual_messages_client(
     os_input.send_to_server(msg);
     loop {
         match os_input.recv_from_server() {
-            Some((ServerToClientMsg::UnblockInputThread, _)) => {
+            Some((ServerToClientMsg::UnblockInputThread, _)) if !is_blocking => {
                 break;
             },
             Some((ServerToClientMsg::Log { lines: log_lines }, _)) => {
@@ -257,6 +265,7 @@ pub fn start_subscribe_client(
         sock_dir.push(session_name);
         sock_dir
     };
+    crate::check_ipc_pipe_length(&zellij_ipc_pipe);
     os_input.connect_to_server(&*zellij_ipc_pipe);
 
     // Parse pane IDs

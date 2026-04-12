@@ -7,6 +7,7 @@ mod layout_applier;
 mod mouse_handler;
 mod swap_layouts;
 
+use crate::plugins::PluginId;
 use copy_command::CopyCommand;
 pub use mouse_handler::{MouseEffect, MouseHandler, PaneEdge, PaneResizeState};
 use std::env::temp_dir;
@@ -39,6 +40,7 @@ use crate::{
     os_input_output::ServerOsApi,
     output::{CharacterChunk, Output, SixelImageChunk},
     panes::floating_panes::floating_pane_grid::half_size_middle_geom,
+    panes::grid::namespace_notification_id,
     panes::sixel::SixelImageStore,
     panes::{FloatingPanes, TiledPanes},
     panes::{LinkHandler, PaneId, PluginPane, TerminalPane},
@@ -238,7 +240,11 @@ pub trait Pane {
     fn handle_pty_bytes(&mut self, _bytes: VteBytes) {}
     fn handle_plugin_bytes(&mut self, _client_id: ClientId, _bytes: VteBytes) {}
     fn show_cursor(&mut self, _client_id: ClientId, _cursor_position: Option<(usize, usize)>) {}
-    fn cursor_coordinates(&self, _client_id: Option<ClientId>) -> Option<(usize, usize)>;
+    /// Returns the cursor position and whether it is visible.
+    /// The position is returned unconditionally (as long as the cursor is within
+    /// bounds) so that the host terminal can position the cursor for IME even
+    /// when the app has hidden it. The bool is true when the cursor is visible.
+    fn cursor_coordinates(&self, _client_id: Option<ClientId>) -> Option<(usize, usize, bool)>;
     fn is_mid_frame(&self) -> bool {
         false
     }
@@ -407,6 +413,9 @@ pub trait Pane {
     }
     fn drain_clipboard_update(&mut self) -> Option<String> {
         None
+    }
+    fn drain_desktop_notifications(&mut self) -> Vec<(String, String)> {
+        vec![]
     }
     fn render_full_viewport(&mut self) {}
     fn relative_position(&self, position_on_screen: &Position) -> Position {
@@ -1153,10 +1162,11 @@ impl Tab {
         self.update_input_modes()
     }
     pub fn update_input_modes(&mut self) -> Result<()> {
-        // this updates all plugins with the client's input mode
+        // this updates only this tab's plugins with the client's input mode
         let mode_infos = self.mode_info.borrow();
         let mut plugin_updates = vec![];
         let currently_marking_pane_group = self.currently_marking_pane_group.borrow();
+        let tab_plugin_ids = self.get_plugin_ids();
         for client_id in self.connected_clients.borrow().iter() {
             let mut mode_info = mode_infos
                 .get(client_id)
@@ -1180,11 +1190,19 @@ impl Tab {
             } else {
                 mode_info.web_server_capability = Some(false);
             }
-            plugin_updates.push((None, Some(*client_id), Event::ModeUpdate(mode_info)));
+            for plugin_id in &tab_plugin_ids {
+                plugin_updates.push((
+                    Some(*plugin_id),
+                    Some(*client_id),
+                    Event::ModeUpdate(mode_info.clone()),
+                ));
+            }
         }
-        self.senders
-            .send_to_plugin(PluginInstruction::Update(plugin_updates))
-            .with_context(|| format!("failed to update plugins with mode info"))?;
+        if !plugin_updates.is_empty() {
+            self.senders
+                .send_to_plugin(PluginInstruction::Update(plugin_updates))
+                .with_context(|| format!("failed to update plugins with mode info"))?;
+        }
         Ok(())
     }
     pub fn add_client(&mut self, client_id: ClientId, mode_info: Option<ModeInfo>) -> Result<()> {
@@ -1546,7 +1564,7 @@ impl Tab {
                     PaneGeom::default(), // this will be filled out later
                     self.style,
                     next_terminal_position,
-                    String::new(),
+                    initial_pane_title.clone().unwrap_or_default(),
                     self.link_handler.clone(),
                     self.character_cell_size.clone(),
                     self.sixel_image_store.clone(),
@@ -1659,7 +1677,7 @@ impl Tab {
                     PaneGeom::default(), // this will be filled out later
                     self.style,
                     next_terminal_position,
-                    String::new(),
+                    initial_pane_title.clone().unwrap_or_default(),
                     self.link_handler.clone(),
                     self.character_cell_size.clone(),
                     self.sixel_image_store.clone(),
@@ -1761,7 +1779,7 @@ impl Tab {
                     PaneGeom::default(), // this will be filled out later
                     self.style,
                     next_terminal_position,
-                    String::new(),
+                    initial_pane_title.clone().unwrap_or_default(),
                     self.link_handler.clone(),
                     self.character_cell_size.clone(),
                     self.sixel_image_store.clone(),
@@ -1907,7 +1925,7 @@ impl Tab {
                     PaneGeom::default(), // this will be filled out later
                     self.style,
                     next_terminal_position,
-                    String::new(),
+                    initial_pane_title.clone().unwrap_or_default(),
                     self.link_handler.clone(),
                     self.character_cell_size.clone(),
                     self.sixel_image_store.clone(),
@@ -2709,12 +2727,17 @@ impl Tab {
             terminal_output.handle_pty_bytes(bytes);
             let messages_to_pty = terminal_output.drain_messages_to_pty();
             let clipboard_update = terminal_output.drain_clipboard_update();
+            let desktop_notifications = terminal_output.drain_desktop_notifications();
             for message in messages_to_pty {
                 self.write_to_pane_id_without_preprocessing(message, PaneId::Terminal(pid))
                     .with_context(err_context)?;
             }
             if let Some(string) = clipboard_update {
                 self.write_selection_to_clipboard(&string)
+                    .with_context(err_context)?;
+            }
+            if !desktop_notifications.is_empty() {
+                self.forward_desktop_notifications(desktop_notifications, pid)
                     .with_context(err_context)?;
             }
         }
@@ -3026,8 +3049,8 @@ impl Tab {
     pub fn get_active_terminal_cursor_position(
         &self,
         client_id: ClientId,
-    ) -> Option<(usize, usize)> {
-        // (x, y)
+    ) -> Option<(usize, usize, bool)> {
+        // (x, y, is_cursor_visible)
         let active_pane_id = if self.floating_panes.panes_are_visible() {
             self.floating_panes
                 .get_active_pane_id(client_id)
@@ -3039,13 +3062,13 @@ impl Tab {
             .floating_panes
             .get(&active_pane_id)
             .or_else(|| self.tiled_panes.get_pane(active_pane_id))?;
-        active_terminal
-            .cursor_coordinates(Some(client_id))
-            .map(|(x_in_terminal, y_in_terminal)| {
+        active_terminal.cursor_coordinates(Some(client_id)).map(
+            |(x_in_terminal, y_in_terminal, is_visible)| {
                 let x = active_terminal.x() + x_in_terminal;
                 let y = active_terminal.y() + y_in_terminal;
-                (x, y)
-            })
+                (x, y, is_visible)
+            },
+        )
     }
     pub fn toggle_active_pane_fullscreen(&mut self, client_id: ClientId) {
         if self.floating_panes.panes_are_visible() {
@@ -3225,36 +3248,16 @@ impl Tab {
         let connected_clients: Vec<ClientId> =
             { self.connected_clients.borrow().iter().copied().collect() };
         for client_id in connected_clients {
-            match self
-                .get_active_terminal_cursor_position(client_id)
-                .and_then(|(cursor_position_x, cursor_position_y)| {
+            match self.get_active_terminal_cursor_position(client_id) {
+                Some((cursor_position_x, cursor_position_y, is_cursor_visible)) => {
                     let active_pane_z_index = self
                         .get_active_pane_id(client_id)
                         .and_then(|pane_id| self.floating_panes.get_pane_z_index(pane_id));
-                    if output.cursor_is_visible(
+                    let not_occluded = output.cursor_is_visible(
                         cursor_position_x,
                         cursor_position_y,
                         active_pane_z_index,
-                    ) {
-                        Some((cursor_position_x, cursor_position_y))
-                    } else {
-                        None
-                    }
-                }) {
-                Some((cursor_position_x, cursor_position_y)) => {
-                    let desired_cursor_shape = self
-                        .get_active_pane(client_id)
-                        .map(|ap| ap.cursor_shape_csi())
-                        .unwrap_or_default();
-                    let cursor_changed_position_or_shape = self
-                        .cursor_positions_and_shape
-                        .get(&client_id)
-                        .map(|(previous_x, previous_y, previous_shape)| {
-                            previous_x != &cursor_position_x
-                                || previous_y != &cursor_position_y
-                                || previous_shape != &desired_cursor_shape
-                        })
-                        .unwrap_or(true);
+                    );
                     let active_terminal_is_mid_frame = self
                         .active_terminal_is_mid_frame(client_id)
                         .unwrap_or(false);
@@ -3263,22 +3266,54 @@ impl Tab {
                         // no-op, this means the active terminal is currently rendering a frame,
                         // which means the cursor can be jumping around and we definitely do not
                         // want to render it
-                        //
-                        // (I felt this was clearer than expanding the if conditional below)
-                    } else if output.is_dirty() || cursor_changed_position_or_shape {
-                        let show_cursor = "\u{1b}[?25h";
+                    } else if not_occluded && is_cursor_visible {
+                        let desired_cursor_shape = self
+                            .get_active_pane(client_id)
+                            .map(|ap| ap.cursor_shape_csi())
+                            .unwrap_or_default();
+                        let cursor_changed_position_or_shape = self
+                            .cursor_positions_and_shape
+                            .get(&client_id)
+                            .map(|(previous_x, previous_y, previous_shape)| {
+                                previous_x != &cursor_position_x
+                                    || previous_y != &cursor_position_y
+                                    || previous_shape != &desired_cursor_shape
+                            })
+                            .unwrap_or(true);
+                        if output.is_dirty() || cursor_changed_position_or_shape {
+                            let show_cursor = "\u{1b}[?25h";
+                            let goto_cursor_position = &format!(
+                                "\u{1b}[{};{}H\u{1b}[m{}",
+                                cursor_position_y + 1,
+                                cursor_position_x + 1,
+                                desired_cursor_shape
+                            ); // goto row/col
+                            output.add_post_vte_instruction_to_client(client_id, show_cursor);
+                            output.add_post_vte_instruction_to_client(
+                                client_id,
+                                goto_cursor_position,
+                            );
+                            self.cursor_positions_and_shape.insert(
+                                client_id,
+                                (cursor_position_x, cursor_position_y, desired_cursor_shape),
+                            );
+                        }
+                    } else if not_occluded {
+                        // Cursor is hidden by the app but not occluded by a floating
+                        // pane. Position the host terminal cursor at the correct
+                        // location (for IME) then hide it. The IME subsystem reads
+                        // the cursor position regardless of visibility.
+                        let hide_cursor = "\u{1b}[?25l";
                         let goto_cursor_position = &format!(
-                            "\u{1b}[{};{}H\u{1b}[m{}",
+                            "\u{1b}[{};{}H",
                             cursor_position_y + 1,
                             cursor_position_x + 1,
-                            desired_cursor_shape
-                        ); // goto row/col
-                        output.add_post_vte_instruction_to_client(client_id, show_cursor);
-                        output.add_post_vte_instruction_to_client(client_id, goto_cursor_position);
-                        self.cursor_positions_and_shape.insert(
-                            client_id,
-                            (cursor_position_x, cursor_position_y, desired_cursor_shape),
                         );
+                        output.add_post_vte_instruction_to_client(client_id, hide_cursor);
+                        output.add_post_vte_instruction_to_client(client_id, goto_cursor_position);
+                    } else {
+                        let hide_cursor = "\u{1b}[?25l";
+                        output.add_post_vte_instruction_to_client(client_id, hide_cursor);
                     }
                 },
                 None => {
@@ -3738,6 +3773,15 @@ impl Tab {
             .pane_ids()
             .chain(self.floating_panes.pane_ids())
             .copied()
+            .collect()
+    }
+    pub fn get_plugin_ids(&self) -> Vec<PluginId> {
+        self.get_static_and_floating_pane_ids()
+            .into_iter()
+            .filter_map(|pane_id| match pane_id {
+                PaneId::Plugin(pid) => Some(pid),
+                _ => None,
+            })
             .collect()
     }
     pub fn get_pane_info(&self, pane_id: PaneId) -> Option<PaneInfo> {
@@ -4626,6 +4670,48 @@ impl Tab {
 
         Ok(())
     }
+    fn forward_desktop_notifications(
+        &self,
+        notifications: Vec<(String, String)>,
+        pane_id: u32,
+    ) -> Result<()> {
+        let err_context = || "failed to forward desktop notifications to host terminal".to_string();
+        let mut output = Output::default();
+        // Use all clients in the app, not just those viewing this tab —
+        // desktop notifications should reach the host terminal regardless
+        // of which tab is currently focused.
+        let all_clients: HashSet<ClientId> = {
+            self.connected_clients_in_app
+                .borrow()
+                .keys()
+                .copied()
+                .collect()
+        };
+        output.add_clients(&all_clients, self.link_handler.clone(), None);
+        for (payload, terminator) in notifications {
+            // Apply identifier namespacing (Phase 3)
+            // The first semicolon-delimited part of payload is the metadata
+            let (metadata, rest) = match payload.find(';') {
+                Some(idx) => (
+                    payload.get(..idx).unwrap_or_default(),
+                    payload.get(idx..).unwrap_or_default(),
+                ),
+                None => (payload.as_str(), ""),
+            };
+            let namespaced_metadata = namespace_notification_id(metadata, pane_id);
+            let raw = if rest.is_empty() {
+                format!("\x1b]99;{}{}", namespaced_metadata, terminator)
+            } else {
+                format!("\x1b]99;{}{}{}", namespaced_metadata, rest, terminator)
+            };
+            output.add_post_vte_instruction_to_multiple_clients(all_clients.iter().copied(), &raw);
+        }
+        let serialized_output = output.serialize().with_context(err_context)?;
+        self.senders
+            .send_to_server(ServerInstruction::Render(Some(serialized_output)))
+            .with_context(err_context)?;
+        Ok(())
+    }
     pub fn visible(&mut self, visible: bool) -> Result<()> {
         let pids_in_this_tab = self.tiled_panes.pane_ids().filter_map(|p| match p {
             PaneId::Plugin(pid) => Some(pid),
@@ -4685,6 +4771,13 @@ impl Tab {
             })
             .with_context(err_context)?;
         pane.rename(buf);
+        Ok(())
+    }
+
+    pub fn rename_active_pane(&mut self, buf: Vec<u8>, client_id: ClientId) -> Result<()> {
+        if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
+            active_pane.rename(buf);
+        }
         Ok(())
     }
 
@@ -5942,7 +6035,9 @@ pub fn pane_info_for_pane(
     pane_info.pane_content_rows = pane.get_content_rows();
     pane_info.pane_columns = pane.cols();
     pane_info.pane_content_columns = pane.get_content_columns();
-    pane_info.cursor_coordinates_in_pane = pane.cursor_coordinates(None);
+    pane_info.cursor_coordinates_in_pane = pane
+        .cursor_coordinates(None)
+        .and_then(|(x, y, is_visible)| if is_visible { Some((x, y)) } else { None });
     pane_info.is_selectable = pane.selectable();
     pane_info.title = pane.current_title();
     pane_info.exited = pane.exited();

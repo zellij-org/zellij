@@ -145,5 +145,6 @@ pub fn create_ipc_pipe(session_name: &str) -> PathBuf {
         sock_dir.push(session_name);
         sock_dir
     };
+    crate::check_ipc_pipe_length(&zellij_ipc_pipe);
     zellij_ipc_pipe
 }

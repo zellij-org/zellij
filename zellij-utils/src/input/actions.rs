@@ -232,6 +232,7 @@ pub enum Action {
         command: Option<RunCommandAction>,
         unblock_condition: Option<UnblockCondition>,
         near_current_pane: bool,
+        tab_id: Option<usize>,
     },
     /// Open the file in a new pane using the default editor
     /// Returns: Created pane ID (format: terminal_<id>)
@@ -244,6 +245,7 @@ pub enum Action {
         start_suppressed: bool,
         coordinates: Option<FloatingPaneCoordinates>,
         near_current_pane: bool,
+        tab_id: Option<usize>,
     },
     /// Open a new floating pane
     /// Returns: Created pane ID (format: terminal_<id> or plugin_<id>)
@@ -252,6 +254,7 @@ pub enum Action {
         pane_name: Option<String>,
         coordinates: Option<FloatingPaneCoordinates>,
         near_current_pane: bool,
+        tab_id: Option<usize>,
     },
     /// Open a new tiled (embedded, non-floating) pane
     /// Returns: Created pane ID (format: terminal_<id> or plugin_<id>)
@@ -261,6 +264,7 @@ pub enum Action {
         pane_name: Option<String>,
         near_current_pane: bool,
         borderless: Option<bool>,
+        tab_id: Option<usize>,
     },
     /// Open a new pane in place of the focused one, suppressing it instead
     /// Returns: Created pane ID (format: terminal_<id> or plugin_<id>)
@@ -270,12 +274,14 @@ pub enum Action {
         near_current_pane: bool,
         pane_id_to_replace: Option<PaneId>,
         close_replaced_pane: bool,
+        tab_id: Option<usize>,
     },
     /// Returns: Created pane ID (format: terminal_<id> or plugin_<id>)
     NewStackedPane {
         command: Option<RunCommandAction>,
         pane_name: Option<String>,
         near_current_pane: bool,
+        tab_id: Option<usize>,
     },
     /// Embed focused pane in tab if floating or float focused pane if embedded
     TogglePaneEmbedOrFloating,
@@ -287,6 +293,10 @@ pub enum Action {
     },
     /// Hide all floating panes in the specified tab (or active tab if tab_id is None)
     HideFloatingPanes {
+        tab_id: Option<usize>,
+    },
+    /// Check if floating panes are visible in the specified tab (or active tab if tab_id is None)
+    AreFloatingPanesVisible {
         tab_id: Option<usize>,
     },
     /// Close the focus pane.
@@ -359,6 +369,7 @@ pub enum Action {
         should_open_in_place: bool,
         close_replaced_pane: bool,
         skip_cache: bool,
+        tab_id: Option<usize>,
     },
     /// Returns: Plugin pane ID (format: plugin_<id>)
     LaunchPlugin {
@@ -368,6 +379,7 @@ pub enum Action {
         close_replaced_pane: bool,
         skip_cache: bool,
         cwd: Option<PathBuf>,
+        tab_id: Option<usize>,
     },
     MouseEvent {
         event: MouseEvent,
@@ -412,6 +424,7 @@ pub enum Action {
         pane_name: Option<String>,
         skip_cache: bool,
         cwd: Option<PathBuf>,
+        tab_id: Option<usize>,
     },
     /// Returns: Created pane ID (format: plugin_<id>)
     NewFloatingPluginPane {
@@ -420,6 +433,7 @@ pub enum Action {
         skip_cache: bool,
         cwd: Option<PathBuf>,
         coordinates: Option<FloatingPaneCoordinates>,
+        tab_id: Option<usize>,
     },
     /// Returns: Created pane ID (format: plugin_<id>)
     NewInPlacePluginPane {
@@ -427,6 +441,7 @@ pub enum Action {
         pane_name: Option<String>,
         skip_cache: bool,
         close_replaced_pane: bool,
+        tab_id: Option<usize>,
     },
     StartOrReloadPlugin {
         plugin: RunPluginOrAlias,
@@ -594,13 +609,16 @@ pub enum Action {
         pane_id: PaneId,
     },
     RenamePaneByPaneId {
-        pane_id: PaneId,
+        pane_id: Option<PaneId>,
         name: Vec<u8>,
     },
     UndoRenamePaneByPaneId {
         pane_id: PaneId,
     },
     TogglePanePinnedByPaneId {
+        pane_id: PaneId,
+    },
+    FocusPaneByPaneId {
         pane_id: PaneId,
     },
     // Tab-targeting CLI-only variants
@@ -796,6 +814,13 @@ impl Action {
             },
             CliAction::FocusNextPane => Ok(vec![Action::FocusNextPane]),
             CliAction::FocusPreviousPane => Ok(vec![Action::FocusPreviousPane]),
+            CliAction::FocusPaneId { pane_id } => {
+                let pane_id = PaneId::from_str(&pane_id)
+                    .map_err(|_| format!(
+                        "Malformed pane id: {pane_id}, expecting either a bare integer (eg. 1), a terminal pane id (eg. terminal_1) or a plugin pane id (eg. plugin_1)"
+                    ))?;
+                Ok(vec![Action::FocusPaneByPaneId { pane_id }])
+            },
             CliAction::MoveFocus { direction } => Ok(vec![Action::MoveFocus { direction }]),
             CliAction::MoveFocusOrTab { direction } => {
                 Ok(vec![Action::MoveFocusOrTab { direction }])
@@ -996,9 +1021,13 @@ impl Action {
                 pinned,
                 stacked,
                 blocking,
+                block_until_exit_success,
+                block_until_exit_failure,
+                block_until_exit,
                 unblock_condition,
                 near_current_pane,
                 borderless,
+                tab_id,
             } => {
                 let current_dir = get_current_dir();
                 // cwd should only be specified in a plugin alias if it was explicitly given to us,
@@ -1007,6 +1036,17 @@ impl Action {
                 let cwd = cwd
                     .map(|cwd| current_dir.join(cwd))
                     .or_else(|| Some(current_dir.clone()));
+                let unblock_condition = unblock_condition.or_else(|| {
+                    if block_until_exit_success {
+                        Some(UnblockCondition::OnExitSuccess)
+                    } else if block_until_exit_failure {
+                        Some(UnblockCondition::OnExitFailure)
+                    } else if block_until_exit {
+                        Some(UnblockCondition::OnAnyExit)
+                    } else {
+                        None
+                    }
+                });
                 if blocking || unblock_condition.is_some() {
                     // For blocking panes, we don't support plugins
                     if plugin.is_some() {
@@ -1059,6 +1099,7 @@ impl Action {
                         command,
                         unblock_condition,
                         near_current_pane,
+                        tab_id,
                     }])
                 } else if let Some(plugin) = plugin {
                     let plugin = match RunPluginLocation::parse(&plugin, cwd.clone()) {
@@ -1090,6 +1131,7 @@ impl Action {
                             coordinates: FloatingPaneCoordinates::new(
                                 x, y, width, height, pinned, borderless,
                             ),
+                            tab_id,
                         }])
                     } else if in_place {
                         Ok(vec![Action::NewInPlacePluginPane {
@@ -1097,6 +1139,7 @@ impl Action {
                             pane_name: name,
                             skip_cache: skip_plugin_cache,
                             close_replaced_pane,
+                            tab_id,
                         }])
                     } else {
                         // it is intentional that a new tiled plugin pane cannot include a
@@ -1112,6 +1155,7 @@ impl Action {
                             pane_name: name,
                             skip_cache: skip_plugin_cache,
                             cwd,
+                            tab_id,
                         }])
                     }
                 } else if !command.is_empty() {
@@ -1136,6 +1180,7 @@ impl Action {
                                 x, y, width, height, pinned, borderless,
                             ),
                             near_current_pane,
+                            tab_id,
                         }])
                     } else if in_place {
                         Ok(vec![Action::NewInPlacePane {
@@ -1144,12 +1189,14 @@ impl Action {
                             near_current_pane,
                             pane_id_to_replace: None, // TODO: support this
                             close_replaced_pane,
+                            tab_id,
                         }])
                     } else if stacked {
                         Ok(vec![Action::NewStackedPane {
                             command: Some(run_command_action),
                             pane_name: name,
                             near_current_pane,
+                            tab_id,
                         }])
                     } else {
                         Ok(vec![Action::NewTiledPane {
@@ -1158,6 +1205,7 @@ impl Action {
                             pane_name: name,
                             near_current_pane,
                             borderless,
+                            tab_id,
                         }])
                     }
                 } else {
@@ -1169,6 +1217,7 @@ impl Action {
                                 x, y, width, height, pinned, borderless,
                             ),
                             near_current_pane,
+                            tab_id,
                         }])
                     } else if in_place {
                         Ok(vec![Action::NewInPlacePane {
@@ -1177,12 +1226,14 @@ impl Action {
                             near_current_pane,
                             pane_id_to_replace: None, // TODO: support this
                             close_replaced_pane,
+                            tab_id,
                         }])
                     } else if stacked {
                         Ok(vec![Action::NewStackedPane {
                             command: None,
                             pane_name: name,
                             near_current_pane,
+                            tab_id,
                         }])
                     } else {
                         Ok(vec![Action::NewTiledPane {
@@ -1191,6 +1242,7 @@ impl Action {
                             pane_name: name,
                             near_current_pane,
                             borderless,
+                            tab_id,
                         }])
                     }
                 }
@@ -1210,6 +1262,7 @@ impl Action {
                 pinned,
                 near_current_pane,
                 borderless,
+                tab_id,
             } => {
                 let mut file = file;
                 let current_dir = get_current_dir();
@@ -1233,6 +1286,7 @@ impl Action {
                         x, y, width, height, pinned, borderless,
                     ),
                     near_current_pane,
+                    tab_id,
                 }])
             },
             CliAction::SwitchMode { input_mode } => Ok(vec![Action::SwitchToMode { input_mode }]),
@@ -1256,6 +1310,9 @@ impl Action {
             CliAction::HideFloatingPanes { tab_id } => {
                 Ok(vec![Action::HideFloatingPanes { tab_id }])
             },
+            CliAction::AreFloatingPanesVisible { tab_id } => {
+                Ok(vec![Action::AreFloatingPanesVisible { tab_id }])
+            },
             CliAction::ClosePane { pane_id } => match pane_id {
                 Some(pane_id_str) => {
                     let pane_id = PaneId::from_str(&pane_id_str)
@@ -1266,23 +1323,19 @@ impl Action {
                 },
                 None => Ok(vec![Action::CloseFocus]),
             },
-            CliAction::RenamePane { name, pane_id } => match pane_id {
-                Some(pane_id_str) => {
-                    let pane_id = PaneId::from_str(&pane_id_str)
-                        .map_err(|_| format!(
+            CliAction::RenamePane { name, pane_id } => {
+                let pane_id = match pane_id {
+                    Some(pane_id_str) => Some(
+                        PaneId::from_str(&pane_id_str).map_err(|_| format!(
                             "Malformed pane id: {pane_id_str}, expecting either a bare integer (eg. 1), a terminal pane id (eg. terminal_1) or a plugin pane id (eg. plugin_1)"
-                        ))?;
-                    Ok(vec![Action::RenamePaneByPaneId {
-                        pane_id,
-                        name: name.as_bytes().to_vec(),
-                    }])
-                },
-                None => Ok(vec![
-                    Action::UndoRenamePane,
-                    Action::PaneNameInput {
-                        input: name.as_bytes().to_vec(),
-                    },
-                ]),
+                        ))?,
+                    ),
+                    None => None,
+                };
+                Ok(vec![Action::RenamePaneByPaneId {
+                    pane_id,
+                    name: name.as_bytes().to_vec(),
+                }])
             },
             CliAction::UndoRenamePane { pane_id } => match pane_id {
                 Some(pane_id_str) => {
@@ -1326,6 +1379,7 @@ impl Action {
             CliAction::NewTab {
                 name,
                 layout,
+                layout_string,
                 layout_dir,
                 cwd,
                 initial_command,
@@ -1390,35 +1444,16 @@ impl Action {
                 } else {
                     None
                 };
-                if let Some(layout_path) = layout {
-                    let layout_dir = layout_dir
-                        .or_else(|| config.and_then(|c| c.options.layout_dir))
-                        .or_else(|| get_layout_dir(find_default_config_dir()));
-
-                    let mut should_start_layout_commands_suspended = false;
-                    let (path_to_raw_layout, raw_layout, swap_layouts) = if let Some(layout_url) =
-                        layout_path.to_str().and_then(|l| {
-                            if l.starts_with("http://") || l.starts_with("https://") {
-                                Some(l)
-                            } else {
-                                None
-                            }
-                        }) {
-                        should_start_layout_commands_suspended = true;
-                        (
-                            layout_url.to_owned(),
-                            Layout::stringified_from_url(layout_url)
-                                .map_err(|e| format!("Failed to load layout: {}", e))?,
-                            None,
-                        )
-                    } else {
-                        Layout::stringified_from_path_or_default(Some(&layout_path), layout_dir)
-                            .map_err(|e| format!("Failed to load layout: {}", e))?
-                    };
+                if let Some(raw_layout) = layout_string {
+                    let layout_source_name = "layout-string".to_owned();
+                    let path_to_raw_layout = layout_source_name.clone();
+                    let swap_layouts: Option<(String, String)> = None;
+                    let should_start_layout_commands_suspended = false;
+                    let raw_layout_for_error = raw_layout.clone();
                     let mut layout = Layout::from_str(&raw_layout, path_to_raw_layout, swap_layouts.as_ref().map(|(f, p)| (f.as_str(), p.as_str())), cwd).map_err(|e| {
                         let stringified_error = match e {
                             ConfigError::KdlError(kdl_error) => {
-                                let error = kdl_error.add_src(layout_path.as_path().as_os_str().to_string_lossy().to_string(), String::from(raw_layout));
+                                let error = kdl_error.add_src(layout_source_name.clone(), raw_layout_for_error);
                                 let report: Report = error.into();
                                 format!("{:?}", report)
                             }
@@ -1435,7 +1470,123 @@ impl Action {
                                 };
                                 let kdl_error = KdlError {
                                     error_message,
-                                    src: Some(NamedSource::new(layout_path.as_path().as_os_str().to_string_lossy().to_string(), String::from(raw_layout))),
+                                    src: Some(NamedSource::new(layout_source_name.clone(), raw_layout_for_error)),
+                                    offset: Some(kdl_error.span.offset()),
+                                    len: Some(kdl_error.span.len()),
+                                    help_message: None,
+                                };
+                                let report: Report = kdl_error.into();
+                                format!("{:?}", report)
+                            },
+                            e => format!("{}", e)
+                        };
+                        stringified_error
+                    })?;
+                    if should_start_layout_commands_suspended {
+                        layout.recursively_add_start_suspended_including_template(Some(true));
+                    }
+                    let mut tabs = layout.tabs();
+                    if !tabs.is_empty() {
+                        let swap_tiled_layouts = Some(layout.swap_tiled_layouts.clone());
+                        let swap_floating_layouts = Some(layout.swap_floating_layouts.clone());
+                        let mut new_tab_actions = vec![];
+                        let mut has_focused_tab = tabs
+                            .iter()
+                            .any(|(_, layout, _)| layout.focus.unwrap_or(false));
+                        for (tab_name, layout, floating_panes_layout) in tabs.drain(..) {
+                            let name = tab_name.or_else(|| name.clone());
+                            let should_change_focus_to_new_tab =
+                                layout.focus.unwrap_or_else(|| {
+                                    if !has_focused_tab {
+                                        has_focused_tab = true;
+                                        true
+                                    } else {
+                                        false
+                                    }
+                                });
+                            new_tab_actions.push(Action::NewTab {
+                                tiled_layout: Some(layout),
+                                floating_layouts: floating_panes_layout,
+                                swap_tiled_layouts: swap_tiled_layouts.clone(),
+                                swap_floating_layouts: swap_floating_layouts.clone(),
+                                tab_name: name,
+                                should_change_focus_to_new_tab,
+                                cwd: None,
+                                initial_panes: initial_panes.clone(),
+                                first_pane_unblock_condition,
+                            });
+                        }
+                        Ok(new_tab_actions)
+                    } else {
+                        let swap_tiled_layouts = Some(layout.swap_tiled_layouts.clone());
+                        let swap_floating_layouts = Some(layout.swap_floating_layouts.clone());
+                        let (layout, floating_panes_layout) = layout.new_tab();
+                        let should_change_focus_to_new_tab = true;
+                        Ok(vec![Action::NewTab {
+                            tiled_layout: Some(layout),
+                            floating_layouts: floating_panes_layout,
+                            swap_tiled_layouts,
+                            swap_floating_layouts,
+                            tab_name: name,
+                            should_change_focus_to_new_tab,
+                            cwd: None,
+                            initial_panes,
+                            first_pane_unblock_condition,
+                        }])
+                    }
+                } else if let Some(layout_path) = layout {
+                    let layout_dir = layout_dir
+                        .or_else(|| config.and_then(|c| c.options.layout_dir))
+                        .or_else(|| get_layout_dir(find_default_config_dir()));
+
+                    let mut should_start_layout_commands_suspended = false;
+                    let layout_source_name;
+                    let (path_to_raw_layout, raw_layout, swap_layouts) = if let Some(layout_url) =
+                        layout_path.to_str().and_then(|l| {
+                            if l.starts_with("http://") || l.starts_with("https://") {
+                                Some(l)
+                            } else {
+                                None
+                            }
+                        }) {
+                        should_start_layout_commands_suspended = true;
+                        layout_source_name = layout_url.to_owned();
+                        (
+                            layout_url.to_owned(),
+                            Layout::stringified_from_url(layout_url)
+                                .map_err(|e| format!("Failed to load layout: {}", e))?,
+                            None,
+                        )
+                    } else {
+                        layout_source_name = layout_path
+                            .as_path()
+                            .as_os_str()
+                            .to_string_lossy()
+                            .to_string();
+                        Layout::stringified_from_path_or_default(Some(&layout_path), layout_dir)
+                            .map_err(|e| format!("Failed to load layout: {}", e))?
+                    };
+                    let mut layout = Layout::from_str(&raw_layout, path_to_raw_layout, swap_layouts.as_ref().map(|(f, p)| (f.as_str(), p.as_str())), cwd).map_err(|e| {
+                        let stringified_error = match e {
+                            ConfigError::KdlError(kdl_error) => {
+                                let error = kdl_error.add_src(layout_source_name.clone(), String::from(raw_layout));
+                                let report: Report = error.into();
+                                format!("{:?}", report)
+                            }
+                            ConfigError::KdlDeserializationError(kdl_error) => {
+                                let error_message = match kdl_error.kind {
+                                    kdl::KdlErrorKind::Context("valid node terminator") => {
+                                        format!("Failed to deserialize KDL node. \nPossible reasons:\n{}\n{}\n{}\n{}",
+                                        "- Missing `;` after a node name, eg. { node; another_node; }",
+                                        "- Missing quotations (\") around an argument node eg. { first_node \"argument_node\"; }",
+                                        "- Missing an equal sign (=) between node arguments on a title line. eg. argument=\"value\"",
+                                        "- Found an extraneous equal sign (=) between node child arguments and their values. eg. { argument=\"value\" }")
+                                    },
+                                    _ => String::from(kdl_error.help.unwrap_or("Kdl Deserialization Error")),
+                                };
+                                let kdl_error = KdlError {
+                                    error_message,
+                                    src: Some(NamedSource::new(layout_source_name.clone(), String::from(raw_layout))),
                                     offset: Some(kdl_error.span.offset()),
                                     len: Some(kdl_error.span.len()),
                                     help_message: None,
@@ -1524,6 +1675,7 @@ impl Action {
             },
             CliAction::OverrideLayout {
                 layout,
+                layout_string,
                 layout_dir,
                 retain_existing_terminal_panes,
                 retain_existing_plugin_panes,
@@ -1534,24 +1686,39 @@ impl Action {
                     .or_else(|| config.and_then(|c| c.options.layout_dir))
                     .or_else(|| get_layout_dir(find_default_config_dir()));
 
-                // Load layout from URL or file path
-                let (path_to_raw_layout, raw_layout, swap_layouts) = if let Some(layout_url) =
-                    layout.to_str().and_then(|l| {
+                // Load layout from string, URL, or file path
+                let layout_source_name;
+                let (path_to_raw_layout, raw_layout, swap_layouts) = if let Some(raw) =
+                    layout_string
+                {
+                    layout_source_name = "layout-string".to_owned();
+                    (layout_source_name.clone(), raw, None)
+                } else if let Some(layout_path) = &layout {
+                    if let Some(layout_url) = layout_path.to_str().and_then(|l| {
                         if l.starts_with("http://") || l.starts_with("https://") {
                             Some(l)
                         } else {
                             None
                         }
                     }) {
-                    (
-                        layout_url.to_owned(),
-                        Layout::stringified_from_url(layout_url)
-                            .map_err(|e| format!("Failed to load layout from URL: {}", e))?,
-                        None,
-                    )
+                        layout_source_name = layout_url.to_owned();
+                        (
+                            layout_url.to_owned(),
+                            Layout::stringified_from_url(layout_url)
+                                .map_err(|e| format!("Failed to load layout from URL: {}", e))?,
+                            None,
+                        )
+                    } else {
+                        layout_source_name = layout_path
+                            .as_path()
+                            .as_os_str()
+                            .to_string_lossy()
+                            .to_string();
+                        Layout::stringified_from_path_or_default(Some(layout_path), layout_dir)
+                            .map_err(|e| format!("Failed to load layout: {}", e))?
+                    }
                 } else {
-                    Layout::stringified_from_path_or_default(Some(&layout), layout_dir)
-                        .map_err(|e| format!("Failed to load layout: {}", e))?
+                    return Err("Either layout or layout-string must be provided".to_string());
                 };
 
                 // Parse KDL layout
@@ -1564,10 +1731,8 @@ impl Action {
                 .map_err(|e| {
                     let stringified_error = match e {
                         ConfigError::KdlError(kdl_error) => {
-                            let error = kdl_error.add_src(
-                                layout.as_path().as_os_str().to_string_lossy().to_string(),
-                                String::from(raw_layout),
-                            );
+                            let error = kdl_error
+                                .add_src(layout_source_name.clone(), String::from(raw_layout));
                             let report: Report = error.into();
                             format!("{:?}", report)
                         },
@@ -1638,6 +1803,7 @@ impl Action {
                 move_to_focused_tab,
                 configuration,
                 skip_plugin_cache,
+                tab_id,
             } => {
                 let current_dir = get_current_dir();
                 let run_plugin_or_alias = RunPluginOrAlias::from_url(
@@ -1653,6 +1819,7 @@ impl Action {
                     should_open_in_place: in_place,
                     close_replaced_pane,
                     skip_cache: skip_plugin_cache,
+                    tab_id,
                 }])
             },
             CliAction::LaunchPlugin {
@@ -1662,6 +1829,7 @@ impl Action {
                 close_replaced_pane,
                 configuration,
                 skip_plugin_cache,
+                tab_id,
             } => {
                 let current_dir = get_current_dir();
                 let run_plugin_or_alias = RunPluginOrAlias::from_url(
@@ -1677,6 +1845,7 @@ impl Action {
                     close_replaced_pane,
                     skip_cache: skip_plugin_cache,
                     cwd: Some(current_dir),
+                    tab_id,
                 }])
             },
             CliAction::RenameSession { name } => Ok(vec![Action::RenameSession { name }]),
@@ -1888,6 +2057,7 @@ impl Action {
                 tab_position,
                 pane_id,
                 layout,
+                layout_string,
                 layout_dir,
                 cwd,
             } => {
@@ -1915,10 +2085,83 @@ impl Action {
                     current_dir.join(layout_dir)
                 });
 
-                let layout_info = if let Some(layout_path) = layout {
+                let layout_info = if let Some(layout_string) = layout_string {
+                    // validate the layout string before sending it to the target session
+                    let layout_source_name = "layout-string".to_owned();
+                    let raw_layout_for_error = layout_string.clone();
+                    Layout::from_str(&layout_string, layout_source_name.clone(), None, None)
+                        .map_err(|e| {
+                            match e {
+                                ConfigError::KdlError(kdl_error) => {
+                                    let error = kdl_error.add_src(layout_source_name, raw_layout_for_error);
+                                    let report: Report = error.into();
+                                    format!("{:?}", report)
+                                },
+                                ConfigError::KdlDeserializationError(kdl_error) => {
+                                    let error_message = match kdl_error.kind {
+                                        kdl::KdlErrorKind::Context("valid node terminator") => {
+                                            format!("Failed to deserialize KDL node. \nPossible reasons:\n{}\n{}\n{}\n{}",
+                                            "- Missing `;` after a node name, eg. {{ node; another_node; }}",
+                                            "- Missing quotations (\") around an argument node eg. {{ first_node \"argument_node\"; }}",
+                                            "- Missing an equal sign (=) between node arguments on a title line. eg. argument=\"value\"",
+                                            "- Found an extraneous equal sign (=) between node child arguments and their values. eg. {{ argument=\"value\" }}")
+                                        },
+                                        _ => String::from(kdl_error.help.unwrap_or("Kdl Deserialization Error")),
+                                    };
+                                    let kdl_error = KdlError {
+                                        error_message,
+                                        src: Some(NamedSource::new(layout_source_name, raw_layout_for_error)),
+                                        offset: Some(kdl_error.span.offset()),
+                                        len: Some(kdl_error.span.len()),
+                                        help_message: None,
+                                    };
+                                    let report: Report = kdl_error.into();
+                                    format!("{:?}", report)
+                                },
+                                e => format!("{}", e),
+                            }
+                        })?;
+                    Some(LayoutInfo::Stringified(layout_string))
+                } else if let Some(layout_path) = layout {
                     let layout_dir = layout_dir
                         .or_else(|| config.and_then(|c| c.options.layout_dir.clone()))
                         .or_else(|| get_layout_dir(find_default_config_dir()));
+                    // validate the layout file before sending it to the target session
+                    let layout_source_name = layout_path.display().to_string();
+                    Layout::from_path_or_default_without_config(
+                        Some(&layout_path),
+                        layout_dir.clone(),
+                    )
+                    .map_err(|e| {
+                        match e {
+                            ConfigError::KdlError(kdl_error) => {
+                                let report: Report = kdl_error.into();
+                                format!("{:?}", report)
+                            },
+                            ConfigError::KdlDeserializationError(kdl_error) => {
+                                let error_message = match kdl_error.kind {
+                                    kdl::KdlErrorKind::Context("valid node terminator") => {
+                                        format!("Failed to deserialize KDL node. \nPossible reasons:\n{}\n{}\n{}\n{}",
+                                        "- Missing `;` after a node name, eg. {{ node; another_node; }}",
+                                        "- Missing quotations (\") around an argument node eg. {{ first_node \"argument_node\"; }}",
+                                        "- Missing an equal sign (=) between node arguments on a title line. eg. argument=\"value\"",
+                                        "- Found an extraneous equal sign (=) between node child arguments and their values. eg. {{ argument=\"value\" }}")
+                                    },
+                                    _ => String::from(kdl_error.help.unwrap_or("Kdl Deserialization Error")),
+                                };
+                                let kdl_error = KdlError {
+                                    error_message,
+                                    src: Some(NamedSource::new(layout_source_name, String::new())),
+                                    offset: Some(kdl_error.span.offset()),
+                                    len: Some(kdl_error.span.len()),
+                                    help_message: None,
+                                };
+                                let report: Report = kdl_error.into();
+                                format!("{:?}", report)
+                            },
+                            e => format!("{}", e),
+                        }
+                    })?;
                     LayoutInfo::from_config(&layout_dir, &Some(layout_path))
                 } else {
                     None
@@ -2652,7 +2895,7 @@ mod tests {
         assert_eq!(actions.len(), 1);
         match &actions[0] {
             Action::RenamePaneByPaneId { pane_id, name } => {
-                assert!(matches!(pane_id, PaneId::Terminal(19)));
+                assert!(matches!(pane_id, Some(PaneId::Terminal(19))));
                 assert_eq!(name, &"my-pane".as_bytes().to_vec());
             },
             _ => panic!("Expected RenamePaneByPaneId action"),
@@ -2668,9 +2911,14 @@ mod tests {
         let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
         assert!(result.is_ok());
         let actions = result.unwrap();
-        assert_eq!(actions.len(), 2);
-        assert!(matches!(actions[0], Action::UndoRenamePane));
-        assert!(matches!(actions[1], Action::PaneNameInput { .. }));
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::RenamePaneByPaneId { pane_id, name } => {
+                assert!(pane_id.is_none());
+                assert_eq!(name, &"my-pane".as_bytes().to_vec());
+            },
+            _ => panic!("Expected RenamePaneByPaneId action"),
+        }
     }
 
     // 18. UndoRenamePane
@@ -3084,6 +3332,543 @@ mod tests {
                 assert!(*ansi);
             },
             _ => panic!("Expected DumpScreen action"),
+        }
+    }
+
+    #[test]
+    fn test_focus_pane_id() {
+        let cli_action = CliAction::FocusPaneId {
+            pane_id: "terminal_7".to_string(),
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::FocusPaneByPaneId { pane_id } => {
+                assert!(matches!(pane_id, PaneId::Terminal(7)));
+            },
+            _ => panic!("Expected FocusPaneByPaneId action"),
+        }
+    }
+
+    #[test]
+    fn test_focus_pane_id_bare_int() {
+        let cli_action = CliAction::FocusPaneId {
+            pane_id: "3".to_string(),
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::FocusPaneByPaneId { pane_id } => {
+                assert!(matches!(pane_id, PaneId::Terminal(3)));
+            },
+            _ => panic!("Expected FocusPaneByPaneId action"),
+        }
+    }
+
+    #[test]
+    fn test_focus_pane_id_plugin() {
+        let cli_action = CliAction::FocusPaneId {
+            pane_id: "plugin_2".to_string(),
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::FocusPaneByPaneId { pane_id } => {
+                assert!(matches!(pane_id, PaneId::Plugin(2)));
+            },
+            _ => panic!("Expected FocusPaneByPaneId action"),
+        }
+    }
+
+    #[test]
+    fn test_focus_pane_id_malformed() {
+        let cli_action = CliAction::FocusPaneId {
+            pane_id: "invalid_id".to_string(),
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_new_tab_with_layout_string() {
+        let cli_action = CliAction::NewTab {
+            name: None,
+            layout: None,
+            layout_string: Some("layout {\n    pane\n    pane\n}\n".into()),
+            layout_dir: None,
+            cwd: None,
+            initial_command: vec![],
+            initial_plugin: None,
+            close_on_exit: Default::default(),
+            start_suspended: Default::default(),
+            block_until_exit: false,
+            block_until_exit_success: false,
+            block_until_exit_failure: false,
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::NewTab {
+                tiled_layout,
+                floating_layouts,
+                ..
+            } => {
+                assert!(tiled_layout.is_some());
+                let layout = tiled_layout.as_ref().unwrap();
+                // layout { pane; pane } produces a layout with 2 children
+                assert_eq!(layout.children.len(), 2);
+                assert!(floating_layouts.is_empty());
+            },
+            _ => panic!("Expected NewTab action"),
+        }
+    }
+
+    #[test]
+    fn test_new_tab_with_invalid_layout_string() {
+        let cli_action = CliAction::NewTab {
+            name: None,
+            layout: None,
+            layout_string: Some("invalid { kdl".into()),
+            layout_dir: None,
+            cwd: None,
+            initial_command: vec![],
+            initial_plugin: None,
+            close_on_exit: Default::default(),
+            start_suspended: Default::default(),
+            block_until_exit: false,
+            block_until_exit_success: false,
+            block_until_exit_failure: false,
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_override_layout_with_layout_string() {
+        let cli_action = CliAction::OverrideLayout {
+            layout: None,
+            layout_string: Some("layout {\n    pane\n    pane\n}\n".into()),
+            layout_dir: None,
+            retain_existing_terminal_panes: false,
+            retain_existing_plugin_panes: false,
+            apply_only_to_active_tab: false,
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::OverrideLayout { tabs, .. } => {
+                assert!(!tabs.is_empty());
+            },
+            _ => panic!("Expected OverrideLayout action"),
+        }
+    }
+
+    #[test]
+    fn test_switch_session_with_layout_string() {
+        let cli_action = CliAction::SwitchSession {
+            name: "test-session".into(),
+            tab_position: None,
+            pane_id: None,
+            layout: None,
+            layout_string: Some("layout {\n    pane\n}\n".into()),
+            layout_dir: None,
+            cwd: None,
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::SwitchSession { layout, .. } => {
+                assert!(matches!(
+                    layout,
+                    Some(crate::data::LayoutInfo::Stringified(_))
+                ));
+            },
+            _ => panic!("Expected SwitchSession action"),
+        }
+    }
+
+    #[test]
+    fn test_switch_session_with_invalid_layout_string() {
+        let cli_action = CliAction::SwitchSession {
+            name: "test-session".into(),
+            tab_position: None,
+            pane_id: None,
+            layout: None,
+            layout_string: Some("invalid { kdl".into()),
+            layout_dir: None,
+            cwd: None,
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_err());
+    }
+
+    // Tab-targeting for pane creation commands
+
+    #[test]
+    fn test_new_pane_tiled_with_tab_id() {
+        let cli_action = CliAction::NewPane {
+            direction: Some(Direction::Right),
+            command: vec![],
+            plugin: None,
+            cwd: None,
+            floating: false,
+            in_place: false,
+            close_replaced_pane: false,
+            name: None,
+            close_on_exit: false,
+            start_suspended: false,
+            configuration: None,
+            skip_plugin_cache: false,
+            x: None,
+            y: None,
+            width: None,
+            height: None,
+            pinned: None,
+            stacked: false,
+            blocking: false,
+            block_until_exit_success: false,
+            block_until_exit_failure: false,
+            block_until_exit: false,
+            unblock_condition: None,
+            near_current_pane: false,
+            borderless: None,
+            tab_id: Some(3),
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::NewTiledPane { tab_id, .. } => {
+                assert_eq!(*tab_id, Some(3));
+            },
+            _ => panic!("Expected NewTiledPane action"),
+        }
+    }
+
+    #[test]
+    fn test_new_pane_tiled_without_tab_id() {
+        let cli_action = CliAction::NewPane {
+            direction: None,
+            command: vec![],
+            plugin: None,
+            cwd: None,
+            floating: false,
+            in_place: false,
+            close_replaced_pane: false,
+            name: None,
+            close_on_exit: false,
+            start_suspended: false,
+            configuration: None,
+            skip_plugin_cache: false,
+            x: None,
+            y: None,
+            width: None,
+            height: None,
+            pinned: None,
+            stacked: false,
+            blocking: false,
+            block_until_exit_success: false,
+            block_until_exit_failure: false,
+            block_until_exit: false,
+            unblock_condition: None,
+            near_current_pane: false,
+            borderless: None,
+            tab_id: None,
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::NewTiledPane { tab_id, .. } => {
+                assert_eq!(*tab_id, None);
+            },
+            _ => panic!("Expected NewTiledPane action"),
+        }
+    }
+
+    #[test]
+    fn test_new_pane_floating_with_tab_id() {
+        let cli_action = CliAction::NewPane {
+            direction: None,
+            command: vec![],
+            plugin: None,
+            cwd: None,
+            floating: true,
+            in_place: false,
+            close_replaced_pane: false,
+            name: None,
+            close_on_exit: false,
+            start_suspended: false,
+            configuration: None,
+            skip_plugin_cache: false,
+            x: None,
+            y: None,
+            width: None,
+            height: None,
+            pinned: None,
+            stacked: false,
+            blocking: false,
+            block_until_exit_success: false,
+            block_until_exit_failure: false,
+            block_until_exit: false,
+            unblock_condition: None,
+            near_current_pane: false,
+            borderless: None,
+            tab_id: Some(5),
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::NewFloatingPane { tab_id, .. } => {
+                assert_eq!(*tab_id, Some(5));
+            },
+            _ => panic!("Expected NewFloatingPane action"),
+        }
+    }
+
+    #[test]
+    fn test_new_pane_stacked_with_tab_id() {
+        let cli_action = CliAction::NewPane {
+            direction: None,
+            command: vec!["ls".into()],
+            plugin: None,
+            cwd: None,
+            floating: false,
+            in_place: false,
+            close_replaced_pane: false,
+            name: None,
+            close_on_exit: false,
+            start_suspended: false,
+            configuration: None,
+            skip_plugin_cache: false,
+            x: None,
+            y: None,
+            width: None,
+            height: None,
+            pinned: None,
+            stacked: true,
+            blocking: false,
+            block_until_exit_success: false,
+            block_until_exit_failure: false,
+            block_until_exit: false,
+            unblock_condition: None,
+            near_current_pane: false,
+            borderless: None,
+            tab_id: Some(1),
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::NewStackedPane { tab_id, .. } => {
+                assert_eq!(*tab_id, Some(1));
+            },
+            _ => panic!("Expected NewStackedPane action"),
+        }
+    }
+
+    #[test]
+    fn test_new_pane_blocking_with_tab_id() {
+        let cli_action = CliAction::NewPane {
+            direction: None,
+            command: vec!["ls".into()],
+            plugin: None,
+            cwd: None,
+            floating: false,
+            in_place: false,
+            close_replaced_pane: false,
+            name: None,
+            close_on_exit: false,
+            start_suspended: false,
+            configuration: None,
+            skip_plugin_cache: false,
+            x: None,
+            y: None,
+            width: None,
+            height: None,
+            pinned: None,
+            stacked: false,
+            blocking: true,
+            block_until_exit_success: false,
+            block_until_exit_failure: false,
+            block_until_exit: false,
+            unblock_condition: None,
+            near_current_pane: false,
+            borderless: None,
+            tab_id: Some(2),
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::NewBlockingPane { tab_id, .. } => {
+                assert_eq!(*tab_id, Some(2));
+            },
+            _ => panic!("Expected NewBlockingPane action"),
+        }
+    }
+
+    #[test]
+    fn test_edit_with_tab_id() {
+        let cli_action = CliAction::Edit {
+            file: PathBuf::from("/tmp/test.rs"),
+            direction: None,
+            line_number: None,
+            floating: false,
+            in_place: false,
+            close_replaced_pane: false,
+            cwd: None,
+            x: None,
+            y: None,
+            width: None,
+            height: None,
+            pinned: None,
+            near_current_pane: false,
+            borderless: None,
+            tab_id: Some(4),
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::EditFile { tab_id, .. } => {
+                assert_eq!(*tab_id, Some(4));
+            },
+            _ => panic!("Expected EditFile action"),
+        }
+    }
+
+    #[test]
+    fn test_edit_without_tab_id() {
+        let cli_action = CliAction::Edit {
+            file: PathBuf::from("/tmp/test.rs"),
+            direction: None,
+            line_number: None,
+            floating: false,
+            in_place: false,
+            close_replaced_pane: false,
+            cwd: None,
+            x: None,
+            y: None,
+            width: None,
+            height: None,
+            pinned: None,
+            near_current_pane: false,
+            borderless: None,
+            tab_id: None,
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::EditFile { tab_id, .. } => {
+                assert_eq!(*tab_id, None);
+            },
+            _ => panic!("Expected EditFile action"),
+        }
+    }
+
+    #[test]
+    fn test_new_pane_plugin_tiled_with_tab_id() {
+        let cli_action = CliAction::NewPane {
+            direction: None,
+            command: vec![],
+            plugin: Some("zellij:strider".into()),
+            cwd: None,
+            floating: false,
+            in_place: false,
+            close_replaced_pane: false,
+            name: None,
+            close_on_exit: false,
+            start_suspended: false,
+            configuration: None,
+            skip_plugin_cache: false,
+            x: None,
+            y: None,
+            width: None,
+            height: None,
+            pinned: None,
+            stacked: false,
+            blocking: false,
+            block_until_exit_success: false,
+            block_until_exit_failure: false,
+            block_until_exit: false,
+            unblock_condition: None,
+            near_current_pane: false,
+            borderless: None,
+            tab_id: Some(2),
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::NewTiledPluginPane { tab_id, .. } => {
+                assert_eq!(*tab_id, Some(2));
+            },
+            _ => panic!("Expected NewTiledPluginPane action"),
+        }
+    }
+
+    #[test]
+    fn test_new_pane_plugin_floating_with_tab_id() {
+        let cli_action = CliAction::NewPane {
+            direction: None,
+            command: vec![],
+            plugin: Some("zellij:strider".into()),
+            cwd: None,
+            floating: true,
+            in_place: false,
+            close_replaced_pane: false,
+            name: None,
+            close_on_exit: false,
+            start_suspended: false,
+            configuration: None,
+            skip_plugin_cache: false,
+            x: None,
+            y: None,
+            width: None,
+            height: None,
+            pinned: None,
+            stacked: false,
+            blocking: false,
+            block_until_exit_success: false,
+            block_until_exit_failure: false,
+            block_until_exit: false,
+            unblock_condition: None,
+            near_current_pane: false,
+            borderless: None,
+            tab_id: Some(1),
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::NewFloatingPluginPane { tab_id, .. } => {
+                assert_eq!(*tab_id, Some(1));
+            },
+            _ => panic!("Expected NewFloatingPluginPane action"),
         }
     }
 }

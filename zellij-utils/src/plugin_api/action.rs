@@ -7,6 +7,7 @@ pub use super::generated_api::api::{
         run_plugin_or_alias::PluginType,
         Action as ProtobufAction,
         ActionName as ProtobufActionName,
+        AreFloatingPanesVisiblePayload,
         BareKey as ProtobufBareKey,
         // New layout-related types
         CommandOrPlugin as ProtobufCommandOrPlugin,
@@ -337,6 +338,7 @@ impl TryFrom<ProtobufAction> for Action {
                         start_suppressed: false,
                         coordinates: None,
                         near_current_pane,
+                        tab_id: None,
                     })
                 },
                 _ => Err("Wrong payload for Action::NewPane"),
@@ -352,6 +354,7 @@ impl TryFrom<ProtobufAction> for Action {
                             pane_name,
                             coordinates: None,
                             near_current_pane,
+                            tab_id: None,
                         })
                     } else {
                         Ok(Action::NewFloatingPane {
@@ -359,6 +362,7 @@ impl TryFrom<ProtobufAction> for Action {
                             pane_name: None,
                             coordinates: None,
                             near_current_pane,
+                            tab_id: None,
                         })
                     }
                 },
@@ -381,6 +385,7 @@ impl TryFrom<ProtobufAction> for Action {
                             pane_name,
                             near_current_pane,
                             borderless,
+                            tab_id: None,
                         })
                     } else {
                         Ok(Action::NewTiledPane {
@@ -389,6 +394,7 @@ impl TryFrom<ProtobufAction> for Action {
                             pane_name: None,
                             near_current_pane,
                             borderless,
+                            tab_id: None,
                         })
                     }
                 },
@@ -423,6 +429,17 @@ impl TryFrom<ProtobufAction> for Action {
                 },
                 None => Ok(Action::HideFloatingPanes { tab_id: None }),
                 _ => Err("Wrong payload for HideFloatingPanes"),
+            },
+            Some(ProtobufActionName::AreFloatingPanesVisible) => {
+                match protobuf_action.optional_payload {
+                    Some(OptionalPayload::AreFloatingPanesVisiblePayload(payload)) => {
+                        Ok(Action::AreFloatingPanesVisible {
+                            tab_id: payload.tab_id.map(|id| id as usize),
+                        })
+                    },
+                    None => Ok(Action::AreFloatingPanesVisible { tab_id: None }),
+                    _ => Err("Wrong payload for AreFloatingPanesVisible"),
+                }
             },
             Some(ProtobufActionName::CloseFocus) => match protobuf_action.optional_payload {
                 Some(_) => Err("CloseFocus should not have a payload"),
@@ -646,6 +663,7 @@ impl TryFrom<ProtobufAction> for Action {
                             should_open_in_place,
                             close_replaced_pane: false,
                             skip_cache: skip_plugin_cache,
+                            tab_id: None,
                         })
                     },
                     _ => Err("Wrong payload for Action::LaunchOrFocusPlugin"),
@@ -676,6 +694,7 @@ impl TryFrom<ProtobufAction> for Action {
                         close_replaced_pane: false,
                         skip_cache: skip_plugin_cache,
                         cwd: None,
+                        tab_id: None,
                     })
                 },
                 _ => Err("Wrong payload for Action::LaunchOrFocusPlugin"),
@@ -795,6 +814,7 @@ impl TryFrom<ProtobufAction> for Action {
                             pane_name,
                             skip_cache: skip_plugin_cache,
                             cwd: None,
+                            tab_id: None,
                         })
                     },
                     _ => Err("Wrong payload for Action::NewTiledPluginPane"),
@@ -820,6 +840,7 @@ impl TryFrom<ProtobufAction> for Action {
                             skip_cache: skip_plugin_cache,
                             cwd: None,
                             coordinates: None,
+                            tab_id: None,
                         })
                     },
                     _ => Err("Wrong payload for Action::MiddleClick"),
@@ -972,6 +993,7 @@ impl TryFrom<ProtobufAction> for Action {
                     command: None,
                     pane_name: None,
                     near_current_pane: false,
+                    tab_id: None,
                 }),
             },
             Some(ProtobufActionName::NewBlockingPane) => match protobuf_action.optional_payload {
@@ -993,6 +1015,7 @@ impl TryFrom<ProtobufAction> for Action {
                         command,
                         unblock_condition,
                         near_current_pane,
+                        tab_id: None,
                     })
                 },
                 _ => Err("Wrong payload for Action::NewBlockingPane"),
@@ -1012,6 +1035,7 @@ impl TryFrom<ProtobufAction> for Action {
                             near_current_pane,
                             pane_id_to_replace,
                             close_replaced_pane,
+                            tab_id: None,
                         })
                     } else {
                         Ok(Action::NewInPlacePane {
@@ -1020,6 +1044,7 @@ impl TryFrom<ProtobufAction> for Action {
                             near_current_pane,
                             pane_id_to_replace,
                             close_replaced_pane,
+                            tab_id: None,
                         })
                     }
                 },
@@ -1086,6 +1111,7 @@ impl TryFrom<Action> for ProtobufAction {
             | Action::RenamePaneByPaneId { .. }
             | Action::UndoRenamePaneByPaneId { .. }
             | Action::TogglePanePinnedByPaneId { .. }
+            | Action::FocusPaneByPaneId { .. }
             | Action::UndoRenameTabByTabId { .. }
             | Action::ToggleActiveSyncTabByTabId { .. }
             | Action::ToggleFloatingPanesByTabId { .. }
@@ -1285,6 +1311,7 @@ impl TryFrom<Action> for ProtobufAction {
                 start_suppressed: _start_suppressed,
                 coordinates: _floating_pane_coordinates,
                 near_current_pane,
+                ..
             } => {
                 let file_to_edit = open_file_payload.path.display().to_string();
                 let cwd = open_file_payload.cwd.map(|cwd| cwd.display().to_string());
@@ -1309,6 +1336,7 @@ impl TryFrom<Action> for ProtobufAction {
                 pane_name,
                 coordinates: _coordinates,
                 near_current_pane,
+                ..
             } => {
                 let command = run_command_action.and_then(|r| {
                     let mut protobuf_run_command_action: ProtobufRunCommandAction =
@@ -1332,6 +1360,7 @@ impl TryFrom<Action> for ProtobufAction {
                 pane_name,
                 near_current_pane,
                 borderless,
+                ..
             } => {
                 let direction = direction.and_then(|direction| {
                     let protobuf_direction: ProtobufResizeDirection = direction.try_into().ok()?;
@@ -1376,6 +1405,14 @@ impl TryFrom<Action> for ProtobufAction {
                 name: ProtobufActionName::HideFloatingPanes as i32,
                 optional_payload: Some(OptionalPayload::HideFloatingPanesPayload(
                     HideFloatingPanesPayload {
+                        tab_id: tab_id.map(|id| id as u32),
+                    },
+                )),
+            }),
+            Action::AreFloatingPanesVisible { tab_id } => Ok(ProtobufAction {
+                name: ProtobufActionName::AreFloatingPanesVisible as i32,
+                optional_payload: Some(OptionalPayload::AreFloatingPanesVisiblePayload(
+                    AreFloatingPanesVisiblePayload {
                         tab_id: tab_id.map(|id| id as u32),
                     },
                 )),
@@ -1537,6 +1574,7 @@ impl TryFrom<Action> for ProtobufAction {
                 should_open_in_place,
                 close_replaced_pane: _close_replaced_pane,
                 skip_cache: skip_plugin_cache,
+                ..
             } => {
                 let configuration = run_plugin_or_alias.get_configuration().unwrap_or_default();
                 Ok(ProtobufAction {
@@ -1560,6 +1598,7 @@ impl TryFrom<Action> for ProtobufAction {
                 close_replaced_pane: _close_replaced_pane,
                 skip_cache: skip_plugin_cache,
                 cwd: _cwd,
+                ..
             } => {
                 let configuration = run_plugin_or_alias.get_configuration().unwrap_or_default();
                 Ok(ProtobufAction {
@@ -1647,6 +1686,7 @@ impl TryFrom<Action> for ProtobufAction {
                 pane_name,
                 skip_cache: skip_plugin_cache,
                 cwd: _cwd,
+                ..
             } => Ok(ProtobufAction {
                 name: ProtobufActionName::NewTiledPluginPane as i32,
                 optional_payload: Some(OptionalPayload::NewTiledPluginPanePayload(
@@ -1663,6 +1703,7 @@ impl TryFrom<Action> for ProtobufAction {
                 skip_cache: skip_plugin_cache,
                 cwd: _cwd,
                 coordinates: _coordinates,
+                ..
             } => Ok(ProtobufAction {
                 name: ProtobufActionName::NewFloatingPluginPane as i32,
                 optional_payload: Some(OptionalPayload::NewFloatingPluginPanePayload(
@@ -1785,6 +1826,7 @@ impl TryFrom<Action> for ProtobufAction {
                 command: _,
                 pane_name: _,
                 near_current_pane: _,
+                ..
             } => Ok(ProtobufAction {
                 name: ProtobufActionName::NewStackedPane as i32,
                 optional_payload: None,
@@ -1795,6 +1837,7 @@ impl TryFrom<Action> for ProtobufAction {
                 command,
                 unblock_condition,
                 near_current_pane,
+                ..
             } => {
                 let placement: ProtobufNewPanePlacement = placement.try_into()?;
                 let command = command.and_then(|c| {
@@ -1826,6 +1869,7 @@ impl TryFrom<Action> for ProtobufAction {
                 near_current_pane,
                 pane_id_to_replace,
                 close_replaced_pane,
+                ..
             } => {
                 let command = run_command_action.and_then(|r| {
                     let mut protobuf_run_command_action: ProtobufRunCommandAction =
@@ -1855,6 +1899,7 @@ impl TryFrom<Action> for ProtobufAction {
                 pane_name: _,
                 skip_cache: _,
                 close_replaced_pane: _,
+                ..
             }
             | Action::Deny
             | Action::Copy

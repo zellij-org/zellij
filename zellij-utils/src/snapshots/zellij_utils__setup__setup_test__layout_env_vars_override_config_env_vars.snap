@@ -1349,6 +1349,7 @@ Config {
                     command: None,
                     pane_name: None,
                     near_current_pane: false,
+                    tab_id: None,
                 },
                 SwitchToMode {
                     input_mode: Normal,
@@ -4190,6 +4191,7 @@ Config {
                     should_open_in_place: false,
                     close_replaced_pane: false,
                     skip_cache: false,
+                    tab_id: None,
                 },
                 SwitchToMode {
                     input_mode: Normal,
@@ -4231,6 +4233,7 @@ Config {
                     should_open_in_place: false,
                     close_replaced_pane: false,
                     skip_cache: false,
+                    tab_id: None,
                 },
                 SwitchToMode {
                     input_mode: Normal,
@@ -4352,6 +4355,7 @@ Config {
                     should_open_in_place: false,
                     close_replaced_pane: false,
                     skip_cache: false,
+                    tab_id: None,
                 },
                 SwitchToMode {
                     input_mode: Normal,
@@ -4443,6 +4447,7 @@ Config {
                     should_open_in_place: false,
                     close_replaced_pane: false,
                     skip_cache: false,
+                    tab_id: None,
                 },
                 SwitchToMode {
                     input_mode: Normal,
@@ -4517,6 +4522,7 @@ Config {
                     should_open_in_place: false,
                     close_replaced_pane: false,
                     skip_cache: false,
+                    tab_id: None,
                 },
                 SwitchToMode {
                     input_mode: Normal,
@@ -4570,6 +4576,7 @@ Config {
                     should_open_in_place: false,
                     close_replaced_pane: false,
                     skip_cache: false,
+                    tab_id: None,
                 },
                 SwitchToMode {
                     input_mode: Normal,

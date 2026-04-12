@@ -1022,6 +1022,10 @@ pub enum Event {
         matched_string: String,
         context: BTreeMap<String, String>,
     },
+    /// Initial keybindings sent once on plugin load and on reconfiguration.
+    /// Plugins that subscribe to this event signal they cache keybindings
+    /// and can handle lightweight ModeUpdate events without keybindings.
+    InitialKeybinds(KeybindsVec),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, EnumDiscriminants, Display, Serialize, Deserialize)]
@@ -3557,6 +3561,13 @@ pub enum PluginCommand {
     SetPaneColor(PaneId, Option<String>, Option<String>), // (pane_id, fg, bg)
     SetPaneRegexHighlights(PaneId, Vec<RegexHighlight>),
     ClearPaneHighlights(PaneId),
+    OpenPluginPaneFloating {
+        plugin_url: String,
+        configuration: BTreeMap<String, String>,
+        floating_pane_coordinates: Option<FloatingPaneCoordinates>,
+        context: BTreeMap<String, String>,
+    },
+    ListWindowsVolumes,
 }
 
 // Response type for plugin API methods that open a pane in a new tab
@@ -3599,3 +3610,4 @@ pub type OpenCommandPaneBackgroundResponse = Option<PaneId>;
 pub type OpenCommandPaneInPlaceOfPaneIdResponse = Option<PaneId>;
 pub type OpenTerminalPaneInPlaceOfPaneIdResponse = Option<PaneId>;
 pub type OpenEditPaneInPlaceOfPaneIdResponse = Option<PaneId>;
+pub type OpenPluginPaneFloatingResponse = Option<PaneId>;

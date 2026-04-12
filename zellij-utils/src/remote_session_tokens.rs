@@ -44,6 +44,7 @@ fn get_db_path() -> Result<PathBuf> {
 }
 
 fn init_db(conn: &Connection) -> Result<()> {
+    conn.execute_batch("PRAGMA busy_timeout = 5000")?;
     conn.execute(
         "CREATE TABLE IF NOT EXISTS remote_sessions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,

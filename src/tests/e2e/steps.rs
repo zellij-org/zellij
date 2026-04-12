@@ -58,12 +58,18 @@ pub fn type_second_tab_content() -> Step {
     Step {
         name: "Type second tab content",
         instruction: |mut remote_terminal: RemoteTerminal| -> bool {
-            let mut step_is_complete = false;
+            if remote_terminal.snapshot_contains("Tab #2 content") {
+                return true;
+            }
+            // send (or re-send if the previous attempt arrived garbled) and wait for the next
+            // retry to confirm the content appeared correctly in the terminal
             if remote_terminal.status_bar_appears() {
                 remote_terminal.send_key(&SECOND_TAB_CONTENT);
-                step_is_complete = true;
+                // sleep longer than the reader's idle poll (100ms) so the snapshot is updated
+                // before the next retry fires, preventing a spurious re-send
+                std::thread::sleep(std::time::Duration::from_millis(300));
             }
-            step_is_complete
+            false
         },
     }
 }

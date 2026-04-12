@@ -1251,7 +1251,13 @@ impl OutputBuffer {
         // pad row
         let row_width = row.width();
         if row_width < viewport_width {
-            let mut padding = vec![EMPTY_TERMINAL_CHARACTER; viewport_width - row_width];
+            let mut pad_character = EMPTY_TERMINAL_CHARACTER;
+            if let Some(bg_color) = row.bg_color {
+                pad_character
+                    .styles
+                    .update(|styles| styles.background = Some(bg_color));
+            }
+            let mut padding = vec![pad_character; viewport_width - row_width];
             terminal_characters.append(&mut padding);
         } else if row_width > viewport_width {
             let width_offset = row.excess_width_until(viewport_width);

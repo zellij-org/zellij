@@ -222,6 +222,7 @@ pub enum ScreenContext {
     ToggleFloatingPanes,
     ShowFloatingPanes,
     HideFloatingPanes,
+    AreFloatingPanesVisible,
     TogglePaneEmbedOrFloating,
     HorizontalSplit,
     VerticalSplit,
@@ -351,6 +352,7 @@ pub enum ScreenContext {
     UnsuppressOrExpandPane,
     FocusPaneWithId,
     RenamePane,
+    RenameActivePane,
     RenameTab,
     RequestPluginPermissions,
     BreakPane,
@@ -419,6 +421,7 @@ pub enum ScreenContext {
     ClearMouseHelpText,
     SetPluginRegexHighlights,
     ClearPluginHighlights,
+    DesktopNotificationResponse,
     SubscribeToPaneRenders,
     NotifyPaneClosedToSubscribers,
     // Pane-targeting CLI variants
@@ -449,6 +452,8 @@ pub enum ScreenContext {
     NextSwapLayoutWithTabId,
     MoveTabWithTabId,
     PluginSubscribedToAnsiPaneContents,
+    UpdateBackgroundPluginSubscriptions,
+    BroadcastModeUpdate,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.
