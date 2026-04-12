@@ -655,7 +655,7 @@ fn super_modifier_with_explicit_binding_works() {
 
 #[test]
 fn super_modifier_returns_noop_in_locked_mode() {
-    // Super modifier keys should be NoOp even in locked mode
+    // Super modifier keys should be NoOp even in locked mode when using Kitty protocol
     let config = Config::from_kdl("keybinds {}", None).unwrap();
     let super_c = KeyWithModifier::new(BareKey::Char('c')).with_super_modifier();
     let actions = config
@@ -670,6 +670,34 @@ fn super_modifier_returns_noop_in_locked_mode() {
     assert_eq!(
         actions,
         vec![Action::NoOp],
-        "Super+C should be NoOp even in locked mode"
+        "Super+C should be NoOp even in locked mode (Kitty protocol)"
+    );
+}
+
+#[test]
+fn super_modifier_non_kitty_falls_through_to_write() {
+    // When the event does NOT come via the Kitty keyboard protocol the Super-modifier
+    // guard must not fire; the key should fall through to the normal Write action so
+    // that non-Kitty input backends are unaffected.
+    let config = Config::from_kdl("keybinds {}", None).unwrap();
+    let super_c = KeyWithModifier::new(BareKey::Char('c')).with_super_modifier();
+    let raw = vec![0x63u8]; // 'c'
+    let actions = config
+        .keybinds
+        .get_actions_for_key_in_mode_or_default_action(
+            &InputMode::Locked,
+            &super_c,
+            raw.clone(),
+            InputMode::Normal,
+            false, // not Kitty protocol
+        );
+    assert_eq!(
+        actions,
+        vec![Action::Write {
+            key_with_modifier: Some(super_c),
+            bytes: raw,
+            is_kitty_keyboard_protocol: false,
+        }],
+        "Super+C without Kitty protocol should fall through to Write, not NoOp"
     );
 }

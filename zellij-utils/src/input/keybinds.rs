@@ -75,12 +75,17 @@ impl Keybinds {
         default_input_mode: InputMode,
         key_is_kitty_protocol: bool,
     ) -> Action {
-        // Keys with the Super (Cmd on macOS) modifier that aren't explicitly bound
-        // should be ignored. These are OS-level shortcuts (e.g. Cmd+C for copy)
-        // that should be handled by the terminal emulator, not by Zellij.
-        if let Some(kwm) = key_with_modifier {
-            if kwm.key_modifiers.contains(&KeyModifier::Super) {
-                return Action::NoOp;
+        // When the event arrives via the Kitty keyboard protocol, keys with the Super
+        // (Cmd on macOS) modifier that aren't explicitly bound should be ignored.
+        // These are OS-level shortcuts (e.g. Cmd+C for copy) that should be handled
+        // by the terminal emulator, not by Zellij.
+        // Non-Kitty inputs with a Super modifier are not guarded here because the
+        // modifier may carry different semantics in other input backends.
+        if key_is_kitty_protocol {
+            if let Some(kwm) = key_with_modifier {
+                if kwm.key_modifiers.contains(&KeyModifier::Super) {
+                    return Action::NoOp;
+                }
             }
         }
 
