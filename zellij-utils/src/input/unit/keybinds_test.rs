@@ -1,6 +1,6 @@
 use super::super::actions::*;
 use super::super::keybinds::*;
-use crate::data::{BareKey, Direction, KeyWithModifier};
+use crate::data::{BareKey, Direction, InputMode, KeyWithModifier};
 use crate::input::config::Config;
 use insta::assert_snapshot;
 use strum::IntoEnumIterator;
@@ -593,4 +593,83 @@ fn error_received_on_unknown_key_instruction() {
     "#;
     let config_error = Config::from_kdl(config_contents, None).unwrap_err();
     assert_snapshot!(format!("{:?}", config_error));
+}
+
+#[test]
+fn super_modifier_without_binding_returns_noop() {
+    // When a key with the Super (Cmd on macOS) modifier is pressed and there is no
+    // explicit keybinding for it, the default action should be NoOp rather than Write.
+    // This prevents Zellij from intercepting OS-level shortcuts like Cmd+C (copy).
+    let config_contents = r#"
+        keybinds {
+            normal {
+                bind "Ctrl g" { SwitchToMode "Locked"; }
+            }
+        }
+    "#;
+    let config = Config::from_kdl(config_contents, None).unwrap();
+    let super_c = KeyWithModifier::new(BareKey::Char('c')).with_super_modifier();
+    let actions = config
+        .keybinds
+        .get_actions_for_key_in_mode_or_default_action(
+            &InputMode::Normal,
+            &super_c,
+            vec![0x1b, 0x5b, 0x39, 0x39, 0x3b, 0x39, 0x75], // CSI 99;9u
+            InputMode::Normal,
+            true,
+        );
+    assert_eq!(
+        actions,
+        vec![Action::NoOp],
+        "Super+C without explicit binding should be NoOp, not Write"
+    );
+}
+
+#[test]
+fn super_modifier_with_explicit_binding_works() {
+    // When a key with the Super modifier IS explicitly bound, the binding should work.
+    let config_contents = r#"
+        keybinds {
+            normal {
+                bind "Super c" { Copy; }
+            }
+        }
+    "#;
+    let config = Config::from_kdl(config_contents, None).unwrap();
+    let super_c = KeyWithModifier::new(BareKey::Char('c')).with_super_modifier();
+    let actions = config
+        .keybinds
+        .get_actions_for_key_in_mode_or_default_action(
+            &InputMode::Normal,
+            &super_c,
+            vec![0x1b, 0x5b, 0x39, 0x39, 0x3b, 0x39, 0x75], // CSI 99;9u
+            InputMode::Normal,
+            true,
+        );
+    assert_eq!(
+        actions,
+        vec![Action::Copy],
+        "Super+C with explicit binding should use the configured action"
+    );
+}
+
+#[test]
+fn super_modifier_returns_noop_in_locked_mode() {
+    // Super modifier keys should be NoOp even in locked mode
+    let config = Config::from_kdl("keybinds {}", None).unwrap();
+    let super_c = KeyWithModifier::new(BareKey::Char('c')).with_super_modifier();
+    let actions = config
+        .keybinds
+        .get_actions_for_key_in_mode_or_default_action(
+            &InputMode::Locked,
+            &super_c,
+            vec![0x1b, 0x5b, 0x39, 0x39, 0x3b, 0x39, 0x75],
+            InputMode::Normal,
+            true,
+        );
+    assert_eq!(
+        actions,
+        vec![Action::NoOp],
+        "Super+C should be NoOp even in locked mode"
+    );
 }
