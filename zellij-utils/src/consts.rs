@@ -239,6 +239,7 @@ pub fn ipc_bind_async(
 /// This is typically called at web server or session server startup to avoid
 /// confusion between connections and dead processes after an ungraceful exit
 /// or a binary upgrade that left orphaned sockets behind.
+#[cfg(any(unix, windows))]
 pub fn cleanup_stale_sockets(ipc_dir: &std::path::Path) -> std::io::Result<usize> {
     if !ipc_dir.exists() {
         return Ok(0);
@@ -262,6 +263,12 @@ pub fn cleanup_stale_sockets(ipc_dir: &std::path::Path) -> std::io::Result<usize
         }
     }
     Ok(cleaned)
+}
+
+/// Stub for non-Unix/non-Windows targets (e.g. WASM plugins).
+#[cfg(not(any(unix, windows)))]
+pub fn cleanup_stale_sockets(_ipc_dir: &std::path::Path) -> std::io::Result<usize> {
+    Ok(0)
 }
 
 #[cfg(unix)]
