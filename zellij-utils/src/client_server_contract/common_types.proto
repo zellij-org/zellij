@@ -272,6 +272,8 @@ message Action {
     PreviousSwapLayoutByTabIdAction previous_swap_layout_by_tab_id = 132;
     NextSwapLayoutByTabIdAction next_swap_layout_by_tab_id = 133;
     MoveTabByTabIdAction move_tab_by_tab_id = 134;
+    FocusPaneByPaneIdAction focus_pane_by_pane_id = 135;
+    AreFloatingPanesVisibleAction are_floating_panes_visible = 136;
   }
 }
 
@@ -306,6 +308,9 @@ message ShowFloatingPanesAction {
   optional uint32 tab_id = 1;
 }
 message HideFloatingPanesAction {
+  optional uint32 tab_id = 1;
+}
+message AreFloatingPanesVisibleAction {
   optional uint32 tab_id = 1;
 }
 message CloseFocusAction {}
@@ -449,6 +454,7 @@ message EditFileAction {
   optional FloatingPaneCoordinates coordinates = 6;
   bool near_current_pane = 7;
   bool close_replaced_pane = 8;
+  optional uint32 tab_id = 9;
 }
 
 message NewFloatingPaneAction {
@@ -456,6 +462,7 @@ message NewFloatingPaneAction {
   optional string pane_name = 2;
   optional FloatingPaneCoordinates coordinates = 3;
   bool near_current_pane = 7;
+  optional uint32 tab_id = 8;
 }
 
 message NewTiledPaneAction {
@@ -464,6 +471,7 @@ message NewTiledPaneAction {
   optional string pane_name = 3;
   bool near_current_pane = 7;
   optional bool borderless = 8;
+  optional uint32 tab_id = 9;
 }
 
 message NewInPlacePaneAction {
@@ -472,12 +480,14 @@ message NewInPlacePaneAction {
   bool near_current_pane = 3;
   optional PaneId pane_id_to_replace = 4;
   bool close_replaced_pane = 5;
+  optional uint32 tab_id = 6;
 }
 
 message NewStackedPaneAction {
   optional RunCommandAction command = 1;
   optional string pane_name = 2;
   bool near_current_pane = 3;
+  optional uint32 tab_id = 4;
 }
 
 message NewBlockingPaneAction {
@@ -486,6 +496,7 @@ message NewBlockingPaneAction {
   optional RunCommandAction command = 3;
   optional UnblockCondition unblock_condition = 4;
   bool near_current_pane = 5;
+  optional uint32 tab_id = 6;
 }
 
 message PaneNameInputAction {
@@ -533,6 +544,7 @@ message LaunchOrFocusPluginAction {
   bool should_open_in_place = 4;
   bool skip_cache = 5;
   bool close_replaced_pane = 6;
+  optional uint32 tab_id = 7;
 }
 
 message LaunchPluginAction {
@@ -542,6 +554,7 @@ message LaunchPluginAction {
   bool skip_cache = 4;
   optional string cwd = 5;
   bool close_replaced_pane = 6;
+  optional uint32 tab_id = 7;
 }
 
 message MouseEventAction {
@@ -569,6 +582,7 @@ message NewTiledPluginPaneAction {
   optional string pane_name = 2;
   bool skip_cache = 3;
   optional string cwd = 4;
+  optional uint32 tab_id = 5;
 }
 
 message NewFloatingPluginPaneAction {
@@ -577,6 +591,7 @@ message NewFloatingPluginPaneAction {
   bool skip_cache = 3;
   optional string cwd = 4;
   optional FloatingPaneCoordinates coordinates = 5;
+  optional uint32 tab_id = 6;
 }
 
 message NewInPlacePluginPaneAction {
@@ -584,6 +599,7 @@ message NewInPlacePluginPaneAction {
   optional string pane_name = 2;
   bool skip_cache = 3;
   bool close_replaced_pane = 4;
+  optional uint32 tab_id = 5;
 }
 
 message StartOrReloadPluginAction {
@@ -1200,6 +1216,7 @@ message CloseFocusByPaneIdAction { PaneId pane_id = 1; }
 message RenamePaneByPaneIdAction { PaneId pane_id = 1; bytes name = 2; }
 message UndoRenamePaneByPaneIdAction { PaneId pane_id = 1; }
 message TogglePanePinnedByPaneIdAction { PaneId pane_id = 1; }
+message FocusPaneByPaneIdAction { PaneId pane_id = 1; }
 
 // Tab-targeting action messages
 message UndoRenameTabByTabIdAction { uint64 id = 1; }

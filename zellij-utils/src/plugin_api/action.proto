@@ -244,6 +244,7 @@ message Action {
     TabIdAndName rename_tab_by_id_payload = 57;
     ShowFloatingPanesPayload show_floating_panes_payload = 58;
     HideFloatingPanesPayload hide_floating_panes_payload = 59;
+    AreFloatingPanesVisiblePayload are_floating_panes_visible_payload = 60;
   }
 }
 
@@ -269,6 +270,10 @@ message ShowFloatingPanesPayload {
 }
 
 message HideFloatingPanesPayload {
+  optional uint32 tab_id = 1;
+}
+
+message AreFloatingPanesVisiblePayload {
   optional uint32 tab_id = 1;
 }
 
@@ -484,6 +489,7 @@ enum ActionName {
     RenameTabById = 97;
     ShowFloatingPanes = 98;
     HideFloatingPanes = 99;
+    AreFloatingPanesVisible = 100;
 }
 
 message Position {

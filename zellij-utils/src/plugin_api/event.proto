@@ -66,6 +66,7 @@ enum EventType {
     PluginConfigurationChanged = 41;
     HighlightClicked = 42;
     PaneRenderReportWithAnsi = 43;
+    InitialKeybinds = 44;
 }
 
 message EventNameList {
@@ -111,6 +112,7 @@ message Event {
     PluginConfigurationChangedPayload plugin_configuration_changed_payload = 35;
     HighlightClickedPayload highlight_clicked_payload = 36;
     PaneRenderReportPayload pane_render_report_with_ansi_payload = 37;
+    InitialKeybindsPayload initial_keybinds_payload = 38;
   }
 }
 
@@ -526,5 +528,9 @@ message HighlightClickedPayload {
   string pattern = 2;
   string matched_string = 3;
   repeated ContextItem context = 4;
+}
+
+message InitialKeybindsPayload {
+  repeated InputModeKeybinds keybinds = 1;
 }
 

@@ -200,12 +200,28 @@ pub(crate) fn stdin_loop(
                         );
 
                         for input_event in events.into_iter() {
-                            send_input_instructions
-                                .send(InputInstruction::KeyEvent(
-                                    input_event,
-                                    current_buffer.drain(..).collect(),
-                                ))
-                                .unwrap();
+                            match input_event {
+                                InputEvent::OperatingSystemCommand(ref payload) => {
+                                    if payload.starts_with(b"99;") {
+                                        let notification_payload =
+                                            payload.get(3..).unwrap_or_default().to_vec();
+                                        let _ = send_input_instructions.send(
+                                            InputInstruction::DesktopNotificationResponse(
+                                                notification_payload,
+                                            ),
+                                        );
+                                    }
+                                    // Other OSC types at runtime: silently drop.
+                                },
+                                other => {
+                                    send_input_instructions
+                                        .send(InputInstruction::KeyEvent(
+                                            other,
+                                            current_buffer.drain(..).collect(),
+                                        ))
+                                        .unwrap();
+                                },
+                            }
                         }
 
                         needs_finalization = true;
@@ -252,11 +268,24 @@ fn finalize_events(
         false,
     );
     for input_event in events {
-        send_input_instructions
-            .send(InputInstruction::KeyEvent(
-                input_event,
-                current_buffer.drain(..).collect(),
-            ))
-            .unwrap();
+        match input_event {
+            InputEvent::OperatingSystemCommand(ref payload) => {
+                if payload.starts_with(b"99;") {
+                    let notification_payload = payload.get(3..).unwrap_or_default().to_vec();
+                    let _ = send_input_instructions.send(
+                        InputInstruction::DesktopNotificationResponse(notification_payload),
+                    );
+                }
+                // Other OSC types at runtime: silently drop.
+            },
+            other => {
+                send_input_instructions
+                    .send(InputInstruction::KeyEvent(
+                        other,
+                        current_buffer.drain(..).collect(),
+                    ))
+                    .unwrap();
+            },
+        }
     }
 }

@@ -3,7 +3,7 @@
  */
 
 import { handleReconnection, handleDisconnected, markConnectionEstablished } from "./connection.js";
-import { getWebSocketBaseUrl } from "./utils.js";
+import { getBaseUrl, getWebSocketBaseUrl } from "./utils.js";
 
 /**
  * Initialize both terminal and control WebSocket connections
@@ -241,7 +241,8 @@ function startWsControl(wsControl, term, fitAddon, ownWebClientId, userConfig) {
             }
         } else if (msg.type === "SwitchedSession") {
             const { new_session_name } = msg;
-            window.location.pathname = `/${new_session_name}`;
+            const baseUrl = getBaseUrl();
+            window.location.href = `${baseUrl}/${encodeURIComponent(new_session_name)}`;
         }
     };
 

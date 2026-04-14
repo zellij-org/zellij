@@ -302,6 +302,23 @@ fn spawn_web_server(_cli_args: &CliArgs) -> Result<String, String> {
     Ok("".to_owned())
 }
 
+fn check_ipc_pipe_length(ipc_pipe: &Path) {
+    use zellij_utils::consts::ZELLIJ_SOCK_MAX_LENGTH;
+    let path_len = ipc_pipe.as_os_str().len();
+    if path_len >= ZELLIJ_SOCK_MAX_LENGTH {
+        eprintln!(
+            "Error: the IPC socket path is too long ({} bytes, max {}):\n  {}\n\n\
+             This is usually caused by a long $TMPDIR path.\n\
+             To fix this, set a shorter socket directory, eg.:\n  \
+             ZELLIJ_SOCKET_DIR=/tmp/zellij zellij",
+            path_len,
+            ZELLIJ_SOCK_MAX_LENGTH - 1,
+            ipc_pipe.display()
+        );
+        std::process::exit(1);
+    }
+}
+
 /// Spawn the Zellij server process.
 ///
 /// On Unix the server daemonizes (double-fork) inside start_server(), so
@@ -387,6 +404,7 @@ pub(crate) enum InputInstruction {
     #[allow(dead_code)] // constructed in stdin_handler_windows.rs (Windows-only)
     MouseEvent(zellij_utils::input::mouse::MouseEvent),
     AnsiStdinInstructions(Vec<AnsiStdinInstruction>),
+    DesktopNotificationResponse(Vec<u8>),
     StartedParsing,
     DoneParsing,
     Exit,
@@ -756,6 +774,7 @@ pub fn start_client(
         std::fs::create_dir_all(&sock_dir).unwrap();
         set_permissions(&sock_dir, 0o700).unwrap();
         sock_dir.push(envs::get_session_name().unwrap());
+        check_ipc_pipe_length(&sock_dir);
         sock_dir
     };
 
@@ -771,22 +790,26 @@ pub fn start_client(
                 config_dir: cli_args.config_dir.clone(),
                 should_ignore_config: cli_args.is_setup_clean(),
                 configuration_options: Some(config_options.clone()),
-                layout: cli_args
-                    .layout
-                    .as_ref()
-                    .and_then(|l| {
-                        LayoutInfo::from_cli(
-                            &config_options.layout_dir,
-                            &Some(l.clone()),
-                            std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
-                        )
-                    })
-                    .or_else(|| {
-                        LayoutInfo::from_config(
-                            &config_options.layout_dir,
-                            &config_options.default_layout,
-                        )
-                    }),
+                layout: if let Some(layout_string) = &cli_args.layout_string {
+                    Some(LayoutInfo::Stringified(layout_string.clone()))
+                } else {
+                    cli_args
+                        .layout
+                        .as_ref()
+                        .and_then(|l| {
+                            LayoutInfo::from_cli(
+                                &config_options.layout_dir,
+                                &Some(l.clone()),
+                                std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+                            )
+                        })
+                        .or_else(|| {
+                            LayoutInfo::from_config(
+                                &config_options.layout_dir,
+                                &config_options.default_layout,
+                            )
+                        })
+                },
                 terminal_window_size: full_screen_ws,
                 data_dir: cli_args.data_dir.clone(),
                 is_debug: cli_args.debug,
@@ -1288,6 +1311,7 @@ pub fn start_server_detached(
         std::fs::create_dir_all(&sock_dir).unwrap();
         set_permissions(&sock_dir, 0o700).unwrap();
         sock_dir.push(envs::get_session_name().unwrap());
+        check_ipc_pipe_length(&sock_dir);
         sock_dir
     };
 

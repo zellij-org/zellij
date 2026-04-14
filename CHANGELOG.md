@@ -6,6 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
 
+## [0.44.1] - 2026-04-07
+* fix: don't display default ports as offline in `share` plugin (https://github.com/zellij-org/zellij/pull/4908)
+* fix: theme folder not being picked up on startup (https://github.com/zellij-org/zellij/pull/4892)
+* fix: do not reset selection in session-manager on SessionInfo update (https://github.com/zellij-org/zellij/pull/4919)
+* fix: performance regression when switching tabs (https://github.com/zellij-org/zellij/pull/4918)
+* feat: add "focus-pane-with-id" and "are-floating-panes-visible" cli commands (https://github.com/zellij-org/zellij/pull/4926)
+* build: add risc64 binaries to releases (https://github.com/zellij-org/zellij/pull/4913)
+* feat: support and forward OSC-99 desktop notifications (https://github.com/zellij-org/zellij/pull/4931)
+* fix: normalize temp socket paths in windows (https://github.com/zellij-org/zellij/pull/4923)
+* fix: compilation warnings in windows (https://github.com/zellij-org/zellij/pull/4890)
+* feat: add --layout-string to allow for in-line layouts, add --tab-id to all new-pane CLI commands (https://github.com/zellij-org/zellij/pull/4956)
+* fix: proper error on socket paths that are too long (https://github.com/zellij-org/zellij/pull/4957)
+* fix: scrollback with partial scroll region (eg. Codex bug) (https://github.com/zellij-org/zellij/pull/4941)
+* fix: remote attach issues on macOS (https://github.com/zellij-org/zellij/pull/4972)
+* test: improve e2e test reliability and local macOS dev support (https://github.com/zellij-org/zellij/pull/4952)
+* fix: preserve background color in trailing and skipped characters (https://github.com/zellij-org/zellij/pull/4992 and https://github.com/zellij-org/zellij/pull/5011)
+* fix: make web client use base URL when switching sessions (https://github.com/zellij-org/zellij/pull/4981)
+* fix: position host cursor for CJK IME even when app hides cursor (https://github.com/zellij-org/zellij/pull/4951)
+* fix: encode modifiers in raw bytes for non-Char keys in windows (https://github.com/zellij-org/zellij/pull/4967)
+* fix: respect --name flag when creating new panes (https://github.com/zellij-org/zellij/pull/4979)
+* fix: do not reset underline with CSI 22 (https://github.com/zellij-org/zellij/pull/4962)
+* fix: race when starting short lived command pane (https://github.com/zellij-org/zellij/pull/5010)
+* fix: properly report OSC52 clipboard support (https://github.com/zellij-org/zellij/pull/4545)
+
 ## [0.44.0] - 2026-03-23
 * fix: meta key handling in web client (https://github.com/zellij-org/zellij/pull/4376)
 * refactor: move logical structures from client to server (https://github.com/zellij-org/zellij/pull/4383)

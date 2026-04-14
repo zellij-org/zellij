@@ -558,6 +558,7 @@ impl Action {
                         command: None,
                         pane_name: None,
                         near_current_pane: false,
+                        tab_id: None,
                     });
                 } else {
                     let direction = Direction::from_str(string.as_str()).map_err(|_| {
@@ -840,6 +841,7 @@ impl Action {
                 pane_name: name,
                 near_current_pane: false,
                 borderless: _,
+                ..
             } => {
                 let mut node = KdlNode::new("Run");
                 let mut node_children = KdlDocument::new();
@@ -890,6 +892,7 @@ impl Action {
                 pane_name: name,
                 coordinates: floating_pane_coordinates,
                 near_current_pane: false,
+                ..
             } => {
                 let mut node = KdlNode::new("Run");
                 let mut node_children = KdlDocument::new();
@@ -983,6 +986,7 @@ impl Action {
                 near_current_pane: false,
                 pane_id_to_replace: None,
                 close_replaced_pane,
+                ..
             } => {
                 let mut node = KdlNode::new("Run");
                 let mut node_children = KdlDocument::new();
@@ -1029,6 +1033,7 @@ impl Action {
                 command: run_command_action,
                 pane_name: name,
                 near_current_pane: _,
+                ..
             } => match run_command_action {
                 Some(run_command_action) => {
                     let mut node = KdlNode::new("Run");
@@ -1108,6 +1113,7 @@ impl Action {
                 should_open_in_place,
                 close_replaced_pane,
                 skip_cache: skip_plugin_cache,
+                ..
             } => {
                 let mut node = KdlNode::new("LaunchOrFocusPlugin");
                 let mut node_children = KdlDocument::new();
@@ -1157,6 +1163,7 @@ impl Action {
                 close_replaced_pane,
                 skip_cache: skip_plugin_cache,
                 cwd,
+                ..
             } => {
                 let mut node = KdlNode::new("LaunchPlugin");
                 let mut node_children = KdlDocument::new();
@@ -1993,6 +2000,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                             x, y, width, height, pinned, borderless,
                         ),
                         near_current_pane: false,
+                        tab_id: None,
                     })
                 } else if in_place {
                     Ok(Action::NewInPlacePane {
@@ -2001,12 +2009,14 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                         near_current_pane: false,
                         pane_id_to_replace: None,
                         close_replaced_pane,
+                        tab_id: None,
                     })
                 } else if stacked {
                     Ok(Action::NewStackedPane {
                         command: Some(run_command_action),
                         pane_name: name,
                         near_current_pane: false,
+                        tab_id: None,
                     })
                 } else {
                     Ok(Action::NewTiledPane {
@@ -2015,6 +2025,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                         pane_name: name,
                         near_current_pane: false,
                         borderless: None,
+                        tab_id: None,
                     })
                 }
             },
@@ -2071,6 +2082,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                     should_open_in_place,
                     close_replaced_pane,
                     skip_cache: skip_plugin_cache,
+                    tab_id: None,
                 })
             },
             "LaunchPlugin" => {
@@ -2120,7 +2132,8 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                     close_replaced_pane,
                     skip_cache: skip_plugin_cache,
                     cwd: None, // we explicitly do not send the current dir here so that it will be
-                               // filled from the active pane == better UX
+                    // filled from the active pane == better UX
+                    tab_id: None,
                 })
             },
             "PreviousSwapLayout" => Ok(Action::PreviousSwapLayout),

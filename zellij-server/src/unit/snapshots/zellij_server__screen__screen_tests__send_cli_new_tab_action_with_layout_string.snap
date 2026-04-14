@@ -1,6 +1,6 @@
 ---
 source: zellij-server/src/./unit/screen_tests.rs
-expression: output
+expression: "format!(\"{:#?}\", new_tab_instruction)"
 ---
 NewTab(
     None,

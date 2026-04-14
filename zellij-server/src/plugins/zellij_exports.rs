@@ -1164,6 +1164,7 @@ fn open_plugin_pane_floating(
         skip_cache: false,
         cwd: Some(env.plugin_cwd.clone()),
         coordinates: floating_pane_coordinates,
+        tab_id: None,
     };
     let error_msg = || format!("Failed to open floating plugin pane");
     let result = apply_action!(action, error_msg, env);
@@ -1403,6 +1404,7 @@ fn open_file(env: &PluginEnv, file_to_open: FileToOpen, context: BTreeMap<String
         start_suppressed,
         coordinates: None,
         near_current_pane: false,
+        tab_id: None,
     };
     let result = apply_action!(action, error_msg, env);
 
@@ -1505,6 +1507,7 @@ fn open_file_floating(
         start_suppressed,
         coordinates: floating_pane_coordinates,
         near_current_pane: false,
+        tab_id: None,
     };
     let result = apply_action!(action, error_msg, env);
 
@@ -1545,6 +1548,7 @@ fn open_file_in_place(
         start_suppressed,
         coordinates: None,
         near_current_pane: false,
+        tab_id: None,
     };
     let result = apply_action!(action, error_msg, env);
 
@@ -1705,6 +1709,7 @@ fn open_terminal(env: &PluginEnv, cwd: PathBuf) {
         pane_name: None,
         near_current_pane: false,
         borderless: None,
+        tab_id: None,
     };
     let result = apply_action!(action, error_msg, env);
 
@@ -1780,6 +1785,7 @@ fn open_terminal_floating(
         pane_name: None,
         coordinates: floating_pane_coordinates,
         near_current_pane: false,
+        tab_id: None,
     };
     let result = apply_action!(action, error_msg, env);
 
@@ -1855,6 +1861,7 @@ fn open_terminal_in_place(env: &PluginEnv, cwd: PathBuf) {
         near_current_pane: false,
         pane_id_to_replace: None,
         close_replaced_pane: false,
+        tab_id: None,
     };
     let result = apply_action!(action, error_msg, env);
 
@@ -2139,6 +2146,7 @@ fn open_command_pane(
         pane_name: name,
         near_current_pane: false,
         borderless: None,
+        tab_id: None,
     };
     let result = apply_action!(action, error_msg, env);
 
@@ -2246,6 +2254,7 @@ fn open_command_pane_floating(
         pane_name: name,
         coordinates: floating_pane_coordinates,
         near_current_pane: false,
+        tab_id: None,
     };
     let result = apply_action!(action, error_msg, env);
 
@@ -2356,6 +2365,7 @@ fn open_command_pane_in_place(
         near_current_pane: false,
         pane_id_to_replace: None,
         close_replaced_pane: false,
+        tab_id: None,
     };
     let result = apply_action!(action, error_msg, env);
 
@@ -4423,6 +4433,7 @@ fn try_edit_layout(
         start_suppressed: false,
         coordinates: None,
         near_current_pane: true,
+        tab_id: None,
     };
 
     // Route the action - this is fallible

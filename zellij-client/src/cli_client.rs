@@ -28,6 +28,7 @@ pub fn start_cli_client(
         sock_dir.push(session_name);
         sock_dir
     };
+    crate::check_ipc_pipe_length(&zellij_ipc_pipe);
     os_input.connect_to_server(&*zellij_ipc_pipe);
     let pane_id = os_input
         .env_variable("ZELLIJ_PANE_ID")
@@ -264,6 +265,7 @@ pub fn start_subscribe_client(
         sock_dir.push(session_name);
         sock_dir
     };
+    crate::check_ipc_pipe_length(&zellij_ipc_pipe);
     os_input.connect_to_server(&*zellij_ipc_pipe);
 
     // Parse pane IDs
