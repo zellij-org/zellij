@@ -4073,6 +4073,7 @@ impl Perform for Grid {
                         },
                         2027 => {
                             self.grapheme_cluster_mode = false;
+                            self.egc_state = None;
                         },
                         2004 => {
                             self.bracketed_paste_mode = false;
@@ -4178,6 +4179,7 @@ impl Perform for Grid {
                         },
                         2027 => {
                             self.grapheme_cluster_mode = true;
+                            self.egc_state = None;
                         },
                         2004 => {
                             self.bracketed_paste_mode = true;
