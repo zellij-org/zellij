@@ -5944,6 +5944,26 @@ fn csi_2027_mode_persists_across_alternate_screen() {
     );
 }
 
+#[test]
+fn csi_2027_toggle_clears_egc_state() {
+    // Turning 2027 on/off should clear pending EGC state so combining marks
+    // cannot attach across a mode transition.
+    let mut grid = create_grid_with_content("");
+    feed_bytes(&mut grid, b"a");
+    feed_bytes(&mut grid, b"\x1b[?2027h");
+    feed_bytes(&mut grid, "\u{0300}".as_bytes());
+    let graphemes = first_row_graphemes(&grid);
+    assert_eq!(graphemes[0], "a", "2027h should clear pending EGC state");
+
+    let mut grid = create_grid_with_content("");
+    feed_bytes(&mut grid, b"\x1b[?2027h");
+    feed_bytes(&mut grid, b"a");
+    feed_bytes(&mut grid, b"\x1b[?2027l");
+    feed_bytes(&mut grid, "\u{0300}".as_bytes());
+    let graphemes = first_row_graphemes(&grid);
+    assert_eq!(graphemes[0], "a", "2027l should clear pending EGC state");
+}
+
 // ── Grapheme-aware editing semantics ─────────────────────────────────────────
 //
 // In CSI 2027 mode, these tests treat BS, CUB, and CUF as display-column
@@ -6193,6 +6213,8 @@ fn width_expanding_egc_row_cache_invalidated_on_extension() {
     // First RI placed (width 1, row cache = Some(1)), then second RI extends it to
     // width 2 (row cache must be invalidated).
     let mut grid = create_grid_with_content("");
+    // RI-pair widening is only guaranteed once 2027 grapheme semantics are enabled.
+    feed_bytes(&mut grid, b"\x1b[?2027h");
     // Place flag pair 🇯🇵 = U+1F1EF + U+1F1F5
     feed_bytes(&mut grid, "\u{1F1EF}\u{1F1F5}".as_bytes());
     assert_eq!(grid.cursor.x, 2, "flag pair = width 2");
@@ -6222,6 +6244,8 @@ fn egc_state_text_uses_full_grapheme_for_ri_parity_after_rep() {
     // With bug:  REP cell has egc_state.text="🇺" (one RI); 🇩 looks like its
     //            pair → merged → only two cells: "🇺🇸", "🇺🇩", then "🇪" separate.
     let mut grid = create_grid_with_content("");
+    // RI parity across REP is part of the explicit 2027 grapheme contract.
+    feed_bytes(&mut grid, b"\x1b[?2027h");
     // Build 🇺🇸 char-by-char so the cell is assembled correctly
     feed_bytes(&mut grid, "\u{1F1FA}\u{1F1F8}".as_bytes()); // 🇺🇸
                                                             // REP once (CSI 1 b) — re-inserts the full "🇺🇸" cell via add_character
@@ -6341,6 +6365,8 @@ fn multiple_zwj_emojis_cursor_at_correct_column() {
     // Three family emojis: 👨‍👩‍👧 each is a 5-codepoint ZWJ sequence, display width=2.
     // After typing all three, cursor should be at column 6, not drifted wider.
     let mut grid = create_grid_with_content("");
+    // ZWJ emoji must occupy a single width-2 grapheme only in 2027 mode.
+    feed_bytes(&mut grid, b"\x1b[?2027h");
     let family = "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}"; // 👨‍👩‍👧
     let content = format!("{}{}{}", family, family, family);
     feed_bytes(&mut grid, content.as_bytes());
@@ -6387,6 +6413,8 @@ fn skin_tone_emoji_cursor_at_correct_column() {
     // Waving hand + light skin tone (👋🏻): each modifier should not add columns.
     // The pair is still width 2, so cursor should be at col 2, not col 4.
     let mut grid = create_grid_with_content("");
+    // Emoji-modifier sequences are guaranteed to stay one grapheme in 2027 mode.
+    feed_bytes(&mut grid, b"\x1b[?2027h");
     let emoji_with_skin = "\u{1F44B}\u{1F3FB}"; // 👋🏻
     feed_bytes(&mut grid, emoji_with_skin.as_bytes());
     assert_eq!(
@@ -6787,6 +6815,8 @@ fn devanagari_vowel_sign_width_one() {
 
     // Multiple हि should each occupy 1 column
     let mut grid2 = create_grid_with_content("");
+    // This loop checks the guaranteed 2027 cursor-advance contract for repeated Mc sequences.
+    feed_bytes(&mut grid2, b"\x1b[?2027h");
     for _ in 0..5 {
         feed_bytes(&mut grid2, "\u{0939}\u{093F}".as_bytes());
     }
@@ -6888,6 +6918,8 @@ fn vs16_widens_emoji_with_text_presentation() {
     // VS16 should widen it to 2 (emoji presentation). This is critical for the
     // rainbow flag 🏳️‍🌈 = U+1F3F3 + VS16 + ZWJ + U+1F308.
     let mut grid = create_grid_with_content("");
+    // VS16-driven promotion to a width-2 emoji grapheme is only specified in 2027 mode.
+    feed_bytes(&mut grid, b"\x1b[?2027h");
     let rainbow_flag = "\u{1F3F3}\u{FE0F}\u{200D}\u{1F308}"; // 🏳️‍🌈
     feed_bytes(&mut grid, format!("a{}b", rainbow_flag).as_bytes());
     let row = &grid.viewport[0];
@@ -6909,6 +6941,8 @@ fn flag_pair_widens_at_last_column_wraps() {
     // Regional Indicator pair DOES widen (1→2). On a 2-col grid, first RI (width 1)
     // at col 1 gets widened to 2 by second RI — overflow should wrap.
     let mut grid = create_grid_with_content("");
+    // RI-pair width promotion and the resulting wrap behavior are guaranteed only in 2027 mode.
+    feed_bytes(&mut grid, b"\x1b[?2027h");
     grid.change_size(5, 2);
     // 'a' at col 0, then flag pair 🇯🇵 = U+1F1EF U+1F1F5
     feed_bytes(&mut grid, "a\u{1F1EF}\u{1F1F5}b".as_bytes());
