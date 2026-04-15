@@ -424,3 +424,37 @@ pub fn searching_whole_word_case_insensitive() {
         format!("{:?}", terminal_pane.grid)
     );
 }
+
+#[test]
+pub fn whole_word_search_non_ascii_letters_are_not_boundaries() {
+    // Regression: is_word_boundary() used is_ascii_alphanumeric(), which classified
+    // every non-ASCII character as a boundary.  Searching for "λ" inside "αλβ"
+    // (all Greek letters) would produce a false whole-word match.
+
+    // Case 1: λ embedded in αλβ — should NOT match as a whole word.
+    let mut pane = create_pane();
+    pane.handle_pty_bytes("αλβ".as_bytes().to_vec());
+    pane.update_search_term("λ");
+    assert_eq!(
+        pane.grid.search_results.selections.len(),
+        1,
+        "expected one plain match for λ in αλβ"
+    );
+    pane.toggle_search_whole_words();
+    assert_eq!(
+        pane.grid.search_results.selections.len(),
+        0,
+        "expected no whole-word match for λ when surrounded by Greek letters α and β"
+    );
+
+    // Case 2: λ surrounded by spaces — SHOULD match as a whole word.
+    let mut pane2 = create_pane();
+    pane2.handle_pty_bytes("α λ β".as_bytes().to_vec());
+    pane2.update_search_term("λ");
+    pane2.toggle_search_whole_words();
+    assert_eq!(
+        pane2.grid.search_results.selections.len(),
+        1,
+        "expected one whole-word match for λ when surrounded by spaces"
+    );
+}

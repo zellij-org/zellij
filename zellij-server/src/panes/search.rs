@@ -9,12 +9,14 @@ use zellij_utils::input::actions::SearchDirection;
 use zellij_utils::position::Position;
 
 // If the first char of a grapheme is neither alphanumeric nor an underscore,
-// we consider it a word-boundary.
+// we consider it a word-boundary.  Uses Unicode-aware is_alphanumeric() so that
+// non-ASCII letters (Greek, Cyrillic, CJK, Arabic, …) are correctly treated as
+// non-boundary characters in whole-word search.
 fn is_word_boundary(grapheme: Option<&str>) -> bool {
     grapheme.map_or(true, |g| {
         g.chars()
             .next()
-            .map_or(true, |c| !c.is_ascii_alphanumeric() && c != '_')
+            .map_or(true, |c| !c.is_alphanumeric() && c != '_')
     })
 }
 
