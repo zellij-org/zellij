@@ -1642,6 +1642,14 @@ impl Screen {
 
                     let current_tab_index = current_tab.id;
                     let new_tab_index = new_tab.id;
+                    // If the client already has a valid focused pane in the
+                    // destination tab (from a previous visit), don't override
+                    // it with focus_pane_on_edge.
+                    let dest_has_prior_focus = self
+                        .tabs
+                        .get(&new_tab_index)
+                        .map(|t| t.client_has_valid_pane_focus(client_id))
+                        .unwrap_or(false);
                     if self.session_is_mirrored {
                         self.move_clients_between_tabs(
                             current_tab_index,
@@ -1658,14 +1666,16 @@ impl Screen {
                             .collect();
                         for client_id in all_connected_clients {
                             self.update_client_tab_focus(client_id, new_tab_index);
-                            match (
-                                should_change_pane_focus,
-                                self.get_indexed_tab_mut(new_tab_index),
-                            ) {
-                                (Some(direction), Some(new_tab)) => {
-                                    new_tab.focus_pane_on_edge(direction, client_id);
-                                },
-                                _ => {},
+                            if !dest_has_prior_focus {
+                                match (
+                                    should_change_pane_focus,
+                                    self.get_indexed_tab_mut(new_tab_index),
+                                ) {
+                                    (Some(direction), Some(new_tab)) => {
+                                        new_tab.focus_pane_on_edge(direction, client_id);
+                                    },
+                                    _ => {},
+                                }
                             }
                         }
                     } else {
@@ -1676,14 +1686,16 @@ impl Screen {
                             Some(vec![client_id]),
                         )
                         .with_context(err_context)?;
-                        match (
-                            should_change_pane_focus,
-                            self.get_indexed_tab_mut(new_tab_index),
-                        ) {
-                            (Some(direction), Some(new_tab)) => {
-                                new_tab.focus_pane_on_edge(direction, client_id);
-                            },
-                            _ => {},
+                        if !dest_has_prior_focus {
+                            match (
+                                should_change_pane_focus,
+                                self.get_indexed_tab_mut(new_tab_index),
+                            ) {
+                                (Some(direction), Some(new_tab)) => {
+                                    new_tab.focus_pane_on_edge(direction, client_id);
+                                },
+                                _ => {},
+                            }
                         }
                         self.update_client_tab_focus(client_id, new_tab_index);
                     }

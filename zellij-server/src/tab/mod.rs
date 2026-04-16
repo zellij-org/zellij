@@ -1294,6 +1294,14 @@ impl Tab {
         self.connected_clients.borrow_mut().remove(&client_id);
         (client_id, client_mode_info)
     }
+    pub fn client_has_valid_pane_focus(&self, client_id: ClientId) -> bool {
+        self.tiled_panes
+            .focused_pane_id(client_id)
+            .map_or(false, |id| self.tiled_panes.panes_contain(&id))
+            || self.floating_panes
+                .active_pane_id(client_id)
+                .map_or(false, |id| self.floating_panes.panes_contain(&id))
+    }
     pub fn has_no_connected_clients(&self) -> bool {
         self.connected_clients.borrow().is_empty()
     }
