@@ -755,23 +755,25 @@ fn find_resurrectable_sessions(
                         return None;
                     }
                     let layout_file_name = session_layout_cache_file_name(&session_name);
-                    let ctime = match std::fs::metadata(&layout_file_name)
-                        .and_then(|metadata| metadata.created())
-                    {
-                        Ok(created) => Some(created),
+                    let metadata = match std::fs::metadata(&layout_file_name) {
+                        Ok(m) => m,
                         Err(e) => {
                             if e.kind() == std::io::ErrorKind::NotFound {
-                                return None; // no layout file, cannot resurrect session, let's not
-                                             // list it
-                            } else {
-                                log::error!(
-                                    "Failed to read created stamp of resurrection file: {:?}",
-                                    e
-                                );
+                                return None; // no layout file, cannot resurrect session
                             }
-                            None
+                            log::error!(
+                                "Failed to read metadata of resurrection file: {:?}",
+                                e
+                            );
+                            return None;
                         },
                     };
+                    // metadata.created() is not available on some Linux
+                    // filesystems (e.g. ext4), fall back to modified time
+                    let ctime = metadata
+                        .created()
+                        .or_else(|_| metadata.modified())
+                        .ok();
                     let elapsed_duration = ctime
                         .map(|ctime| {
                             Duration::from_secs(ctime.elapsed().ok().unwrap_or_default().as_secs())
