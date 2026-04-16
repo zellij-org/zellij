@@ -46,6 +46,8 @@ use crate::web_client::control_message::{
 static ASYNC_RUNTIME: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
 use std::sync::OnceLock;
 
+const EXIT_KITTY_KEYBOARD_MODE: &str = "\u{1b}[<1u";
+
 /// Spawn an async runtime for this client instance.
 ///
 /// The number of workers can be configured to any nonzero value. Passing zero or `None` will spawn
@@ -663,7 +665,6 @@ pub fn start_remote_client(
         os_input.restore_console_mode();
         let goto_start_of_last_line = format!("\u{1b}[{};{}H", full_screen_ws.rows, 1);
         let restore_alternate_screen = "\u{1b}[?1049l";
-        let exit_kitty_keyboard_mode = "\u{1b}[<1u";
         let reset_style = "\u{1b}[m";
         let show_cursor = "\u{1b}[?25h";
         let error = format!(
@@ -671,7 +672,7 @@ pub fn start_remote_client(
             reset_style,
             show_cursor,
             restore_alternate_screen,
-            exit_kitty_keyboard_mode,
+            EXIT_KITTY_KEYBOARD_MODE,
             goto_start_of_last_line,
             e
         );
@@ -1095,11 +1096,12 @@ pub fn start_client(
             "{}\n{}{}\n",
             restore_snapshot, goto_start_of_last_line, backtrace
         );
-        let _ = os_input
-            .get_stdout_writer()
-            .write(error.as_bytes())
-            .unwrap();
-        let _ = os_input.get_stdout_writer().flush().unwrap();
+        let mut stdout = os_input.get_stdout_writer();
+        if !explicitly_disable_kitty_keyboard_protocol {
+            let _ = stdout.write(EXIT_KITTY_KEYBOARD_MODE.as_bytes());
+        }
+        let _ = stdout.write(error.as_bytes()).unwrap();
+        let _ = stdout.flush().unwrap();
         std::process::exit(1);
     };
 
@@ -1275,9 +1277,8 @@ pub fn start_client(
         os_input.unset_raw_mode().unwrap();
         os_input.restore_console_mode();
         let mut stdout = os_input.get_stdout_writer();
-        let exit_kitty_keyboard_mode = "\u{1b}[<1u";
         if !explicitly_disable_kitty_keyboard_protocol {
-            let _ = stdout.write(exit_kitty_keyboard_mode.as_bytes()).unwrap();
+            let _ = stdout.write(EXIT_KITTY_KEYBOARD_MODE.as_bytes()).unwrap();
             stdout.flush().unwrap();
         }
         let _ = stdout.write(goodbye_message.as_bytes()).unwrap();
