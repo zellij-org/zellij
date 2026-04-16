@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+* fix: restore kitty keyboard mode on error and handle DECRPM 2026 state 3 (https://github.com/zellij-org/zellij/pull/5058)
 
 ## [0.44.1] - 2026-04-07
 * fix: don't display default ports as offline in `share` plugin (https://github.com/zellij-org/zellij/pull/4908)
