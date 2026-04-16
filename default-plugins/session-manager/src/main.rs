@@ -607,7 +607,7 @@ impl State {
                         self.reset_selected_index();
                     } else if !self.is_welcome_screen {
                         self.reset_selected_index();
-                        hide_self();
+                        close_self();
                     }
                     should_render = true;
                 },
@@ -620,7 +620,7 @@ impl State {
                         self.renaming_session_name = None;
                         should_render = true;
                     } else if !self.is_welcome_screen {
-                        hide_self();
+                        close_self();
                     }
                 },
                 BareKey::Char('a') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
@@ -682,7 +682,7 @@ impl State {
             },
             BareKey::Esc if key.has_no_modifiers() => {
                 if !self.is_welcome_screen {
-                    hide_self();
+                    close_self();
                 }
             },
             _ => {},
@@ -839,7 +839,7 @@ impl State {
                         &self.resurrectable_sessions.all_resurrectable_sessions,
                     );
                 } else if !self.is_welcome_screen {
-                    hide_self();
+                    close_self();
                 }
                 should_render = true;
             },
@@ -848,7 +848,7 @@ impl State {
                     self.single_screen_state.selected_index = None;
                     should_render = true;
                 } else if !self.is_welcome_screen {
-                    hide_self();
+                    close_self();
                 }
             },
             _ => {},
