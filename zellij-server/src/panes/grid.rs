@@ -2781,7 +2781,11 @@ impl Grid {
         }
     }
     fn set_title(&mut self, title: String) {
-        self.title = Some(title);
+        if title.is_empty() {
+            self.title = None;
+        } else {
+            self.title = Some(title);
+        }
     }
     fn push_current_title_to_stack(&mut self) {
         if self.title_stack.len() > MAX_TITLE_STACK_SIZE {
