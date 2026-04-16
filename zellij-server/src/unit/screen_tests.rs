@@ -152,9 +152,9 @@ fn send_cli_action_to_server(
             capabilities,
             client_attributes.clone(),
             default_shell.clone(),
-            default_layout.clone(),
+            &default_layout,
             None,
-            client_keybinds.clone(),
+            &client_keybinds,
             default_mode,
             None,
         )

@@ -991,9 +991,12 @@ impl Pane for TerminalPane {
         self.grid.clear_plugin_highlights(plugin_id);
         self.set_should_render(true);
     }
-    fn set_hover_position(&mut self, position: Option<Position>) {
-        self.grid.set_hover_position(position);
-        self.set_should_render(true);
+    fn set_hover_position(&mut self, position: Option<Position>) -> bool {
+        let changed = self.grid.set_hover_position(position);
+        if changed {
+            self.set_should_render(true);
+        }
+        changed
     }
     fn cached_hover_tooltip(&self) -> Option<String> {
         self.grid.cached_hover_tooltip.clone()

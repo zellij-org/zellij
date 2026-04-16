@@ -637,7 +637,9 @@ pub trait Pane {
     ) {
     }
     fn clear_plugin_highlights(&mut self, _plugin_id: u32) {}
-    fn set_hover_position(&mut self, _position: Option<Position>) {}
+    fn set_hover_position(&mut self, _position: Option<Position>) -> bool {
+        false
+    }
     fn cached_hover_tooltip(&self) -> Option<String> {
         None
     }

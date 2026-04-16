@@ -2353,9 +2353,19 @@ impl Grid {
         best.map(|(_layer, plugin_id, pattern, matched, ctx)| (plugin_id, pattern, matched, ctx))
     }
 
-    pub fn set_hover_position(&mut self, new_pos: Option<Position>) {
+    pub fn set_hover_position(&mut self, new_pos: Option<Position>) -> bool {
         if self.hover_position == new_pos {
-            return;
+            return false;
+        }
+
+        let has_hover_consumer = self
+            .plugin_highlights
+            .values()
+            .any(|highlights| highlights.iter().any(|(_, c)| c.on_hover));
+
+        if !has_hover_consumer {
+            self.hover_position = new_pos;
+            return false;
         }
 
         // Mark the canonical group containing the old hover row dirty.
@@ -2369,6 +2379,7 @@ impl Grid {
 
         self.hover_position = new_pos;
         self.recompute_hover_tooltip();
+        true
     }
 
     /// Mark all physical rows belonging to the logical line group that contains

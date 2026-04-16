@@ -203,9 +203,9 @@ pub(crate) fn route_action(
     capabilities: PluginCapabilities,
     client_attributes: ClientAttributes,
     default_shell: Option<TerminalAction>,
-    default_layout: Box<Layout>,
+    default_layout: &Layout,
     mut seen_cli_pipes: Option<&mut HashSet<String>>,
-    client_keybinds: Keybinds,
+    client_keybinds: &Keybinds,
     default_mode: InputMode,
     os_input: Option<Box<dyn ServerOsApi>>,
 ) -> Result<(bool, Option<ActionCompletionResult>)> {
@@ -1517,7 +1517,7 @@ pub(crate) fn route_action(
         Action::BreakPane => {
             senders
                 .send_to_screen(ScreenInstruction::BreakPane(
-                    default_layout.clone(),
+                    Box::new(default_layout.clone()),
                     default_shell.clone(),
                     client_id,
                     Some(NotificationEnd::new(completion_tx)),
@@ -2230,27 +2230,23 @@ pub(crate) fn route_thread_main(
                                 .unwrap()
                                 .set_last_active_client(client_id);
 
+                            let session_data_guard = session_data.read().unwrap();
                             let session_data_assets =
-                                session_data.read().as_ref().unwrap().as_ref().map(|s| {
+                                session_data_guard.as_ref().map(|s| {
                                     (
                                         s.senders.clone(),
                                         s.capabilities.clone(),
                                         s.client_attributes.clone(),
                                         s.default_shell.clone(),
-                                        s.layout.clone(),
+                                        &*s.layout,
                                         s.session_configuration
-                                            .get_client_configuration(&client_id)
-                                            .options
-                                            .default_mode
-                                            .unwrap_or(InputMode::Normal)
-                                            .clone(),
+                                            .get_client_default_input_mode(&client_id),
                                     )
                                 });
-                            if let Some((keybinds, input_mode, default_input_mode)) = session_data
-                                .read()
-                                .unwrap()
-                                .as_ref()
-                                .and_then(|s| s.get_client_keybinds_and_mode(&client_id))
+                            if let Some((keybinds, input_mode, default_input_mode)) =
+                                session_data_guard
+                                    .as_ref()
+                                    .and_then(|s| s.get_client_keybinds_and_mode(&client_id))
                             {
                                 if let Some((
                                     senders,
@@ -2288,9 +2284,9 @@ pub(crate) fn route_thread_main(
                                             capabilities,
                                             client_attributes.clone(),
                                             default_shell.clone(),
-                                            layout.clone(),
+                                            layout,
                                             Some(&mut seen_cli_pipes),
-                                            keybinds.clone(),
+                                            keybinds,
                                             client_input_mode,
                                             Some(os_input.clone()),
                                         ) {
@@ -2345,23 +2341,19 @@ pub(crate) fn route_thread_main(
                                 });
                             }
 
+                            let session_data_guard = session_data.read().unwrap();
                             let session_data_assets =
-                                session_data.read().unwrap().as_ref().map(|s| {
+                                session_data_guard.as_ref().map(|s| {
                                     (
                                         s.senders.clone(),
                                         s.capabilities.clone(),
                                         s.client_attributes.clone(),
                                         s.default_shell.clone(),
-                                        s.layout.clone(),
+                                        &*s.layout,
                                         s.session_configuration
-                                            .get_client_configuration(&client_id)
-                                            .options
-                                            .default_mode
-                                            .unwrap_or(InputMode::Normal)
-                                            .clone(),
+                                            .get_client_default_input_mode(&client_id),
                                         s.session_configuration
-                                            .get_client_keybinds(&client_id)
-                                            .clone(),
+                                            .get_client_keybinds(&client_id),
                                     )
                                 });
                             if let Some((

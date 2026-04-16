@@ -742,7 +742,6 @@ fn read_other_live_session_states(
                             .ok()
                             .and_then(|f| f.created().ok().or_else(|| f.modified().ok()))
                             .and_then(|d| d.elapsed().ok())
-                            .map(|d| Duration::from_secs(d.as_secs()))
                             .unwrap_or_default();
                         other_session_names.push((file_name, creation_time));
                     }
@@ -802,9 +801,7 @@ fn find_resurrectable_sessions(
                         },
                     };
                     let elapsed_duration = ctime
-                        .map(|ctime| {
-                            Duration::from_secs(ctime.elapsed().ok().unwrap_or_default().as_secs())
-                        })
+                        .and_then(|ctime| ctime.elapsed().ok())
                         .unwrap_or_default();
                     Some((session_name, elapsed_duration))
                 })

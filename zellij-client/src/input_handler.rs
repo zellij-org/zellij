@@ -320,8 +320,6 @@ impl InputHandler {
         }
     }
     fn handle_mouse_event(&mut self, mouse_event: &MouseEvent) {
-        // This dispatch handles all of the output(s) to terminal
-        // pane(s).
         self.dispatch_action(
             Action::MouseEvent {
                 event: *mouse_event,

@@ -50,7 +50,7 @@ use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
 use zellij_utils::input::config::Config;
 use zellij_utils::input::keybinds::Keybinds;
-use zellij_utils::input::mouse::MouseEvent;
+use zellij_utils::input::mouse::{MouseEvent, MouseEventType};
 use zellij_utils::input::options::Clipboard;
 use zellij_utils::ipc::{ExitReason, ServerToClientMsg};
 use zellij_utils::pane_size::{PaneGeom, Size, SizeInPixels};
@@ -2964,7 +2964,6 @@ impl Screen {
             )]))
             .with_context(err_context)?;
 
-        // TODO: consider moving this elsewhere
         self.bus
             .senders
             .send_to_background_jobs(BackgroundJob::QueryZellijWebServerStatus)
@@ -4231,6 +4230,12 @@ impl Screen {
         }
     }
     pub fn handle_mouse_event(&mut self, event: MouseEvent, client_id: ClientId) {
+        let is_bare_motion = event.event_type == MouseEventType::Motion
+            && !event.left
+            && !event.right
+            && !event.middle
+            && !event.wheel_up
+            && !event.wheel_down;
         match self
             .get_active_tab_mut(client_id)
             .and_then(|tab| tab.handle_mouse_event(&event, client_id))
@@ -4256,10 +4261,12 @@ impl Screen {
                     }
                 }
                 if mouse_effect.state_changed {
-                    let _ = self.log_and_report_session_state();
+                    if !is_bare_motion {
+                        let _ = self.log_and_report_session_state();
+                    }
                     should_render = true;
                 }
-                if !mouse_effect.leave_clipboard_message {
+                if !mouse_effect.leave_clipboard_message && !is_bare_motion {
                     let target_plugin_ids =
                         self.targeted_plugin_ids(client_id, EventType::InputReceived);
                     let plugin_updates: Vec<_> = target_plugin_ids
@@ -4272,7 +4279,7 @@ impl Screen {
                             .senders
                             .send_to_plugin(PluginInstruction::Update(plugin_updates));
                     }
-                    should_render = true; // TODO: do we need this?
+                    should_render = true;
                 }
                 if should_render {
                     self.render(None).non_fatal();

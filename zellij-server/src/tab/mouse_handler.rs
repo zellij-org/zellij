@@ -651,7 +651,13 @@ impl MouseHandler {
         let err_context =
             || format!("failed to execute mouse action {action:?} for client {client_id}");
 
-        if !matches!(action, MouseAction::UpdateHover { .. }) {
+        let preserves_help_text = matches!(&action, MouseAction::UpdateHover { .. })
+            || matches!(
+                &action,
+                MouseAction::SendToTerminal { event, .. }
+                    if event.event_type == MouseEventType::Motion
+            );
+        if !preserves_help_text {
             tab.mouse_help_text_visible.remove(&client_id);
         }
 
@@ -1154,8 +1160,9 @@ impl MouseHandler {
                 if let Some(pane) = tab.get_pane_with_id_mut(pane_id) {
                     if !pane.terminal_emulator_wants_mouse() {
                         let relative = pane.relative_position(&event.position);
-                        pane.set_hover_position(Some(relative));
-                        should_render = true;
+                        if pane.set_hover_position(Some(relative)) {
+                            should_render = true;
+                        }
                     }
                 }
             }
