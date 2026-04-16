@@ -350,6 +350,33 @@ fn subtract_isize_from_usize(u: usize, i: isize) -> usize {
     }
 }
 
+pub fn parse_osc7_path(raw: &[u8]) -> Option<std::path::PathBuf> {
+    let s = std::str::from_utf8(raw).ok()?;
+    let rest = s.strip_prefix("file://")?;
+    let slash_idx = rest.find('/')?;
+    let encoded_path = &rest[slash_idx..];
+    let mut out = Vec::with_capacity(encoded_path.len());
+    let bytes = encoded_path.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' {
+            let end = i.checked_add(3)?;
+            if end > bytes.len() {
+                return None;
+            }
+            let hex = std::str::from_utf8(&bytes[i + 1..end]).ok()?;
+            let byte = u8::from_str_radix(hex, 16).ok()?;
+            out.push(byte);
+            i = end;
+        } else {
+            out.push(bytes[i]);
+            i += 1;
+        }
+    }
+    let decoded = String::from_utf8(out).ok()?;
+    Some(std::path::PathBuf::from(decoded))
+}
+
 macro_rules! dump_screen {
     ($lines:expr) => {{
         let mut is_first = true;
@@ -605,6 +632,7 @@ pub struct Grid {
     pub focus_event_tracking: bool,
     pub search_results: SearchResult,
     pub pending_clipboard_update: Option<String>,
+    pub pending_osc7_cwd: Option<std::path::PathBuf>,
     /// Pending desktop notifications: (payload, terminator)
     /// Payload is the semicolon-joined params after "99", terminator is "\x07" or "\x1b\\"
     pub pending_desktop_notifications: Vec<(String, String)>,
@@ -892,6 +920,7 @@ impl Grid {
             search_results: Default::default(),
             sixel_grid,
             pending_clipboard_update: None,
+            pending_osc7_cwd: None,
             pending_desktop_notifications: Vec::new(),
             ui_component_bytes: None,
             style,
@@ -3428,6 +3457,14 @@ impl Perform for Grid {
                 }
             },
 
+            b"7" => {
+                if let Some(raw) = params.get(1) {
+                    if let Some(path) = parse_osc7_path(raw) {
+                        self.pending_osc7_cwd = Some(path);
+                    }
+                }
+            },
+
             // Set color index.
             b"4" => {
                 for chunk in params[1..].chunks(2) {
@@ -4799,3 +4836,45 @@ fn is_selection_boundary_character(character: char) -> bool {
 #[cfg(test)]
 #[path = "./unit/grid_tests.rs"]
 mod grid_tests;
+
+#[cfg(test)]
+mod osc7_parser_tests {
+    use super::parse_osc7_path;
+    use std::path::PathBuf;
+
+    #[test]
+    fn osc7_parser_extracts_path() {
+        let raw = b"file://host/home/user/foo";
+        assert_eq!(parse_osc7_path(raw), Some(PathBuf::from("/home/user/foo")));
+    }
+
+    #[test]
+    fn osc7_parser_decodes_percent_encoded_path() {
+        let raw = b"file://localhost/tmp/with%20space";
+        assert_eq!(
+            parse_osc7_path(raw),
+            Some(PathBuf::from("/tmp/with space"))
+        );
+    }
+
+    #[test]
+    fn osc7_parser_rejects_missing_scheme() {
+        assert_eq!(parse_osc7_path(b"/home/user"), None);
+    }
+
+    #[test]
+    fn osc7_parser_rejects_missing_path() {
+        assert_eq!(parse_osc7_path(b"file://host"), None);
+    }
+
+    #[test]
+    fn osc7_parser_rejects_truncated_percent_escape() {
+        assert_eq!(parse_osc7_path(b"file://host/foo%2"), None);
+    }
+
+    #[test]
+    fn osc7_parser_rejects_non_utf8_input() {
+        let raw = &[0xFFu8, 0xFE, 0xFD];
+        assert_eq!(parse_osc7_path(raw), None);
+    }
+}

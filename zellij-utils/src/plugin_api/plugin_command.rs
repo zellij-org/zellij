@@ -1,6 +1,10 @@
 pub use super::generated_api::api::{
     action::{Action as ProtobufAction, PaneIdAndShouldFloat, SwitchToModePayload},
-    event::{EventNameList as ProtobufEventNameList, Header},
+    event::{
+        EventNameList as ProtobufEventNameList, Header,
+        ResurrectableSession as ProtobufResurrectableSession,
+        SessionManifest as ProtobufSessionManifest,
+    },
     input_mode::InputMode as ProtobufInputMode,
     plugin_command::{
         break_panes_to_new_tab_response, break_panes_to_tab_with_id_response,
@@ -48,6 +52,10 @@ pub use super::generated_api::api::{
         GetPaneScrollbackPayload,
         GetSessionEnvironmentVariablesPayload as ProtobufGetSessionEnvironmentVariablesPayload,
         GetSessionEnvironmentVariablesResponse as ProtobufGetSessionEnvironmentVariablesResponse,
+        GetSessionListPayload as ProtobufGetSessionListPayload,
+        GetSessionListResponse as ProtobufGetSessionListResponse,
+        SessionListSnapshot as ProtobufSessionListSnapshot,
+        get_session_list_response,
         GetTabInfoPayload, GetTabInfoResponse as ProtobufGetTabInfoResponse, GoToTabWithIdPayload,
         GroupAndUngroupPanesPayload, HideFloatingPanesPayload as ProtobufHideFloatingPanesPayload,
         HideFloatingPanesResponse as ProtobufHideFloatingPanesResponse, HidePaneWithIdPayload,
@@ -124,9 +132,10 @@ pub use super::generated_api::api::{
 use crate::data::{
     ConnectToSession, DeleteLayoutResponse, EditLayoutResponse, FloatingPaneCoordinates,
     GetFocusedPaneInfoResponse, GetPaneCwdResponse, GetPanePidResponse,
-    GetPaneRunningCommandResponse, HighlightLayer, HighlightStyle, HttpVerb, InputMode,
-    KeyWithModifier, MessageToPlugin, NewPluginArgs, PaneId, PermissionType, PluginCommand,
-    RegexHighlight, RenameLayoutResponse, SaveLayoutResponse,
+    GetPaneRunningCommandResponse, GetSessionListResponse, HighlightLayer, HighlightStyle, HttpVerb,
+    InputMode, KeyWithModifier, MessageToPlugin, NewPluginArgs, PaneId, PermissionType,
+    PluginCommand, RegexHighlight, RenameLayoutResponse, SaveLayoutResponse, SessionInfo,
+    SessionListSnapshot,
 };
 use crate::input::actions::Action;
 use crate::input::layout::PercentOrFixed;
@@ -325,6 +334,65 @@ impl From<GetPaneRunningCommandResponse> for ProtobufGetPaneRunningCommandRespon
             GetPaneRunningCommandResponse::Err(err) => ProtobufGetPaneRunningCommandResponse {
                 result: Some(get_pane_running_command_response::Result::Error(err)),
             },
+        }
+    }
+}
+
+impl From<GetSessionListResponse> for ProtobufGetSessionListResponse {
+    fn from(response: GetSessionListResponse) -> Self {
+        match response {
+            GetSessionListResponse::Ok(snapshot) => {
+                let live_sessions = snapshot
+                    .live_sessions
+                    .into_iter()
+                    .filter_map(|si| ProtobufSessionManifest::try_from(si).ok())
+                    .collect();
+                let resurrectable_sessions = snapshot
+                    .resurrectable_sessions
+                    .into_iter()
+                    .map(|entry| ProtobufResurrectableSession::from(entry))
+                    .collect();
+                ProtobufGetSessionListResponse {
+                    result: Some(get_session_list_response::Result::Snapshot(
+                        ProtobufSessionListSnapshot {
+                            live_sessions,
+                            resurrectable_sessions,
+                        },
+                    )),
+                }
+            },
+            GetSessionListResponse::Err(err) => ProtobufGetSessionListResponse {
+                result: Some(get_session_list_response::Result::Error(err)),
+            },
+        }
+    }
+}
+
+impl TryFrom<ProtobufGetSessionListResponse> for GetSessionListResponse {
+    type Error = &'static str;
+    fn try_from(
+        protobuf_response: ProtobufGetSessionListResponse,
+    ) -> Result<Self, &'static str> {
+        match protobuf_response.result {
+            Some(get_session_list_response::Result::Snapshot(snapshot)) => {
+                let mut live_sessions: Vec<SessionInfo> = Vec::new();
+                for manifest in snapshot.live_sessions {
+                    live_sessions.push(SessionInfo::try_from(manifest)?);
+                }
+                let resurrectable_sessions = snapshot
+                    .resurrectable_sessions
+                    .into_iter()
+                    .map(<(String, std::time::Duration)>::from)
+                    .collect();
+                Ok(GetSessionListResponse::Ok(SessionListSnapshot {
+                    live_sessions,
+                    resurrectable_sessions,
+                }))
+            },
+            Some(get_session_list_response::Result::Error(err)) => {
+                Ok(GetSessionListResponse::Err(err))
+            },
+            None => Err("Empty GetSessionListResponse"),
         }
     }
 }
@@ -1299,6 +1367,11 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
             Some(CommandName::ListWindowsVolumes) => match protobuf_plugin_command.payload {
                 Some(_) => Err("ListWindowsVolumes should have no payload"),
                 None => Ok(PluginCommand::ListWindowsVolumes),
+            },
+            Some(CommandName::GetSessionList) => match protobuf_plugin_command.payload {
+                Some(Payload::GetSessionListPayload(_)) => Ok(PluginCommand::GetSessionList),
+                None => Ok(PluginCommand::GetSessionList),
+                _ => Err("Mismatched payload for GetSessionList"),
             },
             Some(CommandName::DumpSessionLayout) => match protobuf_plugin_command.payload {
                 Some(Payload::DumpSessionLayoutPayload(payload)) => {
@@ -3144,6 +3217,12 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
             PluginCommand::ListWindowsVolumes => Ok(ProtobufPluginCommand {
                 name: CommandName::ListWindowsVolumes as i32,
                 payload: None,
+            }),
+            PluginCommand::GetSessionList => Ok(ProtobufPluginCommand {
+                name: CommandName::GetSessionList as i32,
+                payload: Some(Payload::GetSessionListPayload(
+                    ProtobufGetSessionListPayload {},
+                )),
             }),
             PluginCommand::DumpSessionLayout { tab_index } => Ok(ProtobufPluginCommand {
                 name: CommandName::DumpSessionLayout as i32,

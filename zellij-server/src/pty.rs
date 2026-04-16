@@ -154,6 +154,7 @@ pub enum PtyInstruction {
         response_channel: crossbeam::channel::Sender<GetPaneCwdResponse>,
     },
     UpdateAndReportCwds,
+    NotifyCwdFromOsc7(u32, PathBuf),
     Exit,
 }
 
@@ -186,6 +187,7 @@ impl From<&PtyInstruction> for PtyContext {
             PtyInstruction::GetPaneRunningCommand { .. } => PtyContext::GetPaneRunningCommand,
             PtyInstruction::GetPaneCwd { .. } => PtyContext::GetPaneCwd,
             PtyInstruction::UpdateAndReportCwds => PtyContext::UpdateAndReportCwds,
+            PtyInstruction::NotifyCwdFromOsc7(..) => PtyContext::NotifyCwdFromOsc7,
             PtyInstruction::Exit => PtyContext::Exit,
         }
     }
@@ -202,6 +204,9 @@ pub(crate) struct Pty {
     post_command_discovery_hook: Option<String>,
     plugin_cwds: HashMap<u32, PathBuf>,   // plugin_id -> cwd
     terminal_cwds: HashMap<u32, PathBuf>, // terminal_id -> cwd
+    pane_activity_flags: HashMap<u32, std::sync::Arc<std::sync::atomic::AtomicBool>>,
+    terminal_cmds: HashMap<u32, Vec<String>>,
+    terminal_foreground_cmds: HashMap<u32, Vec<String>>,
 }
 
 pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
@@ -890,6 +895,9 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
             PtyInstruction::UpdateAndReportCwds => {
                 pty.update_and_report_cwds();
             },
+            PtyInstruction::NotifyCwdFromOsc7(terminal_id, path) => {
+                pty.notify_cwd_from_osc7(terminal_id, path);
+            },
             PtyInstruction::Exit => break,
         }
     }
@@ -914,6 +922,9 @@ impl Pty {
             post_command_discovery_hook,
             plugin_cwds: HashMap::new(),
             terminal_cwds: HashMap::new(),
+            pane_activity_flags: HashMap::new(),
+            terminal_cmds: HashMap::new(),
+            terminal_foreground_cmds: HashMap::new(),
         }
     }
     pub fn get_default_terminal(
@@ -1118,13 +1129,16 @@ impl Pty {
                 os_input.spawn_terminal(terminal_action, quit_cb, self.default_editor.clone())
             })
             .with_context(err_context)?;
+        let activity_flag =
+            std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let terminal_bytes = async_runtime().spawn({
             let err_context =
                 |terminal_id: u32| format!("failed to run async task for terminal {terminal_id}");
             let senders = self.bus.senders.clone();
             let debug_to_file = self.debug_to_file;
+            let activity_flag = activity_flag.clone();
             async move {
-                TerminalBytes::new(terminal_id, reader, senders, debug_to_file)
+                TerminalBytes::new(terminal_id, reader, senders, debug_to_file, activity_flag)
                     .listen()
                     .await
                     .with_context(|| err_context(terminal_id))
@@ -1133,6 +1147,7 @@ impl Pty {
         });
 
         self.task_handles.insert(terminal_id, terminal_bytes);
+        self.pane_activity_flags.insert(terminal_id, activity_flag);
         if let Some(child_pid) = child_pid {
             self.id_to_child_pid.insert(terminal_id, child_pid);
             self.capture_initial_cwd(terminal_id, child_pid);
@@ -1318,18 +1333,28 @@ impl Pty {
             }
             match reader_result {
                 Ok(reader) => {
+                    let activity_flag =
+                        std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
                     let terminal_bytes = async_runtime().spawn({
                         let senders = self.bus.senders.clone();
                         let debug_to_file = self.debug_to_file;
+                        let activity_flag = activity_flag.clone();
                         async move {
-                            TerminalBytes::new(terminal_id, reader, senders, debug_to_file)
-                                .listen()
-                                .await
-                                .context("failed to spawn terminals for layout")
-                                .fatal();
+                            TerminalBytes::new(
+                                terminal_id,
+                                reader,
+                                senders,
+                                debug_to_file,
+                                activity_flag,
+                            )
+                            .listen()
+                            .await
+                            .context("failed to spawn terminals for layout")
+                            .fatal();
                         }
                     });
                     self.task_handles.insert(terminal_id, terminal_bytes);
+                    self.pane_activity_flags.insert(terminal_id, activity_flag);
                 },
                 _ => match run_command {
                     Some(run_command) => {
@@ -1486,18 +1511,28 @@ impl Pty {
             }
             match reader_result {
                 Ok(reader) => {
+                    let activity_flag =
+                        std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
                     let terminal_bytes = async_runtime().spawn({
                         let senders = self.bus.senders.clone();
                         let debug_to_file = self.debug_to_file;
+                        let activity_flag = activity_flag.clone();
                         async move {
-                            TerminalBytes::new(terminal_id, reader, senders, debug_to_file)
-                                .listen()
-                                .await
-                                .context("failed to spawn terminals for layout")
-                                .fatal();
+                            TerminalBytes::new(
+                                terminal_id,
+                                reader,
+                                senders,
+                                debug_to_file,
+                                activity_flag,
+                            )
+                            .listen()
+                            .await
+                            .context("failed to spawn terminals for layout")
+                            .fatal();
                         }
                     });
                     self.task_handles.insert(terminal_id, terminal_bytes);
+                    self.pane_activity_flags.insert(terminal_id, activity_flag);
                 },
                 _ => match run_command {
                     Some(run_command) => {
@@ -1779,6 +1814,10 @@ impl Pty {
                         .with_context(err_context)
                         .non_fatal();
                 }
+                self.pane_activity_flags.remove(&id);
+                self.terminal_cwds.remove(&id);
+                self.terminal_cmds.remove(&id);
+                self.terminal_foreground_cmds.remove(&id);
                 self.bus
                     .os_input
                     .as_ref()
@@ -1865,13 +1904,16 @@ impl Pty {
                         os_input.re_run_command_in_terminal(id, run_command, quit_cb)
                     })
                     .with_context(err_context)?;
+                let activity_flag =
+                    std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
                 let terminal_bytes = async_runtime().spawn({
                     let err_context =
                         |pane_id| format!("failed to run async task for pane {pane_id:?}");
                     let senders = self.bus.senders.clone();
                     let debug_to_file = self.debug_to_file;
+                    let activity_flag = activity_flag.clone();
                     async move {
-                        TerminalBytes::new(id, reader, senders, debug_to_file)
+                        TerminalBytes::new(id, reader, senders, debug_to_file, activity_flag)
                             .listen()
                             .await
                             .with_context(|| err_context(pane_id))
@@ -1880,6 +1922,7 @@ impl Pty {
                 });
 
                 self.task_handles.insert(id, terminal_bytes);
+                self.pane_activity_flags.insert(id, activity_flag);
                 if let Some(child_pid) = child_pid {
                     self.id_to_child_pid.insert(id, child_pid);
                     self.capture_initial_cwd(id, child_pid);
@@ -2023,28 +2066,44 @@ impl Pty {
     }
 
     pub fn update_and_report_cwds(&mut self) {
-        let terminal_ids: Vec<u32> = self.id_to_child_pid.keys().copied().collect();
+        use std::sync::atomic::Ordering;
 
-        let pids: Vec<_> = terminal_ids
+        let active_terminal_ids: Vec<u32> = self
+            .id_to_child_pid
+            .keys()
+            .copied()
+            .filter(|id| {
+                self.pane_activity_flags
+                    .get(id)
+                    .map(|f| f.swap(false, Ordering::Relaxed))
+                    .unwrap_or(false)
+            })
+            .collect();
+
+        if active_terminal_ids.is_empty() {
+            return;
+        }
+
+        let pids: Vec<_> = active_terminal_ids
             .iter()
-            .filter_map(|id| self.id_to_child_pid.get(&id))
+            .filter_map(|id| self.id_to_child_pid.get(id))
             .copied()
             .collect();
 
-        let (pids_to_cwds, _) = self
+        let (pids_to_cwds, pids_to_cmds) = self
             .bus
             .os_input
             .as_ref()
             .map(|os_input| os_input.get_cwds(pids))
             .unwrap_or_default();
 
-        for terminal_id in terminal_ids {
-            let process_id = self.id_to_child_pid.get(&terminal_id);
+        for terminal_id in &active_terminal_ids {
+            let process_id = self.id_to_child_pid.get(terminal_id);
             let cwd = process_id.and_then(|pid| pids_to_cwds.get(pid));
 
             if let Some(cwd) = cwd {
-                if self.terminal_cwds.get(&terminal_id) != Some(cwd) {
-                    let pane_id = PaneId::Terminal(terminal_id);
+                if self.terminal_cwds.get(terminal_id) != Some(cwd) {
+                    let pane_id = PaneId::Terminal(*terminal_id);
                     let focused_client_ids: Vec<ClientId> = self
                         .active_panes
                         .iter()
@@ -2060,7 +2119,72 @@ impl Pty {
                             Event::CwdChanged(pane_id.into(), cwd.clone(), focused_client_ids),
                         )]));
                 }
-                self.terminal_cwds.insert(terminal_id, cwd.clone());
+                self.terminal_cwds.insert(*terminal_id, cwd.clone());
+            }
+
+            let cmd = process_id.and_then(|pid| pids_to_cmds.get(pid));
+            if let Some(cmd) = cmd {
+                if self.terminal_cmds.get(terminal_id) != Some(cmd) {
+                    let pane_id = PaneId::Terminal(*terminal_id);
+                    let focused_client_ids: Vec<ClientId> = self
+                        .active_panes
+                        .iter()
+                        .filter(|(_, active_pane)| *active_pane == &pane_id)
+                        .map(|(client_id, _)| *client_id)
+                        .collect();
+                    let _ = self
+                        .bus
+                        .senders
+                        .send_to_plugin(PluginInstruction::Update(vec![(
+                            None,
+                            None,
+                            Event::CommandChanged(
+                                pane_id.into(),
+                                cmd.clone(),
+                                focused_client_ids,
+                            ),
+                        )]));
+                }
+                self.terminal_cmds.insert(*terminal_id, cmd.clone());
+            }
+        }
+
+        let ppids_to_cmds = self
+            .bus
+            .os_input
+            .as_ref()
+            .map(|os_input| os_input.get_all_cmds_by_ppid(&self.post_command_discovery_hook))
+            .unwrap_or_default();
+
+        for terminal_id in &active_terminal_ids {
+            let process_id = self.id_to_child_pid.get(terminal_id);
+            let foreground_cmd: Vec<String> = process_id
+                .and_then(|pid| ppids_to_cmds.get(&pid.to_string()))
+                .cloned()
+                .unwrap_or_default();
+
+            if self.terminal_foreground_cmds.get(terminal_id) != Some(&foreground_cmd) {
+                let pane_id = PaneId::Terminal(*terminal_id);
+                let focused_client_ids: Vec<ClientId> = self
+                    .active_panes
+                    .iter()
+                    .filter(|(_, active_pane)| *active_pane == &pane_id)
+                    .map(|(client_id, _)| *client_id)
+                    .collect();
+                let _ = self
+                    .bus
+                    .senders
+                    .send_to_plugin(PluginInstruction::Update(vec![(
+                        None,
+                        None,
+                        Event::PaneCommandChanged(
+                            pane_id.into(),
+                            foreground_cmd.clone(),
+                            focused_client_ids,
+                        ),
+                    )]));
+                self.terminal_foreground_cmds
+                    .insert(*terminal_id, foreground_cmd);
             }
         }
     }
@@ -2072,6 +2196,32 @@ impl Pty {
     ) {
         self.default_editor = default_editor;
         self.post_command_discovery_hook = post_command_discovery_hook;
+    }
+
+    pub fn notify_cwd_from_osc7(&mut self, terminal_id: u32, path: PathBuf) {
+        use std::sync::atomic::Ordering;
+
+        if self.terminal_cwds.get(&terminal_id) != Some(&path) {
+            let pane_id = PaneId::Terminal(terminal_id);
+            let focused_client_ids: Vec<ClientId> = self
+                .active_panes
+                .iter()
+                .filter(|(_, active_pane)| *active_pane == &pane_id)
+                .map(|(client_id, _)| *client_id)
+                .collect();
+            let _ = self
+                .bus
+                .senders
+                .send_to_plugin(PluginInstruction::Update(vec![(
+                    None,
+                    None,
+                    Event::CwdChanged(pane_id.into(), path.clone(), focused_client_ids),
+                )]));
+            self.terminal_cwds.insert(terminal_id, path);
+        }
+        if let Some(flag) = self.pane_activity_flags.get(&terminal_id) {
+            flag.store(false, Ordering::Relaxed);
+        }
     }
 
     pub fn send_sigint_to_pane(&self, pane_id: PaneId) {

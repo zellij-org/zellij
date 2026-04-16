@@ -594,6 +594,10 @@ impl Pane for TerminalPane {
         self.grid.pending_desktop_notifications.drain(..).collect()
     }
 
+    fn drain_osc7_cwd(&mut self) -> Option<std::path::PathBuf> {
+        self.grid.pending_osc7_cwd.take()
+    }
+
     fn start_selection(&mut self, start: &Position, _client_id: ClientId) {
         self.grid.start_selection(start);
         self.set_should_render(true);

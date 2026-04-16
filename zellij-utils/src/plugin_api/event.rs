@@ -7,6 +7,7 @@ pub use super::generated_api::api::{
         AvailableLayoutInfoPayload as ProtobufAvailableLayoutInfoPayload,
         ClientInfo as ProtobufClientInfo, ClientPaneHistory as ProtobufClientPaneHistory,
         ClientTabHistory as ProtobufClientTabHistory, ContextItem as ProtobufContextItem,
+        CommandChangedPayload as ProtobufCommandChangedPayload,
         CopyDestination as ProtobufCopyDestination, CwdChangedPayload as ProtobufCwdChangedPayload,
         Event as ProtobufEvent, EventNameList as ProtobufEventNameList,
         EventType as ProtobufEventType, FileMetadata as ProtobufFileMetadata,
@@ -473,6 +474,32 @@ impl TryFrom<ProtobufEvent> for Event {
                     Ok(Event::CwdChanged(pane_id, new_cwd, focused_client_ids))
                 },
                 _ => Err("Malformed payload for the CwdChanged Event"),
+            },
+            Some(ProtobufEventType::CommandChanged) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::CommandChangedPayload(p)) => {
+                    let pane_id: PaneId = p
+                        .pane_id
+                        .ok_or("Missing pane_id in CommandChanged payload")?
+                        .try_into()
+                        .map_err(|_| "Failed to convert PaneId in CommandChanged payload")?;
+                    let focused_client_ids: Vec<ClientId> =
+                        p.focused_client_ids.into_iter().map(|id| id as u16).collect();
+                    Ok(Event::CommandChanged(pane_id, p.command, focused_client_ids))
+                },
+                _ => Err("Malformed payload for the CommandChanged Event"),
+            },
+            Some(ProtobufEventType::PaneCommandChanged) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::PaneCommandChangedPayload(p)) => {
+                    let pane_id: PaneId = p
+                        .pane_id
+                        .ok_or("Missing pane_id in PaneCommandChanged payload")?
+                        .try_into()
+                        .map_err(|_| "Failed to convert PaneId in PaneCommandChanged payload")?;
+                    let focused_client_ids: Vec<ClientId> =
+                        p.focused_client_ids.into_iter().map(|id| id as u16).collect();
+                    Ok(Event::PaneCommandChanged(pane_id, p.command, focused_client_ids))
+                },
+                _ => Err("Malformed payload for the PaneCommandChanged Event"),
             },
             Some(ProtobufEventType::AvailableLayoutInfo) => match protobuf_event.payload {
                 Some(ProtobufEventPayload::AvailableLayoutInfoPayload(
@@ -1012,6 +1039,34 @@ impl TryFrom<Event> for ProtobufEvent {
                 Ok(ProtobufEvent {
                     name: ProtobufEventType::CwdChanged as i32,
                     payload: Some(event::Payload::CwdChangedPayload(cwd_changed_payload)),
+                })
+            },
+            Event::CommandChanged(pane_id, command, focused_client_ids) => {
+                let protobuf_pane_id: ProtobufPaneId = pane_id.try_into()?;
+                let focused_client_ids_u32: Vec<u32> =
+                    focused_client_ids.into_iter().map(|id| id as u32).collect();
+                let payload = ProtobufCommandChangedPayload {
+                    pane_id: Some(protobuf_pane_id),
+                    command,
+                    focused_client_ids: focused_client_ids_u32,
+                };
+                Ok(ProtobufEvent {
+                    name: ProtobufEventType::CommandChanged as i32,
+                    payload: Some(event::Payload::CommandChangedPayload(payload)),
+                })
+            },
+            Event::PaneCommandChanged(pane_id, command, focused_client_ids) => {
+                let protobuf_pane_id: ProtobufPaneId = pane_id.try_into()?;
+                let focused_client_ids_u32: Vec<u32> =
+                    focused_client_ids.into_iter().map(|id| id as u32).collect();
+                let payload = ProtobufCommandChangedPayload {
+                    pane_id: Some(protobuf_pane_id),
+                    command,
+                    focused_client_ids: focused_client_ids_u32,
+                };
+                Ok(ProtobufEvent {
+                    name: ProtobufEventType::PaneCommandChanged as i32,
+                    payload: Some(event::Payload::PaneCommandChangedPayload(payload)),
                 })
             },
             Event::AvailableLayoutInfo(available_layouts, layouts_with_errors) => {
@@ -2015,6 +2070,8 @@ impl TryFrom<ProtobufEventType> for EventType {
             ProtobufEventType::UserAction => EventType::UserAction,
             ProtobufEventType::ActionComplete => EventType::ActionComplete,
             ProtobufEventType::CwdChanged => EventType::CwdChanged,
+            ProtobufEventType::CommandChanged => EventType::CommandChanged,
+            ProtobufEventType::PaneCommandChanged => EventType::PaneCommandChanged,
             ProtobufEventType::AvailableLayoutInfo => EventType::AvailableLayoutInfo,
             ProtobufEventType::PluginConfigurationChanged => EventType::PluginConfigurationChanged,
             ProtobufEventType::HighlightClicked => EventType::HighlightClicked,
@@ -2067,6 +2124,8 @@ impl TryFrom<EventType> for ProtobufEventType {
             EventType::UserAction => ProtobufEventType::UserAction,
             EventType::ActionComplete => ProtobufEventType::ActionComplete,
             EventType::CwdChanged => ProtobufEventType::CwdChanged,
+            EventType::CommandChanged => ProtobufEventType::CommandChanged,
+            EventType::PaneCommandChanged => ProtobufEventType::PaneCommandChanged,
             EventType::AvailableLayoutInfo => ProtobufEventType::AvailableLayoutInfo,
             EventType::PluginConfigurationChanged => ProtobufEventType::PluginConfigurationChanged,
             EventType::HighlightClicked => ProtobufEventType::HighlightClicked,

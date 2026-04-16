@@ -1012,6 +1012,8 @@ pub enum Event {
     PaneRenderReportWithAnsi(HashMap<PaneId, PaneContents>),
     ActionComplete(Action, Option<PaneId>, BTreeMap<String, String>), // Action, pane_id, context
     CwdChanged(PaneId, PathBuf, Vec<ClientId>), // pane_id, cwd, focused_client_ids
+    CommandChanged(PaneId, Vec<String>, Vec<ClientId>), // pane_id, shell cmdline, focused_client_ids
+    PaneCommandChanged(PaneId, Vec<String>, Vec<ClientId>), // pane_id, foreground cmd, focused_client_ids
     AvailableLayoutInfo(Vec<LayoutInfo>, Vec<LayoutWithError>),
     PluginConfigurationChanged(BTreeMap<String, String>),
     HighlightClicked {
@@ -2580,6 +2582,18 @@ pub enum GetPaneRunningCommandResponse {
     Err(String),
 }
 
+#[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SessionListSnapshot {
+    pub live_sessions: Vec<SessionInfo>,
+    pub resurrectable_sessions: Vec<(String, Duration)>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum GetSessionListResponse {
+    Ok(SessionListSnapshot),
+    Err(String),
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum GetPaneCwdResponse {
     Ok(PathBuf),
@@ -3566,6 +3580,7 @@ pub enum PluginCommand {
         context: BTreeMap<String, String>,
     },
     ListWindowsVolumes,
+    GetSessionList,
 }
 
 // Response type for plugin API methods that open a pane in a new tab
