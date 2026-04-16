@@ -25,6 +25,60 @@ use zellij_utils::{
 };
 
 const TABSTOP_WIDTH: usize = 8; // TODO: is this always right?
+
+/// Returns true if the character is a Unicode combining mark (General Category M).
+/// Covers Thai, Latin diacritics, Arabic, Hebrew, Devanagari, and other common ranges.
+fn is_combining_character(c: char) -> bool {
+    let cp = c as u32;
+    // Combining Diacritical Marks
+    (0x0300..=0x036F).contains(&cp) ||
+    // Cyrillic combining marks
+    (0x0483..=0x0489).contains(&cp) ||
+    // Hebrew
+    (0x0591..=0x05BD).contains(&cp) ||
+    cp == 0x05BF ||
+    (0x05C1..=0x05C2).contains(&cp) ||
+    (0x05C4..=0x05C5).contains(&cp) ||
+    cp == 0x05C7 ||
+    // Arabic
+    (0x0610..=0x061A).contains(&cp) ||
+    (0x064B..=0x065F).contains(&cp) ||
+    cp == 0x0670 ||
+    (0x06D6..=0x06DC).contains(&cp) ||
+    (0x06DF..=0x06E4).contains(&cp) ||
+    (0x06E7..=0x06E8).contains(&cp) ||
+    (0x06EA..=0x06ED).contains(&cp) ||
+    // Syriac
+    cp == 0x0711 ||
+    (0x0730..=0x074A).contains(&cp) ||
+    // Thai
+    cp == 0x0E31 ||
+    (0x0E34..=0x0E3A).contains(&cp) ||
+    (0x0E47..=0x0E4E).contains(&cp) ||
+    // Lao
+    cp == 0x0EB1 ||
+    (0x0EB4..=0x0EBC).contains(&cp) ||
+    (0x0EC8..=0x0ECE).contains(&cp) ||
+    // Devanagari
+    (0x0901..=0x0903).contains(&cp) ||
+    (0x093A..=0x094F).contains(&cp) ||
+    (0x0951..=0x0957).contains(&cp) ||
+    (0x0962..=0x0963).contains(&cp) ||
+    // Bengali
+    (0x0981..=0x0983).contains(&cp) ||
+    cp == 0x09BC ||
+    (0x09BE..=0x09CD).contains(&cp) ||
+    // Combining Diacritical Marks Extended
+    (0x1AB0..=0x1AFF).contains(&cp) ||
+    // Combining Diacritical Marks Supplement
+    (0x1DC0..=0x1DFF).contains(&cp) ||
+    // Combining Diacritical Marks for Symbols
+    (0x20D0..=0x20FF).contains(&cp) ||
+    // Combining Half Marks
+    (0xFE20..=0xFE2F).contains(&cp) ||
+    // Variation Selectors Supplement
+    (0xE0100..=0xE01EF).contains(&cp)
+}
 pub const MAX_TITLE_STACK_SIZE: usize = 1000;
 
 /// Rewrites OSC 99 metadata for multiplexer forwarding:
@@ -1829,11 +1883,30 @@ impl Grid {
     }
     pub fn add_character(&mut self, terminal_character: TerminalCharacter) {
         let character_width = terminal_character.width();
-        // Drop zero-width Unicode/UTF-8 codepoints, like for example Variation Selectors.
-        // This breaks unicode grapheme segmentation, and is the reason why some characters
-        // aren't displayed correctly. Refer to this issue for more information:
-        //     https://github.com/zellij-org/zellij/issues/1538
+        // Zero-width characters: attach combining marks to the preceding cell,
+        // drop other zero-width chars (e.g. variation selectors).
+        // See: https://github.com/zellij-org/zellij/issues/1538
         if character_width == 0 {
+            if is_combining_character(terminal_character.character) {
+                // Attach to the preceding character in the viewport
+                if self.cursor.x > 0 {
+                    if let Some(prev_abs) = self.get_absolute_character_index(
+                        self.cursor.x.saturating_sub(1),
+                        self.cursor.y,
+                    ) {
+                        if let Some(row) = self.viewport.get_mut(self.cursor.y) {
+                            if let Some(prev_cell) = row.columns.get_mut(prev_abs) {
+                                prev_cell.append_combining(terminal_character.character);
+                                self.output_buffer.update_line(self.cursor.y);
+                            }
+                        }
+                    }
+                }
+                // Also update preceding_char so that 'b' (repeat) works correctly
+                if let Some(ref mut prev) = self.preceding_char {
+                    prev.append_combining(terminal_character.character);
+                }
+            }
             return;
         }
         if self.cursor.x + character_width > self.width {
@@ -3317,7 +3390,11 @@ impl Perform for Grid {
 
         let terminal_character =
             TerminalCharacter::new_styled(c, self.cursor.pending_styles.clone());
-        self.set_preceding_character(terminal_character.clone());
+        // Only update preceding_char for non-combining characters, so that
+        // combining marks can find the correct base character to attach to.
+        if terminal_character.width() > 0 {
+            self.set_preceding_character(terminal_character.clone());
+        }
         self.add_character(terminal_character);
     }
 
