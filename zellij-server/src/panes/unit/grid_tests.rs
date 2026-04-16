@@ -7608,3 +7608,45 @@ fn search_selection_uses_display_columns_after_wide_graphemes() {
         "selection should end at display col 15"
     );
 }
+
+#[test]
+fn mid_grapheme_regex_match_snaps_to_cell_boundaries() {
+    // Regression: byte_offset_to_display_col used `bytes_seen >= intra_byte_offset` which
+    // advanced past the containing cell for mid-grapheme offsets, producing a start column
+    // one past the actual cell.  When start and end both mapped to the same wrong column the
+    // selection was zero-width and plugin_highlight_at / hover matching missed entirely.
+    //
+    // "cafe\u{0301}" has cells: c(0) a(1) f(2) e+combining-acute(3).
+    // The grapheme "e\u{0301}" occupies bytes 3-5 in logical_text.
+    // A pattern matching only the combining acute (\u{0301}, bytes 4-5) is mid-grapheme:
+    //   mat.start()=4 (mid-cell 3)  → should snap DOWN  to col 3
+    //   mat.end()  =6 (past cell 3) → falls at exact grapheme boundary → col 4
+    // Before the fix both mapped to col 4 → zero-width → highlight missed.
+    let content = "cafe\u{0301}";
+    let mut grid = create_grid_with_content(content);
+    let highlights = vec![create_highlight(
+        "\u{0301}", // combining acute only — deliberately mid-grapheme
+        false,
+        false,
+        false,
+        true,
+        HighlightLayer::Hint,
+    )];
+    grid.set_plugin_regex_highlights(1, highlights, &Style::default());
+
+    // Column 3 is the "é" cell; the highlight should cover it.
+    let result = grid.plugin_highlight_at(&Position::new(0, 3));
+    assert!(
+        result.is_some(),
+        "plugin_highlight_at should find the highlight at col 3 (the é cell) \
+         even though the regex matched only the combining mark (mid-grapheme)"
+    );
+
+    // Sanity-check the search path: searching for the whole grapheme should also find col 3-4.
+    let mut grid2 = create_grid_with_content(content);
+    grid2.set_search_string("e\u{0301}");
+    assert_eq!(grid2.search_results.selections.len(), 1);
+    let sel = &grid2.search_results.selections[0];
+    assert_eq!(sel.start.column(), 3, "search selection should start at col 3");
+    assert_eq!(sel.end.column(), 4, "search selection should end at col 4");
+}
