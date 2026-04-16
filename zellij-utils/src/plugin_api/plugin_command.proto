@@ -203,6 +203,7 @@ enum CommandName {
   ClearPaneHighlights = 208;
   OpenPluginPaneFloating = 209;
   ListWindowsVolumes = 210;
+  FocusLastPane = 211;
 }
 
 message PluginCommand {

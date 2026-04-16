@@ -392,6 +392,14 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
         },
+        Action::FocusLastPane => {
+            senders
+                .send_to_screen(ScreenInstruction::FocusLastPane(
+                    client_id,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
         Action::MoveFocus { direction } => {
             let notification_end = Some(NotificationEnd::new(completion_tx));
 

@@ -765,6 +765,8 @@ pub enum CliAction {
         /// The pane_id of the pane, eg. terminal_1, plugin_2 or 3
         pane_id: String,
     },
+    /// Change focus to the last focused frame
+    FocusLastPane,
     /// Move the focused pane in the specified direction. [right|left|up|down]
     MoveFocus {
         direction: Direction,

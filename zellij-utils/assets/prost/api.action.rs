@@ -1117,6 +1117,7 @@ pub enum ActionName {
     ShowFloatingPanes = 98,
     HideFloatingPanes = 99,
     AreFloatingPanesVisible = 100,
+    FocusLastPane = 101,
 }
 impl ActionName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -1223,6 +1224,7 @@ impl ActionName {
             ActionName::ShowFloatingPanes => "ShowFloatingPanes",
             ActionName::HideFloatingPanes => "HideFloatingPanes",
             ActionName::AreFloatingPanesVisible => "AreFloatingPanesVisible",
+            ActionName::FocusLastPane => "FocusLastPane",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -1326,6 +1328,7 @@ impl ActionName {
             "ShowFloatingPanes" => Some(Self::ShowFloatingPanes),
             "HideFloatingPanes" => Some(Self::HideFloatingPanes),
             "AreFloatingPanesVisible" => Some(Self::AreFloatingPanesVisible),
+            "FocusLastPane" => Some(Self::FocusLastPane),
             _ => None,
         }
     }
