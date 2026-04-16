@@ -524,6 +524,7 @@ fn byte_offset_to_display_col(
     byte_offset: usize,
     boundaries: &[(usize, usize)],
     viewport: &VecDeque<Row>,
+    snap_to_cell_end: bool,
 ) -> Option<(usize, usize)> {
     if boundaries.is_empty() {
         return None;
@@ -535,15 +536,33 @@ fn byte_offset_to_display_col(
     let &(row_idx, row_byte_start) = boundaries.get(boundary_idx)?;
     let intra_byte_offset = byte_offset - row_byte_start;
 
-    // Count display columns up to (but not including) the character at intra_byte_offset.
+    // Walk cells, accumulating display columns.
+    // A regex match can start or end mid-grapheme (e.g. matching only the combining
+    // acute in "e\u{0301}").  We must snap such offsets to a cell boundary:
+    //
+    //   snap_to_cell_end = false (match start):  snap DOWN to the start of the
+    //     cell that contains the byte offset — never miss the opening cell.
+    //
+    //   snap_to_cell_end = true (match end):  snap UP to the end of the cell that
+    //     contains the byte offset — always include the closing cell in the
+    //     selection so it is never zero-width.
     let row = viewport.get(row_idx)?;
     let mut display_col = 0usize;
     let mut bytes_seen = 0usize;
     for ch in &row.columns {
-        if bytes_seen >= intra_byte_offset {
+        let cell_end = bytes_seen + ch.grapheme().len();
+        if bytes_seen == intra_byte_offset {
+            // Exact grapheme boundary: this cell starts at the target byte.
             break;
         }
-        bytes_seen += ch.grapheme().len();
+        if cell_end > intra_byte_offset {
+            // Mid-grapheme: the byte offset falls inside this cell.
+            if snap_to_cell_end {
+                display_col += ch.width(); // include the whole cell in the span end
+            }
+            break;
+        }
+        bytes_seen = cell_end;
         display_col += ch.width();
     }
     Some((row_idx, display_col))
@@ -556,8 +575,10 @@ fn match_to_selection(
     boundaries: &[(usize, usize)],
     viewport: &VecDeque<Row>,
 ) -> Option<(Selection, usize, usize, usize, usize)> {
-    let (start_row, start_col) = byte_offset_to_display_col(mat.start(), boundaries, viewport)?;
-    let (end_row, end_col) = byte_offset_to_display_col(mat.end(), boundaries, viewport)?;
+    let (start_row, start_col) =
+        byte_offset_to_display_col(mat.start(), boundaries, viewport, false)?;
+    let (end_row, end_col) =
+        byte_offset_to_display_col(mat.end(), boundaries, viewport, true)?;
     let mut sel = Selection::default();
     sel.set_start_and_end_positions(
         Position::new(start_row as i32, start_col as u16),
