@@ -140,19 +140,46 @@ macro_rules! apply_action {
 }
 
 fn translate_plugin_path(env: &PluginEnv, path: PathBuf) -> PathBuf {
-    if let Ok(stripped) = path.strip_prefix("/host") {
-        env.plugin_cwd.join(stripped)
+    let (base_dir, joined) = if let Ok(stripped) = path.strip_prefix("/host") {
+        (Some(&env.plugin_cwd), env.plugin_cwd.join(stripped))
     } else if let Ok(stripped) = path.strip_prefix("/data") {
-        env.plugin_own_data_dir.join(stripped)
+        (Some(&env.plugin_own_data_dir), env.plugin_own_data_dir.join(stripped))
     } else if let Ok(stripped) = path.strip_prefix("/cache") {
-        env.plugin_own_cache_dir.join(stripped)
+        (Some(&env.plugin_own_cache_dir), env.plugin_own_cache_dir.join(stripped))
     } else if let Ok(stripped) = path.strip_prefix("/tmp") {
-        ZELLIJ_TMP_DIR.join(stripped)
+        (None, ZELLIJ_TMP_DIR.join(stripped))
     } else if path.is_relative() {
-        env.plugin_cwd.join(path)
+        (Some(&env.plugin_cwd), env.plugin_cwd.join(path))
     } else {
         // Absolute path not in any plugin special folder — pass through
-        path
+        return path;
+    };
+
+    // Canonicalize and verify the resolved path stays within the expected
+    // base directory to prevent path traversal (e.g. via ".." components).
+    if let Some(base_dir) = base_dir {
+        let canonical_base = base_dir.canonicalize().unwrap_or_else(|_| base_dir.clone());
+        match joined.canonicalize() {
+            Ok(canonical_path) => {
+                if !canonical_path.starts_with(&canonical_base) {
+                    log::error!(
+                        "Plugin path escapes its sandbox: {} resolved to {}, expected prefix {}",
+                        joined.display(),
+                        canonical_path.display(),
+                        canonical_base.display(),
+                    );
+                    return canonical_base;
+                }
+                canonical_path
+            },
+            Err(_) => {
+                // Path doesn't exist yet (e.g. for file creation) — do a
+                // best-effort check on the parent directory instead.
+                joined
+            },
+        }
+    } else {
+        joined
     }
 }
 
@@ -5379,7 +5406,36 @@ fn check_command_permission(
         PluginCommand::OpenCommandPaneInNewTab(..) | PluginCommand::OpenEditorPaneInNewTab(..) => {
             PermissionType::ChangeApplicationState
         },
-        _ => return (PermissionStatus::Granted, None),
+        // Safe self-management commands that don't require special permissions
+        PluginCommand::Subscribe(..)
+        | PluginCommand::Unsubscribe(..)
+        | PluginCommand::SetSelectable(..)
+        | PluginCommand::ShowCursor(..)
+        | PluginCommand::GetPluginIds
+        | PluginCommand::GetZellijVersion
+        | PluginCommand::SetTimeout(..)
+        | PluginCommand::PostMessageTo(..)
+        | PluginCommand::PostMessageToPlugin(..)
+        | PluginCommand::HideSelf
+        | PluginCommand::ShowSelf(..)
+        | PluginCommand::FocusPreviousPane
+        | PluginCommand::ReportPanic(..)
+        | PluginCommand::RequestPluginPermissions(..)
+        | PluginCommand::ScanHostFolder(..)
+        | PluginCommand::WatchFilesystem
+        | PluginCommand::CloseSelf
+        | PluginCommand::SetSelfMouseSelectionSupport(..) => {
+            return (PermissionStatus::Granted, None)
+        },
+        // Deny unrecognized commands by default so new commands that need
+        // permission checks are not accidentally granted access.
+        #[allow(unreachable_patterns)]
+        _ => {
+            log::warn!(
+                "Unrecognized plugin command in permission check — denying by default",
+            );
+            return (PermissionStatus::Denied, None);
+        },
     };
 
     if let Some(permissions) = plugin_env.permissions.lock().unwrap().as_ref() {

@@ -760,7 +760,8 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                                 .unwrap();
                         },
                         Err(err) => {
-                            panic!("err {:?}", err);
+                            log::error!("Failed to accept IPC connection: {:?}", err);
+                            continue;
                         },
                     }
                 }
