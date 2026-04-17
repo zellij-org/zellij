@@ -3347,6 +3347,7 @@ impl From<crate::data::NewPanePlacement>
             },
             crate::data::NewPanePlacement::Tiled {
                 direction,
+                split_size: _,
                 borderless: Some(b),
             } => PlacementType::TiledWithOptions(TiledPlacement {
                 direction: direction.map(direction_to_proto_i32),
@@ -3354,6 +3355,7 @@ impl From<crate::data::NewPanePlacement>
             }),
             crate::data::NewPanePlacement::Tiled {
                 direction,
+                split_size: _,
                 borderless: None,
             } => PlacementType::Tiled(direction.map(direction_to_proto_i32).unwrap_or(0)),
             crate::data::NewPanePlacement::Floating(coords) => {
@@ -3415,6 +3417,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::NewPanePlace
                 let direction = opts.direction.map(proto_i32_to_direction).transpose()?;
                 Ok(crate::data::NewPanePlacement::Tiled {
                     direction,
+                    split_size: None, // TODO: add to protobuf when available
                     borderless: opts.borderless,
                 })
             },
@@ -3440,6 +3443,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::NewPanePlace
                 };
                 Ok(crate::data::NewPanePlacement::Tiled {
                     direction,
+                    split_size: None, // TODO: add to protobuf when available
                     borderless: None,
                 })
             },
