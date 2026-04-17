@@ -41,21 +41,25 @@ impl MockOsApi {
             .insert(ppid.to_string(), cmd);
     }
     fn clear_foreground_cmd(&self, ppid: u32) {
-        self.cmds_by_ppid
-            .lock()
-            .unwrap()
-            .remove(&ppid.to_string());
+        self.cmds_by_ppid.lock().unwrap().remove(&ppid.to_string());
     }
 }
 
 impl ServerOsApi for MockOsApi {
     fn set_terminal_size_using_terminal_id(
-        &self, _: u32, _: u16, _: u16, _: Option<u16>, _: Option<u16>,
+        &self,
+        _: u32,
+        _: u16,
+        _: u16,
+        _: Option<u16>,
+        _: Option<u16>,
     ) -> anyhow::Result<()> {
         Ok(())
     }
     fn spawn_terminal(
-        &self, _: TerminalAction, _: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
+        &self,
+        _: TerminalAction,
+        _: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
         _: Option<PathBuf>,
     ) -> anyhow::Result<(u32, Box<dyn AsyncReader>, Option<u32>)> {
         unimplemented!()
@@ -82,12 +86,16 @@ impl ServerOsApi for MockOsApi {
         Ok(())
     }
     fn new_client(
-        &mut self, _: ClientId, _: LocalSocketStream,
+        &mut self,
+        _: ClientId,
+        _: LocalSocketStream,
     ) -> anyhow::Result<IpcReceiverWithContext<ClientToServerMsg>> {
         unimplemented!()
     }
     fn new_client_with_reply(
-        &mut self, _: ClientId, _: LocalSocketStream,
+        &mut self,
+        _: ClientId,
+        _: LocalSocketStream,
         _: LocalSocketStream,
     ) -> anyhow::Result<IpcReceiverWithContext<ClientToServerMsg>> {
         unimplemented!()
@@ -121,7 +129,9 @@ impl ServerOsApi for MockOsApi {
         Ok(())
     }
     fn re_run_command_in_terminal(
-        &self, _: u32, _: RunCommand,
+        &self,
+        _: u32,
+        _: RunCommand,
         _: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
     ) -> anyhow::Result<(Box<dyn AsyncReader>, Option<u32>)> {
         unimplemented!()
@@ -263,7 +273,10 @@ fn no_event_when_foreground_unchanged() {
         .store(true, Ordering::Relaxed);
     pty.update_and_report_cwds();
     let events = collect_command_changed_events(&rx);
-    assert!(events.is_empty(), "no event expected when command unchanged");
+    assert!(
+        events.is_empty(),
+        "no event expected when command unchanged"
+    );
 }
 
 #[test]
@@ -320,12 +333,19 @@ fn activity_flag_reset_after_poll() {
     let child_pid = 100;
     let (mut pty, _rx) = make_pty_with_plugin_receiver(mock);
     set_active_terminal(&mut pty, 1, child_pid);
-    assert!(pty.pane_activity_flags.get(&1).unwrap().load(Ordering::Relaxed));
+    assert!(pty
+        .pane_activity_flags
+        .get(&1)
+        .unwrap()
+        .load(Ordering::Relaxed));
 
     pty.update_and_report_cwds();
 
     assert!(
-        !pty.pane_activity_flags.get(&1).unwrap().load(Ordering::Relaxed),
+        !pty.pane_activity_flags
+            .get(&1)
+            .unwrap()
+            .load(Ordering::Relaxed),
         "activity flag should be reset to false after poll"
     );
 }

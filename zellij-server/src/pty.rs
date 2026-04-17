@@ -1129,8 +1129,7 @@ impl Pty {
                 os_input.spawn_terminal(terminal_action, quit_cb, self.default_editor.clone())
             })
             .with_context(err_context)?;
-        let activity_flag =
-            std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let activity_flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let terminal_bytes = async_runtime().spawn({
             let err_context =
                 |terminal_id: u32| format!("failed to run async task for terminal {terminal_id}");
@@ -1904,8 +1903,7 @@ impl Pty {
                         os_input.re_run_command_in_terminal(id, run_command, quit_cb)
                     })
                     .with_context(err_context)?;
-                let activity_flag =
-                    std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+                let activity_flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
                 let terminal_bytes = async_runtime().spawn({
                     let err_context =
                         |pane_id| format!("failed to run async task for pane {pane_id:?}");

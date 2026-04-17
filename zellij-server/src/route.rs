@@ -2231,18 +2231,17 @@ pub(crate) fn route_thread_main(
                                 .set_last_active_client(client_id);
 
                             let session_data_guard = session_data.read().unwrap();
-                            let session_data_assets =
-                                session_data_guard.as_ref().map(|s| {
-                                    (
-                                        s.senders.clone(),
-                                        s.capabilities.clone(),
-                                        s.client_attributes.clone(),
-                                        s.default_shell.clone(),
-                                        &*s.layout,
-                                        s.session_configuration
-                                            .get_client_default_input_mode(&client_id),
-                                    )
-                                });
+                            let session_data_assets = session_data_guard.as_ref().map(|s| {
+                                (
+                                    s.senders.clone(),
+                                    s.capabilities.clone(),
+                                    s.client_attributes.clone(),
+                                    s.default_shell.clone(),
+                                    &*s.layout,
+                                    s.session_configuration
+                                        .get_client_default_input_mode(&client_id),
+                                )
+                            });
                             if let Some((keybinds, input_mode, default_input_mode)) =
                                 session_data_guard
                                     .as_ref()
@@ -2342,20 +2341,18 @@ pub(crate) fn route_thread_main(
                             }
 
                             let session_data_guard = session_data.read().unwrap();
-                            let session_data_assets =
-                                session_data_guard.as_ref().map(|s| {
-                                    (
-                                        s.senders.clone(),
-                                        s.capabilities.clone(),
-                                        s.client_attributes.clone(),
-                                        s.default_shell.clone(),
-                                        &*s.layout,
-                                        s.session_configuration
-                                            .get_client_default_input_mode(&client_id),
-                                        s.session_configuration
-                                            .get_client_keybinds(&client_id),
-                                    )
-                                });
+                            let session_data_assets = session_data_guard.as_ref().map(|s| {
+                                (
+                                    s.senders.clone(),
+                                    s.capabilities.clone(),
+                                    s.client_attributes.clone(),
+                                    s.default_shell.clone(),
+                                    &*s.layout,
+                                    s.session_configuration
+                                        .get_client_default_input_mode(&client_id),
+                                    s.session_configuration.get_client_keybinds(&client_id),
+                                )
+                            });
                             if let Some((
                                 senders,
                                 capabilities,

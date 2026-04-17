@@ -6,8 +6,8 @@ pub use super::generated_api::api::{
         pane_scrollback_response, ActionCompletePayload as ProtobufActionCompletePayload,
         AvailableLayoutInfoPayload as ProtobufAvailableLayoutInfoPayload,
         ClientInfo as ProtobufClientInfo, ClientPaneHistory as ProtobufClientPaneHistory,
-        ClientTabHistory as ProtobufClientTabHistory, ContextItem as ProtobufContextItem,
-        CommandChangedPayload as ProtobufCommandChangedPayload,
+        ClientTabHistory as ProtobufClientTabHistory,
+        CommandChangedPayload as ProtobufCommandChangedPayload, ContextItem as ProtobufContextItem,
         CopyDestination as ProtobufCopyDestination, CwdChangedPayload as ProtobufCwdChangedPayload,
         Event as ProtobufEvent, EventNameList as ProtobufEventNameList,
         EventType as ProtobufEventType, FileMetadata as ProtobufFileMetadata,
@@ -482,9 +482,17 @@ impl TryFrom<ProtobufEvent> for Event {
                         .ok_or("Missing pane_id in CommandChanged payload")?
                         .try_into()
                         .map_err(|_| "Failed to convert PaneId in CommandChanged payload")?;
-                    let focused_client_ids: Vec<ClientId> =
-                        p.focused_client_ids.into_iter().map(|id| id as u16).collect();
-                    Ok(Event::CommandChanged(pane_id, p.command, p.is_foreground, focused_client_ids))
+                    let focused_client_ids: Vec<ClientId> = p
+                        .focused_client_ids
+                        .into_iter()
+                        .map(|id| id as u16)
+                        .collect();
+                    Ok(Event::CommandChanged(
+                        pane_id,
+                        p.command,
+                        p.is_foreground,
+                        focused_client_ids,
+                    ))
                 },
                 _ => Err("Malformed payload for the CommandChanged Event"),
             },

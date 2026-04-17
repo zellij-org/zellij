@@ -4862,10 +4862,7 @@ mod osc7_parser_tests {
     #[test]
     fn osc7_parser_decodes_percent_encoded_path() {
         let raw = b"file://localhost/tmp/with%20space";
-        assert_eq!(
-            parse_osc7_path(raw),
-            Some(PathBuf::from("/tmp/with space"))
-        );
+        assert_eq!(parse_osc7_path(raw), Some(PathBuf::from("/tmp/with space")));
     }
 
     #[test]

@@ -891,8 +891,13 @@ mod tests {
     fn scan_session_list_returns_empty_when_no_peers() {
         let sock_dir = tempdir().unwrap();
         let info_dir = tempdir().unwrap();
-        let (live, resurrectable) =
-            scan_session_list("me", &[], &BTreeMap::new(), sock_dir.path(), info_dir.path());
+        let (live, resurrectable) = scan_session_list(
+            "me",
+            &[],
+            &BTreeMap::new(),
+            sock_dir.path(),
+            info_dir.path(),
+        );
         assert!(live.is_empty());
         assert!(resurrectable.is_empty());
     }
@@ -905,8 +910,13 @@ mod tests {
         let _listener = make_socket(sock_dir.path(), peer);
         write_metadata(info_dir.path(), peer, &SessionInfo::new(peer.to_string()));
 
-        let (live, resurrectable) =
-            scan_session_list("me", &[], &BTreeMap::new(), sock_dir.path(), info_dir.path());
+        let (live, resurrectable) = scan_session_list(
+            "me",
+            &[],
+            &BTreeMap::new(),
+            sock_dir.path(),
+            info_dir.path(),
+        );
         assert_eq!(live.len(), 1);
         assert!(live.contains_key(peer));
         assert!(resurrectable.is_empty());
@@ -918,8 +928,13 @@ mod tests {
         let info_dir = tempdir().unwrap();
         write_layout(info_dir.path(), "dead-beta");
 
-        let (live, resurrectable) =
-            scan_session_list("me", &[], &BTreeMap::new(), sock_dir.path(), info_dir.path());
+        let (live, resurrectable) = scan_session_list(
+            "me",
+            &[],
+            &BTreeMap::new(),
+            sock_dir.path(),
+            info_dir.path(),
+        );
         assert!(live.is_empty());
         assert_eq!(resurrectable.len(), 1);
         assert!(resurrectable.contains_key("dead-beta"));
@@ -938,8 +953,13 @@ mod tests {
             write_layout(info_dir.path(), name);
         }
 
-        let (live, resurrectable) =
-            scan_session_list("me", &[], &BTreeMap::new(), sock_dir.path(), info_dir.path());
+        let (live, resurrectable) = scan_session_list(
+            "me",
+            &[],
+            &BTreeMap::new(),
+            sock_dir.path(),
+            info_dir.path(),
+        );
         assert_eq!(live.len(), 3);
         assert_eq!(resurrectable.len(), 2);
         for name in ["live-a", "live-b", "live-c"] {

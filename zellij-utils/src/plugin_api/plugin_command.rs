@@ -11,7 +11,7 @@ pub use super::generated_api::api::{
         break_panes_to_tab_with_index_response, delete_layout_response, dump_layout_response,
         dump_session_layout_response, edit_layout_response, focus_or_create_tab_response,
         get_focused_pane_info_response, get_pane_cwd_response, get_pane_pid_response,
-        get_pane_running_command_response, hide_floating_panes_response,
+        get_pane_running_command_response, get_session_list_response, hide_floating_panes_response,
         highlight_style::Style as ProtobufHighlightStyleVariant, new_tab_response,
         parse_layout_response, plugin_command::Payload, rename_layout_response,
         save_layout_response, save_session_response, show_floating_panes_response,
@@ -53,10 +53,8 @@ pub use super::generated_api::api::{
         GetSessionEnvironmentVariablesPayload as ProtobufGetSessionEnvironmentVariablesPayload,
         GetSessionEnvironmentVariablesResponse as ProtobufGetSessionEnvironmentVariablesResponse,
         GetSessionListPayload as ProtobufGetSessionListPayload,
-        GetSessionListResponse as ProtobufGetSessionListResponse,
-        SessionListSnapshot as ProtobufSessionListSnapshot,
-        get_session_list_response,
-        GetTabInfoPayload, GetTabInfoResponse as ProtobufGetTabInfoResponse, GoToTabWithIdPayload,
+        GetSessionListResponse as ProtobufGetSessionListResponse, GetTabInfoPayload,
+        GetTabInfoResponse as ProtobufGetTabInfoResponse, GoToTabWithIdPayload,
         GroupAndUngroupPanesPayload, HideFloatingPanesPayload as ProtobufHideFloatingPanesPayload,
         HideFloatingPanesResponse as ProtobufHideFloatingPanesResponse, HidePaneWithIdPayload,
         HighlightAndUnhighlightPanesPayload, HighlightLayer as ProtobufHighlightLayer,
@@ -116,9 +114,10 @@ pub use super::generated_api::api::{
         SaveLayoutPayload, SaveLayoutResponse as ProtobufSaveLayoutResponse, SaveSessionPayload,
         SaveSessionResponse as ProtobufSaveSessionResponse, ScrollDownInPaneIdPayload,
         ScrollToBottomInPaneIdPayload, ScrollToTopInPaneIdPayload, ScrollUpInPaneIdPayload,
-        SetFloatingPanePinnedPayload, SetPaneBorderlessPayload, SetPaneColorPayload,
-        SetPaneRegexHighlightsPayload, SetSelfMouseSelectionSupportPayload, SetTimeoutPayload,
-        ShowCursorPayload, ShowFloatingPanesPayload as ProtobufShowFloatingPanesPayload,
+        SessionListSnapshot as ProtobufSessionListSnapshot, SetFloatingPanePinnedPayload,
+        SetPaneBorderlessPayload, SetPaneColorPayload, SetPaneRegexHighlightsPayload,
+        SetSelfMouseSelectionSupportPayload, SetTimeoutPayload, ShowCursorPayload,
+        ShowFloatingPanesPayload as ProtobufShowFloatingPanesPayload,
         ShowFloatingPanesResponse as ProtobufShowFloatingPanesResponse, ShowPaneWithIdPayload,
         StackPanesPayload, SubscribePayload, SwitchSessionPayload, SwitchTabToIdPayload,
         SwitchTabToPayload, TogglePaneBorderlessPayload, TogglePaneEmbedOrEjectForPaneIdPayload,
@@ -132,8 +131,8 @@ pub use super::generated_api::api::{
 use crate::data::{
     ConnectToSession, DeleteLayoutResponse, EditLayoutResponse, FloatingPaneCoordinates,
     GetFocusedPaneInfoResponse, GetPaneCwdResponse, GetPanePidResponse,
-    GetPaneRunningCommandResponse, GetSessionListResponse, HighlightLayer, HighlightStyle, HttpVerb,
-    InputMode, KeyWithModifier, MessageToPlugin, NewPluginArgs, PaneId, PermissionType,
+    GetPaneRunningCommandResponse, GetSessionListResponse, HighlightLayer, HighlightStyle,
+    HttpVerb, InputMode, KeyWithModifier, MessageToPlugin, NewPluginArgs, PaneId, PermissionType,
     PluginCommand, RegexHighlight, RenameLayoutResponse, SaveLayoutResponse, SessionInfo,
     SessionListSnapshot,
 };
@@ -370,9 +369,7 @@ impl From<GetSessionListResponse> for ProtobufGetSessionListResponse {
 
 impl TryFrom<ProtobufGetSessionListResponse> for GetSessionListResponse {
     type Error = &'static str;
-    fn try_from(
-        protobuf_response: ProtobufGetSessionListResponse,
-    ) -> Result<Self, &'static str> {
+    fn try_from(protobuf_response: ProtobufGetSessionListResponse) -> Result<Self, &'static str> {
         match protobuf_response.result {
             Some(get_session_list_response::Result::Snapshot(snapshot)) => {
                 let mut live_sessions: Vec<SessionInfo> = Vec::new();
