@@ -2403,3 +2403,7 @@ pub fn get_default_shell() -> PathBuf {
         "cmd.exe".to_string()
     }))
 }
+
+#[cfg(test)]
+#[path = "./unit/pty_tests.rs"]
+mod pty_tests;
