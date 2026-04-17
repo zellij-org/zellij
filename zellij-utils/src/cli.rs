@@ -11,26 +11,9 @@ use std::path::PathBuf;
 use url::Url;
 
 fn validate_session(name: &str) -> Result<String, String> {
-    #[cfg(unix)]
-    {
-        use crate::consts::ZELLIJ_SOCK_MAX_LENGTH;
-
-        let mut socket_path = crate::consts::ZELLIJ_SOCK_DIR.clone();
-        socket_path.push(name);
-
-        if socket_path.as_os_str().len() >= ZELLIJ_SOCK_MAX_LENGTH {
-            // socket path must be less than 108 bytes
-            let available_length = ZELLIJ_SOCK_MAX_LENGTH
-                .saturating_sub(socket_path.as_os_str().len())
-                .saturating_sub(1);
-
-            return Err(format!(
-                "session name must be less than {} characters",
-                available_length
-            ));
-        };
-    };
-
+    // Socket paths now use UUIDs as filenames (not session names), so
+    // path-length constraints no longer apply to session names. Semantic
+    // validation is handled by sessions::validate_session_name().
     Ok(name.to_owned())
 }
 

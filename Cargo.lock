@@ -4938,6 +4938,7 @@ dependencies = [
  "anyhow",
  "backtrace",
  "bitflags 2.11.0",
+ "chrono",
  "clap",
  "clap_complete",
  "colored",
