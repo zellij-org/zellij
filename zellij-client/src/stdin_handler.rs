@@ -150,13 +150,19 @@ pub(crate) fn stdin_loop(
                             // receive on STDIN during that timeout is unceremoniously dropped
                             let mut stdin_ansi_parser = stdin_ansi_parser.lock().unwrap();
                             if stdin_ansi_parser.should_parse() {
-                                let events = stdin_ansi_parser.parse(buf);
+                                let (events, leftover_bytes) =
+                                    stdin_ansi_parser.parse_with_leftovers(buf.to_vec());
                                 if !events.is_empty() {
                                     ansi_stdin_events.append(&mut events.clone());
                                     let _ = send_input_instructions
                                         .send(InputInstruction::AnsiStdinInstructions(events));
                                 }
-                                continue;
+                                if leftover_bytes.is_empty() {
+                                    continue;
+                                }
+                                current_buffer.append(&mut leftover_bytes.clone());
+                            } else {
+                                current_buffer.append(&mut buf.to_vec());
                             }
                         }
                         if !ansi_stdin_events.is_empty() {
@@ -165,8 +171,6 @@ pub(crate) fn stdin_loop(
                                 .unwrap()
                                 .write_cache(ansi_stdin_events.drain(..).collect());
                         }
-                        current_buffer.append(&mut buf.to_vec());
-
                         if !explicitly_disable_kitty_keyboard_protocol {
                             // first we try to parse with the KittyKeyboardParser
                             // if we fail, we try to parse normally
