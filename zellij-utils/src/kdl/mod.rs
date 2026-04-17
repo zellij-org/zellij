@@ -2663,9 +2663,23 @@ impl Options {
             };
         let simplified_ui =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "simplified_ui").map(|(v, _)| v);
-        let default_shell =
-            kdl_property_first_arg_as_string_or_error!(kdl_options, "default_shell")
-                .map(|(string, _entry)| PathBuf::from(string));
+        let default_shell = {
+            let shell_path =
+                kdl_property_first_arg_as_string_or_error!(kdl_options, "default_shell")
+                    .map(|(string, _entry)| PathBuf::from(string));
+            let shell_args: Vec<String> = if let Some(args_node) = kdl_options
+                .get("default_shell")
+                .and_then(|shell_node| kdl_get_child!(shell_node, "args"))
+            {
+                kdl_string_arguments!(args_node)
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect()
+            } else {
+                vec![]
+            };
+            shell_path.map(|path| crate::input::options::DefaultShell::with_args(path, shell_args))
+        };
         let default_cwd = kdl_property_first_arg_as_string_or_error!(kdl_options, "default_cwd")
             .map(|(string, _entry)| PathBuf::from(string));
         let pane_frames =
@@ -2998,7 +3012,16 @@ impl Options {
             node
         };
         if let Some(default_shell) = &self.default_shell {
-            let mut node = create_node(&default_shell.display().to_string());
+            let mut node = create_node(&default_shell.path.display().to_string());
+            if !default_shell.args.is_empty() {
+                let mut children = KdlDocument::new();
+                let mut args_node = KdlNode::new("args");
+                for arg in &default_shell.args {
+                    args_node.push(arg.to_owned());
+                }
+                children.nodes_mut().push(args_node);
+                node.set_children(children);
+            }
             if add_comments {
                 node.set_leading(format!("{}\n", comment_text));
             }
@@ -7137,6 +7160,34 @@ fn config_options_to_string_with_some_options() {
         "Deserialized serialized config equals original config"
     );
     insta::assert_snapshot!(fake_document.to_string());
+}
+
+#[test]
+fn default_shell_with_args_roundtrip() {
+    let fake_config = r##"
+        default_shell "pwsh" {
+            args "-NoLogo" "-NoProfile"
+        }
+    "##;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    let deserialized = Options::from_kdl(&document).unwrap();
+    assert_eq!(
+        deserialized.default_shell.as_ref().unwrap().path,
+        std::path::PathBuf::from("pwsh")
+    );
+    assert_eq!(
+        deserialized.default_shell.as_ref().unwrap().args,
+        vec!["-NoLogo".to_string(), "-NoProfile".to_string()]
+    );
+    let mut serialized = Options::to_kdl(&deserialized, false);
+    let mut fake_document = KdlDocument::new();
+    fake_document.nodes_mut().append(&mut serialized);
+    let deserialized_from_serialized =
+        Options::from_kdl(&fake_document.to_string().parse::<KdlDocument>().unwrap()).unwrap();
+    assert_eq!(
+        deserialized, deserialized_from_serialized,
+        "Deserialized serialized config with default_shell args equals original"
+    );
 }
 
 #[test]

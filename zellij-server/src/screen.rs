@@ -674,6 +674,7 @@ pub enum ScreenInstruction {
         theme: Styling,
         simplified_ui: bool,
         default_shell: Option<PathBuf>,
+        default_shell_args: Option<Vec<String>>,
         pane_frames: bool,
         copy_command: Option<String>,
         copy_to_clipboard: Option<Clipboard>,
@@ -1326,6 +1327,7 @@ pub(crate) struct Screen {
     // duration is its creation time
     default_layout: Box<Layout>,
     default_shell: PathBuf,
+    default_shell_args: Vec<String>,
     styled_underlines: bool,
     osc8_hyperlinks: bool,
     arrow_fonts: bool,
@@ -1373,6 +1375,7 @@ impl Screen {
         default_layout: Box<Layout>,
         default_layout_name: Option<String>,
         default_shell: PathBuf,
+        default_shell_args: Vec<String>,
         session_serialization: bool,
         serialize_pane_viewport: bool,
         scrollback_lines_to_serialize: Option<usize>,
@@ -1428,6 +1431,7 @@ impl Screen {
             default_layout,
             default_layout_name,
             default_shell,
+            default_shell_args,
             session_serialization,
             serialize_pane_viewport,
             scrollback_lines_to_serialize,
@@ -2436,6 +2440,7 @@ impl Screen {
             self.terminal_emulator_color_codes.clone(),
             swap_layouts,
             self.default_shell.clone(),
+            self.default_shell_args.clone(),
             self.debug,
             self.arrow_fonts,
             self.styled_underlines,
@@ -4014,6 +4019,7 @@ impl Screen {
         theme: Styling,
         simplified_ui: bool,
         default_shell: Option<PathBuf>,
+        default_shell_args: Option<Vec<String>>,
         pane_frames: bool,
         copy_command: Option<String>,
         copy_to_clipboard: Option<Clipboard>,
@@ -4037,6 +4043,7 @@ impl Screen {
         self.default_mode_info
             .update_rounded_corners(rounded_corners);
         self.default_shell = default_shell.clone().unwrap_or_else(|| get_default_shell());
+        self.default_shell_args = default_shell_args.clone().unwrap_or_default();
         self.default_editor = default_editor.clone().or_else(|| get_default_editor());
         self.auto_layout = auto_layout;
         self.copy_options.command = copy_command.clone();
@@ -4060,7 +4067,7 @@ impl Screen {
         for tab in self.tabs.values_mut() {
             tab.update_theme(theme);
             tab.update_rounded_corners(rounded_corners);
-            tab.update_default_shell(default_shell.clone());
+            tab.update_default_shell(default_shell.clone(), default_shell_args.clone());
             tab.update_default_editor(self.default_editor.clone());
             tab.update_auto_layout(auto_layout);
             tab.update_copy_options(&self.copy_options);
@@ -4969,15 +4976,22 @@ pub(crate) fn screen_thread_main(
     let scrollback_lines_to_serialize = config_options.scrollback_lines_to_serialize;
     let session_is_mirrored = config_options.mirror_session.unwrap_or(false);
     let layout_dir = config_options.layout_dir;
+    let default_shell_args = config_options
+        .default_shell
+        .as_ref()
+        .map(|s| s.args.clone())
+        .unwrap_or_default();
     #[cfg(test)]
     let default_shell = config_options
         .default_shell
         .clone()
+        .map(|s| s.path)
         .unwrap_or(PathBuf::from("/bin/sh"));
     #[cfg(not(test))]
     let default_shell = config_options
         .default_shell
         .clone()
+        .map(|s| s.path)
         .unwrap_or_else(|| get_default_shell());
     let default_editor = config_options
         .scrollback_editor
@@ -5039,6 +5053,7 @@ pub(crate) fn screen_thread_main(
         default_layout,
         default_layout_name,
         default_shell,
+        default_shell_args,
         session_serialization,
         serialize_pane_viewport,
         scrollback_lines_to_serialize,
@@ -8028,6 +8043,7 @@ pub(crate) fn screen_thread_main(
                 theme,
                 simplified_ui,
                 default_shell,
+                default_shell_args,
                 pane_frames,
                 copy_to_clipboard,
                 copy_command,
@@ -8050,6 +8066,7 @@ pub(crate) fn screen_thread_main(
                         theme,
                         simplified_ui,
                         default_shell,
+                        default_shell_args,
                         pane_frames,
                         copy_command,
                         copy_to_clipboard,

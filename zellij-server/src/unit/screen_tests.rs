@@ -311,6 +311,7 @@ fn create_new_screen(
         default_layout,
         default_layout_name,
         default_shell,
+        vec![], // default_shell_args
         session_serialization,
         serialize_pane_viewport,
         scrollback_lines_to_serialize,
@@ -5347,6 +5348,7 @@ fn create_new_screen_with_message_capture(
         default_layout,
         default_layout_name,
         default_shell,
+        vec![], // default_shell_args
         session_serialization,
         serialize_pane_viewport,
         scrollback_lines_to_serialize,
