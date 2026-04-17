@@ -2193,6 +2193,8 @@ impl TryFrom<ProtobufKeyWithModifier> for KeyWithModifier {
             Some(ProtobufBareKey::PrintScreen) => crate::data::BareKey::PrintScreen,
             Some(ProtobufBareKey::Pause) => crate::data::BareKey::Pause,
             Some(ProtobufBareKey::Menu) => crate::data::BareKey::Menu,
+            Some(ProtobufBareKey::ScrollUp) => crate::data::BareKey::ScrollUp,
+            Some(ProtobufBareKey::ScrollDown) => crate::data::BareKey::ScrollDown,
             _ => return Err("Unknown BareKey"),
         };
 
@@ -2252,6 +2254,8 @@ impl TryFrom<KeyWithModifier> for ProtobufKeyWithModifier {
             crate::data::BareKey::PrintScreen => (ProtobufBareKey::PrintScreen as i32, None),
             crate::data::BareKey::Pause => (ProtobufBareKey::Pause as i32, None),
             crate::data::BareKey::Menu => (ProtobufBareKey::Menu as i32, None),
+            crate::data::BareKey::ScrollUp => (ProtobufBareKey::ScrollUp as i32, None),
+            crate::data::BareKey::ScrollDown => (ProtobufBareKey::ScrollDown as i32, None),
             _ => return Err("Unsupported BareKey"),
         };
 

@@ -3,6 +3,7 @@ use super::super::keybinds::*;
 use crate::data::{BareKey, Direction, KeyWithModifier};
 use crate::input::config::Config;
 use insta::assert_snapshot;
+use std::str::FromStr;
 use strum::IntoEnumIterator;
 
 #[test]
@@ -593,4 +594,189 @@ fn error_received_on_unknown_key_instruction() {
     "#;
     let config_error = Config::from_kdl(config_contents, None).unwrap_err();
     assert_snapshot!(format!("{:?}", config_error));
+}
+
+#[test]
+fn bare_key_parses_scrollup() {
+    let key = BareKey::from_str("ScrollUp").unwrap();
+    assert_eq!(key, BareKey::ScrollUp, "ScrollUp parsed correctly");
+}
+
+#[test]
+fn bare_key_parses_scrolldown() {
+    let key = BareKey::from_str("ScrollDown").unwrap();
+    assert_eq!(key, BareKey::ScrollDown, "ScrollDown parsed correctly");
+}
+
+#[test]
+fn bare_key_parses_scrollup_case_insensitive() {
+    let key = BareKey::from_str("scrollup").unwrap();
+    assert_eq!(key, BareKey::ScrollUp, "scrollup (lowercase) parsed correctly");
+}
+
+#[test]
+fn bare_key_parses_scrolldown_case_insensitive() {
+    let key = BareKey::from_str("scrolldown").unwrap();
+    assert_eq!(key, BareKey::ScrollDown, "scrolldown (lowercase) parsed correctly");
+}
+
+#[test]
+fn key_with_modifier_parses_ctrl_scrollup() {
+    let key = KeyWithModifier::from_str("Ctrl ScrollUp").unwrap();
+    assert_eq!(
+        key,
+        KeyWithModifier::new(BareKey::ScrollUp).with_ctrl_modifier(),
+        "Ctrl ScrollUp parsed correctly"
+    );
+}
+
+#[test]
+fn key_with_modifier_parses_ctrl_scrolldown() {
+    let key = KeyWithModifier::from_str("Ctrl ScrollDown").unwrap();
+    assert_eq!(
+        key,
+        KeyWithModifier::new(BareKey::ScrollDown).with_ctrl_modifier(),
+        "Ctrl ScrollDown parsed correctly"
+    );
+}
+
+#[test]
+fn key_with_modifier_parses_alt_scrollup() {
+    let key = KeyWithModifier::from_str("Alt ScrollUp").unwrap();
+    assert_eq!(
+        key,
+        KeyWithModifier::new(BareKey::ScrollUp).with_alt_modifier(),
+        "Alt ScrollUp parsed correctly"
+    );
+}
+
+#[test]
+fn can_bind_ctrl_scrollup_to_action_in_config() {
+    let config_contents = r#"
+        keybinds {
+            normal {
+                bind "Ctrl ScrollUp" { GoToPreviousTab; }
+            }
+        }
+    "#;
+    let config = Config::from_kdl(config_contents, None).unwrap();
+    let action = config.keybinds.get_actions_for_key_in_mode(
+        &InputMode::Normal,
+        &KeyWithModifier::new(BareKey::ScrollUp).with_ctrl_modifier(),
+    );
+    assert_eq!(
+        action,
+        Some(&vec![Action::GoToPreviousTab]),
+        "Ctrl ScrollUp bound to GoToPreviousTab"
+    );
+}
+
+#[test]
+fn can_bind_ctrl_scrolldown_to_action_in_config() {
+    let config_contents = r#"
+        keybinds {
+            normal {
+                bind "Ctrl ScrollDown" { GoToNextTab; }
+            }
+        }
+    "#;
+    let config = Config::from_kdl(config_contents, None).unwrap();
+    let action = config.keybinds.get_actions_for_key_in_mode(
+        &InputMode::Normal,
+        &KeyWithModifier::new(BareKey::ScrollDown).with_ctrl_modifier(),
+    );
+    assert_eq!(
+        action,
+        Some(&vec![Action::GoToNextTab]),
+        "Ctrl ScrollDown bound to GoToNextTab"
+    );
+}
+
+#[test]
+fn can_bind_scroll_in_shared_except_mode() {
+    let config_contents = r#"
+        keybinds {
+            shared_except "locked" {
+                bind "Ctrl ScrollUp" { GoToPreviousTab; }
+                bind "Ctrl ScrollDown" { GoToNextTab; }
+            }
+        }
+    "#;
+    let config = Config::from_kdl(config_contents, None).unwrap();
+    for mode in InputMode::iter() {
+        let up_action = config.keybinds.get_actions_for_key_in_mode(
+            &mode,
+            &KeyWithModifier::new(BareKey::ScrollUp).with_ctrl_modifier(),
+        );
+        let down_action = config.keybinds.get_actions_for_key_in_mode(
+            &mode,
+            &KeyWithModifier::new(BareKey::ScrollDown).with_ctrl_modifier(),
+        );
+        if mode == InputMode::Locked {
+            assert_eq!(up_action, None, "ScrollUp unbound in locked mode");
+            assert_eq!(down_action, None, "ScrollDown unbound in locked mode");
+        } else {
+            assert_eq!(
+                up_action,
+                Some(&vec![Action::GoToPreviousTab]),
+                "ScrollUp bound in {:?}",
+                mode
+            );
+            assert_eq!(
+                down_action,
+                Some(&vec![Action::GoToNextTab]),
+                "ScrollDown bound in {:?}",
+                mode
+            );
+        }
+    }
+}
+
+#[test]
+fn can_unbind_scroll_keys() {
+    let default_config_contents = r#"
+        keybinds {
+            normal {
+                bind "Ctrl ScrollUp" { GoToPreviousTab; }
+                bind "Ctrl ScrollDown" { GoToNextTab; }
+            }
+        }
+    "#;
+    let config_contents = r#"
+        keybinds {
+            normal {
+                unbind "Ctrl ScrollUp"
+            }
+        }
+    "#;
+    let default_config = Config::from_kdl(default_config_contents, None).unwrap();
+    let config = Config::from_kdl(config_contents, Some(default_config)).unwrap();
+    let up_action = config.keybinds.get_actions_for_key_in_mode(
+        &InputMode::Normal,
+        &KeyWithModifier::new(BareKey::ScrollUp).with_ctrl_modifier(),
+    );
+    let down_action = config.keybinds.get_actions_for_key_in_mode(
+        &InputMode::Normal,
+        &KeyWithModifier::new(BareKey::ScrollDown).with_ctrl_modifier(),
+    );
+    assert_eq!(up_action, None, "ScrollUp was unbound");
+    assert_eq!(
+        down_action,
+        Some(&vec![Action::GoToNextTab]),
+        "ScrollDown still bound"
+    );
+}
+
+#[test]
+fn scroll_keys_serialize_back_to_kdl() {
+    let key_up = KeyWithModifier::new(BareKey::ScrollUp).with_ctrl_modifier();
+    let key_down = KeyWithModifier::new(BareKey::ScrollDown);
+    assert_eq!(key_up.to_kdl(), "Ctrl ScrollUp");
+    assert_eq!(key_down.to_kdl(), "ScrollDown");
+}
+
+#[test]
+fn scroll_keys_display_correctly() {
+    assert_eq!(format!("{}", BareKey::ScrollUp), "SCROLLUP");
+    assert_eq!(format!("{}", BareKey::ScrollDown), "SCROLLDOWN");
 }

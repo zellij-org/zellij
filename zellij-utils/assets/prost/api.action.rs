@@ -1397,6 +1397,8 @@ pub enum BareKey {
     PrintScreen = 31,
     Pause = 32,
     Menu = 33,
+    ScrollUp = 34,
+    ScrollDown = 35,
 }
 impl BareKey {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -1439,6 +1441,8 @@ impl BareKey {
             BareKey::PrintScreen => "BARE_KEY_PRINT_SCREEN",
             BareKey::Pause => "BARE_KEY_PAUSE",
             BareKey::Menu => "BARE_KEY_MENU",
+            BareKey::ScrollUp => "BARE_KEY_SCROLL_UP",
+            BareKey::ScrollDown => "BARE_KEY_SCROLL_DOWN",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -1478,6 +1482,8 @@ impl BareKey {
             "BARE_KEY_PRINT_SCREEN" => Some(Self::PrintScreen),
             "BARE_KEY_PAUSE" => Some(Self::Pause),
             "BARE_KEY_MENU" => Some(Self::Menu),
+            "BARE_KEY_SCROLL_UP" => Some(Self::ScrollUp),
+            "BARE_KEY_SCROLL_DOWN" => Some(Self::ScrollDown),
             _ => None,
         }
     }
