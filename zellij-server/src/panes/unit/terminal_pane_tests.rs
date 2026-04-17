@@ -873,3 +873,89 @@ pub fn frameless_pane_position_is_on_frame() {
     assert!(!terminal_pane.position_is_on_frame(&Position::new(30, 130)));
     assert!(!terminal_pane.position_is_on_frame(&Position::new(30, 131)));
 }
+
+fn make_terminal_pane_for_title(initial_title: Option<String>) -> TerminalPane {
+    let mut fake_win_size = PaneGeom::default();
+    fake_win_size.cols.set_inner(121);
+    fake_win_size.rows.set_inner(20);
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_colors = Rc::new(RefCell::new(Palette::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    TerminalPane::new(
+        1,
+        fake_win_size,
+        Style::default(),
+        0,
+        String::new(),
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
+        sixel_image_store,
+        terminal_emulator_colors,
+        terminal_emulator_color_codes,
+        initial_title,
+        None,
+        false,
+        true,
+        true,
+        true,
+        false,
+        None,
+    )
+}
+
+#[test]
+pub fn osc_title_set_via_osc_2_is_reflected() {
+    let mut terminal_pane = make_terminal_pane_for_title(Some("initial".to_owned()));
+    assert_eq!(terminal_pane.current_title(), "initial");
+
+    terminal_pane.handle_pty_bytes(b"\x1b]2;hello\x07".to_vec());
+    assert_eq!(terminal_pane.current_title(), "hello");
+}
+
+#[test]
+pub fn osc_title_cleared_to_empty_falls_back_to_initial_title() {
+    // Regression test for https://github.com/zellij-org/zellij/issues/5060
+    // When a program sets the OSC title and then clears it to empty (e.g. on exit),
+    // the pane should fall back to its initial title rather than showing nothing.
+    let mut terminal_pane = make_terminal_pane_for_title(Some("initial".to_owned()));
+
+    terminal_pane.handle_pty_bytes(b"\x1b]2;hello\x07".to_vec());
+    assert_eq!(terminal_pane.current_title(), "hello");
+
+    terminal_pane.handle_pty_bytes(b"\x1b]2;\x07".to_vec());
+    assert_eq!(
+        terminal_pane.current_title(),
+        "initial",
+        "after OSC clears the title to empty, pane should fall back to its initial title",
+    );
+}
+
+#[test]
+pub fn osc_0_title_cleared_to_empty_falls_back_to_initial_title() {
+    // OSC 0 sets both icon name and window title; empty should fall back too.
+    let mut terminal_pane = make_terminal_pane_for_title(Some("initial".to_owned()));
+
+    terminal_pane.handle_pty_bytes(b"\x1b]0;hello\x07".to_vec());
+    assert_eq!(terminal_pane.current_title(), "hello");
+
+    terminal_pane.handle_pty_bytes(b"\x1b]0;\x07".to_vec());
+    assert_eq!(terminal_pane.current_title(), "initial");
+}
+
+#[test]
+pub fn osc_title_cleared_defaults_to_pane_index_title_when_no_initial() {
+    // With no explicit initial title, pane_title defaults to "Pane #<index>".
+    // Clearing the OSC title should fall back to that default.
+    let mut terminal_pane = make_terminal_pane_for_title(None);
+    let default_title = terminal_pane.current_title();
+    assert!(
+        default_title.starts_with("Pane #"),
+        "expected default title to start with 'Pane #', got {default_title:?}",
+    );
+
+    terminal_pane.handle_pty_bytes(b"\x1b]2;hello\x07".to_vec());
+    assert_eq!(terminal_pane.current_title(), "hello");
+
+    terminal_pane.handle_pty_bytes(b"\x1b]2;\x07".to_vec());
+    assert_eq!(terminal_pane.current_title(), default_title);
+}
