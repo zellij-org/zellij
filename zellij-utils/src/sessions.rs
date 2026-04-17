@@ -1204,3 +1204,146 @@ const NOUNS: &[&'static str] = &[
     "yak",
     "zebra",
 ];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const UUID_1: &str = "a3f7b9c1-e29b-41d4-a716-446655440001";
+    const UUID_2: &str = "550e8400-e29b-41d4-a716-446655440002";
+    const UUID_3: &str = "6ba7b810-9dad-41d4-80b4-00c04fd430c3";
+
+    fn make_running_entry(id: &str, name: &str, pid: u32) -> SessionEntry {
+        SessionEntry {
+            id: id.to_string(),
+            display_name: name.to_string(),
+            pid: Some(pid),
+            state: SessionState::Running,
+            created_at: "2024-01-15T10:00:00Z".to_string(),
+            exited_at: None,
+        }
+    }
+
+    fn make_exited_entry(id: &str, name: &str) -> SessionEntry {
+        SessionEntry {
+            id: id.to_string(),
+            display_name: name.to_string(),
+            pid: None,
+            state: SessionState::Exited,
+            created_at: "2024-01-14T09:00:00Z".to_string(),
+            exited_at: Some("2024-01-14T18:00:00Z".to_string()),
+        }
+    }
+
+    #[test]
+    fn kdl_roundtrip() {
+        let registry = SessionRegistry {
+            sessions: vec![
+                make_running_entry(UUID_1, "my-session", 12345),
+                make_exited_entry(UUID_2, "old-session"),
+            ],
+        };
+        let kdl = registry.to_kdl();
+        let parsed = SessionRegistry::from_kdl(&kdl).unwrap();
+        assert_eq!(parsed.sessions.len(), 2);
+
+        let running = &parsed.sessions[0];
+        assert_eq!(running.id, UUID_1);
+        assert_eq!(running.display_name, "my-session");
+        assert_eq!(running.pid, Some(12345));
+        assert_eq!(running.state, SessionState::Running);
+        assert_eq!(running.created_at, "2024-01-15T10:00:00Z");
+        assert!(running.exited_at.is_none());
+
+        let exited = &parsed.sessions[1];
+        assert_eq!(exited.id, UUID_2);
+        assert_eq!(exited.display_name, "old-session");
+        assert!(exited.pid.is_none());
+        assert_eq!(exited.state, SessionState::Exited);
+        assert_eq!(exited.exited_at.as_deref(), Some("2024-01-14T18:00:00Z"));
+    }
+
+    #[test]
+    fn kdl_roundtrip_no_pid_for_exited() {
+        let registry = SessionRegistry {
+            sessions: vec![make_exited_entry(UUID_1, "dead-session")],
+        };
+        let kdl = registry.to_kdl();
+        assert!(
+            !kdl.contains("pid"),
+            "exited session should not have pid node"
+        );
+        let parsed = SessionRegistry::from_kdl(&kdl).unwrap();
+        assert!(parsed.sessions[0].pid.is_none());
+    }
+
+    #[test]
+    fn find_running_by_name_returns_running_not_exited() {
+        let registry = SessionRegistry {
+            sessions: vec![
+                make_running_entry(UUID_1, "foo", 100),
+                make_exited_entry(UUID_2, "foo"),
+                make_running_entry(UUID_3, "bar", 200),
+            ],
+        };
+        let found = registry.find_running_by_name("foo").unwrap();
+        assert_eq!(found.id, UUID_1);
+        assert_eq!(found.state, SessionState::Running);
+    }
+
+    #[test]
+    fn find_running_by_name_returns_none_for_nonexistent() {
+        let registry = SessionRegistry {
+            sessions: vec![make_running_entry(UUID_1, "foo", 100)],
+        };
+        assert!(registry.find_running_by_name("nonexistent").is_none());
+    }
+
+    #[test]
+    fn resolve_socket_path_uses_id() {
+        let registry = SessionRegistry {
+            sessions: vec![make_running_entry(UUID_1, "my-session", 100)],
+        };
+        let path = registry.resolve_socket_path("my-session").unwrap();
+        assert!(path.ends_with(UUID_1));
+    }
+
+    #[test]
+    fn remove_by_id() {
+        let mut registry = SessionRegistry {
+            sessions: vec![
+                make_running_entry(UUID_1, "a", 1),
+                make_running_entry(UUID_2, "b", 2),
+                make_running_entry(UUID_3, "c", 3),
+            ],
+        };
+        registry.remove_by_id(UUID_2);
+        assert_eq!(registry.sessions.len(), 2);
+        assert!(registry.find_by_id(UUID_2).is_none());
+        assert!(registry.find_by_id(UUID_1).is_some());
+        assert!(registry.find_by_id(UUID_3).is_some());
+    }
+
+    #[test]
+    fn generate_session_id_is_valid_uuid() {
+        let id = generate_session_id();
+        assert_eq!(id.len(), 36);
+        assert_eq!(id.as_bytes()[8], b'-');
+        assert_eq!(id.as_bytes()[13], b'-');
+        assert_eq!(id.as_bytes()[18], b'-');
+        assert_eq!(id.as_bytes()[23], b'-');
+    }
+
+    #[test]
+    fn session_state_roundtrip() {
+        assert_eq!(
+            SessionState::from_str(SessionState::Running.as_str()),
+            Some(SessionState::Running)
+        );
+        assert_eq!(
+            SessionState::from_str(SessionState::Exited.as_str()),
+            Some(SessionState::Exited)
+        );
+        assert_eq!(SessionState::from_str("bogus"), None);
+    }
+}
