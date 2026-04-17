@@ -2124,27 +2124,6 @@ impl Pty {
 
             let cmd = process_id.and_then(|pid| pids_to_cmds.get(pid));
             if let Some(cmd) = cmd {
-                if self.terminal_cmds.get(terminal_id) != Some(cmd) {
-                    let pane_id = PaneId::Terminal(*terminal_id);
-                    let focused_client_ids: Vec<ClientId> = self
-                        .active_panes
-                        .iter()
-                        .filter(|(_, active_pane)| *active_pane == &pane_id)
-                        .map(|(client_id, _)| *client_id)
-                        .collect();
-                    let _ = self
-                        .bus
-                        .senders
-                        .send_to_plugin(PluginInstruction::Update(vec![(
-                            None,
-                            None,
-                            Event::CommandChanged(
-                                pane_id.into(),
-                                cmd.clone(),
-                                focused_client_ids,
-                            ),
-                        )]));
-                }
                 self.terminal_cmds.insert(*terminal_id, cmd.clone());
             }
         }
@@ -2171,15 +2150,26 @@ impl Pty {
                     .filter(|(_, active_pane)| *active_pane == &pane_id)
                     .map(|(client_id, _)| *client_id)
                     .collect();
+                let (command, is_foreground) = if foreground_cmd.is_empty() {
+                    let shell_cmd = self
+                        .terminal_cmds
+                        .get(terminal_id)
+                        .cloned()
+                        .unwrap_or_default();
+                    (shell_cmd, false)
+                } else {
+                    (foreground_cmd.clone(), true)
+                };
                 let _ = self
                     .bus
                     .senders
                     .send_to_plugin(PluginInstruction::Update(vec![(
                         None,
                         None,
-                        Event::PaneCommandChanged(
+                        Event::CommandChanged(
                             pane_id.into(),
-                            foreground_cmd.clone(),
+                            command,
+                            is_foreground,
                             focused_client_ids,
                         ),
                     )]));

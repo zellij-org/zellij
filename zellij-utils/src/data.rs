@@ -1012,8 +1012,7 @@ pub enum Event {
     PaneRenderReportWithAnsi(HashMap<PaneId, PaneContents>),
     ActionComplete(Action, Option<PaneId>, BTreeMap<String, String>), // Action, pane_id, context
     CwdChanged(PaneId, PathBuf, Vec<ClientId>), // pane_id, cwd, focused_client_ids
-    CommandChanged(PaneId, Vec<String>, Vec<ClientId>), // pane_id, shell cmdline, focused_client_ids
-    PaneCommandChanged(PaneId, Vec<String>, Vec<ClientId>), // pane_id, foreground cmd, focused_client_ids
+    CommandChanged(PaneId, Vec<String>, bool, Vec<ClientId>), // pane_id, command, is_foreground, focused_client_ids
     AvailableLayoutInfo(Vec<LayoutInfo>, Vec<LayoutWithError>),
     PluginConfigurationChanged(BTreeMap<String, String>),
     HighlightClicked {

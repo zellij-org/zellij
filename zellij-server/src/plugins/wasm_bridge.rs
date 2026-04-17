@@ -2152,7 +2152,6 @@ fn check_event_permission(
         | Event::CommandPaneReRun(..)
         | Event::CwdChanged(..)
         | Event::CommandChanged(..)
-        | Event::PaneCommandChanged(..)
         | Event::AvailableLayoutInfo(..)
         | Event::PluginConfigurationChanged(..)
         | Event::HighlightClicked { .. }
