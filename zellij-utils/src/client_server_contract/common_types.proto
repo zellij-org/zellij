@@ -1002,10 +1002,12 @@ message MouseEvent {
   bool middle = 4;
   bool wheel_up = 5;
   bool wheel_down = 6;
-  bool shift = 7;
-  bool alt = 8;
-  bool ctrl = 9;
-  Position position = 10;
+  bool wheel_left = 7;
+  bool wheel_right = 8;
+  bool shift = 9;
+  bool alt = 10;
+  bool ctrl = 11;
+  Position position = 12;
 }
 
 enum MouseEventType {

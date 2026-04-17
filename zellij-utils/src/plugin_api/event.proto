@@ -289,11 +289,13 @@ message MouseEventPayload {
 enum MouseEventName {
     MouseScrollUp = 0;
     MouseScrollDown = 1;
-    MouseLeftClick = 2;
-    MouseRightClick = 3;
-    MouseHold = 4;
-    MouseRelease = 5;
-    MouseHover = 6;
+    MouseScrollLeft = 2;
+    MouseScrollRight = 3;
+    MouseLeftClick = 4;
+    MouseRightClick = 5;
+    MouseHold = 6;
+    MouseRelease = 7;
+    MouseHover = 8;
 }
 
 message TabUpdatePayload {
