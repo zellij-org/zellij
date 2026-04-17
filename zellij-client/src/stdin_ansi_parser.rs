@@ -65,8 +65,9 @@ impl StdinAnsiParser {
         // <ESC>]11;?<ESC>\ => get background color
         // <ESC>]10;?<ESC>\ => get foreground color
         // <ESC>[?2026$p => get synchronised output mode
+        // <ESC>[?2027$p => get grapheme cluster mode support
         let mut query_string = String::from(
-            "\u{1b}[14t\u{1b}[16t\u{1b}]11;?\u{1b}\u{5c}\u{1b}]10;?\u{1b}\u{5c}\u{1b}[?2026$p",
+            "\u{1b}[14t\u{1b}[16t\u{1b}]11;?\u{1b}\u{5c}\u{1b}]10;?\u{1b}\u{5c}\u{1b}[?2026$p\u{1b}[?2027$p",
         );
 
         // query colors
@@ -170,11 +171,29 @@ impl StdinAnsiParser {
             {
                 self.pending_events.push(ansi_sequence);
                 self.raw_buffer.clear();
+            } else if let Some(ansi_sequence) =
+                AnsiStdinInstruction::grapheme_cluster_mode_from_bytes(&self.raw_buffer)
+            {
+                self.pending_events.push(ansi_sequence);
+                self.raw_buffer.clear();
             }
         } else {
             self.raw_buffer.push(byte);
         }
     }
+}
+
+/// Host terminal's support level for CSI ? 2027 (grapheme cluster mode).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum HostGraphemeSupport {
+    /// Host doesn't recognize 2027 mode (DECRPM state 0 or 4).
+    Unsupported,
+    /// Host supports 2027 but it's currently off (DECRPM state 2).
+    /// Zellij should enable it and disable on exit.
+    Supported,
+    /// Host already has 2027 enabled (DECRPM state 1 or 3).
+    /// Zellij should not toggle it.
+    AlreadyEnabled,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -184,6 +203,8 @@ pub enum AnsiStdinInstruction {
     ForegroundColor(String),
     ColorRegisters(Vec<(usize, String)>),
     SynchronizedOutput(Option<SyncOutput>),
+    /// Host terminal responded to `CSI ? 2027 $ p`.
+    GraphemeClusterMode(HostGraphemeSupport),
 }
 
 impl AnsiStdinInstruction {
@@ -275,12 +296,36 @@ impl AnsiStdinInstruction {
         let key_string = String::from_utf8_lossy(bytes);
         if let Some(captures) = RE.captures_iter(&key_string).next() {
             match captures[1].parse::<usize>().ok()? {
-                1 | 2 => Some(AnsiStdinInstruction::SynchronizedOutput(Some(
+                1 | 2 | 3 => Some(AnsiStdinInstruction::SynchronizedOutput(Some(
                     SyncOutput::CSI,
                 ))),
-                0 | 4 => Some(AnsiStdinInstruction::SynchronizedOutput(None)),
-                _ => None,
+                _ => Some(AnsiStdinInstruction::SynchronizedOutput(None)),
             }
+        } else {
+            None
+        }
+    }
+
+    /// Parse the host terminal's DECRPM response for CSI ? 2027 (grapheme cluster mode).
+    /// Response format: `ESC [ ? 2027 ; <n> $ y` where:
+    ///   1 = mode set (supported and already enabled)
+    ///   2 = mode reset (supported but disabled — we should enable it)
+    ///   3 = permanently set (always on, cannot be changed)
+    ///   4 = permanently reset (recognized but cannot be changed)
+    ///   0 = not recognized
+    ///
+    pub fn grapheme_cluster_mode_from_bytes(bytes: &[u8]) -> Option<Self> {
+        lazy_static! {
+            static ref RE: Regex = Regex::new(r"^\u{1b}\[\?2027;([0-4])\$y$").unwrap();
+        }
+        let key_string = String::from_utf8_lossy(bytes);
+        if let Some(captures) = RE.captures_iter(&key_string).next() {
+            let support = match captures[1].parse::<usize>().ok()? {
+                1 | 3 => HostGraphemeSupport::AlreadyEnabled,
+                2 => HostGraphemeSupport::Supported,
+                _ => HostGraphemeSupport::Unsupported,
+            };
+            Some(AnsiStdinInstruction::GraphemeClusterMode(support))
         } else {
             None
         }

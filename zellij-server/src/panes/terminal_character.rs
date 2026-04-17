@@ -1,19 +1,20 @@
+use cold_string::ColdString;
 use std::convert::From;
 use std::fmt::{self, Debug, Display, Formatter};
 use std::ops::{Index, IndexMut};
 use std::rc::Rc;
 use unicode_width::UnicodeWidthChar;
-
 use unicode_width::UnicodeWidthStr;
 use vte::ParamsIter;
 use zellij_utils::data::StyleDeclaration;
 use zellij_utils::data::{PaletteColor, Style};
+use zellij_utils::grapheme_width::grapheme_display_width;
 use zellij_utils::input::command::RunCommand;
 
 use crate::panes::alacritty_functions::parse_sgr_color;
 
 pub const EMPTY_TERMINAL_CHARACTER: TerminalCharacter = TerminalCharacter {
-    character: ' ',
+    grapheme: ColdString::new_inline_const(" "),
     width: 1,
     styles: RcCharacterStyles::Reset,
 };
@@ -919,15 +920,22 @@ impl Cursor {
 
 #[derive(Clone, PartialEq)]
 pub struct TerminalCharacter {
-    pub character: char,
+    // Stores the full Extended Grapheme Cluster (EGC) text for this cell.
+    // ColdString is 8 bytes (usize), align=1, keeping the struct at 24 bytes.
+    // Inline capacity ≤7 bytes covers all single-scalar characters (the common case);
+    // multi-codepoint EGCs (ZWJ emoji, flag pairs, skin tones) heap-allocate via push_scalar.
+    // Width is computed via UnicodeWidthStr on the full grapheme string.
+    grapheme: ColdString,
     pub styles: RcCharacterStyles,
     width: u8,
 }
 
 // This size has significant memory and CPU implications for long lines,
-// be careful about allowing it to grow
+// be careful about allowing it to grow.
 #[cfg(target_arch = "x86_64")]
-const _: [(); 16] = [(); std::mem::size_of::<TerminalCharacter>()];
+const _: [(); 24] = [(); std::mem::size_of::<TerminalCharacter>()];
+#[cfg(target_arch = "aarch64")]
+const _: [(); 24] = [(); std::mem::size_of::<TerminalCharacter>()];
 
 impl TerminalCharacter {
     #[inline]
@@ -937,10 +945,12 @@ impl TerminalCharacter {
 
     #[inline]
     pub fn new_styled(character: char, styles: RcCharacterStyles) -> Self {
+        let mut buf = [0u8; 4];
+        let grapheme = ColdString::from(character.encode_utf8(&mut buf) as &str);
         TerminalCharacter {
-            character,
-            styles,
             width: character.width().unwrap_or(0) as u8,
+            grapheme,
+            styles,
         }
     }
 
@@ -951,8 +961,10 @@ impl TerminalCharacter {
 
     #[inline]
     pub fn new_singlewidth_styled(character: char, styles: RcCharacterStyles) -> Self {
+        let mut buf = [0u8; 4];
+        let grapheme = ColdString::from(character.encode_utf8(&mut buf) as &str);
         TerminalCharacter {
-            character,
+            grapheme,
             styles,
             width: 1,
         }
@@ -961,11 +973,52 @@ impl TerminalCharacter {
     pub fn width(&self) -> usize {
         self.width as usize
     }
+
+    /// Returns the full grapheme cluster text for this cell.
+    #[inline]
+    pub fn grapheme(&self) -> &str {
+        &self.grapheme
+    }
+
+    /// Iterates over the Unicode scalars in this cell's grapheme cluster.
+    #[inline]
+    pub fn chars(&self) -> impl Iterator<Item = char> + '_ {
+        self.grapheme.chars()
+    }
+
+    /// Returns the first (base) character of this cell's grapheme cluster.
+    #[inline]
+    pub fn first_char(&self) -> Option<char> {
+        self.grapheme.chars().next()
+    }
+
+    /// Replaces the grapheme cluster text, recomputing width from the full string.
+    ///
+    /// **Caveat:** Uses `UnicodeWidthStr::width()` which overcounts Spacing Combining Marks
+    /// (Mc, e.g. Indic vowel signs) as width 1. Only pass single-codepoint strings or strings
+    /// where the width is known to be correct. For extending an existing cell with combining
+    /// marks, use `push_scalar()` instead — it handles the Mc case correctly.
+    #[inline]
+    pub fn set_grapheme(&mut self, text: &str) {
+        self.grapheme = ColdString::from(text);
+        self.width = UnicodeWidthStr::width(text) as u8;
+    }
+
+    /// Appends a codepoint to this cell's grapheme cluster and updates the display width.
+    /// Used to attach combining marks, variation selectors, ZWJ sequences, etc. to a base character.
+    /// This is a rare (non-ASCII combining-mark) path so the String allocation is acceptable.
+    #[inline]
+    pub fn push_scalar(&mut self, c: char) {
+        let mut s = String::from(self.grapheme.as_str());
+        s.push(c);
+        self.width = grapheme_display_width(&s) as u8;
+        self.grapheme = ColdString::from(s);
+    }
 }
 
 impl ::std::fmt::Debug for TerminalCharacter {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.character)
+        write!(f, "{}", self.grapheme)
     }
 }
 

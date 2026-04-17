@@ -557,6 +557,7 @@ pub enum ClientContext {
     DoneParsingStdinQuery,
     SwitchSession,
     SetSynchronisedOutput,
+    SetGraphemeClusterMode,
     UnblockCliPipeInput,
     CliPipeOutput,
     QueryTerminalSize,

@@ -1,3 +1,4 @@
+use crate::grapheme_width::grapheme_display_width;
 use crate::home::default_layout_dir;
 use crate::input::actions::{Action, RunCommandAction};
 use crate::input::config::{ConversionError, KdlError};
@@ -19,7 +20,7 @@ use std::path::{Path, PathBuf};
 use std::str::{self, FromStr};
 use std::time::Duration;
 use strum_macros::{Display, EnumDiscriminants, EnumIter, EnumString};
-use unicode_width::UnicodeWidthChar;
+use unicode_segmentation::UnicodeSegmentation;
 
 #[cfg(not(target_family = "wasm"))]
 use crate::vendored::termwiz::{
@@ -2431,25 +2432,22 @@ fn extract_text_by_columns(line: &str, start_col: usize, end_col: usize) -> Stri
     let mut result = String::new();
     let mut capturing = false;
 
-    for ch in line.chars() {
-        let char_width = ch.width().unwrap_or(0);
+    for g in line.graphemes(true) {
+        let g_width = grapheme_display_width(g);
 
-        // Start capturing when we reach start_col
         if current_col >= start_col && !capturing {
             capturing = true;
         }
 
-        // Stop if we've reached or passed end_col
         if current_col >= end_col {
             break;
         }
 
-        // Capture character if we're in the range
         if capturing {
-            result.push(ch);
+            result.push_str(g);
         }
 
-        current_col += char_width;
+        current_col += g_width;
     }
 
     result
@@ -2461,18 +2459,18 @@ fn extract_text_from_column(line: &str, start_col: usize) -> String {
     let mut result = String::new();
     let mut capturing = false;
 
-    for ch in line.chars() {
-        let char_width = ch.width().unwrap_or(0);
+    for g in line.graphemes(true) {
+        let g_width = grapheme_display_width(g);
 
         if current_col >= start_col {
             capturing = true;
         }
 
         if capturing {
-            result.push(ch);
+            result.push_str(g);
         }
 
-        current_col += char_width;
+        current_col += g_width;
     }
 
     result
@@ -2483,15 +2481,15 @@ fn extract_text_to_column(line: &str, end_col: usize) -> String {
     let mut current_col = 0;
     let mut result = String::new();
 
-    for ch in line.chars() {
-        let char_width = ch.width().unwrap_or(0);
+    for g in line.graphemes(true) {
+        let g_width = grapheme_display_width(g);
 
         if current_col >= end_col {
             break;
         }
 
-        result.push(ch);
-        current_col += char_width;
+        result.push_str(g);
+        current_col += g_width;
     }
 
     result
