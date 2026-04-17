@@ -50,7 +50,7 @@ use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
 use zellij_utils::input::config::Config;
 use zellij_utils::input::keybinds::Keybinds;
-use zellij_utils::input::mouse::MouseEvent;
+use zellij_utils::input::mouse::{MouseEvent, MouseEventType};
 use zellij_utils::input::options::Clipboard;
 use zellij_utils::ipc::{ExitReason, ServerToClientMsg};
 use zellij_utils::pane_size::{PaneGeom, Size, SizeInPixels};
@@ -1320,10 +1320,10 @@ pub(crate) struct Screen {
     copy_options: CopyOptions,
     debug: bool,
     session_name: String,
-    session_infos_on_machine: BTreeMap<String, SessionInfo>, // String is the session name, can
+    peer_sessions_cache: BTreeMap<String, SessionInfo>, // String is the session name, can
     // also be this session
-    resurrectable_sessions: BTreeMap<String, Duration>, // String is the session name, duration is
-    // its creation time
+    resurrectable_sessions_cache: BTreeMap<String, Duration>, // String is the session name,
+    // duration is its creation time
     default_layout: Box<Layout>,
     default_shell: PathBuf,
     styled_underlines: bool,
@@ -1395,9 +1395,9 @@ impl Screen {
     ) -> Self {
         let session_name = mode_info.session_name.clone().unwrap_or_default();
         let session_info = SessionInfo::new(session_name.clone());
-        let mut session_infos_on_machine = BTreeMap::new();
-        let resurrectable_sessions = BTreeMap::new();
-        session_infos_on_machine.insert(session_name.clone(), session_info);
+        let mut peer_sessions_cache = BTreeMap::new();
+        let resurrectable_sessions_cache = BTreeMap::new();
+        peer_sessions_cache.insert(session_name.clone(), session_info);
         let current_pane_group = PaneGroups::new(bus.senders.clone());
         Screen {
             bus,
@@ -1424,7 +1424,7 @@ impl Screen {
             copy_options,
             debug,
             session_name,
-            session_infos_on_machine,
+            peer_sessions_cache,
             default_layout,
             default_layout_name,
             default_shell,
@@ -1434,7 +1434,7 @@ impl Screen {
             styled_underlines,
             osc8_hyperlinks,
             arrow_fonts,
-            resurrectable_sessions,
+            resurrectable_sessions_cache,
             layout_dir,
             explicitly_disable_kitty_keyboard_protocol,
             default_editor,
@@ -2939,16 +2939,31 @@ impl Screen {
             .senders
             .send_to_background_jobs(BackgroundJob::ReportSessionInfo(
                 self.session_name.to_owned(),
-                session_info,
+                session_info.clone(),
             ))
             .with_context(err_context)?;
 
+        self.peer_sessions_cache
+            .insert(self.session_name.clone(), session_info);
+        let mut live_sessions: Vec<SessionInfo> =
+            self.peer_sessions_cache.values().cloned().collect();
+        for info in live_sessions.iter_mut() {
+            info.is_current_session = info.name == self.session_name;
+        }
+        let resurrectable_sessions: Vec<(String, Duration)> = self
+            .resurrectable_sessions_cache
+            .iter()
+            .map(|(n, d)| (n.clone(), *d))
+            .collect();
         self.bus
             .senders
-            .send_to_background_jobs(BackgroundJob::ReadAllSessionInfosOnMachine)
+            .send_to_plugin(PluginInstruction::Update(vec![(
+                None,
+                None,
+                Event::SessionUpdate(live_sessions, resurrectable_sessions),
+            )]))
             .with_context(err_context)?;
 
-        // TODO: consider moving this elsewhere
         self.bus
             .senders
             .send_to_background_jobs(BackgroundJob::QueryZellijWebServerStatus)
@@ -2971,16 +2986,16 @@ impl Screen {
         new_session_infos: BTreeMap<String, SessionInfo>,
         resurrectable_sessions: BTreeMap<String, Duration>,
     ) -> Result<()> {
-        self.session_infos_on_machine = new_session_infos;
-        self.resurrectable_sessions = resurrectable_sessions;
+        self.peer_sessions_cache = new_session_infos;
+        self.resurrectable_sessions_cache = resurrectable_sessions;
         self.bus
             .senders
             .send_to_plugin(PluginInstruction::Update(vec![(
                 None,
                 None,
                 Event::SessionUpdate(
-                    self.session_infos_on_machine.values().cloned().collect(),
-                    self.resurrectable_sessions
+                    self.peer_sessions_cache.values().cloned().collect(),
+                    self.resurrectable_sessions_cache
                         .iter()
                         .map(|(n, c)| (n.clone(), c.clone()))
                         .collect(),
@@ -4215,6 +4230,12 @@ impl Screen {
         }
     }
     pub fn handle_mouse_event(&mut self, event: MouseEvent, client_id: ClientId) {
+        let is_bare_motion = event.event_type == MouseEventType::Motion
+            && !event.left
+            && !event.right
+            && !event.middle
+            && !event.wheel_up
+            && !event.wheel_down;
         match self
             .get_active_tab_mut(client_id)
             .and_then(|tab| tab.handle_mouse_event(&event, client_id))
@@ -4240,10 +4261,12 @@ impl Screen {
                     }
                 }
                 if mouse_effect.state_changed {
-                    let _ = self.log_and_report_session_state();
+                    if !is_bare_motion {
+                        let _ = self.log_and_report_session_state();
+                    }
                     should_render = true;
                 }
-                if !mouse_effect.leave_clipboard_message {
+                if !mouse_effect.leave_clipboard_message && !is_bare_motion {
                     let target_plugin_ids =
                         self.targeted_plugin_ids(client_id, EventType::InputReceived);
                     let plugin_updates: Vec<_> = target_plugin_ids
@@ -4256,7 +4279,7 @@ impl Screen {
                             .senders
                             .send_to_plugin(PluginInstruction::Update(plugin_updates));
                     }
-                    should_render = true; // TODO: do we need this?
+                    should_render = true;
                 }
                 if should_render {
                     self.render(None).non_fatal();
@@ -7923,7 +7946,7 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
-                if screen.session_infos_on_machine.contains_key(&name) {
+                if screen.peer_sessions_cache.contains_key(&name) {
                     let error_text = "A session by this name already exists.";
                     log::error!("{}", error_text);
                     if let Some(os_input) = &mut screen.bus.os_input {
@@ -7934,7 +7957,7 @@ pub(crate) fn screen_thread_main(
                             },
                         );
                     }
-                } else if screen.resurrectable_sessions.contains_key(&name) {
+                } else if screen.resurrectable_sessions_cache.contains_key(&name) {
                     let error_text =
                         "A resurrectable session by this name exists, cannot use this name.";
                     log::error!("{}", error_text);

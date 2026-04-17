@@ -487,6 +487,7 @@ pub enum PtyContext {
     GetPaneRunningCommand,
     GetPaneCwd,
     UpdateAndReportCwds,
+    NotifyCwdFromOsc7,
     Exit,
 }
 
@@ -614,7 +615,6 @@ pub enum BackgroundJobContext {
     DisplayPaneError,
     AnimatePluginLoading,
     StopPluginLoadingAnimation,
-    ReadAllSessionInfosOnMachine,
     ReportSessionInfo,
     ReportLayoutInfo,
     RunCommand,

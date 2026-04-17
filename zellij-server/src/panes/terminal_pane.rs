@@ -594,6 +594,10 @@ impl Pane for TerminalPane {
         self.grid.pending_desktop_notifications.drain(..).collect()
     }
 
+    fn drain_osc7_cwd(&mut self) -> Option<std::path::PathBuf> {
+        self.grid.pending_osc7_cwd.take()
+    }
+
     fn start_selection(&mut self, start: &Position, _client_id: ClientId) {
         self.grid.start_selection(start);
         self.set_should_render(true);
@@ -987,9 +991,12 @@ impl Pane for TerminalPane {
         self.grid.clear_plugin_highlights(plugin_id);
         self.set_should_render(true);
     }
-    fn set_hover_position(&mut self, position: Option<Position>) {
-        self.grid.set_hover_position(position);
-        self.set_should_render(true);
+    fn set_hover_position(&mut self, position: Option<Position>) -> bool {
+        let changed = self.grid.set_hover_position(position);
+        if changed {
+            self.set_should_render(true);
+        }
+        changed
     }
     fn cached_hover_tooltip(&self) -> Option<String> {
         self.grid.cached_hover_tooltip.clone()

@@ -51,6 +51,29 @@ pub fn create_config_and_cache_folders() {
     if let Err(e) = std::fs::create_dir_all(&ZELLIJ_SESSION_INFO_CACHE_DIR.as_path()) {
         log::error!("Failed to create session_info cache dir: {:?}", e);
     }
+    prune_empty_session_info_folders();
+}
+
+fn prune_empty_session_info_folders() {
+    let Ok(entries) = std::fs::read_dir(&*ZELLIJ_SESSION_INFO_CACHE_DIR) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        let is_empty = std::fs::read_dir(&path)
+            .ok()
+            .map_or(false, |mut iter| iter.next().is_none());
+        if is_empty {
+            if let Err(e) = std::fs::remove_dir(&path) {
+                if e.kind() != std::io::ErrorKind::NotFound {
+                    log::debug!("Failed to prune empty session folder {:?}: {:?}", path, e);
+                }
+            }
+        }
+    }
 }
 
 const fn system_default_data_dir() -> &'static str {

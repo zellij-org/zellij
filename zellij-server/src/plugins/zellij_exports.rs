@@ -82,9 +82,9 @@ use zellij_utils::{
             ProtobufGenerateRandomNameResponse, ProtobufGetFocusedPaneInfoResponse,
             ProtobufGetLayoutDirResponse, ProtobufGetPaneCwdResponse, ProtobufGetPaneInfoResponse,
             ProtobufGetPanePidResponse, ProtobufGetPaneRunningCommandResponse,
-            ProtobufGetSessionEnvironmentVariablesResponse, ProtobufGetTabInfoResponse,
-            ProtobufHideFloatingPanesResponse, ProtobufNewTabResponse, ProtobufNewTabsResponse,
-            ProtobufOpenCommandPaneBackgroundResponse,
+            ProtobufGetSessionEnvironmentVariablesResponse, ProtobufGetSessionListResponse,
+            ProtobufGetTabInfoResponse, ProtobufHideFloatingPanesResponse, ProtobufNewTabResponse,
+            ProtobufNewTabsResponse, ProtobufOpenCommandPaneBackgroundResponse,
             ProtobufOpenCommandPaneFloatingNearPluginResponse,
             ProtobufOpenCommandPaneFloatingResponse,
             ProtobufOpenCommandPaneInPlaceOfPaneIdResponse,
@@ -124,9 +124,9 @@ macro_rules! apply_action {
             $env.capabilities.clone(),
             $env.client_attributes.clone(),
             $env.default_shell.clone(),
-            $env.default_layout.clone(),
+            &$env.default_layout,
             None,
-            $env.keybinds.clone(),
+            &$env.keybinds,
             $env.default_mode.clone(),
             None,
         ) {
@@ -438,6 +438,7 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     },
                     PluginCommand::WatchFilesystem => watch_filesystem(env),
                     PluginCommand::ListWindowsVolumes => list_windows_volumes(env),
+                    PluginCommand::GetSessionList => get_session_list(env),
                     PluginCommand::DumpSessionLayout { tab_index } => {
                         dump_session_layout(env, tab_index)
                     },
@@ -1449,9 +1450,9 @@ fn run_action(env: &PluginEnv, mut action: Action, context: BTreeMap<String, Str
             capabilities,
             client_attributes,
             default_shell,
-            default_layout,
+            &default_layout,
             None,
-            keybinds,
+            &keybinds,
             default_mode,
             None,
         ) {
@@ -4079,6 +4080,44 @@ fn get_pane_running_command(env: &PluginEnv, pane_id: PaneId) {
     write_pane_running_command_response(env, pane_id, response);
 }
 
+fn get_session_list(env: &PluginEnv) {
+    use crate::background_jobs::{scan_session_list_default_dirs, session_scan_state};
+    use zellij_utils::data::{GetSessionListResponse, SessionListSnapshot};
+
+    let response = match session_scan_state() {
+        Some(state) => {
+            let (session_name, available_layouts, plugin_list) = {
+                let name = state.current_session_name.lock().unwrap().clone();
+                let info = state.current_session_info.lock().unwrap().clone();
+                let plugins = state.current_session_plugin_list.lock().unwrap().clone();
+                (name, info.available_layouts, plugins)
+            };
+
+            let (live_sessions_map, resurrectable_sessions_map) =
+                scan_session_list_default_dirs(&session_name, &available_layouts, &plugin_list);
+
+            let _ = env
+                .senders
+                .send_to_screen(ScreenInstruction::UpdateSessionInfos(
+                    live_sessions_map.clone(),
+                    resurrectable_sessions_map.clone(),
+                ));
+
+            let snapshot = SessionListSnapshot {
+                live_sessions: live_sessions_map.into_values().collect(),
+                resurrectable_sessions: resurrectable_sessions_map.into_iter().collect(),
+            };
+            GetSessionListResponse::Ok(snapshot)
+        },
+        None => GetSessionListResponse::Err("Session-scan state not initialized".to_string()),
+    };
+
+    let protobuf_response = ProtobufGetSessionListResponse::from(response);
+    wasi_write_object(env, &protobuf_response.encode_to_vec())
+        .with_context(|| "failed to write get_session_list response".to_string())
+        .non_fatal();
+}
+
 fn send_get_pane_running_command_request(
     env: &PluginEnv,
     pane_id: PaneId,
@@ -4446,9 +4485,9 @@ fn try_edit_layout(
         env.capabilities.clone(),
         env.client_attributes.clone(),
         env.default_shell.clone(),
-        env.default_layout.clone(),
+        &env.default_layout,
         None,
-        env.keybinds.clone(),
+        &env.keybinds,
         env.default_mode.clone(),
         None,
     )
@@ -5311,7 +5350,8 @@ fn check_command_permission(
         | PluginCommand::SaveSession
         | PluginCommand::CurrentSessionLastSavedTime
         | PluginCommand::GetPaneInfo(..)
-        | PluginCommand::GetTabInfo(..) => PermissionType::ReadApplicationState,
+        | PluginCommand::GetTabInfo(..)
+        | PluginCommand::GetSessionList => PermissionType::ReadApplicationState,
         PluginCommand::RebindKeys { .. } | PluginCommand::Reconfigure(..) => {
             PermissionType::Reconfigure
         },
