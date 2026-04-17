@@ -4982,6 +4982,7 @@ dependencies = [
  "unicode-width 0.1.10",
  "url",
  "uuid",
+ "widestring",
  "winapi",
  "windows-sys 0.52.0",
 ]

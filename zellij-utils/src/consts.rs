@@ -228,9 +228,19 @@ pub fn ipc_bind(path: &std::path::Path) -> std::io::Result<interprocess::local_s
 #[cfg(windows)]
 pub fn ipc_bind(path: &std::path::Path) -> std::io::Result<interprocess::local_socket::Listener> {
     use interprocess::local_socket::{prelude::*, GenericNamespaced, ListenerOptions};
+    use interprocess::os::windows::local_socket::ListenerOptionsExt;
     let name = path.to_string_lossy().to_string();
     let ns_name = name.to_ns_name::<GenericNamespaced>()?;
-    let listener = ListenerOptions::new().name(ns_name).create_sync()?;
+    // Set a security descriptor that grants access to the current user's SID
+    // across all logon sessions. Without this, sessions created from SSH
+    // cannot be attached to from an interactive desktop (or vice versa)
+    // because the default pipe DACL only grants access to the creating
+    // logon session's token.
+    let mut opts = ListenerOptions::new().name(ns_name);
+    if let Some(sd) = current_user_security_descriptor() {
+        opts = opts.security_descriptor(sd);
+    }
+    let listener = opts.create_sync()?;
     std::fs::write(path, std::process::id().to_string())?;
     Ok(listener)
 }
@@ -254,9 +264,14 @@ pub fn ipc_bind_async(
     path: &std::path::Path,
 ) -> std::io::Result<interprocess::local_socket::tokio::Listener> {
     use interprocess::local_socket::{prelude::*, GenericNamespaced, ListenerOptions};
+    use interprocess::os::windows::local_socket::ListenerOptionsExt;
     let name = path.to_string_lossy().to_string();
     let ns_name = name.to_ns_name::<GenericNamespaced>()?;
-    let listener = ListenerOptions::new().name(ns_name).create_tokio()?;
+    let mut opts = ListenerOptions::new().name(ns_name);
+    if let Some(sd) = current_user_security_descriptor() {
+        opts = opts.security_descriptor(sd);
+    }
+    let listener = opts.create_tokio()?;
     std::fs::write(path, std::process::id().to_string())?;
     Ok(listener)
 }
@@ -282,9 +297,81 @@ pub fn ipc_bind_reply(
     path: &std::path::Path,
 ) -> std::io::Result<interprocess::local_socket::Listener> {
     use interprocess::local_socket::{prelude::*, GenericNamespaced, ListenerOptions};
+    use interprocess::os::windows::local_socket::ListenerOptionsExt;
     let name = format!("{}-reply", path.to_string_lossy());
     let ns_name = name.to_ns_name::<GenericNamespaced>()?;
-    ListenerOptions::new().name(ns_name).create_sync()
+    let mut opts = ListenerOptions::new().name(ns_name);
+    if let Some(sd) = current_user_security_descriptor() {
+        opts = opts.security_descriptor(sd);
+    }
+    opts.create_sync()
+}
+
+/// Build a security descriptor that grants full access to the current user's
+/// SID. This allows named pipes to be accessed across different Windows logon
+/// sessions (e.g., SSH vs interactive desktop) for the same user account,
+/// without exposing them to other users.
+///
+/// Returns `None` if the user SID cannot be determined (falls back to default
+/// pipe security).
+#[cfg(windows)]
+fn current_user_security_descriptor(
+) -> Option<interprocess::os::windows::security_descriptor::SecurityDescriptor> {
+    use interprocess::os::windows::security_descriptor::SecurityDescriptor;
+    use windows_sys::Win32::Foundation::{CloseHandle, LocalFree};
+    use windows_sys::Win32::Security::Authorization::ConvertSidToStringSidW;
+    use windows_sys::Win32::Security::{GetTokenInformation, TokenUser, TOKEN_QUERY, TOKEN_USER};
+    use windows_sys::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
+
+    unsafe {
+        // Get current process token.
+        let mut token_handle = 0isize;
+        if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token_handle) == 0 {
+            return None;
+        }
+
+        // Query token for user SID.
+        let mut token_info_len: u32 = 0;
+        GetTokenInformation(
+            token_handle,
+            TokenUser,
+            std::ptr::null_mut(),
+            0,
+            &mut token_info_len,
+        );
+        let mut token_info_buf = vec![0u8; token_info_len as usize];
+        if GetTokenInformation(
+            token_handle,
+            TokenUser,
+            token_info_buf.as_mut_ptr().cast(),
+            token_info_len,
+            &mut token_info_len,
+        ) == 0
+        {
+            CloseHandle(token_handle);
+            return None;
+        }
+
+        let token_user = &*(token_info_buf.as_ptr() as *const TOKEN_USER);
+        let sid = token_user.User.Sid;
+
+        // Convert SID to string (e.g., "S-1-5-21-...").
+        let mut sid_string_ptr: *mut u16 = std::ptr::null_mut();
+        if ConvertSidToStringSidW(sid, &mut sid_string_ptr) == 0 {
+            CloseHandle(token_handle);
+            return None;
+        }
+
+        // Build SDDL: grant Generic All to this specific user SID.
+        let sid_string = widestring::U16CStr::from_ptr_str(sid_string_ptr);
+        let sddl_str = format!("D:(A;;GA;;;{})", sid_string.to_string_lossy());
+        let sddl_wide = widestring::U16CString::from_str(&sddl_str).ok();
+
+        LocalFree(sid_string_ptr as *mut std::ffi::c_void);
+        CloseHandle(token_handle);
+
+        sddl_wide.and_then(|s| SecurityDescriptor::deserialize(&s).ok())
+    }
 }
 
 #[cfg(unix)]
