@@ -173,13 +173,15 @@ fn assert_socket(name: &str) -> bool {
     use windows_sys::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION};
 
     let path = &*ZELLIJ_SOCK_DIR.join(name);
-    let pid_str = match fs::read_to_string(path) {
+    let contents = match fs::read_to_string(path) {
         Ok(s) => s,
         Err(_) => {
             drop(fs::remove_file(path));
             return false;
         },
     };
+    // First line is the PID; second line (if present) is the original pipe path.
+    let pid_str = contents.lines().next().unwrap_or("");
     let pid: u32 = match pid_str.trim().parse() {
         Ok(p) => p,
         Err(_) => {

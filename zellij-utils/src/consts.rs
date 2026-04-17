@@ -205,10 +205,30 @@ pub fn ipc_connect(path: &std::path::Path) -> std::io::Result<interprocess::loca
     LocalSocketStream::connect(fs_name)
 }
 
+/// Read the pipe source path from a Windows marker file.
+///
+/// The marker file format is `PID\n<pipe_source_path>`. If the second line
+/// is present, returns that path (the original path used when the pipe was
+/// created). Otherwise falls back to the marker file path itself. This
+/// allows session rename to work: the marker file moves but its content
+/// still points to the original pipe name.
+#[cfg(windows)]
+fn read_pipe_path(marker_path: &std::path::Path) -> std::path::PathBuf {
+    if let Ok(contents) = std::fs::read_to_string(marker_path) {
+        if let Some(pipe_path) = contents.lines().nth(1) {
+            if !pipe_path.is_empty() {
+                return std::path::PathBuf::from(pipe_path);
+            }
+        }
+    }
+    marker_path.to_path_buf()
+}
+
 #[cfg(windows)]
 pub fn ipc_connect(path: &std::path::Path) -> std::io::Result<interprocess::local_socket::Stream> {
     use interprocess::local_socket::{prelude::*, GenericNamespaced, Stream as LocalSocketStream};
-    let name = path.to_string_lossy().to_string();
+    let pipe_path = read_pipe_path(path);
+    let name = pipe_path.to_string_lossy().to_string();
     let ns_name = name.to_ns_name::<GenericNamespaced>()?;
     LocalSocketStream::connect(ns_name)
 }
@@ -231,7 +251,8 @@ pub fn ipc_bind(path: &std::path::Path) -> std::io::Result<interprocess::local_s
     let name = path.to_string_lossy().to_string();
     let ns_name = name.to_ns_name::<GenericNamespaced>()?;
     let listener = ListenerOptions::new().name(ns_name).create_sync()?;
-    std::fs::write(path, std::process::id().to_string())?;
+    let marker = format!("{}\n{}", std::process::id(), path.to_string_lossy());
+    std::fs::write(path, marker)?;
     Ok(listener)
 }
 
@@ -257,7 +278,8 @@ pub fn ipc_bind_async(
     let name = path.to_string_lossy().to_string();
     let ns_name = name.to_ns_name::<GenericNamespaced>()?;
     let listener = ListenerOptions::new().name(ns_name).create_tokio()?;
-    std::fs::write(path, std::process::id().to_string())?;
+    let marker = format!("{}\n{}", std::process::id(), path.to_string_lossy());
+    std::fs::write(path, marker)?;
     Ok(listener)
 }
 
@@ -269,7 +291,8 @@ pub fn ipc_connect_reply(
     path: &std::path::Path,
 ) -> std::io::Result<interprocess::local_socket::Stream> {
     use interprocess::local_socket::{prelude::*, GenericNamespaced, Stream as LocalSocketStream};
-    let name = format!("{}-reply", path.to_string_lossy());
+    let pipe_path = read_pipe_path(path);
+    let name = format!("{}-reply", pipe_path.to_string_lossy());
     let ns_name = name.to_ns_name::<GenericNamespaced>()?;
     LocalSocketStream::connect(ns_name)
 }
