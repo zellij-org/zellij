@@ -392,6 +392,13 @@ load_plugins {
 //
 // copy_on_select false
 
+// Characters considered part of a word for double-click selection,
+// in addition to alphanumeric characters. Characters not in this list
+// (and not alphanumeric) are treated as word boundaries.
+// Default: "@-./_~?&=%+#"
+//
+// select_by_word_characters "@-./_~?&=%+#"
+
 // Path to the default editor to use to edit pane scrollbuffer
 // Default: $EDITOR or $VISUAL
 //

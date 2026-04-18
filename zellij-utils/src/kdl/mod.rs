@@ -2817,6 +2817,9 @@ impl Options {
         let mouse_click_through =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "mouse_click_through")
                 .map(|(v, _)| v);
+        let select_by_word_characters =
+            kdl_property_first_arg_as_string_or_error!(kdl_options, "select_by_word_characters")
+                .map(|(s, _entry)| s.to_string());
 
         Ok(Options {
             simplified_ui,
@@ -2857,6 +2860,7 @@ impl Options {
             visual_bell,
             focus_follows_mouse,
             mouse_click_through,
+            select_by_word_characters,
             web_server_ip,
             web_server_port,
             web_server_cert,
@@ -4179,6 +4183,36 @@ impl Options {
             None
         }
     }
+    fn select_by_word_characters_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!(
+            "{}\n{}\n{}\n{}\n{}\n{}",
+            " ",
+            "// Characters considered part of a word for double-click selection,",
+            "// in addition to alphanumeric characters. Characters not in this list",
+            "// (and not alphanumeric) are treated as word boundaries.",
+            "// Default: \"@-./_~?&=%+#\"",
+            "// ",
+        );
+
+        let create_node = |node_value: &str| -> KdlNode {
+            let mut node = KdlNode::new("select_by_word_characters");
+            node.push(node_value.to_owned());
+            node
+        };
+        if let Some(ref chars) = self.select_by_word_characters {
+            let mut node = create_node(chars);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node("@-./_~?&=%+#");
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
     pub fn to_kdl(&self, add_comments: bool) -> Vec<KdlNode> {
         let mut nodes = vec![];
         if let Some(simplified_ui_node) = self.simplified_ui_to_kdl(add_comments) {
@@ -4324,6 +4358,10 @@ impl Options {
         if let Some(client_async_worker_tasks) = self.client_async_worker_tasks_to_kdl(add_comments)
         {
             nodes.push(client_async_worker_tasks);
+        }
+        if let Some(select_by_word_characters) = self.select_by_word_characters_to_kdl(add_comments)
+        {
+            nodes.push(select_by_word_characters);
         }
         nodes
     }

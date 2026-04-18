@@ -5690,3 +5690,48 @@ fn row_without_scroll_has_no_bg_color() {
         "rows not created by scroll should have no bg_color"
     );
 }
+
+#[test]
+fn double_click_word_selection_stops_at_asterisk() {
+    // '*' is not in DEFAULT_SELECT_BY_WORD_CHARACTERS, so it acts as a boundary
+    let content = "foo*bar\n";
+    let mut grid = create_grid_with_content(content);
+    let pos = Position::new(0, 1); // click on 'o' in "foo"
+    grid.start_selection(&pos);
+    grid.start_selection(&pos); // second click triggers double-click word selection
+    assert_eq!(grid.get_selected_text(), Some("foo".to_string()));
+}
+
+#[test]
+fn double_click_word_selection_includes_hyphen() {
+    // '-' is in DEFAULT_SELECT_BY_WORD_CHARACTERS, so it is NOT a boundary
+    let content = "git-branch\n";
+    let mut grid = create_grid_with_content(content);
+    let pos = Position::new(0, 1); // click on 'i' in "git"
+    grid.start_selection(&pos);
+    grid.start_selection(&pos);
+    assert_eq!(grid.get_selected_text(), Some("git-branch".to_string()));
+}
+
+#[test]
+fn double_click_word_selection_includes_at_sign() {
+    // '@' is in DEFAULT_SELECT_BY_WORD_CHARACTERS, so it is NOT a boundary
+    let content = "user@host\n";
+    let mut grid = create_grid_with_content(content);
+    let pos = Position::new(0, 1); // click on 's' in "user"
+    grid.start_selection(&pos);
+    grid.start_selection(&pos);
+    assert_eq!(grid.get_selected_text(), Some("user@host".to_string()));
+}
+
+#[test]
+fn double_click_word_selection_stops_at_colon() {
+    // ':' is not in DEFAULT_SELECT_BY_WORD_CHARACTERS, so it acts as a boundary
+    // Tests the common grep output case: "file.py:42"
+    let content = "file.py:42\n";
+    let mut grid = create_grid_with_content(content);
+    let pos = Position::new(0, 1); // click on 'i' in "file"
+    grid.start_selection(&pos);
+    grid.start_selection(&pos);
+    assert_eq!(grid.get_selected_text(), Some("file.py".to_string()));
+}
