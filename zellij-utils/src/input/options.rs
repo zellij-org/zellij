@@ -256,6 +256,7 @@ pub struct Options {
     pub web_server_cert: Option<PathBuf>,
     pub web_server_key: Option<PathBuf>,
     pub enforce_https_for_localhost: Option<bool>,
+    pub skip_auth_for_local_network_access: Option<bool>,
     /// A command to run after the discovery of running commands when serializing, for the purpose
     /// of manipulating the command (eg. with a regex) before it gets serialized
     #[clap(long, value_parser)]
@@ -366,6 +367,9 @@ impl Options {
         let enforce_https_for_localhost = other
             .enforce_https_for_localhost
             .or(self.enforce_https_for_localhost);
+        let skip_auth_for_local_network_access = other
+            .skip_auth_for_local_network_access
+            .or(self.skip_auth_for_local_network_access);
         let post_command_discovery_hook = other
             .post_command_discovery_hook
             .or(self.post_command_discovery_hook.clone());
@@ -417,6 +421,7 @@ impl Options {
             web_server_cert,
             web_server_key,
             enforce_https_for_localhost,
+            skip_auth_for_local_network_access,
             post_command_discovery_hook,
             client_async_worker_tasks,
         }
@@ -497,6 +502,9 @@ impl Options {
         let enforce_https_for_localhost = other
             .enforce_https_for_localhost
             .or(self.enforce_https_for_localhost);
+        let skip_auth_for_local_network_access = other
+            .skip_auth_for_local_network_access
+            .or(self.skip_auth_for_local_network_access);
         let post_command_discovery_hook = other
             .post_command_discovery_hook
             .or_else(|| self.post_command_discovery_hook.clone());
@@ -548,6 +556,7 @@ impl Options {
             web_server_cert,
             web_server_key,
             enforce_https_for_localhost,
+            skip_auth_for_local_network_access,
             post_command_discovery_hook,
             client_async_worker_tasks,
         }

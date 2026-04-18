@@ -1326,6 +1326,34 @@ fn dump_screen() {
 }
 
 #[test]
+#[cfg(target_os = "macos")]
+fn test_macos_default_clipboard_uses_pbcopy_when_no_copy_command() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let tab = create_new_tab(size, ModeInfo::default());
+    assert!(
+        tab.clipboard_provider_is_command(),
+        "On macOS, clipboard provider should use pbcopy command when copy_command is not configured"
+    );
+}
+
+#[test]
+#[cfg(not(target_os = "macos"))]
+fn test_non_macos_default_clipboard_uses_osc52_when_no_copy_command() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let tab = create_new_tab(size, ModeInfo::default());
+    assert!(
+        !tab.clipboard_provider_is_command(),
+        "On non-macOS, clipboard provider should use OSC52 when copy_command is not configured"
+    );
+}
+
+#[test]
 fn clear_screen() {
     let size = Size {
         cols: 121,
