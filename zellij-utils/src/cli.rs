@@ -10,33 +10,49 @@ use std::net::IpAddr;
 use std::path::PathBuf;
 use url::Url;
 
+/// Returns `Ok(())` when `<sock_dir>/<name>` fits within the platform's Unix
+/// socket path budget, or an `Err` with a user-facing message describing how
+/// to make it fit.
+///
+/// `sock_dir_len` is the byte length of the runtime directory path without a
+/// trailing separator; `max_sock_len` is the platform limit for the full
+/// socket path (e.g., `sockaddr_un.sun_path`).
 fn check_session_name_length(
-    _sock_dir_len: usize,
-    _max_sock_len: usize,
-    _name: &str,
+    sock_dir_len: usize,
+    max_sock_len: usize,
+    name: &str,
 ) -> Result<(), String> {
-    Err("not yet implemented".to_owned())
+    // PathBuf::push inserts one separator byte between components.
+    let path_prefix_len = sock_dir_len + 1;
+    let full_path_len = path_prefix_len + name.len();
+    if full_path_len < max_sock_len {
+        return Ok(());
+    }
+
+    // If the runtime directory alone leaves no room for even a one-character
+    // name, recommending a max length is useless — point at the runtime dir.
+    if path_prefix_len + 1 >= max_sock_len {
+        return Err(format!(
+            "runtime directory path is too long ({} of {} bytes used); \
+             shorten $XDG_RUNTIME_DIR or $TMPDIR",
+            path_prefix_len, max_sock_len
+        ));
+    }
+
+    let max_name_len = max_sock_len - path_prefix_len - 1;
+    Err(format!(
+        "session name must be at most {} characters \
+         (runtime directory uses {} of {} bytes)",
+        max_name_len, path_prefix_len, max_sock_len
+    ))
 }
 
 fn validate_session(name: &str) -> Result<String, String> {
     #[cfg(unix)]
     {
-        use crate::consts::ZELLIJ_SOCK_MAX_LENGTH;
-
-        let mut socket_path = crate::consts::ZELLIJ_SOCK_DIR.clone();
-        socket_path.push(name);
-
-        if socket_path.as_os_str().len() >= ZELLIJ_SOCK_MAX_LENGTH {
-            // socket path must be less than 108 bytes
-            let available_length = ZELLIJ_SOCK_MAX_LENGTH
-                .saturating_sub(socket_path.as_os_str().len())
-                .saturating_sub(1);
-
-            return Err(format!(
-                "session name must be less than {} characters",
-                available_length
-            ));
-        };
+        use crate::consts::{ZELLIJ_SOCK_DIR, ZELLIJ_SOCK_MAX_LENGTH};
+        let sock_dir_len = ZELLIJ_SOCK_DIR.as_os_str().len();
+        check_session_name_length(sock_dir_len, ZELLIJ_SOCK_MAX_LENGTH, name)?;
     };
 
     Ok(name.to_owned())
