@@ -5252,8 +5252,48 @@ pub(crate) fn screen_thread_main(
                     },
                 };
                 if let Some(pending_events) = pending_events_waiting_for_pane.remove(&pid) {
-                    for event in pending_events {
-                        screen.bus.senders.send_to_screen(event).non_fatal();
+                    // If a ClosePane is pending it means the process exited before
+                    // the pane was ever registered in any tab (quit_cb fired before
+                    // NewPane was processed by the screen). Handle it synchronously
+                    // here so the pane is closed in the same event-loop iteration
+                    // before the next render - the user never sees it flash open.
+                    let has_pending_close = pending_events
+                        .iter()
+                        .any(|e| matches!(e, ScreenInstruction::ClosePane(..)));
+                    if has_pending_close {
+                        // Extract the exit_status from the ClosePane event so that
+                        // close_pane has the correct status (e.g. for plugins that
+                        // inspect it).
+                        let exit_status = pending_events.iter().find_map(|e| {
+                            if let ScreenInstruction::ClosePane(_, _, _, exit_status) = e {
+                                Some(*exit_status)
+                            } else {
+                                None
+                            }
+                        });
+                        for tab in screen.tabs.values_mut() {
+                            if tab.get_all_pane_ids().contains(&pid) {
+                                tab.close_pane(pid, false, exit_status.flatten());
+                                break;
+                            }
+                        }
+                        screen.retain_only_existing_panes_in_pane_groups();
+                        // Re-queue non-close, non-bytes events (rare, but be safe).
+                        for event in pending_events {
+                            match event {
+                                // Already handled synchronously above.
+                                ScreenInstruction::ClosePane(..) => {},
+                                // Process is dead; these bytes will never be shown.
+                                ScreenInstruction::PtyBytes(..) => {},
+                                _ => {
+                                    screen.bus.senders.send_to_screen(event).non_fatal();
+                                },
+                            }
+                        }
+                    } else {
+                        for event in pending_events {
+                            screen.bus.senders.send_to_screen(event).non_fatal();
+                        }
                     }
                 }
                 screen.log_and_report_session_state()?;
