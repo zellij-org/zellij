@@ -2636,16 +2636,45 @@ pub(crate) fn route_thread_main(
                 }
             },
             None => {
+                // Tiered protection against protocol desync (e.g. a client
+                // running an incompatible binary version). The old behavior
+                // waited for 1000 unknown messages before disconnecting,
+                // which could keep one CPU core pinned for several seconds
+                // while logs were flooded.
+                //
+                // New thresholds:
+                //   1 message  → log a warning once, letting the client
+                //                recover if this was transient.
+                //   100 messages → disconnect and tell the client the
+                //                  protocol is out of sync so it can surface
+                //                  a clear error to the user (usually:
+                //                  "upgrade your client, or restart zellij
+                //                  so the server is rebuilt").
+                const DESYNC_DISCONNECT_THRESHOLD: usize = 100;
                 consecutive_unknown_messages_received += 1;
                 if consecutive_unknown_messages_received == 1 {
-                    log::error!("Received unknown message from client.");
+                    log::warn!(
+                        "Received unknown message from client {}. \
+                         This usually indicates a protocol version mismatch \
+                         between client and server.",
+                        client_id
+                    );
                 }
-                if consecutive_unknown_messages_received >= 1000 {
-                    log::error!("Client sent over 1000 consecutive unknown messages, this is probably an infinite loop, logging client out");
+                if consecutive_unknown_messages_received >= DESYNC_DISCONNECT_THRESHOLD {
+                    log::error!(
+                        "Client {} sent {} consecutive unknown messages — \
+                         disconnecting due to protocol desync.",
+                        client_id, DESYNC_DISCONNECT_THRESHOLD
+                    );
                     let _ = os_input.send_to_client(
                         client_id,
                         ServerToClientMsg::Exit {
-                            exit_reason: ExitReason::Error("Received empty message".to_string()),
+                            exit_reason: ExitReason::Error(
+                                "Protocol version mismatch between client and server. \
+                                 Please ensure both are the same zellij version, \
+                                 then restart."
+                                    .to_string(),
+                            ),
                         },
                     );
                     let _ = to_server.send(ServerInstruction::RemoveClient(client_id));
