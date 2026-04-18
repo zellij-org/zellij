@@ -664,11 +664,13 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
         // preserve the current umask: read current value by setting to another mode, and then restoring it
         let current_umask = umask(Mode::all());
         umask(current_umask);
-        daemonize::Daemonize::new()
-            .working_directory(std::env::current_dir().unwrap())
-            .umask(current_umask.bits() as u32)
-            .start()
-            .expect("could not daemonize the server process");
+        if std::env::var("ZELLIJ_NO_DAEMONIZE").is_err() {
+            daemonize::Daemonize::new()
+                .working_directory(std::env::current_dir().unwrap())
+                .umask(current_umask.bits() as u32)
+                .start()
+                .expect("could not daemonize the server process");
+        }
     }
 
     #[cfg(windows)]
@@ -2252,3 +2254,7 @@ fn get_available_layouts(config_options: &Options) -> (Vec<LayoutInfo>, Vec<Layo
         .map(|l| format!("{}", l.display()));
     Layout::list_available_layouts(layout_dir, &default_layout_name)
 }
+
+#[cfg(test)]
+#[path = "./unit/session_harness_tests.rs"]
+mod session_harness_tests;
