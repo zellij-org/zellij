@@ -112,13 +112,37 @@ pub fn parse_stdin(
         maybe_more,
     );
 
+    let mut remaining_bytes: Vec<u8> = buf.to_vec();
     for (_i, input_event) in events.into_iter().enumerate() {
         match input_event {
             InputEvent::Key(key_event) => {
-                let key = cast_termwiz_key(key_event.clone(), &buf, None);
+                // For each key event, send only the bytes belonging to that
+                // character rather than the entire input buffer.  When IME
+                // composition produces multiple characters in a single buffer
+                // (e.g. "你好"), sending the whole buffer for every event
+                // would duplicate the string N times.
+                let raw_bytes = if let zellij_utils::vendored::termwiz::input::KeyCode::Char(c) =
+                    key_event.key
+                {
+                    let char_len = c.len_utf8();
+                    if remaining_bytes.len() >= char_len {
+                        let bytes = remaining_bytes[..char_len].to_vec();
+                        remaining_bytes = remaining_bytes[char_len..].to_vec();
+                        bytes
+                    } else {
+                        let mut char_buf = [0u8; 4];
+                        c.encode_utf8(&mut char_buf);
+                        char_buf[..char_len].to_vec()
+                    }
+                } else {
+                    // For non-character keys (Enter, Backspace, etc.), drain
+                    // whatever is left so the next event doesn't re-send it.
+                    std::mem::take(&mut remaining_bytes)
+                };
+                let key = cast_termwiz_key(key_event.clone(), &raw_bytes, None);
                 os_input.send_to_server(ClientToServerMsg::Key {
                     key: key.clone(),
-                    raw_bytes: buf.to_vec(),
+                    raw_bytes,
                     is_kitty_keyboard_protocol: false,
                 });
             },
