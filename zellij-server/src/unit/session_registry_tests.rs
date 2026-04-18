@@ -1,22 +1,14 @@
-//! Integration test harness prototype.
+//! Session registry lifecycle tests.
 //!
-//! Demonstrates the session registry (sessions.kdl) lifecycle through direct
-//! registry API calls — register, rename, exit, migration.
+//! Exercises `sessions.kdl` through direct registry API calls — register,
+//! rename, exit, migration. No server threads or IPC involved; for that,
+//! see `zellij-server/tests/session_integration.rs`.
 //!
 //! ## Concurrency note
 //!
 //! These tests share a single `sessions.kdl` file (determined by the
 //! `ZELLIJ_SOCK_DIR` lazy_static). Each test performs its full workflow
 //! inside a single `with_registry` call to avoid races with parallel tests.
-//!
-//! ## Future direction
-//!
-//! A full `TestSession` harness that spawns a real server thread (with
-//! `ZELLIJ_NO_DAEMONIZE=1` on Unix) and communicates via IPC sockets
-//! requires:
-//! - Per-test `ZELLIJ_SOCKET_DIR` isolation (before lazy_static init)
-//! - A `ServerOsApi` mock that implements `new_client` with real sockets
-//! - Thread lifecycle management (spawn, connect, kill, join)
 
 use zellij_utils::sessions::{
     ensure_registry, generate_session_id, with_registry, SessionEntry, SessionState,

@@ -2256,5 +2256,5 @@ fn get_available_layouts(config_options: &Options) -> (Vec<LayoutInfo>, Vec<Layo
 }
 
 #[cfg(test)]
-#[path = "./unit/session_harness_tests.rs"]
-mod session_harness_tests;
+#[path = "./unit/session_registry_tests.rs"]
+mod session_registry_tests;
