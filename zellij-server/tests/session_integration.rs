@@ -368,6 +368,24 @@ impl TestSession {
         }
         panic!("timed out waiting for Render");
     }
+
+    /// Drain Render messages until one contains `needle`, return its content.
+    /// Avoids races where the first Render arrives before async PTY bytes have
+    /// been parsed into the grid.
+    fn wait_for_render_containing(&mut self, needle: &str) -> String {
+        for _ in 0..200 {
+            match self.receiver.recv_server_msg() {
+                Some((ServerToClientMsg::Render { content }, _)) => {
+                    if content.contains(needle) {
+                        return content;
+                    }
+                },
+                Some(_) => continue,
+                None => thread::sleep(Duration::from_millis(50)),
+            }
+        }
+        panic!("timed out waiting for Render containing {:?}", needle);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -432,11 +450,5 @@ fn pane_displays_mock_pty_output() {
         })
         .expect("failed to send resize");
 
-    let render = session.wait_for_render();
-
-    assert!(
-        render.contains("hello from mock pty"),
-        "Render should contain mock PTY output. Render length: {} bytes",
-        render.len(),
-    );
+    let _render = session.wait_for_render_containing("hello from mock pty");
 }
