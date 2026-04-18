@@ -10,6 +10,14 @@ use std::net::IpAddr;
 use std::path::PathBuf;
 use url::Url;
 
+fn check_session_name_length(
+    _sock_dir_len: usize,
+    _max_sock_len: usize,
+    _name: &str,
+) -> Result<(), String> {
+    Err("not yet implemented".to_owned())
+}
+
 fn validate_session(name: &str) -> Result<String, String> {
     #[cfg(unix)]
     {
@@ -1732,5 +1740,30 @@ mod tests {
     fn subscribe_requires_pane_id() {
         let result = CliArgs::try_parse_from(["zellij", "subscribe"]);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn check_session_name_length_short_name_ok() {
+        assert!(check_session_name_length(50, 108, "dev").is_ok());
+    }
+
+    #[test]
+    fn check_session_name_length_too_long_recommends_max() {
+        // sock_dir_len=50, max=108, separator=1 byte → largest name that
+        // keeps the full path under 108 bytes is 56 chars.
+        let result = check_session_name_length(50, 108, &"x".repeat(100));
+        let msg = result.expect_err("expected error for over-long name");
+        assert!(msg.contains("at most"), "message = {:?}", msg);
+        assert!(msg.contains("56"), "message = {:?}", msg);
+    }
+
+    #[test]
+    fn check_session_name_length_sock_dir_exhausted_reports_runtime_dir() {
+        // Runtime dir alone already over budget — no name length recommendation
+        // would be useful; message should point at the runtime dir instead.
+        let result = check_session_name_length(108, 108, "anything");
+        let msg = result.expect_err("expected error");
+        assert!(msg.contains("runtime directory"), "message = {:?}", msg);
+        assert!(!msg.contains("0 characters"), "message = {:?}", msg);
     }
 }
