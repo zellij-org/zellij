@@ -457,8 +457,14 @@ pub fn ensure_registry() -> SessionRegistry {
     }
 }
 
+/// Ensure the sock dir exists so the lock/registry files can be created in it.
+fn ensure_sock_dir() -> io::Result<()> {
+    fs::create_dir_all(&*ZELLIJ_SOCK_DIR)
+}
+
 /// Write the session registry to disk, acquiring an exclusive lock.
 pub fn write_registry(registry: &SessionRegistry) -> io::Result<()> {
+    ensure_sock_dir()?;
     let _lock = FileLock::exclusive(&ZELLIJ_SESSIONS_LOCK)?;
     fs::write(&*ZELLIJ_SESSIONS_KDL, registry.to_kdl())
 }
@@ -469,6 +475,7 @@ pub fn with_registry<F, R>(f: F) -> io::Result<R>
 where
     F: FnOnce(&mut SessionRegistry) -> R,
 {
+    ensure_sock_dir()?;
     let _lock = FileLock::exclusive(&ZELLIJ_SESSIONS_LOCK)?;
     let mut registry = match fs::read_to_string(&*ZELLIJ_SESSIONS_KDL) {
         Ok(raw) => SessionRegistry::from_kdl(&raw).unwrap_or_default(),
