@@ -1711,6 +1711,7 @@ fn open_terminal(env: &PluginEnv, cwd: PathBuf) {
         near_current_pane: false,
         borderless: None,
         tab_id: None,
+        size: None,
     };
     let result = apply_action!(action, error_msg, env);
 
@@ -1744,6 +1745,7 @@ fn open_terminal_near_plugin(env: &PluginEnv, cwd: PathBuf) {
         NewPanePlacement::Tiled {
             direction: None,
             borderless: None,
+            size: None,
         },
         false,
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
@@ -2148,6 +2150,7 @@ fn open_command_pane(
         near_current_pane: false,
         borderless: None,
         tab_id: None,
+        size: None,
     };
     let result = apply_action!(action, error_msg, env);
 
@@ -2201,6 +2204,7 @@ fn open_command_pane_near_plugin(
         NewPanePlacement::Tiled {
             direction: None,
             borderless: None,
+            size: None,
         },
         false,
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
