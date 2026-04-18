@@ -43,7 +43,8 @@ use zellij_utils::input::{config::Config, options::Options};
 
 use authentication::auth_middleware;
 use http_handlers::{
-    create_new_client, get_static_asset, login_handler, serve_html, version_handler,
+    create_new_client, get_static_asset, healthz_handler, login_handler, serve_html,
+    version_handler,
 };
 use ipc_listener::listen_to_web_server_instructions;
 
@@ -242,6 +243,7 @@ pub async fn serve_web_client(
         .route("/assets/{*path}", get(get_static_asset))
         .route("/command/login", post(login_handler))
         .route("/info/version", get(version_handler))
+        .route("/healthz", get(healthz_handler))
         .with_state(state)
         .layer(axum::middleware::from_fn(move |request, next: axum::middleware::Next| {
             async move {
