@@ -1334,6 +1334,7 @@ pub(crate) struct Screen {
     #[cfg_attr(test, allow(dead_code))]
     default_layout_name: Option<String>,
     explicitly_disable_kitty_keyboard_protocol: bool,
+    support_kitty_multi_cursor_protocol: bool,
     default_editor: Option<PathBuf>,
     web_clients_allowed: bool,
     web_sharing: WebSharing,
@@ -1381,6 +1382,7 @@ impl Screen {
         arrow_fonts: bool,
         layout_dir: Option<PathBuf>,
         explicitly_disable_kitty_keyboard_protocol: bool,
+        support_kitty_multi_cursor_protocol: bool,
         stacked_resize: bool,
         default_editor: Option<PathBuf>,
         web_clients_allowed: bool,
@@ -1437,6 +1439,7 @@ impl Screen {
             resurrectable_sessions_cache,
             layout_dir,
             explicitly_disable_kitty_keyboard_protocol,
+            support_kitty_multi_cursor_protocol,
             default_editor,
             web_clients_allowed,
             web_sharing,
@@ -1706,6 +1709,12 @@ impl Screen {
                             .bus
                             .senders
                             .send_to_background_jobs(BackgroundJob::StopFlashTabBell(tab_id));
+                    }
+
+                    // Invalidate cursor cache so the next render sends
+                    // DECSCUSR, resetting the terminal's blink timeout.
+                    if let Some(new_tab) = self.get_indexed_tab_mut(new_tab_index) {
+                        new_tab.invalidate_cursor_cache();
                     }
 
                     self.log_and_report_session_state()
@@ -2441,6 +2450,7 @@ impl Screen {
             self.styled_underlines,
             self.osc8_hyperlinks,
             self.explicitly_disable_kitty_keyboard_protocol,
+            self.support_kitty_multi_cursor_protocol,
             self.default_editor.clone(),
             self.web_clients_allowed,
             self.web_sharing,
@@ -5004,6 +5014,9 @@ pub(crate) fn screen_thread_main(
         // explicitly_disable_kitty_keyboard_protocol is false and vice versa
         .unwrap_or(false); // by default, we try to support this if the terminal supports it and
                            // the program running inside a pane requests it
+    let support_kitty_multi_cursor_protocol = config_options
+        .support_kitty_multi_cursor_protocol
+        .unwrap_or(true); // enabled by default, matching kitty keyboard protocol
     let stacked_resize = config_options.stacked_resize.unwrap_or(true);
     let web_clients_allowed = config_options
         .web_sharing
@@ -5047,6 +5060,7 @@ pub(crate) fn screen_thread_main(
         arrow_fonts,
         layout_dir,
         explicitly_disable_kitty_keyboard_protocol,
+        support_kitty_multi_cursor_protocol,
         stacked_resize,
         default_editor,
         web_clients_allowed,

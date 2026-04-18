@@ -27,6 +27,7 @@ use zellij_utils::position::{Column, Line};
 use zellij_utils::shared::clean_string_from_control_and_linebreak;
 
 use crate::background_jobs::BackgroundJob;
+use crate::panes::grid::{ExtraCursorColor, MultiCursorCoord, MultiCursorState};
 use crate::pane_groups::PaneGroups;
 use crate::pty_writer::PtyWriteInstruction;
 use crate::screen::{CopyOptions, ScreenInstruction};
@@ -202,6 +203,8 @@ pub(crate) struct Tab {
     styled_underlines: bool,
     osc8_hyperlinks: bool,
     explicitly_disable_kitty_keyboard_protocol: bool,
+    support_kitty_multi_cursor_protocol: bool,
+    last_multi_cursor_sequence: HashMap<ClientId, String>,
     web_clients_allowed: bool,
     web_sharing: WebSharing,
     mouse_hover_pane_id: HashMap<ClientId, PaneId>,
@@ -303,6 +306,9 @@ pub trait Pane {
     fn scroll_down(&mut self, count: usize, client_id: ClientId);
     fn clear_scroll(&mut self);
     fn is_scrolled(&self) -> bool;
+    fn multi_cursor_state(&self) -> Option<&MultiCursorState> {
+        None
+    }
     fn active_at(&self) -> Instant;
     fn set_active_at(&mut self, instant: Instant);
     fn set_frame(&mut self, frame: bool);
@@ -715,6 +721,7 @@ impl Tab {
         styled_underlines: bool,
         osc8_hyperlinks: bool,
         explicitly_disable_kitty_keyboard_protocol: bool,
+        support_kitty_multi_cursor_protocol: bool,
         default_editor: Option<PathBuf>,
         web_clients_allowed: bool,
         web_sharing: WebSharing,
@@ -821,6 +828,8 @@ impl Tab {
             styled_underlines,
             osc8_hyperlinks,
             explicitly_disable_kitty_keyboard_protocol,
+            support_kitty_multi_cursor_protocol,
+            last_multi_cursor_sequence: HashMap::new(),
             default_editor,
             web_clients_allowed,
             web_sharing,
@@ -3168,6 +3177,14 @@ impl Tab {
         Ok(())
     }
 
+    /// Invalidate the cursor position/shape cache so the next render
+    /// re-sends DECSCUSR and multi-cursor data to the outer terminal.
+    /// Call when this tab becomes the active tab for a client.
+    pub fn invalidate_cursor_cache(&mut self) {
+        self.cursor_positions_and_shape.clear();
+        self.last_multi_cursor_sequence.clear();
+    }
+
     pub fn render(
         &mut self,
         output: &mut Output,
@@ -3222,12 +3239,175 @@ impl Tab {
                 .with_context(err_context)?;
         }
 
+        self.render_multi_cursors(output);
         self.render_cursor(output);
         if output.has_rendered_assets() {
             self.hide_cursor_and_clear_display_as_needed(output);
         }
 
         Ok(())
+    }
+
+    fn render_multi_cursors(&mut self, output: &mut Output) {
+        if !self.support_kitty_multi_cursor_protocol {
+            return;
+        }
+        let connected_clients: Vec<ClientId> =
+            { self.connected_clients.borrow().iter().copied().collect() };
+        for client_id in connected_clients {
+            // Look up active pane with fallback to tiled (matches render_cursor behavior).
+            let pane_id = if self.floating_panes.panes_are_visible() {
+                self.floating_panes
+                    .get_active_pane_id(client_id)
+                    .or_else(|| self.tiled_panes.get_active_pane_id(client_id))
+            } else {
+                self.tiled_panes.get_active_pane_id(client_id)
+            };
+            let pane_z_index =
+                pane_id.and_then(|id| self.floating_panes.get_pane_z_index(id));
+
+            // Skip mid-frame renders to avoid flashing incorrect positions
+            // (matches render_cursor behavior).
+            let is_mid_frame = self
+                .active_terminal_is_mid_frame(client_id)
+                .unwrap_or(false);
+
+            let new_seq = if is_mid_frame { None } else { pane_id
+                .and_then(|id| {
+                    self.floating_panes
+                        .get_pane(id)
+                        .map(Box::as_ref)
+                        .or_else(|| self.tiled_panes.get_pane(id).map(Box::as_ref))
+                })
+                .and_then(|pane| {
+                    let state = pane.multi_cursor_state()?;
+                    if pane.is_scrolled() || state.coords.is_empty() {
+                        return None;
+                    }
+                    let content_x = pane.get_content_x();
+                    let content_y = pane.get_content_y();
+                    let pane_rows = pane.get_content_rows();
+                    let pane_cols = pane.get_content_columns();
+                    // cursor_coordinates returns pane-relative coords.
+                    let cursor_coords = pane.cursor_coordinates(None);
+
+                    use std::fmt::Write;
+                    let mut seq = String::with_capacity(16 + state.coords.len() * 12);
+                    let _ = write!(seq, "\x1b[>{}", state.shape);
+                    let mut has_visible_coords = false;
+                    for coord in &state.coords {
+                        match coord {
+                            MultiCursorCoord::MainCursor => {
+                                // Resolve to screen-absolute, 1-indexed.
+                                if let Some((cx, cy, _)) = cursor_coords {
+                                    let sx = pane.x() + cx;
+                                    let sy = pane.y() + cy;
+                                    if output.cursor_is_visible(sx, sy, pane_z_index) {
+                                        let _ = write!(seq, ";2:{}:{}", sy + 1, sx + 1);
+                                        has_visible_coords = true;
+                                    }
+                                }
+                            },
+                            MultiCursorCoord::Point(row, col) => {
+                                let tr = *row as usize + content_y;
+                                let tc = *col as usize + content_x;
+                                // Screen-absolute 0-indexed for visibility check.
+                                if output.cursor_is_visible(
+                                    tc.saturating_sub(1),
+                                    tr.saturating_sub(1),
+                                    pane_z_index,
+                                ) {
+                                    let _ = write!(seq, ";2:{}:{}", tr, tc);
+                                    has_visible_coords = true;
+                                }
+                            },
+                            MultiCursorCoord::Rect(top, left, bottom, right) => {
+                                let tt = *top as usize + content_y;
+                                let tl = *left as usize + content_x;
+                                let tb = *bottom as usize + content_y;
+                                let tr = *right as usize + content_x;
+                                // Check any corner visible (0-indexed for visibility check).
+                                if output.cursor_is_visible(
+                                    tl.saturating_sub(1), tt.saturating_sub(1), pane_z_index,
+                                ) || output.cursor_is_visible(
+                                    tr.saturating_sub(1), tb.saturating_sub(1), pane_z_index,
+                                ) {
+                                    let _ = write!(seq, ";4:{}:{}:{}:{}", tt, tl, tb, tr);
+                                    has_visible_coords = true;
+                                }
+                            },
+                            MultiCursorCoord::FullScreen => {
+                                // Translate full-screen to pane-sized rectangle.
+                                let top = content_y + 1;
+                                let left = content_x + 1;
+                                let bottom = content_y + pane_rows;
+                                let right = content_x + pane_cols;
+                                // Check any corner visible.
+                                if output.cursor_is_visible(
+                                    content_x, content_y, pane_z_index,
+                                ) || output.cursor_is_visible(
+                                    content_x + pane_cols.saturating_sub(1),
+                                    content_y + pane_rows.saturating_sub(1),
+                                    pane_z_index,
+                                ) {
+                                    let _ = write!(seq, ";4:{}:{}:{}:{}", top, left, bottom, right);
+                                    has_visible_coords = true;
+                                }
+                            },
+                        }
+                    }
+
+                    if !has_visible_coords {
+                        return None;
+                    }
+
+                    seq.push_str(" q");
+
+                    // Append color sub-commands if set.
+                    Self::append_color_sequence(&mut seq, 30, &state.text_color);
+                    Self::append_color_sequence(&mut seq, 40, &state.cursor_color);
+
+                    Some(seq)
+                })
+            };
+            match new_seq {
+                Some(seq) => {
+                    let changed = self
+                        .last_multi_cursor_sequence
+                        .get(&client_id)
+                        .map_or(true, |prev| prev != &seq);
+                    if changed {
+                        output.add_post_vte_instruction_to_client(client_id, &seq);
+                        self.last_multi_cursor_sequence.insert(client_id, seq);
+                    }
+                },
+                None => {
+                    // Always send clear when this pane has no multi-cursors.
+                    // Per-tab tombstone dedup was wrong: switching Tab A (cursors)
+                    // → Tab B (no cursors) → Tab A → Tab B would skip the clear
+                    // on the second visit because Tab B's tombstone was still set
+                    // from the first visit, before Tab A re-sent cursors.
+                    self.last_multi_cursor_sequence.insert(client_id, String::new());
+                    output.add_post_vte_instruction_to_client(client_id, "\x1b[>0;4 q");
+                },
+            }
+        }
+    }
+
+    fn append_color_sequence(seq: &mut String, shape: u8, color: &ExtraCursorColor) {
+        use std::fmt::Write;
+        match color {
+            ExtraCursorColor::Unset => {},
+            ExtraCursorColor::Special => {
+                let _ = write!(seq, "\x1b[>{};1 q", shape);
+            },
+            ExtraCursorColor::Rgb(r, g, b) => {
+                let _ = write!(seq, "\x1b[>{};2:{}:{}:{} q", shape, r, g, b);
+            },
+            ExtraCursorColor::Indexed(i) => {
+                let _ = write!(seq, "\x1b[>{};5:{} q", shape, i);
+            },
+        }
     }
 
     fn hide_cursor_and_clear_display_as_needed(&mut self, output: &mut Output) {
@@ -3264,8 +3444,12 @@ impl Tab {
                     let active_terminal_is_mid_frame = self
                         .active_terminal_is_mid_frame(client_id)
                         .unwrap_or(false);
+                    let is_scrolled = self
+                        .get_active_pane(client_id)
+                        .map(|p| p.is_scrolled())
+                        .unwrap_or(false);
 
-                    if active_terminal_is_mid_frame {
+                    if active_terminal_is_mid_frame || is_scrolled {
                         // no-op, this means the active terminal is currently rendering a frame,
                         // which means the cursor can be jumping around and we definitely do not
                         // want to render it
@@ -3285,16 +3469,27 @@ impl Tab {
                             .unwrap_or(true);
                         if output.is_dirty() || cursor_changed_position_or_shape {
                             let show_cursor = "\u{1b}[?25h";
-                            let goto_cursor_position = &format!(
-                                "\u{1b}[{};{}H\u{1b}[m{}",
-                                cursor_position_y + 1,
-                                cursor_position_x + 1,
-                                desired_cursor_shape
-                            ); // goto row/col
+                            // Only include DECSCUSR when the cursor actually
+                            // changed. Re-sending the shape every dirty frame
+                            // resets the terminal's cursor blink timeout.
+                            let goto_cursor_position = if cursor_changed_position_or_shape {
+                                format!(
+                                    "\u{1b}[{};{}H\u{1b}[m{}",
+                                    cursor_position_y + 1,
+                                    cursor_position_x + 1,
+                                    desired_cursor_shape,
+                                )
+                            } else {
+                                format!(
+                                    "\u{1b}[{};{}H\u{1b}[m",
+                                    cursor_position_y + 1,
+                                    cursor_position_x + 1,
+                                )
+                            };
                             output.add_post_vte_instruction_to_client(client_id, show_cursor);
                             output.add_post_vte_instruction_to_client(
                                 client_id,
-                                goto_cursor_position,
+                                &goto_cursor_position,
                             );
                             self.cursor_positions_and_shape.insert(
                                 client_id,
@@ -3304,8 +3499,7 @@ impl Tab {
                     } else if not_occluded {
                         // Cursor is hidden by the app but not occluded by a floating
                         // pane. Position the host terminal cursor at the correct
-                        // location (for IME) then hide it. The IME subsystem reads
-                        // the cursor position regardless of visibility.
+                        // location (for IME) then hide it.
                         let hide_cursor = "\u{1b}[?25l";
                         let goto_cursor_position = &format!(
                             "\u{1b}[{};{}H",
