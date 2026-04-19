@@ -397,6 +397,45 @@ impl ClientInfo {
     }
 }
 
+fn new_session_cli_assets(
+    cli_args: &CliArgs,
+    config_options: &Options,
+    layout_info: Option<LayoutInfo>,
+    layout_cwd: Option<PathBuf>,
+    terminal_window_size: Size,
+) -> CliAssets {
+    CliAssets {
+        config_file_path: Config::config_file_path(cli_args),
+        config_dir: cli_args.config_dir.clone(),
+        should_ignore_config: cli_args.is_setup_clean(),
+        configuration_options: Some(config_options.clone()),
+        layout: layout_info.or_else(|| {
+            cli_args
+                .layout
+                .as_ref()
+                .and_then(|layout| {
+                    LayoutInfo::from_cli(
+                        &config_options.layout_dir,
+                        &Some(layout.clone()),
+                        std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+                    )
+                })
+                .or_else(|| {
+                    LayoutInfo::from_config(
+                        &config_options.layout_dir,
+                        &config_options.default_layout,
+                    )
+                })
+        }),
+        terminal_window_size,
+        data_dir: cli_args.data_dir.clone(),
+        is_debug: cli_args.debug,
+        max_panes: cli_args.max_panes,
+        force_run_layout_commands: false,
+        cwd: layout_cwd,
+    }
+}
+
 #[derive(Debug, Clone)]
 pub(crate) enum InputInstruction {
     KeyEvent(InputEvent, Vec<u8>),
@@ -885,37 +924,13 @@ pub fn start_client(
         },
         ClientInfo::New(name, layout_info, layout_cwd) => {
             envs::set_session_name(name.clone());
-
-            let cli_assets = CliAssets {
-                config_file_path: Config::config_file_path(&cli_args),
-                config_dir: cli_args.config_dir.clone(),
-                should_ignore_config: cli_args.is_setup_clean(),
-                configuration_options: Some(config_options.clone()),
-                layout: layout_info.or_else(|| {
-                    cli_args
-                        .layout
-                        .as_ref()
-                        .and_then(|l| {
-                            LayoutInfo::from_cli(
-                                &config_options.layout_dir,
-                                &Some(l.clone()),
-                                std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
-                            )
-                        })
-                        .or_else(|| {
-                            LayoutInfo::from_config(
-                                &config_options.layout_dir,
-                                &config_options.default_layout,
-                            )
-                        })
-                }),
-                terminal_window_size: full_screen_ws,
-                data_dir: cli_args.data_dir.clone(),
-                is_debug: cli_args.debug,
-                max_panes: cli_args.max_panes,
-                force_run_layout_commands: false,
-                cwd: layout_cwd,
-            };
+            let cli_assets = new_session_cli_assets(
+                &cli_args,
+                &config_options,
+                layout_info,
+                layout_cwd,
+                full_screen_ws,
+            );
 
             os_input.update_session_name(name);
             let ipc_pipe = create_ipc_pipe();
@@ -1359,38 +1374,13 @@ pub fn start_server_detached(
         },
         ClientInfo::New(name, layout_info, layout_cwd) => {
             envs::set_session_name(name.clone());
-
-            let cli_assets = CliAssets {
-                config_file_path: Config::config_file_path(&cli_args),
-                config_dir: cli_args.config_dir.clone(),
-                should_ignore_config: cli_args.is_setup_clean(),
-                configuration_options: cli_args.options(),
-                layout: layout_info.or_else(|| {
-                    cli_args
-                        .layout
-                        .as_ref()
-                        .and_then(|l| {
-                            LayoutInfo::from_cli(
-                                &config_options.layout_dir,
-                                &Some(l.clone()),
-                                std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
-                            )
-                        })
-                        .or_else(|| {
-                            LayoutInfo::from_config(
-                                &config_options.layout_dir,
-                                &config_options.default_layout,
-                            )
-                        })
-                }),
-                terminal_window_size: Size { cols: 50, rows: 50 }, // static number until a
-                // client connects
-                data_dir: cli_args.data_dir.clone(),
-                is_debug: cli_args.debug,
-                max_panes: cli_args.max_panes,
-                force_run_layout_commands: false,
-                cwd: layout_cwd,
-            };
+            let cli_assets = new_session_cli_assets(
+                &cli_args,
+                &config_options,
+                layout_info,
+                layout_cwd,
+                Size { cols: 50, rows: 50 },
+            );
 
             os_input.update_session_name(name);
             let ipc_pipe = create_ipc_pipe();
