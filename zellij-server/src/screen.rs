@@ -3096,11 +3096,13 @@ impl Screen {
         match self.get_active_tab(client_id) {
             Ok(active_tab) => {
                 let active_tab_pos = active_tab.position;
-                let left_tab_pos = if active_tab_pos == 0 {
-                    self.tabs.len() - 1
-                } else {
-                    active_tab_pos - 1
-                };
+
+                if active_tab_pos == 0 {
+                    debug!("Tab is already at the leftmost position - ignoring move.");
+                    return Ok(());
+                }
+
+                let left_tab_pos = active_tab_pos - 1;
 
                 self.switch_tabs(active_tab_pos, left_tab_pos);
                 self.log_and_report_session_state()
@@ -3188,7 +3190,13 @@ impl Screen {
         match self.get_active_tab(client_id) {
             Ok(active_tab) => {
                 let active_tab_pos = active_tab.position;
-                let right_tab_pos = (active_tab_pos + 1) % self.tabs.len();
+
+                if active_tab_pos == self.tabs.len() - 1 {
+                    debug!("Tab is already at the rightmost position - ignoring move.");
+                    return Ok(());
+                }
+
+                let right_tab_pos = active_tab_pos + 1;
 
                 self.switch_tabs(active_tab_pos, right_tab_pos);
                 self.log_and_report_session_state()

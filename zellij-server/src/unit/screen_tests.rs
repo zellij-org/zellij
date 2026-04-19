@@ -1057,25 +1057,6 @@ fn move_of_active_tab_to_left_multiple_times() {
 }
 
 #[test]
-fn wrapping_move_of_active_tab_to_left() {
-    let mut screen = create_fixed_size_screen();
-    new_tab(&mut screen, 1, 0);
-    new_tab(&mut screen, 2, 1);
-    new_tab(&mut screen, 3, 2);
-    screen.move_focus_left_or_previous_tab(1).expect("TEST");
-    screen.move_focus_left_or_previous_tab(1).expect("TEST");
-    assert_eq!(screen.get_active_tab(1).unwrap().position, 0);
-
-    screen.move_active_tab_to_left(1).expect("TEST");
-
-    assert_eq!(
-        screen.get_active_tab(1).unwrap().position,
-        2,
-        "Active tab moved to left until wrapped around"
-    );
-}
-
-#[test]
 fn basic_move_of_active_tab_to_right() {
     let mut screen = create_fixed_size_screen();
     new_tab(&mut screen, 1, 0);
@@ -1128,23 +1109,6 @@ fn move_of_active_tab_to_right_multiple_times() {
 }
 
 #[test]
-fn wrapping_move_of_active_tab_to_right() {
-    let mut screen = create_fixed_size_screen();
-    new_tab(&mut screen, 1, 0);
-    new_tab(&mut screen, 2, 1);
-    new_tab(&mut screen, 3, 2);
-    assert_eq!(screen.get_active_tab(1).unwrap().position, 2);
-
-    screen.move_active_tab_to_right(1).expect("TEST");
-
-    assert_eq!(
-        screen.get_active_tab(1).unwrap().position,
-        0,
-        "Active tab moved to right until wrapped around"
-    );
-}
-
-#[test]
 fn tab_id_remains_stable_after_switch() {
     // Test that tab IDs remain stable when switching tabs, only positions change
     let mut screen = create_fixed_size_screen();
@@ -1169,8 +1133,7 @@ fn tab_id_remains_stable_after_switch() {
     assert_eq!(screen.tabs.get(&2).unwrap().id, 2);
     assert_eq!(screen.tabs.get(&2).unwrap().position, 2);
 
-    // Move active tab (position 2, ID 2) to right, which wraps to position 0
-    // This switches tabs at positions 2 and 0 (tab IDs 2 and 0)
+    // Move active tab (position 2, ID 2) to right, which should be a no-op.
     screen.move_active_tab_to_right(1).expect("TEST");
 
     // Verify BTreeMap keys (IDs) remain unchanged
@@ -1181,8 +1144,7 @@ fn tab_id_remains_stable_after_switch() {
         "Tab IDs in BTreeMap should remain 0, 1, 2 after switch"
     );
 
-    // Verify IDs remain stable but positions are swapped
-    // Tab 0: was at position 0, now at position 2 (swapped with tab 2)
+    // Verify IDs remain stable and positions remain unchanged
     assert_eq!(
         screen.tabs.get(&0).unwrap().id,
         0,
@@ -1190,8 +1152,8 @@ fn tab_id_remains_stable_after_switch() {
     );
     assert_eq!(
         screen.tabs.get(&0).unwrap().position,
-        2,
-        "Tab with ID 0 should now be at position 2"
+        0,
+        "Tab with ID 0 should remain at position 0"
     );
 
     // Tab 1: remains unchanged at position 1
@@ -1206,7 +1168,7 @@ fn tab_id_remains_stable_after_switch() {
         "Tab with ID 1 should remain at position 1"
     );
 
-    // Tab 2: was at position 2, now at position 0 (swapped with tab 0)
+    // Tab 2: was at position 2, still at position 2
     assert_eq!(
         screen.tabs.get(&2).unwrap().id,
         2,
@@ -1214,19 +1176,19 @@ fn tab_id_remains_stable_after_switch() {
     );
     assert_eq!(
         screen.tabs.get(&2).unwrap().position,
-        0,
-        "Tab with ID 2 should now be at position 0"
+        2,
+        "Tab with ID 2 should remain at position 2"
     );
 
     // Verify that lookup by position works correctly after switch
     let tab_at_pos_0 = screen.tabs.values().find(|t| t.position == 0).unwrap();
-    assert_eq!(tab_at_pos_0.id, 2, "Tab at position 0 should have ID 2");
+    assert_eq!(tab_at_pos_0.id, 0, "Tab at position 0 should have ID 0");
 
     let tab_at_pos_1 = screen.tabs.values().find(|t| t.position == 1).unwrap();
     assert_eq!(tab_at_pos_1.id, 1, "Tab at position 1 should have ID 1");
 
     let tab_at_pos_2 = screen.tabs.values().find(|t| t.position == 2).unwrap();
-    assert_eq!(tab_at_pos_2.id, 0, "Tab at position 2 should have ID 0");
+    assert_eq!(tab_at_pos_2.id, 2, "Tab at position 2 should have ID 2");
 }
 
 #[test]
