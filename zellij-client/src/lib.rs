@@ -46,7 +46,14 @@ use crate::web_client::control_message::{
 static ASYNC_RUNTIME: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
 use std::sync::OnceLock;
 
+const ENTER_ALTERNATE_SCREEN: &str = "\u{1b}[?1049h";
+const EXIT_ALTERNATE_SCREEN: &str = "\u{1b}[?1049l";
+const ENABLE_BRACKETED_PASTE: &str = "\u{1b}[?2004h";
+const RESET_STYLE: &str = "\u{1b}[m";
+const SHOW_CURSOR: &str = "\u{1b}[?25h";
+const ENTER_KITTY_KEYBOARD_MODE: &str = "\u{1b}[>1u";
 const EXIT_KITTY_KEYBOARD_MODE: &str = "\u{1b}[<1u";
+const CLEAR_CLIENT_TERMINAL_ATTRIBUTES: &str = "\u{1b}[?1l\u{1b}=\u{1b}[r\u{1b}[?1000l\u{1b}[?1002l\u{1b}[?1003l\u{1b}[?1005l\u{1b}[?1006l\u{1b}[?12l";
 
 /// Spawn an async runtime for this client instance.
 ///
@@ -618,23 +625,15 @@ pub fn start_remote_client(
     )?;
 
     let reconnect_to_session = None;
-    let clear_client_terminal_attributes = "\u{1b}[?1l\u{1b}=\u{1b}[r\u{1b}[?1000l\u{1b}[?1002l\u{1b}[?1003l\u{1b}[?1005l\u{1b}[?1006l\u{1b}[?12l";
-    let take_snapshot = "\u{1b}[?1049h";
-    let bracketed_paste = "\u{1b}[?2004h";
-    let enter_kitty_keyboard_mode = "\u{1b}[>1u";
     os_input.unset_raw_mode().unwrap();
 
-    let _ = os_input
-        .get_stdout_writer()
-        .write(take_snapshot.as_bytes())
+    let mut stdout = os_input.get_stdout_writer();
+    stdout.write_all(ENTER_ALTERNATE_SCREEN.as_bytes()).unwrap();
+    stdout
+        .write_all(CLEAR_CLIENT_TERMINAL_ATTRIBUTES.as_bytes())
         .unwrap();
-    let _ = os_input
-        .get_stdout_writer()
-        .write(clear_client_terminal_attributes.as_bytes())
-        .unwrap();
-    let _ = os_input
-        .get_stdout_writer()
-        .write(enter_kitty_keyboard_mode.as_bytes())
+    stdout
+        .write_all(ENTER_KITTY_KEYBOARD_MODE.as_bytes())
         .unwrap();
 
     envs::set_zellij("0".to_string());
@@ -642,10 +641,7 @@ pub fn start_remote_client(
     let full_screen_ws = os_input.get_terminal_size();
 
     os_input.set_raw_mode();
-    let _ = os_input
-        .get_stdout_writer()
-        .write(bracketed_paste.as_bytes())
-        .unwrap();
+    stdout.write_all(ENABLE_BRACKETED_PASTE.as_bytes()).unwrap();
 
     std::panic::set_hook({
         use zellij_utils::errors::handle_panic;
@@ -663,24 +659,10 @@ pub fn start_remote_client(
         os_input.disable_mouse().non_fatal();
         os_input.unset_raw_mode().unwrap();
         os_input.restore_console_mode();
-        let goto_start_of_last_line = format!("\u{1b}[{};{}H", full_screen_ws.rows, 1);
-        let restore_alternate_screen = "\u{1b}[?1049l";
-        let reset_style = "\u{1b}[m";
-        let show_cursor = "\u{1b}[?25h";
-        let error = format!(
-            "{}{}{}{}\n{}{}\n",
-            reset_style,
-            show_cursor,
-            restore_alternate_screen,
-            EXIT_KITTY_KEYBOARD_MODE,
-            goto_start_of_last_line,
-            e
-        );
-        let _ = os_input
-            .get_stdout_writer()
-            .write(error.as_bytes())
-            .unwrap();
-        let _ = os_input.get_stdout_writer().flush().unwrap();
+        let error = terminal_teardown_message(&e, full_screen_ws.rows, true);
+        let mut stdout = os_input.get_stdout_writer();
+        stdout.write_all(error.as_bytes()).unwrap();
+        stdout.flush().unwrap();
         if exit_status == 0 {
             log::info!("{}", e);
         } else {
@@ -702,7 +684,7 @@ pub fn start_remote_client(
     } else {
         let clear_screen = "\u{1b}[2J";
         let mut stdout = os_input.get_stdout_writer();
-        let _ = stdout.write(clear_screen.as_bytes()).unwrap();
+        stdout.write_all(clear_screen.as_bytes()).unwrap();
         stdout.flush().unwrap();
     }
 
@@ -732,28 +714,20 @@ pub fn start_client(
         .unwrap_or(false);
     let should_start_web_server = config_options.web_server.map(|w| w).unwrap_or(false);
     let mut reconnect_to_session = None;
-    let clear_client_terminal_attributes = "\u{1b}[?1l\u{1b}=\u{1b}[r\u{1b}[?1000l\u{1b}[?1002l\u{1b}[?1003l\u{1b}[?1005l\u{1b}[?1006l\u{1b}[?12l";
-    let take_snapshot = "\u{1b}[?1049h";
-    let bracketed_paste = "\u{1b}[?2004h";
-    let enter_kitty_keyboard_mode = "\u{1b}[>1u";
     os_input.unset_raw_mode().unwrap();
 
     if !is_a_reconnect {
         // we don't do this for a reconnect because our controlling terminal already has the
         // attributes we want from it, and some terminals don't treat these atomically (looking at
         // you Windows Terminal...)
-        let _ = os_input
-            .get_stdout_writer()
-            .write(take_snapshot.as_bytes())
-            .unwrap();
-        let _ = os_input
-            .get_stdout_writer()
-            .write(clear_client_terminal_attributes.as_bytes())
+        let mut stdout = os_input.get_stdout_writer();
+        stdout.write_all(ENTER_ALTERNATE_SCREEN.as_bytes()).unwrap();
+        stdout
+            .write_all(CLEAR_CLIENT_TERMINAL_ATTRIBUTES.as_bytes())
             .unwrap();
         if !explicitly_disable_kitty_keyboard_protocol {
-            let _ = os_input
-                .get_stdout_writer()
-                .write(enter_kitty_keyboard_mode.as_bytes())
+            stdout
+                .write_all(ENTER_KITTY_KEYBOARD_MODE.as_bytes())
                 .unwrap();
         }
     }
@@ -946,10 +920,8 @@ pub fn start_client(
     let mut command_is_executing = CommandIsExecuting::new();
 
     os_input.set_raw_mode();
-    let _ = os_input
-        .get_stdout_writer()
-        .write(bracketed_paste.as_bytes())
-        .unwrap();
+    let mut stdout = os_input.get_stdout_writer();
+    stdout.write_all(ENABLE_BRACKETED_PASTE.as_bytes()).unwrap();
 
     let (send_client_instructions, receive_client_instructions): ChannelWithContext<
         ClientInstruction,
@@ -1090,18 +1062,14 @@ pub fn start_client(
         os_input.disable_mouse().non_fatal();
         os_input.unset_raw_mode().unwrap();
         os_input.restore_console_mode();
-        let goto_start_of_last_line = format!("\u{1b}[{};{}H", full_screen_ws.rows, 1);
-        let restore_snapshot = "\u{1b}[?1049l";
-        let error = format!(
-            "{}\n{}{}\n",
-            restore_snapshot, goto_start_of_last_line, backtrace
+        let error = terminal_teardown_message(
+            &backtrace,
+            full_screen_ws.rows,
+            !explicitly_disable_kitty_keyboard_protocol,
         );
         let mut stdout = os_input.get_stdout_writer();
-        if !explicitly_disable_kitty_keyboard_protocol {
-            let _ = stdout.write(EXIT_KITTY_KEYBOARD_MODE.as_bytes());
-        }
-        let _ = stdout.write(error.as_bytes()).unwrap();
-        let _ = stdout.flush().unwrap();
+        stdout.write_all(error.as_bytes()).unwrap();
+        stdout.flush().unwrap();
         std::process::exit(1);
     };
 
@@ -1263,13 +1231,10 @@ pub fn start_client(
     router_thread.join().unwrap();
 
     if reconnect_to_session.is_none() {
-        let reset_style = "\u{1b}[m";
-        let show_cursor = "\u{1b}[?25h";
-        let restore_snapshot = "\u{1b}[?1049l";
-        let goto_start_of_last_line = format!("\u{1b}[{};{}H", full_screen_ws.rows, 1);
-        let goodbye_message = format!(
-            "{}\n{}{}{}{}\n",
-            goto_start_of_last_line, restore_snapshot, reset_style, show_cursor, exit_msg
+        let goodbye_message = terminal_teardown_message(
+            &exit_msg,
+            full_screen_ws.rows,
+            !explicitly_disable_kitty_keyboard_protocol,
         );
 
         os_input.disable_mouse().non_fatal();
@@ -1277,16 +1242,12 @@ pub fn start_client(
         os_input.unset_raw_mode().unwrap();
         os_input.restore_console_mode();
         let mut stdout = os_input.get_stdout_writer();
-        if !explicitly_disable_kitty_keyboard_protocol {
-            let _ = stdout.write(EXIT_KITTY_KEYBOARD_MODE.as_bytes()).unwrap();
-            stdout.flush().unwrap();
-        }
-        let _ = stdout.write(goodbye_message.as_bytes()).unwrap();
+        stdout.write_all(goodbye_message.as_bytes()).unwrap();
         stdout.flush().unwrap();
     } else {
         let clear_screen = "\u{1b}[2J";
         let mut stdout = os_input.get_stdout_writer();
-        let _ = stdout.write(clear_screen.as_bytes()).unwrap();
+        stdout.write_all(clear_screen.as_bytes()).unwrap();
         stdout.flush().unwrap();
     }
 
@@ -1420,6 +1381,24 @@ pub fn start_server_detached(
 
     os_input.connect_to_server(&*ipc_pipe);
     os_input.send_to_server(first_msg);
+}
+
+fn terminal_teardown_message(message: &str, rows: usize, include_kitty_exit: bool) -> String {
+    let goto_start_of_last_line = format!("\u{1b}[{};{}H", rows, 1);
+    let kitty_exit = if include_kitty_exit {
+        EXIT_KITTY_KEYBOARD_MODE
+    } else {
+        ""
+    };
+    format!(
+        "{}{}{}{}{}{}\n",
+        kitty_exit,
+        EXIT_ALTERNATE_SCREEN,
+        RESET_STYLE,
+        SHOW_CURSOR,
+        goto_start_of_last_line,
+        message
+    )
 }
 
 #[cfg(test)]
