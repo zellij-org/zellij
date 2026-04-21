@@ -6,6 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
 * fix: idle CPU + disk i/o, CommandChanged plugin Event, GetSessionList plugin command (https://github.com/zellij-org/zellij/pull/5063)
+* fix: occasional dropped characters in web client (https://github.com/zellij-org/zellij/pull/5080)
 
 ## [0.44.1] - 2026-04-07
 * fix: don't display default ports as offline in `share` plugin (https://github.com/zellij-org/zellij/pull/4908)
