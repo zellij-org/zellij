@@ -275,11 +275,10 @@ impl AnsiStdinInstruction {
         let key_string = String::from_utf8_lossy(bytes);
         if let Some(captures) = RE.captures_iter(&key_string).next() {
             match captures[1].parse::<usize>().ok()? {
-                1 | 2 => Some(AnsiStdinInstruction::SynchronizedOutput(Some(
+                1 | 2 | 3 => Some(AnsiStdinInstruction::SynchronizedOutput(Some(
                     SyncOutput::CSI,
                 ))),
-                0 | 4 => Some(AnsiStdinInstruction::SynchronizedOutput(None)),
-                _ => None,
+                _ => Some(AnsiStdinInstruction::SynchronizedOutput(None)),
             }
         } else {
             None
