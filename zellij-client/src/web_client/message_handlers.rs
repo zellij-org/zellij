@@ -112,13 +112,33 @@ pub fn parse_stdin(
         maybe_more,
     );
 
+    let single_event = events.len() == 1;
     for (_i, input_event) in events.into_iter().enumerate() {
         match input_event {
             InputEvent::Key(key_event) => {
-                let key = cast_termwiz_key(key_event.clone(), &buf, None);
+                // When the buffer contains multiple characters (e.g. from IME
+                // composition like Chinese input), InputParser produces one
+                // KeyEvent per character.  Previously we sent the entire `buf`
+                // as `raw_bytes` for *every* event, which caused the full
+                // string to be written N times (once per character).
+                //
+                // Fix: when there are multiple events, encode each individual
+                // character's bytes instead of the whole buffer.
+                let raw_bytes = if single_event {
+                    buf.to_vec()
+                } else {
+                    match &key_event.key {
+                        zellij_utils::vendored::termwiz::input::KeyCode::Char(c) => {
+                            let mut char_buf = [0u8; 4];
+                            c.encode_utf8(&mut char_buf).as_bytes().to_vec()
+                        },
+                        _ => buf.to_vec(),
+                    }
+                };
+                let key = cast_termwiz_key(key_event.clone(), &raw_bytes, None);
                 os_input.send_to_server(ClientToServerMsg::Key {
                     key: key.clone(),
-                    raw_bytes: buf.to_vec(),
+                    raw_bytes,
                     is_kitty_keyboard_protocol: false,
                 });
             },
