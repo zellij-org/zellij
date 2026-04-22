@@ -116,19 +116,15 @@ pub fn parse_stdin(
     for (_i, input_event) in events.into_iter().enumerate() {
         match input_event {
             InputEvent::Key(key_event) => {
-                // When the buffer contains multiple characters (e.g. from IME
-                // composition like Chinese input), InputParser produces one
-                // KeyEvent per character.  Previously we sent the entire `buf`
-                // as `raw_bytes` for *every* event, which caused the full
-                // string to be written N times (once per character).
-                //
-                // Fix: when there are multiple events, encode each individual
-                // character's bytes instead of the whole buffer.
+                // For multi-event buffers (e.g. IME composition), avoid
+                // duplicating the full buffer for each unmodified Char event.
+                // Non-Char or modified keys still use the original buffer.
                 let raw_bytes = if single_event {
                     buf.to_vec()
                 } else {
-                    match &key_event.key {
-                        zellij_utils::vendored::termwiz::input::KeyCode::Char(c) => {
+                    use zellij_utils::vendored::termwiz::input::{KeyCode, Modifiers};
+                    match (&key_event.key, key_event.modifiers) {
+                        (KeyCode::Char(c), m) if m == Modifiers::NONE => {
                             let mut char_buf = [0u8; 4];
                             c.encode_utf8(&mut char_buf).as_bytes().to_vec()
                         },
