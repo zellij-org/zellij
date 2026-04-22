@@ -186,3 +186,125 @@ pub fn parse_stdin(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::parse_stdin;
+    use crate::os_input_output::ClientOsApi;
+    use std::io::{BufRead, Cursor, Write};
+    use std::path::Path;
+    use std::sync::{Arc, Mutex};
+    use zellij_utils::{
+        data::Palette,
+        errors::ErrorContext,
+        input::mouse::MouseEvent,
+        ipc::{ClientToServerMsg, ServerToClientMsg},
+        pane_size::Size,
+    };
+
+    #[derive(Clone, Debug, Default)]
+    struct RecordingOsInput {
+        sent_messages: Arc<Mutex<Vec<ClientToServerMsg>>>,
+    }
+
+    impl RecordingOsInput {
+        fn take_sent_messages(&self) -> Vec<ClientToServerMsg> {
+            self.sent_messages.lock().unwrap().clone()
+        }
+    }
+
+    impl ClientOsApi for RecordingOsInput {
+        fn get_terminal_size(&self) -> Size {
+            Size::default()
+        }
+        fn set_raw_mode(&mut self) {}
+        fn unset_raw_mode(&self) -> Result<(), std::io::Error> {
+            Ok(())
+        }
+        fn get_stdout_writer(&self) -> Box<dyn Write> {
+            Box::new(std::io::sink())
+        }
+        fn get_stdin_reader(&self) -> Box<dyn BufRead> {
+            Box::new(Cursor::new(Vec::<u8>::new()))
+        }
+        fn update_session_name(&mut self, _new_session_name: String) {}
+        fn read_from_stdin(&mut self) -> Result<Vec<u8>, &'static str> {
+            Ok(vec![])
+        }
+        fn box_clone(&self) -> Box<dyn ClientOsApi> {
+            Box::new(self.clone())
+        }
+        fn send_to_server(&self, msg: ClientToServerMsg) {
+            self.sent_messages.lock().unwrap().push(msg);
+        }
+        fn recv_from_server(&self) -> Option<(ServerToClientMsg, ErrorContext)> {
+            None
+        }
+        fn handle_signals(
+            &self,
+            _sigwinch_cb: Box<dyn Fn()>,
+            _quit_cb: Box<dyn Fn()>,
+            _resize_receiver: Option<std::sync::mpsc::Receiver<()>>,
+        ) {
+        }
+        fn connect_to_server(&self, _path: &Path) {}
+        fn load_palette(&self) -> Palette {
+            Palette::default()
+        }
+        fn enable_mouse(&self) -> anyhow::Result<()> {
+            Ok(())
+        }
+        fn disable_mouse(&self) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn ime_multi_char_input_uses_per_char_raw_bytes() {
+        let os_input = RecordingOsInput::default();
+        let mut mouse_old_event = MouseEvent::new();
+
+        parse_stdin(
+            "你好".as_bytes(),
+            Box::new(os_input.clone()),
+            &mut mouse_old_event,
+            false,
+        );
+
+        let sent_messages = os_input.take_sent_messages();
+        assert_eq!(sent_messages.len(), 2);
+
+        let raw_bytes: Vec<Vec<u8>> = sent_messages
+            .into_iter()
+            .map(|message| match message {
+                ClientToServerMsg::Key { raw_bytes, .. } => raw_bytes,
+                other => panic!("expected key message, got {other:?}"),
+            })
+            .collect();
+
+        assert_eq!(raw_bytes, vec!["你".as_bytes().to_vec(), "好".as_bytes().to_vec()]);
+    }
+
+    #[test]
+    fn single_char_input_keeps_original_raw_bytes() {
+        let os_input = RecordingOsInput::default();
+        let mut mouse_old_event = MouseEvent::new();
+
+        parse_stdin(
+            "a".as_bytes(),
+            Box::new(os_input.clone()),
+            &mut mouse_old_event,
+            false,
+        );
+
+        let sent_messages = os_input.take_sent_messages();
+        assert_eq!(sent_messages.len(), 1);
+
+        match &sent_messages[0] {
+            ClientToServerMsg::Key { raw_bytes, .. } => {
+                assert_eq!(raw_bytes, &b"a".to_vec());
+            },
+            other => panic!("expected key message, got {other:?}"),
+        }
+    }
+}
