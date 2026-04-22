@@ -266,6 +266,7 @@ fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
         styled_underlines,
         osc8_hyperlinks,
         explicitly_disable_kitty_keyboard_protocol,
+        true, // support_kitty_multi_cursor_protocol
         None,
         false,
         web_sharing,
@@ -353,6 +354,7 @@ fn create_new_tab_without_pane_frames(size: Size, default_mode: ModeInfo) -> Tab
         styled_underlines,
         osc8_hyperlinks,
         explicitly_disable_kitty_keyboard_protocol,
+        true, // support_kitty_multi_cursor_protocol
         None,
         false,
         web_sharing,
@@ -455,6 +457,7 @@ fn create_new_tab_with_swap_layouts(
         styled_underlines,
         osc8_hyperlinks,
         explicitly_disable_kitty_keyboard_protocol,
+        true, // support_kitty_multi_cursor_protocol
         None,
         false,
         web_sharing,
@@ -558,6 +561,7 @@ fn create_new_tab_with_os_api(
         styled_underlines,
         osc8_hyperlinks,
         explicitly_disable_kitty_keyboard_protocol,
+        true, // support_kitty_multi_cursor_protocol
         None,
         false,
         web_sharing,
@@ -647,6 +651,7 @@ fn create_new_tab_with_layout(size: Size, default_mode: ModeInfo, layout: &str) 
         styled_underlines,
         osc8_hyperlinks,
         explicitly_disable_kitty_keyboard_protocol,
+        true, // support_kitty_multi_cursor_protocol
         None,
         false,
         web_sharing,
@@ -750,6 +755,7 @@ fn create_new_tab_with_mock_pty_writer(
         styled_underlines,
         osc8_hyperlinks,
         explicitly_disable_kitty_keyboard_protocol,
+        true, // support_kitty_multi_cursor_protocol
         None,
         false,
         web_sharing,
@@ -844,6 +850,7 @@ fn create_new_tab_with_sixel_support(
         styled_underlines,
         osc8_hyperlinks,
         explicitly_disable_kitty_keyboard_protocol,
+        true, // support_kitty_multi_cursor_protocol
         None,
         false,
         web_sharing,
@@ -12551,6 +12558,7 @@ fn create_new_tab_with_plugin_receiver(
         styled_underlines,
         osc8_hyperlinks,
         explicitly_disable_kitty_keyboard_protocol,
+        true, // support_kitty_multi_cursor_protocol
         None,
         false,
         web_sharing,

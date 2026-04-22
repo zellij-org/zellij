@@ -2,7 +2,7 @@ use crate::output::{CharacterChunk, SixelImageChunk};
 use crate::panes::sixel::SixelImageStore;
 use crate::panes::LinkHandler;
 use crate::panes::{
-    grid::Grid,
+    grid::{Grid, MultiCursorState},
     terminal_character::{render_first_run_banner, TerminalCharacter, EMPTY_TERMINAL_CHARACTER},
 };
 use crate::pty::VteBytes;
@@ -570,6 +570,9 @@ impl Pane for TerminalPane {
     }
     fn is_scrolled(&self) -> bool {
         self.grid.is_scrolled
+    }
+    fn multi_cursor_state(&self) -> Option<&MultiCursorState> {
+        Some(&self.grid.multi_cursor_state)
     }
 
     fn active_at(&self) -> Instant {

@@ -588,6 +588,38 @@ fn position_in_span(
     after_start && before_end
 }
 
+
+/// Coordinate group from the kitty multi-cursor protocol.
+#[derive(Clone, Debug, PartialEq)]
+pub enum MultiCursorCoord {
+    /// Type 0: main cursor position.
+    MainCursor,
+    /// Type 2: point at (row, col), 1-indexed.
+    Point(u16, u16),
+    /// Type 4: rectangle (top, left, bottom, right), 1-indexed.
+    Rect(u16, u16, u16, u16),
+    /// Type 4 with no params: full screen.
+    FullScreen,
+}
+
+/// Color specification for extra cursors (shapes 30, 40).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub enum ExtraCursorColor {
+    #[default]
+    Unset,
+    Special,
+    Rgb(u8, u8, u8),
+    Indexed(u8),
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct MultiCursorState {
+    pub shape: u8,                         // 1-3 or 29; 0 means cleared
+    pub coords: Vec<MultiCursorCoord>,     // coordinate groups as received
+    pub text_color: ExtraCursorColor,      // shape 30
+    pub cursor_color: ExtraCursorColor,    // shape 40
+}
+
 #[derive(Clone)]
 pub struct Grid {
     pub(crate) lines_above: VecDeque<Row>,
@@ -645,6 +677,7 @@ pub struct Grid {
     pub supports_kitty_keyboard_protocol: bool, // has the app requested kitty keyboard support?
     explicitly_disable_kitty_keyboard_protocol: bool, // has kitty keyboard support been explicitly
     // disabled by user config?
+    pub multi_cursor_state: MultiCursorState,
     click: Click,
     hyperlink_tracker: HyperlinkTracker,
     pub pane_default_fg: Option<AnsiCode>,
@@ -931,6 +964,7 @@ impl Grid {
             lock_renders: false,
             supports_kitty_keyboard_protocol: false,
             explicitly_disable_kitty_keyboard_protocol,
+            multi_cursor_state: MultiCursorState::default(),
             click: Click::default(),
             hyperlink_tracker: HyperlinkTracker::new(),
             pane_default_fg: None,
@@ -942,6 +976,26 @@ impl Grid {
     }
     pub fn render_full_viewport(&mut self) {
         self.output_buffer.update_all_lines();
+    }
+    fn parse_extra_cursor_color<'a>(
+        mut params: impl Iterator<Item = &'a [u16]>,
+    ) -> ExtraCursorColor {
+        if let Some(group) = params.next() {
+            if group.is_empty() {
+                return ExtraCursorColor::Unset;
+            }
+            match group[0] {
+                0 => ExtraCursorColor::Unset,
+                1 => ExtraCursorColor::Special,
+                2 if group.len() >= 4 => {
+                    ExtraCursorColor::Rgb(group[1] as u8, group[2] as u8, group[3] as u8)
+                },
+                5 if group.len() >= 2 => ExtraCursorColor::Indexed(group[1] as u8),
+                _ => ExtraCursorColor::Unset,
+            }
+        } else {
+            ExtraCursorColor::Unset
+        }
     }
     pub fn update_line_for_rendering(&mut self, line_index: usize) {
         self.output_buffer.update_line(line_index);
@@ -3539,13 +3593,18 @@ impl Perform for Grid {
                                 } else {
                                     None
                                 };
-                                let (r, g, b) = color_rgb.unwrap_or((0, 0, 0));
-                                let color_response_message = format!(
-                                    "\u{1b}]{};rgb:{1:02x}{1:02x}/{2:02x}{2:02x}/{3:02x}{3:02x}{4}",
-                                    dynamic_code, r, g, b, terminator
-                                );
-                                self.pending_messages_to_pty
-                                    .push(color_response_message.as_bytes().to_vec());
+                                // Only respond if we have a real color. Responding
+                                // with (0,0,0) when the bg is unknown causes apps
+                                // to store black as the "original" and restore it
+                                // on exit, overriding the terminal's actual default.
+                                if let Some((r, g, b)) = color_rgb {
+                                    let color_response_message = format!(
+                                        "\u{1b}]{};rgb:{1:02x}{1:02x}/{2:02x}{2:02x}/{3:02x}{3:02x}{4}",
+                                        dynamic_code, r, g, b, terminator
+                                    );
+                                    self.pending_messages_to_pty
+                                        .push(color_response_message.as_bytes().to_vec());
+                                }
                             } else {
                                 // Set: parse color and store as pane default
                                 if let Some(color) = xparse_color(param) {
@@ -3734,12 +3793,18 @@ impl Perform for Grid {
                     if let Some(images_to_reap) = self.sixel_grid.clear() {
                         self.sixel_grid.reap_images(images_to_reap);
                     }
+                    // Per kitty spec: ED 2 removes all extra cursors.
+                    self.multi_cursor_state = MultiCursorState::default();
                 } else if clear_type == 3 {
                     self.clear_lines_above();
                     if let Some(images_to_reap) = self.sixel_grid.clear() {
                         self.sixel_grid.reap_images(images_to_reap);
                     }
+                    // Per kitty spec: ED 3 removes all extra cursors.
+                    self.multi_cursor_state = MultiCursorState::default();
                 }
+                // TODO: ED 22 (clear saved lines + viewport) should also clear multi-cursors
+                // per kitty spec ("parameters 2, 3 and 22"). ED 22 is not handled by Zellij.
             };
         } else if c == 'H' || c == 'f' {
             // goto row/col
@@ -3791,8 +3856,16 @@ impl Perform for Grid {
                                     &mut self.sixel_grid,
                                     &mut self.supports_kitty_keyboard_protocol,
                                 );
+                                // Per kitty spec: alt screen switch removes all extra cursors.
+                                self.multi_cursor_state = MultiCursorState::default();
                             }
                             self.alternate_screen_state = None;
+                            // Reset pane default colors set during alt screen
+                            // (e.g. OSC 11 from Helix themes). The app may send
+                            // OSC 111 after this, but a render can happen between
+                            // the two if they arrive in separate PTY reads.
+                            self.pane_default_fg = None;
+                            self.pane_default_bg = None;
                             self.clear_viewport_before_rendering = true;
                             self.force_change_size(self.height, self.width); // the alternative_viewport might have been of a different size...
                             self.mark_for_rerender();
@@ -3901,6 +3974,8 @@ impl Perform for Grid {
                                 alternate_sixelgrid,
                                 current_supports_kitty_keyboard_protocol,
                             ));
+                            // Per kitty spec: alt screen switch removes all extra cursors.
+                            self.multi_cursor_state = MultiCursorState::default();
                             self.clear_viewport_before_rendering = true;
                             self.scrollback_buffer_lines =
                                 self.recalculate_scrollback_buffer_count();
@@ -4168,6 +4243,126 @@ impl Perform for Grid {
                 };
                 if let Some(cursor_shape) = shape {
                     self.cursor.change_shape(cursor_shape);
+                }
+            } else if intermediates == &[b'>', b' '] {
+                // Kitty multi-cursor protocol: CSI > Ps ; ... SP q
+                let mut param_iter = params.iter();
+                if let Some(first) = param_iter.next().filter(|f| !f.is_empty()) {
+                    let shape = first[0];
+                    match shape {
+                        0 => {
+                            self.multi_cursor_state = MultiCursorState::default();
+                        },
+                        1..=3 | 29 => {
+                            let mut coords = std::mem::take(&mut self.multi_cursor_state.coords);
+                            coords.clear();
+                            for group in param_iter {
+                                if group.is_empty() {
+                                    continue;
+                                }
+                                match group[0] {
+                                    0 => coords.push(MultiCursorCoord::MainCursor),
+                                    2 => {
+                                        let c = &group[1..];
+                                        for pair in c.chunks(2) {
+                                            if pair.len() == 2
+                                                && pair[0] > 0
+                                                && pair[1] > 0
+                                                && (pair[0] as usize) <= self.height
+                                                && (pair[1] as usize) <= self.width
+                                            {
+                                                coords.push(MultiCursorCoord::Point(pair[0], pair[1]));
+                                            }
+                                        }
+                                    },
+                                    4 => {
+                                        let c = &group[1..];
+                                        if c.is_empty() {
+                                            coords.push(MultiCursorCoord::FullScreen);
+                                        } else {
+                                            for rect in c.chunks(4) {
+                                                if rect.len() == 4 && rect.iter().all(|&v| v > 0) {
+                                                    coords.push(MultiCursorCoord::Rect(
+                                                        rect[0], rect[1], rect[2], rect[3],
+                                                    ));
+                                                }
+                                            }
+                                        }
+                                    },
+                                    _ => {},
+                                }
+                            }
+                            self.multi_cursor_state.shape = shape as u8;
+                            self.multi_cursor_state.coords = coords;
+                        },
+                        30 => {
+                            // Text color under extra cursors.
+                            self.multi_cursor_state.text_color =
+                                Self::parse_extra_cursor_color(param_iter);
+                        },
+                        40 => {
+                            // Extra cursor color.
+                            self.multi_cursor_state.cursor_color =
+                                Self::parse_extra_cursor_color(param_iter);
+                        },
+                        100 => {
+                            // Query currently set cursors.
+                            use std::fmt::Write as _;
+                            let state = &self.multi_cursor_state;
+                            let mut reply = String::from("\x1b[>100");
+                            if !state.coords.is_empty() {
+                                let _ = write!(reply, ";{}", state.shape);
+                                for coord in &state.coords {
+                                    match coord {
+                                        MultiCursorCoord::MainCursor => {
+                                            let _ = write!(reply, ":0");
+                                        },
+                                        MultiCursorCoord::Point(r, c) => {
+                                            let _ = write!(reply, ":2:{}:{}", r, c);
+                                        },
+                                        MultiCursorCoord::Rect(t, l, b, r) => {
+                                            let _ = write!(reply, ":4:{}:{}:{}:{}", t, l, b, r);
+                                        },
+                                        MultiCursorCoord::FullScreen => {
+                                            let _ = write!(reply, ":4");
+                                        },
+                                    }
+                                }
+                            }
+                            reply.push_str(" q");
+                            self.pending_messages_to_pty
+                                .push(reply.into_bytes());
+                        },
+                        101 => {
+                            // Query extra cursor colors.
+                            use std::fmt::Write as _;
+                            let mut reply = String::from("\x1b[>101");
+                            let fmt_color = |c: &ExtraCursorColor| -> String {
+                                match c {
+                                    ExtraCursorColor::Unset => "0".to_string(),
+                                    ExtraCursorColor::Special => "1".to_string(),
+                                    ExtraCursorColor::Rgb(r, g, b) => {
+                                        format!("2:{}:{}:{}", r, g, b)
+                                    },
+                                    ExtraCursorColor::Indexed(i) => format!("5:{}", i),
+                                }
+                            };
+                            let _ = write!(
+                                reply,
+                                ";30:{};40:{}",
+                                fmt_color(&self.multi_cursor_state.text_color),
+                                fmt_color(&self.multi_cursor_state.cursor_color),
+                            );
+                            reply.push_str(" q");
+                            self.pending_messages_to_pty
+                                .push(reply.into_bytes());
+                        },
+                        _ => {},
+                    }
+                } else {
+                    // Support detection query (no params): respond with supported shapes.
+                    self.pending_messages_to_pty
+                        .push(b"\x1b[>1;2;3;29;30;40;100;101 q".to_vec());
                 }
             } else if matches!(intermediates.get(0), Some(b'>')) {
                 let version = version_number(VERSION);

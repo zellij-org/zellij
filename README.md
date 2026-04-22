@@ -53,6 +53,21 @@ You can get started by [installing](https://zellij.dev/documentation/installatio
 
 For more details about our future plans, read about upcoming features in our [roadmap](#roadmap).
 
+## Fork Changes (`patch/kitty-multi-cursor`)
+
+This fork adds pass-through support for the [kitty multiple cursors protocol](https://sw.kovidgoyal.net/kitty/multiple-cursors-protocol/).
+Zellij parses multi-cursor escape sequences from panes, translates
+pane-relative coordinates to screen-absolute positions, and re-emits them to
+the outer terminal. Handles all coordinate types (points, rectangles,
+full-screen, main cursor reference) with floating pane occlusion checks and
+per-client deduplication. Supports query responses for shapes 100 (cursor
+positions) and 101 (cursor colors).
+
+```kdl
+// Enabled by default. To disable:
+support_kitty_multi_cursor_protocol false
+```
+
 ## How do I install it?
 
 The easiest way to install Zellij is through a [package for your OS](./docs/THIRD_PARTY_INSTALL.md).

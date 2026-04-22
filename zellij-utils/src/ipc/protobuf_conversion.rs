@@ -663,6 +663,7 @@ impl From<crate::input::options::Options>
             serialization_interval: options.serialization_interval,
             disable_session_metadata: options.disable_session_metadata,
             support_kitty_keyboard_protocol: options.support_kitty_keyboard_protocol,
+            support_kitty_multi_cursor_protocol: options.support_kitty_multi_cursor_protocol,
             web_server: options.web_server,
             web_sharing: options.web_sharing.map(|w| match w {
                 crate::data::WebSharing::On => ProtoWebSharing::On as i32,
@@ -754,6 +755,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
             serialization_interval: options.serialization_interval,
             disable_session_metadata: options.disable_session_metadata,
             support_kitty_keyboard_protocol: options.support_kitty_keyboard_protocol,
+            support_kitty_multi_cursor_protocol: options.support_kitty_multi_cursor_protocol,
             web_server: options.web_server,
             web_sharing: options
                 .web_sharing

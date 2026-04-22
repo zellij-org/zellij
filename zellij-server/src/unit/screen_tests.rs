@@ -319,6 +319,7 @@ fn create_new_screen(
         arrow_fonts,
         layout_dir,
         explicitly_disable_kitty_keyboard_protocol,
+        true, // support_kitty_multi_cursor_protocol
         stacked_resize,
         None,
         false,
@@ -5355,6 +5356,7 @@ fn create_new_screen_with_message_capture(
         arrow_fonts,
         layout_dir,
         explicitly_disable_kitty_keyboard_protocol,
+        true, // support_kitty_multi_cursor_protocol
         stacked_resize,
         None,
         false,
