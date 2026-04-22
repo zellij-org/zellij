@@ -282,7 +282,10 @@ mod tests {
             })
             .collect();
 
-        assert_eq!(raw_bytes, vec!["你".as_bytes().to_vec(), "好".as_bytes().to_vec()]);
+        assert_eq!(
+            raw_bytes,
+            vec!["你".as_bytes().to_vec(), "好".as_bytes().to_vec()]
+        );
     }
 
     #[test]
