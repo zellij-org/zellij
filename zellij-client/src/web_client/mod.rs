@@ -88,6 +88,17 @@ pub fn start_web_client(
             std::process::exit(2);
         })
     });
+    // Clean up any stale IPC sockets from a previous ungraceful exit before
+    // we bind new ones. This prevents routing confusion when a previous
+    // web server or session server crashed without removing its socket.
+    match zellij_utils::consts::cleanup_stale_sockets(
+        &zellij_utils::consts::WEBSERVER_SOCKET_PATH,
+    ) {
+        Ok(0) => {},
+        Ok(n) => log::info!("Cleaned {} stale IPC socket(s) before startup", n),
+        Err(e) => log::warn!("Failed to clean stale IPC sockets: {}", e),
+    }
+
     let web_server_ip = custom_ip.unwrap_or_else(|| {
         config_options
             .web_server_ip

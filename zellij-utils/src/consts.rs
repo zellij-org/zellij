@@ -249,6 +249,92 @@ pub fn ipc_bind_async(
     ListenerOptions::new().name(fs_name).create_tokio()
 }
 
+/// Remove IPC socket files in `ipc_dir` that no longer have a listening process.
+///
+/// On Unix: attempts a short `connect()` to each socket. Failures indicate the
+/// socket is orphaned (the process that owned it has died without cleanup).
+///
+/// On Windows: each entry is a named-pipe marker file containing the owner's
+/// PID. If the PID is no longer running, the marker is removed.
+///
+/// Returns the number of stale entries cleaned.
+///
+/// This is typically called at web server or session server startup to avoid
+/// confusion between connections and dead processes after an ungraceful exit
+/// or a binary upgrade that left orphaned sockets behind.
+#[cfg(any(unix, windows))]
+pub fn cleanup_stale_sockets(ipc_dir: &std::path::Path) -> std::io::Result<usize> {
+    if !ipc_dir.exists() {
+        return Ok(0);
+    }
+    let mut cleaned = 0;
+    for entry in std::fs::read_dir(ipc_dir)? {
+        let entry = match entry {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        let path = entry.path();
+        // Skip subdirectories (e.g. per-session folders); only clean top-level
+        // socket files in the ipc dir.
+        if path.is_dir() {
+            continue;
+        }
+        if is_socket_stale(&path) {
+            if std::fs::remove_file(&path).is_ok() {
+                cleaned += 1;
+            }
+        }
+    }
+    Ok(cleaned)
+}
+
+/// Stub for non-Unix/non-Windows targets (e.g. WASM plugins).
+#[cfg(not(any(unix, windows)))]
+pub fn cleanup_stale_sockets(_ipc_dir: &std::path::Path) -> std::io::Result<usize> {
+    Ok(0)
+}
+
+#[cfg(unix)]
+fn is_socket_stale(path: &std::path::Path) -> bool {
+    use interprocess::local_socket::{prelude::*, GenericFilePath, Stream};
+    let fs_name = match path.to_fs_name::<GenericFilePath>() {
+        Ok(n) => n,
+        Err(_) => return false,
+    };
+    // If we can't connect, the socket has no listener — it's orphaned.
+    Stream::connect(fs_name).is_err()
+}
+
+#[cfg(windows)]
+fn is_socket_stale(path: &std::path::Path) -> bool {
+    // On Windows, the "socket" file stores the owning process's PID.
+    let pid_str = match std::fs::read_to_string(path) {
+        Ok(s) => s,
+        Err(_) => return false,
+    };
+    let pid: u32 = match pid_str.trim().parse() {
+        Ok(p) => p,
+        Err(_) => return false,
+    };
+    !process_is_alive(pid)
+}
+
+#[cfg(windows)]
+fn process_is_alive(pid: u32) -> bool {
+    use std::process::Command;
+    // `tasklist` is available on all Windows installations.
+    match Command::new("tasklist")
+        .args(&["/FI", &format!("PID eq {}", pid), "/NH", "/FO", "CSV"])
+        .output()
+    {
+        Ok(out) => {
+            let stdout = String::from_utf8_lossy(&out.stdout);
+            stdout.contains(&format!(",\"{}\",", pid))
+        },
+        Err(_) => true, // If we can't check, err on the side of keeping the socket
+    }
+}
+
 #[cfg(windows)]
 pub fn ipc_bind_async(
     path: &std::path::Path,
