@@ -1316,6 +1316,16 @@ pub enum CliAction {
             conflicts_with("block-until-exit-failure")
         )]
         block_until_exit: bool,
+
+        /// Create the tab without switching focus to it (similar to tmux `new-window -d`)
+        #[clap(
+            short = 'd',
+            long,
+            value_parser,
+            default_value("false"),
+            takes_value(false)
+        )]
+        no_focus: bool,
     },
     /// Move the focused tab in the specified direction. [right|left]
     MoveTab {

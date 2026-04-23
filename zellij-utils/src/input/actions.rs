@@ -1389,6 +1389,7 @@ impl Action {
                 block_until_exit_success,
                 block_until_exit_failure,
                 block_until_exit,
+                no_focus,
             } => {
                 let current_dir = get_current_dir();
                 let cwd = cwd
@@ -1497,7 +1498,7 @@ impl Action {
                             let name = tab_name.or_else(|| name.clone());
                             let should_change_focus_to_new_tab =
                                 layout.focus.unwrap_or_else(|| {
-                                    if !has_focused_tab {
+                                    if !has_focused_tab && !no_focus {
                                         has_focused_tab = true;
                                         true
                                     } else {
@@ -1521,7 +1522,7 @@ impl Action {
                         let swap_tiled_layouts = Some(layout.swap_tiled_layouts.clone());
                         let swap_floating_layouts = Some(layout.swap_floating_layouts.clone());
                         let (layout, floating_panes_layout) = layout.new_tab();
-                        let should_change_focus_to_new_tab = true;
+                        let should_change_focus_to_new_tab = !no_focus;
                         Ok(vec![Action::NewTab {
                             tiled_layout: Some(layout),
                             floating_layouts: floating_panes_layout,
@@ -1613,7 +1614,7 @@ impl Action {
                             let name = tab_name.or_else(|| name.clone());
                             let should_change_focus_to_new_tab =
                                 layout.focus.unwrap_or_else(|| {
-                                    if !has_focused_tab {
+                                    if !has_focused_tab && !no_focus {
                                         has_focused_tab = true;
                                         true
                                     } else {
@@ -1637,7 +1638,7 @@ impl Action {
                         let swap_tiled_layouts = Some(layout.swap_tiled_layouts.clone());
                         let swap_floating_layouts = Some(layout.swap_floating_layouts.clone());
                         let (layout, floating_panes_layout) = layout.new_tab();
-                        let should_change_focus_to_new_tab = true;
+                        let should_change_focus_to_new_tab = !no_focus;
                         Ok(vec![Action::NewTab {
                             tiled_layout: Some(layout),
                             floating_layouts: floating_panes_layout,
@@ -1651,7 +1652,7 @@ impl Action {
                         }])
                     }
                 } else {
-                    let should_change_focus_to_new_tab = true;
+                    let should_change_focus_to_new_tab = !no_focus;
                     Ok(vec![Action::NewTab {
                         tiled_layout: None,
                         floating_layouts: vec![],
@@ -3410,6 +3411,7 @@ mod tests {
             block_until_exit: false,
             block_until_exit_success: false,
             block_until_exit_failure: false,
+            no_focus: false,
         };
         let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
         assert!(result.is_ok());
@@ -3446,10 +3448,12 @@ mod tests {
             block_until_exit: false,
             block_until_exit_success: false,
             block_until_exit_failure: false,
+            no_focus: false,
         };
         let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
         assert!(result.is_err());
     }
+
 
     #[test]
     fn test_override_layout_with_layout_string() {
