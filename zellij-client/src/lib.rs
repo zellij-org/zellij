@@ -708,6 +708,7 @@ pub fn start_client(
     }
     info!("Starting Zellij client!");
 
+    let runtime = crate::async_runtime(config_options.client_async_worker_tasks);
     let explicitly_disable_kitty_keyboard_protocol = config_options
         .support_kitty_keyboard_protocol
         .map(|e| !e)
@@ -951,22 +952,24 @@ pub fn start_client(
 
     let (resize_sender, resize_receiver) = std::sync::mpsc::channel::<()>();
 
-    let _stdin_thread = thread::Builder::new()
-        .name("stdin_handler".to_string())
-        .spawn({
-            let os_input = os_input.clone();
-            let send_input_instructions = send_input_instructions.clone();
-            let stdin_ansi_parser = stdin_ansi_parser.clone();
-            move || {
-                stdin_loop(
-                    os_input,
-                    send_input_instructions,
-                    stdin_ansi_parser,
-                    explicitly_disable_kitty_keyboard_protocol,
-                    Some(resize_sender),
-                )
-            }
-        });
+    let stdin_cancellation_token = tokio_util::sync::CancellationToken::new();
+    let stdin_task = {
+        let token = stdin_cancellation_token.child_token();
+        let os_input = os_input.clone();
+        let send_input_instructions = send_input_instructions.clone();
+        let stdin_ansi_parser = stdin_ansi_parser.clone();
+        runtime.spawn(async move {
+            stdin_loop(
+                token,
+                os_input,
+                send_input_instructions,
+                stdin_ansi_parser,
+                explicitly_disable_kitty_keyboard_protocol,
+                Some(resize_sender),
+            )
+            .await
+        })
+    };
 
     let _input_thread = thread::Builder::new()
         .name("input_handler".to_string())
@@ -1229,6 +1232,9 @@ pub fn start_client(
     }
 
     router_thread.join().unwrap();
+
+    stdin_cancellation_token.cancel();
+    runtime.block_on(stdin_task).unwrap();
 
     if reconnect_to_session.is_none() {
         let goodbye_message = terminal_teardown_message(
