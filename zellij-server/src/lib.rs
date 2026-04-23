@@ -52,7 +52,8 @@ use route::{route_thread_main, NotificationEnd};
 use zellij_utils::{
     channels::{self, ChannelWithContext, SenderWithContext},
     consts::{
-        DEFAULT_SCROLL_BUFFER_SIZE, SCROLL_BUFFER_SIZE, ZELLIJ_SEEN_RELEASE_NOTES_CACHE_FILE,
+        DEFAULT_SCROLL_BUFFER_SIZE, DEFAULT_SELECT_BY_WORD_CHARACTERS, SCROLL_BUFFER_SIZE,
+        SELECT_BY_WORD_CHARACTERS, ZELLIJ_SEEN_RELEASE_NOTES_CACHE_FILE,
     },
     data::{
         ConnectToSession, InputMode, KeyWithModifier, LayoutInfo, LayoutWithError,
@@ -1733,6 +1734,12 @@ fn init_session(
         config_options
             .scroll_buffer_size
             .unwrap_or(DEFAULT_SCROLL_BUFFER_SIZE),
+    );
+    let _ = SELECT_BY_WORD_CHARACTERS.set(
+        config_options
+            .select_by_word_characters
+            .clone()
+            .unwrap_or_else(|| DEFAULT_SELECT_BY_WORD_CHARACTERS.to_string()),
     );
 
     let (to_screen, screen_receiver): ChannelWithContext<ScreenInstruction> = channels::unbounded();

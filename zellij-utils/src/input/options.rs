@@ -249,6 +249,13 @@ pub struct Options {
     #[serde(default)]
     pub mouse_click_through: Option<bool>,
 
+    /// Characters considered part of a word for double-click selection,
+    /// in addition to alphanumeric characters.
+    /// Default: "@-./_~?&=%+#"
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub select_by_word_characters: Option<String>,
+
     // these are intentionally excluded from the CLI options as they must be specified in the
     // configuration file
     pub web_server_ip: Option<IpAddr>,
@@ -357,6 +364,9 @@ impl Options {
         let visual_bell = other.visual_bell.or(self.visual_bell);
         let focus_follows_mouse = other.focus_follows_mouse.or(self.focus_follows_mouse);
         let mouse_click_through = other.mouse_click_through.or(self.mouse_click_through);
+        let select_by_word_characters = other
+            .select_by_word_characters
+            .or_else(|| self.select_by_word_characters.clone());
         let web_server_ip = other.web_server_ip.or(self.web_server_ip);
         let web_server_port = other.web_server_port.or(self.web_server_port);
         let web_server_cert = other
@@ -412,6 +422,7 @@ impl Options {
             visual_bell,
             focus_follows_mouse,
             mouse_click_through,
+            select_by_word_characters,
             web_server_ip,
             web_server_port,
             web_server_cert,
@@ -488,6 +499,9 @@ impl Options {
         let visual_bell = other.visual_bell.or(self.visual_bell);
         let focus_follows_mouse = merge_bool(other.focus_follows_mouse, self.focus_follows_mouse);
         let mouse_click_through = merge_bool(other.mouse_click_through, self.mouse_click_through);
+        let select_by_word_characters = other
+            .select_by_word_characters
+            .or_else(|| self.select_by_word_characters.clone());
         let web_server_ip = other.web_server_ip.or(self.web_server_ip);
         let web_server_port = other.web_server_port.or(self.web_server_port);
         let web_server_cert = other
@@ -543,6 +557,7 @@ impl Options {
             visual_bell,
             focus_follows_mouse,
             mouse_click_through,
+            select_by_word_characters,
             web_server_ip,
             web_server_port,
             web_server_cert,

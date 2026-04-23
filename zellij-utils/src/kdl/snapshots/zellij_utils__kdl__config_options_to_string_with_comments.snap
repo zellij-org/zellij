@@ -291,3 +291,11 @@ web_sharing "disabled"
 // typically work best. Set to 0 to use the number of (physical) CPU cores.
 // Note: This only applies to web clients at the moment.
 // client_async_worker_tasks 4
+ 
+// Characters considered part of a word for double-click selection,
+// in addition to alphanumeric characters. Characters not in this list
+// (and not alphanumeric) are treated as word boundaries.
+// Default: "@-./_~?&=%+#"
+// 
+// select_by_word_characters "@-./_~?&=%+#"
+
