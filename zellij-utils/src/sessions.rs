@@ -167,9 +167,16 @@ fn assert_socket(name: &str) -> bool {
 
 /// On Windows, reads the server PID from the marker file and checks whether
 /// the process is still alive via `OpenProcess`. Cleans up stale marker files.
+///
+/// Note: `OpenProcess` can fail with `ERROR_ACCESS_DENIED` for processes in a
+/// different logon session (e.g., a session created via SSH when listing from
+/// an interactive desktop, or vice versa). This is NOT the same as the process
+/// being dead — the process exists but the caller's security token can't open
+/// it. We treat this as alive to avoid deleting the marker and orphaning the
+/// session.
 #[cfg(windows)]
 fn assert_socket(name: &str) -> bool {
-    use windows_sys::Win32::Foundation::CloseHandle;
+    use windows_sys::Win32::Foundation::{CloseHandle, GetLastError, ERROR_ACCESS_DENIED};
     use windows_sys::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION};
 
     let path = &*ZELLIJ_SOCK_DIR.join(name);
@@ -192,7 +199,8 @@ fn assert_socket(name: &str) -> bool {
     let alive = unsafe {
         let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
         if handle == 0 {
-            false
+            // Process exists but we can't open it (different logon session).
+            GetLastError() == ERROR_ACCESS_DENIED
         } else {
             CloseHandle(handle);
             true
