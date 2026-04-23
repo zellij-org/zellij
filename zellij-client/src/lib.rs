@@ -132,14 +132,14 @@ impl From<std::io::Error> for RemoteClientError {
     }
 }
 
-use crate::stdin_ansi_parser::{AnsiStdinInstruction, StdinAnsiParser, SyncOutput};
+use crate::stdin_ansi_parser::{AnsiStdinInstruction, HostReplyParser, SyncOutput};
 use crate::{
     command_is_executing::CommandIsExecuting, input_handler::input_loop,
     os_input_output::ClientOsApi, stdin_handler::stdin_loop,
 };
 use zellij_utils::cli::CliArgs;
 use zellij_utils::{
-    channels::{self, ChannelWithContext, RecvTimeoutError, SenderWithContext},
+    channels::{self, ChannelWithContext, SenderWithContext},
     consts::{set_permissions, ZELLIJ_SOCK_DIR},
     data::{ClientId, ConnectToSession, KeyWithModifier, LayoutInfo, LayoutMetadata},
     envs,
@@ -158,8 +158,6 @@ pub(crate) enum ClientInstruction {
     UnblockInputThread,
     Exit(ExitReason),
     Connected,
-    StartedParsingStdinQuery,
-    DoneParsingStdinQuery,
     Log(Vec<String>),
     LogError(Vec<String>),
     SwitchSession(ConnectToSession),
@@ -171,6 +169,12 @@ pub(crate) enum ClientInstruction {
     #[allow(dead_code)] // we need the session name here even though we're not currently using it
     RenamedSession(String), // String -> new session name
     ConfigFileUpdated,
+    /// Server asked us to forward `query_bytes` to the host terminal and
+    /// collect the reply bytes into the window identified by `token`.
+    ForwardQueryToHost {
+        token: u32,
+        query_bytes: Vec<u8>,
+    },
 }
 
 impl From<ServerToClientMsg> for ClientInstruction {
@@ -193,6 +197,9 @@ impl From<ServerToClientMsg> for ClientInstruction {
             ServerToClientMsg::StartWebServer => ClientInstruction::StartWebServer,
             ServerToClientMsg::RenamedSession { name } => ClientInstruction::RenamedSession(name),
             ServerToClientMsg::ConfigFileUpdated => ClientInstruction::ConfigFileUpdated,
+            ServerToClientMsg::ForwardQueryToHost { token, query_bytes } => {
+                ClientInstruction::ForwardQueryToHost { token, query_bytes }
+            },
             // Subscribe-only messages — not handled by regular interactive clients
             ServerToClientMsg::PaneRenderUpdate { .. } => ClientInstruction::UnblockInputThread,
             ServerToClientMsg::SubscribedPaneClosed { .. } => ClientInstruction::UnblockInputThread,
@@ -210,8 +217,6 @@ impl From<&ClientInstruction> for ClientContext {
             ClientInstruction::Connected => ClientContext::Connected,
             ClientInstruction::Log(_) => ClientContext::Log,
             ClientInstruction::LogError(_) => ClientContext::LogError,
-            ClientInstruction::StartedParsingStdinQuery => ClientContext::StartedParsingStdinQuery,
-            ClientInstruction::DoneParsingStdinQuery => ClientContext::DoneParsingStdinQuery,
             ClientInstruction::SwitchSession(..) => ClientContext::SwitchSession,
             ClientInstruction::SetSynchronizedOutput(..) => ClientContext::SetSynchronisedOutput,
             ClientInstruction::UnblockCliPipeInput(..) => ClientContext::UnblockCliPipeInput,
@@ -220,6 +225,7 @@ impl From<&ClientInstruction> for ClientContext {
             ClientInstruction::StartWebServer => ClientContext::StartWebServer,
             ClientInstruction::RenamedSession(..) => ClientContext::RenamedSession,
             ClientInstruction::ConfigFileUpdated => ClientContext::ConfigFileUpdated,
+            ClientInstruction::ForwardQueryToHost { .. } => ClientContext::ForwardQueryToHost,
         }
     }
 }
@@ -414,8 +420,13 @@ pub(crate) enum InputInstruction {
     MouseEvent(zellij_utils::input::mouse::MouseEvent),
     AnsiStdinInstructions(Vec<AnsiStdinInstruction>),
     DesktopNotificationResponse(Vec<u8>),
-    StartedParsing,
-    DoneParsing,
+    /// The continuous host-reply parser closed a forwarding window (barrier
+    /// reply seen or timeout fired). Payload is the accumulated raw bytes
+    /// to ship to the server.
+    ForwardedReplyFromHostComplete {
+        token: u32,
+        reply_bytes: Vec<u8>,
+    },
     Exit,
 }
 
@@ -947,7 +958,12 @@ pub fn start_client(
     });
 
     let on_force_close = config_options.on_force_close.unwrap_or_default();
-    let stdin_ansi_parser = Arc::new(Mutex::new(StdinAnsiParser::new()));
+    let host_reply_parser = Arc::new(Mutex::new(HostReplyParser::new()));
+
+    // Best-effort cleanup of any stale legacy stdin cache file from
+    // previous Zellij versions. Five lines, no new config, no error on
+    // absence.
+    let _ = cleanup_legacy_stdin_cache();
 
     let (resize_sender, resize_receiver) = std::sync::mpsc::channel::<()>();
 
@@ -956,15 +972,49 @@ pub fn start_client(
         .spawn({
             let os_input = os_input.clone();
             let send_input_instructions = send_input_instructions.clone();
-            let stdin_ansi_parser = stdin_ansi_parser.clone();
+            let host_reply_parser = host_reply_parser.clone();
             move || {
                 stdin_loop(
                     os_input,
                     send_input_instructions,
-                    stdin_ansi_parser,
+                    host_reply_parser,
                     explicitly_disable_kitty_keyboard_protocol,
                     Some(resize_sender),
                 )
+            }
+        });
+
+    // Forward-slot timeout watcher: if a forwarding window is still open
+    // 500 ms after the slot was opened, flush whatever has accumulated
+    // and release the in-flight slot so the next queued forward can
+    // dispatch. The watcher polls at 100 ms granularity; this keeps the
+    // worst-case latency bounded to ~600 ms when the host is silent.
+    let _forward_timeout_thread = thread::Builder::new()
+        .name("forward_timeout_watcher".to_string())
+        .spawn({
+            let host_reply_parser = host_reply_parser.clone();
+            let send_input_instructions = send_input_instructions.clone();
+            move || loop {
+                std::thread::sleep(std::time::Duration::from_millis(100));
+                let timeout_payload = {
+                    let mut parser = host_reply_parser.lock().unwrap();
+                    match (
+                        parser.active_forward_token(),
+                        parser.active_forward_opened_at(),
+                    ) {
+                        (Some(token), Some(opened))
+                            if opened.elapsed() >= std::time::Duration::from_millis(500) =>
+                        {
+                            parser.close_forward_on_timeout(token)
+                        },
+                        _ => None,
+                    }
+                };
+                if let Some((token, reply_bytes)) = timeout_payload {
+                    let _ = send_input_instructions.send(
+                        InputInstruction::ForwardedReplyFromHostComplete { token, reply_bytes },
+                    );
+                }
             }
         });
 
@@ -1074,77 +1124,15 @@ pub fn start_client(
     };
 
     let mut exit_msg = String::new();
-    let mut loading = true;
-    let mut showed_loading_message = false;
-    let loading_start = std::time::Instant::now();
-    let loading_delay = std::time::Duration::from_millis(400);
-    let mut pending_instructions = vec![];
     let mut synchronised_output = match os_input.env_variable("TERM").as_deref() {
         Some("alacritty") => Some(SyncOutput::DCS),
         _ => None,
     };
 
-    let mut stdout = os_input.get_stdout_writer();
-
     loop {
-        let (client_instruction, mut err_ctx) = if !loading && !pending_instructions.is_empty() {
-            // there are buffered instructions, we need to go through them before processing the
-            // new ones
-            pending_instructions.remove(0)
-        } else if loading && !showed_loading_message {
-            let remaining = loading_delay
-                .checked_sub(loading_start.elapsed())
-                .unwrap_or(std::time::Duration::ZERO);
-            match receive_client_instructions.recv_timeout(remaining) {
-                Ok(instruction) => instruction,
-                Err(RecvTimeoutError::Timeout) => {
-                    // 400ms elapsed with no completion — show loading UI
-                    stdout
-                        .write_all("\u{1b}[1m\u{1b}[HLoading Zellij\u{1b}[m\n\r".as_bytes())
-                        .expect("cannot write to stdout");
-                    stdout.flush().expect("could not flush");
-                    showed_loading_message = true;
-                    // Now block normally
-                    receive_client_instructions
-                        .recv()
-                        .expect("failed to receive app instruction on channel")
-                },
-                Err(RecvTimeoutError::Disconnected) => {
-                    panic!("client instruction channel disconnected");
-                },
-            }
-        } else {
-            receive_client_instructions
-                .recv()
-                .expect("failed to receive app instruction on channel")
-        };
-
-        if loading {
-            // when the app is still loading, we buffer instructions and show a loading screen
-            match client_instruction {
-                ClientInstruction::StartedParsingStdinQuery => {
-                    if showed_loading_message {
-                        stdout
-                            .write_all("Querying terminal emulator for \u{1b}[32;1mdefault colors\u{1b}[m and \u{1b}[32;1mpixel/cell\u{1b}[m ratio...".as_bytes())
-                            .expect("cannot write to stdout");
-                        stdout.flush().expect("could not flush");
-                    }
-                },
-                ClientInstruction::DoneParsingStdinQuery => {
-                    if showed_loading_message {
-                        stdout
-                            .write_all("done".as_bytes())
-                            .expect("cannot write to stdout");
-                        stdout.flush().expect("could not flush");
-                    }
-                    loading = false;
-                },
-                instruction => {
-                    pending_instructions.push((instruction, err_ctx));
-                },
-            }
-            continue;
-        }
+        let (client_instruction, mut err_ctx) = receive_client_instructions
+            .recv()
+            .expect("failed to receive app instruction on channel");
 
         err_ctx.add_call(ContextType::Client((&client_instruction).into()));
 
@@ -1223,6 +1211,19 @@ pub fn start_client(
                             .send_to_server(ClientToServerMsg::FailedToStartWebServer { error: e });
                     },
                 }
+            },
+            ClientInstruction::ForwardQueryToHost { token, query_bytes } => {
+                // 1. Open a forwarding window on the parser so any reply
+                //    events that arrive before the barrier are captured.
+                host_reply_parser.lock().unwrap().open_forward(token);
+                // 2. Write the query + Primary-DA barrier in a single
+                //    write_all. The barrier closes the window on the
+                //    parser side when its reply arrives.
+                let mut blob = query_bytes;
+                blob.extend_from_slice(b"\x1b[c");
+                let mut out = os_input.get_stdout_writer();
+                let _ = out.write_all(&blob);
+                let _ = out.flush();
             },
             _ => {},
         }
@@ -1381,6 +1382,24 @@ pub fn start_server_detached(
 
     os_input.connect_to_server(&*ipc_pipe);
     os_input.send_to_server(first_msg);
+}
+
+/// Best-effort removal of the legacy stdin cache file used by
+/// pre-continuous-parser Zellij versions. The cache is no longer written
+/// or read — any stale file on disk is harmless but wastes bytes; try to
+/// remove it and ignore any error (absence, permissions, nonexistent
+/// parent).
+fn cleanup_legacy_stdin_cache() -> std::io::Result<()> {
+    use zellij_utils::consts::{VERSION, ZELLIJ_PROJ_DIR};
+    let legacy = ZELLIJ_PROJ_DIR
+        .cache_dir()
+        .join(VERSION)
+        .join("stdin_cache");
+    match std::fs::remove_file(&legacy) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(e),
+    }
 }
 
 fn terminal_teardown_message(message: &str, rows: usize, include_kitty_exit: bool) -> String {

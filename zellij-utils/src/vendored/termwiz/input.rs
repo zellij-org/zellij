@@ -139,6 +139,19 @@ pub enum InputEvent {
     /// An Operating System Command sequence was received.
     /// Contains the raw payload between \x1b] and the terminator.
     OperatingSystemCommand(Vec<u8>),
+    /// A CSI-based device control / status report reply emitted by the
+    /// host terminal (not a keyboard event). This variant is only produced
+    /// for a deliberately narrow whitelist of final bytes — `t` (pixel
+    /// dimensions reply), `y` (DECRPM reply), `c` (Primary-DA reply), and
+    /// `n` (DSR reply). The raw field contains the exact byte sequence of
+    /// the original report (including the leading ESC) so it can be
+    /// forwarded verbatim without re-serialization.
+    DeviceControlReply {
+        intermediates: Vec<u8>,
+        params: Vec<u8>,
+        final_byte: u8,
+        raw: Vec<u8>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -811,6 +824,73 @@ fn parse_sgr_mouse(buf: &[u8]) -> Option<(InputEvent, usize)> {
 /// OSC sequence is found, where `payload` is the bytes between `\x1b]` and the
 /// terminator, and `len` is the total number of bytes consumed.
 /// Returns `None` if the buffer does not start with `\x1b]` or the sequence is incomplete.
+/// Attempt to parse a CSI-based host-terminal report (device-attribute
+/// responses, DSR replies, DECRPM, pixel-dims reply, etc.) from the start
+/// of `buf`.
+///
+/// Only a narrow whitelist of final bytes is recognised: `t`, `y`, `c`,
+/// `n`. Any other final byte returns `None` so the bytes fall through to
+/// the regular CSI key-mapping machinery.
+///
+/// Returns `Some((event, len))` on a full match, `None` if the bytes do
+/// not look like a whitelisted CSI report (caller should try the next
+/// parser) and reserves returning None with the buffer starting with
+/// `ESC [` for two distinct cases — not currently disambiguated here:
+/// - truly malformed / unsupported sequence, or
+/// - incomplete input; caller handles incompleteness via `maybe_more`.
+fn parse_csi_report(buf: &[u8]) -> Option<(InputEvent, usize)> {
+    if buf.get(0) != Some(&0x1b) || buf.get(1) != Some(&b'[') {
+        return None;
+    }
+    // Scan forward looking for a final byte in the whitelist, or bail if
+    // we hit something that clearly is not a CSI report (a non-printable
+    // byte other than the known final bytes).
+    let mut i = 2;
+    let mut intermediates: Vec<u8> = Vec::new();
+    let mut params: Vec<u8> = Vec::new();
+    // Parameters (0x30..=0x3F) come first, then intermediates (0x20..=0x2F),
+    // then a final byte (0x40..=0x7E). We only scan up to a reasonable
+    // length to avoid pathological buffers.
+    let max_scan = buf.len().min(256);
+    while i < max_scan {
+        let b = buf[i];
+        match b {
+            // Parameters: digits, `;`, `:`, `?`, `<`, `=`, `>`
+            0x30..=0x3F => {
+                params.push(b);
+                i += 1;
+            },
+            // Intermediates: space, `!`, `"`, ... `/`
+            0x20..=0x2F => {
+                intermediates.push(b);
+                i += 1;
+            },
+            // Final byte (0x40..=0x7E): must be one of the whitelisted bytes.
+            b't' | b'y' | b'c' | b'n' => {
+                let raw = buf[0..=i].to_vec();
+                return Some((
+                    InputEvent::DeviceControlReply {
+                        intermediates,
+                        params,
+                        final_byte: b,
+                        raw,
+                    },
+                    i + 1,
+                ));
+            },
+            0x40..=0x7E => {
+                // Final byte outside the whitelist — not ours.
+                return None;
+            },
+            _ => {
+                // Something unexpected inside the CSI — give up.
+                return None;
+            },
+        }
+    }
+    None
+}
+
 fn parse_osc(buf: &[u8]) -> Option<(InputEvent, usize)> {
     // OSC sequences start with ESC ] (0x1b 0x5d)
     if buf.get(0) != Some(&0x1b) || buf.get(1) != Some(&b']') {
@@ -1572,6 +1652,17 @@ impl InputParser {
 
                         if maybe_more && self.buf.as_slice().starts_with(b"\x1b[<") {
                             return;
+                        }
+
+                        // CSI-based host-terminal report (pixel-dims reply,
+                        // DECRPM, DSR, Primary-DA). Must come before the
+                        // regular CSI key-mapping machinery, which would
+                        // otherwise match "\x1b[" as an escape prefix and
+                        // pass the bytes through as keyboard input.
+                        if let Some((event, len)) = parse_csi_report(self.buf.as_slice()) {
+                            self.buf.advance(len);
+                            callback(event);
+                            continue;
                         }
                     }
 

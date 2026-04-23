@@ -586,6 +586,10 @@ impl Pane for TerminalPane {
         self.grid.pending_messages_to_pty.drain(..).collect()
     }
 
+    fn drain_forwarded_queries(&mut self) -> Vec<Vec<u8>> {
+        self.grid.pending_forwarded_queries.drain(..).collect()
+    }
+
     fn drain_clipboard_update(&mut self) -> Option<String> {
         self.grid.pending_clipboard_update.take()
     }

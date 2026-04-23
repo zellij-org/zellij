@@ -5,7 +5,8 @@ use crate::{
         ClientToServerMsg as ProtoClientToServerMsg, ColorRegistersMsg, ConfigFileUpdatedMsg,
         ConnStatusMsg, ConnectedMsg, DesktopNotificationResponseMsg, DetachSessionMsg, ExitMsg,
         ExitReason as ProtoExitReason, FailedToStartWebServerMsg, FirstClientConnectedMsg,
-        ForegroundColorMsg, InputMode as ProtoInputMode, KeyMsg, KillSessionMsg,
+        ForegroundColorMsg, ForwardQueryToHostMsg, ForwardedReplyFromHostMsg,
+        InputMode as ProtoInputMode, KeyMsg, KillSessionMsg,
         LayoutMetadata as ProtoLayoutMetadata, LogErrorMsg, LogMsg,
         PaneMetadata as ProtoPaneMetadata, PaneRenderUpdateMsg, QueryTerminalSizeMsg,
         RenamedSessionMsg, RenderMsg, ServerToClientMsg as ProtoServerToClientMsg,
@@ -127,6 +128,11 @@ impl From<ClientToServerMsg> for ProtoClientToServerMsg {
             ClientToServerMsg::DesktopNotificationResponse { raw_bytes } => {
                 client_to_server_msg::Message::DesktopNotificationResponse(
                     DesktopNotificationResponseMsg { raw_bytes },
+                )
+            },
+            ClientToServerMsg::ForwardedReplyFromHost { token, reply_bytes } => {
+                client_to_server_msg::Message::ForwardedReplyFromHost(
+                    ForwardedReplyFromHostMsg { token, reply_bytes },
                 )
             },
         };
@@ -257,6 +263,12 @@ impl TryFrom<ProtoClientToServerMsg> for ClientToServerMsg {
                     raw_bytes: msg.raw_bytes,
                 })
             },
+            Some(client_to_server_msg::Message::ForwardedReplyFromHost(msg)) => {
+                Ok(ClientToServerMsg::ForwardedReplyFromHost {
+                    token: msg.token,
+                    reply_bytes: msg.reply_bytes,
+                })
+            },
             None => Err(anyhow!("Empty ClientToServerMsg message")),
         }
     }
@@ -334,6 +346,12 @@ impl From<ServerToClientMsg> for ProtoServerToClientMsg {
             ServerToClientMsg::SubscribedPaneClosed { pane_id } => {
                 server_to_client_msg::Message::SubscribedPaneClosed(SubscribedPaneClosedMsg {
                     pane_id: Some(pane_id.into()),
+                })
+            },
+            ServerToClientMsg::ForwardQueryToHost { token, query_bytes } => {
+                server_to_client_msg::Message::ForwardQueryToHost(ForwardQueryToHostMsg {
+                    token,
+                    query_bytes,
                 })
             },
         };
@@ -441,6 +459,12 @@ impl TryFrom<ProtoServerToClientMsg> for ServerToClientMsg {
                     .ok_or_else(|| anyhow!("Missing pane_id"))?
                     .try_into()?;
                 Ok(ServerToClientMsg::SubscribedPaneClosed { pane_id })
+            },
+            Some(server_to_client_msg::Message::ForwardQueryToHost(msg)) => {
+                Ok(ServerToClientMsg::ForwardQueryToHost {
+                    token: msg.token,
+                    query_bytes: msg.query_bytes,
+                })
             },
             None => Err(anyhow!("Empty ServerToClientMsg message")),
         }

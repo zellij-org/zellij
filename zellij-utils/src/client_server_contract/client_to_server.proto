@@ -23,6 +23,7 @@ message ClientToServerMsg {
     AttachWatcherClientMsg attach_watcher_client = 16;
     SubscribeToPaneRendersMsg subscribe_to_pane_renders = 17;
     DesktopNotificationResponseMsg desktop_notification_response = 18;
+    ForwardedReplyFromHostMsg forwarded_reply_from_host = 19;
   }
 }
 
@@ -108,4 +109,9 @@ message SubscribeToPaneRendersMsg {
 
 message DesktopNotificationResponseMsg {
   bytes raw_bytes = 1;
+}
+
+message ForwardedReplyFromHostMsg {
+  uint32 token = 1;
+  bytes reply_bytes = 2;
 }

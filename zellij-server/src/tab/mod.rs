@@ -409,6 +409,11 @@ pub trait Pane {
         // we should probably refactor away from this trait at some point
         vec![]
     }
+    fn drain_forwarded_queries(&mut self) -> Vec<Vec<u8>> {
+        // Only terminal panes forward whitelisted queries to the host;
+        // plugin panes have no such concept.
+        vec![]
+    }
     fn drain_clipboard_update(&mut self) -> Option<String> {
         None
     }
@@ -2723,12 +2728,21 @@ impl Tab {
             }
             terminal_output.handle_pty_bytes(bytes);
             let messages_to_pty = terminal_output.drain_messages_to_pty();
+            let forwarded_queries = terminal_output.drain_forwarded_queries();
             let clipboard_update = terminal_output.drain_clipboard_update();
             let desktop_notifications = terminal_output.drain_desktop_notifications();
             let osc7_cwd = terminal_output.drain_osc7_cwd();
             for message in messages_to_pty {
                 self.write_to_pane_id_without_preprocessing(message, PaneId::Terminal(pid))
                     .with_context(err_context)?;
+            }
+            for query_bytes in forwarded_queries {
+                let _ = self
+                    .senders
+                    .send_to_screen(ScreenInstruction::ForwardHostQuery {
+                        pane_id: PaneId::Terminal(pid),
+                        query_bytes,
+                    });
             }
             if let Some(string) = clipboard_update {
                 self.write_selection_to_clipboard(&string)

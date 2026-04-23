@@ -156,6 +156,14 @@ pub enum ClientToServerMsg {
     DesktopNotificationResponse {
         raw_bytes: Vec<u8>,
     },
+    /// Raw reply bytes observed by the client inside a forwarding window
+    /// closed by the Primary-DA barrier. The server routes these bytes
+    /// verbatim to the pane whose app issued the whitelisted query
+    /// (tracked on the server by `token`).
+    ForwardedReplyFromHost {
+        token: u32,
+        reply_bytes: Vec<u8>,
+    },
 }
 
 // Types of messages sent from the server to the client
@@ -199,6 +207,14 @@ pub enum ServerToClientMsg {
     },
     SubscribedPaneClosed {
         pane_id: PaneId,
+    },
+    /// Instruct the client to write `query_bytes` followed by the
+    /// Primary-DA barrier to stdout, open a forwarding window keyed by
+    /// `token`, and reply with a `ForwardedReplyFromHost` once the
+    /// barrier closes or the window times out.
+    ForwardQueryToHost {
+        token: u32,
+        query_bytes: Vec<u8>,
     },
 }
 

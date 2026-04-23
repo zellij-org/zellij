@@ -29,7 +29,7 @@
 //! - `tab_history: BTreeMap<ClientId, Vec<usize>>`: History of tab IDs per client
 
 use std::cell::RefCell;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -80,6 +80,7 @@ use crate::{
     panes::PaneId,
     plugins::{DumpSessionLayoutResponse, PluginId, PluginInstruction, PluginRenderAsset},
     pty::{get_default_shell, ClientTabIndexOrPaneId, PtyInstruction, VteBytes},
+    pty_writer::PtyWriteInstruction,
     tab::{SuppressedPanes, Tab},
     thread_bus::Bus,
     ui::loading_indication::LoadingIndication,
@@ -500,6 +501,19 @@ pub enum ScreenInstruction {
     TerminalBackgroundColor(String),
     TerminalForegroundColor(String),
     TerminalColorRegisters(Vec<(usize, String)>),
+    /// A pane's Grid intercepted an app-in-pane whitelisted query; Screen
+    /// assigns a token, queues the forward, and dispatches to the client.
+    ForwardHostQuery {
+        pane_id: PaneId,
+        query_bytes: Vec<u8>,
+    },
+    /// The client observed the host's reply to a previously forwarded
+    /// query (closed by the Primary-DA barrier or the 500 ms timeout).
+    /// The reply bytes are written verbatim to the originating pane.
+    ForwardedReplyFromHost {
+        token: u32,
+        reply_bytes: Vec<u8>,
+    },
     ChangeMode(ModeInfo, ClientId, Option<NotificationEnd>),
     ChangeModeForAllClients(ModeInfo, Option<NotificationEnd>),
     MouseEvent(MouseEvent, ClientId, Option<NotificationEnd>),
@@ -935,6 +949,10 @@ impl From<&ScreenInstruction> for ScreenContext {
                 ScreenContext::TerminalForegroundColor
             },
             ScreenInstruction::TerminalColorRegisters(..) => ScreenContext::TerminalColorRegisters,
+            ScreenInstruction::ForwardHostQuery { .. } => ScreenContext::ForwardHostQuery,
+            ScreenInstruction::ForwardedReplyFromHost { .. } => {
+                ScreenContext::ForwardedReplyFromHost
+            },
             ScreenInstruction::ChangeMode(..) => ScreenContext::ChangeMode,
             ScreenInstruction::ChangeModeForAllClients(..) => {
                 ScreenContext::ChangeModeForAllClients
@@ -1356,7 +1374,42 @@ pub(crate) struct Screen {
     pane_render_subscribers: HashMap<ClientId, PaneRenderSubscription>,
     plugins_need_ansi_pane_contents: bool,
     background_plugin_subscriptions: HashMap<(PluginId, ClientId), HashSet<EventType>>,
+    /// Monotonic counter used to tag each forwarded host-terminal query
+    /// with a unique token. 0 is reserved as a sentinel (see
+    /// `STARTUP_SENTINEL_TOKEN`); real forwards start at 1.
+    next_forward_token: u32,
+    /// Map of forwarded-query token → originating pane. When the client
+    /// sends back the reply for `token`, the server looks up the pane
+    /// here and writes the reply bytes to its pty.
+    pending_forwarded_queries: HashMap<u32, PaneId>,
+    /// Serialization queue for forwarded queries. Invariant: at most one
+    /// forward is in flight to the client at a time (enforced by
+    /// `forward_in_flight`). When the reply (or timeout) closes the
+    /// active slot, the next queued forward is dispatched.
+    forward_queue: VecDeque<PendingForward>,
+    /// Whether a forward is currently in flight to the (single) connected
+    /// client. Used to serialize forwarded queries globally.
+    forward_in_flight: bool,
 }
+
+/// A pending forward waiting to be dispatched once the current in-flight
+/// forward's barrier reply (or timeout) arrives.
+#[derive(Debug, Clone)]
+struct PendingForward {
+    token: u32,
+    pane_id: PaneId,
+    query_bytes: Vec<u8>,
+}
+
+/// Reserved sentinel token used for Zellij's own startup batch of host
+/// queries (pixel dims, bg/fg, sync-output, palette registers). The server
+/// routes the batch's reply through a tiny classifier into the existing
+/// `ScreenInstruction::Terminal*` variants rather than to a pane's pty.
+///
+/// Note: Phase 1 keeps the existing startup queries plumbing intact — the
+/// sentinel path is reserved for future migration and is not yet emitted.
+#[allow(dead_code)]
+const STARTUP_SENTINEL_TOKEN: u32 = 0;
 
 impl Screen {
     /// Creates and returns a new [`Screen`].
@@ -1457,6 +1510,10 @@ impl Screen {
             pane_render_subscribers: HashMap::new(),
             plugins_need_ansi_pane_contents: false,
             background_plugin_subscriptions: HashMap::new(),
+            next_forward_token: 1, // 0 is reserved as the startup sentinel
+            pending_forwarded_queries: HashMap::new(),
+            forward_queue: VecDeque::new(),
+            forward_in_flight: false,
         }
     }
 
@@ -1951,6 +2008,82 @@ impl Screen {
         for (color_register, color_sequence) in color_registers {
             terminal_emulator_color_codes.insert(color_register, color_sequence);
         }
+    }
+
+    /// Enqueue a whitelisted host-terminal query from pane `pane_id`.
+    /// Queries are serialized globally: at most one is in flight to the
+    /// client at a time; the rest wait in `forward_queue`. Returns the
+    /// allocated token so callers (tests) can observe it if useful.
+    pub fn forward_host_query(&mut self, pane_id: PaneId, query_bytes: Vec<u8>) -> u32 {
+        let token = self.next_forward_token;
+        // Skip over the reserved sentinel (0) on wrap; allocate a fresh
+        // u32 for every forward.
+        self.next_forward_token = self.next_forward_token.wrapping_add(1);
+        if self.next_forward_token == STARTUP_SENTINEL_TOKEN {
+            self.next_forward_token = 1;
+        }
+        if self.forward_in_flight {
+            self.forward_queue.push_back(PendingForward {
+                token,
+                pane_id,
+                query_bytes,
+            });
+        } else {
+            self.dispatch_forward(token, pane_id, query_bytes);
+        }
+        token
+    }
+
+    /// Dispatch a forward to the client and mark the slot as in-flight.
+    fn dispatch_forward(&mut self, token: u32, pane_id: PaneId, query_bytes: Vec<u8>) {
+        self.pending_forwarded_queries.insert(token, pane_id);
+        self.forward_in_flight = true;
+        let _ = self
+            .bus
+            .senders
+            .send_to_server(ServerInstruction::ForwardQueryToHost(token, query_bytes));
+    }
+
+    /// Handle a host-reply observed by the client for token `token`.
+    /// Writes the bytes to the originating pane's pty (if still present)
+    /// and releases the in-flight slot so the next queued forward can
+    /// dispatch.
+    pub fn handle_forwarded_reply_from_host(
+        &mut self,
+        token: u32,
+        reply_bytes: Vec<u8>,
+    ) -> Result<()> {
+        if let Some(pane_id) = self.pending_forwarded_queries.remove(&token) {
+            match pane_id {
+                PaneId::Terminal(terminal_id) => {
+                    let _ = self.bus.senders.send_to_pty_writer(
+                        PtyWriteInstruction::Write(reply_bytes, terminal_id, None),
+                    );
+                },
+                PaneId::Plugin(_) => {
+                    // Plugin panes do not issue whitelisted host queries;
+                    // if we reach here the mapping was populated
+                    // erroneously. Drop the reply.
+                    log::warn!(
+                        "Discarding host reply for plugin pane (token={}); plugins do not forward CSI/OSC queries",
+                        token
+                    );
+                },
+            }
+        } else {
+            // Unknown or stale token: pane may have closed. Safe to drop.
+            log::debug!(
+                "Dropping forwarded reply with no pending pane (token={}, len={} bytes)",
+                token,
+                reply_bytes.len()
+            );
+        }
+        // Release the slot and dispatch the next queued forward, if any.
+        self.forward_in_flight = false;
+        if let Some(next) = self.forward_queue.pop_front() {
+            self.dispatch_forward(next.token, next.pane_id, next.query_bytes);
+        }
+        Ok(())
     }
 
     pub fn render(&mut self, plugin_render_assets: Option<Vec<PluginRenderAsset>>) -> Result<()> {
@@ -6627,6 +6760,15 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::TerminalColorRegisters(color_registers) => {
                 screen.update_terminal_color_registers(color_registers);
+            },
+            ScreenInstruction::ForwardHostQuery {
+                pane_id,
+                query_bytes,
+            } => {
+                screen.forward_host_query(pane_id, query_bytes);
+            },
+            ScreenInstruction::ForwardedReplyFromHost { token, reply_bytes } => {
+                screen.handle_forwarded_reply_from_host(token, reply_bytes)?;
             },
             ScreenInstruction::ChangeMode(
                 mode_info,

@@ -2598,6 +2598,20 @@ pub(crate) fn route_thread_main(
                                 retry_queue
                             );
                         },
+                        ClientToServerMsg::ForwardedReplyFromHost {
+                            token,
+                            ref reply_bytes,
+                        } => {
+                            let _ = send_to_screen_or_retry_queue!(
+                                senders,
+                                ScreenInstruction::ForwardedReplyFromHost {
+                                    token,
+                                    reply_bytes: reply_bytes.clone(),
+                                },
+                                instruction,
+                                retry_queue
+                            );
+                        },
                         ClientToServerMsg::SubscribeToPaneRenders {
                             ref pane_ids,
                             ref scrollback,

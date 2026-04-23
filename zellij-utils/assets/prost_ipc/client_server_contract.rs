@@ -2857,7 +2857,7 @@ impl WebSharing {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ClientToServerMsg {
-    #[prost(oneof="client_to_server_msg::Message", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18")]
+    #[prost(oneof="client_to_server_msg::Message", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19")]
     pub message: ::core::option::Option<client_to_server_msg::Message>,
 }
 /// Nested message and enum types in `ClientToServerMsg`.
@@ -2901,6 +2901,8 @@ pub mod client_to_server_msg {
         SubscribeToPaneRenders(super::SubscribeToPaneRendersMsg),
         #[prost(message, tag="18")]
         DesktopNotificationResponse(super::DesktopNotificationResponseMsg),
+        #[prost(message, tag="19")]
+        ForwardedReplyFromHost(super::ForwardedReplyFromHostMsg),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -3034,8 +3036,16 @@ pub struct DesktopNotificationResponseMsg {
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ForwardedReplyFromHostMsg {
+    #[prost(uint32, tag="1")]
+    pub token: u32,
+    #[prost(bytes="vec", tag="2")]
+    pub reply_bytes: ::prost::alloc::vec::Vec<u8>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ServerToClientMsg {
-    #[prost(oneof="server_to_client_msg::Message", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15")]
+    #[prost(oneof="server_to_client_msg::Message", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16")]
     pub message: ::core::option::Option<server_to_client_msg::Message>,
 }
 /// Nested message and enum types in `ServerToClientMsg`.
@@ -3073,6 +3083,8 @@ pub mod server_to_client_msg {
         PaneRenderUpdate(super::PaneRenderUpdateMsg),
         #[prost(message, tag="15")]
         SubscribedPaneClosed(super::SubscribedPaneClosedMsg),
+        #[prost(message, tag="16")]
+        ForwardQueryToHost(super::ForwardQueryToHostMsg),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -3171,4 +3183,12 @@ pub struct PaneRenderUpdateMsg {
 pub struct SubscribedPaneClosedMsg {
     #[prost(message, optional, tag="1")]
     pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ForwardQueryToHostMsg {
+    #[prost(uint32, tag="1")]
+    pub token: u32,
+    #[prost(bytes="vec", tag="2")]
+    pub query_bytes: ::prost::alloc::vec::Vec<u8>,
 }

@@ -1,6 +1,6 @@
 use crate::keyboard_parser::KittyKeyboardParser;
 use crate::os_input_output::ClientOsApi;
-use crate::stdin_ansi_parser::StdinAnsiParser;
+use crate::stdin_ansi_parser::HostReplyParser;
 #[cfg(windows)]
 use crate::stdin_handler_windows::enable_vt_input;
 use crate::InputInstruction;
@@ -11,24 +11,10 @@ use zellij_utils::{
     vendored::termwiz::input::{InputEvent, InputParser},
 };
 
-fn send_done_parsing_after_query_timeout(
-    send_input_instructions: SenderWithContext<InputInstruction>,
-    query_duration: u64,
-) {
-    std::thread::spawn({
-        move || {
-            std::thread::sleep(Duration::from_millis(query_duration));
-            send_input_instructions
-                .send(InputInstruction::DoneParsing)
-                .unwrap();
-        }
-    });
-}
-
 pub(crate) fn stdin_loop(
     mut os_input: Box<dyn ClientOsApi>,
     send_input_instructions: SenderWithContext<InputInstruction>,
-    stdin_ansi_parser: Arc<Mutex<StdinAnsiParser>>,
+    host_reply_parser: Arc<Mutex<HostReplyParser>>,
     explicitly_disable_kitty_keyboard_protocol: bool,
     resize_sender: Option<std::sync::mpsc::Sender<()>>,
 ) {
@@ -46,48 +32,26 @@ pub(crate) fn stdin_loop(
     #[cfg(windows)]
     let use_vt_reader = std::env::var("TERM").is_ok() && enable_vt_input();
 
+    // Send the startup host query string so the host terminal replies
+    // with its live pixel dimensions, fg/bg, sync-output support, and
+    // palette registers. These replies will be classified by the
+    // continuous parser as they arrive and routed via `InputInstruction::
+    // AnsiStdinInstructions` — no deadline, no cache, no loading gate.
     {
-        // on startup we send a query to the terminal emulator for stuff like the pixel size and colors
-        // we get a response through STDIN, so it makes sense to do this here
-        let mut stdin_ansi_parser = stdin_ansi_parser.lock().unwrap();
-        match stdin_ansi_parser.read_cache() {
-            Some(events) => {
-                let _ =
-                    send_input_instructions.send(InputInstruction::AnsiStdinInstructions(events));
-                let _ = send_input_instructions
-                    .send(InputInstruction::DoneParsing)
-                    .unwrap();
-            },
-            None => {
-                // On Windows native console, the crossterm event::read() loop
-                // reads INPUT_RECORDs via ReadConsoleInput — not raw bytes — so
-                // ANSI query responses can never be read on that path. On the
-                // VT reader path (TERM is set), fill_buf() reads raw VT bytes
-                // just like Unix, so terminal queries work normally.
-                #[cfg(windows)]
-                let can_query_terminal = use_vt_reader;
-                #[cfg(not(windows))]
-                let can_query_terminal = true;
+        // On Windows native console, the crossterm event::read() loop
+        // reads INPUT_RECORDs via ReadConsoleInput — not raw bytes — so
+        // ANSI query responses can never be read on that path.
+        #[cfg(windows)]
+        let can_query_terminal = use_vt_reader;
+        #[cfg(not(windows))]
+        let can_query_terminal = true;
 
-                if can_query_terminal {
-                    send_input_instructions
-                        .send(InputInstruction::StartedParsing)
-                        .unwrap();
-                    let terminal_emulator_query_string =
-                        stdin_ansi_parser.terminal_emulator_query_string();
-                    let _ = os_input
-                        .get_stdout_writer()
-                        .write(terminal_emulator_query_string.as_bytes())
-                        .unwrap();
-                    let query_duration = stdin_ansi_parser.startup_query_duration();
-                    send_done_parsing_after_query_timeout(
-                        send_input_instructions.clone(),
-                        query_duration,
-                    );
-                } else {
-                    let _ = send_input_instructions.send(InputInstruction::DoneParsing);
-                }
-            },
+        if can_query_terminal {
+            let query_string = build_startup_query_string();
+            let _ = os_input
+                .get_stdout_writer()
+                .write(query_string.as_bytes())
+                .unwrap();
         }
     }
 
@@ -111,7 +75,6 @@ pub(crate) fn stdin_loop(
     // byte sequences.
     let mut input_parser = InputParser::new();
     let mut current_buffer = vec![];
-    let mut ansi_stdin_events = vec![];
     let (stdin_tx, stdin_rx) = mpsc::sync_channel(32);
     let _stdin_pump = std::thread::Builder::new()
         .name("stdin_pump".to_string())
@@ -142,35 +105,39 @@ pub(crate) fn stdin_loop(
             Ok(result) => {
                 match result {
                     Ok(buf) => {
-                        {
-                            // here we check if we need to parse specialized ANSI instructions sent over STDIN
-                            // this happens either on startup (see above) or on SIGWINCH
-                            //
-                            // if we need to parse them, we do so with an internal timeout - anything else we
-                            // receive on STDIN during that timeout is unceremoniously dropped
-                            let mut stdin_ansi_parser = stdin_ansi_parser.lock().unwrap();
-                            if stdin_ansi_parser.should_parse() {
-                                let events = stdin_ansi_parser.parse(buf);
-                                if !events.is_empty() {
-                                    ansi_stdin_events.append(&mut events.clone());
-                                    let _ = send_input_instructions
-                                        .send(InputInstruction::AnsiStdinInstructions(events));
-                                }
-                                continue;
-                            }
+                        // Strip + classify any host-reply sequences
+                        // continuously. The residue is the byte stream
+                        // the keyboard parser should see.
+                        let parse_output = {
+                            let mut p = host_reply_parser.lock().unwrap();
+                            p.feed(&buf)
+                        };
+                        if !parse_output.replies.is_empty() {
+                            let _ = send_input_instructions.send(
+                                InputInstruction::AnsiStdinInstructions(parse_output.replies),
+                            );
                         }
-                        if !ansi_stdin_events.is_empty() {
-                            stdin_ansi_parser
-                                .lock()
-                                .unwrap()
-                                .write_cache(ansi_stdin_events.drain(..).collect());
+                        if let Some((token, reply_bytes)) = parse_output.completed_forward {
+                            let _ = send_input_instructions.send(
+                                InputInstruction::ForwardedReplyFromHostComplete {
+                                    token,
+                                    reply_bytes,
+                                },
+                            );
                         }
-                        current_buffer.append(&mut buf.to_vec());
+                        let residue = parse_output.residue;
+                        if residue.is_empty() {
+                            // If all bytes were consumed by the host-reply
+                            // parser, nothing to feed to the keyboard
+                            // parser.
+                            continue;
+                        }
+                        current_buffer.append(&mut residue.clone());
 
                         if !explicitly_disable_kitty_keyboard_protocol {
                             // first we try to parse with the KittyKeyboardParser
                             // if we fail, we try to parse normally
-                            match KittyKeyboardParser::new().parse(&buf) {
+                            match KittyKeyboardParser::new().parse(&residue) {
                                 Some(key_with_modifier) => {
                                     send_input_instructions
                                         .send(InputInstruction::KeyWithModifierEvent(
@@ -192,7 +159,7 @@ pub(crate) fn stdin_loop(
                         let maybe_more = true;
                         let mut events = vec![];
                         input_parser.parse(
-                            &buf,
+                            &residue,
                             |input_event: InputEvent| {
                                 events.push(input_event);
                             },
@@ -212,6 +179,11 @@ pub(crate) fn stdin_loop(
                                         );
                                     }
                                     // Other OSC types at runtime: silently drop.
+                                },
+                                InputEvent::DeviceControlReply { .. } => {
+                                    // Should not reach here — the host-reply
+                                    // parser owns these. If a stray one does
+                                    // arrive (malformed), drop it.
                                 },
                                 other => {
                                     send_input_instructions
@@ -278,6 +250,9 @@ fn finalize_events(
                 }
                 // Other OSC types at runtime: silently drop.
             },
+            InputEvent::DeviceControlReply { .. } => {
+                // Should not happen on the residue path.
+            },
             other => {
                 send_input_instructions
                     .send(InputInstruction::KeyEvent(
@@ -288,4 +263,24 @@ fn finalize_events(
             },
         }
     }
+}
+
+/// Build the fire-and-forget host-query batch sent at client startup.
+/// The host's replies refine `Screen`'s cached state asynchronously as
+/// they arrive; the UI does not block on them.
+fn build_startup_query_string() -> String {
+    // <ESC>[14t => get text area size in pixels,
+    // <ESC>[16t => get character cell size in pixels
+    // <ESC>]11;?<ESC>\ => get background color
+    // <ESC>]10;?<ESC>\ => get foreground color
+    // <ESC>[?2026$p => get synchronised output mode
+    let mut query_string = String::from(
+        "\u{1b}[14t\u{1b}[16t\u{1b}]11;?\u{1b}\u{5c}\u{1b}]10;?\u{1b}\u{5c}\u{1b}[?2026$p",
+    );
+    // query colors
+    // eg. <ESC>]4;5;?<ESC>\ => query color register number 5
+    for i in 0..256 {
+        query_string.push_str(&format!("\u{1b}]4;{};?\u{1b}\u{5c}", i));
+    }
+    query_string
 }

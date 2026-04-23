@@ -253,15 +253,15 @@ impl InputHandler {
                             raw_bytes,
                         });
                 },
-                Ok((InputInstruction::StartedParsing, _error_context)) => {
-                    self.send_client_instructions
-                        .send(ClientInstruction::StartedParsingStdinQuery)
-                        .unwrap();
-                },
-                Ok((InputInstruction::DoneParsing, _error_context)) => {
-                    self.send_client_instructions
-                        .send(ClientInstruction::DoneParsingStdinQuery)
-                        .unwrap();
+                Ok((
+                    InputInstruction::ForwardedReplyFromHostComplete { token, reply_bytes },
+                    _error_context,
+                )) => {
+                    self.os_input
+                        .send_to_server(ClientToServerMsg::ForwardedReplyFromHost {
+                            token,
+                            reply_bytes,
+                        });
                 },
                 Ok((InputInstruction::Exit, _error_context)) => {
                     self.should_exit = true;
@@ -316,6 +316,17 @@ impl InputHandler {
                 self.send_client_instructions
                     .send(ClientInstruction::SetSynchronizedOutput(enabled))
                     .unwrap();
+            },
+            AnsiStdinInstruction::ForwardedReply { token, raw_bytes } => {
+                // The host-reply parser closed a forwarding window and
+                // surfaced the accumulated bytes through the classified
+                // `HostReply::ForwardedReply` variant (double-dispatch
+                // path). Relay to the server.
+                self.os_input
+                    .send_to_server(ClientToServerMsg::ForwardedReplyFromHost {
+                        token,
+                        reply_bytes: raw_bytes,
+                    });
             },
         }
     }

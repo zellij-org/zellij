@@ -310,6 +310,8 @@ pub enum ScreenContext {
     TerminalBackgroundColor,
     TerminalForegroundColor,
     TerminalColorRegisters,
+    ForwardHostQuery,
+    ForwardedReplyFromHost,
     ChangeMode,
     ChangeModeForAllClients,
     LeftClick,
@@ -553,8 +555,6 @@ pub enum ClientContext {
     Log,
     LogError,
     OwnClientId,
-    StartedParsingStdinQuery,
-    DoneParsingStdinQuery,
     SwitchSession,
     SetSynchronisedOutput,
     UnblockCliPipeInput,
@@ -564,6 +564,7 @@ pub enum ClientContext {
     StartWebServer,
     RenamedSession,
     ConfigFileUpdated,
+    ForwardQueryToHost,
 }
 
 /// Stack call representations corresponding to the different types of [`ServerInstruction`]s.
@@ -599,6 +600,7 @@ pub enum ServerContext {
     FailedToStartWebServer,
     SendWebClientsForbidden,
     ClearMouseHelpText,
+    ForwardQueryToHost,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]

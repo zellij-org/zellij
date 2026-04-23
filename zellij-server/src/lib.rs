@@ -132,6 +132,10 @@ pub enum ServerInstruction {
     WebServerStarted(String), // String -> base_url
     FailedToStartWebServer(String),
     ClearMouseHelpText(ClientId),
+    /// Relay a forwarded-query dispatch from Screen to the server main
+    /// loop. The main loop writes `ServerToClientMsg::ForwardQueryToHost`
+    /// to any connected regular client.
+    ForwardQueryToHost(u32, Vec<u8>),
 }
 
 impl From<&ServerInstruction> for ServerContext {
@@ -180,6 +184,7 @@ impl From<&ServerInstruction> for ServerContext {
                 ServerContext::SendWebClientsForbidden
             },
             ServerInstruction::ClearMouseHelpText(..) => ServerContext::ClearMouseHelpText,
+            ServerInstruction::ForwardQueryToHost(..) => ServerContext::ForwardQueryToHost,
         }
     }
 }
@@ -1706,6 +1711,30 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .senders
                     .send_to_screen(ScreenInstruction::ClearMouseHelpText(client_id))
                     .unwrap();
+            },
+            ServerInstruction::ForwardQueryToHost(token, query_bytes) => {
+                // Pick any connected regular (non-watcher) client to
+                // carry the forwarded query. Forwarded queries are rare
+                // and state-refresh rather than per-client; any one
+                // client's host is fine.
+                let target_client_id =
+                    session_state.read().unwrap().client_ids().into_iter().next();
+                if let Some(client_id) = target_client_id {
+                    send_to_client!(
+                        client_id,
+                        os_input,
+                        ServerToClientMsg::ForwardQueryToHost {
+                            token,
+                            query_bytes,
+                        },
+                        session_state
+                    );
+                } else {
+                    log::warn!(
+                        "No connected client to forward host query (token={}); dropping",
+                        token
+                    );
+                }
             },
         }
     }

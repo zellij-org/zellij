@@ -601,7 +601,9 @@ pub struct Grid {
     scroll_region: (usize, usize),
     active_charset: CharsetIndex,
     preceding_char: Option<TerminalCharacter>,
+    #[allow(dead_code)]
     terminal_emulator_colors: Rc<RefCell<Palette>>,
+    #[allow(dead_code)]
     terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
     pub(crate) output_buffer: OutputBuffer,
     title_stack: Vec<String>,
@@ -636,6 +638,12 @@ pub struct Grid {
     /// Pending desktop notifications: (payload, terminator)
     /// Payload is the semicolon-joined params after "99", terminator is "\x07" or "\x1b\\"
     pub pending_desktop_notifications: Vec<(String, String)>,
+    /// Whitelisted host-terminal queries intercepted from the app running
+    /// in this pane (CSI 14t / 16t pixel-dim queries, OSC 10;? / 11;? /
+    /// 4;N;? color queries). Each entry is the raw byte sequence that
+    /// Zellij should forward to the host terminal; the host's reply is
+    /// later routed back to this pane's pty.
+    pub pending_forwarded_queries: Vec<Vec<u8>>,
     ui_component_bytes: Option<Vec<u8>>,
     style: Style,
     debug: bool,
@@ -922,6 +930,7 @@ impl Grid {
             pending_clipboard_update: None,
             pending_osc7_cwd: None,
             pending_desktop_notifications: Vec::new(),
+            pending_forwarded_queries: Vec::new(),
             ui_component_bytes: None,
             style,
             debug,
@@ -3489,15 +3498,15 @@ impl Perform for Grid {
                         return;
                     } else if chunk.get(1).as_ref().and_then(|c| c.get(0)) == Some(&b'?') {
                         if let Some(index) = index {
-                            let terminal_emulator_color_codes =
-                                self.terminal_emulator_color_codes.borrow();
-                            let color = terminal_emulator_color_codes.get(&(index as usize));
-                            if let Some(color) = color {
-                                let color_response_message =
-                                    format!("\u{1b}]4;{};{}{}", index, color, terminator);
-                                self.pending_messages_to_pty
-                                    .push(color_response_message.as_bytes().to_vec());
-                            }
+                            // Forward palette-register queries to the
+                            // host — apps want the actual host palette,
+                            // not Zellij's cached copy. (Zellij's cache
+                            // still auto-refreshes via double-dispatch
+                            // when the host's reply comes back.)
+                            let forwarded_query =
+                                format!("\u{1b}]4;{};?{}", index, terminator);
+                            self.pending_forwarded_queries
+                                .push(forwarded_query.as_bytes().to_vec());
                         }
                     }
                 }
@@ -3519,33 +3528,20 @@ impl Perform for Grid {
                     if let Some(mut dynamic_code) = parse_number(params[0]) {
                         for param in &params[1..] {
                             if param == b"?" {
-                                // Query: respond with pane default if set, else terminal default
-                                let color_rgb = if dynamic_code == 10 {
-                                    match self.pane_default_fg {
-                                        Some(AnsiCode::RgbCode((r, g, b))) => Some((r, g, b)),
-                                        _ => match self.terminal_emulator_colors.borrow().fg {
-                                            PaletteColor::Rgb((r, g, b)) => Some((r, g, b)),
-                                            _ => None,
-                                        },
-                                    }
-                                } else if dynamic_code == 11 {
-                                    match self.pane_default_bg {
-                                        Some(AnsiCode::RgbCode((r, g, b))) => Some((r, g, b)),
-                                        _ => match self.terminal_emulator_colors.borrow().bg {
-                                            PaletteColor::Rgb((r, g, b)) => Some((r, g, b)),
-                                            _ => None,
-                                        },
-                                    }
-                                } else {
-                                    None
-                                };
-                                let (r, g, b) = color_rgb.unwrap_or((0, 0, 0));
-                                let color_response_message = format!(
-                                    "\u{1b}]{};rgb:{1:02x}{1:02x}/{2:02x}{2:02x}/{3:02x}{3:02x}{4}",
-                                    dynamic_code, r, g, b, terminator
+                                // Forward fg/bg *queries* to the host so
+                                // the app observes the terminal's actual
+                                // color (also keeps Zellij's cached copy
+                                // in sync via double-dispatch on the
+                                // reply). Pane-scoped overrides set via
+                                // OSC 10;<rgb> / 11;<rgb> are still
+                                // honored above and remain authoritative
+                                // for Zellij's rendering.
+                                let forwarded_query = format!(
+                                    "\u{1b}]{};?{}",
+                                    dynamic_code, terminator
                                 );
-                                self.pending_messages_to_pty
-                                    .push(color_response_message.as_bytes().to_vec());
+                                self.pending_forwarded_queries
+                                    .push(forwarded_query.as_bytes().to_vec());
                             } else {
                                 // Set: parse color and store as pane default
                                 if let Some(color) = xparse_color(param) {
@@ -4244,25 +4240,16 @@ impl Perform for Grid {
         } else if c == 't' {
             match next_param_or(1) as usize {
                 14 => {
-                    if let Some(character_cell_size) = *self.character_cell_size.borrow() {
-                        let text_area_pixel_size_report = format!(
-                            "\x1b[4;{};{}t",
-                            character_cell_size.height * self.height,
-                            character_cell_size.width * self.width
-                        );
-                        self.pending_messages_to_pty
-                            .push(text_area_pixel_size_report.as_bytes().to_vec());
-                    }
+                    // Forward to host: apps asking for text-area pixels
+                    // want the real window size, not Zellij's synthesised
+                    // (cell_size * grid_size) value. The host's reply will
+                    // be written back to this pane by the forwarding
+                    // infrastructure on Screen.
+                    self.pending_forwarded_queries.push(b"\x1b[14t".to_vec());
                 },
                 16 => {
-                    if let Some(character_cell_size) = *self.character_cell_size.borrow() {
-                        let character_cell_size_report = format!(
-                            "\x1b[6;{};{}t",
-                            character_cell_size.height, character_cell_size.width
-                        );
-                        self.pending_messages_to_pty
-                            .push(character_cell_size_report.as_bytes().to_vec());
-                    }
+                    // Forward to host: character-cell pixel size.
+                    self.pending_forwarded_queries.push(b"\x1b[16t".to_vec());
                 },
                 18 => {
                     // report text area
