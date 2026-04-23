@@ -1,0 +1,32 @@
+---
+source: zellij-server/src/./unit/screen_tests.rs
+assertion_line: 3736
+expression: "format!(\"{:#?}\", new_tab_instruction)"
+---
+NewTab(
+    Some(
+        ".",
+    ),
+    None,
+    None,
+    [],
+    1,
+    None,
+    false,
+    false,
+    (
+        10,
+        false,
+    ),
+    Some(
+        NotificationEnd {
+            channel: None,
+            exit_status: None,
+            unblock_condition: None,
+            affected_pane_id: None,
+            affected_tab_id: None,
+            error_message: None,
+            stdout_message: None,
+        },
+    ),
+)

@@ -3685,6 +3685,58 @@ pub fn send_cli_new_tab_action_default_params() {
 }
 
 #[test]
+pub fn send_cli_new_tab_action_with_no_focus() {
+    let size = Size { cols: 80, rows: 10 };
+    let client_id = 10; // fake client id should not appear in the screen's state
+    let mut initial_layout = TiledPaneLayout::default();
+    initial_layout.children_split_direction = SplitDirection::Vertical;
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
+    let mut mock_screen = MockScreen::new(size);
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
+    let received_plugin_instructions = Arc::new(Mutex::new(vec![]));
+    let plugin_receiver = mock_screen.plugin_receiver.take().unwrap();
+    let plugin_thread = log_actions_in_thread!(
+        received_plugin_instructions,
+        PluginInstruction::Exit,
+        plugin_receiver
+    );
+    let new_tab_action = CliAction::NewTab {
+        name: Some("bg".into()),
+        layout: None,
+        layout_string: None,
+        layout_dir: None,
+        cwd: None,
+        initial_command: vec![],
+        initial_plugin: None,
+        close_on_exit: Default::default(),
+        start_suspended: Default::default(),
+        block_until_exit: false,
+        block_until_exit_success: false,
+        block_until_exit_failure: false,
+        no_focus: true,
+    };
+    send_cli_action_to_server(&session_metadata, new_tab_action, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![plugin_thread, screen_thread]);
+    let new_tab_instruction = received_plugin_instructions
+        .lock()
+        .unwrap()
+        .iter()
+        .rev()
+        .find(|i| {
+            if let PluginInstruction::NewTab(..) = i {
+                return true;
+            } else {
+                return false;
+            }
+        })
+        .unwrap()
+        .clone();
+    assert_snapshot!(format!("{:#?}", new_tab_instruction));
+}
+
+#[test]
 pub fn send_cli_new_tab_action_with_name_and_layout() {
     let size = Size { cols: 80, rows: 10 };
     let client_id = 10; // fake client id should not appear in the screen's state
