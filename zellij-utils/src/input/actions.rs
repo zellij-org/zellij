@@ -3454,6 +3454,114 @@ mod tests {
         assert!(result.is_err());
     }
 
+    #[test]
+    fn test_new_tab_no_focus_bare() {
+        let cli_action = CliAction::NewTab {
+            name: Some("bg".into()),
+            layout: None,
+            layout_string: None,
+            layout_dir: None,
+            cwd: None,
+            initial_command: vec![],
+            initial_plugin: None,
+            close_on_exit: Default::default(),
+            start_suspended: Default::default(),
+            block_until_exit: false,
+            block_until_exit_success: false,
+            block_until_exit_failure: false,
+            no_focus: true,
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::NewTab {
+                should_change_focus_to_new_tab,
+                tab_name,
+                ..
+            } => {
+                assert_eq!(
+                    *should_change_focus_to_new_tab, false,
+                    "--no-focus must set should_change_focus_to_new_tab to false"
+                );
+                assert_eq!(tab_name.as_deref(), Some("bg"));
+            },
+            _ => panic!("Expected NewTab action"),
+        }
+    }
+
+    #[test]
+    fn test_new_tab_no_focus_with_layout_string() {
+        let cli_action = CliAction::NewTab {
+            name: None,
+            layout: None,
+            layout_string: Some("layout {\n    pane\n}\n".into()),
+            layout_dir: None,
+            cwd: None,
+            initial_command: vec![],
+            initial_plugin: None,
+            close_on_exit: Default::default(),
+            start_suspended: Default::default(),
+            block_until_exit: false,
+            block_until_exit_success: false,
+            block_until_exit_failure: false,
+            no_focus: true,
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert!(!actions.is_empty());
+        for action in &actions {
+            match action {
+                Action::NewTab {
+                    should_change_focus_to_new_tab,
+                    ..
+                } => {
+                    assert_eq!(
+                        *should_change_focus_to_new_tab, false,
+                        "--no-focus must set should_change_focus_to_new_tab to false for every emitted NewTab"
+                    );
+                },
+                _ => panic!("Expected NewTab action"),
+            }
+        }
+    }
+
+    #[test]
+    fn test_new_tab_default_focuses() {
+        let cli_action = CliAction::NewTab {
+            name: None,
+            layout: None,
+            layout_string: None,
+            layout_dir: None,
+            cwd: None,
+            initial_command: vec![],
+            initial_plugin: None,
+            close_on_exit: Default::default(),
+            start_suspended: Default::default(),
+            block_until_exit: false,
+            block_until_exit_success: false,
+            block_until_exit_failure: false,
+            no_focus: false,
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::NewTab {
+                should_change_focus_to_new_tab,
+                ..
+            } => {
+                assert_eq!(
+                    *should_change_focus_to_new_tab, true,
+                    "default (no --no-focus) must set should_change_focus_to_new_tab to true"
+                );
+            },
+            _ => panic!("Expected NewTab action"),
+        }
+    }
 
     #[test]
     fn test_override_layout_with_layout_string() {
