@@ -1672,6 +1672,63 @@ fn copy_selected_text_from_lines_below() {
     );
 }
 
+#[test]
+fn copy_wrapped_selection_after_scroll_off() {
+    // User's scenario: a wrapped long line is in the viewport, user starts a
+    // selection covering it, then more content is printed which scrolls the
+    // selection off into lines_above. The expected clipboard should still be
+    // the full wrapped line.
+    let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
+    let arrow_fonts = true;
+    let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
+    let width: usize = 20;
+    let height: usize = 5;
+    let mut grid = Grid::new(
+        height,
+        width,
+        Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
+        sixel_image_store,
+        Style::default(),
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
+    );
+
+    // Write a long line (60 chars → 3 rows at width 20), then "pad1".
+    // At this point viewport = [AAA, BBB, CCC, pad1, empty], cursor at row 4.
+    let long_line = "AAAAAAAAAAAAAAAAAAAABBBBBBBBBBBBBBBBBBBBCCCCCCCCCCCCCCCCCCCC";
+    for byte in format!("{}\r\npad1\r\n", long_line).bytes() {
+        vte_parser.advance(&mut grid, byte);
+    }
+
+    // User starts a selection covering the full wrapped line while it's still
+    // visible in the viewport.
+    grid.start_selection(&Position::new(0, 0));
+    grid.end_selection(&Position::new(2, width as u16));
+    // Sanity-check: it works while still in viewport.
+    assert_eq!(grid.get_selected_text().unwrap(), long_line);
+
+    // Now print more content that scrolls the viewport. Each newline at the
+    // bottom of the scroll region drains one viewport row into lines_above
+    // (and moves the selection up by one). After 3 additional newlines, the
+    // wrapped line has been joined into a single row in lines_above and the
+    // selection's line indices all point into lines_above.
+    for byte in "pad2\r\npad3\r\npad4\r\n".bytes() {
+        vte_parser.advance(&mut grid, byte);
+    }
+
+    let text = grid.get_selected_text();
+    assert_eq!(text.unwrap(), long_line);
+}
+
 /*
  * These tests below are general compatibility tests for non-trivial scenarios running in the terminal.
  * They use fake TTY input replicated from these scenarios.

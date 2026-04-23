@@ -1873,36 +1873,56 @@ impl Grid {
             let empty_row =
                 Row::from_columns(VecDeque::from(vec![EMPTY_TERMINAL_CHARACTER; self.width]));
 
-            // get the row from lines_above, viewport, or lines below depending on index
-            let row = if l < 0 && self.lines_above.len() > l.abs() as usize {
-                let offset_from_end = l.abs();
-                &self.lines_above[self
-                    .lines_above
-                    .len()
-                    .saturating_sub(offset_from_end as usize)]
-            } else if l >= 0 && (l as usize) < self.viewport.len() {
-                &self.viewport[l as usize]
+            // Rows stored in `lines_above` can be joined (width > self.width) because
+            // `transfer_rows_from_viewport_to_lines_above` merges wrapped continuations
+            // into the preceding canonical row. Walk newest-to-oldest, summing each
+            // row's display height, to find which stored row visual offset |l| maps
+            // to and at what column offset inside it.
+            let (row, col_offset) = if l < 0 {
+                let mut remaining = l.unsigned_abs() as usize;
+                let mut found = None;
+                for r in self.lines_above.iter().rev() {
+                    let vh = if r.columns.len() <= self.width {
+                        1
+                    } else {
+                        calculate_row_display_height(r.width(), self.width)
+                    };
+                    if remaining <= vh {
+                        found = Some((r, (vh - remaining) * self.width));
+                        break;
+                    }
+                    remaining -= vh;
+                }
+                match found {
+                    Some(t) => t,
+                    None => continue,
+                }
+            } else if (l as usize) < self.viewport.len() {
+                (&self.viewport[l as usize], 0)
             } else if (l as usize) < self.height {
                 // index is in viewport but there is no line
-                &empty_row
+                (&empty_row, 0)
             } else if self.lines_below.len() > (l as usize).saturating_sub(self.viewport.len()) {
-                &self.lines_below[(l as usize) - self.viewport.len()]
+                (&self.lines_below[(l as usize) - self.viewport.len()], 0)
             } else {
                 // can't find the line, this probably it's on the pane border
-                // is on the pane border
                 continue;
             };
 
             let mut terminal_col = 0;
+            let lower = col_offset + start_column;
+            let upper = col_offset + end_column;
             for terminal_character in &row.columns {
-                if (start_column..end_column).contains(&terminal_col) {
+                if (lower..upper).contains(&terminal_col) {
                     line_selection.push(terminal_character.character);
                 }
 
                 terminal_col += terminal_character.width();
             }
 
-            if row.is_canonical {
+            // A non-top chunk of a joined lines_above row must be merged with the
+            // previous entry just like a non-canonical viewport row.
+            if row.is_canonical && col_offset == 0 {
                 selection.push(line_selection);
             } else {
                 // rejoin wrapped lines if possible
