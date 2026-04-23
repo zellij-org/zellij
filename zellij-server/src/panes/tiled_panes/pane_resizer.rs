@@ -1,3 +1,10 @@
+// Brooks's TODOs
+// 1) See if `taffy` will simplify this code?
+// 2) Refactor stuff so that the stages are clearer and have less technical jargon (eg. spans, discretisations, etc.)
+// 3) Make it so that the constraint system (now known as PaneResizer) doesn't operate on the panes themselves, but
+// rather receives a list of PaneGeoms tied to pane ids and then sends back a list of those changed geoms to be mutated
+// by whoever called it. This would be great because then it'll allow me to recover from whichever errors this system
+// might have in whichever place in the code I place it.
 use super::stacked_panes::StackedPanes;
 use crate::{panes::PaneId, tab::Pane};
 use cassowary::{
