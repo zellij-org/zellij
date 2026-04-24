@@ -12,13 +12,14 @@ mod utils;
 mod websocket_handlers;
 
 use std::{
-    net::{IpAddr, Ipv4Addr},
+    net::{IpAddr, Ipv4Addr, SocketAddr},
     path::PathBuf,
     sync::{Arc, Mutex},
     thread,
 };
 
 use axum::{
+    extract::Request,
     middleware,
     routing::{any, get, post},
     Router,
@@ -41,7 +42,7 @@ use std::io::prelude::*;
 use std::io::{BufRead, BufReader};
 use zellij_utils::input::{config::Config, options::Options};
 
-use authentication::auth_middleware;
+use authentication::{auth_middleware, SkipAuthForLocalNetwork};
 use http_handlers::{
     create_new_client, get_static_asset, login_handler, serve_html, version_handler,
 };
@@ -68,6 +69,7 @@ pub fn start_web_client(
     custom_server_cert: Option<PathBuf>,
     custom_server_key: Option<PathBuf>,
     startup_timeout: Option<u64>,
+    skip_auth_for_local_network_access: bool,
 ) {
     std::panic::set_hook({
         Box::new(move |info| {
@@ -94,7 +96,7 @@ pub fn start_web_client(
             .unwrap_or_else(|| IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)))
     });
     let web_server_port =
-        custom_port.unwrap_or_else(|| config_options.web_server_port.unwrap_or_else(|| 8082));
+        custom_port.unwrap_or_else(|| config_options.web_server_port.unwrap_or(8082));
     let web_server_cert = custom_server_cert.or_else(|| config.options.web_server_cert.clone());
     let web_server_key = custom_server_key.or_else(|| config.options.web_server_key.clone());
     let has_https_certificate = web_server_cert.is_some() && web_server_key.is_some();
@@ -103,6 +105,7 @@ pub fn start_web_client(
         web_server_ip,
         has_https_certificate,
         config.options.enforce_https_for_localhost.unwrap_or(false),
+        skip_auth_for_local_network_access,
     ) {
         eprintln!("{}", e);
         std::process::exit(2);
@@ -115,6 +118,7 @@ pub fn start_web_client(
             web_server_key,
             config_file_path.clone(),
             startup_timeout,
+            skip_auth_for_local_network_access,
         )
     } else {
         let runtime = Runtime::new().unwrap();
@@ -171,6 +175,7 @@ pub fn start_web_client(
         None,
         web_server_ip,
         web_server_port,
+        skip_auth_for_local_network_access,
     ));
 }
 
@@ -184,6 +189,7 @@ pub async fn serve_web_client(
     client_os_api_factory: Option<Arc<dyn ClientOsApiFactory>>,
     web_server_ip: IpAddr,
     web_server_port: u16,
+    skip_auth_for_local_network_access: bool,
 ) {
     let Some(config_file_path) = config_file_path.or_else(|| Config::default_config_file_path())
     else {
@@ -231,6 +237,7 @@ pub async fn serve_web_client(
     });
 
     let is_https = state.is_https;
+    let skip_auth = skip_auth_for_local_network_access;
     let app = Router::new()
         .route("/ws/control", any(ws_handler_control))
         .route("/ws/terminal", any(ws_handler_terminal))
@@ -243,8 +250,9 @@ pub async fn serve_web_client(
         .route("/command/login", post(login_handler))
         .route("/info/version", get(version_handler))
         .with_state(state)
-        .layer(axum::middleware::from_fn(move |request, next: axum::middleware::Next| {
+        .layer(axum::middleware::from_fn(move |mut request: Request, next: axum::middleware::Next| {
             async move {
+                request.extensions_mut().insert(SkipAuthForLocalNetwork(skip_auth));
                 let mut response = next.run(request).await;
                 let headers = response.headers_mut();
                 headers.insert("X-Content-Type-Options", "nosniff".parse().unwrap());
@@ -268,13 +276,13 @@ pub async fn serve_web_client(
         Some(rustls_config) => {
             let _ = axum_server::from_tcp_rustls(listener, rustls_config)
                 .handle(server_handle)
-                .serve(app.into_make_service())
+                .serve(app.into_make_service_with_connect_info::<SocketAddr>())
                 .await;
         },
         None => {
             let _ = axum_server::from_tcp(listener)
                 .handle(server_handle)
-                .serve(app.into_make_service())
+                .serve(app.into_make_service_with_connect_info::<SocketAddr>())
                 .await;
         },
     }
@@ -288,6 +296,7 @@ fn daemonize_web_server(
     web_server_key: Option<PathBuf>,
     _config_file_path: Option<PathBuf>,
     _startup_timeout: Option<u64>,
+    _skip_auth_for_local_network_access: bool,
 ) -> (Runtime, std::net::TcpListener, Option<RustlsConfig>) {
     let (mut exit_message_tx, exit_message_rx) = pipe().unwrap();
     let (mut exit_status_tx, mut exit_status_rx) = pipe().unwrap();
@@ -392,6 +401,7 @@ fn daemonize_web_server(
     web_server_key: Option<PathBuf>,
     config_file_path: Option<PathBuf>,
     startup_timeout: Option<u64>,
+    skip_auth_for_local_network_access: bool,
 ) -> (Runtime, std::net::TcpListener, Option<RustlsConfig>) {
     use std::env::current_exe;
     use std::net::TcpStream;
@@ -415,6 +425,9 @@ fn daemonize_web_server(
     }
     if let Some(ref key) = web_server_key {
         cmd.arg("--key").arg(key);
+    }
+    if skip_auth_for_local_network_access {
+        cmd.arg("--no-auth-for-local");
     }
 
     #[cfg(windows)]

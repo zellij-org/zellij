@@ -23,16 +23,32 @@ pub fn should_use_https(
     ip: IpAddr,
     has_certificate: bool,
     enforce_https_for_localhost: bool,
+    skip_auth_for_local_network_access: bool,
 ) -> Result<bool, String> {
     let is_loopback = match ip {
         IpAddr::V4(ipv4) => ipv4.is_loopback(),
         IpAddr::V6(ipv6) => ipv6.is_loopback(),
     };
 
+    let is_local_network = match ip {
+        IpAddr::V4(ipv4) => {
+            ipv4.is_loopback()
+                || ipv4.is_private()
+                || ipv4.is_link_local()
+        },
+        IpAddr::V6(ipv6) => {
+            ipv6.is_loopback() || ipv6.is_unique_local() || ipv6.is_unicast_link_local()
+        },
+    };
+
+    if skip_auth_for_local_network_access && is_local_network {
+        return Ok(has_certificate);
+    }
+
     if is_loopback && !enforce_https_for_localhost {
         Ok(has_certificate)
     } else if is_loopback {
-        Err(format!("Cannot bind without an SSL certificate."))
+        Err("Cannot bind without an SSL certificate.".to_owned())
     } else if has_certificate {
         Ok(true)
     } else {
