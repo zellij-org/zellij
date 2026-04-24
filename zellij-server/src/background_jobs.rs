@@ -624,8 +624,19 @@ pub(crate) fn background_jobs_main(
                     loading_plugin.store(false, Ordering::SeqCst);
                 }
 
-                let cache_file_name =
-                    session_info_cache_file_name(&current_session_name.lock().unwrap().to_owned());
+                // Flush the current layout to disk before shutting down so the
+                // session is resurrectable even if it exited before the
+                // periodic SESSION_METADATA_WRITE_INTERVAL_MS ticker fired.
+                // Writes session-layout.kdl which list-sessions uses to mark
+                // the session as resurrectable.
+                let name = current_session_name.lock().unwrap().clone();
+                if !name.is_empty() {
+                    let info = current_session_info.lock().unwrap().clone();
+                    let layout = current_session_layout.lock().unwrap().clone();
+                    write_session_state_to_disk(name.clone(), info, layout);
+                }
+
+                let cache_file_name = session_info_cache_file_name(&name);
                 let _ = std::fs::remove_file(cache_file_name);
                 return Ok(());
             },
