@@ -201,6 +201,7 @@ fn create_new_tab(size: Size, stacked_resize: bool) -> Tab {
         terminal_emulator_color_codes,
         (vec![], vec![]), // swap layouts
         PathBuf::from("my_default_shell"),
+        vec![], // default_shell_args
         debug,
         arrow_fonts,
         styled_underlines,
@@ -287,6 +288,7 @@ fn create_new_tab_with_layout(size: Size, layout: TiledPaneLayout) -> Tab {
         terminal_emulator_color_codes,
         (vec![], vec![]), // swap layouts
         PathBuf::from("my_default_shell"),
+        vec![], // default_shell_args
         debug,
         arrow_fonts,
         styled_underlines,
@@ -379,6 +381,7 @@ fn create_new_tab_with_cell_size(
         terminal_emulator_color_codes,
         (vec![], vec![]), // swap layouts
         PathBuf::from("my_default_shell"),
+        vec![], // default_shell_args
         debug,
         arrow_fonts,
         styled_underlines,

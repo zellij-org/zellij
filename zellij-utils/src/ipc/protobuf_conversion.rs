@@ -628,7 +628,13 @@ impl From<crate::input::options::Options>
             default_mode: options.default_mode.map(|m| input_mode_to_proto_i32(m)),
             default_shell: options
                 .default_shell
-                .map(|p| p.to_string_lossy().to_string()),
+                .as_ref()
+                .map(|s| s.path.to_string_lossy().to_string()),
+            default_shell_args: options
+                .default_shell
+                .as_ref()
+                .map(|s| s.args.clone())
+                .unwrap_or_default(),
             default_cwd: options.default_cwd.map(|p| p.to_string_lossy().to_string()),
             default_layout: options
                 .default_layout
@@ -711,7 +717,12 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
                 .default_mode
                 .map(|m| proto_i32_to_input_mode(m))
                 .transpose()?,
-            default_shell: options.default_shell.map(std::path::PathBuf::from),
+            default_shell: options.default_shell.map(|path| {
+                crate::input::options::DefaultShell::with_args(
+                    std::path::PathBuf::from(path),
+                    options.default_shell_args,
+                )
+            }),
             default_cwd: options.default_cwd.map(std::path::PathBuf::from),
             default_layout: options.default_layout.map(std::path::PathBuf::from),
             layout_dir: options.layout_dir.map(std::path::PathBuf::from),

@@ -1166,6 +1166,7 @@ message Options {
   optional bool visual_bell = 43;
   optional bool focus_follows_mouse = 44;
   optional bool mouse_click_through = 45;
+  repeated string default_shell_args = 46;
 }
 
 enum OnForceClose {

@@ -261,6 +261,7 @@ fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
         terminal_emulator_color_codes,
         (vec![], vec![]),
         PathBuf::from("my_default_shell"),
+        vec![], // default_shell_args
         debug,
         arrow_fonts,
         styled_underlines,
@@ -348,6 +349,7 @@ fn create_new_tab_without_pane_frames(size: Size, default_mode: ModeInfo) -> Tab
         terminal_emulator_color_codes,
         (vec![], vec![]),
         PathBuf::from("my_default_shell"),
+        vec![], // default_shell_args
         debug,
         arrow_fonts,
         styled_underlines,
@@ -450,6 +452,7 @@ fn create_new_tab_with_swap_layouts(
         terminal_emulator_color_codes,
         swap_layouts,
         PathBuf::from("my_default_shell"),
+        vec![], // default_shell_args
         debug,
         arrow_fonts,
         styled_underlines,
@@ -553,6 +556,7 @@ fn create_new_tab_with_os_api(
         terminal_emulator_color_codes,
         (vec![], vec![]), // swap layouts
         PathBuf::from("my_default_shell"),
+        vec![], // default_shell_args
         debug,
         arrow_fonts,
         styled_underlines,
@@ -642,6 +646,7 @@ fn create_new_tab_with_layout(size: Size, default_mode: ModeInfo, layout: &str) 
         terminal_emulator_color_codes,
         (vec![], vec![]), // swap layouts
         PathBuf::from("my_default_shell"),
+        vec![], // default_shell_args
         debug,
         arrow_fonts,
         styled_underlines,
@@ -745,6 +750,7 @@ fn create_new_tab_with_mock_pty_writer(
         terminal_emulator_color_codes,
         (vec![], vec![]), // swap layouts
         PathBuf::from("my_default_shell"),
+        vec![], // default_shell_args
         debug,
         arrow_fonts,
         styled_underlines,
@@ -839,6 +845,7 @@ fn create_new_tab_with_sixel_support(
         terminal_emulator_color_codes,
         (vec![], vec![]), // swap layouts
         PathBuf::from("my_default_shell"),
+        vec![], // default_shell_args
         debug,
         arrow_fonts,
         styled_underlines,
@@ -12546,6 +12553,7 @@ fn create_new_tab_with_plugin_receiver(
         terminal_emulator_color_codes,
         (vec![], vec![]),
         PathBuf::from("my_default_shell"),
+        vec![], // default_shell_args
         debug,
         arrow_fonts,
         styled_underlines,
@@ -12574,6 +12582,199 @@ fn create_new_tab_with_plugin_receiver(
     )
     .unwrap();
     (tab, mock_plugin_receiver)
+}
+
+fn create_new_tab_with_plugin_pane_and_shell_args(
+    size: Size,
+    default_mode: ModeInfo,
+    default_shell_args: Vec<String>,
+) -> (Tab, Receiver<(PluginInstruction, ErrorContext)>) {
+    set_session_name("test".into());
+    let index = 0;
+    let position = 0;
+    let name = String::new();
+    let os_api = Box::new(FakeInputOutput::default());
+    let mut senders = ThreadSenders::default().silently_fail_on_send();
+    let (mock_plugin_sender, mock_plugin_receiver): ChannelWithContext<PluginInstruction> =
+        channels::unbounded();
+    senders.replace_to_plugin(SenderWithContext::new(mock_plugin_sender));
+    let max_panes = None;
+    let mode_info = default_mode;
+    let style = Style::default();
+    let draw_pane_frames = true;
+    let auto_layout = true;
+    let client_id = 1;
+    let session_is_mirrored = true;
+    let mut connected_clients = HashMap::new();
+    connected_clients.insert(client_id, false);
+    let connected_clients = Rc::new(RefCell::new(connected_clients));
+    let character_cell_info = Rc::new(RefCell::new(None));
+    let stacked_resize = Rc::new(RefCell::new(true));
+    let terminal_emulator_colors = Rc::new(RefCell::new(Palette::default()));
+    let copy_options = CopyOptions::default();
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let current_group = Rc::new(RefCell::new(PaneGroups::new(ThreadSenders::default())));
+    let currently_marking_pane_group = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
+    let arrow_fonts = true;
+    let styled_underlines = true;
+    let osc8_hyperlinks = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
+    let advanced_mouse_actions = true;
+    let web_sharing = WebSharing::Off;
+    let web_server_ip = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
+    let web_server_port = 8080;
+    let mut tab = Tab::new(
+        index,
+        position,
+        name,
+        size,
+        character_cell_info,
+        stacked_resize,
+        sixel_image_store,
+        os_api,
+        senders,
+        max_panes,
+        style,
+        mode_info,
+        draw_pane_frames,
+        auto_layout,
+        connected_clients,
+        session_is_mirrored,
+        Some(client_id),
+        copy_options,
+        terminal_emulator_colors,
+        terminal_emulator_color_codes,
+        (vec![], vec![]),
+        PathBuf::from("my_default_shell"),
+        default_shell_args,
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        osc8_hyperlinks,
+        explicitly_disable_kitty_keyboard_protocol,
+        None,
+        false,
+        web_sharing,
+        current_group,
+        currently_marking_pane_group,
+        advanced_mouse_actions,
+        true,  // mouse_hover_effects
+        false, // focus_follows_mouse
+        false, // mouse_click_through
+        web_server_ip,
+        web_server_port,
+    );
+    // Apply a layout containing a plugin pane so update_input_modes has a plugin to send to
+    let kdl_layout = r#"
+        layout {
+            pane
+            pane {
+                plugin location="zellij:tab-bar"
+            }
+        }
+    "#;
+    let (tiled_layout, floating_layout) =
+        Layout::from_kdl(kdl_layout, Some("test_layout".into()), None, None)
+            .expect("Failed to parse KDL layout")
+            .new_tab();
+    let mut new_plugin_ids = HashMap::new();
+    new_plugin_ids.insert(
+        RunPluginOrAlias::from_url("zellij:tab-bar", &None, None, None).unwrap(),
+        vec![100],
+    );
+    tab.apply_layout(
+        tiled_layout,
+        floating_layout,
+        vec![(1, None)],
+        vec![],
+        new_plugin_ids,
+        client_id,
+        None,
+    )
+    .unwrap();
+    (tab, mock_plugin_receiver)
+}
+
+#[test]
+fn update_input_modes_passes_shell_args_to_plugins() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let expected_args = vec!["-NoLogo".to_string(), "-NoProfile".to_string()];
+    let (mut tab, mock_plugin_receiver) = create_new_tab_with_plugin_pane_and_shell_args(
+        size,
+        ModeInfo::default(),
+        expected_args.clone(),
+    );
+
+    // Drain any messages produced during tab setup
+    while mock_plugin_receiver.try_recv().is_ok() {}
+
+    tab.update_input_modes().unwrap();
+
+    // Search for a PluginInstruction::Update carrying an Event::ModeUpdate with shell_args set
+    let mut found_shell_args: Option<Option<Vec<String>>> = None;
+    while let Ok((instruction, _ctx)) = mock_plugin_receiver.try_recv() {
+        if let PluginInstruction::Update(updates) = instruction {
+            for (_plugin_id, _client_id, event) in updates {
+                if let zellij_utils::data::Event::ModeUpdate(mode_info) = event {
+                    found_shell_args = Some(mode_info.shell_args);
+                    break;
+                }
+            }
+        }
+        if found_shell_args.is_some() {
+            break;
+        }
+    }
+
+    assert_eq!(
+        found_shell_args,
+        Some(Some(expected_args)),
+        "ModeUpdate event sent to plugin should carry the configured shell_args"
+    );
+}
+
+#[test]
+fn update_input_modes_passes_none_shell_args_when_empty() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let (mut tab, mock_plugin_receiver) = create_new_tab_with_plugin_pane_and_shell_args(
+        size,
+        ModeInfo::default(),
+        vec![], // no args configured
+    );
+
+    // Drain any messages produced during tab setup
+    while mock_plugin_receiver.try_recv().is_ok() {}
+
+    tab.update_input_modes().unwrap();
+
+    let mut found_shell_args: Option<Option<Vec<String>>> = None;
+    while let Ok((instruction, _ctx)) = mock_plugin_receiver.try_recv() {
+        if let PluginInstruction::Update(updates) = instruction {
+            for (_plugin_id, _client_id, event) in updates {
+                if let zellij_utils::data::Event::ModeUpdate(mode_info) = event {
+                    found_shell_args = Some(mode_info.shell_args);
+                    break;
+                }
+            }
+        }
+        if found_shell_args.is_some() {
+            break;
+        }
+    }
+
+    assert_eq!(
+        found_shell_args,
+        Some(None),
+        "ModeUpdate event should carry None shell_args when no args are configured"
+    );
 }
 
 #[test]
@@ -14330,11 +14531,12 @@ fn create_new_tab_with_server_receiver(
         terminal_emulator_color_codes,
         (vec![], vec![]),
         PathBuf::from("my_default_shell"),
-        false, // debug
-        true,  // arrow_fonts
-        true,  // styled_underlines
-        true,  // osc8_hyperlinks
-        false, // explicitly_disable_kitty_keyboard_protocol
+        vec![], // default_shell_args
+        false,  // debug
+        true,   // arrow_fonts
+        true,   // styled_underlines
+        true,   // osc8_hyperlinks
+        false,  // explicitly_disable_kitty_keyboard_protocol
         None,
         false,
         WebSharing::Off,

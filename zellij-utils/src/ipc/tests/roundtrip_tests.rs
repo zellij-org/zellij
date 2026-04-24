@@ -434,7 +434,7 @@ fn test_client_messages() {
                 simplified_ui: Some(true),
                 theme: Some("theme".to_owned()),
                 default_mode: Some(InputMode::Normal),
-                default_shell: Some(PathBuf::from("default_shell")),
+                default_shell: Some(PathBuf::from("default_shell").into()),
                 default_cwd: Some(PathBuf::from("default_cwd")),
                 default_layout: Some(PathBuf::from("default_layout")),
                 layout_dir: Some(PathBuf::from("layout_dir")),

@@ -271,6 +271,11 @@ load_plugins {
 // Default: $SHELL
 //
 // default_shell "fish"
+//
+// Pass arguments to the default shell:
+// default_shell "pwsh" {
+//     args "-NoLogo" "-NoProfile"
+// }
 
 // Choose the path to override cwd that zellij will use for opening new panes
 //

@@ -1871,6 +1871,11 @@ impl TryFrom<ProtobufModeUpdatePayload> for ModeInfo {
             .editor
             .map(|e| PathBuf::from(e));
         let shell = protobuf_mode_update_payload.shell.map(|s| PathBuf::from(s));
+        let shell_args = if protobuf_mode_update_payload.shell_args.is_empty() {
+            None
+        } else {
+            Some(protobuf_mode_update_payload.shell_args)
+        };
         let web_clients_allowed = protobuf_mode_update_payload.web_clients_allowed;
         let web_sharing = protobuf_mode_update_payload
             .web_sharing
@@ -1903,6 +1908,7 @@ impl TryFrom<ProtobufModeUpdatePayload> for ModeInfo {
             base_mode,
             editor,
             shell,
+            shell_args,
             web_clients_allowed,
             web_sharing,
             currently_marking_pane_group,
@@ -1927,6 +1933,7 @@ impl TryFrom<ModeInfo> for ProtobufModeUpdatePayload {
         let session_name = mode_info.session_name;
         let editor = mode_info.editor.map(|e| e.display().to_string());
         let shell = mode_info.shell.map(|s| s.display().to_string());
+        let shell_args = mode_info.shell_args.unwrap_or_default();
         let web_clients_allowed = mode_info.web_clients_allowed;
         let web_sharing = mode_info.web_sharing.map(|w| w as i32);
         let currently_marking_pane_group = mode_info.currently_marking_pane_group;
@@ -1967,6 +1974,7 @@ impl TryFrom<ModeInfo> for ProtobufModeUpdatePayload {
             base_mode: base_mode.map(|b_m| b_m as i32),
             editor,
             shell,
+            shell_args,
             web_clients_allowed,
             web_sharing,
             currently_marking_pane_group,
@@ -2262,6 +2270,7 @@ fn serialize_mode_update_event_with_non_default_values() {
         base_mode: Some(InputMode::Locked),
         editor: Some(PathBuf::from("my_awesome_editor")),
         shell: Some(PathBuf::from("my_awesome_shell")),
+        shell_args: Some(vec!["-NoLogo".to_owned(), "-NoProfile".to_owned()]),
         web_clients_allowed: Some(true),
         web_sharing: Some(WebSharing::default()),
         currently_marking_pane_group: Some(false),

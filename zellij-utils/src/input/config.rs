@@ -688,7 +688,9 @@ mod config_test {
         );
         assert_eq!(
             config.options.default_shell,
-            Some(PathBuf::from("/path/to/my/shell")),
+            Some(crate::input::options::DefaultShell::new(PathBuf::from(
+                "/path/to/my/shell"
+            ))),
             "Option set in config"
         );
         assert_eq!(
