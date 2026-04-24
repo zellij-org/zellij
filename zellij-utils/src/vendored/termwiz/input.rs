@@ -2570,4 +2570,108 @@ mod test {
             inputs
         );
     }
+
+    // =====================================================================
+    // parse_csi_report (CSI report whitelist for host-reply forwarding)
+    // =====================================================================
+
+    fn csi_reply(
+        intermediates: &[u8],
+        params: &[u8],
+        final_byte: u8,
+        raw: &[u8],
+    ) -> InputEvent {
+        InputEvent::DeviceControlReply {
+            intermediates: intermediates.to_vec(),
+            params: params.to_vec(),
+            final_byte,
+            raw: raw.to_vec(),
+        }
+    }
+
+    #[test]
+    fn csi_report_recognises_each_whitelisted_final_byte() {
+        // `t` — pixel-dimension reply form `\x1b[4;H;Wt`.
+        let bytes = b"\x1b[4;600;800t";
+        let (evt, consumed) = parse_csi_report(bytes).expect("t accepted");
+        assert_eq!(consumed, bytes.len());
+        assert_eq!(evt, csi_reply(b"", b"4;600;800", b't', bytes));
+
+        // `y` — DECRPM, e.g. sync-output support. Intermediate `$`.
+        let bytes = b"\x1b[?2026;1$y";
+        let (evt, consumed) = parse_csi_report(bytes).expect("y accepted");
+        assert_eq!(consumed, bytes.len());
+        assert_eq!(evt, csi_reply(b"$", b"?2026;1", b'y', bytes));
+
+        // `c` — Primary-DA reply (barrier).
+        let bytes = b"\x1b[?62;1;6c";
+        let (evt, consumed) = parse_csi_report(bytes).expect("c accepted");
+        assert_eq!(consumed, bytes.len());
+        assert_eq!(evt, csi_reply(b"", b"?62;1;6", b'c', bytes));
+
+        // `n` — DSR reply, reserved for Phase 2 theme notifications.
+        let bytes = b"\x1b[?997;1n";
+        let (evt, consumed) = parse_csi_report(bytes).expect("n accepted");
+        assert_eq!(consumed, bytes.len());
+        assert_eq!(evt, csi_reply(b"", b"?997;1", b'n', bytes));
+    }
+
+    #[test]
+    fn csi_report_preserves_intermediates() {
+        // DECRPM uses `$` as its intermediate byte — it must land in
+        // `intermediates`, not `params`.
+        let bytes = b"\x1b[?2026;2$y";
+        let (evt, _len) = parse_csi_report(bytes).expect("DECRPM accepted");
+        let InputEvent::DeviceControlReply {
+            intermediates,
+            params,
+            final_byte,
+            raw,
+        } = evt
+        else {
+            panic!("expected DeviceControlReply, got {:?}", evt);
+        };
+        assert_eq!(intermediates, b"$");
+        assert_eq!(params, b"?2026;2");
+        assert_eq!(final_byte, b'y');
+        assert_eq!(raw, bytes);
+    }
+
+    #[test]
+    fn csi_report_rejects_non_whitelisted_final_bytes() {
+        // `A` = cursor-up (keyboard input, not a report).
+        assert!(parse_csi_report(b"\x1b[A").is_none());
+        // `R` = cursor-position report — not whitelisted; must pass
+        // through to the keyboard path.
+        assert!(parse_csi_report(b"\x1b[24;80R").is_none());
+        // `m` = SGR; appears in render streams but should never reach
+        // stdin as a report.
+        assert!(parse_csi_report(b"\x1b[0m").is_none());
+    }
+
+    #[test]
+    fn csi_report_returns_none_on_truncated_input() {
+        // No final byte within the supplied slice → caller should wait
+        // for more bytes; `parse_csi_report` must not "commit" to a
+        // partial parse.
+        assert!(parse_csi_report(b"\x1b[4;600;800").is_none());
+        // Only the lead-in; parameters haven't started.
+        assert!(parse_csi_report(b"\x1b[").is_none());
+        // Empty input — zero bytes to consume.
+        assert!(parse_csi_report(b"").is_none());
+    }
+
+    #[test]
+    fn csi_report_raw_preserves_input_byte_for_byte() {
+        // `raw` must include the leading ESC through the final byte
+        // inclusive, without adding or dropping any byte — the
+        // forwarding path writes it verbatim to the pane's pty.
+        let bytes = b"\x1b[4;16;8t";
+        let (evt, consumed) = parse_csi_report(bytes).expect("accepted");
+        assert_eq!(consumed, bytes.len());
+        let InputEvent::DeviceControlReply { raw, .. } = evt else {
+            panic!("wrong variant");
+        };
+        assert_eq!(&raw[..], bytes, "raw must be byte-identical to input");
+    }
 }

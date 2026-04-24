@@ -8322,3 +8322,306 @@ pub fn pty_bytes_and_hold_pane_buffered_before_new_pane() {
         dumped
     );
 }
+
+// =====================================================================
+// Host-reply forwarding (CSI 2031 Phase 1)
+//
+// These tests exercise the token-lifecycle API on `Screen` directly —
+// no route.rs, no thread spawn, no client. The harness plugs real
+// `to_server` / `to_pty_writer` channels into the Bus so the forward
+// dispatch (→ `ServerInstruction::ForwardQueryToHost`) and the reply
+// write (→ `PtyWriteInstruction::Write`) can be asserted.
+// =====================================================================
+
+struct ForwardCapture {
+    server_rx: Receiver<(ServerInstruction, ErrorContext)>,
+    pty_writer_rx: Receiver<(PtyWriteInstruction, ErrorContext)>,
+}
+
+impl ForwardCapture {
+    /// Drain every pending `ServerInstruction::ForwardQueryToHost` and
+    /// return them as `(token, query_bytes)` pairs. Other variants are
+    /// dropped — the forward path only ever emits this one.
+    fn drain_forward_queries(&self) -> Vec<(u32, Vec<u8>)> {
+        let mut out = Vec::new();
+        while let Ok((instr, _ctx)) = self.server_rx.try_recv() {
+            if let ServerInstruction::ForwardQueryToHost(token, bytes) = instr {
+                out.push((token, bytes));
+            }
+        }
+        out
+    }
+
+    /// Drain every pending `PtyWriteInstruction::Write`, returning
+    /// `(bytes, terminal_id)` — the two fields the reply path sets.
+    fn drain_pty_writes(&self) -> Vec<(Vec<u8>, u32)> {
+        let mut out = Vec::new();
+        while let Ok((instr, _ctx)) = self.pty_writer_rx.try_recv() {
+            if let PtyWriteInstruction::Write(bytes, terminal_id, _) = instr {
+                out.push((bytes, terminal_id));
+            }
+        }
+        out
+    }
+}
+
+fn create_new_screen_with_forward_capture(size: Size) -> (Screen, ForwardCapture) {
+    let (server_tx, server_rx) = channels::unbounded::<(ServerInstruction, ErrorContext)>();
+    let (pty_writer_tx, pty_writer_rx) =
+        channels::unbounded::<(PtyWriteInstruction, ErrorContext)>();
+
+    let mut bus: Bus<ScreenInstruction> = Bus::empty();
+    bus.senders.to_server = Some(SenderWithContext::new(server_tx));
+    bus.senders.to_pty_writer = Some(SenderWithContext::new(pty_writer_tx));
+    let fake_os_input = FakeInputOutput::default();
+    bus.os_input = Some(Box::new(fake_os_input));
+
+    let client_attributes = ClientAttributes {
+        size,
+        ..Default::default()
+    };
+    let max_panes = None;
+    let mut mode_info = ModeInfo::default();
+    mode_info.session_name = Some("zellij-test".into());
+    let draw_pane_frames = false;
+    let auto_layout = true;
+    let session_is_mirrored = true;
+    let copy_options = CopyOptions::default();
+    let default_layout = Box::new(Layout::default());
+    let default_layout_name = None;
+    let default_shell = PathBuf::from("my_default_shell");
+    let session_serialization = true;
+    let serialize_pane_viewport = false;
+    let scrollback_lines_to_serialize = None;
+    let layout_dir = None;
+    let debug = false;
+    let styled_underlines = true;
+    let osc8_hyperlinks = true;
+    let arrow_fonts = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
+    let stacked_resize = true;
+    let web_sharing = WebSharing::Off;
+    let web_server_ip = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
+    let web_server_port = 8080;
+    let visual_bell = true;
+    let screen = Screen::new(
+        bus,
+        &client_attributes,
+        max_panes,
+        mode_info,
+        draw_pane_frames,
+        auto_layout,
+        session_is_mirrored,
+        copy_options,
+        debug,
+        default_layout,
+        default_layout_name,
+        default_shell,
+        session_serialization,
+        serialize_pane_viewport,
+        scrollback_lines_to_serialize,
+        styled_underlines,
+        osc8_hyperlinks,
+        arrow_fonts,
+        layout_dir,
+        explicitly_disable_kitty_keyboard_protocol,
+        stacked_resize,
+        None,
+        false,
+        web_sharing,
+        true,
+        true,
+        visual_bell,
+        false, // focus_follows_mouse
+        false, // mouse_click_through
+        web_server_ip,
+        web_server_port,
+    );
+    (
+        screen,
+        ForwardCapture {
+            server_rx,
+            pty_writer_rx,
+        },
+    )
+}
+
+#[test]
+fn forward_host_query_when_idle_dispatches_immediately() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_forward_capture(size);
+    let pane_id = PaneId::Terminal(42);
+    let query = b"\x1b]11;?\x1b\\".to_vec();
+
+    let token = screen.forward_host_query(pane_id, query.clone());
+
+    assert!(screen.forward_in_flight, "slot must flip to in-flight");
+    assert_eq!(
+        screen.pending_forwarded_queries.get(&token),
+        Some(&pane_id),
+        "token→pane mapping must be populated"
+    );
+    let forwards = capture.drain_forward_queries();
+    assert_eq!(forwards.len(), 1, "exactly one forward dispatched");
+    assert_eq!(forwards[0], (token, query), "payload must be verbatim");
+}
+
+#[test]
+fn forward_host_query_when_busy_queues_instead_of_dispatching() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_forward_capture(size);
+    let first_pane = PaneId::Terminal(1);
+    let second_pane = PaneId::Terminal(2);
+
+    let first_token = screen.forward_host_query(first_pane, b"\x1b]11;?\x1b\\".to_vec());
+    let second_token = screen.forward_host_query(second_pane, b"\x1b]10;?\x1b\\".to_vec());
+
+    // The first call dispatched; the second waits in the queue. Only
+    // the first token should be in the map; the second lives in
+    // `forward_queue`.
+    let forwards = capture.drain_forward_queries();
+    assert_eq!(forwards.len(), 1, "second call must not dispatch yet");
+    assert_eq!(forwards[0].0, first_token);
+    assert_eq!(screen.forward_queue.len(), 1);
+    assert_eq!(screen.forward_queue[0].token, second_token);
+    assert_eq!(screen.forward_queue[0].pane_id, second_pane);
+}
+
+#[test]
+fn handle_reply_writes_to_pane_pty_and_releases_slot() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_forward_capture(size);
+    let pane_id = PaneId::Terminal(7);
+    let token = screen.forward_host_query(pane_id, b"\x1b]11;?\x1b\\".to_vec());
+    let _ = capture.drain_forward_queries(); // discard the dispatch
+
+    let reply = b"\x1b]11;rgb:1111/2222/3333\x1b\\".to_vec();
+    screen
+        .handle_forwarded_reply_from_host(token, reply.clone())
+        .expect("handler must not fail");
+
+    let writes = capture.drain_pty_writes();
+    assert_eq!(writes.len(), 1, "one pty write expected");
+    assert_eq!(writes[0], (reply, 7));
+    assert!(
+        !screen.forward_in_flight,
+        "slot released so the next queued forward can dispatch"
+    );
+    assert!(
+        screen.pending_forwarded_queries.get(&token).is_none(),
+        "token entry must have been removed from the map"
+    );
+}
+
+#[test]
+fn handle_reply_dispatches_next_queued_forward() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_forward_capture(size);
+    let first_pane = PaneId::Terminal(1);
+    let second_pane = PaneId::Terminal(2);
+    let first_token = screen.forward_host_query(first_pane, b"\x1b]11;?\x1b\\".to_vec());
+    let second_token = screen.forward_host_query(second_pane, b"\x1b]10;?\x1b\\".to_vec());
+    // First dispatch already emitted; drop it.
+    let _ = capture.drain_forward_queries();
+
+    screen
+        .handle_forwarded_reply_from_host(first_token, b"reply".to_vec())
+        .expect("ok");
+
+    // The queued second forward must now dispatch, and the map now
+    // carries the second token → second pane.
+    let forwards = capture.drain_forward_queries();
+    assert_eq!(forwards.len(), 1, "next queued forward must dispatch");
+    assert_eq!(forwards[0].0, second_token);
+    assert!(screen.forward_queue.is_empty());
+    assert!(screen.forward_in_flight);
+    assert_eq!(
+        screen.pending_forwarded_queries.get(&second_token),
+        Some(&second_pane)
+    );
+}
+
+#[test]
+fn handle_reply_with_unknown_token_is_silent_noop_for_writes() {
+    // Token not in the map: either the pane closed, or the client
+    // rebroadcast a duplicate reply. The handler must not panic, must
+    // not write garbage to any pane, but must still release the slot
+    // and dispatch the next queued forward.
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_forward_capture(size);
+    let first_pane = PaneId::Terminal(1);
+    let second_pane = PaneId::Terminal(2);
+    let _first_token = screen.forward_host_query(first_pane, b"\x1b]11;?\x1b\\".to_vec());
+    let second_token = screen.forward_host_query(second_pane, b"\x1b]10;?\x1b\\".to_vec());
+    let _ = capture.drain_forward_queries();
+
+    // Reply for a stale / unknown token.
+    screen
+        .handle_forwarded_reply_from_host(9999, b"dropped".to_vec())
+        .expect("unknown tokens must not error");
+
+    assert!(
+        capture.drain_pty_writes().is_empty(),
+        "unknown token must not produce any pty write"
+    );
+    // Slot released → second queued forward dispatched.
+    let forwards = capture.drain_forward_queries();
+    assert_eq!(forwards.len(), 1, "queued forward must still dispatch");
+    assert_eq!(forwards[0].0, second_token);
+}
+
+#[test]
+fn token_counter_wraps_skipping_sentinel() {
+    // `next_forward_token == u32::MAX` → first allocation yields
+    // `u32::MAX`, the counter then wraps to 0 which is the reserved
+    // sentinel and is skipped, so the next allocation yields 1.
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_forward_capture(size);
+    screen.next_forward_token = u32::MAX;
+
+    let t1 = screen.forward_host_query(PaneId::Terminal(1), b"\x1b]11;?\x1b\\".to_vec());
+    // Clear the in-flight slot so the next call actually allocates
+    // (the queueing branch would still allocate, but we want the
+    // dispatch branch here).
+    screen
+        .handle_forwarded_reply_from_host(t1, b"r".to_vec())
+        .expect("ok");
+    let _ = capture.drain_forward_queries();
+    let _ = capture.drain_pty_writes();
+
+    let t2 = screen.forward_host_query(PaneId::Terminal(2), b"\x1b]10;?\x1b\\".to_vec());
+    assert_eq!(t1, u32::MAX, "first token should land on u32::MAX");
+    assert_eq!(
+        t2, 1,
+        "sentinel 0 must be skipped; next allocation wraps to 1"
+    );
+}
+
+#[test]
+fn plugin_pane_reply_is_dropped_without_write() {
+    // Plugin panes never emit whitelisted host queries in production
+    // code, but if a token → PaneId::Plugin mapping ever lands in the
+    // map (via tests or future misuse), the handler must drop the
+    // reply rather than routing it to the pty writer (plugin panes
+    // don't have a pty).
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_forward_capture(size);
+    screen
+        .pending_forwarded_queries
+        .insert(77, PaneId::Plugin(42));
+    screen.forward_in_flight = true;
+
+    screen
+        .handle_forwarded_reply_from_host(77, b"\x1b]11;rgb:0/0/0\x1b\\".to_vec())
+        .expect("ok");
+
+    assert!(
+        capture.drain_pty_writes().is_empty(),
+        "plugin-pane token must not produce a pty write"
+    );
+    assert!(
+        screen.pending_forwarded_queries.get(&77).is_none(),
+        "map entry must still be cleared even when the reply is dropped"
+    );
+    assert!(!screen.forward_in_flight, "slot still released");
+}

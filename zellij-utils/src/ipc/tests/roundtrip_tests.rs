@@ -3550,6 +3550,18 @@ fn test_client_messages() {
         token: u32::MAX,
         reply_bytes: (0u8..=255u8).collect(),
     });
+    // Guard against protobuf string-vs-bytes encoding regressions: a
+    // payload mixing NULs, ESC, and CSI framing must round-trip
+    // byte-for-byte or the pane will receive corrupt terminal data.
+    test_client_roundtrip!(ClientToServerMsg::ForwardedReplyFromHost {
+        token: 17,
+        reply_bytes: vec![
+            0x00, 0x1b, b'[', b'?', b'6', b'2', b';', b'1', b';', b'6', b'c',
+            0x00, 0x1b, b']', b'1', b'1', b';', b'r', b'g', b'b', b':',
+            b'f', b'f', b'f', b'f', b'/', b'f', b'f', b'f', b'f', b'/',
+            b'f', b'f', b'f', b'f', 0x07, 0xff, 0x00,
+        ],
+    });
 }
 
 fn test_server_messages() {

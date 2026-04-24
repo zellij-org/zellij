@@ -655,8 +655,15 @@ pub struct Grid {
     // disabled by user config?
     click: Click,
     hyperlink_tracker: HyperlinkTracker,
-    pub pane_default_fg: Option<AnsiCode>,
-    pub pane_default_bg: Option<AnsiCode>,
+    /// Pane-scoped override for the default foreground colour. Narrow
+    /// to literal RGB by construction — the setters below refuse
+    /// palette-indexed / named variants silently, so this field can be
+    /// converted to an `OSC 10` reply without fallibility and the
+    /// render path can wrap it unconditionally.
+    pub pane_default_fg: Option<(u8, u8, u8)>,
+    /// Pane-scoped override for the default background colour. Same
+    /// invariant as `pane_default_fg`.
+    pub pane_default_bg: Option<(u8, u8, u8)>,
     pub plugin_highlights: HashMap<u32, Vec<(String, CompiledHighlight)>>,
     // key: plugin_id (u32), inner vec: (pattern, compiled) pairs
     pub hover_position: Option<Position>, // pane-relative cursor cell; None when outside pane
@@ -665,25 +672,54 @@ pub struct Grid {
 
 impl Grid {
     pub fn set_pane_default_colors(&mut self, fg: Option<String>, bg: Option<String>) {
-        self.pane_default_fg = fg.as_ref().and_then(|s| xparse_color(s.as_bytes()));
-        self.pane_default_bg = bg.as_ref().and_then(|s| xparse_color(s.as_bytes()));
+        // Parse inputs; anything that isn't literal RGB (palette
+        // index / named colour / parse failure) is silently dropped so
+        // the invariant on `pane_default_{fg,bg}` is preserved.
+        self.pane_default_fg = fg
+            .as_ref()
+            .and_then(|s| xparse_color(s.as_bytes()))
+            .and_then(rgb_of_ansi_code);
+        self.pane_default_bg = bg
+            .as_ref()
+            .and_then(|s| xparse_color(s.as_bytes()))
+            .and_then(rgb_of_ansi_code);
         self.output_buffer.update_all_lines();
     }
     pub fn get_pane_default_color_strings(&self) -> (Option<String>, Option<String>) {
         (
-            self.pane_default_fg.and_then(ansi_code_to_color_string),
-            self.pane_default_bg.and_then(ansi_code_to_color_string),
+            self.pane_default_fg.map(rgb_to_hex_string),
+            self.pane_default_bg.map(rgb_to_hex_string),
         )
     }
 }
 
-fn ansi_code_to_color_string(code: AnsiCode) -> Option<String> {
+/// Extract the RGB triple from an `AnsiCode`, or `None` for any
+/// other variant. Used at the ingress points that populate
+/// `Grid::pane_default_{fg,bg}` to keep those fields narrow to
+/// literal RGB.
+fn rgb_of_ansi_code(code: AnsiCode) -> Option<(u8, u8, u8)> {
     match code {
-        AnsiCode::RgbCode((r, g, b)) => Some(format!("#{:02x}{:02x}{:02x}", r, g, b)),
-        AnsiCode::ColorIndex(idx) => Some(format!("{}", idx)),
-        AnsiCode::NamedColor(named) => Some(format!("{:?}", named).to_lowercase()),
+        AnsiCode::RgbCode(rgb) => Some(rgb),
         _ => None,
     }
+}
+
+fn rgb_to_hex_string((r, g, b): (u8, u8, u8)) -> String {
+    format!("#{:02x}{:02x}{:02x}", r, g, b)
+}
+
+/// Format an RGB triple as the body of an OSC 10/11 reply —
+/// `rgb:RRRR/GGGG/BBBB` per xterm's ctlseqs, where each 8-bit
+/// component is widened to the 16-bit hex form by repetition
+/// (`0xAB` → `0xABAB`).
+fn osc_color_reply_body((r, g, b): (u8, u8, u8)) -> String {
+    let expand = |c: u8| (c as u16) * 0x0101;
+    format!(
+        "rgb:{:04x}/{:04x}/{:04x}",
+        expand(r),
+        expand(g),
+        expand(b)
+    )
 }
 
 /// A compiled highlight entry for one plugin/pattern combination.
@@ -1530,7 +1566,15 @@ impl Grid {
 
         for character_chunk in character_chunks.iter_mut() {
             character_chunk.add_changed_colors(self.changed_colors);
-            character_chunk.add_pane_defaults(self.pane_default_fg, self.pane_default_bg);
+            // CharacterChunk still carries `Option<AnsiCode>` because
+            // `adjust_styles_for_custom_bg_fg` assigns the value into
+            // `CharacterStyles.{foreground,background}` (themselves
+            // `Option<AnsiCode>`). Re-wrap the narrow RGB at the
+            // boundary so the downstream pipeline stays uniform.
+            character_chunk.add_pane_defaults(
+                self.pane_default_fg.map(AnsiCode::RgbCode),
+                self.pane_default_bg.map(AnsiCode::RgbCode),
+            );
             if self
                 .selection
                 .contains_row(character_chunk.y.saturating_sub(content_y))
@@ -3528,27 +3572,57 @@ impl Perform for Grid {
                     if let Some(mut dynamic_code) = parse_number(params[0]) {
                         for param in &params[1..] {
                             if param == b"?" {
-                                // Forward fg/bg *queries* to the host so
-                                // the app observes the terminal's actual
-                                // color (also keeps Zellij's cached copy
-                                // in sync via double-dispatch on the
-                                // reply). Pane-scoped overrides set via
-                                // OSC 10;<rgb> / 11;<rgb> are still
-                                // honored above and remain authoritative
-                                // for Zellij's rendering.
-                                let forwarded_query = format!(
-                                    "\u{1b}]{};?{}",
-                                    dynamic_code, terminator
-                                );
-                                self.pending_forwarded_queries
-                                    .push(forwarded_query.as_bytes().to_vec());
+                                // If this pane has a local override for
+                                // the channel being queried (set via
+                                // `zellij action set-pane-color` or via
+                                // a prior OSC 10;<rgb> / 11;<rgb> from
+                                // inside the pane), answer with that
+                                // override directly instead of
+                                // forwarding to the host. Apps inside
+                                // the pane must see the colors Zellij
+                                // is actually rendering for them, not
+                                // the host terminal's background.
+                                let local_override = match dynamic_code {
+                                    10 => self.pane_default_fg,
+                                    11 => self.pane_default_bg,
+                                    _ => None,
+                                };
+                                if let Some(rgb) = local_override {
+                                    let reply = format!(
+                                        "\u{1b}]{};{}{}",
+                                        dynamic_code,
+                                        osc_color_reply_body(rgb),
+                                        terminator
+                                    );
+                                    self.pending_messages_to_pty
+                                        .push(reply.as_bytes().to_vec());
+                                } else {
+                                    // No local override — forward to
+                                    // the host so the app observes the
+                                    // terminal's actual color. Zellij's
+                                    // cached copy is refreshed via the
+                                    // double-dispatch on the reply.
+                                    let forwarded_query = format!(
+                                        "\u{1b}]{};?{}",
+                                        dynamic_code, terminator
+                                    );
+                                    self.pending_forwarded_queries
+                                        .push(forwarded_query.as_bytes().to_vec());
+                                }
                             } else {
-                                // Set: parse color and store as pane default
-                                if let Some(color) = xparse_color(param) {
+                                // Set: parse color and store as pane
+                                // default. Only literal RGB is stored;
+                                // palette-indexed / named variants (or
+                                // a parse failure) are silently dropped
+                                // to keep the pane-default fields
+                                // narrow.
+                                if let Some(rgb) =
+                                    xparse_color(param).and_then(rgb_of_ansi_code)
+                                {
                                     if dynamic_code == 10 {
-                                        self.pane_default_fg = Some(color);
+                                        self.pane_default_fg = Some(rgb);
                                     } else if dynamic_code == 11 {
-                                        self.pane_default_bg = Some(color);
+                                        self.pane_default_bg = Some(rgb);
                                     }
                                     self.output_buffer.update_all_lines();
                                 }

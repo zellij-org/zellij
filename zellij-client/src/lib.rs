@@ -984,39 +984,15 @@ pub fn start_client(
             }
         });
 
-    // Forward-slot timeout watcher: if a forwarding window is still open
-    // 500 ms after the slot was opened, flush whatever has accumulated
-    // and release the in-flight slot so the next queued forward can
-    // dispatch. The watcher polls at 100 ms granularity; this keeps the
-    // worst-case latency bounded to ~600 ms when the host is silent.
-    let _forward_timeout_thread = thread::Builder::new()
-        .name("forward_timeout_watcher".to_string())
-        .spawn({
-            let host_reply_parser = host_reply_parser.clone();
-            let send_input_instructions = send_input_instructions.clone();
-            move || loop {
-                std::thread::sleep(std::time::Duration::from_millis(100));
-                let timeout_payload = {
-                    let mut parser = host_reply_parser.lock().unwrap();
-                    match (
-                        parser.active_forward_token(),
-                        parser.active_forward_opened_at(),
-                    ) {
-                        (Some(token), Some(opened))
-                            if opened.elapsed() >= std::time::Duration::from_millis(500) =>
-                        {
-                            parser.close_forward_on_timeout(token)
-                        },
-                        _ => None,
-                    }
-                };
-                if let Some((token, reply_bytes)) = timeout_payload {
-                    let _ = send_input_instructions.send(
-                        InputInstruction::ForwardedReplyFromHostComplete { token, reply_bytes },
-                    );
-                }
-            }
-        });
+    // Forward-slot timeouts are no longer driven by a polling thread.
+    // Each forward opens a per-slot timer task on the shared
+    // `forward_timeout_runtime()` (a single-thread tokio executor).
+    // The task sleeps for the deadline and then calls
+    // `close_forward_on_timeout(token)`; token-guard idempotency
+    // handles the cancellation case (barrier arrived first → slot
+    // cleared → the eventual wake-up is a no-op). See
+    // `ClientInstruction::ForwardQueryToHost` below for the spawn
+    // site.
 
     let _input_thread = thread::Builder::new()
         .name("input_handler".to_string())
@@ -1216,9 +1192,34 @@ pub fn start_client(
                 // 1. Open a forwarding window on the parser so any reply
                 //    events that arrive before the barrier are captured.
                 host_reply_parser.lock().unwrap().open_forward(token);
-                // 2. Write the query + Primary-DA barrier in a single
+                // 2. Spawn a per-forward timer on the dedicated async
+                //    runtime. When the deadline fires, the task closes
+                //    the slot (if it's still open for this token) and
+                //    relays `ForwardedReplyFromHostComplete` so the
+                //    server releases `forward_in_flight` and dispatches
+                //    the next queued forward.
+                let runtime = stdin_ansi_parser::forward_timeout_runtime();
+                let parser_for_timer = host_reply_parser.clone();
+                let sender_for_timer = send_input_instructions.clone();
+                stdin_ansi_parser::schedule_forward_timeout(
+                    runtime.handle(),
+                    parser_for_timer,
+                    token,
+                    std::time::Duration::from_millis(500),
+                    move |token, reply_bytes| {
+                        let _ = sender_for_timer.send(
+                            InputInstruction::ForwardedReplyFromHostComplete {
+                                token,
+                                reply_bytes,
+                            },
+                        );
+                    },
+                );
+                // 3. Write the query + Primary-DA barrier in a single
                 //    write_all. The barrier closes the window on the
-                //    parser side when its reply arrives.
+                //    parser side when its reply arrives — the timer
+                //    task's eventual wake-up finds an empty slot for
+                //    this token and no-ops.
                 let mut blob = query_bytes;
                 blob.extend_from_slice(b"\x1b[c");
                 let mut out = os_input.get_stdout_writer();
@@ -1395,7 +1396,16 @@ fn cleanup_legacy_stdin_cache() -> std::io::Result<()> {
         .cache_dir()
         .join(VERSION)
         .join("stdin_cache");
-    match std::fs::remove_file(&legacy) {
+    cleanup_legacy_stdin_cache_at(&legacy)
+}
+
+/// Removes `path` if present. `NotFound` is treated as success so the
+/// cleanup is idempotent across restarts. Extracted from
+/// `cleanup_legacy_stdin_cache` so tests can drive it with a
+/// `tempfile::NamedTempFile`-like path without relying on the ambient
+/// `ZELLIJ_PROJ_DIR`.
+fn cleanup_legacy_stdin_cache_at(path: &std::path::Path) -> std::io::Result<()> {
+    match std::fs::remove_file(path) {
         Ok(()) => Ok(()),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
         Err(e) => Err(e),
