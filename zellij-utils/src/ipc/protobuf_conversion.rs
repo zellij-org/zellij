@@ -818,6 +818,7 @@ impl From<crate::input::actions::Action>
             EditFileAction,
             EditScrollbackAction,
             EditScrollbackByPaneIdAction,
+            FocusLastPaneAction,
             FocusNextPaneAction,
             FocusPaneByPaneIdAction,
             FocusPluginPaneWithIdAction,
@@ -989,6 +990,9 @@ impl From<crate::input::actions::Action>
             },
             crate::input::actions::Action::FocusPreviousPane => {
                 ActionType::FocusPreviousPane(FocusPreviousPaneAction {})
+            },
+            crate::input::actions::Action::FocusLastPane => {
+                ActionType::FocusLastPane(FocusLastPaneAction {})
             },
             crate::input::actions::Action::SwitchFocus => {
                 ActionType::SwitchFocus(SwitchFocusAction {})
@@ -1849,6 +1853,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
             ActionType::FocusPreviousPane(_) => {
                 Ok(crate::input::actions::Action::FocusPreviousPane)
             },
+            ActionType::FocusLastPane(_) => Ok(crate::input::actions::Action::FocusLastPane),
             ActionType::SwitchFocus(_) => Ok(crate::input::actions::Action::SwitchFocus),
             ActionType::MoveFocus(move_focus_action) => {
                 Ok(crate::input::actions::Action::MoveFocus {

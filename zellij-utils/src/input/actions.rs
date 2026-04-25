@@ -158,6 +158,8 @@ pub enum Action {
     /// Switch focus to next pane in specified direction.
     FocusNextPane,
     FocusPreviousPane,
+    /// Switch focus to the last focused pane.
+    FocusLastPane,
     /// Move the focus pane in specified direction.
     SwitchFocus,
     MoveFocus {
@@ -821,6 +823,7 @@ impl Action {
                     ))?;
                 Ok(vec![Action::FocusPaneByPaneId { pane_id }])
             },
+            CliAction::FocusLastPane => Ok(vec![Action::FocusLastPane]),
             CliAction::MoveFocus { direction } => Ok(vec![Action::MoveFocus { direction }]),
             CliAction::MoveFocusOrTab { direction } => {
                 Ok(vec![Action::MoveFocusOrTab { direction }])

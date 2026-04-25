@@ -935,6 +935,11 @@ impl ZellijPlugin for State {
                     );
                     self.explicit_string_to_render = Some(format!("Override layout command sent"));
                 },
+                BareKey::Char('l')
+                    if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Alt]) =>
+                {
+                    focus_last_pane()
+                },
                 _ => {},
             },
             Event::CustomMessage(message, payload) => {
