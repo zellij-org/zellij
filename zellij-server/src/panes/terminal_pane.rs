@@ -586,7 +586,7 @@ impl Pane for TerminalPane {
         self.grid.pending_messages_to_pty.drain(..).collect()
     }
 
-    fn drain_forwarded_queries(&mut self) -> Vec<Vec<u8>> {
+    fn drain_forwarded_queries(&mut self) -> Vec<crate::host_query::HostQuery> {
         self.grid.pending_forwarded_queries.drain(..).collect()
     }
 

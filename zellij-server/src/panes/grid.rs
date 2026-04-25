@@ -643,7 +643,7 @@ pub struct Grid {
     /// 4;N;? color queries). Each entry is the raw byte sequence that
     /// Zellij should forward to the host terminal; the host's reply is
     /// later routed back to this pane's pty.
-    pub pending_forwarded_queries: Vec<Vec<u8>>,
+    pub pending_forwarded_queries: Vec<crate::host_query::HostQuery>,
     ui_component_bytes: Option<Vec<u8>>,
     style: Style,
     debug: bool,
@@ -3547,10 +3547,15 @@ impl Perform for Grid {
                             // not Zellij's cached copy. (Zellij's cache
                             // still auto-refreshes via double-dispatch
                             // when the host's reply comes back.)
-                            let forwarded_query =
-                                format!("\u{1b}]4;{};?{}", index, terminator);
-                            self.pending_forwarded_queries
-                                .push(forwarded_query.as_bytes().to_vec());
+                            self.pending_forwarded_queries.push(
+                                crate::host_query::HostQuery::PaletteRegister {
+                                    index,
+                                    terminator:
+                                        crate::host_query::OscTerminator::from_bell_terminated(
+                                            bell_terminated,
+                                        ),
+                                },
+                            );
                         }
                     }
                 }
@@ -3602,12 +3607,26 @@ impl Perform for Grid {
                                     // terminal's actual color. Zellij's
                                     // cached copy is refreshed via the
                                     // double-dispatch on the reply.
-                                    let forwarded_query = format!(
-                                        "\u{1b}]{};?{}",
-                                        dynamic_code, terminator
+                                    let term = crate::host_query::OscTerminator::from_bell_terminated(
+                                        bell_terminated,
                                     );
-                                    self.pending_forwarded_queries
-                                        .push(forwarded_query.as_bytes().to_vec());
+                                    let query = match dynamic_code {
+                                        10 => crate::host_query::HostQuery::DefaultForeground {
+                                            terminator: term,
+                                        },
+                                        11 => crate::host_query::HostQuery::DefaultBackground {
+                                            terminator: term,
+                                        },
+                                        _ => {
+                                            // Out-of-range dynamic_code
+                                            // (shouldn't happen since
+                                            // the outer match pins it to
+                                            // 10 or 11): skip.
+                                            dynamic_code += 1;
+                                            continue;
+                                        },
+                                    };
+                                    self.pending_forwarded_queries.push(query);
                                 }
                             } else {
                                 // Set: parse color and store as pane
@@ -4319,11 +4338,13 @@ impl Perform for Grid {
                     // (cell_size * grid_size) value. The host's reply will
                     // be written back to this pane by the forwarding
                     // infrastructure on Screen.
-                    self.pending_forwarded_queries.push(b"\x1b[14t".to_vec());
+                    self.pending_forwarded_queries
+                        .push(crate::host_query::HostQuery::TextAreaPixelSize);
                 },
                 16 => {
                     // Forward to host: character-cell pixel size.
-                    self.pending_forwarded_queries.push(b"\x1b[16t".to_vec());
+                    self.pending_forwarded_queries
+                        .push(crate::host_query::HostQuery::CharacterCellPixelSize);
                 },
                 18 => {
                     // report text area

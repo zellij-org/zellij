@@ -1,6 +1,5 @@
-//! Continuous, termwiz-driven parser for host-terminal replies arriving on
-//! stdin. Replaces the previous 500-ms window + on-disk cache with a
-//! long-lived parser that lives for the whole client session.
+//! Continuous, parser for host-terminal replies arriving on
+//! stdin.
 //!
 //! This parser routes stdin bytes through a private `termwiz::InputParser`,
 //! classifies OSC / CSI-report events into `HostReply` variants, and lets
@@ -47,11 +46,10 @@ impl SyncOutput {
 ///
 /// The variants track the reply types Zellij consumes for its own
 /// synchronous render hot-path (pixel dims, bg/fg, palette registers,
-/// sync-output support) plus a generic `ForwardedReply` that carries raw
-/// bytes accumulated inside a forwarding window. These classified replies
-/// are emitted **in addition** to any forwarded-reply accumulation; this
-/// double-dispatch invariant keeps the server's cached view of the host
-/// state in sync even while a forwarded query is in flight.
+/// sync-output support). Accumulated forwarded-query byte streams take
+/// a separate path: they ride `ParseOutput::completed_forward` through
+/// a dedicated input-instruction channel so they don't get co-mingled
+/// with semantically-typed state updates.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum HostReply {
     PixelDimensions(PixelDimensions),
@@ -59,13 +57,6 @@ pub enum HostReply {
     ForegroundColor(String),
     ColorRegisters(Vec<(usize, String)>),
     SynchronizedOutput(Option<SyncOutput>),
-    /// Raw bytes of replies observed during an active forwarding window,
-    /// closed by the barrier (Primary-DA) reply. The bytes are delivered
-    /// verbatim to the pane's pty on the server side.
-    ForwardedReply {
-        token: u32,
-        raw_bytes: Vec<u8>,
-    },
 }
 
 /// Retained alias for the pre-refactor type name used by other modules in

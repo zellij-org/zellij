@@ -3263,12 +3263,10 @@ fn terminal_pixel_size_reports() {
     // CSI 14t and CSI 16t are forwarded to the host; Zellij no longer
     // synthesises local replies from character_cell_size for these.
     assert!(grid.pending_messages_to_pty.is_empty());
+    use crate::host_query::HostQuery;
     assert_eq!(
-        grid.pending_forwarded_queries
-            .iter()
-            .map(|bytes| String::from_utf8(bytes.clone()).unwrap())
-            .collect::<Vec<String>>(),
-        vec!["\x1b[14t", "\x1b[16t"]
+        grid.pending_forwarded_queries,
+        vec![HostQuery::TextAreaPixelSize, HostQuery::CharacterCellPixelSize],
     );
 }
 
@@ -3306,12 +3304,10 @@ fn terminal_pixel_size_reports_in_unsupported_terminals() {
     // the host terminal is authoritative for these queries regardless
     // of what Zellij knows locally.
     assert!(grid.pending_messages_to_pty.is_empty());
+    use crate::host_query::HostQuery;
     assert_eq!(
-        grid.pending_forwarded_queries
-            .iter()
-            .map(|bytes| String::from_utf8(bytes.clone()).unwrap())
-            .collect::<Vec<String>>(),
-        vec!["\x1b[14t", "\x1b[16t"]
+        grid.pending_forwarded_queries,
+        vec![HostQuery::TextAreaPixelSize, HostQuery::CharacterCellPixelSize],
     );
 }
 
@@ -3596,14 +3592,11 @@ pub fn osc_4_background_query() {
     // from Zellij's cached palette. pending_messages_to_pty must stay
     // empty.
     assert!(grid.pending_messages_to_pty.is_empty());
-    let forwarded_string = grid
+    let forwarded_string: String = grid
         .pending_forwarded_queries
         .iter()
-        .map(|m| String::from_utf8_lossy(m))
-        .fold(String::new(), |mut acc, s| {
-            acc.push_str(&s);
-            acc
-        });
+        .map(|q| String::from_utf8(q.to_query_bytes()).unwrap())
+        .collect();
     assert_eq!(forwarded_string, "\u{1b}]10;?\u{1b}\\");
 }
 
@@ -3637,14 +3630,11 @@ pub fn osc_4_foreground_query() {
         vte_parser.advance(&mut grid, *byte);
     }
     assert!(grid.pending_messages_to_pty.is_empty());
-    let forwarded_string = grid
+    let forwarded_string: String = grid
         .pending_forwarded_queries
         .iter()
-        .map(|m| String::from_utf8_lossy(m))
-        .fold(String::new(), |mut acc, s| {
-            acc.push_str(&s);
-            acc
-        });
+        .map(|q| String::from_utf8(q.to_query_bytes()).unwrap())
+        .collect();
     assert_eq!(forwarded_string, "\u{1b}]11;?\u{1b}\\");
 }
 
@@ -3681,14 +3671,11 @@ pub fn osc_4_color_query() {
     }
     // OSC 4;N;? is forwarded to the host for the real palette value.
     assert!(grid.pending_messages_to_pty.is_empty());
-    let forwarded_string = grid
+    let forwarded_string: String = grid
         .pending_forwarded_queries
         .iter()
-        .map(|m| String::from_utf8_lossy(m))
-        .fold(String::new(), |mut acc, s| {
-            acc.push_str(&s);
-            acc
-        });
+        .map(|q| String::from_utf8(q.to_query_bytes()).unwrap())
+        .collect();
     assert_eq!(forwarded_string, "\u{1b}]4;222;?\u{1b}\\");
 }
 
@@ -5749,8 +5736,8 @@ fn csi_14t_forwards_to_host_not_local() {
     assert_eq!(grid.pending_forwarded_queries.len(), 1);
     assert_eq!(
         grid.pending_forwarded_queries[0],
-        b"\x1b[14t",
-        "forwarded byte sequence must be exact"
+        crate::host_query::HostQuery::TextAreaPixelSize,
+        "forwarded classification must be TextAreaPixelSize"
     );
 }
 
@@ -5763,7 +5750,10 @@ fn csi_16t_forwards_to_host_not_local() {
     }
     assert!(grid.pending_messages_to_pty.is_empty());
     assert_eq!(grid.pending_forwarded_queries.len(), 1);
-    assert_eq!(grid.pending_forwarded_queries[0], b"\x1b[16t");
+    assert_eq!(
+        grid.pending_forwarded_queries[0],
+        crate::host_query::HostQuery::CharacterCellPixelSize,
+    );
 }
 
 #[test]
@@ -5811,8 +5801,10 @@ fn osc_11_query_without_override_forwards_to_host() {
         "no override → no local reply"
     );
     assert_eq!(grid.pending_forwarded_queries.len(), 1);
-    let forwarded = String::from_utf8(grid.pending_forwarded_queries[0].clone()).unwrap();
-    assert!(forwarded.contains("11;?"));
+    assert!(matches!(
+        grid.pending_forwarded_queries[0],
+        crate::host_query::HostQuery::DefaultBackground { .. }
+    ));
 }
 
 #[test]
@@ -5825,8 +5817,10 @@ fn osc_10_query_without_override_forwards_to_host() {
     }
     assert!(grid.pending_messages_to_pty.is_empty());
     assert_eq!(grid.pending_forwarded_queries.len(), 1);
-    let forwarded = String::from_utf8(grid.pending_forwarded_queries[0].clone()).unwrap();
-    assert!(forwarded.contains("10;?"));
+    assert!(matches!(
+        grid.pending_forwarded_queries[0],
+        crate::host_query::HostQuery::DefaultForeground { .. }
+    ));
 }
 
 #[test]

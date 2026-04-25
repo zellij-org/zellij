@@ -503,9 +503,11 @@ pub enum ScreenInstruction {
     TerminalColorRegisters(Vec<(usize, String)>),
     /// A pane's Grid intercepted an app-in-pane whitelisted query; Screen
     /// assigns a token, queues the forward, and dispatches to the client.
+    /// `query` carries the classified form so Screen can match on it
+    /// directly (for cache-fallback synthesis) without re-parsing bytes.
     ForwardHostQuery {
         pane_id: PaneId,
-        query_bytes: Vec<u8>,
+        query: crate::host_query::HostQuery,
     },
     /// The client observed the host's reply to a previously forwarded
     /// query (closed by the Primary-DA barrier or the 500 ms timeout).
@@ -1378,10 +1380,15 @@ pub(crate) struct Screen {
     /// with a unique token. 0 is reserved as a sentinel (see
     /// `STARTUP_SENTINEL_TOKEN`); real forwards start at 1.
     next_forward_token: u32,
-    /// Map of forwarded-query token → originating pane. When the client
-    /// sends back the reply for `token`, the server looks up the pane
-    /// here and writes the reply bytes to its pty.
-    pending_forwarded_queries: HashMap<u32, PaneId>,
+    /// Map of forwarded-query token → the originating pane plus the
+    /// raw query bytes. When the client sends back the reply for
+    /// `token`, the server looks up the pane here and writes the
+    /// reply bytes to its pty. The retained `query_bytes` feed the
+    /// cache-fallback synthesis: if the reply comes back empty
+    /// (detached session, client crash, host timeout), we use the
+    /// cached bg/fg/pixel/palette state to answer in the host's
+    /// stead.
+    pending_forwarded_queries: HashMap<u32, PendingForwardEntry>,
     /// Serialization queue for forwarded queries. Invariant: at most one
     /// forward is in flight to the client at a time (enforced by
     /// `forward_in_flight`). When the reply (or timeout) closes the
@@ -1398,7 +1405,18 @@ pub(crate) struct Screen {
 struct PendingForward {
     token: u32,
     pane_id: PaneId,
-    query_bytes: Vec<u8>,
+    query: crate::host_query::HostQuery,
+}
+
+/// A forward currently in flight (dispatched to the client, waiting
+/// for a reply). Retains the `HostQuery` classification so we can
+/// fall back to cache-synthesized replies when the live reply is
+/// empty (no client attached, client-side timeout, etc.) without
+/// re-parsing byte strings.
+#[derive(Debug, Clone)]
+struct PendingForwardEntry {
+    pane_id: PaneId,
+    query: crate::host_query::HostQuery,
 }
 
 /// Reserved sentinel token used for Zellij's own startup batch of host
@@ -1410,6 +1428,7 @@ struct PendingForward {
 /// sentinel path is reserved for future migration and is not yet emitted.
 #[allow(dead_code)]
 const STARTUP_SENTINEL_TOKEN: u32 = 0;
+
 
 impl Screen {
     /// Creates and returns a new [`Screen`].
@@ -2014,7 +2033,11 @@ impl Screen {
     /// Queries are serialized globally: at most one is in flight to the
     /// client at a time; the rest wait in `forward_queue`. Returns the
     /// allocated token so callers (tests) can observe it if useful.
-    pub fn forward_host_query(&mut self, pane_id: PaneId, query_bytes: Vec<u8>) -> u32 {
+    pub fn forward_host_query(
+        &mut self,
+        pane_id: PaneId,
+        query: crate::host_query::HostQuery,
+    ) -> u32 {
         let token = self.next_forward_token;
         // Skip over the reserved sentinel (0) on wrap; allocate a fresh
         // u32 for every forward.
@@ -2026,17 +2049,26 @@ impl Screen {
             self.forward_queue.push_back(PendingForward {
                 token,
                 pane_id,
-                query_bytes,
+                query,
             });
         } else {
-            self.dispatch_forward(token, pane_id, query_bytes);
+            self.dispatch_forward(token, pane_id, query);
         }
         token
     }
 
     /// Dispatch a forward to the client and mark the slot as in-flight.
-    fn dispatch_forward(&mut self, token: u32, pane_id: PaneId, query_bytes: Vec<u8>) {
-        self.pending_forwarded_queries.insert(token, pane_id);
+    fn dispatch_forward(
+        &mut self,
+        token: u32,
+        pane_id: PaneId,
+        query: crate::host_query::HostQuery,
+    ) {
+        let query_bytes = query.to_query_bytes();
+        self.pending_forwarded_queries.insert(
+            token,
+            PendingForwardEntry { pane_id, query },
+        );
         self.forward_in_flight = true;
         let _ = self
             .bus
@@ -2048,16 +2080,30 @@ impl Screen {
     /// Writes the bytes to the originating pane's pty (if still present)
     /// and releases the in-flight slot so the next queued forward can
     /// dispatch.
+    ///
+    /// An empty `reply_bytes` is treated as "nobody answered" — either
+    /// because no client was attached to forward the query, or the
+    /// chosen client's host timed out. In that case we try to answer
+    /// from Zellij's cached view of the host (pixel dims, bg/fg,
+    /// palette) so the pane still gets a well-formed reply instead of
+    /// zero bytes. If the cache has nothing relevant either, the pane
+    /// receives an empty write and the app decides what to do.
     pub fn handle_forwarded_reply_from_host(
         &mut self,
         token: u32,
         reply_bytes: Vec<u8>,
     ) -> Result<()> {
-        if let Some(pane_id) = self.pending_forwarded_queries.remove(&token) {
+        if let Some(entry) = self.pending_forwarded_queries.remove(&token) {
+            let PendingForwardEntry { pane_id, query } = entry;
             match pane_id {
                 PaneId::Terminal(terminal_id) => {
+                    let payload = if reply_bytes.is_empty() {
+                        self.synthesize_cached_reply(&query)
+                    } else {
+                        reply_bytes
+                    };
                     let _ = self.bus.senders.send_to_pty_writer(
-                        PtyWriteInstruction::Write(reply_bytes, terminal_id, None),
+                        PtyWriteInstruction::Write(payload, terminal_id, None),
                     );
                 },
                 PaneId::Plugin(_) => {
@@ -2081,9 +2127,63 @@ impl Screen {
         // Release the slot and dispatch the next queued forward, if any.
         self.forward_in_flight = false;
         if let Some(next) = self.forward_queue.pop_front() {
-            self.dispatch_forward(next.token, next.pane_id, next.query_bytes);
+            self.dispatch_forward(next.token, next.pane_id, next.query);
         }
         Ok(())
+    }
+
+    /// Build a reply for `query` from whatever host state Zellij has
+    /// cached, or an empty `Vec` if nothing relevant is cached. The
+    /// classification happened at intercept time (Grid produces a
+    /// [`HostQuery`]), so this method is pure structural dispatch —
+    /// no re-parsing of bytes.
+    fn synthesize_cached_reply(&self, query: &crate::host_query::HostQuery) -> Vec<u8> {
+        use crate::host_query::HostQuery;
+        match query {
+            HostQuery::TextAreaPixelSize => self
+                .pixel_dimensions
+                .text_area_size
+                .map(|dims| format!("\x1b[4;{};{}t", dims.height, dims.width).into_bytes())
+                .unwrap_or_default(),
+            HostQuery::CharacterCellPixelSize => self
+                .pixel_dimensions
+                .character_cell_size
+                .map(|dims| format!("\x1b[6;{};{}t", dims.height, dims.width).into_bytes())
+                .unwrap_or_default(),
+            HostQuery::DefaultForeground { terminator }
+            | HostQuery::DefaultBackground { terminator } => {
+                let palette = self.terminal_emulator_colors.borrow();
+                let (channel, color) = match query {
+                    HostQuery::DefaultForeground { .. } => (10u32, palette.fg),
+                    HostQuery::DefaultBackground { .. } => (11u32, palette.bg),
+                    _ => unreachable!(),
+                };
+                if let PaletteColor::Rgb((r, g, b)) = color {
+                    let mut out = format!(
+                        "\x1b]{};rgb:{:04x}/{:04x}/{:04x}",
+                        channel,
+                        (r as u16) * 0x0101,
+                        (g as u16) * 0x0101,
+                        (b as u16) * 0x0101,
+                    )
+                    .into_bytes();
+                    out.extend_from_slice(terminator.as_bytes());
+                    out
+                } else {
+                    Vec::new()
+                }
+            },
+            HostQuery::PaletteRegister { index, terminator } => {
+                let codes = self.terminal_emulator_color_codes.borrow();
+                if let Some(color) = codes.get(&(*index as usize)) {
+                    let mut out = format!("\x1b]4;{};{}", index, color).into_bytes();
+                    out.extend_from_slice(terminator.as_bytes());
+                    out
+                } else {
+                    Vec::new()
+                }
+            },
+        }
     }
 
     pub fn render(&mut self, plugin_render_assets: Option<Vec<PluginRenderAsset>>) -> Result<()> {
@@ -6761,11 +6861,8 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::TerminalColorRegisters(color_registers) => {
                 screen.update_terminal_color_registers(color_registers);
             },
-            ScreenInstruction::ForwardHostQuery {
-                pane_id,
-                query_bytes,
-            } => {
-                screen.forward_host_query(pane_id, query_bytes);
+            ScreenInstruction::ForwardHostQuery { pane_id, query } => {
+                screen.forward_host_query(pane_id, query);
             },
             ScreenInstruction::ForwardedReplyFromHost { token, reply_bytes } => {
                 screen.handle_forwarded_reply_from_host(token, reply_bytes)?;

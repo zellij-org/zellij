@@ -2602,6 +2602,15 @@ pub(crate) fn route_thread_main(
                             token,
                             ref reply_bytes,
                         } => {
+                            // The client that owns this forward
+                            // answered — drop the in-flight entry
+                            // first so a later disconnect of that
+                            // client can't synthesize a spurious
+                            // empty reply for the same token.
+                            session_state
+                                .write()
+                                .unwrap()
+                                .clear_forward_in_flight(token);
                             let _ = send_to_screen_or_retry_queue!(
                                 senders,
                                 ScreenInstruction::ForwardedReplyFromHost {

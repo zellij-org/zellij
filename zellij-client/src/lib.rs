@@ -960,11 +960,6 @@ pub fn start_client(
     let on_force_close = config_options.on_force_close.unwrap_or_default();
     let host_reply_parser = Arc::new(Mutex::new(HostReplyParser::new()));
 
-    // Best-effort cleanup of any stale legacy stdin cache file from
-    // previous Zellij versions. Five lines, no new config, no error on
-    // absence.
-    let _ = cleanup_legacy_stdin_cache();
-
     let (resize_sender, resize_receiver) = std::sync::mpsc::channel::<()>();
 
     let _stdin_thread = thread::Builder::new()
@@ -984,15 +979,23 @@ pub fn start_client(
             }
         });
 
-    // Forward-slot timeouts are no longer driven by a polling thread.
-    // Each forward opens a per-slot timer task on the shared
-    // `forward_timeout_runtime()` (a single-thread tokio executor).
-    // The task sleeps for the deadline and then calls
-    // `close_forward_on_timeout(token)`; token-guard idempotency
-    // handles the cancellation case (barrier arrived first → slot
-    // cleared → the eventual wake-up is a no-op). See
-    // `ClientInstruction::ForwardQueryToHost` below for the spawn
-    // site.
+    // Apps running inside Zellij panes can issue a whitelisted set
+    // of queries to the host terminal (bg/fg colour, palette
+    // registers, window pixel dimensions). Each query opens a
+    // "forward slot" on the client: we write the query + a
+    // Primary-DA barrier to stdout, then collect any reply bytes
+    // that arrive on stdin until the barrier reply closes the slot.
+    // The pane that asked gets the captured bytes piped to its pty.
+    //
+    // If the host never answers, we must close the slot anyway so
+    // the server can dispatch the next queued forward. A per-slot
+    // timer task enforces that deadline: opening a forward spawns
+    // an async sleep on `forward_timeout_runtime()`; on wake it
+    // tries to close the slot for that specific token. If the
+    // barrier (or a later forward) closed the slot first, the
+    // timer's close call is a no-op — the token-guard makes
+    // cancellation implicit. Spawn site: the
+    // `ClientInstruction::ForwardQueryToHost` handler below.
 
     let _input_thread = thread::Builder::new()
         .name("input_handler".to_string())
@@ -1383,33 +1386,6 @@ pub fn start_server_detached(
 
     os_input.connect_to_server(&*ipc_pipe);
     os_input.send_to_server(first_msg);
-}
-
-/// Best-effort removal of the legacy stdin cache file used by
-/// pre-continuous-parser Zellij versions. The cache is no longer written
-/// or read — any stale file on disk is harmless but wastes bytes; try to
-/// remove it and ignore any error (absence, permissions, nonexistent
-/// parent).
-fn cleanup_legacy_stdin_cache() -> std::io::Result<()> {
-    use zellij_utils::consts::{VERSION, ZELLIJ_PROJ_DIR};
-    let legacy = ZELLIJ_PROJ_DIR
-        .cache_dir()
-        .join(VERSION)
-        .join("stdin_cache");
-    cleanup_legacy_stdin_cache_at(&legacy)
-}
-
-/// Removes `path` if present. `NotFound` is treated as success so the
-/// cleanup is idempotent across restarts. Extracted from
-/// `cleanup_legacy_stdin_cache` so tests can drive it with a
-/// `tempfile::NamedTempFile`-like path without relying on the ambient
-/// `ZELLIJ_PROJ_DIR`.
-fn cleanup_legacy_stdin_cache_at(path: &std::path::Path) -> std::io::Result<()> {
-    match std::fs::remove_file(path) {
-        Ok(()) => Ok(()),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(e) => Err(e),
-    }
 }
 
 fn terminal_teardown_message(message: &str, rows: usize, include_kitty_exit: bool) -> String {

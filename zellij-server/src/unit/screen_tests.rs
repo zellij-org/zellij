@@ -8446,24 +8446,57 @@ fn create_new_screen_with_forward_capture(size: Size) -> (Screen, ForwardCapture
     )
 }
 
+// Convenience constructors for the forwarding tests — all callers
+// want a fresh `HostQuery` value with the default terminator.
+use crate::host_query::{HostQuery, OscTerminator};
+
+fn bg_query() -> HostQuery {
+    HostQuery::DefaultBackground {
+        terminator: OscTerminator::St,
+    }
+}
+fn fg_query() -> HostQuery {
+    HostQuery::DefaultForeground {
+        terminator: OscTerminator::St,
+    }
+}
+fn fg_query_bel() -> HostQuery {
+    HostQuery::DefaultForeground {
+        terminator: OscTerminator::Bel,
+    }
+}
+fn palette_query(index: u8) -> HostQuery {
+    HostQuery::PaletteRegister {
+        index,
+        terminator: OscTerminator::St,
+    }
+}
+
 #[test]
 fn forward_host_query_when_idle_dispatches_immediately() {
     let size = Size { cols: 80, rows: 20 };
     let (mut screen, capture) = create_new_screen_with_forward_capture(size);
     let pane_id = PaneId::Terminal(42);
-    let query = b"\x1b]11;?\x1b\\".to_vec();
+    let query = bg_query();
 
     let token = screen.forward_host_query(pane_id, query.clone());
 
     assert!(screen.forward_in_flight, "slot must flip to in-flight");
     assert_eq!(
-        screen.pending_forwarded_queries.get(&token),
-        Some(&pane_id),
+        screen
+            .pending_forwarded_queries
+            .get(&token)
+            .map(|e| e.pane_id),
+        Some(pane_id),
         "token→pane mapping must be populated"
     );
     let forwards = capture.drain_forward_queries();
     assert_eq!(forwards.len(), 1, "exactly one forward dispatched");
-    assert_eq!(forwards[0], (token, query), "payload must be verbatim");
+    assert_eq!(
+        forwards[0],
+        (token, query.to_query_bytes()),
+        "wire bytes must be derived from the HostQuery"
+    );
 }
 
 #[test]
@@ -8473,8 +8506,8 @@ fn forward_host_query_when_busy_queues_instead_of_dispatching() {
     let first_pane = PaneId::Terminal(1);
     let second_pane = PaneId::Terminal(2);
 
-    let first_token = screen.forward_host_query(first_pane, b"\x1b]11;?\x1b\\".to_vec());
-    let second_token = screen.forward_host_query(second_pane, b"\x1b]10;?\x1b\\".to_vec());
+    let first_token = screen.forward_host_query(first_pane, bg_query());
+    let second_token = screen.forward_host_query(second_pane, fg_query());
 
     // The first call dispatched; the second waits in the queue. Only
     // the first token should be in the map; the second lives in
@@ -8492,7 +8525,7 @@ fn handle_reply_writes_to_pane_pty_and_releases_slot() {
     let size = Size { cols: 80, rows: 20 };
     let (mut screen, capture) = create_new_screen_with_forward_capture(size);
     let pane_id = PaneId::Terminal(7);
-    let token = screen.forward_host_query(pane_id, b"\x1b]11;?\x1b\\".to_vec());
+    let token = screen.forward_host_query(pane_id, bg_query());
     let _ = capture.drain_forward_queries(); // discard the dispatch
 
     let reply = b"\x1b]11;rgb:1111/2222/3333\x1b\\".to_vec();
@@ -8519,8 +8552,8 @@ fn handle_reply_dispatches_next_queued_forward() {
     let (mut screen, capture) = create_new_screen_with_forward_capture(size);
     let first_pane = PaneId::Terminal(1);
     let second_pane = PaneId::Terminal(2);
-    let first_token = screen.forward_host_query(first_pane, b"\x1b]11;?\x1b\\".to_vec());
-    let second_token = screen.forward_host_query(second_pane, b"\x1b]10;?\x1b\\".to_vec());
+    let first_token = screen.forward_host_query(first_pane, bg_query());
+    let second_token = screen.forward_host_query(second_pane, fg_query());
     // First dispatch already emitted; drop it.
     let _ = capture.drain_forward_queries();
 
@@ -8536,8 +8569,11 @@ fn handle_reply_dispatches_next_queued_forward() {
     assert!(screen.forward_queue.is_empty());
     assert!(screen.forward_in_flight);
     assert_eq!(
-        screen.pending_forwarded_queries.get(&second_token),
-        Some(&second_pane)
+        screen
+            .pending_forwarded_queries
+            .get(&second_token)
+            .map(|e| e.pane_id),
+        Some(second_pane)
     );
 }
 
@@ -8551,8 +8587,8 @@ fn handle_reply_with_unknown_token_is_silent_noop_for_writes() {
     let (mut screen, capture) = create_new_screen_with_forward_capture(size);
     let first_pane = PaneId::Terminal(1);
     let second_pane = PaneId::Terminal(2);
-    let _first_token = screen.forward_host_query(first_pane, b"\x1b]11;?\x1b\\".to_vec());
-    let second_token = screen.forward_host_query(second_pane, b"\x1b]10;?\x1b\\".to_vec());
+    let _first_token = screen.forward_host_query(first_pane, bg_query());
+    let second_token = screen.forward_host_query(second_pane, fg_query());
     let _ = capture.drain_forward_queries();
 
     // Reply for a stale / unknown token.
@@ -8579,7 +8615,7 @@ fn token_counter_wraps_skipping_sentinel() {
     let (mut screen, capture) = create_new_screen_with_forward_capture(size);
     screen.next_forward_token = u32::MAX;
 
-    let t1 = screen.forward_host_query(PaneId::Terminal(1), b"\x1b]11;?\x1b\\".to_vec());
+    let t1 = screen.forward_host_query(PaneId::Terminal(1), bg_query());
     // Clear the in-flight slot so the next call actually allocates
     // (the queueing branch would still allocate, but we want the
     // dispatch branch here).
@@ -8589,7 +8625,7 @@ fn token_counter_wraps_skipping_sentinel() {
     let _ = capture.drain_forward_queries();
     let _ = capture.drain_pty_writes();
 
-    let t2 = screen.forward_host_query(PaneId::Terminal(2), b"\x1b]10;?\x1b\\".to_vec());
+    let t2 = screen.forward_host_query(PaneId::Terminal(2), fg_query());
     assert_eq!(t1, u32::MAX, "first token should land on u32::MAX");
     assert_eq!(
         t2, 1,
@@ -8606,9 +8642,13 @@ fn plugin_pane_reply_is_dropped_without_write() {
     // don't have a pty).
     let size = Size { cols: 80, rows: 20 };
     let (mut screen, capture) = create_new_screen_with_forward_capture(size);
-    screen
-        .pending_forwarded_queries
-        .insert(77, PaneId::Plugin(42));
+    screen.pending_forwarded_queries.insert(
+        77,
+        super::PendingForwardEntry {
+            pane_id: PaneId::Plugin(42),
+            query: bg_query(),
+        },
+    );
     screen.forward_in_flight = true;
 
     screen
@@ -8624,4 +8664,160 @@ fn plugin_pane_reply_is_dropped_without_write() {
         "map entry must still be cleared even when the reply is dropped"
     );
     assert!(!screen.forward_in_flight, "slot still released");
+}
+
+// =====================================================================
+// Cache-fallback synthesis: empty reply → answer from Screen's caches
+// =====================================================================
+
+#[test]
+fn empty_reply_falls_back_to_cached_background() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_forward_capture(size);
+    let pane = PaneId::Terminal(9);
+    screen.update_terminal_background_color("rgb:1010/2020/3030".to_string());
+    let token = screen.forward_host_query(pane, bg_query());
+    let _ = capture.drain_forward_queries();
+
+    // Empty reply — the client couldn't or didn't answer.
+    screen
+        .handle_forwarded_reply_from_host(token, Vec::new())
+        .expect("ok");
+
+    let writes = capture.drain_pty_writes();
+    assert_eq!(writes.len(), 1, "synthesis must write exactly one reply");
+    let (bytes, terminal_id) = &writes[0];
+    assert_eq!(*terminal_id, 9);
+    assert_eq!(
+        std::str::from_utf8(bytes).unwrap(),
+        "\u{1b}]11;rgb:1010/2020/3030\u{1b}\\",
+    );
+}
+
+#[test]
+fn empty_reply_falls_back_to_cached_foreground_with_bel_terminator() {
+    // Query used BEL; reply must mirror the same terminator.
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_forward_capture(size);
+    let pane = PaneId::Terminal(1);
+    screen.update_terminal_foreground_color("rgb:dcdc/dcdc/dcdc".to_string());
+    let token = screen.forward_host_query(pane, fg_query_bel());
+    let _ = capture.drain_forward_queries();
+
+    screen
+        .handle_forwarded_reply_from_host(token, Vec::new())
+        .expect("ok");
+
+    let writes = capture.drain_pty_writes();
+    assert_eq!(writes.len(), 1);
+    assert_eq!(
+        std::str::from_utf8(&writes[0].0).unwrap(),
+        "\u{1b}]10;rgb:dcdc/dcdc/dcdc\u{7}",
+    );
+}
+
+#[test]
+fn empty_reply_falls_back_to_cached_pixel_dimensions() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_forward_capture(size);
+    let pane = PaneId::Terminal(1);
+    screen.update_pixel_dimensions(PixelDimensions {
+        character_cell_size: Some(SizeInPixels {
+            height: 19,
+            width: 9,
+        }),
+        text_area_size: Some(SizeInPixels {
+            height: 608,
+            width: 931,
+        }),
+    });
+
+    // CSI 14t — text-area pixels.
+    let token = screen.forward_host_query(pane, HostQuery::TextAreaPixelSize);
+    let _ = capture.drain_forward_queries();
+    screen
+        .handle_forwarded_reply_from_host(token, Vec::new())
+        .expect("ok");
+    let writes = capture.drain_pty_writes();
+    assert_eq!(std::str::from_utf8(&writes[0].0).unwrap(), "\u{1b}[4;608;931t");
+
+    // CSI 16t — cell size.
+    let token = screen.forward_host_query(pane, HostQuery::CharacterCellPixelSize);
+    let _ = capture.drain_forward_queries();
+    screen
+        .handle_forwarded_reply_from_host(token, Vec::new())
+        .expect("ok");
+    let writes = capture.drain_pty_writes();
+    assert_eq!(std::str::from_utf8(&writes[0].0).unwrap(), "\u{1b}[6;19;9t");
+}
+
+#[test]
+fn empty_reply_falls_back_to_cached_palette_register() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_forward_capture(size);
+    let pane = PaneId::Terminal(1);
+    screen.update_terminal_color_registers(vec![(
+        42,
+        "rgb:abab/cdcd/efef".to_string(),
+    )]);
+    let token = screen.forward_host_query(pane, palette_query(42));
+    let _ = capture.drain_forward_queries();
+
+    screen
+        .handle_forwarded_reply_from_host(token, Vec::new())
+        .expect("ok");
+
+    let writes = capture.drain_pty_writes();
+    assert_eq!(writes.len(), 1);
+    assert_eq!(
+        std::str::from_utf8(&writes[0].0).unwrap(),
+        "\u{1b}]4;42;rgb:abab/cdcd/efef\u{1b}\\",
+    );
+}
+
+#[test]
+fn empty_reply_with_no_cache_writes_empty() {
+    // No background override, no palette, no pixel dims: synthesis
+    // returns empty and the pane receives an empty write — the app
+    // decides what to do with "host declined".
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_forward_capture(size);
+    let pane = PaneId::Terminal(1);
+
+    // Default Palette::fg is EightBit(0), not Rgb — synthesis refuses.
+    let token = screen.forward_host_query(pane, fg_query());
+    let _ = capture.drain_forward_queries();
+    screen
+        .handle_forwarded_reply_from_host(token, Vec::new())
+        .expect("ok");
+    let writes = capture.drain_pty_writes();
+    assert_eq!(writes.len(), 1, "still writes — the write is empty bytes");
+    assert!(
+        writes[0].0.is_empty(),
+        "no rgb cache → synthesis returns empty"
+    );
+}
+
+#[test]
+fn non_empty_reply_bypasses_synthesis() {
+    // A real reply from the host must be passed through verbatim —
+    // we must not second-guess it with cached state.
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_forward_capture(size);
+    let pane = PaneId::Terminal(1);
+    screen.update_terminal_background_color("rgb:0000/0000/0000".to_string());
+    let token = screen.forward_host_query(pane, bg_query());
+    let _ = capture.drain_forward_queries();
+
+    let real = b"\x1b]11;rgb:ffff/ffff/ffff\x1b\\".to_vec();
+    screen
+        .handle_forwarded_reply_from_host(token, real.clone())
+        .expect("ok");
+
+    let writes = capture.drain_pty_writes();
+    assert_eq!(writes.len(), 1);
+    assert_eq!(
+        writes[0].0, real,
+        "real reply must be forwarded verbatim, not replaced by cached bg"
+    );
 }

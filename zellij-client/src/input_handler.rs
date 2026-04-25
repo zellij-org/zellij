@@ -317,17 +317,6 @@ impl InputHandler {
                     .send(ClientInstruction::SetSynchronizedOutput(enabled))
                     .unwrap();
             },
-            AnsiStdinInstruction::ForwardedReply { token, raw_bytes } => {
-                // The host-reply parser closed a forwarding window and
-                // surfaced the accumulated bytes through the classified
-                // `HostReply::ForwardedReply` variant (double-dispatch
-                // path). Relay to the server.
-                self.os_input
-                    .send_to_server(ClientToServerMsg::ForwardedReplyFromHost {
-                        token,
-                        reply_bytes: raw_bytes,
-                    });
-            },
         }
     }
     fn handle_mouse_event(&mut self, mouse_event: &MouseEvent) {

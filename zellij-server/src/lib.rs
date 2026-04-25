@@ -5,6 +5,7 @@ mod os_input_output_unix;
 #[path = "os_input_output_windows.rs"]
 mod os_input_output_windows;
 
+pub mod host_query;
 pub mod os_input_output;
 pub mod output;
 pub mod panes;
@@ -469,10 +470,43 @@ impl Drop for SessionMetaData {
     }
 }
 
+/// Remove a client from session state and synthesize empty
+/// `ForwardedReplyFromHost` instructions for any host-query forwards
+/// that had been dispatched to it. Without this, a client that goes
+/// away while holding an in-flight forward leaves `Screen`'s
+/// `forward_in_flight` flag stuck — the flag is only released by
+/// replies, and no reply will ever come.
+fn remove_client_and_flush_forwards(
+    client_id: ClientId,
+    os_input: &mut Box<dyn ServerOsApi>,
+    session_state: &Arc<RwLock<SessionState>>,
+    session_data: &Arc<RwLock<Option<SessionMetaData>>>,
+) {
+    let _ = os_input.remove_client(client_id);
+    let stuck_tokens = session_state.write().unwrap().remove_client(client_id);
+    if stuck_tokens.is_empty() {
+        return;
+    }
+    if let Some(session) = session_data.read().unwrap().as_ref() {
+        for token in stuck_tokens {
+            let _ = session
+                .senders
+                .send_to_screen(ScreenInstruction::ForwardedReplyFromHost {
+                    token,
+                    reply_bytes: Vec::new(),
+                });
+        }
+    }
+}
+
 macro_rules! remove_client {
-    ($client_id:expr, $os_input:expr, $session_state:expr) => {
-        $os_input.remove_client($client_id).unwrap();
-        $session_state.write().unwrap().remove_client($client_id);
+    ($client_id:expr, $os_input:expr, $session_state:expr, $session_data:expr) => {
+        $crate::remove_client_and_flush_forwards(
+            $client_id,
+            &mut $os_input,
+            &$session_state,
+            &$session_data,
+        );
     };
 }
 
@@ -484,7 +518,7 @@ macro_rules! remove_watcher {
 }
 
 macro_rules! send_to_client {
-    ($client_id:expr, $os_input:expr, $msg:expr, $session_state:expr) => {
+    ($client_id:expr, $os_input:expr, $msg:expr, $session_state:expr, $session_data:expr) => {
         let send_to_client_res = $os_input.send_to_client($client_id, $msg);
         if let Err(e) = send_to_client_res {
             // Try to recover the message
@@ -502,7 +536,7 @@ macro_rules! send_to_client {
             // Log it so it isn't lost
             Err::<(), _>(e).context(context).non_fatal();
             // failed to send to client, remove it
-            remove_client!($client_id, $os_input, $session_state);
+            remove_client!($client_id, $os_input, $session_state, $session_data);
         }
     };
 }
@@ -513,6 +547,13 @@ pub(crate) struct SessionState {
     pipes: HashMap<String, ClientId>,                 // String => pipe_id
     watchers: HashMap<ClientId, bool>, // watcher clients (read-only observers) bool -> is_web_client
     last_active_client: Option<ClientId>, // last client that sent a Key message
+    /// Host-query forward tokens that have been dispatched to a
+    /// specific client and are waiting for a reply. Used to clean up
+    /// when that client disconnects (or when there's no client to
+    /// dispatch to in the first place) — each stuck token gets an
+    /// empty synthetic reply so `Screen`'s `forward_in_flight` slot
+    /// releases and the queued forwards keep moving.
+    forwards_in_flight: HashMap<u32, ClientId>,
 }
 
 impl SessionState {
@@ -522,6 +563,7 @@ impl SessionState {
             pipes: HashMap::new(),
             watchers: HashMap::new(),
             last_active_client: None,
+            forwards_in_flight: HashMap::new(),
         }
     }
     pub fn new_client(&mut self) -> ClientId {
@@ -546,10 +588,25 @@ impl SessionState {
     pub fn associate_pipe_with_client(&mut self, pipe_id: String, client_id: ClientId) {
         self.pipes.insert(pipe_id, client_id);
     }
-    pub fn remove_client(&mut self, client_id: ClientId) {
+    /// Remove a client and return any host-query tokens that had
+    /// been dispatched to this client and were still awaiting a
+    /// reply. Callers must synthesize an empty reply for each token
+    /// (via `ScreenInstruction::ForwardedReplyFromHost`) so
+    /// `Screen`'s in-flight slot releases and any queued forwards
+    /// can proceed.
+    pub fn remove_client(&mut self, client_id: ClientId) -> Vec<u32> {
         self.clients.remove(&client_id);
         self.pipes.retain(|_p_id, c_id| c_id != &client_id);
         self.clear_last_active_client(client_id);
+        let stuck: Vec<u32> = self
+            .forwards_in_flight
+            .iter()
+            .filter_map(|(token, owner)| (*owner == client_id).then_some(*token))
+            .collect();
+        for token in &stuck {
+            self.forwards_in_flight.remove(token);
+        }
+        stuck
     }
     pub fn set_client_size(&mut self, client_id: ClientId, size: Size) {
         self.clients
@@ -652,6 +709,94 @@ impl SessionState {
         if self.last_active_client == Some(client_id) {
             self.last_active_client = None;
         }
+    }
+    pub fn mark_forward_in_flight(&mut self, token: u32, client_id: ClientId) {
+        self.forwards_in_flight.insert(token, client_id);
+    }
+    pub fn clear_forward_in_flight(&mut self, token: u32) {
+        self.forwards_in_flight.remove(&token);
+    }
+    /// Client to route a host-query forward to. Prefers whichever
+    /// client most recently interacted with the session; falls back
+    /// to any currently-connected non-watcher client. Returns `None`
+    /// only when no regular client is connected.
+    pub fn pick_forward_target(&self) -> Option<ClientId> {
+        if let Some(candidate) = self.last_active_client {
+            if self.clients.contains_key(&candidate) {
+                return Some(candidate);
+            }
+        }
+        self.clients.keys().copied().next()
+    }
+}
+
+#[cfg(test)]
+mod session_state_tests {
+    use super::*;
+
+    fn with_client(id: ClientId) -> SessionState {
+        let mut s = SessionState::new();
+        s.clients.insert(id, None);
+        s
+    }
+
+    #[test]
+    fn pick_forward_target_prefers_last_active_when_still_connected() {
+        let mut s = SessionState::new();
+        s.clients.insert(1, None);
+        s.clients.insert(2, None);
+        s.set_last_active_client(2);
+        assert_eq!(s.pick_forward_target(), Some(2));
+    }
+
+    #[test]
+    fn pick_forward_target_falls_back_when_last_active_disconnected() {
+        let mut s = SessionState::new();
+        s.clients.insert(1, None);
+        s.clients.insert(2, None);
+        // Client 3 was last active but has since disconnected — not in
+        // `clients` map anymore. Must fall through to any connected
+        // client rather than returning None.
+        s.last_active_client = Some(3);
+        let picked = s.pick_forward_target().expect("some client still connected");
+        assert!(picked == 1 || picked == 2);
+    }
+
+    #[test]
+    fn pick_forward_target_none_when_no_clients() {
+        let s = SessionState::new();
+        assert_eq!(s.pick_forward_target(), None);
+    }
+
+    #[test]
+    fn remove_client_returns_stuck_forward_tokens() {
+        let mut s = with_client(1);
+        s.mark_forward_in_flight(10, 1);
+        s.mark_forward_in_flight(11, 1);
+        // A forward dispatched to a *different* client — must not be
+        // returned when we remove client 1.
+        s.clients.insert(2, None);
+        s.mark_forward_in_flight(12, 2);
+
+        let mut stuck = s.remove_client(1);
+        stuck.sort_unstable();
+        assert_eq!(stuck, vec![10, 11]);
+        assert_eq!(s.forwards_in_flight.get(&12), Some(&2));
+    }
+
+    #[test]
+    fn remove_client_returns_empty_when_no_forwards_in_flight() {
+        let mut s = with_client(1);
+        assert!(s.remove_client(1).is_empty());
+    }
+
+    #[test]
+    fn clear_forward_in_flight_removes_entry() {
+        let mut s = with_client(1);
+        s.mark_forward_in_flight(42, 1);
+        s.clear_forward_in_flight(42);
+        // After clear, removing the client yields no stuck tokens.
+        assert!(s.remove_client(1).is_empty());
     }
 }
 
@@ -1053,7 +1198,8 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                         client_id,
                         os_input,
                         ServerToClientMsg::UnblockInputThread,
-                        session_state
+                        session_state,
+                        session_data
                     );
                 }
             },
@@ -1067,7 +1213,8 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                             ServerToClientMsg::UnblockCliPipeInput {
                                 pipe_name: pipe_name.clone()
                             },
-                            session_state
+                            session_state,
+                            session_data
                         );
                     },
                     None => {
@@ -1080,7 +1227,8 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                                 ServerToClientMsg::UnblockCliPipeInput {
                                     pipe_name: pipe_name.clone()
                                 },
-                                session_state
+                                session_state,
+                                session_data
                             );
                         }
                     },
@@ -1097,7 +1245,8 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                                 pipe_name: pipe_name.clone(),
                                 output: output.clone()
                             },
-                            session_state
+                            session_state,
+                            session_data
                         );
                     },
                     None => {
@@ -1111,7 +1260,8 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                                     pipe_name: pipe_name.clone(),
                                     output: output.clone()
                                 },
-                                session_state
+                                session_state,
+                                session_data
                             );
                         }
                     },
@@ -1141,7 +1291,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     os_input.remove_client(client_id).unwrap();
                 } else {
                     // Handle regular client removal
-                    remove_client!(client_id, os_input, session_state);
+                    remove_client!(client_id, os_input, session_state, session_data);
                     drop(completion_tx); // prevent deadlock with route thread
                     if let Some(min_size) = session_state.read().unwrap().min_client_terminal_size()
                     {
@@ -1181,7 +1331,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                             .collect();
                         // these are just the pipes
                         for client_id in client_ids_to_cleanup {
-                            remove_client!(client_id, os_input, session_state);
+                            remove_client!(client_id, os_input, session_state, session_data);
                         }
 
                         let watcher_client_ids: Vec<ClientId> =
@@ -1216,7 +1366,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     os_input.remove_client(client_id).unwrap();
                 } else {
                     // Handle regular client removal
-                    remove_client!(client_id, os_input, session_state);
+                    remove_client!(client_id, os_input, session_state, session_data);
                     if let Some(min_size) = session_state.read().unwrap().min_client_terminal_size()
                     {
                         session_data
@@ -1253,7 +1403,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                         exit_reason: ExitReason::WebClientsForbidden,
                     },
                 );
-                remove_client!(client_id, os_input, session_state);
+                remove_client!(client_id, os_input, session_state, session_data);
                 if let Some(min_size) = session_state.read().unwrap().min_client_terminal_size() {
                     session_data
                         .write()
@@ -1274,7 +1424,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                             exit_reason: ExitReason::Normal,
                         },
                     );
-                    remove_client!(client_id, os_input, session_state);
+                    remove_client!(client_id, os_input, session_state, session_data);
                 }
                 break;
             },
@@ -1294,7 +1444,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                             exit_reason: ExitReason::KickedByHost,
                         },
                     );
-                    remove_client!(client_id, os_input, session_state);
+                    remove_client!(client_id, os_input, session_state, session_data);
                 }
             },
             ServerInstruction::DetachSession(client_ids, completion_tx) => {
@@ -1305,7 +1455,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                             exit_reason: ExitReason::Normal,
                         },
                     );
-                    remove_client!(*client_id, os_input, session_state);
+                    remove_client!(*client_id, os_input, session_state, session_data);
                 }
                 drop(completion_tx); // we do this here explicitly to signal that the clients have
                                      // already disconnected and to prevent a deadlock below caused
@@ -1353,7 +1503,8 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                             ServerToClientMsg::Render {
                                 content: client_render_instruction.clone()
                             },
-                            session_state
+                            session_state,
+                            session_data
                         );
                     }
                 } else {
@@ -1365,7 +1516,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                                 exit_reason: ExitReason::Normal,
                             },
                         );
-                        remove_client!(client_id, os_input, session_state);
+                        remove_client!(client_id, os_input, session_state, session_data);
                     }
 
                     // Also disconnect all watchers
@@ -1383,7 +1534,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                                 exit_reason: ExitReason::Normal,
                             },
                         );
-                        remove_client!(watcher_id, os_input, session_state);
+                        remove_client!(watcher_id, os_input, session_state, session_data);
                     }
                     break;
                 }
@@ -1397,13 +1548,13 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                             exit_reason: ExitReason::Error(backtrace.clone()),
                         },
                     );
-                    remove_client!(client_id, os_input, session_state);
+                    remove_client!(client_id, os_input, session_state, session_data);
                 }
                 break;
             },
             ServerInstruction::ConnStatus(client_id) => {
                 let _ = os_input.send_to_client(client_id, ServerToClientMsg::Connected);
-                remove_client!(client_id, os_input, session_state);
+                remove_client!(client_id, os_input, session_state, session_data);
             },
             ServerInstruction::Log(
                 lines_to_log,
@@ -1417,7 +1568,8 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     ServerToClientMsg::Log {
                         lines: lines_to_log
                     },
-                    session_state
+                    session_state,
+                    session_data
                 );
             },
             ServerInstruction::LogError(
@@ -1432,7 +1584,8 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     ServerToClientMsg::LogError {
                         lines: lines_to_log
                     },
-                    session_state
+                    session_state,
+                    session_data
                 );
             },
             ServerInstruction::SwitchSession(mut connect_to_session, client_id, completion_tx) => {
@@ -1458,9 +1611,10 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                         client_id,
                         os_input,
                         ServerToClientMsg::SwitchSession { connect_to_session },
-                        session_state
+                        session_state,
+                        session_data
                     );
-                    remove_client!(client_id, os_input, session_state);
+                    remove_client!(client_id, os_input, session_state, session_data);
                     drop(completion_tx); // do not deadlock with route thread
 
                     if let Some(min_size) = session_state.read().unwrap().min_client_terminal_size()
@@ -1556,7 +1710,8 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                         client_id,
                         os_input,
                         ServerToClientMsg::ConfigFileUpdated,
-                        session_state
+                        session_state,
+                        session_data
                     );
                 }
             },
@@ -1598,7 +1753,8 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                         client_id,
                         os_input,
                         ServerToClientMsg::StartWebServer,
-                        session_state
+                        session_state,
+                        session_data
                     );
                 } else {
                     // TODO: test this
@@ -1649,7 +1805,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                                     exit_reason: ExitReason::WebClientsForbidden,
                                 },
                             );
-                            remove_client!(client_id, os_input, session_state);
+                            remove_client!(client_id, os_input, session_state, session_data);
                         }
                         let web_watcher_client_ids: Vec<ClientId> = session_state
                             .read()
@@ -1713,12 +1869,21 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .unwrap();
             },
             ServerInstruction::ForwardQueryToHost(token, query_bytes) => {
-                // Pick any connected regular (non-watcher) client to
-                // carry the forwarded query. Forwarded queries are rare
-                // and state-refresh rather than per-client; any one
-                // client's host is fine.
-                let target_client_id =
-                    session_state.read().unwrap().client_ids().into_iter().next();
+                // Pick a regular (non-watcher) client to carry the
+                // forward. Preference is the most recently active
+                // client (whichever last sent input); falls back to
+                // any connected client. When the host terminals of
+                // attached clients differ, the recently-active one
+                // is the best proxy for "what the user is currently
+                // looking at".
+                let target_client_id = {
+                    let mut session = session_state.write().unwrap();
+                    let picked = session.pick_forward_target();
+                    if let Some(cid) = picked {
+                        session.mark_forward_in_flight(token, cid);
+                    }
+                    picked
+                };
                 if let Some(client_id) = target_client_id {
                     send_to_client!(
                         client_id,
@@ -1727,13 +1892,28 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                             token,
                             query_bytes,
                         },
-                        session_state
+                        session_state,
+                        session_data
                     );
                 } else {
+                    // No client to ask — synthesize an empty reply
+                    // so `Screen`'s in-flight slot releases. Without
+                    // this, a detached session (apps still running)
+                    // accumulates forwards in `forward_queue` with
+                    // no way for them to drain until someone
+                    // reattaches.
                     log::warn!(
-                        "No connected client to forward host query (token={}); dropping",
+                        "No connected client to forward host query (token={}); returning empty reply",
                         token
                     );
+                    if let Some(session) = session_data.read().unwrap().as_ref() {
+                        let _ = session.senders.send_to_screen(
+                            ScreenInstruction::ForwardedReplyFromHost {
+                                token,
+                                reply_bytes: Vec::new(),
+                            },
+                        );
+                    }
                 }
             },
         }
