@@ -105,6 +105,19 @@ impl StdinAnsiParser {
         }
         self.drain_pending_events()
     }
+    pub fn parse_with_leftovers(
+        &mut self,
+        mut raw_bytes: Vec<u8>,
+    ) -> (Vec<AnsiStdinInstruction>, Vec<u8>) {
+        let mut leftover_bytes = vec![];
+        for byte in raw_bytes.drain(..) {
+            if let Some(leftovers) = self.parse_byte(byte) {
+                leftover_bytes.extend(leftovers);
+            }
+        }
+        leftover_bytes.append(&mut self.raw_buffer);
+        (self.drain_pending_events(), leftover_bytes)
+    }
     pub fn read_cache(&self) -> Option<Vec<AnsiStdinInstruction>> {
         match OpenOptions::new()
             .read(true)
@@ -137,16 +150,17 @@ impl StdinAnsiParser {
             }
         };
     }
-    fn parse_byte(&mut self, byte: u8) {
+    fn parse_byte(&mut self, byte: u8) -> Option<Vec<u8>> {
         if byte == b't' {
             self.raw_buffer.push(byte);
             match AnsiStdinInstruction::pixel_dimensions_from_bytes(&self.raw_buffer) {
                 Ok(ansi_sequence) => {
                     self.pending_events.push(ansi_sequence);
                     self.raw_buffer.clear();
+                    None
                 },
                 Err(_) => {
-                    self.raw_buffer.clear();
+                    Some(self.raw_buffer.drain(..).collect())
                 },
             }
         } else if byte == b'\\' {
@@ -154,14 +168,16 @@ impl StdinAnsiParser {
             if let Ok(ansi_sequence) = AnsiStdinInstruction::bg_or_fg_from_bytes(&self.raw_buffer) {
                 self.pending_events.push(ansi_sequence);
                 self.raw_buffer.clear();
+                None
             } else if let Ok((color_register, color_sequence)) =
                 color_sequence_from_bytes(&self.raw_buffer)
             {
                 self.raw_buffer.clear();
                 self.pending_color_sequences
                     .push((color_register, color_sequence));
+                None
             } else {
-                self.raw_buffer.clear();
+                Some(self.raw_buffer.drain(..).collect())
             }
         } else if byte == b'y' {
             self.raw_buffer.push(byte);
@@ -170,9 +186,13 @@ impl StdinAnsiParser {
             {
                 self.pending_events.push(ansi_sequence);
                 self.raw_buffer.clear();
+                None
+            } else {
+                Some(self.raw_buffer.drain(..).collect())
             }
         } else {
             self.raw_buffer.push(byte);
+            None
         }
     }
 }
@@ -314,5 +334,32 @@ fn color_sequence_from_bytes(bytes: &[u8]) -> Result<(usize, String), &'static s
         }
     } else {
         Err("invalid_instruction")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_with_leftovers_preserves_non_zellij_sequences() {
+        let mut parser = StdinAnsiParser::new();
+        let (events, leftover_bytes) = parser.parse_with_leftovers(b"\x1b[?1u".to_vec());
+
+        assert!(events.is_empty());
+        assert_eq!(leftover_bytes, b"\x1b[?1u".to_vec());
+    }
+
+    #[test]
+    fn parse_with_leftovers_still_parses_known_sequences() {
+        let mut parser = StdinAnsiParser::new();
+        let (events, leftover_bytes) = parser.parse_with_leftovers(b"\x1b[4;21;8t".to_vec());
+
+        assert!(leftover_bytes.is_empty());
+        assert_eq!(events.len(), 1);
+        assert!(matches!(
+            &events[0],
+            AnsiStdinInstruction::PixelDimensions(_)
+        ));
     }
 }
