@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+* feat: forward OSC 9 and OSC 777 desktop notifications to host terminal (https://github.com/zellij-org/zellij/pull/5099)
 * fix: idle CPU + disk i/o, CommandChanged plugin Event, GetSessionList plugin command (https://github.com/zellij-org/zellij/pull/5063)
 * fix: occasional dropped characters in web client (https://github.com/zellij-org/zellij/pull/5080)
 * fix: restore kitty keyboard mode on error, handle DECRPM 2026 state 3, clean up client terminal teardown sequences (https://github.com/zellij-org/zellij/pull/5058)

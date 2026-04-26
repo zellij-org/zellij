@@ -426,6 +426,11 @@ pub trait Pane {
     fn drain_desktop_notifications(&mut self) -> Vec<(String, String)> {
         vec![]
     }
+    fn drain_legacy_desktop_notifications(
+        &mut self,
+    ) -> Vec<crate::panes::grid::LegacyDesktopNotification> {
+        vec![]
+    }
     fn drain_osc7_cwd(&mut self) -> Option<std::path::PathBuf> {
         None
     }
@@ -2737,6 +2742,7 @@ impl Tab {
             let forwarded_queries = terminal_output.drain_forwarded_queries();
             let clipboard_update = terminal_output.drain_clipboard_update();
             let desktop_notifications = terminal_output.drain_desktop_notifications();
+            let legacy_notifications = terminal_output.drain_legacy_desktop_notifications();
             let osc7_cwd = terminal_output.drain_osc7_cwd();
             for message in messages_to_pty {
                 self.write_to_pane_id_without_preprocessing(message, PaneId::Terminal(pid))
@@ -2756,6 +2762,10 @@ impl Tab {
             }
             if !desktop_notifications.is_empty() {
                 self.forward_desktop_notifications(desktop_notifications, pid)
+                    .with_context(err_context)?;
+            }
+            if !legacy_notifications.is_empty() {
+                self.forward_legacy_desktop_notifications(legacy_notifications)
                     .with_context(err_context)?;
             }
             if let Some(path) = osc7_cwd {
@@ -4727,6 +4737,34 @@ impl Tab {
             } else {
                 format!("\x1b]99;{}{}{}", namespaced_metadata, rest, terminator)
             };
+            output.add_post_vte_instruction_to_multiple_clients(all_clients.iter().copied(), &raw);
+        }
+        let serialized_output = output.serialize().with_context(err_context)?;
+        self.senders
+            .send_to_server(ServerInstruction::Render(Some(serialized_output)))
+            .with_context(err_context)?;
+        Ok(())
+    }
+    fn forward_legacy_desktop_notifications(
+        &self,
+        notifications: Vec<crate::panes::grid::LegacyDesktopNotification>,
+    ) -> Result<()> {
+        let err_context =
+            || "failed to forward legacy desktop notifications to host terminal".to_string();
+        let mut output = Output::default();
+        let all_clients: HashSet<ClientId> = {
+            self.connected_clients_in_app
+                .borrow()
+                .keys()
+                .copied()
+                .collect()
+        };
+        output.add_clients(&all_clients, self.link_handler.clone(), None);
+        for notification in notifications {
+            let bytes = notification.to_canonical_bytes();
+            // Safe: to_canonical_bytes() builds from already-sanitized
+            // fields, so the result is always valid UTF-8.
+            let raw = String::from_utf8(bytes).with_context(err_context)?;
             output.add_post_vte_instruction_to_multiple_clients(all_clients.iter().copied(), &raw);
         }
         let serialized_output = output.serialize().with_context(err_context)?;
