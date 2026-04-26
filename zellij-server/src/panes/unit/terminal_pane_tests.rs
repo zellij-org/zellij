@@ -2,12 +2,13 @@ use super::super::TerminalPane;
 use crate::panes::sixel::SixelImageStore;
 use crate::panes::LinkHandler;
 use crate::tab::Pane;
+use crate::ui::pane_boundaries_frame::FrameParams;
 use insta::assert_snapshot;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 use zellij_utils::{
-    data::{Palette, Style},
+    data::{InputMode, Palette, Style},
     pane_size::{Offset, PaneGeom, SizeInPixels},
     position::Position,
 };
@@ -733,6 +734,42 @@ fn make_terminal_pane_for_bell() -> TerminalPane {
     )
 }
 
+fn frame_params() -> FrameParams {
+    FrameParams {
+        focused_client: Some(1),
+        is_main_client: true,
+        other_focused_clients: vec![],
+        style: Style::default(),
+        color: None,
+        other_cursors_exist_in_session: false,
+        pane_is_stacked_under: false,
+        pane_is_stacked_over: false,
+        should_draw_pane_frames: true,
+        pane_is_floating: false,
+        content_offset: Offset::default(),
+        mouse_is_hovering_over_pane: false,
+        pane_is_selectable: true,
+        show_help_text: false,
+        highlight_tooltip: None,
+    }
+}
+
+fn frame_text(terminal_pane: &mut TerminalPane) -> String {
+    let (chunks, _raw_vte) = terminal_pane
+        .render_frame(1, frame_params(), InputMode::Normal)
+        .unwrap()
+        .unwrap();
+    chunks
+        .iter()
+        .flat_map(|chunk| {
+            chunk
+                .terminal_characters
+                .iter()
+                .map(|character| character.character)
+        })
+        .collect()
+}
+
 #[test]
 pub fn bell_notification_state_set_and_cleared() {
     let mut terminal_pane = make_terminal_pane_for_bell();
@@ -774,6 +811,49 @@ pub fn has_bell_reflects_grid_ring_bell() {
     assert!(
         !terminal_pane.has_bell(),
         "has_bell should be false after consume_bell"
+    );
+}
+
+#[test]
+pub fn render_frame_shows_determinate_progress_badge() {
+    let mut terminal_pane = make_terminal_pane_for_bell();
+
+    terminal_pane.handle_pty_bytes(b"\x1b]9;4;1;42\x07".to_vec());
+
+    let frame_text = frame_text(&mut terminal_pane);
+    assert!(
+        frame_text.contains("[42%]"),
+        "Expected determinate progress badge in pane title, got: {:?}",
+        frame_text
+    );
+}
+
+#[test]
+pub fn render_frame_shows_indeterminate_progress_badge() {
+    let mut terminal_pane = make_terminal_pane_for_bell();
+
+    terminal_pane.handle_pty_bytes(b"\x1b]9;4;3\x07".to_vec());
+
+    let frame_text = frame_text(&mut terminal_pane);
+    assert!(
+        frame_text.contains("[~]"),
+        "Expected indeterminate progress badge in pane title, got: {:?}",
+        frame_text
+    );
+}
+
+#[test]
+pub fn render_frame_clears_progress_badge() {
+    let mut terminal_pane = make_terminal_pane_for_bell();
+
+    terminal_pane.handle_pty_bytes(b"\x1b]9;4;1;42\x07".to_vec());
+    terminal_pane.handle_pty_bytes(b"\x1b]9;4;0\x07".to_vec());
+
+    let frame_text = frame_text(&mut terminal_pane);
+    assert!(
+        !frame_text.contains("[42%]"),
+        "Expected progress badge to be cleared from pane title, got: {:?}",
+        frame_text
     );
 }
 
