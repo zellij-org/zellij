@@ -1394,9 +1394,14 @@ pub(crate) struct Screen {
     /// `forward_in_flight`). When the reply (or timeout) closes the
     /// active slot, the next queued forward is dispatched.
     forward_queue: VecDeque<PendingForward>,
-    /// Whether a forward is currently in flight to the (single) connected
-    /// client. Used to serialize forwarded queries globally.
-    forward_in_flight: bool,
+    /// Token of the forward currently in flight to the (single)
+    /// connected client, if any. Used to:
+    /// * serialize forwarded queries globally (only one at a time);
+    /// * gate slot release on `handle_forwarded_reply_from_host` to a
+    ///   token-equality match, so a late server-side timeout for an
+    ///   already-answered forward cannot clobber a queued forward that
+    ///   the real reply just dispatched.
+    forward_in_flight_token: Option<u32>,
 }
 
 /// A pending forward waiting to be dispatched once the current in-flight
@@ -1429,6 +1434,20 @@ struct PendingForwardEntry {
 /// `next_forward_token` allocation by the wrap-skip in
 /// `forward_host_query`.
 const STARTUP_SENTINEL_TOKEN: u32 = 0;
+
+/// Server-side deadline for a forwarded host query. If no
+/// `ForwardedReplyFromHost` arrives within this window, the server
+/// synthesizes an empty reply for itself so the in-flight slot
+/// releases and queued forwards continue to drain.
+///
+/// This recovers the worst-case where the connected client doesn't
+/// understand `ServerToClientMsg::ForwardQueryToHost` (an old client
+/// against a new server) — without it the slot would deadlock and
+/// every app-issued host query would hang. The window is generous
+/// relative to the 500 ms client-side deadline so a well-behaved new
+/// client always replies first; only the old-client and
+/// network-pathological cases ever see this fire.
+const SERVER_FORWARD_TIMEOUT_MS: u64 = 1000;
 
 impl Screen {
     /// Creates and returns a new [`Screen`].
@@ -1532,7 +1551,7 @@ impl Screen {
             next_forward_token: 1, // 0 is reserved as the startup sentinel
             pending_forwarded_queries: HashMap::new(),
             forward_queue: VecDeque::new(),
-            forward_in_flight: false,
+            forward_in_flight_token: None,
         }
     }
 
@@ -2045,7 +2064,7 @@ impl Screen {
         if self.next_forward_token == STARTUP_SENTINEL_TOKEN {
             self.next_forward_token = 1;
         }
-        if self.forward_in_flight {
+        if self.forward_in_flight_token.is_some() {
             self.forward_queue.push_back(PendingForward {
                 token,
                 pane_id,
@@ -2058,6 +2077,11 @@ impl Screen {
     }
 
     /// Dispatch a forward to the client and mark the slot as in-flight.
+    /// Spawns a one-shot timeout task on the global tokio runtime that
+    /// synthesizes an empty reply for `token` after
+    /// `SERVER_FORWARD_TIMEOUT_MS`. The handler's token-equality guard
+    /// makes the timeout a no-op if a real reply arrived first, so no
+    /// explicit cancellation is needed.
     fn dispatch_forward(
         &mut self,
         token: u32,
@@ -2069,11 +2093,24 @@ impl Screen {
             token,
             PendingForwardEntry { pane_id, query },
         );
-        self.forward_in_flight = true;
+        self.forward_in_flight_token = Some(token);
         let _ = self
             .bus
             .senders
             .send_to_server(ServerInstruction::ForwardQueryToHost(token, query_bytes));
+        let senders = self.bus.senders.clone();
+        crate::global_async_runtime::get_tokio_runtime().spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(
+                SERVER_FORWARD_TIMEOUT_MS,
+            ))
+            .await;
+            let _ = senders.send_to_screen(
+                ScreenInstruction::ForwardedReplyFromHost {
+                    token,
+                    reply_bytes: Vec::new(),
+                },
+            );
+        });
     }
 
     /// Handle a host-reply observed by the client for token `token`.
@@ -2093,6 +2130,23 @@ impl Screen {
         token: u32,
         reply_bytes: Vec<u8>,
     ) -> Result<()> {
+        // Stale-reply guard. Both the real `ForwardedReplyFromHost`
+        // path and the server-side timeout path land here. If a real
+        // reply landed first (releasing the slot AND dispatching the
+        // next queued forward), the late timeout's empty reply for the
+        // already-cleared token must be a no-op — releasing the slot
+        // again would clobber the new in-flight forward. The same
+        // logic also rejects duplicate replies and replies for tokens
+        // belonging to a previously-closed pane.
+        if self.forward_in_flight_token != Some(token) {
+            log::debug!(
+                "Dropping stale forwarded reply (token={}, in-flight={:?}, len={} bytes)",
+                token,
+                self.forward_in_flight_token,
+                reply_bytes.len(),
+            );
+            return Ok(());
+        }
         if let Some(entry) = self.pending_forwarded_queries.remove(&token) {
             let PendingForwardEntry { pane_id, query } = entry;
             match pane_id {
@@ -2116,16 +2170,9 @@ impl Screen {
                     );
                 },
             }
-        } else {
-            // Unknown or stale token: pane may have closed. Safe to drop.
-            log::debug!(
-                "Dropping forwarded reply with no pending pane (token={}, len={} bytes)",
-                token,
-                reply_bytes.len()
-            );
         }
         // Release the slot and dispatch the next queued forward, if any.
-        self.forward_in_flight = false;
+        self.forward_in_flight_token = None;
         if let Some(next) = self.forward_queue.pop_front() {
             self.dispatch_forward(next.token, next.pane_id, next.query);
         }

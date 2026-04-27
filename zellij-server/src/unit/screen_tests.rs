@@ -8481,7 +8481,11 @@ fn forward_host_query_when_idle_dispatches_immediately() {
 
     let token = screen.forward_host_query(pane_id, query.clone());
 
-    assert!(screen.forward_in_flight, "slot must flip to in-flight");
+    assert_eq!(
+        screen.forward_in_flight_token,
+        Some(token),
+        "slot must flip to in-flight for the dispatched token"
+    );
     assert_eq!(
         screen
             .pending_forwarded_queries
@@ -8537,7 +8541,7 @@ fn handle_reply_writes_to_pane_pty_and_releases_slot() {
     assert_eq!(writes.len(), 1, "one pty write expected");
     assert_eq!(writes[0], (reply, 7));
     assert!(
-        !screen.forward_in_flight,
+        screen.forward_in_flight_token.is_none(),
         "slot released so the next queued forward can dispatch"
     );
     assert!(
@@ -8567,7 +8571,7 @@ fn handle_reply_dispatches_next_queued_forward() {
     assert_eq!(forwards.len(), 1, "next queued forward must dispatch");
     assert_eq!(forwards[0].0, second_token);
     assert!(screen.forward_queue.is_empty());
-    assert!(screen.forward_in_flight);
+    assert_eq!(screen.forward_in_flight_token, Some(second_token));
     assert_eq!(
         screen
             .pending_forwarded_queries
@@ -8578,20 +8582,21 @@ fn handle_reply_dispatches_next_queued_forward() {
 }
 
 #[test]
-fn handle_reply_with_unknown_token_is_silent_noop_for_writes() {
-    // Token not in the map: either the pane closed, or the client
-    // rebroadcast a duplicate reply. The handler must not panic, must
-    // not write garbage to any pane, but must still release the slot
-    // and dispatch the next queued forward.
+fn handle_reply_with_unknown_token_is_silent_noop() {
+    // Token not in the map AND not the in-flight token: the handler
+    // must not panic, must not write any bytes, and crucially must
+    // NOT release the slot — the actually-in-flight forward still
+    // owns it. (See `late_timeout_after_real_reply_does_not_clobber`
+    // for the race scenario this guard prevents.)
     let size = Size { cols: 80, rows: 20 };
     let (mut screen, capture) = create_new_screen_with_forward_capture(size);
     let first_pane = PaneId::Terminal(1);
     let second_pane = PaneId::Terminal(2);
-    let _first_token = screen.forward_host_query(first_pane, bg_query());
-    let second_token = screen.forward_host_query(second_pane, fg_query());
+    let first_token = screen.forward_host_query(first_pane, bg_query());
+    let _second_token = screen.forward_host_query(second_pane, fg_query());
     let _ = capture.drain_forward_queries();
 
-    // Reply for a stale / unknown token.
+    // Reply for a stale / unknown token (neither first nor second).
     screen
         .handle_forwarded_reply_from_host(9999, b"dropped".to_vec())
         .expect("unknown tokens must not error");
@@ -8600,10 +8605,112 @@ fn handle_reply_with_unknown_token_is_silent_noop_for_writes() {
         capture.drain_pty_writes().is_empty(),
         "unknown token must not produce any pty write"
     );
-    // Slot released → second queued forward dispatched.
-    let forwards = capture.drain_forward_queries();
-    assert_eq!(forwards.len(), 1, "queued forward must still dispatch");
-    assert_eq!(forwards[0].0, second_token);
+    assert_eq!(
+        screen.forward_in_flight_token,
+        Some(first_token),
+        "in-flight token must still be the original"
+    );
+    assert!(
+        capture.drain_forward_queries().is_empty(),
+        "stale reply must not advance the queue"
+    );
+}
+
+#[test]
+fn late_timeout_after_real_reply_does_not_clobber_next_in_flight() {
+    // The race the token-equality guard exists to prevent:
+    //   1. dispatch token A (slot in-flight = A; A's timer is sleeping).
+    //   2. real reply for A arrives → handler releases slot, dispatches
+    //      queued token B → slot in-flight = B; B's timer is sleeping.
+    //   3. A's server-side timeout fires after the real reply, sending
+    //      an empty `ForwardedReplyFromHost { token: A, reply_bytes: [] }`.
+    //
+    // Without the guard, step 3 would clear the slot for token B and
+    // pop the next queued forward, clobbering an actively-in-flight
+    // request. The guard makes the late timeout a no-op.
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_forward_capture(size);
+    let pane_a = PaneId::Terminal(1);
+    let pane_b = PaneId::Terminal(2);
+    let pane_c = PaneId::Terminal(3);
+    let token_a = screen.forward_host_query(pane_a, bg_query());
+    let token_b = screen.forward_host_query(pane_b, fg_query());
+    let token_c = screen.forward_host_query(pane_c, palette_query(5));
+    let _ = capture.drain_forward_queries();
+
+    // Real reply for A arrives → slot moves to B.
+    screen
+        .handle_forwarded_reply_from_host(token_a, b"real-A".to_vec())
+        .expect("ok");
+    let dispatched = capture.drain_forward_queries();
+    assert_eq!(dispatched.len(), 1, "B must dispatch on A's release");
+    assert_eq!(dispatched[0].0, token_b);
+    assert_eq!(screen.forward_in_flight_token, Some(token_b));
+    // Drain the real reply's pty write so the late-timeout assertion
+    // below only sees writes (or absence thereof) caused by step 3.
+    let real_writes = capture.drain_pty_writes();
+    assert_eq!(real_writes.len(), 1, "real reply should write once");
+
+    // Late timeout for A fires (server-side timer woke up after the
+    // real reply already advanced the queue).
+    screen
+        .handle_forwarded_reply_from_host(token_a, Vec::new())
+        .expect("late timeout must be a no-op, not an error");
+
+    assert_eq!(
+        screen.forward_in_flight_token,
+        Some(token_b),
+        "B's slot must NOT be released by A's late timeout"
+    );
+    assert_eq!(
+        screen.forward_queue.front().map(|p| p.token),
+        Some(token_c),
+        "C must still be queued — A's late timeout must not have popped it"
+    );
+    assert!(
+        capture.drain_forward_queries().is_empty(),
+        "no spurious dispatch from a late timeout"
+    );
+    assert!(
+        capture.drain_pty_writes().is_empty(),
+        "no synthetic write to any pane from a late timeout"
+    );
+}
+
+#[test]
+fn timeout_for_in_flight_token_releases_slot_with_cache_fallback() {
+    // The non-racing case: server-side timeout fires while the token
+    // is still in flight (no client reply ever arrived — the old-client
+    // compatibility path). The handler must synthesize a cache-derived
+    // reply for the pane, release the slot, and dispatch the next
+    // queued forward. (Identical externally to the empty-reply
+    // cache-fallback case, since the timer fires by sending an empty
+    // reply for the in-flight token.)
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_forward_capture(size);
+    screen.update_terminal_background_color("rgb:1010/2020/3030".to_string());
+    let pane = PaneId::Terminal(11);
+    let queued_pane = PaneId::Terminal(12);
+    let token = screen.forward_host_query(pane, bg_query());
+    let queued_token = screen.forward_host_query(queued_pane, fg_query());
+    let _ = capture.drain_forward_queries();
+
+    // Simulate the timeout firing: empty reply for the in-flight token.
+    screen
+        .handle_forwarded_reply_from_host(token, Vec::new())
+        .expect("ok");
+
+    let writes = capture.drain_pty_writes();
+    assert_eq!(writes.len(), 1, "cache fallback writes one reply");
+    assert_eq!(
+        std::str::from_utf8(&writes[0].0).unwrap(),
+        "\u{1b}]11;rgb:1010/2020/3030\u{1b}\\",
+    );
+    assert_eq!(
+        screen.forward_in_flight_token,
+        Some(queued_token),
+        "queued forward dispatched on slot release"
+    );
 }
 
 #[test]
@@ -8649,7 +8756,7 @@ fn plugin_pane_reply_is_dropped_without_write() {
             query: bg_query(),
         },
     );
-    screen.forward_in_flight = true;
+    screen.forward_in_flight_token = Some(77);
 
     screen
         .handle_forwarded_reply_from_host(77, b"\x1b]11;rgb:0/0/0\x1b\\".to_vec())
@@ -8663,7 +8770,10 @@ fn plugin_pane_reply_is_dropped_without_write() {
         screen.pending_forwarded_queries.get(&77).is_none(),
         "map entry must still be cleared even when the reply is dropped"
     );
-    assert!(!screen.forward_in_flight, "slot still released");
+    assert!(
+        screen.forward_in_flight_token.is_none(),
+        "slot still released"
+    );
 }
 
 // =====================================================================
