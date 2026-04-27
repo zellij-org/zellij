@@ -77,8 +77,6 @@ impl HostReply {
             static ref BG_RE: Regex = Regex::new(r"^11;(.*)$").unwrap();
             // OSC 4 ; N ; <color> — palette-register answer.
             static ref COLOR_REGISTER_RE: Regex = Regex::new(r"^4;(\d+);(.*)$").unwrap();
-            // Alacritty quirk: sometimes drops the leading "4;" in the reply.
-            static ref ALTERNATIVE_COLOR_REGISTER_RE: Regex = Regex::new(r"^(\d+);(.*)$").unwrap();
         }
         let s = std::str::from_utf8(payload).ok()?;
         if let Some(caps) = BG_RE.captures(s) {
@@ -88,11 +86,6 @@ impl HostReply {
             return Some(HostReply::ForegroundColor(caps[1].to_string()));
         }
         if let Some(caps) = COLOR_REGISTER_RE.captures(s) {
-            let index: usize = caps[1].parse().ok()?;
-            let color = caps[2].to_string();
-            return Some(HostReply::ColorRegisters(vec![(index, color)]));
-        }
-        if let Some(caps) = ALTERNATIVE_COLOR_REGISTER_RE.captures(s) {
             let index: usize = caps[1].parse().ok()?;
             let color = caps[2].to_string();
             return Some(HostReply::ColorRegisters(vec![(index, color)]));
@@ -169,6 +162,12 @@ pub struct ParseOutput {
     /// single feed would indicate the host emitted two barriers, in which
     /// case only the first is honored.
     pub completed_forward: Option<(u32, Vec<u8>)>,
+    /// OSC 99 notification-response payloads (one per OSC 99 found in
+    /// the chunk). Routed by the caller as
+    /// `InputInstruction::DesktopNotificationResponse`. Lives here, not
+    /// in the keyboard-parser path, because the residue scrubber
+    /// strips all OSC bytes before the keyboard parser sees them.
+    pub desktop_notifications: Vec<Vec<u8>>,
     /// Residue bytes that were not classified as host replies. These are
     /// the bytes the caller should feed to the keyboard parser.
     pub residue: Vec<u8>,
@@ -278,10 +277,10 @@ impl HostReplyParser {
         }
     }
 
-    /// Currently-open slot's token, if any. Retained as test-visible
-    /// state after the production timeout path moved off of elapsed-time
-    /// polling onto the async timer runtime.
-    #[allow(dead_code)]
+    /// Currently-open slot's token, if any. Test-only inspector;
+    /// production code drives slot lifecycle through `open_forward`,
+    /// `close_forward_on_timeout`, and `feed()` directly.
+    #[cfg(test)]
     pub fn active_forward_token(&self) -> Option<u32> {
         self.active_forward.as_ref().map(|s| s.token)
     }
@@ -307,8 +306,16 @@ impl HostReplyParser {
         for event in events {
             match event {
                 InputEvent::OperatingSystemCommand(payload) => {
-                    // Classified OSC reply — double-dispatch.
-                    if let Some(reply) = HostReply::from_osc_payload(&payload) {
+                    // OSC 99 (desktop-notification response) is routed
+                    // here rather than from the keyboard parser because
+                    // the residue scrubber removes all OSC bytes before
+                    // the keyboard parser runs. Other OSCs are
+                    // classified into `HostReply` for cached-state
+                    // refinement.
+                    if payload.starts_with(b"99;") {
+                        out.desktop_notifications
+                            .push(payload.get(3..).unwrap_or_default().to_vec());
+                    } else if let Some(reply) = HostReply::from_osc_payload(&payload) {
                         out.replies.push(reply);
                     }
                     if let Some(slot) = self.active_forward.as_mut() {

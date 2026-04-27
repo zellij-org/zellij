@@ -2609,7 +2609,7 @@ mod test {
         assert_eq!(consumed, bytes.len());
         assert_eq!(evt, csi_reply(b"", b"?62;1;6", b'c', bytes));
 
-        // `n` — DSR reply, reserved for Phase 2 theme notifications.
+        // `n` — DSR reply (used for theme notifications).
         let bytes = b"\x1b[?997;1n";
         let (evt, consumed) = parse_csi_report(bytes).expect("n accepted");
         assert_eq!(consumed, bytes.len());

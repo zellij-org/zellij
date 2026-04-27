@@ -130,6 +130,11 @@ pub(crate) fn stdin_loop(
                                 },
                             );
                         }
+                        for payload in parse_output.desktop_notifications {
+                            let _ = send_input_instructions.send(
+                                InputInstruction::DesktopNotificationResponse(payload),
+                            );
+                        }
                         let residue = parse_output.residue;
                         if residue.is_empty() {
                             // If all bytes were consumed by the host-reply
@@ -175,34 +180,17 @@ pub(crate) fn stdin_loop(
                             maybe_more,
                         );
 
+                        // Residue contains no OSC or whitelisted CSI
+                        // reports — `HostReplyParser::feed` strips both
+                        // before the keyboard parser sees the bytes.
+                        // Every termwiz event is a key/mouse/paste/etc.
                         for input_event in events.into_iter() {
-                            match input_event {
-                                InputEvent::OperatingSystemCommand(ref payload) => {
-                                    if payload.starts_with(b"99;") {
-                                        let notification_payload =
-                                            payload.get(3..).unwrap_or_default().to_vec();
-                                        let _ = send_input_instructions.send(
-                                            InputInstruction::DesktopNotificationResponse(
-                                                notification_payload,
-                                            ),
-                                        );
-                                    }
-                                    // Other OSC types at runtime: silently drop.
-                                },
-                                InputEvent::DeviceControlReply { .. } => {
-                                    // Should not reach here — the host-reply
-                                    // parser owns these. If a stray one does
-                                    // arrive (malformed), drop it.
-                                },
-                                other => {
-                                    send_input_instructions
-                                        .send(InputInstruction::KeyEvent(
-                                            other,
-                                            current_buffer.drain(..).collect(),
-                                        ))
-                                        .unwrap();
-                                },
-                            }
+                            send_input_instructions
+                                .send(InputInstruction::KeyEvent(
+                                    input_event,
+                                    current_buffer.drain(..).collect(),
+                                ))
+                                .unwrap();
                         }
 
                         needs_finalization = true;
@@ -248,29 +236,15 @@ fn finalize_events(
         },
         false,
     );
+    // Residue contains no OSC or whitelisted CSI reports — every
+    // termwiz event drained on idle is a key/mouse/paste/etc.
     for input_event in events {
-        match input_event {
-            InputEvent::OperatingSystemCommand(ref payload) => {
-                if payload.starts_with(b"99;") {
-                    let notification_payload = payload.get(3..).unwrap_or_default().to_vec();
-                    let _ = send_input_instructions.send(
-                        InputInstruction::DesktopNotificationResponse(notification_payload),
-                    );
-                }
-                // Other OSC types at runtime: silently drop.
-            },
-            InputEvent::DeviceControlReply { .. } => {
-                // Should not happen on the residue path.
-            },
-            other => {
-                send_input_instructions
-                    .send(InputInstruction::KeyEvent(
-                        other,
-                        current_buffer.drain(..).collect(),
-                    ))
-                    .unwrap();
-            },
-        }
+        send_input_instructions
+            .send(InputInstruction::KeyEvent(
+                input_event,
+                current_buffer.drain(..).collect(),
+            ))
+            .unwrap();
     }
 }
 

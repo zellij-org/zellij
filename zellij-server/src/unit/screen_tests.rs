@@ -8324,7 +8324,7 @@ pub fn pty_bytes_and_hold_pane_buffered_before_new_pane() {
 }
 
 // =====================================================================
-// Host-reply forwarding (CSI 2031 Phase 1)
+// Host-reply forwarding (CSI 2031)
 //
 // These tests exercise the token-lifecycle API on `Screen` directly —
 // no route.rs, no thread spawn, no client. The harness plugs real

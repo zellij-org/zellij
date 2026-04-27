@@ -1419,16 +1419,16 @@ struct PendingForwardEntry {
     query: crate::host_query::HostQuery,
 }
 
-/// Reserved sentinel token used for Zellij's own startup batch of host
-/// queries (pixel dims, bg/fg, sync-output, palette registers). The server
-/// routes the batch's reply through a tiny classifier into the existing
-/// `ScreenInstruction::Terminal*` variants rather than to a pane's pty.
-///
-/// Note: Phase 1 keeps the existing startup queries plumbing intact — the
-/// sentinel path is reserved for future migration and is not yet emitted.
-#[allow(dead_code)]
+/// Reserved sentinel token for Zellij's own startup batch of host
+/// queries (pixel dims, bg/fg, sync-output, palette registers). The
+/// existing fire-and-forget startup plumbing is unchanged today; the
+/// sentinel exists so a future migration can route the startup batch
+/// through the same forwarded-query mechanism as per-pane queries
+/// while keeping its replies routable to `Screen`'s cached state
+/// rather than to a pane's pty. Reserved value 0 is excluded from
+/// `next_forward_token` allocation by the wrap-skip in
+/// `forward_host_query`.
 const STARTUP_SENTINEL_TOKEN: u32 = 0;
-
 
 impl Screen {
     /// Creates and returns a new [`Screen`].

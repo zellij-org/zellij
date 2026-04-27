@@ -313,6 +313,41 @@ fn partial_osc_overflow_falls_back_to_residue() {
 }
 
 #[test]
+fn osc_99_routes_into_desktop_notifications() {
+    // OSC 99 is the desktop-notification response. It must surface in
+    // ParseOutput.desktop_notifications (where the stdin handler routes
+    // it as InputInstruction::DesktopNotificationResponse), NOT in
+    // residue (which would never reach the keyboard parser anyway,
+    // since the scrubber strips OSC bytes).
+    let mut p = HostReplyParser::new();
+    let out = p.feed(b"\x1b]99;notification body\x1b\\");
+    assert!(out.residue.is_empty(), "OSC 99 must not leak to residue");
+    assert!(out.replies.is_empty(), "OSC 99 is not a HostReply variant");
+    assert_eq!(out.desktop_notifications.len(), 1);
+    assert_eq!(
+        out.desktop_notifications[0],
+        b"notification body".to_vec()
+    );
+}
+
+#[test]
+fn fragmented_osc_99_emits_one_notification() {
+    // Cross-chunk regression: OSC 99 split across two feed() calls
+    // must still emit exactly one notification, with no leak into
+    // residue.
+    let full = b"\x1b]99;hello world\x1b\\";
+    for split in 1..full.len() {
+        let mut p = HostReplyParser::new();
+        let r1 = p.feed(&full[..split]);
+        let r2 = p.feed(&full[split..]);
+        assert!(r1.residue.is_empty(), "split at {}: c1 residue", split);
+        assert!(r2.residue.is_empty(), "split at {}: c2 residue", split);
+        let total = r1.desktop_notifications.len() + r2.desktop_notifications.len();
+        assert_eq!(total, 1, "split at {}: exactly one notification", split);
+    }
+}
+
+#[test]
 fn malformed_osc_still_does_not_eat_following_keyboard_bytes() {
     // Pre-existing invariant. An unterminated OSC followed (in a later
     // chunk) by plain keyboard input — the keyboard input must reach
