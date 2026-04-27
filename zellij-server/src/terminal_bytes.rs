@@ -1,4 +1,8 @@
 use crate::{os_input_output::AsyncReader, screen::ScreenInstruction, thread_bus::ThreadSenders};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 use std::time::{Duration, Instant};
 use tokio::task;
 use zellij_utils::{
@@ -11,6 +15,7 @@ pub(crate) struct TerminalBytes {
     senders: ThreadSenders,
     async_reader: Box<dyn AsyncReader>,
     debug: bool,
+    activity_flag: Arc<AtomicBool>,
 }
 
 impl TerminalBytes {
@@ -19,12 +24,14 @@ impl TerminalBytes {
         async_reader: Box<dyn AsyncReader>,
         senders: ThreadSenders,
         debug: bool,
+        activity_flag: Arc<AtomicBool>,
     ) -> Self {
         TerminalBytes {
             terminal_id,
             senders,
             debug,
             async_reader,
+            activity_flag,
         }
     }
     pub async fn listen(&mut self) -> Result<()> {
@@ -52,6 +59,7 @@ impl TerminalBytes {
                     break;
                 },
                 Ok(n_bytes) => {
+                    self.activity_flag.store(true, Ordering::Relaxed);
                     let bytes = &buf[..n_bytes];
                     if self.debug {
                         let _ = debug_to_file(bytes, self.terminal_id as i32);

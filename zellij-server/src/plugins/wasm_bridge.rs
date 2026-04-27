@@ -2151,6 +2151,7 @@ fn check_event_permission(
         | Event::FailedToWriteConfigToDisk(..)
         | Event::CommandPaneReRun(..)
         | Event::CwdChanged(..)
+        | Event::CommandChanged(..)
         | Event::AvailableLayoutInfo(..)
         | Event::PluginConfigurationChanged(..)
         | Event::HighlightClicked { .. }

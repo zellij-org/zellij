@@ -10,7 +10,7 @@ pub mod output;
 pub mod panes;
 pub mod tab;
 
-mod background_jobs;
+pub mod background_jobs;
 mod global_async_runtime;
 mod logging_pipe;
 mod pane_groups;
@@ -218,12 +218,11 @@ impl SessionConfiguration {
     pub fn set_client_runtime_configuration(&mut self, client_id: ClientId, client_config: Config) {
         self.runtime_config.insert(client_id, client_config);
     }
-    pub fn get_client_keybinds(&self, client_id: &ClientId) -> Keybinds {
+    pub fn get_client_keybinds(&self, client_id: &ClientId) -> &Keybinds {
         self.runtime_config
             .get(client_id)
-            .or_else(|| Some(&self.saved_config))
-            .map(|c| c.keybinds.clone())
-            .unwrap_or_default()
+            .map(|c| &c.keybinds)
+            .unwrap_or(&self.saved_config.keybinds)
     }
     pub fn get_client_default_input_mode(&self, client_id: &ClientId) -> InputMode {
         self.runtime_config
@@ -339,7 +338,7 @@ impl SessionMetaData {
     pub fn get_client_keybinds_and_mode(
         &self,
         client_id: &ClientId,
-    ) -> Option<(Keybinds, &InputMode, InputMode)> {
+    ) -> Option<(&Keybinds, &InputMode, InputMode)> {
         // (keybinds, current_input_mode,
         // default_input_mode)
         let client_keybinds = self.session_configuration.get_client_keybinds(client_id);
