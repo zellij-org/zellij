@@ -1,6 +1,6 @@
 use crate::keyboard_parser::{KittyKeyboardParser, KittyParseOutcome};
 use crate::os_input_output::ClientOsApi;
-use crate::stdin_ansi_parser::HostReplyParser;
+use crate::stdin_ansi_parser::StdinAnsiParser;
 #[cfg(windows)]
 use crate::stdin_handler_windows::enable_vt_input;
 use crate::InputInstruction;
@@ -14,7 +14,7 @@ use zellij_utils::{
 pub(crate) fn stdin_loop(
     mut os_input: Box<dyn ClientOsApi>,
     send_input_instructions: SenderWithContext<InputInstruction>,
-    host_reply_parser: Arc<Mutex<HostReplyParser>>,
+    stdin_ansi_parser: Arc<Mutex<StdinAnsiParser>>,
     explicitly_disable_kitty_keyboard_protocol: bool,
     resize_sender: Option<std::sync::mpsc::Sender<()>>,
 ) {
@@ -114,7 +114,7 @@ pub(crate) fn stdin_loop(
                         // continuously. The residue is the byte stream
                         // the keyboard parser should see.
                         let parse_output = {
-                            let mut p = host_reply_parser.lock().unwrap();
+                            let mut p = stdin_ansi_parser.lock().unwrap();
                             p.feed(&buf)
                         };
                         if !parse_output.replies.is_empty() {
@@ -181,7 +181,7 @@ pub(crate) fn stdin_loop(
                         );
 
                         // Residue contains no OSC or whitelisted CSI
-                        // reports — `HostReplyParser::feed` strips both
+                        // reports — `StdinAnsiParser::feed` strips both
                         // before the keyboard parser sees the bytes.
                         // Every termwiz event is a key/mouse/paste/etc.
                         for input_event in events.into_iter() {

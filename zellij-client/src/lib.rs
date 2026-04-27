@@ -132,7 +132,7 @@ impl From<std::io::Error> for RemoteClientError {
     }
 }
 
-use crate::stdin_ansi_parser::{AnsiStdinInstruction, HostReplyParser, SyncOutput};
+use crate::stdin_ansi_parser::{AnsiStdinInstruction, StdinAnsiParser, SyncOutput};
 use crate::{
     command_is_executing::CommandIsExecuting, input_handler::input_loop,
     os_input_output::ClientOsApi, stdin_handler::stdin_loop,
@@ -958,7 +958,7 @@ pub fn start_client(
     });
 
     let on_force_close = config_options.on_force_close.unwrap_or_default();
-    let host_reply_parser = Arc::new(Mutex::new(HostReplyParser::new()));
+    let stdin_ansi_parser = Arc::new(Mutex::new(StdinAnsiParser::new()));
 
     let (resize_sender, resize_receiver) = std::sync::mpsc::channel::<()>();
 
@@ -967,12 +967,12 @@ pub fn start_client(
         .spawn({
             let os_input = os_input.clone();
             let send_input_instructions = send_input_instructions.clone();
-            let host_reply_parser = host_reply_parser.clone();
+            let stdin_ansi_parser = stdin_ansi_parser.clone();
             move || {
                 stdin_loop(
                     os_input,
                     send_input_instructions,
-                    host_reply_parser,
+                    stdin_ansi_parser,
                     explicitly_disable_kitty_keyboard_protocol,
                     Some(resize_sender),
                 )
@@ -1194,7 +1194,7 @@ pub fn start_client(
             ClientInstruction::ForwardQueryToHost { token, query_bytes } => {
                 // 1. Open a forwarding window on the parser so any reply
                 //    events that arrive before the barrier are captured.
-                host_reply_parser.lock().unwrap().open_forward(token);
+                stdin_ansi_parser.lock().unwrap().open_forward(token);
                 // 2. Spawn a per-forward timer on the dedicated async
                 //    runtime. When the deadline fires, the task closes
                 //    the slot (if it's still open for this token) and
@@ -1202,7 +1202,7 @@ pub fn start_client(
                 //    server releases `forward_in_flight` and dispatches
                 //    the next queued forward.
                 let runtime = stdin_ansi_parser::forward_timeout_runtime();
-                let parser_for_timer = host_reply_parser.clone();
+                let parser_for_timer = stdin_ansi_parser.clone();
                 let sender_for_timer = send_input_instructions.clone();
                 stdin_ansi_parser::schedule_forward_timeout(
                     runtime.handle(),

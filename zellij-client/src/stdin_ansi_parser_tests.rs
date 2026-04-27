@@ -1,11 +1,11 @@
 //! Unit tests for the continuous host-reply parser.
 
-use super::{schedule_forward_timeout, HostReply, HostReplyParser};
+use super::{schedule_forward_timeout, HostReply, StdinAnsiParser};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 /// Helper: collect replies and residue from a single `feed` call.
-fn feed_once(parser: &mut HostReplyParser, bytes: &[u8]) -> (Vec<HostReply>, Vec<u8>) {
+fn feed_once(parser: &mut StdinAnsiParser, bytes: &[u8]) -> (Vec<HostReply>, Vec<u8>) {
     let out = parser.feed(bytes);
     (out.replies, out.residue)
 }
@@ -13,7 +13,7 @@ fn feed_once(parser: &mut HostReplyParser, bytes: &[u8]) -> (Vec<HostReply>, Vec
 #[test]
 fn pixel_dimensions_text_area_reply() {
     // CSI 4 ; H ; W t
-    let mut parser = HostReplyParser::new();
+    let mut parser = StdinAnsiParser::new();
     let (replies, residue) = feed_once(&mut parser, b"\x1b[4;720;1280t");
     assert!(residue.is_empty(), "pixel-dim reply should be fully consumed");
     assert_eq!(replies.len(), 1);
@@ -30,7 +30,7 @@ fn pixel_dimensions_text_area_reply() {
 
 #[test]
 fn pixel_dimensions_character_cell_reply() {
-    let mut parser = HostReplyParser::new();
+    let mut parser = StdinAnsiParser::new();
     let (replies, residue) = feed_once(&mut parser, b"\x1b[6;18;9t");
     assert!(residue.is_empty());
     match &replies[0] {
@@ -45,7 +45,7 @@ fn pixel_dimensions_character_cell_reply() {
 
 #[test]
 fn background_color_reply() {
-    let mut parser = HostReplyParser::new();
+    let mut parser = StdinAnsiParser::new();
     let (replies, residue) =
         feed_once(&mut parser, b"\x1b]11;rgb:0000/0000/0000\x1b\\");
     assert!(residue.is_empty());
@@ -57,7 +57,7 @@ fn background_color_reply() {
 
 #[test]
 fn foreground_color_reply() {
-    let mut parser = HostReplyParser::new();
+    let mut parser = StdinAnsiParser::new();
     let (replies, residue) =
         feed_once(&mut parser, b"\x1b]10;rgb:ffff/ffff/ffff\x1b\\");
     assert!(residue.is_empty());
@@ -69,7 +69,7 @@ fn foreground_color_reply() {
 
 #[test]
 fn color_register_reply() {
-    let mut parser = HostReplyParser::new();
+    let mut parser = StdinAnsiParser::new();
     let (replies, residue) =
         feed_once(&mut parser, b"\x1b]4;5;rgb:8080/8080/8080\x1b\\");
     assert!(residue.is_empty());
@@ -85,7 +85,7 @@ fn color_register_reply() {
 
 #[test]
 fn synchronized_output_supported_reply() {
-    let mut parser = HostReplyParser::new();
+    let mut parser = StdinAnsiParser::new();
     let (replies, residue) = feed_once(&mut parser, b"\x1b[?2026;1$y");
     assert!(residue.is_empty());
     match &replies[0] {
@@ -98,7 +98,7 @@ fn synchronized_output_supported_reply() {
 fn keyboard_residue_passes_through_unchanged() {
     // Arrow key escape sequence is NOT a whitelisted CSI report (final
     // byte 'A'), so it must survive as keyboard residue verbatim.
-    let mut parser = HostReplyParser::new();
+    let mut parser = StdinAnsiParser::new();
     let (replies, residue) = feed_once(&mut parser, b"\x1b[A");
     assert!(replies.is_empty());
     assert_eq!(residue, b"\x1b[A");
@@ -108,7 +108,7 @@ fn keyboard_residue_passes_through_unchanged() {
 fn mixed_keyboard_and_reply_extracts_both_cleanly() {
     // Arrow keys bracketing a pixel-dim reply — residue should be just
     // the arrow-key bytes, reply should be classified.
-    let mut parser = HostReplyParser::new();
+    let mut parser = StdinAnsiParser::new();
     let mut input = Vec::new();
     input.extend_from_slice(b"\x1b[A");
     input.extend_from_slice(b"\x1b[4;720;1280t");
@@ -126,7 +126,7 @@ fn unterminated_osc_within_single_chunk_is_buffered() {
     // into residue. This is the cross-chunk-aware replacement for the
     // pre-fix behaviour where unterminated OSC bytes fell through to
     // residue and surfaced as spurious keypresses.
-    let mut parser = HostReplyParser::new();
+    let mut parser = StdinAnsiParser::new();
     let (_replies, residue) = feed_once(&mut parser, b"\x1b]10;partial");
     assert!(
         residue.is_empty(),
@@ -137,7 +137,7 @@ fn unterminated_osc_within_single_chunk_is_buffered() {
 
 #[test]
 fn forwarding_window_accumulates_and_barrier_closes() {
-    let mut parser = HostReplyParser::new();
+    let mut parser = StdinAnsiParser::new();
     parser.open_forward(42);
     // Feed an OSC 11 reply, then the Primary-DA barrier. Use color
     // bytes that do NOT contain `c` so the barrier-absence assertion
@@ -174,7 +174,7 @@ fn unsolicited_osc_between_forwarded_query_and_barrier() {
     // Scenario: host emits a stray OSC 10 between the app's OSC 11 query
     // and the barrier. Both replies should end up in the forwarded
     // buffer, and the barrier closes the window.
-    let mut parser = HostReplyParser::new();
+    let mut parser = StdinAnsiParser::new();
     parser.open_forward(7);
     let mut chunk = Vec::new();
     chunk.extend_from_slice(b"\x1b]11;rgb:1111/1111/1111\x1b\\");
@@ -191,7 +191,7 @@ fn unsolicited_osc_between_forwarded_query_and_barrier() {
 
 #[test]
 fn double_dispatch_without_active_forward_still_emits_reply() {
-    let mut parser = HostReplyParser::new();
+    let mut parser = StdinAnsiParser::new();
     // No open_forward — reply should still be classified.
     let out = parser.feed(b"\x1b]11;rgb:ffff/ffff/ffff\x1b\\");
     assert_eq!(out.replies.len(), 1);
@@ -201,7 +201,7 @@ fn double_dispatch_without_active_forward_still_emits_reply() {
 
 #[test]
 fn timeout_flushes_accumulated_bytes() {
-    let mut parser = HostReplyParser::new();
+    let mut parser = StdinAnsiParser::new();
     parser.open_forward(99);
     let out = parser.feed(b"\x1b]11;rgb:ffff/ffff/ffff\x1b\\");
     assert!(out.completed_forward.is_none(), "no barrier yet");
@@ -216,7 +216,7 @@ fn timeout_flushes_accumulated_bytes() {
 
 #[test]
 fn stale_token_timeout_does_nothing() {
-    let mut parser = HostReplyParser::new();
+    let mut parser = StdinAnsiParser::new();
     parser.open_forward(1);
     // Ask to timeout a different token — nothing happens.
     assert!(parser.close_forward_on_timeout(999).is_none());
@@ -227,7 +227,7 @@ fn stale_token_timeout_does_nothing() {
 fn fragmented_osc_does_not_leak_into_residue() {
     let full = b"\x1b]11;rgb:0000/0000/0000\x1b\\";
     for split in 1..full.len() {
-        let mut p = HostReplyParser::new();
+        let mut p = StdinAnsiParser::new();
         let r1 = p.feed(&full[..split]);
         let r2 = p.feed(&full[split..]);
         assert!(
@@ -256,7 +256,7 @@ fn fragmented_csi_report_does_not_leak() {
     // Pixel-dimensions reply (final byte 't').
     let full = b"\x1b[4;800;1200t";
     for split in 1..full.len() {
-        let mut p = HostReplyParser::new();
+        let mut p = StdinAnsiParser::new();
         let r1 = p.feed(&full[..split]);
         let r2 = p.feed(&full[split..]);
         assert!(
@@ -279,7 +279,7 @@ fn fragmented_csi_report_does_not_leak() {
 fn fragmented_osc_byte_by_byte() {
     // Every byte in its own chunk — the worst case.
     let full = b"\x1b]11;rgb:abcd/ef01/2345\x1b\\";
-    let mut p = HostReplyParser::new();
+    let mut p = StdinAnsiParser::new();
     let mut total_replies = 0;
     for &b in full {
         let out = p.feed(&[b]);
@@ -298,7 +298,7 @@ fn partial_osc_overflow_falls_back_to_residue() {
     // An unterminated OSC larger than the cap must not grow memory
     // unbounded. After the cap is hit the buffered bytes flush to
     // residue and parsing resumes from a clean state.
-    let mut p = HostReplyParser::new();
+    let mut p = StdinAnsiParser::new();
     let _ = p.feed(b"\x1b]52;c;");
     let chunk = vec![b'A'; 1024 * 1024]; // 1 MB
     let mut total_residue = 0usize;
@@ -319,7 +319,7 @@ fn osc_99_routes_into_desktop_notifications() {
     // it as InputInstruction::DesktopNotificationResponse), NOT in
     // residue (which would never reach the keyboard parser anyway,
     // since the scrubber strips OSC bytes).
-    let mut p = HostReplyParser::new();
+    let mut p = StdinAnsiParser::new();
     let out = p.feed(b"\x1b]99;notification body\x1b\\");
     assert!(out.residue.is_empty(), "OSC 99 must not leak to residue");
     assert!(out.replies.is_empty(), "OSC 99 is not a HostReply variant");
@@ -337,7 +337,7 @@ fn fragmented_osc_99_emits_one_notification() {
     // residue.
     let full = b"\x1b]99;hello world\x1b\\";
     for split in 1..full.len() {
-        let mut p = HostReplyParser::new();
+        let mut p = StdinAnsiParser::new();
         let r1 = p.feed(&full[..split]);
         let r2 = p.feed(&full[split..]);
         assert!(r1.residue.is_empty(), "split at {}: c1 residue", split);
@@ -352,7 +352,7 @@ fn malformed_osc_still_does_not_eat_following_keyboard_bytes() {
     // Pre-existing invariant. An unterminated OSC followed (in a later
     // chunk) by plain keyboard input — the keyboard input must reach
     // residue intact once the OSC closes via proper flush.
-    let mut p = HostReplyParser::new();
+    let mut p = StdinAnsiParser::new();
     let _ = p.feed(b"\x1b]10;partial");
     let _ = p.feed(b"\x1b\\");
     let out = p.feed(b"hello");
@@ -368,7 +368,7 @@ fn cross_chunk_osc_assembles_across_feeds() {
     // reply; what lands in residue on the first chunk is byte-level
     // scrubber behaviour and intentionally not pinned here (see the
     // follow-up chunked_residue tests for those shapes).
-    let mut parser = HostReplyParser::new();
+    let mut parser = StdinAnsiParser::new();
     let first = parser.feed(b"\x1b]11;rgb:ffff/");
     assert!(
         first.replies.is_empty(),
@@ -427,7 +427,7 @@ fn double_dispatch_matrix_with_forward_active() {
         ),
     ];
     for (bytes, is_expected_variant, label) in cases {
-        let mut parser = HostReplyParser::new();
+        let mut parser = StdinAnsiParser::new();
         parser.open_forward(11);
         let out = parser.feed(bytes);
         assert_eq!(
@@ -472,7 +472,7 @@ fn primary_da_barrier_accepts_extended_forms() {
         b"\x1b[?62;1;6c".as_ref(),
         b"\x1b[>0;276;0c".as_ref(),
     ] {
-        let mut parser = HostReplyParser::new();
+        let mut parser = StdinAnsiParser::new();
         parser.open_forward(5);
         let mut chunk = Vec::new();
         chunk.extend_from_slice(b"\x1b]11;rgb:aaaa/bbbb/cccc\x1b\\");
@@ -503,7 +503,7 @@ fn open_forward_debug_asserts_on_reentry() {
     // before receiving the first's completion — a scenario that should
     // be impossible given `forward_in_flight` serialization, but the
     // parser asserts it anyway so regressions surface in CI.
-    let mut parser = HostReplyParser::new();
+    let mut parser = StdinAnsiParser::new();
     parser.open_forward(1);
     parser.open_forward(2); // panics via debug_assert!
 }
@@ -526,7 +526,7 @@ fn paused_runtime() -> tokio::runtime::Runtime {
 #[test]
 fn timer_fires_after_deadline_and_closes_slot() {
     let rt = paused_runtime();
-    let parser = Arc::new(Mutex::new(HostReplyParser::new()));
+    let parser = Arc::new(Mutex::new(StdinAnsiParser::new()));
     parser.lock().unwrap().open_forward(7);
 
     let captured: Arc<Mutex<Option<(u32, Vec<u8>)>>> = Arc::new(Mutex::new(None));
@@ -569,7 +569,7 @@ fn timer_fires_after_deadline_and_closes_slot() {
 #[test]
 fn timer_is_noop_when_barrier_already_closed_the_slot() {
     let rt = paused_runtime();
-    let parser = Arc::new(Mutex::new(HostReplyParser::new()));
+    let parser = Arc::new(Mutex::new(StdinAnsiParser::new()));
     parser.lock().unwrap().open_forward(11);
 
     let fired: Arc<Mutex<bool>> = Arc::new(Mutex::new(false));
@@ -617,7 +617,7 @@ fn timer_is_noop_when_slot_holds_a_different_token() {
     // `close_forward_on_timeout(old_token)` returns None and the
     // callback doesn't fire.
     let rt = paused_runtime();
-    let parser = Arc::new(Mutex::new(HostReplyParser::new()));
+    let parser = Arc::new(Mutex::new(StdinAnsiParser::new()));
     parser.lock().unwrap().open_forward(1);
 
     let fired: Arc<Mutex<bool>> = Arc::new(Mutex::new(false));
@@ -666,7 +666,7 @@ fn timer_preserves_accumulated_reply_bytes_on_timeout() {
     // timer still has to flush whatever landed in the buffer so the
     // pane sees *something* — empty is fine, partial is better.
     let rt = paused_runtime();
-    let parser = Arc::new(Mutex::new(HostReplyParser::new()));
+    let parser = Arc::new(Mutex::new(StdinAnsiParser::new()));
     parser.lock().unwrap().open_forward(22);
 
     // Simulate a single OSC 11 reply arriving before the host goes

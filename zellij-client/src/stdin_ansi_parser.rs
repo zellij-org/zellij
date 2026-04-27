@@ -200,7 +200,7 @@ enum SeqStatus {
 }
 
 /// Continuous host-reply parser. Lives for the whole client session.
-pub struct HostReplyParser {
+pub struct StdinAnsiParser {
     inner: InputParser,
     /// Active forwarding slot: `Some` while a forwarded query is in
     /// flight, `None` otherwise.
@@ -212,9 +212,9 @@ pub struct HostReplyParser {
     partial_csi: Vec<u8>,
 }
 
-impl std::fmt::Debug for HostReplyParser {
+impl std::fmt::Debug for StdinAnsiParser {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("HostReplyParser")
+        f.debug_struct("StdinAnsiParser")
             .field("active_forward", &self.active_forward)
             .field("partial_osc_len", &self.partial_osc.len())
             .field("partial_csi_len", &self.partial_csi.len())
@@ -222,9 +222,9 @@ impl std::fmt::Debug for HostReplyParser {
     }
 }
 
-impl HostReplyParser {
+impl StdinAnsiParser {
     pub fn new() -> Self {
-        HostReplyParser {
+        StdinAnsiParser {
             inner: InputParser::new(),
             active_forward: None,
             partial_osc: Vec::new(),
@@ -565,7 +565,7 @@ pub fn forward_timeout_runtime() -> &'static Arc<tokio::runtime::Runtime> {
 /// the full client.
 pub fn schedule_forward_timeout<F>(
     runtime: &tokio::runtime::Handle,
-    parser: Arc<Mutex<HostReplyParser>>,
+    parser: Arc<Mutex<StdinAnsiParser>>,
     token: u32,
     deadline: std::time::Duration,
     on_timeout: F,
