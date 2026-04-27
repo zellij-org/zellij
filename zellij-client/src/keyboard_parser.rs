@@ -11,11 +11,36 @@ enum KittyKeysParsingState {
     DoneParsingWithTilde,
 }
 
+/// Three-way outcome of `KittyKeyboardParser::feed()`. Lets a long-lived
+/// parser distinguish a finished sequence (consume + reset) from a
+/// valid prefix (keep state, wait for the next chunk) from an unrelated
+/// byte stream (reset and let a fallback parser handle it).
+#[derive(Debug)]
+pub enum KittyParseOutcome {
+    /// Complete sequence parsed; parser resets to Ground.
+    Complete(KeyWithModifier),
+    /// Bytes are a valid prefix; parser keeps state. Caller should let
+    /// termwiz also see them this round and call `feed()` again on the
+    /// next chunk.
+    Incomplete,
+    /// Bytes are not a Kitty sequence; parser resets to Ground.
+    NoMatch,
+}
+
 #[derive(Debug)]
 pub struct KittyKeyboardParser {
     state: KittyKeysParsingState,
     number_bytes: Vec<u8>,
     modifier_bytes: Vec<u8>,
+}
+
+/// CSI final-byte range (0x40..=0x7E), minus `u` and `~` which trigger
+/// the explicit `DoneParsingWith{U,Tilde}` states inside the parser.
+/// A trailing letter in this range while still in
+/// `ParsingNumber`/`ParsingModifiers` indicates a complete
+/// letter-terminated sequence (e.g. `\x1b[A`, `\x1b[1;2A`).
+fn is_csi_final_letter(b: u8) -> bool {
+    (0x40..=0x7E).contains(&b) && b != b'u' && b != b'~'
 }
 
 impl KittyKeyboardParser {
@@ -26,6 +51,96 @@ impl KittyKeyboardParser {
             modifier_bytes: vec![],
         }
     }
+
+    fn reset(&mut self) {
+        self.state = KittyKeysParsingState::Ground;
+        self.number_bytes.clear();
+        self.modifier_bytes.clear();
+    }
+
+    /// Stateful, cross-chunk-aware entry point. Drives the same
+    /// state machine as `parse()` but:
+    /// * resets to Ground after producing `Complete`/`NoMatch`, so the
+    ///   parser can be reused for the next sequence;
+    /// * preserves state on `Incomplete`, so a sequence split across
+    ///   chunks still resolves on a follow-up call.
+    ///
+    /// The existing `parse()` wrapper is retained for the unit tests in
+    /// this file, which construct `::new()` per assertion.
+    pub fn feed(&mut self, bytes: &[u8]) -> KittyParseOutcome {
+        for byte in bytes {
+            if !self.advance(*byte) {
+                self.reset();
+                return KittyParseOutcome::NoMatch;
+            }
+        }
+        match self.state {
+            KittyKeysParsingState::DoneParsingWithU => {
+                let result =
+                    KeyWithModifier::from_bytes_with_u(&self.number_bytes, &self.modifier_bytes);
+                self.reset();
+                match result {
+                    Some(k) => KittyParseOutcome::Complete(k),
+                    None => KittyParseOutcome::NoMatch,
+                }
+            },
+            KittyKeysParsingState::DoneParsingWithTilde => {
+                let result = KeyWithModifier::from_bytes_with_tilde(
+                    &self.number_bytes,
+                    &self.modifier_bytes,
+                );
+                self.reset();
+                match result {
+                    Some(k) => KittyParseOutcome::Complete(k),
+                    None => KittyParseOutcome::NoMatch,
+                }
+            },
+            KittyKeysParsingState::ParsingNumber => {
+                // ParsingNumber holds either a digit run waiting for a
+                // terminator (Incomplete) or a single letter that is
+                // itself the terminator — `\x1b[A` etc. (Complete).
+                match self.number_bytes.last().copied() {
+                    Some(last) if is_csi_final_letter(last) => {
+                        let result = KeyWithModifier::from_bytes_with_no_ending_byte(
+                            &self.number_bytes,
+                            &self.modifier_bytes,
+                        );
+                        self.reset();
+                        match result {
+                            Some(k) => KittyParseOutcome::Complete(k),
+                            None => KittyParseOutcome::NoMatch,
+                        }
+                    },
+                    _ => KittyParseOutcome::Incomplete,
+                }
+            },
+            KittyKeysParsingState::ParsingModifiers => {
+                // ParsingModifiers holds either modifier digits waiting
+                // for the terminator letter (Incomplete) or modifier
+                // digits + a trailing letter terminator
+                // — `\x1b[1;2A` etc. (Complete).
+                match self.modifier_bytes.last().copied() {
+                    Some(last) if is_csi_final_letter(last) => {
+                        let last_modifier = self.modifier_bytes.pop().unwrap();
+                        let result = KeyWithModifier::from_bytes_with_no_ending_byte(
+                            &[last_modifier],
+                            &self.modifier_bytes,
+                        );
+                        self.reset();
+                        match result {
+                            Some(k) => KittyParseOutcome::Complete(k),
+                            None => KittyParseOutcome::NoMatch,
+                        }
+                    },
+                    _ => KittyParseOutcome::Incomplete,
+                }
+            },
+            KittyKeysParsingState::ReceivedEscapeCharacter => KittyParseOutcome::Incomplete,
+            KittyKeysParsingState::Ground => KittyParseOutcome::NoMatch,
+        }
+    }
+
+    #[allow(dead_code)] // retained for in-file tests; production code uses feed()
     pub fn parse(&mut self, buffer: &[u8]) -> Option<KeyWithModifier> {
         for byte in buffer {
             if !self.advance(*byte) {
@@ -1776,4 +1891,62 @@ pub fn can_parse_keys_with_multiple_modifiers() {
         ),
         "Can parse a bare 'F4 (superernate)' keypress with all modifiers"
     );
+}
+
+// =====================================================================
+// Cross-chunk fragmentation tests for the long-lived feed() entry
+// point. Under SSH or any kernel-boundary-fragmented stdin read, a
+// single Kitty CSI sequence routinely arrives split across multiple
+// chunks; feed() must keep state across calls so the sequence still
+// resolves on a follow-up chunk instead of degrading to legacy CSI
+// form (and losing modifier metadata).
+// =====================================================================
+
+#[test]
+fn fragmented_kitty_csi_u_emits_one_event() {
+    use zellij_utils::data::BareKey;
+    let mut p = KittyKeyboardParser::new();
+    let r1 = p.feed(b"\x1b[97;");
+    assert!(matches!(r1, KittyParseOutcome::Incomplete));
+    match p.feed(b"2u") {
+        KittyParseOutcome::Complete(k) => {
+            assert_eq!(
+                k,
+                KeyWithModifier::new(BareKey::Char('a')).with_shift_modifier()
+            );
+        },
+        other => panic!("expected Complete, got {:?}", other),
+    }
+}
+
+#[test]
+fn fragmented_kitty_byte_by_byte() {
+    use zellij_utils::data::BareKey;
+    let full = b"\x1b[97;5u"; // ctrl+a
+    let mut p = KittyKeyboardParser::new();
+    for &b in &full[..full.len() - 1] {
+        assert!(
+            matches!(p.feed(&[b]), KittyParseOutcome::Incomplete),
+            "byte 0x{:02x} should be Incomplete",
+            b
+        );
+    }
+    match p.feed(&[full[full.len() - 1]]) {
+        KittyParseOutcome::Complete(k) => {
+            assert_eq!(
+                k,
+                KeyWithModifier::new(BareKey::Char('a')).with_ctrl_modifier()
+            );
+        },
+        other => panic!("expected Complete, got {:?}", other),
+    }
+}
+
+#[test]
+fn non_kitty_bytes_yield_nomatch_and_reset() {
+    // Plain printable bytes don't form a Kitty sequence — must return
+    // NoMatch (not Incomplete) so the caller falls through to termwiz
+    // immediately rather than buffering forever.
+    let mut p = KittyKeyboardParser::new();
+    assert!(matches!(p.feed(b"hello"), KittyParseOutcome::NoMatch));
 }

@@ -1,4 +1,4 @@
-use crate::keyboard_parser::KittyKeyboardParser;
+use crate::keyboard_parser::{KittyKeyboardParser, KittyParseOutcome};
 use crate::os_input_output::ClientOsApi;
 use crate::stdin_ansi_parser::HostReplyParser;
 #[cfg(windows)]
@@ -74,6 +74,11 @@ pub(crate) fn stdin_loop(
     // etc.) with ENABLE_VIRTUAL_TERMINAL_INPUT enabled so stdin delivers raw VT
     // byte sequences.
     let mut input_parser = InputParser::new();
+    // Kitty keyboard parser is long-lived so a Kitty CSI sequence split
+    // across stdin reads still resolves on a follow-up chunk instead of
+    // silently degrading to a legacy CSI form (and losing modifier
+    // metadata).
+    let mut kitty_parser = KittyKeyboardParser::new();
     let mut current_buffer = vec![];
     let (stdin_tx, stdin_rx) = mpsc::sync_channel(32);
     let _stdin_pump = std::thread::Builder::new()
@@ -136,9 +141,13 @@ pub(crate) fn stdin_loop(
 
                         if !explicitly_disable_kitty_keyboard_protocol {
                             // first we try to parse with the KittyKeyboardParser
-                            // if we fail, we try to parse normally
-                            match KittyKeyboardParser::new().parse(&residue) {
-                                Some(key_with_modifier) => {
+                            // if we fail, we try to parse normally.
+                            // Incomplete and NoMatch both fall through to the
+                            // termwiz parser below; on Incomplete the Kitty
+                            // parser keeps its state so the next chunk's
+                            // continuation completes the sequence.
+                            match kitty_parser.feed(&residue) {
+                                KittyParseOutcome::Complete(key_with_modifier) => {
                                     send_input_instructions
                                         .send(InputInstruction::KeyWithModifierEvent(
                                             key_with_modifier,
@@ -148,7 +157,7 @@ pub(crate) fn stdin_loop(
                                         .unwrap();
                                     continue;
                                 },
-                                None => {},
+                                KittyParseOutcome::Incomplete | KittyParseOutcome::NoMatch => {},
                             }
                         }
 

@@ -120,17 +120,19 @@ fn mixed_keyboard_and_reply_extracts_both_cleanly() {
 }
 
 #[test]
-fn malformed_osc_does_not_eat_following_keyboard_bytes() {
-    // An OSC that never terminates shouldn't swallow subsequent keyboard
-    // bytes. In our scrubber, if OSC is incomplete, it simply falls
-    // through byte-by-byte.
+fn unterminated_osc_within_single_chunk_is_buffered() {
+    // An OSC that never terminates within a chunk is held in the
+    // partial-OSC buffer for the next call to complete; nothing leaks
+    // into residue. This is the cross-chunk-aware replacement for the
+    // pre-fix behaviour where unterminated OSC bytes fell through to
+    // residue and surfaced as spurious keypresses.
     let mut parser = HostReplyParser::new();
-    // OSC prefix with no terminator — scrubber sees unterminated OSC and
-    // emits the bytes as residue (caller keyboard path will drop them,
-    // but they must not be *silently consumed*, and subsequent bytes
-    // must still arrive).
     let (_replies, residue) = feed_once(&mut parser, b"\x1b]10;partial");
-    assert_eq!(residue, b"\x1b]10;partial");
+    assert!(
+        residue.is_empty(),
+        "unterminated OSC must be buffered, not leaked to residue: {:?}",
+        residue
+    );
 }
 
 #[test]
@@ -222,18 +224,104 @@ fn stale_token_timeout_does_nothing() {
 }
 
 #[test]
-fn chunked_input_preserves_cross_chunk_sequences() {
-    // Feed a single OSC reply byte-by-byte. Because the scrubber is
-    // byte-at-a-time inside a single feed call, the bytes are scanned
-    // together. But when chunks arrive separately, each residue call
-    // may pass through a partial prefix. This test documents the
-    // current, acceptable behaviour: a reply arriving in one chunk is
-    // still classified, while arriving in multiple chunks falls
-    // through to residue (the caller's keyboard parser absorbs it).
-    let mut parser = HostReplyParser::new();
-    let out = parser.feed(b"\x1b]11;rgb:0000/0000/0000\x1b\\");
-    assert_eq!(out.replies.len(), 1);
-    matches!(out.replies[0], HostReply::BackgroundColor(_));
+fn fragmented_osc_does_not_leak_into_residue() {
+    let full = b"\x1b]11;rgb:0000/0000/0000\x1b\\";
+    for split in 1..full.len() {
+        let mut p = HostReplyParser::new();
+        let r1 = p.feed(&full[..split]);
+        let r2 = p.feed(&full[split..]);
+        assert!(
+            r1.residue.is_empty(),
+            "split at {}: chunk 1 residue should be empty, got {:?}",
+            split,
+            r1.residue
+        );
+        assert!(
+            r2.residue.is_empty(),
+            "split at {}: chunk 2 residue should be empty, got {:?}",
+            split,
+            r2.residue
+        );
+        assert_eq!(
+            r1.replies.len() + r2.replies.len(),
+            1,
+            "split at {}: exactly one reply across both chunks",
+            split
+        );
+    }
+}
+
+#[test]
+fn fragmented_csi_report_does_not_leak() {
+    // Pixel-dimensions reply (final byte 't').
+    let full = b"\x1b[4;800;1200t";
+    for split in 1..full.len() {
+        let mut p = HostReplyParser::new();
+        let r1 = p.feed(&full[..split]);
+        let r2 = p.feed(&full[split..]);
+        assert!(
+            r1.residue.is_empty(),
+            "split at {}: c1 residue {:?}",
+            split,
+            r1.residue
+        );
+        assert!(
+            r2.residue.is_empty(),
+            "split at {}: c2 residue {:?}",
+            split,
+            r2.residue
+        );
+        assert_eq!(r1.replies.len() + r2.replies.len(), 1);
+    }
+}
+
+#[test]
+fn fragmented_osc_byte_by_byte() {
+    // Every byte in its own chunk — the worst case.
+    let full = b"\x1b]11;rgb:abcd/ef01/2345\x1b\\";
+    let mut p = HostReplyParser::new();
+    let mut total_replies = 0;
+    for &b in full {
+        let out = p.feed(&[b]);
+        assert!(
+            out.residue.is_empty(),
+            "byte 0x{:02x} leaked to residue",
+            b
+        );
+        total_replies += out.replies.len();
+    }
+    assert_eq!(total_replies, 1);
+}
+
+#[test]
+fn partial_osc_overflow_falls_back_to_residue() {
+    // An unterminated OSC larger than the cap must not grow memory
+    // unbounded. After the cap is hit the buffered bytes flush to
+    // residue and parsing resumes from a clean state.
+    let mut p = HostReplyParser::new();
+    let _ = p.feed(b"\x1b]52;c;");
+    let chunk = vec![b'A'; 1024 * 1024]; // 1 MB
+    let mut total_residue = 0usize;
+    for _ in 0..110 {
+        let out = p.feed(&chunk);
+        total_residue += out.residue.len();
+    }
+    assert!(
+        total_residue > 0,
+        "overflowed partial buffer should flush to residue, not silently grow"
+    );
+}
+
+#[test]
+fn malformed_osc_still_does_not_eat_following_keyboard_bytes() {
+    // Pre-existing invariant. An unterminated OSC followed (in a later
+    // chunk) by plain keyboard input — the keyboard input must reach
+    // residue intact once the OSC closes via proper flush.
+    let mut p = HostReplyParser::new();
+    let _ = p.feed(b"\x1b]10;partial");
+    let _ = p.feed(b"\x1b\\");
+    let out = p.feed(b"hello");
+    assert_eq!(out.residue, b"hello");
 }
 
 #[test]

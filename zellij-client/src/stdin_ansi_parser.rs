@@ -174,18 +174,51 @@ pub struct ParseOutput {
     pub residue: Vec<u8>,
 }
 
+/// Cap on the size of an in-flight partial OSC/CSI buffer. Sized to
+/// pass legitimate OSC 52 clipboard payloads, which carry the entire
+/// clipboard base64-encoded and have no protocol-level limit (images,
+/// multi-MB text dumps, etc.). Beyond this we assume a runaway or
+/// malformed sequence and flush the buffered bytes back to residue —
+/// same observable behaviour as today for unterminated OSC, just
+/// bounded.
+const PARTIAL_BUFFER_CAP_BYTES: usize = 100 * 1024 * 1024;
+
+/// Outcome of a single OSC/CSI walk over a byte buffer. Distinguishing
+/// "needs more bytes" from "malformed" is what lets the residue
+/// scrubber buffer partial sequences across `feed()` calls instead of
+/// leaking their bytes into keyboard residue.
+#[derive(Debug, Clone, Copy)]
+enum SeqStatus {
+    /// Sequence is complete; consume `len` bytes from the head of buf.
+    Complete(usize),
+    /// Sequence is a valid prefix; caller should buffer these bytes
+    /// and prepend them to the next chunk.
+    NeedMore,
+    /// Sequence is malformed (bare ESC mid-payload, non-whitelisted
+    /// final byte, length cap hit). Caller should fall through to
+    /// emitting the leading byte as residue.
+    Malformed,
+}
+
 /// Continuous host-reply parser. Lives for the whole client session.
 pub struct HostReplyParser {
     inner: InputParser,
     /// Active forwarding slot: `Some` while a forwarded query is in
     /// flight, `None` otherwise.
     active_forward: Option<ForwardSlot>,
+    /// Bytes of an OSC sequence whose terminator hasn't arrived yet.
+    /// Carried across feed() calls so the next chunk can complete it.
+    partial_osc: Vec<u8>,
+    /// Same for CSI device-control reports.
+    partial_csi: Vec<u8>,
 }
 
 impl std::fmt::Debug for HostReplyParser {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("HostReplyParser")
             .field("active_forward", &self.active_forward)
+            .field("partial_osc_len", &self.partial_osc.len())
+            .field("partial_csi_len", &self.partial_csi.len())
             .finish()
     }
 }
@@ -195,6 +228,8 @@ impl HostReplyParser {
         HostReplyParser {
             inner: InputParser::new(),
             active_forward: None,
+            partial_osc: Vec::new(),
+            partial_csi: Vec::new(),
         }
     }
 
@@ -325,73 +360,154 @@ impl HostReplyParser {
         }
         // Produce the residue: replay the input through a scratch parser
         // that strips out OSC payloads and whitelisted CSI reports. All
-        // other bytes pass through unchanged.
-        residue.extend(Self::strip_replies(bytes));
+        // other bytes pass through unchanged. The walk is stateful so
+        // an OSC/CSI sequence split across `feed()` calls is buffered
+        // rather than leaking into residue.
+        residue.extend(self.strip_replies(bytes));
         out.residue = residue;
         out
     }
 
-    /// Walk `bytes` and drop any OSC/whitelisted-CSI sequences, returning
-    /// the remaining bytes verbatim (keyboard residue). This is a
-    /// byte-level scrubber — it does not produce events, only bytes.
-    fn strip_replies(bytes: &[u8]) -> Vec<u8> {
-        let mut out = Vec::with_capacity(bytes.len());
+    /// Walk `bytes` (with any pending partial buffer prepended) and drop
+    /// any OSC/whitelisted-CSI sequences, returning the remaining bytes
+    /// verbatim (keyboard residue). This is a byte-level scrubber — it
+    /// does not produce events, only bytes.
+    ///
+    /// If the chunk ends mid-sequence, the unterminated tail is held in
+    /// `self.partial_osc` or `self.partial_csi` and prepended to the
+    /// next call's input — so the corresponding bytes never reach
+    /// residue (and never appear as spurious keypresses) while waiting
+    /// for the rest of the sequence.
+    fn strip_replies(&mut self, bytes: &[u8]) -> Vec<u8> {
+        // Prepend any pending partial. At most one of (partial_osc,
+        // partial_csi) is non-empty at any time — the previous walk
+        // either completed all sequences or stopped at exactly one
+        // unterminated tail.
+        let mut working: Vec<u8> = Vec::with_capacity(
+            self.partial_osc.len() + self.partial_csi.len() + bytes.len(),
+        );
+        working.append(&mut self.partial_osc);
+        working.append(&mut self.partial_csi);
+        working.extend_from_slice(bytes);
+
+        let mut out = Vec::with_capacity(working.len());
         let mut i = 0;
-        while i < bytes.len() {
-            let rest = &bytes[i..];
+        while i < working.len() {
+            let rest = &working[i..];
             // OSC: ESC ] ... (BEL | ESC \)
             if rest.len() >= 2 && rest[0] == 0x1b && rest[1] == b']' {
-                if let Some(len) = osc_len(rest) {
-                    i += len;
-                    continue;
+                match osc_status(rest) {
+                    SeqStatus::Complete(len) => {
+                        i += len;
+                        continue;
+                    },
+                    SeqStatus::NeedMore => {
+                        let tail = rest.to_vec();
+                        if tail.len() > PARTIAL_BUFFER_CAP_BYTES {
+                            // Cap exceeded: flush buffered bytes to
+                            // residue and reset, preserving the
+                            // semantic that unterminated bytes are not
+                            // silently swallowed.
+                            out.extend_from_slice(&tail);
+                        } else {
+                            self.partial_osc = tail;
+                        }
+                        return out;
+                    },
+                    SeqStatus::Malformed => {
+                        out.push(working[i]);
+                        i += 1;
+                        continue;
+                    },
                 }
             }
             // Whitelisted CSI report: ESC [ <params>* <intermediates>* <final>
             if rest.len() >= 2 && rest[0] == 0x1b && rest[1] == b'[' {
-                if let Some(len) = csi_report_len(rest) {
-                    i += len;
-                    continue;
+                match csi_status(rest) {
+                    SeqStatus::Complete(len) => {
+                        i += len;
+                        continue;
+                    },
+                    SeqStatus::NeedMore => {
+                        let tail = rest.to_vec();
+                        if tail.len() > PARTIAL_BUFFER_CAP_BYTES {
+                            out.extend_from_slice(&tail);
+                        } else {
+                            self.partial_csi = tail;
+                        }
+                        return out;
+                    },
+                    SeqStatus::Malformed => {
+                        out.push(working[i]);
+                        i += 1;
+                        continue;
+                    },
                 }
             }
-            out.push(bytes[i]);
+            // Lone trailing ESC at the tail — could be the start of
+            // either OSC or CSI; the next byte will disambiguate. Buffer
+            // it under partial_osc by convention; the next call's
+            // walker re-routes based on the actual second byte.
+            if rest.len() == 1 && rest[0] == 0x1b {
+                self.partial_osc = vec![0x1b];
+                return out;
+            }
+            out.push(working[i]);
             i += 1;
         }
         out
     }
 }
 
-fn osc_len(buf: &[u8]) -> Option<usize> {
+/// Walk an OSC sequence starting at the head of `buf`. Returns whether
+/// the sequence is complete, needs more bytes, or is malformed.
+fn osc_status(buf: &[u8]) -> SeqStatus {
     if buf.get(0) != Some(&0x1b) || buf.get(1) != Some(&b']') {
-        return None;
+        return SeqStatus::Malformed;
     }
     let mut i = 2;
     while i < buf.len() {
         match buf[i] {
-            0x07 => return Some(i + 1),
-            0x1b if buf.get(i + 1) == Some(&b'\\') => return Some(i + 2),
-            0x1b => return None, // bare ESC inside OSC — malformed
+            0x07 => return SeqStatus::Complete(i + 1),
+            0x1b => match buf.get(i + 1) {
+                Some(&b'\\') => return SeqStatus::Complete(i + 2),
+                // Bare ESC followed by something other than `\` —
+                // malformed under the ST-only termination we accept.
+                Some(_) => return SeqStatus::Malformed,
+                // ESC at the very tail; the next chunk may bring `\`
+                // and finish the sequence.
+                None => return SeqStatus::NeedMore,
+            },
             _ => i += 1,
         }
     }
-    None
+    SeqStatus::NeedMore
 }
 
-fn csi_report_len(buf: &[u8]) -> Option<usize> {
+/// Walk a whitelisted CSI report starting at the head of `buf`.
+fn csi_status(buf: &[u8]) -> SeqStatus {
     if buf.get(0) != Some(&0x1b) || buf.get(1) != Some(&b'[') {
-        return None;
+        return SeqStatus::Malformed;
     }
     let mut i = 2;
-    let max = buf.len().min(256);
-    while i < max {
+    let max = 256;
+    while i < buf.len() && i < max {
         let b = buf[i];
         match b {
             0x30..=0x3F | 0x20..=0x2F => i += 1,
-            b't' | b'y' | b'c' | b'n' => return Some(i + 1),
-            0x40..=0x7E => return None, // non-whitelisted final
-            _ => return None,
+            b't' | b'y' | b'c' | b'n' => return SeqStatus::Complete(i + 1),
+            0x40..=0x7E => return SeqStatus::Malformed, // non-whitelisted final
+            _ => return SeqStatus::Malformed,
         }
     }
-    None
+    if i >= max {
+        // CSI ran past the cap without terminating — treat as malformed
+        // so the leading byte falls through to residue and parsing
+        // resumes from the next position.
+        SeqStatus::Malformed
+    } else {
+        SeqStatus::NeedMore
+    }
 }
 
 // =====================================================================
