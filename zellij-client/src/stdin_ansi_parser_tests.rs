@@ -290,6 +290,53 @@ fn fragmented_osc_byte_by_byte() {
 }
 
 #[test]
+fn lone_trailing_esc_is_buffered_then_finalized_as_residue() {
+    // A bare ESC byte at the tail of a chunk could be the start of an
+    // OSC or CSI host-reply that's been fragmented at the ESC
+    // boundary, so `feed` parks it under partial state instead of
+    // leaking it as a keyboard residue. But the byte must not stay
+    // parked forever — `finalize()` is the idle drain that releases
+    // it back to the keyboard parser when no follow-up arrives.
+    let mut p = StdinAnsiParser::new();
+    let out = p.feed(b"\x1b");
+    assert!(
+        out.residue.is_empty(),
+        "lone ESC must not leak immediately: {:?}",
+        out.residue
+    );
+    assert!(
+        out.has_partial_state,
+        "lone ESC must mark has_partial_state so the caller schedules a finalize tick"
+    );
+    let drained = p.finalize();
+    assert_eq!(
+        drained,
+        vec![0x1b],
+        "finalize must release the parked ESC as keyboard residue"
+    );
+    // Subsequent finalize is a no-op once the parker is empty.
+    assert!(p.finalize().is_empty());
+}
+
+#[test]
+fn fragmented_osc_does_not_finalize_partial() {
+    // Inverse case: a real fragmented host-reply (ESC then `]...`
+    // arrived in two chunks with no idle between them) must NOT be
+    // released by finalize. The key signal is timing — if the second
+    // chunk arrives quickly enough the idle path is never taken, and
+    // the OSC completes normally. We exercise that order here.
+    let full = b"\x1b]11;rgb:0000/0000/0000\x1b\\";
+    let mut p = StdinAnsiParser::new();
+    let r1 = p.feed(&full[..1]);
+    assert!(r1.residue.is_empty());
+    assert!(r1.has_partial_state);
+    let r2 = p.feed(&full[1..]);
+    assert!(r2.residue.is_empty(), "tail must complete the OSC");
+    assert_eq!(r1.replies.len() + r2.replies.len(), 1);
+    assert!(p.finalize().is_empty(), "no partial left after completion");
+}
+
+#[test]
 fn partial_osc_overflow_falls_back_to_residue() {
     // An unterminated OSC larger than the cap must not grow memory
     // unbounded. After the cap is hit the buffered bytes flush to

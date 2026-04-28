@@ -187,6 +187,12 @@ pub struct ParseOutput {
     /// Residue bytes that were not classified as host replies. These are
     /// the bytes the caller should feed to the keyboard parser.
     pub residue: Vec<u8>,
+    /// `true` when the parser still holds buffered partial OSC/CSI
+    /// bytes that need an idle-flush to release. The caller uses this
+    /// to schedule a finalize tick even when the current chunk
+    /// produced no residue (so a lone trailing ESC isn't stranded
+    /// indefinitely). See `StdinAnsiParser::finalize`.
+    pub has_partial_state: bool,
 }
 
 /// Cap on the size of an in-flight partial OSC/CSI buffer. Sized to
@@ -388,6 +394,20 @@ impl StdinAnsiParser {
         // rather than leaking into residue.
         residue.extend(self.strip_replies(bytes));
         out.residue = residue;
+        out.has_partial_state = !self.partial_osc.is_empty() || !self.partial_csi.is_empty();
+        out
+    }
+
+    /// Drain any speculatively-buffered partial OSC/CSI bytes back into
+    /// keyboard residue. Called from the stdin handler's idle-timeout
+    /// path so a lone trailing ESC (or any unterminated host-reply
+    /// prefix that never received a follow-up byte) reaches the
+    /// keyboard parser instead of being stuck forever waiting for a
+    /// disambiguating byte that is never coming.
+    pub fn finalize(&mut self) -> Vec<u8> {
+        let mut out = Vec::with_capacity(self.partial_osc.len() + self.partial_csi.len());
+        out.append(&mut self.partial_osc);
+        out.append(&mut self.partial_csi);
         out
     }
 

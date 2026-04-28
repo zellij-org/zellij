@@ -134,11 +134,20 @@ pub(crate) fn stdin_loop(
                             let _ = send_input_instructions
                                 .send(InputInstruction::DesktopNotificationResponse(payload));
                         }
+                        let has_partial = parse_output.has_partial_state;
                         let residue = parse_output.residue;
                         if residue.is_empty() {
                             // If all bytes were consumed by the host-reply
                             // parser, nothing to feed to the keyboard
-                            // parser.
+                            // parser. But if the host-reply parser is
+                            // sitting on a buffered partial sequence
+                            // (e.g. a lone trailing ESC waiting to be
+                            // disambiguated), schedule a finalize tick
+                            // so the idle drain releases it as keyboard
+                            // residue when no follow-up arrives.
+                            if has_partial {
+                                needs_finalization = true;
+                            }
                             continue;
                         }
                         current_buffer.append(&mut residue.clone());
@@ -210,6 +219,7 @@ pub(crate) fn stdin_loop(
                     &mut input_parser,
                     &mut current_buffer,
                     send_input_instructions.clone(),
+                    &stdin_ansi_parser,
                 );
                 needs_finalization = false;
             },
@@ -226,10 +236,21 @@ fn finalize_events(
     input_parser: &mut InputParser,
     current_buffer: &mut Vec<u8>,
     send_input_instructions: SenderWithContext<InputInstruction>,
+    stdin_ansi_parser: &Arc<Mutex<StdinAnsiParser>>,
 ) {
+    // Drain any speculatively-buffered partial host-reply bytes (a
+    // lone trailing ESC, or an unterminated OSC/CSI prefix whose
+    // follow-up never arrived). They become keyboard residue — same
+    // path real keypress bytes take. Without this drain, a real Esc
+    // press whose byte was parked under partial_osc would be lost.
+    let drained = stdin_ansi_parser.lock().unwrap().finalize();
+    if !drained.is_empty() {
+        current_buffer.extend_from_slice(&drained);
+    }
+
     let mut events = vec![];
     input_parser.parse(
-        &[],
+        &drained,
         |input_event: InputEvent| {
             events.push(input_event);
         },
