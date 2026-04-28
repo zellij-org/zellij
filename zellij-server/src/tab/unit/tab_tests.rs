@@ -173,6 +173,7 @@ fn create_new_tab(size: Size, stacked_resize: bool) -> Tab {
     let arrow_fonts = true;
     let styled_underlines = true;
     let osc8_hyperlinks = true;
+    let osc1337_config = crate::panes::grid::Osc1337Config::default();
     let explicitly_disable_kitty_keyboard_protocol = false;
     let advanced_mouse_actions = true;
     let web_sharing = WebSharing::Off;
@@ -205,6 +206,7 @@ fn create_new_tab(size: Size, stacked_resize: bool) -> Tab {
         arrow_fonts,
         styled_underlines,
         osc8_hyperlinks,
+        osc1337_config,
         explicitly_disable_kitty_keyboard_protocol,
         None,
         false,
@@ -259,6 +261,7 @@ fn create_new_tab_with_layout(size: Size, layout: TiledPaneLayout) -> Tab {
     let arrow_fonts = true;
     let styled_underlines = true;
     let osc8_hyperlinks = true;
+    let osc1337_config = crate::panes::grid::Osc1337Config::default();
     let explicitly_disable_kitty_keyboard_protocol = false;
     let advanced_mouse_actions = true;
     let web_sharing = WebSharing::Off;
@@ -291,6 +294,7 @@ fn create_new_tab_with_layout(size: Size, layout: TiledPaneLayout) -> Tab {
         arrow_fonts,
         styled_underlines,
         osc8_hyperlinks,
+        osc1337_config,
         explicitly_disable_kitty_keyboard_protocol,
         None,
         false,
@@ -351,6 +355,7 @@ fn create_new_tab_with_cell_size(
     let arrow_fonts = true;
     let styled_underlines = true;
     let osc8_hyperlinks = true;
+    let osc1337_config = crate::panes::grid::Osc1337Config::default();
     let explicitly_disable_kitty_keyboard_protocol = false;
     let advanced_mouse_actions = true;
     let web_sharing = WebSharing::Off;
@@ -383,6 +388,7 @@ fn create_new_tab_with_cell_size(
         arrow_fonts,
         styled_underlines,
         osc8_hyperlinks,
+        osc1337_config,
         explicitly_disable_kitty_keyboard_protocol,
         None,
         false,

@@ -17,6 +17,87 @@ simplified_ui true
 // 
 // osc8_hyperlinks true
  
+// Master switch for OSC 1337 (WezTerm/iTerm2) sub-command
+// passthrough. When false, no OSC 1337 sub-command is
+// forwarded regardless of the per-sub-command toggles below.
+// Default: true
+// 
+// osc1337_passthrough true
+ 
+// Forward OSC 1337 File= inline image sequences (imgcat etc.).
+// inline=0 (host-side downloads) is always blocked.
+// Default: true
+// 
+// osc1337_inline_images true
+ 
+// Forward OSC 1337 SetMark (records a scrollback mark in
+// the host terminal). Default: true
+// 
+// osc1337_set_mark true
+ 
+// Forward OSC 1337 CurrentDir= (host shell-integration
+// breadcrumbs). Default: true
+// 
+// osc1337_current_dir true
+ 
+// Forward OSC 1337 HighlightCursorLine=. Default: true
+// 
+// osc1337_highlight_cursor_line true
+ 
+// Forward OSC 1337 UnicodeVersion=. Default: true
+// 
+// osc1337_unicode_version true
+ 
+// Forward OSC 1337 SetUserVar= (fires Lua callbacks in
+// WezTerm). Off by default: host user-var handlers may
+// trigger arbitrary actions. Default: false
+// 
+// osc1337_set_user_var false
+ 
+// Forward OSC 1337 SetProfile= (mutates host terminal
+// profile — keybindings, colors, font). Default: false
+// 
+// osc1337_set_profile false
+ 
+// Forward OSC 1337 SetBadgeFormat= (host terminal badge
+// UI). Default: false
+// 
+// osc1337_set_badge_format false
+ 
+// Forward OSC 1337 ClearScrollback (erases the host
+// terminal's scrollback). Default: false
+// 
+// osc1337_clear_scrollback false
+ 
+// Forward OSC 1337 Copy=, CopyToClipboard=, EndCopy
+// (direct host clipboard write). Off by default to
+// prevent clipboard injection by remote processes.
+// Default: false
+// 
+// osc1337_clipboard_copy false
+ 
+// Forward OSC 1337 StealFocus (forces host terminal window
+// to foreground). Default: false
+// 
+// osc1337_steal_focus false
+ 
+// Forward OSC 1337 RequestAttention=yes|once|no|fireworks
+// (host terminal dock-bouncing / window highlighting).
+// Default: false
+// 
+// osc1337_request_attention false
+ 
+// Forward OSC 1337 RemoteHost=user@host (shell-integration
+// login metadata). Default: true
+// 
+// osc1337_remote_host true
+ 
+// Forward OSC 1337 ShellIntegrationVersion=N[;shell]
+// (shell-integration version advertisement).
+// Default: true
+// 
+// osc1337_shell_integration_version true
+ 
 // Choose the theme that is specified in the themes section.
 // Default: default
 // 

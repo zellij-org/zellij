@@ -1376,6 +1376,7 @@ pub(crate) struct Screen {
     default_shell: PathBuf,
     styled_underlines: bool,
     osc8_hyperlinks: bool,
+    osc1337_config: crate::panes::grid::Osc1337Config,
     arrow_fonts: bool,
     #[cfg_attr(test, allow(dead_code))]
     layout_dir: Option<PathBuf>,
@@ -1507,6 +1508,7 @@ impl Screen {
         scrollback_lines_to_serialize: Option<usize>,
         styled_underlines: bool,
         osc8_hyperlinks: bool,
+        osc1337_config: crate::panes::grid::Osc1337Config,
         arrow_fonts: bool,
         layout_dir: Option<PathBuf>,
         explicitly_disable_kitty_keyboard_protocol: bool,
@@ -1562,6 +1564,7 @@ impl Screen {
             scrollback_lines_to_serialize,
             styled_underlines,
             osc8_hyperlinks,
+            osc1337_config,
             arrow_fonts,
             resurrectable_sessions_cache,
             layout_dir,
@@ -2807,6 +2810,7 @@ impl Screen {
             self.arrow_fonts,
             self.styled_underlines,
             self.osc8_hyperlinks,
+            self.osc1337_config,
             self.explicitly_disable_kitty_keyboard_protocol,
             self.default_editor.clone(),
             self.web_clients_allowed,
@@ -5521,6 +5525,54 @@ pub(crate) fn screen_thread_main(
     let web_server_port = config_options.web_server_port.unwrap_or(8082);
     let styled_underlines = config_options.styled_underlines.unwrap_or(true);
     let osc8_hyperlinks = config_options.osc8_hyperlinks.unwrap_or(true);
+    let osc1337_defaults = crate::panes::grid::Osc1337Config::default();
+    let osc1337_config = crate::panes::grid::Osc1337Config {
+        passthrough: config_options
+            .osc1337_passthrough
+            .unwrap_or(osc1337_defaults.passthrough),
+        inline_images: config_options
+            .osc1337_inline_images
+            .unwrap_or(osc1337_defaults.inline_images),
+        set_mark: config_options
+            .osc1337_set_mark
+            .unwrap_or(osc1337_defaults.set_mark),
+        current_dir: config_options
+            .osc1337_current_dir
+            .unwrap_or(osc1337_defaults.current_dir),
+        highlight_cursor_line: config_options
+            .osc1337_highlight_cursor_line
+            .unwrap_or(osc1337_defaults.highlight_cursor_line),
+        unicode_version: config_options
+            .osc1337_unicode_version
+            .unwrap_or(osc1337_defaults.unicode_version),
+        set_user_var: config_options
+            .osc1337_set_user_var
+            .unwrap_or(osc1337_defaults.set_user_var),
+        set_profile: config_options
+            .osc1337_set_profile
+            .unwrap_or(osc1337_defaults.set_profile),
+        set_badge_format: config_options
+            .osc1337_set_badge_format
+            .unwrap_or(osc1337_defaults.set_badge_format),
+        clear_scrollback: config_options
+            .osc1337_clear_scrollback
+            .unwrap_or(osc1337_defaults.clear_scrollback),
+        clipboard_copy: config_options
+            .osc1337_clipboard_copy
+            .unwrap_or(osc1337_defaults.clipboard_copy),
+        steal_focus: config_options
+            .osc1337_steal_focus
+            .unwrap_or(osc1337_defaults.steal_focus),
+        request_attention: config_options
+            .osc1337_request_attention
+            .unwrap_or(osc1337_defaults.request_attention),
+        remote_host: config_options
+            .osc1337_remote_host
+            .unwrap_or(osc1337_defaults.remote_host),
+        shell_integration_version: config_options
+            .osc1337_shell_integration_version
+            .unwrap_or(osc1337_defaults.shell_integration_version),
+    };
     let explicitly_disable_kitty_keyboard_protocol = config_options
         .support_kitty_keyboard_protocol
         .map(|e| !e) // this is due to the config options wording, if
@@ -5568,6 +5620,7 @@ pub(crate) fn screen_thread_main(
         scrollback_lines_to_serialize,
         styled_underlines,
         osc8_hyperlinks,
+        osc1337_config,
         arrow_fonts,
         layout_dir,
         explicitly_disable_kitty_keyboard_protocol,
