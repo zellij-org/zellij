@@ -108,6 +108,420 @@ pub(crate) fn namespace_notification_id(metadata: &str, pane_id: u32) -> String 
     }
 }
 
+/// Maximum length (chars) accepted for any single text field in an
+/// OSC 1337 sub-command. Longer inputs are truncated. Bounds total
+/// emitted size and limits abuse from runaway programs.
+pub(crate) const OSC1337_TEXT_FIELD_MAX_LEN: usize = 1024;
+
+/// Maximum length (bytes) of a base64-encoded payload accepted for
+/// OSC 1337 sub-commands that carry binary data (e.g. `File=` inline
+/// images). Matches the iTerm2 / modern tmux limit.
+pub(crate) const OSC1337_BASE64_PAYLOAD_MAX_LEN: usize = 1_048_576;
+
+/// Strip control characters from an OSC 1337 text field so a malicious
+/// or buggy program cannot inject additional escape sequences (further
+/// OSC, CSI, title-set, file-download, etc.) into the host terminal
+/// via the field body. Removes C0 controls, DEL, and the C1 range, and
+/// also strips OSC delimiters (`;`, `:`, `=`) which would corrupt the
+/// canonical sub-command framing on emit.
+pub(crate) fn sanitize_osc1337_text_field(input: &str) -> String {
+    input
+        .chars()
+        .filter(|c| {
+            !c.is_control()
+                && !matches!(*c as u32, 0x80..=0x9F)
+                && *c != ';'
+                && *c != ':'
+                && *c != '='
+        })
+        .take(OSC1337_TEXT_FIELD_MAX_LEN)
+        .collect()
+}
+
+/// Restrict a base64 payload to the standard alphabet so we never re-emit
+/// arbitrary bytes (which could include ESC) into a passthrough sequence.
+/// Length is bounded by `OSC1337_BASE64_PAYLOAD_MAX_LEN`.
+pub(crate) fn sanitize_osc1337_base64(input: &str) -> Option<String> {
+    let cleaned: String = input
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '+' || *c == '/' || *c == '=')
+        .take(OSC1337_BASE64_PAYLOAD_MAX_LEN)
+        .collect();
+    if cleaned.is_empty() {
+        None
+    } else {
+        Some(cleaned)
+    }
+}
+
+/// Sanitize a `File=` argument value: the keys are well-known
+/// (`name`, `size`, `width`, `height`, `preserveAspectRatio`,
+/// `inline`, `doNotMoveCursor`) and the values are typically short
+/// ASCII tokens, base64 (for `name`), integers, or simple dimension
+/// expressions like `100`, `100px`, `50%`, `auto`. We allow only
+/// alphanumerics, `+`, `/`, `=`, `%`, `_`, `.`, `-`. Anything else
+/// (control chars, framing chars like `;` `:` `=`-as-separator) is
+/// dropped.
+pub(crate) fn sanitize_osc1337_file_arg_value(input: &str) -> String {
+    input
+        .chars()
+        .filter(|c| {
+            c.is_ascii_alphanumeric() || matches!(*c, '+' | '/' | '=' | '%' | '_' | '.' | '-')
+        })
+        .take(OSC1337_TEXT_FIELD_MAX_LEN)
+        .collect()
+}
+
+/// One parsed and validated OSC 1337 sub-command. Each variant carries
+/// fields that have already passed through `sanitize_osc1337_*`, so
+/// `to_canonical_bytes()` can rebuild from a fixed template safely.
+///
+/// The set of variants intentionally does NOT cover the full WezTerm
+/// surface — query/reply commands (`RequestCellSize`, `ReportCellSize`,
+/// `ReportVariable`) are out of scope because answering them requires
+/// Zellij-internal state, not a passthrough; `inline=0` File downloads
+/// are explicitly rejected at parse time because they would write to
+/// the host terminal's filesystem across an SSH boundary.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Osc1337Command {
+    /// `OSC 1337;File=[args]:<base64> ST` — inline image. `inline=1` only.
+    File {
+        /// Sanitized `key=value;...` argument list (no `:` separator).
+        args: String,
+        /// Sanitized base64 payload.
+        payload: String,
+    },
+    /// `OSC 1337;SetMark ST`
+    SetMark,
+    /// `OSC 1337;CurrentDir=/path ST`
+    CurrentDir(String),
+    /// `OSC 1337;HighlightCursorLine=yes|no ST`
+    HighlightCursorLine(bool),
+    /// `OSC 1337;UnicodeVersion=<arg> ST` — `arg` is `8|9|push[ label]|pop[ label]`.
+    UnicodeVersion(String),
+    /// `OSC 1337;SetUserVar=<key>=<base64-value> ST`
+    SetUserVar { key: String, value_b64: String },
+    /// `OSC 1337;SetProfile=<name> ST`
+    SetProfile(String),
+    /// `OSC 1337;SetBadgeFormat=<base64> ST`
+    SetBadgeFormat(String),
+    /// `OSC 1337;ClearScrollback ST`
+    ClearScrollback,
+    /// `OSC 1337;Copy=:<base64> ST` — direct clipboard write.
+    Copy(String),
+    /// `OSC 1337;CopyToClipboard[=<rule>] ST` — begin streamed clipboard write.
+    CopyToClipboard(String),
+    /// `OSC 1337;EndCopy ST` — terminates a streamed clipboard write.
+    EndCopy,
+    /// `OSC 1337;StealFocus ST`
+    StealFocus,
+    /// `OSC 1337;RequestAttention=yes|once|no|fireworks ST`
+    RequestAttention(String),
+    /// `OSC 1337;RemoteHost=user@host ST` — shell integration, current login.
+    RemoteHost(String),
+    /// `OSC 1337;ShellIntegrationVersion=<version>[;<shell>] ST`
+    ShellIntegrationVersion {
+        version: String,
+        /// Empty when the deprecated single-arg form was used.
+        shell: String,
+    },
+}
+
+impl Osc1337Command {
+    /// Re-emit in canonical form. Always BEL-terminated; all common
+    /// host terminals (WezTerm, iTerm2, Kitty) accept BEL, and using a
+    /// single fixed terminator simplifies the template.
+    pub fn to_canonical_bytes(&self) -> Vec<u8> {
+        match self {
+            Osc1337Command::File { args, payload } => {
+                if args.is_empty() {
+                    format!("\x1b]1337;File=:{}\x07", payload).into_bytes()
+                } else {
+                    format!("\x1b]1337;File={}:{}\x07", args, payload).into_bytes()
+                }
+            },
+            Osc1337Command::SetMark => b"\x1b]1337;SetMark\x07".to_vec(),
+            Osc1337Command::CurrentDir(path) => {
+                format!("\x1b]1337;CurrentDir={}\x07", path).into_bytes()
+            },
+            Osc1337Command::HighlightCursorLine(on) => format!(
+                "\x1b]1337;HighlightCursorLine={}\x07",
+                if *on { "yes" } else { "no" }
+            )
+            .into_bytes(),
+            Osc1337Command::UnicodeVersion(arg) => {
+                format!("\x1b]1337;UnicodeVersion={}\x07", arg).into_bytes()
+            },
+            Osc1337Command::SetUserVar { key, value_b64 } => {
+                format!("\x1b]1337;SetUserVar={}={}\x07", key, value_b64).into_bytes()
+            },
+            Osc1337Command::SetProfile(name) => {
+                format!("\x1b]1337;SetProfile={}\x07", name).into_bytes()
+            },
+            Osc1337Command::SetBadgeFormat(b64) => {
+                format!("\x1b]1337;SetBadgeFormat={}\x07", b64).into_bytes()
+            },
+            Osc1337Command::ClearScrollback => b"\x1b]1337;ClearScrollback\x07".to_vec(),
+            Osc1337Command::Copy(b64) => format!("\x1b]1337;Copy=:{}\x07", b64).into_bytes(),
+            Osc1337Command::CopyToClipboard(rule) => {
+                if rule.is_empty() {
+                    b"\x1b]1337;CopyToClipboard\x07".to_vec()
+                } else {
+                    format!("\x1b]1337;CopyToClipboard={}\x07", rule).into_bytes()
+                }
+            },
+            Osc1337Command::EndCopy => b"\x1b]1337;EndCopy\x07".to_vec(),
+            Osc1337Command::StealFocus => b"\x1b]1337;StealFocus\x07".to_vec(),
+            Osc1337Command::RequestAttention(arg) => {
+                format!("\x1b]1337;RequestAttention={}\x07", arg).into_bytes()
+            },
+            Osc1337Command::RemoteHost(spec) => {
+                format!("\x1b]1337;RemoteHost={}\x07", spec).into_bytes()
+            },
+            Osc1337Command::ShellIntegrationVersion { version, shell } => {
+                if shell.is_empty() {
+                    format!("\x1b]1337;ShellIntegrationVersion={}\x07", version).into_bytes()
+                } else {
+                    format!(
+                        "\x1b]1337;ShellIntegrationVersion={};{}\x07",
+                        version, shell
+                    )
+                    .into_bytes()
+                }
+            },
+        }
+    }
+}
+
+/// Per-sub-command toggles for OSC 1337 passthrough. Decoded from
+/// the user's `Options` once at server startup and threaded through
+/// `Screen` and `Tab` to `forward_osc1337_commands`. Defaults are
+/// conservative — anything that mutates host-terminal state outside
+/// the pane's display area is off.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Osc1337Config {
+    pub passthrough: bool,
+    pub inline_images: bool,
+    pub set_mark: bool,
+    pub current_dir: bool,
+    pub highlight_cursor_line: bool,
+    pub unicode_version: bool,
+    pub set_user_var: bool,
+    pub set_profile: bool,
+    pub set_badge_format: bool,
+    pub clear_scrollback: bool,
+    pub clipboard_copy: bool,
+    pub steal_focus: bool,
+    pub request_attention: bool,
+    pub remote_host: bool,
+    pub shell_integration_version: bool,
+}
+
+impl Default for Osc1337Config {
+    fn default() -> Self {
+        Self {
+            passthrough: true,
+            inline_images: true,
+            set_mark: true,
+            current_dir: true,
+            highlight_cursor_line: true,
+            unicode_version: true,
+            set_user_var: false,
+            set_profile: false,
+            set_badge_format: false,
+            clear_scrollback: false,
+            clipboard_copy: false,
+            steal_focus: false,
+            // `RequestAttention` mutates host UI focus state — same risk
+            // class as `StealFocus`, so OFF by default.
+            request_attention: false,
+            // `RemoteHost` and `ShellIntegrationVersion` are pure metadata
+            // emitted by shell integration; safe to forward by default.
+            remote_host: true,
+            shell_integration_version: true,
+        }
+    }
+}
+
+impl Osc1337Config {
+    /// Returns true if this specific command is allowed to be forwarded
+    /// to the host terminal. The master `passthrough` switch overrides
+    /// individual toggles when off.
+    pub fn allows(&self, cmd: &Osc1337Command) -> bool {
+        if !self.passthrough {
+            return false;
+        }
+        match cmd {
+            Osc1337Command::File { .. } => self.inline_images,
+            Osc1337Command::SetMark => self.set_mark,
+            Osc1337Command::CurrentDir(_) => self.current_dir,
+            Osc1337Command::HighlightCursorLine(_) => self.highlight_cursor_line,
+            Osc1337Command::UnicodeVersion(_) => self.unicode_version,
+            Osc1337Command::SetUserVar { .. } => self.set_user_var,
+            Osc1337Command::SetProfile(_) => self.set_profile,
+            Osc1337Command::SetBadgeFormat(_) => self.set_badge_format,
+            Osc1337Command::ClearScrollback => self.clear_scrollback,
+            Osc1337Command::Copy(_)
+            | Osc1337Command::CopyToClipboard(_)
+            | Osc1337Command::EndCopy => self.clipboard_copy,
+            Osc1337Command::StealFocus => self.steal_focus,
+            Osc1337Command::RequestAttention(_) => self.request_attention,
+            Osc1337Command::RemoteHost(_) => self.remote_host,
+            Osc1337Command::ShellIntegrationVersion { .. } => self.shell_integration_version,
+        }
+    }
+}
+
+/// Parse a single OSC 1337 sub-command body. `body` is the bytes
+/// joined back together from `params[1..]` (the part after `1337;`),
+/// excluding the OSC introducer and terminator. Returns `None` if the
+/// sub-command is unrecognized, malformed, or explicitly rejected
+/// (e.g. `File=` with `inline=0`).
+pub(crate) fn parse_osc1337_subcommand(body: &str) -> Option<Osc1337Command> {
+    // Sub-commands that take no value: just the bare keyword.
+    match body {
+        "SetMark" => return Some(Osc1337Command::SetMark),
+        "ClearScrollback" => return Some(Osc1337Command::ClearScrollback),
+        "EndCopy" => return Some(Osc1337Command::EndCopy),
+        "StealFocus" => return Some(Osc1337Command::StealFocus),
+        "CopyToClipboard" => return Some(Osc1337Command::CopyToClipboard(String::new())),
+        _ => {},
+    }
+
+    // Sub-commands of the form `Key=value`. Split on the FIRST `=` only;
+    // some payloads (`SetUserVar`, `Copy`) contain additional `=` chars.
+    let (key, value) = body.split_once('=')?;
+    match key {
+        "File" => {
+            // Format: `File=[k=v;k=v;...]:<base64>`. The colon may be
+            // absent if there are no args (e.g. `File=:<b64>` is allowed
+            // by iTerm2, with the colon mandatory before payload).
+            let (args_raw, payload_raw) = value.split_once(':')?;
+            // Reject inline=0 outright — that would download to the host
+            // terminal's filesystem across an SSH boundary, which is
+            // semantically wrong and dangerous.
+            let mut allow = true;
+            let mut sanitized_args = Vec::new();
+            for kv in args_raw.split(';') {
+                if kv.is_empty() {
+                    continue;
+                }
+                if let Some((k, v)) = kv.split_once('=') {
+                    if k == "inline" && v.trim() == "0" {
+                        allow = false;
+                        break;
+                    }
+                    let sk = sanitize_osc1337_file_arg_value(k);
+                    let sv = sanitize_osc1337_file_arg_value(v);
+                    if sk.is_empty() {
+                        continue;
+                    }
+                    sanitized_args.push(format!("{}={}", sk, sv));
+                } else {
+                    let sk = sanitize_osc1337_file_arg_value(kv);
+                    if !sk.is_empty() {
+                        sanitized_args.push(sk);
+                    }
+                }
+            }
+            if !allow {
+                return None;
+            }
+            let payload = sanitize_osc1337_base64(payload_raw)?;
+            Some(Osc1337Command::File {
+                args: sanitized_args.join(";"),
+                payload,
+            })
+        },
+        "CurrentDir" => {
+            let path = sanitize_osc1337_text_field(value);
+            if path.is_empty() {
+                None
+            } else {
+                Some(Osc1337Command::CurrentDir(path))
+            }
+        },
+        "HighlightCursorLine" => match value.trim() {
+            "yes" | "1" | "true" => Some(Osc1337Command::HighlightCursorLine(true)),
+            "no" | "0" | "false" => Some(Osc1337Command::HighlightCursorLine(false)),
+            _ => None,
+        },
+        "UnicodeVersion" => {
+            let arg = sanitize_osc1337_text_field(value);
+            if arg.is_empty() {
+                None
+            } else {
+                Some(Osc1337Command::UnicodeVersion(arg))
+            }
+        },
+        "SetUserVar" => {
+            // value = `<key>=<base64-value>`. Both halves are mandatory.
+            let (var_key, var_b64) = value.split_once('=')?;
+            let key = sanitize_osc1337_file_arg_value(var_key);
+            let value_b64 = sanitize_osc1337_base64(var_b64)?;
+            if key.is_empty() {
+                None
+            } else {
+                Some(Osc1337Command::SetUserVar { key, value_b64 })
+            }
+        },
+        "SetProfile" => {
+            let name = sanitize_osc1337_text_field(value);
+            if name.is_empty() {
+                None
+            } else {
+                Some(Osc1337Command::SetProfile(name))
+            }
+        },
+        "SetBadgeFormat" => {
+            let b64 = sanitize_osc1337_base64(value)?;
+            Some(Osc1337Command::SetBadgeFormat(b64))
+        },
+        "Copy" => {
+            // Format: `Copy=:<base64>`. The leading colon is mandatory.
+            let payload = value.strip_prefix(':').unwrap_or(value);
+            let b64 = sanitize_osc1337_base64(payload)?;
+            Some(Osc1337Command::Copy(b64))
+        },
+        "CopyToClipboard" => {
+            let rule = sanitize_osc1337_file_arg_value(value);
+            Some(Osc1337Command::CopyToClipboard(rule))
+        },
+        "RequestAttention" => match value.trim() {
+            "yes" | "no" | "once" | "fireworks" => {
+                Some(Osc1337Command::RequestAttention(value.trim().to_string()))
+            },
+            _ => None,
+        },
+        "RemoteHost" => {
+            // Format: `user@host`. Both halves required and non-empty.
+            let (user_raw, host_raw) = value.split_once('@')?;
+            let user = sanitize_osc1337_file_arg_value(user_raw);
+            let host = sanitize_osc1337_file_arg_value(host_raw);
+            if user.is_empty() || host.is_empty() {
+                None
+            } else {
+                Some(Osc1337Command::RemoteHost(format!("{}@{}", user, host)))
+            }
+        },
+        "ShellIntegrationVersion" => {
+            // Primary form: `<version>;<shell>`. Deprecated form: `<version>`.
+            let (version_raw, shell_raw) = match value.split_once(';') {
+                Some((v, s)) => (v, s),
+                None => (value, ""),
+            };
+            let version = sanitize_osc1337_file_arg_value(version_raw);
+            let shell = sanitize_osc1337_file_arg_value(shell_raw);
+            if version.is_empty() {
+                None
+            } else {
+                Some(Osc1337Command::ShellIntegrationVersion { version, shell })
+            }
+        },
+        _ => None,
+    }
+}
+
 use vte::{Params, Perform};
 use zellij_utils::{consts::VERSION, shared::version_number};
 
@@ -646,6 +1060,11 @@ pub struct Grid {
     /// Pending desktop notifications: (payload, terminator)
     /// Payload is the semicolon-joined params after "99", terminator is "\x07" or "\x1b\\"
     pub pending_desktop_notifications: Vec<(String, String)>,
+    /// Pending OSC 1337 (WezTerm/iTerm2) sub-commands. Each entry has been
+    /// parsed, sanitized, and length-bounded; the Tab layer decides which
+    /// of them to re-emit to the host terminal based on user-configured
+    /// per-sub-command toggles.
+    pub pending_osc1337_commands: Vec<Osc1337Command>,
     /// Whitelisted host-terminal queries intercepted from the app running
     /// in this pane (CSI 14t / 16t pixel-dim queries, OSC 10;? / 11;? /
     /// 4;N;? color queries). Each entry is the raw byte sequence that
@@ -970,6 +1389,7 @@ impl Grid {
             pending_clipboard_update: None,
             pending_osc7_cwd: None,
             pending_desktop_notifications: Vec::new(),
+            pending_osc1337_commands: Vec::new(),
             pending_forwarded_queries: Vec::new(),
             ui_component_bytes: None,
             style,
@@ -3773,6 +4193,28 @@ impl Perform for Grid {
                         self.pending_desktop_notifications
                             .push((payload, terminator.to_string()));
                     }
+                }
+            },
+
+            // OSC 1337 (WezTerm / iTerm2 proprietary). Not raw passthrough:
+            // each sub-command is parsed, fields are sanitized, a fresh
+            // sequence is rebuilt before emission. The Tab layer applies
+            // per-sub-command toggle gating before forwarding to clients.
+            b"1337" => {
+                if params.len() < 2 {
+                    return;
+                }
+                // Sub-command and its value share params[1..] joined by `;`
+                // because some payloads (File= args, SetUserVar value)
+                // legitimately contain `;`. iTerm2's docs are clear that
+                // the wire form is a single `Key[=value]` token.
+                let body: String = params[1..]
+                    .iter()
+                    .flat_map(|x| str::from_utf8(x))
+                    .collect::<Vec<&str>>()
+                    .join(";");
+                if let Some(cmd) = parse_osc1337_subcommand(&body) {
+                    self.pending_osc1337_commands.push(cmd);
                 }
             },
 

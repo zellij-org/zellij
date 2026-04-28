@@ -277,6 +277,7 @@ fn create_new_screen(
     let debug = false;
     let styled_underlines = true;
     let osc8_hyperlinks = true;
+    let osc1337_config = crate::panes::grid::Osc1337Config::default();
     let arrow_fonts = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let stacked_resize = true;
@@ -302,6 +303,7 @@ fn create_new_screen(
         scrollback_lines_to_serialize,
         styled_underlines,
         osc8_hyperlinks,
+        osc1337_config,
         arrow_fonts,
         layout_dir,
         explicitly_disable_kitty_keyboard_protocol,
@@ -5340,6 +5342,7 @@ fn create_new_screen_with_message_capture(
     let debug = false;
     let styled_underlines = true;
     let osc8_hyperlinks = true;
+    let osc1337_config = crate::panes::grid::Osc1337Config::default();
     let arrow_fonts = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let stacked_resize = true;
@@ -5365,6 +5368,7 @@ fn create_new_screen_with_message_capture(
         scrollback_lines_to_serialize,
         styled_underlines,
         osc8_hyperlinks,
+        osc1337_config,
         arrow_fonts,
         layout_dir,
         explicitly_disable_kitty_keyboard_protocol,
@@ -8410,6 +8414,7 @@ fn create_new_screen_with_forward_capture(size: Size) -> (Screen, ForwardCapture
     let debug = false;
     let styled_underlines = true;
     let osc8_hyperlinks = true;
+    let osc1337_config = crate::panes::grid::Osc1337Config::default();
     let arrow_fonts = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let stacked_resize = true;
@@ -8435,6 +8440,7 @@ fn create_new_screen_with_forward_capture(size: Size) -> (Screen, ForwardCapture
         scrollback_lines_to_serialize,
         styled_underlines,
         osc8_hyperlinks,
+        osc1337_config,
         arrow_fonts,
         layout_dir,
         explicitly_disable_kitty_keyboard_protocol,
@@ -9018,6 +9024,7 @@ fn create_new_screen_with_theme_capture(size: Size) -> (Screen, ThemeCapture) {
         None,
         true,
         true,
+        crate::panes::grid::Osc1337Config::default(),
         true,
         None,
         false,
@@ -9508,6 +9515,7 @@ fn create_non_mirrored_screen(size: Size) -> Screen {
         None,  // scrollback_lines_to_serialize
         true,  // styled_underlines
         true,  // osc8_hyperlinks
+        crate::panes::grid::Osc1337Config::default(),
         true,  // arrow_fonts
         None,  // layout_dir
         false, // explicitly_disable_kitty_keyboard_protocol
