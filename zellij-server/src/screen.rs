@@ -1320,6 +1320,7 @@ pub(crate) struct Screen {
     copy_options: CopyOptions,
     debug: bool,
     session_name: String,
+    session_id: String,
     peer_sessions_cache: BTreeMap<String, SessionInfo>, // String is the session name, can
     // also be this session
     resurrectable_sessions_cache: BTreeMap<String, Duration>, // String is the session name,
@@ -1392,6 +1393,7 @@ impl Screen {
         mouse_click_through: bool,
         web_server_ip: IpAddr,
         web_server_port: u16,
+        session_id: String,
     ) -> Self {
         let session_name = mode_info.session_name.clone().unwrap_or_default();
         let session_info = SessionInfo::new(session_name.clone());
@@ -1424,6 +1426,7 @@ impl Screen {
             copy_options,
             debug,
             session_name,
+            session_id,
             peer_sessions_cache,
             default_layout,
             default_layout_name,
@@ -2904,7 +2907,7 @@ impl Screen {
         }
         let available_layouts = self.cached_layouts.clone();
         let creation_time = {
-            let sock_path = ZELLIJ_SOCK_DIR.join(&self.session_name);
+            let sock_path = ZELLIJ_SOCK_DIR.join(&self.session_id);
             std::fs::metadata(&sock_path)
                 .ok()
                 .and_then(|f| f.created().ok().or_else(|| f.modified().ok()))
@@ -4959,6 +4962,7 @@ pub(crate) fn screen_thread_main(
     config: Config,
     debug: bool,
     default_layout: Box<Layout>,
+    session_id: String,
 ) -> Result<()> {
     let config_options = config.options;
     let arrow_fonts = !config_options.simplified_ui.unwrap_or_default();
@@ -5058,6 +5062,7 @@ pub(crate) fn screen_thread_main(
         mouse_click_through,
         web_server_ip,
         web_server_port,
+        session_id,
     );
 
     let mut pending_tab_ids: HashSet<usize> = HashSet::new();
@@ -7983,16 +7988,17 @@ pub(crate) fn screen_thread_main(
                         tab.rename_session(name.clone()).with_context(err_context)?;
                     }
 
-                    // rename socket file
-                    let old_socket_file_path = ZELLIJ_SOCK_DIR.join(&old_session_name);
-                    let new_socket_file_path = ZELLIJ_SOCK_DIR.join(&name);
-                    if let Err(e) = std::fs::rename(old_socket_file_path, new_socket_file_path) {
-                        log::error!("Failed to rename ipc socket: {:?}", e);
+                    // update session name in registry (socket file is never renamed)
+                    let session_id = screen.session_id.clone();
+                    if let Err(e) = zellij_utils::sessions::with_registry(|reg| {
+                        if let Some(entry) = reg.find_by_id_mut(&session_id) {
+                            entry.display_name = name.clone();
+                        }
+                    }) {
+                        log::error!("Failed to update session registry: {:?}", e);
                     }
 
-                    // rename session_info folder (TODO: make this atomic, right now there is a
-                    // chance background_jobs will re-create this folder before it knows the
-                    // session was renamed)
+                    // rename session_info folder
                     let old_session_info_folder =
                         session_info_folder_for_session(&old_session_name);
                     let new_session_info_folder = session_info_folder_for_session(&name);

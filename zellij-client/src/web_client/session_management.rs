@@ -1,7 +1,7 @@
 use crate::os_input_output::ClientOsApi;
 use crate::spawn_server;
 
-use std::{fs, path::PathBuf};
+use std::path::PathBuf;
 use zellij_utils::{
     consts::session_layout_cache_file_name,
     data::{ConnectToSession, LayoutInfo, LayoutMetadata, WebSharing},
@@ -133,18 +133,14 @@ pub fn create_first_message(
     }
 }
 
-pub fn create_ipc_pipe(session_name: &str) -> PathBuf {
+pub fn create_ipc_pipe(session_name: &str, session_exists: bool) -> PathBuf {
     if let Err(e) = zellij_utils::sessions::validate_session_name(session_name) {
         log::error!("Invalid session name: {}", e);
         panic!("Invalid session name: {}", e);
     }
-    let zellij_ipc_pipe: PathBuf = {
-        let mut sock_dir = zellij_utils::consts::ZELLIJ_SOCK_DIR.clone();
-        fs::create_dir_all(&sock_dir).unwrap();
-        zellij_utils::shared::set_permissions(&sock_dir, 0o700).unwrap();
-        sock_dir.push(session_name);
-        sock_dir
-    };
-    crate::check_ipc_pipe_length(&zellij_ipc_pipe);
-    zellij_ipc_pipe
+    if session_exists {
+        crate::resolve_session_ipc_pipe(session_name)
+    } else {
+        crate::new_session_ipc_pipe(session_name)
+    }
 }

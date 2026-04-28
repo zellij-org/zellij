@@ -441,23 +441,32 @@ impl SessionMetaData {
 
 impl Drop for SessionMetaData {
     fn drop(&mut self) {
-        let _ = self.senders.send_to_pty(PtyInstruction::Exit);
+        // Force a final serialization so the session shows up in list-sessions
+        // even if it exited before the periodic serialization interval fired.
+        // The flow Screen -> Plugin -> PTY must drain fully before any thread
+        // sees its Exit message, otherwise the disk write is lost. So we exit
+        // the threads in pipeline order (screen first, then plugin, then pty),
+        // joining each one before queuing Exit on the next.
+        let _ = self
+            .senders
+            .send_to_screen(ScreenInstruction::SerializeLayoutForResurrection);
         let _ = self.senders.send_to_screen(ScreenInstruction::Exit);
-        let _ = self.senders.send_to_plugin(PluginInstruction::Exit);
-        let _ = self.senders.send_to_pty_writer(PtyWriteInstruction::Exit);
-        let _ = self.senders.send_to_background_jobs(BackgroundJob::Exit);
         if let Some(screen_thread) = self.screen_thread.take() {
             let _ = screen_thread.join();
         }
-        if let Some(pty_thread) = self.pty_thread.take() {
-            let _ = pty_thread.join();
-        }
+        let _ = self.senders.send_to_plugin(PluginInstruction::Exit);
         if let Some(plugin_thread) = self.plugin_thread.take() {
             let _ = plugin_thread.join();
         }
+        let _ = self.senders.send_to_pty(PtyInstruction::Exit);
+        if let Some(pty_thread) = self.pty_thread.take() {
+            let _ = pty_thread.join();
+        }
+        let _ = self.senders.send_to_pty_writer(PtyWriteInstruction::Exit);
         if let Some(pty_writer_thread) = self.pty_writer_thread.take() {
             let _ = pty_writer_thread.join();
         }
+        let _ = self.senders.send_to_background_jobs(BackgroundJob::Exit);
         if let Some(background_jobs_thread) = self.background_jobs_thread.take() {
             let _ = background_jobs_thread.join();
         }
@@ -653,17 +662,24 @@ impl SessionState {
 pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
     info!("Starting Zellij server!");
 
+    let session_id = socket_path
+        .file_name()
+        .map(|f| f.to_string_lossy().to_string())
+        .unwrap_or_default();
+
     #[cfg(unix)]
     {
         use nix::sys::stat::{umask, Mode};
         // preserve the current umask: read current value by setting to another mode, and then restoring it
         let current_umask = umask(Mode::all());
         umask(current_umask);
-        daemonize::Daemonize::new()
-            .working_directory(std::env::current_dir().unwrap())
-            .umask(current_umask.bits() as u32)
-            .start()
-            .expect("could not daemonize the server process");
+        if std::env::var("ZELLIJ_NO_DAEMONIZE").is_err() {
+            daemonize::Daemonize::new()
+                .working_directory(std::env::current_dir().unwrap())
+                .umask(current_umask.bits() as u32)
+                .start()
+                .expect("could not daemonize the server process");
+        }
     }
 
     #[cfg(windows)]
@@ -681,6 +697,15 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
     }
 
     envs::set_zellij("0".to_string());
+
+    // Update PID in session registry (post-daemonize on Unix, so this is the real PID).
+    if let Err(e) = zellij_utils::sessions::with_registry(|reg| {
+        if let Some(entry) = reg.find_by_id_mut(&session_id) {
+            entry.pid = Some(std::process::id());
+        }
+    }) {
+        log::error!("Failed to update PID in session registry: {:?}", e);
+    }
 
     let (to_server, server_receiver): ChannelWithContext<ServerInstruction> = channels::bounded(50);
     let to_server = SenderWithContext::new(to_server);
@@ -818,6 +843,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     config.clone(),
                     config.plugins.clone(),
                     client_id,
+                    session_id.clone(),
                 );
                 info!("FirstClientConnected: session initialized, spawning tabs");
                 let mut runtime_configuration = config.clone();
@@ -1713,6 +1739,17 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
     // Drop cached session data before exit.
     *session_data.write().unwrap() = None;
 
+    // Update session registry: mark as exited, clear PID.
+    if let Err(e) = zellij_utils::sessions::with_registry(|reg| {
+        if let Some(entry) = reg.find_by_id_mut(&session_id) {
+            entry.state = zellij_utils::sessions::SessionState::Exited;
+            entry.pid = None;
+            entry.exited_at = Some(chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string());
+        }
+    }) {
+        log::error!("Failed to update session registry on exit: {:?}", e);
+    }
+
     drop(std::fs::remove_file(&socket_path));
 }
 
@@ -1726,6 +1763,7 @@ fn init_session(
     mut config: Config,
     plugin_aliases: PluginAliases,
     client_id: ClientId,
+    session_id: String,
 ) -> SessionMetaData {
     config.options = config.options.merge(*config_options.clone());
 
@@ -1831,6 +1869,7 @@ fn init_session(
             let debug = cli_assets.is_debug;
             let layout = layout.clone();
             let config = config.clone();
+            let session_id = session_id.clone();
             move || {
                 screen_thread_main(
                     screen_bus,
@@ -1839,6 +1878,7 @@ fn init_session(
                     config,
                     debug,
                     layout,
+                    session_id,
                 )
                 .fatal();
             }
@@ -2223,3 +2263,7 @@ fn get_available_layouts(config_options: &Options) -> (Vec<LayoutInfo>, Vec<Layo
         .map(|l| format!("{}", l.display()));
     Layout::list_available_layouts(layout_dir, &default_layout_name)
 }
+
+#[cfg(test)]
+#[path = "./unit/session_registry_tests.rs"]
+mod session_registry_tests;

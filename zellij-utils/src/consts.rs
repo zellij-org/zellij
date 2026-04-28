@@ -37,6 +37,36 @@ pub fn session_info_folder_for_session(session_name: &str) -> PathBuf {
     ZELLIJ_SESSION_INFO_CACHE_DIR.join(session_name)
 }
 
+/// Length of a hyphenated UUID v4 string (e.g., "a3f7b9c1-e29b-41d4-a716-446655440000").
+pub const SESSION_ID_LENGTH: usize = 36;
+
+/// Validate that `ZELLIJ_SOCK_DIR` is short enough to fit a UUID-based socket
+/// filename within the platform's Unix domain socket path limit.
+///
+/// Should be called once at startup. Exits with an error message if the
+/// directory is too long.
+pub fn check_sock_dir_length() {
+    let dir_len = ZELLIJ_SOCK_DIR.as_os_str().len();
+    // +1 for the path separator between dir and filename.
+    let required = dir_len + 1 + SESSION_ID_LENGTH;
+    if required >= ZELLIJ_SOCK_MAX_LENGTH {
+        let max_dir_len = ZELLIJ_SOCK_MAX_LENGTH.saturating_sub(1 + SESSION_ID_LENGTH + 1);
+        eprintln!(
+            "Error: the socket directory path is too long ({} bytes, max {}):\n  {}\n\n\
+             Session socket paths use UUIDs ({} bytes) as filenames, leaving\n\
+             at most {} bytes for the directory.\n\
+             To fix this, set a shorter socket directory, eg.:\n  \
+             ZELLIJ_SOCKET_DIR=/tmp/zellij zellij",
+            dir_len,
+            max_dir_len,
+            ZELLIJ_SOCK_DIR.display(),
+            SESSION_ID_LENGTH,
+            max_dir_len,
+        );
+        std::process::exit(1);
+    }
+}
+
 pub fn create_config_and_cache_folders() {
     if let Err(e) = std::fs::create_dir_all(&ZELLIJ_CACHE_DIR.as_path()) {
         log::error!("Failed to create cache dir: {:?}", e);
@@ -106,6 +136,8 @@ lazy_static! {
     pub static ref ZELLIJ_SESSION_INFO_CACHE_DIR: PathBuf = ZELLIJ_CACHE_DIR
         .join(CLIENT_SERVER_CONTRACT_DIR.clone())
         .join("session_info");
+    pub static ref ZELLIJ_SESSIONS_KDL: PathBuf = ZELLIJ_SOCK_DIR.join("sessions.kdl");
+    pub static ref ZELLIJ_SESSIONS_LOCK: PathBuf = ZELLIJ_SOCK_DIR.join("sessions.kdl.lock");
     pub static ref ZELLIJ_STDIN_CACHE_FILE: PathBuf =
         ZELLIJ_CACHE_DIR.join(VERSION).join("stdin_cache");
     pub static ref ZELLIJ_PLUGIN_ARTIFACT_DIR: PathBuf = ZELLIJ_CACHE_DIR.join(VERSION);
