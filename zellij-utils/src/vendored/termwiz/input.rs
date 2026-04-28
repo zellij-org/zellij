@@ -2583,12 +2583,7 @@ mod test {
     // parse_csi_report (CSI report whitelist for host-reply forwarding)
     // =====================================================================
 
-    fn csi_reply(
-        intermediates: &[u8],
-        params: &[u8],
-        final_byte: u8,
-        raw: &[u8],
-    ) -> InputEvent {
+    fn csi_reply(intermediates: &[u8], params: &[u8], final_byte: u8, raw: &[u8]) -> InputEvent {
         InputEvent::DeviceControlReply {
             intermediates: intermediates.to_vec(),
             params: params.to_vec(),

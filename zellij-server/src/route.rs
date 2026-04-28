@@ -1151,9 +1151,9 @@ pub(crate) fn route_action(
         },
         Action::SetDarkTheme => {
             senders
-                .send_to_screen(ScreenInstruction::SetDarkTheme(Some(
-                    NotificationEnd::new(completion_tx),
-                )))
+                .send_to_screen(ScreenInstruction::SetDarkTheme(Some(NotificationEnd::new(
+                    completion_tx,
+                ))))
                 .with_context(err_context)?;
         },
         Action::SetLightTheme => {
@@ -1165,9 +1165,9 @@ pub(crate) fn route_action(
         },
         Action::ToggleTheme => {
             senders
-                .send_to_screen(ScreenInstruction::ToggleTheme(Some(
-                    NotificationEnd::new(completion_tx),
-                )))
+                .send_to_screen(ScreenInstruction::ToggleTheme(Some(NotificationEnd::new(
+                    completion_tx,
+                ))))
                 .with_context(err_context)?;
         },
         Action::SwitchSession {

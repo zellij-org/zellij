@@ -2171,10 +2171,8 @@ impl Screen {
         query: crate::host_query::HostQuery,
     ) {
         let query_bytes = query.to_query_bytes();
-        self.pending_forwarded_queries.insert(
-            token,
-            PendingForwardEntry { pane_id, query },
-        );
+        self.pending_forwarded_queries
+            .insert(token, PendingForwardEntry { pane_id, query });
         self.forward_in_flight_token = Some(token);
         let _ = self
             .bus
@@ -2182,16 +2180,11 @@ impl Screen {
             .send_to_server(ServerInstruction::ForwardQueryToHost(token, query_bytes));
         let senders = self.bus.senders.clone();
         crate::global_async_runtime::get_tokio_runtime().spawn(async move {
-            tokio::time::sleep(std::time::Duration::from_millis(
-                SERVER_FORWARD_TIMEOUT_MS,
-            ))
-            .await;
-            let _ = senders.send_to_screen(
-                ScreenInstruction::ForwardedReplyFromHost {
-                    token,
-                    reply_bytes: Vec::new(),
-                },
-            );
+            tokio::time::sleep(std::time::Duration::from_millis(SERVER_FORWARD_TIMEOUT_MS)).await;
+            let _ = senders.send_to_screen(ScreenInstruction::ForwardedReplyFromHost {
+                token,
+                reply_bytes: Vec::new(),
+            });
         });
     }
 
@@ -2238,9 +2231,10 @@ impl Screen {
                     } else {
                         reply_bytes
                     };
-                    let _ = self.bus.senders.send_to_pty_writer(
-                        PtyWriteInstruction::Write(payload, terminal_id, None),
-                    );
+                    let _ = self
+                        .bus
+                        .senders
+                        .send_to_pty_writer(PtyWriteInstruction::Write(payload, terminal_id, None));
                 },
                 PaneId::Plugin(_) => {
                     // Plugin panes do not issue whitelisted host queries;
@@ -4485,10 +4479,7 @@ impl Screen {
     /// 3. fans out an `Event::HostTerminalThemeChanged` plugin event,
     /// 4. forwards a `CSI ?997;{1|2}n` DSR onto the pty of every terminal pane
     ///    whose app opted in via `CSI ? 2031 h`.
-    pub fn update_host_terminal_theme_mode(
-        &mut self,
-        mode: HostTerminalThemeMode,
-    ) -> Result<()> {
+    pub fn update_host_terminal_theme_mode(&mut self, mode: HostTerminalThemeMode) -> Result<()> {
         let err_context = || "Failed to update host terminal theme mode".to_string();
 
         // dedupe
@@ -4518,8 +4509,7 @@ impl Screen {
                 // canonical "who is connected" map). Iterating
                 // self.mode_info.keys() would skip any client that has
                 // never manually changed mode
-                let client_ids: Vec<ClientId> =
-                    self.active_tab_ids.keys().copied().collect();
+                let client_ids: Vec<ClientId> = self.active_tab_ids.keys().copied().collect();
                 let default_for_new = self.default_mode_info.clone();
                 for client_id in client_ids {
                     let mode_info = self
@@ -4577,9 +4567,10 @@ impl Screen {
             }
         }
         for (bytes, terminal_id) in pty_writes {
-            let _ = self.bus.senders.send_to_pty_writer(
-                PtyWriteInstruction::Write(bytes, terminal_id, None),
-            );
+            let _ = self
+                .bus
+                .senders
+                .send_to_pty_writer(PtyWriteInstruction::Write(bytes, terminal_id, None));
         }
 
         self.render(None)?;

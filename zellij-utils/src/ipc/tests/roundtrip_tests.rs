@@ -3558,10 +3558,9 @@ fn test_client_messages() {
     test_client_roundtrip!(ClientToServerMsg::ForwardedReplyFromHost {
         token: 17,
         reply_bytes: vec![
-            0x00, 0x1b, b'[', b'?', b'6', b'2', b';', b'1', b';', b'6', b'c',
-            0x00, 0x1b, b']', b'1', b'1', b';', b'r', b'g', b'b', b':',
-            b'f', b'f', b'f', b'f', b'/', b'f', b'f', b'f', b'f', b'/',
-            b'f', b'f', b'f', b'f', 0x07, 0xff, 0x00,
+            0x00, 0x1b, b'[', b'?', b'6', b'2', b';', b'1', b';', b'6', b'c', 0x00, 0x1b, b']',
+            b'1', b'1', b';', b'r', b'g', b'b', b':', b'f', b'f', b'f', b'f', b'/', b'f', b'f',
+            b'f', b'f', b'/', b'f', b'f', b'f', b'f', 0x07, 0xff, 0x00,
         ],
     });
     test_client_roundtrip!(ClientToServerMsg::HostTerminalThemeChanged {

@@ -1234,10 +1234,7 @@ pub fn start_client(
                     std::time::Duration::from_millis(500),
                     move |token, reply_bytes| {
                         let _ = sender_for_timer.send(
-                            InputInstruction::ForwardedReplyFromHostComplete {
-                                token,
-                                reply_bytes,
-                            },
+                            InputInstruction::ForwardedReplyFromHostComplete { token, reply_bytes },
                         );
                     },
                 );

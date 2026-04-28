@@ -8,13 +8,13 @@ use crate::{
         ForegroundColorMsg, ForwardQueryToHostMsg, ForwardedReplyFromHostMsg,
         HostTerminalThemeChangedMsg,
         HostTerminalThemeIndication as ProtoHostTerminalThemeIndication,
-        InputMode as ProtoInputMode, KeyMsg, KillSessionMsg,
-        LayoutMetadata as ProtoLayoutMetadata, LogErrorMsg, LogMsg,
-        PaneMetadata as ProtoPaneMetadata, PaneRenderUpdateMsg, QueryTerminalSizeMsg,
-        RenamedSessionMsg, RenderMsg, ServerToClientMsg as ProtoServerToClientMsg,
-        StartWebServerMsg, SubscribeToPaneRendersMsg, SubscribedPaneClosedMsg, SwitchSessionMsg,
-        TabMetadata as ProtoTabMetadata, TerminalPixelDimensionsMsg, TerminalResizeMsg,
-        UnblockCliPipeInputMsg, UnblockInputThreadMsg, WebServerStartedMsg,
+        InputMode as ProtoInputMode, KeyMsg, KillSessionMsg, LayoutMetadata as ProtoLayoutMetadata,
+        LogErrorMsg, LogMsg, PaneMetadata as ProtoPaneMetadata, PaneRenderUpdateMsg,
+        QueryTerminalSizeMsg, RenamedSessionMsg, RenderMsg,
+        ServerToClientMsg as ProtoServerToClientMsg, StartWebServerMsg, SubscribeToPaneRendersMsg,
+        SubscribedPaneClosedMsg, SwitchSessionMsg, TabMetadata as ProtoTabMetadata,
+        TerminalPixelDimensionsMsg, TerminalResizeMsg, UnblockCliPipeInputMsg,
+        UnblockInputThreadMsg, WebServerStartedMsg,
     },
     data::{HostTerminalThemeMode, InputMode, PaneId},
     errors::prelude::*,
@@ -133,9 +133,10 @@ impl From<ClientToServerMsg> for ProtoClientToServerMsg {
                 )
             },
             ClientToServerMsg::ForwardedReplyFromHost { token, reply_bytes } => {
-                client_to_server_msg::Message::ForwardedReplyFromHost(
-                    ForwardedReplyFromHostMsg { token, reply_bytes },
-                )
+                client_to_server_msg::Message::ForwardedReplyFromHost(ForwardedReplyFromHostMsg {
+                    token,
+                    reply_bytes,
+                })
             },
             ClientToServerMsg::HostTerminalThemeChanged { mode } => {
                 let proto_mode: ProtoHostTerminalThemeIndication = mode.into();
@@ -858,9 +859,6 @@ impl From<crate::input::actions::Action>
             CurrentTabInfoAction,
             DenyAction,
             DetachAction,
-            SetDarkThemeAction,
-            SetLightThemeAction,
-            ToggleThemeAction,
             DumpLayoutAction,
             DumpScreenAction,
             EditFileAction,
@@ -945,6 +943,8 @@ impl From<crate::input::actions::Action>
             SearchAction,
             SearchInputAction,
             SearchToggleOptionAction,
+            SetDarkThemeAction,
+            SetLightThemeAction,
             SetPaneBorderlessAction,
             SetPaneColorAction,
             ShowFloatingPanesAction,
@@ -972,6 +972,7 @@ impl From<crate::input::actions::Action>
             TogglePanePinnedAction,
             TogglePanePinnedByPaneIdAction,
             ToggleTabAction,
+            ToggleThemeAction,
             UndoRenamePaneAction,
             UndoRenamePaneByPaneIdAction,
             UndoRenameTabAction,

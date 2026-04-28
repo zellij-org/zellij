@@ -782,7 +782,9 @@ mod session_state_tests {
         // `clients` map anymore. Must fall through to any connected
         // client rather than returning None.
         s.last_active_client = Some(3);
-        let picked = s.pick_forward_target().expect("some client still connected");
+        let picked = s
+            .pick_forward_target()
+            .expect("some client still connected");
         assert!(picked == 1 || picked == 2);
     }
 
@@ -1912,10 +1914,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     send_to_client!(
                         client_id,
                         os_input,
-                        ServerToClientMsg::ForwardQueryToHost {
-                            token,
-                            query_bytes,
-                        },
+                        ServerToClientMsg::ForwardQueryToHost { token, query_bytes },
                         session_state,
                         session_data
                     );

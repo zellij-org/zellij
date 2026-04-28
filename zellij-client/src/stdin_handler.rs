@@ -131,9 +131,8 @@ pub(crate) fn stdin_loop(
                             );
                         }
                         for payload in parse_output.desktop_notifications {
-                            let _ = send_input_instructions.send(
-                                InputInstruction::DesktopNotificationResponse(payload),
-                            );
+                            let _ = send_input_instructions
+                                .send(InputInstruction::DesktopNotificationResponse(payload));
                         }
                         let residue = parse_output.residue;
                         if residue.is_empty() {

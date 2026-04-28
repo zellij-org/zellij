@@ -8849,7 +8849,10 @@ fn empty_reply_falls_back_to_cached_pixel_dimensions() {
         .handle_forwarded_reply_from_host(token, Vec::new())
         .expect("ok");
     let writes = capture.drain_pty_writes();
-    assert_eq!(std::str::from_utf8(&writes[0].0).unwrap(), "\u{1b}[4;608;931t");
+    assert_eq!(
+        std::str::from_utf8(&writes[0].0).unwrap(),
+        "\u{1b}[4;608;931t"
+    );
 
     // CSI 16t — cell size.
     let token = screen.forward_host_query(pane, HostQuery::CharacterCellPixelSize);
@@ -8866,10 +8869,7 @@ fn empty_reply_falls_back_to_cached_palette_register() {
     let size = Size { cols: 80, rows: 20 };
     let (mut screen, capture) = create_new_screen_with_forward_capture(size);
     let pane = PaneId::Terminal(1);
-    screen.update_terminal_color_registers(vec![(
-        42,
-        "rgb:abab/cdcd/efef".to_string(),
-    )]);
+    screen.update_terminal_color_registers(vec![(42, "rgb:abab/cdcd/efef".to_string())]);
     let token = screen.forward_host_query(pane, palette_query(42));
     let _ = capture.drain_forward_queries();
 
@@ -9106,8 +9106,7 @@ fn color_palette_mode_query_short_circuits_to_dark_reply() {
     use crate::host_query::HostQuery;
     let size = Size { cols: 80, rows: 20 };
     let (mut screen, capture) = create_new_screen_with_forward_capture(size);
-    screen.host_terminal_theme_mode =
-        Some(zellij_utils::data::HostTerminalThemeMode::Dark);
+    screen.host_terminal_theme_mode = Some(zellij_utils::data::HostTerminalThemeMode::Dark);
 
     let token = screen.forward_host_query(PaneId::Terminal(13), HostQuery::ColorPaletteMode);
 
@@ -9133,8 +9132,7 @@ fn color_palette_mode_query_short_circuits_to_light_reply() {
     use crate::host_query::HostQuery;
     let size = Size { cols: 80, rows: 20 };
     let (mut screen, capture) = create_new_screen_with_forward_capture(size);
-    screen.host_terminal_theme_mode =
-        Some(zellij_utils::data::HostTerminalThemeMode::Light);
+    screen.host_terminal_theme_mode = Some(zellij_utils::data::HostTerminalThemeMode::Light);
 
     let _ = screen.forward_host_query(PaneId::Terminal(4), HostQuery::ColorPaletteMode);
 
@@ -9168,8 +9166,7 @@ fn color_palette_mode_query_skips_plugin_panes() {
     use crate::host_query::HostQuery;
     let size = Size { cols: 80, rows: 20 };
     let (mut screen, capture) = create_new_screen_with_forward_capture(size);
-    screen.host_terminal_theme_mode =
-        Some(zellij_utils::data::HostTerminalThemeMode::Dark);
+    screen.host_terminal_theme_mode = Some(zellij_utils::data::HostTerminalThemeMode::Dark);
 
     let _ = screen.forward_host_query(PaneId::Plugin(99), HostQuery::ColorPaletteMode);
 

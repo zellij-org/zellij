@@ -3266,7 +3266,10 @@ fn terminal_pixel_size_reports() {
     use crate::host_query::HostQuery;
     assert_eq!(
         grid.pending_forwarded_queries,
-        vec![HostQuery::TextAreaPixelSize, HostQuery::CharacterCellPixelSize],
+        vec![
+            HostQuery::TextAreaPixelSize,
+            HostQuery::CharacterCellPixelSize
+        ],
     );
 }
 
@@ -3307,7 +3310,10 @@ fn terminal_pixel_size_reports_in_unsupported_terminals() {
     use crate::host_query::HostQuery;
     assert_eq!(
         grid.pending_forwarded_queries,
-        vec![HostQuery::TextAreaPixelSize, HostQuery::CharacterCellPixelSize],
+        vec![
+            HostQuery::TextAreaPixelSize,
+            HostQuery::CharacterCellPixelSize
+        ],
     );
 }
 
@@ -5892,8 +5898,7 @@ fn csi_2026_dollar_p_stays_local() {
     );
     assert_eq!(grid.pending_messages_to_pty.len(), 1);
     assert_eq!(
-        grid.pending_messages_to_pty[0],
-        b"\x1b[?2026;2$y",
+        grid.pending_messages_to_pty[0], b"\x1b[?2026;2$y",
         "DECRPM reply must use the `$y` suffix per spec"
     );
 }

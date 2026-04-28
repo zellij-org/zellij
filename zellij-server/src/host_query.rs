@@ -168,7 +168,13 @@ mod tests {
 
     #[test]
     fn from_bell_terminated_maps_bool_to_variant() {
-        assert_eq!(OscTerminator::from_bell_terminated(true), OscTerminator::Bel);
-        assert_eq!(OscTerminator::from_bell_terminated(false), OscTerminator::St);
+        assert_eq!(
+            OscTerminator::from_bell_terminated(true),
+            OscTerminator::Bel
+        );
+        assert_eq!(
+            OscTerminator::from_bell_terminated(false),
+            OscTerminator::St
+        );
     }
 }

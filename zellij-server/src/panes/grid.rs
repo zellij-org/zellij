@@ -722,12 +722,7 @@ fn rgb_to_hex_string((r, g, b): (u8, u8, u8)) -> String {
 /// (`0xAB` → `0xABAB`).
 fn osc_color_reply_body((r, g, b): (u8, u8, u8)) -> String {
     let expand = |c: u8| (c as u16) * 0x0101;
-    format!(
-        "rgb:{:04x}/{:04x}/{:04x}",
-        expand(r),
-        expand(g),
-        expand(b)
-    )
+    format!("rgb:{:04x}/{:04x}/{:04x}", expand(r), expand(g), expand(b))
 }
 
 /// A compiled highlight entry for one plugin/pattern combination.
@@ -3622,17 +3617,17 @@ impl Perform for Grid {
                                         osc_color_reply_body(rgb),
                                         terminator
                                     );
-                                    self.pending_messages_to_pty
-                                        .push(reply.as_bytes().to_vec());
+                                    self.pending_messages_to_pty.push(reply.as_bytes().to_vec());
                                 } else {
                                     // No local override — forward to
                                     // the host so the app observes the
                                     // terminal's actual color. Zellij's
                                     // cached copy is refreshed via the
                                     // double-dispatch on the reply.
-                                    let term = crate::host_query::OscTerminator::from_bell_terminated(
-                                        bell_terminated,
-                                    );
+                                    let term =
+                                        crate::host_query::OscTerminator::from_bell_terminated(
+                                            bell_terminated,
+                                        );
                                     let query = match dynamic_code {
                                         10 => crate::host_query::HostQuery::DefaultForeground {
                                             terminator: term,
@@ -3658,9 +3653,7 @@ impl Perform for Grid {
                                 // a parse failure) are silently dropped
                                 // to keep the pane-default fields
                                 // narrow.
-                                if let Some(rgb) =
-                                    xparse_color(param).and_then(rgb_of_ansi_code)
-                                {
+                                if let Some(rgb) = xparse_color(param).and_then(rgb_of_ansi_code) {
                                     if dynamic_code == 10 {
                                         self.pane_default_fg = Some(rgb);
                                     } else if dynamic_code == 11 {

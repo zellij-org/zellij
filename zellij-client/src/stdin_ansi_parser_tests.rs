@@ -15,7 +15,10 @@ fn pixel_dimensions_text_area_reply() {
     // CSI 4 ; H ; W t
     let mut parser = StdinAnsiParser::new();
     let (replies, residue) = feed_once(&mut parser, b"\x1b[4;720;1280t");
-    assert!(residue.is_empty(), "pixel-dim reply should be fully consumed");
+    assert!(
+        residue.is_empty(),
+        "pixel-dim reply should be fully consumed"
+    );
     assert_eq!(replies.len(), 1);
     match &replies[0] {
         HostReply::PixelDimensions(pd) => {
@@ -46,8 +49,7 @@ fn pixel_dimensions_character_cell_reply() {
 #[test]
 fn background_color_reply() {
     let mut parser = StdinAnsiParser::new();
-    let (replies, residue) =
-        feed_once(&mut parser, b"\x1b]11;rgb:0000/0000/0000\x1b\\");
+    let (replies, residue) = feed_once(&mut parser, b"\x1b]11;rgb:0000/0000/0000\x1b\\");
     assert!(residue.is_empty());
     match &replies[0] {
         HostReply::BackgroundColor(s) => assert_eq!(s, "rgb:0000/0000/0000"),
@@ -58,8 +60,7 @@ fn background_color_reply() {
 #[test]
 fn foreground_color_reply() {
     let mut parser = StdinAnsiParser::new();
-    let (replies, residue) =
-        feed_once(&mut parser, b"\x1b]10;rgb:ffff/ffff/ffff\x1b\\");
+    let (replies, residue) = feed_once(&mut parser, b"\x1b]10;rgb:ffff/ffff/ffff\x1b\\");
     assert!(residue.is_empty());
     match &replies[0] {
         HostReply::ForegroundColor(s) => assert_eq!(s, "rgb:ffff/ffff/ffff"),
@@ -70,8 +71,7 @@ fn foreground_color_reply() {
 #[test]
 fn color_register_reply() {
     let mut parser = StdinAnsiParser::new();
-    let (replies, residue) =
-        feed_once(&mut parser, b"\x1b]4;5;rgb:8080/8080/8080\x1b\\");
+    let (replies, residue) = feed_once(&mut parser, b"\x1b]4;5;rgb:8080/8080/8080\x1b\\");
     assert!(residue.is_empty());
     match &replies[0] {
         HostReply::ColorRegisters(regs) => {
@@ -283,11 +283,7 @@ fn fragmented_osc_byte_by_byte() {
     let mut total_replies = 0;
     for &b in full {
         let out = p.feed(&[b]);
-        assert!(
-            out.residue.is_empty(),
-            "byte 0x{:02x} leaked to residue",
-            b
-        );
+        assert!(out.residue.is_empty(), "byte 0x{:02x} leaked to residue", b);
         total_replies += out.replies.len();
     }
     assert_eq!(total_replies, 1);
@@ -324,10 +320,7 @@ fn osc_99_routes_into_desktop_notifications() {
     assert!(out.residue.is_empty(), "OSC 99 must not leak to residue");
     assert!(out.replies.is_empty(), "OSC 99 is not a HostReply variant");
     assert_eq!(out.desktop_notifications.len(), 1);
-    assert_eq!(
-        out.desktop_notifications[0],
-        b"notification body".to_vec()
-    );
+    assert_eq!(out.desktop_notifications[0], b"notification body".to_vec());
 }
 
 #[test]
@@ -478,9 +471,9 @@ fn primary_da_barrier_accepts_extended_forms() {
         chunk.extend_from_slice(b"\x1b]11;rgb:aaaa/bbbb/cccc\x1b\\");
         chunk.extend_from_slice(barrier);
         let out = parser.feed(&chunk);
-        let (token, reply_bytes) = out.completed_forward.expect(
-            "every Primary-DA reply form must close the forward window",
-        );
+        let (token, reply_bytes) = out
+            .completed_forward
+            .expect("every Primary-DA reply form must close the forward window");
         assert_eq!(token, 5);
         assert!(
             reply_bytes.windows(4).any(|w| w == b"]11;"),
@@ -694,11 +687,7 @@ fn timer_preserves_accumulated_reply_bytes_on_timeout() {
         tokio::task::yield_now().await;
     });
 
-    let (token, bytes) = captured
-        .lock()
-        .unwrap()
-        .take()
-        .expect("timer must fire");
+    let (token, bytes) = captured.lock().unwrap().take().expect("timer must fire");
     assert_eq!(token, 22);
     assert!(
         bytes.windows(4).any(|w| w == b"]11;"),

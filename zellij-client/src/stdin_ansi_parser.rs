@@ -406,9 +406,8 @@ impl StdinAnsiParser {
         // partial_csi) is non-empty at any time — the previous walk
         // either completed all sequences or stopped at exactly one
         // unterminated tail.
-        let mut working: Vec<u8> = Vec::with_capacity(
-            self.partial_osc.len() + self.partial_csi.len() + bytes.len(),
-        );
+        let mut working: Vec<u8> =
+            Vec::with_capacity(self.partial_osc.len() + self.partial_csi.len() + bytes.len());
         working.append(&mut self.partial_osc);
         working.append(&mut self.partial_csi);
         working.extend_from_slice(bytes);

@@ -419,11 +419,7 @@ pub trait Pane {
     /// underlying app opted in via `CSI ? 2031 h`.
     /// Only relevant to terminal panes, plugin panes receive this through
     /// `Event::HostTerminalThemeChanged`
-    fn push_color_palette_dsr(
-        &mut self,
-        _mode: zellij_utils::data::HostTerminalThemeMode,
-    ) {
-    }
+    fn push_color_palette_dsr(&mut self, _mode: zellij_utils::data::HostTerminalThemeMode) {}
     fn drain_clipboard_update(&mut self) -> Option<String> {
         None
     }
