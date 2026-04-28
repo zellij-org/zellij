@@ -524,6 +524,31 @@ load_plugins {
 //
 // osc8_hyperlinks false
 
+// OSC 1337 (WezTerm/iTerm2) sub-command passthrough.
+// Each sub-command can be enabled/disabled independently. The master switch
+// `osc1337_passthrough` short-circuits all sub-toggles when false.
+//
+// Defaults are conservative: display-only sub-commands are forwarded; any
+// sub-command that mutates host-terminal state (clipboard, profile, focus,
+// scrollback, badge, user-vars) is OFF by default. Turn the relevant
+// toggle on if you trust the programs running inside your panes.
+//
+// osc1337_passthrough true
+// osc1337_inline_images true        // File= (imgcat etc., inline=1 only)
+// osc1337_set_mark true             // SetMark
+// osc1337_current_dir true          // CurrentDir=
+// osc1337_highlight_cursor_line true
+// osc1337_unicode_version true
+// osc1337_set_user_var false        // SetUserVar= (fires Lua callbacks in WezTerm)
+// osc1337_set_profile false         // SetProfile= (mutates host terminal profile)
+// osc1337_set_badge_format false    // SetBadgeFormat=
+// osc1337_clear_scrollback false    // ClearScrollback (erases host scrollback)
+// osc1337_clipboard_copy false      // Copy=, CopyToClipboard=, EndCopy
+// osc1337_steal_focus false         // StealFocus
+// osc1337_request_attention false   // RequestAttention=yes|once|no|fireworks
+// osc1337_remote_host true          // RemoteHost=user@host (shell integration)
+// osc1337_shell_integration_version true  // ShellIntegrationVersion=N[;shell]
+
 // A command to run (will be wrapped with sh -c and provided the RESURRECT_COMMAND env variable)
 // after Zellij attempts to discover a command inside a pane when resurrecting sessions, the STDOUT
 // of this command will be used instead of the discovered RESURRECT_COMMAND

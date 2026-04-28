@@ -1949,6 +1949,36 @@ pub struct Options {
     pub theme_dark: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(string, optional, tag="47")]
     pub theme_light: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(bool, optional, tag="48")]
+    pub osc1337_passthrough: ::core::option::Option<bool>,
+    #[prost(bool, optional, tag="49")]
+    pub osc1337_inline_images: ::core::option::Option<bool>,
+    #[prost(bool, optional, tag="50")]
+    pub osc1337_set_mark: ::core::option::Option<bool>,
+    #[prost(bool, optional, tag="51")]
+    pub osc1337_current_dir: ::core::option::Option<bool>,
+    #[prost(bool, optional, tag="52")]
+    pub osc1337_highlight_cursor_line: ::core::option::Option<bool>,
+    #[prost(bool, optional, tag="53")]
+    pub osc1337_unicode_version: ::core::option::Option<bool>,
+    #[prost(bool, optional, tag="54")]
+    pub osc1337_set_user_var: ::core::option::Option<bool>,
+    #[prost(bool, optional, tag="55")]
+    pub osc1337_set_profile: ::core::option::Option<bool>,
+    #[prost(bool, optional, tag="56")]
+    pub osc1337_set_badge_format: ::core::option::Option<bool>,
+    #[prost(bool, optional, tag="57")]
+    pub osc1337_clear_scrollback: ::core::option::Option<bool>,
+    #[prost(bool, optional, tag="58")]
+    pub osc1337_clipboard_copy: ::core::option::Option<bool>,
+    #[prost(bool, optional, tag="59")]
+    pub osc1337_steal_focus: ::core::option::Option<bool>,
+    #[prost(bool, optional, tag="60")]
+    pub osc1337_request_attention: ::core::option::Option<bool>,
+    #[prost(bool, optional, tag="61")]
+    pub osc1337_remote_host: ::core::option::Option<bool>,
+    #[prost(bool, optional, tag="62")]
+    pub osc1337_shell_integration_version: ::core::option::Option<bool>,
 }
 /// Pane-targeting action messages
 #[allow(clippy::derive_partial_eq_without_eq)]

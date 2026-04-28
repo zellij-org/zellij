@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: restore kitty keyboard mode on error, handle DECRPM 2026 state 3, clean up client terminal teardown sequences (https://github.com/zellij-org/zellij/pull/5058)
 * fix: prevent occasional duplicate characters in the web client due to IME (https://github.com/zellij-org/zellij/pull/4975)
 * feat: support `CSI 2031` + dark/light mode theme switching (https://github.com/zellij-org/zellij/pull/5105)
+* feat(grid): WezTerm/iTerm2 OSC 1337 sub-command passthrough — inline images (`File=`), `SetMark`, `CurrentDir=`, `HighlightCursorLine=`, `UnicodeVersion=`, `SetUserVar=`, `SetProfile=`, `SetBadgeFormat=`, `ClearScrollback`, `Copy=` / `CopyToClipboard=` / `EndCopy`, `StealFocus`, `RequestAttention=`, `RemoteHost=`, `ShellIntegrationVersion=`. Per-sub-command toggles plus a master `osc1337_passthrough` switch in `Options`; defaults are conservative (display-only and shell-integration metadata on, clipboard / focus / attention / state-mutation off). All payloads are parsed, sanitized, and rebuilt from a fixed template before emission so user bytes never reach the host terminal as part of an unescaped sequence; `File=` with `inline=0` (host download) is always blocked, `RequestAttention=` is whitelisted to `yes|once|no|fireworks`, `RemoteHost=` requires `user@host`.
 
 ## [0.44.1] - 2026-04-07
 * fix: don't display default ports as offline in `share` plugin (https://github.com/zellij-org/zellij/pull/4908)

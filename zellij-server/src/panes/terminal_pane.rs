@@ -602,6 +602,10 @@ impl Pane for TerminalPane {
         self.grid.pending_desktop_notifications.drain(..).collect()
     }
 
+    fn drain_osc1337_commands(&mut self) -> Vec<crate::panes::grid::Osc1337Command> {
+        self.grid.pending_osc1337_commands.drain(..).collect()
+    }
+
     fn drain_osc7_cwd(&mut self) -> Option<std::path::PathBuf> {
         self.grid.pending_osc7_cwd.take()
     }

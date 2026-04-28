@@ -2717,6 +2717,53 @@ impl Options {
         let osc8_hyperlinks =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "osc8_hyperlinks")
                 .map(|(v, _)| v);
+        let osc1337_passthrough =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "osc1337_passthrough")
+                .map(|(v, _)| v);
+        let osc1337_inline_images =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "osc1337_inline_images")
+                .map(|(v, _)| v);
+        let osc1337_set_mark =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "osc1337_set_mark")
+                .map(|(v, _)| v);
+        let osc1337_current_dir =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "osc1337_current_dir")
+                .map(|(v, _)| v);
+        let osc1337_highlight_cursor_line =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "osc1337_highlight_cursor_line")
+                .map(|(v, _)| v);
+        let osc1337_unicode_version =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "osc1337_unicode_version")
+                .map(|(v, _)| v);
+        let osc1337_set_user_var =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "osc1337_set_user_var")
+                .map(|(v, _)| v);
+        let osc1337_set_profile =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "osc1337_set_profile")
+                .map(|(v, _)| v);
+        let osc1337_set_badge_format =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "osc1337_set_badge_format")
+                .map(|(v, _)| v);
+        let osc1337_clear_scrollback =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "osc1337_clear_scrollback")
+                .map(|(v, _)| v);
+        let osc1337_clipboard_copy =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "osc1337_clipboard_copy")
+                .map(|(v, _)| v);
+        let osc1337_steal_focus =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "osc1337_steal_focus")
+                .map(|(v, _)| v);
+        let osc1337_request_attention =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "osc1337_request_attention")
+                .map(|(v, _)| v);
+        let osc1337_remote_host =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "osc1337_remote_host")
+                .map(|(v, _)| v);
+        let osc1337_shell_integration_version = kdl_property_first_arg_as_bool_or_error!(
+            kdl_options,
+            "osc1337_shell_integration_version"
+        )
+        .map(|(v, _)| v);
         let scrollback_editor =
             kdl_property_first_arg_as_string_or_error!(kdl_options, "scrollback_editor")
                 .map(|(string, _entry)| PathBuf::from(string));
@@ -2845,6 +2892,21 @@ impl Options {
             copy_clipboard,
             copy_on_select,
             osc8_hyperlinks,
+            osc1337_passthrough,
+            osc1337_inline_images,
+            osc1337_set_mark,
+            osc1337_current_dir,
+            osc1337_highlight_cursor_line,
+            osc1337_unicode_version,
+            osc1337_set_user_var,
+            osc1337_set_profile,
+            osc1337_set_badge_format,
+            osc1337_clear_scrollback,
+            osc1337_clipboard_copy,
+            osc1337_steal_focus,
+            osc1337_request_attention,
+            osc1337_remote_host,
+            osc1337_shell_integration_version,
             scrollback_editor,
             session_name,
             attach_to_session,
@@ -2938,6 +3000,222 @@ impl Options {
         } else {
             None
         }
+    }
+    fn osc1337_bool_option_to_kdl(
+        &self,
+        add_comments: bool,
+        node_name: &str,
+        comment_lines: &[&str],
+        default_value: bool,
+        current_value: Option<bool>,
+    ) -> Option<KdlNode> {
+        let mut comment_text = String::from(" ");
+        for line in comment_lines {
+            comment_text.push('\n');
+            comment_text.push_str(line);
+        }
+        comment_text.push_str("\n// ");
+
+        let create_node = |node_value: bool| -> KdlNode {
+            let mut node = KdlNode::new(node_name);
+            node.push(KdlValue::Bool(node_value));
+            node
+        };
+        if let Some(value) = current_value {
+            let mut node = create_node(value);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(default_value);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
+    fn osc1337_passthrough_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        self.osc1337_bool_option_to_kdl(
+            add_comments,
+            "osc1337_passthrough",
+            &[
+                "// Master switch for OSC 1337 (WezTerm/iTerm2) sub-command",
+                "// passthrough. When false, no OSC 1337 sub-command is",
+                "// forwarded regardless of the per-sub-command toggles below.",
+                "// Default: true",
+            ],
+            true,
+            self.osc1337_passthrough,
+        )
+    }
+    fn osc1337_inline_images_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        self.osc1337_bool_option_to_kdl(
+            add_comments,
+            "osc1337_inline_images",
+            &[
+                "// Forward OSC 1337 File= inline image sequences (imgcat etc.).",
+                "// inline=0 (host-side downloads) is always blocked.",
+                "// Default: true",
+            ],
+            true,
+            self.osc1337_inline_images,
+        )
+    }
+    fn osc1337_set_mark_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        self.osc1337_bool_option_to_kdl(
+            add_comments,
+            "osc1337_set_mark",
+            &[
+                "// Forward OSC 1337 SetMark (records a scrollback mark in",
+                "// the host terminal). Default: true",
+            ],
+            true,
+            self.osc1337_set_mark,
+        )
+    }
+    fn osc1337_current_dir_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        self.osc1337_bool_option_to_kdl(
+            add_comments,
+            "osc1337_current_dir",
+            &[
+                "// Forward OSC 1337 CurrentDir= (host shell-integration",
+                "// breadcrumbs). Default: true",
+            ],
+            true,
+            self.osc1337_current_dir,
+        )
+    }
+    fn osc1337_highlight_cursor_line_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        self.osc1337_bool_option_to_kdl(
+            add_comments,
+            "osc1337_highlight_cursor_line",
+            &["// Forward OSC 1337 HighlightCursorLine=. Default: true"],
+            true,
+            self.osc1337_highlight_cursor_line,
+        )
+    }
+    fn osc1337_unicode_version_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        self.osc1337_bool_option_to_kdl(
+            add_comments,
+            "osc1337_unicode_version",
+            &["// Forward OSC 1337 UnicodeVersion=. Default: true"],
+            true,
+            self.osc1337_unicode_version,
+        )
+    }
+    fn osc1337_set_user_var_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        self.osc1337_bool_option_to_kdl(
+            add_comments,
+            "osc1337_set_user_var",
+            &[
+                "// Forward OSC 1337 SetUserVar= (fires Lua callbacks in",
+                "// WezTerm). Off by default: host user-var handlers may",
+                "// trigger arbitrary actions. Default: false",
+            ],
+            false,
+            self.osc1337_set_user_var,
+        )
+    }
+    fn osc1337_set_profile_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        self.osc1337_bool_option_to_kdl(
+            add_comments,
+            "osc1337_set_profile",
+            &[
+                "// Forward OSC 1337 SetProfile= (mutates host terminal",
+                "// profile — keybindings, colors, font). Default: false",
+            ],
+            false,
+            self.osc1337_set_profile,
+        )
+    }
+    fn osc1337_set_badge_format_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        self.osc1337_bool_option_to_kdl(
+            add_comments,
+            "osc1337_set_badge_format",
+            &[
+                "// Forward OSC 1337 SetBadgeFormat= (host terminal badge",
+                "// UI). Default: false",
+            ],
+            false,
+            self.osc1337_set_badge_format,
+        )
+    }
+    fn osc1337_clear_scrollback_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        self.osc1337_bool_option_to_kdl(
+            add_comments,
+            "osc1337_clear_scrollback",
+            &[
+                "// Forward OSC 1337 ClearScrollback (erases the host",
+                "// terminal's scrollback). Default: false",
+            ],
+            false,
+            self.osc1337_clear_scrollback,
+        )
+    }
+    fn osc1337_clipboard_copy_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        self.osc1337_bool_option_to_kdl(
+            add_comments,
+            "osc1337_clipboard_copy",
+            &[
+                "// Forward OSC 1337 Copy=, CopyToClipboard=, EndCopy",
+                "// (direct host clipboard write). Off by default to",
+                "// prevent clipboard injection by remote processes.",
+                "// Default: false",
+            ],
+            false,
+            self.osc1337_clipboard_copy,
+        )
+    }
+    fn osc1337_steal_focus_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        self.osc1337_bool_option_to_kdl(
+            add_comments,
+            "osc1337_steal_focus",
+            &[
+                "// Forward OSC 1337 StealFocus (forces host terminal window",
+                "// to foreground). Default: false",
+            ],
+            false,
+            self.osc1337_steal_focus,
+        )
+    }
+    fn osc1337_request_attention_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        self.osc1337_bool_option_to_kdl(
+            add_comments,
+            "osc1337_request_attention",
+            &[
+                "// Forward OSC 1337 RequestAttention=yes|once|no|fireworks",
+                "// (host terminal dock-bouncing / window highlighting).",
+                "// Default: false",
+            ],
+            false,
+            self.osc1337_request_attention,
+        )
+    }
+    fn osc1337_remote_host_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        self.osc1337_bool_option_to_kdl(
+            add_comments,
+            "osc1337_remote_host",
+            &[
+                "// Forward OSC 1337 RemoteHost=user@host (shell-integration",
+                "// login metadata). Default: true",
+            ],
+            true,
+            self.osc1337_remote_host,
+        )
+    }
+    fn osc1337_shell_integration_version_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        self.osc1337_bool_option_to_kdl(
+            add_comments,
+            "osc1337_shell_integration_version",
+            &[
+                "// Forward OSC 1337 ShellIntegrationVersion=N[;shell]",
+                "// (shell-integration version advertisement).",
+                "// Default: true",
+            ],
+            true,
+            self.osc1337_shell_integration_version,
+        )
     }
     fn theme_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
         let comment_text = format!(
@@ -4251,6 +4529,51 @@ impl Options {
         }
         if let Some(osc8_hyperlinks_node) = self.osc8_hyperlinks_to_kdl(add_comments) {
             nodes.push(osc8_hyperlinks_node);
+        }
+        if let Some(node) = self.osc1337_passthrough_to_kdl(add_comments) {
+            nodes.push(node);
+        }
+        if let Some(node) = self.osc1337_inline_images_to_kdl(add_comments) {
+            nodes.push(node);
+        }
+        if let Some(node) = self.osc1337_set_mark_to_kdl(add_comments) {
+            nodes.push(node);
+        }
+        if let Some(node) = self.osc1337_current_dir_to_kdl(add_comments) {
+            nodes.push(node);
+        }
+        if let Some(node) = self.osc1337_highlight_cursor_line_to_kdl(add_comments) {
+            nodes.push(node);
+        }
+        if let Some(node) = self.osc1337_unicode_version_to_kdl(add_comments) {
+            nodes.push(node);
+        }
+        if let Some(node) = self.osc1337_set_user_var_to_kdl(add_comments) {
+            nodes.push(node);
+        }
+        if let Some(node) = self.osc1337_set_profile_to_kdl(add_comments) {
+            nodes.push(node);
+        }
+        if let Some(node) = self.osc1337_set_badge_format_to_kdl(add_comments) {
+            nodes.push(node);
+        }
+        if let Some(node) = self.osc1337_clear_scrollback_to_kdl(add_comments) {
+            nodes.push(node);
+        }
+        if let Some(node) = self.osc1337_clipboard_copy_to_kdl(add_comments) {
+            nodes.push(node);
+        }
+        if let Some(node) = self.osc1337_steal_focus_to_kdl(add_comments) {
+            nodes.push(node);
+        }
+        if let Some(node) = self.osc1337_request_attention_to_kdl(add_comments) {
+            nodes.push(node);
+        }
+        if let Some(node) = self.osc1337_remote_host_to_kdl(add_comments) {
+            nodes.push(node);
+        }
+        if let Some(node) = self.osc1337_shell_integration_version_to_kdl(add_comments) {
+            nodes.push(node);
         }
         if let Some(theme_node) = self.theme_to_kdl(add_comments) {
             nodes.push(theme_node);

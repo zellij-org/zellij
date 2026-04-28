@@ -732,6 +732,21 @@ impl From<crate::input::options::Options>
             visual_bell: options.visual_bell,
             focus_follows_mouse: options.focus_follows_mouse,
             mouse_click_through: options.mouse_click_through,
+            osc1337_passthrough: options.osc1337_passthrough,
+            osc1337_inline_images: options.osc1337_inline_images,
+            osc1337_set_mark: options.osc1337_set_mark,
+            osc1337_current_dir: options.osc1337_current_dir,
+            osc1337_highlight_cursor_line: options.osc1337_highlight_cursor_line,
+            osc1337_unicode_version: options.osc1337_unicode_version,
+            osc1337_set_user_var: options.osc1337_set_user_var,
+            osc1337_set_profile: options.osc1337_set_profile,
+            osc1337_set_badge_format: options.osc1337_set_badge_format,
+            osc1337_clear_scrollback: options.osc1337_clear_scrollback,
+            osc1337_clipboard_copy: options.osc1337_clipboard_copy,
+            osc1337_steal_focus: options.osc1337_steal_focus,
+            osc1337_request_attention: options.osc1337_request_attention,
+            osc1337_remote_host: options.osc1337_remote_host,
+            osc1337_shell_integration_version: options.osc1337_shell_integration_version,
         }
     }
 }
@@ -829,6 +844,21 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
             visual_bell: options.visual_bell,
             focus_follows_mouse: options.focus_follows_mouse,
             mouse_click_through: options.mouse_click_through,
+            osc1337_passthrough: options.osc1337_passthrough,
+            osc1337_inline_images: options.osc1337_inline_images,
+            osc1337_set_mark: options.osc1337_set_mark,
+            osc1337_current_dir: options.osc1337_current_dir,
+            osc1337_highlight_cursor_line: options.osc1337_highlight_cursor_line,
+            osc1337_unicode_version: options.osc1337_unicode_version,
+            osc1337_set_user_var: options.osc1337_set_user_var,
+            osc1337_set_profile: options.osc1337_set_profile,
+            osc1337_set_badge_format: options.osc1337_set_badge_format,
+            osc1337_clear_scrollback: options.osc1337_clear_scrollback,
+            osc1337_clipboard_copy: options.osc1337_clipboard_copy,
+            osc1337_steal_focus: options.osc1337_steal_focus,
+            osc1337_request_attention: options.osc1337_request_attention,
+            osc1337_remote_host: options.osc1337_remote_host,
+            osc1337_shell_integration_version: options.osc1337_shell_integration_version,
         })
     }
 }
