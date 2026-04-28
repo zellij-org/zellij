@@ -482,6 +482,10 @@ impl State {
                 self.toggle_active_screen();
                 should_render = true;
             },
+            BareKey::Tab if key.has_modifiers(&[KeyModifier::Shift]) => {
+                self.toggle_active_screen_backwards();
+                should_render = true;
+            },
             BareKey::Char('f') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                 let request_id = Uuid::new_v4();
                 let mut config = BTreeMap::new();
@@ -637,6 +641,10 @@ impl State {
                     self.toggle_active_screen();
                     should_render = true;
                 },
+                BareKey::Tab if key.has_modifiers(&[KeyModifier::Shift]) => {
+                    self.toggle_active_screen_backwards();
+                    should_render = true;
+                },
                 BareKey::Esc if key.has_no_modifiers() => {
                     if self.renaming_session_name.is_some() {
                         self.renaming_session_name = None;
@@ -691,6 +699,10 @@ impl State {
             },
             BareKey::Tab if key.has_no_modifiers() => {
                 self.toggle_active_screen();
+                should_render = true;
+            },
+            BareKey::Tab if key.has_modifiers(&[KeyModifier::Shift]) => {
+                self.toggle_active_screen_backwards();
                 should_render = true;
             },
             BareKey::Delete if key.has_no_modifiers() => {
@@ -1181,6 +1193,13 @@ impl State {
             ActiveScreen::AttachToSession => ActiveScreen::ResurrectSession,
             ActiveScreen::ResurrectSession => ActiveScreen::NewSession,
             ActiveScreen::SingleScreen => ActiveScreen::SingleScreen, // no-op
+        };
+    }
+    fn toggle_active_screen_backwards(&mut self) {
+        self.active_screen = match self.active_screen {
+            ActiveScreen::NewSession => ActiveScreen::ResurrectSession,
+            ActiveScreen::AttachToSession => ActiveScreen::NewSession,
+            ActiveScreen::ResurrectSession => ActiveScreen::AttachToSession,
         };
     }
     fn show_error(&mut self, error_text: &str) {
