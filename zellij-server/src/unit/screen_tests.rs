@@ -8931,3 +8931,267 @@ fn non_empty_reply_bypasses_synthesis() {
         "real reply must be forwarded verbatim, not replaced by cached bg"
     );
 }
+
+// =====================================================================
+// (CSI 2031 / DSR 997) (dark/light theme changes)
+// =====================================================================
+
+struct ThemeCapture {
+    plugin_rx: Receiver<(PluginInstruction, ErrorContext)>,
+    pty_writer_rx: Receiver<(PtyWriteInstruction, ErrorContext)>,
+}
+
+impl ThemeCapture {
+    fn drain_plugin_events(&self) -> Vec<Event> {
+        let mut out = Vec::new();
+        while let Ok((instr, _ctx)) = self.plugin_rx.try_recv() {
+            if let PluginInstruction::Update(updates) = instr {
+                for (_pid, _cid, ev) in updates {
+                    out.push(ev);
+                }
+            }
+        }
+        out
+    }
+    fn drain_pty_writes(&self) -> Vec<(Vec<u8>, u32)> {
+        let mut out = Vec::new();
+        while let Ok((instr, _ctx)) = self.pty_writer_rx.try_recv() {
+            if let PtyWriteInstruction::Write(bytes, terminal_id, _) = instr {
+                out.push((bytes, terminal_id));
+            }
+        }
+        out
+    }
+}
+
+fn create_new_screen_with_theme_capture(size: Size) -> (Screen, ThemeCapture) {
+    let (plugin_tx, plugin_rx) = channels::unbounded::<(PluginInstruction, ErrorContext)>();
+    let (pty_writer_tx, pty_writer_rx) =
+        channels::unbounded::<(PtyWriteInstruction, ErrorContext)>();
+
+    let mut bus: Bus<ScreenInstruction> = Bus::empty();
+    bus.senders.to_plugin = Some(SenderWithContext::new(plugin_tx));
+    bus.senders.to_pty_writer = Some(SenderWithContext::new(pty_writer_tx));
+    let fake_os_input = FakeInputOutput::default();
+    bus.os_input = Some(Box::new(fake_os_input));
+
+    let client_attributes = ClientAttributes {
+        size,
+        ..Default::default()
+    };
+    let mut mode_info = ModeInfo::default();
+    mode_info.session_name = Some("zellij-test".into());
+    let copy_options = CopyOptions::default();
+    let default_layout = Box::new(Layout::default());
+    let default_shell = PathBuf::from("my_default_shell");
+    let web_sharing = WebSharing::Off;
+    let web_server_ip = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
+    let web_server_port = 8080;
+    let screen = Screen::new(
+        bus,
+        &client_attributes,
+        None,
+        mode_info,
+        false,
+        true,
+        true,
+        copy_options,
+        false,
+        default_layout,
+        None,
+        default_shell,
+        true,
+        false,
+        None,
+        true,
+        true,
+        true,
+        None,
+        false,
+        true,
+        None,
+        false,
+        web_sharing,
+        true,
+        true,
+        true,
+        false,
+        false,
+        web_server_ip,
+        web_server_port,
+    );
+    (
+        screen,
+        ThemeCapture {
+            plugin_rx,
+            pty_writer_rx,
+        },
+    )
+}
+
+#[test]
+fn host_theme_first_update_emits_plugin_event() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_theme_capture(size);
+
+    screen
+        .update_host_terminal_theme_mode(zellij_utils::data::HostTerminalThemeMode::Dark)
+        .expect("update ok");
+
+    let events = capture.drain_plugin_events();
+    assert!(
+        events.iter().any(|e| matches!(
+            e,
+            Event::HostTerminalThemeChanged(zellij_utils::data::HostTerminalThemeMode::Dark)
+        )),
+        "Event::HostTerminalThemeChanged(Dark) must be fanned out, got: {:?}",
+        events
+    );
+    assert_eq!(
+        screen.host_terminal_theme_mode,
+        Some(zellij_utils::data::HostTerminalThemeMode::Dark),
+        "stored mode must be updated"
+    );
+}
+
+#[test]
+fn host_theme_dedupes_duplicate_mode() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_theme_capture(size);
+
+    screen
+        .update_host_terminal_theme_mode(zellij_utils::data::HostTerminalThemeMode::Light)
+        .expect("first ok");
+    let _ = capture.drain_plugin_events();
+
+    screen
+        .update_host_terminal_theme_mode(zellij_utils::data::HostTerminalThemeMode::Light)
+        .expect("second ok");
+
+    let events = capture.drain_plugin_events();
+    assert!(
+        events.is_empty(),
+        "duplicate mode must not re-emit any plugin events, got: {:?}",
+        events
+    );
+}
+
+#[test]
+fn host_theme_emits_again_on_mode_flip() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_theme_capture(size);
+
+    screen
+        .update_host_terminal_theme_mode(zellij_utils::data::HostTerminalThemeMode::Dark)
+        .expect("first ok");
+    let _ = capture.drain_plugin_events();
+
+    screen
+        .update_host_terminal_theme_mode(zellij_utils::data::HostTerminalThemeMode::Light)
+        .expect("flip ok");
+
+    let events = capture.drain_plugin_events();
+    assert!(
+        events.iter().any(|e| matches!(
+            e,
+            Event::HostTerminalThemeChanged(zellij_utils::data::HostTerminalThemeMode::Light)
+        )),
+        "mode flip must re-emit the plugin event, got: {:?}",
+        events
+    );
+}
+
+#[test]
+fn color_palette_mode_query_short_circuits_to_dark_reply() {
+    use crate::host_query::HostQuery;
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_forward_capture(size);
+    screen.host_terminal_theme_mode =
+        Some(zellij_utils::data::HostTerminalThemeMode::Dark);
+
+    let token = screen.forward_host_query(PaneId::Terminal(13), HostQuery::ColorPaletteMode);
+
+    assert_eq!(
+        token, 0,
+        "ColorPaletteMode must return the sentinel token; no real forward was queued"
+    );
+    assert!(
+        capture.drain_forward_queries().is_empty(),
+        "must NOT forward to host — Zellij answers from cache"
+    );
+    let writes = capture.drain_pty_writes();
+    assert_eq!(writes.len(), 1, "exactly one pty reply expected");
+    assert_eq!(writes[0], (b"\x1b[?997;1n".to_vec(), 13));
+    assert!(
+        screen.forward_in_flight_token.is_none(),
+        "slot must remain free; short-circuit does not occupy the queue"
+    );
+}
+
+#[test]
+fn color_palette_mode_query_short_circuits_to_light_reply() {
+    use crate::host_query::HostQuery;
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_forward_capture(size);
+    screen.host_terminal_theme_mode =
+        Some(zellij_utils::data::HostTerminalThemeMode::Light);
+
+    let _ = screen.forward_host_query(PaneId::Terminal(4), HostQuery::ColorPaletteMode);
+
+    let writes = capture.drain_pty_writes();
+    assert_eq!(writes.len(), 1);
+    assert_eq!(writes[0], (b"\x1b[?997;2n".to_vec(), 4));
+}
+
+#[test]
+fn color_palette_mode_query_stays_silent_when_host_mode_unknown() {
+    use crate::host_query::HostQuery;
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_forward_capture(size);
+    assert!(
+        screen.host_terminal_theme_mode.is_none(),
+        "precondition: no host mode learned yet"
+    );
+
+    let _ = screen.forward_host_query(PaneId::Terminal(1), HostQuery::ColorPaletteMode);
+
+    assert!(
+        capture.drain_pty_writes().is_empty(),
+        "Contour spec defines only ;1 (dark) and ;2 (light); when Zellij has \
+         not learned the host's mode it must stay silent rather than fabricate \
+         a non-conformant reply (e.g. ;0)"
+    );
+}
+
+#[test]
+fn color_palette_mode_query_skips_plugin_panes() {
+    use crate::host_query::HostQuery;
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_forward_capture(size);
+    screen.host_terminal_theme_mode =
+        Some(zellij_utils::data::HostTerminalThemeMode::Dark);
+
+    let _ = screen.forward_host_query(PaneId::Plugin(99), HostQuery::ColorPaletteMode);
+
+    assert!(
+        capture.drain_pty_writes().is_empty(),
+        "plugin panes have no VT pty — they get Event::HostTerminalThemeChanged instead"
+    );
+}
+
+#[test]
+fn host_theme_no_pty_writes_when_no_panes_subscribed() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_theme_capture(size);
+
+    screen
+        .update_host_terminal_theme_mode(zellij_utils::data::HostTerminalThemeMode::Dark)
+        .expect("ok");
+
+    let writes = capture.drain_pty_writes();
+    assert!(
+        writes.is_empty(),
+        "no panes exist (or none subscribed via CSI ?2031h), so no DSR forward is queued, got: {:?}",
+        writes
+    );
+}

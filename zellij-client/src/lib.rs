@@ -54,6 +54,17 @@ const SHOW_CURSOR: &str = "\u{1b}[?25h";
 const ENTER_KITTY_KEYBOARD_MODE: &str = "\u{1b}[>1u";
 const EXIT_KITTY_KEYBOARD_MODE: &str = "\u{1b}[<1u";
 const CLEAR_CLIENT_TERMINAL_ATTRIBUTES: &str = "\u{1b}[?1l\u{1b}=\u{1b}[r\u{1b}[?1000l\u{1b}[?1002l\u{1b}[?1003l\u{1b}[?1005l\u{1b}[?1006l\u{1b}[?12l";
+/// Subscribe to host color-palette theme notifications (CSI 2031). Hosts
+/// that support it begin emitting unsolicited DSR 997 reports on theme
+/// change after this is sent.
+const ENABLE_HOST_THEME_NOTIFY: &str = "\u{1b}[?2031h";
+/// Cancel the CSI 2031 subscription (sent on detach / shutdown so we
+/// don't leave the host emitting DSR 997s into nothing).
+const DISABLE_HOST_THEME_NOTIFY: &str = "\u{1b}[?2031l";
+/// Actively query the current host theme (DSR 996). Reply arrives in the
+/// same `CSI ? 997 ; {1|2} n` form as unsolicited notifications, so the
+/// stdin parser handles both uniformly.
+const QUERY_HOST_THEME: &str = "\u{1b}[?996n";
 
 /// Spawn an async runtime for this client instance.
 ///
@@ -646,6 +657,10 @@ pub fn start_remote_client(
     stdout
         .write_all(ENTER_KITTY_KEYBOARD_MODE.as_bytes())
         .unwrap();
+    stdout
+        .write_all(ENABLE_HOST_THEME_NOTIFY.as_bytes())
+        .unwrap();
+    stdout.write_all(QUERY_HOST_THEME.as_bytes()).unwrap();
 
     envs::set_zellij("0".to_string());
 
@@ -741,6 +756,14 @@ pub fn start_client(
                 .write_all(ENTER_KITTY_KEYBOARD_MODE.as_bytes())
                 .unwrap();
         }
+        // Subscribe to host CSI 2031 theme notifications and query the
+        // current mode. Sent right after CLEAR_CLIENT_TERMINAL_ATTRIBUTES
+        // so there's no window in which the host is unsubscribed.
+        // Hosts that don't support 2031 ignore both sequences.
+        stdout
+            .write_all(ENABLE_HOST_THEME_NOTIFY.as_bytes())
+            .unwrap();
+        stdout.write_all(QUERY_HOST_THEME.as_bytes()).unwrap();
     }
     envs::set_zellij("0".to_string());
     config.env.set_vars();
@@ -1396,8 +1419,9 @@ fn terminal_teardown_message(message: &str, rows: usize, include_kitty_exit: boo
         ""
     };
     format!(
-        "{}{}{}{}{}{}\n",
+        "{}{}{}{}{}{}{}\n",
         kitty_exit,
+        DISABLE_HOST_THEME_NOTIFY,
         EXIT_ALTERNATE_SCREEN,
         RESET_STYLE,
         SHOW_CURSOR,

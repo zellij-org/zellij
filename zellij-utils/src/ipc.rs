@@ -1,6 +1,6 @@
 //! IPC stuff for starting to split things into a client and server model.
 use crate::{
-    data::{ClientId, ConnectToSession, KeyWithModifier, PaneId, Style},
+    data::{ClientId, ConnectToSession, HostTerminalThemeMode, KeyWithModifier, PaneId, Style},
     errors::{prelude::*, ErrorContext},
     input::{actions::Action, cli_assets::CliAssets},
     pane_size::{Size, SizeInPixels},
@@ -163,6 +163,13 @@ pub enum ClientToServerMsg {
     ForwardedReplyFromHost {
         token: u32,
         reply_bytes: Vec<u8>,
+    },
+    /// The host terminal reported a color-palette theme mode (DSR 997 reply
+    /// to `CSI ? 996 n`, or unsolicited notification while `CSI ? 2031 h`
+    /// is enabled). The server propagates this to the active configured
+    /// theme and to subscribed plugins/panes.
+    HostTerminalThemeChanged {
+        mode: HostTerminalThemeMode,
     },
 }
 

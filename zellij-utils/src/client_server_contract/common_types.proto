@@ -1166,6 +1166,8 @@ message Options {
   optional bool visual_bell = 43;
   optional bool focus_follows_mouse = 44;
   optional bool mouse_click_through = 45;
+  optional string theme_dark = 46;
+  optional string theme_light = 47;
 }
 
 enum OnForceClose {

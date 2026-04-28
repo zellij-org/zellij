@@ -317,6 +317,10 @@ impl InputHandler {
                     .send(ClientInstruction::SetSynchronizedOutput(enabled))
                     .unwrap();
             },
+            AnsiStdinInstruction::HostTerminalThemeChanged(mode) => {
+                self.os_input
+                    .send_to_server(ClientToServerMsg::HostTerminalThemeChanged { mode });
+            },
         }
     }
     fn handle_mouse_event(&mut self, mouse_event: &MouseEvent) {

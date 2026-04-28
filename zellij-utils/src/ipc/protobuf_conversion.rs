@@ -6,6 +6,8 @@ use crate::{
         ConnStatusMsg, ConnectedMsg, DesktopNotificationResponseMsg, DetachSessionMsg, ExitMsg,
         ExitReason as ProtoExitReason, FailedToStartWebServerMsg, FirstClientConnectedMsg,
         ForegroundColorMsg, ForwardQueryToHostMsg, ForwardedReplyFromHostMsg,
+        HostTerminalThemeChangedMsg,
+        HostTerminalThemeIndication as ProtoHostTerminalThemeIndication,
         InputMode as ProtoInputMode, KeyMsg, KillSessionMsg,
         LayoutMetadata as ProtoLayoutMetadata, LogErrorMsg, LogMsg,
         PaneMetadata as ProtoPaneMetadata, PaneRenderUpdateMsg, QueryTerminalSizeMsg,
@@ -14,7 +16,7 @@ use crate::{
         TabMetadata as ProtoTabMetadata, TerminalPixelDimensionsMsg, TerminalResizeMsg,
         UnblockCliPipeInputMsg, UnblockInputThreadMsg, WebServerStartedMsg,
     },
-    data::{InputMode, PaneId},
+    data::{HostTerminalThemeMode, InputMode, PaneId},
     errors::prelude::*,
     ipc::{
         ClientToServerMsg, ColorRegister, ExitReason, PaneReference, PixelDimensions,
@@ -133,6 +135,14 @@ impl From<ClientToServerMsg> for ProtoClientToServerMsg {
             ClientToServerMsg::ForwardedReplyFromHost { token, reply_bytes } => {
                 client_to_server_msg::Message::ForwardedReplyFromHost(
                     ForwardedReplyFromHostMsg { token, reply_bytes },
+                )
+            },
+            ClientToServerMsg::HostTerminalThemeChanged { mode } => {
+                let proto_mode: ProtoHostTerminalThemeIndication = mode.into();
+                client_to_server_msg::Message::HostTerminalThemeChanged(
+                    HostTerminalThemeChangedMsg {
+                        mode: proto_mode as i32,
+                    },
                 )
             },
         };
@@ -267,6 +277,13 @@ impl TryFrom<ProtoClientToServerMsg> for ClientToServerMsg {
                 Ok(ClientToServerMsg::ForwardedReplyFromHost {
                     token: msg.token,
                     reply_bytes: msg.reply_bytes,
+                })
+            },
+            Some(client_to_server_msg::Message::HostTerminalThemeChanged(msg)) => {
+                let proto_mode = ProtoHostTerminalThemeIndication::from_i32(msg.mode)
+                    .ok_or_else(|| anyhow!("Unknown HostTerminalThemeIndication: {}", msg.mode))?;
+                Ok(ClientToServerMsg::HostTerminalThemeChanged {
+                    mode: proto_mode.into(),
                 })
             },
             None => Err(anyhow!("Empty ClientToServerMsg message")),
@@ -649,6 +666,8 @@ impl From<crate::input::options::Options>
         Self {
             simplified_ui: options.simplified_ui,
             theme: options.theme,
+            theme_dark: options.theme_dark,
+            theme_light: options.theme_light,
             default_mode: options.default_mode.map(|m| input_mode_to_proto_i32(m)),
             default_shell: options
                 .default_shell
@@ -731,6 +750,8 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
         Ok(Self {
             simplified_ui: options.simplified_ui,
             theme: options.theme,
+            theme_dark: options.theme_dark,
+            theme_light: options.theme_light,
             default_mode: options
                 .default_mode
                 .map(|m| proto_i32_to_input_mode(m))
@@ -2972,6 +2993,24 @@ impl TryFrom<ProtoExitReason> for ExitReason {
             ProtoExitReason::Error => Ok(ExitReason::Error("Protobuf error".to_string())),
             ProtoExitReason::CustomExitStatus => Ok(ExitReason::CustomExitStatus(0)),
             ProtoExitReason::Unspecified => Err(anyhow!("Unspecified exit reason")),
+        }
+    }
+}
+
+impl From<HostTerminalThemeMode> for ProtoHostTerminalThemeIndication {
+    fn from(mode: HostTerminalThemeMode) -> Self {
+        match mode {
+            HostTerminalThemeMode::Dark => ProtoHostTerminalThemeIndication::Dark,
+            HostTerminalThemeMode::Light => ProtoHostTerminalThemeIndication::Light,
+        }
+    }
+}
+
+impl From<ProtoHostTerminalThemeIndication> for HostTerminalThemeMode {
+    fn from(mode: ProtoHostTerminalThemeIndication) -> Self {
+        match mode {
+            ProtoHostTerminalThemeIndication::Dark => HostTerminalThemeMode::Dark,
+            ProtoHostTerminalThemeIndication::Light => HostTerminalThemeMode::Light,
         }
     }
 }

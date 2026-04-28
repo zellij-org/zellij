@@ -706,3 +706,78 @@ fn timer_preserves_accumulated_reply_bytes_on_timeout() {
         bytes
     );
 }
+
+#[test]
+fn host_theme_dsr_997_dark_in_one_chunk() {
+    let mut parser = StdinAnsiParser::new();
+    let (replies, residue) = feed_once(&mut parser, b"\x1b[?997;1n");
+    assert!(residue.is_empty(), "DSR 997 reply must be fully consumed");
+    assert_eq!(replies.len(), 1);
+    match &replies[0] {
+        HostReply::HostTerminalThemeChanged(mode) => {
+            assert_eq!(*mode, zellij_utils::data::HostTerminalThemeMode::Dark);
+        },
+        other => panic!("expected HostTerminalThemeChanged, got {:?}", other),
+    }
+}
+
+#[test]
+fn host_theme_dsr_997_light_in_one_chunk() {
+    let mut parser = StdinAnsiParser::new();
+    let (replies, residue) = feed_once(&mut parser, b"\x1b[?997;2n");
+    assert!(residue.is_empty());
+    match &replies[0] {
+        HostReply::HostTerminalThemeChanged(mode) => {
+            assert_eq!(*mode, zellij_utils::data::HostTerminalThemeMode::Light);
+        },
+        other => panic!("expected HostTerminalThemeChanged, got {:?}", other),
+    }
+}
+
+#[test]
+fn host_theme_dsr_997_across_chunk_boundaries() {
+    // Same coverage philosophy as fragmented_csi_report_does_not_leak:
+    // split the DSR at every internal byte position and assert the
+    // parser still emits exactly one HostReply with no leaked residue.
+    let full = b"\x1b[?997;1n";
+    for split in 1..full.len() {
+        let mut p = StdinAnsiParser::new();
+        let r1 = p.feed(&full[..split]);
+        let r2 = p.feed(&full[split..]);
+        assert!(
+            r1.residue.is_empty(),
+            "split at {}: chunk 1 leaked residue {:?}",
+            split,
+            r1.residue
+        );
+        assert!(
+            r2.residue.is_empty(),
+            "split at {}: chunk 2 leaked residue {:?}",
+            split,
+            r2.residue
+        );
+        let total = r1.replies.len() + r2.replies.len();
+        assert_eq!(total, 1, "split at {}: got {} replies", split, total);
+        let reply = r1.replies.into_iter().chain(r2.replies).next().unwrap();
+        match reply {
+            HostReply::HostTerminalThemeChanged(mode) => {
+                assert_eq!(mode, zellij_utils::data::HostTerminalThemeMode::Dark);
+            },
+            other => panic!("expected HostTerminalThemeChanged, got {:?}", other),
+        }
+    }
+}
+
+#[test]
+fn host_theme_dsr_997_unknown_param_dropped() {
+    let mut parser = StdinAnsiParser::new();
+    // CSI ?997;3n is not a defined Dark/Light value; the parser
+    // recognises the CSI shape (final byte n) but
+    // `from_csi_report` rejects unknown payloads, so no HostReply is
+    // produced and no residue leaks (the bytes were consumed by termwiz).
+    let out = parser.feed(b"\x1b[?997;3n");
+    assert!(
+        out.replies.is_empty(),
+        "unknown ?997;N value must not classify"
+    );
+}

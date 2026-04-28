@@ -414,6 +414,16 @@ pub trait Pane {
         // plugin panes have no such concept.
         vec![]
     }
+    /// Push a CSI ?997 DSR notification (host color-palette theme mode)
+    /// onto this pane's pending pty-write queue, but only if the pane's
+    /// underlying app opted in via `CSI ? 2031 h`.
+    /// Only relevant to terminal panes, plugin panes receive this through
+    /// `Event::HostTerminalThemeChanged`
+    fn push_color_palette_dsr(
+        &mut self,
+        _mode: zellij_utils::data::HostTerminalThemeMode,
+    ) {
+    }
     fn drain_clipboard_update(&mut self) -> Option<String> {
         None
     }
@@ -5543,6 +5553,13 @@ impl Tab {
     }
     pub fn update_theme(&mut self, theme: Styling) {
         self.style.colors = theme;
+        // The tab's `default_mode_info` is what `update_input_modes`
+        // falls back to when no per-client entry exists in
+        // `self.mode_info`. Without this update, plugins on a
+        // freshly-connected client (one that has never manually
+        // changed mode) receive `Event::ModeUpdate` carrying the old
+        // style and skip their re-render.
+        self.default_mode_info.update_theme(theme);
         self.floating_panes.update_pane_themes(theme);
         self.tiled_panes.update_pane_themes(theme);
         for (_, pane) in self.suppressed_panes.values_mut() {

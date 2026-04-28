@@ -41,10 +41,10 @@ use crate::route::NotificationEnd;
 use log::{debug, warn};
 use zellij_utils::data::{
     CommandOrPlugin, Direction, EventType, FloatingPaneCoordinates, GetFocusedPaneInfoResponse,
-    KeyWithModifier, LayoutInfo, LayoutWithError, ListPanesResponse, ListTabsResponse,
-    NewPanePlacement, PaneContents, PaneInfo, PaneListEntry, PaneManifest, PaneRenderReport,
-    PaneScrollbackResponse, PluginPermission, RegexHighlight, Resize, ResizeStrategy, SessionInfo,
-    Styling, TabInfo, WebSharing,
+    HostTerminalThemeMode, KeyWithModifier, LayoutInfo, LayoutWithError, ListPanesResponse,
+    ListTabsResponse, NewPanePlacement, PaneContents, PaneInfo, PaneListEntry, PaneManifest,
+    PaneRenderReport, PaneScrollbackResponse, PluginPermission, RegexHighlight, Resize,
+    ResizeStrategy, SessionInfo, Styling, TabInfo, WebSharing,
 };
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
@@ -516,6 +516,12 @@ pub enum ScreenInstruction {
         token: u32,
         reply_bytes: Vec<u8>,
     },
+    /// The host terminal reported a color-palette theme mode (DSR 997 reply
+    /// to `CSI ? 996 n`, or unsolicited notification while `CSI ? 2031 h`
+    /// is enabled). Triggers auto-theme switch (when configured), the
+    /// `HostTerminalThemeChanged` plugin event, and per-pane DSR forwarding
+    /// for panes that opted in via `CSI ? 2031 h`.
+    HostTerminalThemeChanged(HostTerminalThemeMode),
     ChangeMode(ModeInfo, ClientId, Option<NotificationEnd>),
     ChangeModeForAllClients(ModeInfo, Option<NotificationEnd>),
     MouseEvent(MouseEvent, ClientId, Option<NotificationEnd>),
@@ -688,6 +694,12 @@ pub enum ScreenInstruction {
         keybinds: Keybinds,
         default_mode: InputMode,
         theme: Styling,
+        /// Resolved styling for `theme_dark`. When both this and
+        /// `host_theme_light` are `Some`, Screen auto-switches the active
+        /// palette in response to host CSI 2031 / DSR 997 notifications.
+        host_theme_dark: Option<Styling>,
+        /// Resolved styling for `theme_light`. See `host_theme_dark`.
+        host_theme_light: Option<Styling>,
         simplified_ui: bool,
         default_shell: Option<PathBuf>,
         pane_frames: bool,
@@ -954,6 +966,9 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::ForwardHostQuery { .. } => ScreenContext::ForwardHostQuery,
             ScreenInstruction::ForwardedReplyFromHost { .. } => {
                 ScreenContext::ForwardedReplyFromHost
+            },
+            ScreenInstruction::HostTerminalThemeChanged(..) => {
+                ScreenContext::HostTerminalThemeChanged
             },
             ScreenInstruction::ChangeMode(..) => ScreenContext::ChangeMode,
             ScreenInstruction::ChangeModeForAllClients(..) => {
@@ -1402,6 +1417,16 @@ pub(crate) struct Screen {
     ///   already-answered forward cannot clobber a queued forward that
     ///   the real reply just dispatched.
     forward_in_flight_token: Option<u32>,
+    /// Last-known host terminal color-palette theme mode (CSI 2031 /
+    /// DSR 997). `None` until the host first reports. Used both for
+    /// auto-theme switching and to dedupe duplicate notifications.
+    host_terminal_theme_mode: Option<HostTerminalThemeMode>,
+    /// Resolved styling to apply when `host_terminal_theme_mode == Dark`.
+    /// `None` disables auto-switch. Refreshed on each reconfigure.
+    host_theme_dark_styling: Option<Styling>,
+    /// Resolved styling to apply when `host_terminal_theme_mode == Light`.
+    /// `None` disables auto-switch. Refreshed on each reconfigure.
+    host_theme_light_styling: Option<Styling>,
 }
 
 /// A pending forward waiting to be dispatched once the current in-flight
@@ -1552,6 +1577,9 @@ impl Screen {
             pending_forwarded_queries: HashMap::new(),
             forward_queue: VecDeque::new(),
             forward_in_flight_token: None,
+            host_terminal_theme_mode: None,
+            host_theme_dark_styling: None,
+            host_theme_light_styling: None,
         }
     }
 
@@ -2057,6 +2085,15 @@ impl Screen {
         pane_id: PaneId,
         query: crate::host_query::HostQuery,
     ) -> u32 {
+        // ColorPaletteMode is answered locally — Zellij already knows
+        // the host's mode from its own startup query and from
+        // unsolicited DSR 997 updates. Skip the entire forwarding
+        // machinery (no token, no in-flight slot, no host round-trip)
+        // and write the reply straight to the originating pane's pty.
+        if let crate::host_query::HostQuery::ColorPaletteMode = query {
+            self.answer_color_palette_mode_query_locally(pane_id);
+            return STARTUP_SENTINEL_TOKEN; // sentinel: no real forward happened
+        }
         let token = self.next_forward_token;
         // Skip over the reserved sentinel (0) on wrap; allocate a fresh
         // u32 for every forward.
@@ -2074,6 +2111,38 @@ impl Screen {
             self.dispatch_forward(token, pane_id, query);
         }
         token
+    }
+
+    /// Synthesise the DSR 997 reply to a `CSI ? 996 n` query from
+    /// `host_terminal_theme_mode` and write it directly to the
+    /// originating pane's pty. Plugin panes are skipped (they receive
+    /// `Event::HostTerminalThemeChanged` and have no notion of
+    /// VT-protocol queries). When Zellij has not yet learned the host
+    /// mode, the pane receives no reply — matching what a host that
+    /// does not implement CSI 2031 would do. The Contour spec only
+    /// defines `;1` (dark) and `;2` (light); fabricating any other
+    /// code (e.g. `;0`) would be non-conformant.
+    fn answer_color_palette_mode_query_locally(&mut self, pane_id: PaneId) {
+        let terminal_id = match pane_id {
+            PaneId::Terminal(id) => id,
+            PaneId::Plugin(_) => return,
+        };
+        let code: u8 = match self.host_terminal_theme_mode {
+            Some(HostTerminalThemeMode::Dark) => 1,
+            Some(HostTerminalThemeMode::Light) => 2,
+            None => {
+                log::debug!(
+                    "CSI ?996n received but host_terminal_theme_mode is unknown; \
+                     dropping (spec defines only 1=dark / 2=light)"
+                );
+                return;
+            },
+        };
+        let reply = format!("\u{1b}[?997;{}n", code).into_bytes();
+        let _ = self
+            .bus
+            .senders
+            .send_to_pty_writer(PtyWriteInstruction::Write(reply, terminal_id, None));
     }
 
     /// Dispatch a forward to the client and mark the slot as in-flight.
@@ -2229,6 +2298,17 @@ impl Screen {
                 } else {
                     Vec::new()
                 }
+            },
+            // Should not reach here: ColorPaletteMode short-circuits in
+            // `forward_host_query` before any cache-fallback path runs.
+            // The Contour spec only defines `;1` and `;2`; if the host
+            // mode is unknown there is no compliant reply, so return
+            // empty bytes (the existing convention for "no synthesis
+            // possible").
+            HostQuery::ColorPaletteMode => match self.host_terminal_theme_mode {
+                Some(HostTerminalThemeMode::Dark) => b"\x1b[?997;1n".to_vec(),
+                Some(HostTerminalThemeMode::Light) => b"\x1b[?997;2n".to_vec(),
+                None => Vec::new(),
             },
         }
     }
@@ -4383,6 +4463,115 @@ impl Screen {
         }
         Ok(())
     }
+    /// Apply a host-reported color-palette theme mode (CSI 2031 / DSR 997).
+    ///
+    /// This is the Phase 2 entry-point: it
+    /// 1. de-duplicates against the last-known mode,
+    /// 2. swaps the active palette to the configured `theme_dark` / `theme_light`
+    ///    (when both are configured) by reusing the reconfigure propagation,
+    /// 3. fans out an `Event::HostTerminalThemeChanged` plugin event,
+    /// 4. forwards a `CSI ?997;{1|2}n` DSR onto the pty of every terminal pane
+    ///    whose app opted in via `CSI ? 2031 h`.
+    pub fn update_host_terminal_theme_mode(
+        &mut self,
+        mode: HostTerminalThemeMode,
+    ) -> Result<()> {
+        let err_context = || "Failed to update host terminal theme mode".to_string();
+
+        // dedupe
+        if self.host_terminal_theme_mode == Some(mode) {
+            return Ok(());
+        }
+        self.host_terminal_theme_mode = Some(mode);
+
+        // resolve target styling
+        let resolved = match mode {
+            HostTerminalThemeMode::Dark => self.host_theme_dark_styling,
+            HostTerminalThemeMode::Light => self.host_theme_light_styling,
+        };
+
+        // theme propagation when both keys configured and the resolved
+        // styling exists. (If only one of theme_dark/theme_light is set,
+        // skip auto-switch; the static `theme` stays authoritative.)
+        let auto_switch_enabled =
+            self.host_theme_dark_styling.is_some() && self.host_theme_light_styling.is_some();
+        if auto_switch_enabled {
+            if let Some(theme) = resolved {
+                self.default_mode_info.update_theme(theme);
+                for tab in self.tabs.values_mut() {
+                    tab.update_theme(theme);
+                }
+                // Iterate every connected client (active_tab_ids is the
+                // canonical "who is connected" map). Iterating
+                // self.mode_info.keys() would skip any client that has
+                // never manually changed mode
+                let client_ids: Vec<ClientId> =
+                    self.active_tab_ids.keys().copied().collect();
+                let default_for_new = self.default_mode_info.clone();
+                for client_id in client_ids {
+                    let mode_info = self
+                        .mode_info
+                        .entry(client_id)
+                        .or_insert_with(|| default_for_new.clone());
+                    mode_info.update_theme(theme);
+                    let mode_info_clone = mode_info.clone();
+                    // Push the freshly-themed mode_info into every tab's
+                    // per-client mode_info map. `update_input_modes` below
+                    // reads from THAT map (not Screen's) when fanning out
+                    // ModeUpdate to plugins, so without this step plugins
+                    // receive ModeUpdate carrying the *old* style and the
+                    // status-bar / tab-bar do not repaint. Also mark the
+                    // active pane for rerender so terminal panes refresh
+                    // their borders/title using the new palette.
+                    for tab in self.tabs.values_mut() {
+                        tab.change_mode_info(mode_info_clone.clone(), client_id);
+                        tab.mark_active_pane_for_rerender(client_id);
+                    }
+                }
+                for tab in self.tabs.values_mut() {
+                    tab.update_input_modes().with_context(err_context)?;
+                }
+            } else {
+                log::warn!(
+                    "host theme auto-switch enabled but resolved styling missing for {:?}",
+                    mode
+                );
+            }
+        }
+
+        // fan out the plugin event
+        self.bus
+            .senders
+            .send_to_plugin(PluginInstruction::Update(vec![(
+                None,
+                None,
+                Event::HostTerminalThemeChanged(mode),
+            )]))
+            .with_context(err_context)?;
+
+        // forward DSR to opted-in terminal panes
+        let mut pty_writes: Vec<(Vec<u8>, u32)> = vec![];
+        for tab in self.tabs.values_mut() {
+            for pane_id in tab.get_all_pane_ids() {
+                if let PaneId::Terminal(terminal_id) = pane_id {
+                    if let Some(pane) = tab.get_pane_with_id_mut(pane_id) {
+                        pane.push_color_palette_dsr(mode);
+                        for bytes in pane.drain_messages_to_pty() {
+                            pty_writes.push((bytes, terminal_id));
+                        }
+                    }
+                }
+            }
+        }
+        for (bytes, terminal_id) in pty_writes {
+            let _ = self.bus.senders.send_to_pty_writer(
+                PtyWriteInstruction::Write(bytes, terminal_id, None),
+            );
+        }
+
+        self.render(None)?;
+        Ok(())
+    }
     pub fn toggle_pane_pinned(&mut self, client_id: ClientId) {
         active_tab_and_connected_client_id!(
             self,
@@ -5240,6 +5429,33 @@ pub(crate) fn screen_thread_main(
     debug: bool,
     default_layout: Box<Layout>,
 ) -> Result<()> {
+    // Resolve `theme_dark` / `theme_light` to concrete `Styling` from the
+    // bundled themes BEFORE `config.options` is moved out below. These
+    // populate Screen's auto-switch state at startup; runtime updates
+    // continue to flow through `propagate_configuration_changes`.
+    let host_theme_dark_styling = config
+        .options
+        .theme_dark
+        .as_ref()
+        .and_then(|name| config.themes.get_theme(name).map(|t| t.palette));
+    let host_theme_light_styling = config
+        .options
+        .theme_light
+        .as_ref()
+        .and_then(|name| config.themes.get_theme(name).map(|t| t.palette));
+    if config.options.theme_dark.is_some() && host_theme_dark_styling.is_none() {
+        log::warn!(
+            "theme_dark='{}' not found in themes; auto-theme switch disabled for dark.",
+            config.options.theme_dark.as_deref().unwrap_or("?")
+        );
+    }
+    if config.options.theme_light.is_some() && host_theme_light_styling.is_none() {
+        log::warn!(
+            "theme_light='{}' not found in themes; auto-theme switch disabled for light.",
+            config.options.theme_light.as_deref().unwrap_or("?")
+        );
+    }
+
     let config_options = config.options;
     let arrow_fonts = !config_options.simplified_ui.unwrap_or_default();
     let draw_pane_frames = config_options.pane_frames.unwrap_or(true);
@@ -5339,6 +5555,8 @@ pub(crate) fn screen_thread_main(
         web_server_ip,
         web_server_port,
     );
+    screen.host_theme_dark_styling = host_theme_dark_styling;
+    screen.host_theme_light_styling = host_theme_light_styling;
 
     let mut pending_tab_ids: HashSet<usize> = HashSet::new();
     let mut pending_tab_switches: HashSet<(usize, ClientId)> = HashSet::new(); // usize is the
@@ -6914,6 +7132,9 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::ForwardedReplyFromHost { token, reply_bytes } => {
                 screen.handle_forwarded_reply_from_host(token, reply_bytes)?;
             },
+            ScreenInstruction::HostTerminalThemeChanged(mode) => {
+                screen.update_host_terminal_theme_mode(mode)?;
+            },
             ScreenInstruction::ChangeMode(
                 mode_info,
                 client_id,
@@ -8312,6 +8533,8 @@ pub(crate) fn screen_thread_main(
                 keybinds,
                 default_mode,
                 theme,
+                host_theme_dark,
+                host_theme_light,
                 simplified_ui,
                 default_shell,
                 pane_frames,
@@ -8329,6 +8552,8 @@ pub(crate) fn screen_thread_main(
                 focus_follows_mouse,
                 mouse_click_through,
             } => {
+                screen.host_theme_dark_styling = host_theme_dark;
+                screen.host_theme_light_styling = host_theme_light;
                 screen
                     .reconfigure(
                         keybinds,

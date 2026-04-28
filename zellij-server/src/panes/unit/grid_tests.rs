@@ -5962,3 +5962,97 @@ fn osc_4_set_stays_local() {
         .expect("changed_colors should be populated by OSC 4 set");
     assert!(changed[5].is_some(), "index 5 should have been written");
 }
+
+#[test]
+fn decset_2031_enables_color_palette_notification() {
+    let mut parser = vte::Parser::new();
+    let mut grid = new_grid_for_forwarding_test();
+    assert!(
+        !grid.color_palette_notification_enabled,
+        "default state must be disabled"
+    );
+    for byte in b"\x1b[?2031h" {
+        parser.advance(&mut grid, *byte);
+    }
+    assert!(
+        grid.color_palette_notification_enabled,
+        "DECSET 2031 must enable the flag"
+    );
+    for byte in b"\x1b[?2031l" {
+        parser.advance(&mut grid, *byte);
+    }
+    assert!(
+        !grid.color_palette_notification_enabled,
+        "DECRST 2031 must disable the flag"
+    );
+}
+
+#[test]
+fn push_color_palette_dsr_emits_when_enabled() {
+    let mut grid = new_grid_for_forwarding_test();
+    grid.color_palette_notification_enabled = true;
+    grid.push_color_palette_dsr(zellij_utils::data::HostTerminalThemeMode::Dark);
+    assert_eq!(grid.pending_messages_to_pty.len(), 1);
+    assert_eq!(
+        grid.pending_messages_to_pty[0],
+        b"\x1b[?997;1n".to_vec(),
+        "Dark mode emits ?997;1n"
+    );
+    grid.push_color_palette_dsr(zellij_utils::data::HostTerminalThemeMode::Light);
+    assert_eq!(grid.pending_messages_to_pty.len(), 2);
+    assert_eq!(
+        grid.pending_messages_to_pty[1],
+        b"\x1b[?997;2n".to_vec(),
+        "Light mode emits ?997;2n"
+    );
+}
+
+#[test]
+fn push_color_palette_dsr_noop_when_disabled() {
+    let mut grid = new_grid_for_forwarding_test();
+    assert!(!grid.color_palette_notification_enabled);
+    grid.push_color_palette_dsr(zellij_utils::data::HostTerminalThemeMode::Dark);
+    assert!(
+        grid.pending_messages_to_pty.is_empty(),
+        "no DSR is queued when the app has not opted in via CSI ?2031h"
+    );
+}
+
+#[test]
+fn csi_996n_pushes_color_palette_mode_query_to_forwarded_queries() {
+    use crate::host_query::HostQuery;
+    let mut parser = vte::Parser::new();
+    let mut grid = new_grid_for_forwarding_test();
+    for byte in b"\x1b[?996n" {
+        parser.advance(&mut grid, *byte);
+    }
+    assert_eq!(
+        grid.pending_forwarded_queries,
+        vec![HostQuery::ColorPaletteMode],
+        "CSI ?996n must push HostQuery::ColorPaletteMode for Screen to short-circuit"
+    );
+    assert!(
+        grid.pending_messages_to_pty.is_empty(),
+        "Grid must NOT answer locally — Screen owns the host_terminal_theme_mode cache"
+    );
+}
+
+#[test]
+fn csi_5n_status_query_still_handled_locally() {
+    let mut parser = vte::Parser::new();
+    let mut grid = new_grid_for_forwarding_test();
+    // Plain DSR 5 (no `?` intermediate) is not the new theme query and
+    // must continue to receive its `\e[0n` "all good" reply locally.
+    for byte in b"\x1b[5n" {
+        parser.advance(&mut grid, *byte);
+    }
+    assert!(
+        grid.pending_forwarded_queries.is_empty(),
+        "DSR 5 is not a forwarded query"
+    );
+    assert_eq!(
+        grid.pending_messages_to_pty,
+        vec![b"\x1b[0n".to_vec()],
+        "DSR 5 must still produce its local 'all good' reply"
+    );
+}

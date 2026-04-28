@@ -312,6 +312,7 @@ pub enum ScreenContext {
     TerminalColorRegisters,
     ForwardHostQuery,
     ForwardedReplyFromHost,
+    HostTerminalThemeChanged,
     ChangeMode,
     ChangeModeForAllClients,
     LeftClick,

@@ -1,8 +1,8 @@
 use super::test_framework::*;
 use crate::data::{
-    BareKey, CommandOrPlugin, ConnectToSession, Direction, FloatingPaneCoordinates, InputMode,
-    KeyModifier, KeyWithModifier, LayoutInfo, LayoutMetadata, NewPanePlacement, OriginatingPlugin,
-    PaneId, PluginTag, Resize, WebSharing,
+    BareKey, CommandOrPlugin, ConnectToSession, Direction, FloatingPaneCoordinates,
+    HostTerminalThemeMode, InputMode, KeyModifier, KeyWithModifier, LayoutInfo, LayoutMetadata,
+    NewPanePlacement, OriginatingPlugin, PaneId, PluginTag, Resize, WebSharing,
 };
 use crate::input::actions::{Action, SearchDirection, SearchOption};
 use crate::input::cli_assets::CliAssets;
@@ -433,6 +433,8 @@ fn test_client_messages() {
             configuration_options: Some(Options {
                 simplified_ui: Some(true),
                 theme: Some("theme".to_owned()),
+                theme_dark: Some("theme_dark".to_owned()),
+                theme_light: Some("theme_light".to_owned()),
                 default_mode: Some(InputMode::Normal),
                 default_shell: Some(PathBuf::from("default_shell")),
                 default_cwd: Some(PathBuf::from("default_cwd")),
@@ -3561,6 +3563,12 @@ fn test_client_messages() {
             b'f', b'f', b'f', b'f', b'/', b'f', b'f', b'f', b'f', b'/',
             b'f', b'f', b'f', b'f', 0x07, 0xff, 0x00,
         ],
+    });
+    test_client_roundtrip!(ClientToServerMsg::HostTerminalThemeChanged {
+        mode: HostTerminalThemeMode::Dark,
+    });
+    test_client_roundtrip!(ClientToServerMsg::HostTerminalThemeChanged {
+        mode: HostTerminalThemeMode::Light,
     });
 }
 

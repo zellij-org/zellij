@@ -1927,6 +1927,10 @@ pub struct Options {
     pub focus_follows_mouse: ::core::option::Option<bool>,
     #[prost(bool, optional, tag="45")]
     pub mouse_click_through: ::core::option::Option<bool>,
+    #[prost(string, optional, tag="46")]
+    pub theme_dark: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag="47")]
+    pub theme_light: ::core::option::Option<::prost::alloc::string::String>,
 }
 /// Pane-targeting action messages
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -2857,7 +2861,7 @@ impl WebSharing {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ClientToServerMsg {
-    #[prost(oneof="client_to_server_msg::Message", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19")]
+    #[prost(oneof="client_to_server_msg::Message", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20")]
     pub message: ::core::option::Option<client_to_server_msg::Message>,
 }
 /// Nested message and enum types in `ClientToServerMsg`.
@@ -2903,6 +2907,8 @@ pub mod client_to_server_msg {
         DesktopNotificationResponse(super::DesktopNotificationResponseMsg),
         #[prost(message, tag="19")]
         ForwardedReplyFromHost(super::ForwardedReplyFromHostMsg),
+        #[prost(message, tag="20")]
+        HostTerminalThemeChanged(super::HostTerminalThemeChangedMsg),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -3041,6 +3047,38 @@ pub struct ForwardedReplyFromHostMsg {
     pub token: u32,
     #[prost(bytes="vec", tag="2")]
     pub reply_bytes: ::prost::alloc::vec::Vec<u8>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct HostTerminalThemeChangedMsg {
+    #[prost(enumeration="HostTerminalThemeIndication", tag="1")]
+    pub mode: i32,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum HostTerminalThemeIndication {
+    Dark = 0,
+    Light = 1,
+}
+impl HostTerminalThemeIndication {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            HostTerminalThemeIndication::Dark => "HOST_TERMINAL_THEME_INDICATION_DARK",
+            HostTerminalThemeIndication::Light => "HOST_TERMINAL_THEME_INDICATION_LIGHT",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "HOST_TERMINAL_THEME_INDICATION_DARK" => Some(Self::Dark),
+            "HOST_TERMINAL_THEME_INDICATION_LIGHT" => Some(Self::Light),
+            _ => None,
+        }
+    }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

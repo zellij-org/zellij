@@ -2621,6 +2621,14 @@ pub(crate) fn route_thread_main(
                                 retry_queue
                             );
                         },
+                        ClientToServerMsg::HostTerminalThemeChanged { mode } => {
+                            let _ = send_to_screen_or_retry_queue!(
+                                senders,
+                                ScreenInstruction::HostTerminalThemeChanged(mode),
+                                instruction,
+                                retry_queue
+                            );
+                        },
                         ClientToServerMsg::SubscribeToPaneRenders {
                             ref pane_ids,
                             ref scrollback,

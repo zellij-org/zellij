@@ -1664,6 +1664,14 @@ impl InputParser {
                             callback(event);
                             continue;
                         }
+
+                        // Incomplete CSI ?... report (DECRPM, DSR 997, etc.) —
+                        // wait for more data so the report-classification path
+                        // can match the full sequence rather than letting the
+                        // keymap dispatch the leading bytes as separate keys.
+                        if maybe_more && self.buf.as_slice().starts_with(b"\x1b[?") {
+                            return;
+                        }
                     }
 
                     match (

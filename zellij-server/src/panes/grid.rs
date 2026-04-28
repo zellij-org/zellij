@@ -5,7 +5,9 @@ use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::rc::Rc;
 use unicode_width::UnicodeWidthChar;
-use zellij_utils::data::{HighlightLayer, HighlightStyle, RegexHighlight, Style};
+use zellij_utils::data::{
+    HighlightLayer, HighlightStyle, HostTerminalThemeMode, RegexHighlight, Style,
+};
 use zellij_utils::errors::prelude::*;
 
 use std::{
@@ -632,6 +634,12 @@ pub struct Grid {
     pub mouse_mode: MouseMode,
     pub mouse_tracking: MouseTracking,
     pub focus_event_tracking: bool,
+    /// Has the app in this pane subscribed to host color-palette theme
+    /// notifications via `CSI ? 2031 h`? When true, host-emitted DSR 997
+    /// notifications (received by the client and forwarded as
+    /// `ScreenInstruction::HostTerminalThemeChanged`) are pushed onto
+    /// `pending_messages_to_pty` for this pane.
+    pub color_palette_notification_enabled: bool,
     pub search_results: SearchResult,
     pub pending_clipboard_update: Option<String>,
     pub pending_osc7_cwd: Option<std::path::PathBuf>,
@@ -960,6 +968,7 @@ impl Grid {
             mouse_mode: MouseMode::default(),
             mouse_tracking: MouseTracking::default(),
             focus_event_tracking: false,
+            color_palette_notification_enabled: false,
             character_cell_size,
             search_results: Default::default(),
             sixel_grid,
@@ -3282,6 +3291,20 @@ impl Grid {
     pub fn reset_cursor_position(&mut self) {
         self.cursor = Cursor::new(0, 0, self.styled_underlines);
     }
+    /// Queue a CSI ?997;{1|2}n DSR notification of host color-palette
+    /// theme mode onto this grid's pty-write queue. No-op when the app
+    /// has not opted in via `CSI ? 2031 h`.
+    pub fn push_color_palette_dsr(&mut self, mode: HostTerminalThemeMode) {
+        if !self.color_palette_notification_enabled {
+            return;
+        }
+        let code = match mode {
+            HostTerminalThemeMode::Dark => 1,
+            HostTerminalThemeMode::Light => 2,
+        };
+        self.pending_messages_to_pty
+            .push(format!("\u{1b}[?997;{}n", code).into_bytes());
+    }
     pub fn lock_renders(&mut self) {
         self.lock_renders = true;
     }
@@ -3927,6 +3950,9 @@ impl Perform for Grid {
                         1006 => {
                             self.mouse_mode = MouseMode::NoEncoding;
                         },
+                        2031 => {
+                            self.color_palette_notification_enabled = false;
+                        },
                         _ => {},
                     };
                 }
@@ -4031,6 +4057,9 @@ impl Perform for Grid {
                         },
                         1006 => {
                             self.mouse_mode = MouseMode::Sgr;
+                        },
+                        2031 => {
+                            self.color_palette_notification_enabled = true;
                         },
                         _ => {},
                     }
@@ -4289,27 +4318,51 @@ impl Perform for Grid {
         } else if c == 'n' {
             // DSR - device status report
             // https://vt100.net/docs/vt510-rm/DSR.html
-            match next_param_or(0) {
-                5 => {
-                    // report terminal status
-                    let all_good = "\u{1b}[0n";
-                    self.pending_messages_to_pty
-                        .push(all_good.as_bytes().to_vec());
-                },
-                6 => {
-                    // CPR - cursor position report
+            let first_intermediate_is_questionmark = match intermediates.get(0) {
+                Some(b'?') => true,
+                None => false,
+                _ => false,
+            };
+            if first_intermediate_is_questionmark {
+                // CSI ? 996 n — query host terminal color-palette mode
+                // (Contour spec; see contour-terminal.org). Zellij
+                // short-circuits this query: we know the host's mode
+                // from our own startup `\e[?996n` plus unsolicited DSR
+                // 997 updates while `\e[?2031h` is enabled, so the
+                // pane gets answered locally without a host round-trip.
+                // Pushing onto `pending_forwarded_queries` enrols the
+                // query in the existing Grid → Tab → Screen pipeline;
+                // Screen recognises the variant and writes the reply
+                // straight to the pane's pty.
+                for param in params_iter.map(|param| param[0]) {
+                    if param == 996 {
+                        self.pending_forwarded_queries
+                            .push(crate::host_query::HostQuery::ColorPaletteMode);
+                    }
+                }
+            } else {
+                match next_param_or(0) {
+                    5 => {
+                        // report terminal status
+                        let all_good = "\u{1b}[0n";
+                        self.pending_messages_to_pty
+                            .push(all_good.as_bytes().to_vec());
+                    },
+                    6 => {
+                        // CPR - cursor position report
 
-                    // Note that this is relative to scrolling region.
-                    let offset = self.scroll_region.0; // scroll_region_top
-                    let position_report = format!(
-                        "\u{1b}[{};{}R",
-                        self.cursor.y + 1 - offset,
-                        self.cursor.x + 1
-                    );
-                    self.pending_messages_to_pty
-                        .push(position_report.as_bytes().to_vec());
-                },
-                _ => {},
+                        // Note that this is relative to scrolling region.
+                        let offset = self.scroll_region.0; // scroll_region_top
+                        let position_report = format!(
+                            "\u{1b}[{};{}R",
+                            self.cursor.y + 1 - offset,
+                            self.cursor.x + 1
+                        );
+                        self.pending_messages_to_pty
+                            .push(position_report.as_bytes().to_vec());
+                    },
+                    _ => {},
+                }
             }
         } else if c == 'x' {
             // DECREQTPARM - Request Terminal Parameters

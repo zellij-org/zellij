@@ -383,6 +383,28 @@ impl SessionMetaData {
                     ..Default::default()
                 })
             });
+            let host_theme_dark = new_config
+                .options
+                .theme_dark
+                .as_ref()
+                .and_then(|name| new_config.theme_config(Some(name)));
+            let host_theme_light = new_config
+                .options
+                .theme_light
+                .as_ref()
+                .and_then(|name| new_config.theme_config(Some(name)));
+            if new_config.options.theme_dark.is_some() && host_theme_dark.is_none() {
+                log::warn!(
+                    "theme_dark='{}' not found in themes; auto-theme switch disabled for dark.",
+                    new_config.options.theme_dark.as_deref().unwrap_or("?")
+                );
+            }
+            if new_config.options.theme_light.is_some() && host_theme_light.is_none() {
+                log::warn!(
+                    "theme_light='{}' not found in themes; auto-theme switch disabled for light.",
+                    new_config.options.theme_light.as_deref().unwrap_or("?")
+                );
+            }
             self.senders
                 .send_to_screen(ScreenInstruction::Reconfigure {
                     client_id,
@@ -394,6 +416,8 @@ impl SessionMetaData {
                     theme: new_config
                         .theme_config(new_config.options.theme.as_ref())
                         .unwrap_or_else(|| default_palette().into()),
+                    host_theme_dark,
+                    host_theme_light,
                     simplified_ui: new_config.options.simplified_ui.unwrap_or(false),
                     default_shell: new_config.options.default_shell,
                     pane_frames: new_config.options.pane_frames.unwrap_or(true),

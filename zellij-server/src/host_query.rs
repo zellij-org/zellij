@@ -56,6 +56,15 @@ pub enum HostQuery {
         index: u8,
         terminator: OscTerminator,
     },
+    /// `CSI ? 996 n` — query the host terminal's color-palette theme
+    /// mode (light or dark). NOT forwarded to the host. Zellij has
+    /// already queried the host once at startup (via the client's
+    /// `\e[?996n` write) and tracks unsolicited DSR 997 updates while
+    /// `\e[?2031h` is enabled, so it can answer this from cache. The
+    /// Screen handler short-circuits this variant: rather than writing
+    /// to the wire it synthesises `\e[?997;{0|1|2}n` directly into the
+    /// originating pane's pty.
+    ColorPaletteMode,
 }
 
 impl HostQuery {
@@ -81,6 +90,12 @@ impl HostQuery {
                 v.extend_from_slice(terminator.as_bytes());
                 v
             },
+            // `ColorPaletteMode` is answered locally by Zellij and never
+            // sent on the wire. Returning empty bytes keeps the call
+            // total without dirtying the wire format. Callers that
+            // bypass `Screen::forward_host_query` for this variant
+            // shouldn't be calling `to_query_bytes` on it at all.
+            HostQuery::ColorPaletteMode => Vec::new(),
         }
     }
 }

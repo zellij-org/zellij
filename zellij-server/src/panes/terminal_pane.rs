@@ -590,6 +590,10 @@ impl Pane for TerminalPane {
         self.grid.pending_forwarded_queries.drain(..).collect()
     }
 
+    fn push_color_palette_dsr(&mut self, mode: zellij_utils::data::HostTerminalThemeMode) {
+        self.grid.push_color_palette_dsr(mode);
+    }
+
     fn drain_clipboard_update(&mut self) -> Option<String> {
         self.grid.pending_clipboard_update.take()
     }

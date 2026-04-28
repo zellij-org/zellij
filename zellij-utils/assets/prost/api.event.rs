@@ -9,7 +9,7 @@ pub struct EventNameList {
 pub struct Event {
     #[prost(enumeration="EventType", tag="1")]
     pub name: i32,
-    #[prost(oneof="event::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39")]
+    #[prost(oneof="event::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40")]
     pub payload: ::core::option::Option<event::Payload>,
 }
 /// Nested message and enum types in `Event`.
@@ -93,7 +93,15 @@ pub mod event {
         InitialKeybindsPayload(super::InitialKeybindsPayload),
         #[prost(message, tag="39")]
         CommandChangedPayload(super::CommandChangedPayload),
+        #[prost(message, tag="40")]
+        HostTerminalThemeChangedPayload(super::HostTerminalThemeChangedPayload),
     }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct HostTerminalThemeChangedPayload {
+    #[prost(enumeration="HostTerminalThemeIndication", tag="1")]
+    pub mode: i32,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -830,6 +838,7 @@ pub enum EventType {
     PaneRenderReportWithAnsi = 43,
     InitialKeybinds = 44,
     CommandChanged = 45,
+    HostTerminalThemeChanged = 46,
 }
 impl EventType {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -883,6 +892,7 @@ impl EventType {
             EventType::PaneRenderReportWithAnsi => "PaneRenderReportWithAnsi",
             EventType::InitialKeybinds => "InitialKeybinds",
             EventType::CommandChanged => "CommandChanged",
+            EventType::HostTerminalThemeChanged => "HostTerminalThemeChanged",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -933,6 +943,33 @@ impl EventType {
             "PaneRenderReportWithAnsi" => Some(Self::PaneRenderReportWithAnsi),
             "InitialKeybinds" => Some(Self::InitialKeybinds),
             "CommandChanged" => Some(Self::CommandChanged),
+            "HostTerminalThemeChanged" => Some(Self::HostTerminalThemeChanged),
+            _ => None,
+        }
+    }
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum HostTerminalThemeIndication {
+    Dark = 0,
+    Light = 1,
+}
+impl HostTerminalThemeIndication {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            HostTerminalThemeIndication::Dark => "Dark",
+            HostTerminalThemeIndication::Light => "Light",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "Dark" => Some(Self::Dark),
+            "Light" => Some(Self::Light),
             _ => None,
         }
     }

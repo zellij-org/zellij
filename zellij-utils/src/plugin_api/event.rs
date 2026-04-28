@@ -11,6 +11,8 @@ pub use super::generated_api::api::{
         CopyDestination as ProtobufCopyDestination, CwdChangedPayload as ProtobufCwdChangedPayload,
         Event as ProtobufEvent, EventNameList as ProtobufEventNameList,
         EventType as ProtobufEventType, FileMetadata as ProtobufFileMetadata,
+        HostTerminalThemeChangedPayload as ProtobufHostTerminalThemeChangedPayload,
+        HostTerminalThemeIndication as ProtobufHostTerminalThemeIndication,
         InputModeKeybinds as ProtobufInputModeKeybinds, KdlError as ProtobufKdlError,
         KdlErrorVariant as ProtobufKdlErrorVariant, KeyBind as ProtobufKeyBind,
         LayoutInfo as ProtobufLayoutInfo, LayoutMetadata as ProtobufLayoutMetadata,
@@ -35,11 +37,11 @@ pub use super::generated_api::api::{
 };
 #[allow(hidden_glob_reexports)]
 use crate::data::{
-    ClientId, ClientInfo, CopyDestination, Event, EventType, FileMetadata, InputMode,
-    KeyWithModifier, LayoutInfo, LayoutMetadata, ModeInfo, Mouse, PaneContents, PaneId, PaneInfo,
-    PaneManifest, PaneMetadata, PaneScrollbackResponse, PermissionStatus, PluginCapabilities,
-    PluginInfo, SelectedText, SessionInfo, Style, TabInfo, TabMetadata, WebServerStatus,
-    WebSharing,
+    ClientId, ClientInfo, CopyDestination, Event, EventType, FileMetadata, HostTerminalThemeMode,
+    InputMode, KeyWithModifier, LayoutInfo, LayoutMetadata, ModeInfo, Mouse, PaneContents, PaneId,
+    PaneInfo, PaneManifest, PaneMetadata, PaneScrollbackResponse, PermissionStatus,
+    PluginCapabilities, PluginInfo, SelectedText, SessionInfo, Style, TabInfo, TabMetadata,
+    WebServerStatus, WebSharing,
 };
 
 use crate::errors::prelude::*;
@@ -578,6 +580,14 @@ impl TryFrom<ProtobufEvent> for Event {
                 },
                 _ => Err("Malformed payload for InitialKeybinds Event"),
             },
+            Some(ProtobufEventType::HostTerminalThemeChanged) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::HostTerminalThemeChangedPayload(p)) => {
+                    let mode = ProtobufHostTerminalThemeIndication::from_i32(p.mode)
+                        .ok_or("Unknown HostTerminalThemeIndication")?;
+                    Ok(Event::HostTerminalThemeChanged(mode.into()))
+                },
+                _ => Err("Malformed payload for HostTerminalThemeChanged Event"),
+            },
             None => Err("Unknown Protobuf Event"),
         }
     }
@@ -1109,6 +1119,16 @@ impl TryFrom<Event> for ProtobufEvent {
                     },
                 )),
             }),
+            Event::HostTerminalThemeChanged(mode) => {
+                let proto_mode: ProtobufHostTerminalThemeIndication = mode.into();
+                let payload = ProtobufHostTerminalThemeChangedPayload {
+                    mode: proto_mode as i32,
+                };
+                Ok(ProtobufEvent {
+                    name: ProtobufEventType::HostTerminalThemeChanged as i32,
+                    payload: Some(event::Payload::HostTerminalThemeChangedPayload(payload)),
+                })
+            },
             Event::InitialKeybinds(keybinds) => {
                 let mut protobuf_keybinds: Vec<ProtobufInputModeKeybinds> = vec![];
                 for (input_mode, input_mode_keybinds) in keybinds {
@@ -2057,6 +2077,7 @@ impl TryFrom<ProtobufEventType> for EventType {
             ProtobufEventType::PluginConfigurationChanged => EventType::PluginConfigurationChanged,
             ProtobufEventType::HighlightClicked => EventType::HighlightClicked,
             ProtobufEventType::InitialKeybinds => EventType::InitialKeybinds,
+            ProtobufEventType::HostTerminalThemeChanged => EventType::HostTerminalThemeChanged,
         })
     }
 }
@@ -2110,7 +2131,26 @@ impl TryFrom<EventType> for ProtobufEventType {
             EventType::PluginConfigurationChanged => ProtobufEventType::PluginConfigurationChanged,
             EventType::HighlightClicked => ProtobufEventType::HighlightClicked,
             EventType::InitialKeybinds => ProtobufEventType::InitialKeybinds,
+            EventType::HostTerminalThemeChanged => ProtobufEventType::HostTerminalThemeChanged,
         })
+    }
+}
+
+impl From<HostTerminalThemeMode> for ProtobufHostTerminalThemeIndication {
+    fn from(mode: HostTerminalThemeMode) -> Self {
+        match mode {
+            HostTerminalThemeMode::Dark => ProtobufHostTerminalThemeIndication::Dark,
+            HostTerminalThemeMode::Light => ProtobufHostTerminalThemeIndication::Light,
+        }
+    }
+}
+
+impl From<ProtobufHostTerminalThemeIndication> for HostTerminalThemeMode {
+    fn from(mode: ProtobufHostTerminalThemeIndication) -> Self {
+        match mode {
+            ProtobufHostTerminalThemeIndication::Dark => HostTerminalThemeMode::Dark,
+            ProtobufHostTerminalThemeIndication::Light => HostTerminalThemeMode::Light,
+        }
     }
 }
 

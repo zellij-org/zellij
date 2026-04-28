@@ -10,6 +10,7 @@ use lazy_static::lazy_static;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use zellij_utils::{
+    data::HostTerminalThemeMode,
     ipc::PixelDimensions,
     pane_size::SizeInPixels,
     vendored::termwiz::input::{InputEvent, InputParser},
@@ -57,6 +58,9 @@ pub enum HostReply {
     ForegroundColor(String),
     ColorRegisters(Vec<(usize, String)>),
     SynchronizedOutput(Option<SyncOutput>),
+    /// DSR 997 reply / unsolicited notification reporting the host
+    /// terminal's color-palette theme mode (CSI 2031).
+    HostTerminalThemeChanged(HostTerminalThemeMode),
 }
 
 /// Retained alias for the pre-refactor type name used by other modules in
@@ -106,6 +110,10 @@ impl HostReply {
             static ref PIX_RE: Regex = Regex::new(r"^\u{1b}\[(\d+);(\d+);(\d+)t$").unwrap();
             // <ESC>[?2026;Ny — DECRPM reply for sync-output (VT mode 2026)
             static ref SYNC_RE: Regex = Regex::new(r"^\u{1b}\[\?2026;([0-4])\$y$").unwrap();
+            // <ESC>[?997;1n (dark) / <ESC>[?997;2n (light) — DSR 997 reply
+            // to CSI ?996n, or unsolicited host-theme notification when
+            // CSI ?2031h is enabled.
+            static ref THEME_RE: Regex = Regex::new(r"^\u{1b}\[\?997;([12])n$").unwrap();
         }
         if let Some(caps) = PIX_RE.captures(s) {
             let which: usize = caps[1].parse().ok()?;
@@ -135,6 +143,14 @@ impl HostReply {
                 1 | 2 | 3 => Some(HostReply::SynchronizedOutput(Some(SyncOutput::CSI))),
                 _ => Some(HostReply::SynchronizedOutput(None)),
             };
+        }
+        if let Some(caps) = THEME_RE.captures(s) {
+            let mode = match &caps[1] {
+                "1" => HostTerminalThemeMode::Dark,
+                "2" => HostTerminalThemeMode::Light,
+                _ => return None,
+            };
+            return Some(HostReply::HostTerminalThemeChanged(mode));
         }
         None
     }
