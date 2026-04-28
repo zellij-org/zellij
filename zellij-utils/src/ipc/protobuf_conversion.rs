@@ -858,6 +858,9 @@ impl From<crate::input::actions::Action>
             CurrentTabInfoAction,
             DenyAction,
             DetachAction,
+            SetDarkThemeAction,
+            SetLightThemeAction,
+            ToggleThemeAction,
             DumpLayoutAction,
             DumpScreenAction,
             EditFileAction,
@@ -1323,6 +1326,15 @@ impl From<crate::input::actions::Action>
                 near_current_pane,
             }),
             crate::input::actions::Action::Detach => ActionType::Detach(DetachAction {}),
+            crate::input::actions::Action::SetDarkTheme => {
+                ActionType::SetDarkTheme(SetDarkThemeAction {})
+            },
+            crate::input::actions::Action::SetLightTheme => {
+                ActionType::SetLightTheme(SetLightThemeAction {})
+            },
+            crate::input::actions::Action::ToggleTheme => {
+                ActionType::ToggleTheme(ToggleThemeAction {})
+            },
             crate::input::actions::Action::SwitchSession {
                 name,
                 tab_position,
@@ -2184,6 +2196,9 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                 near_current_pane: run_action.near_current_pane,
             }),
             ActionType::Detach(_) => Ok(crate::input::actions::Action::Detach),
+            ActionType::SetDarkTheme(_) => Ok(crate::input::actions::Action::SetDarkTheme),
+            ActionType::SetLightTheme(_) => Ok(crate::input::actions::Action::SetLightTheme),
+            ActionType::ToggleTheme(_) => Ok(crate::input::actions::Action::ToggleTheme),
             ActionType::SwitchSession(switch_session_action) => {
                 Ok(crate::input::actions::Action::SwitchSession {
                     name: switch_session_action.name.clone(),

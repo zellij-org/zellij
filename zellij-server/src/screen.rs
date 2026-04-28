@@ -522,6 +522,16 @@ pub enum ScreenInstruction {
     /// `HostTerminalThemeChanged` plugin event, and per-pane DSR forwarding
     /// for panes that opted in via `CSI ? 2031 h`.
     HostTerminalThemeChanged(HostTerminalThemeMode),
+    /// Manual theme actions issued via the CLI (e.g. `zellij action set-dark-theme`)
+    /// or a keybinding. They share the same convergence point as
+    /// `HostTerminalThemeChanged`, but additionally surface a CLI-friendly error
+    /// via `NotificationEnd` if `theme_dark` and `theme_light` are not both set
+    /// (the auto-switch gate). "Last one wins": these compete naively with
+    /// terminal-driven notifications via the dedupe in
+    /// `update_host_terminal_theme_mode`.
+    SetDarkTheme(Option<NotificationEnd>),
+    SetLightTheme(Option<NotificationEnd>),
+    ToggleTheme(Option<NotificationEnd>),
     ChangeMode(ModeInfo, ClientId, Option<NotificationEnd>),
     ChangeModeForAllClients(ModeInfo, Option<NotificationEnd>),
     MouseEvent(MouseEvent, ClientId, Option<NotificationEnd>),
@@ -970,6 +980,9 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::HostTerminalThemeChanged(..) => {
                 ScreenContext::HostTerminalThemeChanged
             },
+            ScreenInstruction::SetDarkTheme(..) => ScreenContext::SetDarkTheme,
+            ScreenInstruction::SetLightTheme(..) => ScreenContext::SetLightTheme,
+            ScreenInstruction::ToggleTheme(..) => ScreenContext::ToggleTheme,
             ScreenInstruction::ChangeMode(..) => ScreenContext::ChangeMode,
             ScreenInstruction::ChangeModeForAllClients(..) => {
                 ScreenContext::ChangeModeForAllClients
@@ -4572,6 +4585,30 @@ impl Screen {
         self.render(None)?;
         Ok(())
     }
+    /// Apply a manual host-terminal theme mode change requested via the CLI or a
+    /// keybinding. Surfaces a clear error to the CLI if the auto-switch gate
+    /// (both `theme_dark` and `theme_light` configured) is not satisfied;
+    /// otherwise delegates to `update_host_terminal_theme_mode`, which dedupes,
+    /// repaints, fans out the plugin event, and forwards DSR to opted-in panes.
+    pub fn apply_manual_host_terminal_theme_mode(
+        &mut self,
+        mode: HostTerminalThemeMode,
+        completion_tx: &mut Option<NotificationEnd>,
+    ) -> Result<()> {
+        let auto_switch_enabled =
+            self.host_theme_dark_styling.is_some() && self.host_theme_light_styling.is_some();
+        if !auto_switch_enabled {
+            if let Some(c) = completion_tx.as_mut() {
+                c.set_exit_status(1);
+                c.set_error_message(
+                    "Manual theme switching requires both `theme_dark` and `theme_light` to be configured."
+                        .to_string(),
+                );
+            }
+            return Ok(());
+        }
+        self.update_host_terminal_theme_mode(mode)
+    }
     pub fn toggle_pane_pinned(&mut self, client_id: ClientId) {
         active_tab_and_connected_client_id!(
             self,
@@ -7134,6 +7171,27 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::HostTerminalThemeChanged(mode) => {
                 screen.update_host_terminal_theme_mode(mode)?;
+            },
+            ScreenInstruction::SetDarkTheme(mut completion_tx) => {
+                screen.apply_manual_host_terminal_theme_mode(
+                    HostTerminalThemeMode::Dark,
+                    &mut completion_tx,
+                )?;
+            },
+            ScreenInstruction::SetLightTheme(mut completion_tx) => {
+                screen.apply_manual_host_terminal_theme_mode(
+                    HostTerminalThemeMode::Light,
+                    &mut completion_tx,
+                )?;
+            },
+            ScreenInstruction::ToggleTheme(mut completion_tx) => {
+                let next = match screen.host_terminal_theme_mode {
+                    Some(HostTerminalThemeMode::Dark) => HostTerminalThemeMode::Light,
+                    Some(HostTerminalThemeMode::Light) => HostTerminalThemeMode::Dark,
+                    // No prior mode: treat as Dark and toggle to Light.
+                    None => HostTerminalThemeMode::Light,
+                };
+                screen.apply_manual_host_terminal_theme_mode(next, &mut completion_tx)?;
             },
             ScreenInstruction::ChangeMode(
                 mode_info,

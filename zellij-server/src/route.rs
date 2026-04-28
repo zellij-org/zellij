@@ -1149,6 +1149,27 @@ pub(crate) fn route_action(
                 .with_context(err_context)?;
             should_break = true;
         },
+        Action::SetDarkTheme => {
+            senders
+                .send_to_screen(ScreenInstruction::SetDarkTheme(Some(
+                    NotificationEnd::new(completion_tx),
+                )))
+                .with_context(err_context)?;
+        },
+        Action::SetLightTheme => {
+            senders
+                .send_to_screen(ScreenInstruction::SetLightTheme(Some(
+                    NotificationEnd::new(completion_tx),
+                )))
+                .with_context(err_context)?;
+        },
+        Action::ToggleTheme => {
+            senders
+                .send_to_screen(ScreenInstruction::ToggleTheme(Some(
+                    NotificationEnd::new(completion_tx),
+                )))
+                .with_context(err_context)?;
+        },
         Action::SwitchSession {
             name,
             tab_position,
