@@ -353,6 +353,12 @@ pub enum Action {
     },
     /// Detach session and exit
     Detach,
+    /// Switch the host-terminal theme mode to dark (uses configured `theme_dark`).
+    SetDarkTheme,
+    /// Switch the host-terminal theme mode to light (uses configured `theme_light`).
+    SetLightTheme,
+    /// Toggle between dark and light host-terminal theme modes.
+    ToggleTheme,
     /// Switch to a different session
     SwitchSession {
         name: String,
@@ -2052,6 +2058,9 @@ impl Action {
                 }
             },
             CliAction::Detach => Ok(vec![Action::Detach]),
+            CliAction::SetDarkTheme => Ok(vec![Action::SetDarkTheme]),
+            CliAction::SetLightTheme => Ok(vec![Action::SetLightTheme]),
+            CliAction::ToggleTheme => Ok(vec![Action::ToggleTheme]),
             CliAction::SwitchSession {
                 name,
                 tab_position,
@@ -3051,6 +3060,42 @@ mod tests {
         let actions = result.unwrap();
         assert_eq!(actions.len(), 1);
         assert!(matches!(actions[0], Action::CloseTab));
+    }
+
+    #[test]
+    fn test_set_dark_theme_cli_to_action() {
+        let result = Action::actions_from_cli(
+            CliAction::SetDarkTheme,
+            Box::new(|| PathBuf::from("/tmp")),
+            None,
+        );
+        let actions = result.expect("SetDarkTheme conversion should succeed");
+        assert_eq!(actions.len(), 1);
+        assert!(matches!(actions[0], Action::SetDarkTheme));
+    }
+
+    #[test]
+    fn test_set_light_theme_cli_to_action() {
+        let result = Action::actions_from_cli(
+            CliAction::SetLightTheme,
+            Box::new(|| PathBuf::from("/tmp")),
+            None,
+        );
+        let actions = result.expect("SetLightTheme conversion should succeed");
+        assert_eq!(actions.len(), 1);
+        assert!(matches!(actions[0], Action::SetLightTheme));
+    }
+
+    #[test]
+    fn test_toggle_theme_cli_to_action() {
+        let result = Action::actions_from_cli(
+            CliAction::ToggleTheme,
+            Box::new(|| PathBuf::from("/tmp")),
+            None,
+        );
+        let actions = result.expect("ToggleTheme conversion should succeed");
+        assert_eq!(actions.len(), 1);
+        assert!(matches!(actions[0], Action::ToggleTheme));
     }
 
     // 21. RenameTab

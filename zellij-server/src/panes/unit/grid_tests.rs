@@ -3260,12 +3260,16 @@ fn terminal_pixel_size_reports() {
     for byte in content {
         vte_parser.advance(&mut grid, byte);
     }
+    // CSI 14t and CSI 16t are forwarded to the host; Zellij no longer
+    // synthesises local replies from character_cell_size for these.
+    assert!(grid.pending_messages_to_pty.is_empty());
+    use crate::host_query::HostQuery;
     assert_eq!(
-        grid.pending_messages_to_pty
-            .iter()
-            .map(|bytes| String::from_utf8(bytes.clone()).unwrap())
-            .collect::<Vec<String>>(),
-        vec!["\x1b[4;1071;776t", "\x1b[6;21;8t"]
+        grid.pending_forwarded_queries,
+        vec![
+            HostQuery::TextAreaPixelSize,
+            HostQuery::CharacterCellPixelSize
+        ],
     );
 }
 
@@ -3299,13 +3303,17 @@ fn terminal_pixel_size_reports_in_unsupported_terminals() {
     for byte in content {
         vte_parser.advance(&mut grid, byte);
     }
-    let expected: Vec<String> = vec![];
+    // Forwarding is independent of character_cell_size availability —
+    // the host terminal is authoritative for these queries regardless
+    // of what Zellij knows locally.
+    assert!(grid.pending_messages_to_pty.is_empty());
+    use crate::host_query::HostQuery;
     assert_eq!(
-        grid.pending_messages_to_pty
-            .iter()
-            .map(|bytes| String::from_utf8(bytes.clone()).unwrap())
-            .collect::<Vec<String>>(),
-        expected,
+        grid.pending_forwarded_queries,
+        vec![
+            HostQuery::TextAreaPixelSize,
+            HostQuery::CharacterCellPixelSize
+        ],
     );
 }
 
@@ -3586,15 +3594,16 @@ pub fn osc_4_background_query() {
     for byte in content.as_bytes() {
         vte_parser.advance(&mut grid, *byte);
     }
-    let message_string = grid
-        .pending_messages_to_pty
+    // Post-refactor: OSC 10;? is forwarded to the host, not answered
+    // from Zellij's cached palette. pending_messages_to_pty must stay
+    // empty.
+    assert!(grid.pending_messages_to_pty.is_empty());
+    let forwarded_string: String = grid
+        .pending_forwarded_queries
         .iter()
-        .map(|m| String::from_utf8_lossy(m))
-        .fold(String::new(), |mut acc, s| {
-            acc.push_str(&s);
-            acc
-        });
-    assert_eq!(message_string, "\u{1b}]10;rgb:0000/0000/0000\u{1b}\\");
+        .map(|q| String::from_utf8(q.to_query_bytes()).unwrap())
+        .collect();
+    assert_eq!(forwarded_string, "\u{1b}]10;?\u{1b}\\");
 }
 
 #[test]
@@ -3626,15 +3635,13 @@ pub fn osc_4_foreground_query() {
     for byte in content.as_bytes() {
         vte_parser.advance(&mut grid, *byte);
     }
-    let message_string = grid
-        .pending_messages_to_pty
+    assert!(grid.pending_messages_to_pty.is_empty());
+    let forwarded_string: String = grid
+        .pending_forwarded_queries
         .iter()
-        .map(|m| String::from_utf8_lossy(m))
-        .fold(String::new(), |mut acc, s| {
-            acc.push_str(&s);
-            acc
-        });
-    assert_eq!(message_string, "\u{1b}]11;rgb:0000/0000/0000\u{1b}\\");
+        .map(|q| String::from_utf8(q.to_query_bytes()).unwrap())
+        .collect();
+    assert_eq!(forwarded_string, "\u{1b}]11;?\u{1b}\\");
 }
 
 #[test]
@@ -3668,15 +3675,14 @@ pub fn osc_4_color_query() {
     for byte in content.as_bytes() {
         vte_parser.advance(&mut grid, *byte);
     }
-    let message_string = grid
-        .pending_messages_to_pty
+    // OSC 4;N;? is forwarded to the host for the real palette value.
+    assert!(grid.pending_messages_to_pty.is_empty());
+    let forwarded_string: String = grid
+        .pending_forwarded_queries
         .iter()
-        .map(|m| String::from_utf8_lossy(m))
-        .fold(String::new(), |mut acc, s| {
-            acc.push_str(&s);
-            acc
-        });
-    assert_eq!(message_string, "\u{1b}]4;222;rgb:ffff/d7d7/8787\u{1b}\\");
+        .map(|q| String::from_utf8(q.to_query_bytes()).unwrap())
+        .collect();
+    assert_eq!(forwarded_string, "\u{1b}]4;222;?\u{1b}\\");
 }
 
 #[test]
@@ -4397,21 +4403,26 @@ fn osc_11_set_and_query_pane_default_bg() {
         vte_parser.advance(&mut grid, *byte);
     }
 
-    assert_eq!(grid.pane_default_bg, Some(AnsiCode::RgbCode((0, 26, 58))));
+    assert_eq!(grid.pane_default_bg, Some((0, 26, 58)));
 
-    // Query background via OSC 11
+    // Query background via OSC 11 — because a pane-scoped override is
+    // in place, the query is short-circuited: apps inside the pane
+    // must see what Zellij is actually rendering, not the host
+    // terminal's bg. The reply uses xterm's canonical
+    // `rgb:RRRR/GGGG/BBBB` form with each 8-bit channel widened by
+    // repetition (0x00 → 0x0000, 0x1a → 0x1a1a, 0x3a → 0x3a3a).
     let query_bg = b"\x1b]11;?\x07";
     for byte in query_bg.iter() {
         vte_parser.advance(&mut grid, *byte);
     }
 
-    assert_eq!(grid.pending_messages_to_pty.len(), 1);
-    let response = String::from_utf8(grid.pending_messages_to_pty[0].clone()).unwrap();
     assert!(
-        response.contains("11;rgb:0000/1a1a/3a3a"),
-        "Response was: {}",
-        response
+        grid.pending_forwarded_queries.is_empty(),
+        "OSC 11 query must not be forwarded when a pane override is set"
     );
+    assert_eq!(grid.pending_messages_to_pty.len(), 1);
+    let reply = String::from_utf8(grid.pending_messages_to_pty[0].clone()).unwrap();
+    assert_eq!(reply, "\u{1b}]11;rgb:0000/1a1a/3a3a\u{7}",);
 }
 
 #[test]
@@ -4443,21 +4454,23 @@ fn osc_10_set_and_query_pane_default_fg() {
         vte_parser.advance(&mut grid, *byte);
     }
 
-    assert_eq!(grid.pane_default_fg, Some(AnsiCode::RgbCode((0, 224, 0))));
+    assert_eq!(grid.pane_default_fg, Some((0, 224, 0)));
 
-    // Query foreground via OSC 10
+    // Query foreground via OSC 10 — pane-scoped override is in place,
+    // so the query is answered locally (see OSC 11 equivalent test for
+    // the short-circuit rationale).
     let query_fg = b"\x1b]10;?\x07";
     for byte in query_fg.iter() {
         vte_parser.advance(&mut grid, *byte);
     }
 
-    assert_eq!(grid.pending_messages_to_pty.len(), 1);
-    let response = String::from_utf8(grid.pending_messages_to_pty[0].clone()).unwrap();
     assert!(
-        response.contains("10;rgb:0000/e0e0/0000"),
-        "Response was: {}",
-        response
+        grid.pending_forwarded_queries.is_empty(),
+        "OSC 10 query must not be forwarded when a pane override is set"
     );
+    assert_eq!(grid.pending_messages_to_pty.len(), 1);
+    let reply = String::from_utf8(grid.pending_messages_to_pty[0].clone()).unwrap();
+    assert_eq!(reply, "\u{1b}]10;rgb:0000/e0e0/0000\u{7}",);
 }
 
 #[test]
@@ -4493,8 +4506,8 @@ fn osc_110_111_reset_pane_default_colors() {
         vte_parser.advance(&mut grid, *byte);
     }
 
-    assert_eq!(grid.pane_default_fg, Some(AnsiCode::RgbCode((0, 224, 0))));
-    assert_eq!(grid.pane_default_bg, Some(AnsiCode::RgbCode((0, 26, 58))));
+    assert_eq!(grid.pane_default_fg, Some((0, 224, 0)));
+    assert_eq!(grid.pane_default_bg, Some((0, 26, 58)));
 
     // Reset foreground via OSC 110
     let reset_fg = b"\x1b]110\x07";
@@ -4502,7 +4515,7 @@ fn osc_110_111_reset_pane_default_colors() {
         vte_parser.advance(&mut grid, *byte);
     }
     assert_eq!(grid.pane_default_fg, None);
-    assert_eq!(grid.pane_default_bg, Some(AnsiCode::RgbCode((0, 26, 58))));
+    assert_eq!(grid.pane_default_bg, Some((0, 26, 58)));
 
     // Reset background via OSC 111
     let reset_bg = b"\x1b]111\x07";
@@ -4542,7 +4555,7 @@ fn osc_11_set_bg_produces_ansi_in_render_output() {
         vte_parser.advance(&mut grid, *byte);
     }
 
-    assert_eq!(grid.pane_default_bg, Some(AnsiCode::RgbCode((0, 26, 58))));
+    assert_eq!(grid.pane_default_bg, Some((0, 26, 58)));
 
     // Render the grid and check that the pane defaults are stamped on chunks
     let style = Style::default();
@@ -5688,5 +5701,363 @@ fn row_without_scroll_has_no_bg_color() {
     assert_eq!(
         row.bg_color, None,
         "rows not created by scroll should have no bg_color"
+    );
+}
+
+fn new_grid_for_forwarding_test() -> Grid {
+    Grid::new(
+        10,
+        20,
+        Rc::new(RefCell::new(Palette::default())),
+        Rc::new(RefCell::new(HashMap::new())),
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(Some(SizeInPixels {
+            width: 8,
+            height: 16,
+        }))),
+        Rc::new(RefCell::new(SixelImageStore::default())),
+        Style::default(),
+        false,
+        true,
+        true,
+        true,
+        false,
+    )
+}
+
+#[test]
+fn csi_14t_forwards_to_host_not_local() {
+    // CSI 14t used to synthesize a local "\x1b[4;H;Wt" reply; after the
+    // refactor it must be forwarded to the host instead so apps observe
+    // the terminal's real window pixel dimensions.
+    let mut parser = vte::Parser::new();
+    let mut grid = new_grid_for_forwarding_test();
+    for byte in b"\x1b[14t" {
+        parser.advance(&mut grid, *byte);
+    }
+    assert!(
+        grid.pending_messages_to_pty.is_empty(),
+        "local reply path must not fire for 14t"
+    );
+    assert_eq!(grid.pending_forwarded_queries.len(), 1);
+    assert_eq!(
+        grid.pending_forwarded_queries[0],
+        crate::host_query::HostQuery::TextAreaPixelSize,
+        "forwarded classification must be TextAreaPixelSize"
+    );
+}
+
+#[test]
+fn csi_16t_forwards_to_host_not_local() {
+    let mut parser = vte::Parser::new();
+    let mut grid = new_grid_for_forwarding_test();
+    for byte in b"\x1b[16t" {
+        parser.advance(&mut grid, *byte);
+    }
+    assert!(grid.pending_messages_to_pty.is_empty());
+    assert_eq!(grid.pending_forwarded_queries.len(), 1);
+    assert_eq!(
+        grid.pending_forwarded_queries[0],
+        crate::host_query::HostQuery::CharacterCellPixelSize,
+    );
+}
+
+#[test]
+fn csi_18t_still_answered_locally() {
+    // 18 reports Zellij's own text-area size in cells — Zellij is
+    // authoritative for this, do NOT forward.
+    let mut parser = vte::Parser::new();
+    let mut grid = new_grid_for_forwarding_test();
+    for byte in b"\x1b[18t" {
+        parser.advance(&mut grid, *byte);
+    }
+    assert_eq!(grid.pending_messages_to_pty.len(), 1);
+    assert!(grid.pending_forwarded_queries.is_empty());
+}
+
+#[test]
+fn osc_11_set_stays_local() {
+    // OSC 11;<rgb> (set pane default bg) must stay local — Zellij needs
+    // to track it for its own rendering.
+    let mut parser = vte::Parser::new();
+    let mut grid = new_grid_for_forwarding_test();
+    for byte in b"\x1b]11;rgb:ffff/ffff/ffff\x07" {
+        parser.advance(&mut grid, *byte);
+    }
+    assert!(grid.pending_messages_to_pty.is_empty());
+    assert!(
+        grid.pending_forwarded_queries.is_empty(),
+        "set (not query) must not forward"
+    );
+    assert!(grid.pane_default_bg.is_some());
+}
+
+#[test]
+fn osc_11_query_without_override_forwards_to_host() {
+    // When no pane-local override is in place the query must still be
+    // forwarded — the host's actual bg is what the app asked for.
+    let mut parser = vte::Parser::new();
+    let mut grid = new_grid_for_forwarding_test();
+    assert!(grid.pane_default_bg.is_none());
+    for byte in b"\x1b]11;?\x07" {
+        parser.advance(&mut grid, *byte);
+    }
+    assert!(
+        grid.pending_messages_to_pty.is_empty(),
+        "no override → no local reply"
+    );
+    assert_eq!(grid.pending_forwarded_queries.len(), 1);
+    assert!(matches!(
+        grid.pending_forwarded_queries[0],
+        crate::host_query::HostQuery::DefaultBackground { .. }
+    ));
+}
+
+#[test]
+fn osc_10_query_without_override_forwards_to_host() {
+    let mut parser = vte::Parser::new();
+    let mut grid = new_grid_for_forwarding_test();
+    assert!(grid.pane_default_fg.is_none());
+    for byte in b"\x1b]10;?\x07" {
+        parser.advance(&mut grid, *byte);
+    }
+    assert!(grid.pending_messages_to_pty.is_empty());
+    assert_eq!(grid.pending_forwarded_queries.len(), 1);
+    assert!(matches!(
+        grid.pending_forwarded_queries[0],
+        crate::host_query::HostQuery::DefaultForeground { .. }
+    ));
+}
+
+#[test]
+fn set_pane_default_colors_short_circuits_osc_queries() {
+    // The CLI path (`zellij action set-pane-color`) lands on
+    // `Grid::set_pane_default_colors`. A later OSC 10/11 query must
+    // read that override, not be forwarded — the entire point of the
+    // CLI override is that apps see the color Zellij is painting, not
+    // the underlying host's.
+    let mut parser = vte::Parser::new();
+    let mut grid = new_grid_for_forwarding_test();
+    grid.set_pane_default_colors(Some("#ff8040".to_string()), Some("#102030".to_string()));
+
+    for byte in b"\x1b]10;?\x07" {
+        parser.advance(&mut grid, *byte);
+    }
+    for byte in b"\x1b]11;?\x07" {
+        parser.advance(&mut grid, *byte);
+    }
+
+    assert!(
+        grid.pending_forwarded_queries.is_empty(),
+        "overrides set via set_pane_default_colors must suppress forwarding"
+    );
+    assert_eq!(grid.pending_messages_to_pty.len(), 2);
+    let fg_reply = String::from_utf8(grid.pending_messages_to_pty[0].clone()).unwrap();
+    let bg_reply = String::from_utf8(grid.pending_messages_to_pty[1].clone()).unwrap();
+    assert_eq!(fg_reply, "\u{1b}]10;rgb:ffff/8080/4040\u{7}");
+    assert_eq!(bg_reply, "\u{1b}]11;rgb:1010/2020/3030\u{7}");
+}
+
+#[test]
+fn osc_11_override_short_circuits_only_the_overridden_channel() {
+    // Setting only the bg must not short-circuit fg queries — each
+    // channel's override is independent. If only `pane_default_bg` is
+    // populated, an OSC 10 query (fg) still goes to the host.
+    let mut parser = vte::Parser::new();
+    let mut grid = new_grid_for_forwarding_test();
+    for byte in b"\x1b]11;rgb:1010/2020/3030\x07" {
+        parser.advance(&mut grid, *byte);
+    }
+    assert!(grid.pane_default_bg.is_some());
+    assert!(grid.pane_default_fg.is_none());
+
+    for byte in b"\x1b]10;?\x07" {
+        parser.advance(&mut grid, *byte);
+    }
+    assert!(
+        grid.pending_messages_to_pty.is_empty(),
+        "fg has no override → must forward"
+    );
+    assert_eq!(grid.pending_forwarded_queries.len(), 1);
+}
+
+#[test]
+fn csi_2026_dollar_p_stays_local() {
+    // DECRQM mode 2026 (synchronised output) is emulated by Zellij
+    // itself — never forwarded. The response is the DECRPM form
+    // `\x1b[?2026;2$y` (2 = "reset but recognised"; Zellij brackets its
+    // own frames, so individual panes are treated as "not enabled").
+    let mut parser = vte::Parser::new();
+    let mut grid = new_grid_for_forwarding_test();
+    for byte in b"\x1b[?2026$p" {
+        parser.advance(&mut grid, *byte);
+    }
+    assert!(
+        grid.pending_forwarded_queries.is_empty(),
+        "CSI ?2026$p is emulated locally, must not forward"
+    );
+    assert_eq!(grid.pending_messages_to_pty.len(), 1);
+    assert_eq!(
+        grid.pending_messages_to_pty[0], b"\x1b[?2026;2$y",
+        "DECRPM reply must use the `$y` suffix per spec"
+    );
+}
+
+#[test]
+fn csi_22t_and_23t_stay_local() {
+    // CSI 22t / 23t manipulate the pane's title stack — Zellij owns
+    // that state, so forwarding would route an app's push/pop to the
+    // host's unrelated title stack instead of the visible pane title.
+    // They produce no reply; both queues must stay empty after each.
+    let mut parser = vte::Parser::new();
+    let mut grid = new_grid_for_forwarding_test();
+    grid.set_title("hello".to_string());
+
+    for byte in b"\x1b[22;0t" {
+        parser.advance(&mut grid, *byte);
+    }
+    assert!(
+        grid.pending_forwarded_queries.is_empty(),
+        "22t is a stack op, not a query"
+    );
+    assert!(
+        grid.pending_messages_to_pty.is_empty(),
+        "22t produces no reply"
+    );
+
+    // The push actually landed on Zellij's per-pane stack: restore it.
+    grid.set_title("different".to_string());
+    for byte in b"\x1b[23;0t" {
+        parser.advance(&mut grid, *byte);
+    }
+    assert!(
+        grid.pending_forwarded_queries.is_empty(),
+        "23t is a stack op, not a query"
+    );
+    assert!(
+        grid.pending_messages_to_pty.is_empty(),
+        "23t produces no reply"
+    );
+    assert_eq!(
+        grid.title.as_deref(),
+        Some("hello"),
+        "pop should restore the previously-pushed title"
+    );
+}
+
+#[test]
+fn osc_4_set_stays_local() {
+    // OSC 4;<index>;<rgb> writes to Zellij's in-memory palette; only
+    // the query form (`OSC 4;N;?`) ever forwards to the host.
+    let mut parser = vte::Parser::new();
+    let mut grid = new_grid_for_forwarding_test();
+    for byte in b"\x1b]4;5;rgb:ffff/0000/0000\x07" {
+        parser.advance(&mut grid, *byte);
+    }
+    assert!(
+        grid.pending_forwarded_queries.is_empty(),
+        "OSC 4 set must not forward"
+    );
+    assert!(
+        grid.pending_messages_to_pty.is_empty(),
+        "OSC 4 set produces no reply"
+    );
+    let changed = grid
+        .changed_colors
+        .expect("changed_colors should be populated by OSC 4 set");
+    assert!(changed[5].is_some(), "index 5 should have been written");
+}
+
+#[test]
+fn decset_2031_enables_color_palette_notification() {
+    let mut parser = vte::Parser::new();
+    let mut grid = new_grid_for_forwarding_test();
+    assert!(
+        !grid.color_palette_notification_enabled,
+        "default state must be disabled"
+    );
+    for byte in b"\x1b[?2031h" {
+        parser.advance(&mut grid, *byte);
+    }
+    assert!(
+        grid.color_palette_notification_enabled,
+        "DECSET 2031 must enable the flag"
+    );
+    for byte in b"\x1b[?2031l" {
+        parser.advance(&mut grid, *byte);
+    }
+    assert!(
+        !grid.color_palette_notification_enabled,
+        "DECRST 2031 must disable the flag"
+    );
+}
+
+#[test]
+fn push_color_palette_dsr_emits_when_enabled() {
+    let mut grid = new_grid_for_forwarding_test();
+    grid.color_palette_notification_enabled = true;
+    grid.push_color_palette_dsr(zellij_utils::data::HostTerminalThemeMode::Dark);
+    assert_eq!(grid.pending_messages_to_pty.len(), 1);
+    assert_eq!(
+        grid.pending_messages_to_pty[0],
+        b"\x1b[?997;1n".to_vec(),
+        "Dark mode emits ?997;1n"
+    );
+    grid.push_color_palette_dsr(zellij_utils::data::HostTerminalThemeMode::Light);
+    assert_eq!(grid.pending_messages_to_pty.len(), 2);
+    assert_eq!(
+        grid.pending_messages_to_pty[1],
+        b"\x1b[?997;2n".to_vec(),
+        "Light mode emits ?997;2n"
+    );
+}
+
+#[test]
+fn push_color_palette_dsr_noop_when_disabled() {
+    let mut grid = new_grid_for_forwarding_test();
+    assert!(!grid.color_palette_notification_enabled);
+    grid.push_color_palette_dsr(zellij_utils::data::HostTerminalThemeMode::Dark);
+    assert!(
+        grid.pending_messages_to_pty.is_empty(),
+        "no DSR is queued when the app has not opted in via CSI ?2031h"
+    );
+}
+
+#[test]
+fn csi_996n_pushes_color_palette_mode_query_to_forwarded_queries() {
+    use crate::host_query::HostQuery;
+    let mut parser = vte::Parser::new();
+    let mut grid = new_grid_for_forwarding_test();
+    for byte in b"\x1b[?996n" {
+        parser.advance(&mut grid, *byte);
+    }
+    assert_eq!(
+        grid.pending_forwarded_queries,
+        vec![HostQuery::ColorPaletteMode],
+        "CSI ?996n must push HostQuery::ColorPaletteMode for Screen to short-circuit"
+    );
+    assert!(
+        grid.pending_messages_to_pty.is_empty(),
+        "Grid must NOT answer locally — Screen owns the host_terminal_theme_mode cache"
+    );
+}
+
+#[test]
+fn csi_5n_status_query_still_handled_locally() {
+    let mut parser = vte::Parser::new();
+    let mut grid = new_grid_for_forwarding_test();
+    // Plain DSR 5 (no `?` intermediate) is not the new theme query and
+    // must continue to receive its `\e[0n` "all good" reply locally.
+    for byte in b"\x1b[5n" {
+        parser.advance(&mut grid, *byte);
+    }
+    assert!(
+        grid.pending_forwarded_queries.is_empty(),
+        "DSR 5 is not a forwarded query"
+    );
+    assert_eq!(
+        grid.pending_messages_to_pty,
+        vec![b"\x1b[0n".to_vec()],
+        "DSR 5 must still produce its local 'all good' reply"
     );
 }

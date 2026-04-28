@@ -1025,6 +1025,14 @@ pub enum Event {
     /// Plugins that subscribe to this event signal they cache keybindings
     /// and can handle lightweight ModeUpdate events without keybindings.
     InitialKeybinds(KeybindsVec),
+    /// The host terminal indicated its color palette theme mode (CSI 2031 / DSR 997).
+    HostTerminalThemeChanged(HostTerminalThemeMode),
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum HostTerminalThemeMode {
+    Dark,
+    Light,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, EnumDiscriminants, Display, Serialize, Deserialize)]

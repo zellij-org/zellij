@@ -68,6 +68,7 @@ enum EventType {
     PaneRenderReportWithAnsi = 43;
     InitialKeybinds = 44;
     CommandChanged = 45;
+    HostTerminalThemeChanged = 46;
 }
 
 message EventNameList {
@@ -115,7 +116,17 @@ message Event {
     PaneRenderReportPayload pane_render_report_with_ansi_payload = 37;
     InitialKeybindsPayload initial_keybinds_payload = 38;
     CommandChangedPayload command_changed_payload = 39;
+    HostTerminalThemeChangedPayload host_terminal_theme_changed_payload = 40;
   }
+}
+
+message HostTerminalThemeChangedPayload {
+  HostTerminalThemeIndication mode = 1;
+}
+
+enum HostTerminalThemeIndication {
+  Dark = 0;
+  Light = 1;
 }
 
 message CwdChangedPayload {

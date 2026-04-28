@@ -1149,6 +1149,27 @@ pub(crate) fn route_action(
                 .with_context(err_context)?;
             should_break = true;
         },
+        Action::SetDarkTheme => {
+            senders
+                .send_to_screen(ScreenInstruction::SetDarkTheme(Some(NotificationEnd::new(
+                    completion_tx,
+                ))))
+                .with_context(err_context)?;
+        },
+        Action::SetLightTheme => {
+            senders
+                .send_to_screen(ScreenInstruction::SetLightTheme(Some(
+                    NotificationEnd::new(completion_tx),
+                )))
+                .with_context(err_context)?;
+        },
+        Action::ToggleTheme => {
+            senders
+                .send_to_screen(ScreenInstruction::ToggleTheme(Some(NotificationEnd::new(
+                    completion_tx,
+                ))))
+                .with_context(err_context)?;
+        },
         Action::SwitchSession {
             name,
             tab_position,
@@ -2594,6 +2615,37 @@ pub(crate) fn route_thread_main(
                                     raw_bytes.clone(),
                                     client_id,
                                 ),
+                                instruction,
+                                retry_queue
+                            );
+                        },
+                        ClientToServerMsg::ForwardedReplyFromHost {
+                            token,
+                            ref reply_bytes,
+                        } => {
+                            // The client that owns this forward
+                            // answered — drop the in-flight entry
+                            // first so a later disconnect of that
+                            // client can't synthesize a spurious
+                            // empty reply for the same token.
+                            session_state
+                                .write()
+                                .unwrap()
+                                .clear_forward_in_flight(token);
+                            let _ = send_to_screen_or_retry_queue!(
+                                senders,
+                                ScreenInstruction::ForwardedReplyFromHost {
+                                    token,
+                                    reply_bytes: reply_bytes.clone(),
+                                },
+                                instruction,
+                                retry_queue
+                            );
+                        },
+                        ClientToServerMsg::HostTerminalThemeChanged { mode } => {
+                            let _ = send_to_screen_or_retry_queue!(
+                                senders,
+                                ScreenInstruction::HostTerminalThemeChanged(mode),
                                 instruction,
                                 retry_queue
                             );

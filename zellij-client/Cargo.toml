@@ -69,6 +69,9 @@ rcgen = "0.13"
 serde_json = "1.0"
 serial_test = "3.0"
 tempfile = "3"
+# `test-util` enables `tokio::time::pause` / `advance`, used by the
+# forward-timeout timer tests to drive virtual time deterministically.
+tokio = { workspace = true, features = ["test-util"] }
 
 [features]
 unstable = []

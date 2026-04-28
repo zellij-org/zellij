@@ -1621,6 +1621,12 @@ tail -f /tmp/my-live-logfile | zellij action pipe --name logs --plugin https://e
     },
     /// Detach from the current session
     Detach,
+    /// Switch the theme to dark (uses configured `theme_dark`).
+    SetDarkTheme,
+    /// Switch the theme to light (uses configured `theme_light`).
+    SetLightTheme,
+    /// Toggle between dark and light themes (used configured `theme_dark` and `theme_light`)
+    ToggleTheme,
     /// Switch to a different session
     SwitchSession {
         /// Name of the session to switch to
