@@ -6620,6 +6620,36 @@ fn width_expanding_egc_does_not_overwrite_next_char() {
 }
 
 #[test]
+fn width_expanding_egc_over_existing_content_removes_covered_cell() {
+    // Repaint over "AB" starting at col 0 with a grapheme that is initially width 1
+    // and then widens to width 2 when VS16 arrives. The widened cell covers the
+    // old "B" cell, so "B" must not remain as a separate cell after the EGC grows.
+    let mut grid = create_grid_with_content("AB");
+    feed_bytes(&mut grid, b"\x1b[1;1H");
+
+    let white_flag = "\u{1F3F3}\u{FE0F}";
+    feed_bytes(&mut grid, white_flag.as_bytes());
+
+    let row = &grid.viewport[0];
+    assert_eq!(row.columns[0].grapheme(), white_flag);
+    assert_eq!(row.columns[0].width(), 2);
+    assert_eq!(
+        row.width(),
+        2,
+        "widened grapheme should cover the old B cell instead of leaving row {:?}",
+        row.columns
+            .iter()
+            .map(|c| c.grapheme().to_owned())
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(
+        first_row_graphemes(&grid),
+        vec![white_flag.to_string()],
+        "covered B cell should not remain visible after the grapheme widens"
+    );
+}
+
+#[test]
 fn width_expanding_egc_row_cache_invalidated_on_extension() {
     // Row cache invalidation test using Regional Indicator flag pair (which DOES widen).
     // First RI placed (width 1, row cache = Some(1)), then second RI extends it to
@@ -7647,6 +7677,10 @@ fn mid_grapheme_regex_match_snaps_to_cell_boundaries() {
     grid2.set_search_string("e\u{0301}");
     assert_eq!(grid2.search_results.selections.len(), 1);
     let sel = &grid2.search_results.selections[0];
-    assert_eq!(sel.start.column(), 3, "search selection should start at col 3");
+    assert_eq!(
+        sel.start.column(),
+        3,
+        "search selection should start at col 3"
+    );
     assert_eq!(sel.end.column(), 4, "search selection should end at col 4");
 }
