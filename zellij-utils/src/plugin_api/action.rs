@@ -611,6 +611,18 @@ impl TryFrom<ProtobufAction> for Action {
                 Some(_) => Err("Detach should not have a payload"),
                 None => Ok(Action::Detach),
             },
+            Some(ProtobufActionName::SetDarkTheme) => match protobuf_action.optional_payload {
+                Some(_) => Err("SetDarkTheme should not have a payload"),
+                None => Ok(Action::SetDarkTheme),
+            },
+            Some(ProtobufActionName::SetLightTheme) => match protobuf_action.optional_payload {
+                Some(_) => Err("SetLightTheme should not have a payload"),
+                None => Ok(Action::SetLightTheme),
+            },
+            Some(ProtobufActionName::ToggleTheme) => match protobuf_action.optional_payload {
+                Some(_) => Err("ToggleTheme should not have a payload"),
+                None => Ok(Action::ToggleTheme),
+            },
             Some(ProtobufActionName::LeftClick) => match protobuf_action.optional_payload {
                 Some(OptionalPayload::LeftClickPayload(payload)) => {
                     let position = payload.try_into()?;
@@ -1565,6 +1577,18 @@ impl TryFrom<Action> for ProtobufAction {
             },
             Action::Detach => Ok(ProtobufAction {
                 name: ProtobufActionName::Detach as i32,
+                optional_payload: None,
+            }),
+            Action::SetDarkTheme => Ok(ProtobufAction {
+                name: ProtobufActionName::SetDarkTheme as i32,
+                optional_payload: None,
+            }),
+            Action::SetLightTheme => Ok(ProtobufAction {
+                name: ProtobufActionName::SetLightTheme as i32,
+                optional_payload: None,
+            }),
+            Action::ToggleTheme => Ok(ProtobufAction {
+                name: ProtobufActionName::ToggleTheme as i32,
                 optional_payload: None,
             }),
             Action::LaunchOrFocusPlugin {

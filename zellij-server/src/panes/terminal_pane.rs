@@ -586,6 +586,14 @@ impl Pane for TerminalPane {
         self.grid.pending_messages_to_pty.drain(..).collect()
     }
 
+    fn drain_forwarded_queries(&mut self) -> Vec<crate::host_query::HostQuery> {
+        self.grid.pending_forwarded_queries.drain(..).collect()
+    }
+
+    fn push_color_palette_dsr(&mut self, mode: zellij_utils::data::HostTerminalThemeMode) {
+        self.grid.push_color_palette_dsr(mode);
+    }
+
     fn drain_clipboard_update(&mut self) -> Option<String> {
         self.grid.pending_clipboard_update.take()
     }

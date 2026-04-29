@@ -490,6 +490,9 @@ enum ActionName {
     ShowFloatingPanes = 98;
     HideFloatingPanes = 99;
     AreFloatingPanesVisible = 100;
+    SetDarkTheme = 101;
+    SetLightTheme = 102;
+    ToggleTheme = 103;
 }
 
 message Position {

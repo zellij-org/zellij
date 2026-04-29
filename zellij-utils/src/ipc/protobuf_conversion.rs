@@ -5,15 +5,18 @@ use crate::{
         ClientToServerMsg as ProtoClientToServerMsg, ColorRegistersMsg, ConfigFileUpdatedMsg,
         ConnStatusMsg, ConnectedMsg, DesktopNotificationResponseMsg, DetachSessionMsg, ExitMsg,
         ExitReason as ProtoExitReason, FailedToStartWebServerMsg, FirstClientConnectedMsg,
-        ForegroundColorMsg, InputMode as ProtoInputMode, KeyMsg, KillSessionMsg,
-        LayoutMetadata as ProtoLayoutMetadata, LogErrorMsg, LogMsg,
-        PaneMetadata as ProtoPaneMetadata, PaneRenderUpdateMsg, QueryTerminalSizeMsg,
-        RenamedSessionMsg, RenderMsg, ServerToClientMsg as ProtoServerToClientMsg,
-        StartWebServerMsg, SubscribeToPaneRendersMsg, SubscribedPaneClosedMsg, SwitchSessionMsg,
-        TabMetadata as ProtoTabMetadata, TerminalPixelDimensionsMsg, TerminalResizeMsg,
-        UnblockCliPipeInputMsg, UnblockInputThreadMsg, WebServerStartedMsg,
+        ForegroundColorMsg, ForwardQueryToHostMsg, ForwardedReplyFromHostMsg,
+        HostTerminalThemeChangedMsg,
+        HostTerminalThemeIndication as ProtoHostTerminalThemeIndication,
+        InputMode as ProtoInputMode, KeyMsg, KillSessionMsg, LayoutMetadata as ProtoLayoutMetadata,
+        LogErrorMsg, LogMsg, PaneMetadata as ProtoPaneMetadata, PaneRenderUpdateMsg,
+        QueryTerminalSizeMsg, RenamedSessionMsg, RenderMsg,
+        ServerToClientMsg as ProtoServerToClientMsg, StartWebServerMsg, SubscribeToPaneRendersMsg,
+        SubscribedPaneClosedMsg, SwitchSessionMsg, TabMetadata as ProtoTabMetadata,
+        TerminalPixelDimensionsMsg, TerminalResizeMsg, UnblockCliPipeInputMsg,
+        UnblockInputThreadMsg, WebServerStartedMsg,
     },
-    data::{InputMode, PaneId},
+    data::{HostTerminalThemeMode, InputMode, PaneId},
     errors::prelude::*,
     ipc::{
         ClientToServerMsg, ColorRegister, ExitReason, PaneReference, PixelDimensions,
@@ -127,6 +130,20 @@ impl From<ClientToServerMsg> for ProtoClientToServerMsg {
             ClientToServerMsg::DesktopNotificationResponse { raw_bytes } => {
                 client_to_server_msg::Message::DesktopNotificationResponse(
                     DesktopNotificationResponseMsg { raw_bytes },
+                )
+            },
+            ClientToServerMsg::ForwardedReplyFromHost { token, reply_bytes } => {
+                client_to_server_msg::Message::ForwardedReplyFromHost(ForwardedReplyFromHostMsg {
+                    token,
+                    reply_bytes,
+                })
+            },
+            ClientToServerMsg::HostTerminalThemeChanged { mode } => {
+                let proto_mode: ProtoHostTerminalThemeIndication = mode.into();
+                client_to_server_msg::Message::HostTerminalThemeChanged(
+                    HostTerminalThemeChangedMsg {
+                        mode: proto_mode as i32,
+                    },
                 )
             },
         };
@@ -257,6 +274,19 @@ impl TryFrom<ProtoClientToServerMsg> for ClientToServerMsg {
                     raw_bytes: msg.raw_bytes,
                 })
             },
+            Some(client_to_server_msg::Message::ForwardedReplyFromHost(msg)) => {
+                Ok(ClientToServerMsg::ForwardedReplyFromHost {
+                    token: msg.token,
+                    reply_bytes: msg.reply_bytes,
+                })
+            },
+            Some(client_to_server_msg::Message::HostTerminalThemeChanged(msg)) => {
+                let proto_mode = ProtoHostTerminalThemeIndication::from_i32(msg.mode)
+                    .ok_or_else(|| anyhow!("Unknown HostTerminalThemeIndication: {}", msg.mode))?;
+                Ok(ClientToServerMsg::HostTerminalThemeChanged {
+                    mode: proto_mode.into(),
+                })
+            },
             None => Err(anyhow!("Empty ClientToServerMsg message")),
         }
     }
@@ -334,6 +364,12 @@ impl From<ServerToClientMsg> for ProtoServerToClientMsg {
             ServerToClientMsg::SubscribedPaneClosed { pane_id } => {
                 server_to_client_msg::Message::SubscribedPaneClosed(SubscribedPaneClosedMsg {
                     pane_id: Some(pane_id.into()),
+                })
+            },
+            ServerToClientMsg::ForwardQueryToHost { token, query_bytes } => {
+                server_to_client_msg::Message::ForwardQueryToHost(ForwardQueryToHostMsg {
+                    token,
+                    query_bytes,
                 })
             },
         };
@@ -441,6 +477,12 @@ impl TryFrom<ProtoServerToClientMsg> for ServerToClientMsg {
                     .ok_or_else(|| anyhow!("Missing pane_id"))?
                     .try_into()?;
                 Ok(ServerToClientMsg::SubscribedPaneClosed { pane_id })
+            },
+            Some(server_to_client_msg::Message::ForwardQueryToHost(msg)) => {
+                Ok(ServerToClientMsg::ForwardQueryToHost {
+                    token: msg.token,
+                    query_bytes: msg.query_bytes,
+                })
             },
             None => Err(anyhow!("Empty ServerToClientMsg message")),
         }
@@ -625,6 +667,8 @@ impl From<crate::input::options::Options>
         Self {
             simplified_ui: options.simplified_ui,
             theme: options.theme,
+            theme_dark: options.theme_dark,
+            theme_light: options.theme_light,
             default_mode: options.default_mode.map(|m| input_mode_to_proto_i32(m)),
             default_shell: options
                 .default_shell
@@ -707,6 +751,8 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
         Ok(Self {
             simplified_ui: options.simplified_ui,
             theme: options.theme,
+            theme_dark: options.theme_dark,
+            theme_light: options.theme_light,
             default_mode: options
                 .default_mode
                 .map(|m| proto_i32_to_input_mode(m))
@@ -897,6 +943,8 @@ impl From<crate::input::actions::Action>
             SearchAction,
             SearchInputAction,
             SearchToggleOptionAction,
+            SetDarkThemeAction,
+            SetLightThemeAction,
             SetPaneBorderlessAction,
             SetPaneColorAction,
             ShowFloatingPanesAction,
@@ -924,6 +972,7 @@ impl From<crate::input::actions::Action>
             TogglePanePinnedAction,
             TogglePanePinnedByPaneIdAction,
             ToggleTabAction,
+            ToggleThemeAction,
             UndoRenamePaneAction,
             UndoRenamePaneByPaneIdAction,
             UndoRenameTabAction,
@@ -1278,6 +1327,15 @@ impl From<crate::input::actions::Action>
                 near_current_pane,
             }),
             crate::input::actions::Action::Detach => ActionType::Detach(DetachAction {}),
+            crate::input::actions::Action::SetDarkTheme => {
+                ActionType::SetDarkTheme(SetDarkThemeAction {})
+            },
+            crate::input::actions::Action::SetLightTheme => {
+                ActionType::SetLightTheme(SetLightThemeAction {})
+            },
+            crate::input::actions::Action::ToggleTheme => {
+                ActionType::ToggleTheme(ToggleThemeAction {})
+            },
             crate::input::actions::Action::SwitchSession {
                 name,
                 tab_position,
@@ -2139,6 +2197,9 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                 near_current_pane: run_action.near_current_pane,
             }),
             ActionType::Detach(_) => Ok(crate::input::actions::Action::Detach),
+            ActionType::SetDarkTheme(_) => Ok(crate::input::actions::Action::SetDarkTheme),
+            ActionType::SetLightTheme(_) => Ok(crate::input::actions::Action::SetLightTheme),
+            ActionType::ToggleTheme(_) => Ok(crate::input::actions::Action::ToggleTheme),
             ActionType::SwitchSession(switch_session_action) => {
                 Ok(crate::input::actions::Action::SwitchSession {
                     name: switch_session_action.name.clone(),
@@ -2948,6 +3009,24 @@ impl TryFrom<ProtoExitReason> for ExitReason {
             ProtoExitReason::Error => Ok(ExitReason::Error("Protobuf error".to_string())),
             ProtoExitReason::CustomExitStatus => Ok(ExitReason::CustomExitStatus(0)),
             ProtoExitReason::Unspecified => Err(anyhow!("Unspecified exit reason")),
+        }
+    }
+}
+
+impl From<HostTerminalThemeMode> for ProtoHostTerminalThemeIndication {
+    fn from(mode: HostTerminalThemeMode) -> Self {
+        match mode {
+            HostTerminalThemeMode::Dark => ProtoHostTerminalThemeIndication::Dark,
+            HostTerminalThemeMode::Light => ProtoHostTerminalThemeIndication::Light,
+        }
+    }
+}
+
+impl From<ProtoHostTerminalThemeIndication> for HostTerminalThemeMode {
+    fn from(mode: ProtoHostTerminalThemeIndication) -> Self {
+        match mode {
+            ProtoHostTerminalThemeIndication::Dark => HostTerminalThemeMode::Dark,
+            ProtoHostTerminalThemeIndication::Light => HostTerminalThemeMode::Light,
         }
     }
 }

@@ -54,6 +54,17 @@ const SHOW_CURSOR: &str = "\u{1b}[?25h";
 const ENTER_KITTY_KEYBOARD_MODE: &str = "\u{1b}[>1u";
 const EXIT_KITTY_KEYBOARD_MODE: &str = "\u{1b}[<1u";
 const CLEAR_CLIENT_TERMINAL_ATTRIBUTES: &str = "\u{1b}[?1l\u{1b}=\u{1b}[r\u{1b}[?1000l\u{1b}[?1002l\u{1b}[?1003l\u{1b}[?1005l\u{1b}[?1006l\u{1b}[?12l";
+/// Subscribe to host color-palette theme notifications (CSI 2031). Hosts
+/// that support it begin emitting unsolicited DSR 997 reports on theme
+/// change after this is sent.
+const ENABLE_HOST_THEME_NOTIFY: &str = "\u{1b}[?2031h";
+/// Cancel the CSI 2031 subscription (sent on detach / shutdown so we
+/// don't leave the host emitting DSR 997s into nothing).
+const DISABLE_HOST_THEME_NOTIFY: &str = "\u{1b}[?2031l";
+/// Actively query the current host theme (DSR 996). Reply arrives in the
+/// same `CSI ? 997 ; {1|2} n` form as unsolicited notifications, so the
+/// stdin parser handles both uniformly.
+const QUERY_HOST_THEME: &str = "\u{1b}[?996n";
 
 /// Spawn an async runtime for this client instance.
 ///
@@ -139,7 +150,7 @@ use crate::{
 };
 use zellij_utils::cli::CliArgs;
 use zellij_utils::{
-    channels::{self, ChannelWithContext, RecvTimeoutError, SenderWithContext},
+    channels::{self, ChannelWithContext, SenderWithContext},
     consts::{set_permissions, ZELLIJ_SOCK_DIR},
     data::{ClientId, ConnectToSession, KeyWithModifier, LayoutInfo, LayoutMetadata},
     envs,
@@ -158,8 +169,6 @@ pub(crate) enum ClientInstruction {
     UnblockInputThread,
     Exit(ExitReason),
     Connected,
-    StartedParsingStdinQuery,
-    DoneParsingStdinQuery,
     Log(Vec<String>),
     LogError(Vec<String>),
     SwitchSession(ConnectToSession),
@@ -171,6 +180,12 @@ pub(crate) enum ClientInstruction {
     #[allow(dead_code)] // we need the session name here even though we're not currently using it
     RenamedSession(String), // String -> new session name
     ConfigFileUpdated,
+    /// Server asked us to forward `query_bytes` to the host terminal and
+    /// collect the reply bytes into the window identified by `token`.
+    ForwardQueryToHost {
+        token: u32,
+        query_bytes: Vec<u8>,
+    },
 }
 
 impl From<ServerToClientMsg> for ClientInstruction {
@@ -193,6 +208,9 @@ impl From<ServerToClientMsg> for ClientInstruction {
             ServerToClientMsg::StartWebServer => ClientInstruction::StartWebServer,
             ServerToClientMsg::RenamedSession { name } => ClientInstruction::RenamedSession(name),
             ServerToClientMsg::ConfigFileUpdated => ClientInstruction::ConfigFileUpdated,
+            ServerToClientMsg::ForwardQueryToHost { token, query_bytes } => {
+                ClientInstruction::ForwardQueryToHost { token, query_bytes }
+            },
             // Subscribe-only messages — not handled by regular interactive clients
             ServerToClientMsg::PaneRenderUpdate { .. } => ClientInstruction::UnblockInputThread,
             ServerToClientMsg::SubscribedPaneClosed { .. } => ClientInstruction::UnblockInputThread,
@@ -210,8 +228,6 @@ impl From<&ClientInstruction> for ClientContext {
             ClientInstruction::Connected => ClientContext::Connected,
             ClientInstruction::Log(_) => ClientContext::Log,
             ClientInstruction::LogError(_) => ClientContext::LogError,
-            ClientInstruction::StartedParsingStdinQuery => ClientContext::StartedParsingStdinQuery,
-            ClientInstruction::DoneParsingStdinQuery => ClientContext::DoneParsingStdinQuery,
             ClientInstruction::SwitchSession(..) => ClientContext::SwitchSession,
             ClientInstruction::SetSynchronizedOutput(..) => ClientContext::SetSynchronisedOutput,
             ClientInstruction::UnblockCliPipeInput(..) => ClientContext::UnblockCliPipeInput,
@@ -220,6 +236,7 @@ impl From<&ClientInstruction> for ClientContext {
             ClientInstruction::StartWebServer => ClientContext::StartWebServer,
             ClientInstruction::RenamedSession(..) => ClientContext::RenamedSession,
             ClientInstruction::ConfigFileUpdated => ClientContext::ConfigFileUpdated,
+            ClientInstruction::ForwardQueryToHost { .. } => ClientContext::ForwardQueryToHost,
         }
     }
 }
@@ -414,8 +431,13 @@ pub(crate) enum InputInstruction {
     MouseEvent(zellij_utils::input::mouse::MouseEvent),
     AnsiStdinInstructions(Vec<AnsiStdinInstruction>),
     DesktopNotificationResponse(Vec<u8>),
-    StartedParsing,
-    DoneParsing,
+    /// The continuous host-reply parser closed a forwarding window (barrier
+    /// reply seen or timeout fired). Payload is the accumulated raw bytes
+    /// to ship to the server.
+    ForwardedReplyFromHostComplete {
+        token: u32,
+        reply_bytes: Vec<u8>,
+    },
     Exit,
 }
 
@@ -635,6 +657,10 @@ pub fn start_remote_client(
     stdout
         .write_all(ENTER_KITTY_KEYBOARD_MODE.as_bytes())
         .unwrap();
+    stdout
+        .write_all(ENABLE_HOST_THEME_NOTIFY.as_bytes())
+        .unwrap();
+    stdout.write_all(QUERY_HOST_THEME.as_bytes()).unwrap();
 
     envs::set_zellij("0".to_string());
 
@@ -730,6 +756,14 @@ pub fn start_client(
                 .write_all(ENTER_KITTY_KEYBOARD_MODE.as_bytes())
                 .unwrap();
         }
+        // Subscribe to host CSI 2031 theme notifications and query the
+        // current mode. Sent right after CLEAR_CLIENT_TERMINAL_ATTRIBUTES
+        // so there's no window in which the host is unsubscribed.
+        // Hosts that don't support 2031 ignore both sequences.
+        stdout
+            .write_all(ENABLE_HOST_THEME_NOTIFY.as_bytes())
+            .unwrap();
+        stdout.write_all(QUERY_HOST_THEME.as_bytes()).unwrap();
     }
     envs::set_zellij("0".to_string());
     config.env.set_vars();
@@ -968,6 +1002,24 @@ pub fn start_client(
             }
         });
 
+    // Apps running inside Zellij panes can issue a whitelisted set
+    // of queries to the host terminal (bg/fg colour, palette
+    // registers, window pixel dimensions). Each query opens a
+    // "forward slot" on the client: we write the query + a
+    // Primary-DA barrier to stdout, then collect any reply bytes
+    // that arrive on stdin until the barrier reply closes the slot.
+    // The pane that asked gets the captured bytes piped to its pty.
+    //
+    // If the host never answers, we must close the slot anyway so
+    // the server can dispatch the next queued forward. A per-slot
+    // timer task enforces that deadline: opening a forward spawns
+    // an async sleep on `forward_timeout_runtime()`; on wake it
+    // tries to close the slot for that specific token. If the
+    // barrier (or a later forward) closed the slot first, the
+    // timer's close call is a no-op — the token-guard makes
+    // cancellation implicit. Spawn site: the
+    // `ClientInstruction::ForwardQueryToHost` handler below.
+
     let _input_thread = thread::Builder::new()
         .name("input_handler".to_string())
         .spawn({
@@ -1074,77 +1126,15 @@ pub fn start_client(
     };
 
     let mut exit_msg = String::new();
-    let mut loading = true;
-    let mut showed_loading_message = false;
-    let loading_start = std::time::Instant::now();
-    let loading_delay = std::time::Duration::from_millis(400);
-    let mut pending_instructions = vec![];
     let mut synchronised_output = match os_input.env_variable("TERM").as_deref() {
         Some("alacritty") => Some(SyncOutput::DCS),
         _ => None,
     };
 
-    let mut stdout = os_input.get_stdout_writer();
-
     loop {
-        let (client_instruction, mut err_ctx) = if !loading && !pending_instructions.is_empty() {
-            // there are buffered instructions, we need to go through them before processing the
-            // new ones
-            pending_instructions.remove(0)
-        } else if loading && !showed_loading_message {
-            let remaining = loading_delay
-                .checked_sub(loading_start.elapsed())
-                .unwrap_or(std::time::Duration::ZERO);
-            match receive_client_instructions.recv_timeout(remaining) {
-                Ok(instruction) => instruction,
-                Err(RecvTimeoutError::Timeout) => {
-                    // 400ms elapsed with no completion — show loading UI
-                    stdout
-                        .write_all("\u{1b}[1m\u{1b}[HLoading Zellij\u{1b}[m\n\r".as_bytes())
-                        .expect("cannot write to stdout");
-                    stdout.flush().expect("could not flush");
-                    showed_loading_message = true;
-                    // Now block normally
-                    receive_client_instructions
-                        .recv()
-                        .expect("failed to receive app instruction on channel")
-                },
-                Err(RecvTimeoutError::Disconnected) => {
-                    panic!("client instruction channel disconnected");
-                },
-            }
-        } else {
-            receive_client_instructions
-                .recv()
-                .expect("failed to receive app instruction on channel")
-        };
-
-        if loading {
-            // when the app is still loading, we buffer instructions and show a loading screen
-            match client_instruction {
-                ClientInstruction::StartedParsingStdinQuery => {
-                    if showed_loading_message {
-                        stdout
-                            .write_all("Querying terminal emulator for \u{1b}[32;1mdefault colors\u{1b}[m and \u{1b}[32;1mpixel/cell\u{1b}[m ratio...".as_bytes())
-                            .expect("cannot write to stdout");
-                        stdout.flush().expect("could not flush");
-                    }
-                },
-                ClientInstruction::DoneParsingStdinQuery => {
-                    if showed_loading_message {
-                        stdout
-                            .write_all("done".as_bytes())
-                            .expect("cannot write to stdout");
-                        stdout.flush().expect("could not flush");
-                    }
-                    loading = false;
-                },
-                instruction => {
-                    pending_instructions.push((instruction, err_ctx));
-                },
-            }
-            continue;
-        }
+        let (client_instruction, mut err_ctx) = receive_client_instructions
+            .recv()
+            .expect("failed to receive app instruction on channel");
 
         err_ctx.add_call(ContextType::Client((&client_instruction).into()));
 
@@ -1223,6 +1213,41 @@ pub fn start_client(
                             .send_to_server(ClientToServerMsg::FailedToStartWebServer { error: e });
                     },
                 }
+            },
+            ClientInstruction::ForwardQueryToHost { token, query_bytes } => {
+                // 1. Open a forwarding window on the parser so any reply
+                //    events that arrive before the barrier are captured.
+                stdin_ansi_parser.lock().unwrap().open_forward(token);
+                // 2. Spawn a per-forward timer on the dedicated async
+                //    runtime. When the deadline fires, the task closes
+                //    the slot (if it's still open for this token) and
+                //    relays `ForwardedReplyFromHostComplete` so the
+                //    server releases `forward_in_flight` and dispatches
+                //    the next queued forward.
+                let runtime = stdin_ansi_parser::forward_timeout_runtime();
+                let parser_for_timer = stdin_ansi_parser.clone();
+                let sender_for_timer = send_input_instructions.clone();
+                stdin_ansi_parser::schedule_forward_timeout(
+                    runtime.handle(),
+                    parser_for_timer,
+                    token,
+                    std::time::Duration::from_millis(500),
+                    move |token, reply_bytes| {
+                        let _ = sender_for_timer.send(
+                            InputInstruction::ForwardedReplyFromHostComplete { token, reply_bytes },
+                        );
+                    },
+                );
+                // 3. Write the query + Primary-DA barrier in a single
+                //    write_all. The barrier closes the window on the
+                //    parser side when its reply arrives — the timer
+                //    task's eventual wake-up finds an empty slot for
+                //    this token and no-ops.
+                let mut blob = query_bytes;
+                blob.extend_from_slice(b"\x1b[c");
+                let mut out = os_input.get_stdout_writer();
+                let _ = out.write_all(&blob);
+                let _ = out.flush();
             },
             _ => {},
         }
@@ -1391,8 +1416,9 @@ fn terminal_teardown_message(message: &str, rows: usize, include_kitty_exit: boo
         ""
     };
     format!(
-        "{}{}{}{}{}{}\n",
+        "{}{}{}{}{}{}{}\n",
         kitty_exit,
+        DISABLE_HOST_THEME_NOTIFY,
         EXIT_ALTERNATE_SCREEN,
         RESET_STYLE,
         SHOW_CURSOR,

@@ -4,7 +4,7 @@ use crate::web_client::control_message::{
     WebClientToWebServerControlMessagePayload, WebServerToWebClientControlMessage,
 };
 use crate::web_client::message_handlers::{
-    parse_stdin, render_to_client, send_control_messages_to_client,
+    parse_stdin, render_to_client, send_control_messages_to_client, StdinSession,
 };
 use crate::web_client::server_listener::zellij_server_listener;
 use crate::web_client::types::{AppState, TerminalParams};
@@ -221,7 +221,46 @@ async fn handle_ws_terminal(
     let _ = attachment_complete_rx.await;
 
     let mut mouse_old_event = MouseEvent::new();
-    while let Some(Ok(msg)) = client_terminal_channel_rx.next().await {
+    // Per-connection parser state. Hoisted so a CSI / Kitty sequence
+    // split across two WebSocket frames resolves on the second frame.
+    let mut stdin_session = StdinSession::new(explicitly_disable_kitty_keyboard_protocol);
+    let finalize_idle = std::time::Duration::from_millis(50);
+    loop {
+        // When termwiz is holding ambiguous-but-complete events from
+        // the previous frame, race the next frame against an idle
+        // timeout so the held events still drain if no further frame
+        // arrives.
+        let result = if stdin_session.pending_finalize() {
+            tokio::select! {
+                msg = client_terminal_channel_rx.next() => Some(msg),
+                _ = tokio::time::sleep(finalize_idle) => None,
+            }
+        } else {
+            Some(client_terminal_channel_rx.next().await)
+        };
+        let msg = match result {
+            Some(Some(Ok(m))) => m,
+            Some(_) => break,
+            None => {
+                // Idle timeout fired with `pending_finalize` set:
+                // drain any ambiguous-but-complete events termwiz held
+                // back on the previous frame.
+                if let Some(client_connection) = state
+                    .connection_table
+                    .lock()
+                    .unwrap()
+                    .get_client_os_api(&web_client_id)
+                    .cloned()
+                {
+                    stdin_session.finalize(&*client_connection, &mut mouse_old_event);
+                } else {
+                    // No client to send drained events to — clear the
+                    // flag so we don't busy-loop the idle timer.
+                    stdin_session.clear_pending_finalize();
+                }
+                continue;
+            },
+        };
         match msg {
             Message::Binary(buf) => {
                 let Some(client_connection) = state
@@ -238,7 +277,7 @@ async fn handle_ws_terminal(
                     &buf,
                     client_connection.clone(),
                     &mut mouse_old_event,
-                    explicitly_disable_kitty_keyboard_protocol,
+                    &mut stdin_session,
                 );
             },
             Message::Text(msg) => {
@@ -256,7 +295,7 @@ async fn handle_ws_terminal(
                     msg.as_bytes(),
                     client_connection.clone(),
                     &mut mouse_old_event,
-                    explicitly_disable_kitty_keyboard_protocol,
+                    &mut stdin_session,
                 );
             },
             Message::Close(_) => {

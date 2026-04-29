@@ -20,6 +20,7 @@ message ServerToClientMsg {
     ConfigFileUpdatedMsg config_file_updated = 13;
     PaneRenderUpdateMsg pane_render_update = 14;
     SubscribedPaneClosedMsg subscribed_pane_closed = 15;
+    ForwardQueryToHostMsg forward_query_to_host = 16;
   }
 }
 
@@ -87,4 +88,9 @@ message PaneRenderUpdateMsg {
 
 message SubscribedPaneClosedMsg {
   PaneId pane_id = 1;
+}
+
+message ForwardQueryToHostMsg {
+  uint32 token = 1;
+  bytes query_bytes = 2;
 }

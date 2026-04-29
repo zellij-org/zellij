@@ -23,6 +23,8 @@ message ClientToServerMsg {
     AttachWatcherClientMsg attach_watcher_client = 16;
     SubscribeToPaneRendersMsg subscribe_to_pane_renders = 17;
     DesktopNotificationResponseMsg desktop_notification_response = 18;
+    ForwardedReplyFromHostMsg forwarded_reply_from_host = 19;
+    HostTerminalThemeChangedMsg host_terminal_theme_changed = 20;
   }
 }
 
@@ -108,4 +110,18 @@ message SubscribeToPaneRendersMsg {
 
 message DesktopNotificationResponseMsg {
   bytes raw_bytes = 1;
+}
+
+message ForwardedReplyFromHostMsg {
+  uint32 token = 1;
+  bytes reply_bytes = 2;
+}
+
+message HostTerminalThemeChangedMsg {
+  HostTerminalThemeIndication mode = 1;
+}
+
+enum HostTerminalThemeIndication {
+  HOST_TERMINAL_THEME_INDICATION_DARK = 0;
+  HOST_TERMINAL_THEME_INDICATION_LIGHT = 1;
 }
