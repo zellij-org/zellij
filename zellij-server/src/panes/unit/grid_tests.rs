@@ -5904,6 +5904,47 @@ fn csi_2026_dollar_p_stays_local() {
 }
 
 #[test]
+fn csi_2031_dollar_p_when_disabled_replies_reset() {
+    // DECRQM mode 2031 (Application Theme Reporting) is per-pane state
+    // tracked locally by Zellij. With no prior `CSI ? 2031 h`, the mode
+    // is reset, so the DECRPM reply must report value=2.
+    let mut parser = vte::Parser::new();
+    let mut grid = new_grid_for_forwarding_test();
+    for byte in b"\x1b[?2031$p" {
+        parser.advance(&mut grid, *byte);
+    }
+    assert!(
+        grid.pending_forwarded_queries.is_empty(),
+        "CSI ?2031$p is answered locally, must not forward"
+    );
+    assert_eq!(grid.pending_messages_to_pty.len(), 1);
+    assert_eq!(
+        grid.pending_messages_to_pty[0], b"\x1b[?2031;2$y",
+        "DECRPM reply must report value=2 (reset) when 2031 is disabled"
+    );
+}
+
+#[test]
+fn csi_2031_dollar_p_when_enabled_replies_set() {
+    // After `CSI ? 2031 h` enables theme-change notifications on this
+    // pane, a DECRQM probe must report value=1 (set).
+    let mut parser = vte::Parser::new();
+    let mut grid = new_grid_for_forwarding_test();
+    for byte in b"\x1b[?2031h\x1b[?2031$p" {
+        parser.advance(&mut grid, *byte);
+    }
+    assert!(
+        grid.pending_forwarded_queries.is_empty(),
+        "CSI ?2031$p is answered locally, must not forward"
+    );
+    assert_eq!(grid.pending_messages_to_pty.len(), 1);
+    assert_eq!(
+        grid.pending_messages_to_pty[0], b"\x1b[?2031;1$y",
+        "DECRPM reply must report value=1 (set) when 2031 is enabled"
+    );
+}
+
+#[test]
 fn csi_22t_and_23t_stay_local() {
     // CSI 22t / 23t manipulate the pane's title stack — Zellij owns
     // that state, so forwarding would route an app's push/pop to the

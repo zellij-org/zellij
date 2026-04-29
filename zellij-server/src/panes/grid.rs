@@ -4084,6 +4084,15 @@ impl Perform for Grid {
                             self.pending_messages_to_pty
                                 .push(response.as_bytes().to_vec());
                         },
+                        2031 => {
+                            let value = if self.color_palette_notification_enabled {
+                                1
+                            } else {
+                                2
+                            };
+                            let response = format!("\u{1b}[?2031;{}$y", value);
+                            self.pending_messages_to_pty.push(response.into_bytes());
+                        },
                         _ => {},
                     }
                 }
