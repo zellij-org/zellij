@@ -1,7 +1,7 @@
 #[allow(unused_imports)] // some imports used only with web_server_capability feature
 use zellij_utils::consts::{
-    session_info_cache_file_name, session_info_folder_for_session, session_layout_cache_file_name,
-    VERSION, ZELLIJ_SESSION_INFO_CACHE_DIR, ZELLIJ_SOCK_DIR,
+    is_ipc_socket, session_info_cache_file_name, session_info_folder_for_session,
+    session_layout_cache_file_name, VERSION, ZELLIJ_SESSION_INFO_CACHE_DIR, ZELLIJ_SOCK_DIR,
 };
 #[allow(unused_imports)]
 use zellij_utils::data::{Event, HttpVerb, LayoutInfo, SessionInfo, WebServerStatus};
@@ -752,25 +752,51 @@ fn read_other_live_session_states(
     session_info_cache_dir: &Path,
 ) -> BTreeMap<String, SessionInfo> {
     let mut session_infos_on_machine = BTreeMap::new();
+    // The registry maps UUID-named sockets to their user-visible display names.
+    // For legacy or test sockets named directly after the session, the registry
+    // lookup misses and we fall back to the filename.
     let registry = zellij_utils::sessions::ensure_registry();
 
-    for entry in registry.running_sessions() {
-        let session_name = &entry.display_name;
-        let creation_time = std::fs::metadata(sock_dir.join(&entry.id))
+    let entries = match fs::read_dir(sock_dir) {
+        Ok(entries) => entries,
+        Err(_) => return session_infos_on_machine,
+    };
+
+    for entry in entries.flatten() {
+        let file_name = match entry.file_name().into_string() {
+            Ok(n) => n,
+            Err(_) => continue,
+        };
+        if file_name == "sessions.kdl" || file_name == "sessions.kdl.lock" {
+            continue;
+        }
+        let file_type = match entry.file_type() {
+            Ok(ft) => ft,
+            Err(_) => continue,
+        };
+        if !is_ipc_socket(&file_type) {
+            continue;
+        }
+
+        let session_name = registry
+            .find_by_id(&file_name)
+            .map(|e| e.display_name.clone())
+            .unwrap_or(file_name);
+        let creation_time = std::fs::metadata(entry.path())
             .ok()
             .and_then(|f| f.created().ok().or_else(|| f.modified().ok()))
             .and_then(|d| d.elapsed().ok())
             .map(|d| Duration::from_secs(d.as_secs()))
             .unwrap_or_default();
         let session_cache_file_name = session_info_cache_dir
-            .join(session_name)
+            .join(&session_name)
             .join("session-metadata.kdl");
         if let Ok(raw_session_info) = fs::read_to_string(&session_cache_file_name) {
             if let Ok(mut session_info) =
-                SessionInfo::from_string(&raw_session_info, &current_session_name)
+                SessionInfo::from_string(&raw_session_info, current_session_name)
             {
                 session_info.creation_time = creation_time;
-                session_infos_on_machine.insert(session_name.clone(), session_info);
+                session_infos_on_machine.insert(session_name, session_info);
             }
         }
     }
