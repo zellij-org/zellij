@@ -577,8 +577,7 @@ fn match_to_selection(
 ) -> Option<(Selection, usize, usize, usize, usize)> {
     let (start_row, start_col) =
         byte_offset_to_display_col(mat.start(), boundaries, viewport, false)?;
-    let (end_row, end_col) =
-        byte_offset_to_display_col(mat.end(), boundaries, viewport, true)?;
+    let (end_row, end_col) = byte_offset_to_display_col(mat.end(), boundaries, viewport, true)?;
     let mut sel = Selection::default();
     sel.set_start_and_end_positions(
         Position::new(start_row as i32, start_col as u16),
@@ -2040,6 +2039,10 @@ impl Grid {
                                 state.end_x = self.cursor.x;
                             }
                         } else {
+                            if let Some(row) = self.viewport.get_mut(cell_y) {
+                                let abs_idx = row.absolute_character_index(cell_x);
+                                row.remove_covered_cells_after(abs_idx, width_change as usize);
+                            }
                             self.move_cursor_forward_until_edge(width_change as usize);
                             self.egc_state.as_mut().unwrap().end_x = self.cursor.x;
                         }
@@ -5026,6 +5029,25 @@ impl Row {
             for _ in 0..excess_width {
                 self.columns
                     .insert(absolute_x_index, EMPTY_TERMINAL_CHARACTER);
+            }
+        }
+        self.width = None;
+    }
+    fn remove_covered_cells_after(&mut self, absolute_x_index: usize, mut width_to_remove: usize) {
+        let remove_position = absolute_x_index + 1;
+        while width_to_remove > 0 {
+            let Some(removed_character) = self.columns.remove(remove_position) else {
+                break;
+            };
+            let removed_width = removed_character.width().max(1);
+            if removed_width > width_to_remove {
+                for _ in 0..removed_width - width_to_remove {
+                    self.columns
+                        .insert(remove_position, EMPTY_TERMINAL_CHARACTER);
+                }
+                width_to_remove = 0;
+            } else {
+                width_to_remove -= removed_width;
             }
         }
         self.width = None;
