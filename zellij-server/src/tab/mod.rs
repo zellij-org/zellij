@@ -2757,11 +2757,7 @@ impl Tab {
     /// paused are re-fed through vte. The re-feed itself may produce
     /// another forward and re-arm the pause; the cycle bounds at the
     /// buffered byte count.
-    pub fn resume_pane_after_forward(
-        &mut self,
-        pid: u32,
-        reply_bytes: Vec<u8>,
-    ) -> Result<()> {
+    pub fn resume_pane_after_forward(&mut self, pid: u32, reply_bytes: Vec<u8>) -> Result<()> {
         let err_context = || format!("failed to resume pane {pid} after forward");
         // Write the reply first so the app sees it on stdin before
         // any subsequent (sync or async) reply that follows in the
