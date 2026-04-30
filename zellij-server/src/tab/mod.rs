@@ -414,6 +414,27 @@ pub trait Pane {
         // plugin panes have no such concept.
         vec![]
     }
+    /// Mark this pane as awaiting a host-terminal reply for a forward
+    /// it just dispatched. While paused, vte byte feeding is buffered
+    /// so that the eventual host reply lands on the pane's stdin in
+    /// the same stream position the original query occupied. Default
+    /// no-op for non-terminal panes (plugins do not forward queries).
+    fn arm_forward_pause(&mut self) {}
+    /// Clear the forward-pause flag set by `arm_forward_pause`, returning
+    /// `true` if the pane was previously paused. Default no-op.
+    fn clear_forward_pause(&mut self) -> bool {
+        false
+    }
+    /// Drain and return any PTY bytes that arrived while the pane was
+    /// forward-paused. Tab calls this on resume and re-feeds the bytes
+    /// through `handle_pty_bytes`. Default empty for non-terminal panes.
+    fn drain_pending_pty_input(&mut self) -> Vec<u8> {
+        vec![]
+    }
+    /// Whether this pane is currently waiting for a host-forward reply.
+    fn is_forward_paused(&self) -> bool {
+        false
+    }
     /// Push a CSI ?997 DSR notification (host color-palette theme mode)
     /// onto this pane's pending pty-write queue, but only if the pane's
     /// underlying app opted in via `CSI ? 2031 h`.
@@ -2607,6 +2628,24 @@ impl Tab {
                 .values()
                 .any(|s_p| s_p.1.pid() == PaneId::Terminal(pid))
     }
+    /// Whether the pane with `pane_id` (if owned by this tab) is
+    /// currently waiting for a host-forward reply. Used by the
+    /// `ColorPaletteMode` short-circuit to decide whether an empty
+    /// "host mode unknown" answer needs to drive an unblock cycle:
+    /// if the pane is not paused, no work is owed.
+    pub fn is_pane_forward_paused(&self, pane_id: PaneId) -> bool {
+        self.tiled_panes
+            .get_pane(pane_id)
+            .or_else(|| self.floating_panes.get_pane(pane_id))
+            .or_else(|| {
+                self.suppressed_panes
+                    .values()
+                    .find(|s_p| s_p.1.pid() == pane_id)
+                    .map(|s_p| &s_p.1)
+            })
+            .map(|p| p.is_forward_paused())
+            .unwrap_or(false)
+    }
     pub fn has_plugin(&self, plugin_id: u32) -> bool {
         self.tiled_panes.panes_contain(&PaneId::Plugin(plugin_id))
             || self
@@ -2709,6 +2748,52 @@ impl Tab {
         }
         Ok(())
     }
+    /// Deliver a forwarded host reply (or cache-fallback synthesis,
+    /// or a locally-answered query payload) to a pane that is currently
+    /// forward-paused. The reply bytes are written to the pane's PTY
+    /// first (so the app reads them on its stdin in the same stream
+    /// position the original query occupied), then the pause flag is
+    /// cleared and any PTY bytes that arrived while the pane was
+    /// paused are re-fed through vte. The re-feed itself may produce
+    /// another forward and re-arm the pause; the cycle bounds at the
+    /// buffered byte count.
+    pub fn resume_pane_after_forward(
+        &mut self,
+        pid: u32,
+        reply_bytes: Vec<u8>,
+    ) -> Result<()> {
+        let err_context = || format!("failed to resume pane {pid} after forward");
+        // Write the reply first so the app sees it on stdin before
+        // any subsequent (sync or async) reply that follows in the
+        // buffered byte stream.
+        if !reply_bytes.is_empty() {
+            self.write_to_pane_id_without_preprocessing(reply_bytes, PaneId::Terminal(pid))
+                .with_context(err_context)?;
+        }
+        // Clear the pause and pull out any bytes that were buffered
+        // while it waited for the host reply.
+        let buffered = if let Some(terminal_output) = self
+            .tiled_panes
+            .get_pane_mut(PaneId::Terminal(pid))
+            .or_else(|| self.floating_panes.get_pane_mut(PaneId::Terminal(pid)))
+            .or_else(|| {
+                self.suppressed_panes
+                    .values_mut()
+                    .find(|s_p| s_p.1.pid() == PaneId::Terminal(pid))
+                    .map(|s_p| &mut s_p.1)
+            }) {
+            terminal_output.clear_forward_pause();
+            terminal_output.drain_pending_pty_input()
+        } else {
+            // Pane closed between forward dispatch and reply arrival.
+            return Ok(());
+        };
+        if !buffered.is_empty() {
+            self.process_pty_bytes(pid, buffered)
+                .with_context(err_context)?;
+        }
+        Ok(())
+    }
     fn process_pty_bytes(&mut self, pid: u32, bytes: VteBytes) -> Result<()> {
         let err_context = || format!("failed to process pty bytes from pid {pid}");
 
@@ -2735,6 +2820,19 @@ impl Tab {
             terminal_output.handle_pty_bytes(bytes);
             let messages_to_pty = terminal_output.drain_messages_to_pty();
             let forwarded_queries = terminal_output.drain_forwarded_queries();
+            // If at least one forward was produced, the pane stopped
+            // processing its `pending_pty_input` queue at the byte
+            // that produced the forward. Arm the pause so subsequent
+            // PTY bytes accumulate in the same queue rather than
+            // being processed; they will be drained in stream order
+            // when the host reply (or cache-fallback synthesis, or
+            // 500 ms timeout) lands via `resume_pane_after_forward`.
+            // Pause arming is independent of which forward bears the
+            // reply: resume is keyed by pane_id, not by token, so a
+            // single flag suffices for any number of queued forwards.
+            if !forwarded_queries.is_empty() {
+                terminal_output.arm_forward_pause();
+            }
             let clipboard_update = terminal_output.drain_clipboard_update();
             let desktop_notifications = terminal_output.drain_desktop_notifications();
             let osc7_cwd = terminal_output.drain_osc7_cwd();

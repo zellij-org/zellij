@@ -10,7 +10,7 @@ use crate::route::NotificationEnd;
 use crate::tab::{AdjustedInput, Pane};
 use crate::ClientId;
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt::Debug;
 use std::rc::Rc;
 use std::time::{self, Instant};
@@ -153,6 +153,19 @@ pub struct TerminalPane {
     #[allow(dead_code)]
     arrow_fonts: bool,
     notification_end: Option<NotificationEnd>,
+    /// `true` while a host-terminal forward initiated by this pane is
+    /// outstanding. While set, processing of `pending_pty_input` is
+    /// suspended so that the async host reply lands on the pane's
+    /// stdin in the same stream position the original query occupied.
+    /// Cleared by Tab when the reply (or 500 ms cache-fallback) lands.
+    forward_paused: bool,
+    /// PTY bytes that have not yet been fed to vte. Single source of
+    /// truth: `handle_pty_bytes` always appends here, and processing
+    /// pops one byte at a time and advances the vte parser. Processing
+    /// stops as soon as Grid produces a forward-bound query, leaving
+    /// remaining bytes in the queue to be drained after the host reply
+    /// has been written.
+    pending_pty_input: VecDeque<u8>,
 }
 
 impl Pane for TerminalPane {
@@ -203,8 +216,22 @@ impl Pane for TerminalPane {
     }
     fn handle_pty_bytes(&mut self, bytes: VteBytes) {
         self.set_should_render(true);
-        for &byte in &bytes {
+        if self.forward_paused {
+            // A host-forward initiated by this pane is outstanding.
+            // Buffer the bytes; Tab drains them on resume.
+            self.pending_pty_input.extend(bytes);
+            return;
+        }
+        let mut iter = bytes.into_iter();
+        while let Some(byte) = iter.next() {
             self.vte_parser.advance(&mut self.grid, byte);
+            if !self.grid.pending_forwarded_queries.is_empty() {
+                // Grid produced a forward. Stop feeding; queue the
+                // un-fed remainder so Tab can replay it after the
+                // reply.
+                self.pending_pty_input.extend(iter);
+                break;
+            }
         }
     }
     fn cursor_coordinates(&self, _client_id: Option<ClientId>) -> Option<(usize, usize, bool)> {
@@ -588,6 +615,24 @@ impl Pane for TerminalPane {
 
     fn drain_forwarded_queries(&mut self) -> Vec<crate::host_query::HostQuery> {
         self.grid.pending_forwarded_queries.drain(..).collect()
+    }
+
+    fn arm_forward_pause(&mut self) {
+        self.forward_paused = true;
+    }
+
+    fn clear_forward_pause(&mut self) -> bool {
+        let was_paused = self.forward_paused;
+        self.forward_paused = false;
+        was_paused
+    }
+
+    fn drain_pending_pty_input(&mut self) -> Vec<u8> {
+        self.pending_pty_input.drain(..).collect()
+    }
+
+    fn is_forward_paused(&self) -> bool {
+        self.forward_paused
     }
 
     fn push_color_palette_dsr(&mut self, mode: zellij_utils::data::HostTerminalThemeMode) {
@@ -1093,6 +1138,8 @@ impl TerminalPane {
             invoked_with,
             arrow_fonts,
             notification_end,
+            forward_paused: false,
+            pending_pty_input: VecDeque::new(),
         }
     }
     pub fn get_x(&self) -> usize {
