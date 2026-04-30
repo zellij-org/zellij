@@ -10,7 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: restore kitty keyboard mode on error, handle DECRPM 2026 state 3, clean up client terminal teardown sequences (https://github.com/zellij-org/zellij/pull/5058)
 * fix: stop reusing terminal pane ids on windows so reopened panes are not closed by stale events (https://github.com/zellij-org/zellij/pull/5082)
 * fix: prevent occasional duplicate characters in the web client due to IME (https://github.com/zellij-org/zellij/pull/4975)
-* feat: support `CSI 2031` + dark/light mode theme switching (https://github.com/zellij-org/zellij/pull/5105 and https://github.com/zellij-org/zellij/pull/5111)
+* feat: support `CSI 2031` + dark/light mode theme switching (https://github.com/zellij-org/zellij/pull/5105, https://github.com/zellij-org/zellij/pull/5111 and https://github.com/zellij-org/zellij/pull/5113)
 * fix: incorrect interpretation of unicode characters in KKP STDIN (https://github.com/zellij-org/zellij/pull/5110)
 
 ## [0.44.1] - 2026-04-07
