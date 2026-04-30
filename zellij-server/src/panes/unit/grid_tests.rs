@@ -6255,6 +6255,79 @@ fn grapheme_preserved_in_copy_output() {
     );
 }
 
+#[test]
+fn erase_line_before_cursor_clears_egc_state() {
+    let mut grid = create_grid_with_content("");
+    feed_bytes(&mut grid, b"a\x1b[1K");
+    feed_bytes(&mut grid, "\u{20DD}X".as_bytes());
+
+    assert_eq!(
+        first_row_graphemes(&grid),
+        vec!["X".to_string()],
+        "combining mark after EL 1 must not attach to the erased cell"
+    );
+}
+
+#[test]
+fn erase_screen_before_cursor_clears_egc_state() {
+    let mut grid = create_grid_with_content("");
+    feed_bytes(&mut grid, b"a\x1b[1J");
+    feed_bytes(&mut grid, "\u{20DD}X".as_bytes());
+
+    assert_eq!(
+        first_row_graphemes(&grid),
+        vec!["X".to_string()],
+        "combining mark after ED 1 must not attach to the erased cell"
+    );
+}
+
+#[test]
+fn erase_screen_clears_egc_state() {
+    let mut grid = create_grid_with_content("");
+    feed_bytes(&mut grid, b"a\x1b[2J");
+    feed_bytes(&mut grid, "\u{20DD}X".as_bytes());
+
+    assert_eq!(
+        first_row_graphemes(&grid),
+        vec!["X".to_string()],
+        "combining mark after ED 2 must not attach to the replacement screen cell"
+    );
+}
+
+#[test]
+fn erase_line_after_cursor_preserves_egc_state() {
+    // printf 'a\e[K⃝X\n': EL 0 starts at cursor (col 1), after the pending
+    // grapheme cell (col 0, end_x=1). The erase range [1,width) does not intersect
+    // [0,1), so egc_state must survive and the combining mark must attach to 'a'.
+    let mut grid = create_grid_with_content("");
+    feed_bytes(&mut grid, b"a\x1b[K");
+    feed_bytes(&mut grid, "\u{20DD}X".as_bytes());
+
+    let graphemes = first_row_graphemes(&grid);
+    assert_eq!(
+        graphemes,
+        vec!["a\u{20DD}".to_string(), "X".to_string()],
+        "combining mark after EL 0 must attach to the preceding cell"
+    );
+}
+
+#[test]
+fn erase_screen_after_cursor_preserves_egc_state() {
+    // printf 'a\e[J⃝X\n': ED 0 (clear from cursor to end of screen). The
+    // pending grapheme at col 0 (end_x=1) is not covered by the erase at cursor
+    // col 1, so egc_state must survive.
+    let mut grid = create_grid_with_content("");
+    feed_bytes(&mut grid, b"a\x1b[J");
+    feed_bytes(&mut grid, "\u{20DD}X".as_bytes());
+
+    let graphemes = first_row_graphemes(&grid);
+    assert_eq!(
+        graphemes,
+        vec!["a\u{20DD}".to_string(), "X".to_string()],
+        "combining mark after ED 0 must attach to the preceding cell"
+    );
+}
+
 // ── CSI 2027 mode tests ───────────────────────────────────────────────────────
 
 #[test]
