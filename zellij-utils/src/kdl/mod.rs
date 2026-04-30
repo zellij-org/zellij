@@ -697,18 +697,31 @@ impl Action {
             },
             Action::MovePaneBackwards => Some(KdlNode::new("MovePaneBackwards")),
             Action::DumpScreen {
-                file_path: Some(file),
-                include_scrollback: _,
+                file_path,
+                include_scrollback,
                 pane_id: _,
-                ansi: _,
+                ansi,
             } => {
                 let mut node = KdlNode::new("DumpScreen");
-                node.push(file.clone());
+                if let Some(file) = file_path {
+                    node.push(file.clone());
+                }
+                if *include_scrollback || *ansi {
+                    let mut children = KdlDocument::new();
+                    if *include_scrollback {
+                        let mut full_node = KdlNode::new("full");
+                        full_node.push(KdlValue::Bool(true));
+                        children.nodes_mut().push(full_node);
+                    }
+                    if *ansi {
+                        let mut ansi_node = KdlNode::new("ansi");
+                        ansi_node.push(KdlValue::Bool(true));
+                        children.nodes_mut().push(ansi_node);
+                    }
+                    node.set_children(children);
+                }
                 Some(node)
             },
-            Action::DumpScreen {
-                file_path: None, ..
-            } => None,
             Action::DumpLayout => Some(KdlNode::new("DumpLayout")),
             Action::EditScrollback { ansi } => {
                 let mut node = KdlNode::new("EditScrollback");
@@ -1682,11 +1695,23 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 action_arguments,
                 kdl_action
             ),
-            "DumpScreen" => parse_kdl_action_char_or_string_arguments!(
-                action_name,
-                action_arguments,
-                kdl_action
-            ),
+            "DumpScreen" => {
+                let file_path = action_arguments
+                    .iter()
+                    .filter_map(|e| e.value().as_string().map(|s| s.to_owned()))
+                    .next();
+                let include_scrollback =
+                    crate::kdl_get_bool_property_or_child_value!(kdl_action, "full")
+                        .unwrap_or(false);
+                let ansi = crate::kdl_get_bool_property_or_child_value!(kdl_action, "ansi")
+                    .unwrap_or(false);
+                Ok(Action::DumpScreen {
+                    file_path,
+                    include_scrollback,
+                    pane_id: None,
+                    ansi,
+                })
+            },
             "DumpLayout" => parse_kdl_action_char_or_string_arguments!(
                 action_name,
                 action_arguments,
@@ -7252,4 +7277,145 @@ fn osc8_hyperlinks_config_parsing() {
     let serialized = config.to_string(false);
     let deserialized = Config::from_kdl(&serialized, None).unwrap();
     assert_eq!(deserialized.options.osc8_hyperlinks, Some(true));
+}
+
+#[test]
+fn parse_dump_screen_with_full_flag() {
+    let fake_config = r#"
+        keybinds {
+            normal {
+                bind "Ctrl d" {
+                    DumpScreen "/tmp/out" {
+                        full true;
+                    }
+                }
+            }
+        }"#;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    let deserialized = Keybinds::from_kdl(
+        document.get("keybinds").unwrap(),
+        Default::default(),
+        &Default::default(),
+    )
+    .unwrap();
+    let actions = deserialized
+        .0
+        .get(&InputMode::Normal)
+        .and_then(|m| m.get(&KeyWithModifier::new(BareKey::Char('d')).with_ctrl_modifier()))
+        .unwrap();
+    assert_eq!(
+        actions[0],
+        Action::DumpScreen {
+            file_path: Some("/tmp/out".to_owned()),
+            include_scrollback: true,
+            pane_id: None,
+            ansi: false,
+        }
+    );
+}
+
+#[test]
+fn parse_dump_screen_with_full_and_ansi_flags() {
+    let fake_config = r#"
+        keybinds {
+            normal {
+                bind "Ctrl d" {
+                    DumpScreen "/tmp/out" {
+                        full true;
+                        ansi true;
+                    }
+                }
+            }
+        }"#;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    let deserialized = Keybinds::from_kdl(
+        document.get("keybinds").unwrap(),
+        Default::default(),
+        &Default::default(),
+    )
+    .unwrap();
+    let actions = deserialized
+        .0
+        .get(&InputMode::Normal)
+        .and_then(|m| m.get(&KeyWithModifier::new(BareKey::Char('d')).with_ctrl_modifier()))
+        .unwrap();
+    assert_eq!(
+        actions[0],
+        Action::DumpScreen {
+            file_path: Some("/tmp/out".to_owned()),
+            include_scrollback: true,
+            pane_id: None,
+            ansi: true,
+        }
+    );
+}
+
+#[test]
+fn parse_dump_screen_backward_compat() {
+    let fake_config = r#"
+        keybinds {
+            normal {
+                bind "Ctrl d" { DumpScreen "/tmp/out"; }
+            }
+        }"#;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    let deserialized = Keybinds::from_kdl(
+        document.get("keybinds").unwrap(),
+        Default::default(),
+        &Default::default(),
+    )
+    .unwrap();
+    let actions = deserialized
+        .0
+        .get(&InputMode::Normal)
+        .and_then(|m| m.get(&KeyWithModifier::new(BareKey::Char('d')).with_ctrl_modifier()))
+        .unwrap();
+    assert_eq!(
+        actions[0],
+        Action::DumpScreen {
+            file_path: Some("/tmp/out".to_owned()),
+            include_scrollback: false,
+            pane_id: None,
+            ansi: false,
+        }
+    );
+}
+
+#[test]
+fn dump_screen_roundtrip_with_flags() {
+    let fake_config = r#"
+        keybinds {
+            normal {
+                bind "Ctrl d" {
+                    DumpScreen "/tmp/out" {
+                        full true;
+                        ansi true;
+                    }
+                }
+            }
+        }"#;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    let deserialized = Keybinds::from_kdl(
+        document.get("keybinds").unwrap(),
+        Default::default(),
+        &Default::default(),
+    )
+    .unwrap();
+    let clear_defaults = true;
+    let serialized = Keybinds::to_kdl(&deserialized, clear_defaults);
+    let deserialized_from_serialized = Keybinds::from_kdl(
+        serialized
+            .to_string()
+            .parse::<KdlDocument>()
+            .unwrap()
+            .get("keybinds")
+            .unwrap(),
+        Default::default(),
+        &Default::default(),
+    )
+    .unwrap();
+    assert_eq!(
+        deserialized, deserialized_from_serialized,
+        "Roundtrip of DumpScreen with full+ansi flags preserves action"
+    );
 }
