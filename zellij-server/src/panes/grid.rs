@@ -1819,6 +1819,7 @@ impl Grid {
         self.output_buffer.update_all_lines(); // TODO: only update scroll region lines
     }
     pub fn fill_viewport(&mut self, character: TerminalCharacter) {
+        self.egc_state = None;
         if self.alternate_screen_state.is_some() {
             self.viewport.clear();
         } else {
@@ -2113,12 +2114,14 @@ impl Grid {
         self.cursor.x += count_to_move;
     }
     pub fn replace_characters_in_line_after_cursor(&mut self, replace_with: TerminalCharacter) {
+        self.egc_state = None;
         if let Some(row) = self.viewport.get_mut(self.cursor.y) {
             row.replace_and_pad_end(self.cursor.x, self.width, replace_with);
         }
         self.output_buffer.update_line(self.cursor.y);
     }
     pub fn replace_characters_in_line_before_cursor(&mut self, replace_with: TerminalCharacter) {
+        self.egc_state = None;
         let row = self.viewport.get_mut(self.cursor.y).unwrap();
         row.replace_and_pad_beginning(self.cursor.x, replace_with);
         self.output_buffer.update_line(self.cursor.y);
@@ -2145,12 +2148,14 @@ impl Grid {
         }
     }
     pub fn clear_cursor_line(&mut self) {
+        self.egc_state = None;
         if let Some(viewport_line) = self.viewport.get_mut(self.cursor.y) {
             viewport_line.truncate(0);
             self.output_buffer.update_line(self.cursor.y);
         }
     }
     pub fn clear_all(&mut self, replace_with: TerminalCharacter) {
+        self.egc_state = None;
         let replace_with_columns = VecDeque::from(vec![replace_with.clone(); self.width]);
         self.replace_characters_in_line_after_cursor(replace_with);
         for row in &mut self.viewport {

@@ -6255,6 +6255,45 @@ fn grapheme_preserved_in_copy_output() {
     );
 }
 
+#[test]
+fn erase_line_before_cursor_clears_egc_state() {
+    let mut grid = create_grid_with_content("");
+    feed_bytes(&mut grid, b"a\x1b[1K");
+    feed_bytes(&mut grid, "\u{20DD}X".as_bytes());
+
+    assert_eq!(
+        first_row_graphemes(&grid),
+        vec!["X".to_string()],
+        "combining mark after EL 1 must not attach to the erased cell"
+    );
+}
+
+#[test]
+fn erase_screen_before_cursor_clears_egc_state() {
+    let mut grid = create_grid_with_content("");
+    feed_bytes(&mut grid, b"a\x1b[1J");
+    feed_bytes(&mut grid, "\u{20DD}X".as_bytes());
+
+    assert_eq!(
+        first_row_graphemes(&grid),
+        vec!["X".to_string()],
+        "combining mark after ED 1 must not attach to the erased cell"
+    );
+}
+
+#[test]
+fn erase_screen_clears_egc_state() {
+    let mut grid = create_grid_with_content("");
+    feed_bytes(&mut grid, b"a\x1b[2J");
+    feed_bytes(&mut grid, "\u{20DD}X".as_bytes());
+
+    assert_eq!(
+        first_row_graphemes(&grid),
+        vec!["X".to_string()],
+        "combining mark after ED 2 must not attach to the replacement screen cell"
+    );
+}
+
 // ── CSI 2027 mode tests ───────────────────────────────────────────────────────
 
 #[test]
