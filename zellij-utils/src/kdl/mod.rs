@@ -74,6 +74,9 @@ macro_rules! parse_kdl_action_arguments {
                 "ToggleTab" => Ok(Action::ToggleTab),
                 "UndoRenameTab" => Ok(Action::UndoRenameTab),
                 "Detach" => Ok(Action::Detach),
+                "SetDarkTheme" => Ok(Action::SetDarkTheme),
+                "SetLightTheme" => Ok(Action::SetLightTheme),
+                "ToggleTheme" => Ok(Action::ToggleTheme),
                 "Copy" => Ok(Action::Copy),
                 "Confirm" => Ok(Action::Confirm),
                 "Deny" => Ok(Action::Deny),
@@ -2674,6 +2677,10 @@ impl Options {
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "auto_layout").map(|(v, _)| v);
         let theme = kdl_property_first_arg_as_string_or_error!(kdl_options, "theme")
             .map(|(theme, _entry)| theme.to_string());
+        let theme_dark = kdl_property_first_arg_as_string_or_error!(kdl_options, "theme_dark")
+            .map(|(theme, _entry)| theme.to_string());
+        let theme_light = kdl_property_first_arg_as_string_or_error!(kdl_options, "theme_light")
+            .map(|(theme, _entry)| theme.to_string());
         let default_mode =
             match kdl_property_first_arg_as_string_or_error!(kdl_options, "default_mode") {
                 Some((string, entry)) => Some(InputMode::from_str(string).map_err(|_| {
@@ -2821,6 +2828,8 @@ impl Options {
         Ok(Options {
             simplified_ui,
             theme,
+            theme_dark,
+            theme_light,
             default_mode,
             default_shell,
             default_cwd,
@@ -2952,6 +2961,62 @@ impl Options {
             Some(node)
         } else if add_comments {
             let mut node = create_node("dracula");
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
+    fn theme_dark_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!(
+            "{}\n{}\n{}\n{}",
+            " ",
+            "// Theme to use when the host terminal reports a dark color palette.",
+            "// Requires `theme_light` to also be set; otherwise `theme` is used.",
+            "// ",
+        );
+
+        let create_node = |node_value: &str| -> KdlNode {
+            let mut node = KdlNode::new("theme_dark");
+            node.push(node_value.to_owned());
+            node
+        };
+        if let Some(theme) = &self.theme_dark {
+            let mut node = create_node(theme);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node("dracula");
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
+    fn theme_light_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!(
+            "{}\n{}\n{}\n{}",
+            " ",
+            "// Theme to use when the host terminal reports a light color palette.",
+            "// Requires `theme_dark` to also be set; otherwise `theme` is used.",
+            "// ",
+        );
+
+        let create_node = |node_value: &str| -> KdlNode {
+            let mut node = KdlNode::new("theme_light");
+            node.push(node_value.to_owned());
+            node
+        };
+        if let Some(theme) = &self.theme_light {
+            let mut node = create_node(theme);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node("solarized-light");
             node.set_leading(format!("{}\n// ", comment_text));
             Some(node)
         } else {
@@ -4189,6 +4254,12 @@ impl Options {
         }
         if let Some(theme_node) = self.theme_to_kdl(add_comments) {
             nodes.push(theme_node);
+        }
+        if let Some(theme_dark_node) = self.theme_dark_to_kdl(add_comments) {
+            nodes.push(theme_dark_node);
+        }
+        if let Some(theme_light_node) = self.theme_light_to_kdl(add_comments) {
+            nodes.push(theme_light_node);
         }
         if let Some(default_mode) = self.default_mode_to_kdl(add_comments) {
             nodes.push(default_mode);

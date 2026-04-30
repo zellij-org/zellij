@@ -274,6 +274,9 @@ message Action {
     MoveTabByTabIdAction move_tab_by_tab_id = 134;
     FocusPaneByPaneIdAction focus_pane_by_pane_id = 135;
     AreFloatingPanesVisibleAction are_floating_panes_visible = 136;
+    SetDarkThemeAction set_dark_theme = 137;
+    SetLightThemeAction set_light_theme = 138;
+    ToggleThemeAction toggle_theme = 139;
   }
 }
 
@@ -322,6 +325,9 @@ message CloseTabAction {}
 message ToggleTabAction {}
 message UndoRenameTabAction {}
 message DetachAction {}
+message SetDarkThemeAction {}
+message SetLightThemeAction {}
+message ToggleThemeAction {}
 message CopyAction {}
 message ConfirmAction {}
 message DenyAction {}
@@ -1166,6 +1172,8 @@ message Options {
   optional bool visual_bell = 43;
   optional bool focus_follows_mouse = 44;
   optional bool mouse_click_through = 45;
+  optional string theme_dark = 46;
+  optional string theme_light = 47;
 }
 
 enum OnForceClose {

@@ -1,6 +1,6 @@
 //! IPC stuff for starting to split things into a client and server model.
 use crate::{
-    data::{ClientId, ConnectToSession, KeyWithModifier, PaneId, Style},
+    data::{ClientId, ConnectToSession, HostTerminalThemeMode, KeyWithModifier, PaneId, Style},
     errors::{prelude::*, ErrorContext},
     input::{actions::Action, cli_assets::CliAssets},
     pane_size::{Size, SizeInPixels},
@@ -156,6 +156,21 @@ pub enum ClientToServerMsg {
     DesktopNotificationResponse {
         raw_bytes: Vec<u8>,
     },
+    /// Raw reply bytes observed by the client inside a forwarding window
+    /// closed by the Primary-DA barrier. The server routes these bytes
+    /// verbatim to the pane whose app issued the whitelisted query
+    /// (tracked on the server by `token`).
+    ForwardedReplyFromHost {
+        token: u32,
+        reply_bytes: Vec<u8>,
+    },
+    /// The host terminal reported a color-palette theme mode (DSR 997 reply
+    /// to `CSI ? 996 n`, or unsolicited notification while `CSI ? 2031 h`
+    /// is enabled). The server propagates this to the active configured
+    /// theme and to subscribed plugins/panes.
+    HostTerminalThemeChanged {
+        mode: HostTerminalThemeMode,
+    },
 }
 
 // Types of messages sent from the server to the client
@@ -199,6 +214,14 @@ pub enum ServerToClientMsg {
     },
     SubscribedPaneClosed {
         pane_id: PaneId,
+    },
+    /// Instruct the client to write `query_bytes` followed by the
+    /// Primary-DA barrier to stdout, open a forwarding window keyed by
+    /// `token`, and reply with a `ForwardedReplyFromHost` once the
+    /// barrier closes or the window times out.
+    ForwardQueryToHost {
+        token: u32,
+        query_bytes: Vec<u8>,
     },
 }
 

@@ -409,6 +409,17 @@ pub trait Pane {
         // we should probably refactor away from this trait at some point
         vec![]
     }
+    fn drain_forwarded_queries(&mut self) -> Vec<crate::host_query::HostQuery> {
+        // Only terminal panes forward whitelisted queries to the host;
+        // plugin panes have no such concept.
+        vec![]
+    }
+    /// Push a CSI ?997 DSR notification (host color-palette theme mode)
+    /// onto this pane's pending pty-write queue, but only if the pane's
+    /// underlying app opted in via `CSI ? 2031 h`.
+    /// Only relevant to terminal panes, plugin panes receive this through
+    /// `Event::HostTerminalThemeChanged`
+    fn push_color_palette_dsr(&mut self, _mode: zellij_utils::data::HostTerminalThemeMode) {}
     fn drain_clipboard_update(&mut self) -> Option<String> {
         None
     }
@@ -2723,12 +2734,21 @@ impl Tab {
             }
             terminal_output.handle_pty_bytes(bytes);
             let messages_to_pty = terminal_output.drain_messages_to_pty();
+            let forwarded_queries = terminal_output.drain_forwarded_queries();
             let clipboard_update = terminal_output.drain_clipboard_update();
             let desktop_notifications = terminal_output.drain_desktop_notifications();
             let osc7_cwd = terminal_output.drain_osc7_cwd();
             for message in messages_to_pty {
                 self.write_to_pane_id_without_preprocessing(message, PaneId::Terminal(pid))
                     .with_context(err_context)?;
+            }
+            for query in forwarded_queries {
+                let _ = self
+                    .senders
+                    .send_to_screen(ScreenInstruction::ForwardHostQuery {
+                        pane_id: PaneId::Terminal(pid),
+                        query,
+                    });
             }
             if let Some(string) = clipboard_update {
                 self.write_selection_to_clipboard(&string)
@@ -5570,6 +5590,13 @@ impl Tab {
     }
     pub fn update_theme(&mut self, theme: Styling) {
         self.style.colors = theme;
+        // The tab's `default_mode_info` is what `update_input_modes`
+        // falls back to when no per-client entry exists in
+        // `self.mode_info`. Without this update, plugins on a
+        // freshly-connected client (one that has never manually
+        // changed mode) receive `Event::ModeUpdate` carrying the old
+        // style and skip their re-render.
+        self.default_mode_info.update_theme(theme);
         self.floating_panes.update_pane_themes(theme);
         self.tiled_panes.update_pane_themes(theme);
         for (_, pane) in self.suppressed_panes.values_mut() {

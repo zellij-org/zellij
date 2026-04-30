@@ -2,13 +2,13 @@ use crate::os_input_output::{resolve_command, AsyncReader};
 use crate::panes::PaneId;
 
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::BTreeMap,
     ffi::OsStr,
     io,
     os::windows::ffi::OsStrExt,
     os::windows::io::{FromRawHandle, IntoRawHandle, OwnedHandle},
     sync::{
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicU32, AtomicU64, Ordering},
         Arc, Mutex,
     },
 };
@@ -370,12 +370,14 @@ fn terminate_process(pid: u32) -> std::result::Result<(), std::io::Error> {
 #[derive(Clone)]
 pub(crate) struct WindowsPtyBackend {
     terminals: Arc<Mutex<BTreeMap<u32, Option<ConPtyTerminal>>>>,
+    next_terminal_id_counter: Arc<AtomicU32>,
 }
 
 impl WindowsPtyBackend {
     pub fn new() -> Result<Self, io::Error> {
         Ok(Self {
             terminals: Arc::new(Mutex::new(BTreeMap::new())),
+            next_terminal_id_counter: Arc::new(AtomicU32::new(0)),
         })
     }
 
@@ -634,14 +636,9 @@ impl WindowsPtyBackend {
     }
 
     pub fn next_terminal_id(&self) -> Option<u32> {
-        self.terminals
-            .lock()
-            .unwrap()
-            .keys()
-            .copied()
-            .collect::<BTreeSet<u32>>()
-            .last()
-            .map(|l| l + 1)
-            .or(Some(0))
+        Some(
+            self.next_terminal_id_counter
+                .fetch_add(1, Ordering::Relaxed),
+        )
     }
 }

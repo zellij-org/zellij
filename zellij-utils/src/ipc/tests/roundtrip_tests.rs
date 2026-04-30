@@ -1,8 +1,8 @@
 use super::test_framework::*;
 use crate::data::{
-    BareKey, CommandOrPlugin, ConnectToSession, Direction, FloatingPaneCoordinates, InputMode,
-    KeyModifier, KeyWithModifier, LayoutInfo, LayoutMetadata, NewPanePlacement, OriginatingPlugin,
-    PaneId, PluginTag, Resize, WebSharing,
+    BareKey, CommandOrPlugin, ConnectToSession, Direction, FloatingPaneCoordinates,
+    HostTerminalThemeMode, InputMode, KeyModifier, KeyWithModifier, LayoutInfo, LayoutMetadata,
+    NewPanePlacement, OriginatingPlugin, PaneId, PluginTag, Resize, WebSharing,
 };
 use crate::input::actions::{Action, SearchDirection, SearchOption};
 use crate::input::cli_assets::CliAssets;
@@ -433,6 +433,8 @@ fn test_client_messages() {
             configuration_options: Some(Options {
                 simplified_ui: Some(true),
                 theme: Some("theme".to_owned()),
+                theme_dark: Some("theme_dark".to_owned()),
+                theme_light: Some("theme_light".to_owned()),
                 default_mode: Some(InputMode::Normal),
                 default_shell: Some(PathBuf::from("default_shell")),
                 default_cwd: Some(PathBuf::from("default_cwd")),
@@ -3538,6 +3540,35 @@ fn test_client_messages() {
         client_id: Some(100),
         is_cli_client: true,
     });
+    test_client_roundtrip!(ClientToServerMsg::ForwardedReplyFromHost {
+        token: 0,
+        reply_bytes: vec![],
+    });
+    test_client_roundtrip!(ClientToServerMsg::ForwardedReplyFromHost {
+        token: 42,
+        reply_bytes: b"\x1b]11;rgb:ffff/ffff/ffff\x1b\\".to_vec(),
+    });
+    test_client_roundtrip!(ClientToServerMsg::ForwardedReplyFromHost {
+        token: u32::MAX,
+        reply_bytes: (0u8..=255u8).collect(),
+    });
+    // Guard against protobuf string-vs-bytes encoding regressions: a
+    // payload mixing NULs, ESC, and CSI framing must round-trip
+    // byte-for-byte or the pane will receive corrupt terminal data.
+    test_client_roundtrip!(ClientToServerMsg::ForwardedReplyFromHost {
+        token: 17,
+        reply_bytes: vec![
+            0x00, 0x1b, b'[', b'?', b'6', b'2', b';', b'1', b';', b'6', b'c', 0x00, 0x1b, b']',
+            b'1', b'1', b';', b'r', b'g', b'b', b':', b'f', b'f', b'f', b'f', b'/', b'f', b'f',
+            b'f', b'f', b'/', b'f', b'f', b'f', b'f', 0x07, 0xff, 0x00,
+        ],
+    });
+    test_client_roundtrip!(ClientToServerMsg::HostTerminalThemeChanged {
+        mode: HostTerminalThemeMode::Dark,
+    });
+    test_client_roundtrip!(ClientToServerMsg::HostTerminalThemeChanged {
+        mode: HostTerminalThemeMode::Light,
+    });
 }
 
 fn test_server_messages() {
@@ -3672,6 +3703,18 @@ fn test_server_messages() {
     });
     test_server_roundtrip!(ServerToClientMsg::SubscribedPaneClosed {
         pane_id: PaneId::Plugin(3),
+    });
+    test_server_roundtrip!(ServerToClientMsg::ForwardQueryToHost {
+        token: 0,
+        query_bytes: vec![],
+    });
+    test_server_roundtrip!(ServerToClientMsg::ForwardQueryToHost {
+        token: 7,
+        query_bytes: b"\x1b[14t".to_vec(),
+    });
+    test_server_roundtrip!(ServerToClientMsg::ForwardQueryToHost {
+        token: u32::MAX,
+        query_bytes: (0u8..=255u8).collect(),
     });
 }
 

@@ -1117,6 +1117,9 @@ pub enum ActionName {
     ShowFloatingPanes = 98,
     HideFloatingPanes = 99,
     AreFloatingPanesVisible = 100,
+    SetDarkTheme = 101,
+    SetLightTheme = 102,
+    ToggleTheme = 103,
 }
 impl ActionName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -1223,6 +1226,9 @@ impl ActionName {
             ActionName::ShowFloatingPanes => "ShowFloatingPanes",
             ActionName::HideFloatingPanes => "HideFloatingPanes",
             ActionName::AreFloatingPanesVisible => "AreFloatingPanesVisible",
+            ActionName::SetDarkTheme => "SetDarkTheme",
+            ActionName::SetLightTheme => "SetLightTheme",
+            ActionName::ToggleTheme => "ToggleTheme",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -1326,6 +1332,9 @@ impl ActionName {
             "ShowFloatingPanes" => Some(Self::ShowFloatingPanes),
             "HideFloatingPanes" => Some(Self::HideFloatingPanes),
             "AreFloatingPanesVisible" => Some(Self::AreFloatingPanesVisible),
+            "SetDarkTheme" => Some(Self::SetDarkTheme),
+            "SetLightTheme" => Some(Self::SetLightTheme),
+            "ToggleTheme" => Some(Self::ToggleTheme),
             _ => None,
         }
     }

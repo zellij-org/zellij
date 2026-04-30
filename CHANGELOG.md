@@ -8,7 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: idle CPU + disk i/o, CommandChanged plugin Event, GetSessionList plugin command (https://github.com/zellij-org/zellij/pull/5063)
 * fix: occasional dropped characters in web client (https://github.com/zellij-org/zellij/pull/5080)
 * fix: restore kitty keyboard mode on error, handle DECRPM 2026 state 3, clean up client terminal teardown sequences (https://github.com/zellij-org/zellij/pull/5058)
+* fix: stop reusing terminal pane ids on windows so reopened panes are not closed by stale events (https://github.com/zellij-org/zellij/pull/5082)
 * fix: prevent occasional duplicate characters in the web client due to IME (https://github.com/zellij-org/zellij/pull/4975)
+* feat: support `CSI 2031` + dark/light mode theme switching (https://github.com/zellij-org/zellij/pull/5105 and https://github.com/zellij-org/zellij/pull/5111)
+* fix: incorrect interpretation of unicode characters in KKP STDIN (https://github.com/zellij-org/zellij/pull/5110)
 
 ## [0.44.1] - 2026-04-07
 * fix: don't display default ports as offline in `share` plugin (https://github.com/zellij-org/zellij/pull/4908)
