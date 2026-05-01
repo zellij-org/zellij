@@ -161,6 +161,13 @@ impl TiledPanes {
                 None => with_pane.reset_size_and_position_override(),
             };
             self.panes.insert(with_pane_id, with_pane);
+            // The replacement inherits the removed pane's geom_override (above);
+            // if the removed pane was the fullscreen pane, retarget the fullscreen
+            // bookkeeping so unset_fullscreen can later reset the override on the
+            // pane that actually carries it.
+            if self.fullscreen_is_active == Some(pane_id) {
+                self.fullscreen_is_active = Some(with_pane_id);
+            }
             removed_pane
         });
 
@@ -2493,6 +2500,9 @@ impl TiledPanes {
     }
     pub fn fullscreen_is_active(&self) -> bool {
         self.fullscreen_is_active.is_some()
+    }
+    pub fn fullscreen_pane_id(&self) -> Option<PaneId> {
+        self.fullscreen_is_active
     }
     pub fn unset_fullscreen(&mut self) {
         if let Some(fullscreen_pane_id) = self.fullscreen_is_active {

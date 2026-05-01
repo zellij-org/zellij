@@ -3504,6 +3504,16 @@ impl Tab {
     }
     pub fn resize_whole_tab(&mut self, new_screen_size: Size) -> Result<()> {
         let err_context = || format!("failed to resize whole tab (id {})", self.id);
+        // If a tiled pane is fullscreen, exit fullscreen first so that *all*
+        // tiled panes (including the currently hidden ones) participate in the
+        // resize/relayout. We re-enter fullscreen on the same pane after the
+        // resize so the user-visible state is preserved. Without this, hidden
+        // panes retain stale geometry from before the resize and the layout
+        // solver fails when fullscreen is later toggled off.
+        let fullscreen_pane_to_restore = self.tiled_panes.fullscreen_pane_id();
+        if fullscreen_pane_to_restore.is_some() {
+            self.tiled_panes.unset_fullscreen();
+        }
         self.floating_panes.resize(new_screen_size);
         // we need to do this explicitly because floating_panes.resize does not do this
         self.floating_panes
@@ -3516,7 +3526,9 @@ impl Tab {
             self.swap_layouts.set_is_floating_damaged();
             let _ = self.relayout_floating_panes(false);
         }
-        if self.auto_layout && !self.swap_layouts.is_tiled_damaged() && !self.is_fullscreen_active()
+        if self.auto_layout
+            && !self.swap_layouts.is_tiled_damaged()
+            && fullscreen_pane_to_restore.is_none()
         {
             self.swap_layouts.set_is_tiled_damaged();
             let _ = self.relayout_tiled_panes(false);
@@ -3531,6 +3543,11 @@ impl Tab {
             &mut self.tiled_panes,
             self.draw_pane_frames,
         );
+        if let Some(pane_id) = fullscreen_pane_to_restore {
+            if self.tiled_panes.panes_contain(&pane_id) {
+                self.tiled_panes.toggle_pane_fullscreen(pane_id);
+            }
+        }
         Ok(())
     }
     pub fn resize(&mut self, client_id: ClientId, strategy: ResizeStrategy) -> Result<()> {
