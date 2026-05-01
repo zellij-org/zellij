@@ -6837,7 +6837,10 @@ pub(crate) fn screen_thread_main(
                     .senders
                     .send_to_pty(PtyInstruction::ClosePane(id, None));
 
-                screen.log_and_report_session_state()?;
+                // Best-effort metadata reporting; do NOT crash the screen
+                // thread if a downstream channel (e.g. background_jobs) is
+                // closed. The pane has already been removed.
+                screen.log_and_report_session_state().non_fatal();
                 screen.retain_only_existing_panes_in_pane_groups();
             },
             ScreenInstruction::HoldPane(id, exit_status, run_command) => {

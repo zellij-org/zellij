@@ -365,11 +365,32 @@ impl MockScreen {
         initial_layout: Option<TiledPaneLayout>,
         initial_floating_panes_layout: Vec<FloatingPaneLayout>,
     ) -> std::thread::JoinHandle<()> {
+        self.run_inner(initial_layout, initial_floating_panes_layout, true)
+    }
+    /// Like `run`, but the screen thread's bus does NOT silently swallow send
+    /// errors. Use this when a test needs to observe what happens inside
+    /// `screen_thread_main` if a downstream channel (e.g. background_jobs) is
+    /// dropped — with the default `run`, every `send_to_*` returns `Ok(())`
+    /// regardless of channel state, which hides bugs in error-propagation
+    /// paths.
+    pub fn run_without_silent_failures(
+        &mut self,
+        initial_layout: Option<TiledPaneLayout>,
+        initial_floating_panes_layout: Vec<FloatingPaneLayout>,
+    ) -> std::thread::JoinHandle<()> {
+        self.run_inner(initial_layout, initial_floating_panes_layout, false)
+    }
+    fn run_inner(
+        &mut self,
+        initial_layout: Option<TiledPaneLayout>,
+        initial_floating_panes_layout: Vec<FloatingPaneLayout>,
+        silent_send_failures: bool,
+    ) -> std::thread::JoinHandle<()> {
         std::thread::sleep(std::time::Duration::from_millis(100)); // give time for the async render
         let mut config = self.config.clone();
         config.options.advanced_mouse_actions = Some(self.advanced_mouse_actions);
         let client_attributes = self.client_attributes.clone();
-        let screen_bus = Bus::new(
+        let mut screen_bus = Bus::new(
             vec![self.screen_receiver.take().unwrap()],
             Some(&self.to_screen.clone()),
             Some(&self.to_pty.clone()),
@@ -378,8 +399,10 @@ impl MockScreen {
             Some(&self.to_pty_writer.clone()),
             Some(&self.to_background_jobs.clone()),
             Some(Box::new(self.os_input.clone())),
-        )
-        .should_silently_fail();
+        );
+        if silent_send_failures {
+            screen_bus = screen_bus.should_silently_fail();
+        }
         let debug = false;
         let screen_thread = std::thread::Builder::new()
             .name("screen_thread".to_string())
@@ -3636,6 +3659,80 @@ pub fn send_cli_close_pane_action() {
         assert_snapshot!(format!("{}", snapshot));
     }
     assert_snapshot!(format!("{}", snapshot_count));
+}
+
+// Regression test for the screen-thread crash that occurs when a pane closes
+// after the background_jobs channel has become unreachable.
+//
+// In the wild this happened when an interactive process running in a pane
+// (e.g. claude with --worktree) deleted its own working directory and exited:
+// the resulting ScreenInstruction::ClosePane (sent by pty.rs's quit_cb when
+// the child exits) was processed AFTER the background_jobs sink had become
+// unreachable, and screen.rs's ClosePane handler propagated the resulting
+// SendError via `?`, which screen_thread_main's caller turns into a panic.
+// The observable symptom was `zellij attach` hanging at "Loading Zellij..."
+// forever, because the server's IPC handshake still works but the screen
+// thread is dead.
+//
+// The test simulates the production path by sending ScreenInstruction::ClosePane
+// directly (mirroring pty.rs:1114, the natural child-exit path), rather than
+// going through a CliAction (which would be routed to CloseFocusedPane — a
+// different arm with the same brittle pattern, scoped out of this PR).
+//
+// The contract this test enforces: ClosePane must not be load-bearing on
+// background_jobs being reachable. Session-state reporting is best-effort
+// metadata; failing to deliver it should at most log a warning, never panic.
+#[test]
+pub fn close_pane_does_not_panic_when_background_jobs_unreachable() {
+    let size = Size { cols: 80, rows: 10 };
+    let mut initial_layout = TiledPaneLayout::default();
+    initial_layout.children_split_direction = SplitDirection::Vertical;
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
+    let mut mock_screen = MockScreen::new(size);
+    mock_screen.drop_all_pty_messages();
+    // run_without_silent_failures so the screen thread's bus actually
+    // surfaces SendError, instead of swallowing it.
+    let screen_thread = mock_screen.run_without_silent_failures(Some(initial_layout), vec![]);
+
+    // Drain server channel so any KillSession etc. doesn't back up the
+    // unbounded queue (and so we can join its thread cleanly at the end).
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_instruction_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+
+    // Step 1: kill the mock background_jobs thread by delivering Exit.
+    // Once it returns from its recv loop the receiver is dropped, and
+    // subsequent sends to to_background_jobs return SendError.
+    let _ = mock_screen.to_background_jobs.send(BackgroundJob::Exit);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    // Step 2: send ScreenInstruction::ClosePane directly, mirroring the
+    // production quit_cb path in pty.rs when a child process exits. This is
+    // where the bug fires: log_and_report_session_state() returns Err
+    // because send_to_background_jobs fails, and the `?` after it propagates
+    // up to screen_thread_main, which the harness's .expect("TEST") panics on.
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::ClosePane(PaneId::Terminal(0), None, None, None));
+    std::thread::sleep(std::time::Duration::from_millis(200));
+
+    // Wind down the screen thread cleanly.
+    let _ = mock_screen.to_screen.send(ScreenInstruction::Exit);
+    let _ = mock_screen.to_server.send(ServerInstruction::KillSession);
+
+    // Step 3: assert the screen thread did not panic. Without the fix
+    // join_result is Err(_) wrapping the panic from the .expect("TEST").
+    let join_result = screen_thread.join();
+    let _ = server_instruction_thread.join();
+    assert!(
+        join_result.is_ok(),
+        "screen thread panicked while closing a pane after background_jobs became unreachable: {:?}",
+        join_result.err(),
+    );
 }
 
 #[test]
