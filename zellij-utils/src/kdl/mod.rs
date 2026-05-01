@@ -556,7 +556,7 @@ impl Action {
                         pane_name: None,
                         start_suppressed: false,
                     });
-                } else if string == "stacked" {
+                } else if string == "stacked" || string == "Stacked" {
                     return Ok(Action::NewStackedPane {
                         command: None,
                         pane_name: None,
