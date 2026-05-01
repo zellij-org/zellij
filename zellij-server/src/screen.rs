@@ -7352,18 +7352,16 @@ pub(crate) fn screen_thread_main(
                 }
                 screen.log_and_report_session_state()?;
 
-                if is_web_client {
-                    // we do this because
-                    // we need to query the client for its size, and we must do it only after we've
-                    // added it to our state.
-                    //
-                    // we have to do this specifically for web clients because the browser (as opposed
-                    // to a traditional terminal) can only figure out its dimensions after we sent it relevant
-                    // state (eg. font, which is controlled by our config and it needs to determine cell size)
-                    if let Some(os_input) = &mut screen.bus.os_input {
-                        let _ = os_input
-                            .send_to_client(client_id, ServerToClientMsg::QueryTerminalSize);
-                    }
+                // Query the client for its terminal size after adding it to our state.
+                // For web clients, the browser can only determine its dimensions after receiving
+                // font/config state from us (eg. font, which controls cell size).
+                // For terminal clients, this resolves a race condition where the terminal emulator
+                // (eg. Tilix/VTE) initializes at a default column count and resizes to the actual
+                // window size shortly after - meaning the size read at startup may be stale by the
+                // time the client is fully attached.
+                if let Some(os_input) = &mut screen.bus.os_input {
+                    let _ = os_input
+                        .send_to_client(client_id, ServerToClientMsg::QueryTerminalSize);
                 }
 
                 screen.render(None)?;
