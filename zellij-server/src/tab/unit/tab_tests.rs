@@ -1113,10 +1113,7 @@ pub fn resize_whole_tab_while_fullscreen_preserves_fullscreen() {
         "Tab is fullscreen before the resize"
     );
 
-    let new_size = Size {
-        cols: 80,
-        rows: 30,
-    };
+    let new_size = Size { cols: 80, rows: 30 };
     tab.resize_whole_tab(new_size).unwrap();
 
     assert!(
@@ -1158,10 +1155,7 @@ pub fn resize_while_fullscreen_updates_hidden_pane_geometry() {
         cols: 200,
         rows: 60,
     };
-    let new_size = Size {
-        cols: 60,
-        rows: 18,
-    };
+    let new_size = Size { cols: 60, rows: 18 };
     let stacked_resize = false;
     let mut tab = create_new_tab(initial_size, stacked_resize);
     for i in 2..6 {
@@ -1194,9 +1188,7 @@ pub fn resize_while_fullscreen_updates_hidden_pane_geometry() {
         .panes
         .keys()
         .copied()
-        .filter(|id| {
-            *id != active_pane_id && tab.tiled_panes.panes_to_hide_contains(*id)
-        })
+        .filter(|id| *id != active_pane_id && tab.tiled_panes.panes_to_hide_contains(*id))
         .collect();
     assert!(
         !hidden_pane_ids.is_empty(),
