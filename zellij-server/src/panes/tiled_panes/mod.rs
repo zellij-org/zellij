@@ -2494,6 +2494,9 @@ impl TiledPanes {
     pub fn fullscreen_is_active(&self) -> bool {
         self.fullscreen_is_active.is_some()
     }
+    pub fn fullscreen_pane_id(&self) -> Option<PaneId> {
+        self.fullscreen_is_active
+    }
     pub fn unset_fullscreen(&mut self) {
         if let Some(fullscreen_pane_id) = self.fullscreen_is_active {
             let panes_to_hide: Vec<_> = self.panes_to_hide.iter().copied().collect();
