@@ -78,7 +78,8 @@ pub fn start_cli_client(
 pub fn start_cli_client_detach(
     os_input: Box<dyn ClientOsApi>,
     session_name: &str,
-    client_id: ClientId,
+    client_id: Option<ClientId>,
+    all: bool,
 ) {
     let zellij_ipc_pipe: PathBuf = {
         let mut sock_dir = zellij_utils::consts::ZELLIJ_SOCK_DIR.clone();
@@ -90,7 +91,11 @@ pub fn start_cli_client_detach(
     crate::check_ipc_pipe_length(&zellij_ipc_pipe);
     os_input.connect_to_server(&*zellij_ipc_pipe);
     os_input.send_to_server(ClientToServerMsg::DetachSession {
-        client_ids: vec![client_id],
+        client_ids: if all {
+            vec![]
+        } else {
+            client_id.into_iter().collect()
+        },
     });
 }
 
