@@ -10,7 +10,7 @@ use crate::os_input_output::ClientOsApi;
 use uuid::Uuid;
 use zellij_utils::{
     cli::{SubscribeCli, SubscribeFormat},
-    data::PaneId,
+    data::{ClientId, PaneId},
     errors::prelude::*,
     input::actions::Action,
     ipc::{ClientToServerMsg, ExitReason, ServerToClientMsg},
@@ -73,6 +73,25 @@ pub fn start_cli_client(
         }
     }
     os_input.send_to_server(ClientToServerMsg::ClientExited);
+}
+
+pub fn start_cli_client_detach(
+    os_input: Box<dyn ClientOsApi>,
+    session_name: &str,
+    client_id: ClientId,
+) {
+    let zellij_ipc_pipe: PathBuf = {
+        let mut sock_dir = zellij_utils::consts::ZELLIJ_SOCK_DIR.clone();
+        fs::create_dir_all(&sock_dir).unwrap();
+        zellij_utils::shared::set_permissions(&sock_dir, 0o700).unwrap();
+        sock_dir.push(session_name);
+        sock_dir
+    };
+    crate::check_ipc_pipe_length(&zellij_ipc_pipe);
+    os_input.connect_to_server(&*zellij_ipc_pipe);
+    os_input.send_to_server(ClientToServerMsg::DetachSession {
+        client_ids: vec![client_id],
+    });
 }
 
 fn pipe_client(

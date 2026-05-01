@@ -1,4 +1,4 @@
-use crate::data::{Direction, InputMode, Resize, UnblockCondition};
+use crate::data::{ClientId, Direction, InputMode, Resize, UnblockCondition};
 use crate::setup::Setup;
 use crate::{
     consts::{ZELLIJ_CONFIG_DIR_ENV, ZELLIJ_CONFIG_FILE_ENV},
@@ -1619,8 +1619,12 @@ tail -f /tmp/my-live-logfile | zellij action pipe --name logs --plugin https://e
         #[clap(short, long, value_parser)]
         borderless: bool,
     },
-    /// Detach from the current session
-    Detach,
+    /// Detach from the current session or disconnect a specific client
+    Detach {
+        /// Target a specific client ID to disconnect from the server
+        #[clap(long, value_parser)]
+        client_id: Option<ClientId>,
+    },
     /// Switch the theme to dark (uses configured `theme_dark`).
     SetDarkTheme,
     /// Switch the theme to light (uses configured `theme_light`).
@@ -1738,5 +1742,25 @@ mod tests {
     fn subscribe_requires_pane_id() {
         let result = CliArgs::try_parse_from(["zellij", "subscribe"]);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn action_detach_accepts_optional_client_id() {
+        let cli = CliArgs::try_parse_from([
+            "zellij",
+            "action",
+            "detach",
+            "--client-id",
+            "7",
+        ])
+        .unwrap();
+
+        match cli.command {
+            Some(Command::Action(action)) => match *action {
+                CliAction::Detach { client_id } => assert_eq!(client_id, Some(7)),
+                other => panic!("Expected Detach action, got {:?}", other),
+            },
+            other => panic!("Expected Action command, got {:?}", other),
+        }
     }
 }
