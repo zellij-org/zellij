@@ -516,6 +516,18 @@ pub enum ScreenInstruction {
         token: u32,
         reply_bytes: Vec<u8>,
     },
+    /// Internal: a forwarded reply (or its cache-fallback synthesis,
+    /// or a locally-answered query like `ColorPaletteMode`) is ready
+    /// to be delivered to the originating pane. Routed through the
+    /// owning Tab so that the bytes are written to PTY *and* any
+    /// PTY input that arrived while the pane was forward-paused is
+    /// drained and re-fed through vte in stream order. This preserves
+    /// query/reply ordering even when sync replies (DA1, DSR, DECQRM)
+    /// would otherwise race ahead of an async host round-trip.
+    ResumePaneAfterForward {
+        pane_id: PaneId,
+        reply_bytes: Vec<u8>,
+    },
     /// The host terminal reported a color-palette theme mode (DSR 997 reply
     /// to `CSI ? 996 n`, or unsolicited notification while `CSI ? 2031 h`
     /// is enabled). Triggers auto-theme switch (when configured), the
@@ -976,6 +988,9 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::ForwardHostQuery { .. } => ScreenContext::ForwardHostQuery,
             ScreenInstruction::ForwardedReplyFromHost { .. } => {
                 ScreenContext::ForwardedReplyFromHost
+            },
+            ScreenInstruction::ResumePaneAfterForward { .. } => {
+                ScreenContext::ResumePaneAfterForward
             },
             ScreenInstruction::HostTerminalThemeChanged(..) => {
                 ScreenContext::HostTerminalThemeChanged
@@ -2136,10 +2151,9 @@ impl Screen {
     /// defines `;1` (dark) and `;2` (light); fabricating any other
     /// code (e.g. `;0`) would be non-conformant.
     fn answer_color_palette_mode_query_locally(&mut self, pane_id: PaneId) {
-        let terminal_id = match pane_id {
-            PaneId::Terminal(id) => id,
-            PaneId::Plugin(_) => return,
-        };
+        if matches!(pane_id, PaneId::Plugin(_)) {
+            return;
+        }
         let code: u8 = match self.host_terminal_theme_mode {
             Some(HostTerminalThemeMode::Dark) => 1,
             Some(HostTerminalThemeMode::Light) => 2,
@@ -2148,14 +2162,24 @@ impl Screen {
                     "CSI ?996n received but host_terminal_theme_mode is unknown; \
                      dropping (spec defines only 1=dark / 2=light)"
                 );
+                // The Contour spec defines only ;1 / ;2 — silence is
+                // the conformant behaviour when the host's mode is
+                // unknown. But the pane may have been forward-paused
+                // on the dispatch; if so we still owe it an unblock
+                // cycle so any buffered bytes get replayed. Skip the
+                // empty resume when the pane is not paused, matching
+                // the "stay silent" guarantee.
+                if self.is_any_tab_pane_forward_paused(pane_id) {
+                    let _ = self.resume_pane_after_forward(pane_id, Vec::new());
+                }
                 return;
             },
         };
         let reply = format!("\u{1b}[?997;{}n", code).into_bytes();
-        let _ = self
-            .bus
-            .senders
-            .send_to_pty_writer(PtyWriteInstruction::Write(reply, terminal_id, None));
+        // Route via Tab so the reply lands on the pane in the correct
+        // stream position and any PTY input the app emitted while
+        // waiting is replayed.
+        let _ = self.resume_pane_after_forward(pane_id, reply);
     }
 
     /// Dispatch a forward to the client and mark the slot as in-flight.
@@ -2225,16 +2249,16 @@ impl Screen {
         if let Some(entry) = self.pending_forwarded_queries.remove(&token) {
             let PendingForwardEntry { pane_id, query } = entry;
             match pane_id {
-                PaneId::Terminal(terminal_id) => {
+                PaneId::Terminal(_) => {
                     let payload = if reply_bytes.is_empty() {
                         self.synthesize_cached_reply(&query)
                     } else {
                         reply_bytes
                     };
-                    let _ = self
-                        .bus
-                        .senders
-                        .send_to_pty_writer(PtyWriteInstruction::Write(payload, terminal_id, None));
+                    // Route via Tab so the reply lands on the pane in
+                    // the correct stream position and any PTY input
+                    // the app emitted while waiting is replayed.
+                    self.resume_pane_after_forward(pane_id, payload)?;
                 },
                 PaneId::Plugin(_) => {
                     // Plugin panes do not issue whitelisted host queries;
@@ -2251,6 +2275,62 @@ impl Screen {
         self.forward_in_flight_token = None;
         if let Some(next) = self.forward_queue.pop_front() {
             self.dispatch_forward(next.token, next.pane_id, next.query);
+        }
+        Ok(())
+    }
+
+    /// Whether any tab owns `pane_id` AND the pane is currently
+    /// forward-paused. Used by the `ColorPaletteMode` short-circuit
+    /// to skip the empty-payload resume when no pane needs unblocking.
+    fn is_any_tab_pane_forward_paused(&self, pane_id: PaneId) -> bool {
+        self.tabs
+            .values()
+            .any(|tab| tab.is_pane_forward_paused(pane_id))
+    }
+
+    /// Deliver a forwarded reply (or cache-fallback synthesis, or a
+    /// locally-answered query payload) to the originating pane via
+    /// the owning Tab. The Tab handler writes the bytes to PTY and
+    /// then re-feeds any PTY input that was buffered while the pane
+    /// was forward-paused, preserving query/reply ordering.
+    pub fn resume_pane_after_forward(
+        &mut self,
+        pane_id: PaneId,
+        reply_bytes: Vec<u8>,
+    ) -> Result<()> {
+        let terminal_id = match pane_id {
+            PaneId::Terminal(id) => id,
+            PaneId::Plugin(_) => {
+                // Plugin panes do not forward queries — dropping is
+                // the correct behaviour matching the existing
+                // forwarding path's plugin-pane guard.
+                return Ok(());
+            },
+        };
+        let mut found = false;
+        for tab in self.tabs.values_mut() {
+            if tab.has_pane_with_pid(&pane_id) {
+                tab.resume_pane_after_forward(terminal_id, reply_bytes.clone())
+                    .non_fatal();
+                found = true;
+                break;
+            }
+        }
+        if !found {
+            // No tab owns the pane — the pane was closed between the
+            // forward dispatch and the reply arrival. The terminal id
+            // is probably defunct; the write goes to the PTY writer
+            // anyway because an empty payload is the canonical "host
+            // declined" reply some apps rely on, and a non-empty
+            // payload may still be deliverable until the pty drains.
+            let _ = self
+                .bus
+                .senders
+                .send_to_pty_writer(PtyWriteInstruction::Write(reply_bytes, terminal_id, None));
+            log::debug!(
+                "ResumePaneAfterForward: pane {:?} not in any tab, fell back to direct PTY write",
+                pane_id
+            );
         }
         Ok(())
     }
@@ -7159,6 +7239,12 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::ForwardedReplyFromHost { token, reply_bytes } => {
                 screen.handle_forwarded_reply_from_host(token, reply_bytes)?;
+            },
+            ScreenInstruction::ResumePaneAfterForward {
+                pane_id,
+                reply_bytes,
+            } => {
+                screen.resume_pane_after_forward(pane_id, reply_bytes)?;
             },
             ScreenInstruction::HostTerminalThemeChanged(mode) => {
                 screen.update_host_terminal_theme_mode(mode)?;
