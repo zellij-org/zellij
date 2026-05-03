@@ -11,6 +11,8 @@ import { isMac } from "./utils.js";
  * @param {function} sendFunction - Function to send data through WebSocket
  */
 export function setupInputHandlers(term, sendFunction) {
+    const isAndroidClient = /Android/i.test(navigator.userAgent);
+
     // Mouse tracking state
     let prev_col = 0;
     let prev_row = 0;
@@ -34,6 +36,22 @@ export function setupInputHandlers(term, sendFunction) {
     // Custom key event handler
     term.attachCustomKeyEventHandler((ev) => {
         if (ev.type === "keydown") {
+            if (
+                isAndroidClient &&
+                ev.key === "Enter" &&
+                !ev.ctrlKey &&
+                !ev.altKey &&
+                !ev.metaKey
+            ) {
+                // Android physical keyboards often commit pending composition text on Enter.
+                // Clear the hidden textarea and send a single carriage return directly.
+                ev.preventDefault();
+                if (term.textarea) {
+                    term.textarea.value = "";
+                }
+                sendFunction("\r");
+                return false;
+            }
             if (ev.key == "V" && ev.ctrlKey && ev.shiftKey) {
                 // pass ctrl-shift-v onwards so that paste is interpreted by xterm.js
                 return;
