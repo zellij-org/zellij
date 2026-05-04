@@ -317,15 +317,17 @@ impl FloatingPanes {
         if position.rows.as_usize() > viewport.rows {
             position.rows = Dimension::fixed(viewport.rows);
         }
-        if position.x + position.cols.as_usize() > viewport.cols {
+        let viewport_right = viewport.x + viewport.cols;
+        let viewport_bottom = viewport.y + viewport.rows;
+        if position.x + position.cols.as_usize() > viewport_right {
             position.x = position
                 .x
-                .saturating_sub((position.x + position.cols.as_usize()) - viewport.cols);
+                .saturating_sub((position.x + position.cols.as_usize()) - viewport_right);
         }
-        if position.y + position.rows.as_usize() > viewport.rows {
+        if position.y + position.rows.as_usize() > viewport_bottom {
             position.y = position
                 .y
-                .saturating_sub((position.y + position.rows.as_usize()) - viewport.rows);
+                .saturating_sub((position.y + position.rows.as_usize()) - viewport_bottom);
         }
         Ok(position)
     }
