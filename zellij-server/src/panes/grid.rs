@@ -108,6 +108,52 @@ pub(crate) fn namespace_notification_id(metadata: &str, pane_id: u32) -> String 
     }
 }
 
+/// Maximum length (chars) accepted for any single field in a legacy
+/// desktop-notification OSC. Longer inputs are truncated. Bounds total
+/// emitted size and limits abuse from runaway programs.
+pub(crate) const LEGACY_NOTIFICATION_FIELD_MAX_LEN: usize = 1024;
+
+/// Strip control characters from a notification field so a malicious or
+/// buggy program cannot inject escape sequences (additional OSC, CSI,
+/// title-set, etc.) into the host terminal via the notification body.
+/// Removes C0 controls, DEL, and the C1 range. Preserves printable text
+/// (including non-ASCII UTF-8) and tab.
+pub(crate) fn sanitize_legacy_notification_field(input: &str) -> String {
+    input
+        .chars()
+        .filter(|c| {
+            // Allow tab; reject all other C0, DEL, and C1 controls.
+            *c == '\t' || (!c.is_control() && !matches!(*c as u32, 0x80..=0x9F))
+        })
+        .take(LEGACY_NOTIFICATION_FIELD_MAX_LEN)
+        .collect()
+}
+
+/// Parsed and validated legacy desktop notification, ready to be
+/// re-emitted to the host terminal in canonical form. Variants
+/// correspond to the de-facto pre-OSC-99 notification protocols that
+/// modern terminals (WezTerm, iTerm2, Kitty, Alacritty) recognize.
+#[derive(Debug, Clone)]
+pub enum LegacyDesktopNotification {
+    /// rxvt-style: `ESC ] 9 ; <text> BEL`
+    Osc9 { text: String },
+    /// urxvt-extended notify: `ESC ] 777 ; notify ; <title> ; <body> BEL`
+    Osc777Notify { title: String, body: String },
+}
+
+impl LegacyDesktopNotification {
+    /// Re-emit in canonical form. Always uses BEL terminator for
+    /// consistency; all common host terminals accept it.
+    pub fn to_canonical_bytes(&self) -> Vec<u8> {
+        match self {
+            LegacyDesktopNotification::Osc9 { text } => format!("\x1b]9;{}\x07", text).into_bytes(),
+            LegacyDesktopNotification::Osc777Notify { title, body } => {
+                format!("\x1b]777;notify;{};{}\x07", title, body).into_bytes()
+            },
+        }
+    }
+}
+
 use vte::{Params, Perform};
 use zellij_utils::{consts::VERSION, shared::version_number};
 
@@ -652,6 +698,11 @@ pub struct Grid {
     /// Zellij should forward to the host terminal; the host's reply is
     /// later routed back to this pane's pty.
     pub pending_forwarded_queries: Vec<crate::host_query::HostQuery>,
+    /// Pending legacy (pre-OSC-99) desktop notifications: rxvt-style
+    /// OSC 9 and urxvt-extended OSC 777 `notify`. Each entry has been
+    /// parsed, sanitized, and length-bounded; it is re-emitted to the
+    /// host terminal in canonical form rather than passed through raw.
+    pub pending_legacy_desktop_notifications: Vec<LegacyDesktopNotification>,
     ui_component_bytes: Option<Vec<u8>>,
     style: Style,
     debug: bool,
@@ -971,6 +1022,7 @@ impl Grid {
             pending_osc7_cwd: None,
             pending_desktop_notifications: Vec::new(),
             pending_forwarded_queries: Vec::new(),
+            pending_legacy_desktop_notifications: Vec::new(),
             ui_component_bytes: None,
             style,
             debug,
@@ -3774,6 +3826,58 @@ impl Perform for Grid {
                             .push((payload, terminator.to_string()));
                     }
                 }
+            },
+
+            // Legacy desktop notifications: rxvt-style OSC 9 and
+            // urxvt-extended OSC 777. We do NOT pass these through raw;
+            // instead we parse the documented shape, sanitize each field
+            // (stripping control chars, bounding length), and re-emit a
+            // canonical sequence. This prevents a program inside a pane
+            // from injecting arbitrary escape sequences into the host
+            // terminal via the notification body.
+            b"9" => {
+                // Shape: OSC 9 ; <text> ST.  `text` may itself contain
+                // semicolons, so rejoin params[1..].
+                if params.len() < 2 {
+                    return;
+                }
+                let text: String = params[1..]
+                    .iter()
+                    .flat_map(|x| str::from_utf8(x))
+                    .collect::<Vec<&str>>()
+                    .join(";");
+                let text = sanitize_legacy_notification_field(&text);
+                if text.is_empty() {
+                    return;
+                }
+                self.pending_legacy_desktop_notifications
+                    .push(LegacyDesktopNotification::Osc9 { text });
+            },
+            b"777" => {
+                // Shape: OSC 777 ; <subcommand> ; <args...> ST.
+                // We only handle the `notify` subcommand (notification
+                // delivery); other subcommands like `preexec`/`precmd`
+                // are intentionally dropped because they are not
+                // notifications and forwarding them could leak shell
+                // hooks across the multiplexer boundary.
+                if params.len() < 4 || params[1] != b"notify" {
+                    return;
+                }
+                let title: String = std::iter::once(params[2])
+                    .flat_map(|x| str::from_utf8(x))
+                    .collect();
+                let title = sanitize_legacy_notification_field(&title);
+                let body: String = params[3..]
+                    .iter()
+                    .flat_map(|x| str::from_utf8(x))
+                    .collect::<Vec<&str>>()
+                    .join(";");
+                let body = sanitize_legacy_notification_field(&body);
+                if title.is_empty() && body.is_empty() {
+                    return;
+                }
+                self.pending_legacy_desktop_notifications
+                    .push(LegacyDesktopNotification::Osc777Notify { title, body });
             },
 
             _ => {
