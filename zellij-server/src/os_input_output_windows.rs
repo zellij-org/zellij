@@ -480,13 +480,18 @@ impl WindowsPtyBackend {
         Ok((reader, child_pid))
     }
 
-    pub fn spawn_terminal(
+pub fn spawn_terminal(
         &self,
         mut cmd: RunCommand,
         failover_cmd: Option<RunCommand>,
         quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
         terminal_id: u32,
     ) -> Result<(Box<dyn AsyncReader>, u32)> {
+        if cmd.command.as_os_str().is_empty() {
+            if let Some(default_shell) = crate::os_input_output::default_shell_command() {
+                cmd = default_shell;
+            }
+        }
         if let Some(resolved) = resolve_command(&cmd) {
             cmd.command = resolved;
             return self.do_spawn(cmd, quit_cb, terminal_id);
