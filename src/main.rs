@@ -284,6 +284,7 @@ fn main() {
                 block_until_exit_success: false,
                 block_until_exit_failure: false,
                 block_until_exit: false,
+                no_focus: false,
             };
             commands::send_action_to_session(new_layout_cli_action, Some(session_name), config);
         } else {
