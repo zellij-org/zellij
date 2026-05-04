@@ -4,7 +4,6 @@ use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::rc::Rc;
-use unicode_width::UnicodeWidthChar;
 use zellij_utils::data::{
     HighlightLayer, HighlightStyle, HostTerminalThemeMode, RegexHighlight, Style,
 };
@@ -108,6 +107,7 @@ pub(crate) fn namespace_notification_id(metadata: &str, pane_id: u32) -> String 
     }
 }
 
+use unicode_segmentation::GraphemeCursor;
 use vte::{Params, Perform};
 use zellij_utils::{consts::VERSION, shared::version_number};
 
@@ -388,7 +388,7 @@ macro_rules! dump_screen {
             if line.is_canonical && !is_first {
                 buf.push_str("\n");
             }
-            let s: String = (&line.columns).into_iter().map(|x| x.character).collect();
+            let s: String = (&line.columns).into_iter().map(|x| x.grapheme()).collect();
             // Replace the spaces at the end of the line. Sometimes, the lines are
             // collected with spaces until the end of the panel.
             buf.push_str(&s.trim_end_matches(' '));
@@ -415,7 +415,7 @@ macro_rules! dump_screen_with_ansi {
                 .columns
                 .iter()
                 .rposition(|tc| {
-                    let space = tc.character == ' ';
+                    let space = tc.grapheme() == " ";
                     let styled = !matches!(tc.styles.background, Some(AnsiCode::Reset) | None);
                     !space || styled // it's, something drawable
                 })
@@ -428,7 +428,7 @@ macro_rules! dump_screen_with_ansi {
                     write!(buf, "{}", tc.styles).unwrap();
                     last_styles = Some(tc.styles.clone());
                 }
-                buf.push(tc.character);
+                buf.push_str(tc.grapheme());
             }
             is_first = false;
         }
@@ -497,14 +497,14 @@ fn collect_and_build_logical_line(
     let mut boundaries: Vec<(usize, usize)> = Vec::with_capacity(group_len);
     boundaries.push((canonical, 0));
     for ch in &canonical_row.columns {
-        text.push(ch.character);
+        text.push_str(ch.grapheme());
     }
     for i in 0..tail_count {
         let idx = canonical + 1 + i;
         boundaries.push((idx, text.len()));
         if let Some(row) = viewport.get(idx) {
             for ch in &row.columns {
-                text.push(ch.character);
+                text.push_str(ch.grapheme());
             }
         }
     }
@@ -524,6 +524,7 @@ fn byte_offset_to_display_col(
     byte_offset: usize,
     boundaries: &[(usize, usize)],
     viewport: &VecDeque<Row>,
+    snap_to_cell_end: bool,
 ) -> Option<(usize, usize)> {
     if boundaries.is_empty() {
         return None;
@@ -535,16 +536,34 @@ fn byte_offset_to_display_col(
     let &(row_idx, row_byte_start) = boundaries.get(boundary_idx)?;
     let intra_byte_offset = byte_offset - row_byte_start;
 
-    // Count display columns up to (but not including) the character at intra_byte_offset.
+    // Walk cells, accumulating display columns.
+    // A regex match can start or end mid-grapheme (e.g. matching only the combining
+    // acute in "e\u{0301}").  We must snap such offsets to a cell boundary:
+    //
+    //   snap_to_cell_end = false (match start):  snap DOWN to the start of the
+    //     cell that contains the byte offset — never miss the opening cell.
+    //
+    //   snap_to_cell_end = true (match end):  snap UP to the end of the cell that
+    //     contains the byte offset — always include the closing cell in the
+    //     selection so it is never zero-width.
     let row = viewport.get(row_idx)?;
     let mut display_col = 0usize;
     let mut bytes_seen = 0usize;
     for ch in &row.columns {
-        if bytes_seen >= intra_byte_offset {
+        let cell_end = bytes_seen + ch.grapheme().len();
+        if bytes_seen == intra_byte_offset {
+            // Exact grapheme boundary: this cell starts at the target byte.
             break;
         }
-        bytes_seen += ch.character.len_utf8();
-        display_col += ch.character.width().unwrap_or(1);
+        if cell_end > intra_byte_offset {
+            // Mid-grapheme: the byte offset falls inside this cell.
+            if snap_to_cell_end {
+                display_col += ch.width(); // include the whole cell in the span end
+            }
+            break;
+        }
+        bytes_seen = cell_end;
+        display_col += ch.width();
     }
     Some((row_idx, display_col))
 }
@@ -556,8 +575,9 @@ fn match_to_selection(
     boundaries: &[(usize, usize)],
     viewport: &VecDeque<Row>,
 ) -> Option<(Selection, usize, usize, usize, usize)> {
-    let (start_row, start_col) = byte_offset_to_display_col(mat.start(), boundaries, viewport)?;
-    let (end_row, end_col) = byte_offset_to_display_col(mat.end(), boundaries, viewport)?;
+    let (start_row, start_col) =
+        byte_offset_to_display_col(mat.start(), boundaries, viewport, false)?;
+    let (end_row, end_col) = byte_offset_to_display_col(mat.end(), boundaries, viewport, true)?;
     let mut sel = Selection::default();
     sel.set_start_and_end_positions(
         Position::new(start_row as i32, start_col as u16),
@@ -588,6 +608,20 @@ fn position_in_span(
     let after_start = row > start_row || (row == start_row && col >= start_col);
     let before_end = row < end_row || (row == end_row && col < end_col);
     after_start && before_end
+}
+
+/// Tracks the last-placed cell so that subsequent codepoints can be checked for grapheme
+/// cluster boundaries before deciding whether to extend that cell or start a new one.
+#[derive(Clone, Default)]
+struct PendingGrapheme {
+    /// Accumulated EGC text placed in the cell so far.
+    text: String,
+    /// Column of the cell being accumulated into (logical x, as passed to add_character).
+    x: usize,
+    /// Row of the cell being accumulated into.
+    y: usize,
+    /// cursor.x value immediately after placing this cell (used to detect cursor movement).
+    end_x: usize,
 }
 
 #[derive(Clone)]
@@ -676,6 +710,14 @@ pub struct Grid {
     // key: plugin_id (u32), inner vec: (pattern, compiled) pairs
     pub hover_position: Option<Position>, // pane-relative cursor cell; None when outside pane
     pub cached_hover_tooltip: Option<String>,
+    /// Streaming EGC composition state. Tracks the last-placed cell so we can append
+    /// subsequent non-boundary codepoints (combining marks, ZWJ, skin-tone modifiers, etc.)
+    /// to it instead of dropping them or placing them in a new cell.
+    egc_state: Option<PendingGrapheme>,
+    /// CSI ? 2027 mode: grapheme-aware cursor/edit semantics for applications that opt in.
+    /// When enabled, cursor movement and edit operations use EGC boundaries rather than
+    /// scalar/column boundaries. Segmentation is always-on regardless of this flag.
+    pub grapheme_cluster_mode: bool,
 }
 
 impl Grid {
@@ -987,6 +1029,8 @@ impl Grid {
             plugin_highlights: HashMap::new(),
             hover_position: None,
             cached_hover_tooltip: None,
+            egc_state: None,
+            grapheme_cluster_mode: false,
         }
     }
     pub fn render_full_viewport(&mut self) {
@@ -1298,8 +1342,8 @@ impl Grid {
             for line in &mut viewport_canonical_lines {
                 let mut trim_at = None;
                 for (index, character) in line.columns.iter().enumerate() {
-                    let is_trimmable_space = character.character
-                        == EMPTY_TERMINAL_CHARACTER.character
+                    let is_trimmable_space = character.grapheme()
+                        == EMPTY_TERMINAL_CHARACTER.grapheme()
                         && matches!(character.styles.background, Some(AnsiCode::Reset) | None);
 
                     if !is_trimmable_space {
@@ -1469,6 +1513,7 @@ impl Grid {
         self.search_viewport();
         // If we have thrown out the active element, set it to None
         self.search_results.unset_active_selection_if_nonexistent();
+        self.egc_state = None;
         self.output_buffer.update_all_lines();
     }
     pub fn as_character_lines(&self) -> Vec<Vec<TerminalCharacter>> {
@@ -1748,6 +1793,7 @@ impl Grid {
                     .insert(scroll_region_top, Row::from_columns(columns).canonical());
             }
         }
+        self.egc_state = None;
         self.output_buffer.update_all_lines(); // TODO: only update scroll region lines
     }
     pub fn rotate_scroll_region_down(&mut self, count: usize) {
@@ -1769,9 +1815,11 @@ impl Grid {
             self.viewport
                 .insert(scroll_region_bottom, Row::from_columns(columns).canonical());
         }
+        self.egc_state = None;
         self.output_buffer.update_all_lines(); // TODO: only update scroll region lines
     }
     pub fn fill_viewport(&mut self, character: TerminalCharacter) {
+        self.egc_state = None;
         if self.alternate_screen_state.is_some() {
             self.viewport.clear();
         } else {
@@ -1861,7 +1909,7 @@ impl Grid {
         should_insert_character: bool,
     ) {
         self.hyperlink_tracker.update(
-            terminal_character.character,
+            terminal_character.first_char().unwrap_or(' '),
             &self.cursor,
             &mut self.viewport,
             &mut self.lines_above,
@@ -1914,22 +1962,142 @@ impl Grid {
         }
     }
     pub fn add_character(&mut self, terminal_character: TerminalCharacter) {
+        let new_char = match terminal_character.first_char() {
+            Some(c) => c,
+            None => return,
+        };
+
+        // Check if new_char extends the current grapheme cluster instead of starting a new cell.
+        // This must run before the width==0 check so that combining marks / ZWJ / variation
+        // selectors that extend a preceding base character are preserved rather than dropped.
+        if let Some(state) = &self.egc_state {
+            if state.end_x == self.cursor.x && state.y == self.cursor.y {
+                // Fast path: ASCII characters are always grapheme boundaries.
+                // All non-boundary codepoints (combining marks, ZWJ, variation
+                // selectors, regional indicators, emoji modifiers) are > U+007F,
+                // so we can skip the GraphemeCursor allocation entirely.
+                let is_boundary = if new_char.is_ascii() {
+                    true
+                } else {
+                    let mut test = String::with_capacity(state.text.len() + 4);
+                    test.push_str(&state.text);
+                    let boundary_offset = test.len();
+                    test.push(new_char);
+                    let mut gc = GraphemeCursor::new(boundary_offset, test.len(), true);
+                    // Treat any error as a boundary (safe fallback: start new cell).
+                    gc.is_boundary(&test, 0).unwrap_or(true)
+                };
+                if !is_boundary {
+                    // new_char is part of the same EGC as the previous cell.
+                    let cell_x = state.x;
+                    let cell_y = state.y;
+                    let mut updated_cell: Option<TerminalCharacter> = None;
+                    // Signed delta: positive = grew, negative = shrank (e.g. VS15 on
+                    // an emoji-presentation char reduces width from 2 to 1).
+                    let mut width_change: isize = 0;
+                    if let Some(row) = self.viewport.get_mut(cell_y) {
+                        let abs_idx = row.absolute_character_index(cell_x);
+                        if let Some(cell) = row.columns.get_mut(abs_idx) {
+                            let old_width = cell.width() as isize;
+                            cell.push_scalar(new_char);
+                            width_change = cell.width() as isize - old_width;
+                            updated_cell = Some(cell.clone());
+                        }
+                        if width_change != 0 {
+                            // Width changed in either direction — invalidate the row's
+                            // cached width so callers that branch on width_cached() see
+                            // the correct total.
+                            row.width = None;
+                        }
+                    }
+                    self.egc_state.as_mut().unwrap().text.push(new_char);
+                    // Keep preceding_char in sync with the full EGC so CSI b REP
+                    // repeats the complete cluster, not just the combining codepoint.
+                    if let Some(ref updated) = updated_cell {
+                        self.preceding_char = Some(updated.clone());
+                    }
+                    // Adjust cursor and egc_state.end_x for any width change so the
+                    // next character lands at the correct column.
+                    if width_change > 0 {
+                        let new_width = (cell_x as isize + width_change + 1) as usize;
+                        if new_width > self.width && !self.disable_linewrap {
+                            // The widened cell no longer fits in this row (e.g. '#'
+                            // at the last column widened to 2 by VS16). Remove it
+                            // from the current row, wrap, and re-place it.
+                            if let Some(tc) = updated_cell {
+                                if let Some(row) = self.viewport.get_mut(cell_y) {
+                                    row.delete_and_return_character(cell_x);
+                                }
+                                self.cursor.x = cell_x;
+                                self.line_wrap();
+                                self.add_character_at_cursor_position(tc, false);
+                                let placed_x = self.cursor.x;
+                                let placed_y = self.cursor.y;
+                                self.move_cursor_forward_until_edge((width_change + 1) as usize);
+                                let state = self.egc_state.as_mut().unwrap();
+                                state.x = placed_x;
+                                state.y = placed_y;
+                                state.end_x = self.cursor.x;
+                            }
+                        } else {
+                            if let Some(row) = self.viewport.get_mut(cell_y) {
+                                let abs_idx = row.absolute_character_index(cell_x);
+                                row.remove_covered_cells_after(abs_idx, width_change as usize);
+                            }
+                            self.move_cursor_forward_until_edge(width_change as usize);
+                            self.egc_state.as_mut().unwrap().end_x = self.cursor.x;
+                        }
+                    } else if width_change < 0 {
+                        self.move_cursor_back((-width_change) as usize);
+                        self.egc_state.as_mut().unwrap().end_x = self.cursor.x;
+                    }
+                    self.output_buffer.update_line(cell_y);
+                    return;
+                }
+            }
+        }
+
+        // new_char starts a new grapheme cluster.
         let character_width = terminal_character.width();
-        // Drop zero-width Unicode/UTF-8 codepoints, like for example Variation Selectors.
-        // This breaks unicode grapheme segmentation, and is the reason why some characters
-        // aren't displayed correctly. Refer to this issue for more information:
-        //     https://github.com/zellij-org/zellij/issues/1538
         if character_width == 0 {
+            // Zero-width codepoint that doesn't extend any preceding character
+            // (e.g. at column 0 or after cursor movement). Discard and clear state.
+            self.egc_state = None;
             return;
         }
         if self.cursor.x + character_width > self.width {
             if self.disable_linewrap {
+                self.egc_state = None;
                 return;
             }
             self.line_wrap();
         }
+        let placed_x = self.cursor.x;
+        let placed_y = self.cursor.y;
+        // Capture the full grapheme text before terminal_character is moved.
+        // egc_state.text must reflect the complete EGC so that boundary checks
+        // against subsequent codepoints use correct prior context — particularly
+        // RI parity for flag sequences repeated via CSI b.
+        // Reuse the existing String buffer when possible to avoid per-character
+        // heap allocation on the hot path.
+        match &mut self.egc_state {
+            Some(state) => {
+                state.text.clear();
+                state.text.push_str(terminal_character.grapheme());
+            },
+            None => {
+                self.egc_state = Some(PendingGrapheme {
+                    text: String::from(terminal_character.grapheme()),
+                    ..Default::default()
+                });
+            },
+        }
         self.add_character_at_cursor_position(terminal_character, false);
         self.move_cursor_forward_until_edge(character_width);
+        let state = self.egc_state.as_mut().unwrap();
+        state.x = placed_x;
+        state.y = placed_y;
+        state.end_x = self.cursor.x;
     }
     pub fn get_character_under_cursor(&self) -> Option<TerminalCharacter> {
         let absolute_x_in_line = self.get_absolute_character_index(self.cursor.x, self.cursor.y)?;
@@ -1946,12 +2114,14 @@ impl Grid {
         self.cursor.x += count_to_move;
     }
     pub fn replace_characters_in_line_after_cursor(&mut self, replace_with: TerminalCharacter) {
+        self.egc_state = None;
         if let Some(row) = self.viewport.get_mut(self.cursor.y) {
             row.replace_and_pad_end(self.cursor.x, self.width, replace_with);
         }
         self.output_buffer.update_line(self.cursor.y);
     }
     pub fn replace_characters_in_line_before_cursor(&mut self, replace_with: TerminalCharacter) {
+        self.egc_state = None;
         let row = self.viewport.get_mut(self.cursor.y).unwrap();
         row.replace_and_pad_beginning(self.cursor.x, replace_with);
         self.output_buffer.update_line(self.cursor.y);
@@ -1978,12 +2148,14 @@ impl Grid {
         }
     }
     pub fn clear_cursor_line(&mut self) {
+        self.egc_state = None;
         if let Some(viewport_line) = self.viewport.get_mut(self.cursor.y) {
             viewport_line.truncate(0);
             self.output_buffer.update_line(self.cursor.y);
         }
     }
     pub fn clear_all(&mut self, replace_with: TerminalCharacter) {
+        self.egc_state = None;
         let replace_with_columns = VecDeque::from(vec![replace_with.clone(); self.width]);
         self.replace_characters_in_line_after_cursor(replace_with);
         for row in &mut self.viewport {
@@ -2171,6 +2343,7 @@ impl Grid {
                         .push_back(Row::from_columns(columns).canonical());
                 }
             }
+            self.egc_state = None;
             self.output_buffer.update_all_lines(); // TODO: move accurately
         }
     }
@@ -2194,6 +2367,7 @@ impl Grid {
                 self.viewport
                     .insert(current_line_index, Row::from_columns(columns).canonical());
             }
+            self.egc_state = None;
             self.output_buffer.update_all_lines(); // TODO: move accurately
         }
     }
@@ -2211,13 +2385,42 @@ impl Grid {
     pub fn replace_with_empty_chars(&mut self, count: usize, empty_char_style: RcCharacterStyles) {
         let mut empty_character = EMPTY_TERMINAL_CHARACTER;
         empty_character.styles = empty_char_style;
-        let pad_until = std::cmp::min(self.width, self.cursor.x + count);
-        self.pad_current_line_until(pad_until, empty_character.clone());
-        if let Some(current_row) = self.viewport.get_mut(self.cursor.y) {
-            for i in 0..count {
-                current_row.replace_character_at(empty_character.clone(), self.cursor.x + i);
+        if self.grapheme_cluster_mode {
+            // In 2027 mode step forward by EGC width rather than by column.
+            // Compute positions in an immutable pass first to avoid borrow conflicts.
+            let positions: Vec<usize> = if let Some(row) = self.viewport.get(self.cursor.y) {
+                let mut pos = self.cursor.x;
+                let mut positions = Vec::with_capacity(count);
+                for _ in 0..count {
+                    if pos >= self.width {
+                        break;
+                    }
+                    positions.push(pos);
+                    pos += row.following_char_width(pos);
+                }
+                positions
+            } else {
+                Vec::new()
+            };
+            if let Some(&last_pos) = positions.last() {
+                let pad_until = std::cmp::min(self.width, last_pos + 1);
+                self.pad_current_line_until(pad_until, empty_character.clone());
             }
-            self.output_buffer.update_line(self.cursor.y);
+            if let Some(current_row) = self.viewport.get_mut(self.cursor.y) {
+                for pos in positions {
+                    current_row.replace_character_at(empty_character.clone(), pos);
+                }
+                self.output_buffer.update_line(self.cursor.y);
+            }
+        } else {
+            let pad_until = std::cmp::min(self.width, self.cursor.x + count);
+            self.pad_current_line_until(pad_until, empty_character.clone());
+            if let Some(current_row) = self.viewport.get_mut(self.cursor.y) {
+                for i in 0..count {
+                    current_row.replace_character_at(empty_character.clone(), self.cursor.x + i);
+                }
+                self.output_buffer.update_line(self.cursor.y);
+            }
         }
     }
     fn erase_characters(&mut self, count: usize, empty_char_style: RcCharacterStyles) {
@@ -2232,6 +2435,13 @@ impl Grid {
                 current_row.columns.append(&mut columns_padding);
             }
             for _ in 0..count {
+                // If cursor is on the second half of a wide char, erase the wide
+                // char first (both halves become spaces), then delete normally.
+                let (_, pos_in_char) =
+                    current_row.absolute_character_index_and_position_in_char(self.cursor.x);
+                if pos_in_char > 0 {
+                    current_row.replace_character_at(empty_character.clone(), self.cursor.x);
+                }
                 let deleted_character = current_row.delete_and_return_character(self.cursor.x);
                 let excess_width = deleted_character
                     .map(|terminal_character| terminal_character.width())
@@ -2277,6 +2487,8 @@ impl Grid {
         self.focus_event_tracking = false;
         self.cursor_is_hidden = false;
         self.supports_kitty_keyboard_protocol = false;
+        self.grapheme_cluster_mode = false;
+        self.egc_state = None;
         self.set_scroll_region_to_viewport_size();
         self.pane_default_fg = None;
         self.pane_default_bg = None;
@@ -2753,7 +2965,7 @@ impl Grid {
             let mut terminal_col = 0;
             for terminal_character in &row.columns {
                 if (start_column..end_column).contains(&terminal_col) {
-                    line_selection.push(terminal_character.character);
+                    line_selection.push_str(terminal_character.grapheme());
                 }
 
                 terminal_col += terminal_character.width();
@@ -3322,13 +3534,13 @@ impl Grid {
     ) -> PaneContents {
         let mut viewport: Vec<String> = Vec::with_capacity(self.viewport.len());
         for row in &self.viewport {
-            let s: String = (&row.columns).into_iter().map(|x| x.character).collect();
+            let s: String = (&row.columns).into_iter().map(|x| x.grapheme()).collect();
             viewport.push(s);
         }
         if get_full_scrollback {
             let mut lines_above_viewport: Vec<String> = Vec::with_capacity(self.lines_above.len());
             for row in &self.lines_above {
-                let s: String = (&row.columns).into_iter().map(|x| x.character).collect();
+                let s: String = (&row.columns).into_iter().map(|x| x.grapheme()).collect();
                 lines_above_viewport.push(s);
             }
             // Truncate to last N lines if max specified (Some(0) means "all" — no truncation)
@@ -3340,7 +3552,7 @@ impl Grid {
             }
             let mut lines_below_viewport: Vec<String> = Vec::with_capacity(self.lines_below.len());
             for row in &self.lines_below {
-                let s: String = (&row.columns).into_iter().map(|x| x.character).collect();
+                let s: String = (&row.columns).into_iter().map(|x| x.grapheme()).collect();
                 lines_below_viewport.push(s);
             }
             PaneContents::new_with_scrollback(
@@ -3369,7 +3581,7 @@ impl Grid {
                 .columns
                 .iter()
                 .rposition(|tc| {
-                    let space = tc.character == ' ';
+                    let space = tc.grapheme() == " ";
                     let styled = !matches!(tc.styles.background, Some(AnsiCode::Reset) | None);
                     !space || styled
                 })
@@ -3381,7 +3593,7 @@ impl Grid {
                     write!(buf, "{}", tc.styles).unwrap();
                     last_styles = Some(tc.styles.clone());
                 }
-                buf.push(tc.character);
+                buf.push_str(tc.grapheme());
             }
             if last_styles.is_some() {
                 buf.push_str("\u{1b}[m");
@@ -3439,20 +3651,25 @@ impl Perform for Grid {
             },
             8 => {
                 // backspace
+                // BS moves back one display column, including in 2027 mode.
+                self.egc_state = None;
                 self.move_cursor_back(1);
             },
             9 => {
                 // tab
+                self.egc_state = None;
                 self.advance_to_next_tabstop(self.cursor.pending_styles.clone());
             },
             10 | 11 | 12 => {
                 // 0a, newline
                 // 0b, vertical tabulation
                 // 0c, form feed
+                self.egc_state = None;
                 self.add_newline();
             },
             13 => {
                 // 0d, carriage return
+                self.egc_state = None;
                 self.move_cursor_to_beginning_of_line();
             },
             14 => {
@@ -3801,6 +4018,8 @@ impl Perform for Grid {
             }
         } else if c == 'C' || c == 'a' {
             // move cursor forward
+            // CUF counts display columns in all modes, including 2027.
+            self.egc_state = None;
             let move_by = next_param_or(1);
             self.move_cursor_forward_until_edge(move_by);
         } else if c == 'K' {
@@ -3849,20 +4068,25 @@ impl Perform for Grid {
         } else if c == 'H' || c == 'f' {
             // goto row/col
             // we subtract 1 from the row/column because these are 1 indexed
+            self.egc_state = None;
             let row = next_param_or(1).saturating_sub(1);
             let col = next_param_or(1).saturating_sub(1);
             self.move_cursor_to(col, row, EMPTY_TERMINAL_CHARACTER);
         } else if c == 'A' {
             // move cursor up until edge of screen
+            self.egc_state = None;
             let move_up_count = next_param_or(1);
             self.move_cursor_up(move_up_count as usize);
         } else if c == 'B' || c == 'e' {
             // move cursor down until edge of screen
+            self.egc_state = None;
             let move_down_count = next_param_or(1);
             let pad_character = EMPTY_TERMINAL_CHARACTER;
             self.move_cursor_down_until_edge_of_screen(move_down_count as usize, pad_character);
         } else if c == 'D' {
-            let move_back_count = next_param_or(1);
+            // CUB counts display columns in all modes, including 2027.
+            self.egc_state = None;
+            let move_back_count = next_param_or(1) as usize;
             self.move_cursor_back(move_back_count);
         } else if c == 'l' {
             let first_intermediate_is_questionmark = match intermediates.get(0) {
@@ -3875,6 +4099,10 @@ impl Perform for Grid {
                     match param {
                         2026 => {
                             self.unlock_renders();
+                        },
+                        2027 => {
+                            self.grapheme_cluster_mode = false;
+                            self.egc_state = None;
                         },
                         2004 => {
                             self.bracketed_paste_mode = false;
@@ -3977,6 +4205,10 @@ impl Perform for Grid {
                         },
                         2026 => {
                             self.lock_renders();
+                        },
+                        2027 => {
+                            self.grapheme_cluster_mode = true;
+                            self.egc_state = None;
                         },
                         2004 => {
                             self.bracketed_paste_mode = true;
@@ -4084,6 +4316,15 @@ impl Perform for Grid {
                             self.pending_messages_to_pty
                                 .push(response.as_bytes().to_vec());
                         },
+                        2027 => {
+                            let response = if self.grapheme_cluster_mode {
+                                "\u{1b}[?2027;1$y"
+                            } else {
+                                "\u{1b}[?2027;2$y"
+                            };
+                            self.pending_messages_to_pty
+                                .push(response.as_bytes().to_vec());
+                        },
                         2031 => {
                             let value = if self.color_palette_notification_enabled {
                                 1
@@ -4130,6 +4371,7 @@ impl Perform for Grid {
             pad_character.styles = self.cursor.pending_styles.clone();
             self.add_empty_lines_in_scroll_region(line_count_to_add, pad_character);
         } else if c == 'G' || c == '`' {
+            self.egc_state = None;
             let column = next_param_or(1).saturating_sub(1);
             let column = std::cmp::min(column, self.width.saturating_sub(1));
             self.move_cursor_to_column(column);
@@ -4142,6 +4384,7 @@ impl Perform for Grid {
             }
         } else if c == 'd' {
             // goto line
+            self.egc_state = None;
             let line = next_param_or(1).saturating_sub(1);
             let pad_character = EMPTY_TERMINAL_CHARACTER;
             self.move_cursor_to_line(line, pad_character);
@@ -4242,6 +4485,7 @@ impl Perform for Grid {
                 }
             }
         } else if c == 'u' {
+            self.egc_state = None;
             self.restore_cursor_position();
         } else if c == '@' {
             let count = next_param_or(1);
@@ -4258,16 +4502,19 @@ impl Perform for Grid {
             }
         } else if c == 'E' {
             // Moves cursor to beginning of the line n (default 1) lines down.
+            self.egc_state = None;
             let count = next_param_or(1);
             let pad_character = EMPTY_TERMINAL_CHARACTER;
             self.move_cursor_down_until_edge_of_screen(count, pad_character);
             self.move_cursor_to_beginning_of_line();
         } else if c == 'F' {
             // Moves cursor to beginning of the line n (default 1) lines up.
+            self.egc_state = None;
             let count = next_param_or(1);
             self.move_cursor_up(count);
             self.move_cursor_to_beginning_of_line();
         } else if c == 'I' {
+            self.egc_state = None;
             for _ in 0..next_param_or(1) {
                 self.advance_to_next_tabstop(self.cursor.pending_styles.clone());
             }
@@ -4467,14 +4714,17 @@ impl Perform for Grid {
                 );
             },
             (b'D', None) => {
+                self.egc_state = None;
                 self.add_newline();
             },
             (b'E', None) => {
+                self.egc_state = None;
                 self.add_newline();
                 self.move_cursor_to_beginning_of_line();
             },
             (b'M', None) => {
                 // TODO: if cursor is at the top, it should go down one
+                self.egc_state = None;
                 self.move_cursor_up_with_scrolling(1);
             },
             (b'c', None) => {
@@ -4492,11 +4742,12 @@ impl Perform for Grid {
                     .push(terminal_capabilities.as_bytes().to_vec());
             },
             (b'8', None) => {
+                self.egc_state = None;
                 self.restore_cursor_position();
             },
             (b'8', Some(b'#')) => {
                 let mut fill_character = EMPTY_TERMINAL_CHARACTER;
-                fill_character.character = 'E';
+                fill_character.set_grapheme("E");
                 self.fill_viewport(fill_character);
             },
             _ => {
@@ -4646,6 +4897,23 @@ impl Row {
         }
         acc
     }
+    /// Returns the display width of the cell starting at column `cursor_x`.
+    /// Used in CSI 2027 mode to move the cursor forward by a full EGC.
+    pub fn following_char_width(&self, cursor_x: usize) -> usize {
+        let mut accumulated: usize = 0;
+        for cell in &self.columns {
+            let w = cell.width().max(1);
+            if accumulated == cursor_x {
+                return w;
+            }
+            accumulated += w;
+            if accumulated > cursor_x {
+                // cursor_x lands in the middle of a wide char — shouldn't happen normally
+                return 1;
+            }
+        }
+        1
+    }
     pub fn absolute_character_index(&self, x: usize) -> usize {
         // return x's width aware index
         let mut absolute_index = x;
@@ -4766,6 +5034,25 @@ impl Row {
             for _ in 0..excess_width {
                 self.columns
                     .insert(absolute_x_index, EMPTY_TERMINAL_CHARACTER);
+            }
+        }
+        self.width = None;
+    }
+    fn remove_covered_cells_after(&mut self, absolute_x_index: usize, mut width_to_remove: usize) {
+        let remove_position = absolute_x_index + 1;
+        while width_to_remove > 0 {
+            let Some(removed_character) = self.columns.remove(remove_position) else {
+                break;
+            };
+            let removed_width = removed_character.width().max(1);
+            if removed_width > width_to_remove {
+                for _ in 0..removed_width - width_to_remove {
+                    self.columns
+                        .insert(remove_position, EMPTY_TERMINAL_CHARACTER);
+                }
+                width_to_remove = 0;
+            } else {
+                width_to_remove -= removed_width;
             }
         }
         self.width = None;
@@ -4904,7 +5191,7 @@ impl Row {
     pub fn word_indices_around_character_index(&self, index: usize) -> Option<(usize, usize)> {
         let absolute_character_index = self.absolute_character_index(index);
         let character_at_index = self.columns.get(absolute_character_index)?;
-        if is_selection_boundary_character(character_at_index.character) {
+        if is_selection_boundary_character(character_at_index.first_char().unwrap_or(' ')) {
             return Some((index, index + 1));
         }
         let mut end_position = self
@@ -4913,7 +5200,7 @@ impl Row {
             .enumerate()
             .skip(absolute_character_index)
             .find_map(|(i, t_c)| {
-                if is_selection_boundary_character(t_c.character) {
+                if is_selection_boundary_character(t_c.first_char().unwrap_or(' ')) {
                     Some(i + self.excess_width_until(i))
                 } else {
                     None
@@ -4927,7 +5214,7 @@ impl Row {
             .take(absolute_character_index)
             .rev()
             .find_map(|(i, t_c)| {
-                if is_selection_boundary_character(t_c.character) {
+                if is_selection_boundary_character(t_c.first_char().unwrap_or(' ')) {
                     Some(i + 1 + self.excess_width_until(i))
                 } else {
                     None
@@ -4946,7 +5233,7 @@ impl Row {
             .enumerate()
             .rev()
             .find_map(|(i, t_c)| {
-                if is_selection_boundary_character(t_c.character) {
+                if is_selection_boundary_character(t_c.first_char().unwrap_or(' ')) {
                     Some(self.absolute_character_index(i + 1))
                 } else {
                     None
@@ -4959,7 +5246,7 @@ impl Row {
             .iter()
             .enumerate()
             .find_map(|(i, t_c)| {
-                if is_selection_boundary_character(t_c.character) {
+                if is_selection_boundary_character(t_c.first_char().unwrap_or(' ')) {
                     Some(self.absolute_character_index(i))
                 } else {
                     None

@@ -321,6 +321,11 @@ impl InputHandler {
                 self.os_input
                     .send_to_server(ClientToServerMsg::HostTerminalThemeChanged { mode });
             },
+            AnsiStdinInstruction::GraphemeClusterMode(support) => {
+                self.send_client_instructions
+                    .send(ClientInstruction::SetGraphemeClusterMode(support))
+                    .unwrap();
+            },
         }
     }
     fn handle_mouse_event(&mut self, mouse_event: &MouseEvent) {
