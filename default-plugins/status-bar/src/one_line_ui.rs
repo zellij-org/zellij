@@ -1380,6 +1380,13 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<KeyWithModifier
         (s("Close"), s("Close"), single_action_key(&km, &[A::CloseFocus, TO_NORMAL])),
         (s("Rename"), s("Rename"),
             single_action_key(&km, &[A::SwitchToMode{input_mode: IM::RenamePane}, A::PaneNameInput{input: vec![0]}])),
+        (s("mooli"), s("mooli"), single_action_key(&km,
+             &[A::NewPane{direction: Some(Direction::Right), pane_name: None, start_suppressed: false},
+               A::NewPane{direction: Some(Direction::Down), pane_name: None, start_suppressed: false},
+               A::MoveFocus{direction: Direction::Left},
+               A::NewPane{direction: Some(Direction::Down), pane_name: None, start_suppressed: false},
+               TO_NORMAL
+             ])),
         (s("Toggle Fullscreen"), s("Fullscreen"), single_action_key(&km, &[A::ToggleFocusFullscreen, TO_NORMAL])),
         (s("Toggle Floating"), s("Floating"),
             single_action_key(&km, &[A::ToggleFloatingPanes, TO_NORMAL])),
@@ -1562,7 +1569,7 @@ fn single_action_key(
     action: &[Action],
 ) -> Vec<KeyWithModifier> {
     let mut matching = keymap.iter().find_map(|(key, acvec)| {
-        if acvec.iter().next() == action.iter().next() {
+        if acvec.len() == action.len() && acvec.iter().zip(action.iter()).all(|(a, b)| a == b) {
             Some(key.clone())
         } else {
             None
