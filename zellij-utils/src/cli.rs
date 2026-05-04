@@ -18,15 +18,17 @@ fn validate_session(name: &str) -> Result<String, String> {
         let mut socket_path = crate::consts::ZELLIJ_SOCK_DIR.clone();
         socket_path.push(name);
 
-        if socket_path.as_os_str().len() >= ZELLIJ_SOCK_MAX_LENGTH {
-            // socket path must be less than 108 bytes
-            let available_length = ZELLIJ_SOCK_MAX_LENGTH
-                .saturating_sub(socket_path.as_os_str().len())
-                .saturating_sub(1);
+        let socket_path_len = socket_path.as_os_str().len();
+        if socket_path_len >= ZELLIJ_SOCK_MAX_LENGTH {
+            // socket path must fit in ZELLIJ_SOCK_MAX_LENGTH bytes (including
+            // the null terminator), so the longest valid path is
+            // ZELLIJ_SOCK_MAX_LENGTH - 1 bytes.
+            let excess = socket_path_len.saturating_sub(ZELLIJ_SOCK_MAX_LENGTH.saturating_sub(1));
 
             return Err(format!(
-                "session name must be less than {} characters",
-                available_length
+                "session name is too long; shorten it by at least {} character{}",
+                excess,
+                if excess == 1 { "" } else { "s" }
             ));
         };
     };
@@ -1738,5 +1740,54 @@ mod tests {
     fn subscribe_requires_pane_id() {
         let result = CliArgs::try_parse_from(["zellij", "subscribe"]);
         assert!(result.is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn validate_session_short_name_ok() {
+        assert!(validate_session("ok").is_ok());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn validate_session_too_long_reports_excess() {
+        use crate::consts::{ZELLIJ_SOCK_DIR, ZELLIJ_SOCK_MAX_LENGTH};
+
+        // Build a name guaranteed to overflow: (MAX - dir - 1) valid chars + 3 extra.
+        let dir_len = ZELLIJ_SOCK_DIR.as_os_str().len();
+        // We want the full socket_path (dir + "/" + name) to be MAX + 2 bytes,
+        // i.e. 3 bytes over the MAX-1 ceiling.
+        let expected_excess = 3usize;
+        let target_path_len = ZELLIJ_SOCK_MAX_LENGTH - 1 + expected_excess;
+        let name_len = target_path_len.saturating_sub(dir_len + 1);
+        let long_name = "x".repeat(name_len);
+
+        let err = validate_session(&long_name).expect_err("name should be rejected");
+        let expected = format!("shorten it by at least {} characters", expected_excess);
+        assert!(
+            err.contains(&expected),
+            "error message {:?} did not contain {:?}",
+            err,
+            expected
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn validate_session_too_long_singular_character() {
+        use crate::consts::{ZELLIJ_SOCK_DIR, ZELLIJ_SOCK_MAX_LENGTH};
+
+        let dir_len = ZELLIJ_SOCK_DIR.as_os_str().len();
+        // Exactly 1 byte over the MAX-1 ceiling (i.e. socket_path.len() == MAX).
+        let target_path_len = ZELLIJ_SOCK_MAX_LENGTH;
+        let name_len = target_path_len.saturating_sub(dir_len + 1);
+        let long_name = "x".repeat(name_len);
+
+        let err = validate_session(&long_name).expect_err("name should be rejected");
+        assert!(
+            err.contains("shorten it by at least 1 character") && !err.contains("1 characters"),
+            "expected singular 'character', got {:?}",
+            err
+        );
     }
 }
