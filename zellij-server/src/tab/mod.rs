@@ -1448,6 +1448,7 @@ impl Tab {
                         client_id_or_tab_index,
                         completion_tx,
                         false, // set_blocking
+                        true,  // should_focus_pane (preserves legacy focus behavior)
                     );
                     self.senders
                         .send_to_pty(instruction)
