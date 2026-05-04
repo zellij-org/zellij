@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat: support `CSI 2031` + dark/light mode theme switching (https://github.com/zellij-org/zellij/pull/5105, https://github.com/zellij-org/zellij/pull/5111 and https://github.com/zellij-org/zellij/pull/5113)
 * fix: incorrect interpretation of unicode characters in KKP STDIN (https://github.com/zellij-org/zellij/pull/5110)
 * fix: some issues regarding the interaction of fullscreen panes with resize/scrollback-editing (https://github.com/zellij-org/zellij/pull/5117)
+* fix: allow releasing from non-main branches in our build system (https://github.com/zellij-org/zellij/pull/5127)
 
 ## [0.44.1] - 2026-04-07
 * fix: don't display default ports as offline in `share` plugin (https://github.com/zellij-org/zellij/pull/4908)
