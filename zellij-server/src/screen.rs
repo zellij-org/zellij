@@ -1769,6 +1769,25 @@ impl Screen {
         self.clear_bell_for_focused_pane(client_id);
     }
 
+    /// Focus the pane on the given edge for `client_id` in the destination
+    /// tab, unless the client already has a valid remembered pane focus in
+    /// that tab (in which case the prior focus is preserved).
+    fn focus_edge_if_no_prior_focus(
+        &mut self,
+        new_tab_index: usize,
+        should_change_pane_focus: Option<Direction>,
+        client_id: ClientId,
+    ) {
+        let Some(direction) = should_change_pane_focus else {
+            return;
+        };
+        if let Some(new_tab) = self.get_indexed_tab_mut(new_tab_index) {
+            if !new_tab.client_has_valid_pane_focus(client_id) {
+                new_tab.focus_pane_on_edge(direction, client_id);
+            }
+        }
+    }
+
     /// A helper function to switch to a new tab at specified position.
     fn switch_active_tab(
         &mut self,
@@ -1809,15 +1828,11 @@ impl Screen {
                             .collect();
                         for client_id in all_connected_clients {
                             self.update_client_tab_focus(client_id, new_tab_index);
-                            match (
+                            self.focus_edge_if_no_prior_focus(
+                                new_tab_index,
                                 should_change_pane_focus,
-                                self.get_indexed_tab_mut(new_tab_index),
-                            ) {
-                                (Some(direction), Some(new_tab)) => {
-                                    new_tab.focus_pane_on_edge(direction, client_id);
-                                },
-                                _ => {},
-                            }
+                                client_id,
+                            );
                         }
                     } else {
                         self.move_clients_between_tabs(
@@ -1827,15 +1842,11 @@ impl Screen {
                             Some(vec![client_id]),
                         )
                         .with_context(err_context)?;
-                        match (
+                        self.focus_edge_if_no_prior_focus(
+                            new_tab_index,
                             should_change_pane_focus,
-                            self.get_indexed_tab_mut(new_tab_index),
-                        ) {
-                            (Some(direction), Some(new_tab)) => {
-                                new_tab.focus_pane_on_edge(direction, client_id);
-                            },
-                            _ => {},
-                        }
+                            client_id,
+                        );
                         self.update_client_tab_focus(client_id, new_tab_index);
                     }
 
