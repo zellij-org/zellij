@@ -585,6 +585,18 @@ fn attach_with_cli_client(
     session_name: &str,
     config: Option<Config>,
 ) {
+    if let zellij_utils::cli::CliAction::Detach { client_id, all } = &cli_action {
+        if *all || client_id.is_some() {
+            let os_input = get_os_input(zellij_client::os_input_output::get_cli_client_os_input);
+            zellij_client::cli_client::start_cli_client_detach(
+                Box::new(os_input),
+                session_name,
+                *client_id,
+                *all,
+            );
+            std::process::exit(0);
+        }
+    }
     let os_input = get_os_input(zellij_client::os_input_output::get_cli_client_os_input);
     let get_current_dir = || std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     match Action::actions_from_cli(cli_action, Box::new(get_current_dir), config) {
