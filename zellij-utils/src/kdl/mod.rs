@@ -844,6 +844,7 @@ impl Action {
                 pane_name: name,
                 near_current_pane: false,
                 borderless: _,
+                size: _,
                 ..
             } => {
                 let mut node = KdlNode::new("Run");
@@ -2029,6 +2030,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                         near_current_pane: false,
                         borderless: None,
                         tab_id: None,
+                        size: None,
                     })
                 }
             },

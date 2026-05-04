@@ -21,6 +21,7 @@ use zellij_utils::data::{
 };
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
+use zellij_utils::input::layout::PercentOrFixed;
 use zellij_utils::input::mouse::MouseEvent;
 use zellij_utils::position::Position;
 use zellij_utils::position::{Column, Line};
@@ -1497,6 +1498,7 @@ impl Tab {
             NewPanePlacement::Tiled {
                 direction: None,
                 borderless,
+                ..
             } => self.new_tiled_pane(
                 pid,
                 initial_pane_title,
@@ -1510,6 +1512,7 @@ impl Tab {
             NewPanePlacement::Tiled {
                 direction: Some(direction),
                 borderless,
+                size,
             } => {
                 if let Some(client_id) = client_id {
                     if direction == Direction::Left || direction == Direction::Right {
@@ -1519,6 +1522,7 @@ impl Tab {
                             client_id,
                             blocking_notification,
                             borderless,
+                            size,
                         )?;
                     } else {
                         self.horizontal_split(
@@ -1527,6 +1531,7 @@ impl Tab {
                             client_id,
                             blocking_notification,
                             borderless,
+                            size,
                         )?;
                     }
                 }
@@ -2354,6 +2359,7 @@ impl Tab {
         client_id: ClientId,
         completion_tx: Option<NotificationEnd>,
         borderless: Option<bool>,
+        size: Option<PercentOrFixed>,
     ) -> Result<()> {
         let err_context =
             || format!("failed to split pane {pid:?} horizontally for client {client_id}");
@@ -2391,8 +2397,12 @@ impl Tab {
                 if let Some(borderless) = borderless {
                     new_terminal.set_borderless(borderless);
                 }
-                self.tiled_panes
-                    .split_pane_horizontally(pid, Box::new(new_terminal), client_id);
+                self.tiled_panes.split_pane_horizontally(
+                    pid,
+                    Box::new(new_terminal),
+                    client_id,
+                    size,
+                );
                 self.set_should_clear_display_before_rendering();
                 self.tiled_panes.focus_pane(pid, client_id);
                 self.swap_layouts.set_is_tiled_damaged();
@@ -2421,6 +2431,7 @@ impl Tab {
         client_id: ClientId,
         completion_tx: Option<NotificationEnd>,
         borderless: Option<bool>,
+        size: Option<PercentOrFixed>,
     ) -> Result<()> {
         let err_context =
             || format!("failed to split pane {pid:?} vertically for client {client_id}");
@@ -2458,8 +2469,12 @@ impl Tab {
                 if let Some(borderless) = borderless {
                     new_terminal.set_borderless(borderless);
                 }
-                self.tiled_panes
-                    .split_pane_vertically(pid, Box::new(new_terminal), client_id);
+                self.tiled_panes.split_pane_vertically(
+                    pid,
+                    Box::new(new_terminal),
+                    client_id,
+                    size,
+                );
                 self.set_should_clear_display_before_rendering();
                 self.tiled_panes.focus_pane(pid, client_id);
                 self.swap_layouts.set_is_tiled_damaged();

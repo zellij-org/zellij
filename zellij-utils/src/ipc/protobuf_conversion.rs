@@ -1178,6 +1178,7 @@ impl From<crate::input::actions::Action>
                 near_current_pane,
                 borderless,
                 tab_id,
+                size: _,
                 ..
             } => ActionType::NewTiledPane(NewTiledPaneAction {
                 direction: direction.map(|d| direction_to_proto_i32(d)),
@@ -2035,6 +2036,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                     near_current_pane: new_tiled_action.near_current_pane,
                     borderless: new_tiled_action.borderless,
                     tab_id: new_tiled_action.tab_id.map(|t| t as usize),
+                    size: None,
                 })
             },
             ActionType::NewInPlacePane(new_in_place_action) => {
@@ -3427,6 +3429,7 @@ impl From<crate::data::NewPanePlacement>
             crate::data::NewPanePlacement::Tiled {
                 direction,
                 borderless: Some(b),
+                ..
             } => PlacementType::TiledWithOptions(TiledPlacement {
                 direction: direction.map(direction_to_proto_i32),
                 borderless: Some(b),
@@ -3434,6 +3437,7 @@ impl From<crate::data::NewPanePlacement>
             crate::data::NewPanePlacement::Tiled {
                 direction,
                 borderless: None,
+                ..
             } => PlacementType::Tiled(direction.map(direction_to_proto_i32).unwrap_or(0)),
             crate::data::NewPanePlacement::Floating(coords) => {
                 PlacementType::Floating(coords.map(|c| c.into()).unwrap_or_default())
@@ -3495,6 +3499,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::NewPanePlace
                 Ok(crate::data::NewPanePlacement::Tiled {
                     direction,
                     borderless: opts.borderless,
+                    size: None,
                 })
             },
             PlacementType::StackedWithOptions(opts) => {
@@ -3520,6 +3525,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::NewPanePlace
                 Ok(crate::data::NewPanePlacement::Tiled {
                     direction,
                     borderless: None,
+                    size: None,
                 })
             },
             PlacementType::Floating(coords) => {

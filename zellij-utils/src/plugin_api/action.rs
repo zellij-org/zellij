@@ -386,6 +386,7 @@ impl TryFrom<ProtobufAction> for Action {
                             near_current_pane,
                             borderless,
                             tab_id: None,
+                            size: None,
                         })
                     } else {
                         Ok(Action::NewTiledPane {
@@ -395,6 +396,7 @@ impl TryFrom<ProtobufAction> for Action {
                             near_current_pane,
                             borderless,
                             tab_id: None,
+                            size: None,
                         })
                     }
                 },
@@ -1372,6 +1374,7 @@ impl TryFrom<Action> for ProtobufAction {
                 pane_name,
                 near_current_pane,
                 borderless,
+                size: _,
                 ..
             } => {
                 let direction = direction.and_then(|direction| {
@@ -2458,6 +2461,7 @@ impl TryFrom<ProtobufNewPanePlacement> for NewPanePlacement {
                 Ok(NewPanePlacement::Tiled {
                     direction,
                     borderless: tiled.borderless,
+                    size: None,
                 })
             },
             Some(PlacementVariant::Floating(floating)) => {
@@ -2500,6 +2504,7 @@ impl TryFrom<NewPanePlacement> for ProtobufNewPanePlacement {
             NewPanePlacement::Tiled {
                 direction,
                 borderless,
+                ..
             } => {
                 let direction = direction.and_then(|d| {
                     let protobuf_direction: ProtobufResizeDirection = d.try_into().ok()?;
