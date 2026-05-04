@@ -295,6 +295,10 @@ fn main() {
         opts.layout = Some(layout_for_new_session.clone());
         commands::start_client(opts);
     } else if let Some(Command::Web(web_opts)) = &opts.command {
+        if let Err(e) = web_opts.validate_socket_args() {
+            eprintln!("{}", e);
+            std::process::exit(2);
+        }
         if web_opts.get_start() {
             let daemonize = web_opts.daemonize;
             commands::start_web_server(
@@ -302,6 +306,7 @@ fn main() {
                 daemonize,
                 web_opts.ip,
                 web_opts.port,
+                web_opts.web_socket.clone(),
                 web_opts.cert.clone(),
                 web_opts.key.clone(),
                 web_opts.server_startup_timeout,
@@ -326,12 +331,21 @@ fn main() {
                 config_options.web_server_port = Some(port);
             }
             let web_server_base_url = web_server_base_url_from_config(config_options);
-            match commands::web_server_status(&web_server_base_url, web_opts.timeout) {
+            let checked = web_opts
+                .web_socket
+                .as_ref()
+                .map(|socket| format!("unix socket: {}", socket.display()))
+                .unwrap_or_else(|| web_server_base_url.clone());
+            match commands::web_server_status(
+                &web_server_base_url,
+                web_opts.web_socket.clone(),
+                web_opts.timeout,
+            ) {
                 Ok(version) => {
                     let version = version.trim();
                     println!(
                         "Web server online with version: {}. Checked: {}",
-                        version, web_server_base_url
+                        version, checked
                     );
                     if version != VERSION {
                         println!("");
@@ -344,7 +358,7 @@ fn main() {
                     }
                 },
                 Err(_e) => {
-                    println!("Web server is offline, checked: {}", web_server_base_url);
+                    println!("Web server is offline, checked: {}", checked);
                 },
             }
         } else if web_opts.create_token {

@@ -244,12 +244,21 @@ pub struct WebCli {
         display_order = 14
     )]
     pub port: Option<u16>,
+    /// The Unix socket path to listen on locally for connections
+    #[clap(
+        long = "socket",
+        value_parser,
+        value_name = "SOCKET",
+        display_order = 15
+    )]
+    #[serde(rename = "socket")]
+    pub web_socket: Option<PathBuf>,
     /// The path to the SSL certificate (required if not listening on 127.0.0.1)
     #[clap(
         long,
         value_parser,
         conflicts_with_all(&["stop", "status", "create-token", "revoke-token", "revoke-all-tokens"]),
-        display_order = 15
+        display_order = 16
     )]
     pub cert: Option<PathBuf>,
     /// The path to the SSL key (required if not listening on 127.0.0.1)
@@ -257,12 +266,59 @@ pub struct WebCli {
         long,
         value_parser,
         conflicts_with_all(&["stop", "status", "create-token", "revoke-token", "revoke-all-tokens"]),
-        display_order = 16
+        display_order = 17
     )]
     pub key: Option<PathBuf>,
 }
 
 impl WebCli {
+    pub fn validate_socket_args(&self) -> Result<(), String> {
+        if self.web_socket.is_none() {
+            return Ok(());
+        }
+
+        let mut incompatible_args = vec![];
+        if self.ip.is_some() {
+            incompatible_args.push("--ip");
+        }
+        if self.port.is_some() {
+            incompatible_args.push("--port");
+        }
+        if self.cert.is_some() {
+            incompatible_args.push("--cert");
+        }
+        if self.key.is_some() {
+            incompatible_args.push("--key");
+        }
+        if self.stop {
+            incompatible_args.push("--stop");
+        }
+        if self.create_token {
+            incompatible_args.push("--create-token");
+        }
+        if self.create_read_only_token {
+            incompatible_args.push("--create-read-only-token");
+        }
+        if self.revoke_token.is_some() {
+            incompatible_args.push("--revoke-token");
+        }
+        if self.revoke_all_tokens {
+            incompatible_args.push("--revoke-all-tokens");
+        }
+        if self.list_tokens {
+            incompatible_args.push("--list-tokens");
+        }
+
+        if incompatible_args.is_empty() {
+            Ok(())
+        } else {
+            Err(format!(
+                "--socket cannot be used with {}",
+                incompatible_args.join(", ")
+            ))
+        }
+    }
+
     pub fn get_start(&self) -> bool {
         self.start
             || !(self.stop

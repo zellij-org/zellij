@@ -11,6 +11,8 @@ mod types;
 mod utils;
 mod websocket_handlers;
 
+#[cfg(unix)]
+use std::path::Path;
 use std::{
     net::{IpAddr, Ipv4Addr},
     path::PathBuf,
@@ -65,6 +67,7 @@ pub fn start_web_client(
     run_daemonized: bool,
     custom_ip: Option<IpAddr>,
     custom_port: Option<u16>,
+    custom_socket: Option<PathBuf>,
     custom_server_cert: Option<PathBuf>,
     custom_server_key: Option<PathBuf>,
     startup_timeout: Option<u64>,
@@ -98,6 +101,46 @@ pub fn start_web_client(
     let web_server_cert = custom_server_cert.or_else(|| config.options.web_server_cert.clone());
     let web_server_key = custom_server_key.or_else(|| config.options.web_server_key.clone());
     let has_https_certificate = web_server_cert.is_some() && web_server_key.is_some();
+
+    if let Some(web_server_socket) = custom_socket {
+        #[cfg(unix)]
+        {
+            let (runtime, listener) = if run_daemonized {
+                daemonize_web_server_unix_socket(web_server_socket.clone())
+            } else {
+                let runtime = Runtime::new().unwrap();
+                let listener = match bind_unix_listener(&web_server_socket) {
+                    Ok(listener) => listener,
+                    Err(e) => {
+                        eprintln!("{}", e);
+                        std::process::exit(2);
+                    },
+                };
+                println!(
+                    "Web Server started on Unix socket {}",
+                    web_server_socket.display()
+                );
+                (runtime, listener)
+            };
+            runtime.block_on(serve_web_client_on_unix_socket(
+                config,
+                config_options,
+                config_file_path,
+                listener,
+                web_server_socket,
+                None,
+                None,
+                web_server_ip,
+                web_server_port,
+            ));
+            return;
+        }
+        #[cfg(not(unix))]
+        {
+            eprintln!("Unix socket web server listening is only supported on Unix.");
+            std::process::exit(2);
+        }
+    }
 
     if let Err(e) = should_use_https(
         web_server_ip,
@@ -174,6 +217,71 @@ pub fn start_web_client(
     ));
 }
 
+fn build_web_client_app(
+    config: Config,
+    config_options: Options,
+    config_file_path: Option<PathBuf>,
+    session_manager: Option<Arc<dyn SessionManager>>,
+    client_os_api_factory: Option<Arc<dyn ClientOsApiFactory>>,
+    is_https: bool,
+) -> Option<Router> {
+    let Some(config_file_path) = config_file_path.or_else(|| Config::default_config_file_path())
+    else {
+        log::error!("Failed to find default config file path");
+        return None;
+    };
+    let connection_table = Arc::new(Mutex::new(ConnectionTable::default()));
+    let session_manager = session_manager.unwrap_or_else(|| Arc::new(RealSessionManager));
+    let client_os_api_factory =
+        client_os_api_factory.unwrap_or_else(|| Arc::new(RealClientOsApiFactory));
+
+    let state = AppState {
+        connection_table: connection_table.clone(),
+        config: Arc::new(Mutex::new(config)),
+        config_options,
+        config_file_path,
+        session_manager,
+        client_os_api_factory,
+        is_https,
+    };
+
+    Some(
+        Router::new()
+            .route("/ws/control", any(ws_handler_control))
+            .route("/ws/terminal", any(ws_handler_terminal))
+            .route("/ws/terminal/{session}", any(ws_handler_terminal))
+            .route("/session", post(create_new_client))
+            .route_layer(middleware::from_fn(auth_middleware))
+            .route("/", get(serve_html))
+            .route("/{session}", get(serve_html))
+            .route("/assets/{*path}", get(get_static_asset))
+            .route("/command/login", post(login_handler))
+            .route("/info/version", get(version_handler))
+            .with_state(state)
+            .layer(axum::middleware::from_fn(move |request, next: axum::middleware::Next| {
+                async move {
+                    let mut response = next.run(request).await;
+                    let headers = response.headers_mut();
+                    headers.insert("X-Content-Type-Options", "nosniff".parse().unwrap());
+                    headers.insert("X-Frame-Options", "DENY".parse().unwrap());
+                    headers
+                        .insert("Referrer-Policy", "strict-origin-when-cross-origin".parse().unwrap());
+                    headers.insert(
+                        "Content-Security-Policy",
+                        "default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' ws: wss:; img-src 'self' data:".parse().unwrap(),
+                    );
+                    if is_https {
+                        headers.insert(
+                            "Strict-Transport-Security",
+                            "max-age=31536000; includeSubDomains".parse().unwrap(),
+                        );
+                    }
+                    response
+                }
+            })),
+    )
+}
+
 pub async fn serve_web_client(
     config: Config,
     config_options: Options,
@@ -185,16 +293,7 @@ pub async fn serve_web_client(
     web_server_ip: IpAddr,
     web_server_port: u16,
 ) {
-    let Some(config_file_path) = config_file_path.or_else(|| Config::default_config_file_path())
-    else {
-        log::error!("Failed to find default config file path");
-        return;
-    };
-    let connection_table = Arc::new(Mutex::new(ConnectionTable::default()));
     let server_handle = Handle::new();
-    let session_manager = session_manager.unwrap_or_else(|| Arc::new(RealSessionManager));
-    let client_os_api_factory =
-        client_os_api_factory.unwrap_or_else(|| Arc::new(RealClientOsApiFactory));
 
     // we use a short version here to bypass macos socket path length limitations
     // since there likely aren't going to be more than a handful of web instances on the same
@@ -207,21 +306,22 @@ pub async fn serve_web_client(
         .collect();
 
     let is_https = rustls_config.is_some();
-    let state = AppState {
-        connection_table: connection_table.clone(),
-        config: Arc::new(Mutex::new(config)),
+    let Some(app) = build_web_client_app(
+        config,
         config_options,
         config_file_path,
         session_manager,
         client_os_api_factory,
         is_https,
+    ) else {
+        return;
     };
 
     tokio::spawn({
         let server_handle = server_handle.clone();
         async move {
             listen_to_web_server_instructions(
-                server_handle,
+                server_handle.into(),
                 &format!("{}", id),
                 web_server_ip,
                 web_server_port,
@@ -229,40 +329,6 @@ pub async fn serve_web_client(
             .await;
         }
     });
-
-    let is_https = state.is_https;
-    let app = Router::new()
-        .route("/ws/control", any(ws_handler_control))
-        .route("/ws/terminal", any(ws_handler_terminal))
-        .route("/ws/terminal/{session}", any(ws_handler_terminal))
-        .route("/session", post(create_new_client))
-        .route_layer(middleware::from_fn(auth_middleware))
-        .route("/", get(serve_html))
-        .route("/{session}", get(serve_html))
-        .route("/assets/{*path}", get(get_static_asset))
-        .route("/command/login", post(login_handler))
-        .route("/info/version", get(version_handler))
-        .with_state(state)
-        .layer(axum::middleware::from_fn(move |request, next: axum::middleware::Next| {
-            async move {
-                let mut response = next.run(request).await;
-                let headers = response.headers_mut();
-                headers.insert("X-Content-Type-Options", "nosniff".parse().unwrap());
-                headers.insert("X-Frame-Options", "DENY".parse().unwrap());
-                headers.insert("Referrer-Policy", "strict-origin-when-cross-origin".parse().unwrap());
-                headers.insert(
-                    "Content-Security-Policy",
-                    "default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' ws: wss:; img-src 'self' data:".parse().unwrap(),
-                );
-                if is_https {
-                    headers.insert(
-                        "Strict-Transport-Security",
-                        "max-age=31536000; includeSubDomains".parse().unwrap(),
-                    );
-                }
-                response
-            }
-        }));
 
     match rustls_config {
         Some(rustls_config) => {
@@ -278,6 +344,72 @@ pub async fn serve_web_client(
                 .await;
         },
     }
+}
+
+#[cfg(unix)]
+pub async fn serve_web_client_on_unix_socket(
+    config: Config,
+    config_options: Options,
+    config_file_path: Option<PathBuf>,
+    listener: tokio::net::UnixListener,
+    socket_path: PathBuf,
+    session_manager: Option<Arc<dyn SessionManager>>,
+    client_os_api_factory: Option<Arc<dyn ClientOsApiFactory>>,
+    web_server_ip: IpAddr,
+    web_server_port: u16,
+) {
+    let Some(app) = build_web_client_app(
+        config,
+        config_options,
+        config_file_path,
+        session_manager,
+        client_os_api_factory,
+        false,
+    ) else {
+        return;
+    };
+
+    let id: String = Uuid::new_v4()
+        .simple()
+        .to_string()
+        .chars()
+        .take(5)
+        .collect();
+    let (shutdown_tx, mut shutdown_rx) = tokio::sync::watch::channel(false);
+
+    tokio::spawn(async move {
+        listen_to_web_server_instructions(
+            shutdown_tx.into(),
+            &format!("{}", id),
+            web_server_ip,
+            web_server_port,
+        )
+        .await;
+    });
+
+    let shutdown_signal = async move {
+        while shutdown_rx.changed().await.is_ok() {
+            if *shutdown_rx.borrow() {
+                break;
+            }
+        }
+    };
+
+    let _ = axum::serve(listener, app.into_make_service())
+        .with_graceful_shutdown(shutdown_signal)
+        .await;
+    let _ = tokio::fs::remove_file(socket_path).await;
+}
+
+#[cfg(unix)]
+fn bind_unix_listener(socket_path: &Path) -> std::io::Result<tokio::net::UnixListener> {
+    if let Some(parent) = socket_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    if socket_path.exists() {
+        std::fs::remove_file(socket_path)?;
+    }
+    tokio::net::UnixListener::bind(socket_path)
 }
 
 #[cfg(unix)]
@@ -367,6 +499,76 @@ fn daemonize_web_server(
                     exit_message_tx,
                     "Web Server started on {} port {}",
                     web_server_ip, web_server_port
+                );
+                let _ = exit_status_tx.write_all(&[0]);
+                listener_and_runtime
+            },
+            Err(e) => {
+                let _ = exit_status_tx.write_all(&[2]);
+                let _ = writeln!(exit_message_tx, "{}", e);
+                std::process::exit(2);
+            },
+        },
+        _ => {
+            eprintln!("Failed to start server");
+            std::process::exit(2);
+        },
+    }
+}
+
+#[cfg(unix)]
+fn daemonize_web_server_unix_socket(
+    web_server_socket: PathBuf,
+) -> (Runtime, tokio::net::UnixListener) {
+    let (mut exit_message_tx, exit_message_rx) = pipe().unwrap();
+    let (mut exit_status_tx, mut exit_status_rx) = pipe().unwrap();
+    let current_umask = umask(Mode::all());
+    umask(current_umask);
+    let web_server_socket_for_child = web_server_socket.clone();
+    let daemonization_outcome = daemonize::Daemonize::new()
+        .working_directory(std::env::current_dir().unwrap())
+        .umask(current_umask.bits() as u32)
+        .privileged_action(
+            move || -> Result<(Runtime, tokio::net::UnixListener), String> {
+                let runtime = Runtime::new().map_err(|e| e.to_string())?;
+                let listener =
+                    bind_unix_listener(&web_server_socket_for_child).map_err(|e| e.to_string())?;
+                Ok((runtime, listener))
+            },
+        )
+        .execute();
+    match daemonization_outcome {
+        Outcome::Parent(Ok(parent)) => {
+            if parent.first_child_exit_code == 0 {
+                let mut buf = [0; 1];
+                match exit_status_rx.read_exact(&mut buf) {
+                    Ok(_) => {
+                        let exit_status = buf.iter().next().copied().unwrap_or(0) as i32;
+                        let mut message = String::new();
+                        let mut reader = BufReader::new(exit_message_rx);
+                        let _ = reader.read_line(&mut message);
+                        if exit_status == 0 {
+                            println!("{}", message.trim());
+                        } else {
+                            eprintln!("{}", message.trim());
+                        }
+                        std::process::exit(exit_status);
+                    },
+                    Err(e) => {
+                        eprintln!("{}", e);
+                        std::process::exit(2);
+                    },
+                }
+            } else {
+                std::process::exit(parent.first_child_exit_code);
+            }
+        },
+        Outcome::Child(Ok(child)) => match child.privileged_action_result {
+            Ok(listener_and_runtime) => {
+                let _ = writeln!(
+                    exit_message_tx,
+                    "Web Server started on Unix socket {}",
+                    web_server_socket.display()
                 );
                 let _ = exit_status_tx.write_all(&[0]);
                 listener_and_runtime
