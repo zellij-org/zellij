@@ -160,20 +160,12 @@ impl SixelGrid {
                     image_pixel_size.1,
                 );
 
-                // here we remove images which this image covers completely to save on system
-                // resources - TODO: also do this with partial covers, eg. if several images
-                // together cover one image
                 for (image_id, pixel_rect) in &self.sixel_image_locations {
-                    if let Some(intersecting_rect) =
-                        pixel_rect.intersecting_rect(&image_size_and_coordinates)
+                    if pixel_rect
+                        .intersecting_rect(&image_size_and_coordinates)
+                        .is_some()
                     {
-                        if intersecting_rect.x == pixel_rect.x
-                            && intersecting_rect.y == pixel_rect.y
-                            && intersecting_rect.height == pixel_rect.height
-                            && intersecting_rect.width == pixel_rect.width
-                        {
-                            self.image_ids_to_reap.push(*image_id);
-                        }
+                        self.image_ids_to_reap.push(*image_id);
                     }
                 }
                 for image_id in &self.image_ids_to_reap {
@@ -270,21 +262,9 @@ impl SixelGrid {
             .sixel_images
             .insert(sixel_image_id, (sixel_image, HashMap::new()));
     }
-    pub fn remove_pixels_from_image(&mut self, image_id: usize, pixel_rect: PixelRect) {
-        if let Some((sixel_image, sixel_image_cache)) = self
-            .sixel_image_store
-            .borrow_mut()
-            .sixel_images
-            .get_mut(&image_id)
-        {
-            sixel_image.cut_out(
-                pixel_rect.x,
-                pixel_rect.y as usize,
-                pixel_rect.width,
-                pixel_rect.height,
-            );
-            sixel_image_cache.clear(); // TODO: more intelligent cache clearing
-        }
+    pub fn remove_pixels_from_image(&mut self, image_id: usize, _pixel_rect: PixelRect) {
+        self.sixel_image_locations.remove(&image_id);
+        self.image_ids_to_reap.push(image_id);
     }
     pub fn reap_images(&mut self, ids_to_reap: Vec<usize>) {
         for id in ids_to_reap {
