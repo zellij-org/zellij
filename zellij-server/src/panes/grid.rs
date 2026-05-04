@@ -29,6 +29,12 @@ use zellij_utils::{
 const TABSTOP_WIDTH: usize = 8; // TODO: is this always right?
 pub const MAX_TITLE_STACK_SIZE: usize = 1000;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PaneProgress {
+    Determinate(u8),
+    Indeterminate,
+}
+
 /// Rewrites OSC 99 metadata for multiplexer forwarding:
 ///
 /// 1. Namespaces the `i=` value with a pane ID prefix and flags so responses
@@ -627,6 +633,7 @@ pub struct Grid {
     pub pending_messages_to_pty: Vec<Vec<u8>>,
     pub selection: Selection,
     pub title: Option<String>,
+    pane_progress: Option<PaneProgress>,
     pub is_scrolled: bool,
     pub link_handler: Rc<RefCell<LinkHandler>>,
     pub ring_bell: bool,
@@ -698,6 +705,13 @@ impl Grid {
             self.pane_default_fg.map(rgb_to_hex_string),
             self.pane_default_bg.map(rgb_to_hex_string),
         )
+    }
+    pub fn progress_badge(&self) -> Option<String> {
+        match self.pane_progress {
+            Some(PaneProgress::Determinate(progress)) => Some(format!("[{}%]", progress)),
+            Some(PaneProgress::Indeterminate) => Some("[~]".to_owned()),
+            None => None,
+        }
     }
 }
 
@@ -955,6 +969,7 @@ impl Grid {
             selection: Default::default(),
             title_stack: vec![],
             title: None,
+            pane_progress: None,
             changed_colors: None,
             is_scrolled: false,
             link_handler,
@@ -2277,6 +2292,7 @@ impl Grid {
         self.focus_event_tracking = false;
         self.cursor_is_hidden = false;
         self.supports_kitty_keyboard_protocol = false;
+        self.pane_progress = None;
         self.set_scroll_region_to_viewport_size();
         self.pane_default_fg = None;
         self.pane_default_bg = None;
@@ -3543,6 +3559,28 @@ impl Perform for Grid {
                 if let Some(raw) = params.get(1) {
                     if let Some(path) = parse_osc7_path(raw) {
                         self.pending_osc7_cwd = Some(path);
+                    }
+                }
+            },
+
+            b"9" => {
+                if params.len() >= 3 && params[1] == b"4" {
+                    match params.get(2).and_then(|state| parse_number(state)) {
+                        Some(0) => {
+                            self.pane_progress = None;
+                        },
+                        Some(1) => {
+                            self.pane_progress = params
+                                .get(3)
+                                .and_then(|progress| parse_number(progress))
+                                .map(PaneProgress::Determinate);
+                        },
+                        Some(3) => {
+                            self.pane_progress = Some(PaneProgress::Indeterminate);
+                        },
+                        _ => {
+                            self.pane_progress = None;
+                        },
                     }
                 }
             },

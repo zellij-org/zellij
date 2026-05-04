@@ -426,10 +426,21 @@ impl Pane for TerminalPane {
             .and_then(|(_color, text)| text.as_ref())
         {
             text_color_override.into()
-        } else if self.has_bell_notification {
-            format!("{} [!]", normal_title)
         } else {
-            normal_title
+            let mut pane_title = normal_title;
+            if self.has_bell_notification {
+                if !pane_title.is_empty() {
+                    pane_title.push(' ');
+                }
+                pane_title.push_str("[!]");
+            }
+            if let Some(progress_badge) = self.grid.progress_badge() {
+                if !pane_title.is_empty() {
+                    pane_title.push(' ');
+                }
+                pane_title.push_str(&progress_badge);
+            }
+            pane_title
         };
 
         let frame_geom = self.current_geom();
