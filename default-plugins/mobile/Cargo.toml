@@ -1,0 +1,10 @@
+[package]
+name = "mobile"
+version = "0.1.0"
+authors = ["Aram Drevekenin <aram@poor.dev>"]
+edition.workspace = true
+
+[dependencies]
+ansi_term = "0.12.1"
+zellij-tile = { path = "../../zellij-tile" }
+unicode-width = "0.1.10"

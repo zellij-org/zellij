@@ -67,7 +67,7 @@ use zellij_utils::{
         config::{watch_config_file_changes, watch_layout_dir_changes, Config},
         keybinds::Keybinds,
         layout::{FloatingPaneLayout, Layout, PluginAlias, Run, RunPluginOrAlias},
-        options::Options,
+        options::{MobileModeDefault, Options},
         plugins::PluginAliases,
     },
     ipc::{ClientAttributes, ExitReason, ServerToClientMsg},
@@ -1080,6 +1080,40 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .senders
                     .send_to_plugin(PluginInstruction::AddClient(client_id))
                     .unwrap();
+
+                // Mirror the AttachClient mobile-mode auto-route for the
+                // first-client-of-a-new-session path. The decision is
+                // one-shot at startup; subsequent rotations resize the
+                // mobile tab via the per-tab sizing path but do not
+                // promote/demote the client.
+                let mobile_mode_default = runtime_config_options
+                    .mobile_mode_default
+                    .unwrap_or_default();
+                let mobile_threshold_cols = runtime_config_options
+                    .mobile_threshold_cols
+                    .unwrap_or(60);
+                let mobile_threshold_rows = runtime_config_options
+                    .mobile_threshold_rows
+                    .unwrap_or(30);
+                let viewport = client_attributes.size;
+                let should_enter_mobile = match mobile_mode_default {
+                    MobileModeDefault::Always => true,
+                    MobileModeDefault::Never => false,
+                    MobileModeDefault::Auto => {
+                        viewport.cols <= mobile_threshold_cols as usize
+                            && viewport.rows <= mobile_threshold_rows as usize
+                    },
+                };
+                if should_enter_mobile {
+                    session_data
+                        .read()
+                        .unwrap()
+                        .as_ref()
+                        .unwrap()
+                        .senders
+                        .send_to_screen(ScreenInstruction::EnterMobileMode(client_id, None))
+                        .unwrap();
+                }
             },
             ServerInstruction::AttachClient(
                 cli_assets,
@@ -1149,6 +1183,37 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                         None,
                     ))
                     .unwrap();
+
+                // Decide whether the attaching client should be auto-routed
+                // into mobile mode based on `mobile_mode_default` and the
+                // viewport size thresholds. The `Auto` decision is made
+                // once at attach time (rotating the phone afterwards
+                // resizes the existing mobile tab via the per-tab sizing
+                // path but does not toggle mobile mode).
+                let mobile_mode_default = runtime_config_options
+                    .mobile_mode_default
+                    .unwrap_or_default();
+                let mobile_threshold_cols = runtime_config_options
+                    .mobile_threshold_cols
+                    .unwrap_or(60);
+                let mobile_threshold_rows = runtime_config_options
+                    .mobile_threshold_rows
+                    .unwrap_or(30);
+                let viewport = client_attributes.size;
+                let should_enter_mobile = match mobile_mode_default {
+                    MobileModeDefault::Always => true,
+                    MobileModeDefault::Never => false,
+                    MobileModeDefault::Auto => {
+                        viewport.cols <= mobile_threshold_cols as usize
+                            && viewport.rows <= mobile_threshold_rows as usize
+                    },
+                };
+                if should_enter_mobile {
+                    session_data
+                        .senders
+                        .send_to_screen(ScreenInstruction::EnterMobileMode(client_id, None))
+                        .unwrap();
+                }
             },
             ServerInstruction::AttachWatcherClient(client_id, terminal_size, is_web_client) => {
                 // the client_id was inserted into clients upon ipc tunnel initialization

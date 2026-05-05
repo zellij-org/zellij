@@ -871,6 +871,14 @@ pub enum ScreenInstruction {
     PreviousSwapLayoutWithTabId(usize, Option<NotificationEnd>),
     NextSwapLayoutWithTabId(usize, Option<NotificationEnd>),
     MoveTabWithTabId(usize, Direction, Option<NotificationEnd>),
+    /// Promote `client_id` into a per-client mobile tab. Idempotent: if
+    /// the client is already in mobile mode, it is left alone.
+    EnterMobileMode(ClientId, Option<NotificationEnd>),
+    /// Switch `client_id` back out of its mobile tab to the previously
+    /// active tab; tear down the now-empty mobile tab.
+    ExitMobileMode(ClientId, Option<NotificationEnd>),
+    /// Flip mobile mode for `client_id` based on its current state.
+    ToggleMobileMode(ClientId, Option<NotificationEnd>),
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -1228,6 +1236,9 @@ impl From<&ScreenInstruction> for ScreenContext {
                 ScreenContext::NextSwapLayoutWithTabId
             },
             ScreenInstruction::MoveTabWithTabId(..) => ScreenContext::MoveTabWithTabId,
+            ScreenInstruction::EnterMobileMode(..) => ScreenContext::EnterMobileMode,
+            ScreenInstruction::ExitMobileMode(..) => ScreenContext::ExitMobileMode,
+            ScreenInstruction::ToggleMobileMode(..) => ScreenContext::ToggleMobileMode,
         }
     }
 }
@@ -1465,6 +1476,17 @@ pub(crate) struct Screen {
     /// Resolved styling to apply when `host_terminal_theme_mode == Light`.
     /// `None` disables auto-switch. Refreshed on each reconfigure.
     host_theme_light_styling: Option<Styling>,
+    /// Per-client mobile tab tracking. Maps each client that is currently
+    /// in mobile mode to its dedicated mobile tab id. Mobile tabs are
+    /// `visible_to = Some({client_id})` so other clients never see them,
+    /// and they are torn down when the client exits mobile mode or
+    /// detaches.
+    mobile_tabs: HashMap<ClientId, usize>,
+    /// The tab id each client was on immediately before being routed
+    /// into mobile mode. Used by `exit_mobile_mode` to send the client
+    /// back to where it came from. Falls back to the first visible
+    /// non-mobile tab if the prior tab has since been closed.
+    mobile_previous_tab_ids: HashMap<ClientId, usize>,
 }
 
 /// A pending forward waiting to be dispatched once the current in-flight
@@ -1619,6 +1641,8 @@ impl Screen {
             host_terminal_theme_mode: None,
             host_theme_dark_styling: None,
             host_theme_light_styling: None,
+            mobile_tabs: HashMap::new(),
+            mobile_previous_tab_ids: HashMap::new(),
         }
     }
 
@@ -1675,6 +1699,157 @@ impl Screen {
                 Some(set) => set.contains(&client_id),
             },
             None => false,
+        }
+    }
+
+    /// Returns the URL of the bundled mobile plugin. Always
+    /// `zellij:mobile`; the alias is resolved to the bundled wasm via
+    /// `default-plugins/mobile`. Future revisions may make this
+    /// configurable.
+    fn mobile_plugin_url() -> &'static str {
+        "zellij:mobile"
+    }
+
+    /// Returns true if `client_id` is currently in mobile mode (i.e.
+    /// has a tracked mobile tab in `mobile_tabs`).
+    pub fn is_in_mobile_mode(&self, client_id: ClientId) -> bool {
+        self.mobile_tabs.contains_key(&client_id)
+    }
+
+    /// Promote `client_id` into a fresh per-client mobile tab. The tab
+    /// is created with `visible_to = Some({client_id})` and contains a
+    /// single plugin pane pointing at `zellij:mobile`. The previously
+    /// active tab (if any) is recorded in `mobile_previous_tab_ids` so
+    /// `exit_mobile_mode` can return there. Idempotent.
+    pub fn enter_mobile_mode(&mut self, client_id: ClientId) -> Result<()> {
+        let err_context = || format!("failed to enter mobile mode for client {client_id}");
+
+        if self.mobile_tabs.contains_key(&client_id) {
+            // Already in mobile mode — nothing to do.
+            return Ok(());
+        }
+
+        // Stash the prior active tab so `exit_mobile_mode` can switch
+        // back to it. Falls back to the first visible non-mobile tab on
+        // exit if this id is no longer valid.
+        if let Some(prior) = self.active_tab_ids.get(&client_id).copied() {
+            self.mobile_previous_tab_ids.insert(client_id, prior);
+        }
+
+        // Build a single-plugin layout that the existing layout-apply
+        // pipeline will populate with a `zellij:mobile` plugin pane.
+        let mut tab_layout = TiledPaneLayout::default();
+        let run_plugin = RunPluginOrAlias::from_url(Self::mobile_plugin_url(), &None, None, None)
+            .map_err(|e| anyhow!("invalid mobile plugin url: {e}"))
+            .with_context(err_context)?;
+        tab_layout.run = Some(Run::Plugin(run_plugin));
+
+        // Allocate the new tab id, create the empty tab, and tag it as
+        // visible only to this client before any other thread has a
+        // chance to observe it.
+        let tab_id = self.get_new_tab_id();
+        self.new_tab(tab_id, (vec![], vec![]), Some("Mobile".to_string()), Some(client_id))
+            .with_context(err_context)?;
+        if let Some(tab) = self.tabs.get_mut(&tab_id) {
+            let mut set = HashSet::new();
+            set.insert(client_id);
+            tab.visible_to = Some(set);
+        }
+        self.mobile_tabs.insert(client_id, tab_id);
+
+        // Look up whether this client is a web client so the plugin
+        // pipeline routes the right capabilities.
+        let is_web_client = self
+            .connected_clients
+            .borrow()
+            .get(&client_id)
+            .copied()
+            .unwrap_or(false);
+
+        // Hand off to the plugin pipeline to fill the tab with the
+        // mobile plugin pane. `should_change_focus_to_new_tab=true`
+        // makes the existing ApplyLayout plumbing switch the client
+        // onto the new tab once the plugin is loaded.
+        self.bus
+            .senders
+            .send_to_plugin(PluginInstruction::NewTab(
+                None,
+                None,
+                Some(tab_layout),
+                vec![],
+                tab_id,
+                None,
+                false,
+                true,
+                (client_id, is_web_client),
+                None,
+            ))
+            .with_context(err_context)?;
+
+        Ok(())
+    }
+
+    /// Switch `client_id` out of mobile mode and tear down its mobile
+    /// tab. Falls back to the first visible non-mobile tab if the
+    /// previously active tab no longer exists. No-op if the client is
+    /// not currently in mobile mode.
+    pub fn exit_mobile_mode(&mut self, client_id: ClientId) -> Result<()> {
+        let err_context = || format!("failed to exit mobile mode for client {client_id}");
+
+        let mobile_tab_id = match self.mobile_tabs.remove(&client_id) {
+            Some(id) => id,
+            None => return Ok(()),
+        };
+
+        // Resolve the destination tab. Prefer the recorded prior tab;
+        // if it's gone, pick the lowest-position tab visible to this
+        // client that is not someone else's mobile tab.
+        let prior_tab_id = self.mobile_previous_tab_ids.remove(&client_id);
+        let destination = prior_tab_id
+            .filter(|id| self.tabs.contains_key(id) && self.tab_visible_to(client_id, *id))
+            .or_else(|| {
+                let mobile_tab_ids: HashSet<usize> =
+                    self.mobile_tabs.values().copied().collect();
+                self.tabs
+                    .values()
+                    .filter(|t| {
+                        t.id != mobile_tab_id
+                            && !mobile_tab_ids.contains(&t.id)
+                            && match &t.visible_to {
+                                None => true,
+                                Some(set) => set.contains(&client_id),
+                            }
+                    })
+                    .min_by_key(|t| t.position)
+                    .map(|t| t.id)
+            });
+
+        // Switch the client onto the destination tab (if any) before
+        // closing the mobile tab so close_tab_by_id sees a sensible
+        // state.
+        if let Some(dest_id) = destination {
+            if let Some(dest_pos) = self.get_tab_position_by_id(dest_id) {
+                self.switch_active_tab(dest_pos, None, true, client_id)
+                    .with_context(err_context)?;
+            }
+        }
+
+        // Tear down the mobile tab. close_tab_by_id handles pane
+        // closure, position re-numbering, and session-state reporting.
+        if self.tabs.contains_key(&mobile_tab_id) {
+            self.close_tab_by_id(mobile_tab_id)
+                .with_context(err_context)?;
+        }
+
+        Ok(())
+    }
+
+    /// Flip the client's mobile-mode state.
+    pub fn toggle_mobile_mode(&mut self, client_id: ClientId) -> Result<()> {
+        if self.is_in_mobile_mode(client_id) {
+            self.exit_mobile_mode(client_id)
+        } else {
+            self.enter_mobile_mode(client_id)
         }
     }
 
@@ -2580,6 +2755,39 @@ impl Screen {
                 }
             }
 
+            // When at least one plugin is subscribed to
+            // `PaneRenderReportWithAnsi`, walk every tab and ensure each
+            // pane's ANSI viewport is captured for every connected
+            // (non-watcher) client. Without this pass, tabs that
+            // returned early from `tab.render` (no connected clients —
+            // e.g. the tab a mobile-routed client used to be on) would
+            // never contribute ANSI content, and any plugin embedding
+            // their viewports would see empty data. Idempotent: re-adds
+            // for tabs that rendered normally are harmless.
+            if self.plugins_need_ansi_pane_contents {
+                let all_regular_clients: Vec<ClientId> = self
+                    .connected_clients
+                    .borrow()
+                    .keys()
+                    .copied()
+                    .filter(|id| !self.watcher_clients.contains_key(id))
+                    .collect();
+                if !all_regular_clients.is_empty() {
+                    for tab in self.tabs.values() {
+                        for pane_id in tab.get_static_and_floating_pane_ids() {
+                            if let Some(pane) = tab.get_pane_with_id(pane_id) {
+                                let contents = pane.pane_contents_with_ansi(None, false, None);
+                                output.add_pane_contents_with_ansi(
+                                    &all_regular_clients,
+                                    pane_id,
+                                    contents,
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+
             let pane_render_report = output.drain_pane_render_report();
 
             // Subscriber delivery — gated behind is_empty() for zero overhead
@@ -3215,6 +3423,12 @@ impl Screen {
                 self.followed_client_id = Some(client_id); // Keep the disconnected client's ID
             }
         }
+
+        // Detach also drops any mobile-mode bookkeeping for this client
+        // — the mobile tab itself is collected via the `visible_to`
+        // emptiness check below.
+        self.mobile_tabs.remove(&client_id);
+        self.mobile_previous_tab_ids.remove(&client_id);
 
         // Drop the detaching client from every tab's per-tab visibility
         // set. Tabs whose `visible_to` becomes `Some({})` are collected
@@ -10055,6 +10269,18 @@ pub(crate) fn screen_thread_main(
                         _completion_tx,
                     ));
                 }
+            },
+            ScreenInstruction::EnterMobileMode(client_id, _completion_tx) => {
+                screen.enter_mobile_mode(client_id)?;
+                screen.render(None)?;
+            },
+            ScreenInstruction::ExitMobileMode(client_id, _completion_tx) => {
+                screen.exit_mobile_mode(client_id)?;
+                screen.render(None)?;
+            },
+            ScreenInstruction::ToggleMobileMode(client_id, _completion_tx) => {
+                screen.toggle_mobile_mode(client_id)?;
+                screen.render(None)?;
             },
         }
     }

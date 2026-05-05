@@ -462,6 +462,9 @@ pub enum ScreenContext {
     PluginSubscribedToAnsiPaneContents,
     UpdateBackgroundPluginSubscriptions,
     BroadcastModeUpdate,
+    EnterMobileMode,
+    ExitMobileMode,
+    ToggleMobileMode,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.
