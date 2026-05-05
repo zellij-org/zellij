@@ -301,4 +301,19 @@ web_sharing "disabled"
 // typically work best. Set to 0 to use the number of (physical) CPU cores.
 // Note: This only applies to web clients at the moment.
 // client_async_worker_tasks 4
-
+ 
+// When attached clients land in the mobile UI plugin.
+// Options:
+//   - "auto" (Default — uses mobile_threshold_cols/rows)
+//   - "always"
+//   - "never"
+// 
+// mobile_mode_default "auto"
+ 
+// Column threshold for mobile_mode_default = auto.
+// Default: 60
+// mobile_threshold_cols 60
+ 
+// Row threshold for mobile_mode_default = auto.
+// Default: 30
+// mobile_threshold_rows 30

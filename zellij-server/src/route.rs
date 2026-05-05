@@ -1252,6 +1252,15 @@ pub(crate) fn route_action(
                 .with_context(err_context)?;
         },
         Action::ToggleMouseMode => {}, // Handled client side
+        Action::ToggleMobileMode => {
+            // Mobile-tab creation/destruction is not yet wired. For now,
+            // log that the action was received so the keybind round-trip
+            // can be verified end-to-end.
+            log::info!(
+                "ToggleMobileMode received from client {} (no-op: mobile-tab flow not yet wired)",
+                client_id
+            );
+        },
         Action::PreviousSwapLayout => {
             senders
                 .send_to_screen(ScreenInstruction::PreviousSwapLayout(

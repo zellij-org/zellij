@@ -1664,6 +1664,36 @@ impl Screen {
         self.tabs.get(&id).map(|t| t.position)
     }
 
+    /// Returns true if `tab_id` is visible to `client_id`. Tabs with
+    /// `visible_to == None` are public (visible to everyone). Tabs with
+    /// `visible_to == Some(set)` are visible only to clients in `set`.
+    /// Missing tabs return false.
+    pub fn tab_visible_to(&self, client_id: ClientId, tab_id: usize) -> bool {
+        match self.tabs.get(&tab_id) {
+            Some(tab) => match &tab.visible_to {
+                None => true,
+                Some(set) => set.contains(&client_id),
+            },
+            None => false,
+        }
+    }
+
+    /// Collects every tab visible to `client_id`, sorted by display
+    /// position. Used by tab navigation to skip hidden tabs.
+    fn visible_tab_positions_for_client(&self, client_id: ClientId) -> Vec<usize> {
+        let mut positions: Vec<usize> = self
+            .tabs
+            .values()
+            .filter(|t| match &t.visible_to {
+                None => true,
+                Some(set) => set.contains(&client_id),
+            })
+            .map(|t| t.position)
+            .collect();
+        positions.sort_unstable();
+        positions
+    }
+
     fn move_clients_from_closed_tab(
         &mut self,
         client_ids_and_mode_infos: Vec<(ClientId, ModeInfo)>,
@@ -1891,7 +1921,12 @@ impl Screen {
     /// A helper function to switch to a new tab with specified name. Return true if tab [name] has
     /// been created, else false.
     fn switch_active_tab_name(&mut self, name: String, client_id: ClientId) -> Result<bool> {
-        match self.tabs.values().find(|t| t.name == name) {
+        // Skip tabs whose visibility set excludes this client.
+        match self
+            .tabs
+            .values()
+            .find(|t| t.name == name && self.tab_visible_to(client_id, t.id))
+        {
             Some(new_tab) => {
                 self.switch_active_tab(new_tab.position, None, true, client_id)?;
                 Ok(true)
@@ -1919,7 +1954,16 @@ impl Screen {
             match self.get_active_tab(client_id) {
                 Ok(active_tab) => {
                     let active_tab_pos = active_tab.position;
-                    let new_tab_pos = (active_tab_pos + 1) % self.tabs.len();
+                    // Visibility-aware next: cycle through positions that
+                    // are visible to this client only.
+                    let visible = self.visible_tab_positions_for_client(client_id);
+                    if visible.is_empty() {
+                        return Ok(());
+                    }
+                    let new_tab_pos = match visible.iter().position(|p| *p > active_tab_pos) {
+                        Some(idx) => visible[idx],
+                        None => visible[0],
+                    };
                     return self.switch_active_tab(
                         new_tab_pos,
                         should_change_pane_focus,
@@ -1952,10 +1996,15 @@ impl Screen {
             match self.get_active_tab(client_id) {
                 Ok(active_tab) => {
                     let active_tab_pos = active_tab.position;
-                    let new_tab_pos = if active_tab_pos == 0 {
-                        self.tabs.len() - 1
-                    } else {
-                        active_tab_pos - 1
+                    // Visibility-aware prev: cycle backwards through
+                    // positions visible to this client.
+                    let visible = self.visible_tab_positions_for_client(client_id);
+                    if visible.is_empty() {
+                        return Ok(());
+                    }
+                    let new_tab_pos = match visible.iter().rev().find(|p| **p < active_tab_pos) {
+                        Some(p) => *p,
+                        None => *visible.last().unwrap(),
                     };
 
                     return self.switch_active_tab(
@@ -1972,7 +2021,14 @@ impl Screen {
     }
 
     pub fn go_to_tab(&mut self, tab_index: usize, client_id: ClientId) -> Result<()> {
-        self.switch_active_tab(tab_index.saturating_sub(1), None, true, client_id)
+        let target_pos = tab_index.saturating_sub(1);
+        // Refuse to navigate to a tab the client cannot see.
+        if let Some(target_id) = self.get_tab_id_at_position(target_pos) {
+            if !self.tab_visible_to(client_id, target_id) {
+                return Ok(());
+            }
+        }
+        self.switch_active_tab(target_pos, None, true, client_id)
     }
 
     pub fn go_to_tab_name(&mut self, name: String, client_id: ClientId) -> Result<bool> {
@@ -3160,10 +3216,21 @@ impl Screen {
             }
         }
 
-        for (_, tab) in self.tabs.iter_mut() {
+        // Drop the detaching client from every tab's per-tab visibility
+        // set. Tabs whose `visible_to` becomes `Some({})` are collected
+        // for garbage collection — this is how per-client tabs (e.g. a
+        // tab visible only to a single client) are destroyed on detach.
+        let mut tabs_to_garbage_collect: Vec<usize> = vec![];
+        for (tab_id, tab) in self.tabs.iter_mut() {
             tab.remove_client(client_id);
             if tab.has_no_connected_clients() {
                 tab.visible(false).with_context(err_context)?;
+            }
+            if let Some(set) = tab.visible_to.as_mut() {
+                set.remove(&client_id);
+                if set.is_empty() {
+                    tabs_to_garbage_collect.push(*tab_id);
+                }
             }
         }
         let previously_active_tab_id = self.active_tab_ids.get(&client_id).copied();
@@ -3182,6 +3249,18 @@ impl Screen {
         if let Some(prev_tab_id) = previously_active_tab_id {
             self.recompute_tab_size(prev_tab_id)
                 .with_context(err_context)?;
+        }
+        // Garbage-collect any tabs whose visibility set was emptied by
+        // this detach. close_tab_by_id rewrites positions, recomputes
+        // sizes, and reports session state — so this happens before the
+        // final log_and_report_session_state call.
+        for tab_id in tabs_to_garbage_collect {
+            // The previously-active tab for the detaching client may
+            // already have been removed by close_tab_by_id; tolerate the
+            // not-found case.
+            if self.tabs.contains_key(&tab_id) {
+                self.close_tab_by_id(tab_id).with_context(err_context)?;
+            }
         }
         self.log_and_report_session_state()
             .with_context(err_context)
@@ -3263,6 +3342,14 @@ impl Screen {
         for (client_id, active_tab_index) in self.active_tab_ids.iter() {
             let mut plugin_tab_updates = vec![];
             for tab in self.tabs.values() {
+                // A tab whose `visible_to` excludes this client is
+                // omitted from the client's per-plugin TabUpdate entirely
+                // so the tab-bar plugin never learns of it.
+                if let Some(set) = &tab.visible_to {
+                    if !set.contains(client_id) {
+                        continue;
+                    }
+                }
                 let other_focused_clients: Vec<ClientId> = if self.session_is_mirrored {
                     vec![]
                 } else {

@@ -163,6 +163,12 @@ pub(crate) struct Tab {
     /// When the tab has no viewers it retains its most recent value (the
     /// recompute path simply skips empty tabs).
     pub size: Size,
+    /// Per-tab visibility filter. `None` means the tab is public (visible to
+    /// every client — the default). `Some(set)` restricts visibility to the
+    /// listed clients; navigation, render, and `TabUpdate` filter the tab
+    /// out for any client not in the set. A `Some(set)` that becomes empty
+    /// triggers tab garbage-collection (see `Screen::remove_client`).
+    pub visible_to: Option<HashSet<ClientId>>,
     tiled_panes: TiledPanes,
     floating_panes: FloatingPanes,
     suppressed_panes: SuppressedPanes,
@@ -825,6 +831,7 @@ impl Tab {
             name: name.clone(),
             prev_name: name,
             size: initial_size,
+            visible_to: None,
             max_panes,
             viewport,
             display_area,

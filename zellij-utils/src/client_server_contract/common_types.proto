@@ -277,6 +277,7 @@ message Action {
     SetDarkThemeAction set_dark_theme = 137;
     SetLightThemeAction set_light_theme = 138;
     ToggleThemeAction toggle_theme = 139;
+    ToggleMobileModeAction toggle_mobile_mode = 140;
   }
 }
 
@@ -332,6 +333,10 @@ message CopyAction {}
 message ConfirmAction {}
 message DenyAction {}
 message ToggleMouseModeAction {}
+// Runtime toggle for mobile mode. Body intentionally empty: the action
+// flips the calling client between its current tab and a per-client
+// mobile tab, so no payload is required.
+message ToggleMobileModeAction {}
 message PreviousSwapLayoutAction {}
 message NextSwapLayoutAction {}
 message TabLayoutInfo {
@@ -1174,6 +1179,9 @@ message Options {
   optional bool mouse_click_through = 45;
   optional string theme_dark = 46;
   optional string theme_light = 47;
+  optional MobileModeDefault mobile_mode_default = 48;
+  optional uint32 mobile_threshold_cols = 49;
+  optional uint32 mobile_threshold_rows = 50;
 }
 
 enum OnForceClose {
@@ -1199,6 +1207,13 @@ enum WebSharing {
   WEB_SHARING_ON = 1;
   WEB_SHARING_OFF = 2;
   WEB_SHARING_DISABLED = 3;
+}
+
+enum MobileModeDefault {
+  MOBILE_MODE_DEFAULT_UNSPECIFIED = 0;
+  MOBILE_MODE_DEFAULT_AUTO = 1;
+  MOBILE_MODE_DEFAULT_ALWAYS = 2;
+  MOBILE_MODE_DEFAULT_NEVER = 3;
 }
 
 // Pane-targeting action messages

@@ -9469,7 +9469,7 @@ fn empty_reply_with_paused_pane_drains_buffer_without_phantom_write() {
     );
 }
 
-// --- per-tab viewport sizing (Stage 1 of mobile_view_plan.md) -------------
+// --- per-tab viewport sizing -----------------------------------------------
 
 // All five tests below exercise `Screen::recompute_tab_size`, which the
 // production code invokes from `ScreenInstruction::AddClient`,

@@ -16,6 +16,40 @@ pub enum OnForceClose {
     Detach,
 }
 
+/// Controls when a newly-attaching client lands in the mobile UI plugin.
+/// `Auto` (default) — promote when the attached viewport is at or below
+/// `mobile_threshold_cols` × `mobile_threshold_rows`.
+/// `Always` — every client lands in mobile mode regardless of size.
+/// `Never` — clients never auto-route to mobile mode (the
+/// `Action::ToggleMobileMode` runtime toggle still works).
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Deserialize, Serialize, ArgEnum)]
+pub enum MobileModeDefault {
+    #[serde(alias = "auto")]
+    Auto,
+    #[serde(alias = "always")]
+    Always,
+    #[serde(alias = "never")]
+    Never,
+}
+
+impl Default for MobileModeDefault {
+    fn default() -> Self {
+        Self::Auto
+    }
+}
+
+impl FromStr for MobileModeDefault {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "Auto" | "auto" => Ok(Self::Auto),
+            "Always" | "always" => Ok(Self::Always),
+            "Never" | "never" => Ok(Self::Never),
+            _ => Err(format!("No such mobile_mode_default: {}", s)),
+        }
+    }
+}
+
 impl Default for OnForceClose {
     fn default() -> Self {
         Self::Detach
@@ -278,6 +312,27 @@ pub struct Options {
     /// NOTE: This only applies to web clients at the moment.
     #[clap(long)]
     pub client_async_worker_tasks: Option<usize>,
+
+    /// When a newly-attaching client should land in the mobile UI plugin.
+    /// One of `auto` (default), `always`, `never`. `Auto` consults the
+    /// `mobile_threshold_cols` / `mobile_threshold_rows` thresholds.
+    #[clap(long, arg_enum, hide_possible_values = true, value_parser)]
+    #[serde(default)]
+    pub mobile_mode_default: Option<MobileModeDefault>,
+
+    /// Column threshold for `mobile_mode_default = auto`. A client whose
+    /// viewport has at most this many columns is promoted to mobile mode.
+    /// Default: 60.
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub mobile_threshold_cols: Option<u16>,
+
+    /// Row threshold for `mobile_mode_default = auto`. A client whose
+    /// viewport has at most this many rows is promoted to mobile mode.
+    /// Default: 30.
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub mobile_threshold_rows: Option<u16>,
 }
 
 #[derive(ArgEnum, Deserialize, Serialize, Debug, Clone, Copy, PartialEq)]
@@ -384,6 +439,9 @@ impl Options {
         let client_async_worker_tasks = other
             .client_async_worker_tasks
             .or(self.client_async_worker_tasks);
+        let mobile_mode_default = other.mobile_mode_default.or(self.mobile_mode_default);
+        let mobile_threshold_cols = other.mobile_threshold_cols.or(self.mobile_threshold_cols);
+        let mobile_threshold_rows = other.mobile_threshold_rows.or(self.mobile_threshold_rows);
 
         Options {
             simplified_ui,
@@ -433,6 +491,9 @@ impl Options {
             enforce_https_for_localhost,
             post_command_discovery_hook,
             client_async_worker_tasks,
+            mobile_mode_default,
+            mobile_threshold_cols,
+            mobile_threshold_rows,
         }
     }
 
@@ -519,6 +580,9 @@ impl Options {
         let client_async_worker_tasks = other
             .client_async_worker_tasks
             .or(self.client_async_worker_tasks);
+        let mobile_mode_default = other.mobile_mode_default.or(self.mobile_mode_default);
+        let mobile_threshold_cols = other.mobile_threshold_cols.or(self.mobile_threshold_cols);
+        let mobile_threshold_rows = other.mobile_threshold_rows.or(self.mobile_threshold_rows);
 
         Options {
             simplified_ui,
@@ -568,6 +632,9 @@ impl Options {
             enforce_https_for_localhost,
             post_command_discovery_hook,
             client_async_worker_tasks,
+            mobile_mode_default,
+            mobile_threshold_cols,
+            mobile_threshold_rows,
         }
     }
 

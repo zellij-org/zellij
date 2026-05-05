@@ -81,6 +81,7 @@ macro_rules! parse_kdl_action_arguments {
                 "Confirm" => Ok(Action::Confirm),
                 "Deny" => Ok(Action::Deny),
                 "ToggleMouseMode" => Ok(Action::ToggleMouseMode),
+                "ToggleMobileMode" => Ok(Action::ToggleMobileMode),
                 "PreviousSwapLayout" => Ok(Action::PreviousSwapLayout),
                 "NextSwapLayout" => Ok(Action::NextSwapLayout),
                 "Clear" => Ok(Action::ClearScreen),
@@ -1240,6 +1241,7 @@ impl Action {
                 Some(node)
             },
             Action::ToggleMouseMode => Some(KdlNode::new("ToggleMouseMode")),
+            Action::ToggleMobileMode => Some(KdlNode::new("ToggleMobileMode")),
             Action::PreviousSwapLayout => Some(KdlNode::new("PreviousSwapLayout")),
             Action::NextSwapLayout => Some(KdlNode::new("NextSwapLayout")),
             Action::BreakPane => Some(KdlNode::new("BreakPane")),
@@ -1580,6 +1582,9 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
             },
             "ToggleMouseMode" => {
+                parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
+            },
+            "ToggleMobileMode" => {
                 parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
             },
             "Detach" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
@@ -2824,6 +2829,43 @@ impl Options {
         let mouse_click_through =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "mouse_click_through")
                 .map(|(v, _)| v);
+        // Mobile config — parsed here; consumed when a client attaches
+        // to decide whether to route it into a per-client mobile tab.
+        let mobile_mode_default = match kdl_property_first_arg_as_string_or_error!(
+            kdl_options,
+            "mobile_mode_default"
+        ) {
+            Some((value, entry)) => {
+                use crate::input::options::MobileModeDefault;
+                match value.parse::<MobileModeDefault>() {
+                    Ok(v) => Some(v),
+                    Err(e) => return Err(kdl_parsing_error!(e, entry)),
+                }
+            },
+            None => None,
+        };
+        let mobile_threshold_cols =
+            match kdl_property_first_arg_as_i64_or_error!(kdl_options, "mobile_threshold_cols") {
+                Some((value, _)) if value >= 0 => Some(value as u16),
+                Some((value, entry)) => {
+                    return Err(kdl_parsing_error!(
+                        format!("mobile_threshold_cols must be >= 0, found '{}'", value),
+                        entry
+                    ));
+                },
+                None => None,
+            };
+        let mobile_threshold_rows =
+            match kdl_property_first_arg_as_i64_or_error!(kdl_options, "mobile_threshold_rows") {
+                Some((value, _)) if value >= 0 => Some(value as u16),
+                Some((value, entry)) => {
+                    return Err(kdl_parsing_error!(
+                        format!("mobile_threshold_rows must be >= 0, found '{}'", value),
+                        entry
+                    ));
+                },
+                None => None,
+            };
 
         Ok(Options {
             simplified_ui,
@@ -2873,6 +2915,9 @@ impl Options {
             enforce_https_for_localhost,
             post_command_discovery_hook,
             client_async_worker_tasks,
+            mobile_mode_default,
+            mobile_threshold_cols,
+            mobile_threshold_rows,
         })
     }
     pub fn from_string(stringified_keybindings: &String) -> Result<Self, ConfigError> {
@@ -4218,6 +4263,94 @@ impl Options {
             None
         }
     }
+    fn mobile_mode_default_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        use crate::input::options::MobileModeDefault;
+        let comment_text = format!(
+            "{}\n{}\n{}\n{}\n{}\n{}\n{}",
+            " ",
+            "// When attached clients land in the mobile UI plugin.",
+            "// Options:",
+            "//   - \"auto\" (Default — uses mobile_threshold_cols/rows)",
+            "//   - \"always\"",
+            "//   - \"never\"",
+            "// ",
+        );
+        let create_node = |value: MobileModeDefault| -> KdlNode {
+            let mut node = KdlNode::new("mobile_mode_default");
+            let s = match value {
+                MobileModeDefault::Auto => "auto",
+                MobileModeDefault::Always => "always",
+                MobileModeDefault::Never => "never",
+            };
+            node.push(KdlValue::String(s.to_string()));
+            node
+        };
+        if let Some(value) = self.mobile_mode_default {
+            let mut node = create_node(value);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(MobileModeDefault::Auto);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
+    fn mobile_threshold_cols_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!(
+            "{}\n{}\n{}",
+            " ",
+            "// Column threshold for mobile_mode_default = auto.",
+            "// Default: 60",
+        );
+        let create_node = |value: u16| -> KdlNode {
+            let mut node = KdlNode::new("mobile_threshold_cols");
+            node.push(KdlValue::Base10(value as i64));
+            node
+        };
+        if let Some(value) = self.mobile_threshold_cols {
+            let mut node = create_node(value);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(60);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
+    fn mobile_threshold_rows_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!(
+            "{}\n{}\n{}",
+            " ",
+            "// Row threshold for mobile_mode_default = auto.",
+            "// Default: 30",
+        );
+        let create_node = |value: u16| -> KdlNode {
+            let mut node = KdlNode::new("mobile_threshold_rows");
+            node.push(KdlValue::Base10(value as i64));
+            node
+        };
+        if let Some(value) = self.mobile_threshold_rows {
+            let mut node = create_node(value);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(30);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
     fn client_async_worker_tasks_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
         let comment_text = r#"
 // Number of async worker tasks to spawn per active client.
@@ -4395,6 +4528,15 @@ impl Options {
         if let Some(client_async_worker_tasks) = self.client_async_worker_tasks_to_kdl(add_comments)
         {
             nodes.push(client_async_worker_tasks);
+        }
+        if let Some(mobile_mode_default) = self.mobile_mode_default_to_kdl(add_comments) {
+            nodes.push(mobile_mode_default);
+        }
+        if let Some(mobile_threshold_cols) = self.mobile_threshold_cols_to_kdl(add_comments) {
+            nodes.push(mobile_threshold_cols);
+        }
+        if let Some(mobile_threshold_rows) = self.mobile_threshold_rows_to_kdl(add_comments) {
+            nodes.push(mobile_threshold_rows);
         }
         nodes
     }
