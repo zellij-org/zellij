@@ -9480,33 +9480,33 @@ fn create_non_mirrored_screen(size: Size) -> Screen {
     Screen::new(
         bus,
         &client_attributes,
-        None,                                             // max_panes
+        None, // max_panes
         mode_info,
-        false,                                            // draw_pane_frames
-        true,                                             // auto_layout
-        false,                                            // session_is_mirrored
+        false, // draw_pane_frames
+        true,  // auto_layout
+        false, // session_is_mirrored
         CopyOptions::default(),
-        false,                                            // debug
+        false, // debug
         Box::new(Layout::default()),
-        None,                                             // default_layout_name
+        None, // default_layout_name
         PathBuf::from("my_default_shell"),
-        true,                                             // session_serialization
-        false,                                            // serialize_pane_viewport
-        None,                                             // scrollback_lines_to_serialize
-        true,                                             // styled_underlines
-        true,                                             // osc8_hyperlinks
-        true,                                             // arrow_fonts
-        None,                                             // layout_dir
-        false,                                            // explicitly_disable_kitty_keyboard_protocol
-        true,                                             // stacked_resize
+        true,  // session_serialization
+        false, // serialize_pane_viewport
+        None,  // scrollback_lines_to_serialize
+        true,  // styled_underlines
+        true,  // osc8_hyperlinks
+        true,  // arrow_fonts
+        None,  // layout_dir
+        false, // explicitly_disable_kitty_keyboard_protocol
+        true,  // stacked_resize
         None,
         false,
         WebSharing::Off,
-        true,                                             // advanced_mouse_actions
-        true,                                             // mouse_hover_effects
-        true,                                             // visual_bell
-        false,                                            // focus_follows_mouse
-        false,                                            // mouse_click_through
+        true,  // advanced_mouse_actions
+        true,  // mouse_hover_effects
+        true,  // visual_bell
+        false, // focus_follows_mouse
+        false, // mouse_click_through
         IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
         8080,
     )
@@ -9546,7 +9546,13 @@ fn recompute_tab_size_takes_independent_min_across_axes() {
 
     // Wide-but-short and narrow-but-tall: rows and cols must min independently,
     // not be paired by client.
-    screen.set_client_size(1, Size { cols: 200, rows: 24 });
+    screen.set_client_size(
+        1,
+        Size {
+            cols: 200,
+            rows: 24,
+        },
+    );
     screen.set_client_size(2, Size { cols: 80, rows: 60 });
     screen.recompute_tab_size(0).expect("TEST");
 
@@ -9572,10 +9578,13 @@ fn recompute_tab_size_isolates_tabs_with_different_viewers() {
     // tabs have one viewer each.
     screen.add_client(2, false).expect("TEST");
     screen.set_client_size(1, Size { cols: 80, rows: 24 });
-    screen.set_client_size(2, Size {
-        cols: 160,
-        rows: 50,
-    });
+    screen.set_client_size(
+        2,
+        Size {
+            cols: 160,
+            rows: 50,
+        },
+    );
     screen.switch_active_tab(0, None, true, 2).expect("TEST");
 
     assert_eq!(
@@ -9607,10 +9616,13 @@ fn switching_tabs_recomputes_source_and_destination() {
     // Both clients start on tab 1 (most recently created). Give them
     // different sizes; the smaller wins on tab 1.
     screen.set_client_size(1, Size { cols: 80, rows: 24 });
-    screen.set_client_size(2, Size {
-        cols: 160,
-        rows: 50,
-    });
+    screen.set_client_size(
+        2,
+        Size {
+            cols: 160,
+            rows: 50,
+        },
+    );
     screen.recompute_tab_size(1).expect("TEST");
     assert_eq!(
         screen.tabs.get(&1).unwrap().size,
@@ -9654,10 +9666,13 @@ fn break_pane_to_new_tab_recomputes_source_and_destination() {
 
     // Park each client on its own tab with its own viewport.
     screen.set_client_size(1, Size { cols: 80, rows: 24 });
-    screen.set_client_size(2, Size {
-        cols: 160,
-        rows: 50,
-    });
+    screen.set_client_size(
+        2,
+        Size {
+            cols: 160,
+            rows: 50,
+        },
+    );
     // After new_tab(2), client 1 is on tab id=1 (the new one). Pull it back
     // onto tab id=0 so the two clients are split across the two tabs.
     screen.switch_active_tab(0, None, true, 1).expect("TEST");
@@ -9730,10 +9745,13 @@ fn moving_panes_between_tabs_with_focus_change_recomputes_both() {
 
     // Both clients on tab 1 (the most recent), small client wins.
     screen.set_client_size(1, Size { cols: 80, rows: 24 });
-    screen.set_client_size(2, Size {
-        cols: 160,
-        rows: 50,
-    });
+    screen.set_client_size(
+        2,
+        Size {
+            cols: 160,
+            rows: 50,
+        },
+    );
     // Park client 2 alone on tab 0 so the two tabs are differently sized.
     screen.switch_active_tab(0, None, true, 2).expect("TEST");
     assert_eq!(
@@ -9800,10 +9818,13 @@ fn detaching_client_grows_vacated_tab_back() {
     screen.add_client(2, false).expect("TEST");
 
     // Tab 0 has both clients; the smaller one defines its size.
-    screen.set_client_size(1, Size {
-        cols: 160,
-        rows: 50,
-    });
+    screen.set_client_size(
+        1,
+        Size {
+            cols: 160,
+            rows: 50,
+        },
+    );
     screen.set_client_size(2, Size { cols: 80, rows: 24 });
     screen.recompute_tab_size(0).expect("TEST");
     assert_eq!(
