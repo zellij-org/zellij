@@ -9455,3 +9455,371 @@ fn empty_reply_with_paused_pane_drains_buffer_without_phantom_write() {
         "queue fully consumed by post-resume processing"
     );
 }
+
+// --- per-tab viewport sizing (Stage 1 of mobile_view_plan.md) -------------
+
+// All five tests below exercise `Screen::recompute_tab_size`, which the
+// production code invokes from `ScreenInstruction::AddClient`,
+// `ScreenInstruction::RecomputeTabSize` (runtime resize), `remove_client`,
+// and `switch_active_tab`. Tests drive the helper directly so the assertions
+// don't depend on instruction-bus plumbing.
+
+/// Variant of `create_new_screen` with `session_is_mirrored = false`. The
+/// payoff of per-tab sizing only shows up when clients can sit on different
+/// tabs; mirrored mode forces every client to share the active tab.
+fn create_non_mirrored_screen(size: Size) -> Screen {
+    let mut bus: Bus<ScreenInstruction> = Bus::empty();
+    let fake_os_input = FakeInputOutput::default();
+    bus.os_input = Some(Box::new(fake_os_input));
+    let client_attributes = ClientAttributes {
+        size,
+        ..Default::default()
+    };
+    let mut mode_info = ModeInfo::default();
+    mode_info.session_name = Some("zellij-test".into());
+    Screen::new(
+        bus,
+        &client_attributes,
+        None,                                             // max_panes
+        mode_info,
+        false,                                            // draw_pane_frames
+        true,                                             // auto_layout
+        false,                                            // session_is_mirrored
+        CopyOptions::default(),
+        false,                                            // debug
+        Box::new(Layout::default()),
+        None,                                             // default_layout_name
+        PathBuf::from("my_default_shell"),
+        true,                                             // session_serialization
+        false,                                            // serialize_pane_viewport
+        None,                                             // scrollback_lines_to_serialize
+        true,                                             // styled_underlines
+        true,                                             // osc8_hyperlinks
+        true,                                             // arrow_fonts
+        None,                                             // layout_dir
+        false,                                            // explicitly_disable_kitty_keyboard_protocol
+        true,                                             // stacked_resize
+        None,
+        false,
+        WebSharing::Off,
+        true,                                             // advanced_mouse_actions
+        true,                                             // mouse_hover_effects
+        true,                                             // visual_bell
+        false,                                            // focus_follows_mouse
+        false,                                            // mouse_click_through
+        IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
+        8080,
+    )
+}
+
+#[test]
+fn recompute_tab_size_uses_lone_viewer_size() {
+    let initial_size = Size {
+        cols: 200,
+        rows: 60,
+    };
+    let mut screen = create_new_screen(initial_size, true, true);
+    new_tab(&mut screen, 1, 0);
+
+    let client_id = 1;
+    let client_size = Size { cols: 80, rows: 24 };
+    screen.set_client_size(client_id, client_size);
+    screen.recompute_tab_size(0).expect("TEST");
+
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        client_size,
+        "Tab adopts its lone viewer's size"
+    );
+}
+
+#[test]
+fn recompute_tab_size_takes_independent_min_across_axes() {
+    let initial_size = Size {
+        cols: 200,
+        rows: 60,
+    };
+    let mut screen = create_new_screen(initial_size, true, true);
+    new_tab(&mut screen, 1, 0);
+    // Drop the second client onto the same tab as client 1.
+    screen.add_client(2, false).expect("TEST");
+
+    // Wide-but-short and narrow-but-tall: rows and cols must min independently,
+    // not be paired by client.
+    screen.set_client_size(1, Size { cols: 200, rows: 24 });
+    screen.set_client_size(2, Size { cols: 80, rows: 60 });
+    screen.recompute_tab_size(0).expect("TEST");
+
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        Size { cols: 80, rows: 24 },
+        "Tab size = (min cols across viewers, min rows across viewers)"
+    );
+}
+
+#[test]
+fn recompute_tab_size_isolates_tabs_with_different_viewers() {
+    let initial_size = Size {
+        cols: 200,
+        rows: 60,
+    };
+    // Non-mirrored: per-tab sizing's whole point is letting clients sit on
+    // different tabs without one dragging the other's grid.
+    let mut screen = create_non_mirrored_screen(initial_size);
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+    // Client 1 is on tab 1 (the most recent). Pull client 2 onto tab 0 so
+    // tabs have one viewer each.
+    screen.add_client(2, false).expect("TEST");
+    screen.set_client_size(1, Size { cols: 80, rows: 24 });
+    screen.set_client_size(2, Size {
+        cols: 160,
+        rows: 50,
+    });
+    screen.switch_active_tab(0, None, true, 2).expect("TEST");
+
+    assert_eq!(
+        screen.tabs.get(&1).unwrap().size,
+        Size { cols: 80, rows: 24 },
+        "Tab 1 sized to its lone viewer (client 1)"
+    );
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        Size {
+            cols: 160,
+            rows: 50,
+        },
+        "Tab 0 sized to its lone viewer (client 2), unaffected by client 1's smaller viewport"
+    );
+}
+
+#[test]
+fn switching_tabs_recomputes_source_and_destination() {
+    let initial_size = Size {
+        cols: 200,
+        rows: 60,
+    };
+    let mut screen = create_non_mirrored_screen(initial_size);
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+    screen.add_client(2, false).expect("TEST");
+
+    // Both clients start on tab 1 (most recently created). Give them
+    // different sizes; the smaller wins on tab 1.
+    screen.set_client_size(1, Size { cols: 80, rows: 24 });
+    screen.set_client_size(2, Size {
+        cols: 160,
+        rows: 50,
+    });
+    screen.recompute_tab_size(1).expect("TEST");
+    assert_eq!(
+        screen.tabs.get(&1).unwrap().size,
+        Size { cols: 80, rows: 24 },
+        "Both clients on tab 1 → it sizes to the smaller"
+    );
+
+    // Move the smaller client to tab 0. Tab 1 must grow back to fit its
+    // remaining viewer; tab 0 must shrink to fit the arriving one.
+    screen.switch_active_tab(0, None, true, 1).expect("TEST");
+
+    assert_eq!(
+        screen.tabs.get(&1).unwrap().size,
+        Size {
+            cols: 160,
+            rows: 50,
+        },
+        "Source tab grows back to fit its remaining viewer"
+    );
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        Size { cols: 80, rows: 24 },
+        "Destination tab shrinks to fit the arriving smaller viewer"
+    );
+}
+
+#[test]
+fn break_pane_to_new_tab_recomputes_source_and_destination() {
+    // `break_pane_to_new_tab` extracts the active pane and switches the
+    // requesting client to an adjacent tab via `switch_tab_next`/`prev`. That
+    // routes through `switch_active_tab`, so per-tab sizing must follow the
+    // moving client.
+    let initial_size = Size {
+        cols: 200,
+        rows: 60,
+    };
+    let mut screen = create_non_mirrored_screen(initial_size);
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+    screen.add_client(2, false).expect("TEST");
+
+    // Park each client on its own tab with its own viewport.
+    screen.set_client_size(1, Size { cols: 80, rows: 24 });
+    screen.set_client_size(2, Size {
+        cols: 160,
+        rows: 50,
+    });
+    // After new_tab(2), client 1 is on tab id=1 (the new one). Pull it back
+    // onto tab id=0 so the two clients are split across the two tabs.
+    screen.switch_active_tab(0, None, true, 1).expect("TEST");
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        Size { cols: 80, rows: 24 },
+        "Pre-condition: tab 0 sized to client 1"
+    );
+    assert_eq!(
+        screen.tabs.get(&1).unwrap().size,
+        Size {
+            cols: 160,
+            rows: 50,
+        },
+        "Pre-condition: tab 1 sized to client 2"
+    );
+
+    // Give tab 0 a second pane so break_pane_to_new_tab has something to
+    // extract — but the per-tab sizing assertions are about clients, not
+    // panes; the second pane is just to satisfy the function's preconditions.
+    {
+        let active_tab = screen.get_active_tab_mut(1).unwrap();
+        active_tab
+            .new_pane(
+                PaneId::Terminal(99),
+                None,
+                None,
+                false,
+                true,
+                NewPanePlacement::default(),
+                Some(1),
+                None,
+            )
+            .unwrap();
+    }
+
+    // Move client 1's active pane rightward into tab 1. The function
+    // synchronously calls switch_tab_next → switch_active_tab(client 1, tab 1).
+    screen
+        .break_pane_to_new_tab(Direction::Right, 1)
+        .expect("TEST");
+
+    // Tab 1 now has both clients → recomputes to the smaller viewport.
+    // Tab 0 has no viewers → its size is left untouched.
+    assert_eq!(
+        screen.tabs.get(&1).unwrap().size,
+        Size { cols: 80, rows: 24 },
+        "Destination tab shrinks to fit the arriving smaller viewer"
+    );
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        Size { cols: 80, rows: 24 },
+        "Source tab is empty — recompute is a no-op, last viewer-derived size is preserved"
+    );
+}
+
+#[test]
+fn moving_panes_between_tabs_with_focus_change_recomputes_both() {
+    // `break_multiple_panes_to_tab_with_index` with `should_change_focus = true`
+    // calls `go_to_tab` on the requesting client. That hits `switch_active_tab`,
+    // so the source tab grows back and the destination shrinks to fit.
+    let initial_size = Size {
+        cols: 200,
+        rows: 60,
+    };
+    let mut screen = create_non_mirrored_screen(initial_size);
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+    screen.add_client(2, false).expect("TEST");
+
+    // Both clients on tab 1 (the most recent), small client wins.
+    screen.set_client_size(1, Size { cols: 80, rows: 24 });
+    screen.set_client_size(2, Size {
+        cols: 160,
+        rows: 50,
+    });
+    // Park client 2 alone on tab 0 so the two tabs are differently sized.
+    screen.switch_active_tab(0, None, true, 2).expect("TEST");
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        Size {
+            cols: 160,
+            rows: 50,
+        },
+        "Pre-condition: tab 0 sized to client 2"
+    );
+    assert_eq!(
+        screen.tabs.get(&1).unwrap().size,
+        Size { cols: 80, rows: 24 },
+        "Pre-condition: tab 1 sized to client 1"
+    );
+
+    // Add a movable pane on tab 1 (where client 1 lives).
+    let pane_to_move = PaneId::Terminal(42);
+    {
+        let active_tab = screen.get_active_tab_mut(1).unwrap();
+        active_tab
+            .new_pane(
+                pane_to_move,
+                None,
+                None,
+                false,
+                true,
+                NewPanePlacement::default(),
+                Some(1),
+                None,
+            )
+            .unwrap();
+    }
+
+    // Move the pane onto tab at position 0 AND switch client 1's focus there.
+    // Client 1 leaves tab 1 → tab 1 grows back to client 2's size... wait,
+    // client 2 already left tab 1 above. Tab 1 will be empty, so it keeps its
+    // last size. Tab 0 gains client 1 alongside client 2 → recomputes to the
+    // smaller of the two viewports.
+    screen
+        .break_multiple_panes_to_tab_with_index(vec![pane_to_move], 0, true, 1)
+        .expect("TEST");
+
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        Size { cols: 80, rows: 24 },
+        "Destination tab shrinks to min(viewers) once the smaller client arrives"
+    );
+    assert_eq!(
+        screen.tabs.get(&1).unwrap().size,
+        Size { cols: 80, rows: 24 },
+        "Source tab is empty — last viewer-derived size is preserved"
+    );
+}
+
+#[test]
+fn detaching_client_grows_vacated_tab_back() {
+    let initial_size = Size {
+        cols: 200,
+        rows: 60,
+    };
+    let mut screen = create_new_screen(initial_size, true, true);
+    new_tab(&mut screen, 1, 0);
+    screen.add_client(2, false).expect("TEST");
+
+    // Tab 0 has both clients; the smaller one defines its size.
+    screen.set_client_size(1, Size {
+        cols: 160,
+        rows: 50,
+    });
+    screen.set_client_size(2, Size { cols: 80, rows: 24 });
+    screen.recompute_tab_size(0).expect("TEST");
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        Size { cols: 80, rows: 24 },
+        "Smaller viewer wins while both clients are on the tab"
+    );
+
+    // The smaller client leaves; the tab must grow to fit the remaining one.
+    screen.remove_client(2).expect("TEST");
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        Size {
+            cols: 160,
+            rows: 50,
+        },
+        "Tab grows back to fit the remaining viewer after the smaller one detaches"
+    );
+}

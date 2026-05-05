@@ -2427,26 +2427,16 @@ pub(crate) fn route_thread_main(
                                     .to_anyhow()
                                     .with_context(err_context)?
                                     .set_client_size(client_id, new_size);
-                                // min_client_terminal_size() skips clients whose
-                                // entry is still None — i.e. new_client() was
-                                // called but set_client_data() hasn't been yet.
-                                // set_client_size() above is a no-op in that
-                                // case (it doesn't upgrade None to Some). This
-                                // can happen if a resize arrives before the
-                                // initial connection setup completes; the server
-                                // will query the terminal size once it does.
-                                if let Some(min_size) = session_state
-                                    .read()
-                                    .to_anyhow()
-                                    .with_context(err_context)?
-                                    .min_client_terminal_size()
-                                {
-                                    let _ = senders.as_ref().map(|s| {
-                                        s.send_to_screen(ScreenInstruction::TerminalResize(
-                                            min_size,
-                                        ))
-                                    });
-                                }
+                                // Per-tab sizing: Screen's RecomputeTabSize
+                                // handler is a no-op for clients without an
+                                // active tab yet (i.e. resizes arriving
+                                // before AddClient is processed), so no
+                                // session-level gating is needed.
+                                let _ = senders.as_ref().map(|s| {
+                                    s.send_to_screen(ScreenInstruction::RecomputeTabSize(
+                                        client_id, new_size,
+                                    ))
+                                });
                             }
                         },
                         ClientToServerMsg::TerminalPixelDimensions { pixel_dimensions } => {

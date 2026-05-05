@@ -158,6 +158,11 @@ pub(crate) struct Tab {
     pub position: usize,
     pub name: String,
     pub prev_name: String,
+    /// The tab's current viewport size, computed as `min(rows)` and `min(cols)`
+    /// independently across the clients whose `active_tab_id` equals this tab.
+    /// When the tab has no viewers it retains its most recent value (the
+    /// recompute path simply skips empty tabs).
+    pub size: Size,
     tiled_panes: TiledPanes,
     floating_panes: FloatingPanes,
     suppressed_panes: SuppressedPanes,
@@ -769,6 +774,7 @@ impl Tab {
         if let Some(client_id) = client_id {
             connected_clients.insert(client_id);
         }
+        let initial_size = display_area;
         let viewport: Viewport = display_area.into();
         let viewport = Rc::new(RefCell::new(viewport));
         let display_area = Rc::new(RefCell::new(display_area));
@@ -818,6 +824,7 @@ impl Tab {
             suppressed_panes: HashMap::new(),
             name: name.clone(),
             prev_name: name,
+            size: initial_size,
             max_panes,
             viewport,
             display_area,
@@ -3504,6 +3511,7 @@ impl Tab {
     }
     pub fn resize_whole_tab(&mut self, new_screen_size: Size) -> Result<()> {
         let err_context = || format!("failed to resize whole tab (id {})", self.id);
+        self.size = new_screen_size;
         // If a tiled pane is fullscreen, exit fullscreen first so that *all*
         // tiled panes (including the currently hidden ones) participate in the
         // resize/relayout. We re-enter fullscreen on the same pane after the

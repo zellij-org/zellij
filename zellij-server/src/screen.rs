@@ -497,6 +497,9 @@ pub enum ScreenInstruction {
         completion_tx: Option<NotificationEnd>,
     },
     TerminalResize(Size),
+    /// Update a regular client's known viewport size and recompute the size of
+    /// that client's active tab. `(client_id, new_size)`.
+    RecomputeTabSize(ClientId, Size),
     TerminalPixelDimensions(PixelDimensions),
     TerminalBackgroundColor(String),
     TerminalForegroundColor(String),
@@ -551,6 +554,7 @@ pub enum ScreenInstruction {
     AddClient(
         ClientId,
         bool,                // is_web_client
+        Size,                // client viewport size — used for per-tab sizing
         Option<usize>,       // tab position to focus
         Option<(u32, bool)>, // (pane_id, is_plugin) => pane_id to focus
     ),
@@ -975,6 +979,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::RenameTabWithId(..) => ScreenContext::RenameTabWithId,
             ScreenInstruction::BreakPanesToTabWithId { .. } => ScreenContext::BreakPanesToTabWithId,
             ScreenInstruction::TerminalResize(..) => ScreenContext::TerminalResize,
+            ScreenInstruction::RecomputeTabSize(..) => ScreenContext::RecomputeTabSize,
             ScreenInstruction::TerminalPixelDimensions(..) => {
                 ScreenContext::TerminalPixelDimensions
             },
@@ -1368,6 +1373,8 @@ pub(crate) struct Screen {
     connected_clients: Rc<RefCell<HashMap<ClientId, bool>>>, // bool -> is_web_client
     /// The indices of this [`Screen`]'s active [`Tab`]s.
     active_tab_ids: BTreeMap<ClientId, usize>,
+    /// Per-regular-client viewport sizes, used to compute per-tab sizing.
+    client_sizes: HashMap<ClientId, Size>,
     global_last_active_tab_id: usize,
     tab_history: BTreeMap<ClientId, Vec<usize>>,
     pane_history: BTreeMap<ClientId, Vec<PaneId>>,
@@ -1554,6 +1561,7 @@ impl Screen {
             style: client_attributes.style,
             connected_clients: Rc::new(RefCell::new(HashMap::new())),
             active_tab_ids: BTreeMap::new(),
+            client_sizes: HashMap::new(),
             global_last_active_tab_id: 0,
             tabs: BTreeMap::new(),
             terminal_emulator_colors: Rc::new(RefCell::new(Palette::default())),
@@ -1859,6 +1867,14 @@ impl Screen {
                             .send_to_background_jobs(BackgroundJob::StopFlashTabBell(tab_id));
                     }
 
+                    // Both the source and destination tabs may have changed
+                    // their viewer sets; per-tab sizing is independent so each
+                    // is recomputed against its current viewers.
+                    self.recompute_tab_size(current_tab_index)
+                        .with_context(err_context)?;
+                    self.recompute_tab_size(new_tab_index)
+                        .with_context(err_context)?;
+
                     self.log_and_report_session_state()
                         .with_context(err_context)?;
                     return self.render(None).with_context(err_context);
@@ -2062,6 +2078,50 @@ impl Screen {
         } else {
             Ok(())
         }
+    }
+
+    /// Record the viewport size most recently reported by `client_id`. Used as
+    /// input to per-tab size computation; does not by itself trigger a resize.
+    pub fn set_client_size(&mut self, client_id: ClientId, size: Size) {
+        self.client_sizes.insert(client_id, size);
+    }
+
+    /// Recompute the size of `tab_id` from the viewports of every client whose
+    /// `active_tab_ids` entry equals `tab_id`. `rows` and `cols` are sorted
+    /// independently — each axis takes the minimum across viewers. If the tab
+    /// has no viewers the size is left untouched (the tab retains its most
+    /// recent viewer-derived dimensions). When the computed size differs from
+    /// the tab's current size, the tab is resized (via `resize_whole_tab`)
+    /// and a force-render is scheduled.
+    pub fn recompute_tab_size(&mut self, tab_id: usize) -> Result<()> {
+        let err_context = || format!("failed to recompute size for tab {tab_id}");
+
+        let mut rows: Vec<usize> = Vec::new();
+        let mut cols: Vec<usize> = Vec::new();
+        for (client_id, active_tab) in self.active_tab_ids.iter() {
+            if *active_tab == tab_id {
+                if let Some(size) = self.client_sizes.get(client_id) {
+                    rows.push(size.rows);
+                    cols.push(size.cols);
+                }
+            }
+        }
+        if rows.is_empty() || cols.is_empty() {
+            return Ok(());
+        }
+        rows.sort_unstable();
+        cols.sort_unstable();
+        let new_size = Size {
+            rows: rows[0],
+            cols: cols[0],
+        };
+        if let Some(tab) = self.tabs.get_mut(&tab_id) {
+            if tab.size != new_size {
+                tab.resize_whole_tab(new_size).with_context(err_context)?;
+                tab.set_force_render();
+            }
+        }
+        Ok(())
     }
 
     pub fn update_pixel_dimensions(&mut self, pixel_dimensions: PixelDimensions) {
@@ -3021,6 +3081,11 @@ impl Screen {
                 .with_context(err_context)?;
         }
 
+        // The new tab was just resized to `self.size` above as a default; if
+        // any clients have been moved onto it, recompute to fit their actual
+        // viewports.
+        self.recompute_tab_size(tab_id).with_context(err_context)?;
+
         self.log_and_report_session_state()
             .and_then(|_| self.render(None))
             .with_context(err_context)
@@ -3064,7 +3129,12 @@ impl Screen {
             .get_mut(&tab_index)
             .with_context(|| err_context(tab_index))?
             .add_client(client_id, None)
-            .with_context(|| err_context(tab_index))
+            .with_context(|| err_context(tab_index))?;
+        // Resize the newly-active tab to the min of all viewers (this client
+        // may shrink it, or may be the first viewer of an empty tab).
+        self.recompute_tab_size(tab_index)
+            .with_context(|| err_context(tab_index))?;
+        Ok(())
     }
 
     pub fn remove_client(&mut self, client_id: ClientId) -> Result<()> {
@@ -3093,15 +3163,23 @@ impl Screen {
                 tab.visible(false).with_context(err_context)?;
             }
         }
-        if self.active_tab_ids.contains_key(&client_id) {
-            self.global_last_active_tab_id = *self.active_tab_ids.get(&client_id).unwrap();
+        let previously_active_tab_id = self.active_tab_ids.get(&client_id).copied();
+        if let Some(prev_tab_id) = previously_active_tab_id {
+            self.global_last_active_tab_id = prev_tab_id;
             self.active_tab_ids.remove(&client_id);
         }
         if self.tab_history.contains_key(&client_id) {
             self.tab_history.remove(&client_id);
         }
         self.connected_clients.borrow_mut().remove(&client_id);
+        self.client_sizes.remove(&client_id);
         self.pane_render_subscribers.remove(&client_id);
+        // The vacated tab may have lost its smallest viewer; recompute so it
+        // can grow back to fit the remaining clients (no-op if none remain).
+        if let Some(prev_tab_id) = previously_active_tab_id {
+            self.recompute_tab_size(prev_tab_id)
+                .with_context(err_context)?;
+        }
         self.log_and_report_session_state()
             .with_context(err_context)
     }
@@ -7222,6 +7300,15 @@ pub(crate) fn screen_thread_main(
                 screen.log_and_report_session_state()?; // update tabs so that the ui indication will be send to the plugins
                 screen.render(None)?;
             },
+            ScreenInstruction::RecomputeTabSize(client_id, new_size) => {
+                screen.set_client_size(client_id, new_size);
+                let active_tab_id = screen.active_tab_ids.get(&client_id).copied();
+                if let Some(tab_id) = active_tab_id {
+                    screen.recompute_tab_size(tab_id)?;
+                    screen.log_and_report_session_state()?;
+                    screen.render(None)?;
+                }
+            },
             ScreenInstruction::TerminalPixelDimensions(pixel_dimensions) => {
                 screen.update_pixel_dimensions(pixel_dimensions);
             },
@@ -7331,9 +7418,14 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::AddClient(
                 client_id,
                 is_web_client,
+                client_size,
                 tab_position_to_focus,
                 pane_id_to_focus,
             ) => {
+                // Record the client's viewport BEFORE add_client so that
+                // add_client's internal recompute sees this client's size and
+                // sizes the destination tab against all of its viewers.
+                screen.set_client_size(client_id, client_size);
                 screen.add_client(client_id, is_web_client)?;
                 let pane_id = pane_id_to_focus.map(|(pane_id, is_plugin)| {
                     if is_plugin {
