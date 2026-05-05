@@ -6,10 +6,13 @@ pub use super::generated_api::api::{
         pane_scrollback_response, ActionCompletePayload as ProtobufActionCompletePayload,
         AvailableLayoutInfoPayload as ProtobufAvailableLayoutInfoPayload,
         ClientInfo as ProtobufClientInfo, ClientPaneHistory as ProtobufClientPaneHistory,
-        ClientTabHistory as ProtobufClientTabHistory, ContextItem as ProtobufContextItem,
+        ClientTabHistory as ProtobufClientTabHistory,
+        CommandChangedPayload as ProtobufCommandChangedPayload, ContextItem as ProtobufContextItem,
         CopyDestination as ProtobufCopyDestination, CwdChangedPayload as ProtobufCwdChangedPayload,
         Event as ProtobufEvent, EventNameList as ProtobufEventNameList,
         EventType as ProtobufEventType, FileMetadata as ProtobufFileMetadata,
+        HostTerminalThemeChangedPayload as ProtobufHostTerminalThemeChangedPayload,
+        HostTerminalThemeIndication as ProtobufHostTerminalThemeIndication,
         InputModeKeybinds as ProtobufInputModeKeybinds, KdlError as ProtobufKdlError,
         KdlErrorVariant as ProtobufKdlErrorVariant, KeyBind as ProtobufKeyBind,
         LayoutInfo as ProtobufLayoutInfo, LayoutMetadata as ProtobufLayoutMetadata,
@@ -34,11 +37,11 @@ pub use super::generated_api::api::{
 };
 #[allow(hidden_glob_reexports)]
 use crate::data::{
-    ClientId, ClientInfo, CopyDestination, Event, EventType, FileMetadata, InputMode,
-    KeyWithModifier, LayoutInfo, LayoutMetadata, ModeInfo, Mouse, PaneContents, PaneId, PaneInfo,
-    PaneManifest, PaneMetadata, PaneScrollbackResponse, PermissionStatus, PluginCapabilities,
-    PluginInfo, SelectedText, SessionInfo, Style, TabInfo, TabMetadata, WebServerStatus,
-    WebSharing,
+    ClientId, ClientInfo, CopyDestination, Event, EventType, FileMetadata, HostTerminalThemeMode,
+    InputMode, KeyWithModifier, LayoutInfo, LayoutMetadata, ModeInfo, Mouse, PaneContents, PaneId,
+    PaneInfo, PaneManifest, PaneMetadata, PaneScrollbackResponse, PermissionStatus,
+    PluginCapabilities, PluginInfo, SelectedText, SessionInfo, Style, TabInfo, TabMetadata,
+    WebServerStatus, WebSharing,
 };
 
 use crate::errors::prelude::*;
@@ -474,6 +477,27 @@ impl TryFrom<ProtobufEvent> for Event {
                 },
                 _ => Err("Malformed payload for the CwdChanged Event"),
             },
+            Some(ProtobufEventType::CommandChanged) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::CommandChangedPayload(p)) => {
+                    let pane_id: PaneId = p
+                        .pane_id
+                        .ok_or("Missing pane_id in CommandChanged payload")?
+                        .try_into()
+                        .map_err(|_| "Failed to convert PaneId in CommandChanged payload")?;
+                    let focused_client_ids: Vec<ClientId> = p
+                        .focused_client_ids
+                        .into_iter()
+                        .map(|id| id as u16)
+                        .collect();
+                    Ok(Event::CommandChanged(
+                        pane_id,
+                        p.command,
+                        p.is_foreground,
+                        focused_client_ids,
+                    ))
+                },
+                _ => Err("Malformed payload for the CommandChanged Event"),
+            },
             Some(ProtobufEventType::AvailableLayoutInfo) => match protobuf_event.payload {
                 Some(ProtobufEventPayload::AvailableLayoutInfoPayload(
                     available_layout_info_payload,
@@ -527,6 +551,42 @@ impl TryFrom<ProtobufEvent> for Event {
                     })
                 },
                 _ => Err("Malformed payload for HighlightClicked Event"),
+            },
+            Some(ProtobufEventType::InitialKeybinds) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::InitialKeybindsPayload(p)) => {
+                    let keybinds = p
+                        .keybinds
+                        .into_iter()
+                        .filter_map(|imk| {
+                            let mode: InputMode =
+                                ProtobufInputMode::from_i32(imk.mode)?.try_into().ok()?;
+                            let key_binds: Vec<(KeyWithModifier, Vec<Action>)> = imk
+                                .key_bind
+                                .into_iter()
+                                .filter_map(|kb| {
+                                    let key: KeyWithModifier = kb.key?.try_into().ok()?;
+                                    let actions: Vec<Action> = kb
+                                        .action
+                                        .into_iter()
+                                        .filter_map(|a| a.try_into().ok())
+                                        .collect();
+                                    Some((key, actions))
+                                })
+                                .collect();
+                            Some((mode, key_binds))
+                        })
+                        .collect();
+                    Ok(Event::InitialKeybinds(keybinds))
+                },
+                _ => Err("Malformed payload for InitialKeybinds Event"),
+            },
+            Some(ProtobufEventType::HostTerminalThemeChanged) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::HostTerminalThemeChangedPayload(p)) => {
+                    let mode = ProtobufHostTerminalThemeIndication::from_i32(p.mode)
+                        .ok_or("Unknown HostTerminalThemeIndication")?;
+                    Ok(Event::HostTerminalThemeChanged(mode.into()))
+                },
+                _ => Err("Malformed payload for HostTerminalThemeChanged Event"),
             },
             None => Err("Unknown Protobuf Event"),
         }
@@ -986,6 +1046,21 @@ impl TryFrom<Event> for ProtobufEvent {
                     payload: Some(event::Payload::CwdChangedPayload(cwd_changed_payload)),
                 })
             },
+            Event::CommandChanged(pane_id, command, is_foreground, focused_client_ids) => {
+                let protobuf_pane_id: ProtobufPaneId = pane_id.try_into()?;
+                let focused_client_ids_u32: Vec<u32> =
+                    focused_client_ids.into_iter().map(|id| id as u32).collect();
+                let payload = ProtobufCommandChangedPayload {
+                    pane_id: Some(protobuf_pane_id),
+                    command,
+                    is_foreground,
+                    focused_client_ids: focused_client_ids_u32,
+                };
+                Ok(ProtobufEvent {
+                    name: ProtobufEventType::CommandChanged as i32,
+                    payload: Some(event::Payload::CommandChangedPayload(payload)),
+                })
+            },
             Event::AvailableLayoutInfo(available_layouts, layouts_with_errors) => {
                 let mut protobuf_available_layouts = vec![];
                 let mut protobuf_layouts_with_errors = vec![];
@@ -1044,6 +1119,48 @@ impl TryFrom<Event> for ProtobufEvent {
                     },
                 )),
             }),
+            Event::HostTerminalThemeChanged(mode) => {
+                let proto_mode: ProtobufHostTerminalThemeIndication = mode.into();
+                let payload = ProtobufHostTerminalThemeChangedPayload {
+                    mode: proto_mode as i32,
+                };
+                Ok(ProtobufEvent {
+                    name: ProtobufEventType::HostTerminalThemeChanged as i32,
+                    payload: Some(event::Payload::HostTerminalThemeChangedPayload(payload)),
+                })
+            },
+            Event::InitialKeybinds(keybinds) => {
+                let mut protobuf_keybinds: Vec<ProtobufInputModeKeybinds> = vec![];
+                for (input_mode, input_mode_keybinds) in keybinds {
+                    let mode: ProtobufInputMode = input_mode.try_into()?;
+                    let mut key_binds: Vec<ProtobufKeyBind> = vec![];
+                    for (key, actions) in input_mode_keybinds {
+                        let protobuf_key: ProtobufKey = key.try_into()?;
+                        let mut protobuf_actions: Vec<ProtobufAction> = vec![];
+                        for action in actions {
+                            if let Ok(protobuf_action) = action.try_into() {
+                                protobuf_actions.push(protobuf_action);
+                            }
+                        }
+                        key_binds.push(ProtobufKeyBind {
+                            key: Some(protobuf_key),
+                            action: protobuf_actions,
+                        });
+                    }
+                    protobuf_keybinds.push(ProtobufInputModeKeybinds {
+                        mode: mode as i32,
+                        key_bind: key_binds,
+                    });
+                }
+                Ok(ProtobufEvent {
+                    name: ProtobufEventType::InitialKeybinds as i32,
+                    payload: Some(event::Payload::InitialKeybindsPayload(
+                        InitialKeybindsPayload {
+                            keybinds: protobuf_keybinds,
+                        },
+                    )),
+                })
+            },
         }
     }
 }
@@ -1955,9 +2072,12 @@ impl TryFrom<ProtobufEventType> for EventType {
             ProtobufEventType::UserAction => EventType::UserAction,
             ProtobufEventType::ActionComplete => EventType::ActionComplete,
             ProtobufEventType::CwdChanged => EventType::CwdChanged,
+            ProtobufEventType::CommandChanged => EventType::CommandChanged,
             ProtobufEventType::AvailableLayoutInfo => EventType::AvailableLayoutInfo,
             ProtobufEventType::PluginConfigurationChanged => EventType::PluginConfigurationChanged,
             ProtobufEventType::HighlightClicked => EventType::HighlightClicked,
+            ProtobufEventType::InitialKeybinds => EventType::InitialKeybinds,
+            ProtobufEventType::HostTerminalThemeChanged => EventType::HostTerminalThemeChanged,
         })
     }
 }
@@ -2006,10 +2126,31 @@ impl TryFrom<EventType> for ProtobufEventType {
             EventType::UserAction => ProtobufEventType::UserAction,
             EventType::ActionComplete => ProtobufEventType::ActionComplete,
             EventType::CwdChanged => ProtobufEventType::CwdChanged,
+            EventType::CommandChanged => ProtobufEventType::CommandChanged,
             EventType::AvailableLayoutInfo => ProtobufEventType::AvailableLayoutInfo,
             EventType::PluginConfigurationChanged => ProtobufEventType::PluginConfigurationChanged,
             EventType::HighlightClicked => ProtobufEventType::HighlightClicked,
+            EventType::InitialKeybinds => ProtobufEventType::InitialKeybinds,
+            EventType::HostTerminalThemeChanged => ProtobufEventType::HostTerminalThemeChanged,
         })
+    }
+}
+
+impl From<HostTerminalThemeMode> for ProtobufHostTerminalThemeIndication {
+    fn from(mode: HostTerminalThemeMode) -> Self {
+        match mode {
+            HostTerminalThemeMode::Dark => ProtobufHostTerminalThemeIndication::Dark,
+            HostTerminalThemeMode::Light => ProtobufHostTerminalThemeIndication::Light,
+        }
+    }
+}
+
+impl From<ProtobufHostTerminalThemeIndication> for HostTerminalThemeMode {
+    fn from(mode: ProtobufHostTerminalThemeIndication) -> Self {
+        match mode {
+            ProtobufHostTerminalThemeIndication::Dark => HostTerminalThemeMode::Dark,
+            ProtobufHostTerminalThemeIndication::Light => HostTerminalThemeMode::Light,
+        }
     }
 }
 

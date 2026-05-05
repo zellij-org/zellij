@@ -1083,6 +1083,334 @@ pub fn toggle_focused_pane_fullscreen_with_stacked_resizes() {
 }
 
 #[test]
+pub fn resize_whole_tab_while_fullscreen_preserves_fullscreen() {
+    // A host-terminal resize (e.g. a font size change) that arrives while a
+    // pane is fullscreen must keep the active pane fullscreened, sized to the
+    // new display dimensions.
+    let initial_size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let stacked_resize = false;
+    let mut tab = create_new_tab(initial_size, stacked_resize);
+    for i in 2..5 {
+        let new_pane_id = PaneId::Terminal(i);
+        tab.new_pane(
+            new_pane_id,
+            None,
+            None,
+            false,
+            true,
+            NewPanePlacement::default(),
+            Some(1),
+            None,
+        )
+        .unwrap();
+    }
+    tab.toggle_active_pane_fullscreen(1);
+    assert!(
+        tab.is_fullscreen_active(),
+        "Tab is fullscreen before the resize"
+    );
+
+    let new_size = Size { cols: 80, rows: 30 };
+    tab.resize_whole_tab(new_size).unwrap();
+
+    assert!(
+        tab.is_fullscreen_active(),
+        "Fullscreen is preserved across a host-terminal resize"
+    );
+    let active_pane = tab
+        .tiled_panes
+        .panes
+        .get(&PaneId::Terminal(4))
+        .expect("Active fullscreen pane is still present");
+    assert_eq!(
+        active_pane.cols(),
+        new_size.cols,
+        "Fullscreen pane cols match the new display cols"
+    );
+    assert_eq!(
+        active_pane.rows(),
+        new_size.rows,
+        "Fullscreen pane rows match the new display rows"
+    );
+    assert_eq!(active_pane.x(), 0, "Fullscreen pane x is at viewport edge");
+    assert_eq!(active_pane.y(), 0, "Fullscreen pane y is at viewport edge");
+}
+
+#[test]
+pub fn resize_while_fullscreen_updates_hidden_pane_geometry() {
+    // When a host-terminal resize arrives while a pane is fullscreen, every
+    // hidden pane's geometry must be updated to match the new display area.
+    // Otherwise their `inner` cell counts stay sized for the old display and
+    // toggling fullscreen off hands the cassowary solver coordinates that
+    // fall outside the viewport, producing layout-solve failures and a
+    // corrupt render.
+    //
+    // The assertion here is the direct invariant: after the resize, every
+    // pane that is currently hidden behind the fullscreen pane fits inside
+    // the new display area.
+    let initial_size = Size {
+        cols: 200,
+        rows: 60,
+    };
+    let new_size = Size { cols: 60, rows: 18 };
+    let stacked_resize = false;
+    let mut tab = create_new_tab(initial_size, stacked_resize);
+    for i in 2..6 {
+        tab.new_pane(
+            PaneId::Terminal(i),
+            None,
+            None,
+            false,
+            true,
+            NewPanePlacement::default(),
+            Some(1),
+            None,
+        )
+        .unwrap();
+    }
+
+    let active_pane_id = tab
+        .get_active_pane_id(1)
+        .expect("an active pane exists before fullscreen");
+    tab.toggle_active_pane_fullscreen(1);
+    assert!(tab.is_fullscreen_active(), "Fullscreen is active");
+
+    tab.resize_whole_tab(new_size).unwrap();
+
+    // Collect the panes hidden by the fullscreen state and verify each one
+    // already fits the new display area; if any extends beyond it, exiting
+    // fullscreen would hand the cassowary solver an unsatisfiable layout.
+    let hidden_pane_ids: Vec<PaneId> = tab
+        .tiled_panes
+        .panes
+        .keys()
+        .copied()
+        .filter(|id| *id != active_pane_id && tab.tiled_panes.panes_to_hide_contains(*id))
+        .collect();
+    assert!(
+        !hidden_pane_ids.is_empty(),
+        "the test setup actually produced hidden panes"
+    );
+    for pane_id in hidden_pane_ids {
+        let pane = tab.tiled_panes.panes.get(&pane_id).unwrap();
+        let geom = pane.position_and_size();
+        assert!(
+            geom.x + geom.cols.as_usize() <= new_size.cols,
+            "hidden pane {pane_id:?} fits horizontally after resize: \
+             x={}, cols={}, display_cols={}",
+            geom.x,
+            geom.cols.as_usize(),
+            new_size.cols,
+        );
+        assert!(
+            geom.y + geom.rows.as_usize() <= new_size.rows,
+            "hidden pane {pane_id:?} fits vertically after resize: \
+             y={}, rows={}, display_rows={}",
+            geom.y,
+            geom.rows.as_usize(),
+            new_size.rows,
+        );
+    }
+}
+
+#[test]
+pub fn closing_fullscreen_scrollback_editor_restores_consistent_layout() {
+    // Replacing a pane (e.g. opening or closing a scrollback editor) swaps
+    // the pane id occupying its tiled slot. If the replaced pane was the
+    // fullscreen pane, the fullscreen bookkeeping must follow the swap so
+    // that toggling fullscreen off later resets the geom_override on the
+    // pane that actually carries it. Otherwise the restored pane keeps the
+    // 100% override, the previously-hidden panes come back into a layout
+    // that overlaps it, and the screen renders incorrectly.
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let stacked_resize = false;
+    let client_id = 1;
+    let mut tab = create_new_tab(size, stacked_resize);
+    for i in 2..5 {
+        tab.new_pane(
+            PaneId::Terminal(i),
+            None,
+            None,
+            false,
+            true,
+            NewPanePlacement::default(),
+            Some(client_id),
+            None,
+        )
+        .unwrap();
+    }
+    let active_pane_id = tab
+        .get_active_pane_id(client_id)
+        .expect("active pane exists before opening editor");
+
+    let editor_pane_id = PaneId::Terminal(99);
+    tab.replace_active_pane_with_editor_pane(editor_pane_id, client_id)
+        .unwrap();
+    assert_eq!(
+        tab.get_active_pane_id(client_id),
+        Some(editor_pane_id),
+        "editor pane is now active",
+    );
+
+    tab.toggle_active_pane_fullscreen(client_id);
+    assert!(
+        tab.is_fullscreen_active(),
+        "fullscreen is active on the editor pane",
+    );
+    assert_eq!(
+        tab.tiled_panes.fullscreen_pane_id(),
+        Some(editor_pane_id),
+        "fullscreen tracks the editor pane id",
+    );
+
+    // Close the editor: this restores the originally-suppressed pane in the
+    // editor's slot. Fullscreen bookkeeping must retarget to the restored
+    // pane id so subsequent fullscreen-off cleanup hits the right pane.
+    tab.close_pane(editor_pane_id, false, None);
+    assert!(
+        tab.is_fullscreen_active(),
+        "fullscreen is preserved after the editor is closed",
+    );
+    assert_eq!(
+        tab.tiled_panes.fullscreen_pane_id(),
+        Some(active_pane_id),
+        "fullscreen now tracks the restored suppressed pane",
+    );
+
+    tab.toggle_active_pane_fullscreen(client_id);
+    assert!(
+        !tab.is_fullscreen_active(),
+        "fullscreen is cleared after the second toggle",
+    );
+    assert_eq!(
+        tab.tiled_panes.panes_to_hide_count(),
+        0,
+        "no panes remain hidden after exiting fullscreen",
+    );
+    let restored_pane = tab
+        .tiled_panes
+        .panes
+        .get(&active_pane_id)
+        .expect("restored pane is present");
+    assert!(
+        restored_pane.geom_override().is_none(),
+        "restored pane no longer carries the fullscreen geom_override",
+    );
+    for pane in tab.tiled_panes.panes.values() {
+        let geom = pane.position_and_size();
+        assert!(
+            geom.x + geom.cols.as_usize() <= size.cols,
+            "pane fits horizontally after exiting fullscreen: \
+             x={}, cols={}, display_cols={}",
+            geom.x,
+            geom.cols.as_usize(),
+            size.cols,
+        );
+        assert!(
+            geom.y + geom.rows.as_usize() <= size.rows,
+            "pane fits vertically after exiting fullscreen: \
+             y={}, rows={}, display_rows={}",
+            geom.y,
+            geom.rows.as_usize(),
+            size.rows,
+        );
+    }
+}
+
+#[test]
+pub fn opening_scrollback_editor_on_fullscreen_pane_retargets_fullscreen() {
+    // Reverse-direction variant: fullscreen the pane *first*, then open the
+    // scrollback editor on it. The editor takes the fullscreen pane's slot
+    // and inherits its 100% geom_override, so the fullscreen bookkeeping
+    // must follow the swap onto the editor's pane id. Otherwise toggling
+    // fullscreen off later cannot reset the override on the editor.
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let stacked_resize = false;
+    let client_id = 1;
+    let mut tab = create_new_tab(size, stacked_resize);
+    for i in 2..5 {
+        tab.new_pane(
+            PaneId::Terminal(i),
+            None,
+            None,
+            false,
+            true,
+            NewPanePlacement::default(),
+            Some(client_id),
+            None,
+        )
+        .unwrap();
+    }
+    let active_pane_id = tab
+        .get_active_pane_id(client_id)
+        .expect("active pane exists");
+
+    tab.toggle_active_pane_fullscreen(client_id);
+    assert_eq!(
+        tab.tiled_panes.fullscreen_pane_id(),
+        Some(active_pane_id),
+        "fullscreen tracks the original pane",
+    );
+
+    let editor_pane_id = PaneId::Terminal(99);
+    tab.replace_active_pane_with_editor_pane(editor_pane_id, client_id)
+        .unwrap();
+    assert!(
+        tab.is_fullscreen_active(),
+        "fullscreen state survives the editor swap",
+    );
+    assert_eq!(
+        tab.tiled_panes.fullscreen_pane_id(),
+        Some(editor_pane_id),
+        "fullscreen now tracks the editor pane id, not the suppressed one",
+    );
+
+    tab.toggle_active_pane_fullscreen(client_id);
+    assert!(
+        !tab.is_fullscreen_active(),
+        "fullscreen is cleared after the second toggle",
+    );
+    let editor_pane = tab
+        .tiled_panes
+        .panes
+        .get(&editor_pane_id)
+        .expect("editor pane is present in tiled panes");
+    assert!(
+        editor_pane.geom_override().is_none(),
+        "editor pane no longer carries the fullscreen geom_override",
+    );
+    assert_eq!(
+        tab.tiled_panes.panes_to_hide_count(),
+        0,
+        "no panes remain hidden after exiting fullscreen",
+    );
+    for pane in tab.tiled_panes.panes.values() {
+        let geom = pane.position_and_size();
+        assert!(
+            geom.x + geom.cols.as_usize() <= size.cols
+                && geom.y + geom.rows.as_usize() <= size.rows,
+            "pane fits inside the display area: \
+             x={}, y={}, cols={}, rows={}, display={}x{}",
+            geom.x,
+            geom.y,
+            geom.cols.as_usize(),
+            geom.rows.as_usize(),
+            size.cols,
+            size.rows,
+        );
+    }
+}
+
+#[test]
 fn switch_to_next_pane_fullscreen() {
     let size = Size {
         cols: 121,
@@ -15586,4 +15914,396 @@ pub fn scroll_up_nonexistent_pane_id_does_not_panic() {
     let pane_id = PaneId::Terminal(999);
     assert!(!tab.has_pane_with_pid(&pane_id));
     tab.scroll_up_by_pane_id(pane_id);
+}
+
+#[test]
+pub fn rename_pane_sets_current_title() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let pane_id = PaneId::Terminal(1);
+    let _ = tab.rename_pane_by_pane_id(pane_id, "flame".as_bytes().to_vec());
+    let pane = tab.get_pane_with_id(pane_id).unwrap();
+    assert_eq!(pane.current_title(), "flame");
+}
+
+#[test]
+pub fn rename_pane_replaces_existing_name() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let pane_id = PaneId::Terminal(1);
+    let _ = tab.rename_pane_by_pane_id(pane_id, "flame".as_bytes().to_vec());
+    let _ = tab.rename_pane_by_pane_id(pane_id, "spark".as_bytes().to_vec());
+    let pane = tab.get_pane_with_id(pane_id).unwrap();
+    assert_eq!(pane.current_title(), "spark");
+}
+
+#[test]
+pub fn rename_pane_to_empty_clears_name() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let pane_id = PaneId::Terminal(1);
+    let _ = tab.rename_pane_by_pane_id(pane_id, "flame".as_bytes().to_vec());
+    let _ = tab.rename_pane_by_pane_id(pane_id, "".as_bytes().to_vec());
+    let pane = tab.get_pane_with_id(pane_id).unwrap();
+    // Empty name should fall through to the fallback title
+    assert_ne!(pane.current_title(), "flame");
+}
+
+#[test]
+pub fn rename_pane_single_char() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let pane_id = PaneId::Terminal(1);
+    let _ = tab.rename_pane_by_pane_id(pane_id, "x".as_bytes().to_vec());
+    let pane = tab.get_pane_with_id(pane_id).unwrap();
+    assert_eq!(pane.current_title(), "x");
+}
+
+#[test]
+pub fn rename_pane_with_spaces() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let pane_id = PaneId::Terminal(1);
+    let _ = tab.rename_pane_by_pane_id(pane_id, "my pane".as_bytes().to_vec());
+    let pane = tab.get_pane_with_id(pane_id).unwrap();
+    assert_eq!(pane.current_title(), "my pane");
+}
+
+#[test]
+pub fn rename_pane_with_special_chars() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let pane_id = PaneId::Terminal(1);
+    let _ = tab.rename_pane_by_pane_id(pane_id, "pane#1 (dev)".as_bytes().to_vec());
+    let pane = tab.get_pane_with_id(pane_id).unwrap();
+    assert_eq!(pane.current_title(), "pane#1 (dev)");
+}
+
+#[test]
+pub fn named_pane_not_overridden_by_osc_title() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let pane_id = PaneId::Terminal(1);
+    let _ = tab.rename_pane_by_pane_id(pane_id, "flame".as_bytes().to_vec());
+    // Simulate shell sending OSC 0 title
+    let osc_title = b"\x1b]0;user@host: ~/code\x07";
+    let _ = tab.handle_pty_bytes(1, osc_title.to_vec());
+    let pane = tab.get_pane_with_id(pane_id).unwrap();
+    assert_eq!(pane.current_title(), "flame");
+}
+
+#[test]
+pub fn unnamed_pane_shows_osc_title() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let pane_id = PaneId::Terminal(1);
+    // Send OSC 0 title without renaming the pane
+    let osc_title = b"\x1b]0;user@host: ~/code\x07";
+    let _ = tab.handle_pty_bytes(1, osc_title.to_vec());
+    let pane = tab.get_pane_with_id(pane_id).unwrap();
+    assert_eq!(pane.current_title(), "user@host: ~/code");
+}
+
+#[test]
+pub fn undo_rename_clears_name() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let pane_id = PaneId::Terminal(1);
+    let title_before = tab.get_pane_with_id(pane_id).unwrap().current_title();
+    let _ = tab.rename_pane_by_pane_id(pane_id, "flame".as_bytes().to_vec());
+    tab.undo_rename_pane_by_pane_id(pane_id);
+    let pane = tab.get_pane_with_id(pane_id).unwrap();
+    assert_eq!(pane.current_title(), title_before);
+}
+
+#[test]
+pub fn undo_rename_on_unnamed_pane_is_noop() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let pane_id = PaneId::Terminal(1);
+    let title_before = tab.get_pane_with_id(pane_id).unwrap().current_title();
+    tab.undo_rename_pane_by_pane_id(pane_id);
+    let pane = tab.get_pane_with_id(pane_id).unwrap();
+    assert_eq!(pane.current_title(), title_before);
+}
+
+#[test]
+pub fn interactive_rename_appends_to_empty_name() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let client_id = 1;
+    let _ = tab.update_active_pane_name(vec![b's'], client_id);
+    let _ = tab.update_active_pane_name(vec![b'p'], client_id);
+    let _ = tab.update_active_pane_name(vec![b'a'], client_id);
+    let _ = tab.update_active_pane_name(vec![b'r'], client_id);
+    let _ = tab.update_active_pane_name(vec![b'k'], client_id);
+    let pane = tab.get_pane_with_id(PaneId::Terminal(1)).unwrap();
+    assert_eq!(pane.current_title(), "spark");
+}
+
+#[test]
+pub fn interactive_rename_appends_to_existing_name() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let client_id = 1;
+    let pane_id = PaneId::Terminal(1);
+    let _ = tab.rename_pane_by_pane_id(pane_id, "flame".as_bytes().to_vec());
+    // Simulate entering rename mode
+    if let Some(pane) = tab.get_active_pane_or_floating_pane_mut(client_id) {
+        pane.store_pane_name();
+    }
+    let _ = tab.update_active_pane_name(vec![b's'], client_id);
+    let pane = tab.get_pane_with_id(pane_id).unwrap();
+    assert_eq!(pane.current_title(), "flames");
+}
+
+#[test]
+pub fn interactive_rename_backspace_removes_chars() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let client_id = 1;
+    let pane_id = PaneId::Terminal(1);
+    let _ = tab.rename_pane_by_pane_id(pane_id, "flame".as_bytes().to_vec());
+    if let Some(pane) = tab.get_active_pane_or_floating_pane_mut(client_id) {
+        pane.store_pane_name();
+    }
+    // Backspace 3 times (DEL = 0x7F)
+    let _ = tab.update_active_pane_name(vec![0x7f], client_id);
+    let _ = tab.update_active_pane_name(vec![0x7f], client_id);
+    let _ = tab.update_active_pane_name(vec![0x7f], client_id);
+    let pane = tab.get_pane_with_id(pane_id).unwrap();
+    assert_eq!(pane.current_title(), "fl");
+}
+
+#[test]
+pub fn interactive_rename_backspace_all_then_retype() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let client_id = 1;
+    let pane_id = PaneId::Terminal(1);
+    let _ = tab.rename_pane_by_pane_id(pane_id, "flame".as_bytes().to_vec());
+    if let Some(pane) = tab.get_active_pane_or_floating_pane_mut(client_id) {
+        pane.store_pane_name();
+    }
+    // Backspace 5 times to clear "flame"
+    for _ in 0..5 {
+        let _ = tab.update_active_pane_name(vec![0x7f], client_id);
+    }
+    // Type "new"
+    let _ = tab.update_active_pane_name(vec![b'n'], client_id);
+    let _ = tab.update_active_pane_name(vec![b'e'], client_id);
+    let _ = tab.update_active_pane_name(vec![b'w'], client_id);
+    let pane = tab.get_pane_with_id(pane_id).unwrap();
+    assert_eq!(pane.current_title(), "new");
+}
+
+#[test]
+pub fn interactive_rename_esc_reverts() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let client_id = 1;
+    let pane_id = PaneId::Terminal(1);
+    let _ = tab.rename_pane_by_pane_id(pane_id, "flame".as_bytes().to_vec());
+    // Enter rename mode
+    if let Some(pane) = tab.get_active_pane_or_floating_pane_mut(client_id) {
+        pane.store_pane_name();
+    }
+    // Type some chars
+    let _ = tab.update_active_pane_name(vec![b'x'], client_id);
+    let _ = tab.update_active_pane_name(vec![b'y'], client_id);
+    // Esc — undo
+    let _ = tab.undo_active_rename_pane(client_id);
+    let pane = tab.get_pane_with_id(pane_id).unwrap();
+    assert_eq!(pane.current_title(), "flame");
+}
+
+#[test]
+pub fn interactive_rename_esc_on_unnamed_stays_unnamed() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let client_id = 1;
+    let pane_id = PaneId::Terminal(1);
+    let title_before = tab.get_pane_with_id(pane_id).unwrap().current_title();
+    // Enter rename mode on unnamed pane
+    if let Some(pane) = tab.get_active_pane_or_floating_pane_mut(client_id) {
+        pane.store_pane_name();
+    }
+    let _ = tab.update_active_pane_name(vec![b'a'], client_id);
+    let _ = tab.update_active_pane_name(vec![b'b'], client_id);
+    // Esc
+    let _ = tab.undo_active_rename_pane(client_id);
+    let pane = tab.get_pane_with_id(pane_id).unwrap();
+    assert_eq!(pane.current_title(), title_before);
+}
+
+#[test]
+pub fn cli_rename_then_interactive_esc_restores_cli_name() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let client_id = 1;
+    let pane_id = PaneId::Terminal(1);
+    // CLI rename
+    let _ = tab.rename_pane_by_pane_id(pane_id, "spark".as_bytes().to_vec());
+    // Enter interactive rename mode
+    if let Some(pane) = tab.get_active_pane_or_floating_pane_mut(client_id) {
+        pane.store_pane_name();
+    }
+    let _ = tab.update_active_pane_name(vec![b'!'], client_id);
+    // Esc — should restore "spark"
+    let _ = tab.undo_active_rename_pane(client_id);
+    let pane = tab.get_pane_with_id(pane_id).unwrap();
+    assert_eq!(pane.current_title(), "spark");
+}
+
+#[test]
+pub fn cli_rename_then_undo_clears_to_fallback() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let pane_id = PaneId::Terminal(1);
+    let fallback_title = tab.get_pane_with_id(pane_id).unwrap().current_title();
+    let _ = tab.rename_pane_by_pane_id(pane_id, "spark".as_bytes().to_vec());
+    tab.undo_rename_pane_by_pane_id(pane_id);
+    let pane = tab.get_pane_with_id(pane_id).unwrap();
+    assert_eq!(pane.current_title(), fallback_title);
+}
+
+#[test]
+pub fn cli_rename_active_pane_replaces_name() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let client_id = 1;
+    let pane_id = PaneId::Terminal(1);
+    // Set initial name
+    let _ = tab.rename_pane_by_pane_id(pane_id, "flame".as_bytes().to_vec());
+    // CLI rename (focused pane) — full replacement
+    let _ = tab.rename_active_pane("spark".as_bytes().to_vec(), client_id);
+    let pane = tab.get_pane_with_id(pane_id).unwrap();
+    assert_eq!(pane.current_title(), "spark");
+}
+
+#[test]
+pub fn cli_rename_active_pane_single_char() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let client_id = 1;
+    let pane_id = PaneId::Terminal(1);
+    let _ = tab.rename_pane_by_pane_id(pane_id, "flame".as_bytes().to_vec());
+    // CLI rename with single character — should replace, not append
+    let _ = tab.rename_active_pane("x".as_bytes().to_vec(), client_id);
+    let pane = tab.get_pane_with_id(pane_id).unwrap();
+    assert_eq!(pane.current_title(), "x");
+}
+
+#[test]
+pub fn cli_rename_active_pane_on_unnamed_pane() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let client_id = 1;
+    let pane_id = PaneId::Terminal(1);
+    // Pane has no name — CLI rename should set it
+    let _ = tab.rename_active_pane("spark".as_bytes().to_vec(), client_id);
+    let pane = tab.get_pane_with_id(pane_id).unwrap();
+    assert_eq!(pane.current_title(), "spark");
+}
+
+#[test]
+pub fn cli_rename_active_pane_to_empty_clears_name() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let client_id = 1;
+    let pane_id = PaneId::Terminal(1);
+    let fallback = tab.get_pane_with_id(pane_id).unwrap().current_title();
+    let _ = tab.rename_pane_by_pane_id(pane_id, "flame".as_bytes().to_vec());
+    // CLI rename to empty — should clear name
+    let _ = tab.rename_active_pane("".as_bytes().to_vec(), client_id);
+    let pane = tab.get_pane_with_id(pane_id).unwrap();
+    assert_eq!(pane.current_title(), fallback);
+}
+
+#[test]
+pub fn cli_rename_active_pane_then_interactive_esc_restores() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let client_id = 1;
+    let pane_id = PaneId::Terminal(1);
+    // CLI rename
+    let _ = tab.rename_active_pane("spark".as_bytes().to_vec(), client_id);
+    // Enter interactive rename, type something
+    if let Some(pane) = tab.get_active_pane_or_floating_pane_mut(client_id) {
+        pane.store_pane_name();
+    }
+    let _ = tab.update_active_pane_name(vec![b'!'], client_id);
+    // Esc — should restore "spark"
+    let _ = tab.undo_active_rename_pane(client_id);
+    let pane = tab.get_pane_with_id(pane_id).unwrap();
+    assert_eq!(pane.current_title(), "spark");
 }

@@ -81,19 +81,31 @@ pub(crate) fn kill_all_sessions(yes: bool) {
 }
 
 pub(crate) fn delete_all_sessions(yes: bool, force: bool) {
+    use std::collections::BTreeMap;
+    use zellij_server::background_jobs::scan_session_list_default_dirs;
+
     let active_sessions: Vec<String> = get_sessions()
         .unwrap_or_default()
         .iter()
         .map(|s| s.0.clone())
         .collect();
-    let resurrectable_sessions = get_resurrectable_sessions();
+    let (_live_sessions, resurrectable_map) =
+        scan_session_list_default_dirs(&String::new(), &[], &BTreeMap::new());
+    let mut resurrectable_sessions: Vec<(String, Duration)> =
+        resurrectable_map.into_iter().collect();
+    if force {
+        for entry in get_resurrectable_sessions() {
+            if !resurrectable_sessions.iter().any(|(n, _)| *n == entry.0) {
+                resurrectable_sessions.push(entry);
+            }
+        }
+    }
     let dead_sessions: Vec<_> = if force {
         resurrectable_sessions
     } else {
         resurrectable_sessions
-            .iter()
+            .into_iter()
             .filter(|(name, _)| !active_sessions.contains(name))
-            .cloned()
             .collect()
     };
     if !yes {

@@ -10,7 +10,7 @@ use crate::route::NotificationEnd;
 use crate::tab::{AdjustedInput, Pane};
 use crate::ClientId;
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt::Debug;
 use std::rc::Rc;
 use std::time::{self, Instant};
@@ -153,6 +153,19 @@ pub struct TerminalPane {
     #[allow(dead_code)]
     arrow_fonts: bool,
     notification_end: Option<NotificationEnd>,
+    /// `true` while a host-terminal forward initiated by this pane is
+    /// outstanding. While set, processing of `pending_pty_input` is
+    /// suspended so that the async host reply lands on the pane's
+    /// stdin in the same stream position the original query occupied.
+    /// Cleared by Tab when the reply (or 500 ms cache-fallback) lands.
+    forward_paused: bool,
+    /// PTY bytes that have not yet been fed to vte. Single source of
+    /// truth: `handle_pty_bytes` always appends here, and processing
+    /// pops one byte at a time and advances the vte parser. Processing
+    /// stops as soon as Grid produces a forward-bound query, leaving
+    /// remaining bytes in the queue to be drained after the host reply
+    /// has been written.
+    pending_pty_input: VecDeque<u8>,
 }
 
 impl Pane for TerminalPane {
@@ -203,12 +216,26 @@ impl Pane for TerminalPane {
     }
     fn handle_pty_bytes(&mut self, bytes: VteBytes) {
         self.set_should_render(true);
-        for &byte in &bytes {
+        if self.forward_paused {
+            // A host-forward initiated by this pane is outstanding.
+            // Buffer the bytes; Tab drains them on resume.
+            self.pending_pty_input.extend(bytes);
+            return;
+        }
+        let mut iter = bytes.into_iter();
+        while let Some(byte) = iter.next() {
             self.vte_parser.advance(&mut self.grid, byte);
+            if !self.grid.pending_forwarded_queries.is_empty() {
+                // Grid produced a forward. Stop feeding; queue the
+                // un-fed remainder so Tab can replay it after the
+                // reply.
+                self.pending_pty_input.extend(iter);
+                break;
+            }
         }
     }
-    fn cursor_coordinates(&self, _client_id: Option<ClientId>) -> Option<(usize, usize)> {
-        // (x, y)
+    fn cursor_coordinates(&self, _client_id: Option<ClientId>) -> Option<(usize, usize, bool)> {
+        // (x, y, is_visible)
         if self.get_content_rows() < 1 || self.get_content_columns() < 1 {
             // do not render cursor if there's no room for it
             return None;
@@ -216,7 +243,7 @@ impl Pane for TerminalPane {
         let Offset { top, left, .. } = self.content_offset;
         self.grid
             .cursor_coordinates()
-            .map(|(x, y)| (x + left, y + top))
+            .map(|(x, y, is_visible)| (x + left, y + top, is_visible))
     }
     fn is_mid_frame(&self) -> bool {
         self.grid.is_mid_frame()
@@ -458,7 +485,7 @@ impl Pane for TerminalPane {
         text_color: PaletteColor,
     ) -> Option<String> {
         let mut vte_output = None;
-        if let Some((cursor_x, cursor_y)) = self.cursor_coordinates() {
+        if let Some((cursor_x, cursor_y, true)) = self.cursor_coordinates() {
             let mut character_under_cursor = self
                 .grid
                 .get_character_under_cursor()
@@ -586,8 +613,42 @@ impl Pane for TerminalPane {
         self.grid.pending_messages_to_pty.drain(..).collect()
     }
 
+    fn drain_forwarded_queries(&mut self) -> Vec<crate::host_query::HostQuery> {
+        self.grid.pending_forwarded_queries.drain(..).collect()
+    }
+
+    fn arm_forward_pause(&mut self) {
+        self.forward_paused = true;
+    }
+
+    fn clear_forward_pause(&mut self) -> bool {
+        let was_paused = self.forward_paused;
+        self.forward_paused = false;
+        was_paused
+    }
+
+    fn drain_pending_pty_input(&mut self) -> Vec<u8> {
+        self.pending_pty_input.drain(..).collect()
+    }
+
+    fn is_forward_paused(&self) -> bool {
+        self.forward_paused
+    }
+
+    fn push_color_palette_dsr(&mut self, mode: zellij_utils::data::HostTerminalThemeMode) {
+        self.grid.push_color_palette_dsr(mode);
+    }
+
     fn drain_clipboard_update(&mut self) -> Option<String> {
         self.grid.pending_clipboard_update.take()
+    }
+
+    fn drain_desktop_notifications(&mut self) -> Vec<(String, String)> {
+        self.grid.pending_desktop_notifications.drain(..).collect()
+    }
+
+    fn drain_osc7_cwd(&mut self) -> Option<std::path::PathBuf> {
+        self.grid.pending_osc7_cwd.take()
     }
 
     fn start_selection(&mut self, start: &Position, _client_id: ClientId) {
@@ -983,9 +1044,12 @@ impl Pane for TerminalPane {
         self.grid.clear_plugin_highlights(plugin_id);
         self.set_should_render(true);
     }
-    fn set_hover_position(&mut self, position: Option<Position>) {
-        self.grid.set_hover_position(position);
-        self.set_should_render(true);
+    fn set_hover_position(&mut self, position: Option<Position>) -> bool {
+        let changed = self.grid.set_hover_position(position);
+        if changed {
+            self.set_should_render(true);
+        }
+        changed
     }
     fn cached_hover_tooltip(&self) -> Option<String> {
         self.grid.cached_hover_tooltip.clone()
@@ -1074,6 +1138,8 @@ impl TerminalPane {
             invoked_with,
             arrow_fonts,
             notification_end,
+            forward_paused: false,
+            pending_pty_input: VecDeque::new(),
         }
     }
     pub fn get_x(&self) -> usize {
@@ -1113,8 +1179,8 @@ impl TerminalPane {
     pub fn read_buffer_as_lines(&self) -> Vec<Vec<TerminalCharacter>> {
         self.grid.as_character_lines()
     }
-    pub fn cursor_coordinates(&self) -> Option<(usize, usize)> {
-        // (x, y)
+    pub fn cursor_coordinates(&self) -> Option<(usize, usize, bool)> {
+        // (x, y, is_visible)
         if self.get_content_rows() < 1 || self.get_content_columns() < 1 {
             // do not render cursor if there's no room for it
             return None;

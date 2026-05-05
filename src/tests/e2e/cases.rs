@@ -296,6 +296,7 @@ pub fn scrolling_inside_a_pane() {
                     let mut step_is_complete = false;
                     if remote_terminal.cursor_position_is(63, 21)
                         && remote_terminal.snapshot_contains("line21")
+                        && remote_terminal.status_bar_appears()
                     {
                         // all lines have been written to the pane
                         remote_terminal.send_key(&SCROLL_MODE);
@@ -314,8 +315,10 @@ pub fn scrolling_inside_a_pane() {
                 if remote_terminal.cursor_position_is(63, 21)
                     && remote_terminal.snapshot_contains("line3 ")
                     && remote_terminal.snapshot_contains("SCROLL:  1/3")
+                    && remote_terminal.snapshot_contains("PgDn|PgUp")
                 {
                     // keyboard scrolls up 1 line, scrollback is 4 lines: cat command + 2 extra lines from fixture + prompt
+                    // PgDn|PgUp only appears in the scroll mode status bar, confirming we're still in scroll mode
                     step_is_complete = true;
                 }
                 step_is_complete
@@ -1135,8 +1138,11 @@ pub fn detach_and_attach_session() {
                 name: "Reattach session",
                 instruction: |mut remote_terminal: RemoteTerminal| -> bool {
                     let mut step_is_complete = false;
-                    if !remote_terminal.status_bar_appears() {
-                        // we don't see the toolbar, so we can assume we've already detached
+                    if !remote_terminal.status_bar_appears()
+                        && remote_terminal.snapshot_contains("Bye from Zellij!")
+                    {
+                        // we don't see the toolbar and Zellij's exit message is visible,
+                        // so Zellij has fully exited and the server is ready to accept connections
                         remote_terminal.attach_to_original_session();
                         step_is_complete = true;
                     }
@@ -1148,7 +1154,9 @@ pub fn detach_and_attach_session() {
             name: "Wait for session to be attached",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.ctrl_plus_appears() && remote_terminal.cursor_position_is(77, 2)
+                if remote_terminal.ctrl_plus_appears()
+                    && remote_terminal.cursor_position_is(77, 2)
+                    && !remote_terminal.snapshot_contains("Detach")
                 {
                     // we're back inside the session
                     step_is_complete = true;
@@ -1207,11 +1215,9 @@ pub fn quit_and_resurrect_session() {
         let last_snapshot = runner.take_snapshot_after(Step {
             name: "Wait for session to be resurrected",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
-                let mut step_is_complete = false;
-                if remote_terminal.snapshot_contains("(FLOATING PANES VISIBLE)") {
-                    step_is_complete = true;
-                }
-                step_is_complete
+                remote_terminal.snapshot_contains("(FLOATING PANES VISIBLE)")
+                    && remote_terminal.status_bar_appears()
+                    && remote_terminal.tab_bar_appears()
             },
         });
         if runner.test_timed_out && test_attempts > 0 {
@@ -1268,11 +1274,9 @@ pub fn quit_and_resurrect_session_with_viewport_serialization() {
         let last_snapshot = runner.take_snapshot_after(Step {
             name: "Wait for session to be resurrected",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
-                let mut step_is_complete = false;
-                if remote_terminal.snapshot_contains("(FLOATING PANES VISIBLE)") {
-                    step_is_complete = true;
-                }
-                step_is_complete
+                remote_terminal.snapshot_contains("(FLOATING PANES VISIBLE)")
+                    && remote_terminal.status_bar_appears()
+                    && remote_terminal.tab_bar_appears()
             },
         });
         if runner.test_timed_out && test_attempts > 0 {
@@ -2420,14 +2424,9 @@ pub fn send_blocking_command_through_the_cli() {
                     if remote_terminal.status_bar_appears()
                         && remote_terminal.cursor_position_is(3, 2)
                     {
-                        // Send a command that sleeps for 2 seconds then exits with status 42
-                        // Using bash -c with proper escaping
-                        // remote_terminal.send_key("aaa\n".as_bytes());
                         std::thread::sleep(std::time::Duration::from_millis(100));
-                        remote_terminal.send_blocking_command_through_the_cli(
-                            // "lskdjlskdjf"
-                            "bash -c 'sleep 2 && exit 42'",
-                        );
+                        remote_terminal
+                            .send_blocking_command_through_the_cli("bash -c 'sleep 2 && exit 42'");
                         std::thread::sleep(std::time::Duration::from_millis(100));
                         remote_terminal.send_key(&ENTER);
                         std::thread::sleep(std::time::Duration::from_millis(100));
@@ -2455,8 +2454,13 @@ pub fn send_blocking_command_through_the_cli() {
                 instruction: |mut remote_terminal: RemoteTerminal| -> bool {
                     let mut step_is_complete = false;
                     // After 2+ seconds, the command should complete and the floating pane should close
-                    // then we do echo $? to make sure we got back its exit status
-                    if !remote_terminal.snapshot_contains("PIN [ ]") {
+                    // Wait until the floating pane is gone AND the shell prompt is back before
+                    // asking for $?, otherwise we can race the blocking CLI process itself
+                    // returning to the shell.
+                    if !remote_terminal.snapshot_contains("PIN [ ]")
+                        && remote_terminal.snapshot_contains("$ \u{2588}")
+                        && remote_terminal.status_bar_appears()
+                    {
                         remote_terminal.send_key("echo $?".as_bytes());
                         std::thread::sleep(std::time::Duration::from_millis(100));
                         remote_terminal.send_key(&ENTER);
@@ -2472,7 +2476,11 @@ pub fn send_blocking_command_through_the_cli() {
             name: "Verify CLI returned with proper exit status after command completed",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
+                // wait until echo $? is visible, the exit status rendered, and the cursor is back
+                // at a blank prompt, which means the shell command actually executed
                 if remote_terminal.snapshot_contains("echo $?")
+                    && remote_terminal.snapshot_contains("│42")
+                    && remote_terminal.snapshot_contains("$ \u{2588}")
                     && remote_terminal.status_bar_appears()
                 {
                     step_is_complete = true
@@ -2662,6 +2670,7 @@ pub fn watcher_client_functionality() {
         // Step 1: Create main client and wait for it to load
         let mut main_client =
             RemoteRunner::new_with_session_name(fake_win_size, session_name, false)
+                .retry_pause_ms(200)
                 .dont_panic()
                 .add_step(Step {
                     name: "Wait for app to load",
@@ -2672,12 +2681,16 @@ pub fn watcher_client_functionality() {
                 });
         main_client.run_all_steps();
 
-        // Step 2: Start a background process that produces periodic output
+        // Step 2: Start a foreground process that produces periodic output and then
+        // replaces the shell with a long sleep. Using exec means pane 1 never returns
+        // to an interactive shell prompt, so a SIGWINCH on re-attach cannot trigger a
+        // prompt redraw — the snapshot is deterministic.
         main_client = main_client.add_step(Step {
-            name: "Start background output loop",
+            name: "Start foreground output loop",
             instruction: |mut remote_terminal: RemoteTerminal| -> bool {
-                remote_terminal.send_key(b"{ for i in 1 2 3; do sleep 1; echo \"WATCHER_OUTPUT_$i\"; done & } 2>/dev/null");
-                std::thread::sleep(std::time::Duration::from_millis(100));
+                remote_terminal.send_key(
+                    b"for i in 1 2 3; do sleep 1; echo WATCHER_OUTPUT_$i; done; echo WATCHER_DONE; exec sleep 1000000",
+                );
                 remote_terminal.send_key(&ENTER);
                 true
             },
@@ -2686,7 +2699,7 @@ pub fn watcher_client_functionality() {
 
         // Step 3: Wait for first output line to appear
         main_client = main_client.add_step(Step {
-            name: "Wait for first background output",
+            name: "Wait for first output",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let found = remote_terminal.snapshot_contains("WATCHER_OUTPUT_1");
                 found
@@ -2696,6 +2709,7 @@ pub fn watcher_client_functionality() {
 
         // Step 4: Attach watcher client
         let mut watcher = RemoteRunner::new_watcher_session(fake_win_size, session_name)
+            .retry_pause_ms(200)
             .dont_panic()
             .add_step(Step {
                 name: "Wait for watcher to connect",
@@ -2710,8 +2724,7 @@ pub fn watcher_client_functionality() {
         main_client = main_client.add_step(Step {
             name: "Split pane to the right",
             instruction: |mut remote_terminal: RemoteTerminal| -> bool {
-                if remote_terminal.status_bar_appears() && remote_terminal.cursor_position_is(1, 7)
-                {
+                if remote_terminal.status_bar_appears() {
                     remote_terminal.send_key(&PANE_MODE);
                     std::thread::sleep(std::time::Duration::from_millis(100));
                     remote_terminal.send_key(&SPLIT_RIGHT_IN_PANE_MODE);
@@ -2728,7 +2741,7 @@ pub fn watcher_client_functionality() {
         watcher = watcher.add_step(Step {
             name: "Watcher sees split pane",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
-                remote_terminal.cursor_position_is(63, 2) && remote_terminal.snapshot_contains("┐┌")
+                remote_terminal.status_bar_appears() && remote_terminal.snapshot_contains("┐┌")
                 // vertical split indicator
             },
         });
@@ -2787,7 +2800,7 @@ pub fn watcher_client_functionality() {
         });
         main_client.run_all_steps();
 
-        // Step 11: Verify watcher receives background output even with no main client
+        // Step 11: Verify watcher receives output even with no main client
         watcher = watcher.add_step(Step {
             name: "Watcher sees WATCHER_OUTPUT_2",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
@@ -2822,11 +2835,14 @@ pub fn watcher_client_functionality() {
 
         watcher.run_all_steps();
 
-        // Step 15: Take final snapshots
+        // Take final snapshots — WATCHER_DONE means the loop finished and pane 1 is now
+        // running `sleep 1000000` (via exec), so no interactive shell and no prompt redraws.
         let main_client_snapshot = main_client_reattached.take_snapshot_after(Step {
             name: "Take main client final snapshot",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 remote_terminal.status_bar_appears()
+                    && remote_terminal.snapshot_contains("WATCHER_DONE")
+                    && remote_terminal.snapshot_contains("┐┌")
             },
         });
 
@@ -2834,6 +2850,8 @@ pub fn watcher_client_functionality() {
             name: "Take watcher final snapshot",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 remote_terminal.status_bar_appears()
+                    && remote_terminal.snapshot_contains("WATCHER_DONE")
+                    && remote_terminal.snapshot_contains("┐┌")
             },
         });
 
@@ -2883,7 +2901,9 @@ pub fn override_layout_from_default_to_compact() {
         let last_snapshot = runner.take_snapshot_after(Step {
             name: "Wait for compact layout to appear",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
+                // wait for both the layout indicator and the session name to render
                 remote_terminal.snapshot_contains("NORMAL")
+                    && remote_terminal.snapshot_contains("e2e-test")
             },
         });
 

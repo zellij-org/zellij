@@ -66,6 +66,9 @@ enum EventType {
     PluginConfigurationChanged = 41;
     HighlightClicked = 42;
     PaneRenderReportWithAnsi = 43;
+    InitialKeybinds = 44;
+    CommandChanged = 45;
+    HostTerminalThemeChanged = 46;
 }
 
 message EventNameList {
@@ -111,13 +114,32 @@ message Event {
     PluginConfigurationChangedPayload plugin_configuration_changed_payload = 35;
     HighlightClickedPayload highlight_clicked_payload = 36;
     PaneRenderReportPayload pane_render_report_with_ansi_payload = 37;
+    InitialKeybindsPayload initial_keybinds_payload = 38;
+    CommandChangedPayload command_changed_payload = 39;
+    HostTerminalThemeChangedPayload host_terminal_theme_changed_payload = 40;
   }
+}
+
+message HostTerminalThemeChangedPayload {
+  HostTerminalThemeIndication mode = 1;
+}
+
+enum HostTerminalThemeIndication {
+  Dark = 0;
+  Light = 1;
 }
 
 message CwdChangedPayload {
   PaneId pane_id = 1;
   string new_cwd = 2;
   repeated uint32 focused_client_ids = 3;
+}
+
+message CommandChangedPayload {
+  PaneId pane_id = 1;
+  repeated string command = 2;
+  bool is_foreground = 3;
+  repeated uint32 focused_client_ids = 4;
 }
 
 message FailedToStartWebServerPayload {
@@ -526,5 +548,9 @@ message HighlightClickedPayload {
   string pattern = 2;
   string matched_string = 3;
   repeated ContextItem context = 4;
+}
+
+message InitialKeybindsPayload {
+  repeated InputModeKeybinds keybinds = 1;
 }
 

@@ -3,7 +3,7 @@ source: src/tests/e2e/cases.rs
 expression: last_snapshot
 ---
 ┌ Pane #1 ─────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│$ /usr/src/zellij/x86_64-unknown-linux-musl/release/zellij action override-layout compact                             │
+│$ /usr/src/zellij/zellij action override-layout compact                                                               │
 │$                                                                                                                     │
 │$ █                                                                                                                   │
 │                                                                                                                      │
@@ -25,4 +25,4 @@ expression: last_snapshot
 │                                                                                                                      │
 │                                                                                                                      │
 └──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
- Zellij (e2e-test) NORMAL  Tab #1 
+ Zellij (e2e-test) NORMAL  Tab #1                                                                                     

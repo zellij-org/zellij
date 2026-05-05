@@ -351,9 +351,10 @@ impl BareKey {
             Ok("57424") => Some(BareKey::End),
             Ok("57425") => Some(BareKey::Insert),
             Ok("57426") => Some(BareKey::Delete),
-            Ok(num) => u8::from_str_radix(num, 10)
+            Ok(num) => u32::from_str_radix(num, 10)
                 .ok()
-                .map(|n| BareKey::Char((n as char).to_ascii_lowercase())),
+                .and_then(char::from_u32)
+                .map(BareKey::Char),
             _ => None,
         }
     }
@@ -1012,6 +1013,7 @@ pub enum Event {
     PaneRenderReportWithAnsi(HashMap<PaneId, PaneContents>),
     ActionComplete(Action, Option<PaneId>, BTreeMap<String, String>), // Action, pane_id, context
     CwdChanged(PaneId, PathBuf, Vec<ClientId>), // pane_id, cwd, focused_client_ids
+    CommandChanged(PaneId, Vec<String>, bool, Vec<ClientId>), // pane_id, command, is_foreground, focused_client_ids
     AvailableLayoutInfo(Vec<LayoutInfo>, Vec<LayoutWithError>),
     PluginConfigurationChanged(BTreeMap<String, String>),
     HighlightClicked {
@@ -1020,6 +1022,18 @@ pub enum Event {
         matched_string: String,
         context: BTreeMap<String, String>,
     },
+    /// Initial keybindings sent once on plugin load and on reconfiguration.
+    /// Plugins that subscribe to this event signal they cache keybindings
+    /// and can handle lightweight ModeUpdate events without keybindings.
+    InitialKeybinds(KeybindsVec),
+    /// The host terminal indicated its color palette theme mode (CSI 2031 / DSR 997).
+    HostTerminalThemeChanged(HostTerminalThemeMode),
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum HostTerminalThemeMode {
+    Dark,
+    Light,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, EnumDiscriminants, Display, Serialize, Deserialize)]
@@ -2576,6 +2590,18 @@ pub enum GetPaneRunningCommandResponse {
     Err(String),
 }
 
+#[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SessionListSnapshot {
+    pub live_sessions: Vec<SessionInfo>,
+    pub resurrectable_sessions: Vec<(String, Duration)>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum GetSessionListResponse {
+    Ok(SessionListSnapshot),
+    Err(String),
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum GetPaneCwdResponse {
     Ok(PathBuf),
@@ -3562,6 +3588,7 @@ pub enum PluginCommand {
         context: BTreeMap<String, String>,
     },
     ListWindowsVolumes,
+    GetSessionList,
 }
 
 // Response type for plugin API methods that open a pane in a new tab
@@ -3605,3 +3632,25 @@ pub type OpenCommandPaneInPlaceOfPaneIdResponse = Option<PaneId>;
 pub type OpenTerminalPaneInPlaceOfPaneIdResponse = Option<PaneId>;
 pub type OpenEditPaneInPlaceOfPaneIdResponse = Option<PaneId>;
 pub type OpenPluginPaneFloatingResponse = Option<PaneId>;
+
+#[test]
+pub fn can_parse_unicode_bare_keys() {
+    let key = "1087"; // п
+    assert_eq!(
+        BareKey::from_bytes_with_u(&key.as_bytes()),
+        Some(BareKey::Char('п')),
+        "Can parse a bare 'п' keypress"
+    );
+    let key = "1255"; // ӧ
+    assert_eq!(
+        BareKey::from_bytes_with_u(&key.as_bytes()),
+        Some(BareKey::Char('ӧ')),
+        "Can parse a bare 'ӧ' keypress"
+    );
+    let key = "1098"; // ъ
+    assert_eq!(
+        BareKey::from_bytes_with_u(&key.as_bytes()),
+        Some(BareKey::Char('ъ')),
+        "Can parse a bare 'ъ' keypress"
+    );
+}

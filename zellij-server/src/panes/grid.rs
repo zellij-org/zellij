@@ -5,7 +5,9 @@ use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::rc::Rc;
 use unicode_width::UnicodeWidthChar;
-use zellij_utils::data::{HighlightLayer, HighlightStyle, RegexHighlight, Style};
+use zellij_utils::data::{
+    HighlightLayer, HighlightStyle, HostTerminalThemeMode, RegexHighlight, Style,
+};
 use zellij_utils::errors::prelude::*;
 
 use std::{
@@ -26,6 +28,85 @@ use zellij_utils::{
 
 const TABSTOP_WIDTH: usize = 8; // TODO: is this always right?
 pub const MAX_TITLE_STACK_SIZE: usize = 1000;
+
+/// Rewrites OSC 99 metadata for multiplexer forwarding:
+///
+/// 1. Namespaces the `i=` value with a pane ID prefix and flags so responses
+///    can be routed back to the originating pane.
+///    Format: `i=p<pane_id>[r][q].<original_id>`
+///    - `r` flag: app requested `a=report` — activation response should be
+///      written back to the pane's PTY
+///    - `q` flag: this is a capability query (`p=?`) — response must be
+///      written back to the pane's PTY
+///    - Neither: activation response used only for focus routing, not forwarded
+///
+/// 2. Ensures `a=report` is always present so the host terminal sends the
+///    activation response back to Zellij (needed for pane focus routing).
+///
+/// If no `i=` key is present, one is added with an empty original ID.
+pub(crate) fn namespace_notification_id(metadata: &str, pane_id: u32) -> String {
+    let mut found_id = false;
+    let mut found_action = false;
+    let mut app_wants_report = false;
+    let mut is_query = false;
+    let result = metadata
+        .split(':')
+        .map(|kv| {
+            if kv.starts_with("i=") {
+                found_id = true;
+                // Defer i= rewriting until we know the flags
+                kv.to_string()
+            } else if let Some(action_value) = kv.strip_prefix("a=") {
+                found_action = true;
+                app_wants_report = action_value.split(',').any(|v| v == "report");
+                if app_wants_report {
+                    kv.to_string()
+                } else {
+                    format!("a={},report", action_value)
+                }
+            } else if kv == "p=?" {
+                is_query = true;
+                kv.to_string()
+            } else {
+                kv.to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(":");
+
+    // Build flags suffix
+    let mut flags = String::new();
+    if app_wants_report {
+        flags.push('r');
+    }
+    if is_query {
+        flags.push('q');
+    }
+
+    // Rewrite i= with pane ID and flags
+    let result = result
+        .split(':')
+        .map(|kv| {
+            if let Some(id_value) = kv.strip_prefix("i=") {
+                format!("i=p{}{}.{}", pane_id, flags, id_value)
+            } else {
+                kv.to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(":");
+
+    let result = if !found_id {
+        format!("i=p{}{}.:{}", pane_id, flags, result)
+    } else {
+        result
+    };
+    if !found_action {
+        format!("{}:a=report", result)
+    } else {
+        result
+    }
+}
 
 use vte::{Params, Perform};
 use zellij_utils::{consts::VERSION, shared::version_number};
@@ -271,6 +352,33 @@ fn subtract_isize_from_usize(u: usize, i: isize) -> usize {
     }
 }
 
+pub fn parse_osc7_path(raw: &[u8]) -> Option<std::path::PathBuf> {
+    let s = std::str::from_utf8(raw).ok()?;
+    let rest = s.strip_prefix("file://")?;
+    let slash_idx = rest.find('/')?;
+    let encoded_path = &rest[slash_idx..];
+    let mut out = Vec::with_capacity(encoded_path.len());
+    let bytes = encoded_path.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' {
+            let end = i.checked_add(3)?;
+            if end > bytes.len() {
+                return None;
+            }
+            let hex = std::str::from_utf8(&bytes[i + 1..end]).ok()?;
+            let byte = u8::from_str_radix(hex, 16).ok()?;
+            out.push(byte);
+            i = end;
+        } else {
+            out.push(bytes[i]);
+            i += 1;
+        }
+    }
+    let decoded = String::from_utf8(out).ok()?;
+    Some(std::path::PathBuf::from(decoded))
+}
+
 macro_rules! dump_screen {
     ($lines:expr) => {{
         let mut is_first = true;
@@ -495,7 +603,9 @@ pub struct Grid {
     scroll_region: (usize, usize),
     active_charset: CharsetIndex,
     preceding_char: Option<TerminalCharacter>,
+    #[allow(dead_code)]
     terminal_emulator_colors: Rc<RefCell<Palette>>,
+    #[allow(dead_code)]
     terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
     pub(crate) output_buffer: OutputBuffer,
     title_stack: Vec<String>,
@@ -524,8 +634,24 @@ pub struct Grid {
     pub mouse_mode: MouseMode,
     pub mouse_tracking: MouseTracking,
     pub focus_event_tracking: bool,
+    /// Has the app in this pane subscribed to host color-palette theme
+    /// notifications via `CSI ? 2031 h`? When true, host-emitted DSR 997
+    /// notifications (received by the client and forwarded as
+    /// `ScreenInstruction::HostTerminalThemeChanged`) are pushed onto
+    /// `pending_messages_to_pty` for this pane.
+    pub color_palette_notification_enabled: bool,
     pub search_results: SearchResult,
     pub pending_clipboard_update: Option<String>,
+    pub pending_osc7_cwd: Option<std::path::PathBuf>,
+    /// Pending desktop notifications: (payload, terminator)
+    /// Payload is the semicolon-joined params after "99", terminator is "\x07" or "\x1b\\"
+    pub pending_desktop_notifications: Vec<(String, String)>,
+    /// Whitelisted host-terminal queries intercepted from the app running
+    /// in this pane (CSI 14t / 16t pixel-dim queries, OSC 10;? / 11;? /
+    /// 4;N;? color queries). Each entry is the raw byte sequence that
+    /// Zellij should forward to the host terminal; the host's reply is
+    /// later routed back to this pane's pty.
+    pub pending_forwarded_queries: Vec<crate::host_query::HostQuery>,
     ui_component_bytes: Option<Vec<u8>>,
     style: Style,
     debug: bool,
@@ -537,8 +663,15 @@ pub struct Grid {
     // disabled by user config?
     click: Click,
     hyperlink_tracker: HyperlinkTracker,
-    pub pane_default_fg: Option<AnsiCode>,
-    pub pane_default_bg: Option<AnsiCode>,
+    /// Pane-scoped override for the default foreground colour. Narrow
+    /// to literal RGB by construction — the setters below refuse
+    /// palette-indexed / named variants silently, so this field can be
+    /// converted to an `OSC 10` reply without fallibility and the
+    /// render path can wrap it unconditionally.
+    pub pane_default_fg: Option<(u8, u8, u8)>,
+    /// Pane-scoped override for the default background colour. Same
+    /// invariant as `pane_default_fg`.
+    pub pane_default_bg: Option<(u8, u8, u8)>,
     pub plugin_highlights: HashMap<u32, Vec<(String, CompiledHighlight)>>,
     // key: plugin_id (u32), inner vec: (pattern, compiled) pairs
     pub hover_position: Option<Position>, // pane-relative cursor cell; None when outside pane
@@ -547,25 +680,49 @@ pub struct Grid {
 
 impl Grid {
     pub fn set_pane_default_colors(&mut self, fg: Option<String>, bg: Option<String>) {
-        self.pane_default_fg = fg.as_ref().and_then(|s| xparse_color(s.as_bytes()));
-        self.pane_default_bg = bg.as_ref().and_then(|s| xparse_color(s.as_bytes()));
+        // Parse inputs; anything that isn't literal RGB (palette
+        // index / named colour / parse failure) is silently dropped so
+        // the invariant on `pane_default_{fg,bg}` is preserved.
+        self.pane_default_fg = fg
+            .as_ref()
+            .and_then(|s| xparse_color(s.as_bytes()))
+            .and_then(rgb_of_ansi_code);
+        self.pane_default_bg = bg
+            .as_ref()
+            .and_then(|s| xparse_color(s.as_bytes()))
+            .and_then(rgb_of_ansi_code);
         self.output_buffer.update_all_lines();
     }
     pub fn get_pane_default_color_strings(&self) -> (Option<String>, Option<String>) {
         (
-            self.pane_default_fg.and_then(ansi_code_to_color_string),
-            self.pane_default_bg.and_then(ansi_code_to_color_string),
+            self.pane_default_fg.map(rgb_to_hex_string),
+            self.pane_default_bg.map(rgb_to_hex_string),
         )
     }
 }
 
-fn ansi_code_to_color_string(code: AnsiCode) -> Option<String> {
+/// Extract the RGB triple from an `AnsiCode`, or `None` for any
+/// other variant. Used at the ingress points that populate
+/// `Grid::pane_default_{fg,bg}` to keep those fields narrow to
+/// literal RGB.
+fn rgb_of_ansi_code(code: AnsiCode) -> Option<(u8, u8, u8)> {
     match code {
-        AnsiCode::RgbCode((r, g, b)) => Some(format!("#{:02x}{:02x}{:02x}", r, g, b)),
-        AnsiCode::ColorIndex(idx) => Some(format!("{}", idx)),
-        AnsiCode::NamedColor(named) => Some(format!("{:?}", named).to_lowercase()),
+        AnsiCode::RgbCode(rgb) => Some(rgb),
         _ => None,
     }
+}
+
+fn rgb_to_hex_string((r, g, b): (u8, u8, u8)) -> String {
+    format!("#{:02x}{:02x}{:02x}", r, g, b)
+}
+
+/// Format an RGB triple as the body of an OSC 10/11 reply —
+/// `rgb:RRRR/GGGG/BBBB` per xterm's ctlseqs, where each 8-bit
+/// component is widened to the 16-bit hex form by repetition
+/// (`0xAB` → `0xABAB`).
+fn osc_color_reply_body((r, g, b): (u8, u8, u8)) -> String {
+    let expand = |c: u8| (c as u16) * 0x0101;
+    format!("rgb:{:04x}/{:04x}/{:04x}", expand(r), expand(g), expand(b))
 }
 
 /// A compiled highlight entry for one plugin/pattern combination.
@@ -806,10 +963,14 @@ impl Grid {
             mouse_mode: MouseMode::default(),
             mouse_tracking: MouseTracking::default(),
             focus_event_tracking: false,
+            color_palette_notification_enabled: false,
             character_cell_size,
             search_results: Default::default(),
             sixel_grid,
             pending_clipboard_update: None,
+            pending_osc7_cwd: None,
+            pending_desktop_notifications: Vec::new(),
+            pending_forwarded_queries: Vec::new(),
             ui_component_bytes: None,
             style,
             debug,
@@ -1409,7 +1570,15 @@ impl Grid {
 
         for character_chunk in character_chunks.iter_mut() {
             character_chunk.add_changed_colors(self.changed_colors);
-            character_chunk.add_pane_defaults(self.pane_default_fg, self.pane_default_bg);
+            // CharacterChunk still carries `Option<AnsiCode>` because
+            // `adjust_styles_for_custom_bg_fg` assigns the value into
+            // `CharacterStyles.{foreground,background}` (themselves
+            // `Option<AnsiCode>`). Re-wrap the narrow RGB at the
+            // boundary so the downstream pipeline stays uniform.
+            character_chunk.add_pane_defaults(
+                self.pane_default_fg.map(AnsiCode::RgbCode),
+                self.pane_default_bg.map(AnsiCode::RgbCode),
+            );
             if self
                 .selection
                 .contains_row(character_chunk.y.saturating_sub(content_y))
@@ -1491,11 +1660,15 @@ impl Grid {
             sixel_image_chunks,
         )));
     }
-    pub fn cursor_coordinates(&self) -> Option<(usize, usize)> {
-        if self.cursor_is_hidden || self.cursor.x >= self.width || self.cursor.y >= self.height {
+    /// Returns the cursor position and whether it is visible.
+    /// The position is returned unconditionally (as long as the cursor is within
+    /// bounds) so that the host terminal can position the cursor for IME even
+    /// when the app has hidden it. The bool is true when the cursor is visible.
+    pub fn cursor_coordinates(&self) -> Option<(usize, usize, bool)> {
+        if self.cursor.x >= self.width || self.cursor.y >= self.height {
             None
         } else {
-            Some((self.cursor.x, self.cursor.y))
+            Some((self.cursor.x, self.cursor.y, !self.cursor_is_hidden))
         }
     }
     pub fn is_mid_frame(&self) -> bool {
@@ -1583,7 +1756,13 @@ impl Grid {
         let mut pad_character = EMPTY_TERMINAL_CHARACTER;
         pad_character.styles = self.cursor.pending_styles.clone();
         for _ in 0..count {
-            if scroll_region_top < self.viewport.len() {
+            if scroll_region_top == 0
+                && self.alternate_screen_state.is_none()
+                && !self.viewport.is_empty()
+            {
+                self.transfer_rows_to_lines_above(1);
+                self.selection.move_up(1);
+            } else if scroll_region_top < self.viewport.len() {
                 self.viewport.remove(scroll_region_top);
             }
             let columns = VecDeque::from(vec![pad_character.clone(); self.width]);
@@ -1626,6 +1805,7 @@ impl Grid {
                 // the state is corrupted
                 return;
             }
+            let scroll_bg = self.cursor.pending_styles.background;
             if scroll_region_bottom == self.height.saturating_sub(1) && scroll_region_top == 0 {
                 if self.alternate_screen_state.is_none() {
                     self.transfer_rows_to_lines_above(1);
@@ -1633,17 +1813,26 @@ impl Grid {
                     self.viewport.pop_front();
                 }
 
-                self.viewport.push_back(Row::new().canonical());
+                self.viewport
+                    .push_back(Row::new().canonical().with_bg_color(scroll_bg));
                 self.selection.move_up(1);
             } else {
-                if scroll_region_top < self.viewport.len() {
+                if scroll_region_top == 0
+                    && self.alternate_screen_state.is_none()
+                    && !self.viewport.is_empty()
+                {
+                    // Partial scroll region starting at top: preserve
+                    // scrolled-off lines in scrollback
+                    self.transfer_rows_to_lines_above(1);
+                    self.selection.move_up(1);
+                } else if scroll_region_top < self.viewport.len() {
                     self.viewport.remove(scroll_region_top);
                 }
+                let new_row = Row::new().canonical().with_bg_color(scroll_bg);
                 if self.viewport.len() >= scroll_region_bottom {
-                    self.viewport
-                        .insert(scroll_region_bottom, Row::new().canonical());
+                    self.viewport.insert(scroll_region_bottom, new_row);
                 } else {
-                    self.viewport.push_back(Row::new().canonical());
+                    self.viewport.push_back(new_row);
                 }
             }
             self.output_buffer.update_all_lines(); // TODO: only update scroll region lines
@@ -1836,8 +2025,19 @@ impl Grid {
             self.pad_lines_until(self.cursor.y, pad_character.clone());
         }
         if let Some(current_row) = self.viewport.get_mut(self.cursor.y) {
+            let mut effective_pad = pad_character;
+            if let Some(bg_color) = current_row.bg_color {
+                if matches!(
+                    effective_pad.styles.background,
+                    Some(AnsiCode::Reset) | None
+                ) {
+                    effective_pad
+                        .styles
+                        .update(|styles| styles.background = Some(bg_color));
+                }
+            }
             for _ in current_row.width()..position {
-                current_row.push(pad_character.clone());
+                current_row.push(effective_pad.clone());
             }
             self.output_buffer.update_line(self.cursor.y);
         }
@@ -1952,7 +2152,14 @@ impl Grid {
             // so we delete the current line(s) and add an empty line at the end of the scroll
             // region
             for _ in 0..count {
-                if current_line_index < self.viewport.len() {
+                if current_line_index == 0
+                    && scroll_region_top == 0
+                    && self.alternate_screen_state.is_none()
+                    && !self.viewport.is_empty()
+                {
+                    self.transfer_rows_to_lines_above(1);
+                    self.selection.move_up(1);
+                } else if current_line_index < self.viewport.len() {
                     self.viewport.remove(current_line_index);
                 }
                 let columns = VecDeque::from(vec![pad_character.clone(); self.width]);
@@ -2203,9 +2410,19 @@ impl Grid {
         best.map(|(_layer, plugin_id, pattern, matched, ctx)| (plugin_id, pattern, matched, ctx))
     }
 
-    pub fn set_hover_position(&mut self, new_pos: Option<Position>) {
+    pub fn set_hover_position(&mut self, new_pos: Option<Position>) -> bool {
         if self.hover_position == new_pos {
-            return;
+            return false;
+        }
+
+        let has_hover_consumer = self
+            .plugin_highlights
+            .values()
+            .any(|highlights| highlights.iter().any(|(_, c)| c.on_hover));
+
+        if !has_hover_consumer {
+            self.hover_position = new_pos;
+            return false;
         }
 
         // Mark the canonical group containing the old hover row dirty.
@@ -2219,6 +2436,7 @@ impl Grid {
 
         self.hover_position = new_pos;
         self.recompute_hover_tooltip();
+        true
     }
 
     /// Mark all physical rows belonging to the logical line group that contains
@@ -3068,6 +3286,20 @@ impl Grid {
     pub fn reset_cursor_position(&mut self) {
         self.cursor = Cursor::new(0, 0, self.styled_underlines);
     }
+    /// Queue a CSI ?997;{1|2}n DSR notification of host color-palette
+    /// theme mode onto this grid's pty-write queue. No-op when the app
+    /// has not opted in via `CSI ? 2031 h`.
+    pub fn push_color_palette_dsr(&mut self, mode: HostTerminalThemeMode) {
+        if !self.color_palette_notification_enabled {
+            return;
+        }
+        let code = match mode {
+            HostTerminalThemeMode::Dark => 1,
+            HostTerminalThemeMode::Light => 2,
+        };
+        self.pending_messages_to_pty
+            .push(format!("\u{1b}[?997;{}n", code).into_bytes());
+    }
     pub fn lock_renders(&mut self) {
         self.lock_renders = true;
     }
@@ -3307,6 +3539,14 @@ impl Perform for Grid {
                 }
             },
 
+            b"7" => {
+                if let Some(raw) = params.get(1) {
+                    if let Some(path) = parse_osc7_path(raw) {
+                        self.pending_osc7_cwd = Some(path);
+                    }
+                }
+            },
+
             // Set color index.
             b"4" => {
                 for chunk in params[1..].chunks(2) {
@@ -3320,15 +3560,20 @@ impl Perform for Grid {
                         return;
                     } else if chunk.get(1).as_ref().and_then(|c| c.get(0)) == Some(&b'?') {
                         if let Some(index) = index {
-                            let terminal_emulator_color_codes =
-                                self.terminal_emulator_color_codes.borrow();
-                            let color = terminal_emulator_color_codes.get(&(index as usize));
-                            if let Some(color) = color {
-                                let color_response_message =
-                                    format!("\u{1b}]4;{};{}{}", index, color, terminator);
-                                self.pending_messages_to_pty
-                                    .push(color_response_message.as_bytes().to_vec());
-                            }
+                            // Forward palette-register queries to the
+                            // host — apps want the actual host palette,
+                            // not Zellij's cached copy. (Zellij's cache
+                            // still auto-refreshes via double-dispatch
+                            // when the host's reply comes back.)
+                            self.pending_forwarded_queries.push(
+                                crate::host_query::HostQuery::PaletteRegister {
+                                    index,
+                                    terminator:
+                                        crate::host_query::OscTerminator::from_bell_terminated(
+                                            bell_terminated,
+                                        ),
+                                },
+                            );
                         }
                     }
                 }
@@ -3350,40 +3595,69 @@ impl Perform for Grid {
                     if let Some(mut dynamic_code) = parse_number(params[0]) {
                         for param in &params[1..] {
                             if param == b"?" {
-                                // Query: respond with pane default if set, else terminal default
-                                let color_rgb = if dynamic_code == 10 {
-                                    match self.pane_default_fg {
-                                        Some(AnsiCode::RgbCode((r, g, b))) => Some((r, g, b)),
-                                        _ => match self.terminal_emulator_colors.borrow().fg {
-                                            PaletteColor::Rgb((r, g, b)) => Some((r, g, b)),
-                                            _ => None,
-                                        },
-                                    }
-                                } else if dynamic_code == 11 {
-                                    match self.pane_default_bg {
-                                        Some(AnsiCode::RgbCode((r, g, b))) => Some((r, g, b)),
-                                        _ => match self.terminal_emulator_colors.borrow().bg {
-                                            PaletteColor::Rgb((r, g, b)) => Some((r, g, b)),
-                                            _ => None,
-                                        },
-                                    }
-                                } else {
-                                    None
+                                // If this pane has a local override for
+                                // the channel being queried (set via
+                                // `zellij action set-pane-color` or via
+                                // a prior OSC 10;<rgb> / 11;<rgb> from
+                                // inside the pane), answer with that
+                                // override directly instead of
+                                // forwarding to the host. Apps inside
+                                // the pane must see the colors Zellij
+                                // is actually rendering for them, not
+                                // the host terminal's background.
+                                let local_override = match dynamic_code {
+                                    10 => self.pane_default_fg,
+                                    11 => self.pane_default_bg,
+                                    _ => None,
                                 };
-                                let (r, g, b) = color_rgb.unwrap_or((0, 0, 0));
-                                let color_response_message = format!(
-                                    "\u{1b}]{};rgb:{1:02x}{1:02x}/{2:02x}{2:02x}/{3:02x}{3:02x}{4}",
-                                    dynamic_code, r, g, b, terminator
-                                );
-                                self.pending_messages_to_pty
-                                    .push(color_response_message.as_bytes().to_vec());
+                                if let Some(rgb) = local_override {
+                                    let reply = format!(
+                                        "\u{1b}]{};{}{}",
+                                        dynamic_code,
+                                        osc_color_reply_body(rgb),
+                                        terminator
+                                    );
+                                    self.pending_messages_to_pty.push(reply.as_bytes().to_vec());
+                                } else {
+                                    // No local override — forward to
+                                    // the host so the app observes the
+                                    // terminal's actual color. Zellij's
+                                    // cached copy is refreshed via the
+                                    // double-dispatch on the reply.
+                                    let term =
+                                        crate::host_query::OscTerminator::from_bell_terminated(
+                                            bell_terminated,
+                                        );
+                                    let query = match dynamic_code {
+                                        10 => crate::host_query::HostQuery::DefaultForeground {
+                                            terminator: term,
+                                        },
+                                        11 => crate::host_query::HostQuery::DefaultBackground {
+                                            terminator: term,
+                                        },
+                                        _ => {
+                                            // Out-of-range dynamic_code
+                                            // (shouldn't happen since
+                                            // the outer match pins it to
+                                            // 10 or 11): skip.
+                                            dynamic_code += 1;
+                                            continue;
+                                        },
+                                    };
+                                    self.pending_forwarded_queries.push(query);
+                                }
                             } else {
-                                // Set: parse color and store as pane default
-                                if let Some(color) = xparse_color(param) {
+                                // Set: parse color and store as pane
+                                // default. Only literal RGB is stored;
+                                // palette-indexed / named variants (or
+                                // a parse failure) are silently dropped
+                                // to keep the pane-default fields
+                                // narrow.
+                                if let Some(rgb) = xparse_color(param).and_then(rgb_of_ansi_code) {
                                     if dynamic_code == 10 {
-                                        self.pane_default_fg = Some(color);
+                                        self.pane_default_fg = Some(rgb);
                                     } else if dynamic_code == 11 {
-                                        self.pane_default_bg = Some(color);
+                                        self.pane_default_bg = Some(rgb);
                                     }
                                     self.output_buffer.update_all_lines();
                                 }
@@ -3483,6 +3757,23 @@ impl Perform for Grid {
             // Reset text cursor color.
             b"112" => {
                 // TBD - reset text cursor color - currently unimplemented
+            },
+
+            b"99" => {
+                if params.len() > 1 {
+                    let payload = params
+                        .get(1..)
+                        .unwrap_or_default()
+                        .iter()
+                        .flat_map(|x| str::from_utf8(x))
+                        .collect::<Vec<&str>>()
+                        .join(";");
+                    if !payload.is_empty() {
+                        // Store raw payload and terminator; namespacing applied at Tab level
+                        self.pending_desktop_notifications
+                            .push((payload, terminator.to_string()));
+                    }
+                }
             },
 
             _ => {
@@ -3652,6 +3943,9 @@ impl Perform for Grid {
                         1006 => {
                             self.mouse_mode = MouseMode::NoEncoding;
                         },
+                        2031 => {
+                            self.color_palette_notification_enabled = false;
+                        },
                         _ => {},
                     };
                 }
@@ -3757,6 +4051,9 @@ impl Perform for Grid {
                         1006 => {
                             self.mouse_mode = MouseMode::Sgr;
                         },
+                        2031 => {
+                            self.color_palette_notification_enabled = true;
+                        },
                         _ => {},
                     }
                 }
@@ -3786,6 +4083,15 @@ impl Perform for Grid {
                             let response = "\u{1b}[?2026;2$y";
                             self.pending_messages_to_pty
                                 .push(response.as_bytes().to_vec());
+                        },
+                        2031 => {
+                            let value = if self.color_palette_notification_enabled {
+                                1
+                            } else {
+                                2
+                            };
+                            let response = format!("\u{1b}[?2031;{}$y", value);
+                            self.pending_messages_to_pty.push(response.into_bytes());
                         },
                         _ => {},
                     }
@@ -3998,8 +4304,8 @@ impl Perform for Grid {
             // https://vt100.net/docs/vt510-rm/DA1.html
             match intermediates.get(0) {
                 None | Some(0) => {
-                    // primary device attributes - VT220 with sixel
-                    let terminal_capabilities = "\u{1b}[?62;4c";
+                    // primary device attributes - VT220 with sixel and OSC 52 clipboard
+                    let terminal_capabilities = "\u{1b}[?62;4;52c";
                     self.pending_messages_to_pty
                         .push(terminal_capabilities.as_bytes().to_vec());
                 },
@@ -4014,27 +4320,51 @@ impl Perform for Grid {
         } else if c == 'n' {
             // DSR - device status report
             // https://vt100.net/docs/vt510-rm/DSR.html
-            match next_param_or(0) {
-                5 => {
-                    // report terminal status
-                    let all_good = "\u{1b}[0n";
-                    self.pending_messages_to_pty
-                        .push(all_good.as_bytes().to_vec());
-                },
-                6 => {
-                    // CPR - cursor position report
+            let first_intermediate_is_questionmark = match intermediates.get(0) {
+                Some(b'?') => true,
+                None => false,
+                _ => false,
+            };
+            if first_intermediate_is_questionmark {
+                // CSI ? 996 n — query host terminal color-palette mode
+                // (Contour spec; see contour-terminal.org). Zellij
+                // short-circuits this query: we know the host's mode
+                // from our own startup `\e[?996n` plus unsolicited DSR
+                // 997 updates while `\e[?2031h` is enabled, so the
+                // pane gets answered locally without a host round-trip.
+                // Pushing onto `pending_forwarded_queries` enrols the
+                // query in the existing Grid → Tab → Screen pipeline;
+                // Screen recognises the variant and writes the reply
+                // straight to the pane's pty.
+                for param in params_iter.map(|param| param[0]) {
+                    if param == 996 {
+                        self.pending_forwarded_queries
+                            .push(crate::host_query::HostQuery::ColorPaletteMode);
+                    }
+                }
+            } else {
+                match next_param_or(0) {
+                    5 => {
+                        // report terminal status
+                        let all_good = "\u{1b}[0n";
+                        self.pending_messages_to_pty
+                            .push(all_good.as_bytes().to_vec());
+                    },
+                    6 => {
+                        // CPR - cursor position report
 
-                    // Note that this is relative to scrolling region.
-                    let offset = self.scroll_region.0; // scroll_region_top
-                    let position_report = format!(
-                        "\u{1b}[{};{}R",
-                        self.cursor.y + 1 - offset,
-                        self.cursor.x + 1
-                    );
-                    self.pending_messages_to_pty
-                        .push(position_report.as_bytes().to_vec());
-                },
-                _ => {},
+                        // Note that this is relative to scrolling region.
+                        let offset = self.scroll_region.0; // scroll_region_top
+                        let position_report = format!(
+                            "\u{1b}[{};{}R",
+                            self.cursor.y + 1 - offset,
+                            self.cursor.x + 1
+                        );
+                        self.pending_messages_to_pty
+                            .push(position_report.as_bytes().to_vec());
+                    },
+                    _ => {},
+                }
             }
         } else if c == 'x' {
             // DECREQTPARM - Request Terminal Parameters
@@ -4058,25 +4388,18 @@ impl Perform for Grid {
         } else if c == 't' {
             match next_param_or(1) as usize {
                 14 => {
-                    if let Some(character_cell_size) = *self.character_cell_size.borrow() {
-                        let text_area_pixel_size_report = format!(
-                            "\x1b[4;{};{}t",
-                            character_cell_size.height * self.height,
-                            character_cell_size.width * self.width
-                        );
-                        self.pending_messages_to_pty
-                            .push(text_area_pixel_size_report.as_bytes().to_vec());
-                    }
+                    // Forward to host: apps asking for text-area pixels
+                    // want the real window size, not Zellij's synthesised
+                    // (cell_size * grid_size) value. The host's reply will
+                    // be written back to this pane by the forwarding
+                    // infrastructure on Screen.
+                    self.pending_forwarded_queries
+                        .push(crate::host_query::HostQuery::TextAreaPixelSize);
                 },
                 16 => {
-                    if let Some(character_cell_size) = *self.character_cell_size.borrow() {
-                        let character_cell_size_report = format!(
-                            "\x1b[6;{};{}t",
-                            character_cell_size.height, character_cell_size.width
-                        );
-                        self.pending_messages_to_pty
-                            .push(character_cell_size_report.as_bytes().to_vec());
-                    }
+                    // Forward to host: character-cell pixel size.
+                    self.pending_forwarded_queries
+                        .push(crate::host_query::HostQuery::CharacterCellPixelSize);
                 },
                 18 => {
                     // report text area
@@ -4233,6 +4556,7 @@ pub struct Row {
     pub columns: VecDeque<TerminalCharacter>,
     pub is_canonical: bool,
     width: Option<usize>,
+    pub bg_color: Option<AnsiCode>,
 }
 
 impl Debug for Row {
@@ -4250,6 +4574,7 @@ impl Row {
             columns: VecDeque::new(),
             is_canonical: false,
             width: None,
+            bg_color: None,
         }
     }
     pub fn from_columns(columns: VecDeque<TerminalCharacter>) -> Self {
@@ -4257,6 +4582,7 @@ impl Row {
             columns,
             is_canonical: false,
             width: None,
+            bg_color: None,
         }
     }
     pub fn from_rows(mut rows: Vec<Row>) -> Self {
@@ -4277,6 +4603,10 @@ impl Row {
     }
     pub fn canonical(mut self) -> Self {
         self.is_canonical = true;
+        self
+    }
+    pub fn with_bg_color(mut self, bg_color: Option<AnsiCode>) -> Self {
+        self.bg_color = bg_color;
         self
     }
     pub fn width_cached(&mut self) -> usize {
@@ -4358,8 +4688,14 @@ impl Row {
                 // adding the character after the end of the current line
                 // we pad the line up to the character and then add it
                 let width_offset = self.excess_width_until(x);
+                let mut gap_fill = EMPTY_TERMINAL_CHARACTER;
+                if let Some(bg_color) = self.bg_color {
+                    gap_fill
+                        .styles
+                        .update(|styles| styles.background = Some(bg_color));
+                }
                 self.columns
-                    .resize(x.saturating_sub(width_offset), EMPTY_TERMINAL_CHARACTER);
+                    .resize(x.saturating_sub(width_offset), gap_fill);
                 self.columns.push_back(terminal_character);
                 self.width = None;
             },
@@ -4541,7 +4877,7 @@ impl Row {
         let mut current_part_len = 0;
         for character in self.columns.drain(..) {
             if current_part_len + character.width() > max_row_length {
-                parts.push(Row::from_columns(current_part));
+                parts.push(Row::from_columns(current_part).with_bg_color(self.bg_color));
                 current_part = VecDeque::new();
                 current_part_len = 0;
             }
@@ -4549,7 +4885,7 @@ impl Row {
             current_part.push_back(character);
         }
         if !current_part.is_empty() {
-            parts.push(Row::from_columns(current_part))
+            parts.push(Row::from_columns(current_part).with_bg_color(self.bg_color))
         };
         if !parts.is_empty() && self.is_canonical {
             if let Some(part) = parts.get_mut(0) {
@@ -4648,3 +4984,42 @@ fn is_selection_boundary_character(character: char) -> bool {
 #[cfg(test)]
 #[path = "./unit/grid_tests.rs"]
 mod grid_tests;
+
+#[cfg(test)]
+mod osc7_parser_tests {
+    use super::parse_osc7_path;
+    use std::path::PathBuf;
+
+    #[test]
+    fn osc7_parser_extracts_path() {
+        let raw = b"file://host/home/user/foo";
+        assert_eq!(parse_osc7_path(raw), Some(PathBuf::from("/home/user/foo")));
+    }
+
+    #[test]
+    fn osc7_parser_decodes_percent_encoded_path() {
+        let raw = b"file://localhost/tmp/with%20space";
+        assert_eq!(parse_osc7_path(raw), Some(PathBuf::from("/tmp/with space")));
+    }
+
+    #[test]
+    fn osc7_parser_rejects_missing_scheme() {
+        assert_eq!(parse_osc7_path(b"/home/user"), None);
+    }
+
+    #[test]
+    fn osc7_parser_rejects_missing_path() {
+        assert_eq!(parse_osc7_path(b"file://host"), None);
+    }
+
+    #[test]
+    fn osc7_parser_rejects_truncated_percent_escape() {
+        assert_eq!(parse_osc7_path(b"file://host/foo%2"), None);
+    }
+
+    #[test]
+    fn osc7_parser_rejects_non_utf8_input() {
+        let raw = &[0xFFu8, 0xFE, 0xFD];
+        assert_eq!(parse_osc7_path(raw), None);
+    }
+}

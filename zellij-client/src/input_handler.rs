@@ -247,15 +247,21 @@ impl InputHandler {
                         self.handle_stdin_ansi_instruction(ansi_instruction);
                     }
                 },
-                Ok((InputInstruction::StartedParsing, _error_context)) => {
-                    self.send_client_instructions
-                        .send(ClientInstruction::StartedParsingStdinQuery)
-                        .unwrap();
+                Ok((InputInstruction::DesktopNotificationResponse(raw_bytes), _error_context)) => {
+                    self.os_input
+                        .send_to_server(ClientToServerMsg::DesktopNotificationResponse {
+                            raw_bytes,
+                        });
                 },
-                Ok((InputInstruction::DoneParsing, _error_context)) => {
-                    self.send_client_instructions
-                        .send(ClientInstruction::DoneParsingStdinQuery)
-                        .unwrap();
+                Ok((
+                    InputInstruction::ForwardedReplyFromHostComplete { token, reply_bytes },
+                    _error_context,
+                )) => {
+                    self.os_input
+                        .send_to_server(ClientToServerMsg::ForwardedReplyFromHost {
+                            token,
+                            reply_bytes,
+                        });
                 },
                 Ok((InputInstruction::Exit, _error_context)) => {
                     self.should_exit = true;
@@ -311,11 +317,13 @@ impl InputHandler {
                     .send(ClientInstruction::SetSynchronizedOutput(enabled))
                     .unwrap();
             },
+            AnsiStdinInstruction::HostTerminalThemeChanged(mode) => {
+                self.os_input
+                    .send_to_server(ClientToServerMsg::HostTerminalThemeChanged { mode });
+            },
         }
     }
     fn handle_mouse_event(&mut self, mouse_event: &MouseEvent) {
-        // This dispatch handles all of the output(s) to terminal
-        // pane(s).
         self.dispatch_action(
             Action::MouseEvent {
                 event: *mouse_event,

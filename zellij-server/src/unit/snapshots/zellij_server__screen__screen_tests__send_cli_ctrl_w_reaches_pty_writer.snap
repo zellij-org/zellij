@@ -1,0 +1,14 @@
+---
+source: zellij-server/src/./unit/screen_tests.rs
+assertion_line: 2335
+expression: "format!(\"{:#?}\", received_write_instructions)"
+---
+[
+    Write(
+        [
+            23,
+        ],
+        0,
+        None,
+    ),
+]

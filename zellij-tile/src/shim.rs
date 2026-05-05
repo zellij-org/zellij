@@ -14,31 +14,32 @@ use zellij_utils::plugin_api::generated_api::api::plugin_command::{
 };
 use zellij_utils::plugin_api::plugin_command::{
     dump_layout_response, dump_session_layout_response, get_focused_pane_info_response,
-    get_pane_cwd_response, get_pane_running_command_response, parse_layout_response,
-    CreateTokenResponse, ListTokensResponse, ProtobufBreakPanesToNewTabResponse,
-    ProtobufBreakPanesToTabWithIdResponse, ProtobufBreakPanesToTabWithIndexResponse,
-    ProtobufCurrentSessionLastSavedTimeResponse, ProtobufDeleteLayoutResponse,
-    ProtobufDumpLayoutResponse, ProtobufDumpSessionLayoutResponse, ProtobufEditLayoutResponse,
-    ProtobufFocusOrCreateTabResponse, ProtobufGenerateRandomNameResponse,
-    ProtobufGetFocusedPaneInfoResponse, ProtobufGetLayoutDirResponse, ProtobufGetPaneCwdResponse,
-    ProtobufGetPaneInfoResponse, ProtobufGetPanePidResponse, ProtobufGetPaneRunningCommandResponse,
-    ProtobufGetSessionEnvironmentVariablesResponse, ProtobufGetTabInfoResponse,
-    ProtobufHideFloatingPanesResponse, ProtobufNewTabResponse, ProtobufNewTabsResponse,
-    ProtobufOpenCommandPaneBackgroundResponse, ProtobufOpenCommandPaneFloatingNearPluginResponse,
-    ProtobufOpenCommandPaneFloatingResponse, ProtobufOpenCommandPaneInPlaceOfPaneIdResponse,
-    ProtobufOpenCommandPaneInPlaceOfPluginResponse, ProtobufOpenCommandPaneInPlaceResponse,
-    ProtobufOpenCommandPaneNearPluginResponse, ProtobufOpenCommandPaneResponse,
-    ProtobufOpenEditPaneInPlaceOfPaneIdResponse, ProtobufOpenFileFloatingNearPluginResponse,
-    ProtobufOpenFileFloatingResponse, ProtobufOpenFileInPlaceOfPluginResponse,
-    ProtobufOpenFileInPlaceResponse, ProtobufOpenFileNearPluginResponse, ProtobufOpenFileResponse,
-    ProtobufOpenPaneInNewTabResponse, ProtobufOpenPluginPaneFloatingResponse,
-    ProtobufOpenTerminalFloatingNearPluginResponse, ProtobufOpenTerminalFloatingResponse,
-    ProtobufOpenTerminalInPlaceOfPluginResponse, ProtobufOpenTerminalInPlaceResponse,
-    ProtobufOpenTerminalNearPluginResponse, ProtobufOpenTerminalPaneInPlaceOfPaneIdResponse,
-    ProtobufOpenTerminalResponse, ProtobufParseLayoutResponse, ProtobufPluginCommand,
-    ProtobufRenameLayoutResponse, ProtobufSaveLayoutResponse, ProtobufSaveSessionResponse,
-    ProtobufShowFloatingPanesResponse, RenameWebTokenResponse, RevokeAllWebTokensResponse,
-    RevokeTokenResponse,
+    get_pane_cwd_response, get_pane_running_command_response, get_session_list_response,
+    parse_layout_response, CreateTokenResponse, ListTokensResponse,
+    ProtobufBreakPanesToNewTabResponse, ProtobufBreakPanesToTabWithIdResponse,
+    ProtobufBreakPanesToTabWithIndexResponse, ProtobufCurrentSessionLastSavedTimeResponse,
+    ProtobufDeleteLayoutResponse, ProtobufDumpLayoutResponse, ProtobufDumpSessionLayoutResponse,
+    ProtobufEditLayoutResponse, ProtobufFocusOrCreateTabResponse,
+    ProtobufGenerateRandomNameResponse, ProtobufGetFocusedPaneInfoResponse,
+    ProtobufGetLayoutDirResponse, ProtobufGetPaneCwdResponse, ProtobufGetPaneInfoResponse,
+    ProtobufGetPanePidResponse, ProtobufGetPaneRunningCommandResponse,
+    ProtobufGetSessionEnvironmentVariablesResponse, ProtobufGetSessionListResponse,
+    ProtobufGetTabInfoResponse, ProtobufHideFloatingPanesResponse, ProtobufNewTabResponse,
+    ProtobufNewTabsResponse, ProtobufOpenCommandPaneBackgroundResponse,
+    ProtobufOpenCommandPaneFloatingNearPluginResponse, ProtobufOpenCommandPaneFloatingResponse,
+    ProtobufOpenCommandPaneInPlaceOfPaneIdResponse, ProtobufOpenCommandPaneInPlaceOfPluginResponse,
+    ProtobufOpenCommandPaneInPlaceResponse, ProtobufOpenCommandPaneNearPluginResponse,
+    ProtobufOpenCommandPaneResponse, ProtobufOpenEditPaneInPlaceOfPaneIdResponse,
+    ProtobufOpenFileFloatingNearPluginResponse, ProtobufOpenFileFloatingResponse,
+    ProtobufOpenFileInPlaceOfPluginResponse, ProtobufOpenFileInPlaceResponse,
+    ProtobufOpenFileNearPluginResponse, ProtobufOpenFileResponse, ProtobufOpenPaneInNewTabResponse,
+    ProtobufOpenPluginPaneFloatingResponse, ProtobufOpenTerminalFloatingNearPluginResponse,
+    ProtobufOpenTerminalFloatingResponse, ProtobufOpenTerminalInPlaceOfPluginResponse,
+    ProtobufOpenTerminalInPlaceResponse, ProtobufOpenTerminalNearPluginResponse,
+    ProtobufOpenTerminalPaneInPlaceOfPaneIdResponse, ProtobufOpenTerminalResponse,
+    ProtobufParseLayoutResponse, ProtobufPluginCommand, ProtobufRenameLayoutResponse,
+    ProtobufSaveLayoutResponse, ProtobufSaveSessionResponse, ProtobufShowFloatingPanesResponse,
+    RenameWebTokenResponse, RevokeAllWebTokensResponse, RevokeTokenResponse,
 };
 use zellij_utils::plugin_api::plugin_ids::{ProtobufPluginIds, ProtobufZellijVersion};
 
@@ -1898,6 +1899,43 @@ pub fn get_pane_running_command(pane_id: PaneId) -> Result<Vec<String>, String> 
     match protobuf_response.result {
         Some(get_pane_running_command_response::Result::Command(cmd)) => Ok(cmd.args),
         Some(get_pane_running_command_response::Result::Error(err)) => Err(err),
+        None => Err("Empty response from server".to_string()),
+    }
+}
+
+/// Fetches a fresh snapshot of all live and resurrectable sessions on this machine.
+///
+/// # Permissions Required
+/// * `ReadApplicationState`
+pub fn get_session_list() -> Result<SessionListSnapshot, String> {
+    let plugin_command = PluginCommand::GetSessionList;
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+
+    let protobuf_response =
+        ProtobufGetSessionListResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
+
+    match protobuf_response.result {
+        Some(get_session_list_response::Result::Snapshot(snapshot)) => {
+            let mut live_sessions = Vec::new();
+            for manifest in snapshot.live_sessions {
+                match SessionInfo::try_from(manifest) {
+                    Ok(si) => live_sessions.push(si),
+                    Err(e) => return Err(format!("Malformed session manifest: {}", e)),
+                }
+            }
+            let resurrectable_sessions = snapshot
+                .resurrectable_sessions
+                .into_iter()
+                .map(<(String, std::time::Duration)>::from)
+                .collect();
+            Ok(SessionListSnapshot {
+                live_sessions,
+                resurrectable_sessions,
+            })
+        },
+        Some(get_session_list_response::Result::Error(err)) => Err(err),
         None => Err("Empty response from server".to_string()),
     }
 }

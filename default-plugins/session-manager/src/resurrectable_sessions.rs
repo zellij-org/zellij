@@ -19,7 +19,7 @@ pub struct ResurrectableSessions {
 
 impl ResurrectableSessions {
     pub fn update(&mut self, mut list: Vec<(String, Duration)>) {
-        list.sort_by(|a, b| a.1.cmp(&b.1));
+        list.sort_by(|a, b| a.1.cmp(&b.1).then_with(|| a.0.cmp(&b.0)));
         self.all_resurrectable_sessions = list;
         if self.is_searching {
             self.update_search_term();

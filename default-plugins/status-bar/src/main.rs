@@ -41,6 +41,7 @@ struct State {
     display_system_clipboard_failure: bool,
     classic_ui: bool,
     base_mode_is_locked: bool,
+    cached_keybinds: KeybindsVec,
 }
 
 register_plugin!(State);
@@ -207,13 +208,26 @@ impl ZellijPlugin for State {
             EventType::CopyToClipboard,
             EventType::InputReceived,
             EventType::SystemClipboardFailure,
+            EventType::InitialKeybinds,
         ]);
     }
 
     fn update(&mut self, event: Event) -> bool {
         let mut should_render = false;
         match event {
-            Event::ModeUpdate(mode_info) => {
+            Event::InitialKeybinds(keybinds) => {
+                self.cached_keybinds = keybinds;
+                if !self.cached_keybinds.is_empty() {
+                    self.mode_info.keybinds = self.cached_keybinds.clone();
+                }
+                should_render = true;
+            },
+            Event::ModeUpdate(mut mode_info) => {
+                if mode_info.keybinds.is_empty() && !self.cached_keybinds.is_empty() {
+                    mode_info.keybinds = self.cached_keybinds.clone();
+                } else if !mode_info.keybinds.is_empty() {
+                    self.cached_keybinds = mode_info.keybinds.clone();
+                }
                 if self.mode_info != mode_info {
                     should_render = true;
                 }

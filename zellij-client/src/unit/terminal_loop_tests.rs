@@ -1,4 +1,5 @@
 use crate::os_input_output::{AsyncSignals, AsyncStdin, ClientOsApi, SignalEvent};
+use crate::remote_attach::websockets::MaybeTls;
 use crate::remote_attach::WebSocketConnections;
 use crate::run_remote_client_terminal_loop;
 use crate::web_client::control_message::{
@@ -11,8 +12,8 @@ use serial_test::serial;
 use std::io::{self, Write};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use tokio::net::TcpStream;
 use tokio::sync::mpsc;
-use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::Message;
 use zellij_utils::data::Palette;
 use zellij_utils::errors::ErrorContext;
@@ -325,8 +326,26 @@ async fn test_stdin_forwarded_to_terminal_websocket() {
     let terminal_url = format!("ws://127.0.0.1:{}/ws/terminal", port);
     let control_url = format!("ws://127.0.0.1:{}/ws/control", port);
 
-    let (terminal_ws, _) = connect_async(&terminal_url).await.unwrap();
-    let (control_ws, _) = connect_async(&control_url).await.unwrap();
+    let terminal_tcp = TcpStream::connect(format!("127.0.0.1:{}", port))
+        .await
+        .unwrap();
+    let (terminal_ws, _) = tokio_tungstenite::client_async_with_config(
+        &terminal_url,
+        MaybeTls::Plain(terminal_tcp),
+        None,
+    )
+    .await
+    .unwrap();
+    let control_tcp = TcpStream::connect(format!("127.0.0.1:{}", port))
+        .await
+        .unwrap();
+    let (control_ws, _) = tokio_tungstenite::client_async_with_config(
+        &control_url,
+        MaybeTls::Plain(control_tcp),
+        None,
+    )
+    .await
+    .unwrap();
 
     let connections = WebSocketConnections {
         terminal_ws,
@@ -379,8 +398,26 @@ async fn test_terminal_output_written_to_stdout() {
     let terminal_url = format!("ws://127.0.0.1:{}/ws/terminal", port);
     let control_url = format!("ws://127.0.0.1:{}/ws/control", port);
 
-    let (terminal_ws, _) = connect_async(&terminal_url).await.unwrap();
-    let (control_ws, _) = connect_async(&control_url).await.unwrap();
+    let terminal_tcp = TcpStream::connect(format!("127.0.0.1:{}", port))
+        .await
+        .unwrap();
+    let (terminal_ws, _) = tokio_tungstenite::client_async_with_config(
+        &terminal_url,
+        MaybeTls::Plain(terminal_tcp),
+        None,
+    )
+    .await
+    .unwrap();
+    let control_tcp = TcpStream::connect(format!("127.0.0.1:{}", port))
+        .await
+        .unwrap();
+    let (control_ws, _) = tokio_tungstenite::client_async_with_config(
+        &control_url,
+        MaybeTls::Plain(control_tcp),
+        None,
+    )
+    .await
+    .unwrap();
 
     let connections = WebSocketConnections {
         terminal_ws,
@@ -436,8 +473,26 @@ async fn test_resize_signal_sends_control_message() {
     let terminal_url = format!("ws://127.0.0.1:{}/ws/terminal", port);
     let control_url = format!("ws://127.0.0.1:{}/ws/control", port);
 
-    let (terminal_ws, _) = connect_async(&terminal_url).await.unwrap();
-    let (control_ws, _) = connect_async(&control_url).await.unwrap();
+    let terminal_tcp = TcpStream::connect(format!("127.0.0.1:{}", port))
+        .await
+        .unwrap();
+    let (terminal_ws, _) = tokio_tungstenite::client_async_with_config(
+        &terminal_url,
+        MaybeTls::Plain(terminal_tcp),
+        None,
+    )
+    .await
+    .unwrap();
+    let control_tcp = TcpStream::connect(format!("127.0.0.1:{}", port))
+        .await
+        .unwrap();
+    let (control_ws, _) = tokio_tungstenite::client_async_with_config(
+        &control_url,
+        MaybeTls::Plain(control_tcp),
+        None,
+    )
+    .await
+    .unwrap();
 
     let connections = WebSocketConnections {
         terminal_ws,
@@ -509,8 +564,26 @@ async fn test_quit_signal_exits_loop() {
     let terminal_url = format!("ws://127.0.0.1:{}/ws/terminal", port);
     let control_url = format!("ws://127.0.0.1:{}/ws/control", port);
 
-    let (terminal_ws, _) = connect_async(&terminal_url).await.unwrap();
-    let (control_ws, _) = connect_async(&control_url).await.unwrap();
+    let terminal_tcp = TcpStream::connect(format!("127.0.0.1:{}", port))
+        .await
+        .unwrap();
+    let (terminal_ws, _) = tokio_tungstenite::client_async_with_config(
+        &terminal_url,
+        MaybeTls::Plain(terminal_tcp),
+        None,
+    )
+    .await
+    .unwrap();
+    let control_tcp = TcpStream::connect(format!("127.0.0.1:{}", port))
+        .await
+        .unwrap();
+    let (control_ws, _) = tokio_tungstenite::client_async_with_config(
+        &control_url,
+        MaybeTls::Plain(control_tcp),
+        None,
+    )
+    .await
+    .unwrap();
 
     let connections = WebSocketConnections {
         terminal_ws,
@@ -546,8 +619,26 @@ async fn test_websocket_close_exits_loop() {
     let terminal_url = format!("ws://127.0.0.1:{}/ws/terminal", port);
     let control_url = format!("ws://127.0.0.1:{}/ws/control", port);
 
-    let (terminal_ws, _) = connect_async(&terminal_url).await.unwrap();
-    let (control_ws, _) = connect_async(&control_url).await.unwrap();
+    let terminal_tcp = TcpStream::connect(format!("127.0.0.1:{}", port))
+        .await
+        .unwrap();
+    let (terminal_ws, _) = tokio_tungstenite::client_async_with_config(
+        &terminal_url,
+        MaybeTls::Plain(terminal_tcp),
+        None,
+    )
+    .await
+    .unwrap();
+    let control_tcp = TcpStream::connect(format!("127.0.0.1:{}", port))
+        .await
+        .unwrap();
+    let (control_ws, _) = tokio_tungstenite::client_async_with_config(
+        &control_url,
+        MaybeTls::Plain(control_tcp),
+        None,
+    )
+    .await
+    .unwrap();
 
     let connections = WebSocketConnections {
         terminal_ws,
@@ -586,8 +677,26 @@ async fn test_control_message_handling() {
     let terminal_url = format!("ws://127.0.0.1:{}/ws/terminal", port);
     let control_url = format!("ws://127.0.0.1:{}/ws/control", port);
 
-    let (terminal_ws, _) = connect_async(&terminal_url).await.unwrap();
-    let (control_ws, _) = connect_async(&control_url).await.unwrap();
+    let terminal_tcp = TcpStream::connect(format!("127.0.0.1:{}", port))
+        .await
+        .unwrap();
+    let (terminal_ws, _) = tokio_tungstenite::client_async_with_config(
+        &terminal_url,
+        MaybeTls::Plain(terminal_tcp),
+        None,
+    )
+    .await
+    .unwrap();
+    let control_tcp = TcpStream::connect(format!("127.0.0.1:{}", port))
+        .await
+        .unwrap();
+    let (control_ws, _) = tokio_tungstenite::client_async_with_config(
+        &control_url,
+        MaybeTls::Plain(control_tcp),
+        None,
+    )
+    .await
+    .unwrap();
 
     let connections = WebSocketConnections {
         terminal_ws,

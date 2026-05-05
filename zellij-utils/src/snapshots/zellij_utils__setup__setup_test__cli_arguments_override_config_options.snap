@@ -7,6 +7,8 @@ Options {
         true,
     ),
     theme: None,
+    theme_dark: None,
+    theme_light: None,
     default_mode: None,
     default_shell: None,
     default_cwd: None,

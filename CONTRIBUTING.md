@@ -59,21 +59,20 @@ Zellij includes some end-to-end tests which test the whole application as a blac
 These tests work by running a docker container which contains the Zellij binary, connecting to it via ssh, sending some commands and comparing the output received against predefined snapshots.
 
 <details>
-<summary>Should you be a macOS (including m1) user, please follow these commands before. (expand here):</summary>
+<summary>macOS prerequisites (expand here):</summary>
 
-1. `rustup target add x86_64-unknown-linux-musl`
-2. `brew install messense/macos-cross-toolchains/x86_64-unknown-linux-musl`
-3. `export CC_x86_64_unknown_linux_musl=$(brew --prefix)/bin/x86_64-unknown-linux-musl-gcc`
-4. `export AR_x86_64_unknown_linux_musl=$(brew --prefix)/bin/x86_64-unknown-linux-musl-ar`
-5. `export CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER=$CC_x86_64_unknown_linux_musl`
+The build uses `cargo-zigbuild` to cross-compile a native musl binary (arm64 on Apple Silicon, amd64 on Intel) so the Docker container runs without emulation on any Mac.
+
+1. `cargo install cargo-zigbuild`
+2. `brew install zig`
 </details>
 
 
-To run these tests locally, you'll need to have either `docker` or `podman` and also `docker-compose` installed.
+To run these tests locally, you'll need to have either `docker` or `podman` and also `docker compose` installed.
 Once you do, in the repository root:
 
-1. `docker-compose up -d` will start up the docker container
-2. `cargo xtask ci e2e --build` will build the generic linux executable of Zellij in the target folder, which is shared with the container
+1. `docker compose up -d` will start up the docker container
+2. `cargo xtask ci e2e --build` will build the Zellij binary in the target folder, which is shared with the container
 3. `cargo xtask ci e2e --test` will run the tests
 
 To re-run the tests after you've changed something in the code base, be sure to repeat steps 2 and 3.

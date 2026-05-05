@@ -233,6 +233,12 @@ pub fn zellij_server_listener(
                             // Subscribe-only messages — not relevant for web clients
                             Some(ServerToClientMsg::PaneRenderUpdate { .. }) => {},
                             Some(ServerToClientMsg::SubscribedPaneClosed { .. }) => {},
+                            Some(ServerToClientMsg::ForwardQueryToHost { .. }) => {
+                                // Web clients do not currently participate in
+                                // host-terminal query forwarding — the browser
+                                // side has no stdin writer wired for the
+                                // barrier-based protocol. Silently drop.
+                            },
                             None => {
                                 if unknown_message_count >= 1000 {
                                     log::error!("Error: Received more than 1000 consecutive unknown server messages, disconnecting.");
