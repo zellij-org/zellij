@@ -769,9 +769,10 @@ impl Tab {
         mouse_click_through: bool,
         web_server_ip: IpAddr,
         web_server_port: u16,
+        mobile_tab_count: usize,
     ) -> Self {
         let name = if name.is_empty() {
-            format!("Tab #{}", id + 1)
+            format!("Tab #{}", (id + 1).saturating_sub(mobile_tab_count))
         } else {
             name
         };

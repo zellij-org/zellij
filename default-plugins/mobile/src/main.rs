@@ -13,7 +13,6 @@ mod render;
 mod state;
 
 use std::collections::BTreeMap;
-use zellij_tile::prelude::actions::Action;
 use zellij_tile::prelude::*;
 
 use crate::state::{ClickAction, Selector, State};
@@ -119,6 +118,19 @@ impl ZellijPlugin for State {
                 }
                 true
             },
+            Event::SessionUpdate(sessions, _) => {
+                // Capture this client's session name for the top bar
+                // *and* the full session list for the session
+                // selector. A fresh `SessionUpdate` arrives every time
+                // session metadata changes.
+                if let Some(current) =
+                    sessions.iter().find(|s| s.is_current_session)
+                {
+                    self.session_name = Some(current.name.clone());
+                }
+                self.sessions = sessions;
+                true
+            },
             Event::PaneRenderReportWithAnsi(map) => {
                 // Merge — the server emits *changed* panes only after
                 // the first report (see `get_changed_panes_per_client`
@@ -135,33 +147,29 @@ impl ZellijPlugin for State {
             Event::Mouse(mouse) => {
                 if let Some((line, col)) = mouse.position() {
                     if let Mouse::LeftClick(_, _) = mouse {
-                        // Action-bar / breadcrumb / selector regions
-                        // always win — they're the plugin's chrome and
-                        // need to remain interactive even when the user
-                        // is also typing into the embedded pane.
+                        // Top-bar / selector regions always win —
+                        // they're the plugin's chrome and need to
+                        // remain interactive even though the user can
+                        // also tap into the embedded pane below.
                         if let Some(action) = self.click_to_action(line, col) {
                             return dispatch_click(self, action);
                         }
-                        // No chrome region matched. If the click landed
-                        // in the embedded viewport AND typing-mode is
-                        // off, synthesize an SGR mouse press+release at
-                        // the equivalent cell of the underlying pane.
-                        // While typing-mode is armed we keep the soft
-                        // keyboard's view stable and ignore stray taps.
-                        if !self.typing_mode {
-                            if let Some((pane_row, pane_col)) =
-                                self.click_in_viewport(line, col)
-                            {
-                                if let Some(pane) = self.current_pane() {
-                                    let pane_id = state::pane_id_of(&pane);
-                                    let bytes = sgr_left_click(pane_row, pane_col);
-                                    write_to_pane_id(bytes, pane_id);
-                                    // No re-render: the pane will emit
-                                    // a fresh PaneRenderReportWithAnsi
-                                    // and the regular event path will
-                                    // refresh the cache.
-                                    return false;
-                                }
+                        // No chrome region matched. Synthesize an SGR
+                        // mouse press+release at the equivalent cell
+                        // of the underlying pane so taps inside the
+                        // embedded viewport reach the program below.
+                        if let Some((pane_row, pane_col)) =
+                            self.click_in_viewport(line, col)
+                        {
+                            if let Some(pane) = self.current_pane() {
+                                let pane_id = state::pane_id_of(&pane);
+                                let bytes = sgr_left_click(pane_row, pane_col);
+                                write_to_pane_id(bytes, pane_id);
+                                // No re-render: the pane will emit a
+                                // fresh PaneRenderReportWithAnsi and
+                                // the regular event path will refresh
+                                // the cache.
+                                return false;
                             }
                         }
                     }
@@ -169,10 +177,22 @@ impl ZellijPlugin for State {
                 false
             },
             Event::Key(key) => {
-                // Typing-mode forwards every key to the selected pane's
-                // pty; otherwise the plugin swallows keys (chrome
-                // navigation today is mouse-only — keyboard nav can
-                // land later).
+                // Esc always closes an open selector first — the menu
+                // has hidden the embedded pane, so Esc-to-pane while a
+                // menu is up would never reach the user's eye anyway,
+                // and using Esc as the universal back affordance is
+                // the convention soft-keyboard users expect.
+                if key.bare_key == BareKey::Esc && self.expanded.is_some() {
+                    self.expanded = None;
+                    return true;
+                }
+                // The keyboard icon in the top bar gates pty
+                // forwarding: when armed, every key the plugin sees
+                // (i.e. every key the server's keybinding layer did
+                // not consume) is forwarded to the selected pane's
+                // pty; when unarmed, the plugin swallows keys so the
+                // user can browse without a stray tap or autocorrect
+                // landing in the embedded program.
                 if self.typing_mode {
                     if let Some(pane) = self.current_pane() {
                         let bytes = keys::serialize_key(&key);
@@ -215,6 +235,10 @@ fn sgr_left_click(pane_row: usize, pane_col: usize) -> Vec<u8> {
 /// `true`).
 fn dispatch_click(state: &mut State, action: ClickAction) -> bool {
     match action {
+        ClickAction::ExpandSessions => {
+            state.expanded = Some(Selector::Sessions);
+            true
+        },
         ClickAction::ExpandTabs => {
             state.expanded = Some(Selector::Tabs);
             true
@@ -223,7 +247,11 @@ fn dispatch_click(state: &mut State, action: ClickAction) -> bool {
             state.expanded = Some(Selector::Panes);
             true
         },
-        ClickAction::Collapse => {
+        ClickAction::SelectSession(name) => {
+            // Hand off to the host. This actually changes the
+            // client's session — the mobile plugin in the destination
+            // session (if any) will take over from here.
+            switch_session(Some(&name));
             state.expanded = None;
             true
         },
@@ -244,70 +272,14 @@ fn dispatch_click(state: &mut State, action: ClickAction) -> bool {
             state.typing_mode = !state.typing_mode;
             true
         },
-        ClickAction::NewPane => {
-            run_action(
-                Action::NewPane {
-                    direction: None,
-                    pane_name: None,
-                    start_suppressed: false,
-                },
-                BTreeMap::new(),
-            );
-            true
-        },
-        ClickAction::NewTab => {
-            run_action(
-                Action::NewTab {
-                    tiled_layout: None,
-                    floating_layouts: vec![],
-                    swap_tiled_layouts: None,
-                    swap_floating_layouts: None,
-                    tab_name: None,
-                    should_change_focus_to_new_tab: true,
-                    cwd: None,
-                    initial_panes: None,
-                    first_pane_unblock_condition: None,
-                },
-                BTreeMap::new(),
-            );
-            true
-        },
-        ClickAction::SplitRight => {
-            run_action(
-                Action::NewPane {
-                    direction: Some(Direction::Right),
-                    pane_name: None,
-                    start_suppressed: false,
-                },
-                BTreeMap::new(),
-            );
-            true
-        },
-        ClickAction::SplitDown => {
-            run_action(
-                Action::NewPane {
-                    direction: Some(Direction::Down),
-                    pane_name: None,
-                    start_suppressed: false,
-                },
-                BTreeMap::new(),
-            );
-            true
-        },
-        ClickAction::ToggleFloating => {
-            run_action(Action::ToggleFloatingPanes, BTreeMap::new());
-            true
-        },
-        ClickAction::CloseFocus => {
-            run_action(Action::CloseFocus, BTreeMap::new());
-            true
-        },
-        ClickAction::Detach => {
-            detach();
-            true
-        },
-        ClickAction::ExitMobile => {
-            run_action(Action::ToggleMobileMode, BTreeMap::new());
+        ClickAction::Menu => {
+            // Hamburger doubles as expand-when-collapsed and
+            // collapse-when-expanded so the user always has a clear
+            // next step from one place in the UI.
+            state.expanded = match state.expanded {
+                None => Some(Selector::Panes),
+                Some(_) => None,
+            };
             true
         },
     }

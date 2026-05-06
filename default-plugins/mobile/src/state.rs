@@ -7,26 +7,26 @@ use zellij_tile::prelude::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Selector {
+    Sessions,
     Tabs,
     Panes,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ClickAction {
+    ExpandSessions,
     ExpandTabs,
     ExpandPanes,
-    Collapse,
+    /// Selecting a session calls `switch_session(name)` on the host —
+    /// the client genuinely changes session, leaving this one.
+    SelectSession(String),
     SelectTab(usize),         // tab position (0-based)
     SelectPane(PaneId),
     ToggleType,
-    NewPane,
-    NewTab,
-    SplitRight,
-    SplitDown,
-    ToggleFloating,
-    CloseFocus,
-    Detach,
-    ExitMobile,
+    /// Open the menu: in the simplified UI this is wired to the panes
+    /// selector when collapsed and to "collapse" when a selector is
+    /// open, so the hamburger always offers a useful next step.
+    Menu,
 }
 
 #[derive(Debug, Clone)]
@@ -85,9 +85,18 @@ pub struct State {
     pub latest_pane_contents: HashMap<PaneId, PaneContents>,
     /// Most recent mode info. Used for action labelling.
     pub mode_info: Option<ModeInfo>,
-    /// Whether typing-mode is armed. Wired in Stage 7; for now the
-    /// action bar surfaces the toggle but key events stay with the
-    /// plugin.
+    /// Name of the session this client is attached to. Captured from
+    /// `SessionUpdate` (the entry whose `is_current_session` is true).
+    /// Rendered in the top bar.
+    pub session_name: Option<String>,
+    /// All sessions the host knows about. Updated on every
+    /// `SessionUpdate`. Rendered when the session selector is open.
+    pub sessions: Vec<SessionInfo>,
+    /// Whether the keyboard icon in the top bar is armed: armed means
+    /// keystrokes flow through to the selected pane's pty; unarmed
+    /// means the plugin swallows them. Mirrors the "typing mode"
+    /// affordance from the original action bar so soft keyboards do
+    /// not feed characters into a pane while the user is browsing.
     pub typing_mode: bool,
     /// Click regions produced by the most recent render. The renderer
     /// rebuilds this on every `render` call; mouse events look up the
@@ -245,7 +254,7 @@ impl State {
     pub fn click_to_action(&self, row: usize, col: usize) -> Option<ClickAction> {
         for region in &self.click_regions {
             if region.row == row && col >= region.col_start && col < region.col_end {
-                return Some(region.action);
+                return Some(region.action.clone());
             }
         }
         None

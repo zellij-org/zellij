@@ -1743,6 +1743,10 @@ impl Screen {
             .map_err(|e| anyhow!("invalid mobile plugin url: {e}"))
             .with_context(err_context)?;
         tab_layout.run = Some(Run::Plugin(run_plugin));
+        // Borderless: the mobile plugin owns its entire viewport and
+        // paints its own chrome — a frame from the server would just
+        // steal a row/column on every edge.
+        tab_layout.borderless = Some(true);
 
         // Allocate the new tab id, create the empty tab, and tag it as
         // visible only to this client before any other thread has a
@@ -3181,6 +3185,7 @@ impl Screen {
         });
 
         let tab_name = tab_name.unwrap_or_else(|| String::new());
+        let mobile_tab_count = self.mobile_tabs.len();
 
         let position = self.tabs.len();
         let mut tab = Tab::new(
@@ -3226,6 +3231,7 @@ impl Screen {
             self.mouse_click_through,
             self.web_server_ip,
             self.web_server_port,
+            mobile_tab_count,
         );
         for (client_id, mode_info) in &self.mode_info {
             tab.change_mode_info(mode_info.clone(), *client_id);

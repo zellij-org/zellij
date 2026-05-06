@@ -1,13 +1,12 @@
-//! Rendering for the mobile plugin's v1 UI. The plugin lays out three
+//! Rendering for the mobile plugin's UI. The plugin lays out two
 //! horizontal regions stacked top-to-bottom:
 //!
-//! 1. **Breadcrumb / selector** — collapsed view shows a single
-//!    breadcrumb line ("tabs/<tab> · panes/<pane>"); expanded view
-//!    shows the corresponding selector list.
-//! 2. **Action bar** — always visible, always one row in v1. Tapping
-//!    `⌨ Type` arms typing-mode (Stage 7 will route keys); other
-//!    buttons map to the existing plugin shim helpers.
-//! 3. **Embedded viewport** — slice of the latest ANSI viewport for
+//! 1. **Top bar** — collapsed view shows a single line of the form
+//!    "Zellij <session> <tab> <pane> <CHANGE>" with each segment
+//!    coloured from the user's palette. Tapping the tab/pane segments
+//!    or the trailing `<CHANGE>` button expands a selector below the
+//!    bar; tapping a selector entry collapses back to the bar.
+//! 2. **Embedded viewport** — slice of the latest ANSI viewport for
 //!    the selected pane, occupying the remaining rows.
 //!
 //! The renderer also rebuilds `state.click_regions` so the input
@@ -55,9 +54,11 @@ fn emit_cursor(state: &mut State, new_pos: Option<(usize, usize)>) {
     }
 }
 
-/// Top-level render. Clears the screen, builds the chrome, paints the
-/// embedded viewport, and rewrites `state.click_regions` for input
-/// dispatch.
+/// Top-level render. Clears the screen, paints the top bar at row
+/// 0, and fills rows 1..rows with either the embedded pane viewport
+/// (collapsed) or one of the selector menus (expanded). Selectors
+/// *replace* the viewport rather than push it down — when the user
+/// is browsing tabs / panes / sessions the live viewport is hidden.
 pub fn render(state: &mut State, rows: usize, cols: usize) {
     state.click_regions.clear();
     state.viewport_region = None;
@@ -70,28 +71,21 @@ pub fn render(state: &mut State, rows: usize, cols: usize) {
         return;
     }
 
-    // Compute the layout up front so `show_cursor` — emitted *before*
-    // any chrome print! — knows where the embedded viewport will land.
-    let action_bar_row = rows.saturating_sub(1);
-    let (viewport_top, viewport_bottom, selector_rows): (usize, usize, Option<usize>) =
-        match state.expanded {
-            None => (1, action_bar_row, None),
-            Some(Selector::Tabs) => {
-                let n = compute_selector_rows(state, rows, Selector::Tabs);
-                (n + 1, action_bar_row, Some(n))
-            },
-            Some(Selector::Panes) => {
-                let n = compute_selector_rows(state, rows, Selector::Panes);
-                (n + 1, action_bar_row, Some(n))
-            },
-        };
+    // Top bar always sits at row 0; the body fills rows 1..rows.
+    let body_top = 1;
+    let body_bottom = rows;
+    let viewport_height = body_bottom.saturating_sub(body_top);
 
-    // Mirror the `skip` math `render_embedded_viewport` will use so
-    // the cursor mapping matches the actual lines we'll paint.
-    let viewport_height = viewport_bottom.saturating_sub(viewport_top);
-    let viewport_lines_len = state.current_pane_viewport_len();
-    let skip = viewport_lines_len.saturating_sub(viewport_height);
-
+    // Cursor mapping only matters when the embedded viewport is
+    // visible. Hide the host cursor whenever a selector is open so the
+    // pane cursor doesn't blink behind the menu.
+    let new_cursor = if state.expanded.is_none() {
+        let viewport_lines_len = state.current_pane_viewport_len();
+        let skip = viewport_lines_len.saturating_sub(viewport_height);
+        compute_cursor_position(state, body_top, viewport_height, cols, skip)
+    } else {
+        None
+    };
     // FIRST: tell the host where the embedded pane's cursor sits. We
     // pipe through `emit_cursor` rather than calling `show_cursor`
     // directly because every `show_cursor` invocation on the server
@@ -100,40 +94,28 @@ pub fn render(state: &mut State, rows: usize, cols: usize) {
     // plugin and drive a render loop. `emit_cursor` deduplicates
     // against the last-sent value so we only pay that cost when the
     // cursor target genuinely moves.
-    let new_cursor = compute_cursor_position(
-        state,
-        viewport_top,
-        viewport_height,
-        cols,
-        skip,
-    );
     emit_cursor(state, new_cursor);
 
     // Always start the chrome paint clean — `\x1b[2J` clears the
     // visible area and we rewrite each region from (0, 0).
     print!("{}\x1b[2J", RESET);
 
-    match state.expanded {
-        None => {
-            render_breadcrumb(state, 0, cols);
-        },
-        Some(Selector::Tabs) => {
-            let n = selector_rows.unwrap();
-            render_tab_selector(state, 0, n, cols);
-            render_breadcrumb(state, n, cols);
-        },
-        Some(Selector::Panes) => {
-            let n = selector_rows.unwrap();
-            render_pane_selector(state, 0, n, cols);
-            render_breadcrumb(state, n, cols);
-        },
-    }
+    render_top_bar(state, 0, cols);
 
-    if viewport_bottom > viewport_top {
-        render_embedded_viewport(state, viewport_top, viewport_bottom, cols);
+    if body_bottom > body_top {
+        match state.expanded {
+            None => render_embedded_viewport(state, body_top, body_bottom, cols),
+            Some(Selector::Sessions) => {
+                render_session_selector(state, body_top, body_bottom, cols)
+            },
+            Some(Selector::Tabs) => {
+                render_tab_selector(state, body_top, body_bottom, cols)
+            },
+            Some(Selector::Panes) => {
+                render_pane_selector(state, body_top, body_bottom, cols)
+            },
+        }
     }
-
-    render_action_bar(state, action_bar_row, cols);
 }
 
 /// Map the underlying pane's reported cursor coordinates into the
@@ -178,151 +160,330 @@ fn compute_cursor_position(
     Some((plugin_x, plugin_y))
 }
 
-fn compute_selector_rows(state: &State, rows: usize, selector: Selector) -> usize {
-    // Cap at 6 (per plan). Leave at least one row for breadcrumb,
-    // one for action bar, and one for viewport.
-    let max_for_selector = rows.saturating_sub(3).min(6).max(1);
-    let item_count = match selector {
-        Selector::Tabs => state.tabs_in_order().len(),
-        Selector::Panes => state.current_tab_panes().len(),
-    };
-    // Always reserve at least 2 rows (header + at least one item).
-    let needed = (item_count + 1).max(2);
-    needed.min(max_for_selector + 1)
+/// Top bar: `Zellij <session> | <tab> | <pane> | ⌨    ☰`. Rendered as
+/// a single `Text` component with `.selected()` and a width covering
+/// the entire row, so:
+/// - Each segment's foreground colour comes from the host's selected
+///   emphasis palette (levels 0..=3 → `text_selected.emphasis_0..3`)
+///   via `color_range`. See `style_of_index` in
+///   `zellij-server/src/ui/components/text.rs`.
+/// - The whole row is painted with `text_selected.background`, which
+///   on the standard Zellij themes is the lighter-gray "selection"
+///   shade — distinct from the embedded pane content below.
+///
+/// The keyboard glyph (`⌨`) toggles `state.typing_mode`. When armed
+/// it is drawn in the success palette colour (typically green) so the
+/// user can tell at a glance whether soft-keyboard input flows
+/// through to the embedded pane. The hamburger glyph (`☰`) opens the
+/// panes selector when collapsed and collapses back when a selector
+/// is open — a single right-anchored "menu" affordance.
+fn render_top_bar(state: &mut State, row: usize, cols: usize) {
+    if cols == 0 {
+        return;
+    }
+    match state.expanded {
+        None => render_top_bar_collapsed(state, row, cols),
+        Some(selector) => render_top_bar_in_selector(state, row, cols, selector),
+    }
 }
 
-fn render_breadcrumb(state: &mut State, row: usize, cols: usize) {
+/// Helper: append `s` to `bar`, bumping both the character cursor
+/// (used for `Text::color_range`, which is character-indexed) and the
+/// cell cursor (used for click-region hit testing). Returns the
+/// `(char_start, char_end, cell_start, cell_end)` of the appended
+/// segment so callers can paint colour ranges and click regions
+/// against either coordinate space.
+fn append_segment(
+    bar: &mut String,
+    chars: &mut usize,
+    cells: &mut usize,
+    s: &str,
+) -> (usize, usize, usize, usize) {
+    let chars_start = *chars;
+    let cells_start = *cells;
+    bar.push_str(s);
+    *chars += s.chars().count();
+    *cells += UnicodeWidthStr::width(s);
+    (chars_start, *chars, cells_start, *cells)
+}
+
+/// Collapsed top bar: `Zellij <session> | <tab> | <pane> | ⌨    ☰`.
+fn render_top_bar_collapsed(state: &mut State, row: usize, cols: usize) {
+    let session_name = state
+        .session_name
+        .clone()
+        .unwrap_or_else(|| "—".to_string());
     let tab_name = state
         .current_tab()
         .map(|t| t.name.clone())
         .unwrap_or_else(|| "—".to_string());
     let pane_name = state
         .current_pane()
-        .map(|p| if p.title.is_empty() { format!("#{}", p.id) } else { p.title.clone() })
+        .map(|p| {
+            if p.title.is_empty() {
+                format!("#{}", p.id)
+            } else {
+                p.title.clone()
+            }
+        })
         .unwrap_or_else(|| "—".to_string());
 
-    let tabs_label = format!("[tabs/{}]", tab_name);
-    let panes_label = format!("[panes/{}]", pane_name);
-    let separator = " · ";
+    let prefix = "Zellij ";
+    let pipe = " | ";
+    let typing_icon = "\u{2328}"; // ⌨
+    let hamburger = "\u{2630}"; // ☰
 
-    let mut col = 0;
-    print!("{}{}", RESET, move_to(row, col));
-    print_clipped(&tabs_label, &mut col, cols);
+    let mut bar = String::with_capacity(cols + 16);
+    let mut chars: usize = 0;
+    let mut cells: usize = 0;
+
+    append_segment(&mut bar, &mut chars, &mut cells, prefix);
+    let (session_chars_s, session_chars_e, session_cells_s, session_cells_e) =
+        append_segment(&mut bar, &mut chars, &mut cells, &session_name);
+    append_segment(&mut bar, &mut chars, &mut cells, pipe);
+    let (tab_chars_s, tab_chars_e, tab_cells_s, tab_cells_e) =
+        append_segment(&mut bar, &mut chars, &mut cells, &tab_name);
+    append_segment(&mut bar, &mut chars, &mut cells, pipe);
+    let (pane_chars_s, pane_chars_e, pane_cells_s, pane_cells_e) =
+        append_segment(&mut bar, &mut chars, &mut cells, &pane_name);
+    append_segment(&mut bar, &mut chars, &mut cells, pipe);
+    let (typing_chars_s, typing_chars_e, typing_cells_s, typing_cells_e) =
+        append_segment(&mut bar, &mut chars, &mut cells, typing_icon);
+
+    // Right-align the hamburger. If the bar overflows, fall back to a
+    // single-space gap so the glyphs don't collide.
+    let hamburger_cells = UnicodeWidthStr::width(hamburger);
+    let pad_cells = cols
+        .saturating_sub(cells + hamburger_cells)
+        .max(1);
+    for _ in 0..pad_cells {
+        bar.push(' ');
+    }
+    chars += pad_cells;
+    cells += pad_cells;
+    let (hamburger_chars_s, hamburger_chars_e, hamburger_cells_s, hamburger_cells_e) =
+        append_segment(&mut bar, &mut chars, &mut cells, hamburger);
+
+    // Compose the styled bar. The keyboard icon switches between
+    // emphasis-3 (unarmed) and success-colour (armed); both are clear
+    // signals against the selected-bar background.
+    let mut text = Text::new(&bar)
+        .selected()
+        .color_range(0, session_chars_s..session_chars_e)
+        .color_range(1, tab_chars_s..tab_chars_e)
+        .color_range(2, pane_chars_s..pane_chars_e)
+        .color_range(3, hamburger_chars_s..hamburger_chars_e);
+    text = if state.typing_mode {
+        text.success_color_range(typing_chars_s..typing_chars_e)
+    } else {
+        text.color_range(3, typing_chars_s..typing_chars_e)
+    };
+    print_text_with_coordinates(text, 0, row, Some(cols), None);
+
+    // Click regions are in cell coordinates (the mouse handler
+    // receives cell columns, not char indices). Wide chars in tab /
+    // pane / session names are handled correctly because we tracked
+    // both metrics during composition.
+    state.click_regions.push(ClickRegion {
+        row,
+        col_start: session_cells_s,
+        col_end: session_cells_e,
+        action: ClickAction::ExpandSessions,
+    });
+    state.click_regions.push(ClickRegion {
+        row,
+        col_start: tab_cells_s,
+        col_end: tab_cells_e,
+        action: ClickAction::ExpandTabs,
+    });
+    state.click_regions.push(ClickRegion {
+        row,
+        col_start: pane_cells_s,
+        col_end: pane_cells_e,
+        action: ClickAction::ExpandPanes,
+    });
+    state.click_regions.push(ClickRegion {
+        row,
+        col_start: typing_cells_s,
+        col_end: typing_cells_e,
+        action: ClickAction::ToggleType,
+    });
+    state.click_regions.push(ClickRegion {
+        row,
+        col_start: hamburger_cells_s,
+        col_end: hamburger_cells_e,
+        action: ClickAction::Menu,
+    });
+}
+
+/// Selector top bar: `Zellij <current-X> | Switch <X>`. The current
+/// value mirrors the entity the user is browsing — session name when
+/// the Sessions selector is open, active tab name for Tabs, focused
+/// pane name for Panes — and is coloured with the same emphasis
+/// level the collapsed bar uses for that entity (session=0, tab=1,
+/// pane=2). The keyboard and hamburger glyphs are deliberately
+/// omitted; the entire bar is a single click region that closes the
+/// menu and returns to the viewport.
+fn render_top_bar_in_selector(
+    state: &mut State,
+    row: usize,
+    cols: usize,
+    selector: Selector,
+) {
+    let (current_value, entity_emphasis, action_label) = match selector {
+        Selector::Sessions => (
+            state
+                .session_name
+                .clone()
+                .unwrap_or_else(|| "—".to_string()),
+            0usize,
+            "Switch Session",
+        ),
+        Selector::Tabs => (
+            state
+                .current_tab()
+                .map(|t| t.name.clone())
+                .unwrap_or_else(|| "—".to_string()),
+            1usize,
+            "Switch Tab",
+        ),
+        Selector::Panes => (
+            state
+                .current_pane()
+                .map(|p| {
+                    if p.title.is_empty() {
+                        format!("#{}", p.id)
+                    } else {
+                        p.title.clone()
+                    }
+                })
+                .unwrap_or_else(|| "—".to_string()),
+            2usize,
+            "Switch Pane",
+        ),
+    };
+
+    let prefix = "Zellij ";
+    let pipe = " | ";
+
+    let mut bar = String::with_capacity(cols + 16);
+    let mut chars: usize = 0;
+    let mut cells: usize = 0;
+
+    append_segment(&mut bar, &mut chars, &mut cells, prefix);
+    let (entity_chars_s, entity_chars_e, _, _) =
+        append_segment(&mut bar, &mut chars, &mut cells, &current_value);
+    append_segment(&mut bar, &mut chars, &mut cells, pipe);
+    let (action_chars_s, action_chars_e, _, _) =
+        append_segment(&mut bar, &mut chars, &mut cells, action_label);
+
+    let text = Text::new(&bar)
+        .selected()
+        .color_range(entity_emphasis, entity_chars_s..entity_chars_e)
+        .color_range(3, action_chars_s..action_chars_e);
+    print_text_with_coordinates(text, 0, row, Some(cols), None);
+
+    // Single bar-wide click region: tapping anywhere on the title
+    // collapses the menu and returns to the embedded viewport. The
+    // bar carries no other interactive segment in this mode.
     state.click_regions.push(ClickRegion {
         row,
         col_start: 0,
-        col_end: col,
-        action: ClickAction::ExpandTabs,
+        col_end: cols,
+        action: ClickAction::Menu,
     });
-
-    let sep_start = col;
-    print_clipped(separator, &mut col, cols);
-    let _ = sep_start;
-
-    let panes_start = col;
-    print_clipped(&panes_label, &mut col, cols);
-    state.click_regions.push(ClickRegion {
-        row,
-        col_start: panes_start,
-        col_end: col,
-        action: ClickAction::ExpandPanes,
-    });
-
-    if state.expanded.is_some() {
-        // Right-aligned "collapse" affordance.
-        let label = " [collapse]";
-        let label_w = UnicodeWidthStr::width(label);
-        if cols > label_w + 1 {
-            let target_col = cols - label_w;
-            print!("{}", move_to(row, target_col));
-            print!("{}{}", RESET, label);
-            state.click_regions.push(ClickRegion {
-                row,
-                col_start: target_col,
-                col_end: target_col + label_w,
-                action: ClickAction::Collapse,
-            });
-        }
-    }
 }
 
-fn render_tab_selector(state: &mut State, row_start: usize, row_count: usize, cols: usize) {
-    if row_count == 0 {
+/// Render a generic full-height list selector occupying rows
+/// `row_start..row_end`. The selector body is just the items — the
+/// "Switch <X>" header lives in the top bar so the body stays as
+/// dense as possible. Each item carries its own `ClickAction` and a
+/// `selected` flag for the active row marker.
+fn render_list_selector(
+    state: &mut State,
+    row_start: usize,
+    row_end: usize,
+    cols: usize,
+    items: Vec<(String, ClickAction, bool)>,
+) {
+    if row_end <= row_start {
         return;
     }
-    let header = " Select Tab ";
-    print!("{}{}", RESET, move_to(row_start, 0));
-    print!("\x1b[7m{:^width$}\x1b[0m", header, width = cols);
-
-    // Collect (position, name) into an owned vec so the inner loop
-    // can mutate `state.click_regions` without overlapping the
-    // immutable borrow from `tabs_in_order`.
-    let tab_rows: Vec<(usize, String)> = state
-        .tabs_in_order()
-        .into_iter()
-        .map(|t| (t.position, t.name.clone()))
-        .collect();
-    let active_position = state
-        .current_tab()
-        .map(|t| t.position)
-        .unwrap_or(usize::MAX);
-
-    let max_items = row_count.saturating_sub(1);
-    for (idx, (position, name)) in tab_rows.into_iter().take(max_items).enumerate() {
-        let row = row_start + 1 + idx;
-        let mark = if position == active_position { "▸" } else { " " };
-        let line = format!(" {} {}. {}", mark, position + 1, name);
+    let max_items = row_end.saturating_sub(row_start);
+    for (idx, (line, action, selected)) in items.into_iter().take(max_items).enumerate() {
+        let row = row_start + idx;
+        let mark = if selected { "▸" } else { " " };
+        let display = format!(" {} {}", mark, line);
         print!("{}{}", RESET, move_to(row, 0));
         let mut col = 0;
-        print_clipped(&line, &mut col, cols);
-        // Clear the rest of the row so a wider previous tab name is
+        print_clipped(&display, &mut col, cols);
+        // Clear the rest of the row so a wider previous entry is
         // overwritten cleanly.
         clear_to_end(col, cols);
         state.click_regions.push(ClickRegion {
             row,
             col_start: 0,
             col_end: cols,
-            action: ClickAction::SelectTab(position),
+            action,
         });
     }
 }
 
-fn render_pane_selector(state: &mut State, row_start: usize, row_count: usize, cols: usize) {
-    if row_count == 0 {
-        return;
-    }
-    let header = " Select Pane ";
-    print!("{}{}", RESET, move_to(row_start, 0));
-    print!("\x1b[7m{:^width$}\x1b[0m", header, width = cols);
+fn render_session_selector(state: &mut State, row_start: usize, row_end: usize, cols: usize) {
+    let current = state.session_name.clone();
+    let mut items: Vec<(String, ClickAction, bool)> = state
+        .sessions
+        .iter()
+        .map(|s| {
+            let label = if s.is_current_session {
+                format!("{} (current)", s.name)
+            } else {
+                s.name.clone()
+            };
+            let selected = current.as_deref() == Some(s.name.as_str());
+            (label, ClickAction::SelectSession(s.name.clone()), selected)
+        })
+        .collect();
+    items.sort_by(|a, b| a.0.cmp(&b.0));
+    render_list_selector(state, row_start, row_end, cols, items);
+}
 
-    // Snapshot panes/selected id outside the borrow so we can mutate
-    // click_regions while iterating.
+fn render_tab_selector(state: &mut State, row_start: usize, row_end: usize, cols: usize) {
+    let active_position = state
+        .current_tab()
+        .map(|t| t.position)
+        .unwrap_or(usize::MAX);
+    let items: Vec<(String, ClickAction, bool)> = state
+        .tabs_in_order()
+        .into_iter()
+        .map(|t| {
+            let line = format!("{}. {}", t.position + 1, t.name);
+            let selected = t.position == active_position;
+            (line, ClickAction::SelectTab(t.position), selected)
+        })
+        .collect();
+    render_list_selector(state, row_start, row_end, cols, items);
+}
+
+fn render_pane_selector(state: &mut State, row_start: usize, row_end: usize, cols: usize) {
     let panes: Vec<PaneInfo> = state.current_tab_panes().into_iter().cloned().collect();
     let selected_pane_id = state.current_pane().map(|p| pane_id_of(&p));
-
-    let max_items = row_count.saturating_sub(1);
-    for (idx, pane) in panes.iter().take(max_items).enumerate() {
-        let row = row_start + 1 + idx;
-        let id = pane_id_of(pane);
-        let mark = if Some(id) == selected_pane_id { "▸" } else { " " };
-        let layer = if pane.is_floating { "F" } else { "T" };
-        let title = if pane.title.is_empty() {
-            format!("#{}", pane.id)
-        } else {
-            pane.title.clone()
-        };
-        let line = format!(" {} [{}] {}", mark, layer, title);
-        print!("{}{}", RESET, move_to(row, 0));
-        let mut col = 0;
-        print_clipped(&line, &mut col, cols);
-        clear_to_end(col, cols);
-        state.click_regions.push(ClickRegion {
-            row,
-            col_start: 0,
-            col_end: cols,
-            action: ClickAction::SelectPane(id),
-        });
-    }
+    let items: Vec<(String, ClickAction, bool)> = panes
+        .into_iter()
+        .map(|pane| {
+            let id = pane_id_of(&pane);
+            let layer = if pane.is_floating { "F" } else { "T" };
+            let title = if pane.title.is_empty() {
+                format!("#{}", pane.id)
+            } else {
+                pane.title.clone()
+            };
+            let line = format!("[{}] {}", layer, title);
+            let selected = Some(id) == selected_pane_id;
+            (line, ClickAction::SelectPane(id), selected)
+        })
+        .collect();
+    render_list_selector(state, row_start, row_end, cols, items);
 }
 
 fn render_embedded_viewport(state: &mut State, row_start: usize, row_end: usize, cols: usize) {
@@ -378,63 +539,6 @@ fn render_embedded_viewport(state: &mut State, row_start: usize, row_end: usize,
             print!("{}\x1b[K", RESET);
         }
     }
-}
-
-fn render_action_bar(state: &mut State, row: usize, cols: usize) {
-    // Compact one-row layout. Each button reserves a fixed width so
-    // the click regions remain stable across renders. The keyboard
-    // toggle gets a distinct armed glyph plus a colored highlight so
-    // the user can tell at a glance whether typing-mode is on.
-    let typing_mode = state.typing_mode;
-    let type_label = if typing_mode {
-        "[\u{2328}*]".to_string()
-    } else {
-        "[\u{2328}]".to_string()
-    };
-    let mut buttons: Vec<(String, ClickAction, bool)> = vec![
-        (type_label, ClickAction::ToggleType, typing_mode),
-        ("[+P]".into(), ClickAction::NewPane, false),
-        ("[+T]".into(), ClickAction::NewTab, false),
-        ("[\u{2192}]".into(), ClickAction::SplitRight, false),
-        ("[\u{2193}]".into(), ClickAction::SplitDown, false),
-        ("[\u{229E}]".into(), ClickAction::ToggleFloating, false),
-        ("[\u{2715}]".into(), ClickAction::CloseFocus, false),
-        ("[\u{23CF}]".into(), ClickAction::Detach, false),
-        ("[Exit]".into(), ClickAction::ExitMobile, false),
-    ];
-
-    // Reverse-video the bar so it visually separates from the
-    // viewport.
-    print!("{}{}\x1b[7m", RESET, move_to(row, 0));
-    let mut col = 0;
-    while col < cols {
-        print!(" ");
-        col += 1;
-    }
-    print!("{}", RESET);
-
-    let mut col = 0;
-    for (label, action, armed) in buttons.drain(..) {
-        let label_w = UnicodeWidthStr::width(label.as_str());
-        if col + label_w + 1 > cols {
-            break;
-        }
-        if armed {
-            // Bright-green background, black foreground — clear armed
-            // signal that survives both light and dark terminal themes.
-            print!("{}{}\x1b[42;30m{}{}", RESET, move_to(row, col), label, RESET);
-        } else {
-            print!("{}{}", move_to(row, col), label);
-        }
-        state.click_regions.push(ClickRegion {
-            row,
-            col_start: col,
-            col_end: col + label_w,
-            action,
-        });
-        col += label_w + 1; // 1-cell gutter
-    }
-    print!("{}", RESET);
 }
 
 /// Width of `text` after stripping ANSI escape sequences. Used so the
