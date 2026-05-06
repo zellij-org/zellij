@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use zellij_utils::{input::config::Config, pane_size::Size};
+use zellij_utils::{input::config::Config, ipc::PixelDimensions, pane_size::Size};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 
@@ -12,6 +12,7 @@ pub struct WebClientToWebServerControlMessage {
 #[serde(tag = "type")]
 pub enum WebClientToWebServerControlMessagePayload {
     TerminalResize(Size),
+    TerminalPixelDimensions(PixelDimensions),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
