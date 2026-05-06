@@ -62,10 +62,13 @@ nix = { workspace = true }
 crossterm = { workspace = true, features = ["events"] }
 windows-sys = { workspace = true, features = [
     "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Security_Authorization",
     "Win32_System_Threading",
 ] }
 winapi = { version = "0.3.9", default-features = false }
 dunce = "1.0"
+widestring = "1.0"
 
 [dev-dependencies]
 insta = { version = "1.6.0", features = ["backtrace"] }
