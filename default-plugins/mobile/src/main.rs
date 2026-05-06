@@ -74,6 +74,18 @@ impl ZellijPlugin for State {
             },
             Event::PaneUpdate(manifest) => {
                 self.panes_by_tab_position = manifest.panes;
+                // Drop cached viewports for panes that no longer exist
+                // in the manifest. `PaneRenderReportWithAnsi` carries
+                // changed panes only (see `get_changed_panes_per_client`
+                // in `wasm_bridge.rs`), so without this prune the cache
+                // would grow unbounded as panes close.
+                let live_pane_ids: std::collections::HashSet<PaneId> = self
+                    .panes_by_tab_position
+                    .values()
+                    .flat_map(|panes| panes.iter().map(state::pane_id_of))
+                    .collect();
+                self.latest_pane_contents
+                    .retain(|id, _| live_pane_ids.contains(id));
                 // Re-evaluate the tab default in case TabUpdate arrived
                 // before any PaneUpdate — `tab_is_self_only` depends on
                 // pane data and may have classified everything as
@@ -91,25 +103,32 @@ impl ZellijPlugin for State {
                         self.tabs_in_order().first().map(|t| t.position);
                 }
 
-                // Default pane selection: the focused pane in the
-                // selected tab, but never the mobile plugin itself.
+                // Default pane selection: the first pane in the
+                // selected tab. We deliberately do NOT prefer the
+                // `is_focused` pane — `PaneInfo.is_focused` is a global
+                // flag (true if any client focuses the pane), so
+                // initialising from it would make the mobile view start
+                // out tracking another connected client's focused pane.
+                // The user can pick a different pane via the panes
+                // selector; once they do, `selected_pane_id` is sticky.
                 if self.selected_pane_id.is_none() {
-                    if let Some(pane) = self
-                        .current_tab_panes()
-                        .into_iter()
-                        .find(|p| p.is_focused)
-                        .or_else(|| self.current_tab_panes().into_iter().next())
-                    {
+                    if let Some(pane) = self.current_tab_panes().into_iter().next() {
                         self.selected_pane_id = Some(state::pane_id_of(pane));
                     }
                 }
                 true
             },
             Event::PaneRenderReportWithAnsi(map) => {
-                // Replace wholesale — the server emits the full set
-                // each cycle, so any keys absent from the new map
-                // correspond to closed panes.
-                self.latest_pane_contents = map;
+                // Merge — the server emits *changed* panes only after
+                // the first report (see `get_changed_panes_per_client`
+                // in `zellij-server/src/plugins/wasm_bridge.rs`). A
+                // wholesale replace would wipe every static pane's
+                // viewport whenever any other pane changes (e.g. when
+                // a desktop client opens a new pane), leaving the
+                // mobile embedded viewport empty. Pane closures are
+                // handled in the `PaneUpdate` arm above, which prunes
+                // entries against the authoritative pane manifest.
+                self.latest_pane_contents.extend(map);
                 true
             },
             Event::Mouse(mouse) => {

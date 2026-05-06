@@ -121,9 +121,10 @@ impl State {
     }
 
     /// Panes in the currently-selected tab, in a deterministic order.
-    /// Filters out suppressed panes and the plugin's own pane (which
-    /// would never appear here in practice — `current_tab` already
-    /// excludes the plugin's own tab — but the guard is cheap).
+    /// Filters out suppressed panes, unselectable panes (UI chrome like
+    /// status-bar / tab-bar), and the plugin's own pane (which would
+    /// never appear here in practice — `current_tab` already excludes
+    /// the plugin's own tab — but the guard is cheap).
     pub fn current_tab_panes(&self) -> Vec<&PaneInfo> {
         let Some(tab) = self.current_tab() else {
             return vec![];
@@ -134,13 +135,21 @@ impl State {
             .get(&tab.position)
             .map(|v| v.iter().collect())
             .unwrap_or_default();
-        panes.retain(|p| !p.is_suppressed && !own.map(|id| pane_info_matches(p, id)).unwrap_or(false));
+        panes.retain(|p| {
+            !p.is_suppressed
+                && p.is_selectable
+                && !own.map(|id| pane_info_matches(p, id)).unwrap_or(false)
+        });
         panes.sort_by_key(|p| (p.is_floating, p.pane_y, p.pane_x, p.id));
         panes
     }
 
-    /// Currently-selected pane info, falling back to the focused pane
-    /// in the selected tab.
+    /// Currently-selected pane info, falling back to the first pane in
+    /// the selected tab. We deliberately do NOT fall back to
+    /// `is_focused` — that flag is global on the server (true if any
+    /// client focuses the pane, see `ActivePanes::pane_id_is_focused`),
+    /// so using it here would make the embedded viewport track another
+    /// connected client's focus changes.
     pub fn current_pane(&self) -> Option<PaneInfo> {
         if let Some(selected) = self.selected_pane_id {
             for pane in self.current_tab_panes() {
@@ -149,10 +158,7 @@ impl State {
                 }
             }
         }
-        self.current_tab_panes()
-            .into_iter()
-            .find(|p| p.is_focused)
-            .cloned()
+        self.current_tab_panes().into_iter().next().cloned()
     }
 
     /// Resolve a click at (row, col) to the action it should fire, if

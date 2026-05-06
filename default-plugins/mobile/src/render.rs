@@ -248,12 +248,18 @@ fn render_embedded_viewport(state: &mut State, row_start: usize, row_end: usize,
         .map(|c| c.viewport.clone())
         .unwrap_or_default();
 
+    // Anchor the slice to the bottom of the pane's viewport: when the
+    // pane is taller than our embedded area, the most recent (bottom)
+    // lines are what the user wants to see — that's where the cursor
+    // and most-recent terminal output live.
+    let skip = viewport_lines.len().saturating_sub(height);
+
     // Reset before each row to keep the chrome's styling separate from
     // the pane's emitted SGR runs.
     for i in 0..height {
         let row = row_start + i;
         print!("{}{}", RESET, move_to(row, 0));
-        if let Some(line) = viewport_lines.get(i) {
+        if let Some(line) = viewport_lines.get(skip + i) {
             // Trust the ANSI; xterm style resets at end of pane line
             // are already part of the rendered stream.
             print!("{}", line);
@@ -264,7 +270,7 @@ fn render_embedded_viewport(state: &mut State, row_start: usize, row_end: usize,
         }
         // Clear any overrun from the previous frame.
         let printed_width = viewport_lines
-            .get(i)
+            .get(skip + i)
             .map(|l| visible_width(l))
             .unwrap_or(0);
         if printed_width < cols {
