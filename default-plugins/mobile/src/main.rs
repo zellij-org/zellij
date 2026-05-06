@@ -239,12 +239,34 @@ fn dispatch_click(state: &mut State, action: ClickAction) -> bool {
             state.expanded = Some(Selector::Sessions);
             true
         },
-        ClickAction::ExpandTabs => {
-            state.expanded = Some(Selector::Tabs);
+        ClickAction::ExpandOverview => {
+            state.expanded = Some(Selector::Overview);
+            // Reset the horizontal slice every time the user opens the
+            // overview so they always start with the leftmost tab —
+            // otherwise a stale `overview_scroll` from a prior open
+            // would silently hide tabs they expected to see.
+            state.overview_scroll = 0;
             true
         },
-        ClickAction::ExpandPanes => {
-            state.expanded = Some(Selector::Panes);
+        ClickAction::ExpandTabPaneOverflow(pos) => {
+            state.expanded = Some(Selector::TabPaneOverflow(pos));
+            true
+        },
+        ClickAction::CollapseSelector => {
+            state.expanded = None;
+            true
+        },
+        ClickAction::OverviewScroll(delta) => {
+            // Visible-tab count drives the legal scroll range. We
+            // can't easily know how many columns the renderer chose
+            // here without re-running the layout math, so we clamp
+            // against the total tab count and let the renderer ignore
+            // an overshoot — it caps `slice_offset` to
+            // `tabs.len() - visible` on the next paint.
+            let total = state.tabs_in_order().len();
+            let new_scroll =
+                (state.overview_scroll as i32 + delta).max(0) as usize;
+            state.overview_scroll = new_scroll.min(total.saturating_sub(1));
             true
         },
         ClickAction::SelectSession(name) => {
@@ -255,31 +277,35 @@ fn dispatch_click(state: &mut State, action: ClickAction) -> bool {
             state.expanded = None;
             true
         },
-        ClickAction::SelectTab(position) => {
+        ClickAction::SelectTabHeader(position) => {
+            // The mobile plugin never moves the *client's* focused
+            // tab — doing so would yank the client out of the mobile
+            // tab (where this plugin lives) and into the destination
+            // tab, making the entire mobile UI vanish. The "selected
+            // tab" here is a purely internal concept: it controls
+            // which tab's panes the overview/embed reads. Resetting
+            // `selected_pane_id` lets the renderer fall back to the
+            // first pane in the newly-selected tab.
             state.selected_tab_position = Some(position);
-            // Clear the pane selection so the next render snaps to the
-            // newly-selected tab's focused pane.
             state.selected_pane_id = None;
             state.expanded = None;
             true
         },
-        ClickAction::SelectPane(id) => {
-            state.selected_pane_id = Some(id);
+        ClickAction::SelectTabAndPane { tab_position, pane_id } => {
+            // Same rationale as SelectTabHeader: do not call
+            // `switch_tab_to` or `focus_*_pane` here — those would
+            // change the client's actual focus and dismount the
+            // mobile UI. The plugin embeds the chosen pane via its
+            // own renderer (reading `PaneRenderReportWithAnsi` from
+            // the host) and forwards keystrokes/clicks via
+            // `write_to_pane_id`; neither needs the host's focus.
+            state.selected_tab_position = Some(tab_position);
+            state.selected_pane_id = Some(pane_id);
             state.expanded = None;
             true
         },
         ClickAction::ToggleType => {
             state.typing_mode = !state.typing_mode;
-            true
-        },
-        ClickAction::Menu => {
-            // Hamburger doubles as expand-when-collapsed and
-            // collapse-when-expanded so the user always has a clear
-            // next step from one place in the UI.
-            state.expanded = match state.expanded {
-                None => Some(Selector::Panes),
-                Some(_) => None,
-            };
             true
         },
     }

@@ -8,25 +8,48 @@ use zellij_tile::prelude::*;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Selector {
     Sessions,
-    Tabs,
-    Panes,
+    /// Full-screen tab×pane grid: columns are tabs, rows within a
+    /// column are that tab's panes. Subsumes the old per-tab and
+    /// per-pane drilldown selectors.
+    Overview,
+    /// Per-tab fallback flat list when a single tab has more panes
+    /// than the overview's column can display. The carried value is
+    /// the tab position whose panes are listed.
+    TabPaneOverflow(usize),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ClickAction {
     ExpandSessions,
-    ExpandTabs,
-    ExpandPanes,
+    /// Open the tab×pane overview. Reset `overview_scroll` to 0 so
+    /// the slice always starts from the leftmost visible tab.
+    ExpandOverview,
+    /// Open the per-tab pane fallback list (vertical-overflow case).
+    ExpandTabPaneOverflow(usize),
+    /// Close any open selector without changing the current selection.
+    /// Used by the in-selector top-bar tap (escape hatch back to the
+    /// embedded viewport).
+    CollapseSelector,
+    /// Scroll the overview's visible-tab slice. Positive bumps right,
+    /// negative bumps left. Clamped against the visible-tab count by
+    /// the dispatch handler.
+    OverviewScroll(i32),
     /// Selecting a session calls `switch_session(name)` on the host —
     /// the client genuinely changes session, leaving this one.
     SelectSession(String),
-    SelectTab(usize),         // tab position (0-based)
-    SelectPane(PaneId),
+    /// Tap a column header in the overview. Switches the client to
+    /// that tab without forcing a specific pane focus (the tab's own
+    /// previously-focused pane wins).
+    SelectTabHeader(usize),
+    /// Tap a cell in the overview. Switches both tab and pane in a
+    /// single user action. The pane is focused via the id-targeted
+    /// shim helpers (not via an action targeting the focused pane,
+    /// which would otherwise hit the mobile plugin itself).
+    SelectTabAndPane {
+        tab_position: usize,
+        pane_id: PaneId,
+    },
     ToggleType,
-    /// Open the menu: in the simplified UI this is wired to the panes
-    /// selector when collapsed and to "collapse" when a selector is
-    /// open, so the hamburger always offers a useful next step.
-    Menu,
 }
 
 #[derive(Debug, Clone)]
@@ -106,6 +129,11 @@ pub struct State {
     /// Set by the renderer; consumed by the mouse handler to dispatch
     /// viewport-passthrough clicks to the underlying pane.
     pub viewport_region: Option<ViewportRegion>,
+    /// Number of overview columns currently scrolled off the left
+    /// edge. Reset to 0 whenever the overview opens; bumped by the
+    /// `◀`/`▶` tap regions when the visible-tab count exceeds the
+    /// number of columns that fit in `cols`.
+    pub overview_scroll: usize,
     /// Last `show_cursor` payload the plugin emitted to the host.
     /// Calling `show_cursor` is *not* idempotent on the server side:
     /// `ScreenInstruction::ShowPluginCursor` triggers a full
@@ -184,10 +212,17 @@ impl State {
         let Some(tab) = self.current_tab() else {
             return vec![];
         };
+        self.panes_for_tab(tab.position)
+    }
+
+    /// Panes for an arbitrary tab position, with the same filtering
+    /// and ordering as `current_tab_panes`. Used by the overview to
+    /// list panes per column without first switching the selection.
+    pub fn panes_for_tab(&self, tab_position: usize) -> Vec<&PaneInfo> {
         let own = self.own_plugin_pane_id;
         let mut panes: Vec<&PaneInfo> = self
             .panes_by_tab_position
-            .get(&tab.position)
+            .get(&tab_position)
             .map(|v| v.iter().collect())
             .unwrap_or_default();
         panes.retain(|p| {

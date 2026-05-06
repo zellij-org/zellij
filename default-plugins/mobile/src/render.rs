@@ -108,11 +108,11 @@ pub fn render(state: &mut State, rows: usize, cols: usize) {
             Some(Selector::Sessions) => {
                 render_session_selector(state, body_top, body_bottom, cols)
             },
-            Some(Selector::Tabs) => {
-                render_tab_selector(state, body_top, body_bottom, cols)
+            Some(Selector::Overview) => {
+                render_overview(state, body_top, body_bottom, cols)
             },
-            Some(Selector::Panes) => {
-                render_pane_selector(state, body_top, body_bottom, cols)
+            Some(Selector::TabPaneOverflow(pos)) => {
+                render_tab_pane_overflow(state, pos, body_top, body_bottom, cols)
             },
         }
     }
@@ -294,13 +294,13 @@ fn render_top_bar_collapsed(state: &mut State, row: usize, cols: usize) {
         row,
         col_start: tab_cells_s,
         col_end: tab_cells_e,
-        action: ClickAction::ExpandTabs,
+        action: ClickAction::ExpandOverview,
     });
     state.click_regions.push(ClickRegion {
         row,
         col_start: pane_cells_s,
         col_end: pane_cells_e,
-        action: ClickAction::ExpandPanes,
+        action: ClickAction::ExpandOverview,
     });
     state.click_regions.push(ClickRegion {
         row,
@@ -312,7 +312,7 @@ fn render_top_bar_collapsed(state: &mut State, row: usize, cols: usize) {
         row,
         col_start: hamburger_cells_s,
         col_end: hamburger_cells_e,
-        action: ClickAction::Menu,
+        action: ClickAction::ExpandOverview,
     });
 }
 
@@ -339,26 +339,22 @@ fn render_top_bar_in_selector(
             0usize,
             "Switch Session",
         ),
-        Selector::Tabs => (
+        Selector::Overview => (
             state
-                .current_tab()
+                .session_name
+                .clone()
+                .unwrap_or_else(|| "—".to_string()),
+            0usize,
+            "Switch Pane",
+        ),
+        Selector::TabPaneOverflow(pos) => (
+            state
+                .tabs_in_order()
+                .iter()
+                .find(|t| t.position == pos)
                 .map(|t| t.name.clone())
                 .unwrap_or_else(|| "—".to_string()),
             1usize,
-            "Switch Tab",
-        ),
-        Selector::Panes => (
-            state
-                .current_pane()
-                .map(|p| {
-                    if p.title.is_empty() {
-                        format!("#{}", p.id)
-                    } else {
-                        p.title.clone()
-                    }
-                })
-                .unwrap_or_else(|| "—".to_string()),
-            2usize,
             "Switch Pane",
         ),
     };
@@ -390,7 +386,7 @@ fn render_top_bar_in_selector(
         row,
         col_start: 0,
         col_end: cols,
-        action: ClickAction::Menu,
+        action: ClickAction::CollapseSelector,
     });
 }
 
@@ -448,25 +444,23 @@ fn render_session_selector(state: &mut State, row_start: usize, row_end: usize, 
     render_list_selector(state, row_start, row_end, cols, items);
 }
 
-fn render_tab_selector(state: &mut State, row_start: usize, row_end: usize, cols: usize) {
-    let active_position = state
-        .current_tab()
-        .map(|t| t.position)
-        .unwrap_or(usize::MAX);
-    let items: Vec<(String, ClickAction, bool)> = state
-        .tabs_in_order()
+/// Per-tab pane fallback list, used when a single tab has more panes
+/// than the overview's column can display vertically. Tapping an
+/// entry switches both tab and pane atomically (same handler the
+/// overview cells use), so the fallback is *not* a per-pane selector
+/// — it's a tab-scoped slice of the overview.
+fn render_tab_pane_overflow(
+    state: &mut State,
+    tab_position: usize,
+    row_start: usize,
+    row_end: usize,
+    cols: usize,
+) {
+    let panes: Vec<PaneInfo> = state
+        .panes_for_tab(tab_position)
         .into_iter()
-        .map(|t| {
-            let line = format!("{}. {}", t.position + 1, t.name);
-            let selected = t.position == active_position;
-            (line, ClickAction::SelectTab(t.position), selected)
-        })
+        .cloned()
         .collect();
-    render_list_selector(state, row_start, row_end, cols, items);
-}
-
-fn render_pane_selector(state: &mut State, row_start: usize, row_end: usize, cols: usize) {
-    let panes: Vec<PaneInfo> = state.current_tab_panes().into_iter().cloned().collect();
     let selected_pane_id = state.current_pane().map(|p| pane_id_of(&p));
     let items: Vec<(String, ClickAction, bool)> = panes
         .into_iter()
@@ -480,10 +474,268 @@ fn render_pane_selector(state: &mut State, row_start: usize, row_end: usize, col
             };
             let line = format!("[{}] {}", layer, title);
             let selected = Some(id) == selected_pane_id;
-            (line, ClickAction::SelectPane(id), selected)
+            (
+                line,
+                ClickAction::SelectTabAndPane {
+                    tab_position,
+                    pane_id: id,
+                },
+                selected,
+            )
         })
         .collect();
     render_list_selector(state, row_start, row_end, cols, items);
+}
+
+/// Full-screen tab×pane overview. Columns are tabs (in display
+/// order); rows within each column list that tab's panes. One tap on
+/// any cell switches both tab and pane in a single action — replacing
+/// the previous two-step drilldown.
+///
+/// Layout:
+/// - First body row: column headers (tab names). The currently-active
+///   tab's header is bolded.
+/// - Subsequent rows: panes per column, top-aligned within the column.
+///   Selected pane prefixed with `▸`.
+/// - Last row of an overflowing column: `+N` indicator that opens the
+///   tab-scoped fallback list.
+/// - Edge cells (cols 0 and cols-1) become `◀`/`▶` scroll arrows when
+///   more tabs exist than fit. Tapping the arrow shifts the visible
+///   slice by one column.
+fn render_overview(state: &mut State, row_start: usize, row_end: usize, cols: usize) {
+    let body_height = row_end.saturating_sub(row_start);
+    if body_height == 0 || cols == 0 {
+        return;
+    }
+    let tabs: Vec<TabInfo> = state.tabs_in_order().into_iter().cloned().collect();
+    if tabs.is_empty() {
+        print!("{}{}{}", RESET, move_to(row_start, 0), "(no tabs)");
+        return;
+    }
+
+    let active_tab_position = state.current_tab().map(|t| t.position);
+    let selected_pane_id = state.current_pane().map(|p| pane_id_of(&p));
+
+    // ── Column slice + width math ────────────────────────────────
+    // Below `MIN_COL_WIDTH` the cells get unreadably truncated, so
+    // we'd rather hide tabs and expose scroll arrows than crush
+    // titles below this threshold.
+    const MIN_COL_WIDTH: usize = 8;
+
+    let max_cols_no_arrows = (cols / MIN_COL_WIDTH).max(1);
+    let needs_scroll = tabs.len() > max_cols_no_arrows;
+
+    let (slice_offset, slice_count, left_arrow, right_arrow, content_left, content_width) =
+        if needs_scroll {
+            let arrow_w_total: usize = 2; // 1 cell each side
+            let usable = cols.saturating_sub(arrow_w_total);
+            let visible = (usable / MIN_COL_WIDTH).max(1).min(tabs.len());
+            let max_scroll = tabs.len().saturating_sub(visible);
+            let scroll = state.overview_scroll.min(max_scroll);
+            let left = scroll > 0;
+            let right = scroll + visible < tabs.len();
+            let cl = if left { 1 } else { 0 };
+            let cr = if right { 1 } else { 0 };
+            let cw = cols.saturating_sub(cl + cr);
+            (scroll, visible, left, right, cl, cw)
+        } else {
+            let visible = tabs.len().min(max_cols_no_arrows);
+            (0, visible, false, false, 0, cols)
+        };
+
+    // Distribute `content_width` across `slice_count` columns. Use a
+    // floor + remainder distribution so widths sum to exactly
+    // `content_width`. The last column absorbs the remainder.
+    let base_w = content_width / slice_count.max(1);
+    let extra = content_width.saturating_sub(base_w * slice_count);
+    let column_width = |slot: usize| -> usize {
+        if slot + 1 == slice_count {
+            base_w + extra
+        } else {
+            base_w
+        }
+    };
+
+    // ── Scroll arrows (full-height tap targets) ──────────────────
+    if left_arrow {
+        for r in row_start..row_end {
+            let glyph = if r == row_start { "◀" } else { " " };
+            print!("{}{}{}", RESET, move_to(r, 0), glyph);
+            state.click_regions.push(ClickRegion {
+                row: r,
+                col_start: 0,
+                col_end: 1,
+                action: ClickAction::OverviewScroll(-1),
+            });
+        }
+    }
+    if right_arrow {
+        let col = cols.saturating_sub(1);
+        for r in row_start..row_end {
+            let glyph = if r == row_start { "▶" } else { " " };
+            print!("{}{}{}", RESET, move_to(r, col), glyph);
+            state.click_regions.push(ClickRegion {
+                row: r,
+                col_start: col,
+                col_end: cols,
+                action: ClickAction::OverviewScroll(1),
+            });
+        }
+    }
+
+    // ── Columns: header + panes + optional `+N` overflow ─────────
+    let header_row = row_start;
+    let body_first = row_start + 1;
+    let body_last = row_end;
+    let pane_row_capacity = body_last.saturating_sub(body_first);
+
+    let mut col_start_cell = content_left;
+    for slot in 0..slice_count {
+        let tab_idx = slice_offset + slot;
+        let Some(tab) = tabs.get(tab_idx) else { break };
+        let inner_width = column_width(slot);
+        let col_end_cell = col_start_cell + inner_width;
+
+        // Header.
+        let is_active = active_tab_position == Some(tab.position);
+        let label = pad_or_truncate(&tab.name, inner_width);
+        print!("{}{}", RESET, move_to(header_row, col_start_cell));
+        if is_active {
+            // Bold + reverse for the active tab so the user sees
+            // "this is where I am" at a glance.
+            print!("\x1b[1;7m{}{}", label, RESET);
+        } else {
+            print!("\x1b[1m{}{}", label, RESET);
+        }
+        state.click_regions.push(ClickRegion {
+            row: header_row,
+            col_start: col_start_cell,
+            col_end: col_end_cell,
+            action: ClickAction::SelectTabHeader(tab.position),
+        });
+
+        // Panes.
+        let panes: Vec<PaneInfo> = state
+            .panes_for_tab(tab.position)
+            .into_iter()
+            .cloned()
+            .collect();
+        let overflows = panes.len() > pane_row_capacity;
+        let cap_panes = if overflows {
+            pane_row_capacity.saturating_sub(1)
+        } else {
+            panes.len().min(pane_row_capacity)
+        };
+
+        for (i, pane) in panes.iter().take(cap_panes).enumerate() {
+            let pane_id = pane_id_of(pane);
+            let is_selected = selected_pane_id == Some(pane_id);
+            let title = if pane.title.is_empty() {
+                format!("#{}", pane.id)
+            } else {
+                pane.title.clone()
+            };
+            let prefix = if is_selected { "▸ " } else { "  " };
+            let title_max = inner_width.saturating_sub(2);
+            let truncated = pad_or_truncate(&title, title_max);
+            let row = body_first + i;
+            print!("{}{}", RESET, move_to(row, col_start_cell));
+            if is_selected {
+                print!("\x1b[1m{}{}{}", prefix, truncated, RESET);
+            } else {
+                print!("{}{}", prefix, truncated);
+            }
+            state.click_regions.push(ClickRegion {
+                row,
+                col_start: col_start_cell,
+                col_end: col_end_cell,
+                action: ClickAction::SelectTabAndPane {
+                    tab_position: tab.position,
+                    pane_id,
+                },
+            });
+        }
+
+        if overflows {
+            let overflow_row = body_first + cap_panes;
+            if overflow_row < body_last {
+                let hidden = panes.len().saturating_sub(cap_panes);
+                let label = pad_or_truncate(&format!("+{} more", hidden), inner_width);
+                print!(
+                    "{}{}\x1b[2m{}{}",
+                    RESET,
+                    move_to(overflow_row, col_start_cell),
+                    label,
+                    RESET
+                );
+                state.click_regions.push(ClickRegion {
+                    row: overflow_row,
+                    col_start: col_start_cell,
+                    col_end: col_end_cell,
+                    action: ClickAction::ExpandTabPaneOverflow(tab.position),
+                });
+            }
+        }
+
+        col_start_cell = col_end_cell;
+    }
+}
+
+/// Pad `text` with trailing spaces or truncate (with `…`) so its cell
+/// width is exactly `width`. Width 0 returns empty.
+fn pad_or_truncate(text: &str, width: usize) -> String {
+    if width == 0 {
+        return String::new();
+    }
+    let text_w = UnicodeWidthStr::width(text);
+    if text_w == width {
+        return text.to_string();
+    }
+    if text_w < width {
+        let mut s = text.to_string();
+        for _ in 0..(width - text_w) {
+            s.push(' ');
+        }
+        return s;
+    }
+    // Truncate. Reserve 1 cell for the ellipsis if width >= 2.
+    if width == 1 {
+        // Just take the first char's worth.
+        let mut out = String::new();
+        for ch in text.chars() {
+            let mut tmp = [0u8; 4];
+            let s = ch.encode_utf8(&mut tmp);
+            if UnicodeWidthStr::width(s as &str) <= 1 {
+                out.push(ch);
+                break;
+            }
+        }
+        if out.is_empty() {
+            out.push(' ');
+        }
+        return out;
+    }
+    let mut out = String::new();
+    let mut taken = 0;
+    let target = width - 1; // leave room for the ellipsis
+    for ch in text.chars() {
+        let mut tmp = [0u8; 4];
+        let s = ch.encode_utf8(&mut tmp);
+        let w = UnicodeWidthStr::width(s as &str);
+        if taken + w > target {
+            break;
+        }
+        out.push(ch);
+        taken += w;
+    }
+    out.push('…');
+    let out_w = UnicodeWidthStr::width(out.as_str());
+    if out_w < width {
+        for _ in 0..(width - out_w) {
+            out.push(' ');
+        }
+    }
+    out
 }
 
 fn render_embedded_viewport(state: &mut State, row_start: usize, row_end: usize, cols: usize) {
