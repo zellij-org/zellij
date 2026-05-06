@@ -37,6 +37,27 @@ pub struct ClickRegion {
     pub action: ClickAction,
 }
 
+/// Where the embedded pane viewport sits within the plugin render area
+/// on the most recent frame. The mouse handler uses this to translate
+/// a click in plugin coordinates back into the underlying pane's
+/// viewport-row / viewport-col so it can synthesize an SGR mouse press
+/// that lands at the equivalent cell in the pane's pty.
+#[derive(Debug, Clone, Copy)]
+pub struct ViewportRegion {
+    /// Top row of the embedded viewport in plugin coordinates (0-based).
+    pub row_start: usize,
+    /// Bottom row (exclusive) of the embedded viewport in plugin coords.
+    pub row_end: usize,
+    /// Width in cells of the embedded viewport.
+    pub cols: usize,
+    /// How many leading lines were sliced off the cached viewport when
+    /// rendering — i.e. the offset into `PaneContents.viewport` that
+    /// corresponds to `row_start`. Anchored at the bottom: when the
+    /// pane is taller than `row_end - row_start` we show the last
+    /// `row_end - row_start` lines.
+    pub skip: usize,
+}
+
 #[derive(Default)]
 pub struct State {
     /// The plugin's own pane id, fetched once on load. Used to filter
@@ -72,6 +93,31 @@ pub struct State {
     /// rebuilds this on every `render` call; mouse events look up the
     /// hit region by (row, col).
     pub click_regions: Vec<ClickRegion>,
+    /// Where the embedded viewport ended up on the most recent render.
+    /// Set by the renderer; consumed by the mouse handler to dispatch
+    /// viewport-passthrough clicks to the underlying pane.
+    pub viewport_region: Option<ViewportRegion>,
+    /// Last `show_cursor` payload the plugin emitted to the host.
+    /// Calling `show_cursor` is *not* idempotent on the server side:
+    /// `ScreenInstruction::ShowPluginCursor` triggers a full
+    /// `screen.render` and a `log_and_report_session_state`, which
+    /// then produces a fresh `PaneRenderReportWithAnsi` for the
+    /// plugin — feeding back into the plugin's render loop. We
+    /// therefore cache the last value sent and only re-emit when the
+    /// target position would actually change.
+    pub last_emitted_cursor: LastEmittedCursor,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum LastEmittedCursor {
+    /// No `show_cursor` call has been made yet — the next render must
+    /// emit unconditionally so the host's initial cursor state matches
+    /// what the plugin has computed.
+    #[default]
+    Unknown,
+    /// The most recent `show_cursor` payload — `None` for "hidden",
+    /// `Some((x, y))` for "shown at these plugin-coords".
+    Sent(Option<(usize, usize)>),
 }
 
 impl State {
@@ -144,6 +190,19 @@ impl State {
         panes
     }
 
+    /// Number of viewport lines currently cached for the selected
+    /// pane. Used by the renderer to compute the bottom-anchored
+    /// `skip` offset and to map the underlying pane's cursor row into
+    /// plugin-render coordinates.
+    pub fn current_pane_viewport_len(&self) -> usize {
+        self.current_pane()
+            .as_ref()
+            .map(pane_id_of)
+            .and_then(|id| self.latest_pane_contents.get(&id))
+            .map(|c| c.viewport.len())
+            .unwrap_or(0)
+    }
+
     /// Currently-selected pane info, falling back to the first pane in
     /// the selected tab. We deliberately do NOT fall back to
     /// `is_focused` — that flag is global on the server (true if any
@@ -159,6 +218,24 @@ impl State {
             }
         }
         self.current_tab_panes().into_iter().next().cloned()
+    }
+
+    /// If a click at (row, col) lands inside the most recently rendered
+    /// embedded-viewport region, return the equivalent (row, col) in
+    /// the underlying pane's viewport coordinates (0-based, relative to
+    /// the top-left of the cached pane viewport). Returns `None` if the
+    /// click is outside the viewport area or no viewport has been
+    /// rendered yet.
+    pub fn click_in_viewport(&self, row: usize, col: usize) -> Option<(usize, usize)> {
+        let region = self.viewport_region?;
+        if row < region.row_start || row >= region.row_end {
+            return None;
+        }
+        if col >= region.cols {
+            return None;
+        }
+        let pane_row = region.skip + (row - region.row_start);
+        Some((pane_row, col))
     }
 
     /// Resolve a click at (row, col) to the action it should fire, if

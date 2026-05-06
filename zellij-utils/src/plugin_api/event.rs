@@ -2986,12 +2986,16 @@ impl TryFrom<ProtobufPaneContents> for PaneContents {
             .selected_text
             .map(|st| st.try_into())
             .transpose()?;
+        let cursor = protobuf_contents
+            .cursor
+            .map(|p| (p.column as usize, p.line as usize));
 
         Ok(PaneContents {
             viewport: protobuf_contents.viewport,
             selected_text,
             lines_above_viewport: protobuf_contents.lines_above_viewport,
             lines_below_viewport: protobuf_contents.lines_below_viewport,
+            cursor,
         })
     }
 }
@@ -3003,12 +3007,17 @@ impl TryFrom<PaneContents> for ProtobufPaneContents {
             .selected_text
             .map(|st| st.try_into())
             .transpose()?;
+        let cursor = pane_contents.cursor.map(|(x, y)| ProtobufPosition {
+            line: y as i64,
+            column: x as i64,
+        });
 
         Ok(ProtobufPaneContents {
             viewport: pane_contents.viewport,
             selected_text,
             lines_above_viewport: pane_contents.lines_above_viewport,
             lines_below_viewport: pane_contents.lines_below_viewport,
+            cursor,
         })
     }
 }

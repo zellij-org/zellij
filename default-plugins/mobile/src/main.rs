@@ -8,6 +8,7 @@
 //! collapsing-breadcrumb v1 layout; typing-mode and viewport mouse
 //! passthrough land in Stage 7.
 
+mod keys;
 mod render;
 mod state;
 
@@ -134,17 +135,52 @@ impl ZellijPlugin for State {
             Event::Mouse(mouse) => {
                 if let Some((line, col)) = mouse.position() {
                     if let Mouse::LeftClick(_, _) = mouse {
+                        // Action-bar / breadcrumb / selector regions
+                        // always win — they're the plugin's chrome and
+                        // need to remain interactive even when the user
+                        // is also typing into the embedded pane.
                         if let Some(action) = self.click_to_action(line, col) {
                             return dispatch_click(self, action);
+                        }
+                        // No chrome region matched. If the click landed
+                        // in the embedded viewport AND typing-mode is
+                        // off, synthesize an SGR mouse press+release at
+                        // the equivalent cell of the underlying pane.
+                        // While typing-mode is armed we keep the soft
+                        // keyboard's view stable and ignore stray taps.
+                        if !self.typing_mode {
+                            if let Some((pane_row, pane_col)) =
+                                self.click_in_viewport(line, col)
+                            {
+                                if let Some(pane) = self.current_pane() {
+                                    let pane_id = state::pane_id_of(&pane);
+                                    let bytes = sgr_left_click(pane_row, pane_col);
+                                    write_to_pane_id(bytes, pane_id);
+                                    // No re-render: the pane will emit
+                                    // a fresh PaneRenderReportWithAnsi
+                                    // and the regular event path will
+                                    // refresh the cache.
+                                    return false;
+                                }
+                            }
                         }
                     }
                 }
                 false
             },
-            Event::Key(_) => {
-                // Typing-mode and key passthrough land in Stage 7. For
-                // now the plugin swallows keys quietly so they don't
-                // bleed into the host UI.
+            Event::Key(key) => {
+                // Typing-mode forwards every key to the selected pane's
+                // pty; otherwise the plugin swallows keys (chrome
+                // navigation today is mouse-only — keyboard nav can
+                // land later).
+                if self.typing_mode {
+                    if let Some(pane) = self.current_pane() {
+                        let bytes = keys::serialize_key(&key);
+                        if !bytes.is_empty() {
+                            write_to_pane_id(bytes, state::pane_id_of(&pane));
+                        }
+                    }
+                }
                 false
             },
             _ => false,
@@ -156,11 +192,21 @@ impl ZellijPlugin for State {
             return;
         }
         if self.tabs.is_empty() && self.panes_by_tab_position.is_empty() {
-            render::render_stub(rows, cols);
+            render::render_stub(self, rows, cols);
             return;
         }
         render::render(self, rows, cols);
     }
+}
+
+/// Build an SGR mouse left-click press+release sequence targeting the
+/// (0-based) `pane_row`/`pane_col` of the underlying pane's viewport.
+/// SGR mouse coordinates are 1-based. Emits press then release in a
+/// single byte stream so the receiving program sees a complete click.
+fn sgr_left_click(pane_row: usize, pane_col: usize) -> Vec<u8> {
+    let col = pane_col + 1;
+    let row = pane_row + 1;
+    format!("\x1b[<0;{};{}M\x1b[<0;{};{}m", col, row, col, row).into_bytes()
 }
 
 /// Translate a click region's `ClickAction` into the corresponding

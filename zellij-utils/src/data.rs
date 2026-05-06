@@ -2432,6 +2432,10 @@ pub struct PaneContents {
     pub lines_below_viewport: Vec<String>,
     pub viewport: Vec<String>,
     pub selected_text: Option<SelectedText>,
+    /// Cursor position in pane-content coordinates: `(x, y)` where `(0, 0)` is the top-left
+    /// of `viewport[0]`. `None` when the pane has no visible cursor (cursor hidden, off-screen
+    /// in scrollback, or pane has no cursor concept like a non-terminal/static pane).
+    pub cursor: Option<(usize, usize)>,
 }
 
 /// Extract text from a line between two column positions, accounting for wide characters
@@ -2526,6 +2530,7 @@ impl PaneContents {
             selected_text: SelectedText::from_positions(selection_start, selection_end),
             lines_above_viewport,
             lines_below_viewport,
+            cursor: None,
         }
     }
 

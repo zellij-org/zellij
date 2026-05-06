@@ -13,7 +13,9 @@
 //! The renderer also rebuilds `state.click_regions` so the input
 //! handler can dispatch a `Mouse::LeftClick` to the right action.
 
-use crate::state::{pane_id_of, ClickAction, ClickRegion, Selector, State};
+use crate::state::{
+    pane_id_of, ClickAction, ClickRegion, LastEmittedCursor, Selector, State, ViewportRegion,
+};
 use unicode_width::UnicodeWidthStr;
 use zellij_tile::prelude::*;
 
@@ -30,8 +32,27 @@ fn move_to(row: usize, col: usize) -> String {
 
 /// Renders the stub UI used during scaffolding; kept as a fallback for
 /// the very first frame before any state has been received.
-pub fn render_stub(rows: usize, cols: usize) {
+pub fn render_stub(state: &mut State, rows: usize, cols: usize) {
+    emit_cursor(state, None);
     print!("{}{}mobile plugin loaded \u{2014} {}x{}", RESET, move_to(0, 0), rows, cols);
+}
+
+/// Forward a `show_cursor` call to the host only if it would change
+/// the host's view of the plugin cursor. Without this guard we hit a
+/// render storm: every `ScreenInstruction::ShowPluginCursor` on the
+/// server runs a full `screen.render` + `log_and_report_session_state`
+/// (see `screen.rs::ShowPluginCursor`), which produces a fresh
+/// `PaneRenderReportWithAnsi` for the plugin's subscription, which
+/// drives another plugin render, which calls `show_cursor` again …
+fn emit_cursor(state: &mut State, new_pos: Option<(usize, usize)>) {
+    let needs_emit = match state.last_emitted_cursor {
+        LastEmittedCursor::Unknown => true,
+        LastEmittedCursor::Sent(prev) => prev != new_pos,
+    };
+    if needs_emit {
+        show_cursor(new_pos);
+        state.last_emitted_cursor = LastEmittedCursor::Sent(new_pos);
+    }
 }
 
 /// Top-level render. Clears the screen, builds the chrome, paints the
@@ -39,45 +60,72 @@ pub fn render_stub(rows: usize, cols: usize) {
 /// dispatch.
 pub fn render(state: &mut State, rows: usize, cols: usize) {
     state.click_regions.clear();
-
-    // Always start clean — `\x1b[2J` clears the visible area and we
-    // rewrite each region from (0, 0).
-    print!("{}\x1b[2J", RESET);
+    state.viewport_region = None;
 
     if rows < 4 || cols < 8 {
-        // No room for a meaningful UI — degrade to the stub.
-        print!("{}{}mobile {}x{}", RESET, move_to(0, 0), rows, cols);
+        // No room for a meaningful UI — degrade to the stub. Hide the
+        // host cursor since there's nothing meaningful to point at.
+        emit_cursor(state, None);
+        print!("{}\x1b[2J{}mobile {}x{}", RESET, move_to(0, 0), rows, cols);
         return;
     }
 
+    // Compute the layout up front so `show_cursor` — emitted *before*
+    // any chrome print! — knows where the embedded viewport will land.
     let action_bar_row = rows.saturating_sub(1);
-    let viewport_top: usize;
-    let viewport_bottom: usize; // exclusive
+    let (viewport_top, viewport_bottom, selector_rows): (usize, usize, Option<usize>) =
+        match state.expanded {
+            None => (1, action_bar_row, None),
+            Some(Selector::Tabs) => {
+                let n = compute_selector_rows(state, rows, Selector::Tabs);
+                (n + 1, action_bar_row, Some(n))
+            },
+            Some(Selector::Panes) => {
+                let n = compute_selector_rows(state, rows, Selector::Panes);
+                (n + 1, action_bar_row, Some(n))
+            },
+        };
+
+    // Mirror the `skip` math `render_embedded_viewport` will use so
+    // the cursor mapping matches the actual lines we'll paint.
+    let viewport_height = viewport_bottom.saturating_sub(viewport_top);
+    let viewport_lines_len = state.current_pane_viewport_len();
+    let skip = viewport_lines_len.saturating_sub(viewport_height);
+
+    // FIRST: tell the host where the embedded pane's cursor sits. We
+    // pipe through `emit_cursor` rather than calling `show_cursor`
+    // directly because every `show_cursor` invocation on the server
+    // triggers a fresh `screen.render` + session-state report — that
+    // would feed `PaneRenderReportWithAnsi` straight back to the
+    // plugin and drive a render loop. `emit_cursor` deduplicates
+    // against the last-sent value so we only pay that cost when the
+    // cursor target genuinely moves.
+    let new_cursor = compute_cursor_position(
+        state,
+        viewport_top,
+        viewport_height,
+        cols,
+        skip,
+    );
+    emit_cursor(state, new_cursor);
+
+    // Always start the chrome paint clean — `\x1b[2J` clears the
+    // visible area and we rewrite each region from (0, 0).
+    print!("{}\x1b[2J", RESET);
 
     match state.expanded {
         None => {
-            // Collapsed: row 0 = breadcrumb, row 1 = action bar separator,
-            // row N-1 = action bar (already at action_bar_row).
-            // Viewport occupies rows 1..action_bar_row.
             render_breadcrumb(state, 0, cols);
-            viewport_top = 1;
-            viewport_bottom = action_bar_row;
         },
         Some(Selector::Tabs) => {
-            let selector_rows = compute_selector_rows(state, rows, Selector::Tabs);
-            render_tab_selector(state, 0, selector_rows, cols);
-            // Below the selector, draw a one-row breadcrumb so the user
-            // can see what is currently selected without collapsing.
-            render_breadcrumb(state, selector_rows, cols);
-            viewport_top = selector_rows + 1;
-            viewport_bottom = action_bar_row;
+            let n = selector_rows.unwrap();
+            render_tab_selector(state, 0, n, cols);
+            render_breadcrumb(state, n, cols);
         },
         Some(Selector::Panes) => {
-            let selector_rows = compute_selector_rows(state, rows, Selector::Panes);
-            render_pane_selector(state, 0, selector_rows, cols);
-            render_breadcrumb(state, selector_rows, cols);
-            viewport_top = selector_rows + 1;
-            viewport_bottom = action_bar_row;
+            let n = selector_rows.unwrap();
+            render_pane_selector(state, 0, n, cols);
+            render_breadcrumb(state, n, cols);
         },
     }
 
@@ -86,6 +134,48 @@ pub fn render(state: &mut State, rows: usize, cols: usize) {
     }
 
     render_action_bar(state, action_bar_row, cols);
+}
+
+/// Map the underlying pane's reported cursor coordinates into the
+/// plugin's render coordinates, returning `None` if the cursor is
+/// hidden, off-screen (cropped above the bottom-anchored slice or
+/// past the right edge), or no pane is selected. The renderer feeds
+/// this directly to `show_cursor`.
+///
+/// We read the cursor from `PaneContents.cursor` rather than
+/// `PaneInfo.cursor_coordinates_in_pane` because the latter is only
+/// refreshed on `PaneUpdate` (structural changes — pane added,
+/// removed, resized, renamed) and so misses every cursor move within
+/// the pane. `PaneContents.cursor`, by contrast, is populated on
+/// every render-cycle's ANSI capture, so the embedded cursor follows
+/// typing in real time. The cursor field is already in viewport
+/// coordinates, no frame-offset subtraction is needed.
+fn compute_cursor_position(
+    state: &State,
+    viewport_top: usize,
+    viewport_height: usize,
+    cols: usize,
+    skip: usize,
+) -> Option<(usize, usize)> {
+    if viewport_height == 0 {
+        return None;
+    }
+    let pane = state.current_pane()?;
+    let pane_id = pane_id_of(&pane);
+    let (cursor_x, cursor_y) = state.latest_pane_contents.get(&pane_id)?.cursor?;
+    if cursor_y < skip {
+        return None; // above the bottom-anchored slice
+    }
+    let row_in_slice = cursor_y - skip;
+    if row_in_slice >= viewport_height {
+        return None; // below the slice (shouldn't happen with skip = len - height)
+    }
+    if cursor_x >= cols {
+        return None; // past the right edge
+    }
+    let plugin_y = viewport_top + row_in_slice;
+    let plugin_x = cursor_x;
+    Some((plugin_x, plugin_y))
 }
 
 fn compute_selector_rows(state: &State, rows: usize, selector: Selector) -> usize {
@@ -254,6 +344,17 @@ fn render_embedded_viewport(state: &mut State, row_start: usize, row_end: usize,
     // and most-recent terminal output live.
     let skip = viewport_lines.len().saturating_sub(height);
 
+    // Record where the viewport landed so the mouse handler can
+    // reverse-map clicks into pane coordinates. We store this even when
+    // we have no cached lines yet, so the user's first viewport tap
+    // still maps to row 0 of an eventually-populated cache.
+    state.viewport_region = Some(ViewportRegion {
+        row_start,
+        row_end,
+        cols,
+        skip,
+    });
+
     // Reset before each row to keep the chrome's styling separate from
     // the pane's emitted SGR runs.
     for i in 0..height {
@@ -281,20 +382,25 @@ fn render_embedded_viewport(state: &mut State, row_start: usize, row_end: usize,
 
 fn render_action_bar(state: &mut State, row: usize, cols: usize) {
     // Compact one-row layout. Each button reserves a fixed width so
-    // the click regions remain stable across renders.
-    let mut buttons: Vec<(String, ClickAction)> = vec![
-        (
-            if state.typing_mode { "[\u{2328}*]".to_string() } else { "[\u{2328}]".to_string() },
-            ClickAction::ToggleType,
-        ),
-        ("[+P]".into(), ClickAction::NewPane),
-        ("[+T]".into(), ClickAction::NewTab),
-        ("[\u{2192}]".into(), ClickAction::SplitRight),
-        ("[\u{2193}]".into(), ClickAction::SplitDown),
-        ("[\u{229E}]".into(), ClickAction::ToggleFloating),
-        ("[\u{2715}]".into(), ClickAction::CloseFocus),
-        ("[\u{23CF}]".into(), ClickAction::Detach),
-        ("[Exit]".into(), ClickAction::ExitMobile),
+    // the click regions remain stable across renders. The keyboard
+    // toggle gets a distinct armed glyph plus a colored highlight so
+    // the user can tell at a glance whether typing-mode is on.
+    let typing_mode = state.typing_mode;
+    let type_label = if typing_mode {
+        "[\u{2328}*]".to_string()
+    } else {
+        "[\u{2328}]".to_string()
+    };
+    let mut buttons: Vec<(String, ClickAction, bool)> = vec![
+        (type_label, ClickAction::ToggleType, typing_mode),
+        ("[+P]".into(), ClickAction::NewPane, false),
+        ("[+T]".into(), ClickAction::NewTab, false),
+        ("[\u{2192}]".into(), ClickAction::SplitRight, false),
+        ("[\u{2193}]".into(), ClickAction::SplitDown, false),
+        ("[\u{229E}]".into(), ClickAction::ToggleFloating, false),
+        ("[\u{2715}]".into(), ClickAction::CloseFocus, false),
+        ("[\u{23CF}]".into(), ClickAction::Detach, false),
+        ("[Exit]".into(), ClickAction::ExitMobile, false),
     ];
 
     // Reverse-video the bar so it visually separates from the
@@ -308,12 +414,18 @@ fn render_action_bar(state: &mut State, row: usize, cols: usize) {
     print!("{}", RESET);
 
     let mut col = 0;
-    for (label, action) in buttons.drain(..) {
+    for (label, action, armed) in buttons.drain(..) {
         let label_w = UnicodeWidthStr::width(label.as_str());
         if col + label_w + 1 > cols {
             break;
         }
-        print!("{}{}", move_to(row, col), label);
+        if armed {
+            // Bright-green background, black foreground — clear armed
+            // signal that survives both light and dark terminal themes.
+            print!("{}{}\x1b[42;30m{}{}", RESET, move_to(row, col), label, RESET);
+        } else {
+            print!("{}{}", move_to(row, col), label);
+        }
         state.click_regions.push(ClickRegion {
             row,
             col_start: col,
