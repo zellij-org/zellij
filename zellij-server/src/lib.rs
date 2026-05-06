@@ -31,7 +31,7 @@ use pty_writer::{pty_writer_main, PtyWriteInstruction};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::{
     net::{IpAddr, Ipv4Addr},
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{Arc, RwLock},
     thread,
 };
@@ -2098,7 +2098,11 @@ fn init_session(
         let default_layout_name = config_options
             .default_layout
             .map(|l| format!("{}", l.display()));
-        report_changes_in_config_file(config_file_path, to_server.clone());
+        report_changes_in_config_file(
+            config_file_path,
+            cli_assets.config_dir.as_deref(),
+            to_server.clone(),
+        );
 
         // Watch layout directory for changes
         if let Some(layout_dir_path) = layout_dir {
@@ -2218,10 +2222,12 @@ fn should_show_startup_tip(
 
 fn report_changes_in_config_file(
     config_file_path: PathBuf,
+    config_dir: Option<&Path>,
     to_server: SenderWithContext<ServerInstruction>,
 ) {
+    let config_dir = config_dir.map(Path::to_path_buf);
     global_async_runtime::get_tokio_runtime().spawn(async move {
-        watch_config_file_changes(config_file_path, move |new_config| {
+        watch_config_file_changes(config_file_path, config_dir.as_deref(), move |new_config| {
             let to_server = to_server.clone();
             async move {
                 let _ = to_server.send(ServerInstruction::ConfigWrittenToDisk(new_config));
