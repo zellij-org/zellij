@@ -5376,9 +5376,8 @@ fn check_command_permission(
         PluginCommand::GetSessionEnvironmentVariables => {
             PermissionType::ReadSessionEnvironmentVariables
         },
-        PluginCommand::OpenCommandPaneInNewTab(..) | PluginCommand::OpenEditorPaneInNewTab(..) => {
-            PermissionType::ChangeApplicationState
-        },
+        PluginCommand::OpenCommandPaneInNewTab(..) => PermissionType::RunCommands,
+        PluginCommand::OpenEditorPaneInNewTab(..) => PermissionType::OpenFiles,
         _ => return (PermissionStatus::Granted, None),
     };
 
