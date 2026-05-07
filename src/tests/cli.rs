@@ -1,13 +1,17 @@
+#[cfg(feature = "web_server_capability")]
 use std::net::{IpAddr, Ipv4Addr};
 
 use clap::{CommandFactory, Parser};
-use zellij_utils::cli::{CliArgs, Command};
+use zellij_utils::cli::CliArgs;
+#[cfg(feature = "web_server_capability")]
+use zellij_utils::cli::Command;
 
 #[test]
 fn verify_cli() {
     CliArgs::command().debug_assert();
 }
 
+#[cfg(feature = "web_server_capability")]
 #[test]
 fn web_cli_status_alone_works() {
     let args = CliArgs::try_parse_from(["zellij", "web", "--status"]);
@@ -24,6 +28,7 @@ fn web_cli_status_alone_works() {
     }
 }
 
+#[cfg(feature = "web_server_capability")]
 #[test]
 fn web_cli_status_with_timeout_works() {
     let args = CliArgs::try_parse_from(["zellij", "web", "--status", "--timeout", "5"]);
@@ -40,6 +45,7 @@ fn web_cli_status_with_timeout_works() {
     }
 }
 
+#[cfg(feature = "web_server_capability")]
 #[test]
 fn web_cli_timeout_with_status_works() {
     // Test with --timeout before --status (order shouldn't matter)
@@ -57,24 +63,28 @@ fn web_cli_timeout_with_status_works() {
     }
 }
 
+#[cfg(feature = "web_server_capability")]
 #[test]
 fn web_cli_timeout_without_status_fails() {
     let args = CliArgs::try_parse_from(["zellij", "web", "--timeout", "5"]);
     assert!(args.is_err());
 }
 
+#[cfg(feature = "web_server_capability")]
 #[test]
 fn web_cli_status_with_start_fails() {
     let args = CliArgs::try_parse_from(["zellij", "web", "--status", "--start"]);
     assert!(args.is_err());
 }
 
+#[cfg(feature = "web_server_capability")]
 #[test]
 fn web_cli_status_with_stop_fails() {
     let args = CliArgs::try_parse_from(["zellij", "web", "--status", "--stop"]);
     assert!(args.is_err());
 }
 
+#[cfg(feature = "web_server_capability")]
 #[test]
 fn web_cli_status_with_ip_works() {
     let args = CliArgs::try_parse_from(["zellij", "web", "--status", "--ip", "127.0.0.1"]);
@@ -91,6 +101,7 @@ fn web_cli_status_with_ip_works() {
     }
 }
 
+#[cfg(feature = "web_server_capability")]
 #[test]
 fn web_cli_status_with_port_works() {
     let args = CliArgs::try_parse_from(["zellij", "web", "--status", "--port", "9000"]);
@@ -107,6 +118,7 @@ fn web_cli_status_with_port_works() {
     }
 }
 
+#[cfg(feature = "web_server_capability")]
 #[test]
 fn web_cli_status_with_ip_and_port_works() {
     let args = CliArgs::try_parse_from([

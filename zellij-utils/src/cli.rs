@@ -4,8 +4,11 @@ use crate::{
     consts::{ZELLIJ_CONFIG_DIR_ENV, ZELLIJ_CONFIG_FILE_ENV},
     input::{layout::PluginUserConfiguration, options::Options},
 };
-use clap::{ArgEnum, Args, Parser, Subcommand};
+#[cfg(feature = "web_server_capability")]
+use clap::Args;
+use clap::{ArgEnum, Parser, Subcommand};
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "web_server_capability")]
 use std::net::IpAddr;
 use std::path::PathBuf;
 use url::Url;
@@ -36,6 +39,12 @@ fn validate_session(name: &str) -> Result<String, String> {
 
 #[derive(Parser, Default, Debug, Clone, Serialize, Deserialize)]
 #[clap(version, name = "zellij")]
+#[cfg_attr(
+    not(feature = "web_server_capability"),
+    clap(
+        after_help = "Note: web server functionality is unavailable in this build (compiled without the `web_server_capability` feature)."
+    )
+)]
 pub struct CliArgs {
     /// Maximum panes on screen, caution: opening more panes will close old ones
     #[clap(long, value_parser)]
@@ -114,6 +123,7 @@ pub enum Command {
     Setup(Setup),
 
     /// Run a web server to serve terminal sessions
+    #[cfg(feature = "web_server_capability")]
     #[clap(name = "web", value_parser)]
     Web(WebCli),
 
@@ -171,6 +181,7 @@ pub enum SubscribeFormat {
     Json,
 }
 
+#[cfg(feature = "web_server_capability")]
 #[derive(Debug, Clone, Args, Serialize, Deserialize)]
 pub struct WebCli {
     /// Start the server (default unless other arguments are specified)
@@ -262,6 +273,7 @@ pub struct WebCli {
     pub key: Option<PathBuf>,
 }
 
+#[cfg(feature = "web_server_capability")]
 impl WebCli {
     pub fn get_start(&self) -> bool {
         self.start
