@@ -69,6 +69,9 @@ pub fn start_web_client(
     custom_server_key: Option<PathBuf>,
     startup_timeout: Option<u64>,
 ) {
+    // Web server may launch without a TTY; ensure spawned panes inherit a usable TERM.
+    std::env::set_var("TERM", "xterm-256color");
+
     std::panic::set_hook({
         Box::new(move |info| {
             let thread = thread::current();
