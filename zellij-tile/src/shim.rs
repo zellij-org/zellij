@@ -375,13 +375,13 @@ pub fn save_session() -> Result<(), String> {
 /// ```
 pub fn current_session_last_saved_time() -> Option<u64> {
     let plugin_command = PluginCommand::CurrentSessionLastSavedTime;
-    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().ok()?;
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
 
+    let bytes = bytes_from_stdin().ok()?;
     let protobuf_response =
-        ProtobufCurrentSessionLastSavedTimeResponse::decode(bytes_from_stdin().unwrap().as_slice())
-            .unwrap();
+        ProtobufCurrentSessionLastSavedTimeResponse::decode(bytes.as_slice()).ok()?;
 
     protobuf_response.timestamp_millis
 }
@@ -1909,12 +1909,16 @@ pub fn get_pane_running_command(pane_id: PaneId) -> Result<Vec<String>, String> 
 /// * `ReadApplicationState`
 pub fn get_session_list() -> Result<SessionListSnapshot, String> {
     let plugin_command = PluginCommand::GetSessionList;
-    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command
+        .try_into()
+        .map_err(|e| format!("failed to encode plugin command: {}", e))?;
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
 
-    let protobuf_response =
-        ProtobufGetSessionListResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
+    let bytes = bytes_from_stdin()
+        .map_err(|e| format!("failed to read host response (permission denied?): {}", e))?;
+    let protobuf_response = ProtobufGetSessionListResponse::decode(bytes.as_slice())
+        .map_err(|e| format!("failed to decode host response: {}", e))?;
 
     match protobuf_response.result {
         Some(get_session_list_response::Result::Snapshot(snapshot)) => {
