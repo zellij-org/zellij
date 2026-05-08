@@ -51,7 +51,7 @@ use zellij_utils::input::command::RunCommand;
 use zellij_utils::input::config::Config;
 use zellij_utils::input::keybinds::Keybinds;
 use zellij_utils::input::mouse::{MouseEvent, MouseEventType};
-use zellij_utils::input::options::Clipboard;
+use zellij_utils::input::options::{Clipboard, MobileModeDefault};
 use zellij_utils::ipc::{ExitReason, ServerToClientMsg};
 use zellij_utils::pane_size::{PaneGeom, Size, SizeInPixels};
 use zellij_utils::shared::clean_string_from_control_and_linebreak;
@@ -879,6 +879,20 @@ pub enum ScreenInstruction {
     ExitMobileMode(ClientId, Option<NotificationEnd>),
     /// Flip mobile mode for `client_id` based on its current state.
     ToggleMobileMode(ClientId, Option<NotificationEnd>),
+    /// Re-evaluate auto-routing for `client_id` after a viewport
+    /// resize. Auto-promotes clients into mobile mode when the new
+    /// size crosses the threshold downward; auto-demotes only those
+    /// clients whose current mobile entry was itself auto-driven
+    /// (manual entries via `ToggleMobileMode` stay put). Carries the
+    /// runtime config knobs read by the route thread so the screen
+    /// thread does not need direct session-configuration access.
+    ReevaluateMobileMode {
+        client_id: ClientId,
+        new_size: Size,
+        mobile_mode_default: MobileModeDefault,
+        threshold_cols: u16,
+        threshold_rows: u16,
+    },
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -1239,6 +1253,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::EnterMobileMode(..) => ScreenContext::EnterMobileMode,
             ScreenInstruction::ExitMobileMode(..) => ScreenContext::ExitMobileMode,
             ScreenInstruction::ToggleMobileMode(..) => ScreenContext::ToggleMobileMode,
+            ScreenInstruction::ReevaluateMobileMode { .. } => ScreenContext::ReevaluateMobileMode,
         }
     }
 }
@@ -1487,6 +1502,14 @@ pub(crate) struct Screen {
     /// back to where it came from. Falls back to the first visible
     /// non-mobile tab if the prior tab has since been closed.
     mobile_previous_tab_ids: HashMap<ClientId, usize>,
+    /// Clients whose current mobile-mode entry was driven by the
+    /// auto-routing path (initial-attach threshold or
+    /// `ReevaluateMobileMode` from a `TerminalResize`). Tracked
+    /// separately from `mobile_tabs` because only auto-promoted
+    /// clients should ever be auto-demoted on a subsequent resize —
+    /// a client that explicitly entered mobile via
+    /// `Action::ToggleMobileMode` stays put until they toggle back.
+    mobile_auto_entered: HashSet<ClientId>,
 }
 
 /// A pending forward waiting to be dispatched once the current in-flight
@@ -1643,6 +1666,7 @@ impl Screen {
             host_theme_light_styling: None,
             mobile_tabs: HashMap::new(),
             mobile_previous_tab_ids: HashMap::new(),
+            mobile_auto_entered: HashSet::new(),
         }
     }
 
@@ -1804,6 +1828,10 @@ impl Screen {
             Some(id) => id,
             None => return Ok(()),
         };
+        // Exiting always clears the auto-entered marker — the client's
+        // mobile-mode state is now off, so any future re-entry
+        // (whether auto or manual) starts from a clean slate.
+        self.mobile_auto_entered.remove(&client_id);
 
         // Resolve the destination tab. Prefer the recorded prior tab;
         // if it's gone, pick the lowest-position tab visible to this
@@ -3435,6 +3463,7 @@ impl Screen {
         // emptiness check below.
         self.mobile_tabs.remove(&client_id);
         self.mobile_previous_tab_ids.remove(&client_id);
+        self.mobile_auto_entered.remove(&client_id);
 
         // Drop the detaching client from every tab's per-tab visibility
         // set. Tabs whose `visible_to` becomes `Some({})` are collected
@@ -10277,16 +10306,71 @@ pub(crate) fn screen_thread_main(
                 }
             },
             ScreenInstruction::EnterMobileMode(client_id, _completion_tx) => {
+                // This instruction is dispatched only from the auto
+                // paths in lib.rs (FirstClientConnected / AttachClient
+                // threshold check). Marking the client as auto-entered
+                // is what enables the matching `ReevaluateMobileMode`
+                // arm to demote it later if the viewport grows back
+                // above the threshold.
                 screen.enter_mobile_mode(client_id)?;
+                screen.mobile_auto_entered.insert(client_id);
                 screen.render(None)?;
             },
             ScreenInstruction::ExitMobileMode(client_id, _completion_tx) => {
+                // `exit_mobile_mode` itself clears the auto-entered
+                // marker; nothing extra to do here.
                 screen.exit_mobile_mode(client_id)?;
                 screen.render(None)?;
             },
             ScreenInstruction::ToggleMobileMode(client_id, _completion_tx) => {
+                // Toggle is a *manual* operation. `toggle_mobile_mode`
+                // routes through the low-level enter/exit helpers
+                // which do not touch `mobile_auto_entered`, so a
+                // toggle-to-enter leaves the client unmarked
+                // (preventing auto-demotion on a later resize), and a
+                // toggle-to-exit clears the marker via
+                // `exit_mobile_mode`.
                 screen.toggle_mobile_mode(client_id)?;
                 screen.render(None)?;
+            },
+            ScreenInstruction::ReevaluateMobileMode {
+                client_id,
+                new_size,
+                mobile_mode_default,
+                threshold_cols,
+                threshold_rows,
+            } => {
+                // Decide whether the client *should* be in mobile
+                // mode given the new viewport. The OR semantics
+                // (small in *either* dimension) catches the typical
+                // phone shapes — narrow-and-tall (portrait) and
+                // wide-and-short (landscape) — that the AND form
+                // missed.
+                let should_be_mobile = match mobile_mode_default {
+                    MobileModeDefault::Always => true,
+                    MobileModeDefault::Never => false,
+                    MobileModeDefault::Auto => {
+                        new_size.cols <= threshold_cols as usize
+                            || new_size.rows <= threshold_rows as usize
+                    },
+                };
+                let is_mobile = screen.is_in_mobile_mode(client_id);
+                let was_auto = screen.mobile_auto_entered.contains(&client_id);
+                if should_be_mobile && !is_mobile {
+                    // Auto-promote: small viewport just appeared
+                    // (e.g. browser delivered its real size after the
+                    // initial server-side fallback).
+                    screen.enter_mobile_mode(client_id)?;
+                    screen.mobile_auto_entered.insert(client_id);
+                    screen.render(None)?;
+                } else if !should_be_mobile && is_mobile && was_auto {
+                    // Auto-demote: viewport grew back above the
+                    // threshold *and* the entry was itself
+                    // auto-driven. Manual entries (via
+                    // `ToggleMobileMode`) are preserved.
+                    screen.exit_mobile_mode(client_id)?;
+                    screen.render(None)?;
+                }
             },
         }
     }

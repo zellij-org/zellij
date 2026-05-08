@@ -465,6 +465,7 @@ pub enum ScreenContext {
     EnterMobileMode,
     ExitMobileMode,
     ToggleMobileMode,
+    ReevaluateMobileMode,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.

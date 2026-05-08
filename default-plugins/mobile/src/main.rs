@@ -12,10 +12,18 @@ mod keys;
 mod render;
 mod state;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use zellij_tile::prelude::*;
 
-use crate::state::{ClickAction, Selector, State};
+use crate::state::{
+    pane_id_of, BottomBarAction, BottomBarShortcut, ClickAction, Selector, State,
+};
+
+/// How long a bottom-bar shortcut stays painted in its "pressed"
+/// colour after a tap before reverting to the resting colour. The
+/// renderer reads `pressed_at` and the `Event::Timer` sweep in
+/// `update` clears the stamp once the window elapses.
+const BOTTOM_BAR_FEEDBACK_MS: u128 = 400;
 
 register_plugin!(State);
 
@@ -29,6 +37,54 @@ impl ZellijPlugin for State {
         let ids = get_plugin_ids();
         self.own_plugin_pane_id = Some(PaneId::Plugin(ids.plugin_id));
 
+        // Bottom-bar shortcuts are populated here (rather than via
+        // `Default`) so future entries can carry runtime-derived
+        // labels (e.g. mode-aware strings) without forcing
+        // `BottomBarShortcut` itself to be `Default`.
+        //
+        // Order is the visual order on screen. `CTRL` and `ALT` are
+        // sticky-modifier toggles whose held state is rendered in
+        // place of the transient press flash; the remaining entries
+        // send a key (with any held modifiers folded in) and use the
+        // standard 400 ms transient feedback.
+        self.bottom_bar_shortcuts = vec![
+            BottomBarShortcut {
+                label: "ESC".to_string(),
+                action: BottomBarAction::SendKey(BareKey::Esc),
+                pressed_at: None,
+            },
+            BottomBarShortcut {
+                label: "TAB".to_string(),
+                action: BottomBarAction::SendKey(BareKey::Tab),
+                pressed_at: None,
+            },
+            BottomBarShortcut {
+                label: "CTRL".to_string(),
+                action: BottomBarAction::ToggleCtrl,
+                pressed_at: None,
+            },
+            BottomBarShortcut {
+                label: "ALT".to_string(),
+                action: BottomBarAction::ToggleAlt,
+                pressed_at: None,
+            },
+            BottomBarShortcut {
+                label: "-".to_string(),
+                action: BottomBarAction::SendKey(BareKey::Char('-')),
+                pressed_at: None,
+            },
+            BottomBarShortcut {
+                label: "\u{2191}".to_string(), // ↑
+                action: BottomBarAction::SendKey(BareKey::Up),
+                pressed_at: None,
+            },
+            BottomBarShortcut {
+                label: "\u{2193}".to_string(), // ↓
+                action: BottomBarAction::SendKey(BareKey::Down),
+                pressed_at: None,
+            },
+        ];
+
         subscribe(&[
             EventType::ModeUpdate,
             EventType::TabUpdate,
@@ -37,6 +93,11 @@ impl ZellijPlugin for State {
             EventType::Mouse,
             EventType::PaneRenderReportWithAnsi,
             EventType::SessionUpdate,
+            // `Timer` powers the bottom-bar press-feedback sweep —
+            // each tap on a shortcut schedules `set_timeout(0.4)` and
+            // the resulting Timer event clears `pressed_at` so the
+            // resting colour resumes.
+            EventType::Timer,
         ]);
     }
 
@@ -200,6 +261,23 @@ impl ZellijPlugin for State {
                 }
                 false
             },
+            Event::Timer(_) => {
+                // Sweep every shortcut and clear any whose feedback
+                // window has elapsed. Returning `true` only when at
+                // least one entry actually changed avoids gratuitous
+                // re-renders if a stray Timer arrives outside any
+                // pressed window.
+                let mut any_cleared = false;
+                for shortcut in self.bottom_bar_shortcuts.iter_mut() {
+                    if let Some(at) = shortcut.pressed_at {
+                        if at.elapsed().as_millis() >= BOTTOM_BAR_FEEDBACK_MS {
+                            shortcut.pressed_at = None;
+                            any_cleared = true;
+                        }
+                    }
+                }
+                any_cleared
+            },
             Event::Key(key) => {
                 // Esc always closes an open selector first — the menu
                 // has hidden the embedded pane, so Esc-to-pane while a
@@ -219,11 +297,34 @@ impl ZellijPlugin for State {
                 // landing in the embedded program.
                 if self.typing_mode {
                     if let Some(pane) = self.current_pane() {
+                        // Fold any sticky modifiers held by the
+                        // bottom bar into the soft-keyboard key so
+                        // a user can do CTRL → 'c' across two
+                        // input sources to produce Ctrl+C. The
+                        // sticky flags are consumed unconditionally
+                        // (see the matching comment in
+                        // `dispatch_click`).
+                        let key = if self.ctrl_held || self.alt_held {
+                            merge_held_modifiers(
+                                &key,
+                                self.ctrl_held,
+                                self.alt_held,
+                            )
+                        } else {
+                            key.clone()
+                        };
                         let bytes = keys::serialize_key(&key);
                         if !bytes.is_empty() {
                             write_to_pane_id(bytes, state::pane_id_of(&pane));
                         }
                     }
+                    // Returning `true` triggers a render so the
+                    // CTRL/ALT labels drop back to their resting
+                    // colour the moment the modifier is consumed.
+                    let consumed = self.ctrl_held || self.alt_held;
+                    self.ctrl_held = false;
+                    self.alt_held = false;
+                    return consumed;
                 }
                 false
             },
@@ -241,6 +342,41 @@ impl ZellijPlugin for State {
         }
         render::render(self, rows, cols);
     }
+}
+
+/// Construct a `KeyWithModifier` whose modifier set is exactly
+/// `{Ctrl?, Alt?}` — used by the bottom-bar `SendKey` dispatch when
+/// folding sticky modifiers into a tap. Any modifier the bare key
+/// "owns" implicitly (none of the bare keys involved here do) would
+/// be lost; the existing serializer in `keys::serialize_key` reads
+/// only `bare_key` + `key_modifiers`, so this is sufficient.
+fn build_key(bare_key: BareKey, ctrl: bool, alt: bool) -> KeyWithModifier {
+    let mut mods = BTreeSet::new();
+    if ctrl {
+        mods.insert(KeyModifier::Ctrl);
+    }
+    if alt {
+        mods.insert(KeyModifier::Alt);
+    }
+    KeyWithModifier {
+        bare_key,
+        key_modifiers: mods,
+    }
+}
+
+/// Return a clone of `key` with `Ctrl` / `Alt` added to its modifier
+/// set when the corresponding sticky flag is on. Used by the
+/// typing-mode handler so a soft-keyboard tap that follows a CTRL
+/// or ALT bar tap produces a properly-modified key.
+fn merge_held_modifiers(key: &KeyWithModifier, ctrl: bool, alt: bool) -> KeyWithModifier {
+    let mut merged = key.clone();
+    if ctrl {
+        merged.key_modifiers.insert(KeyModifier::Ctrl);
+    }
+    if alt {
+        merged.key_modifiers.insert(KeyModifier::Alt);
+    }
+    merged
 }
 
 /// Build an SGR mouse left-click press+release sequence targeting the
@@ -318,6 +454,63 @@ fn dispatch_click(state: &mut State, action: ClickAction) -> bool {
         },
         ClickAction::ToggleType => {
             state.typing_mode = !state.typing_mode;
+            true
+        },
+        ClickAction::BottomBarShortcut(idx) => {
+            // Clone the action out of the shortcut before doing
+            // anything else: the dispatch step needs to read other
+            // parts of `state` (current pane, held modifiers) which
+            // requires releasing the mutable borrow on the shortcut.
+            let action = state
+                .bottom_bar_shortcuts
+                .get(idx)
+                .map(|s| s.action.clone());
+            let Some(action) = action else { return false };
+            match action {
+                BottomBarAction::ToggleCtrl => {
+                    // Modifier toggles are pure state changes — no
+                    // bytes flow to the pane and there is no
+                    // 400 ms transient flash. The held state itself
+                    // is the visual feedback (rendered in colour 2
+                    // while set).
+                    state.ctrl_held = !state.ctrl_held;
+                },
+                BottomBarAction::ToggleAlt => {
+                    state.alt_held = !state.alt_held;
+                },
+                BottomBarAction::SendKey(bare_key) => {
+                    // Fold any held sticky modifiers into the key,
+                    // serialize via the same encoder used by typing
+                    // mode (so behaviour is consistent across both
+                    // input paths), and write to the pane that is
+                    // visible in the embedded viewport — *not* the
+                    // host-focused pane (which is the plugin
+                    // itself).
+                    if let Some(pane) = state.current_pane() {
+                        let key = build_key(bare_key, state.ctrl_held, state.alt_held);
+                        let bytes = keys::serialize_key(&key);
+                        if !bytes.is_empty() {
+                            write_to_pane_id(bytes, pane_id_of(&pane));
+                        }
+                    }
+                    // Modifiers are consumed regardless of whether
+                    // the key actually produced bytes — the user's
+                    // mental model is "the next tap consumed
+                    // them", and stranding `ctrl_held = true`
+                    // after a no-op key would surprise them on the
+                    // next tap.
+                    state.ctrl_held = false;
+                    state.alt_held = false;
+                    // Stamp the transient press flash on the
+                    // tapped key. Modifier toggles deliberately
+                    // skip this so their held colour is the only
+                    // signal.
+                    if let Some(shortcut) = state.bottom_bar_shortcuts.get_mut(idx) {
+                        shortcut.pressed_at = Some(std::time::Instant::now());
+                    }
+                    set_timeout(BOTTOM_BAR_FEEDBACK_MS as f64 / 1000.0);
+                },
+            }
             true
         },
     }

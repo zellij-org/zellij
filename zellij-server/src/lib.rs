@@ -1100,8 +1100,13 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     MobileModeDefault::Always => true,
                     MobileModeDefault::Never => false,
                     MobileModeDefault::Auto => {
+                        // OR semantics: a viewport is "mobile" if it
+                        // is small in *either* dimension. Phones in
+                        // portrait have narrow cols but tall rows;
+                        // phones in landscape have wide cols but
+                        // short rows. AND semantics misses both.
                         viewport.cols <= mobile_threshold_cols as usize
-                            && viewport.rows <= mobile_threshold_rows as usize
+                            || viewport.rows <= mobile_threshold_rows as usize
                     },
                 };
                 if should_enter_mobile {
@@ -1204,8 +1209,13 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     MobileModeDefault::Always => true,
                     MobileModeDefault::Never => false,
                     MobileModeDefault::Auto => {
+                        // OR semantics: a viewport is "mobile" if it
+                        // is small in *either* dimension. Phones in
+                        // portrait have narrow cols but tall rows;
+                        // phones in landscape have wide cols but
+                        // short rows. AND semantics misses both.
                         viewport.cols <= mobile_threshold_cols as usize
-                            && viewport.rows <= mobile_threshold_rows as usize
+                            || viewport.rows <= mobile_threshold_rows as usize
                     },
                 };
                 if should_enter_mobile {

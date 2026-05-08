@@ -2394,6 +2394,62 @@ pub(crate) fn route_thread_main(
                                         client_id, new_size,
                                     ))
                                 });
+                                // Re-evaluate mobile-mode auto-routing.
+                                // The initial AttachClient/FirstClientConnected
+                                // path uses whatever size was reported at the
+                                // moment of attach — which for web clients is
+                                // the *server's* tty size (or its 80x24
+                                // fallback), not the browser viewport. The
+                                // browser's true cell grid only arrives via
+                                // these later TerminalResize messages, and a
+                                // re-evaluation here is the only chance to
+                                // route a freshly-attached phone into the
+                                // mobile UI. Reads the runtime config so that
+                                // CLI-overridden options (`--mobile-mode-default`,
+                                // `--mobile-threshold-cols`, etc.) win over the
+                                // saved KDL config.
+                                let mobile_options = session_data
+                                    .read()
+                                    .ok()
+                                    .and_then(|guard| {
+                                        guard.as_ref().map(|s| {
+                                            let config = s
+                                                .session_configuration
+                                                .get_client_configuration(&client_id);
+                                            (
+                                                config
+                                                    .options
+                                                    .mobile_mode_default
+                                                    .unwrap_or_default(),
+                                                config
+                                                    .options
+                                                    .mobile_threshold_cols
+                                                    .unwrap_or(60),
+                                                config
+                                                    .options
+                                                    .mobile_threshold_rows
+                                                    .unwrap_or(30),
+                                            )
+                                        })
+                                    });
+                                if let Some((
+                                    mobile_mode_default,
+                                    threshold_cols,
+                                    threshold_rows,
+                                )) = mobile_options
+                                {
+                                    let _ = senders.as_ref().map(|s| {
+                                        s.send_to_screen(
+                                            ScreenInstruction::ReevaluateMobileMode {
+                                                client_id,
+                                                new_size,
+                                                mobile_mode_default,
+                                                threshold_cols,
+                                                threshold_rows,
+                                            },
+                                        )
+                                    });
+                                }
                             }
                         },
                         ClientToServerMsg::TerminalPixelDimensions { pixel_dimensions } => {
