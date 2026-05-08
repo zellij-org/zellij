@@ -817,3 +817,61 @@ fn host_theme_dsr_997_unknown_param_dropped() {
         "unknown ?997;N value must not classify"
     );
 }
+
+// =====================================================================
+// Regression test: a Kitty keyboard-protocol event arriving on the
+// client's stdin must not wedge the parser. Before the fix, such an
+// event (`\x1b[<keycode>;<mods>u`) sat at the head of termwiz's
+// internal buffer because parse_csi_report rejects the unwhitelisted
+// final byte 'u' AND the keymap returned `Found::NeedData` (it's a
+// possible prefix of registered key sequences). Every host reply that
+// arrived behind it was silently swallowed, stalling host-color
+// forwards until session timeout. This was confirmed via WEDGE-CANDIDATE
+// log entries from three independent users on Kitty, Ghostty, and
+// Konsole — all triggered by the same `\x1b[<digits>;<digits>u` shape.
+//
+// Captured triggers from real logs:
+//   `\x1b[57414;129u`  (Kitty user, repro-logs/third-commit/zellij(4).log)
+//   `\x1b[27;129u`     (Ghostty user, ...zellij(5).log)
+//   `\x1b[102;133u`    (Konsole user, ...zellij_0.45_new-2.log)
+// =====================================================================
+
+#[test]
+fn kitty_kbd_event_does_not_wedge_subsequent_forward_reply() {
+    let kbd_events: Vec<&[u8]> = vec![
+        b"\x1b[57414;129u",   // captured from Kitty user
+        b"\x1b[27;129u",      // captured from Ghostty user
+        b"\x1b[102;133u",     // captured from Konsole user
+        b"\x1b[A",            // legacy CSI key (not Kitty kbd) — sanity
+    ];
+
+    for kbd in &kbd_events {
+        let pretty = String::from_utf8_lossy(kbd).replace('\x1b', "ESC");
+        let mut parser = StdinAnsiParser::new();
+
+        // Pre-wedge: keypress arrives before the forward goes out.
+        let _ = parser.feed(kbd);
+
+        // Forward dispatched — slot opens for token=42.
+        parser.open_forward(42);
+
+        // Host's reply arrives in two chunks (matches captured wire:
+        // OSC 11 reply 25B, then DA1 barrier 10B).
+        let _ = parser.feed(b"\x1b]11;rgb:1e1e/1e1e/2e2e\x1b\\");
+        let out = parser.feed(b"\x1b[?62;52;c");
+
+        let (token, bytes) = out.completed_forward.unwrap_or_else(|| {
+            panic!(
+                "BARRIER never closed slot for kbd-event prelude {:?} — \
+                 termwiz wedge regression",
+                pretty
+            )
+        });
+        assert_eq!(token, 42, "wrong token closed for prelude {:?}", pretty);
+        assert!(
+            !bytes.is_empty(),
+            "OSC payload was lost behind the kbd event for prelude {:?}",
+            pretty
+        );
+    }
+}
