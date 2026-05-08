@@ -411,7 +411,7 @@ impl MockScreen {
             initial_floating_panes_layout.clone(),
             tab_name,
             (Some(vec![]), Some(vec![])), // swap layouts (None would fall back to Screen::default_layout)
-            None,             // initial_panes
+            None,                         // initial_panes
             false,
             should_change_focus_to_new_tab,
             (self.main_client_id, false),
@@ -504,7 +504,7 @@ impl MockScreen {
             initial_floating_panes_layout.clone(),
             tab_name,
             (Some(vec![]), Some(vec![])), // swap layouts (None would fall back to Screen::default_layout)
-            None,             // initial_panes
+            None,                         // initial_panes
             false,
             should_change_focus_to_new_tab,
             (self.main_client_id, false),
@@ -543,7 +543,7 @@ impl MockScreen {
             vec![], // floating_panes_layout
             tab_name,
             (Some(vec![]), Some(vec![])), // swap layouts (None would fall back to Screen::default_layout)
-            None,             // initial_panes
+            None,                         // initial_panes
             false,
             should_change_focus_to_new_tab,
             (self.main_client_id, false),
@@ -591,7 +591,7 @@ impl MockScreen {
             vec![], // floating_panes_layout
             tab_name,
             (Some(vec![]), Some(vec![])), // swap layouts (None would fall back to Screen::default_layout)
-            None,             // initial_panes
+            None,                         // initial_panes
             false,
             should_change_focus_to_new_tab,
             (self.main_client_id, false),
@@ -4252,11 +4252,9 @@ pub fn screen_can_break_pane_to_a_new_tab() {
         server_receiver
     );
 
-    let _ = mock_screen.to_screen.send(ScreenInstruction::BreakPane(
-        Default::default(),
-        1,
-        None,
-    ));
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::BreakPane(Default::default(), 1, None));
     std::thread::sleep(std::time::Duration::from_millis(100));
     // we send ApplyLayout, because in prod this is eventually received after the message traverses
     // through the plugin and pty threads (to open extra stuff we need in the layout, eg. the
@@ -4312,11 +4310,9 @@ pub fn screen_cannot_break_last_selectable_pane_to_a_new_tab() {
         server_receiver
     );
 
-    let _ = mock_screen.to_screen.send(ScreenInstruction::BreakPane(
-        Default::default(),
-        1,
-        None,
-    ));
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::BreakPane(Default::default(), 1, None));
     std::thread::sleep(std::time::Duration::from_millis(100));
 
     mock_screen.teardown(vec![server_thread, screen_thread]);
@@ -4355,11 +4351,9 @@ pub fn screen_can_break_floating_pane_to_a_new_tab() {
         server_receiver
     );
 
-    let _ = mock_screen.to_screen.send(ScreenInstruction::BreakPane(
-        Default::default(),
-        1,
-        None,
-    ));
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::BreakPane(Default::default(), 1, None));
     std::thread::sleep(std::time::Duration::from_millis(100));
     // we send ApplyLayout, because in prod this is eventually received after the message traverses
     // through the plugin and pty threads (to open extra stuff we need in the layout, eg. the
@@ -4519,11 +4513,9 @@ pub fn screen_can_break_plugin_pane_to_a_new_tab() {
         server_receiver
     );
 
-    let _ = mock_screen.to_screen.send(ScreenInstruction::BreakPane(
-        Default::default(),
-        1,
-        None,
-    ));
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::BreakPane(Default::default(), 1, None));
     std::thread::sleep(std::time::Duration::from_millis(100));
     // we send ApplyLayout, because in prod this is eventually received after the message traverses
     // through the plugin and pty threads (to open extra stuff we need in the layout, eg. the
@@ -4594,11 +4586,9 @@ pub fn screen_can_break_floating_plugin_pane_to_a_new_tab() {
         server_receiver
     );
 
-    let _ = mock_screen.to_screen.send(ScreenInstruction::BreakPane(
-        Default::default(),
-        1,
-        None,
-    ));
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::BreakPane(Default::default(), 1, None));
     std::thread::sleep(std::time::Duration::from_millis(100));
     // we send ApplyLayout, because in prod this is eventually received after the message traverses
     // through the plugin and pty threads (to open extra stuff we need in the layout, eg. the
@@ -4661,11 +4651,9 @@ pub fn screen_can_move_pane_to_a_new_tab_right() {
         server_receiver
     );
 
-    let _ = mock_screen.to_screen.send(ScreenInstruction::BreakPane(
-        Default::default(),
-        1,
-        None,
-    ));
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::BreakPane(Default::default(), 1, None));
 
     std::thread::sleep(std::time::Duration::from_millis(100));
     let _ = mock_screen.to_screen.send(ScreenInstruction::ApplyLayout(
@@ -4723,11 +4711,9 @@ pub fn screen_can_move_pane_to_a_new_tab_left() {
         server_receiver
     );
 
-    let _ = mock_screen.to_screen.send(ScreenInstruction::BreakPane(
-        Default::default(),
-        1,
-        None,
-    ));
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::BreakPane(Default::default(), 1, None));
     let _ = mock_screen.to_screen.send(ScreenInstruction::ApplyLayout(
         TiledPaneLayout::default(),
         Default::default(),

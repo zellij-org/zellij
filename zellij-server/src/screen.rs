@@ -550,7 +550,12 @@ pub enum ScreenInstruction {
     SetDarkTheme(Option<NotificationEnd>),
     SetLightTheme(Option<NotificationEnd>),
     ToggleTheme(Option<NotificationEnd>),
-    ChangeMode(InputMode, Option<InputMode>, ClientId, Option<NotificationEnd>),
+    ChangeMode(
+        InputMode,
+        Option<InputMode>,
+        ClientId,
+        Option<NotificationEnd>,
+    ),
     ChangeModeForAllClients(InputMode, Option<InputMode>, Option<NotificationEnd>),
     MouseEvent(MouseEvent, ClientId, Option<NotificationEnd>),
     Copy(ClientId, Option<NotificationEnd>),
@@ -4571,10 +4576,8 @@ impl Screen {
         // `default_mode_info` is the fallback used by `change_mode` for
         // clients that don't yet have a per-client `mode_info` entry, so its
         // keybinds and base mode must be kept in sync with reconfigures.
-        self.default_mode_info
-            .update_keybinds(new_keybinds.clone());
-        self.default_mode_info
-            .update_default_mode(new_default_mode);
+        self.default_mode_info.update_keybinds(new_keybinds.clone());
+        self.default_mode_info.update_default_mode(new_default_mode);
         self.default_shell = default_shell.clone().unwrap_or_else(|| get_default_shell());
         self.default_editor = default_editor.clone().or_else(|| get_default_editor());
         self.auto_layout = auto_layout;

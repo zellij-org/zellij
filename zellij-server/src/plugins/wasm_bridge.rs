@@ -531,11 +531,7 @@ impl WasmBridge {
 
             self.plugin_executor.execute_plugin_unload(
                 plugin_id,
-                move |senders,
-                      _plugin_map,
-                      _connected_clients,
-                      _plugin_cache,
-                      _engine| {
+                move |senders, _plugin_map, _connected_clients, _plugin_cache, _engine| {
                     let subscriptions_guard = subscriptions.lock().unwrap();
                     let needs_before_close = subscriptions_guard.contains(&EventType::BeforeClose);
                     drop(subscriptions_guard); // Release lock before calling plugin
@@ -759,11 +755,7 @@ impl WasmBridge {
 
             plugin_executor.execute_for_plugin(
                 plugin_id,
-                move |senders,
-                      plugin_map,
-                      connected_clients,
-                      plugin_cache,
-                      engine| {
+                move |senders, plugin_map, connected_clients, plugin_cache, engine| {
                     let skip_cache = false;
                     let mut plugin_map = plugin_map.lock().unwrap();
                     match PluginLoader::new(
@@ -832,11 +824,7 @@ impl WasmBridge {
                     // let senders = self.senders.clone();
                     let running_plugin = running_plugin.clone();
                     let _s = shutdown_sender.clone();
-                    move |senders,
-                          _plugin_map,
-                          _connected_clients,
-                          _plugin_cache,
-                          _engine| {
+                    move |senders, _plugin_map, _connected_clients, _plugin_cache, _engine| {
                         let mut running_plugin = running_plugin.lock().unwrap();
                         let _s = _s; // guard to allow the task to complete before cleanup/shutdown
                         if running_plugin.apply_event_id(AtomicEvent::Resize, event_id) {
@@ -1038,11 +1026,7 @@ impl WasmBridge {
         // Execute directly on pinned thread (no async I/O needed for directory check/change)
         self.plugin_executor
             .execute_for_plugin(plugin_id_to_update, {
-                move |senders,
-                      _plugin_map,
-                      _connected_clients,
-                      _plugin_cache,
-                      _engine| {
+                move |senders, _plugin_map, _connected_clients, _plugin_cache, _engine| {
                     match new_host_dir.try_exists() {
                         Ok(false) => {
                             log::error!(
@@ -1166,11 +1150,7 @@ impl WasmBridge {
                         let client_id = *client_id;
                         let _s = shutdown_sender.clone();
                         let notification_end = notification_end.take();
-                        move |senders,
-                              _plugin_map,
-                              _connected_clients,
-                              _plugin_cache,
-                              _engine| {
+                        move |senders, _plugin_map, _connected_clients, _plugin_cache, _engine| {
                             let mut running_plugin = running_plugin.lock().unwrap();
                             let mut plugin_render_assets = vec![];
                             let _s = _s; // guard to allow the task to complete before cleanup/shutdown
@@ -1500,11 +1480,7 @@ impl WasmBridge {
                 let keybinds = keybinds.clone();
                 let default_shell = default_shell.clone();
                 let layout_dir = layout_dir.clone();
-                move |_senders,
-                      _plugin_map,
-                      _connected_clients,
-                      _plugin_cache,
-                      _engine| {
+                move |_senders, _plugin_map, _connected_clients, _plugin_cache, _engine| {
                     let mut running_plugin = running_plugin.lock().unwrap();
                     if let Some(keybinds) = keybinds {
                         running_plugin.update_keybinds(keybinds);
@@ -1552,11 +1528,7 @@ impl WasmBridge {
                         let client_id = *client_id;
                         let _s = shutdown_sender.clone();
                         let events_or_pipe_messages = events_or_pipe_messages.clone();
-                        move |senders,
-                              _plugin_map,
-                              _connected_clients,
-                              _plugin_cache,
-                              _engine| {
+                        move |senders, _plugin_map, _connected_clients, _plugin_cache, _engine| {
                             let _s = _s; // guard to allow the task to complete before cleanup/shutdown
                             for event_or_pipe_message in events_or_pipe_messages {
                                 match event_or_pipe_message {

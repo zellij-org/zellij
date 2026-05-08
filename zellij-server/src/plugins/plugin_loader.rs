@@ -25,13 +25,8 @@ use crate::{
 
 use zellij_utils::plugin_api::action::ProtobufPluginConfiguration;
 use zellij_utils::{
-    consts::ZELLIJ_TMP_DIR,
-    data::InputMode,
-    errors::prelude::*,
-    input::command::TerminalAction,
-    input::keybinds::Keybinds,
-    input::plugins::PluginConfig,
-    pane_size::Size,
+    consts::ZELLIJ_TMP_DIR, data::InputMode, errors::prelude::*, input::command::TerminalAction,
+    input::keybinds::Keybinds, input::plugins::PluginConfig, pane_size::Size,
 };
 
 /// Open a directory as a `File` handle for WASI pre-opening.
