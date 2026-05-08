@@ -121,12 +121,8 @@ macro_rules! apply_action {
             None,
             Some(PaneId::Plugin($env.plugin_id)),
             $env.senders.clone(),
-            $env.capabilities.clone(),
-            $env.client_attributes.clone(),
             $env.default_shell.clone(),
-            &$env.default_layout,
             None,
-            &$env.keybinds,
             $env.default_mode.clone(),
             None,
         ) {
@@ -1430,11 +1426,7 @@ fn run_action(env: &PluginEnv, mut action: Action, context: BTreeMap<String, Str
     let client_id = env.client_id;
     let plugin_id = env.plugin_id;
     let senders = env.senders.clone();
-    let capabilities = env.capabilities.clone();
-    let client_attributes = env.client_attributes.clone();
     let default_shell = env.default_shell.clone();
-    let default_layout = env.default_layout.clone();
-    let keybinds = env.keybinds.clone();
     let default_mode = env.default_mode.clone();
     let plugin_name = env.name().to_string();
 
@@ -1447,12 +1439,8 @@ fn run_action(env: &PluginEnv, mut action: Action, context: BTreeMap<String, Str
             None,
             Some(PaneId::Plugin(plugin_id)),
             senders.clone(),
-            capabilities,
-            client_attributes,
             default_shell,
-            &default_layout,
             None,
-            &keybinds,
             default_mode,
             None,
         ) {
@@ -4482,12 +4470,8 @@ fn try_edit_layout(
         None,
         Some(PaneId::Plugin(env.plugin_id)),
         env.senders.clone(),
-        env.capabilities.clone(),
-        env.client_attributes.clone(),
         env.default_shell.clone(),
-        &env.default_layout,
         None,
-        &env.keybinds,
         env.default_mode.clone(),
         None,
     )
