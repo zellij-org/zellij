@@ -839,10 +839,10 @@ fn host_theme_dsr_997_unknown_param_dropped() {
 #[test]
 fn kitty_kbd_event_does_not_wedge_subsequent_forward_reply() {
     let kbd_events: Vec<&[u8]> = vec![
-        b"\x1b[57414;129u",   // captured from Kitty user
-        b"\x1b[27;129u",      // captured from Ghostty user
-        b"\x1b[102;133u",     // captured from Konsole user
-        b"\x1b[A",            // legacy CSI key (not Kitty kbd) — sanity
+        b"\x1b[57414;129u", // captured from Kitty user
+        b"\x1b[27;129u",    // captured from Ghostty user
+        b"\x1b[102;133u",   // captured from Konsole user
+        b"\x1b[A",          // legacy CSI key (not Kitty kbd) — sanity
     ];
 
     for kbd in &kbd_events {
