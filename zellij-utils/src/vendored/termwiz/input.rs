@@ -838,6 +838,38 @@ fn parse_sgr_mouse(buf: &[u8]) -> Option<(InputEvent, usize)> {
 /// `ESC [` for two distinct cases — not currently disambiguated here:
 /// - truly malformed / unsupported sequence, or
 /// - incomplete input; caller handles incompleteness via `maybe_more`.
+/// Return `Some(len)` if `buf` starts with a structurally complete CSI
+/// sequence (`\x1b[ <params>* <intermediates>* <final>` per ECMA-48 §5.4),
+/// regardless of whether the final byte is one we have a use for. Used by
+/// `process_bytes` to advance past CSI sequences the keymap doesn't
+/// recognise — most importantly Kitty keyboard-protocol events
+/// `\x1b[<keycode>;<mods>u`. Without this, the keymap returns
+/// `Found::NeedData` (it sees the bytes as a possible prefix of a longer
+/// registered key) and the parser wedges holding bytes that will never
+/// extend into anything.
+///
+/// Returns `None` if the buffer doesn't start with `\x1b[`, contains a
+/// non-CSI byte, or hasn't yet received its final byte.
+fn complete_csi_len(buf: &[u8]) -> Option<usize> {
+    if buf.get(0) != Some(&0x1b) || buf.get(1) != Some(&b'[') {
+        return None;
+    }
+    let mut i = 2;
+    let max_scan = buf.len().min(256);
+    while i < max_scan {
+        let b = buf[i];
+        match b {
+            // Parameters (digits, ;, :, ?, <, =, >) and intermediates (space..'/').
+            0x30..=0x3F | 0x20..=0x2F => i += 1,
+            // Any byte in the final-byte range terminates a CSI sequence.
+            0x40..=0x7E => return Some(i + 1),
+            // Anything else means this isn't a well-formed CSI.
+            _ => return None,
+        }
+    }
+    None
+}
+
 fn parse_csi_report(buf: &[u8]) -> Option<(InputEvent, usize)> {
     if buf.get(0) != Some(&0x1b) || buf.get(1) != Some(&b'[') {
         return None;
@@ -1701,6 +1733,42 @@ impl InputParser {
                             self.buf.advance(len);
                         },
                         (Found::Ambiguous(_, _), true) | (Found::NeedData, true) => {
+                            // The keymap is signalling "this buffer
+                            // could still grow into a registered key,
+                            // give me more bytes." That verdict is
+                            // wrong when the buffer already holds a
+                            // structurally complete CSI sequence whose
+                            // final byte isn't in the keymap — most
+                            // importantly Kitty keyboard-protocol
+                            // events `\x1b[<keycode>;<mods>u`, which
+                            // never grow into anything the keymap
+                            // knows. Returning here would wedge
+                            // `self.buf` indefinitely, swallowing every
+                            // host reply that arrives behind it (the
+                            // OSC + DA1 bytes for a forwarded
+                            // `OSC 11;?` query among them) and stalling
+                            // host-color forwards until session exit.
+                            //
+                            // Both `Ambiguous(_, true)` and
+                            // `NeedData(true)` reach this point in
+                            // practice: for `\x1b[<digits>;<digits>u`
+                            // the trie reports `Ambiguous(1, Escape)`
+                            // (it has ESC alone as a match and ESC[…]
+                            // as longer prefixes), so the fix must
+                            // cover both verdicts.
+                            //
+                            // Skip past the unrecognised CSI without
+                            // emitting an event; callers that need
+                            // keyboard dispatch (kitty_parser, the
+                            // separate `input_parser` instance fed the
+                            // residue from `StdinAnsiParser`) see the
+                            // same bytes via `strip_replies`, which
+                            // already treats unwhitelisted-final CSIs
+                            // as `Malformed` and pushes them through.
+                            if let Some(len) = complete_csi_len(self.buf.as_slice()) {
+                                self.buf.advance(len);
+                                continue;
+                            }
                             return;
                         },
                         (Found::None, _) | (Found::NeedData, false) => {
