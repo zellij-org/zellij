@@ -12,6 +12,7 @@
 //! The renderer also rebuilds `state.click_regions` so the input
 //! handler can dispatch a `Mouse::LeftClick` to the right action.
 
+use crate::unix_now;
 use crate::state::{
     pane_id_of, ClickAction, ClickRegion, LastEmittedCursor, Selector, State, ViewportRegion,
 };
@@ -106,14 +107,10 @@ pub fn render(state: &mut State, rows: usize, cols: usize) {
         match state.expanded {
             None => render_embedded_viewport(state, body_top, body_bottom, cols),
             Some(Selector::Sessions) => {
-                render_session_selector(state, body_top, body_bottom, cols)
+                render_sessions_menu(state, body_top, body_bottom, cols)
             },
-            Some(Selector::Overview) => {
-                render_overview(state, body_top, body_bottom, cols)
-            },
-            Some(Selector::TabPaneOverflow(pos)) => {
-                render_tab_pane_overflow(state, pos, body_top, body_bottom, cols)
-            },
+            Some(Selector::Tabs) => render_tabs_menu(state, body_top, body_bottom, cols),
+            Some(Selector::Panes) => render_panes_menu(state, body_top, body_bottom, cols),
         }
     }
 }
@@ -208,6 +205,13 @@ fn append_segment(
 }
 
 /// Collapsed top bar: `Zellij <session> | <tab> | <pane> | ⌨    ☰`.
+///
+/// The keyboard (`⌨`) and hamburger (`☰`) glyphs must remain visible
+/// even when the natural bar width exceeds `cols`. To honour that,
+/// segment widths are reduced in priority order — tab first, then
+/// pane, then session — until the total fits. If even all segments at
+/// their minimum width still overflow, rendering degrades to best
+/// effort and the trailing icons may be clipped by the host.
 fn render_top_bar_collapsed(state: &mut State, row: usize, cols: usize) {
     let session_name = state
         .session_name
@@ -233,25 +237,73 @@ fn render_top_bar_collapsed(state: &mut State, row: usize, cols: usize) {
     let typing_icon = "\u{2328}"; // ⌨
     let hamburger = "\u{2630}"; // ☰
 
+    // Priority truncation: keep the trailing icons visible by shrinking
+    // segments in tab → pane → session order until the row fits.
+    //
+    // Fixed chrome that can never be reduced: prefix + three pipes +
+    // typing icon + at least one cell of separator + hamburger. The
+    // saturating subtraction means `available` is 0 when even the
+    // chrome alone exceeds `cols` — at that point all three segments
+    // collapse to their minimums and the host clips whatever spills.
+    const MIN_SEG: usize = 3;
+    let prefix_w = UnicodeWidthStr::width(prefix);
+    let pipe_w = UnicodeWidthStr::width(pipe);
+    let typing_icon_w = UnicodeWidthStr::width(typing_icon);
+    let hamburger_w = UnicodeWidthStr::width(hamburger);
+    let fixed_w = prefix_w + pipe_w * 3 + typing_icon_w + 1 + hamburger_w;
+    let available = cols.saturating_sub(fixed_w);
+
+    let session_w = UnicodeWidthStr::width(session_name.as_str());
+    let tab_w = UnicodeWidthStr::width(tab_name.as_str());
+    let pane_w = UnicodeWidthStr::width(pane_name.as_str());
+
+    let session_min = session_w.min(MIN_SEG);
+    let tab_min = tab_w.min(MIN_SEG);
+    let pane_min = pane_w.min(MIN_SEG);
+
+    let natural = session_w + tab_w + pane_w;
+    let (target_session, target_tab, target_pane) = if natural <= available {
+        (session_w, tab_w, pane_w)
+    } else {
+        let mut overflow = natural - available;
+        let tab_shrink = overflow.min(tab_w - tab_min);
+        let target_tab = tab_w - tab_shrink;
+        overflow -= tab_shrink;
+        let pane_shrink = overflow.min(pane_w - pane_min);
+        let target_pane = pane_w - pane_shrink;
+        overflow -= pane_shrink;
+        let session_shrink = overflow.min(session_w - session_min);
+        let target_session = session_w - session_shrink;
+        // Any remaining overflow falls to best-effort clipping.
+        (target_session, target_tab, target_pane)
+    };
+
+    let session_display = pad_or_truncate(&session_name, target_session);
+    let tab_display = pad_or_truncate(&tab_name, target_tab);
+    let pane_display = pad_or_truncate(&pane_name, target_pane);
+
     let mut bar = String::with_capacity(cols + 16);
     let mut chars: usize = 0;
     let mut cells: usize = 0;
 
     append_segment(&mut bar, &mut chars, &mut cells, prefix);
     let (session_chars_s, session_chars_e, session_cells_s, session_cells_e) =
-        append_segment(&mut bar, &mut chars, &mut cells, &session_name);
+        append_segment(&mut bar, &mut chars, &mut cells, &session_display);
     append_segment(&mut bar, &mut chars, &mut cells, pipe);
     let (tab_chars_s, tab_chars_e, tab_cells_s, tab_cells_e) =
-        append_segment(&mut bar, &mut chars, &mut cells, &tab_name);
+        append_segment(&mut bar, &mut chars, &mut cells, &tab_display);
     append_segment(&mut bar, &mut chars, &mut cells, pipe);
     let (pane_chars_s, pane_chars_e, pane_cells_s, pane_cells_e) =
-        append_segment(&mut bar, &mut chars, &mut cells, &pane_name);
+        append_segment(&mut bar, &mut chars, &mut cells, &pane_display);
     append_segment(&mut bar, &mut chars, &mut cells, pipe);
     let (typing_chars_s, typing_chars_e, typing_cells_s, typing_cells_e) =
         append_segment(&mut bar, &mut chars, &mut cells, typing_icon);
 
-    // Right-align the hamburger. If the bar overflows, fall back to a
-    // single-space gap so the glyphs don't collide.
+    // Right-align the hamburger. With successful truncation `pad_cells`
+    // collapses to 1 (segments already consumed all available room);
+    // with extra slack it absorbs the leftover and pushes the hamburger
+    // to the right edge. `.max(1)` still prevents glyph collision in
+    // the best-effort case.
     let hamburger_cells = UnicodeWidthStr::width(hamburger);
     let pad_cells = cols
         .saturating_sub(cells + hamburger_cells)
@@ -294,13 +346,13 @@ fn render_top_bar_collapsed(state: &mut State, row: usize, cols: usize) {
         row,
         col_start: tab_cells_s,
         col_end: tab_cells_e,
-        action: ClickAction::ExpandOverview,
+        action: ClickAction::ExpandTabs,
     });
     state.click_regions.push(ClickRegion {
         row,
         col_start: pane_cells_s,
         col_end: pane_cells_e,
-        action: ClickAction::ExpandOverview,
+        action: ClickAction::ExpandPanes,
     });
     state.click_regions.push(ClickRegion {
         row,
@@ -312,7 +364,7 @@ fn render_top_bar_collapsed(state: &mut State, row: usize, cols: usize) {
         row,
         col_start: hamburger_cells_s,
         col_end: hamburger_cells_e,
-        action: ClickAction::ExpandOverview,
+        action: ClickAction::ExpandPanes,
     });
 }
 
@@ -339,19 +391,17 @@ fn render_top_bar_in_selector(
             0usize,
             "Switch Session",
         ),
-        Selector::Overview => (
+        Selector::Tabs => (
             state
                 .session_name
                 .clone()
                 .unwrap_or_else(|| "—".to_string()),
             0usize,
-            "Switch Pane",
+            "Switch Tab",
         ),
-        Selector::TabPaneOverflow(pos) => (
+        Selector::Panes => (
             state
-                .tabs_in_order()
-                .iter()
-                .find(|t| t.position == pos)
+                .current_tab()
                 .map(|t| t.name.clone())
                 .unwrap_or_else(|| "—".to_string()),
             1usize,
@@ -390,295 +440,339 @@ fn render_top_bar_in_selector(
     });
 }
 
-/// Render a generic full-height list selector occupying rows
-/// `row_start..row_end`. The selector body is just the items — the
-/// "Switch <X>" header lives in the top bar so the body stays as
-/// dense as possible. Each item carries its own `ClickAction` and a
-/// `selected` flag for the active row marker.
-fn render_list_selector(
+/// One pre-styled cell paired with its visible width. Width is
+/// tracked separately because `Text` only exposes the fully-encoded
+/// content stream, and the centering logic needs the plain
+/// cell-width for column sizing.
+struct SelectorCell {
+    text: Text,
+    width: usize,
+}
+
+/// One row in a centered selector table. Holds an arbitrary number
+/// of cells so each menu can pick its own column count (Sessions has
+/// 2, Tabs has 3, Panes has 3).
+struct SelectorRow {
+    cells: Vec<SelectorCell>,
+    action: ClickAction,
+}
+
+/// Render the title + table block centered within
+/// `row_start..row_end`. The title is a single-line `Text` coloured
+/// with emphasis 3 (per the user-facing spec for switch menus). The
+/// table sits one blank row below the title and uses the
+/// `print_table_with_coordinates` primitive — each row index `i`
+/// (where `i = 0` is the empty header convention used by other
+/// built-in plugins) maps deterministically to terminal row
+/// `table_y + i`, which is what `register_row_clicks` relies on.
+fn render_centered_selector(
     state: &mut State,
     row_start: usize,
     row_end: usize,
     cols: usize,
-    items: Vec<(String, ClickAction, bool)>,
+    title: &str,
+    rows: Vec<SelectorRow>,
 ) {
-    if row_end <= row_start {
-        return;
-    }
-    let max_items = row_end.saturating_sub(row_start);
-    for (idx, (line, action, selected)) in items.into_iter().take(max_items).enumerate() {
-        let row = row_start + idx;
-        let mark = if selected { "▸" } else { " " };
-        let display = format!(" {} {}", mark, line);
-        print!("{}{}", RESET, move_to(row, 0));
-        let mut col = 0;
-        print_clipped(&display, &mut col, cols);
-        // Clear the rest of the row so a wider previous entry is
-        // overwritten cleanly.
-        clear_to_end(col, cols);
-        state.click_regions.push(ClickRegion {
-            row,
-            col_start: 0,
-            col_end: cols,
-            action,
-        });
-    }
-}
-
-fn render_session_selector(state: &mut State, row_start: usize, row_end: usize, cols: usize) {
-    let current = state.session_name.clone();
-    let mut items: Vec<(String, ClickAction, bool)> = state
-        .sessions
-        .iter()
-        .map(|s| {
-            let label = if s.is_current_session {
-                format!("{} (current)", s.name)
-            } else {
-                s.name.clone()
-            };
-            let selected = current.as_deref() == Some(s.name.as_str());
-            (label, ClickAction::SelectSession(s.name.clone()), selected)
-        })
-        .collect();
-    items.sort_by(|a, b| a.0.cmp(&b.0));
-    render_list_selector(state, row_start, row_end, cols, items);
-}
-
-/// Per-tab pane fallback list, used when a single tab has more panes
-/// than the overview's column can display vertically. Tapping an
-/// entry switches both tab and pane atomically (same handler the
-/// overview cells use), so the fallback is *not* a per-pane selector
-/// — it's a tab-scoped slice of the overview.
-fn render_tab_pane_overflow(
-    state: &mut State,
-    tab_position: usize,
-    row_start: usize,
-    row_end: usize,
-    cols: usize,
-) {
-    let panes: Vec<PaneInfo> = state
-        .panes_for_tab(tab_position)
-        .into_iter()
-        .cloned()
-        .collect();
-    let selected_pane_id = state.current_pane().map(|p| pane_id_of(&p));
-    let items: Vec<(String, ClickAction, bool)> = panes
-        .into_iter()
-        .map(|pane| {
-            let id = pane_id_of(&pane);
-            let layer = if pane.is_floating { "F" } else { "T" };
-            let title = if pane.title.is_empty() {
-                format!("#{}", pane.id)
-            } else {
-                pane.title.clone()
-            };
-            let line = format!("[{}] {}", layer, title);
-            let selected = Some(id) == selected_pane_id;
-            (
-                line,
-                ClickAction::SelectTabAndPane {
-                    tab_position,
-                    pane_id: id,
-                },
-                selected,
-            )
-        })
-        .collect();
-    render_list_selector(state, row_start, row_end, cols, items);
-}
-
-/// Full-screen tab×pane overview. Columns are tabs (in display
-/// order); rows within each column list that tab's panes. One tap on
-/// any cell switches both tab and pane in a single action — replacing
-/// the previous two-step drilldown.
-///
-/// Layout:
-/// - First body row: column headers (tab names). The currently-active
-///   tab's header is bolded.
-/// - Subsequent rows: panes per column, top-aligned within the column.
-///   Selected pane prefixed with `▸`.
-/// - Last row of an overflowing column: `+N` indicator that opens the
-///   tab-scoped fallback list.
-/// - Edge cells (cols 0 and cols-1) become `◀`/`▶` scroll arrows when
-///   more tabs exist than fit. Tapping the arrow shifts the visible
-///   slice by one column.
-fn render_overview(state: &mut State, row_start: usize, row_end: usize, cols: usize) {
     let body_height = row_end.saturating_sub(row_start);
     if body_height == 0 || cols == 0 {
         return;
     }
-    let tabs: Vec<TabInfo> = state.tabs_in_order().into_iter().cloned().collect();
-    if tabs.is_empty() {
-        print!("{}{}{}", RESET, move_to(row_start, 0), "(no tabs)");
+
+    if rows.is_empty() {
+        // Empty list — render only the title, centered vertically and
+        // horizontally. Avoids drawing a degenerate one-row table.
+        let title_w = UnicodeWidthStr::width(title);
+        let title_x = cols.saturating_sub(title_w) / 2;
+        let title_y = row_start + body_height.saturating_sub(1) / 2;
+        print_text_with_coordinates(
+            Text::new(title).color_range(3, ..),
+            title_x,
+            title_y,
+            None,
+            None,
+        );
         return;
     }
 
-    let active_tab_position = state.current_tab().map(|t| t.position);
-    let selected_pane_id = state.current_pane().map(|p| pane_id_of(&p));
-
-    // ── Column slice + width math ────────────────────────────────
-    // Below `MIN_COL_WIDTH` the cells get unreadably truncated, so
-    // we'd rather hide tabs and expose scroll arrows than crush
-    // titles below this threshold.
-    const MIN_COL_WIDTH: usize = 8;
-
-    let max_cols_no_arrows = (cols / MIN_COL_WIDTH).max(1);
-    let needs_scroll = tabs.len() > max_cols_no_arrows;
-
-    let (slice_offset, slice_count, left_arrow, right_arrow, content_left, content_width) =
-        if needs_scroll {
-            let arrow_w_total: usize = 2; // 1 cell each side
-            let usable = cols.saturating_sub(arrow_w_total);
-            let visible = (usable / MIN_COL_WIDTH).max(1).min(tabs.len());
-            let max_scroll = tabs.len().saturating_sub(visible);
-            let scroll = state.overview_scroll.min(max_scroll);
-            let left = scroll > 0;
-            let right = scroll + visible < tabs.len();
-            let cl = if left { 1 } else { 0 };
-            let cr = if right { 1 } else { 0 };
-            let cw = cols.saturating_sub(cl + cr);
-            (scroll, visible, left, right, cl, cw)
-        } else {
-            let visible = tabs.len().min(max_cols_no_arrows);
-            (0, visible, false, false, 0, cols)
-        };
-
-    // Distribute `content_width` across `slice_count` columns. Use a
-    // floor + remainder distribution so widths sum to exactly
-    // `content_width`. The last column absorbs the remainder.
-    let base_w = content_width / slice_count.max(1);
-    let extra = content_width.saturating_sub(base_w * slice_count);
-    let column_width = |slot: usize| -> usize {
-        if slot + 1 == slice_count {
-            base_w + extra
-        } else {
-            base_w
-        }
-    };
-
-    // ── Scroll arrows (full-height tap targets) ──────────────────
-    if left_arrow {
-        for r in row_start..row_end {
-            let glyph = if r == row_start { "◀" } else { " " };
-            print!("{}{}{}", RESET, move_to(r, 0), glyph);
-            state.click_regions.push(ClickRegion {
-                row: r,
-                col_start: 0,
-                col_end: 1,
-                action: ClickAction::OverviewScroll(-1),
-            });
+    // Column widths drive both the table-width parameter passed to
+    // `print_table_with_coordinates` and the click-region span. The
+    // host's table component pads each cell to the column-max and
+    // inserts a single space between columns (see
+    // `zellij-server/src/ui/components/table.rs`).
+    //
+    // Quirk: `stringify_table_rows` adds `max_column_width + 1` to its
+    // running width for *every* column — including the last — and
+    // breaks out the moment that running width exceeds the
+    // coordinates' `width`. The actual rendered row, however, omits
+    // the trailing pad after the final column. Net: the layout
+    // reservation is `sum(col_w) + n_cols`, while the visible row is
+    // `sum(col_w) + (n_cols - 1)`. Pass the bigger value so the last
+    // column doesn't get clipped; center on the smaller value so the
+    // visible row really is centered.
+    let n_cols = rows.iter().map(|r| r.cells.len()).max().unwrap_or(0);
+    let mut col_widths = vec![0usize; n_cols];
+    for row in &rows {
+        for (i, cell) in row.cells.iter().enumerate() {
+            if cell.width > col_widths[i] {
+                col_widths[i] = cell.width;
+            }
         }
     }
-    if right_arrow {
-        let col = cols.saturating_sub(1);
-        for r in row_start..row_end {
-            let glyph = if r == row_start { "▶" } else { " " };
-            print!("{}{}{}", RESET, move_to(r, col), glyph);
-            state.click_regions.push(ClickRegion {
-                row: r,
-                col_start: col,
-                col_end: cols,
-                action: ClickAction::OverviewScroll(1),
-            });
-        }
+    let sum_col_w: usize = col_widths.iter().sum();
+    let table_layout_w = (sum_col_w + n_cols).min(cols);
+    let table_visual_w = (sum_col_w + n_cols.saturating_sub(1)).min(cols);
+
+    // Block layout: title + 1 empty header row + `rows.len()` data
+    // rows. If the block exceeds the body, items are truncated to
+    // fit; the rest of the layout still centers.
+    let max_data_rows = body_height.saturating_sub(2);
+    let visible_data_rows = rows.len().min(max_data_rows);
+    let block_height = 2 + visible_data_rows;
+    let leftover = body_height.saturating_sub(block_height);
+    let title_y = row_start + leftover / 2;
+    let table_y = title_y + 1;
+
+    // Title — coloured uniformly with emphasis 3, centered to `cols`
+    // (not to the table) so the title sits on the screen's vertical
+    // axis even if the table is narrow.
+    let title_w = UnicodeWidthStr::width(title);
+    let title_x = cols.saturating_sub(title_w) / 2;
+    print_text_with_coordinates(
+        Text::new(title).color_range(3, ..),
+        title_x,
+        title_y,
+        None,
+        None,
+    );
+
+    let table_x = cols.saturating_sub(table_visual_w) / 2;
+
+    // Convention from the other built-in plugins: row 0 is an empty
+    // header row that the host renders with the table-title style.
+    // We use it to absorb that styling so our data rows render with
+    // the regular cell colours.
+    let header_row: Vec<Text> = (0..n_cols).map(|_| Text::new(" ")).collect();
+    let mut table = Table::new().add_styled_row(header_row);
+
+    for row in rows.iter().take(visible_data_rows) {
+        let cells: Vec<Text> = row.cells.iter().map(|c| c.text.clone()).collect();
+        table = table.add_styled_row(cells);
     }
 
-    // ── Columns: header + panes + optional `+N` overflow ─────────
-    let header_row = row_start;
-    let body_first = row_start + 1;
-    let body_last = row_end;
-    let pane_row_capacity = body_last.saturating_sub(body_first);
+    print_table_with_coordinates(
+        table,
+        table_x,
+        table_y,
+        Some(table_layout_w),
+        Some(visible_data_rows + 1),
+    );
 
-    let mut col_start_cell = content_left;
-    for slot in 0..slice_count {
-        let tab_idx = slice_offset + slot;
-        let Some(tab) = tabs.get(tab_idx) else { break };
-        let inner_width = column_width(slot);
-        let col_end_cell = col_start_cell + inner_width;
-
-        // Header.
-        let is_active = active_tab_position == Some(tab.position);
-        let label = pad_or_truncate(&tab.name, inner_width);
-        print!("{}{}", RESET, move_to(header_row, col_start_cell));
-        if is_active {
-            // Bold + reverse for the active tab so the user sees
-            // "this is where I am" at a glance.
-            print!("\x1b[1;7m{}{}", label, RESET);
-        } else {
-            print!("\x1b[1m{}{}", label, RESET);
-        }
+    // Click region per visible item. The header sits at `table_y`;
+    // item `i` lands at `table_y + 1 + i`. Spans the visible table
+    // width so a tap anywhere on the row hits.
+    for (i, row) in rows.iter().take(visible_data_rows).enumerate() {
         state.click_regions.push(ClickRegion {
-            row: header_row,
-            col_start: col_start_cell,
-            col_end: col_end_cell,
-            action: ClickAction::SelectTabHeader(tab.position),
+            row: table_y + 1 + i,
+            col_start: table_x,
+            col_end: table_x + table_visual_w,
+            action: row.action.clone(),
         });
+    }
+}
 
-        // Panes.
-        let panes: Vec<PaneInfo> = state
-            .panes_for_tab(tab.position)
-            .into_iter()
-            .cloned()
-            .collect();
-        let overflows = panes.len() > pane_row_capacity;
-        let cap_panes = if overflows {
-            pane_row_capacity.saturating_sub(1)
-        } else {
-            panes.len().min(pane_row_capacity)
-        };
+/// Build a `SelectorCell` whose text is `text` and whose only
+/// emphasis is the digit run starting at `digits_start` of length
+/// `digit_count` painted at `digit_color`. The rest of the cell
+/// renders with the table's default cell foreground (no emphasis
+/// level applied), which keeps surrounding labels (e.g. "panes",
+/// "tabs") visually neutral while the count itself stays vivid.
+fn count_cell(text: String, digits_start: usize, digit_count: usize, digit_color: usize) -> SelectorCell {
+    let width = UnicodeWidthStr::width(text.as_str());
+    let mut t = Text::new(&text);
+    if digit_count > 0 {
+        t = t.color_range(digit_color, digits_start..digits_start + digit_count);
+    }
+    SelectorCell { text: t, width }
+}
 
-        for (i, pane) in panes.iter().take(cap_panes).enumerate() {
-            let pane_id = pane_id_of(pane);
-            let is_selected = selected_pane_id == Some(pane_id);
+/// Build a neutral cell for the last-activity column: no emphasis
+/// colour and unbold (the table component bolds every cell by
+/// default; `unbold_all` flips that off via the level-5 mechanism in
+/// `zellij-server/src/ui/components/text.rs::is_unbold_at`).
+fn activity_cell(text: String) -> SelectorCell {
+    let width = UnicodeWidthStr::width(text.as_str());
+    let t = Text::new(&text).unbold_all();
+    SelectorCell { text: t, width }
+}
+
+/// Cell carrying a plain entity name in the supplied emphasis
+/// colour. Used for session / tab / pane name cells.
+fn named_cell(text: String, color: usize) -> SelectorCell {
+    let width = UnicodeWidthStr::width(text.as_str());
+    let t = Text::new(&text).color_range(color, ..);
+    SelectorCell { text: t, width }
+}
+
+/// Most recent activity stamp across `tab_position`'s panes, used
+/// for the Tabs menu's third column. `None` when no pane in the tab
+/// has been mentioned in any `PaneRenderReportWithAnsi` yet (true
+/// right after attach until the first delta arrives).
+fn tab_last_activity(state: &State, tab_position: usize) -> Option<u64> {
+    state
+        .panes_for_tab(tab_position)
+        .into_iter()
+        .filter_map(|p| state.pane_last_activity.get(&pane_id_of(p)).copied())
+        .max()
+}
+
+/// Sessions selector. Three rows total: name (color 0), tab count
+/// (digits in color 1), pane count (digits in color 2). Per the
+/// spec only the digits are coloured — the trailing word stays in
+/// the table-cell base colour.
+fn render_sessions_menu(state: &mut State, row_start: usize, row_end: usize, cols: usize) {
+    let mut entries: Vec<(String, usize, usize, bool)> = state
+        .sessions
+        .iter()
+        .map(|s| {
+            let pane_count: usize = s
+                .panes
+                .panes
+                .values()
+                .map(|panes| {
+                    panes
+                        .iter()
+                        .filter(|p| p.is_selectable && !p.is_suppressed)
+                        .count()
+                })
+                .sum();
+            (
+                s.name.clone(),
+                s.tabs.len(),
+                pane_count,
+                s.is_current_session,
+            )
+        })
+        .collect();
+    entries.sort_by(|a, b| a.0.cmp(&b.0));
+
+    let rows: Vec<SelectorRow> = entries
+        .into_iter()
+        .map(|(name, tabs, panes, is_current)| {
+            let name_label = if is_current {
+                format!("{} (current)", name)
+            } else {
+                name.clone()
+            };
+
+            let tabs_text = format!("{} tabs", tabs);
+            let tabs_digits = tabs.to_string().chars().count();
+            let tabs_cell = count_cell(tabs_text, 0, tabs_digits, 1);
+
+            let panes_text = format!("{} panes", panes);
+            let panes_digits = panes.to_string().chars().count();
+            let panes_cell = count_cell(panes_text, 0, panes_digits, 2);
+
+            SelectorRow {
+                cells: vec![named_cell(name_label, 0), tabs_cell, panes_cell],
+                action: ClickAction::SelectSession(name),
+            }
+        })
+        .collect();
+
+    render_centered_selector(state, row_start, row_end, cols, "Switch Session", rows);
+}
+
+/// Tabs selector. Columns: name (color 1), pane count (digits in
+/// color 2), last activity (neutral / unbold). Last activity for a
+/// tab is the max activity stamp across that tab's panes.
+fn render_tabs_menu(state: &mut State, row_start: usize, row_end: usize, cols: usize) {
+    let tabs: Vec<TabInfo> = state.tabs_in_order().into_iter().cloned().collect();
+    let now = unix_now();
+    let rows: Vec<SelectorRow> = tabs
+        .into_iter()
+        .map(|tab| {
+            let pane_count =
+                tab.selectable_tiled_panes_count + tab.selectable_floating_panes_count;
+            let panes_text = format!("{} panes", pane_count);
+            let panes_digits = pane_count.to_string().chars().count();
+            let panes_cell = count_cell(panes_text, 0, panes_digits, 2);
+
+            let last_activity = tab_last_activity(state, tab.position);
+            let activity_text = format_time_ago(last_activity, now);
+
+            SelectorRow {
+                cells: vec![
+                    named_cell(tab.name.clone(), 1),
+                    panes_cell,
+                    activity_cell(activity_text),
+                ],
+                action: ClickAction::SelectTab(tab.position),
+            }
+        })
+        .collect();
+
+    render_centered_selector(state, row_start, row_end, cols, "Switch Tab", rows);
+}
+
+/// Panes selector. Lists panes across **every** visible tab so the
+/// "tab" column carries useful disambiguation. Columns: pane title
+/// (color 2), tab name (color 1), last activity (neutral / unbold).
+fn render_panes_menu(state: &mut State, row_start: usize, row_end: usize, cols: usize) {
+    let now = unix_now();
+    let tabs: Vec<TabInfo> = state.tabs_in_order().into_iter().cloned().collect();
+    let mut rows: Vec<SelectorRow> = Vec::new();
+    for tab in tabs {
+        let panes: Vec<PaneInfo> = state.panes_for_tab(tab.position).into_iter().cloned().collect();
+        for pane in panes {
+            let id = pane_id_of(&pane);
             let title = if pane.title.is_empty() {
                 format!("#{}", pane.id)
             } else {
                 pane.title.clone()
             };
-            let prefix = if is_selected { "▸ " } else { "  " };
-            let title_max = inner_width.saturating_sub(2);
-            let truncated = pad_or_truncate(&title, title_max);
-            let row = body_first + i;
-            print!("{}{}", RESET, move_to(row, col_start_cell));
-            if is_selected {
-                print!("\x1b[1m{}{}{}", prefix, truncated, RESET);
-            } else {
-                print!("{}{}", prefix, truncated);
-            }
-            state.click_regions.push(ClickRegion {
-                row,
-                col_start: col_start_cell,
-                col_end: col_end_cell,
-                action: ClickAction::SelectTabAndPane {
+
+            let last_activity = state.pane_last_activity.get(&id).copied();
+            let activity_text = format_time_ago(last_activity, now);
+
+            rows.push(SelectorRow {
+                cells: vec![
+                    named_cell(title, 2),
+                    named_cell(tab.name.clone(), 1),
+                    activity_cell(activity_text),
+                ],
+                action: ClickAction::SelectPane {
                     tab_position: tab.position,
-                    pane_id,
+                    pane_id: id,
                 },
             });
         }
-
-        if overflows {
-            let overflow_row = body_first + cap_panes;
-            if overflow_row < body_last {
-                let hidden = panes.len().saturating_sub(cap_panes);
-                let label = pad_or_truncate(&format!("+{} more", hidden), inner_width);
-                print!(
-                    "{}{}\x1b[2m{}{}",
-                    RESET,
-                    move_to(overflow_row, col_start_cell),
-                    label,
-                    RESET
-                );
-                state.click_regions.push(ClickRegion {
-                    row: overflow_row,
-                    col_start: col_start_cell,
-                    col_end: col_end_cell,
-                    action: ClickAction::ExpandTabPaneOverflow(tab.position),
-                });
-            }
-        }
-
-        col_start_cell = col_end_cell;
     }
+
+    render_centered_selector(state, row_start, row_end, cols, "Switch Pane", rows);
+}
+
+/// Format a timestamp as `Active <time> ago`, relative to `now`.
+/// Returns `"—"` when no activity has been recorded yet (the cache
+/// is delta-only, so a freshly-attached client sees `None` for any
+/// pane that has not redrawn since attach). The "Active" prefix is
+/// dropped in that case because `"Active —"` reads awkwardly.
+fn format_time_ago(then_unix_secs: Option<u64>, now_unix_secs: u64) -> String {
+    let Some(then) = then_unix_secs else {
+        return "—".to_string();
+    };
+    let diff = now_unix_secs.saturating_sub(then);
+    let body = if diff < 5 {
+        "just now".to_string()
+    } else if diff < 60 {
+        format!("{}s ago", diff)
+    } else if diff < 3600 {
+        format!("{}m ago", diff / 60)
+    } else if diff < 86400 {
+        format!("{}h ago", diff / 3600)
+    } else {
+        format!("{}d ago", diff / 86400)
+    };
+    format!("Active {}", body)
 }
 
 /// Pad `text` with trailing spaces or truncate (with `…`) so its cell
@@ -768,6 +862,20 @@ fn render_embedded_viewport(state: &mut State, row_start: usize, row_end: usize,
         skip,
     });
 
+    // Disable autowrap (DECAWM, `\x1b[?7l`) for the duration of the
+    // viewport emit. The cached viewport lines come from the
+    // *underlying* pane's grid — that pane may be wider than our
+    // embedded area, so its rendered lines can carry more visible
+    // cells than our `cols`. Without DECAWM off, a line that
+    // overflows the right edge wraps to the next row; on the very
+    // last row of our render area that wrap forces the host's
+    // plugin-pane grid to scroll, which silently pushes the chrome
+    // (top bar at row 0) off-screen. With DECAWM off the host's
+    // `Grid::add_character` (`zellij-server/src/panes/grid.rs:1925`)
+    // simply drops anything past the right edge — which is exactly
+    // what we want for a cropped embedded view.
+    print!("\x1b[?7l");
+
     // Reset before each row to keep the chrome's styling separate from
     // the pane's emitted SGR runs.
     for i in 0..height {
@@ -791,6 +899,10 @@ fn render_embedded_viewport(state: &mut State, row_start: usize, row_end: usize,
             print!("{}\x1b[K", RESET);
         }
     }
+
+    // Restore autowrap before the function returns so subsequent
+    // chrome rendering on later frames is unaffected.
+    print!("\x1b[?7h");
 }
 
 /// Width of `text` after stripping ANSI escape sequences. Used so the
@@ -843,35 +955,3 @@ fn utf8_char_len(byte: u8) -> usize {
     }
 }
 
-/// Print `text` starting at `*col`, clipped to `cols`. Updates `*col`
-/// to the next available cell.
-fn print_clipped(text: &str, col: &mut usize, cols: usize) {
-    let text_w = UnicodeWidthStr::width(text);
-    if *col + text_w <= cols {
-        print!("{}{}", RESET, text);
-        *col += text_w;
-    } else {
-        let remaining = cols.saturating_sub(*col);
-        // Walk graphemes until we exhaust `remaining`.
-        let mut taken = 0;
-        let mut buf = String::new();
-        for ch in text.chars() {
-            let mut tmp = [0u8; 4];
-            let s = ch.encode_utf8(&mut tmp);
-            let w = UnicodeWidthStr::width(s as &str);
-            if taken + w > remaining {
-                break;
-            }
-            buf.push(ch);
-            taken += w;
-        }
-        print!("{}{}", RESET, buf);
-        *col += taken;
-    }
-}
-
-fn clear_to_end(col: usize, cols: usize) {
-    let _ = cols;
-    let _ = col;
-    print!("{}\x1b[K", RESET);
-}

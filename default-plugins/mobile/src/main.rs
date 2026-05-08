@@ -86,6 +86,8 @@ impl ZellijPlugin for State {
                     .collect();
                 self.latest_pane_contents
                     .retain(|id, _| live_pane_ids.contains(id));
+                self.pane_last_activity
+                    .retain(|id, _| live_pane_ids.contains(id));
                 // Re-evaluate the tab default in case TabUpdate arrived
                 // before any PaneUpdate — `tab_is_self_only` depends on
                 // pane data and may have classified everything as
@@ -141,7 +143,29 @@ impl ZellijPlugin for State {
                 // mobile embedded viewport empty. Pane closures are
                 // handled in the `PaneUpdate` arm above, which prunes
                 // entries against the authoritative pane manifest.
+                //
+                // Receipt of a delta for a pane *is* the activity
+                // signal — `PaneContents` itself carries no
+                // server-side timestamp, so we stamp `now()` for
+                // every pane mentioned in this report. The Panes
+                // selector renders that stamp as `<time> ago`.
+                let now = unix_now();
+                for id in map.keys() {
+                    self.pane_last_activity.insert(*id, now);
+                }
                 self.latest_pane_contents.extend(map);
+                // While the Panes selector is open, the same delta
+                // that signals "this pane's content changed" is the
+                // best moment to also refresh its title — OSC 2
+                // sequences land in the same byte stream that drives
+                // these reports. We do this here (in `update`) and
+                // not in `render` because shim calls write to the
+                // plugin's stdout for their response, and `render`'s
+                // own output capture would be corrupted by an
+                // interleaved shim reply.
+                if matches!(self.expanded, Some(Selector::Panes)) {
+                    refresh_pane_titles(self);
+                }
                 true
             },
             Event::Mouse(mouse) => {
@@ -239,34 +263,22 @@ fn dispatch_click(state: &mut State, action: ClickAction) -> bool {
             state.expanded = Some(Selector::Sessions);
             true
         },
-        ClickAction::ExpandOverview => {
-            state.expanded = Some(Selector::Overview);
-            // Reset the horizontal slice every time the user opens the
-            // overview so they always start with the leftmost tab —
-            // otherwise a stale `overview_scroll` from a prior open
-            // would silently hide tabs they expected to see.
-            state.overview_scroll = 0;
+        ClickAction::ExpandTabs => {
+            state.expanded = Some(Selector::Tabs);
             true
         },
-        ClickAction::ExpandTabPaneOverflow(pos) => {
-            state.expanded = Some(Selector::TabPaneOverflow(pos));
+        ClickAction::ExpandPanes => {
+            // Refresh titles once on open so the menu doesn't show
+            // the stale `Pane #N` placeholder when the shell has
+            // already emitted OSC 2 before this click. Subsequent
+            // refreshes happen in the `PaneRenderReportWithAnsi`
+            // event handler whenever the menu stays open.
+            refresh_pane_titles(state);
+            state.expanded = Some(Selector::Panes);
             true
         },
         ClickAction::CollapseSelector => {
             state.expanded = None;
-            true
-        },
-        ClickAction::OverviewScroll(delta) => {
-            // Visible-tab count drives the legal scroll range. We
-            // can't easily know how many columns the renderer chose
-            // here without re-running the layout math, so we clamp
-            // against the total tab count and let the renderer ignore
-            // an overshoot — it caps `slice_offset` to
-            // `tabs.len() - visible` on the next paint.
-            let total = state.tabs_in_order().len();
-            let new_scroll =
-                (state.overview_scroll as i32 + delta).max(0) as usize;
-            state.overview_scroll = new_scroll.min(total.saturating_sub(1));
             true
         },
         ClickAction::SelectSession(name) => {
@@ -277,22 +289,22 @@ fn dispatch_click(state: &mut State, action: ClickAction) -> bool {
             state.expanded = None;
             true
         },
-        ClickAction::SelectTabHeader(position) => {
+        ClickAction::SelectTab(position) => {
             // The mobile plugin never moves the *client's* focused
             // tab — doing so would yank the client out of the mobile
             // tab (where this plugin lives) and into the destination
             // tab, making the entire mobile UI vanish. The "selected
             // tab" here is a purely internal concept: it controls
-            // which tab's panes the overview/embed reads. Resetting
-            // `selected_pane_id` lets the renderer fall back to the
-            // first pane in the newly-selected tab.
+            // which tab's panes the embedded viewport reads.
+            // Resetting `selected_pane_id` lets the renderer fall
+            // back to the first pane in the newly-selected tab.
             state.selected_tab_position = Some(position);
             state.selected_pane_id = None;
             state.expanded = None;
             true
         },
-        ClickAction::SelectTabAndPane { tab_position, pane_id } => {
-            // Same rationale as SelectTabHeader: do not call
+        ClickAction::SelectPane { tab_position, pane_id } => {
+            // Same rationale as SelectTab: do not call
             // `switch_tab_to` or `focus_*_pane` here — those would
             // change the client's actual focus and dismount the
             // mobile UI. The plugin embeds the chosen pane via its
@@ -308,5 +320,52 @@ fn dispatch_click(state: &mut State, action: ClickAction) -> bool {
             state.typing_mode = !state.typing_mode;
             true
         },
+    }
+}
+
+/// Wall-clock seconds since the unix epoch, as returned by the
+/// wasi-clocks shim. Used to stamp `pane_last_activity` on every
+/// `PaneRenderReportWithAnsi` and to compute the `<time> ago` deltas
+/// rendered in the Panes selector.
+pub fn unix_now() -> u64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+/// Replace each cached pane's `title` with the latest value from the
+/// host. Called from `render_panes_menu` on every render of the
+/// Panes selector so the menu always reflects the shell's current
+/// title rather than the stale `Pane #N` placeholder.
+///
+/// The staleness happens because `Event::PaneUpdate` is only
+/// dispatched on structural changes (new pane, focus change, layout
+/// resize); shell-emitted OSC 2 title sequences update the host's
+/// `Grid::title` without firing one. `get_pane_info` runs a fresh
+/// `pane_info_for_pane` on the server, which calls
+/// `pane.current_title()` and so reflects the most-recent OSC 2.
+///
+/// Cost: one synchronous shim call per cached pane per render of
+/// the Panes selector. The selector is only on-screen transiently
+/// (the user opens it, picks a pane, it closes), so the volume is
+/// bounded by an interactive flow rather than by Zellij's render
+/// rate.
+pub fn refresh_pane_titles(state: &mut State) {
+    let pane_ids: Vec<PaneId> = state
+        .panes_by_tab_position
+        .values()
+        .flat_map(|panes| panes.iter().map(state::pane_id_of))
+        .collect();
+    for id in pane_ids {
+        let Some(fresh) = get_pane_info(id) else { continue };
+        for panes in state.panes_by_tab_position.values_mut() {
+            for p in panes.iter_mut() {
+                if state::pane_id_of(p) == id {
+                    p.title = fresh.title.clone();
+                }
+            }
+        }
     }
 }

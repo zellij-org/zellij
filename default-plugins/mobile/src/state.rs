@@ -7,45 +7,45 @@ use zellij_tile::prelude::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Selector {
+    /// Sessions list — col 1 is the session name, col 2 is the
+    /// session's tab + pane counts. Selecting a row calls
+    /// `switch_session`.
     Sessions,
-    /// Full-screen tab×pane grid: columns are tabs, rows within a
-    /// column are that tab's panes. Subsumes the old per-tab and
-    /// per-pane drilldown selectors.
-    Overview,
-    /// Per-tab fallback flat list when a single tab has more panes
-    /// than the overview's column can display. The carried value is
-    /// the tab position whose panes are listed.
-    TabPaneOverflow(usize),
+    /// Tabs list — col 1 is the tab name, col 2 is the tab's pane
+    /// count. Selecting a row updates `selected_tab_position`.
+    Tabs,
+    /// Panes list (panes of the currently-selected tab). Col 1 is the
+    /// pane title, col 2 is the pane's last-activity timestamp
+    /// rendered as a relative `<time> ago` string.
+    Panes,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ClickAction {
+    /// Open the sessions selector.
     ExpandSessions,
-    /// Open the tab×pane overview. Reset `overview_scroll` to 0 so
-    /// the slice always starts from the leftmost visible tab.
-    ExpandOverview,
-    /// Open the per-tab pane fallback list (vertical-overflow case).
-    ExpandTabPaneOverflow(usize),
+    /// Open the tabs selector.
+    ExpandTabs,
+    /// Open the panes selector (panes of the currently-selected tab).
+    ExpandPanes,
     /// Close any open selector without changing the current selection.
     /// Used by the in-selector top-bar tap (escape hatch back to the
     /// embedded viewport).
     CollapseSelector,
-    /// Scroll the overview's visible-tab slice. Positive bumps right,
-    /// negative bumps left. Clamped against the visible-tab count by
-    /// the dispatch handler.
-    OverviewScroll(i32),
     /// Selecting a session calls `switch_session(name)` on the host —
     /// the client genuinely changes session, leaving this one.
     SelectSession(String),
-    /// Tap a column header in the overview. Switches the client to
-    /// that tab without forcing a specific pane focus (the tab's own
-    /// previously-focused pane wins).
-    SelectTabHeader(usize),
-    /// Tap a cell in the overview. Switches both tab and pane in a
-    /// single user action. The pane is focused via the id-targeted
-    /// shim helpers (not via an action targeting the focused pane,
-    /// which would otherwise hit the mobile plugin itself).
-    SelectTabAndPane {
+    /// Tap a tab row in the Tabs selector. Updates the plugin's
+    /// internal `selected_tab_position` (does NOT change the client's
+    /// actual focused tab — that would dismount the mobile plugin
+    /// itself).
+    SelectTab(usize),
+    /// Tap a pane row in the Panes selector. Updates the plugin's
+    /// internal `selected_tab_position` + `selected_pane_id` so the
+    /// embedded viewport shows that pane (the panes selector lists
+    /// panes from every tab, so the click must restate which tab the
+    /// chosen pane lives on).
+    SelectPane {
         tab_position: usize,
         pane_id: PaneId,
     },
@@ -129,11 +129,14 @@ pub struct State {
     /// Set by the renderer; consumed by the mouse handler to dispatch
     /// viewport-passthrough clicks to the underlying pane.
     pub viewport_region: Option<ViewportRegion>,
-    /// Number of overview columns currently scrolled off the left
-    /// edge. Reset to 0 whenever the overview opens; bumped by the
-    /// `◀`/`▶` tap regions when the visible-tab count exceeds the
-    /// number of columns that fit in `cols`.
-    pub overview_scroll: usize,
+    /// Wall-clock timestamp (unix seconds) of the most recent
+    /// `PaneRenderReportWithAnsi` that included each pane. Updated
+    /// every time the host reports a content change for that pane;
+    /// rendered in the Panes selector's second column as a
+    /// `<time> ago` relative string. Pruned alongside
+    /// `latest_pane_contents` when a pane disappears from the
+    /// authoritative `PaneUpdate` manifest.
+    pub pane_last_activity: HashMap<PaneId, u64>,
     /// Last `show_cursor` payload the plugin emitted to the host.
     /// Calling `show_cursor` is *not* idempotent on the server side:
     /// `ScreenInstruction::ShowPluginCursor` triggers a full
