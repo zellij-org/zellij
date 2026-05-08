@@ -40,14 +40,13 @@ use crate::{
     ServerInstruction,
 };
 use zellij_utils::{
-    data::{Event, EventType, PluginCapabilities},
+    data::{Event, EventType},
     errors::prelude::*,
     input::{
         command::TerminalAction,
-        layout::{Layout, PluginUserConfiguration, RunPlugin, RunPluginLocation, RunPluginOrAlias},
+        layout::{PluginUserConfiguration, RunPlugin, RunPluginLocation, RunPluginOrAlias},
         plugins::{PluginAliases, PluginConfig},
     },
-    ipc::ClientAttributes,
     pane_size::Size,
 };
 
@@ -104,8 +103,6 @@ pub struct LoadingContext {
     pub tab_index: Option<usize>,
     pub path_to_default_shell: PathBuf,
     pub session_env_vars: std::collections::BTreeMap<String, String>,
-    pub capabilities: PluginCapabilities,
-    pub client_attributes: ClientAttributes,
     pub default_shell: Option<TerminalAction>,
     pub layout_dir: Option<PathBuf>,
     pub default_mode: InputMode,
@@ -151,8 +148,6 @@ impl LoadingContext {
             path_to_default_shell: wasm_bridge.path_to_default_shell.clone(),
             session_env_vars: wasm_bridge.session_env_vars.clone(),
             plugin_cwd: cwd.unwrap_or_else(|| wasm_bridge.zellij_cwd.clone()),
-            capabilities: wasm_bridge.capabilities.clone(),
-            client_attributes: wasm_bridge.client_attributes.clone(),
             default_shell: wasm_bridge.default_shell.clone(),
             layout_dir: wasm_bridge.layout_dir.clone(),
             keybinds,
@@ -192,8 +187,6 @@ pub struct WasmBridge {
     watcher: Option<Debouncer<RecommendedWatcher, FileIdMap>>,
     zellij_cwd: PathBuf,
     session_env_vars: std::collections::BTreeMap<String, String>,
-    capabilities: PluginCapabilities,
-    client_attributes: ClientAttributes,
     default_shell: Option<TerminalAction>,
     cached_plugin_map:
         HashMap<RunPluginLocation, HashMap<PluginUserConfiguration, Vec<(PluginId, ClientId)>>>,
@@ -218,10 +211,7 @@ impl WasmBridge {
         path_to_default_shell: PathBuf,
         zellij_cwd: PathBuf,
         session_env_vars: std::collections::BTreeMap<String, String>,
-        capabilities: PluginCapabilities,
-        client_attributes: ClientAttributes,
         default_shell: Option<TerminalAction>,
-        default_layout: Box<Layout>,
         layout_dir: Option<PathBuf>,
         available_layouts: Vec<LayoutInfo>,
         available_layout_errors: Vec<LayoutWithError>,
@@ -240,7 +230,6 @@ impl WasmBridge {
             &senders,
             &plugin_map,
             &connected_clients,
-            &default_layout,
             &plugin_cache,
             &engine,
         ));
@@ -261,8 +250,6 @@ impl WasmBridge {
             pending_plugin_reloads: HashSet::new(),
             zellij_cwd,
             session_env_vars,
-            capabilities,
-            client_attributes,
             default_shell,
             cached_plugin_map: HashMap::new(),
             pending_pipes: Default::default(),
@@ -399,7 +386,6 @@ impl WasmBridge {
                             move |senders: ThreadSenders,
                                   plugin_map: Arc<Mutex<PluginMap>>,
                                   connected_clients: Arc<Mutex<Vec<ClientId>>>,
-                                  default_layout: Box<Layout>,
                                   plugin_cache: PluginCache,
                                   engine| {
                                 let mut plugin_map = plugin_map.lock().unwrap();
@@ -408,7 +394,6 @@ impl WasmBridge {
                                     loading_context,
                                     senders.clone(),
                                     engine.clone(),
-                                    default_layout.clone(),
                                     plugin_cache.clone(),
                                     &mut plugin_map,
                                     connected_clients.clone(),
@@ -450,7 +435,6 @@ impl WasmBridge {
                         move |senders,
                               plugin_map,
                               connected_clients,
-                              default_layout,
                               plugin_cache: PluginCache,
                               engine: Engine| {
                             let mut plugin_map = plugin_map.lock().unwrap();
@@ -459,7 +443,6 @@ impl WasmBridge {
                                 loading_context,
                                 senders.clone(),
                                 engine.clone(),
-                                default_layout.clone(),
                                 plugin_cache.clone(),
                                 &mut plugin_map,
                                 connected_clients.clone(),
@@ -551,7 +534,6 @@ impl WasmBridge {
                 move |senders,
                       _plugin_map,
                       _connected_clients,
-                      _default_layout,
                       _plugin_cache,
                       _engine| {
                     let subscriptions_guard = subscriptions.lock().unwrap();
@@ -671,7 +653,7 @@ impl WasmBridge {
 
         plugin_executor.execute_for_plugin(
             plugin_id,
-            move |senders, plugin_map, connected_clients, default_layout, plugin_cache, engine| {
+            move |senders, plugin_map, connected_clients, plugin_cache, engine| {
                 let skip_cache = true; // we want to explicitly reload the plugin
                 let mut plugin_map = plugin_map.lock().unwrap();
                 match PluginLoader::new(
@@ -679,7 +661,6 @@ impl WasmBridge {
                     loading_context,
                     senders.clone(),
                     engine.clone(),
-                    default_layout.clone(),
                     plugin_cache.clone(),
                     &mut plugin_map,
                     connected_clients.clone(),
@@ -781,7 +762,6 @@ impl WasmBridge {
                 move |senders,
                       plugin_map,
                       connected_clients,
-                      default_layout,
                       plugin_cache,
                       engine| {
                     let skip_cache = false;
@@ -791,7 +771,6 @@ impl WasmBridge {
                         loading_context,
                         senders.clone(),
                         engine.clone(),
-                        default_layout.clone(),
                         plugin_cache.clone(),
                         &mut plugin_map,
                         connected_clients.clone(),
@@ -856,7 +835,6 @@ impl WasmBridge {
                     move |senders,
                           _plugin_map,
                           _connected_clients,
-                          _default_layout,
                           _plugin_cache,
                           _engine| {
                         let mut running_plugin = running_plugin.lock().unwrap();
@@ -965,7 +943,6 @@ impl WasmBridge {
                             move |senders,
                                   _plugin_map,
                                   _connected_clients,
-                                  _default_layout,
                                   _plugin_cache,
                                   _engine| {
                                 let _s = _s; // guard to allow the task to complete before cleanup/shutdown
@@ -1064,7 +1041,6 @@ impl WasmBridge {
                 move |senders,
                       _plugin_map,
                       _connected_clients,
-                      _default_layout,
                       _plugin_cache,
                       _engine| {
                     match new_host_dir.try_exists() {
@@ -1193,7 +1169,6 @@ impl WasmBridge {
                         move |senders,
                               _plugin_map,
                               _connected_clients,
-                              _default_layout,
                               _plugin_cache,
                               _engine| {
                             let mut running_plugin = running_plugin.lock().unwrap();
@@ -1528,7 +1503,6 @@ impl WasmBridge {
                 move |_senders,
                       _plugin_map,
                       _connected_clients,
-                      _default_layout,
                       _plugin_cache,
                       _engine| {
                     let mut running_plugin = running_plugin.lock().unwrap();
@@ -1581,7 +1555,6 @@ impl WasmBridge {
                         move |senders,
                               _plugin_map,
                               _connected_clients,
-                              _default_layout,
                               _plugin_cache,
                               _engine| {
                             let _s = _s; // guard to allow the task to complete before cleanup/shutdown

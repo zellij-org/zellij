@@ -32,7 +32,7 @@ use zellij_utils::{
     data::{
         ClientInfo, CommandOrPlugin, Event, EventType, FloatingPaneCoordinates, InputMode,
         LayoutInfo, LayoutWithError, MessageToPlugin, PermissionStatus, PermissionType,
-        PipeMessage, PipeSource, PluginCapabilities, WebServerStatus,
+        PipeMessage, PipeSource, WebServerStatus,
     },
     errors::{prelude::*, ContextType, PluginContext},
     input::{
@@ -42,7 +42,6 @@ use zellij_utils::{
         layout::{FloatingPaneLayout, Layout, Run, RunPlugin, RunPluginOrAlias, TiledPaneLayout},
         plugins::PluginAliases,
     },
-    ipc::ClientAttributes,
     pane_size::Size,
     session_serialization,
 };
@@ -300,8 +299,6 @@ pub(crate) fn plugin_thread_main(
     path_to_default_shell: PathBuf,
     zellij_cwd: PathBuf,
     session_env_vars: std::collections::BTreeMap<String, String>,
-    capabilities: PluginCapabilities,
-    client_attributes: ClientAttributes,
     default_shell: Option<TerminalAction>,
     plugin_aliases: PluginAliases,
     default_mode: InputMode,
@@ -329,10 +326,7 @@ pub(crate) fn plugin_thread_main(
         path_to_default_shell,
         zellij_cwd.clone(),
         session_env_vars,
-        capabilities,
-        client_attributes,
         default_shell,
-        layout.clone(),
         layout_dir,
         available_layouts,
         available_layout_errors,

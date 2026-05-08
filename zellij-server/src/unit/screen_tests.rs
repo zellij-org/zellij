@@ -39,10 +39,7 @@ use zellij_utils::ipc::PixelDimensions;
 use interprocess::local_socket::Stream as LocalSocketStream;
 use zellij_utils::{
     channels::{self, ChannelWithContext, Receiver},
-    data::{
-        Direction, FloatingPaneCoordinates, InputMode, ModeInfo, NewPanePlacement, Palette,
-        PluginCapabilities,
-    },
+    data::{Direction, FloatingPaneCoordinates, InputMode, ModeInfo, NewPanePlacement, Palette},
     ipc::{ClientAttributes, ClientToServerMsg, ServerToClientMsg},
 };
 
@@ -128,20 +125,13 @@ fn send_cli_action_to_server(
     let get_current_dir = || PathBuf::from(".");
     let actions = Action::actions_from_cli(cli_action, Box::new(get_current_dir), None).unwrap();
     let senders = session_metadata.senders.clone();
-    let capabilities = PluginCapabilities::default();
-    let client_attributes = ClientAttributes::default();
     let default_shell = None;
-    let default_layout = Box::new(Layout::default());
     let default_mode = session_metadata
         .session_configuration
         .get_client_configuration(&client_id)
         .options
         .default_mode
         .unwrap_or(InputMode::Normal);
-    let client_keybinds = session_metadata
-        .session_configuration
-        .get_client_keybinds(&client_id)
-        .clone();
     for action in actions {
         route_action(
             action,
@@ -149,12 +139,8 @@ fn send_cli_action_to_server(
             None,
             None,
             senders.clone(),
-            capabilities,
-            client_attributes.clone(),
             default_shell.clone(),
-            &default_layout,
             None,
-            &client_keybinds,
             default_mode,
             None,
         )
@@ -424,7 +410,7 @@ impl MockScreen {
             Some(pane_layout.clone()),
             initial_floating_panes_layout.clone(),
             tab_name,
-            (vec![], vec![]), // swap layouts
+            (Some(vec![]), Some(vec![])), // swap layouts (None would fall back to Screen::default_layout)
             None,             // initial_panes
             false,
             should_change_focus_to_new_tab,
@@ -517,7 +503,7 @@ impl MockScreen {
             Some(pane_layout.clone()),
             initial_floating_panes_layout.clone(),
             tab_name,
-            (vec![], vec![]), // swap layouts
+            (Some(vec![]), Some(vec![])), // swap layouts (None would fall back to Screen::default_layout)
             None,             // initial_panes
             false,
             should_change_focus_to_new_tab,
@@ -556,7 +542,7 @@ impl MockScreen {
             Some(tab_layout.clone()),
             vec![], // floating_panes_layout
             tab_name,
-            (vec![], vec![]), // swap layouts
+            (Some(vec![]), Some(vec![])), // swap layouts (None would fall back to Screen::default_layout)
             None,             // initial_panes
             false,
             should_change_focus_to_new_tab,
@@ -604,7 +590,7 @@ impl MockScreen {
             Some(tab_layout.clone()),
             vec![], // floating_panes_layout
             tab_name,
-            (vec![], vec![]), // swap layouts
+            (Some(vec![]), Some(vec![])), // swap layouts (None would fall back to Screen::default_layout)
             None,             // initial_panes
             false,
             should_change_focus_to_new_tab,
@@ -638,11 +624,8 @@ impl MockScreen {
     }
     pub fn clone_session_metadata(&self) -> SessionMetaData {
         // hack that only clones the clonable parts of SessionMetaData
-        let layout = Box::new(Layout::default()); // this is not actually correct!!
         SessionMetaData {
             senders: self.session_metadata.senders.clone(),
-            capabilities: self.session_metadata.capabilities.clone(),
-            client_attributes: self.session_metadata.client_attributes.clone(),
             default_shell: self.session_metadata.default_shell.clone(),
             screen_thread: None,
             pty_thread: None,
@@ -650,7 +633,6 @@ impl MockScreen {
             pty_writer_thread: None,
             background_jobs_thread: None,
             session_configuration: self.session_metadata.session_configuration.clone(),
-            layout,
             current_input_modes: self.session_metadata.current_input_modes.clone(),
             web_sharing: WebSharing::Off,
             config_file_path: self.session_metadata.config_file_path.clone(),
@@ -686,11 +668,7 @@ impl MockScreen {
             size,
             ..Default::default()
         };
-        let capabilities = PluginCapabilities {
-            arrow_fonts: Default::default(),
-        };
 
-        let layout = Box::new(Layout::default()); // this is not actually correct!!
         let session_metadata = SessionMetaData {
             senders: ThreadSenders {
                 to_screen: Some(to_screen.clone()),
@@ -701,15 +679,12 @@ impl MockScreen {
                 to_server: Some(to_server.clone()),
                 should_silently_fail: true,
             },
-            capabilities,
             default_shell: None,
-            client_attributes: client_attributes.clone(),
             screen_thread: None,
             pty_thread: None,
             plugin_thread: None,
             pty_writer_thread: None,
             background_jobs_thread: None,
-            layout,
             session_configuration: Default::default(),
             current_input_modes: HashMap::new(),
             web_sharing: WebSharing::Off,
@@ -4278,7 +4253,6 @@ pub fn screen_can_break_pane_to_a_new_tab() {
     );
 
     let _ = mock_screen.to_screen.send(ScreenInstruction::BreakPane(
-        Box::new(Layout::default()),
         Default::default(),
         1,
         None,
@@ -4339,7 +4313,6 @@ pub fn screen_cannot_break_last_selectable_pane_to_a_new_tab() {
     );
 
     let _ = mock_screen.to_screen.send(ScreenInstruction::BreakPane(
-        Box::new(Layout::default()),
         Default::default(),
         1,
         None,
@@ -4383,7 +4356,6 @@ pub fn screen_can_break_floating_pane_to_a_new_tab() {
     );
 
     let _ = mock_screen.to_screen.send(ScreenInstruction::BreakPane(
-        Box::new(Layout::default()),
         Default::default(),
         1,
         None,
@@ -4548,7 +4520,6 @@ pub fn screen_can_break_plugin_pane_to_a_new_tab() {
     );
 
     let _ = mock_screen.to_screen.send(ScreenInstruction::BreakPane(
-        Box::new(Layout::default()),
         Default::default(),
         1,
         None,
@@ -4624,7 +4595,6 @@ pub fn screen_can_break_floating_plugin_pane_to_a_new_tab() {
     );
 
     let _ = mock_screen.to_screen.send(ScreenInstruction::BreakPane(
-        Box::new(Layout::default()),
         Default::default(),
         1,
         None,
@@ -4692,7 +4662,6 @@ pub fn screen_can_move_pane_to_a_new_tab_right() {
     );
 
     let _ = mock_screen.to_screen.send(ScreenInstruction::BreakPane(
-        Box::new(Layout::default()),
         Default::default(),
         1,
         None,
@@ -4755,7 +4724,6 @@ pub fn screen_can_move_pane_to_a_new_tab_left() {
     );
 
     let _ = mock_screen.to_screen.send(ScreenInstruction::BreakPane(
-        Box::new(Layout::default()),
         Default::default(),
         1,
         None,
