@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat: allow tabs to have different sizes if clients aren't focused on the same one (https://github.com/zellij-org/zellij/pull/5133)
 * fix(windows): bump windows-sys to 0.59 to align manifest with code, fixing source builds via `cargo install`/`cargo binstall` (https://github.com/zellij-org/zellij/pull/5139)
 * fix: deadlock with --blocking panes (https://github.com/zellij-org/zellij/pull/5152)
+* fix: occasional stall before prompt/program-run (https://github.com/zellij-org/zellij/pull/5149)
 
 ## [0.44.2] - 2026-05-05
 * fix: idle CPU + disk i/o, CommandChanged plugin Event, GetSessionList plugin command (https://github.com/zellij-org/zellij/pull/5063)
