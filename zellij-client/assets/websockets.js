@@ -6,6 +6,80 @@ import { handleReconnection, handleDisconnected, markConnectionEstablished } fro
 import { getBaseUrl, getWebSocketBaseUrl } from "./utils.js";
 
 /**
+ * Read cell pixel dimensions from xterm.js. Tries the internal
+ * _renderService first (matches what the vendored FitAddon uses) and
+ * falls back to a DOM measurement of .xterm-char-measure-element — a
+ * hidden helper element xterm.js creates explicitly for character
+ * measurement. Returns null if neither path yields usable numbers.
+ */
+function getCellPixelDimensions(term) {
+    try {
+        const cell =
+            term && term._core && term._core._renderService &&
+            term._core._renderService.dimensions &&
+            term._core._renderService.dimensions.css &&
+            term._core._renderService.dimensions.css.cell;
+        if (cell && cell.width && cell.height) {
+            return { width: cell.width, height: cell.height };
+        }
+    } catch (_) {}
+    const el = term && term.element &&
+        term.element.querySelector(".xterm-char-measure-element");
+    if (el) {
+        const rect = el.getBoundingClientRect();
+        if (rect.width && rect.height) {
+            return { width: rect.width, height: rect.height };
+        }
+    }
+    return null;
+}
+
+/**
+ * Send both control messages that describe the client's display state
+ * to the Zellij server: TerminalResize (grid rows/cols) and
+ * TerminalMetrics (pixel dimensions used to answer host-terminal
+ * queries such as CSI 14t / 16t and OSC 11;?).
+ *
+ * Single chokepoint so the protocol contract lives in one place — any
+ * site that updates terminal size or theme must call this helper, and
+ * any future field added to the protocol is added here once. The
+ * server's TerminalResize handler is idempotent, so calling this even
+ * when the grid hasn't changed (e.g. after a theme reload that only
+ * shifts font metrics) is safe.
+ */
+function sendSizeUpdate(wsControl, ownWebClientId, term, rows, cols) {
+    if (!wsControl || !ownWebClientId) {
+        return;
+    }
+    wsControl.send(
+        JSON.stringify({
+            web_client_id: ownWebClientId,
+            payload: {
+                type: "TerminalResize",
+                rows,
+                cols,
+            },
+        })
+    );
+    const cell = getCellPixelDimensions(term);
+    if (!cell) {
+        return;
+    }
+    wsControl.send(
+        JSON.stringify({
+            web_client_id: ownWebClientId,
+            payload: {
+                type: "TerminalMetrics",
+                cell_pixel_width: Math.round(cell.width),
+                cell_pixel_height: Math.round(cell.height),
+                text_area_pixel_width: Math.round(cols * cell.width),
+                text_area_pixel_height: Math.round(rows * cell.height),
+            },
+        })
+    );
+}
+
+/**
  * Initialize both terminal and control WebSocket connections
  * @param {string} webClientId - Client ID from authentication
  * @param {string} sessionName - Session name from URL
@@ -146,16 +220,7 @@ function startWsControl(wsControl, term, fitAddon, ownWebClientId, userConfig) {
     wsControl.onopen = function (event) {
         const fitDimensions = fitAddon.proposeDimensions();
         const { rows, cols } = fitDimensions;
-        wsControl.send(
-            JSON.stringify({
-                web_client_id: ownWebClientId,
-                payload: {
-                    type: "TerminalResize",
-                    rows,
-                    cols,
-                },
-            })
-        );
+        sendSizeUpdate(wsControl, ownWebClientId, term, rows, cols);
     };
 
     wsControl.onmessage = function (event) {
@@ -198,37 +263,21 @@ function startWsControl(wsControl, term, fitAddon, ownWebClientId, userConfig) {
             }
 
             const { rows, cols } = fitDimensions;
-            if (rows === term.rows && cols === term.cols) {
-                return;
+            if (rows !== term.rows || cols !== term.cols) {
+                term.resize(cols, rows);
             }
-            term.resize(cols, rows);
-
-            wsControl.send(
-                JSON.stringify({
-                    web_client_id: ownWebClientId,
-                    payload: {
-                        type: "TerminalResize",
-                        rows,
-                        cols,
-                    },
-                })
-            );
+            // Always emit a size update on SetConfig: even if the grid
+            // didn't change, font metrics may have shifted and the
+            // pixel-cell measurements in TerminalMetrics need to
+            // refresh so host-terminal queries get accurate values.
+            sendSizeUpdate(wsControl, ownWebClientId, term, rows, cols);
         } else if (msg.type === "QueryTerminalSize") {
             const fitDimensions = fitAddon.proposeDimensions();
             const { rows, cols } = fitDimensions;
             if (rows !== term.rows || cols !== term.cols) {
                 term.resize(cols, rows);
             }
-            wsControl.send(
-                JSON.stringify({
-                    web_client_id: ownWebClientId,
-                    payload: {
-                        type: "TerminalResize",
-                        rows,
-                        cols,
-                    },
-                })
-            );
+            sendSizeUpdate(wsControl, ownWebClientId, term, rows, cols);
         } else if (msg.type === "Log") {
             const { lines } = msg;
             for (const line in lines) {
@@ -299,18 +348,7 @@ export function setupResizeHandler(
         term.resize(cols, rows);
 
         const wsControl = getWsControl();
-        if (wsControl) {
-            wsControl.send(
-                JSON.stringify({
-                    web_client_id: ownWebClientId,
-                    payload: {
-                        type: "TerminalResize",
-                        rows,
-                        cols,
-                    },
-                })
-            );
-        }
+        sendSizeUpdate(wsControl, ownWebClientId, term, rows, cols);
     };
 
     const handleViewportChange = () => {
