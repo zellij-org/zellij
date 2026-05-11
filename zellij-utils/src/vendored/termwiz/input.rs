@@ -1643,6 +1643,23 @@ impl InputParser {
         }
     }
 
+    /// If a parked ESC is currently held in `EscapeMaybeAlt`, emit it as a
+    /// real `Esc` keystroke and return to `Normal`. Called from
+    /// `process_bytes` before dispatching any structured sequence (SGR
+    /// mouse, OSC, whitelisted CSI host-reply) that the upcoming bytes
+    /// match — those sequences are autonomous host events and cannot be
+    /// ALT-combined with the parked ESC, so the ESC must be flushed
+    /// before the sequence is emitted.
+    fn flush_parked_esc_if_held<F: FnMut(InputEvent)>(&mut self, callback: &mut F) {
+        if self.state == InputState::EscapeMaybeAlt {
+            callback(InputEvent::Key(KeyEvent {
+                key: KeyCode::Escape,
+                modifiers: Modifiers::NONE,
+            }));
+            self.state = InputState::Normal;
+        }
+    }
+
     fn process_bytes<F: FnMut(InputEvent)>(&mut self, mut callback: F, maybe_more: bool) {
         while !self.buf.is_empty() {
             match self.state {
@@ -1661,10 +1678,20 @@ impl InputParser {
                     }
                 },
                 InputState::EscapeMaybeAlt | InputState::Normal => {
-                    if self.state == InputState::Normal
-                        && self.buf.as_slice().get(0) == Some(&b'\x1b')
-                    {
+                    // Structured terminal sequences — SGR mouse, OSC, whitelisted
+                    // CSI host-replies — are autonomous host events and cannot be
+                    // ALT-combined with a leading Esc keystroke. Run these checks
+                    // in *both* Normal and EscapeMaybeAlt: if we're sitting on a
+                    // parked ESC (EscapeMaybeAlt) and the upcoming bytes match one
+                    // of these patterns, the ESC must be a real Esc keystroke, so
+                    // flush it before dispatching the sequence. Otherwise a parked
+                    // ESC immediately followed by `\x1b[<...M` (xterm flushes Esc
+                    // alone, then a mouse motion in the next read) would dispatch
+                    // as a spurious ALT+`[` because the keymap registers `\x1b[`
+                    // as Alt+`[`.
+                    if self.buf.as_slice().get(0) == Some(&b'\x1b') {
                         if let Some((event, len)) = parse_sgr_mouse(self.buf.as_slice()) {
+                            self.flush_parked_esc_if_held(&mut callback);
                             self.buf.advance(len);
                             callback(event);
                             continue;
@@ -1672,6 +1699,7 @@ impl InputParser {
 
                         // OSC sequence check — must come before the incomplete-SGR-mouse early return
                         if let Some((event, len)) = parse_osc(self.buf.as_slice()) {
+                            self.flush_parked_esc_if_held(&mut callback);
                             self.buf.advance(len);
                             callback(event);
                             continue;
@@ -1679,10 +1707,12 @@ impl InputParser {
 
                         // Incomplete OSC — buffer and wait for more data
                         if maybe_more && self.buf.as_slice().starts_with(b"\x1b]") {
+                            self.flush_parked_esc_if_held(&mut callback);
                             return;
                         }
 
                         if maybe_more && self.buf.as_slice().starts_with(b"\x1b[<") {
+                            self.flush_parked_esc_if_held(&mut callback);
                             return;
                         }
 
@@ -1692,6 +1722,7 @@ impl InputParser {
                         // otherwise match "\x1b[" as an escape prefix and
                         // pass the bytes through as keyboard input.
                         if let Some((event, len)) = parse_csi_report(self.buf.as_slice()) {
+                            self.flush_parked_esc_if_held(&mut callback);
                             self.buf.advance(len);
                             callback(event);
                             continue;
@@ -1702,6 +1733,7 @@ impl InputParser {
                         // can match the full sequence rather than letting the
                         // keymap dispatch the leading bytes as separate keys.
                         if maybe_more && self.buf.as_slice().starts_with(b"\x1b[?") {
+                            self.flush_parked_esc_if_held(&mut callback);
                             return;
                         }
                     }
@@ -2505,6 +2537,148 @@ mod test {
         let mut p = InputParser::new();
         let res = p.parse_as_vec(b"\x1b[<0;1;1M\x1b[<0;2;2M", true);
         assert_eq!(res.len(), 2);
+    }
+
+    /// Regression for the xterm Esc-during-mouse-drag bug:
+    /// xterm flushes a real Esc keypress as a single `\x1b` byte. If a mouse
+    /// motion arrives in the next stdin read, upstream `StdinAnsiParser` may
+    /// concatenate them into `\x1b\x1b[<...M`. Termwiz must parse this as
+    /// two events (Esc then Mouse), not as Alt+`[` (which would happen if
+    /// the keymap's `\x1b[`=Alt+`[` registration short-circuits the SGR
+    /// mouse parser while in `EscapeMaybeAlt` state).
+    #[test]
+    fn esc_then_sgr_mouse_emits_esc_and_mouse() {
+        let mut p = InputParser::new();
+        let res = p.parse_as_vec(b"\x1b\x1b[<35;42;12M", MAYBE_MORE);
+        assert_eq!(
+            res,
+            vec![
+                InputEvent::Key(KeyEvent {
+                    key: KeyCode::Escape,
+                    modifiers: Modifiers::NONE,
+                }),
+                InputEvent::Mouse(MouseEvent {
+                    x: 42,
+                    y: 12,
+                    mouse_buttons: MouseButtons::NONE,
+                    modifiers: Modifiers::NONE,
+                }),
+            ]
+        );
+    }
+
+    /// Same regression but for the cross-`parse()` case where the parked
+    /// ESC is in `EscapeMaybeAlt` state from a prior call. The SGR mouse
+    /// sequence arrives in a subsequent call.
+    #[test]
+    fn esc_then_sgr_mouse_across_parse_calls() {
+        let mut p = InputParser::new();
+
+        // First call: lone ESC byte. Termwiz parks no state because the
+        // first arm only fires when there are bytes after the ESC; with
+        // `MAYBE_MORE` it leaves the ESC pending in its internal buf and
+        // emits nothing yet.
+        let mut res = p.parse_as_vec(b"\x1b", MAYBE_MORE);
+        assert!(
+            res.is_empty(),
+            "lone ESC should not emit yet under MAYBE_MORE"
+        );
+
+        // Second call: the mouse sequence arrives. The buffered ESC plus
+        // these bytes form `\x1b\x1b[<...M` (the inner buf already has the
+        // ESC; this call's bytes start with another ESC because that's
+        // what xterm sends for the mouse sequence). Result must still be
+        // Esc + Mouse, not Alt+`[`.
+        res = p.parse_as_vec(b"\x1b[<35;42;12M", MAYBE_MORE);
+        assert_eq!(
+            res,
+            vec![
+                InputEvent::Key(KeyEvent {
+                    key: KeyCode::Escape,
+                    modifiers: Modifiers::NONE,
+                }),
+                InputEvent::Mouse(MouseEvent {
+                    x: 42,
+                    y: 12,
+                    mouse_buttons: MouseButtons::NONE,
+                    modifiers: Modifiers::NONE,
+                }),
+            ]
+        );
+    }
+
+    /// Real Alt+Esc keystroke (`\x1b\x1b` with no further bytes) must
+    /// still be recognised as Alt+Esc — the fix above must not regress
+    /// this convention.
+    #[test]
+    fn alt_esc_still_recognized() {
+        let mut p = InputParser::new();
+        let res = p.parse_as_vec(b"\x1b\x1b", NO_MORE);
+        assert_eq!(
+            res,
+            vec![InputEvent::Key(KeyEvent {
+                key: KeyCode::Escape,
+                modifiers: Modifiers::ALT,
+            })]
+        );
+    }
+
+    /// Esc keystroke followed by an OSC host reply (e.g. an OSC 11 color
+    /// query response that arrives concatenated after a stray Esc byte
+    /// the user pressed) must emit Esc and the OSC, not Alt-modify the
+    /// OSC bytes.
+    #[test]
+    fn esc_then_osc_emits_esc_and_osc() {
+        let mut p = InputParser::new();
+        let res = p.parse_as_vec(b"\x1b\x1b]11;rgb:ffff/ffff/ffff\x1b\\", MAYBE_MORE);
+        assert_eq!(
+            res,
+            vec![
+                InputEvent::Key(KeyEvent {
+                    key: KeyCode::Escape,
+                    modifiers: Modifiers::NONE,
+                }),
+                InputEvent::OperatingSystemCommand(b"11;rgb:ffff/ffff/ffff".to_vec()),
+            ]
+        );
+    }
+
+    /// Esc followed by a CSI host-reply (whitelisted final byte). Must
+    /// emit Esc and the report, never Alt+`[`.
+    #[test]
+    fn esc_then_csi_report_emits_esc_and_report() {
+        let mut p = InputParser::new();
+        // \x1b[?2026;0$y is a DECRPM reply for synchronised output mode.
+        // Wrapped behind a stray Esc keystroke prefix.
+        let res = p.parse_as_vec(b"\x1b\x1b[?2026;0$y", MAYBE_MORE);
+        assert!(
+            !res.is_empty(),
+            "expected at least one event from Esc + CSI report"
+        );
+        assert!(
+            matches!(
+                res[0],
+                InputEvent::Key(KeyEvent {
+                    key: KeyCode::Escape,
+                    modifiers: Modifiers::NONE,
+                })
+            ),
+            "first event must be a bare Esc keystroke, got {:?}",
+            res[0]
+        );
+        // The CSI report dispatches as DeviceControlReply via the
+        // `parse_csi_report` whitelist. Anything but Alt+`[` is acceptable
+        // for the second event; what we are guarding against is the
+        // spurious Alt+`[` dispatch.
+        for ev in &res {
+            if let InputEvent::Key(KeyEvent { key, modifiers }) = ev {
+                assert!(
+                    !(matches!(key, KeyCode::Char('[')) && modifiers.contains(Modifiers::ALT)),
+                    "must not emit Alt+`[`; got {:?}",
+                    ev
+                );
+            }
+        }
     }
 
     #[test]
