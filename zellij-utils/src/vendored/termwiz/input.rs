@@ -2579,7 +2579,10 @@ mod test {
         // `MAYBE_MORE` it leaves the ESC pending in its internal buf and
         // emits nothing yet.
         let mut res = p.parse_as_vec(b"\x1b", MAYBE_MORE);
-        assert!(res.is_empty(), "lone ESC should not emit yet under MAYBE_MORE");
+        assert!(
+            res.is_empty(),
+            "lone ESC should not emit yet under MAYBE_MORE"
+        );
 
         // Second call: the mouse sequence arrives. The buffered ESC plus
         // these bytes form `\x1b\x1b[<...M` (the inner buf already has the
