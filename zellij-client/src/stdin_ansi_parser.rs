@@ -524,7 +524,6 @@ impl StdinAnsiParser {
         }
         out
     }
-
 }
 
 /// Walk an OSC sequence starting at the head of `buf`. Returns whether
