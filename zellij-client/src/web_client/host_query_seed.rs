@@ -35,10 +35,18 @@ pub fn build_host_query_seed_msgs(
     let mut msgs = Vec::new();
     let resolved = resolve_theme(config, config_options);
 
-    if let Some(fg) = resolved.foreground.as_ref().and_then(|s| css_rgb_to_xparse(s)) {
+    if let Some(fg) = resolved
+        .foreground
+        .as_ref()
+        .and_then(|s| css_rgb_to_xparse(s))
+    {
         msgs.push(ClientToServerMsg::ForegroundColor { color: fg });
     }
-    if let Some(bg) = resolved.background.as_ref().and_then(|s| css_rgb_to_xparse(s)) {
+    if let Some(bg) = resolved
+        .background
+        .as_ref()
+        .and_then(|s| css_rgb_to_xparse(s))
+    {
         msgs.push(ClientToServerMsg::BackgroundColor { color: bg });
     }
 
@@ -215,9 +223,7 @@ mod tests {
 
     fn registers_msg(msgs: &[ClientToServerMsg]) -> Option<usize> {
         msgs.iter().find_map(|m| match m {
-            ClientToServerMsg::ColorRegisters { color_registers } => {
-                Some(color_registers.len())
-            },
+            ClientToServerMsg::ColorRegisters { color_registers } => Some(color_registers.len()),
             _ => None,
         })
     }
@@ -430,9 +436,7 @@ mod tests {
         let registers = msgs
             .iter()
             .find_map(|m| match m {
-                ClientToServerMsg::ColorRegisters { color_registers } => {
-                    Some(color_registers)
-                },
+                ClientToServerMsg::ColorRegisters { color_registers } => Some(color_registers),
                 _ => None,
             })
             .expect("ColorRegisters message missing");

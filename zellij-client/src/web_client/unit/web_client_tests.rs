@@ -623,10 +623,7 @@ mod web_client_tests {
         let mut found_pixel_dims: Option<ClientToServerMsg> = None;
         for (_, mock_api) in mock_apis.iter() {
             for msg in mock_api.get_sent_messages() {
-                if matches!(
-                    msg,
-                    ClientToServerMsg::TerminalPixelDimensions { .. }
-                ) {
+                if matches!(msg, ClientToServerMsg::TerminalPixelDimensions { .. }) {
                     found_pixel_dims = Some(msg);
                     break;
                 }
