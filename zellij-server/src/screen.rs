@@ -4830,6 +4830,10 @@ impl Screen {
             && !event.middle
             && !event.wheel_up
             && !event.wheel_down;
+        let active_pane_id_before = self
+            .get_active_tab(client_id)
+            .ok()
+            .and_then(|tab| tab.get_active_pane_id(client_id));
         match self
             .get_active_tab_mut(client_id)
             .and_then(|tab| tab.handle_mouse_event(&event, client_id))
@@ -4857,6 +4861,15 @@ impl Screen {
                 if mouse_effect.state_changed {
                     if !is_bare_motion {
                         let _ = self.log_and_report_session_state();
+                    }
+                    let active_pane_id_after = self
+                        .get_active_tab(client_id)
+                        .ok()
+                        .and_then(|tab| tab.get_active_pane_id(client_id));
+                    if active_pane_id_before.is_some()
+                        && active_pane_id_before != active_pane_id_after
+                    {
+                        self.clear_bell_for_focused_pane(client_id);
                     }
                     should_render = true;
                 }

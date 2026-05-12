@@ -1974,6 +1974,65 @@ fn group_panes_with_mouse() {
 }
 
 #[test]
+fn mouse_focus_clears_bell_on_focused_pane() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut screen = create_new_screen(size, true, true);
+
+    new_tab(&mut screen, 1, 0);
+
+    let new_pane_id = PaneId::Terminal(2);
+    {
+        let active_tab = screen.get_active_tab_mut(client_id).unwrap();
+        // Split horizontally: pane 1 on top, pane 2 on bottom; focus moves to pane 2
+        active_tab
+            .horizontal_split(new_pane_id, None, client_id, None, None)
+            .unwrap();
+        // Move focus back up to pane 1 so pane 2 is unfocused
+        active_tab.move_focus_up(client_id).unwrap();
+        // Plant a bell on the unfocused pane 2
+        active_tab.handle_pty_bytes(2, vec![7u8]).unwrap();
+        active_tab.check_and_handle_bell_notifications(false);
+        assert!(
+            active_tab.panes_with_pending_bell.contains(&new_pane_id),
+            "Pane 2 should have a pending bell before the click"
+        );
+        assert!(
+            active_tab.tab_has_pending_bell,
+            "Tab should have a pending bell before the click"
+        );
+    }
+
+    // Click somewhere in pane 2 (bottom half of the screen)
+    screen.handle_mouse_event(
+        MouseEvent::new_left_press_event(Position::new(15, 60)),
+        client_id,
+    );
+    screen.handle_mouse_event(
+        MouseEvent::new_left_release_event(Position::new(15, 60)),
+        client_id,
+    );
+
+    let active_tab = screen.get_active_tab(client_id).unwrap();
+    assert_eq!(
+        active_tab.get_active_pane_id(client_id),
+        Some(new_pane_id),
+        "Mouse click should have focused pane 2"
+    );
+    assert!(
+        !active_tab.panes_with_pending_bell.contains(&new_pane_id),
+        "Bell on pane 2 should be cleared after mouse focus"
+    );
+    assert!(
+        !active_tab.tab_has_pending_bell,
+        "Tab bell should be cleared after the last pane bell is cleared"
+    );
+}
+
+#[test]
 fn group_panes_with_keyboard() {
     let size = Size {
         cols: 121,
