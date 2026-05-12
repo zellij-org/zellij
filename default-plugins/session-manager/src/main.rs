@@ -874,20 +874,14 @@ impl State {
                 if let Some(target) = selected {
                     let previous_index = self.single_screen_state.selected_index;
                     let outcome: Result<(), String> = match &target {
-                        DeleteTarget::Active(name) => {
-                            kill_sessions(&[name.clone()]).map(|()| {
-                                self.sessions
-                                    .session_ui_infos
-                                    .retain(|s| s.name != *name);
-                            })
-                        },
-                        DeleteTarget::Resurrectable(name) => {
-                            delete_dead_session(name).map(|()| {
-                                self.resurrectable_sessions
-                                    .all_resurrectable_sessions
-                                    .retain(|(n, _)| n != name);
-                            })
-                        },
+                        DeleteTarget::Active(name) => kill_sessions(&[name.clone()]).map(|()| {
+                            self.sessions.session_ui_infos.retain(|s| s.name != *name);
+                        }),
+                        DeleteTarget::Resurrectable(name) => delete_dead_session(name).map(|()| {
+                            self.resurrectable_sessions
+                                .all_resurrectable_sessions
+                                .retain(|(n, _)| n != name);
+                        }),
                     };
                     match outcome {
                         Ok(()) => {

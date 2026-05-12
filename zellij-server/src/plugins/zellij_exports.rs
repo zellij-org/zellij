@@ -24,14 +24,13 @@ use zellij_utils::data::{
     BreakPanesToNewTabResponse, BreakPanesToTabWithIdResponse, BreakPanesToTabWithIndexResponse,
     CommandType, ConnectToSession, DeleteAllDeadSessionsResponse, DeleteDeadSessionResponse,
     DeleteLayoutResponse, EditLayoutResponse, Event, FloatingPaneCoordinates,
-    FocusOrCreateTabResponse,
-    GetFocusedPaneInfoResponse, GetPaneCwdResponse, GetPanePidResponse,
+    FocusOrCreateTabResponse, GetFocusedPaneInfoResponse, GetPaneCwdResponse, GetPanePidResponse,
     GetPaneRunningCommandResponse, HttpVerb, KeyWithModifier, KillSessionsResponse, LayoutInfo,
     LayoutMetadata, LayoutParsingError, MessageToPlugin, NewPanePlacement, NewTabResponse,
-    OpenCommandPaneBackgroundResponse,
-    OpenCommandPaneFloatingNearPluginResponse, OpenCommandPaneFloatingResponse,
-    OpenCommandPaneInPlaceOfPaneIdResponse, OpenCommandPaneInPlaceOfPluginResponse,
-    OpenCommandPaneInPlaceResponse, OpenCommandPaneNearPluginResponse, OpenCommandPaneResponse,
+    OpenCommandPaneBackgroundResponse, OpenCommandPaneFloatingNearPluginResponse,
+    OpenCommandPaneFloatingResponse, OpenCommandPaneInPlaceOfPaneIdResponse,
+    OpenCommandPaneInPlaceOfPluginResponse, OpenCommandPaneInPlaceResponse,
+    OpenCommandPaneNearPluginResponse, OpenCommandPaneResponse,
     OpenEditPaneInPlaceOfPaneIdResponse, OpenFileFloatingNearPluginResponse,
     OpenFileFloatingResponse, OpenFileInPlaceOfPluginResponse, OpenFileInPlaceResponse,
     OpenFileNearPluginResponse, OpenFileResponse, OpenPaneInNewTabResponse,
@@ -78,18 +77,17 @@ use zellij_utils::{
             dump_layout_response, dump_session_layout_response, hide_floating_panes_response,
             parse_layout_response, save_session_response, show_floating_panes_response,
             ProtobufBreakPanesToNewTabResponse, ProtobufBreakPanesToTabWithIdResponse,
-            ProtobufBreakPanesToTabWithIndexResponse,
-            ProtobufDeleteAllDeadSessionsResponse, ProtobufDeleteDeadSessionResponse,
-            ProtobufDeleteLayoutResponse, ProtobufDumpLayoutResponse,
-            ProtobufDumpSessionLayoutResponse,
+            ProtobufBreakPanesToTabWithIndexResponse, ProtobufDeleteAllDeadSessionsResponse,
+            ProtobufDeleteDeadSessionResponse, ProtobufDeleteLayoutResponse,
+            ProtobufDumpLayoutResponse, ProtobufDumpSessionLayoutResponse,
             ProtobufEditLayoutResponse, ProtobufFocusOrCreateTabResponse,
             ProtobufGenerateRandomNameResponse, ProtobufGetFocusedPaneInfoResponse,
             ProtobufGetLayoutDirResponse, ProtobufGetPaneCwdResponse, ProtobufGetPaneInfoResponse,
             ProtobufGetPanePidResponse, ProtobufGetPaneRunningCommandResponse,
             ProtobufGetSessionEnvironmentVariablesResponse, ProtobufGetSessionListResponse,
             ProtobufGetTabInfoResponse, ProtobufHideFloatingPanesResponse,
-            ProtobufKillSessionsResponse, ProtobufNewTabResponse,
-            ProtobufNewTabsResponse, ProtobufOpenCommandPaneBackgroundResponse,
+            ProtobufKillSessionsResponse, ProtobufNewTabResponse, ProtobufNewTabsResponse,
+            ProtobufOpenCommandPaneBackgroundResponse,
             ProtobufOpenCommandPaneFloatingNearPluginResponse,
             ProtobufOpenCommandPaneFloatingResponse,
             ProtobufOpenCommandPaneInPlaceOfPaneIdResponse,
@@ -3350,9 +3348,9 @@ fn kill_sessions_and_reply(env: &PluginEnv, session_names: Vec<String>) {
         };
         match tokio::time::timeout(KILL_WEDGE_TIMEOUT, drain).await {
             Ok(res) => res,
-            Err(_) => Err(
-                "Timed out waiting for one or more sessions to acknowledge kill".to_string(),
-            ),
+            Err(_) => {
+                Err("Timed out waiting for one or more sessions to acknowledge kill".to_string())
+            },
         }
     });
     let response = match result {
@@ -3366,15 +3364,14 @@ fn kill_sessions_and_reply(env: &PluginEnv, session_names: Vec<String>) {
 }
 
 fn delete_dead_session_and_reply(env: &PluginEnv, session_name: String) {
-    let response = match std::fs::remove_dir_all(
-        &*ZELLIJ_SESSION_INFO_CACHE_DIR.join(&session_name),
-    ) {
-        Ok(()) => DeleteDeadSessionResponse::Ok,
-        Err(e) => DeleteDeadSessionResponse::Err(format!(
-            "Failed to delete dead session {}: {}",
-            session_name, e
-        )),
-    };
+    let response =
+        match std::fs::remove_dir_all(&*ZELLIJ_SESSION_INFO_CACHE_DIR.join(&session_name)) {
+            Ok(()) => DeleteDeadSessionResponse::Ok,
+            Err(e) => DeleteDeadSessionResponse::Err(format!(
+                "Failed to delete dead session {}: {}",
+                session_name, e
+            )),
+        };
     let protobuf_response = ProtobufDeleteDeadSessionResponse::from(response);
     wasi_write_object(env, &protobuf_response.encode_to_vec())
         .with_context(|| "failed to write delete_dead_session response".to_string())

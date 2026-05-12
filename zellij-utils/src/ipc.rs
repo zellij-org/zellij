@@ -487,8 +487,7 @@ pub async fn async_send_kill_and_await(path: &std::path::Path) -> io::Result<()>
     let mut stream: interprocess::local_socket::tokio::Stream =
         interprocess::local_socket::tokio::Stream::connect(fs_name).await?;
 
-    let proto_msg: ProtoClientToServerMsg =
-        crate::ipc::ClientToServerMsg::KillSession.into();
+    let proto_msg: ProtoClientToServerMsg = crate::ipc::ClientToServerMsg::KillSession.into();
     let encoded = proto_msg.encode_to_vec();
     let len_bytes = (encoded.len() as u32).to_le_bytes();
 

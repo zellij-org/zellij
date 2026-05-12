@@ -26,8 +26,7 @@ use zellij_utils::plugin_api::plugin_command::{
     ProtobufGetPanePidResponse, ProtobufGetPaneRunningCommandResponse,
     ProtobufGetSessionEnvironmentVariablesResponse, ProtobufGetSessionListResponse,
     ProtobufGetTabInfoResponse, ProtobufHideFloatingPanesResponse, ProtobufKillSessionsResponse,
-    ProtobufNewTabResponse,
-    ProtobufNewTabsResponse, ProtobufOpenCommandPaneBackgroundResponse,
+    ProtobufNewTabResponse, ProtobufNewTabsResponse, ProtobufOpenCommandPaneBackgroundResponse,
     ProtobufOpenCommandPaneFloatingNearPluginResponse, ProtobufOpenCommandPaneFloatingResponse,
     ProtobufOpenCommandPaneInPlaceOfPaneIdResponse, ProtobufOpenCommandPaneInPlaceOfPluginResponse,
     ProtobufOpenCommandPaneInPlaceResponse, ProtobufOpenCommandPaneNearPluginResponse,
@@ -1546,8 +1545,9 @@ pub fn delete_all_dead_sessions() -> Result<(), String> {
 
     let response_bytes = bytes_from_stdin()
         .map_err(|e| format!("Failed to read DeleteAllDeadSessions response: {}", e))?;
-    let protobuf_response = ProtobufDeleteAllDeadSessionsResponse::decode(response_bytes.as_slice())
-        .map_err(|e| format!("Malformed DeleteAllDeadSessions response: {}", e))?;
+    let protobuf_response =
+        ProtobufDeleteAllDeadSessionsResponse::decode(response_bytes.as_slice())
+            .map_err(|e| format!("Malformed DeleteAllDeadSessions response: {}", e))?;
     match protobuf_response.error {
         Some(err) => Err(err),
         None => Ok(()),
@@ -1620,8 +1620,8 @@ where
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
 
-    let response_bytes = bytes_from_stdin()
-        .map_err(|e| format!("Failed to read KillSessions response: {}", e))?;
+    let response_bytes =
+        bytes_from_stdin().map_err(|e| format!("Failed to read KillSessions response: {}", e))?;
     let protobuf_response = ProtobufKillSessionsResponse::decode(response_bytes.as_slice())
         .map_err(|e| format!("Malformed KillSessions response: {}", e))?;
     match protobuf_response.error {
