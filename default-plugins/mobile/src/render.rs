@@ -235,13 +235,34 @@ fn render_bottom_bar(state: &mut State, row: usize, cols: usize) {
     }
     print_text_with_coordinates(text, 0, row, Some(cols), None);
 
-    for (idx, _, _, ms, me) in ranges {
-        state.click_regions.push(ClickRegion {
-            row,
-            col_start: ms,
-            col_end: me,
-            action: ClickAction::BottomBarShortcut(idx),
-        });
+    // Tile the entire row by partitioning at the midpoints between
+    // adjacent label centers. Every cell in [0, cols) maps to exactly
+    // one shortcut, so taps on separator gaps or trailing/leading pad
+    // route to the nearest button — no dead zones.
+    let n = ranges.len();
+    if n > 0 {
+        let centers: Vec<usize> = ranges
+            .iter()
+            .map(|(_, _, _, ms, me)| (ms + me) / 2)
+            .collect();
+        for (slot, (idx, _, _, _, _)) in ranges.iter().enumerate() {
+            let col_start = if slot == 0 {
+                0
+            } else {
+                (centers[slot - 1] + centers[slot]) / 2
+            };
+            let col_end = if slot + 1 == n {
+                cols
+            } else {
+                (centers[slot] + centers[slot + 1]) / 2
+            };
+            state.click_regions.push(ClickRegion {
+                row,
+                col_start,
+                col_end,
+                action: ClickAction::BottomBarShortcut(*idx),
+            });
+        }
     }
 }
 
@@ -462,38 +483,52 @@ fn render_top_bar_collapsed(state: &mut State, row: usize, cols: usize) {
     };
     print_text_with_coordinates(text, 0, row, Some(cols), None);
 
-    // Click regions are in cell coordinates (the mouse handler
-    // receives cell columns, not char indices). Wide chars in tab /
-    // pane / session names are handled correctly because we tracked
-    // both metrics during composition.
+    // Tile the entire row across the visible elements so taps on
+    // separator/whitespace fall through to the nearest meaningful
+    // action. The row is partitioned into 5 contiguous regions by
+    // computing midpoints between adjacent label centers; every cell
+    // in [0, cols) lands in exactly one region.
+    //
+    // The "Zellij " prefix to the left of the session name has no
+    // associated action, so we fold it into the session region —
+    // tapping the prefix is treated as a tap on the session name.
+    let session_center = (session_cells_s + session_cells_e) / 2;
+    let tab_center = (tab_cells_s + tab_cells_e) / 2;
+    let pane_center = (pane_cells_s + pane_cells_e) / 2;
+    let typing_center = (typing_cells_s + typing_cells_e) / 2;
+    let hamburger_center = (hamburger_cells_s + hamburger_cells_e) / 2;
+    let mid_session_tab = (session_center + tab_center) / 2;
+    let mid_tab_pane = (tab_center + pane_center) / 2;
+    let mid_pane_typing = (pane_center + typing_center) / 2;
+    let mid_typing_hamburger = (typing_center + hamburger_center) / 2;
     state.click_regions.push(ClickRegion {
         row,
-        col_start: session_cells_s,
-        col_end: session_cells_e,
+        col_start: 0,
+        col_end: mid_session_tab,
         action: ClickAction::ExpandSessions,
     });
     state.click_regions.push(ClickRegion {
         row,
-        col_start: tab_cells_s,
-        col_end: tab_cells_e,
+        col_start: mid_session_tab,
+        col_end: mid_tab_pane,
         action: ClickAction::ExpandTabs,
     });
     state.click_regions.push(ClickRegion {
         row,
-        col_start: pane_cells_s,
-        col_end: pane_cells_e,
+        col_start: mid_tab_pane,
+        col_end: mid_pane_typing,
         action: ClickAction::ExpandPanes,
     });
     state.click_regions.push(ClickRegion {
         row,
-        col_start: typing_cells_s,
-        col_end: typing_cells_e,
+        col_start: mid_pane_typing,
+        col_end: mid_typing_hamburger,
         action: ClickAction::ToggleType,
     });
     state.click_regions.push(ClickRegion {
         row,
-        col_start: hamburger_cells_s,
-        col_end: hamburger_cells_e,
+        col_start: mid_typing_hamburger,
+        col_end: cols,
         action: ClickAction::ExpandPanes,
     });
 }

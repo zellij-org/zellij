@@ -233,6 +233,7 @@ function startWsControl(wsControl, term, fitAddon, ownWebClientId, userConfig) {
                 mac_option_is_meta,
                 cursor_style,
                 cursor_inactive_style,
+                font_size,
             } = msg;
             term.options.fontFamily = font;
             term.options.theme = theme;
@@ -250,6 +251,23 @@ function startWsControl(wsControl, term, fitAddon, ownWebClientId, userConfig) {
             if (cursor_inactive_style !== "undefined") {
                 term.options.cursorInactiveStyle = cursor_inactive_style;
             }
+            // Font size: explicit config wins, otherwise pick a default
+            // suited to the device. Mobile heuristic: coarse pointer
+            // (touch) AND a narrow viewport, OR a UA string that
+            // identifies a known mobile platform. The 18px / 12px split
+            // matches typical phone vs. desktop legibility expectations.
+            const isMobileViewport =
+                (window.matchMedia &&
+                    window.matchMedia("(pointer: coarse)").matches &&
+                    window.innerWidth < 600) ||
+                /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+            const resolvedFontSize =
+                typeof font_size === "number" && font_size > 0
+                    ? font_size
+                    : isMobileViewport
+                    ? 18
+                    : 12;
+            term.options.fontSize = resolvedFontSize;
             const body = document.querySelector("body");
             body.style.background = theme.background || "black";
 
