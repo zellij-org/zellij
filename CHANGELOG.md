@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: regression with ESC+mouse hold (https://github.com/zellij-org/zellij/pull/5157)
 * fix: close session-manager instead of hiding to avoid confusion (https://github.com/zellij-org/zellij/pull/5055)
 * fix: tighten permissions around the `OpenCommandInNewTab` and `OpenEditorPaneInNewTab` plugin commands (https://github.com/zellij-org/zellij/pull/5143)
+* fix: UI feedback for deleting sessions through the session-manager (https://github.com/zellij-org/zellij/pull/5160)
 
 ## [0.44.2] - 2026-05-05
 * fix: idle CPU + disk i/o, CommandChanged plugin Event, GetSessionList plugin command (https://github.com/zellij-org/zellij/pull/5063)

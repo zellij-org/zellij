@@ -321,6 +321,31 @@ impl SessionList {
     pub fn reset_selected_index(&mut self) {
         self.selected_index.reset();
     }
+    /// After deleting one or more entries (and re-running `update_search_term`
+    /// to rebuild `search_results`), put the cursor back on a sensible
+    /// neighbour at the same numeric row -- the entry that took the deleted
+    /// row's slot, or the last entry if the deleted row was at the end. The
+    /// caller passes the indices captured **before** the deletion so this
+    /// method can clamp them to the new list/search lengths.
+    pub fn restore_selection_after_delete(
+        &mut self,
+        was_searching: bool,
+        prev_search_idx: Option<usize>,
+        prev_top_idx: Option<usize>,
+    ) {
+        if was_searching {
+            let len = self.search_results.len();
+            self.selected_search_index = clamp_index_after_delete(prev_search_idx, len);
+        } else {
+            // Tab / pane subselectors point into a session that has just
+            // shifted in the list; clear them so the top-level index alone
+            // describes the new selection.
+            self.selected_index.1 = None;
+            self.selected_index.2 = None;
+            self.selected_index.0 =
+                clamp_index_after_delete(prev_top_idx, self.session_ui_infos.len());
+        }
+    }
     pub fn has_session(&self, session_name: &str) -> bool {
         self.session_ui_infos.iter().any(|s| s.name == session_name)
     }
@@ -347,6 +372,17 @@ impl SessionList {
             })
             .collect()
     }
+}
+
+/// Clamp a pre-delete index to a post-delete length. Returns the same
+/// numeric row when it still exists (so the cursor lands on whatever entry
+/// took the deleted row's slot), the last index when the deletion happened
+/// at the tail, or `None` when the list is now empty.
+pub fn clamp_index_after_delete(prev_index: Option<usize>, new_len: usize) -> Option<usize> {
+    if new_len == 0 {
+        return None;
+    }
+    Some(prev_index.unwrap_or(0).min(new_len - 1))
 }
 
 #[derive(Debug, Clone, Default)]
