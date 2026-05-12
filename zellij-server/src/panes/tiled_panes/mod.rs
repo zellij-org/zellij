@@ -1365,7 +1365,7 @@ impl TiledPanes {
         strategy.invert_on_boundaries = false;
         let successfully_resized_up =
             match self.resize_pane_with_id(strategy, pane_id, Some(resize_percent)) {
-                Ok(_) => true,
+                Ok(changed) => changed,
                 Err(_) => false,
             };
         if successfully_resized_up {
@@ -1395,7 +1395,7 @@ impl TiledPanes {
         strategy.invert_on_boundaries = false;
         let successfully_resized_up =
             match self.resize_pane_with_id(strategy, pane_id, Some(resize_percent)) {
-                Ok(_) => true,
+                Ok(changed) => changed,
                 Err(_) => false,
             };
         if successfully_resized_up {
@@ -1425,7 +1425,7 @@ impl TiledPanes {
         strategy.invert_on_boundaries = false;
         let successfully_resized_up =
             match self.resize_pane_with_id(strategy, pane_id, Some(resize_percent)) {
-                Ok(_) => true,
+                Ok(changed) => changed,
                 Err(_) => false,
             };
         if successfully_resized_up {
@@ -1455,7 +1455,7 @@ impl TiledPanes {
         strategy.invert_on_boundaries = false;
         let successfully_resized_up =
             match self.resize_pane_with_id(strategy, pane_id, Some(resize_percent)) {
-                Ok(_) => true,
+                Ok(changed) => changed,
                 Err(_) => false,
             };
         if successfully_resized_up {
@@ -1762,7 +1762,9 @@ impl TiledPanes {
                         )
                         .with_context(err_context)
                     {
-                        Ok(_) => {},
+                        Ok(changed) => {
+                            pane_size_changed = changed;
+                        },
                         Err(err) => match err.downcast_ref::<ZellijError>() {
                             Some(ZellijError::PaneSizeUnchanged) => Err::<(), _>(err).non_fatal(),
                             _ => {
