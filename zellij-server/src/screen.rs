@@ -7365,12 +7365,20 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::ForwardedReplyFromHost { token, reply_bytes } => {
                 screen.handle_forwarded_reply_from_host(token, reply_bytes)?;
+                // The handler's replay of `pending_pty_input` mutates the
+                // grid. Without a render scheduling here the clients
+                // keep displaying the pre-reply frame
+                screen.render(None)?;
             },
             ScreenInstruction::ResumePaneAfterForward {
                 pane_id,
                 reply_bytes,
             } => {
                 screen.resume_pane_after_forward(pane_id, reply_bytes)?;
+                // Same rationale as ForwardedReplyFromHost above — the
+                // resume's replay paints the grid, so we must schedule
+                // a render before yielding back to the screen loop.
+                screen.render(None)?;
             },
             ScreenInstruction::HostTerminalThemeChanged(mode) => {
                 screen.update_host_terminal_theme_mode(mode)?;
