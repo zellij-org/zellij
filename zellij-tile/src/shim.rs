@@ -18,13 +18,15 @@ use zellij_utils::plugin_api::plugin_command::{
     parse_layout_response, CreateTokenResponse, ListTokensResponse,
     ProtobufBreakPanesToNewTabResponse, ProtobufBreakPanesToTabWithIdResponse,
     ProtobufBreakPanesToTabWithIndexResponse, ProtobufCurrentSessionLastSavedTimeResponse,
+    ProtobufDeleteAllDeadSessionsResponse, ProtobufDeleteDeadSessionResponse,
     ProtobufDeleteLayoutResponse, ProtobufDumpLayoutResponse, ProtobufDumpSessionLayoutResponse,
     ProtobufEditLayoutResponse, ProtobufFocusOrCreateTabResponse,
     ProtobufGenerateRandomNameResponse, ProtobufGetFocusedPaneInfoResponse,
     ProtobufGetLayoutDirResponse, ProtobufGetPaneCwdResponse, ProtobufGetPaneInfoResponse,
     ProtobufGetPanePidResponse, ProtobufGetPaneRunningCommandResponse,
     ProtobufGetSessionEnvironmentVariablesResponse, ProtobufGetSessionListResponse,
-    ProtobufGetTabInfoResponse, ProtobufHideFloatingPanesResponse, ProtobufNewTabResponse,
+    ProtobufGetTabInfoResponse, ProtobufHideFloatingPanesResponse, ProtobufKillSessionsResponse,
+    ProtobufNewTabResponse,
     ProtobufNewTabsResponse, ProtobufOpenCommandPaneBackgroundResponse,
     ProtobufOpenCommandPaneFloatingNearPluginResponse, ProtobufOpenCommandPaneFloatingResponse,
     ProtobufOpenCommandPaneInPlaceOfPaneIdResponse, ProtobufOpenCommandPaneInPlaceOfPluginResponse,
@@ -1512,20 +1514,44 @@ pub fn switch_session_with_focus(
     unsafe { host_run_plugin_command() };
 }
 
-/// Permanently delete a resurrectable session with the given name
-pub fn delete_dead_session(name: &str) {
-    let plugin_command = PluginCommand::DeleteDeadSession(name.to_owned());
+/// Permanently delete a resurrectable session with the given name.
+///
+/// Returns `Ok(())` if the session's cache directory was removed; `Err(...)`
+/// if the underlying `remove_dir_all` failed (e.g. permissions, missing path).
+pub fn delete_dead_session(name: &str) -> Result<(), String> {
+    let plugin_command = PluginCommand::DeleteDeadSessionAndReply(name.to_owned());
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
+
+    let response_bytes = bytes_from_stdin()
+        .map_err(|e| format!("Failed to read DeleteDeadSession response: {}", e))?;
+    let protobuf_response = ProtobufDeleteDeadSessionResponse::decode(response_bytes.as_slice())
+        .map_err(|e| format!("Malformed DeleteDeadSession response: {}", e))?;
+    match protobuf_response.error {
+        Some(err) => Err(err),
+        None => Ok(()),
+    }
 }
 
-/// Permanently delete aall resurrectable sessions on this machine
-pub fn delete_all_dead_sessions() {
-    let plugin_command = PluginCommand::DeleteAllDeadSessions;
+/// Permanently delete all resurrectable sessions on this machine.
+///
+/// Bounded by a host-side wedge timeout (matching the kill-all budget) so a
+/// pathological filesystem cannot freeze the calling plugin.
+pub fn delete_all_dead_sessions() -> Result<(), String> {
+    let plugin_command = PluginCommand::DeleteAllDeadSessionsAndReply;
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
+
+    let response_bytes = bytes_from_stdin()
+        .map_err(|e| format!("Failed to read DeleteAllDeadSessions response: {}", e))?;
+    let protobuf_response = ProtobufDeleteAllDeadSessionsResponse::decode(response_bytes.as_slice())
+        .map_err(|e| format!("Malformed DeleteAllDeadSessions response: {}", e))?;
+    match protobuf_response.error {
+        Some(err) => Err(err),
+        None => Ok(()),
+    }
 }
 
 /// Rename the current session
@@ -1576,16 +1602,32 @@ pub fn disconnect_other_clients() {
     unsafe { host_run_plugin_command() };
 }
 
-/// Kill all Zellij sessions in the list
-pub fn kill_sessions<S: AsRef<str>>(session_names: &[S])
+/// Kill all Zellij sessions in the list.
+///
+/// Waits for each peer session to acknowledge the kill (over its own IPC
+/// socket -- the server-side handler reads back the `Exit` message the peer
+/// sends as part of its shutdown, or a stream-close if the peer dies first).
+/// Returns once every kill has been confirmed or one has failed. A wedged
+/// peer is bounded by a short server-side wedge timeout.
+pub fn kill_sessions<S: AsRef<str>>(session_names: &[S]) -> Result<(), String>
 where
     S: ToString,
 {
-    let plugin_command =
-        PluginCommand::KillSessions(session_names.into_iter().map(|s| s.to_string()).collect());
+    let plugin_command = PluginCommand::KillSessionsAndReply(
+        session_names.into_iter().map(|s| s.to_string()).collect(),
+    );
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
+
+    let response_bytes = bytes_from_stdin()
+        .map_err(|e| format!("Failed to read KillSessions response: {}", e))?;
+    let protobuf_response = ProtobufKillSessionsResponse::decode(response_bytes.as_slice())
+        .map_err(|e| format!("Malformed KillSessions response: {}", e))?;
+    match protobuf_response.error {
+        Some(err) => Err(err),
+        None => Ok(()),
+    }
 }
 
 /// List Windows volumes (drives and WSL distributions).

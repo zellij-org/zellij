@@ -204,6 +204,9 @@ enum CommandName {
   OpenPluginPaneFloating = 209;
   ListWindowsVolumes = 210;
   GetSessionList = 211;
+  KillSessionsAndReply = 212;
+  DeleteDeadSessionAndReply = 213;
+  DeleteAllDeadSessionsAndReply = 214;
 }
 
 message PluginCommand {
@@ -356,6 +359,8 @@ message PluginCommand {
     ClearPaneHighlightsPayload clear_pane_highlights_payload = 159;
     OpenPluginPaneFloatingPayload open_plugin_pane_floating_payload = 160;
     GetSessionListPayload get_session_list_payload = 161;
+    KillSessionsPayload kill_sessions_and_reply_payload = 162;
+    string delete_dead_session_and_reply_payload = 163;
   }
 }
 
@@ -1310,4 +1315,16 @@ message GetSessionListResponse {
     SessionListSnapshot snapshot = 1;
     string error = 2;
   }
+}
+
+message KillSessionsResponse {
+  optional string error = 1; // absent => success
+}
+
+message DeleteDeadSessionResponse {
+  optional string error = 1; // absent => success
+}
+
+message DeleteAllDeadSessionsResponse {
+  optional string error = 1; // absent => success
 }
