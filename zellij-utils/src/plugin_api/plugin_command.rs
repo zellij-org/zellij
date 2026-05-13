@@ -119,7 +119,9 @@ pub use super::generated_api::api::{
         ScrollToBottomInPaneIdPayload, ScrollToTopInPaneIdPayload, ScrollUpInPaneIdPayload,
         SessionListSnapshot as ProtobufSessionListSnapshot, SetFloatingPanePinnedPayload,
         SetPaneBorderlessPayload, SetPaneColorPayload, SetPaneRegexHighlightsPayload,
-        SetSelfMouseSelectionSupportPayload, SetTimeoutPayload, ShowCursorPayload,
+        SetSelfMouseSelectionSupportPayload,
+        SetSoftKeyboardPayload as ProtobufSetSoftKeyboardPayload, SetTimeoutPayload,
+        ShowCursorPayload,
         ShowFloatingPanesPayload as ProtobufShowFloatingPanesPayload,
         ShowFloatingPanesResponse as ProtobufShowFloatingPanesResponse, ShowPaneWithIdPayload,
         StackPanesPayload, SubscribePayload, SwitchSessionPayload, SwitchTabToIdPayload,
@@ -1447,6 +1449,12 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
             },
             Some(CommandName::DeleteAllDeadSessionsAndReply) => {
                 Ok(PluginCommand::DeleteAllDeadSessionsAndReply)
+            },
+            Some(CommandName::SetSoftKeyboard) => match protobuf_plugin_command.payload {
+                Some(Payload::SetSoftKeyboardPayload(payload)) => {
+                    Ok(PluginCommand::SetSoftKeyboard(payload.on))
+                },
+                _ => Err("Mismatched payload for SetSoftKeyboard"),
             },
             Some(CommandName::DumpSessionLayout) => match protobuf_plugin_command.payload {
                 Some(Payload::DumpSessionLayoutPayload(payload)) => {
@@ -3314,6 +3322,12 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
             PluginCommand::DeleteAllDeadSessionsAndReply => Ok(ProtobufPluginCommand {
                 name: CommandName::DeleteAllDeadSessionsAndReply as i32,
                 payload: None,
+            }),
+            PluginCommand::SetSoftKeyboard(on) => Ok(ProtobufPluginCommand {
+                name: CommandName::SetSoftKeyboard as i32,
+                payload: Some(Payload::SetSoftKeyboardPayload(
+                    ProtobufSetSoftKeyboardPayload { on },
+                )),
             }),
             PluginCommand::DumpSessionLayout { tab_index } => Ok(ProtobufPluginCommand {
                 name: CommandName::DumpSessionLayout as i32,

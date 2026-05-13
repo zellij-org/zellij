@@ -31,6 +31,11 @@ pub enum WebServerToWebClientControlMessage {
     Log { lines: Vec<String> },
     LogError { lines: Vec<String> },
     SwitchedSession { new_session_name: String },
+    /// Driven by the mobile plugin's ⌨ button. `on=true` removes the
+    /// `inputmode="none"` suppression and focuses the xterm.js textarea
+    /// so the soft keyboard slides in; `on=false` re-applies the
+    /// suppression and blurs.
+    SetSoftKeyboard { on: bool },
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

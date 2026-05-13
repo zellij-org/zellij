@@ -214,6 +214,10 @@ impl From<ServerToClientMsg> for ClientInstruction {
             // Subscribe-only messages — not handled by regular interactive clients
             ServerToClientMsg::PaneRenderUpdate { .. } => ClientInstruction::UnblockInputThread,
             ServerToClientMsg::SubscribedPaneClosed { .. } => ClientInstruction::UnblockInputThread,
+            // Web-client-only — terminal clients have no soft-keyboard concept,
+            // so swallow this here. The web-client path handles it in
+            // server_listener.rs by forwarding to the browser.
+            ServerToClientMsg::SetSoftKeyboard { .. } => ClientInstruction::UnblockInputThread,
         }
     }
 }
@@ -595,6 +599,11 @@ pub async fn run_remote_client_terminal_loop(
                             }
                             Ok(WebServerToWebClientControlMessage::SwitchedSession{ .. }) => {
                                 // no-op
+                            }
+                            Ok(WebServerToWebClientControlMessage::SetSoftKeyboard{ .. }) => {
+                                // Web-client-only affordance — a CLI
+                                // remote-attach has no soft keyboard
+                                // to show or hide.
                             }
                             Err(e) => {
                                 log::error!("Failed to deserialize control message: {}", e);

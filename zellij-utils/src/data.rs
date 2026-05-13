@@ -3615,6 +3615,9 @@ pub enum PluginCommand {
     KillSessionsAndReply(Vec<String>), // one or more session names; sends a response back
     DeleteDeadSessionAndReply(String), // session name; sends a response back
     DeleteAllDeadSessionsAndReply,     // no payload; sends a response back
+    /// Mobile-only: show or hide the soft keyboard on the calling
+    /// client's browser. No-op on non-web clients. Fire-and-forget.
+    SetSoftKeyboard(bool),
 }
 
 // Response type for plugin API methods that open a pane in a new tab

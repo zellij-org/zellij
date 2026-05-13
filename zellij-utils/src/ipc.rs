@@ -201,6 +201,13 @@ pub enum ServerToClientMsg {
         output: String,
     },
     QueryTerminalSize,
+    /// Ask the client (specifically: web clients) to show or hide the
+    /// soft keyboard. Dispatched by the mobile plugin when the user
+    /// taps its ⌨ button. Non-web clients ignore this message — the
+    /// soft-keyboard concept only exists in browser UIs.
+    SetSoftKeyboard {
+        on: bool,
+    },
     StartWebServer,
     RenamedSession {
         name: String,

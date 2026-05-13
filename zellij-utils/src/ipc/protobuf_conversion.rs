@@ -11,7 +11,8 @@ use crate::{
         InputMode as ProtoInputMode, KeyMsg, KillSessionMsg, LayoutMetadata as ProtoLayoutMetadata,
         LogErrorMsg, LogMsg, PaneMetadata as ProtoPaneMetadata, PaneRenderUpdateMsg,
         QueryTerminalSizeMsg, RenamedSessionMsg, RenderMsg,
-        ServerToClientMsg as ProtoServerToClientMsg, StartWebServerMsg, SubscribeToPaneRendersMsg,
+        ServerToClientMsg as ProtoServerToClientMsg, SetSoftKeyboardMsg, StartWebServerMsg,
+        SubscribeToPaneRendersMsg,
         SubscribedPaneClosedMsg, SwitchSessionMsg, TabMetadata as ProtoTabMetadata,
         TerminalPixelDimensionsMsg, TerminalResizeMsg, UnblockCliPipeInputMsg,
         UnblockInputThreadMsg, WebServerStartedMsg,
@@ -372,6 +373,9 @@ impl From<ServerToClientMsg> for ProtoServerToClientMsg {
                     query_bytes,
                 })
             },
+            ServerToClientMsg::SetSoftKeyboard { on } => {
+                server_to_client_msg::Message::SetSoftKeyboard(SetSoftKeyboardMsg { on })
+            },
         };
 
         ProtoServerToClientMsg {
@@ -483,6 +487,9 @@ impl TryFrom<ProtoServerToClientMsg> for ServerToClientMsg {
                     token: msg.token,
                     query_bytes: msg.query_bytes,
                 })
+            },
+            Some(server_to_client_msg::Message::SetSoftKeyboard(msg)) => {
+                Ok(ServerToClientMsg::SetSoftKeyboard { on: msg.on })
             },
             None => Err(anyhow!("Empty ServerToClientMsg message")),
         }

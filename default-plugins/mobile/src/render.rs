@@ -319,10 +319,15 @@ fn compute_cursor_position(
 ///   on the standard Zellij themes is the lighter-gray "selection"
 ///   shade — distinct from the embedded pane content below.
 ///
-/// The keyboard glyph (`⌨`) toggles `state.typing_mode`. When armed
-/// it is drawn in the success palette colour (typically green) so the
-/// user can tell at a glance whether soft-keyboard input flows
-/// through to the embedded pane. The hamburger glyph (`☰`) opens the
+/// The keyboard glyph (`⌨`) toggles `state.soft_keyboard_visible`
+/// and drives the browser's soft-keyboard popup via the
+/// `set_soft_keyboard` shim. When the keyboard is up it is drawn in
+/// the success palette colour (typically green) so the user can tell
+/// at a glance whether the on-screen keyboard is currently visible
+/// (and therefore eating the bottom half of their viewport).
+/// `typing_mode` itself is armed permanently — keys always reach the
+/// selected pane the moment the keyboard appears. The hamburger glyph
+/// (`☰`) opens the
 /// panes selector when collapsed and collapses back when a selector
 /// is open — a single right-anchored "menu" affordance.
 fn render_top_bar(state: &mut State, row: usize, cols: usize) {
@@ -476,7 +481,7 @@ fn render_top_bar_collapsed(state: &mut State, row: usize, cols: usize) {
         .color_range(1, tab_chars_s..tab_chars_e)
         .color_range(2, pane_chars_s..pane_chars_e)
         .color_range(3, hamburger_chars_s..hamburger_chars_e);
-    text = if state.typing_mode {
+    text = if state.soft_keyboard_visible {
         text.success_color_range(typing_chars_s..typing_chars_e)
     } else {
         text.color_range(3, typing_chars_s..typing_chars_e)

@@ -155,12 +155,20 @@ pub struct State {
     /// All sessions the host knows about. Updated on every
     /// `SessionUpdate`. Rendered when the session selector is open.
     pub sessions: Vec<SessionInfo>,
-    /// Whether the keyboard icon in the top bar is armed: armed means
-    /// keystrokes flow through to the selected pane's pty; unarmed
-    /// means the plugin swallows them. Mirrors the "typing mode"
-    /// affordance from the original action bar so soft keyboards do
-    /// not feed characters into a pane while the user is browsing.
+    /// Whether the plugin forwards received keystrokes to the
+    /// selected pane's pty. Now permanently set to `true` in `load()`
+    /// — soft keyboard input always reaches the embedded program by
+    /// default. The field is kept (rather than removed) so future
+    /// affordances can re-introduce a swallow-keys mode if needed.
     pub typing_mode: bool,
+    /// Whether the soft keyboard is currently up on the calling web
+    /// client's browser. Driven from the plugin side: tapping the ⌨
+    /// glyph in the top bar flips this and emits a `set_soft_keyboard`
+    /// shim call so the browser shows or hides its on-screen keyboard
+    /// to match. Always `false` on terminal clients (the IPC message
+    /// is swallowed there) but the field is still tracked so the
+    /// top-bar indicator can render consistently across clients.
+    pub soft_keyboard_visible: bool,
     /// Click regions produced by the most recent render. The renderer
     /// rebuilds this on every `render` call; mouse events look up the
     /// hit region by (row, col).

@@ -493,16 +493,21 @@ function isCoarsePointerDevice() {
 }
 
 /**
- * Flip the soft-keyboard state on touch devices. Called from the
- * 2-finger tap gesture handler. On desktops the function is a no-op
- * because the suppression was never installed.
+ * Set the soft-keyboard visibility explicitly on touch devices. Called
+ * from two places: the 2-finger tap gesture handler (via
+ * `toggleSoftKeyboard`) and the control-channel `SetSoftKeyboard`
+ * message dispatched by the mobile plugin when the user taps its ⌨
+ * button. On desktops this is a no-op because the suppression was
+ * never installed.
  *
  * Mechanics: removing `inputmode="none"` lets the browser open the
  * soft keyboard the next time the textarea has focus, so we follow
  * up with `focus()`. The reverse path applies `inputmode="none"` and
- * `blur()` so the keyboard slides away.
+ * `blur()` so the keyboard slides away. Idempotent — if the requested
+ * state already matches the current state, the call returns without
+ * touching the DOM (avoiding a no-op `focus()`/`blur()` flicker).
  */
-function toggleSoftKeyboard(term) {
+export function setSoftKeyboard(term, on) {
     if (!isCoarsePointerDevice()) {
         return;
     }
@@ -510,15 +515,25 @@ function toggleSoftKeyboard(term) {
     if (!ta) {
         return;
     }
-    const want_on = !window.__zjSoftKbdEnabled;
-    window.__zjSoftKbdEnabled = want_on;
-    if (want_on) {
+    if (window.__zjSoftKbdEnabled === on) {
+        return;
+    }
+    window.__zjSoftKbdEnabled = on;
+    if (on) {
         ta.removeAttribute("inputmode");
         ta.focus();
     } else {
         ta.setAttribute("inputmode", "none");
         ta.blur();
     }
+}
+
+/**
+ * Flip the soft-keyboard state on touch devices. Called from the
+ * 2-finger tap gesture handler. Thin wrapper around `setSoftKeyboard`.
+ */
+function toggleSoftKeyboard(term) {
+    setSoftKeyboard(term, !window.__zjSoftKbdEnabled);
 }
 
 /**

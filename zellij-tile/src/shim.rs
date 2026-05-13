@@ -1649,6 +1649,22 @@ pub fn scan_host_folder<S: AsRef<Path>>(folder_to_scan: &S) {
     unsafe { host_run_plugin_command() };
 }
 
+/// Show (`on = true`) or hide (`on = false`) the soft keyboard on the
+/// calling client's browser. Intended for the mobile UI: when the user
+/// taps the ⌨ button the plugin calls this so the on-screen keyboard
+/// slides in or out without the user having to do the 2-finger gesture
+/// manually.
+///
+/// On non-web clients (regular terminal attaches) this is a harmless
+/// no-op — the server-side message is swallowed before it can do any
+/// damage. Fire-and-forget; no return value, no error.
+pub fn set_soft_keyboard(on: bool) {
+    let plugin_command = PluginCommand::SetSoftKeyboard(on);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 /// Start watching the host folder for filesystem changes (Note: somewhat unstable at the time
 /// being)
 pub fn watch_filesystem() {

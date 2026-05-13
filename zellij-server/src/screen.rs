@@ -893,6 +893,14 @@ pub enum ScreenInstruction {
         threshold_cols: u16,
         threshold_rows: u16,
     },
+    /// Mobile plugin → server → web client: ask the calling client's
+    /// browser to show or hide its soft keyboard. Forwards a
+    /// `ServerToClientMsg::SetSoftKeyboard` via `os_input.send_to_client`.
+    /// No-op for non-web clients (the message is swallowed there).
+    SetSoftKeyboard {
+        client_id: ClientId,
+        on: bool,
+    },
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -1254,6 +1262,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::ExitMobileMode(..) => ScreenContext::ExitMobileMode,
             ScreenInstruction::ToggleMobileMode(..) => ScreenContext::ToggleMobileMode,
             ScreenInstruction::ReevaluateMobileMode { .. } => ScreenContext::ReevaluateMobileMode,
+            ScreenInstruction::SetSoftKeyboard { .. } => ScreenContext::SetSoftKeyboard,
         }
     }
 }
@@ -10370,6 +10379,16 @@ pub(crate) fn screen_thread_main(
                     // `ToggleMobileMode`) are preserved.
                     screen.exit_mobile_mode(client_id)?;
                     screen.render(None)?;
+                }
+            },
+            ScreenInstruction::SetSoftKeyboard { client_id, on } => {
+                // Forward to the calling client. For web clients the
+                // server_listener relays this to the browser as a
+                // control-channel `SetSoftKeyboard` message; non-web
+                // clients ignore it.
+                if let Some(os_input) = &screen.bus.os_input {
+                    let _ = os_input
+                        .send_to_client(client_id, ServerToClientMsg::SetSoftKeyboard { on });
                 }
             },
         }

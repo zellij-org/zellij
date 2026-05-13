@@ -3148,7 +3148,7 @@ impl HostTerminalThemeIndication {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ServerToClientMsg {
-    #[prost(oneof="server_to_client_msg::Message", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16")]
+    #[prost(oneof="server_to_client_msg::Message", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17")]
     pub message: ::core::option::Option<server_to_client_msg::Message>,
 }
 /// Nested message and enum types in `ServerToClientMsg`.
@@ -3188,6 +3188,8 @@ pub mod server_to_client_msg {
         SubscribedPaneClosed(super::SubscribedPaneClosedMsg),
         #[prost(message, tag="16")]
         ForwardQueryToHost(super::ForwardQueryToHostMsg),
+        #[prost(message, tag="17")]
+        SetSoftKeyboard(super::SetSoftKeyboardMsg),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -3294,4 +3296,10 @@ pub struct ForwardQueryToHostMsg {
     pub token: u32,
     #[prost(bytes="vec", tag="2")]
     pub query_bytes: ::prost::alloc::vec::Vec<u8>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SetSoftKeyboardMsg {
+    #[prost(bool, tag="1")]
+    pub on: bool,
 }

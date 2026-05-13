@@ -447,6 +447,7 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::WatchFilesystem => watch_filesystem(env),
                     PluginCommand::ListWindowsVolumes => list_windows_volumes(env),
                     PluginCommand::GetSessionList => get_session_list(env),
+                    PluginCommand::SetSoftKeyboard(on) => set_soft_keyboard(env, on),
                     PluginCommand::DumpSessionLayout { tab_index } => {
                         dump_session_layout(env, tab_index)
                     },
@@ -3901,6 +3902,22 @@ fn list_windows_volumes(_env: &PluginEnv) {
     log::error!("ListWindowsVolumes is only supported on Windows");
 }
 
+/// Show or hide the soft keyboard on the calling client's browser.
+/// Fire-and-forget: routes through the screen thread so that the
+/// existing `bus.os_input.send_to_client` plumbing handles dispatch.
+/// On non-web clients the resulting `ServerToClientMsg::SetSoftKeyboard`
+/// is swallowed in `ClientInstruction::from`, so this is harmless even
+/// when the calling client is a terminal.
+fn set_soft_keyboard(env: &PluginEnv, on: bool) {
+    env.senders
+        .send_to_screen(ScreenInstruction::SetSoftKeyboard {
+            client_id: env.client_id,
+            on,
+        })
+        .with_context(|| format!("failed to dispatch SetSoftKeyboard for plugin {}", env.plugin_id))
+        .non_fatal();
+}
+
 #[cfg(windows)]
 fn list_windows_volumes(env: &PluginEnv) {
     let send_plugin_instructions = env.senders.to_plugin.clone();
@@ -5428,7 +5445,8 @@ fn check_command_permission(
         | PluginCommand::ShowFloatingPanes { .. }
         | PluginCommand::HideFloatingPanes { .. }
         | PluginCommand::SetPaneRegexHighlights(..)
-        | PluginCommand::ClearPaneHighlights(..) => PermissionType::ChangeApplicationState,
+        | PluginCommand::ClearPaneHighlights(..)
+        | PluginCommand::SetSoftKeyboard(..) => PermissionType::ChangeApplicationState,
         PluginCommand::UnblockCliPipeInput(..)
         | PluginCommand::BlockCliPipeInput(..)
         | PluginCommand::CliPipeOutput(..) => PermissionType::ReadCliPipes,

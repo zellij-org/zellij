@@ -37,6 +37,13 @@ impl ZellijPlugin for State {
         let ids = get_plugin_ids();
         self.own_plugin_pane_id = Some(PaneId::Plugin(ids.plugin_id));
 
+        // Arm typing_mode by default so that the moment the user
+        // brings up the soft keyboard (by tapping ⌨), characters flow
+        // through to the selected pane without an extra step. The
+        // browser-side soft keyboard stays hidden until the user asks
+        // for it — the two concerns are deliberately decoupled.
+        self.typing_mode = true;
+
         // Bottom-bar shortcuts are populated here (rather than via
         // `Default`) so future entries can carry runtime-derived
         // labels (e.g. mode-aware strings) without forcing
@@ -453,7 +460,13 @@ fn dispatch_click(state: &mut State, action: ClickAction) -> bool {
             true
         },
         ClickAction::ToggleType => {
-            state.typing_mode = !state.typing_mode;
+            // Flip the soft-keyboard visibility on the calling
+            // client's browser. `typing_mode` (the in-plugin "keys
+            // flow through" flag) is left armed at all times now —
+            // the user wanted to type as soon as the keyboard appears
+            // without an extra step.
+            state.soft_keyboard_visible = !state.soft_keyboard_visible;
+            set_soft_keyboard(state.soft_keyboard_visible);
             true
         },
         ClickAction::BottomBarShortcut(idx) => {

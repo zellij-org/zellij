@@ -207,6 +207,7 @@ enum CommandName {
   KillSessionsAndReply = 212;
   DeleteDeadSessionAndReply = 213;
   DeleteAllDeadSessionsAndReply = 214;
+  SetSoftKeyboard = 215;
 }
 
 message PluginCommand {
@@ -361,6 +362,7 @@ message PluginCommand {
     GetSessionListPayload get_session_list_payload = 161;
     KillSessionsPayload kill_sessions_and_reply_payload = 162;
     string delete_dead_session_and_reply_payload = 163;
+    SetSoftKeyboardPayload set_soft_keyboard_payload = 164;
   }
 }
 
@@ -1327,4 +1329,8 @@ message DeleteDeadSessionResponse {
 
 message DeleteAllDeadSessionsResponse {
   optional string error = 1; // absent => success
+}
+
+message SetSoftKeyboardPayload {
+  bool on = 1;
 }
