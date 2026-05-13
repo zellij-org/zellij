@@ -399,6 +399,67 @@ fn can_unbind_multiple_keys_globally() {
 }
 
 #[test]
+fn can_unbind_multiple_keys_globally_multiple_lines() {
+    let default_config_contents = r#"
+        keybinds {
+            normal {
+                bind "Ctrl g" { SwitchToMode "Locked"; }
+            }
+            pane {
+                bind "Ctrl g" { SwitchToMode "Locked"; }
+                bind "z" { TogglePaneFrames; SwitchToMode "Normal"; }
+                bind "r" { TogglePaneFrames; }
+            }
+        }
+    "#;
+    let config_contents = r#"
+        keybinds {
+            unbind "Ctrl g"
+            unbind "z"
+            pane {
+                bind "t" { SwitchToMode "Tab"; }
+            }
+        }
+    "#;
+    let default_config = Config::from_kdl(default_config_contents, None).unwrap();
+    let config = Config::from_kdl(config_contents, Some(default_config)).unwrap();
+    let ctrl_g_normal_mode_action = config
+        .keybinds
+        .get_actions_for_key_in_mode(&InputMode::Normal, &Key::Ctrl('g'));
+    let ctrl_g_pane_mode_action = config
+        .keybinds
+        .get_actions_for_key_in_mode(&InputMode::Pane, &Key::Ctrl('g'));
+    let r_in_pane_mode = config
+        .keybinds
+        .get_actions_for_key_in_mode(&InputMode::Pane, &Key::Char('r'));
+    let z_in_pane_mode = config
+        .keybinds
+        .get_actions_for_key_in_mode(&InputMode::Pane, &Key::Char('z'));
+    let t_in_pane_mode = config
+        .keybinds
+        .get_actions_for_key_in_mode(&InputMode::Pane, &Key::Char('t'));
+    assert_eq!(
+        ctrl_g_normal_mode_action, None,
+        "First keybind uncleared in one mode"
+    );
+    assert_eq!(
+        ctrl_g_pane_mode_action, None,
+        "First keybind uncleared in another mode"
+    );
+    assert_eq!(z_in_pane_mode, None, "Second keybind cleared as well");
+    assert_eq!(
+        r_in_pane_mode,
+        Some(&vec![Action::TogglePaneFrames]),
+        "Unrelated keybinding in default config still bound"
+    );
+    assert_eq!(
+        t_in_pane_mode,
+        Some(&vec![Action::SwitchToMode(InputMode::Tab)]),
+        "Keybinding from custom config still bound"
+    );
+}
+
+#[test]
 fn can_unbind_multiple_keys_per_single_mode() {
     let default_config_contents = r#"
         keybinds {
@@ -464,6 +525,71 @@ fn can_unbind_multiple_keys_per_single_mode() {
         Some(&vec![Action::SwitchToMode {
             input_mode: InputMode::Tab
         }]),
+        "Keybinding from custom config still bound"
+    );
+}
+
+#[test]
+fn can_unbind_multiple_keys_per_single_mode_multiple_lines() {
+    let default_config_contents = r#"
+        keybinds {
+            normal {
+                bind "Ctrl g" { SwitchToMode "Locked"; }
+            }
+            pane {
+                bind "Ctrl g" { SwitchToMode "Locked"; }
+                bind "z" { TogglePaneFrames; SwitchToMode "Normal"; }
+                bind "r" { TogglePaneFrames; }
+            }
+        }
+    "#;
+    let config_contents = r#"
+        keybinds {
+            pane {
+                unbind "Ctrl g"
+                unbind "z"
+                bind "t" { SwitchToMode "Tab"; }
+            }
+        }
+    "#;
+    let default_config = Config::from_kdl(default_config_contents, None).unwrap();
+    let config = Config::from_kdl(config_contents, Some(default_config)).unwrap();
+    let ctrl_g_normal_mode_action = config
+        .keybinds
+        .get_actions_for_key_in_mode(&InputMode::Normal, &Key::Ctrl('g'));
+    let ctrl_g_pane_mode_action = config
+        .keybinds
+        .get_actions_for_key_in_mode(&InputMode::Pane, &Key::Ctrl('g'));
+    let r_in_pane_mode = config
+        .keybinds
+        .get_actions_for_key_in_mode(&InputMode::Pane, &Key::Char('r'));
+    let z_in_pane_mode = config
+        .keybinds
+        .get_actions_for_key_in_mode(&InputMode::Pane, &Key::Char('z'));
+    let t_in_pane_mode = config
+        .keybinds
+        .get_actions_for_key_in_mode(&InputMode::Pane, &Key::Char('t'));
+    assert_eq!(
+        ctrl_g_normal_mode_action,
+        Some(&vec![Action::SwitchToMode(InputMode::Locked)]),
+        "Keybind in different mode not cleared"
+    );
+    assert_eq!(
+        ctrl_g_pane_mode_action, None,
+        "First Keybind cleared in its mode"
+    );
+    assert_eq!(
+        z_in_pane_mode, None,
+        "Second keybind cleared in its mode as well"
+    );
+    assert_eq!(
+        r_in_pane_mode,
+        Some(&vec![Action::TogglePaneFrames]),
+        "Unrelated keybinding in default config still bound"
+    );
+    assert_eq!(
+        t_in_pane_mode,
+        Some(&vec![Action::SwitchToMode(InputMode::Tab)]),
         "Keybinding from custom config still bound"
     );
 }
