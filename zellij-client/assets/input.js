@@ -41,6 +41,11 @@ export function setupInputHandlers(term, sendFunction) {
     // attached Bluetooth keyboard) still flows through normally.
     suppressSoftKeyboardOnTouch(term);
 
+    // Note: soft-keyboard text entry on mobile is handled by the
+    // mobile plugin's on-screen keyboard (see `mobile_keyboard.md`),
+    // which delivers each keystroke as an SGR mouse click through
+    // the touch handlers below. No JS-side text forwarding is needed.
+
     // Custom key event handler
     term.attachCustomKeyEventHandler((ev) => {
         if (ev.type === "keydown") {

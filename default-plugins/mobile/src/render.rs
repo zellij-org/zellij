@@ -14,7 +14,7 @@
 
 use crate::unix_now;
 use crate::state::{
-    pane_id_of, BottomBarAction, ClickAction, ClickRegion, LastEmittedCursor, Selector, State,
+    pane_id_of, ClickAction, ClickRegion, LastEmittedCursor, Selector, State,
     ViewportRegion,
 };
 use unicode_width::UnicodeWidthStr;
@@ -73,13 +73,12 @@ pub fn render(state: &mut State, rows: usize, cols: usize) {
         return;
     }
 
-    // Top bar always sits at row 0; the bottom bar sits at the very
-    // last row; the body fills the rows in between. The bottom bar
-    // mirrors the top bar's `.selected()` background, giving the
-    // chrome a visually-bracketed look around the embedded viewport.
+    // Top bar always sits at row 0; the body fills the remaining
+    // rows. The bottom-bar shortcut row has been retired; the
+    // forthcoming plugin keyboard will reserve its own rows at the
+    // bottom when visible (see `mobile_keyboard.md`).
     let body_top = 1;
-    let bottom_bar_row = rows.saturating_sub(1);
-    let body_bottom = bottom_bar_row.max(body_top);
+    let body_bottom = rows;
     let viewport_height = body_bottom.saturating_sub(body_top);
 
     // Cursor mapping only matters when the embedded viewport is
@@ -116,152 +115,6 @@ pub fn render(state: &mut State, rows: usize, cols: usize) {
             },
             Some(Selector::Tabs) => render_tabs_menu(state, body_top, body_bottom, cols),
             Some(Selector::Panes) => render_panes_menu(state, body_top, body_bottom, cols),
-        }
-    }
-
-    // Paint the bottom bar last: any over-eager autowrap from the
-    // viewport emit could otherwise scroll the chrome off-screen.
-    // The bottom bar shares the top bar's selected-row background so
-    // the user perceives a unified chrome envelope.
-    if bottom_bar_row > 0 && bottom_bar_row >= body_top {
-        render_bottom_bar(state, bottom_bar_row, cols);
-    }
-}
-
-/// Bottom bar: `<labels>` centered horizontally, pipe-separated.
-/// Each shortcut label is a click region that fires
-/// `BottomBarShortcut(idx)`. The label colour is emphasis 3 at rest
-/// and emphasis 2 for `BOTTOM_BAR_FEEDBACK_MS` after a tap (driven by
-/// `BottomBarShortcut.pressed_at`) or for as long as a sticky
-/// modifier is held. The bar is rendered *without* `.selected()` so
-/// it inverts visually against the top bar — the top bar fills the
-/// row with the selected-row background; the bottom bar uses the
-/// pane's default background and lets the emphasis-coloured glyphs
-/// carry the contrast.
-fn render_bottom_bar(state: &mut State, row: usize, cols: usize) {
-    if cols == 0 {
-        return;
-    }
-
-    let separator = " | ";
-
-    // Snapshot the per-shortcut visual flags so we can build the
-    // styled `Text` without holding a borrow across
-    // `state.click_regions.push`. A shortcut is painted in the
-    // "active" colour (index 2) when either:
-    //   * its `pressed_at` is set (transient 400 ms tap flash for
-    //     non-modifier shortcuts), OR
-    //   * it is a `ToggleCtrl`/`ToggleAlt` whose held flag is on
-    //     (persistent indicator until the modifier is consumed).
-    // Modifier toggles deliberately do not stamp `pressed_at` (see
-    // `dispatch_click`), so the two signals never overlap on the
-    // same shortcut.
-    let active_flags: Vec<bool> = state
-        .bottom_bar_shortcuts
-        .iter()
-        .map(|s| {
-            if s.pressed_at.is_some() {
-                return true;
-            }
-            match s.action {
-                BottomBarAction::ToggleCtrl => state.ctrl_held,
-                BottomBarAction::ToggleAlt => state.alt_held,
-                BottomBarAction::SendKey(_) => false,
-            }
-        })
-        .collect();
-    let labels: Vec<String> = state
-        .bottom_bar_shortcuts
-        .iter()
-        .map(|s| s.label.clone())
-        .collect();
-
-    // Compute the natural width of the labels + separators block so
-    // we can centre it horizontally within `cols`. If the natural
-    // width already exceeds `cols`, leading_pad collapses to zero
-    // and the right edge is best-effort clipped by the host.
-    let separator_w = UnicodeWidthStr::width(separator);
-    let mut natural_cells: usize = 0;
-    for (i, label) in labels.iter().enumerate() {
-        if i > 0 {
-            natural_cells += separator_w;
-        }
-        natural_cells += UnicodeWidthStr::width(label.as_str());
-    }
-    let leading_pad = cols.saturating_sub(natural_cells) / 2;
-
-    let mut bar = String::with_capacity(cols + 16);
-    let mut chars: usize = 0;
-    let mut cells: usize = 0;
-
-    // Leading pad centres the labels block in the available width.
-    for _ in 0..leading_pad {
-        bar.push(' ');
-    }
-    chars += leading_pad;
-    cells += leading_pad;
-
-    // (idx, char_start..char_end, cell_start..cell_end)
-    let mut ranges: Vec<(usize, usize, usize, usize, usize)> = Vec::with_capacity(labels.len());
-
-    for (i, label) in labels.iter().enumerate() {
-        if i > 0 {
-            append_segment(&mut bar, &mut chars, &mut cells, separator);
-        }
-        let (cs, ce, ms, me) = append_segment(&mut bar, &mut chars, &mut cells, label);
-        ranges.push((i, cs, ce, ms, me));
-    }
-
-    // Trailing pad fills the row to `cols`. Even though the bar is
-    // unselected and so the pad cells render as default background,
-    // we still emit them so the host's text renderer paints the
-    // entire row in one call (and clears any leftover SGR runs from
-    // the previous frame's chrome).
-    if cells < cols {
-        let pad = cols - cells;
-        for _ in 0..pad {
-            bar.push(' ');
-        }
-        chars += pad;
-        cells += pad;
-    }
-    let _ = (chars, cells);
-
-    let mut text = Text::new(&bar);
-    for (idx, cs, ce, _, _) in &ranges {
-        let active = active_flags.get(*idx).copied().unwrap_or(false);
-        let color_index = if active { 2 } else { 3 };
-        text = text.color_range(color_index, *cs..*ce);
-    }
-    print_text_with_coordinates(text, 0, row, Some(cols), None);
-
-    // Tile the entire row by partitioning at the midpoints between
-    // adjacent label centers. Every cell in [0, cols) maps to exactly
-    // one shortcut, so taps on separator gaps or trailing/leading pad
-    // route to the nearest button — no dead zones.
-    let n = ranges.len();
-    if n > 0 {
-        let centers: Vec<usize> = ranges
-            .iter()
-            .map(|(_, _, _, ms, me)| (ms + me) / 2)
-            .collect();
-        for (slot, (idx, _, _, _, _)) in ranges.iter().enumerate() {
-            let col_start = if slot == 0 {
-                0
-            } else {
-                (centers[slot - 1] + centers[slot]) / 2
-            };
-            let col_end = if slot + 1 == n {
-                cols
-            } else {
-                (centers[slot] + centers[slot + 1]) / 2
-            };
-            state.click_regions.push(ClickRegion {
-                row,
-                col_start,
-                col_end,
-                action: ClickAction::BottomBarShortcut(*idx),
-            });
         }
     }
 }
@@ -319,17 +172,14 @@ fn compute_cursor_position(
 ///   on the standard Zellij themes is the lighter-gray "selection"
 ///   shade — distinct from the embedded pane content below.
 ///
-/// The keyboard glyph (`⌨`) toggles `state.soft_keyboard_visible`
-/// and drives the browser's soft-keyboard popup via the
-/// `set_soft_keyboard` shim. When the keyboard is up it is drawn in
-/// the success palette colour (typically green) so the user can tell
-/// at a glance whether the on-screen keyboard is currently visible
-/// (and therefore eating the bottom half of their viewport).
-/// `typing_mode` itself is armed permanently — keys always reach the
-/// selected pane the moment the keyboard appears. The hamburger glyph
-/// (`☰`) opens the
-/// panes selector when collapsed and collapses back when a selector
-/// is open — a single right-anchored "menu" affordance.
+/// The keyboard glyph (`⌨`) toggles `state.keyboard_visible` and
+/// asks the browser to suppress the OS soft keyboard while the
+/// plugin keyboard is up. When the keyboard is visible the glyph is
+/// drawn in the success palette colour (typically green) so the
+/// user can tell at a glance which state they are in. The hamburger
+/// glyph (`☰`) opens the panes selector when collapsed and
+/// collapses back when a selector is open — a single right-anchored
+/// "menu" affordance.
 fn render_top_bar(state: &mut State, row: usize, cols: usize) {
     if cols == 0 {
         return;
@@ -481,7 +331,7 @@ fn render_top_bar_collapsed(state: &mut State, row: usize, cols: usize) {
         .color_range(1, tab_chars_s..tab_chars_e)
         .color_range(2, pane_chars_s..pane_chars_e)
         .color_range(3, hamburger_chars_s..hamburger_chars_e);
-    text = if state.soft_keyboard_visible {
+    text = if state.keyboard_visible {
         text.success_color_range(typing_chars_s..typing_chars_e)
     } else {
         text.color_range(3, typing_chars_s..typing_chars_e)
@@ -528,7 +378,7 @@ fn render_top_bar_collapsed(state: &mut State, row: usize, cols: usize) {
         row,
         col_start: mid_pane_typing,
         col_end: mid_typing_hamburger,
-        action: ClickAction::ToggleType,
+        action: ClickAction::ToggleKeyboard,
     });
     state.click_regions.push(ClickRegion {
         row,

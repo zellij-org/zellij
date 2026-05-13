@@ -3,7 +3,6 @@
 //! map produced by the renderer for mouse-event dispatch.
 
 use std::collections::HashMap;
-use std::time::Instant;
 use zellij_tile::prelude::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -50,46 +49,13 @@ pub enum ClickAction {
         tab_position: usize,
         pane_id: PaneId,
     },
-    ToggleType,
-    /// Tap on a shortcut in the bottom bar. The usize indexes into
-    /// `state.bottom_bar_shortcuts`. The handler reads the shortcut's
-    /// `action` field, dispatches it, and stamps `pressed_at` so the
-    /// renderer can paint the brief 400 ms visual feedback.
-    BottomBarShortcut(usize),
-}
-
-/// What a bottom-bar shortcut does when tapped. Each variant maps to
-/// a concrete write/dispatch in `dispatch_click`. Adding a new
-/// shortcut: extend this enum and the dispatch arm; the rendering and
-/// click-region plumbing is data-driven and needs no other change.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum BottomBarAction {
-    /// Send a bare key (Esc, Tab, arrows, plain `-`, etc.) to the
-    /// pane currently shown in the embedded viewport. Any sticky
-    /// modifiers that are held (`ctrl_held` / `alt_held`) are folded
-    /// in before serialization and then cleared, mimicking the
-    /// "press-and-release" behaviour of a hardware keyboard.
-    SendKey(BareKey),
-    /// Sticky-modifier toggle for Ctrl. Tapping this once arms the
-    /// modifier; the next `SendKey` (from this bar or from a typed
-    /// soft-keyboard event in typing mode) consumes and clears it.
-    /// Tapping again disarms without sending anything.
-    ToggleCtrl,
-    /// Sticky-modifier toggle for Alt. Same semantics as `ToggleCtrl`.
-    ToggleAlt,
-}
-
-/// One entry in the bottom bar. The renderer paints the label colour
-/// at index 3 normally, switching to index 2 for the brief window
-/// after the user taps it (`pressed_at = Some(_)` and elapsed < 400 ms).
-#[derive(Debug, Clone)]
-pub struct BottomBarShortcut {
-    pub label: String,
-    pub action: BottomBarAction,
-    /// When the shortcut was most recently tapped. Cleared by the
-    /// `Event::Timer` sweep in `update` after the feedback window has
-    /// elapsed. `None` outside the feedback window.
-    pub pressed_at: Option<Instant>,
+    /// Tap on the keyboard glyph in the top bar. Toggles the plugin
+    /// keyboard's visibility (`State::keyboard_visible`) and emits
+    /// `set_soft_keyboard(false)` to suppress the OS soft keyboard
+    /// whenever the plugin keyboard is showing. (The plugin keyboard
+    /// itself is the subject of a separate implementation effort; for
+    /// now the action only flips the flag.)
+    ToggleKeyboard,
 }
 
 #[derive(Debug, Clone)]
@@ -155,20 +121,14 @@ pub struct State {
     /// All sessions the host knows about. Updated on every
     /// `SessionUpdate`. Rendered when the session selector is open.
     pub sessions: Vec<SessionInfo>,
-    /// Whether the plugin forwards received keystrokes to the
-    /// selected pane's pty. Now permanently set to `true` in `load()`
-    /// — soft keyboard input always reaches the embedded program by
-    /// default. The field is kept (rather than removed) so future
-    /// affordances can re-introduce a swallow-keys mode if needed.
-    pub typing_mode: bool,
-    /// Whether the soft keyboard is currently up on the calling web
-    /// client's browser. Driven from the plugin side: tapping the ⌨
-    /// glyph in the top bar flips this and emits a `set_soft_keyboard`
-    /// shim call so the browser shows or hides its on-screen keyboard
-    /// to match. Always `false` on terminal clients (the IPC message
-    /// is swallowed there) but the field is still tracked so the
-    /// top-bar indicator can render consistently across clients.
-    pub soft_keyboard_visible: bool,
+    /// Whether the (in-plugin) on-screen keyboard region is currently
+    /// rendered. Toggled by tapping the ⌨ glyph in the top bar.
+    /// Independently of this, when set, we also ask the browser to
+    /// hide its own soft keyboard via `set_soft_keyboard(false)` so
+    /// the two never overlap. The plugin keyboard's renderer and
+    /// click handling are TBD (see `mobile_keyboard.md`); the flag
+    /// itself is wired up now so the toggle UI is in place.
+    pub keyboard_visible: bool,
     /// Click regions produced by the most recent render. The renderer
     /// rebuilds this on every `render` call; mouse events look up the
     /// hit region by (row, col).
@@ -185,15 +145,10 @@ pub struct State {
     /// `latest_pane_contents` when a pane disappears from the
     /// authoritative `PaneUpdate` manifest.
     pub pane_last_activity: HashMap<PaneId, u64>,
-    /// Bottom-bar shortcuts rendered as a pipe-separated list in the
-    /// chrome row at the bottom of the plugin's render area. Populated
-    /// once on `load`; the order in this `Vec` is the visual order on
-    /// screen, and the index is the click-region's identifier.
-    pub bottom_bar_shortcuts: Vec<BottomBarShortcut>,
-    /// Sticky-Ctrl flag. Set by tapping the `CTRL` shortcut; cleared
-    /// when the next non-modifier key (from the bar or from a
-    /// typing-mode `Event::Key`) consumes it. Rendered as the `CTRL`
-    /// label's "active" colour while set.
+    /// Sticky-Ctrl flag. Will be set by the plugin keyboard's `⌃`
+    /// cell once it ships; consumed by the next non-modifier key
+    /// (from the plugin keyboard or from a hardware-keyboard
+    /// `Event::Key`).
     pub ctrl_held: bool,
     /// Sticky-Alt flag. Same semantics as `ctrl_held`.
     pub alt_held: bool,
