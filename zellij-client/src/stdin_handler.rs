@@ -17,6 +17,8 @@ pub(crate) fn stdin_loop(
     stdin_ansi_parser: Arc<Mutex<StdinAnsiParser>>,
     explicitly_disable_kitty_keyboard_protocol: bool,
     resize_sender: Option<std::sync::mpsc::Sender<()>>,
+    mut startup_finished_tx: Option<std::sync::mpsc::Sender<()>>,
+    is_a_reconnect: bool,
 ) {
     // On Windows, choose between two input strategies early — we need this
     // decision before the startup ANSI query below.
@@ -47,11 +49,16 @@ pub(crate) fn stdin_loop(
         let can_query_terminal = true;
 
         if can_query_terminal {
-            let query_string = build_startup_query_string();
+            stdin_ansi_parser.lock().unwrap().open_forward(0);
+            let query_string = build_startup_query_string(is_a_reconnect);
             let _ = os_input
                 .get_stdout_writer()
                 .write(query_string.as_bytes())
                 .unwrap();
+        } else {
+            if let Some(tx) = startup_finished_tx.take() {
+                let _ = tx.send(());
+            }
         }
     }
 
@@ -123,12 +130,18 @@ pub(crate) fn stdin_loop(
                             );
                         }
                         if let Some((token, reply_bytes)) = parse_output.completed_forward {
-                            let _ = send_input_instructions.send(
-                                InputInstruction::ForwardedReplyFromHostComplete {
-                                    token,
-                                    reply_bytes,
-                                },
-                            );
+                            if token == 0 {
+                                if let Some(tx) = startup_finished_tx.take() {
+                                    let _ = tx.send(());
+                                }
+                            } else {
+                                let _ = send_input_instructions.send(
+                                    InputInstruction::ForwardedReplyFromHostComplete {
+                                        token,
+                                        reply_bytes,
+                                    },
+                                );
+                            }
                         }
                         for payload in parse_output.desktop_notifications {
                             let _ = send_input_instructions
@@ -271,15 +284,22 @@ fn finalize_events(
 /// Build the fire-and-forget host-query batch sent at client startup.
 /// The host's replies refine `Screen`'s cached state asynchronously as
 /// they arrive; the UI does not block on them.
-fn build_startup_query_string() -> String {
+fn build_startup_query_string(is_a_reconnect: bool) -> String {
     // <ESC>[14t => get text area size in pixels,
     // <ESC>[16t => get character cell size in pixels
     // <ESC>]11;?<ESC>\ => get background color
     // <ESC>]10;?<ESC>\ => get foreground color
     // <ESC>[?2026$p => get synchronised output mode
+    // <ESC>[?996n => get host terminal theme (DSR 996)
+    // <ESC>[c => Primary Device Attributes (barrier)
     let mut query_string = String::from(
         "\u{1b}[14t\u{1b}[16t\u{1b}]11;?\u{1b}\u{5c}\u{1b}]10;?\u{1b}\u{5c}\u{1b}[?2026$p",
     );
+    if !is_a_reconnect {
+        query_string.push_str("\u{1b}[?996n");
+    }
+    query_string.push_str("\u{1b}[c");
+
     // query colors
     // eg. <ESC>]4;5;?<ESC>\ => query color register number 5
     for i in 0..256 {

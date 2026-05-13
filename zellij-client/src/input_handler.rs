@@ -257,11 +257,13 @@ impl InputHandler {
                     InputInstruction::ForwardedReplyFromHostComplete { token, reply_bytes },
                     _error_context,
                 )) => {
-                    self.os_input
-                        .send_to_server(ClientToServerMsg::ForwardedReplyFromHost {
-                            token,
-                            reply_bytes,
-                        });
+                    if token != 0 {
+                        self.os_input
+                            .send_to_server(ClientToServerMsg::ForwardedReplyFromHost {
+                                token,
+                                reply_bytes,
+                            });
+                    }
                 },
                 Ok((InputInstruction::Exit, _error_context)) => {
                     self.should_exit = true;

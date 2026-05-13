@@ -756,14 +756,13 @@ pub fn start_client(
                 .write_all(ENTER_KITTY_KEYBOARD_MODE.as_bytes())
                 .unwrap();
         }
-        // Subscribe to host CSI 2031 theme notifications and query the
-        // current mode. Sent right after CLEAR_CLIENT_TERMINAL_ATTRIBUTES
-        // so there's no window in which the host is unsubscribed.
+        // Subscribe to host CSI 2031 theme notifications. Sent right
+        // after CLEAR_CLIENT_TERMINAL_ATTRIBUTES so there's no window
+        // in which the host is unsubscribed.
         // Hosts that don't support 2031 ignore both sequences.
         stdout
             .write_all(ENABLE_HOST_THEME_NOTIFY.as_bytes())
             .unwrap();
-        stdout.write_all(QUERY_HOST_THEME.as_bytes()).unwrap();
     }
     envs::set_zellij("0".to_string());
     config.env.set_vars();
@@ -948,9 +947,6 @@ pub fn start_client(
         },
     };
 
-    os_input.connect_to_server(&*ipc_pipe);
-    os_input.send_to_server(first_msg);
-
     let mut command_is_executing = CommandIsExecuting::new();
 
     os_input.set_raw_mode();
@@ -984,6 +980,7 @@ pub fn start_client(
     let stdin_ansi_parser = Arc::new(Mutex::new(StdinAnsiParser::new()));
 
     let (resize_sender, resize_receiver) = std::sync::mpsc::channel::<()>();
+    let (startup_finished_tx, startup_finished_rx) = std::sync::mpsc::channel();
 
     let _stdin_thread = thread::Builder::new()
         .name("stdin_handler".to_string())
@@ -998,9 +995,22 @@ pub fn start_client(
                     stdin_ansi_parser,
                     explicitly_disable_kitty_keyboard_protocol,
                     Some(resize_sender),
+                    Some(startup_finished_tx),
+                    is_a_reconnect,
                 )
             }
         });
+
+    // Wait for the fire-and-forget startup queries to finish (via the
+    // Primary-DA barrier) before telling the server we're attached.
+    // This ensures that the client's own queries are not co-mingled
+    // with any forwards the server might dispatch immediately on
+    // attach (e.g. from an already-running shell's init).
+    // 500ms timeout to avoid hanging on a non-responsive host.
+    let _ = startup_finished_rx.recv_timeout(std::time::Duration::from_millis(500));
+
+    os_input.connect_to_server(&*ipc_pipe);
+    os_input.send_to_server(first_msg);
 
     // Apps running inside Zellij panes can issue a whitelisted set
     // of queries to the host terminal (bg/fg colour, palette
