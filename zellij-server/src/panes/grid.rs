@@ -1988,31 +1988,66 @@ impl Grid {
                     gc.is_boundary(&test, 0).unwrap_or(true)
                 };
                 if !is_boundary {
-                    // new_char is part of the same EGC as the previous cell.
+                    // new_char extends the grapheme cluster that was placed at (cell_x, cell_y).
+                    // We optimistically push the scalar into the cell; if that widens it past
+                    // the right edge we revert (see the no-wrap overflow block below).
                     let cell_x = state.x;
                     let cell_y = state.y;
+                    // Snapshot the cell before mutation so we can revert if needed.
+                    let mut previous_cell: Option<TerminalCharacter> = None;
                     let mut updated_cell: Option<TerminalCharacter> = None;
-                    // Signed delta: positive = grew, negative = shrank (e.g. VS15 on
-                    // an emoji-presentation char reduces width from 2 to 1).
+                    // Signed delta: positive means the cell grew; negative means it shrank.
                     let mut width_change: isize = 0;
                     if let Some(row) = self.viewport.get_mut(cell_y) {
                         let abs_idx = row.absolute_character_index(cell_x);
                         if let Some(cell) = row.columns.get_mut(abs_idx) {
+                            previous_cell = Some(cell.clone());
                             let old_width = cell.width() as isize;
                             cell.push_scalar(new_char);
                             width_change = cell.width() as isize - old_width;
                             updated_cell = Some(cell.clone());
                         }
                         if width_change != 0 {
-                            // Width changed in either direction — invalidate the row's
-                            // cached width so callers that branch on width_cached() see
-                            // the correct total.
+                            // Invalidate the cached row width so anything that branches
+                            // on row.width_cached() sees the updated total.
                             row.width = None;
                         }
                     }
+                    if width_change > 0 {
+                        // The scalar widened the cell. Check whether the wider cell still
+                        // fits within the grid. expanded_end_x is the first column AFTER
+                        // the widened cell; if it exceeds self.width the cell overflows.
+                        let expanded_end_x = updated_cell
+                            .as_ref()
+                            .map(|cell| cell_x + cell.width())
+                            .unwrap_or(self.width);
+                        if expanded_end_x > self.width && self.disable_linewrap {
+                            // The widened cell doesn't fit and we can't wrap (DECAWM off).
+                            // Discard new_char and roll the cell back to its pre-widened
+                            // state so the grid never contains a cell that overflows the
+                            // right edge. The cursor stays at the last column (cell_x) so
+                            // that the next scalar can overwrite it instead of being dropped
+                            // at x == self.width.
+                            if let Some(previous_cell) = previous_cell {
+                                // Revert preceding_char first, then move the saved cell back.
+                                self.preceding_char = Some(previous_cell.clone());
+                                if let Some(row) = self.viewport.get_mut(cell_y) {
+                                    let abs_idx = row.absolute_character_index(cell_x);
+                                    if let Some(cell) = row.columns.get_mut(abs_idx) {
+                                        *cell = previous_cell;
+                                        row.width = None;
+                                    }
+                                }
+                            }
+                            self.cursor.x = std::cmp::min(cell_x, self.width.saturating_sub(1));
+                            self.egc_state = None;
+                            self.output_buffer.update_line(cell_y);
+                            return;
+                        }
+                    }
+                    // The scalar was accepted. Commit it to egc_state and sync
+                    // preceding_char so CSI b REP repeats the full cluster.
                     self.egc_state.as_mut().unwrap().text.push(new_char);
-                    // Keep preceding_char in sync with the full EGC so CSI b REP
-                    // repeats the complete cluster, not just the combining codepoint.
                     if let Some(ref updated) = updated_cell {
                         self.preceding_char = Some(updated.clone());
                     }
@@ -2021,9 +2056,10 @@ impl Grid {
                     if width_change > 0 {
                         let new_width = (cell_x as isize + width_change + 1) as usize;
                         if new_width > self.width && !self.disable_linewrap {
-                            // The widened cell no longer fits in this row (e.g. '#'
-                            // at the last column widened to 2 by VS16). Remove it
-                            // from the current row, wrap, and re-place it.
+                            // Widened cell overflows and autowrap is on: delete the cell
+                            // from this row, wrap, and re-place it at the start of the
+                            // next line. (The disable_linewrap overflow case was handled
+                            // and returned above, so we only reach here when wrapping.)
                             if let Some(tc) = updated_cell {
                                 if let Some(row) = self.viewport.get_mut(cell_y) {
                                     row.delete_and_return_character(cell_x);
@@ -2040,6 +2076,8 @@ impl Grid {
                                 state.end_x = self.cursor.x;
                             }
                         } else {
+                            // Cell widened and still fits. Remove the columns now covered
+                            // by the wider cell and advance the cursor by the width delta.
                             if let Some(row) = self.viewport.get_mut(cell_y) {
                                 let abs_idx = row.absolute_character_index(cell_x);
                                 row.remove_covered_cells_after(abs_idx, width_change as usize);
@@ -2048,6 +2086,8 @@ impl Grid {
                             self.egc_state.as_mut().unwrap().end_x = self.cursor.x;
                         }
                     } else if width_change < 0 {
+                        // Cell shrank (e.g. VS15 on an emoji-presentation char).
+                        // Move cursor back so the next scalar lands at the right column.
                         self.move_cursor_back((-width_change) as usize);
                         self.egc_state.as_mut().unwrap().end_x = self.cursor.x;
                     }

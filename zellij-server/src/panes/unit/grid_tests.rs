@@ -7523,6 +7523,40 @@ fn vs16_widening_at_last_column_wraps() {
 }
 
 #[test]
+fn vs16_widening_at_last_column_with_linewrap_disabled_is_rejected() {
+    // Repro: printf '\e[?7l\e[999G.\r\e[999G\u2764\ufe0fX\e[?7h\n'
+    // The heart starts as width 1 in the final column, then VS16 would widen it
+    // to width 2. With autowrap disabled, the widened EGC cannot fit and must
+    // not be left in the grid as an invisible/copyable overflow cell.
+    let mut grid = create_grid_with_content("");
+    grid.change_size(5, 4);
+    feed_bytes(&mut grid, b"\x1b[?7l");
+    feed_bytes(&mut grid, b"\x1b[4G.");
+    feed_bytes(&mut grid, b"\r\x1b[4G");
+    feed_bytes(&mut grid, "\u{2764}\u{FE0F}X".as_bytes());
+
+    let row = &grid.viewport[0];
+    assert_eq!(
+        first_row_graphemes(&grid),
+        vec!["X".to_string()],
+        "the rejected widened EGC must not remain visible or copyable"
+    );
+    assert_eq!(row.columns[row.absolute_character_index(3)].grapheme(), "X");
+
+    let mut x = 0;
+    for cell in &row.columns {
+        assert!(
+            x + cell.width() <= grid.width,
+            "cell {:?} overflows the row from column {} in {:?}",
+            cell.grapheme(),
+            x,
+            row.columns
+        );
+        x += cell.width();
+    }
+}
+
+#[test]
 fn dch_wide_char_with_trailing_chars_shifts_correctly() {
     // DCH(1) on a 2-wide emoji: delete the emoji, trailing chars keep their
     // display column positions, empty columns are filled with spaces.
