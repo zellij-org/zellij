@@ -12,6 +12,7 @@
 //! The renderer also rebuilds `state.click_regions` so the input
 //! handler can dispatch a `Mouse::LeftClick` to the right action.
 
+use crate::keyboard;
 use crate::unix_now;
 use crate::state::{
     pane_id_of, ClickAction, ClickRegion, LastEmittedCursor, Selector, State,
@@ -74,11 +75,21 @@ pub fn render(state: &mut State, rows: usize, cols: usize) {
     }
 
     // Top bar always sits at row 0; the body fills the remaining
-    // rows. The bottom-bar shortcut row has been retired; the
-    // forthcoming plugin keyboard will reserve its own rows at the
-    // bottom when visible (see `mobile_keyboard.md`).
+    // rows. The in-plugin keyboard reserves the bottom-most rows when
+    // visible — its height varies with modifier state (Fn-armed adds
+    // the F-row). When the keyboard cannot fit (very short windows),
+    // it is omitted and the viewport expands to use the full body.
     let body_top = 1;
-    let body_bottom = rows;
+    let keyboard_height = if state.keyboard.visible {
+        keyboard::render::keyboard_rows(state.keyboard.layout.as_ref(), &state.keyboard.modifiers)
+    } else {
+        0
+    };
+    // Reserve at least one row for the viewport; if the keyboard is
+    // bigger than the body, suppress it for this frame.
+    let keyboard_fits = keyboard_height + 1 <= rows.saturating_sub(body_top);
+    let effective_keyboard_height = if keyboard_fits { keyboard_height } else { 0 };
+    let body_bottom = rows.saturating_sub(effective_keyboard_height);
     let viewport_height = body_bottom.saturating_sub(body_top);
 
     // Cursor mapping only matters when the embedded viewport is
@@ -116,6 +127,17 @@ pub fn render(state: &mut State, rows: usize, cols: usize) {
             Some(Selector::Tabs) => render_tabs_menu(state, body_top, body_bottom, cols),
             Some(Selector::Panes) => render_panes_menu(state, body_top, body_bottom, cols),
         }
+    }
+
+    if effective_keyboard_height > 0 {
+        keyboard::render::render_keyboard(
+            state.keyboard.layout.as_ref(),
+            &state.keyboard.modifiers,
+            &state.keyboard.press_flash,
+            body_bottom,
+            cols,
+            &mut state.click_regions,
+        );
     }
 }
 
@@ -172,7 +194,7 @@ fn compute_cursor_position(
 ///   on the standard Zellij themes is the lighter-gray "selection"
 ///   shade — distinct from the embedded pane content below.
 ///
-/// The keyboard glyph (`⌨`) toggles `state.keyboard_visible` and
+/// The keyboard glyph (`⌨`) toggles `state.keyboard.visible` and
 /// asks the browser to suppress the OS soft keyboard while the
 /// plugin keyboard is up. When the keyboard is visible the glyph is
 /// drawn in the success palette colour (typically green) so the
@@ -331,7 +353,7 @@ fn render_top_bar_collapsed(state: &mut State, row: usize, cols: usize) {
         .color_range(1, tab_chars_s..tab_chars_e)
         .color_range(2, pane_chars_s..pane_chars_e)
         .color_range(3, hamburger_chars_s..hamburger_chars_e);
-    text = if state.keyboard_visible {
+    text = if state.keyboard.visible {
         text.success_color_range(typing_chars_s..typing_chars_e)
     } else {
         text.color_range(3, typing_chars_s..typing_chars_e)

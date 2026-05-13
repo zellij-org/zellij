@@ -8,13 +8,16 @@
 //! collapsing-breadcrumb v1 layout; typing-mode and viewport mouse
 //! passthrough land in Stage 7.
 
+mod keyboard;
 mod keys;
 mod render;
 mod state;
 
 use std::collections::BTreeMap;
+use std::time::Instant;
 use zellij_tile::prelude::*;
 
+use crate::keyboard::TapOutcome;
 use crate::state::{ClickAction, Selector, State};
 
 register_plugin!(State);
@@ -37,7 +40,18 @@ impl ZellijPlugin for State {
             EventType::Mouse,
             EventType::PaneRenderReportWithAnsi,
             EventType::SessionUpdate,
+            // Press-flash sweep: every tap on the in-plugin keyboard
+            // schedules a Timer at `KEY_FEEDBACK_MS`, and the resulting
+            // `Event::Timer` clears the expired entry so the cell
+            // returns to its resting colour.
+            EventType::Timer,
         ]);
+
+        // The keyboard is visible from the first frame
+        // (`KeyboardController::new` sets `visible = true`), so
+        // suppress the OS soft keyboard up front to avoid the two
+        // stacking on first focus.
+        set_soft_keyboard(false);
     }
 
     fn update(&mut self, event: Event) -> bool {
@@ -234,6 +248,13 @@ impl ZellijPlugin for State {
                 self.alt_held = false;
                 consumed
             },
+            Event::Timer(_) => {
+                // The only timer the plugin schedules drives keyboard
+                // press-flash decay. `sweep_flash` returns true iff at
+                // least one entry expired — which is the signal to
+                // redraw so the cell returns to its resting colour.
+                self.keyboard.sweep_flash(Instant::now())
+            },
             _ => false,
         }
     }
@@ -340,16 +361,38 @@ fn dispatch_click(state: &mut State, action: ClickAction) -> bool {
             true
         },
         ClickAction::ToggleKeyboard => {
-            // Flip the plugin keyboard's visibility flag and tell the
-            // browser to keep its OS keyboard hidden whenever ours is
-            // showing. The actual keyboard-region rendering and click
-            // handling is implemented separately (see
-            // `mobile_keyboard.md`); this action wires up only the
-            // visibility toggle for now.
-            state.keyboard_visible = !state.keyboard_visible;
-            if state.keyboard_visible {
-                set_soft_keyboard(false);
+            // Flip the plugin keyboard's visibility and mirror the
+            // change to the OS soft keyboard so the two never stack.
+            // When the plugin keyboard is showing the OS keyboard is
+            // suppressed; when it's hidden the OS keyboard is re-
+            // enabled so users without a hardware keyboard still have
+            // an input affordance.
+            state.keyboard.visible = !state.keyboard.visible;
+            set_soft_keyboard(!state.keyboard.visible);
+            true
+        },
+        ClickAction::Keyboard(cell) => {
+            let outcome = state.keyboard.handle_tap(
+                cell,
+                &mut state.ctrl_held,
+                &mut state.alt_held,
+            );
+            match outcome {
+                TapOutcome::SendBytes(bytes) => {
+                    if let Some(pane) = state.current_pane() {
+                        if !bytes.is_empty() {
+                            write_to_pane_id(bytes, state::pane_id_of(&pane));
+                        }
+                    }
+                },
+                TapOutcome::HideKeyboard => {
+                    set_soft_keyboard(!state.keyboard.visible);
+                },
+                TapOutcome::Toggled | TapOutcome::NoOp => {},
             }
+            // Schedule the press-flash decay sweep. `KEY_FEEDBACK_MS`
+            // is in milliseconds; `set_timeout` takes seconds.
+            set_timeout(keyboard::KEY_FEEDBACK_MS as f64 / 1000.0);
             true
         },
     }

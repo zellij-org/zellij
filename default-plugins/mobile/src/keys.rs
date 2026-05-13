@@ -188,3 +188,49 @@ fn prefix_alt(alt: bool, body: &[u8]) -> Vec<u8> {
         body.to_vec()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    //! Sanity checks confirming `serialize_key` covers everything the
+    //! in-plugin keyboard emits — F-keys (1, 12) and Ctrl/Alt-letter
+    //! combos. Stage 6 of `mobile_keyboard.md`.
+    use super::*;
+    use std::collections::BTreeSet;
+
+    fn key_with(bare: BareKey, mods: &[KeyModifier]) -> KeyWithModifier {
+        let mut set = BTreeSet::new();
+        for m in mods {
+            set.insert(*m);
+        }
+        KeyWithModifier {
+            bare_key: bare,
+            key_modifiers: set,
+        }
+    }
+
+    #[test]
+    fn f1_unmodified() {
+        assert_eq!(serialize_key(&key_with(BareKey::F(1), &[])), b"\x1bOP");
+    }
+
+    #[test]
+    fn f12_unmodified() {
+        assert_eq!(serialize_key(&key_with(BareKey::F(12), &[])), b"\x1b[24~");
+    }
+
+    #[test]
+    fn ctrl_c() {
+        assert_eq!(
+            serialize_key(&key_with(BareKey::Char('c'), &[KeyModifier::Ctrl])),
+            vec![0x03]
+        );
+    }
+
+    #[test]
+    fn alt_x() {
+        assert_eq!(
+            serialize_key(&key_with(BareKey::Char('x'), &[KeyModifier::Alt])),
+            vec![0x1b, b'x']
+        );
+    }
+}

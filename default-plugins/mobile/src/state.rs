@@ -5,6 +5,8 @@
 use std::collections::HashMap;
 use zellij_tile::prelude::*;
 
+use crate::keyboard::{CellId, KeyboardController};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Selector {
     /// Sessions list — col 1 is the session name, col 2 is the
@@ -50,12 +52,14 @@ pub enum ClickAction {
         pane_id: PaneId,
     },
     /// Tap on the keyboard glyph in the top bar. Toggles the plugin
-    /// keyboard's visibility (`State::keyboard_visible`) and emits
-    /// `set_soft_keyboard(false)` to suppress the OS soft keyboard
-    /// whenever the plugin keyboard is showing. (The plugin keyboard
-    /// itself is the subject of a separate implementation effort; for
-    /// now the action only flips the flag.)
+    /// keyboard's visibility (`KeyboardController::visible`) and emits
+    /// `set_soft_keyboard(true|false)` to suppress the OS soft
+    /// keyboard whenever the plugin keyboard is showing.
     ToggleKeyboard,
+    /// Tap on a cell of the in-plugin keyboard. Routed through
+    /// `KeyboardController::handle_tap` which resolves to bytes,
+    /// modifier toggles, or a visibility flip.
+    Keyboard(CellId),
 }
 
 #[derive(Debug, Clone)]
@@ -121,14 +125,12 @@ pub struct State {
     /// All sessions the host knows about. Updated on every
     /// `SessionUpdate`. Rendered when the session selector is open.
     pub sessions: Vec<SessionInfo>,
-    /// Whether the (in-plugin) on-screen keyboard region is currently
-    /// rendered. Toggled by tapping the ⌨ glyph in the top bar.
-    /// Independently of this, when set, we also ask the browser to
-    /// hide its own soft keyboard via `set_soft_keyboard(false)` so
-    /// the two never overlap. The plugin keyboard's renderer and
-    /// click handling are TBD (see `mobile_keyboard.md`); the flag
-    /// itself is wired up now so the toggle UI is in place.
-    pub keyboard_visible: bool,
+    /// In-plugin on-screen keyboard. Owns the active layout, modifier
+    /// flags (Shift/Ctrl/Alt/Fn — one-shot for the first three, toggle
+    /// for Fn), press-flash timestamps and visibility. Visible by
+    /// default — the corresponding OS soft-keyboard suppression is
+    /// emitted from `load()`. See `mobile_keyboard.md`.
+    pub keyboard: KeyboardController,
     /// Click regions produced by the most recent render. The renderer
     /// rebuilds this on every `render` call; mouse events look up the
     /// hit region by (row, col).
@@ -145,10 +147,11 @@ pub struct State {
     /// `latest_pane_contents` when a pane disappears from the
     /// authoritative `PaneUpdate` manifest.
     pub pane_last_activity: HashMap<PaneId, u64>,
-    /// Sticky-Ctrl flag. Will be set by the plugin keyboard's `⌃`
-    /// cell once it ships; consumed by the next non-modifier key
-    /// (from the plugin keyboard or from a hardware-keyboard
-    /// `Event::Key`).
+    /// Sticky-Ctrl flag. Aliased to `KeyboardController::modifiers
+    /// .ctrl_armed` — the keyboard's tap handler reads/writes it
+    /// through a `&mut` reference so the hardware-key passthrough
+    /// path and the plugin keyboard share the same one-shot state.
+    /// Consumed by the next non-modifier key from either path.
     pub ctrl_held: bool,
     /// Sticky-Alt flag. Same semantics as `ctrl_held`.
     pub alt_held: bool,
