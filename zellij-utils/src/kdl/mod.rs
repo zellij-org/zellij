@@ -555,6 +555,7 @@ impl Action {
                         direction: None,
                         pane_name: None,
                         start_suppressed: false,
+                        should_focus_pane: true,
                     });
                 } else if string == "stacked" {
                     return Ok(Action::NewStackedPane {
@@ -562,6 +563,7 @@ impl Action {
                         pane_name: None,
                         near_current_pane: false,
                         tab_id: None,
+                        should_focus_pane: true,
                     });
                 } else {
                     let direction = Direction::from_str(string.as_str()).map_err(|_| {
@@ -575,6 +577,7 @@ impl Action {
                         direction: Some(direction),
                         pane_name: None,
                         start_suppressed: false,
+                        should_focus_pane: true,
                     })
                 }
             },
@@ -736,6 +739,7 @@ impl Action {
                 direction,
                 pane_name: _,
                 start_suppressed: _,
+                should_focus_pane: _,
             } => {
                 let mut node = KdlNode::new("NewPane");
                 if let Some(direction) = direction {
@@ -2004,6 +2008,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                         ),
                         near_current_pane: false,
                         tab_id: None,
+                        should_focus_pane: true,
                     })
                 } else if in_place {
                     Ok(Action::NewInPlacePane {
@@ -2020,6 +2025,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                         pane_name: name,
                         near_current_pane: false,
                         tab_id: None,
+                        should_focus_pane: true,
                     })
                 } else {
                     Ok(Action::NewTiledPane {
@@ -2029,6 +2035,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                         near_current_pane: false,
                         borderless: None,
                         tab_id: None,
+                        should_focus_pane: true,
                     })
                 }
             },

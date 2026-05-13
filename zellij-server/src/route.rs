@@ -599,6 +599,7 @@ pub(crate) fn route_action(
             direction,
             pane_name,
             start_suppressed,
+            should_focus_pane,
         } => {
             let shell = default_shell.clone();
             let new_pane_placement = match direction {
@@ -617,6 +618,7 @@ pub(crate) fn route_action(
                     ClientTabIndexOrPaneId::ClientId(client_id),
                     Some(NotificationEnd::new(completion_tx)),
                     false, // set_blocking
+                    should_focus_pane,
                 ))
                 .with_context(err_context)?;
         },
@@ -627,6 +629,7 @@ pub(crate) fn route_action(
             unblock_condition,
             near_current_pane,
             tab_id,
+            should_focus_pane,
         } => {
             let command = command
                 .map(|cmd| TerminalAction::RunCommand(cmd.into()))
@@ -674,6 +677,7 @@ pub(crate) fn route_action(
                     client_tab_index_or_paneid,
                     notification_end,
                     set_pane_blocking,
+                    should_focus_pane,
                 ))
                 .with_context(err_context)?;
             wait_forever = true;
@@ -688,6 +692,7 @@ pub(crate) fn route_action(
             coordinates: floating_pane_coordinates,
             near_current_pane,
             tab_id,
+            should_focus_pane,
         } => {
             let title = format!("Editing: {}", open_file_payload.path.display());
             let open_file = TerminalAction::OpenFile(open_file_payload);
@@ -727,6 +732,7 @@ pub(crate) fn route_action(
                     client_tab_index_or_paneid,
                     Some(NotificationEnd::new(completion_tx)),
                     false, // set_blocking
+                    should_focus_pane,
                 )
             };
             senders.send_to_pty(pty_instr).with_context(err_context)?;
@@ -752,6 +758,7 @@ pub(crate) fn route_action(
             coordinates: floating_pane_coordinates,
             near_current_pane,
             tab_id,
+            should_focus_pane,
         } => {
             let run_cmd = run_command
                 .map(|cmd| TerminalAction::RunCommand(cmd.into()))
@@ -772,6 +779,7 @@ pub(crate) fn route_action(
                     client_tab_index_or_paneid,
                     Some(NotificationEnd::new(completion_tx)),
                     false, // set_blocking
+                    should_focus_pane,
                 ))
                 .with_context(err_context)?;
         },
@@ -812,6 +820,7 @@ pub(crate) fn route_action(
             pane_name: name,
             near_current_pane,
             tab_id,
+            should_focus_pane,
         } => {
             let run_cmd = run_command
                 .map(|cmd| TerminalAction::RunCommand(cmd.into()))
@@ -852,6 +861,7 @@ pub(crate) fn route_action(
                     client_tab_index_or_paneid,
                     Some(NotificationEnd::new(completion_tx)),
                     false, // set_blocking
+                    should_focus_pane,
                 ))
                 .with_context(err_context)?;
         },
@@ -862,6 +872,7 @@ pub(crate) fn route_action(
             near_current_pane,
             borderless,
             tab_id,
+            should_focus_pane,
         } => {
             let run_cmd = run_command
                 .map(|cmd| TerminalAction::RunCommand(cmd.into()))
@@ -885,6 +896,7 @@ pub(crate) fn route_action(
                     client_tab_index_or_paneid,
                     Some(NotificationEnd::new(completion_tx)),
                     false, // set_blocking
+                    should_focus_pane,
                 ))
                 .with_context(err_context)?;
         },
@@ -944,6 +956,7 @@ pub(crate) fn route_action(
                     client_tab_index_or_paneid,
                     Some(NotificationEnd::new(completion_tx)),
                     false, // set_blocking
+                    true,  // should_focus_pane (Action::Run keeps legacy focus-stealing behavior)
                 ))
                 .with_context(err_context)?;
         },

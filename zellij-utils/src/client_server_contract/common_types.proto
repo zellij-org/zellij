@@ -449,6 +449,8 @@ message NewPaneAction {
   optional string pane_name = 2;
   bool start_suppressed = 3;
   bool near_current_pane = 4;
+  // When unset, treated as true (legacy focus-stealing behavior).
+  optional bool should_focus_pane = 5;
 }
 
 message EditFileAction {
@@ -461,6 +463,7 @@ message EditFileAction {
   bool near_current_pane = 7;
   bool close_replaced_pane = 8;
   optional uint32 tab_id = 9;
+  optional bool should_focus_pane = 10;
 }
 
 message NewFloatingPaneAction {
@@ -469,6 +472,7 @@ message NewFloatingPaneAction {
   optional FloatingPaneCoordinates coordinates = 3;
   bool near_current_pane = 7;
   optional uint32 tab_id = 8;
+  optional bool should_focus_pane = 9;
 }
 
 message NewTiledPaneAction {
@@ -478,6 +482,7 @@ message NewTiledPaneAction {
   bool near_current_pane = 7;
   optional bool borderless = 8;
   optional uint32 tab_id = 9;
+  optional bool should_focus_pane = 10;
 }
 
 message NewInPlacePaneAction {
@@ -494,6 +499,7 @@ message NewStackedPaneAction {
   optional string pane_name = 2;
   bool near_current_pane = 3;
   optional uint32 tab_id = 4;
+  optional bool should_focus_pane = 5;
 }
 
 message NewBlockingPaneAction {
@@ -503,6 +509,7 @@ message NewBlockingPaneAction {
   optional UnblockCondition unblock_condition = 4;
   bool near_current_pane = 5;
   optional uint32 tab_id = 6;
+  optional bool should_focus_pane = 7;
 }
 
 message PaneNameInputAction {

@@ -234,6 +234,7 @@ Config {
                     direction: None,
                     pane_name: None,
                     start_suppressed: false,
+                    should_focus_pane: true,
                 },
             ],
             KeyWithModifier {
@@ -753,6 +754,7 @@ Config {
                     direction: None,
                     pane_name: None,
                     start_suppressed: false,
+                    should_focus_pane: true,
                 },
             ],
             KeyWithModifier {
@@ -1034,6 +1036,7 @@ Config {
                     ),
                     pane_name: None,
                     start_suppressed: false,
+                    should_focus_pane: true,
                 },
                 SwitchToMode {
                     input_mode: Normal,
@@ -1216,6 +1219,7 @@ Config {
                     direction: None,
                     pane_name: None,
                     start_suppressed: false,
+                    should_focus_pane: true,
                 },
                 SwitchToMode {
                     input_mode: Normal,
@@ -1245,6 +1249,7 @@ Config {
                     direction: None,
                     pane_name: None,
                     start_suppressed: false,
+                    should_focus_pane: true,
                 },
             ],
             KeyWithModifier {
@@ -1334,6 +1339,7 @@ Config {
                     ),
                     pane_name: None,
                     start_suppressed: false,
+                    should_focus_pane: true,
                 },
                 SwitchToMode {
                     input_mode: Normal,
@@ -1350,6 +1356,7 @@ Config {
                     pane_name: None,
                     near_current_pane: false,
                     tab_id: None,
+                    should_focus_pane: true,
                 },
                 SwitchToMode {
                     input_mode: Normal,
@@ -1886,6 +1893,7 @@ Config {
                     direction: None,
                     pane_name: None,
                     start_suppressed: false,
+                    should_focus_pane: true,
                 },
             ],
             KeyWithModifier {
@@ -2379,6 +2387,7 @@ Config {
                     direction: None,
                     pane_name: None,
                     start_suppressed: false,
+                    should_focus_pane: true,
                 },
             ],
             KeyWithModifier {
@@ -2754,6 +2763,7 @@ Config {
                     direction: None,
                     pane_name: None,
                     start_suppressed: false,
+                    should_focus_pane: true,
                 },
             ],
             KeyWithModifier {
@@ -3211,6 +3221,7 @@ Config {
                     direction: None,
                     pane_name: None,
                     start_suppressed: false,
+                    should_focus_pane: true,
                 },
             ],
             KeyWithModifier {
@@ -3601,6 +3612,7 @@ Config {
                     direction: None,
                     pane_name: None,
                     start_suppressed: false,
+                    should_focus_pane: true,
                 },
             ],
             KeyWithModifier {
@@ -3954,6 +3966,7 @@ Config {
                     direction: None,
                     pane_name: None,
                     start_suppressed: false,
+                    should_focus_pane: true,
                 },
             ],
             KeyWithModifier {
@@ -4397,6 +4410,7 @@ Config {
                     direction: None,
                     pane_name: None,
                     start_suppressed: false,
+                    should_focus_pane: true,
                 },
             ],
             KeyWithModifier {
@@ -4927,6 +4941,7 @@ Config {
                     direction: None,
                     pane_name: None,
                     start_suppressed: false,
+                    should_focus_pane: true,
                 },
             ],
             KeyWithModifier {
@@ -5283,6 +5298,7 @@ Config {
                     direction: None,
                     pane_name: None,
                     start_suppressed: false,
+                    should_focus_pane: true,
                 },
             ],
             KeyWithModifier {
@@ -5498,6 +5514,7 @@ Config {
                     ),
                     pane_name: None,
                     start_suppressed: false,
+                    should_focus_pane: true,
                 },
                 SwitchToMode {
                     input_mode: Normal,
@@ -5515,6 +5532,7 @@ Config {
                     ),
                     pane_name: None,
                     start_suppressed: false,
+                    should_focus_pane: true,
                 },
                 SwitchToMode {
                     input_mode: Normal,
@@ -5828,6 +5846,7 @@ Config {
                     direction: None,
                     pane_name: None,
                     start_suppressed: false,
+                    should_focus_pane: true,
                 },
             ],
             KeyWithModifier {

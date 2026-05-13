@@ -806,6 +806,9 @@ pub struct NewPaneAction {
     pub start_suppressed: bool,
     #[prost(bool, tag="4")]
     pub near_current_pane: bool,
+    /// When unset, treated as true (legacy focus-stealing behavior).
+    #[prost(bool, optional, tag="5")]
+    pub should_focus_pane: ::core::option::Option<bool>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -828,6 +831,8 @@ pub struct EditFileAction {
     pub close_replaced_pane: bool,
     #[prost(uint32, optional, tag="9")]
     pub tab_id: ::core::option::Option<u32>,
+    #[prost(bool, optional, tag="10")]
+    pub should_focus_pane: ::core::option::Option<bool>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -842,6 +847,8 @@ pub struct NewFloatingPaneAction {
     pub near_current_pane: bool,
     #[prost(uint32, optional, tag="8")]
     pub tab_id: ::core::option::Option<u32>,
+    #[prost(bool, optional, tag="9")]
+    pub should_focus_pane: ::core::option::Option<bool>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -858,6 +865,8 @@ pub struct NewTiledPaneAction {
     pub borderless: ::core::option::Option<bool>,
     #[prost(uint32, optional, tag="9")]
     pub tab_id: ::core::option::Option<u32>,
+    #[prost(bool, optional, tag="10")]
+    pub should_focus_pane: ::core::option::Option<bool>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -886,6 +895,8 @@ pub struct NewStackedPaneAction {
     pub near_current_pane: bool,
     #[prost(uint32, optional, tag="4")]
     pub tab_id: ::core::option::Option<u32>,
+    #[prost(bool, optional, tag="5")]
+    pub should_focus_pane: ::core::option::Option<bool>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -902,6 +913,8 @@ pub struct NewBlockingPaneAction {
     pub near_current_pane: bool,
     #[prost(uint32, optional, tag="6")]
     pub tab_id: ::core::option::Option<u32>,
+    #[prost(bool, optional, tag="7")]
+    pub should_focus_pane: ::core::option::Option<bool>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

@@ -1129,11 +1129,13 @@ impl From<crate::input::actions::Action>
                 direction,
                 pane_name,
                 start_suppressed,
+                should_focus_pane,
             } => ActionType::NewPane(NewPaneAction {
                 direction: direction.map(|d| direction_to_proto_i32(d)),
                 pane_name,
                 start_suppressed,
                 near_current_pane: false,
+                should_focus_pane: Some(should_focus_pane),
             }),
             crate::input::actions::Action::EditFile {
                 payload,
@@ -1145,7 +1147,7 @@ impl From<crate::input::actions::Action>
                 coordinates,
                 near_current_pane,
                 tab_id,
-                ..
+                should_focus_pane,
             } => ActionType::EditFile(EditFileAction {
                 payload: Some(payload.into()),
                 direction: direction.map(|d| direction_to_proto_i32(d)),
@@ -1156,6 +1158,7 @@ impl From<crate::input::actions::Action>
                 coordinates: coordinates.map(|c| c.into()),
                 near_current_pane,
                 tab_id: tab_id.map(|t| t as u32),
+                should_focus_pane: Some(should_focus_pane),
             }),
             crate::input::actions::Action::NewFloatingPane {
                 command,
@@ -1163,13 +1166,14 @@ impl From<crate::input::actions::Action>
                 coordinates,
                 near_current_pane,
                 tab_id,
-                ..
+                should_focus_pane,
             } => ActionType::NewFloatingPane(NewFloatingPaneAction {
                 command: command.map(|c| c.into()),
                 pane_name,
                 coordinates: coordinates.map(|c| c.into()),
                 near_current_pane,
                 tab_id: tab_id.map(|t| t as u32),
+                should_focus_pane: Some(should_focus_pane),
             }),
             crate::input::actions::Action::NewTiledPane {
                 direction,
@@ -1178,7 +1182,7 @@ impl From<crate::input::actions::Action>
                 near_current_pane,
                 borderless,
                 tab_id,
-                ..
+                should_focus_pane,
             } => ActionType::NewTiledPane(NewTiledPaneAction {
                 direction: direction.map(|d| direction_to_proto_i32(d)),
                 command: command.map(|c| c.into()),
@@ -1186,6 +1190,7 @@ impl From<crate::input::actions::Action>
                 near_current_pane,
                 borderless,
                 tab_id: tab_id.map(|t| t as u32),
+                should_focus_pane: Some(should_focus_pane),
             }),
             crate::input::actions::Action::NewInPlacePane {
                 command,
@@ -1208,12 +1213,13 @@ impl From<crate::input::actions::Action>
                 pane_name,
                 near_current_pane,
                 tab_id,
-                ..
+                should_focus_pane,
             } => ActionType::NewStackedPane(NewStackedPaneAction {
                 command: command.map(|c| c.into()),
                 pane_name,
                 near_current_pane,
                 tab_id: tab_id.map(|t| t as u32),
+                should_focus_pane: Some(should_focus_pane),
             }),
             crate::input::actions::Action::NewBlockingPane {
                 placement,
@@ -1222,7 +1228,7 @@ impl From<crate::input::actions::Action>
                 unblock_condition,
                 near_current_pane,
                 tab_id,
-                ..
+                should_focus_pane,
             } => ActionType::NewBlockingPane(NewBlockingPaneAction {
                 placement: Some(placement.into()),
                 pane_name,
@@ -1230,6 +1236,7 @@ impl From<crate::input::actions::Action>
                 unblock_condition: unblock_condition.map(|c| unblock_condition_to_proto_i32(c)),
                 near_current_pane,
                 tab_id: tab_id.map(|t| t as u32),
+                should_focus_pane: Some(should_focus_pane),
             }),
             crate::input::actions::Action::TogglePaneEmbedOrFloating => {
                 ActionType::TogglePaneEmbedOrFloating(TogglePaneEmbedOrFloatingAction {})
@@ -1988,6 +1995,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                     .transpose()?,
                 pane_name: new_pane_action.pane_name,
                 start_suppressed: new_pane_action.start_suppressed,
+                should_focus_pane: new_pane_action.should_focus_pane.unwrap_or(true),
             }),
             ActionType::EditFile(edit_file_action) => Ok(crate::input::actions::Action::EditFile {
                 payload: edit_file_action
@@ -2008,6 +2016,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                     .transpose()?,
                 near_current_pane: edit_file_action.near_current_pane,
                 tab_id: edit_file_action.tab_id.map(|t| t as usize),
+                should_focus_pane: edit_file_action.should_focus_pane.unwrap_or(true),
             }),
             ActionType::NewFloatingPane(new_floating_action) => {
                 Ok(crate::input::actions::Action::NewFloatingPane {
@@ -2022,6 +2031,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                         .transpose()?,
                     near_current_pane: new_floating_action.near_current_pane,
                     tab_id: new_floating_action.tab_id.map(|t| t as usize),
+                    should_focus_pane: new_floating_action.should_focus_pane.unwrap_or(true),
                 })
             },
             ActionType::NewTiledPane(new_tiled_action) => {
@@ -2035,6 +2045,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                     near_current_pane: new_tiled_action.near_current_pane,
                     borderless: new_tiled_action.borderless,
                     tab_id: new_tiled_action.tab_id.map(|t| t as usize),
+                    should_focus_pane: new_tiled_action.should_focus_pane.unwrap_or(true),
                 })
             },
             ActionType::NewInPlacePane(new_in_place_action) => {
@@ -2061,6 +2072,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                     pane_name: new_stacked_action.pane_name,
                     near_current_pane: new_stacked_action.near_current_pane,
                     tab_id: new_stacked_action.tab_id.map(|t| t as usize),
+                    should_focus_pane: new_stacked_action.should_focus_pane.unwrap_or(true),
                 })
             },
             ActionType::NewBlockingPane(new_blocking_action) => {
@@ -2080,6 +2092,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                         .transpose()?,
                     near_current_pane: new_blocking_action.near_current_pane,
                     tab_id: new_blocking_action.tab_id.map(|t| t as usize),
+                    should_focus_pane: new_blocking_action.should_focus_pane.unwrap_or(true),
                 })
             },
             ActionType::TogglePaneEmbedOrFloating(_) => {

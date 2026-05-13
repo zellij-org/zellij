@@ -95,6 +95,7 @@ fn main() {
                 near_current_pane,
                 borderless,
                 tab_id,
+                no_focus: false,
             };
             commands::send_action_to_session(command_cli_action, opts.session, config);
             std::process::exit(0);
@@ -146,6 +147,7 @@ fn main() {
                 near_current_pane: false,
                 borderless,
                 tab_id,
+                no_focus: false,
             };
             commands::send_action_to_session(command_cli_action, opts.session, config);
             std::process::exit(0);
@@ -191,6 +193,7 @@ fn main() {
                 near_current_pane,
                 borderless,
                 tab_id,
+                no_focus: false,
             };
             commands::send_action_to_session(command_cli_action, opts.session, config);
             std::process::exit(0);

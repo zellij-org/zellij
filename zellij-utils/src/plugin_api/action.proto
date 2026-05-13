@@ -322,6 +322,8 @@ message GoToTabNamePayload {
 message NewFloatingPanePayload {
   optional RunCommandAction command = 1;
   bool near_current_pane = 2;
+  // When unset, treated as true (legacy focus-stealing behavior).
+  optional bool should_focus_pane = 3;
 }
 
 message NewTiledPanePayload {
@@ -329,6 +331,7 @@ message NewTiledPanePayload {
   optional resize.ResizeDirection direction = 2;
   bool near_current_pane = 3;
   optional bool borderless = 4;
+  optional bool should_focus_pane = 5;
 }
 
 message MovePanePayload {
@@ -342,6 +345,7 @@ message EditFilePayload {
   optional resize.ResizeDirection direction = 4;
   bool should_float = 5;
   bool near_current_pane = 6;
+  optional bool should_focus_pane = 7;
 }
 
 message ScrollAtPayload {
@@ -351,6 +355,7 @@ message ScrollAtPayload {
 message NewPanePayload {
   optional resize.ResizeDirection direction = 1;
   optional string pane_name = 2;
+  optional bool should_focus_pane = 3;
 }
 
 message NewBlockingPanePayload {
@@ -359,6 +364,7 @@ message NewBlockingPanePayload {
   optional RunCommandAction command = 3;
   optional UnblockCondition unblock_condition = 4;
   bool near_current_pane = 5;
+  optional bool should_focus_pane = 6;
 }
 
 message NewInPlacePanePayload {

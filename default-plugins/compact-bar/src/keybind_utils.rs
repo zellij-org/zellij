@@ -387,7 +387,8 @@ impl KeybindProcessor {
                             Action::NewPane {
                                 direction: None,
                                 pane_name: None,
-                                start_suppressed: false
+                                start_suppressed: false,
+                                ..
                             }
                         )
                     },
@@ -452,7 +453,8 @@ impl KeybindProcessor {
                             Action::NewPane {
                                 direction: Some(Direction::Right),
                                 pane_name: None,
-                                start_suppressed: false
+                                start_suppressed: false,
+                                ..
                             }
                         )
                     },
@@ -462,7 +464,8 @@ impl KeybindProcessor {
                             Action::NewPane {
                                 direction: Some(Direction::Down),
                                 pane_name: None,
-                                start_suppressed: false
+                                start_suppressed: false,
+                                ..
                             }
                         )
                     },

@@ -1043,6 +1043,15 @@ pub enum CliAction {
             conflicts_with("in-place")
         )]
         tab_id: Option<usize>,
+        /// Spawn the new pane without transferring keyboard focus to it
+        #[clap(
+            long,
+            value_parser,
+            default_value("false"),
+            takes_value(false),
+            conflicts_with("in-place")
+        )]
+        no_focus: bool,
     },
     /// Open the specified file in a new zellij pane with your default EDITOR
     /// Returns: Created pane ID (format: terminal_<id>)
@@ -1116,6 +1125,15 @@ pub enum CliAction {
             conflicts_with("in-place")
         )]
         tab_id: Option<usize>,
+        /// Spawn the new pane without transferring keyboard focus to it
+        #[clap(
+            long,
+            value_parser,
+            default_value("false"),
+            takes_value(false),
+            conflicts_with("in-place")
+        )]
+        no_focus: bool,
     },
     /// Switch input mode of all connected clients [locked|pane|tab|resize|move|search|session]
     SwitchMode {
