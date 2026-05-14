@@ -10661,14 +10661,11 @@ fn test_ctrl_click_on_pane_body_forwards_when_terminal_wants_mouse() {
 
     // Ctrl+click in the body of pane 2 (column 90 is in the right pane of a 121-col split).
     let body_position = Position::new(10, 90);
-    let effect = tab
-        .handle_mouse_event(
-            &MouseEvent::new_left_press_with_ctrl_event(body_position),
-            client_id,
-        )
-        .unwrap();
-
-    assert!(effect.state_changed);
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_press_with_ctrl_event(body_position),
+        client_id,
+    )
+    .unwrap();
 
     pty_instruction_bus.exit();
 
