@@ -28,10 +28,13 @@ use zellij_utils::{
 pub async fn ws_handler_control(
     ws: WebSocketUpgrade,
     _path: Option<AxumPath<String>>,
+    Query(params): Query<TerminalParams>,
     State(state): State<AppState>,
     axum::Extension(session_token_hash): axum::Extension<SessionTokenHash>,
 ) -> impl IntoResponse {
-    ws.on_upgrade(move |socket| handle_ws_control(socket, state, session_token_hash))
+    ws.on_upgrade(move |socket| {
+        handle_ws_control(socket, state, session_token_hash, params.web_client_id)
+    })
 }
 
 pub async fn ws_handler_terminal(
@@ -50,7 +53,24 @@ async fn handle_ws_control(
     socket: WebSocket,
     state: AppState,
     session_token_hash: SessionTokenHash,
+    web_client_id: String,
 ) {
+    // Verify ownership up front using the query param so we can register the
+    // control channel immediately — before the server_listener thread fires its
+    // first send_control() call (which races with the client's first message).
+    if !state
+        .connection_table
+        .lock()
+        .unwrap()
+        .verify_client_ownership(&web_client_id, &session_token_hash.0)
+    {
+        log::error!(
+            "Control WebSocket: client does not own web_client_id {}",
+            web_client_id
+        );
+        return;
+    }
+
     let payload = SetConfigPayload::from(&*state.config.lock().unwrap());
     let set_config_msg = WebServerToWebClientControlMessage::SetConfig(payload);
 
@@ -62,6 +82,14 @@ async fn handle_ws_control(
     let _ = control_channel_tx.send(Message::Text(
         serde_json::to_string(&set_config_msg).unwrap().into(),
     ));
+
+    // Register immediately so server_listener can send control messages without
+    // waiting for the client's first message to arrive.
+    state
+        .connection_table
+        .lock()
+        .unwrap()
+        .add_client_control_tx(&web_client_id, control_channel_tx.clone());
 
     let send_message_to_server = |deserialized_msg: WebClientToWebServerControlMessage| {
         let Some(client_connection) = state
@@ -86,8 +114,6 @@ async fn handle_ws_control(
         let _ = client_connection.send_to_server(client_msg);
     };
 
-    let mut set_client_control_channel = false;
-
     while let Some(Ok(msg)) = control_socket_rx.next().await {
         match msg {
             Message::Text(msg) => {
@@ -109,17 +135,6 @@ async fn handle_ws_control(
                                 deserialized_msg.web_client_id
                             );
                             return;
-                        }
-                        if !set_client_control_channel {
-                            set_client_control_channel = true;
-                            state
-                                .connection_table
-                                .lock()
-                                .unwrap()
-                                .add_client_control_tx(
-                                    &deserialized_msg.web_client_id,
-                                    control_channel_tx.clone(),
-                                );
                         }
                         send_message_to_server(deserialized_msg);
                     },

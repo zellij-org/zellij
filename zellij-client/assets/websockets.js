@@ -118,7 +118,7 @@ export function initWebSockets(
     wsTerminal.onmessage = function (event) {
         if (ownWebClientId == "") {
             ownWebClientId = webClientId;
-            const wsControlUrl = `${wsBaseUrl}/ws/control`;
+            const wsControlUrl = `${wsBaseUrl}/ws/control${queryString}`;
             wsControl = new WebSocket(wsControlUrl);
             startWsControl(wsControl, term, fitAddon, ownWebClientId, userConfig);
         }
