@@ -62,12 +62,71 @@ pub enum ClickAction {
     Keyboard(CellId),
 }
 
+/// A rectangular click target with a priority for layered scanning.
+///
+/// **Tight** regions (`priority == 0`) cover the visible interior of
+/// a cell. They never overlap in a well-formed render and are
+/// scanned first — a hit returns immediately. Used for chrome and
+/// for the keyboard's visible cells.
+///
+/// **Slop** regions (`priority > 0`) cover the hit-slop halo around
+/// small targets like keyboard cells. They overlap with sibling
+/// slop regions on shared dividers / walls; the dispatcher resolves
+/// the ambiguity by nearest-center (Euclidean squared distance from
+/// the click to `center`). Ties break lex-first by `(center_y,
+/// center_x)`, which on vertical ties prefers the cell whose content
+/// row is higher up — matches the "users overshoot down on the
+/// keyboard" intuition.
 #[derive(Debug, Clone)]
 pub struct ClickRegion {
     pub row: usize,
     pub col_start: usize,
     pub col_end: usize, // exclusive
     pub action: ClickAction,
+    /// 0 = tight (exact / no overlap); higher = slop (overlaps OK).
+    pub priority: u8,
+    /// Geometric center of the *visible* cell this region belongs
+    /// to. Required for `priority > 0` so nearest-center can break
+    /// overlap ties; ignored otherwise.
+    pub center: Option<(usize, usize)>,
+}
+
+impl ClickRegion {
+    /// Construct a tight region — scanned first; first hit wins.
+    pub fn tight(
+        row: usize,
+        col_start: usize,
+        col_end: usize,
+        action: ClickAction,
+    ) -> Self {
+        Self {
+            row,
+            col_start,
+            col_end,
+            action,
+            priority: 0,
+            center: None,
+        }
+    }
+
+    /// Construct a slop region — scanned only if no tight region
+    /// matched; overlapping siblings resolved by nearest-center.
+    pub fn slop(
+        row: usize,
+        col_start: usize,
+        col_end: usize,
+        action: ClickAction,
+        center: (usize, usize),
+    ) -> Self {
+        Self {
+            row,
+            col_start,
+            col_end,
+            action,
+            priority: 1,
+            center: Some(center),
+        }
+    }
 }
 
 /// Where the embedded pane viewport sits within the plugin render area
@@ -303,17 +362,73 @@ impl State {
         Some((pane_row, col))
     }
 
-    /// Resolve a click at (row, col) to the action it should fire, if
-    /// any. Returns the first hit; click regions are inserted in
-    /// front-to-back order so the renderer should not place
-    /// overlapping regions.
+    /// Resolve a click at (row, col) to the action it should fire,
+    /// if any.
+    ///
+    /// Pass 1 scans **tight** regions (priority 0): first hit wins.
+    /// Tight regions are guaranteed non-overlapping by the renderer,
+    /// so order does not matter — a hit there resolves the click
+    /// unambiguously.
+    ///
+    /// Pass 2 scans **slop** regions (priority > 0). Slop regions
+    /// may overlap on shared boundaries (walls, dividers); the
+    /// candidate whose `center` is closest to the click — by squared
+    /// Euclidean distance — wins. Ties break lex-first by
+    /// `(center_y, center_x)` so the result is deterministic.
     pub fn click_to_action(&self, row: usize, col: usize) -> Option<ClickAction> {
+        // Pass 1: tight regions.
         for region in &self.click_regions {
-            if region.row == row && col >= region.col_start && col < region.col_end {
+            if region.priority == 0
+                && region.row == row
+                && col >= region.col_start
+                && col < region.col_end
+            {
                 return Some(region.action.clone());
             }
         }
-        None
+        // Pass 2: slop regions, resolved by nearest-center.
+        let mut best: Option<(&ClickRegion, u64)> = None;
+        for region in &self.click_regions {
+            if region.priority == 0 {
+                continue;
+            }
+            if region.row != row {
+                continue;
+            }
+            if col < region.col_start || col >= region.col_end {
+                continue;
+            }
+            let Some((cx, cy)) = region.center else { continue };
+            let dx = (cx as i64 - col as i64).unsigned_abs();
+            let dy = (cy as i64 - row as i64).unsigned_abs();
+            let dist_sq = dx * dx + dy * dy;
+            best = Some(match best {
+                None => (region, dist_sq),
+                Some((cur, cur_d)) if dist_sq < cur_d => (region, dist_sq),
+                Some((cur, cur_d)) if dist_sq == cur_d => {
+                    let cur_key = slop_key(cur);
+                    let new_key = slop_key(region);
+                    if new_key < cur_key {
+                        (region, dist_sq)
+                    } else {
+                        (cur, cur_d)
+                    }
+                },
+                Some(prev) => prev,
+            });
+        }
+        best.map(|(r, _)| r.action.clone())
+    }
+}
+
+/// Deterministic tiebreaker key for overlapping slop regions. Lex
+/// on `(center_y, center_x)`, falling back to the region's own
+/// position when no center is present (should not happen for
+/// well-formed slop regions, but defensive).
+fn slop_key(r: &ClickRegion) -> (usize, usize) {
+    match r.center {
+        Some((cx, cy)) => (cy, cx),
+        None => (r.row, r.col_start),
     }
 }
 
@@ -333,5 +448,82 @@ pub fn pane_id_of(info: &PaneInfo) -> PaneId {
         PaneId::Plugin(info.id)
     } else {
         PaneId::Terminal(info.id)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    //! Dispatch tests for the layered tight/slop priority system.
+    //!
+    //! `ClickAction::Keyboard` cases use `CellId` values straight
+    //! from the keyboard layout space; the dispatcher does not
+    //! interpret them so any u16 works.
+    use super::*;
+    use crate::keyboard::CellId;
+
+    fn kb(id: u16) -> ClickAction {
+        ClickAction::Keyboard(CellId(id))
+    }
+
+    /// A tight hit on a cell resolves to that cell even if a sibling
+    /// cell's slop region also covers the click coordinate.
+    #[test]
+    fn tight_wins_over_overlapping_slop() {
+        let mut s = State::default();
+        // Cell A at (row 5, cols 10..13), center (11, 5).
+        s.click_regions.push(ClickRegion::tight(5, 10, 13, kb(1)));
+        s.click_regions
+            .push(ClickRegion::slop(5, 9, 14, kb(1), (11, 5)));
+        // Cell B at (row 5, cols 13..16), center (14, 5).
+        s.click_regions.push(ClickRegion::tight(5, 13, 16, kb(2)));
+        s.click_regions
+            .push(ClickRegion::slop(5, 12, 17, kb(2), (14, 5)));
+
+        // Click at col 12 — inside A's tight region; B's slop also
+        // matches but tight takes precedence.
+        assert_eq!(s.click_to_action(5, 12), Some(kb(1)));
+        // Click at col 13 — inside B's tight region.
+        assert_eq!(s.click_to_action(5, 13), Some(kb(2)));
+    }
+
+    /// A click that misses every tight region falls back to slop,
+    /// resolved by nearest-center.
+    #[test]
+    fn slop_resolves_by_nearest_center() {
+        let mut s = State::default();
+        // Two cells stacked vertically, content rows 5 and 7,
+        // sharing the divider at row 6.
+        // Cell A: tight (5, 10..13), center (11, 5).
+        s.click_regions.push(ClickRegion::tight(5, 10, 13, kb(1)));
+        // A's slop spans rows 4..=6, cols 9..14.
+        for r in 4..=6 {
+            s.click_regions
+                .push(ClickRegion::slop(r, 9, 14, kb(1), (11, 5)));
+        }
+        // Cell B: tight (7, 10..13), center (11, 7).
+        s.click_regions.push(ClickRegion::tight(7, 10, 13, kb(2)));
+        for r in 6..=8 {
+            s.click_regions
+                .push(ClickRegion::slop(r, 9, 14, kb(2), (11, 7)));
+        }
+
+        // Click on the divider (row 6, col 11) — equidistant from
+        // both centers vertically; tiebreaker prefers the upper
+        // (smaller cy) cell A.
+        assert_eq!(s.click_to_action(6, 11), Some(kb(1)));
+        // Click clearly closer to B (row 8) — but the only region
+        // matching at (8, 11) is B's slop.
+        assert_eq!(s.click_to_action(8, 11), Some(kb(2)));
+    }
+
+    /// Clicks outside every region return None.
+    #[test]
+    fn miss_returns_none() {
+        let mut s = State::default();
+        s.click_regions.push(ClickRegion::tight(5, 10, 13, kb(1)));
+        s.click_regions
+            .push(ClickRegion::slop(5, 9, 14, kb(1), (11, 5)));
+        assert!(s.click_to_action(0, 0).is_none());
+        assert!(s.click_to_action(5, 20).is_none());
     }
 }

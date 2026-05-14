@@ -378,36 +378,36 @@ fn render_top_bar_collapsed(state: &mut State, row: usize, cols: usize) {
     let mid_tab_pane = (tab_center + pane_center) / 2;
     let mid_pane_typing = (pane_center + typing_center) / 2;
     let mid_typing_hamburger = (typing_center + hamburger_center) / 2;
-    state.click_regions.push(ClickRegion {
+    state.click_regions.push(ClickRegion::tight(
         row,
-        col_start: 0,
-        col_end: mid_session_tab,
-        action: ClickAction::ExpandSessions,
-    });
-    state.click_regions.push(ClickRegion {
+        0,
+        mid_session_tab,
+        ClickAction::ExpandSessions,
+    ));
+    state.click_regions.push(ClickRegion::tight(
         row,
-        col_start: mid_session_tab,
-        col_end: mid_tab_pane,
-        action: ClickAction::ExpandTabs,
-    });
-    state.click_regions.push(ClickRegion {
+        mid_session_tab,
+        mid_tab_pane,
+        ClickAction::ExpandTabs,
+    ));
+    state.click_regions.push(ClickRegion::tight(
         row,
-        col_start: mid_tab_pane,
-        col_end: mid_pane_typing,
-        action: ClickAction::ExpandPanes,
-    });
-    state.click_regions.push(ClickRegion {
+        mid_tab_pane,
+        mid_pane_typing,
+        ClickAction::ExpandPanes,
+    ));
+    state.click_regions.push(ClickRegion::tight(
         row,
-        col_start: mid_pane_typing,
-        col_end: mid_typing_hamburger,
-        action: ClickAction::ToggleKeyboard,
-    });
-    state.click_regions.push(ClickRegion {
+        mid_pane_typing,
+        mid_typing_hamburger,
+        ClickAction::ToggleKeyboard,
+    ));
+    state.click_regions.push(ClickRegion::tight(
         row,
-        col_start: mid_typing_hamburger,
-        col_end: cols,
-        action: ClickAction::ExpandPanes,
-    });
+        mid_typing_hamburger,
+        cols,
+        ClickAction::ExpandPanes,
+    ));
 }
 
 /// Selector top bar: `Zellij <current-X> | Switch <X>`. The current
@@ -474,12 +474,12 @@ fn render_top_bar_in_selector(
     // Single bar-wide click region: tapping anywhere on the title
     // collapses the menu and returns to the embedded viewport. The
     // bar carries no other interactive segment in this mode.
-    state.click_regions.push(ClickRegion {
+    state.click_regions.push(ClickRegion::tight(
         row,
-        col_start: 0,
-        col_end: cols,
-        action: ClickAction::CollapseSelector,
-    });
+        0,
+        cols,
+        ClickAction::CollapseSelector,
+    ));
 }
 
 /// One pre-styled cell paired with its visible width. Width is
@@ -613,12 +613,12 @@ fn render_centered_selector(
     // item `i` lands at `table_y + 1 + i`. Spans the visible table
     // width so a tap anywhere on the row hits.
     for (i, row) in rows.iter().take(visible_data_rows).enumerate() {
-        state.click_regions.push(ClickRegion {
-            row: table_y + 1 + i,
-            col_start: table_x,
-            col_end: table_x + table_visual_w,
-            action: row.action.clone(),
-        });
+        state.click_regions.push(ClickRegion::tight(
+            table_y + 1 + i,
+            table_x,
+            table_x + table_visual_w,
+            row.action.clone(),
+        ));
     }
 }
 

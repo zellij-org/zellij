@@ -27,6 +27,17 @@ const REV: &str = "\x1b[7m";
 /// Disable reverse-video.
 const NOREV: &str = "\x1b[27m";
 
+/// Horizontal hit-slop, in terminal columns. Each cell's slop region
+/// extends this many columns past its visible left/right walls so
+/// clicks just past the wall still resolve to the cell.
+const SLOP_H: usize = 1;
+/// Vertical hit-slop, in terminal rows. Each cell's slop region
+/// extends this many rows above and below its content row so clicks
+/// on the surrounding dividers / borders still resolve to the cell.
+/// Adjacent rows' slop regions overlap on the shared divider —
+/// resolved by nearest-center at dispatch time.
+const SLOP_V: usize = 1;
+
 /// Total terminal-rows the keyboard occupies for the given layout
 /// under the supplied modifier state. Equal to `2 * rows.len() + 1`
 /// (top border + per-row [content + divider] - 1 internal-divider +
@@ -289,12 +300,39 @@ fn render_row_content(
             buf.push_str(NOREV);
         }
 
-        click_regions.push(ClickRegion {
-            row: term_row,
-            col_start: abs_start,
-            col_end: abs_end,
-            action: ClickAction::Keyboard(cell.id),
-        });
+        // Tight region — the visible cell. Wins outright when the
+        // click lands inside the rendered glyph.
+        click_regions.push(ClickRegion::tight(
+            term_row,
+            abs_start,
+            abs_end,
+            ClickAction::Keyboard(cell.id),
+        ));
+
+        // Slop region — extends the cell's tappable area into the
+        // walls (±1 column) and the surrounding divider rows (±1
+        // row). Adjacent cells' slop regions overlap on shared
+        // boundaries; the dispatcher resolves each click by nearest-
+        // center distance to the visible cell. Without this halo the
+        // user must land inside the (small) interior to register a
+        // hit — with it, the perceived target roughly doubles
+        // without consuming any extra screen real estate.
+        let cx = (abs_start + abs_end).saturating_sub(1) / 2;
+        let cy = term_row;
+        let slop_col_start = abs_start.saturating_sub(SLOP_H);
+        let slop_col_end = abs_end + SLOP_H;
+        for dr in 0..=(2 * SLOP_V) {
+            let Some(r) = (term_row + dr).checked_sub(SLOP_V) else {
+                continue;
+            };
+            click_regions.push(ClickRegion::slop(
+                r,
+                slop_col_start,
+                slop_col_end,
+                ClickAction::Keyboard(cell.id),
+                (cx, cy),
+            ));
+        }
     }
     // Closing right wall of the rightmost cell.
     buf.push('│');
