@@ -1,10 +1,20 @@
 //! US-QWERTY layout. The only layout shipped in v1.
 //!
-//! The cell table covers extras, F-row, numbers, qwerty, asdf, zxcv
-//! and utility — every cell visible in the three mockups in
-//! `mobile_keyboard.md`. Cell IDs are stable u16s numbered in row-
-//! major order; the renderer and controller never depend on the
-//! numbering scheme.
+//! Three layers visible to the user, switched via the bottom bar's
+//! toggle cell and Fn cell:
+//!
+//! - **Letters** — staggered `qwerty` / `asdf` / `zxcv` with a wide
+//!   backspace on row 3. Shift uppercases the letter labels.
+//! - **Symbols** (`?123`) — digits + shell punctuation, no stagger.
+//! - **Functions** (`Fn`) — F1–F12 with seven inert filler cells.
+//!
+//! Two persistent rows surround every layer: an `extras` strip on top
+//! (Esc/Tab/Ctl/Alt + four arrows) and a `bottom bar` on the bottom
+//! (layer toggle, Fn toggle, space, ↵).
+//!
+//! Cell IDs are stable u16s spanning the union of all layers' cells;
+//! the controller and renderer never depend on the numbering scheme,
+//! they round-trip the opaque `CellId` only.
 
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -12,278 +22,436 @@ use std::collections::HashMap;
 use zellij_tile::prelude::*;
 
 use crate::keyboard::layout::{CellId, KeyAction, KeyCell, KeyRow, KeyboardLayout};
-use crate::keyboard::modifiers::{KeyboardModifiers, Modifier};
+use crate::keyboard::modifiers::{KeyLayer, KeyboardModifiers, Modifier};
 
-/// Per-cell static data. Rendered as a small table built once at
-/// construction time so `label()` / `emit()` are O(1) lookups.
-#[derive(Debug, Clone)]
-struct UsQwertyCell {
+// -------------------------------------------------------------------
+// Cell IDs.
+//
+// Ranges are grouped per row for readability. The exact numbering is
+// not load-bearing — only stability across re-renders matters since
+// click regions reference cell IDs.
+// -------------------------------------------------------------------
+
+// Extras strip cells.
+const ID_ESC: u16 = 0;
+const ID_TAB: u16 = 1;
+const ID_CTL: u16 = 2;
+const ID_ALT: u16 = 3;
+const ID_ARROW_LEFT: u16 = 4;
+const ID_ARROW_DOWN: u16 = 5;
+const ID_ARROW_UP: u16 = 6;
+const ID_ARROW_RIGHT: u16 = 7;
+
+// Letters row 1: q w e r t y u i o p → cells 10..=19.
+const ID_LETTERS_R1_START: u16 = 10;
+// Letters row 2: a s d f g h j k l → cells 20..=28.
+const ID_LETTERS_R2_START: u16 = 20;
+// Letters row 3: ⇧ z x c v b n m . / ⌫.
+// IDs 30..=37 cover ⇧ and the seven letters z..m. The two new
+// punctuation cells take IDs 38 / 39; the backspace moves to ID 79
+// (the unused slot between SYMBOLS_R3 = ..=78 and FUNCTIONS_R1 =
+// 80..) so the cell-ID space stays gap-friendly for future additions.
+const ID_LETTERS_R3_SHIFT: u16 = 30;
+const ID_LETTERS_R3_LETTERS_START: u16 = 31;
+const ID_LETTERS_R3_PERIOD: u16 = 38;
+const ID_LETTERS_R3_SLASH: u16 = 39;
+const ID_LETTERS_R3_BACKSPACE: u16 = 79;
+
+// Symbols row 1: 1234567890-=~ → cells 40..=52.
+const ID_SYMBOLS_R1_START: u16 = 40;
+// Symbols row 2: !@#$&*()[]{} + ⌫ → cells 53..=65.
+const ID_SYMBOLS_R2_START: u16 = 53;
+const ID_SYMBOLS_R2_BACKSPACE: u16 = 65;
+// Symbols row 3: /\:;|<>?'",.` → cells 66..=78.
+const ID_SYMBOLS_R3_START: u16 = 66;
+
+// Functions row 1: F1..F10 → cells 80..=89.
+const ID_FUNCTIONS_R1_START: u16 = 80;
+// Functions row 2: F11, F12, 7×inert, ⌫ → cells 90..=99.
+const ID_FUNCTIONS_R2_F11: u16 = 90;
+const ID_FUNCTIONS_R2_F12: u16 = 91;
+const ID_FUNCTIONS_R2_INERT_START: u16 = 92;
+const ID_FUNCTIONS_R2_BACKSPACE: u16 = 99;
+
+// Bottom bar.
+const ID_BOTTOM_TOGGLE: u16 = 200;
+const ID_BOTTOM_FN: u16 = 201;
+const ID_BOTTOM_SPACE: u16 = 202;
+const ID_BOTTOM_ENTER: u16 = 203;
+
+// -------------------------------------------------------------------
+// Layout content tables. Static `&'static str` labels so `label()`
+// returns borrowed Cows without allocating.
+// -------------------------------------------------------------------
+
+/// Letters row 1 (`q`..`p`). Index = cell id - ID_LETTERS_R1_START.
+const LETTERS_R1: &[(&str, &str, char, char)] = &[
+    ("q", "Q", 'q', 'Q'),
+    ("w", "W", 'w', 'W'),
+    ("e", "E", 'e', 'E'),
+    ("r", "R", 'r', 'R'),
+    ("t", "T", 't', 'T'),
+    ("y", "Y", 'y', 'Y'),
+    ("u", "U", 'u', 'U'),
+    ("i", "I", 'i', 'I'),
+    ("o", "O", 'o', 'O'),
+    ("p", "P", 'p', 'P'),
+];
+
+/// Letters row 2 (`a`..`l`).
+const LETTERS_R2: &[(&str, &str, char, char)] = &[
+    ("a", "A", 'a', 'A'),
+    ("s", "S", 's', 'S'),
+    ("d", "D", 'd', 'D'),
+    ("f", "F", 'f', 'F'),
+    ("g", "G", 'g', 'G'),
+    ("h", "H", 'h', 'H'),
+    ("j", "J", 'j', 'J'),
+    ("k", "K", 'k', 'K'),
+    ("l", "L", 'l', 'L'),
+];
+
+/// Letters row 3 letters (`z`..`m`). The flanking ⇧ and ⌫ cells live
+/// outside this table because they have distinct widths and actions.
+const LETTERS_R3_LETTERS: &[(&str, &str, char, char)] = &[
+    ("z", "Z", 'z', 'Z'),
+    ("x", "X", 'x', 'X'),
+    ("c", "C", 'c', 'C'),
+    ("v", "V", 'v', 'V'),
+    ("b", "B", 'b', 'B'),
+    ("n", "N", 'n', 'N'),
+    ("m", "M", 'm', 'M'),
+];
+
+/// Symbols row 1 — digits + tail punctuation. Shift has no effect on
+/// the Symbols layer (the symbol set is already a curated mix).
+const SYMBOLS_R1: &[(&str, char)] = &[
+    ("1", '1'),
+    ("2", '2'),
+    ("3", '3'),
+    ("4", '4'),
+    ("5", '5'),
+    ("6", '6'),
+    ("7", '7'),
+    ("8", '8'),
+    ("9", '9'),
+    ("0", '0'),
+    ("-", '-'),
+    ("=", '='),
+    ("~", '~'),
+];
+
+/// Symbols row 2 — shift-digits and brackets. Trailing cell (index
+/// 12) is ⌫, handled separately so the row table stays uniform.
+const SYMBOLS_R2: &[(&str, char)] = &[
+    ("!", '!'),
+    ("@", '@'),
+    ("#", '#'),
+    ("$", '$'),
+    ("&", '&'),
+    ("*", '*'),
+    ("(", '('),
+    (")", ')'),
+    ("[", '['),
+    ("]", ']'),
+    ("{", '{'),
+    ("}", '}'),
+];
+
+/// Symbols row 3 — shell punctuation.
+const SYMBOLS_R3: &[(&str, char)] = &[
+    ("/", '/'),
+    ("\\", '\\'),
+    (":", ':'),
+    (";", ';'),
+    ("|", '|'),
+    ("<", '<'),
+    (">", '>'),
+    ("?", '?'),
+    ("'", '\''),
+    ("\"", '"'),
+    (",", ','),
+    (".", '.'),
+    ("`", '`'),
+];
+
+// -------------------------------------------------------------------
+// Per-cell static data assembled at construction time.
+// -------------------------------------------------------------------
+
+#[derive(Debug, Clone, Copy)]
+struct CellSpec {
     id: CellId,
     col_start: u16,
     col_end: u16,
-    default_label: &'static str,
-    shifted_label: &'static str,
-    default_emit: Emit,
-    shifted_emit: Emit,
-    modifier: Option<Modifier>,
-}
-
-/// Compact representation of what to emit. Materialised into a full
-/// `KeyAction` (which owns a `KeyWithModifier` and is therefore not
-/// const-constructible) only at the moment of a tap.
-#[derive(Debug, Clone, Copy)]
-enum Emit {
-    /// Plain ASCII char. Ctrl/Alt are folded in by the controller.
-    Char(char),
-    /// `BareKey` other than a printable char (Esc, Tab, Backspace,
-    /// Enter, arrows).
-    Bare(BareKey),
-    /// `BareKey::F(n)`.
-    F(u8),
-    /// Toggle a modifier instead of sending bytes.
-    Toggle(Modifier),
-}
-
-impl Emit {
-    fn into_action(self) -> KeyAction {
-        match self {
-            Emit::Char(c) => KeyAction::SendKey(KeyWithModifier {
-                bare_key: BareKey::Char(c),
-                key_modifiers: std::collections::BTreeSet::new(),
-            }),
-            Emit::Bare(b) => KeyAction::SendKey(KeyWithModifier {
-                bare_key: b,
-                key_modifiers: std::collections::BTreeSet::new(),
-            }),
-            Emit::F(n) => KeyAction::SendKey(KeyWithModifier {
-                bare_key: BareKey::F(n),
-                key_modifiers: std::collections::BTreeSet::new(),
-            }),
-            Emit::Toggle(m) => KeyAction::ToggleModifier(m),
-        }
-    }
 }
 
 pub struct UsQwerty {
-    cells: Vec<UsQwertyCell>,
-    /// `CellId.0` → index into `cells`.
-    by_id: HashMap<u16, usize>,
-    /// Per-row cell index slices, one per logical row in row-order.
-    /// `(offset_col, range)` tuples; the F-row is conditionally
-    /// included by `rows()`.
-    extras_idx: (u16, std::ops::Range<usize>),
-    f_row_idx: (u16, std::ops::Range<usize>),
-    numbers_idx: (u16, std::ops::Range<usize>),
-    qwerty_idx: (u16, std::ops::Range<usize>),
-    asdf_idx: (u16, std::ops::Range<usize>),
-    zxcv_idx: (u16, std::ops::Range<usize>),
-    utility_idx: (u16, std::ops::Range<usize>),
+    /// Lookup: `CellId.0` → cell metadata. The per-row helpers iterate
+    /// statically-known id ranges to assemble `KeyRow`s; this map
+    /// answers per-cell queries from `label`/`emit`/`modifier_of`/
+    /// `layer_of` in O(1).
+    cells: HashMap<u16, CellSpec>,
+}
+
+impl Default for UsQwerty {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl UsQwerty {
     pub fn new() -> Self {
-        let mut cells: Vec<UsQwertyCell> = Vec::new();
-        let mut next_id: u16 = 1;
+        let mut cells: HashMap<u16, CellSpec> = HashMap::new();
 
-        // Helper closures to keep the table compact.
-        let push = |cells: &mut Vec<UsQwertyCell>,
-                        next_id: &mut u16,
-                        col_start: u16,
-                        col_end: u16,
-                        default_label: &'static str,
-                        shifted_label: &'static str,
-                        default_emit: Emit,
-                        shifted_emit: Emit,
-                        modifier: Option<Modifier>| {
-            let id = CellId(*next_id);
-            *next_id += 1;
-            cells.push(UsQwertyCell {
-                id,
-                col_start,
-                col_end,
-                default_label,
-                shifted_label,
-                default_emit,
-                shifted_emit,
-                modifier,
+        // ---- Extras strip (offset 0): 4×5 + 4×3 = 32 cols.
+        // Esc(5) Tab(5) Ctl(5) Alt(5) ←(3) ↓(3) ↑(3) →(3)
+        let extras_widths = [
+            (ID_ESC, 5u16),
+            (ID_TAB, 5),
+            (ID_CTL, 5),
+            (ID_ALT, 5),
+            (ID_ARROW_LEFT, 3),
+            (ID_ARROW_DOWN, 3),
+            (ID_ARROW_UP, 3),
+            (ID_ARROW_RIGHT, 3),
+        ];
+        push_row(&mut cells, &extras_widths);
+
+        // ---- Letters row 1: 10 cells × 3 cols = 30. Offset 0.
+        let r1_widths: Vec<(u16, u16)> = (0..LETTERS_R1.len() as u16)
+            .map(|i| (ID_LETTERS_R1_START + i, 3u16))
+            .collect();
+        push_row(&mut cells, &r1_widths);
+
+        // ---- Letters row 2: 9 cells × 3 cols = 27. Offset 2.
+        let r2_widths: Vec<(u16, u16)> = (0..LETTERS_R2.len() as u16)
+            .map(|i| (ID_LETTERS_R2_START + i, 3u16))
+            .collect();
+        push_row(&mut cells, &r2_widths);
+
+        // ---- Letters row 3: ⇧(3) + 7×3 + .(3) + /(3) + ⌫(4) = 34.
+        // Offset 0. The backspace shrank from its original 7 cols to
+        // make room for the new `.` and `/` cells; it is left one
+        // column wider than the surrounding letter cells so the
+        // `center()` helper places the glyph with an asymmetric extra
+        // space to its right — visible right-padding inside the cell's
+        // bg shade. Row width (34) matches the Letters bottom bar so
+        // the layer's `block_width` and centering are unchanged.
+        let mut r3_widths: Vec<(u16, u16)> = vec![(ID_LETTERS_R3_SHIFT, 3)];
+        for i in 0..LETTERS_R3_LETTERS.len() as u16 {
+            r3_widths.push((ID_LETTERS_R3_LETTERS_START + i, 3));
+        }
+        r3_widths.push((ID_LETTERS_R3_PERIOD, 3));
+        r3_widths.push((ID_LETTERS_R3_SLASH, 3));
+        r3_widths.push((ID_LETTERS_R3_BACKSPACE, 4));
+        push_row(&mut cells, &r3_widths);
+
+        // ---- Symbols rows: 13 cells × 3 = 39 each.
+        let s1_widths: Vec<(u16, u16)> = (0..SYMBOLS_R1.len() as u16)
+            .map(|i| (ID_SYMBOLS_R1_START + i, 3u16))
+            .collect();
+        push_row(&mut cells, &s1_widths);
+
+        let mut s2_widths: Vec<(u16, u16)> = (0..SYMBOLS_R2.len() as u16)
+            .map(|i| (ID_SYMBOLS_R2_START + i, 3u16))
+            .collect();
+        s2_widths.push((ID_SYMBOLS_R2_BACKSPACE, 3));
+        push_row(&mut cells, &s2_widths);
+
+        let s3_widths: Vec<(u16, u16)> = (0..SYMBOLS_R3.len() as u16)
+            .map(|i| (ID_SYMBOLS_R3_START + i, 3u16))
+            .collect();
+        push_row(&mut cells, &s3_widths);
+
+        // ---- Functions row 1: F1..F9 (4 cols each) + F10 (5). Total
+        // 9×4 + 5 = 41.
+        let mut fn1_widths: Vec<(u16, u16)> = Vec::with_capacity(10);
+        for i in 0..9u16 {
+            fn1_widths.push((ID_FUNCTIONS_R1_START + i, 4));
+        }
+        fn1_widths.push((ID_FUNCTIONS_R1_START + 9, 5));
+        push_row(&mut cells, &fn1_widths);
+
+        // ---- Functions row 2: F11(5) F12(5) 7×inert(4) ⌫(3) = 41.
+        let mut fn2_widths: Vec<(u16, u16)> = vec![
+            (ID_FUNCTIONS_R2_F11, 5),
+            (ID_FUNCTIONS_R2_F12, 5),
+        ];
+        for i in 0..7u16 {
+            fn2_widths.push((ID_FUNCTIONS_R2_INERT_START + i, 4));
+        }
+        fn2_widths.push((ID_FUNCTIONS_R2_BACKSPACE, 3));
+        push_row(&mut cells, &fn2_widths);
+
+        // Bottom-bar cells are layered-dependent in width: the toggle
+        // cell shrinks from 6 (`?123`) to 5 (`ABC`) when leaving the
+        // Letters layer. The Symbols/Functions geometry is stored in
+        // `cells`; the Letters override is applied in
+        // `bottom_bar_for_layer()` so a single `CellId` covers both.
+        let bottom_widths = [
+            (ID_BOTTOM_TOGGLE, 5u16),
+            (ID_BOTTOM_FN, 4),
+            (ID_BOTTOM_SPACE, 21),
+            (ID_BOTTOM_ENTER, 3),
+        ];
+        push_row(&mut cells, &bottom_widths);
+
+        Self { cells }
+    }
+
+    fn cell_spec(&self, id: CellId) -> Option<CellSpec> {
+        self.cells.get(&id.0).copied()
+    }
+
+    fn key_cell(&self, id: u16) -> KeyCell {
+        let spec = self
+            .cells
+            .get(&id)
+            .copied()
+            .unwrap_or(CellSpec {
+                id: CellId(id),
+                col_start: 0,
+                col_end: 0,
             });
+        KeyCell {
+            col_start: spec.col_start,
+            col_end: spec.col_end,
+            id: spec.id,
+        }
+    }
+
+    fn extras_row(&self) -> KeyRow {
+        let cells = [
+            ID_ESC,
+            ID_TAB,
+            ID_CTL,
+            ID_ALT,
+            ID_ARROW_LEFT,
+            ID_ARROW_DOWN,
+            ID_ARROW_UP,
+            ID_ARROW_RIGHT,
+        ]
+        .iter()
+        .map(|id| self.key_cell(*id))
+        .collect();
+        KeyRow::tall(0, cells)
+    }
+
+    fn letters_row_1(&self) -> KeyRow {
+        let cells = (0..LETTERS_R1.len() as u16)
+            .map(|i| self.key_cell(ID_LETTERS_R1_START + i))
+            .collect();
+        KeyRow::tall(0, cells)
+    }
+
+    fn letters_row_2(&self) -> KeyRow {
+        let cells = (0..LETTERS_R2.len() as u16)
+            .map(|i| self.key_cell(ID_LETTERS_R2_START + i))
+            .collect();
+        KeyRow::tall(2, cells)
+    }
+
+    fn letters_row_3(&self) -> KeyRow {
+        let mut cells = vec![self.key_cell(ID_LETTERS_R3_SHIFT)];
+        for i in 0..LETTERS_R3_LETTERS.len() as u16 {
+            cells.push(self.key_cell(ID_LETTERS_R3_LETTERS_START + i));
+        }
+        cells.push(self.key_cell(ID_LETTERS_R3_PERIOD));
+        cells.push(self.key_cell(ID_LETTERS_R3_SLASH));
+        cells.push(self.key_cell(ID_LETTERS_R3_BACKSPACE));
+        KeyRow::tall(0, cells)
+    }
+
+    fn symbols_row_1(&self) -> KeyRow {
+        let cells = (0..SYMBOLS_R1.len() as u16)
+            .map(|i| self.key_cell(ID_SYMBOLS_R1_START + i))
+            .collect();
+        KeyRow::tall(0, cells)
+    }
+
+    fn symbols_row_2(&self) -> KeyRow {
+        let mut cells: Vec<KeyCell> = (0..SYMBOLS_R2.len() as u16)
+            .map(|i| self.key_cell(ID_SYMBOLS_R2_START + i))
+            .collect();
+        cells.push(self.key_cell(ID_SYMBOLS_R2_BACKSPACE));
+        KeyRow::tall(0, cells)
+    }
+
+    fn symbols_row_3(&self) -> KeyRow {
+        let cells = (0..SYMBOLS_R3.len() as u16)
+            .map(|i| self.key_cell(ID_SYMBOLS_R3_START + i))
+            .collect();
+        KeyRow::tall(0, cells)
+    }
+
+    fn functions_row_1(&self) -> KeyRow {
+        let cells = (0..10u16)
+            .map(|i| self.key_cell(ID_FUNCTIONS_R1_START + i))
+            .collect();
+        KeyRow::tall(0, cells)
+    }
+
+    fn functions_row_2(&self) -> KeyRow {
+        let mut cells = vec![
+            self.key_cell(ID_FUNCTIONS_R2_F11),
+            self.key_cell(ID_FUNCTIONS_R2_F12),
+        ];
+        for i in 0..7u16 {
+            cells.push(self.key_cell(ID_FUNCTIONS_R2_INERT_START + i));
+        }
+        cells.push(self.key_cell(ID_FUNCTIONS_R2_BACKSPACE));
+        KeyRow::tall(0, cells)
+    }
+
+    /// The bottom bar shifts the toggle cell's right edge by one
+    /// column when on the Letters layer (label `?123` is 4 chars, so
+    /// cell width is 6 instead of 5). Reflect that geometry change
+    /// here without storing two `CellSpec`s for the same `CellId`.
+    fn bottom_bar(&self, layer: KeyLayer) -> KeyRow {
+        let toggle_width: u16 = match layer {
+            KeyLayer::Letters => 6,
+            KeyLayer::Symbols | KeyLayer::Functions => 5,
         };
 
-        // ---- Extras (offset_col=0, walls at 0,4,8,12,16,20,23,26,29,32) ----
-        let extras_start = cells.len();
-        push(&mut cells, &mut next_id, 0, 4, "Esc", "Esc", Emit::Bare(BareKey::Esc), Emit::Bare(BareKey::Esc), None);
-        push(&mut cells, &mut next_id, 4, 8, "Tab", "Tab", Emit::Bare(BareKey::Tab), Emit::Bare(BareKey::Tab), None);
-        push(&mut cells, &mut next_id, 8, 12, "Ctl", "Ctl", Emit::Toggle(Modifier::Ctrl), Emit::Toggle(Modifier::Ctrl), Some(Modifier::Ctrl));
-        push(&mut cells, &mut next_id, 12, 16, "Alt", "Alt", Emit::Toggle(Modifier::Alt), Emit::Toggle(Modifier::Alt), Some(Modifier::Alt));
-        push(&mut cells, &mut next_id, 16, 20, " Fn", " Fn", Emit::Toggle(Modifier::Fn), Emit::Toggle(Modifier::Fn), Some(Modifier::Fn));
-        push(&mut cells, &mut next_id, 20, 23, "← ", "← ", Emit::Bare(BareKey::Left), Emit::Bare(BareKey::Left), None);
-        push(&mut cells, &mut next_id, 23, 26, "↓ ", "↓ ", Emit::Bare(BareKey::Down), Emit::Bare(BareKey::Down), None);
-        push(&mut cells, &mut next_id, 26, 29, "↑ ", "↑ ", Emit::Bare(BareKey::Up), Emit::Bare(BareKey::Up), None);
-        push(&mut cells, &mut next_id, 29, 32, "→ ", "→ ", Emit::Bare(BareKey::Right), Emit::Bare(BareKey::Right), None);
-        let extras_end = cells.len();
+        let mut col: u16 = 0;
+        let mut cells = Vec::with_capacity(4);
 
-        // ---- F-row (offset_col=0, walls at 0,3,6,...,36 — 12 cells) ----
-        // F-row labels never flip under Shift; default == shifted by
-        // design (Stage 8 of the implementation plan). F1..F9 fit as
-        // "F1".."F9"; F10..F12 lose the F-prefix to fit in the 2-cell
-        // interior.
-        let f_row_start = cells.len();
-        let f_labels: [&'static str; 12] = ["F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "10", "11", "12"];
-        for (i, label) in f_labels.iter().enumerate() {
-            let col_start = (i as u16) * 3;
-            let col_end = col_start + 3;
-            let n = (i + 1) as u8;
-            push(&mut cells, &mut next_id, col_start, col_end, label, label, Emit::F(n), Emit::F(n), None);
-        }
-        let f_row_end = cells.len();
+        let push_at = |id: u16, width: u16, col: &mut u16, cells: &mut Vec<KeyCell>| {
+            cells.push(KeyCell {
+                col_start: *col,
+                col_end: *col + width,
+                id: CellId(id),
+            });
+            *col += width;
+        };
 
-        // ---- Numbers (offset_col=0, walls at 0,3,...,39 — 13 cells) ----
-        let numbers_start = cells.len();
-        let numbers: [(&str, &str, char, char); 13] = [
-            ("` ", "~ ", '`', '~'),
-            ("1 ", "! ", '1', '!'),
-            ("2 ", "@ ", '2', '@'),
-            ("3 ", "# ", '3', '#'),
-            ("4 ", "$ ", '4', '$'),
-            ("5 ", "% ", '5', '%'),
-            ("6 ", "^ ", '6', '^'),
-            ("7 ", "& ", '7', '&'),
-            ("8 ", "* ", '8', '*'),
-            ("9 ", "( ", '9', '('),
-            ("0 ", ") ", '0', ')'),
-            ("- ", "_ ", '-', '_'),
-            ("= ", "+ ", '=', '+'),
-        ];
-        for (i, (dl, sl, dc, sc)) in numbers.iter().enumerate() {
-            let col_start = (i as u16) * 3;
-            let col_end = col_start + 3;
-            push(&mut cells, &mut next_id, col_start, col_end, dl, sl, Emit::Char(*dc), Emit::Char(*sc), None);
-        }
-        let numbers_end = cells.len();
+        push_at(ID_BOTTOM_TOGGLE, toggle_width, &mut col, &mut cells);
+        push_at(ID_BOTTOM_FN, 4, &mut col, &mut cells);
+        push_at(ID_BOTTOM_SPACE, 21, &mut col, &mut cells);
+        push_at(ID_BOTTOM_ENTER, 3, &mut col, &mut cells);
 
-        // ---- Qwerty (offset_col=0, walls at 0,3,...,39 — 13 cells) ----
-        let qwerty_start = cells.len();
-        let qwerty: [(&str, &str, char, char); 13] = [
-            ("q ", "Q ", 'q', 'Q'),
-            ("w ", "W ", 'w', 'W'),
-            ("e ", "E ", 'e', 'E'),
-            ("r ", "R ", 'r', 'R'),
-            ("t ", "T ", 't', 'T'),
-            ("y ", "Y ", 'y', 'Y'),
-            ("u ", "U ", 'u', 'U'),
-            ("i ", "I ", 'i', 'I'),
-            ("o ", "O ", 'o', 'O'),
-            ("p ", "P ", 'p', 'P'),
-            ("[ ", "{ ", '[', '{'),
-            ("] ", "} ", ']', '}'),
-            ("\\ ", "| ", '\\', '|'),
-        ];
-        for (i, (dl, sl, dc, sc)) in qwerty.iter().enumerate() {
-            let col_start = (i as u16) * 3;
-            let col_end = col_start + 3;
-            push(&mut cells, &mut next_id, col_start, col_end, dl, sl, Emit::Char(*dc), Emit::Char(*sc), None);
-        }
-        let qwerty_end = cells.len();
+        KeyRow::tall(0, cells)
+    }
+}
 
-        // ---- ASDF (offset_col=1, walls at 0,3,...,33 — 11 cells) ----
-        let asdf_start = cells.len();
-        let asdf: [(&str, &str, char, char); 11] = [
-            ("a ", "A ", 'a', 'A'),
-            ("s ", "S ", 's', 'S'),
-            ("d ", "D ", 'd', 'D'),
-            ("f ", "F ", 'f', 'F'),
-            ("g ", "G ", 'g', 'G'),
-            ("h ", "H ", 'h', 'H'),
-            ("j ", "J ", 'j', 'J'),
-            ("k ", "K ", 'k', 'K'),
-            ("l ", "L ", 'l', 'L'),
-            ("; ", ": ", ';', ':'),
-            ("' ", "\" ", '\'', '"'),
-        ];
-        for (i, (dl, sl, dc, sc)) in asdf.iter().enumerate() {
-            let col_start = (i as u16) * 3;
-            let col_end = col_start + 3;
-            push(&mut cells, &mut next_id, col_start, col_end, dl, sl, Emit::Char(*dc), Emit::Char(*sc), None);
-        }
-        let asdf_end = cells.len();
-
-        // ---- ZXCV (offset_col=0, walls at 0,3,...,36 — 12 cells) ----
-        // First cell is ⇧ (sticky one-shot Shift). Last is ⌫.
-        let zxcv_start = cells.len();
-        push(&mut cells, &mut next_id, 0, 3, "⇧ ", "⇧ ", Emit::Toggle(Modifier::Shift), Emit::Toggle(Modifier::Shift), Some(Modifier::Shift));
-        let zxcv_letters: [(&str, &str, char, char); 10] = [
-            ("z ", "Z ", 'z', 'Z'),
-            ("x ", "X ", 'x', 'X'),
-            ("c ", "C ", 'c', 'C'),
-            ("v ", "V ", 'v', 'V'),
-            ("b ", "B ", 'b', 'B'),
-            ("n ", "N ", 'n', 'N'),
-            ("m ", "M ", 'm', 'M'),
-            (", ", "< ", ',', '<'),
-            (". ", "> ", '.', '>'),
-            ("/ ", "? ", '/', '?'),
-        ];
-        for (i, (dl, sl, dc, sc)) in zxcv_letters.iter().enumerate() {
-            let col_start = 3 + (i as u16) * 3;
-            let col_end = col_start + 3;
-            push(&mut cells, &mut next_id, col_start, col_end, dl, sl, Emit::Char(*dc), Emit::Char(*sc), None);
-        }
-        push(&mut cells, &mut next_id, 33, 36, "⌫ ", "⌫ ", Emit::Bare(BareKey::Backspace), Emit::Bare(BareKey::Backspace), None);
-        let zxcv_end = cells.len();
-
-        // ---- Utility (offset_col=0, walls at 0, 30, 36) ----
-        let utility_start = cells.len();
-        push(
-            &mut cells,
-            &mut next_id,
-            0,
-            30,
-            "            space            ",
-            "            space            ",
-            Emit::Char(' '),
-            Emit::Char(' '),
-            None,
+/// Append a row's cells to `cells`. Each `(id, width)` lays a cell
+/// flush against the previous one, so `col_start`/`col_end` form a
+/// contiguous sequence starting at 0. This is the canonical geometry
+/// used everywhere except the bottom bar, whose toggle width depends
+/// on the active layer and is recomputed in `bottom_bar()`.
+fn push_row(cells: &mut HashMap<u16, CellSpec>, row: &[(u16, u16)]) {
+    let mut col: u16 = 0;
+    for (id, width) in row {
+        cells.insert(
+            *id,
+            CellSpec {
+                id: CellId(*id),
+                col_start: col,
+                col_end: col + *width,
+            },
         );
-        push(&mut cells, &mut next_id, 30, 36, "  ↵  ", "  ↵  ", Emit::Bare(BareKey::Enter), Emit::Bare(BareKey::Enter), None);
-        let utility_end = cells.len();
-
-        let by_id: HashMap<u16, usize> = cells
-            .iter()
-            .enumerate()
-            .map(|(i, c)| (c.id.0, i))
-            .collect();
-
-        Self {
-            cells,
-            by_id,
-            extras_idx: (0, extras_start..extras_end),
-            f_row_idx: (0, f_row_start..f_row_end),
-            numbers_idx: (0, numbers_start..numbers_end),
-            qwerty_idx: (0, qwerty_start..qwerty_end),
-            asdf_idx: (1, asdf_start..asdf_end),
-            zxcv_idx: (0, zxcv_start..zxcv_end),
-            utility_idx: (0, utility_start..utility_end),
-        }
-    }
-
-    fn lookup(&self, cell: CellId) -> Option<&UsQwertyCell> {
-        self.by_id.get(&cell.0).map(|i| &self.cells[*i])
-    }
-
-    fn key_row(&self, slice: &(u16, std::ops::Range<usize>)) -> KeyRow {
-        let (offset_col, range) = slice;
-        let cells = self.cells[range.clone()]
-            .iter()
-            .map(|c| KeyCell {
-                col_start: c.col_start,
-                col_end: c.col_end,
-                id: c.id,
-            })
-            .collect();
-        KeyRow {
-            offset_col: *offset_col,
-            cells,
-        }
+        col += *width;
     }
 }
 
@@ -297,48 +465,285 @@ impl KeyboardLayout for UsQwerty {
     }
 
     fn rows(&self, mods: &KeyboardModifiers) -> Vec<KeyRow> {
-        let mut out = Vec::with_capacity(if mods.fn_armed { 7 } else { 6 });
-        out.push(self.key_row(&self.extras_idx));
-        if mods.fn_armed {
-            out.push(self.key_row(&self.f_row_idx));
+        match mods.layer {
+            KeyLayer::Letters => vec![
+                self.extras_row(),
+                self.letters_row_1(),
+                self.letters_row_2(),
+                self.letters_row_3(),
+                self.bottom_bar(KeyLayer::Letters),
+            ],
+            KeyLayer::Symbols => vec![
+                self.extras_row(),
+                self.symbols_row_1(),
+                self.symbols_row_2(),
+                self.symbols_row_3(),
+                self.bottom_bar(KeyLayer::Symbols),
+            ],
+            KeyLayer::Functions => vec![
+                self.extras_row(),
+                self.functions_row_1(),
+                self.functions_row_2(),
+                self.bottom_bar(KeyLayer::Functions),
+            ],
         }
-        out.push(self.key_row(&self.numbers_idx));
-        out.push(self.key_row(&self.qwerty_idx));
-        out.push(self.key_row(&self.asdf_idx));
-        out.push(self.key_row(&self.zxcv_idx));
-        out.push(self.key_row(&self.utility_idx));
-        out
     }
 
     fn label(&self, cell: CellId, mods: &KeyboardModifiers) -> Cow<'static, str> {
-        match self.lookup(cell) {
-            Some(c) => {
-                if mods.shift_armed {
-                    Cow::Borrowed(c.shifted_label)
-                } else {
-                    Cow::Borrowed(c.default_label)
-                }
-            },
-            None => Cow::Borrowed(""),
+        // Extras strip (layer-independent).
+        match cell.0 {
+            ID_ESC => return Cow::Borrowed("Esc"),
+            ID_TAB => return Cow::Borrowed("Tab"),
+            ID_CTL => return Cow::Borrowed("Ctl"),
+            ID_ALT => return Cow::Borrowed("Alt"),
+            ID_ARROW_LEFT => return Cow::Borrowed("←"),
+            ID_ARROW_DOWN => return Cow::Borrowed("↓"),
+            ID_ARROW_UP => return Cow::Borrowed("↑"),
+            ID_ARROW_RIGHT => return Cow::Borrowed("→"),
+            _ => {},
         }
+
+        // Bottom bar.
+        if cell.0 == ID_BOTTOM_TOGGLE {
+            return match mods.layer {
+                KeyLayer::Letters => Cow::Borrowed("?123"),
+                KeyLayer::Symbols | KeyLayer::Functions => Cow::Borrowed("ABC"),
+            };
+        }
+        if cell.0 == ID_BOTTOM_FN {
+            return Cow::Borrowed("Fn");
+        }
+        if cell.0 == ID_BOTTOM_SPACE {
+            return Cow::Borrowed("space");
+        }
+        if cell.0 == ID_BOTTOM_ENTER {
+            return Cow::Borrowed("↵");
+        }
+
+        // Letters layer printables.
+        if (ID_LETTERS_R1_START..=ID_LETTERS_R1_START + 9).contains(&cell.0) {
+            let i = (cell.0 - ID_LETTERS_R1_START) as usize;
+            let (lo, up, _, _) = LETTERS_R1[i];
+            return Cow::Borrowed(if mods.shift_armed { up } else { lo });
+        }
+        if (ID_LETTERS_R2_START..=ID_LETTERS_R2_START + 8).contains(&cell.0) {
+            let i = (cell.0 - ID_LETTERS_R2_START) as usize;
+            let (lo, up, _, _) = LETTERS_R2[i];
+            return Cow::Borrowed(if mods.shift_armed { up } else { lo });
+        }
+        if (ID_LETTERS_R3_LETTERS_START..=ID_LETTERS_R3_LETTERS_START + 6).contains(&cell.0) {
+            let i = (cell.0 - ID_LETTERS_R3_LETTERS_START) as usize;
+            let (lo, up, _, _) = LETTERS_R3_LETTERS[i];
+            return Cow::Borrowed(if mods.shift_armed { up } else { lo });
+        }
+        if cell.0 == ID_LETTERS_R3_SHIFT {
+            return Cow::Borrowed("⇧");
+        }
+        if cell.0 == ID_LETTERS_R3_PERIOD {
+            return Cow::Borrowed(".");
+        }
+        if cell.0 == ID_LETTERS_R3_SLASH {
+            return Cow::Borrowed("/");
+        }
+        if cell.0 == ID_LETTERS_R3_BACKSPACE {
+            return Cow::Borrowed("⌫");
+        }
+
+        // Symbols layer.
+        if (ID_SYMBOLS_R1_START..ID_SYMBOLS_R1_START + SYMBOLS_R1.len() as u16).contains(&cell.0) {
+            let i = (cell.0 - ID_SYMBOLS_R1_START) as usize;
+            return Cow::Borrowed(SYMBOLS_R1[i].0);
+        }
+        if (ID_SYMBOLS_R2_START..ID_SYMBOLS_R2_START + SYMBOLS_R2.len() as u16).contains(&cell.0) {
+            let i = (cell.0 - ID_SYMBOLS_R2_START) as usize;
+            return Cow::Borrowed(SYMBOLS_R2[i].0);
+        }
+        if cell.0 == ID_SYMBOLS_R2_BACKSPACE {
+            return Cow::Borrowed("⌫");
+        }
+        if (ID_SYMBOLS_R3_START..ID_SYMBOLS_R3_START + SYMBOLS_R3.len() as u16).contains(&cell.0) {
+            let i = (cell.0 - ID_SYMBOLS_R3_START) as usize;
+            return Cow::Borrowed(SYMBOLS_R3[i].0);
+        }
+
+        // Functions layer.
+        const FN_LABELS: [&str; 12] = [
+            "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12",
+        ];
+        if (ID_FUNCTIONS_R1_START..ID_FUNCTIONS_R1_START + 10).contains(&cell.0) {
+            let i = (cell.0 - ID_FUNCTIONS_R1_START) as usize;
+            return Cow::Borrowed(FN_LABELS[i]);
+        }
+        if cell.0 == ID_FUNCTIONS_R2_F11 {
+            return Cow::Borrowed(FN_LABELS[10]);
+        }
+        if cell.0 == ID_FUNCTIONS_R2_F12 {
+            return Cow::Borrowed(FN_LABELS[11]);
+        }
+        if (ID_FUNCTIONS_R2_INERT_START..ID_FUNCTIONS_R2_INERT_START + 7).contains(&cell.0) {
+            // Empty label — the renderer pads the full cell width with
+            // bg colour, producing a flat filler block.
+            return Cow::Borrowed("");
+        }
+        if cell.0 == ID_FUNCTIONS_R2_BACKSPACE {
+            return Cow::Borrowed("⌫");
+        }
+
+        Cow::Borrowed("")
     }
 
     fn emit(&self, cell: CellId, mods: &KeyboardModifiers) -> KeyAction {
-        match self.lookup(cell) {
-            Some(c) => {
-                let emit = if mods.shift_armed {
-                    c.shifted_emit
-                } else {
-                    c.default_emit
-                };
-                emit.into_action()
-            },
-            None => KeyAction::NoOp,
+        // Extras strip emits.
+        match cell.0 {
+            ID_ESC => return send_bare(BareKey::Esc),
+            ID_TAB => return send_bare(BareKey::Tab),
+            ID_CTL => return KeyAction::ToggleModifier(Modifier::Ctrl),
+            ID_ALT => return KeyAction::ToggleModifier(Modifier::Alt),
+            ID_ARROW_LEFT => return send_bare(BareKey::Left),
+            ID_ARROW_DOWN => return send_bare(BareKey::Down),
+            ID_ARROW_UP => return send_bare(BareKey::Up),
+            ID_ARROW_RIGHT => return send_bare(BareKey::Right),
+            _ => {},
         }
+
+        // Bottom bar.
+        if cell.0 == ID_BOTTOM_TOGGLE {
+            // Letters ↔ Symbols swap; Functions always returns to
+            // Letters via the toggle cell.
+            return match mods.layer {
+                KeyLayer::Letters => KeyAction::SwitchLayer(KeyLayer::Symbols),
+                KeyLayer::Symbols | KeyLayer::Functions => {
+                    KeyAction::SwitchLayer(KeyLayer::Letters)
+                },
+            };
+        }
+        if cell.0 == ID_BOTTOM_FN {
+            return match mods.layer {
+                KeyLayer::Letters | KeyLayer::Symbols => {
+                    KeyAction::SwitchLayer(KeyLayer::Functions)
+                },
+                KeyLayer::Functions => KeyAction::SwitchLayer(KeyLayer::Letters),
+            };
+        }
+        if cell.0 == ID_BOTTOM_SPACE {
+            return send_char(' ');
+        }
+        if cell.0 == ID_BOTTOM_ENTER {
+            return send_bare(BareKey::Enter);
+        }
+
+        // Letters layer printables — Shift selects the uppercase
+        // variant by emitting a different char. (The serializer
+        // ignores `KeyModifier::Shift` for `Char` keys, so folding
+        // Shift in would be redundant.)
+        if (ID_LETTERS_R1_START..=ID_LETTERS_R1_START + 9).contains(&cell.0) {
+            let i = (cell.0 - ID_LETTERS_R1_START) as usize;
+            let (_, _, lo, up) = LETTERS_R1[i];
+            return send_char(if mods.shift_armed { up } else { lo });
+        }
+        if (ID_LETTERS_R2_START..=ID_LETTERS_R2_START + 8).contains(&cell.0) {
+            let i = (cell.0 - ID_LETTERS_R2_START) as usize;
+            let (_, _, lo, up) = LETTERS_R2[i];
+            return send_char(if mods.shift_armed { up } else { lo });
+        }
+        if (ID_LETTERS_R3_LETTERS_START..=ID_LETTERS_R3_LETTERS_START + 6).contains(&cell.0) {
+            let i = (cell.0 - ID_LETTERS_R3_LETTERS_START) as usize;
+            let (_, _, lo, up) = LETTERS_R3_LETTERS[i];
+            return send_char(if mods.shift_armed { up } else { lo });
+        }
+        if cell.0 == ID_LETTERS_R3_SHIFT {
+            return KeyAction::ToggleModifier(Modifier::Shift);
+        }
+        if cell.0 == ID_LETTERS_R3_PERIOD {
+            return send_char('.');
+        }
+        if cell.0 == ID_LETTERS_R3_SLASH {
+            return send_char('/');
+        }
+        if cell.0 == ID_LETTERS_R3_BACKSPACE {
+            return send_bare(BareKey::Backspace);
+        }
+
+        // Symbols layer.
+        if (ID_SYMBOLS_R1_START..ID_SYMBOLS_R1_START + SYMBOLS_R1.len() as u16).contains(&cell.0) {
+            let i = (cell.0 - ID_SYMBOLS_R1_START) as usize;
+            return send_char(SYMBOLS_R1[i].1);
+        }
+        if (ID_SYMBOLS_R2_START..ID_SYMBOLS_R2_START + SYMBOLS_R2.len() as u16).contains(&cell.0) {
+            let i = (cell.0 - ID_SYMBOLS_R2_START) as usize;
+            return send_char(SYMBOLS_R2[i].1);
+        }
+        if cell.0 == ID_SYMBOLS_R2_BACKSPACE {
+            return send_bare(BareKey::Backspace);
+        }
+        if (ID_SYMBOLS_R3_START..ID_SYMBOLS_R3_START + SYMBOLS_R3.len() as u16).contains(&cell.0) {
+            let i = (cell.0 - ID_SYMBOLS_R3_START) as usize;
+            return send_char(SYMBOLS_R3[i].1);
+        }
+
+        // Functions layer.
+        if (ID_FUNCTIONS_R1_START..ID_FUNCTIONS_R1_START + 10).contains(&cell.0) {
+            let n = (cell.0 - ID_FUNCTIONS_R1_START + 1) as u8;
+            return send_bare(BareKey::F(n));
+        }
+        if cell.0 == ID_FUNCTIONS_R2_F11 {
+            return send_bare(BareKey::F(11));
+        }
+        if cell.0 == ID_FUNCTIONS_R2_F12 {
+            return send_bare(BareKey::F(12));
+        }
+        if (ID_FUNCTIONS_R2_INERT_START..ID_FUNCTIONS_R2_INERT_START + 7).contains(&cell.0) {
+            return KeyAction::NoOp;
+        }
+        if cell.0 == ID_FUNCTIONS_R2_BACKSPACE {
+            return send_bare(BareKey::Backspace);
+        }
+
+        KeyAction::NoOp
     }
 
     fn modifier_of(&self, cell: CellId) -> Option<Modifier> {
-        self.lookup(cell).and_then(|c| c.modifier)
+        match cell.0 {
+            ID_CTL => Some(Modifier::Ctrl),
+            ID_ALT => Some(Modifier::Alt),
+            ID_LETTERS_R3_SHIFT => Some(Modifier::Shift),
+            _ => None,
+        }
+    }
+
+    fn layer_of(&self, cell: CellId) -> Option<KeyLayer> {
+        // Only the bottom-bar Fn cell paints ACTIVE on a layer match.
+        // The toggle cell intentionally returns `None` — its job is to
+        // advertise the *alternate* layer, not the current one.
+        if cell.0 == ID_BOTTOM_FN {
+            Some(KeyLayer::Functions)
+        } else {
+            None
+        }
+    }
+}
+
+fn send_char(c: char) -> KeyAction {
+    KeyAction::SendKey(KeyWithModifier {
+        bare_key: BareKey::Char(c),
+        key_modifiers: std::collections::BTreeSet::new(),
+    })
+}
+
+fn send_bare(b: BareKey) -> KeyAction {
+    KeyAction::SendKey(KeyWithModifier {
+        bare_key: b,
+        key_modifiers: std::collections::BTreeSet::new(),
+    })
+}
+
+// Suppress the unused-field warning in case `cell_spec()` is not
+// consulted internally yet — the method is part of the type's natural
+// surface for future debugging / tests.
+#[allow(dead_code)]
+impl UsQwerty {
+    fn debug_cell_spec(&self, id: CellId) -> Option<CellSpec> {
+        self.cell_spec(id)
     }
 }
 
@@ -347,92 +752,262 @@ mod tests {
     use super::*;
 
     /// Every `CellId` returned by `rows()` must resolve under
-    /// `label()` and `emit()`. Modifier cells must report a modifier
-    /// from `modifier_of()`; all others must not.
+    /// `label()` and `emit()` on every layer.
     #[test]
-    fn every_cell_resolves() {
+    fn every_cell_resolves_on_every_layer() {
         let layout = UsQwerty::new();
-        let mods = KeyboardModifiers::default();
-        let rows = layout.rows(&mods);
-        assert!(!rows.is_empty());
-        let mut seen_modifier_cells = 0usize;
-        for row in &rows {
-            for cell in &row.cells {
-                let label = layout.label(cell.id, &mods);
-                assert!(!label.is_empty(), "empty label for cell {:?}", cell.id);
-                let _action = layout.emit(cell.id, &mods);
-                if layout.modifier_of(cell.id).is_some() {
-                    seen_modifier_cells += 1;
+        for layer in [KeyLayer::Letters, KeyLayer::Symbols, KeyLayer::Functions] {
+            let mods = KeyboardModifiers {
+                layer,
+                ..KeyboardModifiers::default()
+            };
+            let rows = layout.rows(&mods);
+            assert!(!rows.is_empty(), "no rows for layer {:?}", layer);
+            for row in &rows {
+                for cell in &row.cells {
+                    let _label = layout.label(cell.id, &mods);
+                    let _action = layout.emit(cell.id, &mods);
                 }
             }
         }
-        // Shift + Ctrl + Alt + Fn — exactly four cells.
-        assert_eq!(seen_modifier_cells, 4);
     }
 
+    /// Modifier cells must each report exactly one `Modifier` from
+    /// `modifier_of`; non-modifier cells must report `None`.
     #[test]
-    fn shifted_labels_differ_for_printable_cells() {
+    fn modifier_cells_round_trip() {
         let layout = UsQwerty::new();
-        let unshifted = KeyboardModifiers::default();
+        let mods = KeyboardModifiers::default();
+        let mut shift = 0;
+        let mut ctrl = 0;
+        let mut alt = 0;
+        for row in layout.rows(&mods) {
+            for cell in &row.cells {
+                match layout.modifier_of(cell.id) {
+                    Some(Modifier::Shift) => shift += 1,
+                    Some(Modifier::Ctrl) => ctrl += 1,
+                    Some(Modifier::Alt) => alt += 1,
+                    None => {},
+                }
+            }
+        }
+        assert_eq!(shift, 1);
+        assert_eq!(ctrl, 1);
+        assert_eq!(alt, 1);
+    }
+
+    /// Tapping a letter while Shift is armed must emit the uppercase
+    /// variant; tapping ⇧ must emit a `ToggleModifier(Shift)`.
+    #[test]
+    fn shifted_letters_emit_uppercase() {
+        let layout = UsQwerty::new();
         let mut shifted = KeyboardModifiers::default();
         shifted.shift_armed = true;
 
-        // Spot-check a handful of the documented mappings.
-        let checks: &[(char, char)] = &[
-            ('1', '!'),
-            ('2', '@'),
-            ('a', 'A'),
-            ('z', 'Z'),
-            ('`', '~'),
-            ('-', '_'),
-            ('=', '+'),
-            ('[', '{'),
-            ('\\', '|'),
-            (';', ':'),
-            ('\'', '"'),
-            (',', '<'),
-            ('.', '>'),
-            ('/', '?'),
-        ];
-
-        for (dc, sc) in checks {
-            // Find the cell that emits `dc` under default mods.
-            let mut found = None;
-            for row in layout.rows(&unshifted) {
-                for cell in &row.cells {
-                    if let KeyAction::SendKey(k) = layout.emit(cell.id, &unshifted) {
-                        if k.bare_key == BareKey::Char(*dc) {
-                            found = Some(cell.id);
-                            break;
-                        }
-                    }
-                }
-                if found.is_some() {
-                    break;
-                }
-            }
-            let id = found.unwrap_or_else(|| panic!("no cell for '{}'", dc));
-            let shifted_action = layout.emit(id, &shifted);
-            match shifted_action {
+        for (c, expected) in [('q', 'Q'), ('a', 'A'), ('z', 'Z'), ('m', 'M')] {
+            let cell = find_cell_emitting(&layout, &KeyboardModifiers::default(), c)
+                .expect("default letter cell");
+            match layout.emit(cell, &shifted) {
                 KeyAction::SendKey(k) => assert_eq!(
                     k.bare_key,
-                    BareKey::Char(*sc),
-                    "shifted variant of '{}' should be '{}'",
-                    dc,
-                    sc
+                    BareKey::Char(expected),
+                    "{} should shift to {}",
+                    c,
+                    expected,
                 ),
-                other => panic!("expected SendKey for shifted '{}', got {:?}", dc, other),
+                other => panic!("expected SendKey, got {:?}", other),
             }
         }
     }
 
+    /// Bottom-bar toggle on the Letters layer reads `?123` and emits
+    /// `SwitchLayer(Symbols)`; from Symbols/Functions it reads `ABC`.
     #[test]
-    fn fn_armed_inserts_f_row() {
+    fn toggle_cell_label_and_action_flip_with_layer() {
         let layout = UsQwerty::new();
         let mut mods = KeyboardModifiers::default();
-        let n_default = layout.rows(&mods).len();
-        mods.fn_armed = true;
-        let n_fn = layout.rows(&mods).len();
-        assert_eq!(n_fn, n_default + 1);
+        assert_eq!(layout.label(CellId(ID_BOTTOM_TOGGLE), &mods).as_ref(), "?123");
+        assert!(matches!(
+            layout.emit(CellId(ID_BOTTOM_TOGGLE), &mods),
+            KeyAction::SwitchLayer(KeyLayer::Symbols)
+        ));
+        mods.layer = KeyLayer::Symbols;
+        assert_eq!(layout.label(CellId(ID_BOTTOM_TOGGLE), &mods).as_ref(), "ABC");
+        assert!(matches!(
+            layout.emit(CellId(ID_BOTTOM_TOGGLE), &mods),
+            KeyAction::SwitchLayer(KeyLayer::Letters)
+        ));
+        mods.layer = KeyLayer::Functions;
+        assert_eq!(layout.label(CellId(ID_BOTTOM_TOGGLE), &mods).as_ref(), "ABC");
+        assert!(matches!(
+            layout.emit(CellId(ID_BOTTOM_TOGGLE), &mods),
+            KeyAction::SwitchLayer(KeyLayer::Letters)
+        ));
+    }
+
+    /// The Fn cell is the only cell whose `layer_of` returns
+    /// `Functions`; on the Functions layer the renderer would paint
+    /// it active.
+    #[test]
+    fn fn_cell_layer_of_returns_functions() {
+        let layout = UsQwerty::new();
+        let mods = KeyboardModifiers::default();
+        assert_eq!(layout.layer_of(CellId(ID_BOTTOM_FN)), Some(KeyLayer::Functions));
+        // Toggle cell deliberately does NOT advertise a layer.
+        assert_eq!(layout.layer_of(CellId(ID_BOTTOM_TOGGLE)), None);
+        // No other cell does either.
+        for row in layout.rows(&mods) {
+            for cell in &row.cells {
+                if cell.id.0 == ID_BOTTOM_FN {
+                    continue;
+                }
+                assert_eq!(
+                    layout.layer_of(cell.id),
+                    None,
+                    "cell {:?} unexpectedly returns a layer",
+                    cell.id,
+                );
+            }
+        }
+    }
+
+    /// Letters layer has 5 rows; Symbols 5 rows; Functions 4 rows.
+    #[test]
+    fn row_counts_per_layer() {
+        let layout = UsQwerty::new();
+        let mut mods = KeyboardModifiers::default();
+        assert_eq!(layout.rows(&mods).len(), 5);
+        mods.layer = KeyLayer::Symbols;
+        assert_eq!(layout.rows(&mods).len(), 5);
+        mods.layer = KeyLayer::Functions;
+        assert_eq!(layout.rows(&mods).len(), 4);
+    }
+
+    /// Letters row 2 carries a 2-col stagger; rows 1 and 3 do not.
+    #[test]
+    fn letters_row_2_is_staggered() {
+        let layout = UsQwerty::new();
+        let mods = KeyboardModifiers::default();
+        let rows = layout.rows(&mods);
+        assert_eq!(rows[1].offset_col, 0); // row 1
+        assert_eq!(rows[2].offset_col, 2); // row 2 (staggered)
+        assert_eq!(rows[3].offset_col, 0); // row 3
+    }
+
+    /// Letters row 3 ends with `. / ⌫`. `.` and `/` are 3 cols wide
+    /// (uniform with the letters); the backspace is 4 cols so the
+    /// `center` helper drops an asymmetric extra space on its right
+    /// side — visible right-padding inside the cell's bg shade.
+    #[test]
+    fn letters_row_3_tail_cells() {
+        let layout = UsQwerty::new();
+        let mods = KeyboardModifiers::default();
+        let rows = layout.rows(&mods);
+        let cells = &rows[3].cells;
+        let n = cells.len();
+        assert_eq!(cells[n - 3].id.0, ID_LETTERS_R3_PERIOD);
+        assert_eq!(cells[n - 2].id.0, ID_LETTERS_R3_SLASH);
+        assert_eq!(cells[n - 1].id.0, ID_LETTERS_R3_BACKSPACE);
+        assert_eq!(cells[n - 3].col_end - cells[n - 3].col_start, 3);
+        assert_eq!(cells[n - 2].col_end - cells[n - 2].col_start, 3);
+        assert_eq!(cells[n - 1].col_end - cells[n - 1].col_start, 4);
+    }
+
+    /// `.` and `/` on Letters row 3 emit their literal chars and
+    /// ignore the Shift modifier (touch-keyboard convention — Shift
+    /// only changes letters, not punctuation).
+    #[test]
+    fn letters_row_3_punctuation_emits_literal() {
+        let layout = UsQwerty::new();
+        let mods = KeyboardModifiers::default();
+        let mut shifted = KeyboardModifiers::default();
+        shifted.shift_armed = true;
+        for (id, ch) in [
+            (ID_LETTERS_R3_PERIOD, '.'),
+            (ID_LETTERS_R3_SLASH, '/'),
+        ] {
+            for m in [&mods, &shifted] {
+                match layout.emit(CellId(id), m) {
+                    KeyAction::SendKey(k) => assert_eq!(k.bare_key, BareKey::Char(ch)),
+                    other => panic!("expected SendKey({ch:?}), got {other:?}"),
+                }
+            }
+        }
+    }
+
+    /// Functions row 1 has 10 cells: F1..F9 are 4 cols, F10 is 5.
+    #[test]
+    fn functions_row_1_widths() {
+        let layout = UsQwerty::new();
+        let mods = KeyboardModifiers {
+            layer: KeyLayer::Functions,
+            ..KeyboardModifiers::default()
+        };
+        let rows = layout.rows(&mods);
+        let r1 = &rows[1];
+        assert_eq!(r1.cells.len(), 10);
+        for cell in &r1.cells[..9] {
+            assert_eq!(cell.col_end - cell.col_start, 4);
+        }
+        assert_eq!(r1.cells[9].col_end - r1.cells[9].col_start, 5);
+    }
+
+    /// Inert filler cells in Functions row 2 emit `NoOp` and have an
+    /// empty label.
+    #[test]
+    fn functions_row_2_inert_cells_are_noop() {
+        let layout = UsQwerty::new();
+        let mods = KeyboardModifiers {
+            layer: KeyLayer::Functions,
+            ..KeyboardModifiers::default()
+        };
+        for i in 0..7u16 {
+            let id = CellId(ID_FUNCTIONS_R2_INERT_START + i);
+            assert!(matches!(layout.emit(id, &mods), KeyAction::NoOp));
+            assert_eq!(layout.label(id, &mods).as_ref(), "");
+        }
+    }
+
+    /// Toggle cell width on the Letters layer is 6 (label `?123`);
+    /// on Symbols / Functions it is 5 (label `ABC`).
+    #[test]
+    fn toggle_cell_width_depends_on_layer() {
+        let layout = UsQwerty::new();
+        let mut mods = KeyboardModifiers::default();
+        let toggle = |rows: &[KeyRow]| {
+            let bottom = rows.last().unwrap();
+            bottom.cells[0]
+        };
+        assert_eq!(
+            toggle(&layout.rows(&mods)).col_end - toggle(&layout.rows(&mods)).col_start,
+            6,
+        );
+        mods.layer = KeyLayer::Symbols;
+        assert_eq!(
+            toggle(&layout.rows(&mods)).col_end - toggle(&layout.rows(&mods)).col_start,
+            5,
+        );
+        mods.layer = KeyLayer::Functions;
+        assert_eq!(
+            toggle(&layout.rows(&mods)).col_end - toggle(&layout.rows(&mods)).col_start,
+            5,
+        );
+    }
+
+    fn find_cell_emitting(
+        layout: &UsQwerty,
+        mods: &KeyboardModifiers,
+        c: char,
+    ) -> Option<CellId> {
+        for row in layout.rows(mods) {
+            for cell in &row.cells {
+                if let KeyAction::SendKey(k) = layout.emit(cell.id, mods) {
+                    if k.bare_key == BareKey::Char(c) {
+                        return Some(cell.id);
+                    }
+                }
+            }
+        }
+        None
     }
 }

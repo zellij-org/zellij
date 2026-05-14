@@ -21,8 +21,7 @@ pub mod render;
 // Public surface re-exports. The `#[allow]` covers the items that are
 // part of the module's public API but not yet imported by name
 // elsewhere in the crate — they will be used by future layout
-// switches / picker UIs (see the modularity contract in
-// `mobile_keyboard.md`).
+// switches / picker UIs.
 #[allow(unused_imports)]
 pub use controller::{KeyboardController, TapOutcome, KEY_FEEDBACK_MS};
 #[allow(unused_imports)]

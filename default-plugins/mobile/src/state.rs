@@ -79,7 +79,14 @@ pub enum ClickAction {
 /// keyboard" intuition.
 #[derive(Debug, Clone)]
 pub struct ClickRegion {
-    pub row: usize,
+    /// Inclusive top row of the region in plugin coordinates.
+    pub row_start: usize,
+    /// Exclusive bottom row of the region in plugin coordinates. For
+    /// single-row click targets (chrome, selectors, single-row
+    /// keyboard rows) `row_end == row_start + 1`. For the option-2b
+    /// tall keyboard cells `row_end == row_start + 2` so the entire
+    /// padding-plus-label rectangle counts as one tap target.
+    pub row_end: usize,
     pub col_start: usize,
     pub col_end: usize, // exclusive
     pub action: ClickAction,
@@ -92,15 +99,33 @@ pub struct ClickRegion {
 }
 
 impl ClickRegion {
-    /// Construct a tight region — scanned first; first hit wins.
+    /// Construct a single-row tight region — scanned first; first hit
+    /// wins. Used by the chrome (top bar, selectors) where every
+    /// click target occupies a single terminal row.
     pub fn tight(
         row: usize,
         col_start: usize,
         col_end: usize,
         action: ClickAction,
     ) -> Self {
+        Self::tight_range(row, row + 1, col_start, col_end, action)
+    }
+
+    /// Construct a multi-row tight region — same semantics as
+    /// `tight`, but the vertical extent covers `[row_start, row_end)`.
+    /// Used by tall keyboard cells so a tap anywhere inside the cell's
+    /// padding-plus-label rectangle hits the cell directly without
+    /// falling back to slop dispatch.
+    pub fn tight_range(
+        row_start: usize,
+        row_end: usize,
+        col_start: usize,
+        col_end: usize,
+        action: ClickAction,
+    ) -> Self {
         Self {
-            row,
+            row_start,
+            row_end,
             col_start,
             col_end,
             action,
@@ -109,8 +134,8 @@ impl ClickRegion {
         }
     }
 
-    /// Construct a slop region — scanned only if no tight region
-    /// matched; overlapping siblings resolved by nearest-center.
+    /// Construct a single-row slop region — scanned only if no tight
+    /// region matched; overlapping siblings resolved by nearest-center.
     pub fn slop(
         row: usize,
         col_start: usize,
@@ -118,8 +143,23 @@ impl ClickRegion {
         action: ClickAction,
         center: (usize, usize),
     ) -> Self {
+        Self::slop_range(row, row + 1, col_start, col_end, action, center)
+    }
+
+    /// Construct a multi-row slop region. Used by tall keyboard cells
+    /// so the slop halo extends ±`SLOP_V` rows around the cell's
+    /// outer rectangle, not just around the label row.
+    pub fn slop_range(
+        row_start: usize,
+        row_end: usize,
+        col_start: usize,
+        col_end: usize,
+        action: ClickAction,
+        center: (usize, usize),
+    ) -> Self {
         Self {
-            row,
+            row_start,
+            row_end,
             col_start,
             col_end,
             action,
@@ -185,10 +225,10 @@ pub struct State {
     /// `SessionUpdate`. Rendered when the session selector is open.
     pub sessions: Vec<SessionInfo>,
     /// In-plugin on-screen keyboard. Owns the active layout, modifier
-    /// flags (Shift/Ctrl/Alt/Fn — one-shot for the first three, toggle
-    /// for Fn), press-flash timestamps and visibility. Visible by
-    /// default — the corresponding OS soft-keyboard suppression is
-    /// emitted from `load()`. See `mobile_keyboard.md`.
+    /// flags (Shift/Ctrl/Alt — one-shot — plus Fn and Layer123 as
+    /// sticky toggles), press-flash timestamps and visibility.
+    /// Visible by default — the corresponding OS soft-keyboard
+    /// suppression is emitted from `load()`.
     pub keyboard: KeyboardController,
     /// Click regions produced by the most recent render. The renderer
     /// rebuilds this on every `render` call; mouse events look up the
@@ -379,7 +419,8 @@ impl State {
         // Pass 1: tight regions.
         for region in &self.click_regions {
             if region.priority == 0
-                && region.row == row
+                && region.row_start <= row
+                && row < region.row_end
                 && col >= region.col_start
                 && col < region.col_end
             {
@@ -392,7 +433,7 @@ impl State {
             if region.priority == 0 {
                 continue;
             }
-            if region.row != row {
+            if row < region.row_start || row >= region.row_end {
                 continue;
             }
             if col < region.col_start || col >= region.col_end {
@@ -428,7 +469,7 @@ impl State {
 fn slop_key(r: &ClickRegion) -> (usize, usize) {
     match r.center {
         Some((cx, cy)) => (cy, cx),
-        None => (r.row, r.col_start),
+        None => (r.row_start, r.col_start),
     }
 }
 

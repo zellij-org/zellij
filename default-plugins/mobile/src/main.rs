@@ -4,9 +4,7 @@
 //! this plugin owns the entire mobile interface. It subscribes to
 //! `PaneRenderReportWithAnsi` to embed live pane viewports, and to the
 //! standard `TabUpdate` / `PaneUpdate` / `ModeUpdate` / `Mouse` /
-//! `Key` events for selection and action dispatch. Stage 6 ships the
-//! collapsing-breadcrumb v1 layout; typing-mode and viewport mouse
-//! passthrough land in Stage 7.
+//! `Key` events for selection and action dispatch.
 
 mod keyboard;
 mod keys;

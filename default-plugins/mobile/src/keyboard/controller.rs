@@ -20,11 +20,12 @@ use super::layouts;
 use super::modifiers::{KeyboardModifiers, Modifier};
 use crate::keys;
 
-/// Duration of the inverted-cell flash painted after every tap. Same
-/// value the bottom-bar shortcut feedback used so the two are
-/// perceptually consistent. Caller schedules a Timer at this delay so
-/// `sweep_flash` can drop the entry.
-pub const KEY_FEEDBACK_MS: u128 = 400;
+/// Duration of the inverted-cell flash painted after every tap.
+/// Kept short (50 ms) so the highlight registers as instantaneous
+/// haptic-style feedback rather than a lingering flash — matches the
+/// snappy feel of a physical-key press. Caller schedules a Timer at
+/// this delay so `sweep_flash` can drop the entry.
+pub const KEY_FEEDBACK_MS: u128 = 50;
 
 /// What the dispatcher should do after a tap. The controller never
 /// performs IO itself — the caller wires the outcome up to
@@ -32,7 +33,8 @@ pub const KEY_FEEDBACK_MS: u128 = 400;
 pub enum TapOutcome {
     /// Bytes for the underlying pane's pty. Caller does the write.
     SendBytes(Vec<u8>),
-    /// Modifier (Shift/Ctrl/Alt/Fn) flipped — just a redraw needed.
+    /// Modifier (Shift/Ctrl/Alt) flipped or active layer changed —
+    /// just a redraw needed.
     Toggled,
     /// `visible` was flipped; caller updates the OS soft-keyboard
     /// suppression accordingly.
@@ -125,6 +127,13 @@ impl KeyboardController {
             KeyAction::ToggleVisibility => {
                 self.visible = !self.visible;
                 TapOutcome::HideKeyboard
+            },
+            KeyAction::SwitchLayer(target_layer) => {
+                // Layer switches deliberately do NOT consume armed
+                // one-shots — a ⌃ armed on Letters survives the switch
+                // to Symbols so `Ctrl+\` works across layers.
+                self.modifiers.layer = target_layer;
+                TapOutcome::Toggled
             },
             KeyAction::NoOp => TapOutcome::NoOp,
         }

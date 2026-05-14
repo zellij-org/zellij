@@ -1,9 +1,9 @@
 //! Generic, layout-agnostic keyboard renderer.
 //!
 //! Reads `&dyn KeyboardLayout` and renders into the plugin's ANSI
-//! stream via `print!`. Border merging is purely geometric — driven
-//! by adjacent rows' wall positions and horizontal extents — so a
-//! new layout drops in without renderer changes.
+//! stream via `print!`. Cells render as contiguous blocks of ANSI
+//! background colour — no box-drawing characters. Cell separation is
+//! purely visual contrast between adjacent backgrounds.
 //!
 //! Each visible cell is also pushed into `click_regions` so taps land
 //! through the same dispatch path the rest of the plugin uses.
@@ -18,37 +18,38 @@ use crate::state::{ClickAction, ClickRegion};
 use super::layout::{CellId, KeyRow, KeyboardLayout};
 use super::modifiers::KeyboardModifiers;
 
-/// Reset SGR — emitted between cells so leftover styling from the
-/// inverted-flash cell does not bleed into adjacent cells.
+/// Reset SGR — emitted after every row to discard the bg colour.
 const RESET: &str = "\x1b[0m";
-/// Enable reverse-video — used to mark armed modifier cells and the
-/// transient press-flash highlight.
-const REV: &str = "\x1b[7m";
-/// Disable reverse-video.
-const NOREV: &str = "\x1b[27m";
+
+/// Palette pair for "outer" rows (extras strip, letter rows 1 & 3,
+/// bottom bar on Letters/Symbols layers). Two 256-color indices for
+/// the alternating checker.
+const P_OUTER: [u8; 2] = [236, 240];
+/// Palette pair for "inner" rows (letter row 2). `P_OUTER` and
+/// `P_INNER` are disjoint by construction so adjacent rows never share
+/// a shade.
+const P_INNER: [u8; 2] = [238, 242];
+/// Bright blue used for armed-modifier cells, active-layer cells, and
+/// the transient press-flash highlight.
+const ACTIVE: u8 = 33;
 
 /// Horizontal hit-slop, in terminal columns. Each cell's slop region
-/// extends this many columns past its visible left/right walls so
-/// clicks just past the wall still resolve to the cell.
+/// extends this many columns past its visible left/right edges so
+/// clicks just past the edge still resolve to the cell.
 const SLOP_H: usize = 1;
 /// Vertical hit-slop, in terminal rows. Each cell's slop region
 /// extends this many rows above and below its content row so clicks
-/// on the surrounding dividers / borders still resolve to the cell.
-/// Adjacent rows' slop regions overlap on the shared divider —
-/// resolved by nearest-center at dispatch time.
+/// on the surrounding boundary still resolve to the cell. Adjacent
+/// rows' slop regions overlap on the shared boundary — resolved by
+/// nearest-center at dispatch time.
 const SLOP_V: usize = 1;
 
 /// Total terminal-rows the keyboard occupies for the given layout
-/// under the supplied modifier state. Equal to `2 * rows.len() + 1`
-/// (top border + per-row [content + divider] - 1 internal-divider +
-/// bottom border).
+/// under the supplied modifier state. Sums each `KeyRow`'s `height`
+/// so option-2b tall rows (height = 2) inflate the budget the embedded
+/// viewport must subtract from its body allowance.
 pub fn keyboard_rows(layout: &dyn KeyboardLayout, mods: &KeyboardModifiers) -> usize {
-    let rows = layout.rows(mods);
-    if rows.is_empty() {
-        0
-    } else {
-        2 * rows.len() + 1
-    }
+    layout.rows(mods).iter().map(|r| r.height as usize).sum()
 }
 
 /// Render the keyboard at `(plugin_row_start, 0)` with at most `cols`
@@ -68,327 +69,317 @@ pub fn render_keyboard(
         return 0;
     }
 
-    // Compute the keyboard's outermost extent so border lines extend
-    // far enough to enclose every row. Cells beyond `cols` get clipped
-    // by the host; we still position cells at their natural column.
-    let keyboard_width = rows
-        .iter()
-        .map(|r| r.offset_col as usize + max_col_end(r))
-        .max()
-        .unwrap_or(0)
-        + 1; // include the rightmost wall column itself
+    // Block width = widest row in the active layer. Every row in the
+    // layer is indented by the same `left_pad` so the keyboard reads
+    // as one centered block with a stable left edge; the per-row
+    // `offset_col` (e.g. the half-key stagger on Letters row 2) is
+    // applied on top of that shared indent. Per-layer rather than
+    // global so each layer fits the viewport tightly — Letters,
+    // Symbols and Functions have different total widths because their
+    // cell counts and widths differ.
+    let block_width = block_width(&rows);
+    let left_pad = cols.saturating_sub(block_width) / 2;
 
     let mut term_row = plugin_row_start;
+    for (row_index, row) in rows.iter().enumerate() {
+        let palette = palette_for_row(row_index);
+        let height = row.height as usize;
 
-    // Top border — derived from the first row's geometry.
-    let top = horizontal_line(None, Some(&rows[0]), keyboard_width);
-    print_line(term_row, 0, &top, cols);
-    term_row += 1;
+        // Padding row(s) above the label row paint each cell's bg
+        // across its column range; no labels, no click regions. For
+        // height == 1 this loop runs zero times and the cell renders
+        // exactly as it did before option 2b.
+        for pad_offset in 0..height.saturating_sub(1) {
+            render_padding_row(
+                layout,
+                mods,
+                press_flash,
+                row,
+                palette,
+                term_row + pad_offset,
+                left_pad,
+                cols,
+            );
+        }
 
-    for (i, row) in rows.iter().enumerate() {
-        render_row_content(
+        // Label row sits at the bottom of the cell rectangle. Click
+        // regions span the full `[term_row, term_row + height)` so
+        // taps anywhere inside the padding-plus-label rectangle hit.
+        render_row(
             layout,
             mods,
             press_flash,
             row,
+            palette,
             term_row,
+            height,
+            left_pad,
             cols,
             click_regions,
         );
-        term_row += 1;
-        let below = rows.get(i + 1);
-        let line = horizontal_line(Some(row), below, keyboard_width);
-        print_line(term_row, 0, &line, cols);
-        term_row += 1;
+
+        term_row += height;
     }
 
     term_row - plugin_row_start
 }
 
-fn max_col_end(row: &KeyRow) -> usize {
-    row.cells
-        .iter()
-        .map(|c| c.col_end as usize)
+/// Widest row in `rows`, measured as `offset_col + last_cell.col_end`.
+/// Used as the block width that centers the keyboard horizontally.
+/// Returns 0 for an empty `rows` slice.
+fn block_width(rows: &[KeyRow]) -> usize {
+    rows.iter()
+        .map(|r| {
+            let last_end = r
+                .cells
+                .last()
+                .map(|c| c.col_end as usize)
+                .unwrap_or(0);
+            r.offset_col as usize + last_end + r.right_pad as usize
+        })
         .max()
         .unwrap_or(0)
 }
 
-fn min_col_start(row: &KeyRow) -> usize {
-    row.cells
-        .iter()
-        .map(|c| c.col_start as usize)
-        .min()
-        .unwrap_or(0)
-}
-
-/// Build the box-drawing line that sits between `above` and `below`.
-/// Either side may be `None` (top / bottom border).
-fn horizontal_line(
-    above: Option<&KeyRow>,
-    below: Option<&KeyRow>,
-    keyboard_width: usize,
-) -> String {
-    // Precompute wall sets and horizontal extents in absolute
-    // (offset-applied) column space.
-    let walls_above = above.map(walls_of).unwrap_or_default();
-    let walls_below = below.map(walls_of).unwrap_or_default();
-    let extent_above = above.map(extent_of);
-    let extent_below = below.map(extent_of);
-
-    let mut out = String::new();
-    for c in 0..keyboard_width {
-        let up = walls_above.contains(&c) && in_extent(c, extent_above);
-        let down = walls_below.contains(&c) && in_extent(c, extent_below);
-        // For c=0 there is no column to the left, so the left half of
-        // the divider is always empty. Without this guard `c - 1`
-        // would underflow and `horiz_segment` would mis-classify the
-        // huge wrapped value as being inside the row's extent.
-        let left = if c > 0 {
-            horiz_segment(c - 1, c, extent_above, extent_below)
-        } else {
-            false
-        };
-        let right = horiz_segment(c, c + 1, extent_above, extent_below);
-        out.push(box_char(up, down, left, right));
-    }
-    out
-}
-
-/// Set of column positions where this row has a vertical wall, after
-/// applying `offset_col`. Each cell contributes both its `col_start`
-/// and `col_end` (cells that share a wall yield duplicate-but-equal
-/// entries — fine for a `HashSet`).
-fn walls_of(row: &KeyRow) -> std::collections::HashSet<usize> {
-    let mut set = std::collections::HashSet::new();
-    let off = row.offset_col as usize;
-    for cell in &row.cells {
-        set.insert(off + cell.col_start as usize);
-        set.insert(off + cell.col_end as usize);
-    }
-    set
-}
-
-/// Horizontal extent of a row in absolute (offset-applied) columns:
-/// `(left_edge, right_edge)` inclusive of the rightmost wall.
-fn extent_of(row: &KeyRow) -> (usize, usize) {
-    let off = row.offset_col as usize;
-    let left = off + min_col_start(row);
-    let right = off + max_col_end(row);
-    (left, right)
-}
-
-fn in_extent(c: usize, extent: Option<(usize, usize)>) -> bool {
-    match extent {
-        Some((l, r)) => c >= l && c <= r,
-        None => false,
+/// Pure alternation: even rows get `P_OUTER`, odd rows get `P_INNER`.
+/// Row 0 is the extras strip on every layer, so `P_OUTER` matches the
+/// reference mock for both 5-row (Letters/Symbols) and 4-row (Fn)
+/// layers. The Fn layer's bottom bar lands on `P_INNER` as a side
+/// effect; the spec accepts this since palette consistency only
+/// matters *within* a single layer.
+fn palette_for_row(row_index: usize) -> [u8; 2] {
+    if row_index % 2 == 0 {
+        P_OUTER
+    } else {
+        P_INNER
     }
 }
 
-/// True iff the half-open segment `(a, b)` (in column space) is fully
-/// covered by at least one of the supplied extents. `a` may underflow
-/// (we pass `wrapping_sub(1)` for c=0) — handled by the `c >= l`
-/// check failing for the giant wrapped value.
-fn horiz_segment(
-    a: usize,
-    b: usize,
-    extent_above: Option<(usize, usize)>,
-    extent_below: Option<(usize, usize)>,
-) -> bool {
-    let check = |ext: Option<(usize, usize)>| {
-        if let Some((l, r)) = ext {
-            a >= l && b <= r
-        } else {
-            false
-        }
-    };
-    check(extent_above) || check(extent_below)
-}
-
-/// Map a (up, down, left, right) flag tuple to a box-drawing char.
-/// Pure corners (exactly two perpendicular legs) use rounded glyphs
-/// — matches the mockup.
-fn box_char(up: bool, down: bool, left: bool, right: bool) -> char {
-    match (up, down, left, right) {
-        (false, false, false, false) => ' ',
-        (true, false, false, false) => '│',
-        (false, true, false, false) => '│',
-        (false, false, true, false) => '─',
-        (false, false, false, true) => '─',
-        (true, true, false, false) => '│',
-        (false, false, true, true) => '─',
-        (true, false, true, false) => '╯',
-        (true, false, false, true) => '╰',
-        (false, true, true, false) => '╮',
-        (false, true, false, true) => '╭',
-        (true, true, true, false) => '┤',
-        (true, true, false, true) => '├',
-        (true, false, true, true) => '┴',
-        (false, true, true, true) => '┬',
-        (true, true, true, true) => '┼',
-    }
-}
-
-/// Emit `line` at `(row, col)`. Truncates to `cols` cells so a wide
-/// keyboard layout in a narrow viewport degrades to clipping rather
-/// than scrolling the plugin grid.
-fn print_line(row: usize, col: usize, line: &str, cols: usize) {
-    let visible: String = clip_to_cells(line, cols);
-    print!("{}\x1b[{};{}H{}", RESET, row + 1, col + 1, visible);
-}
-
-fn clip_to_cells(s: &str, max_cells: usize) -> String {
-    let mut out = String::new();
-    let mut used = 0usize;
-    for ch in s.chars() {
-        let mut tmp = [0u8; 4];
-        let encoded = ch.encode_utf8(&mut tmp);
-        let w = UnicodeWidthStr::width(encoded as &str);
-        if used + w > max_cells {
-            break;
-        }
-        out.push(ch);
-        used += w;
-    }
-    out
-}
-
-/// Render one row's content line (walls + cell labels). Pushes a
-/// `ClickRegion` per cell into `click_regions`.
-fn render_row_content(
+/// Render the label-bearing row of a key row. `cell_top` is the top
+/// terminal row of the cell rectangle (which is `term_row_top` in
+/// `render_keyboard`); `height` is the cell's vertical extent in
+/// terminal rows; `left_pad` is the column the row starts at after
+/// horizontal centering. The label paints at `cell_top + height - 1`;
+/// click regions span `[cell_top, cell_top + height)` so taps anywhere
+/// in the padding-plus-label rectangle resolve to the cell.
+#[allow(clippy::too_many_arguments)]
+fn render_row(
     layout: &dyn KeyboardLayout,
     mods: &KeyboardModifiers,
     press_flash: &HashMap<CellId, Instant>,
     row: &KeyRow,
-    term_row: usize,
+    palette: [u8; 2],
+    cell_top: usize,
+    height: usize,
+    left_pad: usize,
     cols: usize,
     click_regions: &mut Vec<ClickRegion>,
 ) {
-    let off = row.offset_col as usize;
-    let row_left = off + min_col_start(row);
-    let row_right = off + max_col_end(row);
+    let offset = row.offset_col as usize;
+    let cell_bottom = cell_top + height; // exclusive
+    let label_row = cell_top + height.saturating_sub(1);
 
-    // Build the line as a string, then emit it. We treat the entire
-    // keyboard width as a single horizontal slice; the `move_to` call
-    // positions the first char at col 0 of the plugin.
+    // Build the row line as a single string so we can clip it once at
+    // the end. Leading `offset` columns are *unstyled* — they bear no
+    // bg colour, just blanks (matches the mock's stagger gap). The
+    // shared `left_pad` is applied by the cursor-positioning escape
+    // below rather than padded into `buf`, keeping the buf focused on
+    // the row's intrinsic geometry.
     let mut buf = String::new();
-    // Lead-in spaces for `offset_col` shifts (the asdf row).
-    for _ in 0..row_left {
+    for _ in 0..offset {
         buf.push(' ');
     }
 
-    for cell in &row.cells {
-        let abs_start = off + cell.col_start as usize;
-        let abs_end = off + cell.col_end as usize;
-        // Wall at the cell's left edge. For the leftmost cell this is
-        // the row's overall left border; for inner cells it doubles as
-        // the previous cell's right wall — but each cell owns its own
-        // left wall in this pass, which is fine: cells are emitted in
-        // ascending col_start order so the previous cell's right wall
-        // is naturally NOT emitted (only the start).
-        buf.push('│');
-        // Label fills the interior (col_start+1 .. col_end). Interior
-        // width is col_end - col_start - 1 terminal cells.
-        let interior_width = (cell.col_end - cell.col_start).saturating_sub(1) as usize;
+    for (cell_index, cell) in row.cells.iter().enumerate() {
+        let shade = compute_shade(layout, mods, press_flash, cell.id, palette, cell_index);
+        let cell_width = (cell.col_end - cell.col_start) as usize;
         let label = layout.label(cell.id, mods);
-        let inverted = is_inverted(layout, mods, press_flash, cell.id);
-        if inverted {
-            buf.push_str(REV);
-        }
-        let padded = pad_label(label.as_ref(), interior_width);
-        buf.push_str(&padded);
-        if inverted {
-            buf.push_str(NOREV);
-        }
+        let centered = center(label.as_ref(), cell_width);
 
-        // Tight region — the visible cell. Wins outright when the
-        // click lands inside the rendered glyph.
-        click_regions.push(ClickRegion::tight(
-            term_row,
+        buf.push_str(&ansi_bg(shade));
+        buf.push_str(&centered);
+
+        // Click region geometry uses absolute viewport columns so the
+        // dispatcher can match clicks against viewport columns
+        // directly: `left_pad` (centering indent) + `offset` (row
+        // stagger) + cell column.
+        let abs_start = left_pad + offset + cell.col_start as usize;
+        let abs_end = left_pad + offset + cell.col_end as usize;
+
+        click_regions.push(ClickRegion::tight_range(
+            cell_top,
+            cell_bottom,
             abs_start,
             abs_end,
             ClickAction::Keyboard(cell.id),
         ));
 
-        // Slop region — extends the cell's tappable area into the
-        // walls (±1 column) and the surrounding divider rows (±1
-        // row). Adjacent cells' slop regions overlap on shared
-        // boundaries; the dispatcher resolves each click by nearest-
-        // center distance to the visible cell. Without this halo the
-        // user must land inside the (small) interior to register a
-        // hit — with it, the perceived target roughly doubles
-        // without consuming any extra screen real estate.
+        // Slop halo extends ±SLOP_V rows around the cell's outer
+        // rectangle, ±SLOP_H cols around its visible width. The
+        // center used for nearest-center tiebreaks sits on the label
+        // row (where the user visually targets the glyph) and the
+        // horizontal midpoint of the cell.
         let cx = (abs_start + abs_end).saturating_sub(1) / 2;
-        let cy = term_row;
+        let cy = label_row;
         let slop_col_start = abs_start.saturating_sub(SLOP_H);
         let slop_col_end = abs_end + SLOP_H;
-        for dr in 0..=(2 * SLOP_V) {
-            let Some(r) = (term_row + dr).checked_sub(SLOP_V) else {
-                continue;
-            };
-            click_regions.push(ClickRegion::slop(
-                r,
-                slop_col_start,
-                slop_col_end,
-                ClickAction::Keyboard(cell.id),
-                (cx, cy),
-            ));
-        }
+        let slop_row_start = cell_top.saturating_sub(SLOP_V);
+        let slop_row_end = cell_bottom + SLOP_V;
+        click_regions.push(ClickRegion::slop_range(
+            slop_row_start,
+            slop_row_end,
+            slop_col_start,
+            slop_col_end,
+            ClickAction::Keyboard(cell.id),
+            (cx, cy),
+        ));
     }
-    // Closing right wall of the rightmost cell.
-    buf.push('│');
 
-    // Compute the print position: we already padded `row_left` leading
-    // spaces, so the line starts at col 0 of the plugin and the row's
-    // left wall lands at column `row_left`. Pass cols-aware clip.
-    print!("{}\x1b[{};1H", RESET, term_row + 1);
-    print!("{}", clip_buf(&buf, cols));
-    let _ = row_right; // suppress unused: used implicitly via cells
+    // Drop the bg colour at the end of the row so trailing terminal
+    // cells (and the next row's leading offset spaces) don't inherit
+    // the last cell's shade. Any `right_pad` columns are emitted as
+    // unstyled spaces after the reset so they don't pick up the last
+    // cell's bg.
+    buf.push_str(RESET);
+    for _ in 0..row.right_pad as usize {
+        buf.push(' ');
+    }
+
+    let visible = cols.saturating_sub(left_pad);
+    print!(
+        "{}\x1b[{};{}H{}",
+        RESET,
+        label_row + 1,
+        left_pad + 1,
+        clip_buf(&buf, visible),
+    );
 }
 
-/// Cell is inverted if its associated modifier is armed, or it has a
-/// live press-flash entry. The renderer never re-checks ages — the
-/// controller's `sweep_flash` prunes stale entries; mere presence
-/// here means "still flashing".
-fn is_inverted(
+/// Paint the bg-only padding row that sits above the label row of an
+/// option-2b tall cell. Each cell emits its bg colour across its full
+/// `[col_start, col_end)` column range — no label, no click region.
+/// The shade matches what `compute_shade` would emit for the label
+/// row, so press-flash, armed-modifier, and active-layer inversions
+/// paint identically across both rows of the cell.
+fn render_padding_row(
+    layout: &dyn KeyboardLayout,
+    mods: &KeyboardModifiers,
+    press_flash: &HashMap<CellId, Instant>,
+    row: &KeyRow,
+    palette: [u8; 2],
+    term_row: usize,
+    left_pad: usize,
+    cols: usize,
+) {
+    let offset = row.offset_col as usize;
+    let mut buf = String::new();
+    for _ in 0..offset {
+        buf.push(' ');
+    }
+    for (cell_index, cell) in row.cells.iter().enumerate() {
+        let shade = compute_shade(layout, mods, press_flash, cell.id, palette, cell_index);
+        let cell_width = (cell.col_end - cell.col_start) as usize;
+        buf.push_str(&ansi_bg(shade));
+        for _ in 0..cell_width {
+            buf.push(' ');
+        }
+    }
+    // Match the label row: drop bg before emitting any `right_pad` so
+    // the trailing padding is unstyled, not bg-shaded.
+    buf.push_str(RESET);
+    for _ in 0..row.right_pad as usize {
+        buf.push(' ');
+    }
+    let visible = cols.saturating_sub(left_pad);
+    print!(
+        "{}\x1b[{};{}H{}",
+        RESET,
+        term_row + 1,
+        left_pad + 1,
+        clip_buf(&buf, visible),
+    );
+}
+
+/// Determine the background shade for `cell` under the current state.
+/// Priority order (first matching wins):
+///   1. live press-flash entry → `ACTIVE`
+///   2. cell is an armed modifier → `ACTIVE`
+///   3. cell's `layer_of` matches the current layer → `ACTIVE`
+///   4. otherwise → palette[cell_index % 2]
+fn compute_shade(
     layout: &dyn KeyboardLayout,
     mods: &KeyboardModifiers,
     press_flash: &HashMap<CellId, Instant>,
     cell: CellId,
-) -> bool {
+    palette: [u8; 2],
+    cell_index: usize,
+) -> u8 {
+    if press_flash.contains_key(&cell) {
+        return ACTIVE;
+    }
     if let Some(m) = layout.modifier_of(cell) {
         if mods.is_armed(m) {
-            return true;
+            return ACTIVE;
         }
     }
-    press_flash.contains_key(&cell)
+    if let Some(l) = layout.layer_of(cell) {
+        if mods.layer == l {
+            return ACTIVE;
+        }
+    }
+    palette[cell_index % 2]
 }
 
-/// Left-align `label` to exactly `width` terminal cells. Pads with
-/// trailing spaces if shorter; truncates char-by-char if longer.
-fn pad_label(label: &str, width: usize) -> String {
-    let mut out = String::new();
-    let mut used = 0usize;
-    for ch in label.chars() {
-        let mut tmp = [0u8; 4];
-        let encoded = ch.encode_utf8(&mut tmp);
-        let w = UnicodeWidthStr::width(encoded as &str);
-        if used + w > width {
-            break;
+/// Return the ANSI SGR set-background sequence for the supplied
+/// 256-color palette index.
+fn ansi_bg(index: u8) -> String {
+    format!("\x1b[48;5;{}m", index)
+}
+
+/// Centre `label` in a field of exactly `width` terminal columns.
+/// Asymmetric extra space goes to the right (so visual consistency is
+/// preserved regardless of odd/even widths). If the label is wider
+/// than `width`, it is truncated char-by-char.
+fn center(label: &str, width: usize) -> String {
+    let label_width = UnicodeWidthStr::width(label);
+    if label_width >= width {
+        // Truncate: copy chars until we hit the cap.
+        let mut out = String::new();
+        let mut used = 0usize;
+        for ch in label.chars() {
+            let mut tmp = [0u8; 4];
+            let encoded = ch.encode_utf8(&mut tmp);
+            let w = UnicodeWidthStr::width(encoded as &str);
+            if used + w > width {
+                break;
+            }
+            out.push(ch);
+            used += w;
         }
-        out.push(ch);
-        used += w;
+        while used < width {
+            out.push(' ');
+            used += 1;
+        }
+        return out;
     }
-    while used < width {
+    let total_pad = width - label_width;
+    let left_pad = total_pad / 2;
+    let right_pad = total_pad - left_pad;
+    let mut out = String::with_capacity(width);
+    for _ in 0..left_pad {
         out.push(' ');
-        used += 1;
+    }
+    out.push_str(label);
+    for _ in 0..right_pad {
+        out.push(' ');
     }
     out
 }
 
-/// Clip a line containing inline ANSI reverse-video escapes to
-/// `max_cells` visible cells. Pure-text variant `clip_to_cells` is
-/// fine for borders; this one is for content rows where `\x1b[7m` /
-/// `\x1b[27m` runs are interspersed.
+/// Clip a line containing inline ANSI escape sequences to `max_cells`
+/// visible terminal cells. Escape sequences pass through unchanged
+/// (they consume no cells); printable chars are accounted via
+/// `unicode-width`.
 fn clip_buf(s: &str, max_cells: usize) -> String {
     let bytes = s.as_bytes();
     let mut out = String::new();
@@ -396,8 +387,6 @@ fn clip_buf(s: &str, max_cells: usize) -> String {
     let mut i = 0;
     while i < bytes.len() {
         if bytes[i] == 0x1b {
-            // Copy the entire CSI sequence verbatim; it does not
-            // consume terminal cells.
             let start = i;
             i += 1;
             if i < bytes.len() && bytes[i] == b'[' {
@@ -446,80 +435,94 @@ fn utf8_char_len(byte: u8) -> usize {
 
 #[cfg(test)]
 mod tests {
-    //! Border-merge geometry tests. The exact glyphs come from the
-    //! mockups in `mobile_keyboard.md`; if the renderer drifts from
-    //! them these tests fail.
     use super::*;
-    use crate::keyboard::layout::{CellId, KeyCell};
 
-    fn cells_aligned(walls: &[u16]) -> Vec<KeyCell> {
-        let mut out = Vec::new();
-        for w in walls.windows(2) {
-            out.push(KeyCell {
-                col_start: w[0],
-                col_end: w[1],
-                id: CellId(0),
-            });
-        }
-        out
+    #[test]
+    fn center_one_char_in_three_cols() {
+        assert_eq!(center("q", 3), " q ");
     }
 
     #[test]
-    fn top_border_extras_only() {
-        // Extras strip: walls at 0, 4, 8, 12, 16, 20, 23, 26, 29, 32.
-        let extras = KeyRow {
-            offset_col: 0,
-            cells: cells_aligned(&[0, 4, 8, 12, 16, 20, 23, 26, 29, 32]),
-        };
-        let line = horizontal_line(None, Some(&extras), 33);
-        assert_eq!(line, "╭───┬───┬───┬───┬───┬──┬──┬──┬──╮");
+    fn center_three_chars_in_five_cols() {
+        assert_eq!(center("Esc", 5), " Esc ");
     }
 
     #[test]
-    fn divider_extras_to_numbers() {
-        // Mismatched walls force the alternating ┴/┬ pattern.
-        let extras = KeyRow {
-            offset_col: 0,
-            cells: cells_aligned(&[0, 4, 8, 12, 16, 20, 23, 26, 29, 32]),
-        };
-        let mut numbers_walls = Vec::new();
-        for i in 0..=13 {
-            numbers_walls.push(i * 3);
-        }
-        let numbers = KeyRow {
-            offset_col: 0,
-            cells: cells_aligned(&numbers_walls),
-        };
-        let line = horizontal_line(Some(&extras), Some(&numbers), 40);
-        assert_eq!(line, "├──┬┴─┬─┴┬──┼──┬┴─┬─┴┬─┴┬─┴┬─┴┬─┴┬──┬──╮");
+    fn center_one_char_in_wide_seven_col_cell() {
+        // The Letters row-3 backspace cell.
+        assert_eq!(center("⌫", 7), "   ⌫   ");
     }
 
     #[test]
-    fn divider_qwerty_to_asdf_with_stagger() {
-        // Qwerty: 13 cells of width 3 → walls 0,3,...,39.
-        // ASDF: offset 1, 11 cells of width 3 → absolute walls 1,4,...,34.
-        let qwerty_walls: Vec<u16> = (0..=13).map(|i| i * 3).collect();
-        let qwerty = KeyRow {
-            offset_col: 0,
-            cells: cells_aligned(&qwerty_walls),
-        };
-        let asdf_walls: Vec<u16> = (0..=11).map(|i| i * 3).collect();
-        let asdf = KeyRow {
-            offset_col: 1,
-            cells: cells_aligned(&asdf_walls),
-        };
-        let line = horizontal_line(Some(&qwerty), Some(&asdf), 40);
-        assert_eq!(line, "╰┬─┴┬─┴┬─┴┬─┴┬─┴┬─┴┬─┴┬─┴┬─┴┬─┴┬─┴┬─┴──╯");
+    fn center_asymmetric_extra_goes_right() {
+        // Two chars in five cols: extra = 3, left = 1, right = 2.
+        assert_eq!(center("F1", 5), " F1  ");
     }
 
     #[test]
-    fn bottom_border_utility() {
-        let utility = KeyRow {
-            offset_col: 0,
-            cells: cells_aligned(&[0, 30, 36]),
-        };
-        let line = horizontal_line(Some(&utility), None, 37);
-        assert_eq!(line, "╰─────────────────────────────┴─────╯");
+    fn center_empty_label_pads_full_width() {
+        assert_eq!(center("", 4), "    ");
+    }
+
+    #[test]
+    fn palette_alternates_outer_inner() {
+        assert_eq!(palette_for_row(0), P_OUTER);
+        assert_eq!(palette_for_row(1), P_INNER);
+        assert_eq!(palette_for_row(2), P_OUTER);
+        assert_eq!(palette_for_row(3), P_INNER);
+        assert_eq!(palette_for_row(4), P_OUTER);
+    }
+
+    #[test]
+    fn ansi_bg_format() {
+        assert_eq!(ansi_bg(236), "\x1b[48;5;236m");
+        assert_eq!(ansi_bg(33), "\x1b[48;5;33m");
+    }
+
+    /// `block_width` reports the widest row's right edge, accounting
+    /// for the row's `offset_col` stagger.
+    #[test]
+    fn block_width_uses_widest_row() {
+        use crate::keyboard::layout::{CellId, KeyCell, KeyRow};
+
+        let r1 = KeyRow::tall(0, vec![KeyCell { col_start: 0, col_end: 30, id: CellId(0) }]);
+        let r2 = KeyRow::tall(2, vec![KeyCell { col_start: 0, col_end: 27, id: CellId(1) }]);
+        let r3 = KeyRow::tall(0, vec![KeyCell { col_start: 0, col_end: 34, id: CellId(2) }]);
+        assert_eq!(block_width(&[r1, r2, r3]), 34);
+    }
+
+    /// `block_width` reports per-layer maxima for the US-QWERTY
+    /// layout: Letters = 34 (bottom bar), Symbols = 39 (symbol rows),
+    /// Functions = 41 (F-key rows).
+    #[test]
+    fn block_width_per_layer() {
+        use crate::keyboard::layouts::us_qwerty::UsQwerty;
+        use crate::keyboard::modifiers::{KeyLayer, KeyboardModifiers};
+
+        let layout = UsQwerty::new();
+        let mut mods = KeyboardModifiers::default();
+        assert_eq!(block_width(&layout.rows(&mods)), 34);
+        mods.layer = KeyLayer::Symbols;
+        assert_eq!(block_width(&layout.rows(&mods)), 39);
+        mods.layer = KeyLayer::Functions;
+        assert_eq!(block_width(&layout.rows(&mods)), 41);
+    }
+
+    /// Row budget with every visible row (including the extras strip
+    /// and bottom bar) bumped to height 2. Letters and Symbols layers
+    /// occupy 2 + 3·2 + 2 = 10 rows; Functions occupies 2 + 2·2 + 2
+    /// = 8 rows.
+    #[test]
+    fn keyboard_rows_sums_heights() {
+        use crate::keyboard::layouts::us_qwerty::UsQwerty;
+        use crate::keyboard::modifiers::{KeyLayer, KeyboardModifiers};
+
+        let layout = UsQwerty::new();
+        let mut mods = KeyboardModifiers::default();
+        assert_eq!(keyboard_rows(&layout, &mods), 10); // Letters
+        mods.layer = KeyLayer::Symbols;
+        assert_eq!(keyboard_rows(&layout, &mods), 10);
+        mods.layer = KeyLayer::Functions;
+        assert_eq!(keyboard_rows(&layout, &mods), 8);
     }
 }
-

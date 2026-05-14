@@ -192,8 +192,7 @@ fn prefix_alt(alt: bool, body: &[u8]) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     //! Sanity checks confirming `serialize_key` covers everything the
-    //! in-plugin keyboard emits — F-keys (1, 12) and Ctrl/Alt-letter
-    //! combos. Stage 6 of `mobile_keyboard.md`.
+    //! in-plugin keyboard emits — F-keys and Ctrl/Alt-letter combos.
     use super::*;
     use std::collections::BTreeSet;
 
