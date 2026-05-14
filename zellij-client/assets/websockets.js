@@ -5,6 +5,7 @@
 import { handleReconnection, handleDisconnected, markConnectionEstablished } from "./connection.js";
 import { getBaseUrl, getWebSocketBaseUrl } from "./utils.js";
 import { setSoftKeyboard } from "./input.js";
+import { applyFontSize } from "./terminal.js";
 
 /**
  * Read cell pixel dimensions from xterm.js. Tries the internal
@@ -268,7 +269,12 @@ function startWsControl(wsControl, term, fitAddon, ownWebClientId, userConfig) {
                     : isMobileViewport
                     ? 18
                     : 12;
-            term.options.fontSize = resolvedFontSize;
+            // applyFontSize layers in two extras over a bare assignment:
+            // a persisted (pinch-set) override wins over the server's
+            // resolved value, and the result is clamped + re-fit in
+            // one call. The subsequent fit() / TerminalResize plumbing
+            // below still runs unchanged.
+            applyFontSize(term, fitAddon, resolvedFontSize);
             const body = document.querySelector("body");
             body.style.background = theme.background || "black";
 

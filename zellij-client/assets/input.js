@@ -4,13 +4,17 @@
 
 import { encode_kitty_key } from "./keyboard.js";
 import { isMac } from "./utils.js";
+import { clampFontSize, setPersistedFontSize } from "./terminal.js";
 
 /**
  * Set up all input handlers for the terminal
  * @param {Terminal} term - The terminal instance
+ * @param {FitAddon} fitAddon - The xterm.js fit addon, used by the
+ *     pinch-to-zoom gesture to re-flow the grid when the font size
+ *     changes mid-gesture.
  * @param {function} sendFunction - Function to send data through WebSocket
  */
-export function setupInputHandlers(term, sendFunction) {
+export function setupInputHandlers(term, fitAddon, sendFunction) {
     // Mouse tracking state
     let prev_col = 0;
     let prev_row = 0;
@@ -145,6 +149,16 @@ export function setupInputHandlers(term, sendFunction) {
     let long_press_fired = false; // right-click already emitted for this gesture
     let long_press_timer = null;  // pending setTimeout id, cleared on cancel
     let two_finger_gesture_t = null; // performance.now() at 2-finger touchstart
+    // Pinch-to-zoom bookkeeping: the finger spread at 2-finger
+    // touchstart and the terminal's font size at the same moment are
+    // captured so a subsequent touchmove can compute a ratio-based
+    // new font size independent of where the gesture started.
+    // `pinch_active` flips true once the spread changes by more than
+    // `pinch_activation_threshold` px — that disqualifies the gesture
+    // from the 2-finger-tap keyboard toggle on release.
+    let pinch_initial_distance = null;
+    let pinch_initial_font_size = null;
+    let pinch_active = false;
     const touch_scroll_threshold = 24; // px before a swipe step counts
     // 16 px is roughly the touch slop Material/iOS use; a finger pressed
     // on a 1× display reliably stays inside that bound, while higher-DPI
@@ -155,6 +169,11 @@ export function setupInputHandlers(term, sendFunction) {
     // Above the threshold we assume the user changed their mind and
     // discard the gesture without flipping state.
     const two_finger_tap_max_ms = 600;
+    // Pinch needs a deliberate spread/contract to engage so that
+    // accidental finger drift during a 2-finger tap does not
+    // accidentally zoom. 18 px comfortably exceeds the OS touch slop
+    // (≈10 px) while still feeling instant on a phone.
+    const pinch_activation_threshold = 18;
 
     const reportCoords = (clientX, clientY) =>
         term._core._mouseService.getMouseReportCoords(
@@ -183,6 +202,55 @@ export function setupInputHandlers(term, sendFunction) {
         sendFunction(`\x1b[<${button};${col + 1};${row + 1}M`);
     };
 
+    // Euclidean distance between the first two active TouchList
+    // entries. Returns 0 if fewer than two touches are present so the
+    // caller can decide what to do with a degenerate gesture.
+    const touchPairDistance = (touches) => {
+        if (touches.length < 2) {
+            return 0;
+        }
+        const dx = touches[0].clientX - touches[1].clientX;
+        const dy = touches[0].clientY - touches[1].clientY;
+        return Math.hypot(dx, dy);
+    };
+
+    // Apply a new font size during a pinch. We deliberately do NOT
+    // call `fitAddon.fit()` here, even though it is the obvious
+    // thing to do after a font-size change:
+    //
+    //   fit() synchronously calls term.resize(cols, rows) with the
+    //   new dimensions. The window `resize` event we dispatch below
+    //   reaches `setupResizeHandler.resizeTerminal`, which compares
+    //   `proposeDimensions()` against `term.rows`/`term.cols`. After
+    //   fit() those values are equal, so resizeTerminal short-
+    //   circuits and never sends `TerminalResize` to the server.
+    //   The server keeps rendering for the old grid size, the
+    //   browser grid is smaller, and the mobile plugin's bottom
+    //   rows (the keyboard) get clipped out of both views. Pinching
+    //   back in does not bring them back because the buffer rows
+    //   were already discarded by xterm's resize.
+    //
+    // By skipping fit() here, term.rows/cols stay at the OLD grid
+    // when the resize event fires. resizeTerminal then sees a real
+    // mismatch (proposeDimensions reflects the new cell size, term
+    // does not), calls term.resize itself, and emits the
+    // TerminalResize control message — which is what causes the
+    // server to redraw the mobile plugin at the new dimensions.
+    //
+    // The xterm.js renderer updates its cell metrics synchronously
+    // when `term.options.fontSize` is assigned (the OptionsService
+    // → renderer change handler runs inline), so proposeDimensions
+    // returns correct new geometry by the time the resize handler
+    // reads it on the next animation frame.
+    const applyPinchFontSize = (px) => {
+        const clamped = clampFontSize(px);
+        if (term.options.fontSize === clamped) {
+            return;
+        }
+        term.options.fontSize = clamped;
+        window.dispatchEvent(new Event("resize"));
+    };
+
     terminal_element.addEventListener(
         "touchstart",
         (event) => {
@@ -200,6 +268,17 @@ export function setupInputHandlers(term, sendFunction) {
                 touch_origin = null;
                 touch_moved = false;
                 long_press_fired = false;
+                // Record the spread + current font size for pinch
+                // zoom. `pinch_active` stays false until touchmove
+                // sees the spread change past the activation
+                // threshold; until then, a 2-finger release within
+                // the tap window still counts as the keyboard
+                // toggle.
+                pinch_initial_distance = touchPairDistance(event.touches);
+                pinch_initial_font_size = clampFontSize(
+                    term.options.fontSize || 16
+                );
+                pinch_active = false;
                 return;
             }
             if (two_finger_gesture_t !== null) {
@@ -271,6 +350,32 @@ export function setupInputHandlers(term, sendFunction) {
     terminal_element.addEventListener(
         "touchmove",
         (event) => {
+            // Pinch path: when two fingers are down and we recorded
+            // the initial spread on touchstart, drive a ratio-based
+            // font-size change. This runs *before* the single-finger
+            // swipe logic so a pinch never accidentally emits scroll
+            // wheel events on the underlying terminal.
+            if (
+                event.touches.length === 2 &&
+                pinch_initial_distance !== null &&
+                pinch_initial_distance > 0
+            ) {
+                event.preventDefault();
+                const dist = touchPairDistance(event.touches);
+                if (
+                    !pinch_active &&
+                    Math.abs(dist - pinch_initial_distance) >
+                        pinch_activation_threshold
+                ) {
+                    pinch_active = true;
+                }
+                if (pinch_active) {
+                    const ratio = dist / pinch_initial_distance;
+                    applyPinchFontSize(pinch_initial_font_size * ratio);
+                }
+                return;
+            }
+
             if (event.touches.length === 0 || last_touch_y === null) {
                 return;
             }
@@ -315,7 +420,19 @@ export function setupInputHandlers(term, sendFunction) {
                 event.touches.length === 0
             ) {
                 const elapsed = performance.now() - two_finger_gesture_t;
+                const wasPinch = pinch_active;
                 two_finger_gesture_t = null;
+                pinch_active = false;
+                pinch_initial_distance = null;
+                pinch_initial_font_size = null;
+                if (wasPinch) {
+                    // The user zoomed; remember the final size so a
+                    // page reload preserves it. The 2-finger-tap
+                    // keyboard toggle is suppressed because the
+                    // pinch is a different intent.
+                    setPersistedFontSize(term.options.fontSize);
+                    return;
+                }
                 if (elapsed < two_finger_tap_max_ms) {
                     toggleSoftKeyboard(term);
                 }
@@ -357,6 +474,14 @@ export function setupInputHandlers(term, sendFunction) {
             touch_moved = false;
             long_press_fired = false;
             two_finger_gesture_t = null;
+            // If the cancel arrives mid-pinch we keep whatever font
+            // size the gesture had already applied; only the
+            // bookkeeping is reset so a fresh gesture starts clean.
+            // The persisted value is intentionally not written here
+            // since a cancelled gesture is ambiguous intent.
+            pinch_initial_distance = null;
+            pinch_initial_font_size = null;
+            pinch_active = false;
         },
         { passive: true }
     );
