@@ -28,7 +28,7 @@ use zellij_utils::{
         actions::{Action, SearchDirection, SearchOption},
         command::TerminalAction,
     },
-    ipc::{ClientToServerMsg, ExitReason, IpcReceiverWithContext, ServerToClientMsg},
+    ipc::{ClientToServerMsg, ExitReason, IpcReceiverWithContext, ResizeCause, ServerToClientMsg},
 };
 
 use crate::ClientId;
@@ -2203,9 +2203,11 @@ pub(crate) fn route_thread_main(
                                     should_break = true;
                                 }
                             },
-                            ClientToServerMsg::TerminalResize { new_size } => {
+                            ClientToServerMsg::TerminalResize { new_size, .. } => {
                                 // For watchers: send size to Screen for rendering adjustments, but
-                                // this does not affect the screen size
+                                // this does not affect the screen size.
+                                // `cause` is irrelevant for watchers because mobile-mode
+                                // routing does not apply to them.
                                 send_to_screen_or_retry_queue!(
                                     senders,
                                     ScreenInstruction::WatcherTerminalResize(client_id, *new_size),
@@ -2367,7 +2369,7 @@ pub(crate) fn route_thread_main(
                                 }
                             }
                         },
-                        ClientToServerMsg::TerminalResize { new_size } => {
+                        ClientToServerMsg::TerminalResize { new_size, cause } => {
                             // Check if this is a watcher or regular client
                             if is_watcher {
                                 // For watchers: send size to Screen for tracking, don't affect screen size
@@ -2388,67 +2390,84 @@ pub(crate) fn route_thread_main(
                                 // handler is a no-op for clients without an
                                 // active tab yet (i.e. resizes arriving
                                 // before AddClient is processed), so no
-                                // session-level gating is needed.
+                                // session-level gating is needed. Fires
+                                // regardless of `cause` because the cell
+                                // grid genuinely changed — panes must be
+                                // re-laid for the new dimensions.
                                 let _ = senders.as_ref().map(|s| {
                                     s.send_to_screen(ScreenInstruction::RecomputeTabSize(
                                         client_id, new_size,
                                     ))
                                 });
-                                // Re-evaluate mobile-mode auto-routing.
+                                // Mobile-mode re-evaluation only fires for
+                                // `Viewport` resizes — a real device-side
+                                // viewport change (window resize, attach,
+                                // rotation). `RenderingPreference` resizes
+                                // (e.g. browser pinch zoom) are explicitly
+                                // skipped: the device viewport itself is
+                                // unchanged, only the local rendering
+                                // preference, so promoting or demoting the
+                                // client between mobile/desktop layouts
+                                // would be an unintended side-effect of a
+                                // cosmetic zoom.
+                                //
                                 // The initial AttachClient/FirstClientConnected
                                 // path uses whatever size was reported at the
                                 // moment of attach — which for web clients is
                                 // the *server's* tty size (or its 80x24
                                 // fallback), not the browser viewport. The
                                 // browser's true cell grid only arrives via
-                                // these later TerminalResize messages, and a
-                                // re-evaluation here is the only chance to
-                                // route a freshly-attached phone into the
-                                // mobile UI. Reads the runtime config so that
-                                // CLI-overridden options (`--mobile-mode-default`,
-                                // `--mobile-threshold-cols`, etc.) win over the
-                                // saved KDL config.
-                                let mobile_options = session_data
-                                    .read()
-                                    .ok()
-                                    .and_then(|guard| {
-                                        guard.as_ref().map(|s| {
-                                            let config = s
-                                                .session_configuration
-                                                .get_client_configuration(&client_id);
-                                            (
-                                                config
-                                                    .options
-                                                    .mobile_mode_default
-                                                    .unwrap_or_default(),
-                                                config
-                                                    .options
-                                                    .mobile_threshold_cols
-                                                    .unwrap_or(60),
-                                                config
-                                                    .options
-                                                    .mobile_threshold_rows
-                                                    .unwrap_or(30),
+                                // these later `Viewport` TerminalResize
+                                // messages, and a re-evaluation here is the
+                                // only chance to route a freshly-attached
+                                // phone into the mobile UI. Reads the
+                                // runtime config so that CLI-overridden
+                                // options (`--mobile-mode-default`,
+                                // `--mobile-threshold-cols`, etc.) win over
+                                // the saved KDL config.
+                                if matches!(cause, ResizeCause::Viewport) {
+                                    let mobile_options = session_data
+                                        .read()
+                                        .ok()
+                                        .and_then(|guard| {
+                                            guard.as_ref().map(|s| {
+                                                let config = s
+                                                    .session_configuration
+                                                    .get_client_configuration(&client_id);
+                                                (
+                                                    config
+                                                        .options
+                                                        .mobile_mode_default
+                                                        .unwrap_or_default(),
+                                                    config
+                                                        .options
+                                                        .mobile_threshold_cols
+                                                        .unwrap_or(60),
+                                                    config
+                                                        .options
+                                                        .mobile_threshold_rows
+                                                        .unwrap_or(30),
+                                                )
+                                            })
+                                        });
+                                    if let Some((
+                                        mobile_mode_default,
+                                        threshold_cols,
+                                        threshold_rows,
+                                    )) = mobile_options
+                                    {
+                                        let _ = senders.as_ref().map(|s| {
+                                            s.send_to_screen(
+                                                ScreenInstruction::ReevaluateMobileMode {
+                                                    client_id,
+                                                    new_size,
+                                                    mobile_mode_default,
+                                                    threshold_cols,
+                                                    threshold_rows,
+                                                },
                                             )
-                                        })
-                                    });
-                                if let Some((
-                                    mobile_mode_default,
-                                    threshold_cols,
-                                    threshold_rows,
-                                )) = mobile_options
-                                {
-                                    let _ = senders.as_ref().map(|s| {
-                                        s.send_to_screen(
-                                            ScreenInstruction::ReevaluateMobileMode {
-                                                client_id,
-                                                new_size,
-                                                mobile_mode_default,
-                                                threshold_cols,
-                                                threshold_rows,
-                                            },
-                                        )
-                                    });
+                                        });
+                                    }
                                 }
                             }
                         },

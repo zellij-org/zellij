@@ -81,6 +81,27 @@ pub struct ColorRegister {
     pub color: String,
 }
 
+/// Why a `TerminalResize` was emitted. The server uses this to
+/// decide whether the resize is a true viewport change (which can
+/// re-evaluate mobile-mode auto-routing) or a purely local
+/// rendering preference change (which still re-lays the grid but
+/// must not affect mobile-mode state).
+#[derive(Default, Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ResizeCause {
+    /// The physical viewport changed — window resize, device
+    /// rotation, attach, or the underlying terminal's reported
+    /// size. Mobile-mode re-evaluation runs against this size.
+    #[default]
+    Viewport,
+    /// A local rendering preference changed and the cell grid
+    /// followed (e.g. the browser pinch zoom changed the font
+    /// size, so the same pixel viewport now fits a different cell
+    /// count). The pane grid is re-laid, but the mobile-mode
+    /// decision is NOT re-evaluated because the device is the
+    /// same — only the user's local zoom has changed.
+    RenderingPreference,
+}
+
 impl PixelDimensions {
     pub fn merge(&mut self, other: PixelDimensions) {
         if let Some(text_area_size) = other.text_area_size {
@@ -113,6 +134,11 @@ pub enum ClientToServerMsg {
     },
     TerminalResize {
         new_size: Size,
+        /// Why the resize was emitted. See `ResizeCause`. Defaults
+        /// to `Viewport` for back-compat with older clients and
+        /// for the common case.
+        #[serde(default)]
+        cause: ResizeCause,
     },
     FirstClientConnected {
         cli_assets: CliAssets,

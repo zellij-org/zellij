@@ -21,7 +21,7 @@ use std::sync::{atomic::AtomicBool, Arc};
 use tokio_util::sync::CancellationToken;
 use zellij_utils::{
     input::mouse::MouseEvent,
-    ipc::{ClientToServerMsg, PixelDimensions},
+    ipc::{ClientToServerMsg, PixelDimensions, ResizeCause},
     pane_size::SizeInPixels,
 };
 
@@ -76,7 +76,19 @@ async fn handle_ws_control(
         };
         let client_msg = match deserialized_msg.payload {
             WebClientToWebServerControlMessagePayload::TerminalResize(size) => {
-                ClientToServerMsg::TerminalResize { new_size: size }
+                ClientToServerMsg::TerminalResize {
+                    new_size: size,
+                    cause: ResizeCause::Viewport,
+                }
+            },
+            WebClientToWebServerControlMessagePayload::TerminalResizeRendering(size) => {
+                // Pinch-driven (rendering-preference) resize: same
+                // grid update, but the server's TerminalResize
+                // handler will skip mobile-mode re-evaluation.
+                ClientToServerMsg::TerminalResize {
+                    new_size: size,
+                    cause: ResizeCause::RenderingPreference,
+                }
             },
             WebClientToWebServerControlMessagePayload::TerminalMetrics(metrics) => {
                 terminal_metrics_to_ipc(metrics)

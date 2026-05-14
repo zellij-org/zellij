@@ -428,7 +428,7 @@ mod web_client_tests {
             let messages = mock_api.get_sent_messages();
             for msg in messages {
                 match msg {
-                    ClientToServerMsg::TerminalResize { new_size: _ } => {
+                    ClientToServerMsg::TerminalResize { .. } => {
                         found_resize = true;
                     },
                     ClientToServerMsg::Key { .. }

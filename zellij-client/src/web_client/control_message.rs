@@ -11,7 +11,16 @@ pub struct WebClientToWebServerControlMessage {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "type")]
 pub enum WebClientToWebServerControlMessagePayload {
+    /// Real viewport change reported by the browser — window
+    /// resize, attach, rotation. The server uses this for
+    /// mobile-mode re-evaluation.
     TerminalResize(Size),
+    /// Cell-grid change driven by a local rendering preference
+    /// (e.g. browser pinch zoom changed the font size, which
+    /// changed the cell count). The server re-lays the grid but
+    /// does NOT re-evaluate mobile-mode — the device viewport
+    /// itself has not changed.
+    TerminalResizeRendering(Size),
     TerminalMetrics(TerminalMetricsPayload),
 }
 

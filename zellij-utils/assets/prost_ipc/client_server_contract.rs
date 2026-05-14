@@ -3011,6 +3011,11 @@ pub struct ColorRegistersMsg {
 pub struct TerminalResizeMsg {
     #[prost(message, optional, tag="1")]
     pub new_size: ::core::option::Option<Size>,
+    /// Why the resize was emitted. Defaults to RESIZE_CAUSE_VIEWPORT
+    /// when the field is missing, matching back-compat behavior of
+    /// older clients.
+    #[prost(enumeration="ResizeCause", tag="2")]
+    pub cause: i32,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -3118,6 +3123,38 @@ pub struct ForwardedReplyFromHostMsg {
 pub struct HostTerminalThemeChangedMsg {
     #[prost(enumeration="HostTerminalThemeIndication", tag="1")]
     pub mode: i32,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum ResizeCause {
+    /// The physical viewport changed — window resize, device
+    /// rotation, attach, or the underlying terminal's reported size.
+    /// Triggers mobile-mode re-evaluation on the server.
+    Viewport = 0,
+    /// A local rendering preference changed (e.g. browser pinch
+    /// zoom). The grid is re-laid but mobile-mode is not
+    /// re-evaluated.
+    RenderingPreference = 1,
+}
+impl ResizeCause {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            ResizeCause::Viewport => "RESIZE_CAUSE_VIEWPORT",
+            ResizeCause::RenderingPreference => "RESIZE_CAUSE_RENDERING_PREFERENCE",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "RESIZE_CAUSE_VIEWPORT" => Some(Self::Viewport),
+            "RESIZE_CAUSE_RENDERING_PREFERENCE" => Some(Self::RenderingPreference),
+            _ => None,
+        }
+    }
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]

@@ -4,7 +4,7 @@
 
 import { encode_kitty_key } from "./keyboard.js";
 import { isMac } from "./utils.js";
-import { clampFontSize, setPersistedFontSize } from "./terminal.js";
+import { clampFontSize } from "./terminal.js";
 
 /**
  * Set up all input handlers for the terminal
@@ -219,36 +219,45 @@ export function setupInputHandlers(term, fitAddon, sendFunction) {
     // thing to do after a font-size change:
     //
     //   fit() synchronously calls term.resize(cols, rows) with the
-    //   new dimensions. The window `resize` event we dispatch below
-    //   reaches `setupResizeHandler.resizeTerminal`, which compares
+    //   new dimensions. The custom event we dispatch below reaches
+    //   `setupResizeHandler.resizeTerminal`, which compares
     //   `proposeDimensions()` against `term.rows`/`term.cols`. After
     //   fit() those values are equal, so resizeTerminal short-
-    //   circuits and never sends `TerminalResize` to the server.
-    //   The server keeps rendering for the old grid size, the
-    //   browser grid is smaller, and the mobile plugin's bottom
-    //   rows (the keyboard) get clipped out of both views. Pinching
-    //   back in does not bring them back because the buffer rows
-    //   were already discarded by xterm's resize.
+    //   circuits and never sends the resize to the server. The
+    //   server keeps rendering for the old grid size, the browser
+    //   grid is smaller, and the mobile plugin's bottom rows (the
+    //   keyboard) get clipped out of both views. Pinching back in
+    //   does not bring them back because the buffer rows were
+    //   already discarded by xterm's resize.
     //
     // By skipping fit() here, term.rows/cols stay at the OLD grid
-    // when the resize event fires. resizeTerminal then sees a real
-    // mismatch (proposeDimensions reflects the new cell size, term
-    // does not), calls term.resize itself, and emits the
-    // TerminalResize control message — which is what causes the
-    // server to redraw the mobile plugin at the new dimensions.
+    // when the resize handler fires. It then sees a real mismatch
+    // (proposeDimensions reflects the new cell size, term does
+    // not), calls term.resize itself, and emits the resize control
+    // message — which is what causes the server to redraw the
+    // mobile plugin at the new dimensions.
     //
     // The xterm.js renderer updates its cell metrics synchronously
     // when `term.options.fontSize` is assigned (the OptionsService
     // → renderer change handler runs inline), so proposeDimensions
     // returns correct new geometry by the time the resize handler
     // reads it on the next animation frame.
+    //
+    // We fire a dedicated `zellij:rendering-resize` event rather
+    // than a plain `resize`. `setupResizeHandler` routes the
+    // former to a `TerminalResizeRendering` payload, which the
+    // server bridge translates into `ResizeCause::RenderingPreference`
+    // and the server's TerminalResize handler skips mobile-mode
+    // re-evaluation for. Without this distinction, a pinch that
+    // happens to push the cell grid past the mobile threshold
+    // would auto-demote the client out of the mobile layout.
     const applyPinchFontSize = (px) => {
         const clamped = clampFontSize(px);
         if (term.options.fontSize === clamped) {
             return;
         }
         term.options.fontSize = clamped;
-        window.dispatchEvent(new Event("resize"));
+        window.dispatchEvent(new CustomEvent("zellij:rendering-resize"));
     };
 
     terminal_element.addEventListener(
@@ -426,11 +435,15 @@ export function setupInputHandlers(term, fitAddon, sendFunction) {
                 pinch_initial_distance = null;
                 pinch_initial_font_size = null;
                 if (wasPinch) {
-                    // The user zoomed; remember the final size so a
-                    // page reload preserves it. The 2-finger-tap
-                    // keyboard toggle is suppressed because the
-                    // pinch is a different intent.
-                    setPersistedFontSize(term.options.fontSize);
+                    // The user zoomed; the new font size lives only
+                    // in `term.options.fontSize` for the duration of
+                    // this session. A page reload resets to the
+                    // server-/browser-driven default — deliberately
+                    // ephemeral so a stale zoom from a previous
+                    // session cannot bias the fresh-attach
+                    // measurements that drive mobile-mode routing.
+                    // The 2-finger-tap keyboard toggle is suppressed
+                    // because the pinch is a different intent.
                     return;
                 }
                 if (elapsed < two_finger_tap_max_ms) {

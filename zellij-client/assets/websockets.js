@@ -49,15 +49,23 @@ function getCellPixelDimensions(term) {
  * when the grid hasn't changed (e.g. after a theme reload that only
  * shifts font metrics) is safe.
  */
-function sendSizeUpdate(wsControl, ownWebClientId, term, rows, cols) {
+function sendSizeUpdate(wsControl, ownWebClientId, term, rows, cols, cause) {
     if (!wsControl || !ownWebClientId) {
         return;
     }
+    // The payload `type` discriminator is what the server bridge
+    // (web_client/websocket_handlers.rs) translates into
+    // `ResizeCause::Viewport` vs `ResizeCause::RenderingPreference`.
+    // Only the former triggers the server's mobile-mode re-evaluation.
+    const resizeType =
+        cause === "RenderingPreference"
+            ? "TerminalResizeRendering"
+            : "TerminalResize";
     wsControl.send(
         JSON.stringify({
             web_client_id: ownWebClientId,
             payload: {
-                type: "TerminalResize",
+                type: resizeType,
                 rows,
                 cols,
             },
@@ -351,6 +359,17 @@ export function setupResizeHandler(
     getOwnWebClientId
 ) {
     let resizeScheduled = false;
+    // Tracks what caused the pending resize to be scheduled. Each
+    // tick collects 0..N signals from different sources (window
+    // resize, visualViewport resize, pinch). Viewport wins if it
+    // arrived at any point during the tick — only a tick whose
+    // *every* signal was rendering-only is reported as
+    // RenderingPreference to the server. That conservative
+    // collapse means a true device-side viewport change is never
+    // silently re-labelled as cosmetic, even if a pinch fires in
+    // the same animation frame.
+    let pendingViewportSignal = false;
+    let pendingRenderingSignal = false;
 
     const updateViewportVars = () => {
         const root = document.documentElement;
@@ -361,7 +380,7 @@ export function setupResizeHandler(
         root.style.setProperty("--dynamic-vw", `${width}px`);
     };
 
-    const resizeTerminal = () => {
+    const resizeTerminal = (cause) => {
         const ownWebClientId = getOwnWebClientId();
         if (ownWebClientId === "") {
             return;
@@ -381,28 +400,54 @@ export function setupResizeHandler(
         term.resize(cols, rows);
 
         const wsControl = getWsControl();
-        sendSizeUpdate(wsControl, ownWebClientId, term, rows, cols);
+        sendSizeUpdate(wsControl, ownWebClientId, term, rows, cols, cause);
     };
 
-    const handleViewportChange = () => {
+    const handleViewportChange = (cause) => {
         updateViewportVars();
-        resizeTerminal();
+        resizeTerminal(cause);
     };
 
-    const scheduleResize = () => {
+    const scheduleResize = (cause) => {
+        if (cause === "RenderingPreference") {
+            pendingRenderingSignal = true;
+        } else {
+            pendingViewportSignal = true;
+        }
         if (resizeScheduled) {
             return;
         }
         resizeScheduled = true;
         requestAnimationFrame(() => {
+            // Resolve the cause for this tick. Mixed signals fall
+            // back to Viewport (safer: a real device change wins).
+            const tickCause =
+                pendingRenderingSignal && !pendingViewportSignal
+                    ? "RenderingPreference"
+                    : "Viewport";
+            pendingViewportSignal = false;
+            pendingRenderingSignal = false;
             resizeScheduled = false;
-            handleViewportChange();
+            handleViewportChange(tickCause);
         });
     };
 
+    const scheduleViewportResize = () => scheduleResize("Viewport");
+    const scheduleRenderingResize = () => scheduleResize("RenderingPreference");
+
     updateViewportVars();
-    addEventListener("resize", scheduleResize);
+    addEventListener("resize", scheduleViewportResize);
     if (window.visualViewport) {
-        window.visualViewport.addEventListener("resize", scheduleResize);
+        window.visualViewport.addEventListener(
+            "resize",
+            scheduleViewportResize
+        );
     }
+    // The pinch handler in `input.js` fires this custom event
+    // instead of a plain "resize" so the server can distinguish
+    // a cosmetic font-size-driven grid change from a real
+    // device-viewport change. Without the distinction, pinching
+    // would push the mobile client past the threshold and
+    // auto-demote it out of the mobile layout.
+    addEventListener("zellij:rendering-resize", scheduleRenderingResize);
 }

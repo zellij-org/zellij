@@ -11,8 +11,8 @@ use crate::{
         InputMode as ProtoInputMode, KeyMsg, KillSessionMsg, LayoutMetadata as ProtoLayoutMetadata,
         LogErrorMsg, LogMsg, PaneMetadata as ProtoPaneMetadata, PaneRenderUpdateMsg,
         QueryTerminalSizeMsg, RenamedSessionMsg, RenderMsg,
-        ServerToClientMsg as ProtoServerToClientMsg, SetSoftKeyboardMsg, StartWebServerMsg,
-        SubscribeToPaneRendersMsg,
+        ResizeCause as ProtoResizeCause, ServerToClientMsg as ProtoServerToClientMsg,
+        SetSoftKeyboardMsg, StartWebServerMsg, SubscribeToPaneRendersMsg,
         SubscribedPaneClosedMsg, SwitchSessionMsg, TabMetadata as ProtoTabMetadata,
         TerminalPixelDimensionsMsg, TerminalResizeMsg, UnblockCliPipeInputMsg,
         UnblockInputThreadMsg, WebServerStartedMsg,
@@ -20,7 +20,7 @@ use crate::{
     data::{HostTerminalThemeMode, InputMode, PaneId},
     errors::prelude::*,
     ipc::{
-        ClientToServerMsg, ColorRegister, ExitReason, PaneReference, PixelDimensions,
+        ClientToServerMsg, ColorRegister, ExitReason, PaneReference, PixelDimensions, ResizeCause,
         ServerToClientMsg,
     },
 };
@@ -52,9 +52,11 @@ impl From<ClientToServerMsg> for ProtoClientToServerMsg {
                     color_registers: color_registers.into_iter().map(|cr| cr.into()).collect(),
                 })
             },
-            ClientToServerMsg::TerminalResize { new_size } => {
+            ClientToServerMsg::TerminalResize { new_size, cause } => {
+                let cause_proto: ProtoResizeCause = cause.into();
                 client_to_server_msg::Message::TerminalResize(TerminalResizeMsg {
                     new_size: Some(new_size.into()),
+                    cause: cause_proto as i32,
                 })
             },
             ClientToServerMsg::FirstClientConnected {
@@ -194,11 +196,18 @@ impl TryFrom<ProtoClientToServerMsg> for ClientToServerMsg {
                 })
             },
             Some(client_to_server_msg::Message::TerminalResize(resize)) => {
+                // `from_i32` returns `None` for unknown variants;
+                // map that (and the default 0) to `Viewport` so
+                // older clients keep working.
+                let cause = ProtoResizeCause::from_i32(resize.cause)
+                    .unwrap_or(ProtoResizeCause::Viewport)
+                    .into();
                 Ok(ClientToServerMsg::TerminalResize {
                     new_size: resize
                         .new_size
                         .ok_or_else(|| anyhow!("Missing new_size"))?
                         .try_into()?,
+                    cause,
                 })
             },
             Some(client_to_server_msg::Message::FirstClientConnected(first_client)) => {
@@ -3051,6 +3060,24 @@ impl TryFrom<ProtoExitReason> for ExitReason {
             ProtoExitReason::Error => Ok(ExitReason::Error("Protobuf error".to_string())),
             ProtoExitReason::CustomExitStatus => Ok(ExitReason::CustomExitStatus(0)),
             ProtoExitReason::Unspecified => Err(anyhow!("Unspecified exit reason")),
+        }
+    }
+}
+
+impl From<ResizeCause> for ProtoResizeCause {
+    fn from(cause: ResizeCause) -> Self {
+        match cause {
+            ResizeCause::Viewport => ProtoResizeCause::Viewport,
+            ResizeCause::RenderingPreference => ProtoResizeCause::RenderingPreference,
+        }
+    }
+}
+
+impl From<ProtoResizeCause> for ResizeCause {
+    fn from(cause: ProtoResizeCause) -> Self {
+        match cause {
+            ProtoResizeCause::Viewport => ResizeCause::Viewport,
+            ProtoResizeCause::RenderingPreference => ResizeCause::RenderingPreference,
         }
     }
 }

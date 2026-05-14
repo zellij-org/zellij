@@ -746,9 +746,10 @@ async fn test_control_message_handling() {
         Message::Text(text) => {
             let parsed: WebClientToWebServerControlMessage =
                 serde_json::from_str(&text).expect("Failed to parse");
-            let WebClientToWebServerControlMessagePayload::TerminalResize(size) = parsed.payload
-            else {
-                panic!("Expected TerminalResize, got: {:?}", parsed.payload);
+            let size = match parsed.payload {
+                WebClientToWebServerControlMessagePayload::TerminalResize(size) => size,
+                WebClientToWebServerControlMessagePayload::TerminalResizeRendering(size) => size,
+                other => panic!("Expected TerminalResize, got: {:?}", other),
             };
             assert_eq!(size, terminal_size);
         },

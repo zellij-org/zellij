@@ -15,7 +15,8 @@ use crate::input::layout::{
 use crate::input::mouse::{MouseEvent, MouseEventType};
 use crate::input::options::{Clipboard, MobileModeDefault, OnForceClose, Options};
 use crate::ipc::{
-    ClientToServerMsg, ColorRegister, ExitReason, PaneReference, PixelDimensions, ServerToClientMsg,
+    ClientToServerMsg, ColorRegister, ExitReason, PaneReference, PixelDimensions, ResizeCause,
+    ServerToClientMsg,
 };
 use crate::pane_size::{Size, SizeInPixels};
 use crate::position::Position;
@@ -378,12 +379,18 @@ fn test_client_messages() {
     });
     test_client_roundtrip!(ClientToServerMsg::TerminalResize {
         new_size: Size { cols: 80, rows: 24 },
+        cause: ResizeCause::Viewport,
     });
     test_client_roundtrip!(ClientToServerMsg::TerminalResize {
         new_size: Size {
             cols: 200,
             rows: 50
         },
+        cause: ResizeCause::Viewport,
+    });
+    test_client_roundtrip!(ClientToServerMsg::TerminalResize {
+        new_size: Size { cols: 40, rows: 38 },
+        cause: ResizeCause::RenderingPreference,
     });
     test_client_roundtrip!(ClientToServerMsg::FirstClientConnected {
         cli_assets: CliAssets::default(),
