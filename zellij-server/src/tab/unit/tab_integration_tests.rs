@@ -10632,6 +10632,60 @@ fn test_ctrl_click_on_pane_body_does_nothing() {
 }
 
 #[test]
+fn test_ctrl_click_on_pane_body_forwards_when_terminal_wants_mouse() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+
+    let mut pty_instruction_bus = MockPtyInstructionBus::new();
+    let mut tab = create_new_tab_with_mock_pty_writer(
+        size,
+        ModeInfo::default(),
+        pty_instruction_bus.pty_write_sender(),
+    );
+    pty_instruction_bus.start();
+
+    let new_pane_id = PaneId::Terminal(2);
+    tab.vertical_split(new_pane_id, None, client_id, None, None)
+        .unwrap();
+
+    // After vertical split, pane 2 (right) is the active pane.
+    assert_eq!(tab.get_active_pane_id(client_id), Some(PaneId::Terminal(2)));
+
+    // Enable SGR mouse mode on the active pane (pane 2).
+    let sgr_mouse_mode = String::from("\u{1b}[?1000;1006h");
+    tab.handle_pty_bytes(2, sgr_mouse_mode.as_bytes().to_vec())
+        .unwrap();
+
+    // Ctrl+click in the body of pane 2 (column 90 is in the right pane of a 121-col split).
+    let body_position = Position::new(10, 90);
+    let effect = tab
+        .handle_mouse_event(
+            &MouseEvent::new_left_press_with_ctrl_event(body_position),
+            client_id,
+        )
+        .unwrap();
+
+    assert!(effect.state_changed);
+
+    pty_instruction_bus.exit();
+
+    let output = pty_instruction_bus.clone_output();
+    assert!(
+        !output.is_empty(),
+        "Expected Ctrl+click to be forwarded to terminal"
+    );
+    // SGR encoding: button 0 (left) + ctrl modifier (16) = 16.
+    assert!(
+        output[0].starts_with("\u{1b}[<16;"),
+        "Expected SGR Ctrl+left-click sequence, got: {:?}",
+        output[0]
+    );
+}
+
+#[test]
 fn test_ctrl_drag_resizes_floating_pane_from_edge() {
     let size = Size {
         cols: 121,
