@@ -445,12 +445,16 @@ pub enum ScreenInstruction {
         Option<TiledPaneLayout>,
         Vec<FloatingPaneLayout>,
         Option<String>,
-        (Vec<SwapTiledLayout>, Vec<SwapFloatingLayout>), // swap layouts
-        Option<Vec<CommandOrPlugin>>,                    // initial_panes
-        bool,                                            // block_on_first_terminal
-        bool,                                            // should_change_focus_to_new_tab
-        (ClientId, bool),                                // bool -> is_web_client
-        Option<NotificationEnd>,                         // completion signal
+        // `None` falls back to `Screen::default_layout`'s swap layouts.
+        (
+            Option<Vec<SwapTiledLayout>>,
+            Option<Vec<SwapFloatingLayout>>,
+        ),
+        Option<Vec<CommandOrPlugin>>, // initial_panes
+        bool,                         // block_on_first_terminal
+        bool,                         // should_change_focus_to_new_tab
+        (ClientId, bool),             // bool -> is_web_client
+        Option<NotificationEnd>,      // completion signal
     ),
     /// Apply layout to tab with given stable ID.
     ///
@@ -475,8 +479,7 @@ pub enum ScreenInstruction {
     GoToTab(u32, Option<ClientId>, Option<NotificationEnd>), // this Option is a hacky workaround, please do not copy this behaviour
     GoToTabName(
         String,
-        (Vec<SwapTiledLayout>, Vec<SwapFloatingLayout>), // swap layouts
-        Option<TerminalAction>,                          // default_shell
+        Option<TerminalAction>, // default_shell
         bool,
         Option<ClientId>,
         Option<NotificationEnd>,
@@ -547,8 +550,13 @@ pub enum ScreenInstruction {
     SetDarkTheme(Option<NotificationEnd>),
     SetLightTheme(Option<NotificationEnd>),
     ToggleTheme(Option<NotificationEnd>),
-    ChangeMode(ModeInfo, ClientId, Option<NotificationEnd>),
-    ChangeModeForAllClients(ModeInfo, Option<NotificationEnd>),
+    ChangeMode(
+        InputMode,
+        Option<InputMode>,
+        ClientId,
+        Option<NotificationEnd>,
+    ),
+    ChangeModeForAllClients(InputMode, Option<InputMode>, Option<NotificationEnd>),
     MouseEvent(MouseEvent, ClientId, Option<NotificationEnd>),
     Copy(ClientId, Option<NotificationEnd>),
     AddClient(
@@ -679,12 +687,7 @@ pub enum ScreenInstruction {
         u32, // u32 - plugin_id
         PluginPermission,
     ),
-    BreakPane(
-        Box<Layout>,
-        Option<TerminalAction>,
-        ClientId,
-        Option<NotificationEnd>,
-    ),
+    BreakPane(Option<TerminalAction>, ClientId, Option<NotificationEnd>),
     BreakPaneRight(ClientId, Option<NotificationEnd>),
     BreakPaneLeft(ClientId, Option<NotificationEnd>),
     UpdateSessionInfos(
@@ -3759,23 +3762,28 @@ impl Screen {
         Ok(())
     }
 
-    pub fn change_mode(&mut self, mut mode_info: ModeInfo, client_id: ClientId) -> Result<()> {
+    pub fn change_mode(
+        &mut self,
+        new_mode: InputMode,
+        base_mode: Option<InputMode>,
+        client_id: ClientId,
+    ) -> Result<()> {
+        let mut mode_info = self
+            .mode_info
+            .get(&client_id)
+            .cloned()
+            .unwrap_or_else(|| self.default_mode_info.clone());
+        let previous_mode = mode_info.mode;
+        mode_info.mode = new_mode;
+        mode_info.base_mode = base_mode;
         if mode_info.session_name.as_ref() != Some(&self.session_name) {
             mode_info.session_name = Some(self.session_name.clone());
         }
 
-        let previous_mode_info = self
-            .mode_info
-            .get(&client_id)
-            .unwrap_or(&self.default_mode_info);
-        let previous_mode = previous_mode_info.mode;
-        mode_info.style = previous_mode_info.style;
-        mode_info.capabilities = previous_mode_info.capabilities;
-
         let err_context = || {
             format!(
                 "failed to change from mode '{:?}' to mode '{:?}' for client {client_id}",
-                previous_mode, mode_info.mode
+                previous_mode, new_mode
             )
         };
 
@@ -3839,17 +3847,21 @@ impl Screen {
         }
         Ok(())
     }
-    pub fn change_mode_for_all_clients(&mut self, mode_info: ModeInfo) -> Result<()> {
+    pub fn change_mode_for_all_clients(
+        &mut self,
+        new_mode: InputMode,
+        base_mode: Option<InputMode>,
+    ) -> Result<()> {
         let err_context = || {
             format!(
                 "failed to change input mode to {:?} for all clients",
-                mode_info.mode
+                new_mode
             )
         };
 
         let connected_client_ids: Vec<ClientId> = self.active_tab_ids.keys().copied().collect();
         for client_id in connected_client_ids {
-            self.change_mode(mode_info.clone(), client_id)
+            self.change_mode(new_mode, base_mode, client_id)
                 .with_context(err_context)?;
         }
         Ok(())
@@ -4571,6 +4583,11 @@ impl Screen {
         self.default_mode_info.update_theme(theme);
         self.default_mode_info
             .update_rounded_corners(rounded_corners);
+        // `default_mode_info` is the fallback used by `change_mode` for
+        // clients that don't yet have a per-client `mode_info` entry, so its
+        // keybinds and base mode must be kept in sync with reconfigures.
+        self.default_mode_info.update_keybinds(new_keybinds.clone());
+        self.default_mode_info.update_default_mode(new_default_mode);
         self.default_shell = default_shell.clone().unwrap_or_else(|| get_default_shell());
         self.default_editor = default_editor.clone().or_else(|| get_default_editor());
         self.auto_layout = auto_layout;
@@ -4901,6 +4918,10 @@ impl Screen {
             && !event.middle
             && !event.wheel_up
             && !event.wheel_down;
+        let active_pane_id_before = self
+            .get_active_tab(client_id)
+            .ok()
+            .and_then(|tab| tab.get_active_pane_id(client_id));
         match self
             .get_active_tab_mut(client_id)
             .and_then(|tab| tab.handle_mouse_event(&event, client_id))
@@ -4928,6 +4949,15 @@ impl Screen {
                 if mouse_effect.state_changed {
                     if !is_bare_motion {
                         let _ = self.log_and_report_session_state();
+                    }
+                    let active_pane_id_after = self
+                        .get_active_tab(client_id)
+                        .ok()
+                        .and_then(|tab| tab.get_active_pane_id(client_id));
+                    if active_pane_id_before.is_some()
+                        && active_pane_id_before != active_pane_id_after
+                    {
+                        self.clear_bell_for_focused_pane(client_id);
                     }
                     should_render = true;
                 }
@@ -7027,7 +7057,7 @@ pub(crate) fn screen_thread_main(
                 layout,
                 floating_panes_layout,
                 tab_name,
-                swap_layouts,
+                (swap_tiled_layouts, swap_floating_layouts),
                 initial_panes,
                 block_on_first_terminal,
                 should_change_focus_to_new_tab,
@@ -7041,9 +7071,15 @@ pub(crate) fn screen_thread_main(
                 } else {
                     None
                 };
+                let resolved_swap_layouts = (
+                    swap_tiled_layouts
+                        .unwrap_or_else(|| screen.default_layout.swap_tiled_layouts.clone()),
+                    swap_floating_layouts
+                        .unwrap_or_else(|| screen.default_layout.swap_floating_layouts.clone()),
+                );
                 screen.new_tab(
                     tab_index,
-                    swap_layouts,
+                    resolved_swap_layouts,
                     tab_name.clone(),
                     client_id_for_new_tab,
                 )?;
@@ -7204,12 +7240,15 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::GoToTabName(
                 tab_name,
-                swap_layouts,
                 default_shell,
                 create,
                 client_id,
                 mut completion_tx,
             ) => {
+                let swap_layouts = (
+                    screen.default_layout.swap_tiled_layouts.clone(),
+                    screen.default_layout.swap_floating_layouts.clone(),
+                );
                 let client_id = if client_id.is_none() {
                     None
                 } else if screen
@@ -7336,12 +7375,20 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::ForwardedReplyFromHost { token, reply_bytes } => {
                 screen.handle_forwarded_reply_from_host(token, reply_bytes)?;
+                // The handler's replay of `pending_pty_input` mutates the
+                // grid. Without a render scheduling here the clients
+                // keep displaying the pre-reply frame
+                screen.render(None)?;
             },
             ScreenInstruction::ResumePaneAfterForward {
                 pane_id,
                 reply_bytes,
             } => {
                 screen.resume_pane_after_forward(pane_id, reply_bytes)?;
+                // Same rationale as ForwardedReplyFromHost above — the
+                // resume's replay paints the grid, so we must schedule
+                // a render before yielding back to the screen loop.
+                screen.render(None)?;
             },
             ScreenInstruction::HostTerminalThemeChanged(mode) => {
                 screen.update_host_terminal_theme_mode(mode)?;
@@ -7368,20 +7415,22 @@ pub(crate) fn screen_thread_main(
                 screen.apply_manual_host_terminal_theme_mode(next, &mut completion_tx)?;
             },
             ScreenInstruction::ChangeMode(
-                mode_info,
+                input_mode,
+                base_mode,
                 client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
-                screen.change_mode(mode_info, client_id)?;
+                screen.change_mode(input_mode, base_mode, client_id)?;
                 screen.render(None)?;
             },
             ScreenInstruction::ChangeModeForAllClients(
-                mode_info,
+                input_mode,
+                base_mode,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
-                screen.change_mode_for_all_clients(mode_info)?;
+                screen.change_mode_for_all_clients(input_mode, base_mode)?;
                 screen.render(None)?;
             },
             ScreenInstruction::ToggleActiveSyncTab(
@@ -8562,12 +8611,12 @@ pub(crate) fn screen_thread_main(
                 }
             },
             ScreenInstruction::BreakPane(
-                default_layout,
                 default_shell,
                 client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
+                let default_layout = screen.default_layout.clone();
                 screen.break_pane(default_shell, default_layout, client_id)?;
             },
             ScreenInstruction::BreakPaneRight(

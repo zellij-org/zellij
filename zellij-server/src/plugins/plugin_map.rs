@@ -15,12 +15,10 @@ use tokio::sync::mpsc::UnboundedSender;
 use zellij_utils::{
     data::EventType,
     data::InputMode,
-    data::PluginCapabilities,
     input::command::TerminalAction,
     input::keybinds::Keybinds,
-    input::layout::{Layout, PluginUserConfiguration, RunPlugin, RunPluginLocation},
+    input::layout::{PluginUserConfiguration, RunPlugin, RunPluginLocation},
     input::plugins::PluginConfig,
-    ipc::ClientAttributes,
 };
 use zellij_utils::{data::PermissionType, errors::prelude::*};
 
@@ -285,10 +283,7 @@ pub struct PluginEnv {
     pub plugin_own_data_dir: PathBuf,
     pub plugin_own_cache_dir: PathBuf,
     pub path_to_default_shell: PathBuf,
-    pub capabilities: PluginCapabilities,
-    pub client_attributes: ClientAttributes,
     pub default_shell: Option<TerminalAction>,
-    pub default_layout: Box<Layout>,
     pub layout_dir: Option<PathBuf>,
     pub plugin_cwd: PathBuf,
     pub session_env_vars: std::collections::BTreeMap<String, String>,

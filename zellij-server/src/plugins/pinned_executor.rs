@@ -8,7 +8,6 @@ use std::sync::mpsc::{channel, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use wasmi::Engine;
-use zellij_utils::input::layout::Layout;
 
 /// A dynamic thread pool that pins jobs to specific threads based on plugin_id
 /// Starts with 1 thread and expands when threads are busy, shrinks when plugins unload
@@ -32,7 +31,6 @@ pub struct PinnedExecutor {
     senders: ThreadSenders,
     plugin_map: Arc<Mutex<PluginMap>>,
     connected_clients: Arc<Mutex<Vec<ClientId>>>,
-    default_layout: Box<Layout>,
     plugin_cache: PluginCache,
     engine: Engine,
 }
@@ -49,7 +47,6 @@ enum Job {
                     ThreadSenders,
                     Arc<Mutex<PluginMap>>,
                     Arc<Mutex<Vec<ClientId>>>,
-                    Box<Layout>,
                     PluginCache,
                     Engine,
                 ) + Send
@@ -67,7 +64,6 @@ impl PinnedExecutor {
         senders: &ThreadSenders,
         plugin_map: &Arc<Mutex<PluginMap>>,
         connected_clients: &Arc<Mutex<Vec<ClientId>>>,
-        default_layout: &Box<Layout>,
         plugin_cache: &PluginCache,
         engine: &Engine,
     ) -> Self {
@@ -78,7 +74,6 @@ impl PinnedExecutor {
             senders.clone(),
             plugin_map.clone(),
             connected_clients.clone(),
-            default_layout.clone(),
             plugin_cache.clone(),
             engine.clone(),
         );
@@ -92,7 +87,6 @@ impl PinnedExecutor {
             senders: senders.clone(),
             plugin_map: plugin_map.clone(),
             connected_clients: connected_clients.clone(),
-            default_layout: default_layout.clone(),
             plugin_cache: plugin_cache.clone(),
             engine: engine.clone(),
         }
@@ -103,7 +97,6 @@ impl PinnedExecutor {
         senders: ThreadSenders,
         plugin_map: Arc<Mutex<PluginMap>>,
         connected_clients: Arc<Mutex<Vec<ClientId>>>,
-        default_layout: Box<Layout>,
         plugin_cache: PluginCache,
         engine: Engine,
     ) -> ExecutionThread {
@@ -118,7 +111,6 @@ impl PinnedExecutor {
                     let senders = senders;
                     let plugin_map = plugin_map;
                     let connected_clients = connected_clients;
-                    let default_layout = default_layout;
                     let plugin_cache = plugin_cache;
                     let engine = engine;
                     while let Ok(job) = receiver.recv() {
@@ -128,7 +120,6 @@ impl PinnedExecutor {
                                     senders.clone(),
                                     plugin_map.clone(),
                                     connected_clients.clone(),
-                                    default_layout.clone(),
                                     plugin_cache.clone(),
                                     engine.clone(),
                                 );
@@ -220,7 +211,6 @@ impl PinnedExecutor {
             self.senders.clone(),
             self.plugin_map.clone(),
             self.connected_clients.clone(),
-            self.default_layout.clone(),
             self.plugin_cache.clone(),
             self.engine.clone(),
         );
@@ -239,7 +229,6 @@ impl PinnedExecutor {
                 ThreadSenders,
                 Arc<Mutex<PluginMap>>,
                 Arc<Mutex<Vec<ClientId>>>,
-                Box<Layout>,
                 PluginCache,
                 Engine,
             ) + Send
@@ -283,7 +272,6 @@ impl PinnedExecutor {
                 ThreadSenders,
                 Arc<Mutex<PluginMap>>,
                 Arc<Mutex<Vec<ClientId>>>,
-                Box<Layout>,
                 PluginCache,
                 Engine,
             ) + Send
@@ -306,7 +294,6 @@ impl PinnedExecutor {
                 ThreadSenders,
                 Arc<Mutex<PluginMap>>,
                 Arc<Mutex<Vec<ClientId>>>,
-                Box<Layout>,
                 PluginCache,
                 Engine,
             ) + Send
@@ -315,16 +302,9 @@ impl PinnedExecutor {
         let executor = self.clone();
         self.execute_for_plugin(
             plugin_id,
-            move |senders, plugin_map, connected_clients, default_layout, plugin_cache, engine| {
+            move |senders, plugin_map, connected_clients, plugin_cache, engine| {
                 // Execute the cleanup work
-                f(
-                    senders,
-                    plugin_map,
-                    connected_clients,
-                    default_layout,
-                    plugin_cache,
-                    engine,
-                );
+                f(senders, plugin_map, connected_clients, plugin_cache, engine);
 
                 // Unregister plugin and potentially shrink the pool
                 executor.unregister_plugin(plugin_id);
@@ -423,7 +403,6 @@ mod tests {
         ThreadSenders,
         Arc<Mutex<PluginMap>>,
         Arc<Mutex<Vec<ClientId>>>,
-        Box<Layout>,
         PluginCache,
         Engine,
     ) {
@@ -458,32 +437,22 @@ mod tests {
         let plugin_map = Arc::new(Mutex::new(PluginMap::default()));
         let connected_clients = Arc::new(Mutex::new(vec![]));
 
-        let layout = Box::new(Layout::default());
-
         let plugin_cache = Arc::new(Mutex::new(
             std::collections::HashMap::<PathBuf, Module>::new(),
         ));
 
         let engine = Engine::default();
 
-        (
-            senders,
-            plugin_map,
-            connected_clients,
-            layout,
-            plugin_cache,
-            engine,
-        )
+        (senders, plugin_map, connected_clients, plugin_cache, engine)
     }
 
     fn create_test_executor(max_threads: usize) -> Arc<PinnedExecutor> {
-        let (senders, plugin_map, clients, layout, cache, engine) = create_test_dependencies();
+        let (senders, plugin_map, clients, cache, engine) = create_test_dependencies();
         Arc::new(PinnedExecutor::new(
             max_threads,
             &senders,
             &plugin_map,
             &clients,
-            &layout,
             &cache,
             &engine,
         ))
@@ -496,12 +465,11 @@ mod tests {
         ThreadSenders,
         Arc<Mutex<PluginMap>>,
         Arc<Mutex<Vec<ClientId>>>,
-        Box<Layout>,
         PluginCache,
         Engine,
     ) + Send
            + 'static {
-        move |_senders, _plugin_map, _clients, _layout, _cache, _engine| {
+        move |_senders, _plugin_map, _clients, _cache, _engine| {
             tx.send(()).unwrap();
         }
     }
@@ -509,7 +477,7 @@ mod tests {
     // Helper to verify thread assignment by capturing thread name in job
     fn get_thread_name_for_plugin(executor: &Arc<PinnedExecutor>, plugin_id: u32) -> String {
         let (tx, rx) = channel();
-        executor.execute_for_plugin(plugin_id, move |_s, _p, _c, _l, _ca, _e| {
+        executor.execute_for_plugin(plugin_id, move |_s, _p, _c, _ca, _e| {
             let name = thread::current().name().unwrap().to_string();
             tx.send(name).unwrap();
         });
@@ -563,7 +531,7 @@ mod tests {
         // Make thread 0 busy with a barrier
         let barrier = Arc::new(Barrier::new(2));
         let barrier_clone = barrier.clone();
-        executor.execute_for_plugin(1, move |_s, _p, _c, _l, _ca, _e| {
+        executor.execute_for_plugin(1, move |_s, _p, _c, _ca, _e| {
             barrier_clone.wait();
         });
 
@@ -594,7 +562,7 @@ mod tests {
         // Make thread 0 busy
         let barrier1 = Arc::new(Barrier::new(2));
         let barrier1_clone = barrier1.clone();
-        executor.execute_for_plugin(1, move |_s, _p, _c, _l, _ca, _e| {
+        executor.execute_for_plugin(1, move |_s, _p, _c, _ca, _e| {
             barrier1_clone.wait();
         });
         thread::sleep(Duration::from_millis(50));
@@ -605,7 +573,7 @@ mod tests {
         // Make thread 1 busy
         let barrier2 = Arc::new(Barrier::new(2));
         let barrier2_clone = barrier2.clone();
-        executor.execute_for_plugin(2, move |_s, _p, _c, _l, _ca, _e| {
+        executor.execute_for_plugin(2, move |_s, _p, _c, _ca, _e| {
             barrier2_clone.wait();
         });
         thread::sleep(Duration::from_millis(50));
@@ -646,7 +614,7 @@ mod tests {
         // Make thread 0 busy
         let barrier = Arc::new(Barrier::new(2));
         let barrier_clone = barrier.clone();
-        executor.execute_for_plugin(1, move |_s, _p, _c, _l, _ca, _e| {
+        executor.execute_for_plugin(1, move |_s, _p, _c, _ca, _e| {
             barrier_clone.wait();
         });
         thread::sleep(Duration::from_millis(50));
@@ -678,7 +646,7 @@ mod tests {
         // Make thread 0 busy to force plugin 2 to thread 1
         let barrier = Arc::new(Barrier::new(2));
         let barrier_clone = barrier.clone();
-        executor.execute_for_plugin(1, move |_s, _p, _c, _l, _ca, _e| {
+        executor.execute_for_plugin(1, move |_s, _p, _c, _ca, _e| {
             barrier_clone.wait();
         });
         thread::sleep(Duration::from_millis(50));
@@ -726,7 +694,7 @@ mod tests {
         for i in 1..=3 {
             let order_clone = order.clone();
             let tx_clone = tx.clone();
-            executor.execute_for_plugin(1, move |_s, _p, _c, _l, _ca, _e| {
+            executor.execute_for_plugin(1, move |_s, _p, _c, _ca, _e| {
                 order_clone.lock().unwrap().push(i);
                 tx_clone.send(()).unwrap();
             });
@@ -767,7 +735,7 @@ mod tests {
         // Make thread 0 busy to force plugin 2 to thread 1
         let barrier = Arc::new(Barrier::new(2));
         let barrier_clone = barrier.clone();
-        executor.execute_for_plugin(1, move |_s, _p, _c, _l, _ca, _e| {
+        executor.execute_for_plugin(1, move |_s, _p, _c, _ca, _e| {
             barrier_clone.wait();
         });
         thread::sleep(Duration::from_millis(50));
@@ -785,13 +753,13 @@ mod tests {
         let (tx2, rx2) = channel();
 
         let barrier1 = sync_barrier.clone();
-        executor.execute_for_plugin(1, move |_s, _p, _c, _l, _ca, _e| {
+        executor.execute_for_plugin(1, move |_s, _p, _c, _ca, _e| {
             barrier1.wait();
             tx1.send(()).unwrap();
         });
 
         let barrier2 = sync_barrier.clone();
-        executor.execute_for_plugin(2, move |_s, _p, _c, _l, _ca, _e| {
+        executor.execute_for_plugin(2, move |_s, _p, _c, _ca, _e| {
             barrier2.wait();
             tx2.send(()).unwrap();
         });
@@ -836,7 +804,7 @@ mod tests {
         let counter_clone = counter.clone();
         let (tx_unload, rx_unload) = channel();
 
-        executor.execute_plugin_unload(1, move |_s, _p, _c, _l, _ca, _e| {
+        executor.execute_plugin_unload(1, move |_s, _p, _c, _ca, _e| {
             counter_clone.fetch_add(1, Ordering::SeqCst);
             tx_unload.send(()).unwrap();
         });
@@ -873,7 +841,7 @@ mod tests {
         let sequence_clone = sequence.clone();
         let (tx_unload, rx_unload) = channel();
 
-        executor.execute_plugin_unload(1, move |_s, _p, _c, _l, _ca, _e| {
+        executor.execute_plugin_unload(1, move |_s, _p, _c, _ca, _e| {
             sequence_clone.lock().unwrap().push("cleanup");
             tx_unload.send(()).unwrap();
         });
@@ -900,7 +868,7 @@ mod tests {
         // Make thread 0 busy to force plugin 2 to thread 1
         let barrier = Arc::new(Barrier::new(2));
         let barrier_clone = barrier.clone();
-        executor.execute_for_plugin(1, move |_s, _p, _c, _l, _ca, _e| {
+        executor.execute_for_plugin(1, move |_s, _p, _c, _ca, _e| {
             barrier_clone.wait();
         });
         thread::sleep(Duration::from_millis(50));
@@ -977,7 +945,7 @@ mod tests {
         // Force plugin 2 to thread 1 by making thread 0 busy
         let barrier = Arc::new(Barrier::new(2));
         let barrier_clone = barrier.clone();
-        executor.execute_for_plugin(1, move |_s, _p, _c, _l, _ca, _e| {
+        executor.execute_for_plugin(1, move |_s, _p, _c, _ca, _e| {
             barrier_clone.wait();
         });
         thread::sleep(Duration::from_millis(50));
@@ -1035,7 +1003,7 @@ mod tests {
         // Force plugin 2 to thread 1
         let barrier = Arc::new(Barrier::new(2));
         let barrier_clone = barrier.clone();
-        executor.execute_for_plugin(1, move |_s, _p, _c, _l, _ca, _e| {
+        executor.execute_for_plugin(1, move |_s, _p, _c, _ca, _e| {
             barrier_clone.wait();
         });
         thread::sleep(Duration::from_millis(50));
@@ -1079,7 +1047,7 @@ mod tests {
 
         let barrier = Arc::new(Barrier::new(2));
         let barrier_clone = barrier.clone();
-        executor.execute_for_plugin(1, move |_s, _p, _c, _l, _ca, _e| {
+        executor.execute_for_plugin(1, move |_s, _p, _c, _ca, _e| {
             barrier_clone.wait();
         });
         thread::sleep(Duration::from_millis(50));
@@ -1104,7 +1072,7 @@ mod tests {
 
         let barrier = Arc::new(Barrier::new(2));
         let barrier_clone = barrier.clone();
-        executor.execute_for_plugin(1, move |_s, _p, _c, _l, _ca, _e| {
+        executor.execute_for_plugin(1, move |_s, _p, _c, _ca, _e| {
             barrier_clone.wait();
         });
 

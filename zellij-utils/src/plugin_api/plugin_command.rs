@@ -28,7 +28,9 @@ pub use super::generated_api::api::{
         CreateTokenResponse, CurrentSessionLastSavedTimePayload,
         CurrentSessionLastSavedTimeResponse as ProtobufCurrentSessionLastSavedTimeResponse,
         CursorPosition, CustomIndexHighlight as ProtobufCustomIndexHighlight,
-        CustomRgbHighlight as ProtobufCustomRgbHighlight, DeleteLayoutPayload,
+        CustomRgbHighlight as ProtobufCustomRgbHighlight,
+        DeleteAllDeadSessionsResponse as ProtobufDeleteAllDeadSessionsResponse,
+        DeleteDeadSessionResponse as ProtobufDeleteDeadSessionResponse, DeleteLayoutPayload,
         DeleteLayoutResponse as ProtobufDeleteLayoutResponse, DumpLayoutPayload,
         DumpLayoutResponse as ProtobufDumpLayoutResponse, DumpSessionLayoutPayload,
         DumpSessionLayoutResponse as ProtobufDumpSessionLayoutResponse, EditLayoutPayload,
@@ -59,11 +61,12 @@ pub use super::generated_api::api::{
         HideFloatingPanesResponse as ProtobufHideFloatingPanesResponse, HidePaneWithIdPayload,
         HighlightAndUnhighlightPanesPayload, HighlightLayer as ProtobufHighlightLayer,
         HighlightStyle as ProtobufHighlightStyle, HttpVerb as ProtobufHttpVerb, IdAndNewName,
-        KeyToRebind, KeyToUnbind, KillSessionsPayload, ListTokensResponse, LoadNewPluginPayload,
-        MessageToPluginPayload, MovePaneWithPaneIdInDirectionPayload, MovePaneWithPaneIdPayload,
-        MovePayload, NewPluginArgs as ProtobufNewPluginArgs, NewTabPayload,
-        NewTabResponse as ProtobufNewTabResponse, NewTabsResponse as ProtobufNewTabsResponse,
-        NewTabsWithLayoutInfoPayload,
+        KeyToRebind, KeyToUnbind, KillSessionsPayload,
+        KillSessionsResponse as ProtobufKillSessionsResponse, ListTokensResponse,
+        LoadNewPluginPayload, MessageToPluginPayload, MovePaneWithPaneIdInDirectionPayload,
+        MovePaneWithPaneIdPayload, MovePayload, NewPluginArgs as ProtobufNewPluginArgs,
+        NewTabPayload, NewTabResponse as ProtobufNewTabResponse,
+        NewTabsResponse as ProtobufNewTabsResponse, NewTabsWithLayoutInfoPayload,
         OpenCommandPaneBackgroundResponse as ProtobufOpenCommandPaneBackgroundResponse,
         OpenCommandPaneFloatingNearPluginPayload,
         OpenCommandPaneFloatingNearPluginResponse as ProtobufOpenCommandPaneFloatingNearPluginResponse,
@@ -129,12 +132,12 @@ pub use super::generated_api::api::{
 };
 
 use crate::data::{
-    ConnectToSession, DeleteLayoutResponse, EditLayoutResponse, FloatingPaneCoordinates,
-    GetFocusedPaneInfoResponse, GetPaneCwdResponse, GetPanePidResponse,
-    GetPaneRunningCommandResponse, GetSessionListResponse, HighlightLayer, HighlightStyle,
-    HttpVerb, InputMode, KeyWithModifier, MessageToPlugin, NewPluginArgs, PaneId, PermissionType,
-    PluginCommand, RegexHighlight, RenameLayoutResponse, SaveLayoutResponse, SessionInfo,
-    SessionListSnapshot,
+    ConnectToSession, DeleteAllDeadSessionsResponse, DeleteDeadSessionResponse,
+    DeleteLayoutResponse, EditLayoutResponse, FloatingPaneCoordinates, GetFocusedPaneInfoResponse,
+    GetPaneCwdResponse, GetPanePidResponse, GetPaneRunningCommandResponse, GetSessionListResponse,
+    HighlightLayer, HighlightStyle, HttpVerb, InputMode, KeyWithModifier, KillSessionsResponse,
+    MessageToPlugin, NewPluginArgs, PaneId, PermissionType, PluginCommand, RegexHighlight,
+    RenameLayoutResponse, SaveLayoutResponse, SessionInfo, SessionListSnapshot,
 };
 use crate::input::actions::Action;
 use crate::input::layout::PercentOrFixed;
@@ -390,6 +393,66 @@ impl TryFrom<ProtobufGetSessionListResponse> for GetSessionListResponse {
                 Ok(GetSessionListResponse::Err(err))
             },
             None => Err("Empty GetSessionListResponse"),
+        }
+    }
+}
+
+impl From<KillSessionsResponse> for ProtobufKillSessionsResponse {
+    fn from(response: KillSessionsResponse) -> Self {
+        match response {
+            KillSessionsResponse::Ok => ProtobufKillSessionsResponse { error: None },
+            KillSessionsResponse::Err(err) => ProtobufKillSessionsResponse { error: Some(err) },
+        }
+    }
+}
+
+impl From<ProtobufKillSessionsResponse> for KillSessionsResponse {
+    fn from(protobuf_response: ProtobufKillSessionsResponse) -> Self {
+        match protobuf_response.error {
+            Some(err) => KillSessionsResponse::Err(err),
+            None => KillSessionsResponse::Ok,
+        }
+    }
+}
+
+impl From<DeleteDeadSessionResponse> for ProtobufDeleteDeadSessionResponse {
+    fn from(response: DeleteDeadSessionResponse) -> Self {
+        match response {
+            DeleteDeadSessionResponse::Ok => ProtobufDeleteDeadSessionResponse { error: None },
+            DeleteDeadSessionResponse::Err(err) => {
+                ProtobufDeleteDeadSessionResponse { error: Some(err) }
+            },
+        }
+    }
+}
+
+impl From<ProtobufDeleteDeadSessionResponse> for DeleteDeadSessionResponse {
+    fn from(protobuf_response: ProtobufDeleteDeadSessionResponse) -> Self {
+        match protobuf_response.error {
+            Some(err) => DeleteDeadSessionResponse::Err(err),
+            None => DeleteDeadSessionResponse::Ok,
+        }
+    }
+}
+
+impl From<DeleteAllDeadSessionsResponse> for ProtobufDeleteAllDeadSessionsResponse {
+    fn from(response: DeleteAllDeadSessionsResponse) -> Self {
+        match response {
+            DeleteAllDeadSessionsResponse::Ok => {
+                ProtobufDeleteAllDeadSessionsResponse { error: None }
+            },
+            DeleteAllDeadSessionsResponse::Err(err) => {
+                ProtobufDeleteAllDeadSessionsResponse { error: Some(err) }
+            },
+        }
+    }
+}
+
+impl From<ProtobufDeleteAllDeadSessionsResponse> for DeleteAllDeadSessionsResponse {
+    fn from(protobuf_response: ProtobufDeleteAllDeadSessionsResponse) -> Self {
+        match protobuf_response.error {
+            Some(err) => DeleteAllDeadSessionsResponse::Err(err),
+            None => DeleteAllDeadSessionsResponse::Ok,
         }
     }
 }
@@ -1369,6 +1432,21 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 Some(Payload::GetSessionListPayload(_)) => Ok(PluginCommand::GetSessionList),
                 None => Ok(PluginCommand::GetSessionList),
                 _ => Err("Mismatched payload for GetSessionList"),
+            },
+            Some(CommandName::KillSessionsAndReply) => match protobuf_plugin_command.payload {
+                Some(Payload::KillSessionsAndReplyPayload(KillSessionsPayload {
+                    session_names,
+                })) => Ok(PluginCommand::KillSessionsAndReply(session_names)),
+                _ => Err("Mismatched payload for KillSessionsAndReply"),
+            },
+            Some(CommandName::DeleteDeadSessionAndReply) => match protobuf_plugin_command.payload {
+                Some(Payload::DeleteDeadSessionAndReplyPayload(dead_session_name)) => {
+                    Ok(PluginCommand::DeleteDeadSessionAndReply(dead_session_name))
+                },
+                _ => Err("Mismatched payload for DeleteDeadSessionAndReply"),
+            },
+            Some(CommandName::DeleteAllDeadSessionsAndReply) => {
+                Ok(PluginCommand::DeleteAllDeadSessionsAndReply)
             },
             Some(CommandName::DumpSessionLayout) => match protobuf_plugin_command.payload {
                 Some(Payload::DumpSessionLayoutPayload(payload)) => {
@@ -3220,6 +3298,22 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                 payload: Some(Payload::GetSessionListPayload(
                     ProtobufGetSessionListPayload {},
                 )),
+            }),
+            PluginCommand::KillSessionsAndReply(session_names) => Ok(ProtobufPluginCommand {
+                name: CommandName::KillSessionsAndReply as i32,
+                payload: Some(Payload::KillSessionsAndReplyPayload(KillSessionsPayload {
+                    session_names,
+                })),
+            }),
+            PluginCommand::DeleteDeadSessionAndReply(dead_session_name) => {
+                Ok(ProtobufPluginCommand {
+                    name: CommandName::DeleteDeadSessionAndReply as i32,
+                    payload: Some(Payload::DeleteDeadSessionAndReplyPayload(dead_session_name)),
+                })
+            },
+            PluginCommand::DeleteAllDeadSessionsAndReply => Ok(ProtobufPluginCommand {
+                name: CommandName::DeleteAllDeadSessionsAndReply as i32,
+                payload: None,
             }),
             PluginCommand::DumpSessionLayout { tab_index } => Ok(ProtobufPluginCommand {
                 name: CommandName::DumpSessionLayout as i32,
