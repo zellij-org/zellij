@@ -208,6 +208,9 @@ impl PluginMap {
         }
         cloned_plugin_assets
     }
+    pub fn contains(&self, plugin_id: PluginId, client_id: ClientId) -> bool {
+        self.plugin_assets.contains_key(&(plugin_id, client_id))
+    }
     pub fn all_plugin_ids(&self) -> Vec<(PluginId, ClientId)> {
         self.plugin_assets
             .iter()
