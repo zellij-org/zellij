@@ -76,15 +76,26 @@ pub fn render(state: &mut State, rows: usize, cols: usize) {
 
     // Top bar always sits at row 0; the body fills the remaining
     // rows. The in-plugin keyboard reserves the bottom-most rows when
-    // visible — its height varies with modifier state (Fn-armed adds
-    // the F-row). When the keyboard cannot fit (very short windows),
-    // it is omitted and the viewport expands to use the full body.
+    // visible. Its row footprint scales with the plugin's `rows` so
+    // the keyboard stays at ~40% of the screen across pinch zoom —
+    // see `KEYBOARD_PCT_NUM/DEN` in `keyboard/render.rs`. When the
+    // keyboard cannot fit (very short windows) `compute_geometry`
+    // returns `None` and the viewport expands to use the full body.
     let body_top = 1;
-    let keyboard_height = if state.keyboard.visible {
-        keyboard::render::keyboard_rows(state.keyboard.layout.as_ref(), &state.keyboard.modifiers)
+    let keyboard_geometry = if state.keyboard.visible {
+        keyboard::compute_geometry(
+            state.keyboard.layout.as_ref(),
+            &state.keyboard.modifiers,
+            rows,
+            cols,
+        )
     } else {
-        0
+        None
     };
+    let keyboard_height = keyboard_geometry
+        .as_ref()
+        .map(|g| g.total_height())
+        .unwrap_or(0);
     // Reserve at least one row for the viewport; if the keyboard is
     // bigger than the body, suppress it for this frame.
     let keyboard_fits = keyboard_height + 1 <= rows.saturating_sub(body_top);
@@ -136,14 +147,17 @@ pub fn render(state: &mut State, rows: usize, cols: usize) {
     }
 
     if effective_keyboard_height > 0 {
-        keyboard::render::render_keyboard(
-            state.keyboard.layout.as_ref(),
-            &state.keyboard.modifiers,
-            &state.keyboard.press_flash,
-            body_bottom,
-            cols,
-            &mut state.click_regions,
-        );
+        if let Some(geometry) = keyboard_geometry.as_ref() {
+            keyboard::render::render_keyboard(
+                state.keyboard.layout.as_ref(),
+                &state.keyboard.modifiers,
+                &state.keyboard.press_flash,
+                geometry,
+                body_bottom,
+                cols,
+                &mut state.click_regions,
+            );
+        }
     }
 }
 

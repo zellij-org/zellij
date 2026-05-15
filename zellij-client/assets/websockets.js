@@ -264,8 +264,18 @@ function startWsControl(wsControl, term, fitAddon, ownWebClientId, userConfig) {
             // Font size: explicit config wins, otherwise pick a default
             // suited to the device. Mobile heuristic: coarse pointer
             // (touch) AND a narrow viewport, OR a UA string that
-            // identifies a known mobile platform. The 18px / 12px split
-            // matches typical phone vs. desktop legibility expectations.
+            // identifies a known mobile platform.
+            //
+            // Mobile default is intentionally bumped to 24 px so the
+            // grid `fitAddon.proposeDimensions()` reports stays small
+            // enough to fit the *visible* viewport on phones where
+            // `visualViewport.height` is only fractionally smaller than
+            // the layout viewport. At 18 px the proposed grid could be
+            // taller than the on-screen canvas, leaving the keyboard's
+            // bottom rows off-screen and untouchable until the user
+            // pinched a smaller font in. 24 px sits comfortably above
+            // that failure mode while still letting users pinch down
+            // for more rows when they want them.
             const isMobileViewport =
                 (window.matchMedia &&
                     window.matchMedia("(pointer: coarse)").matches &&
@@ -275,7 +285,7 @@ function startWsControl(wsControl, term, fitAddon, ownWebClientId, userConfig) {
                 typeof font_size === "number" && font_size > 0
                     ? font_size
                     : isMobileViewport
-                    ? 18
+                    ? 24
                     : 12;
             // applyFontSize layers in two extras over a bare assignment:
             // a persisted (pinch-set) override wins over the server's

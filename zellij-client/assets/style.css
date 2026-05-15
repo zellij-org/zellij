@@ -1,6 +1,24 @@
 :root {
+    /* `100vh` is the fallback for browsers without `dvh` support. On
+       iOS Safari this is the *layout* viewport — it includes the
+       URL bar height, so the terminal element would be taller than
+       the visible canvas and xterm.js's grid would be initialised
+       too tall (the keyboard would render below the visible area).
+       The `@supports` block below upgrades to `100dvh` (dynamic
+       viewport) on every modern browser, which automatically tracks
+       URL-bar / soft-keyboard occlusion. The runtime
+       `updateViewportVars` handler still overrides `--dynamic-vh`
+       from `visualViewport.height` when pinch / visualViewport
+       resize events fire. */
     --dynamic-vh: 100vh;
     --dynamic-vw: 100vw;
+}
+
+@supports (height: 100dvh) {
+    :root {
+        --dynamic-vh: 100dvh;
+        --dynamic-vw: 100dvw;
+    }
 }
 
 html,

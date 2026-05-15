@@ -9838,7 +9838,24 @@ pub(crate) fn screen_thread_main(
                 screen.notify_pane_closed_to_subscribers(pane_id);
             },
             ScreenInstruction::PluginSubscribedToAnsiPaneContents(has_subscribers) => {
+                let previously_subscribed = screen.plugins_need_ansi_pane_contents;
                 screen.plugins_need_ansi_pane_contents = has_subscribers;
+                // When ANSI capture is *newly* enabled (false → true), force
+                // a render so the freshly-subscribed plugin receives a
+                // PaneRenderReportWithAnsi immediately. Without this, idle
+                // panes never trigger a render cycle and the plugin's
+                // viewport stays empty until something external (a resize,
+                // a keystroke) wakes the screen up. The cost is one render
+                // per subscription flip — bounded by the number of plugins
+                // that subscribe over a session.
+                if has_subscribers && !previously_subscribed {
+                    if let Err(e) = screen.render(None) {
+                        log::error!(
+                            "Failed to render after ANSI subscription enabled: {:?}",
+                            e
+                        );
+                    }
+                }
             },
             ScreenInstruction::UpdateBackgroundPluginSubscriptions(
                 plugin_id,

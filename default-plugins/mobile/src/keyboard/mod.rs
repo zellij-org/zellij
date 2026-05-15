@@ -29,4 +29,4 @@ pub use layout::{CellId, KeyAction, KeyCell, KeyRow, KeyboardLayout};
 #[allow(unused_imports)]
 pub use modifiers::{KeyboardModifiers, Modifier};
 #[allow(unused_imports)]
-pub use render::render_keyboard;
+pub use render::{compute_geometry, render_keyboard, KeyboardGeometry};

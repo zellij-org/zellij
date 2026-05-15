@@ -44,22 +44,158 @@ const SLOP_H: usize = 1;
 /// nearest-center at dispatch time.
 const SLOP_V: usize = 1;
 
-/// Total terminal-rows the keyboard occupies for the given layout
-/// under the supplied modifier state. Sums each `KeyRow`'s `height`
-/// so option-2b tall rows (height = 2) inflate the budget the embedded
-/// viewport must subtract from its body allowance.
-pub fn keyboard_rows(layout: &dyn KeyboardLayout, mods: &KeyboardModifiers) -> usize {
+/// Numerator / denominator of the keyboard's target row footprint. 2/5
+/// = 40%. The keyboard scales its vertical extent to consume roughly
+/// this fraction of the plugin's available rows, so its on-screen size
+/// is stable across pinch-zoom (which changes the grid dimensions
+/// rather than the plugin's UI semantics). Single tuning knob —
+/// adjust here only.
+const KEYBOARD_PCT_NUM: usize = 2;
+const KEYBOARD_PCT_DEN: usize = 5;
+
+/// Per-KeyRow minimum height in terminal rows. The keyboard renders at
+/// this height per row when `40%` of the available rows is exactly the
+/// floor; below the floor, the keyboard is suppressed entirely so the
+/// embedded viewport reclaims the rows.
+const MIN_ROW_HEIGHT: usize = 2;
+
+/// Minimum unstyled padding on each side of the keyboard block at any
+/// scale. Cells never sit flush against col 0 or `cols - 1` when this
+/// padding fits.
+const MIN_H_PAD: usize = 1;
+
+/// Scaled geometry resolved at render time from the plugin's current
+/// `rows × cols`. Horizontal scaling is a *ratio* `h_num / h_den`
+/// applied to every cell's `col_start` / `col_end` (and every row's
+/// `offset_col` / `right_pad`) so the widest row fills exactly
+/// `cols - 2 * MIN_H_PAD` cells — the available width — while
+/// preserving the relative proportions of cells within and across
+/// rows. Adjacent cells share boundaries because integer rounding
+/// is applied to absolute positions (`(c * h_num) / h_den`), not to
+/// individual widths. `row_heights` replaces each `KeyRow.height`
+/// on a per-row basis. `h_num == h_den` and `row_heights == [2; n]`
+/// reproduces the unscaled rendering exactly.
+#[derive(Debug, Clone)]
+pub struct KeyboardGeometry {
+    pub h_num: u16,
+    pub h_den: u16,
+    pub row_heights: Vec<u16>,
+}
+
+impl KeyboardGeometry {
+    /// Sum of `row_heights` — the number of terminal rows the keyboard
+    /// occupies under this geometry.
+    pub fn total_height(&self) -> usize {
+        self.row_heights.iter().map(|h| *h as usize).sum()
+    }
+
+    /// Map a natural column coordinate to a scaled terminal column.
+    /// Use this on absolute positions (`col_start`, `col_end`,
+    /// `offset_col`); per-cell widths are then `scale_col(col_end) -
+    /// scale_col(col_start)`, which preserves adjacent-cell boundaries.
+    pub fn scale_col(&self, c: u16) -> usize {
+        (c as usize * self.h_num as usize) / self.h_den as usize
+    }
+}
+
+/// Resolve the keyboard's terminal-row / terminal-col extent for the
+/// given layout, modifier state, and plugin dimensions.
+///
+/// Returns `None` when the 40% budget is smaller than the per-row
+/// minimum × the layer's row count (e.g. on a very short screen) —
+/// the caller suppresses the keyboard for that frame and the viewport
+/// reclaims the rows.
+pub fn compute_geometry(
+    layout: &dyn KeyboardLayout,
+    mods: &KeyboardModifiers,
+    rows: usize,
+    cols: usize,
+) -> Option<KeyboardGeometry> {
+    let key_rows = layout.rows(mods);
+    let n = key_rows.len();
+    if n == 0 {
+        return None;
+    }
+
+    let target_total = rows * KEYBOARD_PCT_NUM / KEYBOARD_PCT_DEN;
+    let min_total = n * MIN_ROW_HEIGHT;
+    if target_total < min_total {
+        return None;
+    }
+
+    // Distribute target_total across rows: base height for all, +1 for
+    // the first `rem` rows. Front-loading the remainder gives the
+    // extras strip / top of the keyboard the extra row first, which
+    // visually grounds the block (and matches the lowercase letters'
+    // natural visual weight at the top).
+    let base = target_total / n;
+    let rem = target_total % n;
+    let row_heights: Vec<u16> = (0..n)
+        .map(|i| if i < rem { (base + 1) as u16 } else { base as u16 })
+        .collect();
+
+    // Cells stretch as a single ratio `h_num / h_den` so the widest
+    // row fills exactly `cols - 2 * MIN_H_PAD` cells — the full
+    // available width — while every row preserves its relative
+    // proportions (narrower rows like `asdf` stay proportionally
+    // narrower; the bottom bar still dominates). Adjacent cells
+    // share boundaries because the scaling is applied to absolute
+    // positions, not to individual widths.
+    //
+    // When the natural block already exceeds the target width
+    // (very narrow grids), fall back to 1:1 and let `clip_buf`
+    // truncate the overflow. Out-of-scope: responsive key removal
+    // at extremely narrow widths.
+    let natural_block = natural_block_width(&key_rows);
+    let target_block = cols.saturating_sub(2 * MIN_H_PAD);
+    let (h_num, h_den) = if natural_block == 0 || target_block < natural_block {
+        (1u16, 1u16)
+    } else {
+        (target_block as u16, natural_block as u16)
+    };
+
+    Some(KeyboardGeometry { h_num, h_den, row_heights })
+}
+
+/// Widest row in `rows` in *natural* (unscaled) cell units. Used by
+/// `compute_geometry` to bound `h_scale` against the available cols.
+fn natural_block_width(rows: &[KeyRow]) -> usize {
+    rows.iter()
+        .map(|r| {
+            let last_end = r
+                .cells
+                .last()
+                .map(|c| c.col_end as usize)
+                .unwrap_or(0);
+            r.offset_col as usize + last_end + r.right_pad as usize
+        })
+        .max()
+        .unwrap_or(0)
+}
+
+/// Total terminal-rows the keyboard occupies under default (unscaled)
+/// geometry — retained as a test-only convenience that pins the
+/// natural per-row heights from the layout. Production rendering goes
+/// through `compute_geometry` and the returned `total_height()`.
+#[cfg(test)]
+fn keyboard_rows(layout: &dyn KeyboardLayout, mods: &KeyboardModifiers) -> usize {
     layout.rows(mods).iter().map(|r| r.height as usize).sum()
 }
 
 /// Render the keyboard at `(plugin_row_start, 0)` with at most `cols`
 /// terminal columns. Pushes a `ClickRegion` per visible cell into
 /// `click_regions`. Returns the number of terminal rows actually
-/// drawn (matches `keyboard_rows`).
+/// drawn (matches `geometry.total_height()`).
+///
+/// `geometry` supplies the horizontal cell-width multiplier and
+/// per-row terminal heights; passing
+/// `KeyboardGeometry { h_scale: 1, row_heights: [row.height; n] }`
+/// reproduces the pre-scaling rendering exactly.
 pub fn render_keyboard(
     layout: &dyn KeyboardLayout,
     mods: &KeyboardModifiers,
     press_flash: &HashMap<CellId, Instant>,
+    geometry: &KeyboardGeometry,
     plugin_row_start: usize,
     cols: usize,
     click_regions: &mut Vec<ClickRegion>,
@@ -69,50 +205,67 @@ pub fn render_keyboard(
         return 0;
     }
 
-    // Block width = widest row in the active layer. Every row in the
-    // layer is indented by the same `left_pad` so the keyboard reads
-    // as one centered block with a stable left edge; the per-row
-    // `offset_col` (e.g. the half-key stagger on Letters row 2) is
-    // applied on top of that shared indent. Per-layer rather than
-    // global so each layer fits the viewport tightly — Letters,
-    // Symbols and Functions have different total widths because their
-    // cell counts and widths differ.
-    let block_width = block_width(&rows);
-    let left_pad = cols.saturating_sub(block_width) / 2;
+    // Scaled block width = widest row in the active layer, after
+    // applying the `h_num / h_den` ratio to every column extent.
+    // Every row in the layer is indented by the same `left_pad` so
+    // the keyboard reads as one centered block with a stable left
+    // edge; the per-row `offset_col` (e.g. the half-key stagger on
+    // Letters row 2) is applied on top of that shared indent and is
+    // also scaled.
+    let block_width = scaled_block_width(&rows, geometry);
+    // Centering pad: bias toward the user-facing minimum so the
+    // keyboard never sits flush against col 0 when at least
+    // `MIN_H_PAD` of margin fits on both sides. When the scaled
+    // block overruns `cols`, `max_left_pad` is 0 and the block
+    // simply gets clipped on the right by `clip_buf` further down.
+    let raw_pad = cols.saturating_sub(block_width) / 2;
+    let max_left_pad = cols.saturating_sub(block_width);
+    let left_pad = raw_pad.max(MIN_H_PAD).min(max_left_pad);
 
     let mut term_row = plugin_row_start;
     for (row_index, row) in rows.iter().enumerate() {
         let palette = palette_for_row(row_index);
-        let height = row.height as usize;
+        let height = geometry
+            .row_heights
+            .get(row_index)
+            .copied()
+            .unwrap_or(row.height as u16) as usize;
+        let height = height.max(1);
 
-        // Padding row(s) above the label row paint each cell's bg
-        // across its column range; no labels, no click regions. For
-        // height == 1 this loop runs zero times and the cell renders
-        // exactly as it did before option 2b.
-        for pad_offset in 0..height.saturating_sub(1) {
+        // Label sits at the vertically-centered terminal row of the
+        // cell rectangle (integer division — height=2 ⇒ bottom row,
+        // height=3 ⇒ middle row, height=4 ⇒ row 2 from the top).
+        // Padding rows fill every other terminal row of the cell with
+        // the same bg shade so the cell reads as one solid block.
+        let label_row_offset = height / 2;
+
+        for pad_offset in 0..height {
+            if pad_offset == label_row_offset {
+                continue;
+            }
             render_padding_row(
                 layout,
                 mods,
                 press_flash,
                 row,
                 palette,
+                geometry,
                 term_row + pad_offset,
                 left_pad,
                 cols,
             );
         }
 
-        // Label row sits at the bottom of the cell rectangle. Click
-        // regions span the full `[term_row, term_row + height)` so
-        // taps anywhere inside the padding-plus-label rectangle hit.
         render_row(
             layout,
             mods,
             press_flash,
             row,
             palette,
+            geometry,
             term_row,
             height,
+            label_row_offset,
             left_pad,
             cols,
             click_regions,
@@ -124,9 +277,28 @@ pub fn render_keyboard(
     term_row - plugin_row_start
 }
 
-/// Widest row in `rows`, measured as `offset_col + last_cell.col_end`.
+/// Widest row in `rows` after applying the geometry's scale ratio.
 /// Used as the block width that centers the keyboard horizontally.
-/// Returns 0 for an empty `rows` slice.
+/// Returns 0 for an empty `rows` slice. With `h_num == h_den` this
+/// reproduces the unscaled natural width.
+fn scaled_block_width(rows: &[KeyRow], geometry: &KeyboardGeometry) -> usize {
+    rows.iter()
+        .map(|r| {
+            let last_end = r
+                .cells
+                .last()
+                .map(|c| c.col_end)
+                .unwrap_or(0);
+            let extent = r.offset_col + last_end + r.right_pad;
+            geometry.scale_col(extent)
+        })
+        .max()
+        .unwrap_or(0)
+}
+
+/// Back-compat shim for callers / tests that want the unscaled
+/// natural width.
+#[cfg(test)]
 fn block_width(rows: &[KeyRow]) -> usize {
     rows.iter()
         .map(|r| {
@@ -156,12 +328,15 @@ fn palette_for_row(row_index: usize) -> [u8; 2] {
 }
 
 /// Render the label-bearing row of a key row. `cell_top` is the top
-/// terminal row of the cell rectangle (which is `term_row_top` in
-/// `render_keyboard`); `height` is the cell's vertical extent in
-/// terminal rows; `left_pad` is the column the row starts at after
-/// horizontal centering. The label paints at `cell_top + height - 1`;
-/// click regions span `[cell_top, cell_top + height)` so taps anywhere
-/// in the padding-plus-label rectangle resolve to the cell.
+/// terminal row of the cell rectangle; `height` is the cell's
+/// vertical extent in terminal rows; `label_row_offset` is the
+/// position of the label row inside the cell rectangle (0-based —
+/// height/2 vertically centers the label). `left_pad` is the column
+/// the row starts at after horizontal centering. Click regions span
+/// the full `[cell_top, cell_top + height)` rectangle so taps
+/// anywhere in the padding-plus-label rectangle resolve to the cell.
+/// Cells are scaled via the geometry's `scale_col` ratio so the row
+/// stretches to its share of the available width.
 #[allow(clippy::too_many_arguments)]
 fn render_row(
     layout: &dyn KeyboardLayout,
@@ -169,15 +344,17 @@ fn render_row(
     press_flash: &HashMap<CellId, Instant>,
     row: &KeyRow,
     palette: [u8; 2],
+    geometry: &KeyboardGeometry,
     cell_top: usize,
     height: usize,
+    label_row_offset: usize,
     left_pad: usize,
     cols: usize,
     click_regions: &mut Vec<ClickRegion>,
 ) {
-    let offset = row.offset_col as usize;
+    let offset = geometry.scale_col(row.offset_col);
     let cell_bottom = cell_top + height; // exclusive
-    let label_row = cell_top + height.saturating_sub(1);
+    let label_row = cell_top + label_row_offset;
 
     // Build the row line as a single string so we can clip it once at
     // the end. Leading `offset` columns are *unstyled* — they bear no
@@ -190,9 +367,14 @@ fn render_row(
         buf.push(' ');
     }
 
+    // Scaling absolute positions (rather than per-cell widths) keeps
+    // adjacent cells sharing boundaries and lets the fractional
+    // remainder absorb naturally across cells in the row.
     for (cell_index, cell) in row.cells.iter().enumerate() {
         let shade = compute_shade(layout, mods, press_flash, cell.id, palette, cell_index);
-        let cell_width = (cell.col_end - cell.col_start) as usize;
+        let scaled_start = geometry.scale_col(cell.col_start);
+        let scaled_end = geometry.scale_col(cell.col_end);
+        let cell_width = scaled_end.saturating_sub(scaled_start);
         let label = layout.label(cell.id, mods);
         let centered = center(label.as_ref(), cell_width);
 
@@ -201,10 +383,10 @@ fn render_row(
 
         // Click region geometry uses absolute viewport columns so the
         // dispatcher can match clicks against viewport columns
-        // directly: `left_pad` (centering indent) + `offset` (row
-        // stagger) + cell column.
-        let abs_start = left_pad + offset + cell.col_start as usize;
-        let abs_end = left_pad + offset + cell.col_end as usize;
+        // directly: `left_pad` (centering indent) + scaled `offset`
+        // (row stagger) + scaled cell column.
+        let abs_start = left_pad + offset + scaled_start;
+        let abs_end = left_pad + offset + scaled_end;
 
         click_regions.push(ClickRegion::tight_range(
             cell_top,
@@ -239,9 +421,10 @@ fn render_row(
     // cells (and the next row's leading offset spaces) don't inherit
     // the last cell's shade. Any `right_pad` columns are emitted as
     // unstyled spaces after the reset so they don't pick up the last
-    // cell's bg.
+    // cell's bg. `right_pad` scales with the rest of the row.
     buf.push_str(RESET);
-    for _ in 0..row.right_pad as usize {
+    let scaled_right_pad = geometry.scale_col(row.right_pad);
+    for _ in 0..scaled_right_pad {
         buf.push(' ');
     }
 
@@ -255,30 +438,34 @@ fn render_row(
     );
 }
 
-/// Paint the bg-only padding row that sits above the label row of an
-/// option-2b tall cell. Each cell emits its bg colour across its full
-/// `[col_start, col_end)` column range — no label, no click region.
-/// The shade matches what `compute_shade` would emit for the label
-/// row, so press-flash, armed-modifier, and active-layer inversions
-/// paint identically across both rows of the cell.
+/// Paint a bg-only padding row of a tall cell rectangle. Each cell
+/// emits its bg colour across its full scaled column range — no
+/// label, no click region. The shade matches what `compute_shade`
+/// would emit for the label row, so press-flash, armed-modifier, and
+/// active-layer inversions paint identically across every row of the
+/// cell.
+#[allow(clippy::too_many_arguments)]
 fn render_padding_row(
     layout: &dyn KeyboardLayout,
     mods: &KeyboardModifiers,
     press_flash: &HashMap<CellId, Instant>,
     row: &KeyRow,
     palette: [u8; 2],
+    geometry: &KeyboardGeometry,
     term_row: usize,
     left_pad: usize,
     cols: usize,
 ) {
-    let offset = row.offset_col as usize;
+    let offset = geometry.scale_col(row.offset_col);
     let mut buf = String::new();
     for _ in 0..offset {
         buf.push(' ');
     }
     for (cell_index, cell) in row.cells.iter().enumerate() {
         let shade = compute_shade(layout, mods, press_flash, cell.id, palette, cell_index);
-        let cell_width = (cell.col_end - cell.col_start) as usize;
+        let cell_width = geometry
+            .scale_col(cell.col_end)
+            .saturating_sub(geometry.scale_col(cell.col_start));
         buf.push_str(&ansi_bg(shade));
         for _ in 0..cell_width {
             buf.push(' ');
@@ -287,7 +474,8 @@ fn render_padding_row(
     // Match the label row: drop bg before emitting any `right_pad` so
     // the trailing padding is unstyled, not bg-shaded.
     buf.push_str(RESET);
-    for _ in 0..row.right_pad as usize {
+    let scaled_right_pad = geometry.scale_col(row.right_pad);
+    for _ in 0..scaled_right_pad {
         buf.push(' ');
     }
     let visible = cols.saturating_sub(left_pad);
@@ -524,5 +712,177 @@ mod tests {
         assert_eq!(keyboard_rows(&layout, &mods), 10);
         mods.layer = KeyLayer::Functions;
         assert_eq!(keyboard_rows(&layout, &mods), 8);
+    }
+
+    /// At a phone-portrait baseline (30 rows × 40 cols), the Letters
+    /// layer's 40% budget is 12 rows. Spread across 5 KeyRows that is
+    /// base=2, remainder=2 → row_heights `[3, 3, 2, 2, 2]` summing to
+    /// 12. Horizontal scale is `38 / 34`: the widest row (the bottom
+    /// bar at natural 34 cells) stretches to fill the available
+    /// `cols - 2*MIN_H_PAD = 38` cells.
+    #[test]
+    fn compute_geometry_phone_baseline() {
+        use crate::keyboard::layouts::us_qwerty::UsQwerty;
+        use crate::keyboard::modifiers::KeyboardModifiers;
+
+        let layout = UsQwerty::new();
+        let mods = KeyboardModifiers::default();
+        let geom = compute_geometry(&layout, &mods, 30, 40).expect("fits");
+        assert_eq!(geom.h_num, 38);
+        assert_eq!(geom.h_den, 34);
+        assert_eq!(geom.row_heights, vec![3, 3, 2, 2, 2]);
+        assert_eq!(geom.total_height(), 12);
+    }
+
+    /// Pinch-in doubles the grid (60 rows × 80 cols). The 40% budget
+    /// becomes 24 rows distributed as `[5, 5, 5, 5, 4]`; the scale
+    /// ratio is `78 / 34` so the bottom bar stretches to 78 cells.
+    #[test]
+    fn compute_geometry_scales_up_on_zoom_in() {
+        use crate::keyboard::layouts::us_qwerty::UsQwerty;
+        use crate::keyboard::modifiers::KeyboardModifiers;
+
+        let layout = UsQwerty::new();
+        let mods = KeyboardModifiers::default();
+        let geom = compute_geometry(&layout, &mods, 60, 80).expect("fits");
+        assert_eq!(geom.h_num, 78);
+        assert_eq!(geom.h_den, 34);
+        assert_eq!(geom.row_heights, vec![5, 5, 5, 5, 4]);
+        assert_eq!(geom.total_height(), 24);
+    }
+
+    /// When the screen is too short for the per-row minimum on every
+    /// row, the keyboard is suppressed: `compute_geometry` returns
+    /// `None` and the caller drops the keyboard from the frame so the
+    /// viewport reclaims the rows.
+    #[test]
+    fn compute_geometry_hides_when_too_short() {
+        use crate::keyboard::layouts::us_qwerty::UsQwerty;
+        use crate::keyboard::modifiers::KeyboardModifiers;
+
+        let layout = UsQwerty::new();
+        let mods = KeyboardModifiers::default();
+        // 8 rows → 40% budget = 3, less than 5 rows × 2 = 10.
+        assert!(compute_geometry(&layout, &mods, 8, 40).is_none());
+    }
+
+    /// Landscape-style viewport — wide but short. The bottom bar
+    /// stretches fractionally (118 / 34) to fill the available width
+    /// rather than leaving the slack as side padding. Row heights
+    /// stay on the row-budget distribution — horizontal and vertical
+    /// axes scale independently.
+    #[test]
+    fn compute_geometry_widens_keys_on_landscape() {
+        use crate::keyboard::layouts::us_qwerty::UsQwerty;
+        use crate::keyboard::modifiers::KeyboardModifiers;
+
+        let layout = UsQwerty::new();
+        let mods = KeyboardModifiers::default();
+        let geom = compute_geometry(&layout, &mods, 30, 120).expect("fits");
+        assert_eq!(geom.h_num, 118);
+        assert_eq!(geom.h_den, 34);
+        assert_eq!(geom.row_heights, vec![3, 3, 2, 2, 2]);
+        // Widest row stretches to exactly `cols - 2 * MIN_H_PAD = 118`
+        // cells — full available width.
+        assert_eq!(scaled_block_width(&layout.rows(&mods), &geom), 118);
+    }
+
+    /// A tall but narrow screen — the natural block already exceeds
+    /// `cols - 2`, so the geometry falls back to 1:1 (no stretching)
+    /// and the keyboard renders at its natural width, clipped on the
+    /// right where it overflows.
+    #[test]
+    fn compute_geometry_falls_back_to_one_to_one_when_too_narrow() {
+        use crate::keyboard::layouts::us_qwerty::UsQwerty;
+        use crate::keyboard::modifiers::KeyboardModifiers;
+
+        let layout = UsQwerty::new();
+        let mods = KeyboardModifiers::default();
+        // cols=30 ⇒ target=28 < natural=34 ⇒ 1:1 fallback.
+        let geom = compute_geometry(&layout, &mods, 80, 30).expect("fits");
+        assert_eq!(geom.h_num, 1);
+        assert_eq!(geom.h_den, 1);
+    }
+
+    /// `total_height` matches the sum of `row_heights` even for
+    /// hand-rolled geometries.
+    #[test]
+    fn geometry_total_height_sums_row_heights() {
+        let g = KeyboardGeometry {
+            h_num: 2,
+            h_den: 1,
+            row_heights: vec![3, 4, 5],
+        };
+        assert_eq!(g.total_height(), 12);
+    }
+
+    /// `scale_col` preserves cell boundaries: when adjacent cells
+    /// share a column boundary at natural position `c`, both map to
+    /// the same scaled position so no gaps or overlaps appear.
+    #[test]
+    fn scale_col_preserves_adjacent_boundaries() {
+        let g = KeyboardGeometry {
+            h_num: 38,
+            h_den: 34,
+            row_heights: vec![],
+        };
+        // Cell A's end and cell B's start both at natural col 3 must
+        // produce the same scaled col.
+        assert_eq!(g.scale_col(3), g.scale_col(3));
+        // And the boundary between consecutive cells (col_end of one
+        // = col_start of the next) is monotonically non-decreasing.
+        let positions: Vec<usize> = (0..=34).map(|c| g.scale_col(c)).collect();
+        for w in positions.windows(2) {
+            assert!(w[0] <= w[1], "scale_col must be monotone");
+        }
+    }
+
+    /// `render_keyboard` paints labels on the vertically centered
+    /// terminal row of each cell rectangle. The slop region's
+    /// `center.1` is anchored on the label row, so reading it back is
+    /// the most direct way to assert label placement without parsing
+    /// the printed ANSI.
+    #[test]
+    fn label_row_is_vertically_centered() {
+        use crate::keyboard::layouts::us_qwerty::UsQwerty;
+        use crate::keyboard::modifiers::KeyboardModifiers;
+        use crate::state::{ClickAction, ClickRegion};
+        use std::collections::HashMap;
+
+        let layout = UsQwerty::new();
+        let mods = KeyboardModifiers::default();
+        // Force row_heights = [4, 4, 4, 4, 4]: every cell rectangle is
+        // 4 terminal rows tall, so the label sits at offset 2 from the
+        // top (height/2 = 2).
+        let geom = KeyboardGeometry {
+            h_num: 1,
+            h_den: 1,
+            row_heights: vec![4; layout.rows(&mods).len()],
+        };
+        let mut regions: Vec<ClickRegion> = Vec::new();
+        let press_flash: HashMap<CellId, std::time::Instant> = HashMap::new();
+        let plugin_row_start = 0usize;
+        render_keyboard(
+            &layout,
+            &mods,
+            &press_flash,
+            &geom,
+            plugin_row_start,
+            120,
+            &mut regions,
+        );
+
+        // The first KeyRow occupies term rows [0, 4); its slop centers
+        // should all land at row 2 (= height/2).
+        let mut found_first_row_center = false;
+        for region in &regions {
+            if let (Some((_, cy)), ClickAction::Keyboard(_)) = (region.center, &region.action) {
+                if region.row_start == 0 && region.row_end > region.row_start {
+                    assert_eq!(cy, 2, "label row must be vertically centered at height/2");
+                    found_first_row_center = true;
+                }
+            }
+        }
+        assert!(found_first_row_center, "no slop region from the first row");
     }
 }
